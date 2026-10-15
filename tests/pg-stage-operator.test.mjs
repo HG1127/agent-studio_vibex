@@ -19,7 +19,7 @@ const spec=()=>({
   done_criteria:["Caveats"],
   tools:["summarize"],knowledge_base_ids:[],require_approval:true,
 })
-function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,embeddingHistory=false,workflowHistory=false}={}){
+function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,embeddingHistory=false,workflowHistory=false,agentEvents=false}={}){
   const dir=mkdtempSync(path.join(tmpdir(),"stage-operator-synthetic-"))
   const snapshot=path.join(dir,"snapshot.sqlite")
   const manifest=path.join(dir,"manifest.json")
@@ -41,6 +41,10 @@ function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=f
   if(workflowHistory){
     db.exec("CREATE TABLE workflow_runs(id TEXT); CREATE TABLE workflow_events(id TEXT)")
     db.prepare("INSERT INTO workflow_runs VALUES(?)").run("w".repeat(15))
+  }
+  if(agentEvents){
+    db.exec("CREATE TABLE agent_runs(id TEXT);CREATE TABLE run_events(id TEXT)")
+    db.prepare("INSERT INTO run_events VALUES(?)").run("e".repeat(15))
   }
   if(orphanKBContent){
     db.exec("CREATE TABLE agent_studio_kb_documents(id TEXT)")
@@ -195,6 +199,19 @@ test("nonempty Workflow run history is routed to audited, inert archive and cann
     assert.ok(report.phase_results.some(x=>x.phase==="workflow_history"&&x.status==="blocked"))
     assert.equal(report.production_cutover_allowed,false)
     assert.equal(report.phase_results.find(x=>x.phase==="workflow_history").exit_code,1)
+    assert.ok(!out.stdout.includes(privateText))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("Agent events require a reviewed matching historical run before stage writes",()=>{
+  const f=fixture({agentEvents:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,2,out.stderr)
+    const report=JSON.parse(out.stdout)
+    assert.equal(report.result,"preflight_blocked")
+    assert.equal(report.unmapped_nonempty_tables,0)
+    assert.ok(report.phase_results.some(x=>x.phase==="agent_events"&&x.status==="blocked"))
+    assert.equal(report.production_cutover_allowed,false)
     assert.ok(!out.stdout.includes(privateText))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })

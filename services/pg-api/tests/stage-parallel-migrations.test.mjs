@@ -22,6 +22,7 @@ const migrationFiles=[
   "db/postgres/migrations/pg_v8_013_legacy_kb_embedding_state.sql",
   "db/postgres/migrations/pg_v9_014_legacy_workflow_history.sql",
   "db/postgres/migrations/pg_v8_012_legacy_run_history.sql",
+  "db/postgres/migrations/pg_v9_015_legacy_agent_run_events.sql",
 ]
 test("parallel domain migrations converge to one consistent schema and read-only stage verification",async()=>{
   const pg=await PGlite.create({extensions:{vector}})
@@ -45,12 +46,12 @@ test("parallel domain migrations converge to one consistent schema and read-only
     }
     const result=await pg.query(
       "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='agentstudio'")
-    assert.equal(result.rows[0].n,34)
+    assert.equal(result.rows[0].n,35)
     const rls=await pg.query(
       "SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n "+
       "ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' "+
       "AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity")
-    assert.equal(rls.rows[0].n,33)
+    assert.equal(rls.rows[0].n,34)
     const policies=await pg.query(
       "SELECT count(*)::int AS n FROM pg_policies "+
       "WHERE schemaname='agentstudio'")
@@ -65,6 +66,7 @@ test("parallel domain migrations converge to one consistent schema and read-only
       ["pg_v8_010","legacy_kb_chunk_archive"],
       ["pg_v8_010","legacy_kb_vector_archive"],
       ["pg_v8_011","legacy_user_imports"],
+      ["pg_v9_015","legacy_agent_run_events"],
       ["pg_v9_014","legacy_workflow_history"],
       ["pg_v8_013","legacy_kb_embedding_snapshots"],
       ["pg_v8_013","legacy_kb_embedding_base_refs"],

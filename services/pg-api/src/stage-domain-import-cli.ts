@@ -24,6 +24,9 @@ import {
 import {
   prepareWorkflowHistoryImport,importLegacyWorkflowHistoryToStage,
 } from "./stage-workflow-history-import.ts"
+import {
+  prepareAgentRunEventsImport,importLegacyAgentRunEventsToStage,
+} from "./stage-agent-run-events-import.ts"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../../..")
@@ -36,6 +39,7 @@ const domains={
     "agent_studio_spec_proposals","agent_studio_kb_access_events",
     "agent_studio_spec_collab_audit","agent_studio_spec_revisions",
   ],
+  "agent-events":["run_events"],
   "workflow-history":["workflow_runs","workflow_events"],
   history:["agent_runs"],
 } as const
@@ -198,6 +202,7 @@ function buildPlan(args:ReturnType<typeof parse>){
     case "workflow":return prepareWorkflowImport(args.snapshot,args.manifest,args.mapping)
     case "schedules":return prepareScheduleImport(args.snapshot,args.manifest,args.mapping)
     case "collaboration":return prepareCollaborationImport(args.snapshot,args.manifest,args.mapping)
+    case "agent-events":return prepareAgentRunEventsImport(args.snapshot,args.manifest,args.mapping)
     case "workflow-history":return prepareWorkflowHistoryImport(args.snapshot,args.manifest,args.mapping)
     case "history":return prepareHistoryImport(args.snapshot,args.manifest,args.mapping)
   }
@@ -255,6 +260,8 @@ export async function runCli(argv:string[]){
         importLegacyCollaborationsToStage(adapter,plan as ReturnType<typeof prepareCollaborationImport>):
         args.domain==="workflow-history"?
           importLegacyWorkflowHistoryToStage(adapter,plan as ReturnType<typeof prepareWorkflowHistoryImport>):
+        args.domain==="agent-events"?
+          importLegacyAgentRunEventsToStage(adapter,plan as ReturnType<typeof prepareAgentRunEventsImport>):
           importLegacyHistoryToStage(adapter,plan as ReturnType<typeof prepareHistoryImport>))
     console.log(JSON.stringify({...base,result:"stage_domain_reconciled",
       imported:receipt.imported,replayed:receipt.replayed,

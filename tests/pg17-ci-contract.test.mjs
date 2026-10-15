@@ -45,7 +45,7 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
     "test:stage-kb-import","test:stage-schedule-import",
     "test:stage-collaboration-import","test:stage-kb-content-import",
     "test:stage-kb-atomic-cli","test:stage-history-import",
-    "test:stage-workflow-history",
+    "test:stage-workflow-history","test:stage-agent-events",
     "test:stage-user-import","test:stage-migration-identity",
     "test:stage-reconciliation","test:stage-domain-import",
     "test:stage-kb-embedding-archive","test:stage-kb-embedding-cli",
@@ -212,6 +212,20 @@ test("W23 frozen Workflow run/event real PG17 job is isolated and credential-fre
   assert.match(source,/refuse_non_ephemeral_pg17_workflow_history/)
   assert.match(source,/RUNNER_ENVIRONMENT/)
   assert.match(source,/W23_PG17_WORKFLOW_HISTORY_PASS/)
+})
+test("W25 frozen Agent event archive runs only on an isolated synthetic PG17 service",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-agent-events-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"Agent event history must use an independent PG17 service")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_W25_AGENT_EVENTS_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-agent-run-events\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
 })
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")

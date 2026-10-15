@@ -148,22 +148,25 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
     const workflowHistory=read('db/postgres/migrations/pg_v9_014_legacy_workflow_history.sql')
     await admin.query(workflowHistory)
     await admin.query(workflowHistory)
+    const agentEvents=read('db/postgres/migrations/pg_v9_015_legacy_agent_run_events.sql')
+    await admin.query(agentEvents)
+    await admin.query(agentEvents)
     const ledger=await admin.query(
       "SELECT count(*)::integer AS n FROM agentstudio.schema_migrations "+
-      "WHERE version IN ('pg_v8_004','pg_v8_005','pg_v8_006','pg_v8_007','pg_v8_008','pg_v8_009','pg_v8_010','pg_v8_011','pg_v8_012','pg_v8_013','pg_v9_014')")
-    assert.equal(ledger.rows[0].n,11)
+      "WHERE version IN ('pg_v8_004','pg_v8_005','pg_v8_006','pg_v8_007','pg_v8_008','pg_v8_009','pg_v8_010','pg_v8_011','pg_v8_012','pg_v8_013','pg_v9_014','pg_v9_015')")
+    assert.equal(ledger.rows[0].n,12)
     // Independent W1/W2 crosswalk migrations are applied in the same true
     // PostgreSQL 17 database, but are not allowed to execute old workflows.
     const tables=await admin.query(
       "SELECT count(*)::integer AS n FROM pg_tables "+
       "WHERE schemaname='agentstudio'")
-    assert.equal(tables.rows[0].n,34)
+    assert.equal(tables.rows[0].n,35)
     const safeguarded=await admin.query(
       "SELECT count(*)::integer AS n FROM pg_class AS c "+
       "JOIN pg_namespace AS n ON n.oid=c.relnamespace "+
       "WHERE n.nspname='agentstudio' AND c.relkind='r' "+
       "AND c.relrowsecurity AND c.relforcerowsecurity")
-    assert.equal(safeguarded.rows[0].n,33)
+    assert.equal(safeguarded.rows[0].n,34)
 
     const {apiPassword,workerPassword}=await safeRoleBootstrap(
       admin,connection.password)
@@ -335,6 +338,7 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
       "legacy_collaboration_imports","legacy_kb_content_snapshots",
       "legacy_kb_document_archive","legacy_kb_chunk_archive",
       "legacy_kb_vector_archive","legacy_user_imports",
+      "legacy_agent_run_events",
       "legacy_workflow_history",
       "legacy_run_history","legacy_kb_embedding_snapshots",
       "legacy_kb_embedding_base_refs","legacy_kb_embedding_state_archive"]){

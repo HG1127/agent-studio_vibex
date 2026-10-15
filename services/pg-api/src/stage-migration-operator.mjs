@@ -26,6 +26,7 @@ const phases={
   knowledge_atomic:"stage-kb-atomic-import-cli.ts",
   schedules:"stage-domain-import-cli.ts",
   collaboration:"stage-domain-import-cli.ts",
+  agent_events:"stage-domain-import-cli.ts",
   workflow_history:"stage-domain-import-cli.ts",
   history:"stage-domain-import-cli.ts",
   reconciliation:"stage-reconciliation-cli.ts",
@@ -49,9 +50,10 @@ const kbEmbeddingState=[
   "agent_studio_kb_embedding_queue",
 ]
 const workflowHistoryTables=["workflow_runs","workflow_events"]
+const agentEventTables=["run_events"]
 const namesOfKnownBusiness=new Set([
   "studio_users","model_connections",...Object.values(businessTables),
-  ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,
+  ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,...agentEventTables,
   "agent_studio_schema_migrations",
 ])
 function fail(code){throw Error(code)}
@@ -191,6 +193,7 @@ function candidatePhases(counts){
   if(sum(counts,collaboration)>0)enabled.push("collaboration")
   if(sum(counts,workflowHistoryTables)>0)enabled.push("workflow_history")
   if((counts.agent_runs??0)>0)enabled.push("history")
+  if(sum(counts,agentEventTables)>0)enabled.push("agent_events")
   enabled.push("reconciliation")
   return enabled
 }
@@ -213,7 +216,7 @@ function commandFor(phase,args,mode){
   const kind={
     workflow:"workflow",schedules:"schedules",
     collaboration:"collaboration",history:"history",
-    workflow_history:"workflow-history",
+    workflow_history:"workflow-history",agent_events:"agent-events",
   }[phase]
   if(kind){
     command.push("--domain",kind)
@@ -242,7 +245,7 @@ function runPhase(phase,args,mode){
       workflow:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       schedules:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       collaboration:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
-      workflow_history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
+      agent_events:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      workflow_history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       reconciliation:"AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED",
     }[phase]
     env[flag]="true"
