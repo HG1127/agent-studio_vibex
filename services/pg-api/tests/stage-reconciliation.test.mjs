@@ -13,6 +13,8 @@ import {normalizeLegacyAgent} from '../src/stage-agent-import.ts'
 import {normalizeLegacyWorkflow} from '../src/stage-workflow-import.ts'
 import {normalizeLegacyKb} from '../src/stage-knowledge-base-import.ts'
 import {prepareDisabledUserProvision} from '../src/stage-user-import.ts'
+import {loadKbContentSnapshot} from '../src/stage-kb-content-import-source.ts'
+import {loadKbEmbeddingStateSnapshot} from '../src/stage-kb-embedding-state-import.ts'
 
 const sha=b=>createHash('sha256').update(b).digest('hex')
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222'
@@ -282,6 +284,203 @@ async function strictFixture(){
 }
 const domain=(out,name)=>out.find(r=>r.domain===name)
 const supported=['studio_users','agent_specs','workflows','agent_studio_kb_bases']
+
+// Synthetic SQLite + real PGlite transactions; ONLY the PG17/stage/admin
+// identity probe is mocked by fixture(). No TCP server or company data.
+async function archiveFixture(){
+  const f=await fixture()
+  try{
+    const db=new DatabaseSync(f.input.snapshot)
+    db.exec(`DROP TABLE agent_studio_kb_bases; DROP TABLE agent_studio_kb_documents;
+      DROP TABLE agent_studio_kb_chunks; DROP TABLE agent_studio_kb_vectors;
+      CREATE TABLE agent_studio_kb_bases(id TEXT PRIMARY KEY,rh_user_id TEXT,name TEXT,description TEXT,created_ms INTEGER,updated_ms INTEGER);
+      INSERT INTO agent_studio_kb_bases VALUES('baseA','employee0000001','Synthetic KB','',1792030400000,1792030400000);
+      CREATE TABLE model_connections(id TEXT PRIMARY KEY,rh_user_id TEXT,api_key TEXT);
+      INSERT INTO model_connections VALUES('connA','employee0000001','SYNTHETIC-KEY-NEVER-READ');
+      CREATE TABLE agent_studio_kb_documents(id TEXT PRIMARY KEY,base_id TEXT,rh_user_id TEXT,filename TEXT,size_chars INTEGER,chunk_count INTEGER,created_ms INTEGER);
+      INSERT INTO agent_studio_kb_documents VALUES('docA','baseA','employee0000001','源文档.txt',12,1,1792030400123);
+      CREATE TABLE agent_studio_kb_chunks(id TEXT PRIMARY KEY,base_id TEXT,document_id TEXT,rh_user_id TEXT,chunk_index INTEGER,text_content TEXT);
+      INSERT INTO agent_studio_kb_chunks VALUES('chunkA','baseA','docA','employee0000001',0,'原文 😀  ');
+      CREATE TABLE agent_studio_kb_vectors(chunk_id TEXT PRIMARY KEY,rh_user_id TEXT,base_id TEXT,document_id TEXT,connection_id TEXT,model_name TEXT,dimensions INTEGER,vector_json TEXT,indexed_ms INTEGER);
+      INSERT INTO agent_studio_kb_vectors VALUES('chunkA','employee0000001','baseA','docA','connA','synthetic-model',3,'[ 1.000, -0.0, 2e-3 ]',1792030400456);
+      CREATE TABLE agent_studio_kb_embedding_settings(rh_user_id TEXT PRIMARY KEY,connection_id TEXT,model_name TEXT,updated_ms INTEGER);
+      INSERT INTO agent_studio_kb_embedding_settings VALUES('employee0000001','connA','旧模型  ',1792030400123);
+      CREATE TABLE agent_studio_kb_embedding_queue(rh_user_id TEXT,base_id TEXT,attempts INTEGER,next_attempt_ms INTEGER,lease_until_ms INTEGER,last_error TEXT,updated_ms INTEGER,PRIMARY KEY(rh_user_id,base_id));
+      INSERT INTO agent_studio_kb_embedding_queue VALUES('employee0000001','baseA',7,1792030400456,1792030499999,'历史错误 😀',1792030400789);`)
+    db.close();f.seal()
+    const embedding=loadKbEmbeddingStateSnapshot(f.input),content=loadKbContentSnapshot(f.input,embedding)
+    await f.pg.exec(`INSERT INTO agentstudio.schema_migrations VALUES('pg_v8_007'),('pg_v8_010'),('pg_v8_013');
+      CREATE TABLE agentstudio.knowledge_bases(id uuid,owner_user_id uuid);
+      CREATE TABLE agentstudio.legacy_knowledge_base_imports(source_snapshot_sha256 text,legacy_base_id text,owner_user_id uuid,target_base_id uuid,payload_sha256 text);
+      CREATE TABLE agentstudio.legacy_kb_content_snapshots(source_snapshot_sha256 text,inventory_sha256 text,mapping_sha256 text,approved_mapping text,document_count bigint,chunk_count bigint,vector_count bigint);
+      CREATE TABLE agentstudio.legacy_kb_embedding_snapshots(source_snapshot_sha256 text,inventory_sha256 text,mapping_sha256 text,approved_mapping text);
+      CREATE TABLE agentstudio.legacy_kb_embedding_base_refs(source_snapshot_sha256 text,legacy_base_id text,legacy_owner_id text,owner_user_id uuid);
+      CREATE TABLE agentstudio.legacy_kb_embedding_state_archive(source_snapshot_sha256 text,source_table text,legacy_row_id text,legacy_owner_id text,owner_user_id uuid,legacy_base_id text,raw_payload text,payload_sha256 text);
+      INSERT INTO agentstudio.knowledge_bases VALUES('${b}','${a}');`)
+    await f.pg.query('INSERT INTO agentstudio.legacy_knowledge_base_imports VALUES($1,$2,$3,$4,$5)',
+      [content.snapshot,'baseA',a,b,content.bases[0].payload_sha256])
+    for(const [kind,suffix] of [['document','documents'],['chunk','chunks'],['vector','vectors']]){
+      const table='legacy_kb_'+kind+'_archive'
+      await f.pg.exec(`CREATE TABLE agentstudio.${table}(source_snapshot_sha256 text,legacy_id text,legacy_base_id text,owner_user_id uuid,target_base_id uuid,raw_payload text,payload_sha256 text${kind==='document'?'':',legacy_document_id text'})`)
+      const r=content.rows.find(r=>r.kind===kind),values=[content.snapshot,r.id,r.base,r.owner,b,r.raw,r.hash,...(kind==='document'?[]:[r.document])]
+      await f.pg.query(`INSERT INTO agentstudio.${table} VALUES(${values.map((_,i)=>'$'+(i+1)).join(',')})`,values)
+    }
+    for(const [table,batch,extra] of [['legacy_kb_content_snapshots',content,[1,1,1]],['legacy_kb_embedding_snapshots',embedding,[]]]){
+      const v=[batch.snapshot,batch.inventory,batch.mappingHash,batch.mapping,...extra]
+      await f.pg.query(`INSERT INTO agentstudio.${table} VALUES(${v.map((_,i)=>'$'+(i+1)).join(',')})`,v)
+    }
+    for(const r of embedding.bases)await f.pg.query('INSERT INTO agentstudio.legacy_kb_embedding_base_refs VALUES($1,$2,$3,$4)',[embedding.snapshot,r.id,r.legacyOwner,r.owner])
+    for(const r of embedding.rows)await f.pg.query('INSERT INTO agentstudio.legacy_kb_embedding_state_archive VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[embedding.snapshot,r.table,r.id,r.legacyOwner,r.owner,r.base,r.raw,r.hash])
+    f.archiveNames=['agent_studio_kb_documents','agent_studio_kb_chunks','agent_studio_kb_vectors','agent_studio_kb_embedding_settings','agent_studio_kb_embedding_queue']
+    return f
+  }catch(e){await f.close();throw e}
+}
+
+test('W21 five independent archives verify exact bytes; historical queue remains inert and no domain becomes GO',async()=>{
+  const f=await archiveFixture()
+  try{
+    const tables=['legacy_kb_content_snapshots','legacy_kb_embedding_snapshots','legacy_kb_embedding_state_archive','jobs']
+    const before=await Promise.all(tables.map(t=>f.pg.query('SELECT * FROM agentstudio.'+t)))
+    const out=await reconcileStage(f.input,f.pool)
+    for(const name of f.archiveNames){
+      const r=domain(out,name)
+      assert.equal(r.archive_integrity_verified,true,name);assert.equal(r.archive_count,1)
+      assert.equal(r.status,'unsupported');assert.deepEqual(r.blockers,['archive_only_live_unsupported'])
+    }
+    assert.deepEqual(await Promise.all(tables.map(t=>f.pg.query('SELECT * FROM agentstudio.'+t))),before)
+    assert.equal(f.statements.filter(s=>s.startsWith('BEGIN')).length,1)
+    assert.equal(f.statements.at(-1),'ROLLBACK');assert.equal(f.connections,1);assert.equal(f.releases,1)
+    for(const secret of ['原文','源文档','旧模型','历史错误','SYNTHETIC-KEY',a,b,raw.rh_user_id,f.input.snapshot])assert(!JSON.stringify(out).includes(secret))
+  }finally{await f.close()}
+})
+
+test('W21 fixed sanitized failures catch changed text/hash, owner, IDs, parent drift, extras and unrelated snapshots',async()=>{
+  const f=await archiveFixture()
+  try{
+    const cases=[
+      ['legacy_kb_chunk_archive',"raw_payload=replace(raw_payload,'原文','篡改')",'agent_studio_kb_chunks','archive_payload_mismatch'],
+      ['legacy_kb_vector_archive',"payload_sha256=repeat('f',64)",'agent_studio_kb_vectors','archive_payload_mismatch'],
+      ['legacy_kb_document_archive',`owner_user_id='${b}'`,'agent_studio_kb_documents','archive_association_invalid'],
+      ['legacy_kb_chunk_archive',"legacy_document_id='missing'",'agent_studio_kb_chunks','archive_association_invalid'],
+      ['legacy_kb_content_snapshots',"source_snapshot_sha256=repeat('f',64)",'agent_studio_kb_documents','archive_snapshot_mismatch'],
+      ['legacy_kb_embedding_snapshots',"mapping_sha256=repeat('f',64)",'agent_studio_kb_embedding_settings','archive_snapshot_mismatch'],
+      ['legacy_kb_embedding_base_refs',`owner_user_id='${b}'`,'agent_studio_kb_embedding_queue','archive_base_mapping_invalid'],
+      ['legacy_kb_embedding_state_archive',"legacy_row_id='[\"wrong\"]'",'agent_studio_kb_embedding_queue','archive_row_missing'],
+      ['legacy_kb_embedding_state_archive',"source_snapshot_sha256=repeat('f',64)",'agent_studio_kb_embedding_settings','archive_association_invalid'],
+      ['legacy_knowledge_base_imports',`target_base_id='${a}'`,'agent_studio_kb_documents','archive_base_mapping_invalid'],
+    ]
+    for(const [table,set,name,code] of cases){
+      const saved=(await f.pg.query(`SELECT * FROM agentstudio.${table}`)).rows
+      try{
+        await f.pg.exec(`UPDATE agentstudio.${table} SET ${set}`)
+        const r=domain(await reconcileStage(f.input,f.pool),name)
+        assert.equal(r.status,'failed',set);assert.equal(r.archive_integrity_verified,false,set);assert(r.blockers.includes(code),set)
+      }finally{
+        await f.pg.exec(`DELETE FROM agentstudio.${table}`)
+        for(const row of saved)await f.pg.query(`INSERT INTO agentstudio.${table} VALUES(${Object.values(row).map((_,i)=>'$'+(i+1)).join(',')})`,Object.values(row))
+      }
+    }
+    for(const [table,name] of [['legacy_kb_document_archive','agent_studio_kb_documents'],['legacy_kb_embedding_state_archive','agent_studio_kb_embedding_queue']]){
+      const saved=(await f.pg.query(`SELECT * FROM agentstudio.${table}`)).rows
+      await f.pg.exec(`INSERT INTO agentstudio.${table} SELECT * FROM agentstudio.${table}`)
+      const r=domain(await reconcileStage(f.input,f.pool),name)
+      assert.equal(r.status,'failed');assert(r.blockers.includes('archive_count_mismatch'))
+      await f.pg.exec(`DELETE FROM agentstudio.${table}`)
+      for(const row of saved)await f.pg.query(`INSERT INTO agentstudio.${table} VALUES(${Object.values(row).map((_,i)=>'$'+(i+1)).join(',')})`,Object.values(row))
+    }
+    await f.pg.exec('DELETE FROM agentstudio.legacy_kb_document_archive')
+    const out=await reconcileStage(f.input,f.pool)
+    for(const name of f.archiveNames.slice(0,3))assert.equal(domain(out,name).archive_integrity_verified,false)
+  }finally{await f.close()}
+})
+
+test('W21 lexical JSON is exact even with recomputed hash; unique extra IDs and foreign snapshot headers fail',async()=>{
+  const f=await archiveFixture()
+  try{
+    const saved=(await f.pg.query('SELECT raw_payload,payload_sha256 FROM agentstudio.legacy_kb_vector_archive')).rows[0]
+    // Equal JSON value, different lexical whitespace; recomputing SHA cannot hide it.
+    const changed=JSON.stringify(JSON.parse(saved.raw_payload),null,2)
+    await f.pg.query('UPDATE agentstudio.legacy_kb_vector_archive SET raw_payload=$1,payload_sha256=$2',[changed,sha(changed)])
+    assert(domain(await reconcileStage(f.input,f.pool),'agent_studio_kb_vectors').blockers.includes('archive_payload_mismatch'))
+    await f.pg.query('UPDATE agentstudio.legacy_kb_vector_archive SET raw_payload=$1,payload_sha256=$2',[saved.raw_payload,saved.payload_sha256])
+    await f.pg.exec("INSERT INTO agentstudio.legacy_kb_vector_archive SELECT source_snapshot_sha256,'extra',legacy_base_id,owner_user_id,target_base_id,raw_payload,payload_sha256,legacy_document_id FROM agentstudio.legacy_kb_vector_archive")
+    assert(domain(await reconcileStage(f.input,f.pool),'agent_studio_kb_vectors').blockers.includes('archive_count_mismatch'))
+    await f.pg.exec("DELETE FROM agentstudio.legacy_kb_vector_archive WHERE legacy_id='extra'")
+    await f.pg.exec('INSERT INTO agentstudio.legacy_kb_embedding_snapshots SELECT * FROM agentstudio.legacy_kb_embedding_snapshots')
+    for(const name of f.archiveNames.slice(3))assert(domain(await reconcileStage(f.input,f.pool),name).blockers.includes('archive_snapshot_mismatch'))
+  }finally{await f.close()}
+})
+
+test('W21 malformed source fields/bytes/relations, incomplete manifest and mapping conflict are never verified',async()=>{
+  const f=await archiveFixture()
+  const paths=[f.input.snapshot,f.input.manifest,f.input.mapping]
+  const originals=paths.map(p=>fs.readFileSync(p))
+  const restore=()=>{paths.forEach((p,i)=>fs.writeFileSync(p,originals[i]));f.input.approval.source_sha256=sha(originals[0])}
+  try{
+    for(const sql of [
+      'ALTER TABLE agent_studio_kb_chunks ADD COLUMN unknown_even_null TEXT',
+      "UPDATE agent_studio_kb_chunks SET text_content=CAST(x'ff' AS TEXT)",
+      "UPDATE agent_studio_kb_chunks SET text_content='prefix'||char(0)||'tail'",
+      "UPDATE agent_studio_kb_chunks SET document_id='missing'",
+      'CREATE TABLE agent_studio_kb_unknown(id TEXT)',
+    ]){
+      const db=new DatabaseSync(f.input.snapshot);try{db.exec(sql)}finally{db.close()}
+      f.seal()
+      const r=domain(await reconcileStage(f.input,f.pool),'agent_studio_kb_chunks')
+      assert.equal(r.status,'failed',sql);assert.equal(r.archive_integrity_verified,false,sql)
+      assert(r.blockers.includes('archive_source_invalid'),sql);restore()
+    }
+    const manifest=JSON.parse(originals[1]);delete manifest.tables.model_connections
+    fs.writeFileSync(f.input.manifest,JSON.stringify(manifest))
+    const connections=f.connections
+    assert.deepEqual((await reconcileStage(f.input,f.pool))[0].blockers,['manifest_table_missing'])
+    assert.equal(f.connections,connections);restore()
+    const mapping=JSON.parse(originals[2]);mapping.records.push(mapping.records[0])
+    fs.writeFileSync(f.input.mapping,JSON.stringify(mapping))
+    assert.deepEqual((await reconcileStage(f.input,f.pool))[0].blockers,['identity_collision'])
+    assert.equal(f.connections,connections);restore()
+    const out=await reconcileStage(f.input,f.pool)
+    for(const name of f.archiveNames)assert.equal(domain(out,name).archive_integrity_verified,true)
+  }finally{await f.close()}
+})
+
+test('W21 standalone W6 reader verifies three archives without treating absent W16 source as empty',async()=>{
+  const f=await archiveFixture()
+  try{
+    const db=new DatabaseSync(f.input.snapshot)
+    db.exec('DROP TABLE agent_studio_kb_embedding_settings; DROP TABLE agent_studio_kb_embedding_queue');db.close();f.seal()
+    const batch=loadKbContentSnapshot(f.input)
+    for(const table of ['legacy_knowledge_base_imports','legacy_kb_content_snapshots','legacy_kb_document_archive','legacy_kb_chunk_archive','legacy_kb_vector_archive'])
+      await f.pg.query(`UPDATE agentstudio.${table} SET source_snapshot_sha256=$1`,[batch.snapshot])
+    await f.pg.query('UPDATE agentstudio.legacy_kb_content_snapshots SET inventory_sha256=$1,mapping_sha256=$2,approved_mapping=$3',[batch.inventory,batch.mappingHash,batch.mapping])
+    const out=await reconcileStage(f.input,f.pool)
+    for(const name of f.archiveNames.slice(0,3))assert.equal(domain(out,name).archive_integrity_verified,true)
+    for(const name of f.archiveNames.slice(3)){
+      const r=domain(out,name);assert.equal(r.source_count,null);assert.equal(r.archive_integrity_verified,false);assert.notEqual(r.status,'success')
+    }
+  }finally{await f.close()}
+})
+
+test('W21 W9 skeletal empty inventory preserves old PG17 report shape/status until archive evidence exists',async()=>{
+  const f=await fixture()
+  try{
+    await f.pg.exec(`INSERT INTO agentstudio.schema_migrations VALUES('pg_v8_010');
+      CREATE TABLE agentstudio.legacy_kb_content_snapshots(source_snapshot_sha256 text,inventory_sha256 text,mapping_sha256 text,approved_mapping text,document_count bigint,chunk_count bigint,vector_count bigint);`)
+    for(const kind of ['document','chunk','vector'])await f.pg.exec(`CREATE TABLE agentstudio.legacy_kb_${kind}_archive(source_snapshot_sha256 text,legacy_id text,legacy_base_id text,owner_user_id uuid,target_base_id uuid,raw_payload text,payload_sha256 text${kind==='document'?'':',legacy_document_id text'})`)
+    const out=await reconcileStage(f.input,f.pool)
+    assert.equal(out.length,16)
+    for(const name of ['documents','chunks','vectors']){
+      const r=domain(out,'agent_studio_kb_'+name)
+      assert.equal(r.source_count,0);assert.equal(r.target_count,0);assert.equal(r.status,'unsupported')
+      assert.deepEqual(r.blockers,['archive_only_live_unsupported']);assert(!Object.hasOwn(r,'archive_integrity_verified'))
+    }
+    await f.pg.query('INSERT INTO agentstudio.legacy_kb_content_snapshots(source_snapshot_sha256) VALUES($1)',['f'.repeat(64)])
+    for(const name of ['documents','chunks','vectors']){
+      const r=domain(await reconcileStage(f.input,f.pool),'agent_studio_kb_'+name)
+      assert.equal(r.status,'failed');assert.equal(r.archive_integrity_verified,false)
+    }
+  }finally{await f.close()}
+})
 
 test('W11 reviewed disabled identities, frozen workflows and KB metadata reconcile per row and replay without effects',async(t)=>{
   const f=await strictFixture(),previous=globalThis.fetch

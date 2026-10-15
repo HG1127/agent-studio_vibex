@@ -614,11 +614,20 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
     for(const domain of ['agent_studio_kb_documents','agent_studio_kb_chunks','agent_studio_kb_vectors']){
       const r=report.find(r=>r.domain===domain)
       assert.ok(r?.status==='unsupported'&&r.source_count===1&&r.target_count===1&&r.association_anomalies===0)
+      assert.equal(r.archive_count,1,domain)
+      assert.equal(r.archive_integrity_verified,true,domain)
+      assert.deepEqual(r.blockers,['archive_only_live_unsupported'])
+    }
+    // W21 verifies the exact frozen historical settings/queue bytes and
+    // ownership while still refusing to claim that runtime Embedding works.
+    for(const domain of ['agent_studio_kb_embedding_settings','agent_studio_kb_embedding_queue']){
+      const r=report.find(r=>r.domain===domain)
+      assert.ok(r?.status==='unsupported'&&r.source_count===1&&r.target_count===1,domain)
+      assert.equal(r.archive_count,1,domain)
+      assert.equal(r.archive_integrity_verified,true,domain)
       assert.deepEqual(r.blockers,['archive_only_live_unsupported'])
     }
     assert.ok(report.some(r=>r.domain==='audit'&&r.status!=='success'))
-    // W9 currently has NO embedding settings/queue domain: no invented success.
-    assert.ok(!report.some(r=>r.domain.includes('embedding')))
     assert.deepEqual(trace.filter(sql=>!sql.startsWith('SELECT')),['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY','ROLLBACK'])
     const ro=await admin.connect()
     try{

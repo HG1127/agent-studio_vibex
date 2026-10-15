@@ -6,6 +6,8 @@ import {contentHash, normalizeLegacyAgent} from './stage-agent-import.ts'
 import {normalizeLegacyWorkflow} from './stage-workflow-import.ts'
 import {normalizeLegacyKb} from './stage-knowledge-base-import.ts'
 import {prepareDisabledUserProvision} from './stage-user-import.ts'
+import {loadKbContentSnapshot, type ContentBatch} from './stage-kb-content-import-source.ts'
+import {loadKbEmbeddingStateSnapshot, type EmbeddingArchiveBatch} from './stage-kb-embedding-state-import.ts'
 import type {SqlPool, SqlClient} from './contracts.ts'
 
 type Row = Record<string, unknown>
@@ -39,6 +41,7 @@ for(const name of ['legacy_kb_document_archive','legacy_kb_chunk_archive','legac
 export type ReconciliationResult = {
   domain:string; source_count:number|null; target_count:number|null;
   blockers:string[]; association_anomalies:number; status:'success'|'failed'|'unsupported'
+  archive_integrity_verified?:boolean; archive_count?:number|null
 }
 export type ReconciliationInput = {
   snapshot:string; manifest:string; mapping:string;
@@ -100,15 +103,21 @@ function load(input:ReconciliationInput){
   }
   const db=new DatabaseSync(snapshot,{readOnly:true})
   const tables=new Map<string,{columns:string[]; rows:Row[]; count:number}>()
+  let unknownKbRelation=false
   try{
     if(Object.values(db.prepare('PRAGMA quick_check').get()??{})[0]!=='ok')refuse('sqlite_integrity_failed')
     const names=new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r=>String(r.name)))
+    const knownKb=new Set(['agent_studio_kb_bases','agent_studio_kb_documents','agent_studio_kb_chunks',
+      'agent_studio_kb_vectors','agent_studio_kb_access','agent_studio_kb_access_events',
+      'agent_studio_kb_embedding_settings','agent_studio_kb_embedding_queue'])
+    unknownKbRelation=[...names].some(n=>n.startsWith('agent_studio_kb_')&&!knownKb.has(n))
+    if([...names].filter(n=>!n.startsWith('sqlite_')).some(n=>!Object.hasOwn(info.tables as Row,n)))refuse('manifest_table_missing')
     for(const [name,n] of Object.entries(info.tables as Row)){
       if(!/^[A-Za-z_][A-Za-z0-9_]{0,120}$/.test(name)||!names.has(name)||
         !Number.isSafeInteger(n)||Number(n)<0)refuse('manifest_count_invalid')
       if(Number(db.prepare(`SELECT count(*) AS n FROM "${name}"`).get()?.n)!==n)refuse('manifest_count_mismatch')
     }
-    for(const d of domains){
+    for(const d of [...domains,...embeddingSources.map(source=>({source}))]){
       if(!names.has(d.source))continue
       if(!Object.hasOwn(info.tables,d.source))refuse('manifest_table_missing')
       const count=Number(db.prepare(`SELECT count(*) AS n FROM "${d.source}"`).get()?.n)
@@ -138,7 +147,7 @@ function load(input:ReconciliationInput){
     catch{refuse('identity_evidence_invalid')}
   }
   verify()
-  return {sha:String(info.sha256),mappingSha:digests[2]!,tables,owners,verify,identityPlan}
+  return {sha:String(info.sha256),mappingSha:digests[2]!,tables,owners,verify,identityPlan,unknownKbRelation}
 }
 function result(domain:string):ReconciliationResult {
   return {domain,source_count:null,target_count:null,blockers:[],association_anomalies:0,status:'failed'}
@@ -149,6 +158,147 @@ async function read(db:SqlClient,table:string):Promise<Row[]>{
 }
 function sameDate(value:unknown){return value instanceof Date?value.toISOString():new Date(String(value)).toISOString()}
 
+// Reader capabilities are prepared offline; no importer/write participant is called.
+function archiveSource(input:ReconciliationInput,source:ReturnType<typeof load>){
+  let embedding:EmbeddingArchiveBatch|undefined,content:ContentBatch|undefined
+  if(source.unknownKbRelation)return {embedding,content}
+  const hasEmbedding=['agent_studio_kb_embedding_settings','agent_studio_kb_embedding_queue']
+    .some(t=>source.tables.has(t))
+  try{if(hasEmbedding)embedding=loadKbEmbeddingStateSnapshot(input)}catch{/* fixed per-domain code below */}
+  try{if(!hasEmbedding||embedding)content=loadKbContentSnapshot(input,embedding)}catch{/* no source diagnostics */}
+  return {embedding,content}
+}
+const embeddingSources=['agent_studio_kb_embedding_settings','agent_studio_kb_embedding_queue'] as const
+const contentKinds=['document','chunk','vector'] as const
+const contentSources=['agent_studio_kb_documents','agent_studio_kb_chunks','agent_studio_kb_vectors'] as const
+async function reconcileArchives(db:SqlClient,source:ReturnType<typeof load>,batches:ReturnType<typeof archiveSource>,
+  versions:Set<unknown>,has:(table:string,cols:string[])=>boolean,users:Row[]){
+  const output=new Map<string,ReconciliationResult>()
+  const reports=[...contentSources,...embeddingSources].map(domain=>{
+    const out=result(domain)
+    out.source_count=source.tables.get(domain)?.count??null
+    out.archive_integrity_verified=false;out.archive_count=null
+    out.blockers=['archive_only_live_unsupported'];out.status='unsupported'
+    if(out.source_count===null)out.blockers.push('source_table_missing')
+    output.set(domain,out);return out
+  })
+  const add=(outs:ReconciliationResult[],code:string)=>{for(const out of outs){
+    if(!out.blockers.includes(code))out.blockers.push(code)
+    out.status='failed';out.archive_integrity_verified=false
+  }}
+  const snapshotFields=['source_snapshot_sha256','inventory_sha256','mapping_sha256','approved_mapping']
+  const header=async(table:string,batch:ContentBatch|EmbeddingArchiveBatch,outs:ReconciliationResult[])=>{
+    const rows=await read(db,table),r=rows[0]
+    if(rows.length!==1||!r||r.source_snapshot_sha256!==source.sha||batch.snapshot!==source.sha||
+      r.inventory_sha256!==batch.inventory||r.mapping_sha256!==batch.mappingHash||
+      r.approved_mapping!==batch.mapping||typeof r.approved_mapping!=='string'||
+      hash(Buffer.from(r.approved_mapping))!==r.mapping_sha256)add(outs,'archive_snapshot_mismatch')
+    return r
+  }
+  const index=(rows:Row[],key:string)=>{
+    const groups=new Map<unknown,Row[]>()
+    for(const row of rows){const values=groups.get(row[key])??[];values.push(row);groups.set(row[key],values)}
+    return groups
+  }
+  const userIndex=index(users,'id')
+  const ownerOK=(owner:string)=>userIndex.get(owner)?.length===1
+  const payloadOK=(r:Row,raw:string,digest:string)=>typeof r.raw_payload==='string'&&
+    r.raw_payload===raw&&r.payload_sha256===digest&&hash(Buffer.from(r.raw_payload,'utf8'))===digest
+  const contentOut=reports.slice(0,3),embeddingOut=reports.slice(3)
+  const batch=batches.content
+  const archiveTables=contentKinds.map(k=>'legacy_kb_'+k+'_archive')
+  if(!versions.has('pg_v8_010')||!has('legacy_kb_content_snapshots',[...snapshotFields,'document_count','chunk_count','vector_count'])||
+    archiveTables.some(t=>!has(t,['source_snapshot_sha256',...targetFields[t]!])))add(contentOut,'archive_schema_missing')
+  else if(!batch)add(contentOut,'archive_source_invalid')
+  else{
+    const h=await header('legacy_kb_content_snapshots',batch,contentOut)
+    const maps=has('legacy_knowledge_base_imports',['source_snapshot_sha256','legacy_base_id','owner_user_id','target_base_id','payload_sha256'])?
+      await read(db,'legacy_knowledge_base_imports'):[]
+    const bases=has('knowledge_bases',['id','owner_user_id'])?
+      (await db.query<Row>('SELECT id,owner_user_id FROM agentstudio.knowledge_bases')).rows:[]
+    const mapIndex=index(maps,'legacy_base_id'),baseIndex=index(bases,'id')
+    const refs=new Map<string,Row>()
+    for(const b of batch.bases){
+      const matches=mapIndex.get(b.legacy_id)??[],m=matches[0]
+      if(matches.length!==1||!m||m.source_snapshot_sha256!==source.sha||m.owner_user_id!==b.owner_user_id||
+        m.payload_sha256!==b.payload_sha256||!ownerOK(b.owner_user_id)||
+        baseIndex.get(m.target_base_id)?.length!==1||baseIndex.get(m.target_base_id)?.[0]?.owner_user_id!==b.owner_user_id)
+        add(contentOut,'archive_base_mapping_invalid')
+      else refs.set(b.legacy_id,m)
+    }
+    if(maps.length!==batch.bases.length||new Set(maps.map(r=>r.target_base_id)).size!==maps.length)
+      add(contentOut,'archive_base_mapping_invalid')
+    for(const [i,kind] of contentKinds.entries()){
+      const out=contentOut[i]!,expected=batch.rows.filter(r=>r.kind===kind),rows=await read(db,archiveTables[i]!)
+      const rowIndex=index(rows,'legacy_id')
+      out.target_count=out.archive_count=rows.length
+      if(rows.length!==expected.length||Number(h?.[kind+'_count'])!==expected.length)add([out],'archive_count_mismatch')
+      if(new Set(rows.map(r=>r.legacy_id)).size!==rows.length)add([out],'archive_duplicate_row')
+      for(const e of expected){
+        const matches=rowIndex.get(e.id)??[],r=matches[0]
+        if(matches.length!==1||!r){add([out],'archive_row_missing');continue}
+        if(r.source_snapshot_sha256!==source.sha||r.legacy_base_id!==e.base||r.owner_user_id!==e.owner||
+          r.target_base_id!==refs.get(e.base)?.target_base_id||!ownerOK(e.owner)||
+          (kind!=='document'&&r.legacy_document_id!==e.document))add([out],'archive_association_invalid')
+        if(!payloadOK(r,e.raw,e.hash))add([out],'archive_payload_mismatch')
+      }
+    }
+    // Descendants cannot be verified if their archived parent is corrupt/missing.
+    if(contentOut[0]!.status==='failed')add(contentOut.slice(1),'archive_parent_invalid')
+    if(contentOut[1]!.status==='failed')add(contentOut.slice(2),'archive_parent_invalid')
+  }
+  const e=batches.embedding
+  if(!versions.has('pg_v8_013')||!has('legacy_kb_embedding_snapshots',snapshotFields)||
+    !has('legacy_kb_embedding_base_refs',['source_snapshot_sha256','legacy_base_id','legacy_owner_id','owner_user_id'])||
+    !has('legacy_kb_embedding_state_archive',['source_snapshot_sha256','source_table','legacy_row_id','legacy_owner_id','owner_user_id','legacy_base_id','raw_payload','payload_sha256']))
+    add(embeddingOut,'archive_schema_missing')
+  else if(!e)add(embeddingOut,'archive_source_invalid')
+  else{
+    await header('legacy_kb_embedding_snapshots',e,embeddingOut)
+    const refs=await read(db,'legacy_kb_embedding_base_refs'),rows=await read(db,'legacy_kb_embedding_state_archive')
+    const refIndex=index(refs,'legacy_base_id')
+    if(refs.length!==e.bases.length||e.bases.some(b=>{
+      const matches=refIndex.get(b.id)??[],r=matches[0]
+      return matches.length!==1||!r||r.source_snapshot_sha256!==source.sha||
+        r.legacy_owner_id!==b.legacyOwner||r.owner_user_id!==b.owner||!ownerOK(b.owner)
+    }))
+      add(embeddingOut,'archive_base_mapping_invalid')
+    if(rows.some(r=>!embeddingSources.includes(r.source_table as typeof embeddingSources[number])))
+      add(embeddingOut,'archive_unknown_domain')
+    for(const [i,table] of embeddingSources.entries()){
+      const out=embeddingOut[i]!,expected=e.rows.filter(r=>r.table===table),actual=rows.filter(r=>r.source_table===table)
+      const rowIndex=index(actual,'legacy_row_id')
+      out.target_count=out.archive_count=actual.length
+      if(actual.length!==expected.length)add([out],'archive_count_mismatch')
+      if(new Set(actual.map(r=>r.legacy_row_id)).size!==actual.length)add([out],'archive_duplicate_row')
+      for(const x of expected){
+        const matches=rowIndex.get(x.id)??[],r=matches[0]
+        if(matches.length!==1||!r){add([out],'archive_row_missing');continue}
+        if(r.source_snapshot_sha256!==source.sha||r.legacy_owner_id!==x.legacyOwner||r.owner_user_id!==x.owner||
+          r.legacy_base_id!==x.base||!ownerOK(x.owner))add([out],'archive_association_invalid')
+        if(!payloadOK(r,x.raw,x.hash))add([out],'archive_payload_mismatch')
+      }
+    }
+  }
+  for(const out of reports)out.archive_integrity_verified=out.status==='unsupported'&&out.blockers.length===1
+  // W9's historical synthetic fixtures have empty skeletal source tables and
+  // no archive snapshot. Preserve their inventory-only contract, WITHOUT
+  // claiming any byte verification. Any persisted evidence opts into W21.
+  if(!batch&&!source.unknownKbRelation&&!embeddingSources.some(t=>source.tables.has(t))&&
+    contentSources.every(t=>{
+      const s=source.tables.get(t)
+      return s?.count===0&&s.columns.includes('id')&&s.columns.every(c=>['id','private_payload'].includes(c))
+    })){
+    const tables=['legacy_kb_content_snapshots',...archiveTables]
+    let empty=true
+    for(const table of tables)if(has(table,['source_snapshot_sha256'])){
+      const r=(await db.query<Row>(`SELECT count(*)::text AS n FROM agentstudio.${table}`)).rows[0]
+      if(!r||r.n!=='0')empty=false
+    }
+    if(empty)for(const name of contentSources)output.delete(name)
+  }
+  return output
+}
 
 // Offline planning does not create or receive any PostgreSQL connection.
 // The output is deliberately limited to domain counts and fixed status codes.
@@ -166,7 +316,7 @@ export function planOfflineReconciliation(input:ReconciliationInput):{
     return {
       state:'source_verified',
       source_sha256:snapshot.sha,
-      domains:domains.map(d=>({
+      domains:[...domains,...embeddingSources.filter(t=>snapshot.tables.has(t)).map(source=>({source}))].map(d=>({
         domain:d.source,
         source_count:snapshot.tables.get(d.source)?.count??null,
       })),
@@ -192,6 +342,8 @@ export async function reconcileStage(input:ReconciliationInput,pool:SqlPool):Pro
   let db:SqlClient|undefined, begun=false
   try{
     const source=load(input) // validate before acquiring any PG connection
+    const archiveBatches=archiveSource(input,source)
+    source.verify()
     db=await pool.connect()
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'); begun=true
     const g=(await db.query<Row>("SELECT current_database() AS database, session_user AS login, current_user AS role, "+
@@ -214,6 +366,7 @@ export async function reconcileStage(input:ReconciliationInput,pool:SqlPool):Pro
     const users=has('users',['id','status'])?(await db.query<Row>(
       `SELECT ${identityFields.filter(c=>has('users',[c])).join(',')} FROM agentstudio.users`)).rows:[]
     const verifiedIdentities=new Set<string>()
+    const archives=await reconcileArchives(db,source,archiveBatches,versions,has,users)
     if(source.identityPlan && has('users',identityFields) && has('legacy_user_imports',targetFields.legacy_user_imports!)){
       for(const expected of source.identityPlan.rows){
         const matches=identities.filter(r=>r.legacy_user_id===expected.legacy_id)
@@ -239,6 +392,9 @@ export async function reconcileStage(input:ReconciliationInput,pool:SqlPool):Pro
       r.active_automatically===false).length===1 && users.some(r=>r.id===target&&r.status==='disabled') &&
       (!source.identityPlan||verifiedIdentities.has(String(legacy)))
     for(const d of domains){
+      if(contentSources.includes(d.source as typeof contentSources[number])&&archives.has(d.source)){
+        output.push(archives.get(d.source)!);continue
+      }
       const out=result(d.source), src=source.tables.get(d.source)
       output.push(out); out.source_count=src?.count??null
       if(!src)out.blockers.push('source_table_missing')
@@ -402,6 +558,7 @@ export async function reconcileStage(input:ReconciliationInput,pool:SqlPool):Pro
         !out.blockers.includes('checksum_mismatch'))out.blockers.push('checksum_mismatch')
       out.status=out.blockers.length?'failed':'success'
     }
+    for(const name of embeddingSources)if(source.tables.has(name)||versions.has('pg_v8_013'))output.push(archives.get(name)!)
     // v8_009 archives only named collaboration audit tables. There is no
     // general source audit crosswalk in v8_005..012. Never infer completeness.
     const audit=result('audit')
