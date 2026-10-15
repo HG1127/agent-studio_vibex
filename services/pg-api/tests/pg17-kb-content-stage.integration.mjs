@@ -426,11 +426,11 @@ test('PG17 TCP: W14 nonempty W2+W6 atomic content, RLS, rollback and replay, NO-
       for(const sql of ['UPDATE agentstudio.'+table+' SET '+column+'='+column,'DELETE FROM agentstudio.'+table,'TRUNCATE agentstudio.'+table])
         await assert.rejects(admin.query(sql),error=>{
           // PG17 may enforce FK referential integrity before firing the
-          // custom immutable trigger on a parent table TRUNCATE. Both are
+          // custom immutable trigger when truncating a referenced archive. Both are
           // strict DB-side refusals; a successful mutation is never accepted.
           const immutableTrigger=error.code==='P0001'&&
             error.message==='immutable_kb_archive'
-          const foreignKeyFence=table==='legacy_kb_content_snapshots'&&
+          const foreignKeyFence=frozenTables.includes(table)&&
             sql.startsWith('TRUNCATE ')&&
             ['0A000','2BP01'].includes(error.code)&&
             /cannot truncate a table referenced in a foreign key constraint/i.test(error.message)
