@@ -196,7 +196,12 @@ test("previously unknown nonempty collection blocks EVERY stage import before ne
       AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE:"",
     })
     assert.equal(cannotExecute.status,1)
-    assert.match(cannotExecute.stderr,/stage_operator_password_file_required/)
+    // On GitHub hosted CI, the *stronger* production-data-in-CI fence
+    // runs before any credential/PG access and must take precedence.
+    const expected=process.env.GITHUB_ACTIONS==="true"?
+      /real_business_snapshot_forbidden_in_github_ci/:
+      /stage_operator_password_file_required/
+    assert.match(cannotExecute.stderr,expected)
     assert.doesNotMatch(cannotExecute.stderr,/ECONNREFUSED|ENOTFOUND/)
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
