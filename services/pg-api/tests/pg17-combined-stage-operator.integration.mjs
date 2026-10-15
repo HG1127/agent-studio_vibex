@@ -635,6 +635,7 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
     assert.deepEqual(conflict.report.phase_results.map(p=>[p.phase,p.exit_code]),[['identity',1]])
     assert.equal(await fingerprint(admin),first)
     checkpoint='cross_domain_FK_owner_fences'
+    let fkProbeIndex=0
     for(const [table,patch,where] of [
       ['legacy_kb_document_archive',{legacy_id:'w20_denied_document',owner_user_id:identity.owners[1]},'true'],
       ['legacy_kb_chunk_archive',{legacy_id:'w20_denied_chunk',legacy_document_id:'missing_document'},'true'],
@@ -642,9 +643,23 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
       ['legacy_kb_embedding_state_archive',{legacy_row_id:'w20_denied_queue',owner_user_id:identity.owners[1]},
         "source_table='agent_studio_kb_embedding_queue'"],
     ]){
-      await assert.rejects(admin.query('INSERT INTO agentstudio.'+table+
-        ' SELECT (jsonb_populate_record(NULL::agentstudio.'+table+',to_jsonb(t)||$1::jsonb)).* FROM agentstudio.'+
-        table+' t WHERE '+where,[JSON.stringify(patch)]),
+      checkpoint='cross_domain_FK_owner_fences_'+fkProbeIndex++
+      // Embedding archive has GENERATED ALWAYS historical_* columns. An
+      // INSERT SELECT * would fail on generated-column assignment before
+      // reaching the intended owner/FK guard, giving a false safety PASS.
+      const embeddingColumns=['source_snapshot_sha256','source_table',
+        'legacy_row_id','legacy_owner_id','owner_user_id','legacy_base_id',
+        'raw_payload','payload_sha256']
+      const from=' FROM agentstudio.'+table+' t CROSS JOIN LATERAL '+
+        'jsonb_populate_record(NULL::agentstudio.'+table+
+        ',to_jsonb(t)||$1::jsonb) AS p WHERE '+where
+      const sql=table==='legacy_kb_embedding_state_archive'?
+        'INSERT INTO agentstudio.'+table+'('+embeddingColumns.join(',')+') '+
+        'SELECT '+embeddingColumns.map(c=>'p.'+c).join(',')+from:
+        'INSERT INTO agentstudio.'+table+
+        ' SELECT (jsonb_populate_record(NULL::agentstudio.'+table+
+        ',to_jsonb(t)||$1::jsonb)).* FROM agentstudio.'+table+' t WHERE '+where
+      await assert.rejects(admin.query(sql,[JSON.stringify(patch)]),
         e=>e.code==='23503'||(e.code==='P0001'&&e.message===(table==='legacy_kb_embedding_state_archive'?
           'embedding_archive_owner_mapping':'kb_archive_crosswalk_mismatch')))
       assert.equal(await fingerprint(admin),first)
