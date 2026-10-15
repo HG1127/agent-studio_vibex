@@ -19,7 +19,7 @@ const spec=()=>({
   done_criteria:["Caveats"],
   tools:["summarize"],knowledge_base_ids:[],require_approval:true,
 })
-function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,embeddingHistory=false}={}){
+function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,embeddingHistory=false,workflowHistory=false}={}){
   const dir=mkdtempSync(path.join(tmpdir(),"stage-operator-synthetic-"))
   const snapshot=path.join(dir,"snapshot.sqlite")
   const manifest=path.join(dir,"manifest.json")
@@ -37,6 +37,10 @@ function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=f
   if(workflow){
     db.exec("CREATE TABLE workflows(id TEXT)")
     db.prepare("INSERT INTO workflows VALUES(?)").run(privateText)
+  }
+  if(workflowHistory){
+    db.exec("CREATE TABLE workflow_runs(id TEXT); CREATE TABLE workflow_events(id TEXT)")
+    db.prepare("INSERT INTO workflow_runs VALUES(?)").run("w".repeat(15))
   }
   if(orphanKBContent){
     db.exec("CREATE TABLE agent_studio_kb_documents(id TEXT)")
@@ -177,6 +181,20 @@ test("unknown legacy workflow content blocks ALL domains before stage writes",()
     assert.equal(info.production_cutover_allowed,false)
     assert.equal(info.phase_results.find(x=>x.phase==="workflow").status,"blocked")
     assert.ok(info.phase_results.some(x=>x.phase==="agent"&&x.status==="passed"))
+    assert.ok(!out.stdout.includes(privateText))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("nonempty Workflow run history is routed to audited, inert archive and cannot silently disappear",()=>{
+  const f=fixture({workflowHistory:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,2,out.stderr)
+    const report=JSON.parse(out.stdout)
+    assert.equal(report.result,"preflight_blocked")
+    assert.equal(report.unmapped_nonempty_tables,0)
+    assert.ok(report.phase_results.some(x=>x.phase==="workflow_history"&&x.status==="blocked"))
+    assert.equal(report.production_cutover_allowed,false)
+    assert.equal(report.phase_results.find(x=>x.phase==="workflow_history").exit_code,1)
     assert.ok(!out.stdout.includes(privateText))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })

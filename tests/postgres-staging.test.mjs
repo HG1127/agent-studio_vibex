@@ -34,6 +34,7 @@ test("Compose staging is isolated, non-public and cannot invent its own credenti
   assert.match(compose,/011_legacy_user_provision\.sql:ro/)
   assert.match(compose,/010_legacy_kb_content\.sql:ro/)
   assert.match(compose,/013_legacy_kb_embedding_state\.sql:ro/)
+  assert.match(compose,/014_legacy_workflow_history\.sql:ro/)
   assert.match(compose,/012_legacy_run_history\.sql:ro/)
   const postgresConfig=compose.split(/\n  api:/)[0]
   assert.doesNotMatch(postgresConfig,/^\s*(ports|expose|network_mode|privileged|build):/m)

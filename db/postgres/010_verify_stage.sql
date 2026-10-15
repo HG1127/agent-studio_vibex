@@ -17,13 +17,14 @@ BEGIN
   END IF;
 
   -- Domain importers own additive schemas independently of the base.
-  -- v8_010 adds four content tables; v8_013 adds three inert Embedding archive tables.
+  -- v8_010 has four content tables; v8_013 adds three inert Embedding tables;
+  -- v9_014 adds the immutable Workflow run/event history table.
   -- Verify both migration ledger and actual RLS-protected table counts.
   SELECT COALESCE(SUM(CASE WHEN version='pg_v8_010' THEN 4 WHEN version='pg_v8_013' THEN 3 ELSE 1 END),0)
     INTO derived_migration_count
   FROM agentstudio.schema_migrations
   WHERE version IN ('pg_v8_006','pg_v8_007','pg_v8_008',
-    'pg_v8_009','pg_v8_010','pg_v8_011','pg_v8_012','pg_v8_013');
+    'pg_v8_009','pg_v8_010','pg_v8_011','pg_v8_012','pg_v8_013','pg_v9_014');
   IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
      WHERE version='pg_v8_006') AND
      to_regclass('agentstudio.legacy_workflow_imports') IS NULL THEN
@@ -74,6 +75,12 @@ BEGIN
     to_regclass('agentstudio.legacy_kb_embedding_base_refs') IS NULL OR
     to_regclass('agentstudio.legacy_kb_embedding_state_archive') IS NULL) THEN
     RAISE EXCEPTION 'kb_embedding_frozen_state_archive_missing';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
+    WHERE version='pg_v9_014') AND
+    to_regclass('agentstudio.legacy_workflow_history') IS NULL THEN
+    RAISE EXCEPTION 'workflow_history_frozen_archive_missing';
   END IF;
 
   SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')

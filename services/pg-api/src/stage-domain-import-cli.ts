@@ -21,6 +21,9 @@ import {
 import {
   prepareHistoryImport,importLegacyHistoryToStage,
 } from "./stage-history-import.ts"
+import {
+  prepareWorkflowHistoryImport,importLegacyWorkflowHistoryToStage,
+} from "./stage-workflow-history-import.ts"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../../..")
@@ -33,6 +36,7 @@ const domains={
     "agent_studio_spec_proposals","agent_studio_kb_access_events",
     "agent_studio_spec_collab_audit","agent_studio_spec_revisions",
   ],
+  "workflow-history":["workflow_runs","workflow_events"],
   history:["agent_runs"],
 } as const
 type Domain=keyof typeof domains
@@ -194,6 +198,7 @@ function buildPlan(args:ReturnType<typeof parse>){
     case "workflow":return prepareWorkflowImport(args.snapshot,args.manifest,args.mapping)
     case "schedules":return prepareScheduleImport(args.snapshot,args.manifest,args.mapping)
     case "collaboration":return prepareCollaborationImport(args.snapshot,args.manifest,args.mapping)
+    case "workflow-history":return prepareWorkflowHistoryImport(args.snapshot,args.manifest,args.mapping)
     case "history":return prepareHistoryImport(args.snapshot,args.manifest,args.mapping)
   }
 }
@@ -248,7 +253,9 @@ export async function runCli(argv:string[]){
         importLegacySchedulesToStage(adapter,plan as ReturnType<typeof prepareScheduleImport>):
       args.domain==="collaboration"?
         importLegacyCollaborationsToStage(adapter,plan as ReturnType<typeof prepareCollaborationImport>):
-        importLegacyHistoryToStage(adapter,plan as ReturnType<typeof prepareHistoryImport>))
+        args.domain==="workflow-history"?
+          importLegacyWorkflowHistoryToStage(adapter,plan as ReturnType<typeof prepareWorkflowHistoryImport>):
+          importLegacyHistoryToStage(adapter,plan as ReturnType<typeof prepareHistoryImport>))
     console.log(JSON.stringify({...base,result:"stage_domain_reconciled",
       imported:receipt.imported,replayed:receipt.replayed,
       reconciled:receipt.reconciled},null,2))

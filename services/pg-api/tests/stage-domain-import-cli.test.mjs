@@ -18,7 +18,7 @@ const archived=[
   "agent_studio_spec_access","agent_studio_kb_access",
   "agent_studio_spec_proposals","agent_studio_kb_access_events",
   "agent_studio_spec_collab_audit","agent_studio_spec_revisions",
-  "agent_runs",
+  "agent_runs","workflow_runs","workflow_events",
 ]
 function fixture({legacyWorkflow=false}={}){
   const dir=mkdtempSync(path.join(tmpdir(),"stage-domain-import-synthetic-"))
@@ -66,10 +66,10 @@ function invoke(f,domain,mode="--plan",args=[],env={}){
     ...env,
   }})
 }
-test("four independent empty legacy business domains are safely skipped after COMPLETE frozen manifest review",()=>{
+test("five independent empty legacy domains are skipped only after complete frozen inventory review",()=>{
   const f=fixture()
   try{
-    for(const domain of ["workflow","schedules","collaboration","history"]){
+    for(const domain of ["workflow","schedules","collaboration","history","workflow-history"]){
       const result=invoke(f,domain)
       assert.equal(result.status,0,domain+" "+result.stderr)
       const report=JSON.parse(result.stdout)
@@ -170,13 +170,33 @@ test("a fully compatible nonempty Workflow passes offline preparation without co
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 
+test("workflow-history source rows lacking independent review are refused before PG access",()=>{
+  const f=fixture()
+  try{
+    const db=new DatabaseSync(f.snapshot)
+    db.prepare("INSERT INTO workflow_runs VALUES(?)").run("z".repeat(15))
+    db.close()
+    const bytes=readFileSync(f.snapshot)
+    const sha=createHash("sha256").update(bytes).digest("hex")
+    const meta=JSON.parse(readFileSync(f.manifest,"utf8"))
+    meta.sha256=sha;meta.bytes=bytes.length;meta.tables.workflow_runs=1
+    writeFileSync(f.manifest,JSON.stringify(meta))
+    const map=JSON.parse(readFileSync(f.mapping,"utf8"))
+    map.source_sha256=sha;writeFileSync(f.mapping,JSON.stringify(map))
+    const out=invoke(f,"workflow-history")
+    assert.equal(out.status,1)
+    assert.match(out.stderr,/stage_domain_import_failed/)
+    assert.equal(out.stdout,"")
+    assert.doesNotMatch(out.stderr,/PRIVATE|employee0000001/)
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
 test("unreviewed identity map is rejected in every domain before domain preparation",()=>{
   const f=fixture()
   try{
     const doc=JSON.parse(readFileSync(f.mapping,"utf8"))
     doc.records[0].verified_by=""
     writeFileSync(f.mapping,JSON.stringify(doc))
-    for(const domain of ["workflow","schedules","collaboration","history"]){
+    for(const domain of ["workflow","schedules","collaboration","history","workflow-history"]){
       const result=invoke(f,domain)
       assert.equal(result.status,1)
       assert.match(result.stderr,/stage_employee_mapping_unapproved/)
