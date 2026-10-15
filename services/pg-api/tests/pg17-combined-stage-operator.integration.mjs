@@ -125,7 +125,8 @@ test('fail-closed: real runner temp must be canonical, writable and outside the 
 function privateFile(file,data){fs.writeFileSync(file,data,{mode:0o600,flag:'wx'})}
 function guardSource(guard=''){
   const allowed=['stage-migration-operator.mjs','stage-user-import-cli.ts','stage-agent-import-cli.ts',
-    'stage-kb-combined-import-cli.ts','stage-reconciliation-cli.ts'].map(n=>path.join(root,'services/pg-api/src',n))
+    'stage-kb-combined-import-cli.ts','stage-reconciliation-cli.ts',
+    'stage-domain-import-cli.ts'].map(n=>path.join(root,'services/pg-api/src',n))
   return `import net from 'node:net';
 import cp from 'node:child_process';
 import fs from 'node:fs';import {createHash} from 'node:crypto';
