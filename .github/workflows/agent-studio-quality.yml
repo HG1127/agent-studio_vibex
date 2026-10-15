@@ -14,6 +14,7 @@ on:
       - 'deploy/postgres-staging/**'
       - 'tests/**'
       - 'package.json'
+      - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/agent-studio-quality.yml'
   pull_request:

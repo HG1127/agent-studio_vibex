@@ -1,6 +1,14 @@
+# pnpm 11 security review. Every encountered dependency lifecycle script
+# must be explicitly approved or rejected. These five scripts are not
+# required to run for the isolated PostgreSQL migration test workflows.
+# Never enable dangerouslyAllowAllBuilds just to make CI green.
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  '@swc/core': set this to true or false
-  core-js: set this to true or false
-  less: set this to true or false
-  protobufjs: set this to true or false
+  '@parcel/watcher': false
+  '@swc/core': false
+  core-js: false
+  less: false
+  protobufjs: false
+
+# CI already runs explicit locked dependency installs. Avoid pnpm 11's
+# implicit reinstall before each script (which can re-trigger strictDepBuilds).
+verifyDepsBeforeRun: warn
