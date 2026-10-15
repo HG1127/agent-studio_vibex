@@ -1,0 +1,48 @@
+# W18: one-shot atomic W2+W6+W16 knowledge archive.
+# Combines metadata, document/chunk/vector history, embedding settings and
+# historical queue state in ONE PG17 transaction. No runtime RAG or workers.
+services:
+  stage_kb_combined:
+    profiles: ["stage-kb-combined"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/stage-kb-combined-import-cli.ts", "--execute", "--confirm-stage", "agentstudio_stage", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/identity-map.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_KB_COMBINED_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin
+      AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_KB_COMBINED_SNAPSHOT_FILE:?Approved frozen SQLite snapshot required}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_KB_COMBINED_MANIFEST_FILE:?Complete SHA256 manifest required}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_KB_COMBINED_MAPPING_FILE:?Approved mapping bound to snapshot required}
+        target: /run/input/identity-map.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 80
+    stop_grace_period: 35s

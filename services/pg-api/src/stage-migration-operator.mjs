@@ -22,6 +22,7 @@ const phases={
   agent:"stage-agent-import-cli.ts",
   workflow:"stage-domain-import-cli.ts",
   knowledge_empty:"stage-knowledge-base-import-cli.ts",
+  knowledge_combined:"stage-kb-combined-import-cli.ts",
   knowledge_atomic:"stage-kb-atomic-import-cli.ts",
   schedules:"stage-domain-import-cli.ts",
   collaboration:"stage-domain-import-cli.ts",
@@ -42,9 +43,13 @@ const kbContent=[
   "agent_studio_kb_documents","agent_studio_kb_chunks",
   "agent_studio_kb_vectors",
 ]
+const kbEmbeddingState=[
+  "agent_studio_kb_embedding_settings",
+  "agent_studio_kb_embedding_queue",
+]
 const namesOfKnownBusiness=new Set([
   "studio_users","model_connections",...Object.values(businessTables),
-  ...collaboration,...kbContent,
+  ...collaboration,...kbContent,...kbEmbeddingState,
   "agent_studio_schema_migrations",
 ])
 function fail(code){throw Error(code)}
@@ -167,13 +172,17 @@ function sealedSource(args){
 }
 const sum=(counts,keys)=>keys.reduce((n,k)=>n+(counts[k]??0),0)
 function candidatePhases(counts){
-  if(sum(counts,kbContent)>0 && !(counts.agent_studio_kb_bases>0))
+  if((sum(counts,kbContent)+sum(counts,kbEmbeddingState))>0 &&
+     !(counts.agent_studio_kb_bases>0))
     fail("orphan_kb_content_without_base")
   const enabled=["identity"]
   if((counts.agent_specs??0)>0)enabled.push("agent")
   if((counts.workflows??0)>0)enabled.push("workflow")
   if((counts.agent_studio_kb_bases??0)>0){
-    enabled.push(sum(counts,kbContent)>0?
+    // Nonempty historical embedding settings/queue MUST NOT enter ordinary
+    // W2/W6 paths. W18 requires a verified W16 same-snapshot capability.
+    enabled.push(sum(counts,kbEmbeddingState)>0?
+      "knowledge_combined":sum(counts,kbContent)>0?
       "knowledge_atomic":"knowledge_empty")
   }
   if((counts.agent_studio_schedules??0)>0)enabled.push("schedules")
@@ -196,6 +205,8 @@ function commandFor(phase,args,mode){
     command.push("--oidc",args["--oidc"])
   if(phase==="reconciliation")
     command.push("--approval",args["--approval"],"--reviewed-idp",args["--oidc"])
+  if(phase==="knowledge_combined"&&mode!=="plan")
+    command.push("--confirm-stage","agentstudio_stage")
   const kind={
     workflow:"workflow",schedules:"schedules",
     collaboration:"collaboration",history:"history",
@@ -212,6 +223,7 @@ function runPhase(phase,args,mode){
     AGENT_STUDIO_PG_STAGE_USER_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_AGENT_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_KB_IMPORT_ENABLED:"false",
+    AGENT_STUDIO_PG_STAGE_KB_COMBINED_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_KB_ATOMIC_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED:"false",
@@ -221,6 +233,7 @@ function runPhase(phase,args,mode){
       identity:"AGENT_STUDIO_PG_STAGE_USER_IMPORT_ENABLED",
       agent:"AGENT_STUDIO_PG_STAGE_AGENT_IMPORT_ENABLED",
       knowledge_empty:"AGENT_STUDIO_PG_STAGE_KB_IMPORT_ENABLED",
+      knowledge_combined:"AGENT_STUDIO_PG_STAGE_KB_COMBINED_ENABLED",
       knowledge_atomic:"AGENT_STUDIO_PG_STAGE_KB_ATOMIC_ENABLED",
       workflow:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       schedules:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",

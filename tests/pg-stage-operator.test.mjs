@@ -19,7 +19,7 @@ const spec=()=>({
   done_criteria:["Caveats"],
   tools:["summarize"],knowledge_base_ids:[],require_approval:true,
 })
-function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false}={}){
+function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,embeddingHistory=false}={}){
   const dir=mkdtempSync(path.join(tmpdir(),"stage-operator-synthetic-"))
   const snapshot=path.join(dir,"snapshot.sqlite")
   const manifest=path.join(dir,"manifest.json")
@@ -47,6 +47,32 @@ function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=f
     db.exec("CREATE TABLE unexpected_future_module(id TEXT,payload TEXT)")
     db.prepare("INSERT INTO unexpected_future_module VALUES(?,?)")
       .run("synthetic","PRIVATE_TABLE_DATA_NEVER_OUTPUT")
+  }
+  if(embeddingHistory){
+    db.exec(
+      "CREATE TABLE agent_studio_kb_bases("+
+      "id TEXT PRIMARY KEY,rh_user_id TEXT,name TEXT,description TEXT,created_ms INTEGER,updated_ms INTEGER);"+
+      "CREATE TABLE model_connections(id TEXT PRIMARY KEY,rh_user_id TEXT,api_key TEXT);"+
+      "CREATE TABLE agent_studio_kb_documents("+
+      "id TEXT PRIMARY KEY,base_id TEXT,rh_user_id TEXT,filename TEXT,size_chars INTEGER,chunk_count INTEGER,created_ms INTEGER);"+
+      "CREATE TABLE agent_studio_kb_chunks("+
+      "id TEXT PRIMARY KEY,base_id TEXT,document_id TEXT,rh_user_id TEXT,chunk_index INTEGER,text_content TEXT);"+
+      "CREATE TABLE agent_studio_kb_vectors("+
+      "chunk_id TEXT PRIMARY KEY,rh_user_id TEXT,base_id TEXT,document_id TEXT,connection_id TEXT,model_name TEXT,dimensions INTEGER,vector_json TEXT,indexed_ms INTEGER);"+
+      "CREATE TABLE agent_studio_kb_embedding_settings("+
+      "rh_user_id TEXT PRIMARY KEY,connection_id TEXT,model_name TEXT,updated_ms INTEGER);"+
+      "CREATE TABLE agent_studio_kb_embedding_queue("+
+      "rh_user_id TEXT,base_id TEXT,attempts INTEGER,next_attempt_ms INTEGER,lease_until_ms INTEGER,last_error TEXT,updated_ms INTEGER,PRIMARY KEY(rh_user_id,base_id))"
+    )
+    db.prepare("INSERT INTO agent_studio_kb_bases VALUES(?,?,?,?,?,?)")
+      .run("baseA",employee,"Synthetic KB","",1792030400000,1792030400000)
+    db.prepare("INSERT INTO model_connections VALUES(?,?,?)")
+      .run("connA",employee,"PRIVATE_SYNTHETIC_API_KEY_NOT_EXPORTED")
+    db.prepare("INSERT INTO agent_studio_kb_embedding_settings VALUES(?,?,?,?)")
+      .run(employee,"connA","SYNTHETIC-EMBEDDING",1792030400100)
+    db.prepare("INSERT INTO agent_studio_kb_embedding_queue VALUES(?,?,?,?,?,?,?)")
+      .run(employee,"baseA",1,1792030400200,1792030400300,
+        "SYNTHETIC_OLD_ERROR_NOT_EXECUTED",1792030400400)
   }
   const tables=db.prepare(
     "SELECT name FROM sqlite_master WHERE type='table'"+
@@ -173,6 +199,23 @@ test("legacy KB content without its source base cannot be silently skipped",()=>
     assert.equal(out.status,1)
     assert.match(out.stderr,/orphan_kb_content_without_base/)
     assert.equal(out.stdout,"")
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("combined KB metadata and historical embedding queue use only the verified W18 offline phase",()=>{
+  const f=fixture({embeddingHistory:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,0,out.stderr)
+    const report=JSON.parse(out.stdout)
+    assert.equal(report.result,"preflight_verified")
+    assert.deepEqual(report.phase_results.map(x=>x.phase),[
+      "identity","agent","knowledge_combined","reconciliation",
+    ])
+    assert.ok(report.phase_results.every(x=>x.status==="passed"))
+    assert.equal(report.production_cutover_allowed,false)
+    assert.equal(report.unmapped_nonempty_tables,0)
+    assert.ok(!out.stdout.includes("PRIVATE_SYNTHETIC_API_KEY_NOT_EXPORTED"))
+    assert.ok(!out.stdout.includes("SYNTHETIC_OLD_ERROR_NOT_EXECUTED"))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 test("previously unknown nonempty collection blocks EVERY stage import before networking",()=>{

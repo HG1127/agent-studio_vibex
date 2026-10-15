@@ -3,7 +3,7 @@
 // atomically imports metadata plus frozen content; ACL remains fail-closed.
 import {contentHash,isUuid,type SqlPool} from "./stage-knowledge-base-primitives.ts"
 import type {SqlClient} from './contracts.ts'
-import {requireVerified,isKnownContentBase,type ContentBatch} from './stage-kb-content-import-source.ts'
+import {requireVerified,requireOrdinaryContent,isKnownContentBase,type ContentBatch} from './stage-kb-content-import-source.ts'
 import {archiveKbContentInTransaction} from './stage-kb-content-import.ts'
 
 const hash64=/^[0-9a-f]{64}$/
@@ -60,7 +60,7 @@ export async function importLegacyKbsToStage(pool:SqlPool,sourceSha:string,
 // Only the offline reader can mint this immutable capability. No boolean flag,
 // caller-created rows or callback can authorize a content-bearing W2 import.
 export async function importKbSnapshotAtomic(pool:SqlPool,batch:ContentBatch){
-  requireVerified(batch)
+  requireOrdinaryContent(batch)
   return runKbImport(pool,batch.snapshot,batch.bases,batch)
 }
 
@@ -80,6 +80,12 @@ async function runKbImport(pool:SqlPool,sourceSha:string,
       error instanceof Error && /^kb_content_[a-zA-Z0-9_]+$/.test(error.message))throw error
     throw new StageKnowledgeError('stage_kb_sql_failed')
   }finally{db.release()}
+}
+
+// Capability-checked W18 participant; raw rows cannot authorize related data.
+export async function importVerifiedKbMetadataInTransaction(db:SqlClient,batch:ContentBatch){
+  requireVerified(batch)
+  return importMetadataInTransaction(db,batch.snapshot,batch.bases,true)
 }
 
 // Private transaction participant: never opens, commits or releases a connection.

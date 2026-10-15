@@ -4,7 +4,7 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
-import {isUuid,type SqlPool} from './contracts.ts'
+import {isUuid,type SqlPool,type SqlClient} from './contracts.ts'
 
 function fail(code:string):never{throw new Error('kb_embedding_archive_'+code)}
 export const sha256=(s:string|Buffer)=>createHash('sha256').update(s).digest('hex')
@@ -143,6 +143,23 @@ export async function importKbEmbeddingStateArchive(pool:SqlPool,batch:Embedding
   let begun=false
   try{
     await db.query('BEGIN');begun=true
+    const result=await archiveKbEmbeddingStateInTransaction(db,batch)
+    await db.query('COMMIT');begun=false
+    return result
+  }catch(error){
+    if(begun)try{await db.query('ROLLBACK')}catch{fail('rollback_failed')}
+    if(error instanceof Error&&/^kb_embedding_archive_[a-z0-9_]+$/.test(error.message))throw error
+    return fail('sql_failed')
+  }finally{db.release()}
+}
+
+// Reader-minted capability bound to file bytes and canonical approved identities.
+export function requireEmbeddingSnapshot(batch:EmbeddingArchiveBatch,snapshot:string,mapping:string){
+  if(!verified.has(batch)||batch.snapshot!==snapshot||batch.mapping!==mapping)fail('same_verified_snapshot_required')
+}
+// Caller owns the transaction and connection; never begins, commits or releases.
+export async function archiveKbEmbeddingStateInTransaction(db:SqlClient,batch:EmbeddingArchiveBatch){
+  if(!verified.has(batch))fail('verified_offline_batch_required')
     const g=(await db.query<{database:string;login:string;role:string;admin:boolean;version:number}>(
       "SELECT current_database() AS database,session_user AS login,current_user AS role,(SELECT rolsuper FROM pg_roles WHERE rolname=session_user) AS admin,current_setting('server_version_num')::integer AS version")).rows[0]
     if(g?.database!=='agentstudio_stage'||g.login!=='agentstudio_admin'||g.role!=='agentstudio_admin'||g.admin!==true||!Number.isInteger(g.version)||g.version<170000||g.version>=180000)fail('pg17_stage_dba_required')
@@ -180,13 +197,7 @@ export async function importKbEmbeddingStateArchive(pool:SqlPool,batch:Embedding
     const sort=(a:Row,b:Row)=>a.table===b.table?(a.id<b.id?-1:a.id>b.id?1:0):(a.table.endsWith('settings')?-1:1)
     persisted.sort(sort)
     if(inventory(persistedBases,persisted)!==batch.inventory)fail('reconciliation_inventory')
-    await db.query('COMMIT');begun=false
     return {stage_only:true,archive_only:true,embedding_enabled:false,jobs_created:0,production_cutover_allowed:false,imported:replay?0:batch.rows.length,replayed:replay?batch.rows.length:0}
-  }catch(error){
-    if(begun)try{await db.query('ROLLBACK')}catch{fail('rollback_failed')}
-    if(error instanceof Error&&/^kb_embedding_archive_[a-z0-9_]+$/.test(error.message))throw error
-    return fail('sql_failed')
-  }finally{db.release()}
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

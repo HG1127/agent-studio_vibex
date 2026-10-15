@@ -4,6 +4,7 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
+import {requireEmbeddingSnapshot,type EmbeddingArchiveBatch} from './stage-kb-embedding-state-import.ts'
 import {isUuid} from './contracts.ts'
 import {normalizeLegacyKb,type LegacyKbRow} from './stage-knowledge-base-import.ts'
 
@@ -20,6 +21,11 @@ const tables={document:'agent_studio_kb_documents',chunk:'agent_studio_kb_chunks
 export type ArchiveRow={kind:Kind;id:string;base:string;document:string|null;owner:string;raw:string;hash:string}
 export type ContentBatch={snapshot:string;mapping:string;mappingHash:string;bases:readonly (LegacyKbRow & {has_related_data:boolean})[];rows:readonly ArchiveRow[];inventory:string}
 const verified=new WeakSet<ContentBatch>()
+const combined=new WeakSet<ContentBatch>()
+export function requireOrdinaryContent(batch:ContentBatch){
+  requireVerified(batch)
+  if(combined.has(batch))refuse('combined_import_required')
+}
 // Remember only identities, never bodies or credentials. Even stripping a W6
 // row's marker must not turn known content into an ordinary metadata-only batch.
 const contentBasesBySnapshot=new Map<string,ReadonlySet<string>>()
@@ -44,10 +50,25 @@ function object(input:string):Record<string,unknown>{
   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))refuse('invalid_metadata')
   return parsed as Record<string,unknown>
 }
+// node:sqlite TEXT may truncate at NUL. Validate against the original BLOB,
+// including invalid UTF-8, before any metadata normalization or serialization.
+function losslessRows(db:DatabaseSync,table:string,cols:readonly string[],order:string){
+  const projection=[...cols,...cols.map(c=>'CAST('+c+' AS BLOB) AS __bytes_'+c)]
+  const rows=db.prepare('SELECT '+projection.join(',')+' FROM '+table+' ORDER BY '+order+' COLLATE BINARY').all()
+  for(const row of rows)for(const c of cols){
+    if(typeof row[c]==='string'){
+      const bytes=row['__bytes_'+c]
+      if(!(bytes instanceof Uint8Array)||!Buffer.from(bytes).equals(Buffer.from(row[c],'utf8')))
+        refuse('unrepresentable_text')
+    }
+    delete row['__bytes_'+c]
+  }
+  return rows
+}
 export function inventoryHash(rows:readonly ArchiveRow[]){
   return sha(JSON.stringify(rows.map(r=>[r.kind,r.id,r.base,r.document,r.owner,r.hash])))
 }
-export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;mapping:string}):ContentBatch{
+export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;mapping:string},embedding?:EmbeddingArchiveBatch):ContentBatch{
   const paths=[file(options.snapshot),file(options.manifest),file(options.mapping)]
   if(new Set(paths.map(x=>x.toLowerCase())).size!==3)refuse('input_paths_not_distinct')
   const source=paths[0]!,manifestFile=paths[1]!,mappingFile=paths[2]!
@@ -69,7 +90,7 @@ export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;m
   const baseMetadata:(LegacyKbRow & {has_related_data:boolean})[]=[]
   const approved:Record<string,string>[]=[]
   try{
-    db.exec('PRAGMA trusted_schema=OFF; BEGIN')
+    db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; BEGIN')
     if(Object.values(db.prepare('PRAGMA quick_check').get()||{})[0]!=='ok')refuse('sqlite_integrity')
     noSidecars()
     const names=new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r=>String(r.name)))
@@ -81,10 +102,21 @@ export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;m
         (n as number)<0||db.prepare('SELECT count(*) AS n FROM "'+table+'"').get()?.n!==n)
         refuse('row_count_mismatch')
     }
-    // These relations have no frozen archive representation yet. Do not silently
-    // drop ACL, approval history, queued work or embedding configuration.
+    if(embedding)requireEmbeddingSnapshot(embedding,snapshot,embedding.mapping)
+    if(embedding){
+      const allowed=new Set(['agent_studio_kb_bases',...Object.values(tables),
+        'agent_studio_kb_access','agent_studio_kb_access_events',
+        'agent_studio_kb_embedding_queue','agent_studio_kb_embedding_settings'])
+      for(const table of names)if(table.startsWith('agent_studio_kb_')&&!allowed.has(table)){
+        // Unknown relations cannot be silently omitted from a complete import.
+        refuse('unknown_kb_relation')
+      }
+    }
+    // ACL/history always block. Only the same-source W16 capability authorizes
+    // passing the two embedding relations to the independent combined importer.
     for(const table of ['agent_studio_kb_access','agent_studio_kb_access_events',
       'agent_studio_kb_embedding_queue','agent_studio_kb_embedding_settings']){
+      if(embedding&&['agent_studio_kb_embedding_queue','agent_studio_kb_embedding_settings'].includes(table))continue
       if(names.has(table)&&db.prepare('SELECT 1 FROM "'+table+'" LIMIT 1').get())
         refuse('unsupported_acl_or_embedding_state')
     }
@@ -104,10 +136,10 @@ export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;m
     if(owners.size!==users.size)refuse('incomplete_identity_mapping')
     approved.sort((a,b)=>a.old_id! < b.old_id! ? -1 : 1)
     const baseColumns=['id','rh_user_id','name','description','created_ms','updated_ms']
-    const actualBaseColumns=db.prepare('PRAGMA table_info(agent_studio_kb_bases)').all().map(r=>String(r.name))
+    const actualBaseColumns=db.prepare('PRAGMA table_xinfo(agent_studio_kb_bases)').all().map(r=>r.hidden===0?String(r.name):'__hidden__')
     if(actualBaseColumns.length!==baseColumns.length||actualBaseColumns.some(c=>!baseColumns.includes(c)))
       refuse('unknown_or_missing_base_field')
-    const baseRecords=db.prepare('SELECT '+baseColumns.join(',')+' FROM agent_studio_kb_bases ORDER BY id COLLATE BINARY').all()
+    const baseRecords=losslessRows(db,'agent_studio_kb_bases',baseColumns,'id')
     if(baseRecords.length<1||baseRecords.length>3000)refuse('base_batch_size')
     const bases=new Map(baseRecords.map(r=>[r.id,r.rh_user_id]))
     // Explicit projection: api_key, URLs, model config and token fields are NEVER read.
@@ -115,9 +147,9 @@ export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;m
     const docs=new Map<string,Record<string,unknown>>(),chunks=new Map<string,Record<string,unknown>>()
     for(const kind of kinds){
       const table=tables[kind],cols=fields[kind]
-      const actual=db.prepare('PRAGMA table_info("'+table+'")').all().map(r=>String(r.name))
+      const actual=db.prepare('PRAGMA table_xinfo("'+table+'")').all().map(r=>r.hidden===0?String(r.name):'__hidden__')
       if(actual.length!==cols.length||actual.some(c=>!(cols as readonly string[]).includes(c)))refuse('unknown_or_missing_source_field')
-      const records=db.prepare('SELECT '+cols.join(',')+' FROM '+table+' ORDER BY '+(kind==='vector'?'chunk_id':'id')+' COLLATE BINARY').all()
+      const records=losslessRows(db,table,cols,kind==='vector'?'chunk_id':'id')
       if(records.length>100000)refuse('batch_too_large')
       for(const r of records){
         const legacy=r[kind==='vector'?'chunk_id':'id'],uid=r.rh_user_id
@@ -160,7 +192,7 @@ export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;m
       // Include EMPTY bases too: W2 batch completeness and atomic reconciliation
       // cover the entire same-SHA snapshot. Ordinary W2 still rejects content.
       baseMetadata.push(Object.freeze({...normalizeLegacyKb(base,owners),
-        has_related_data:usedBases.has(String(base.id))}))
+        has_related_data:!!embedding||usedBases.has(String(base.id))}))
     }
     noSidecars()
   }finally{db.close()}
@@ -170,6 +202,7 @@ export function loadKbContentSnapshot(options:{snapshot:string;manifest:string;m
   const mappingPayload=JSON.stringify({schema_version:mapping.schema_version,source_sha256:snapshot,records:approved})
   const batch:ContentBatch=Object.freeze({snapshot,mapping:mappingPayload,mappingHash:sha(mappingPayload),
     bases:Object.freeze(baseMetadata),rows:Object.freeze(rows),inventory:inventoryHash(rows)})
+  if(embedding){requireEmbeddingSnapshot(embedding,snapshot,mappingPayload);combined.add(batch)}
   verified.add(batch)
   contentBasesBySnapshot.set(snapshot,new Set(batch.bases.filter(b=>b.has_related_data).map(b=>b.legacy_id)))
   return batch

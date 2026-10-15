@@ -23,6 +23,9 @@
     "test:stage-kb-embedding-cli": "node --experimental-strip-types --test tests/stage-kb-embedding-import-cli.test.mjs",
     "test:stage-kb-embedding-archive": "node --experimental-strip-types --test tests/stage-kb-embedding-state-import.test.mjs",
     "test:stage-kb-content-import": "node --experimental-strip-types --test tests/stage-kb-content-import.test.mjs",
+    "stage-kb-combined:plan": "node --experimental-strip-types src/stage-kb-combined-import-cli.ts --plan",
+    "test:stage-kb-combined": "node --experimental-strip-types --test tests/stage-kb-combined-import.test.mjs",
+    "test:stage-kb-combined-cli": "node --experimental-strip-types --test tests/stage-kb-combined-import-cli.test.mjs",
     "stage-kb-atomic:plan": "node --experimental-strip-types src/stage-kb-atomic-import-cli.ts --plan",
     "test:stage-history-import": "node --experimental-strip-types --test tests/stage-history-import.test.mjs",
     "test:stage-kb-atomic-cli": "node --experimental-strip-types --test tests/stage-kb-atomic-import-cli.test.mjs",
@@ -47,7 +50,7 @@
     "test:upgrade": "node --experimental-strip-types --test tests/stage-upgrade.test.mjs",
     "test:role": "node --experimental-strip-types --test tests/stage-login-smoke.test.mjs",
     "test:role-full": "node --experimental-strip-types --test tests/stage-login.test.mjs",
-    "test": "pnpm check && pnpm test:auth && pnpm test:engine && pnpm test:workflow && pnpm test:prepare && pnpm test:model-execution && pnpm test:model-upgrade && pnpm test:stage-agent-import && pnpm test:stage-workflow-import && pnpm test:stage-kb-import && pnpm test:stage-parallel-migrations && pnpm test:stage-schedule-import && pnpm test:stage-collaboration-import && pnpm test:stage-kb-content-import && pnpm test:stage-kb-embedding-archive && pnpm test:stage-kb-embedding-cli && pnpm test:stage-kb-atomic-cli && pnpm test:stage-history-import && pnpm test:stage-user-import && pnpm test:stage-migration-identity && pnpm test:stage-reconciliation && pnpm test:stage-domain-import && pnpm test:worker-login && pnpm test:worker-upgrade && pnpm test:knowledge && pnpm test:document-parser && pnpm test:document-worker && pnpm test:upgrade && pnpm test:role && pnpm test:role-full"
+    "test": "pnpm check && pnpm test:auth && pnpm test:engine && pnpm test:workflow && pnpm test:prepare && pnpm test:model-execution && pnpm test:model-upgrade && pnpm test:stage-agent-import && pnpm test:stage-workflow-import && pnpm test:stage-kb-import && pnpm test:stage-parallel-migrations && pnpm test:stage-schedule-import && pnpm test:stage-collaboration-import && pnpm test:stage-kb-content-import && pnpm test:stage-kb-embedding-archive && pnpm test:stage-kb-embedding-cli && pnpm test:stage-kb-combined && pnpm test:stage-kb-combined-cli && pnpm test:stage-kb-atomic-cli && pnpm test:stage-history-import && pnpm test:stage-user-import && pnpm test:stage-migration-identity && pnpm test:stage-reconciliation && pnpm test:stage-domain-import && pnpm test:worker-login && pnpm test:worker-upgrade && pnpm test:knowledge && pnpm test:document-parser && pnpm test:document-worker && pnpm test:upgrade && pnpm test:role && pnpm test:role-full"
   },
   "dependencies": {
     "jose": "^6.1.0",
