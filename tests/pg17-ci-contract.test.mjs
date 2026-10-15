@@ -46,7 +46,7 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
     "test:stage-collaboration-import","test:stage-kb-content-import",
     "test:stage-kb-atomic-cli","test:stage-history-import",
     "test:stage-user-import","test:stage-migration-identity",
-    "test:stage-parallel-migrations"
+    "test:stage-reconciliation","test:stage-parallel-migrations"
   ])assert.ok(domains.includes("- "+name),name)
   assert.match(domains,/matrix\.script/)
   assert.doesNotMatch(web,/run test:stage-agent-import/)
@@ -54,6 +54,28 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
   assert.match(web,/run: pnpm check/)
   assert.doesNotMatch(pg+domains,/docker compose up|deploy production|secrets\./i)
 })
+test("Independent PG17 read-only reconciliation job uses an isolated synthetic database",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const pg17=workflow.split("\n  pg17-reconciliation-isolated:\n")[1]
+    ?.split("\n  pg-api-core:\n")[0]
+  assert.ok(pg17,"independent PG17 reconciliation job is present")
+  assert.match(pg17,/image: pgvector\/pgvector:pg17/)
+  assert.match(pg17,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(pg17,/127\.0\.0\.1:5432:5432/)
+  assert.match(pg17,/AGENT_STUDIO_PG17_TEST_ENABLED: "true"/)
+  assert.match(pg17,/AGENT_STUDIO_PG17_RECONCILIATION_TEST_ENABLED: "true"/)
+  assert.match(pg17,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(pg17,/AGENT_STUDIO_PG17_PORT: "5432"/)
+  assert.match(pg17,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(pg17,/synthetic-agentstudio-pg17-ci-/)
+  assert.match(pg17,/pg17-reconciliation\.integration\.mjs/)
+  const testScript=read("services/pg-api/tests/pg17-reconciliation.integration.mjs")
+  assert.match(testScript,/refuse_non_ephemeral_pg17_reconciliation/)
+  assert.match(testScript,/RUNNER_ENVIRONMENT/)
+  assert.match(testScript,/PG17 TCP:/)
+  assert.doesNotMatch(pg17,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE/)
+})
+
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")
   const quality=workflow.split("\n  quality:\n")[1]||""
