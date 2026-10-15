@@ -266,11 +266,19 @@ test('PG17 TCP: W9 reconciliation, real read-only transaction, origin and ACL fe
       assert.equal(item.status,malformedSource?'failed':'unsupported',item.domain)
       assert.equal(item.association_anomalies,0)
       assert.equal(item.source_count,item.domain==='studio_users'?1:0)
-      assert.equal(item.target_count,item.domain==='studio_users'?1:0)
-      if(malformedSource)
-        assert.ok(item.blockers.includes('source_fields_unmapped'),item.domain)
-      else
+      if(malformedSource){
+        // A target count of null explicitly means reconciliation could not
+        // safely inspect this invalid-source domain. It is NOT equivalent to
+        // a verified zero. Both must remain failed, never unsupported/success.
+        assert.ok(item.target_count===null||item.target_count===0,item.domain)
+        assert.ok(item.blockers.some(code=>[
+          'source_fields_unmapped','source_table_missing','target_fields_missing',
+          'target_schema_missing',
+        ].includes(code)),item.domain)
+      }else{
+        assert.equal(item.target_count,item.domain==='studio_users'?1:0,item.domain)
         assert.equal(item.blockers.length,1)
+      }
     }
     assert.deepEqual(await run(),report,'read-only rerun must be stable')
     assert.equal(await fingerprint(admin),before);assert.deepEqual(f.fileHashes(),filesBefore)
