@@ -1,0 +1,12 @@
+# Stage-only, one-shot migration coordinator.
+# Context is services/pg-api ONLY, never the repo root with PB data/secrets.
+# For audited future operations pin a vetted Node image digest.
+FROM node:24-alpine
+WORKDIR /srv/services/pg-api
+RUN npm install --global pnpm@11.23.0
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts --ignore-workspace
+COPY src ./src
+USER node
+WORKDIR /srv
+CMD ["node", "services/pg-api/src/stage-migration-operator.mjs", "--plan"]

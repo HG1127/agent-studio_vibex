@@ -157,6 +157,7 @@ jobs:
           - test:stage-user-import
           - test:stage-migration-identity
           - test:stage-reconciliation
+          - test:stage-domain-import
           - test:stage-parallel-migrations
     steps:
       - name: Checkout
@@ -173,6 +174,71 @@ jobs:
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Independent domain migration SQL and rollback regression
         run: pnpm --dir services/pg-api run ${{ matrix.script }}
+
+  pg17-stage-operator-isolated:
+    name: Real PostgreSQL 17 / stage operator end-to-end (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Frozen synthetic backup to PG17 import, idempotence, read-only reconcile and NO-GO
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_STAGE_OPERATOR_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-stage-operator.integration.mjs
+
+  stage-operator-container:
+    name: Stage-only migration operator / isolated image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build operator image from PG service files only
+        run: docker build --file services/pg-api/Dockerfile.operator --tag agentstudio-stage-operator-ci:${{ github.sha }} services/pg-api
+      - name: Default stage operator must refuse unapproved invocation without network
+        shell: bash
+        run: |
+          set +e
+          output=$(docker run --rm --network none --read-only --cap-drop ALL             --entrypoint node agentstudio-stage-operator-ci:${{ github.sha }}             services/pg-api/src/stage-migration-operator.mjs --plan 2>&1)
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -q 'Isolated stage operator refused: invalid_arguments' <<< "$output"
+          ! grep -Eq 'ECONNREFUSED|ENOTFOUND|permission denied for schema' <<< "$output"
 
   quality:
     runs-on: ubuntu-latest

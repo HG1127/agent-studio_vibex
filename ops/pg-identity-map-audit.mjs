@@ -99,11 +99,29 @@ export async function audit(argv){
      mapping?.source_sha256!==manifest.sha256 ||
      !Array.isArray(mapping.records))
     fail("approved_mapping_bound_to_snapshot_required")
+  if(!manifest.tables||typeof manifest.tables!=="object"||
+     Array.isArray(manifest.tables))
+    fail("identity_manifest_tables_required")
   let users,refs
   const db=new DatabaseSync(source.real,{readOnly:true})
   try{
     const check=db.prepare("PRAGMA quick_check").get()
     if(Object.values(check||{})[0]!=="ok")fail("sqlite_integrity_failed")
+    const physical=db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' "+
+      "AND name NOT GLOB 'sqlite_*' ORDER BY name"
+    ).all().map(row=>String(row.name))
+    if(!physical.length || Object.keys(manifest.tables).length!==physical.length)
+      fail("identity_manifest_incomplete")
+    for(const table of physical){
+      if(!/^[A-Za-z_][A-Za-z0-9_]{0,120}$/.test(table)||
+         !Number.isSafeInteger(manifest.tables[table])||
+         manifest.tables[table]<0)
+        fail("identity_manifest_invalid_table")
+      const count=Number(db.prepare("SELECT COUNT(*) AS n FROM "+quote(table)).get().n)
+      if(count!==manifest.tables[table])
+        fail("identity_manifest_count_mismatch")
+    }
     const result=collect(db)
     users=result.names; refs=result.references
   }finally{db.close()}
@@ -163,6 +181,8 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
       "approved_mapping_bound_to_snapshot_required","studio_users_missing",
       "no_source_employees","unexpected_source_user_id",
       "unexpected_owner_reference","identity_cardinality_unexpected",
+      "identity_manifest_tables_required","identity_manifest_incomplete",
+      "identity_manifest_invalid_table","identity_manifest_count_mismatch",
       "sqlite_integrity_failed","identity_inputs_changed_during_check",
     ])
     console.error("Identity audit refused: "+

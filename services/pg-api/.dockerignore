@@ -1,0 +1,19 @@
+# Keep stage image build contexts source-only. Never transmit local
+# PocketBase databases, env files, cached credentials, test fixtures or logs
+# to a Docker daemon (even an isolated one).
+**
+!package.json
+!pnpm-lock.yaml
+!Dockerfile
+!Dockerfile.operator
+!src/
+!src/**
+**/.env
+**/.env.*
+**/pb_data/**
+**/data.db*
+**/*.sqlite*
+**/*.pem
+**/*.key
+**/secrets/**
+**/node_modules/**

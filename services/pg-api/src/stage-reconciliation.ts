@@ -1,9 +1,11 @@
-// W9: deliberately disconnected from HTTP, workers and connection configuration.
+// W9/W11: deliberately disconnected from HTTP, workers and connection configuration.
 import fs from 'node:fs'
-import path from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
 import {createHash} from 'node:crypto'
 import {contentHash, normalizeLegacyAgent} from './stage-agent-import.ts'
+import {normalizeLegacyWorkflow} from './stage-workflow-import.ts'
+import {normalizeLegacyKb} from './stage-knowledge-base-import.ts'
+import {prepareDisabledUserProvision} from './stage-user-import.ts'
 import type {SqlPool, SqlClient} from './contracts.ts'
 
 type Row = Record<string, unknown>
@@ -40,6 +42,9 @@ export type ReconciliationResult = {
 }
 export type ReconciliationInput = {
   snapshot:string; manifest:string; mapping:string;
+  // Optional reviewed OIDC evidence from W7. Without it identity fidelity is
+  // unsupported, never inferred from a crosswalk's self-reported hash.
+  reviewed_idp?:string;
   // This is operator approval evidence, not an authentication credential.
   approval:{source_sha256:string; approved_by:string; approved_at:string}
 }
@@ -67,12 +72,12 @@ function file(name:string){
   return real
 }
 function load(input:ReconciliationInput){
-  const files=[input.snapshot,input.manifest,input.mapping].map(file)
-  if(new Set(files.map(x=>x.toLowerCase())).size!==3)refuse('duplicate_input')
+  const files=[input.snapshot,input.manifest,input.mapping,...(input.reviewed_idp===undefined?[]:[input.reviewed_idp])].map(file)
+  if(new Set(files.map(x=>x.toLowerCase())).size!==files.length)refuse('duplicate_input')
   const snapshot=files[0]!,manifest=files[1]!,mapping=files[2]!
   if(['-wal','-shm','-journal'].some(s=>fs.existsSync(snapshot+s)))refuse('snapshot_not_frozen')
   if(files.slice(1).some(p=>fs.statSync(p).size>5_000_000))refuse('metadata_limit_exceeded')
-  const metadata=[fs.readFileSync(manifest),fs.readFileSync(mapping)]
+  const metadata=files.slice(1).map(p=>fs.readFileSync(p))
   const digests=[fileHash(snapshot),...metadata.map(hash)]
   const info=JSON.parse(metadata[0]!.toString()) as Row
   const map=JSON.parse(metadata[1]!.toString()) as Row
@@ -109,9 +114,10 @@ function load(input:ReconciliationInput){
       const count=Number(db.prepare(`SELECT count(*) AS n FROM "${d.source}"`).get()?.n)
       if(!Number.isSafeInteger(count)||count>100000)refuse('source_limit_exceeded')
       const columns=db.prepare(`PRAGMA table_info("${d.source}")`).all().map(r=>String(r.name))
-      // Unsupported domains need inventory only. Never load employee password
-      // hashes or document/model configuration merely to report unsupported.
-      const rows=d.source==='agent_specs'?db.prepare('SELECT * FROM agent_specs').all() as Row[]:
+      // Only supported configuration domains are loaded. Employee credentials,
+      // unsupported document content, schedules and history stay unread.
+      const rows=['agent_specs','workflows','agent_studio_kb_bases'].includes(d.source)?
+        db.prepare(`SELECT * FROM "${d.source}"`).all() as Row[]:
         d.source==='studio_users'&&columns.includes('id')?db.prepare('SELECT id FROM studio_users').all() as Row[]:[]
       tables.set(d.source,{columns,rows,count})
     }
@@ -124,8 +130,15 @@ function load(input:ReconciliationInput){
     if(files.some((p,i)=>fileHash(p)!==digests[i]) ||
       ['-wal','-shm','-journal'].some(s=>fs.existsSync(snapshot+s)))refuse('input_changed')
   }
+  // Reuse W7's exact issuer/subject/reviewer normalization and row SHA256.
+  // This prepares evidence only; never invoke the provisioning/write function.
+  let identityPlan:ReturnType<typeof prepareDisabledUserProvision>|undefined
+  if(input.reviewed_idp!==undefined){
+    try{identityPlan=prepareDisabledUserProvision(snapshot,manifest,mapping,files[3]!)}
+    catch{refuse('identity_evidence_invalid')}
+  }
   verify()
-  return {sha:String(info.sha256),mappingSha:digests[2]!,tables,owners,verify}
+  return {sha:String(info.sha256),mappingSha:digests[2]!,tables,owners,verify,identityPlan}
 }
 function result(domain:string):ReconciliationResult {
   return {domain,source_count:null,target_count:null,blockers:[],association_anomalies:0,status:'failed'}
@@ -134,7 +147,7 @@ async function read(db:SqlClient,table:string):Promise<Row[]>{
   // Callers use only compile-time table names from this module.
   return (await db.query<Row>(`SELECT * FROM agentstudio.${table}`)).rows
 }
-function sameDate(value:unknown){return new Date(String(value)).toISOString()}
+function sameDate(value:unknown){return value instanceof Date?value.toISOString():new Date(String(value)).toISOString()}
 
 
 // Offline planning does not create or receive any PostgreSQL connection.
@@ -197,11 +210,34 @@ export async function reconcileStage(input:ReconciliationInput,pool:SqlPool):Pro
     let identities:Row[]=[]
     if(has('legacy_user_imports',['legacy_user_id','target_user_id','source_snapshot_sha256','reviewed_mapping_sha256','reviewed_idp_sha256','active_automatically']))
       identities=await read(db,'legacy_user_imports')
-    const users=has('users',['id','status'])?(await db.query<Row>('SELECT id,status FROM agentstudio.users')).rows:[]
+    const identityFields=['id','status','external_issuer','external_subject','display_name']
+    const users=has('users',['id','status'])?(await db.query<Row>(
+      `SELECT ${identityFields.filter(c=>has('users',[c])).join(',')} FROM agentstudio.users`)).rows:[]
+    const verifiedIdentities=new Set<string>()
+    if(source.identityPlan && has('users',identityFields) && has('legacy_user_imports',targetFields.legacy_user_imports!)){
+      for(const expected of source.identityPlan.rows){
+        const matches=identities.filter(r=>r.legacy_user_id===expected.legacy_id)
+        const targets=users.filter(r=>r.id===expected.target_user_id)
+        const m=matches[0],u=targets[0]
+        if(matches.length!==1||targets.length!==1||!m||!u)continue
+        const actual=contentHash({legacy_id:expected.legacy_id,target_user_id:u.id,
+          issuer:u.external_issuer,subject:u.external_subject,
+          reviewed_by:expected.reviewed_by,reviewed_at:expected.reviewed_at})
+        if(m.target_user_id===expected.target_user_id && m.source_snapshot_sha256===source.sha &&
+          m.reviewed_mapping_sha256===source.mappingSha &&
+          m.reviewed_idp_sha256===source.identityPlan.reviewed_idp_sha256 &&
+          m.identity_row_sha256===expected.identity_sha256 && actual===expected.identity_sha256 &&
+          m.active_automatically===false && u.status==='disabled' && u.display_name==='' &&
+          identities.filter(r=>r.target_user_id===u.id).length===1 &&
+          users.filter(r=>r.external_issuer===u.external_issuer&&r.external_subject===u.external_subject).length===1)
+          verifiedIdentities.add(expected.legacy_id)
+      }
+    }
     const identityOK=(legacy:unknown,target:unknown)=>versions.has('pg_v8_011')&&identities.filter(r=>r.legacy_user_id===legacy &&
       r.target_user_id===target && r.source_snapshot_sha256===source.sha &&
       r.reviewed_mapping_sha256===source.mappingSha && hex.test(String(r.reviewed_idp_sha256)) &&
-      r.active_automatically===false).length===1 && users.some(r=>r.id===target&&r.status==='disabled')
+      r.active_automatically===false).length===1 && users.some(r=>r.id===target&&r.status==='disabled') &&
+      (!source.identityPlan||verifiedIdentities.has(String(legacy)))
     for(const d of domains){
       const out=result(d.source), src=source.tables.get(d.source)
       output.push(out); out.source_count=src?.count??null
@@ -214,13 +250,103 @@ export async function reconcileStage(input:ReconciliationInput,pool:SqlPool):Pro
       // Select their real crosswalk/safety fields without materializing text.
       const inventoryColumns=[...new Set([...wanted,...(targetFields[d.target]??[])])]
         .filter(c=>!['source_record','archive','raw_payload'].includes(c)&&has(d.target,[c]))
-      let mapped=d.source==='agent_specs'?await read(db,d.target):
+      let mapped=['agent_specs','workflows'].includes(d.source)?await read(db,d.target):
         (await db.query<Row>(`SELECT ${inventoryColumns.join(',')} FROM agentstudio.${d.target}`)).rows
       if(d.filter)mapped=mapped.filter(r=>r.source_table===d.filter)
       out.target_count=mapped.length
       if(!has(d.target,targetFields[d.target]??[]))out.blockers.push('target_fields_missing')
       if(mapped.some(r=>r.source_snapshot_sha256!==source.sha))out.blockers.push('mixed_snapshot')
       if(src&&src.count!==mapped.length)out.blockers.push('count_mismatch')
+      if(d.source==='studio_users'){
+        // W7 migrates only the ID -> reviewed disabled OIDC identity subset.
+        // PB passwords/profile fields are deliberately outside this contract.
+        out.target_count=users.length
+        if(users.length!==mapped.length)out.blockers.push('untracked_targets')
+        for(const r of mapped){
+          if(source.owners.get(String(r.legacy_user_id))!==r.target_user_id ||
+            !identityOK(r.legacy_user_id,r.target_user_id))out.association_anomalies++
+        }
+        if(source.identityPlan){
+          if(!has('users',identityFields))out.blockers.push('target_fields_missing')
+          if(verifiedIdentities.size!==src?.count)out.blockers.push('identity_checksum_mismatch')
+        }else out.blockers.push('reviewed_idp_evidence_required')
+        if(new Set(mapped.map(r=>r.legacy_user_id)).size!==mapped.length||
+          new Set(mapped.map(r=>r.target_user_id)).size!==mapped.length)out.blockers.push('duplicate_target')
+        if(out.association_anomalies)out.blockers.push('identity_or_association_invalid')
+        out.status=out.blockers.length===0?'success':
+          out.blockers.length===1&&out.blockers[0]==='reviewed_idp_evidence_required'?'unsupported':'failed'
+        continue
+      }
+      if(d.source==='workflows'||d.source==='agent_studio_kb_bases'){
+        const workflow=d.source==='workflows'
+        const required=workflow?['id','rh_user_id','name','graph','require_approval','created','updated']:
+          ['id','rh_user_id','name','description','created_ms','updated_ms']
+        const known=workflow?[...required,'description','source','spec_id']:required
+        if(!src||required.some(c=>!src.columns.includes(c))||src.columns.some(c=>!known.includes(c))){
+          out.blockers.push('source_fields_unmapped');continue
+        }
+        const table=workflow?'workflows':'knowledge_bases'
+        const legacyKey=workflow?'legacy_workflow_id':'legacy_base_id'
+        const targetKey=workflow?'target_workflow_id':'target_base_id'
+        const fields=['id','owner_user_id','name','created_at','updated_at','visibility','team_id','revision',
+          ...(workflow?['graph']:['description'])]
+        if(!has(table,fields)||!has(d.target,targetFields[d.target]!)){
+          out.blockers.push('target_fields_missing');continue
+        }
+        const targets=await read(db,table)
+        out.target_count=targets.length
+        let workflowReferences:Row[]=[]
+        if(workflow){
+          if(!has('runs',['workflow_id'])||!has('schedules',['workflow_id'])){
+            out.blockers.push('execution_safety_schema_missing')
+          }else{
+            workflowReferences=(await db.query<Row>('SELECT workflow_id FROM agentstudio.runs WHERE workflow_id IS NOT NULL')).rows
+              .concat((await db.query<Row>('SELECT workflow_id FROM agentstudio.schedules WHERE workflow_id IS NOT NULL')).rows)
+          }
+        }
+        if(targets.length!==mapped.length)out.blockers.push('untracked_targets')
+        const expectedHashes:string[]=[],actualHashes:string[]=[],crosswalkHashes:string[]=[]
+        const sourceIds=new Set<unknown>()
+        for(const raw of src.rows){
+          try{
+            if(sourceIds.has(raw.id))throw new Error('duplicate')
+            sourceIds.add(raw.id)
+            const row=workflow?normalizeLegacyWorkflow(raw,source.owners):normalizeLegacyKb(raw,source.owners)
+            const matches=mapped.filter(r=>r[legacyKey]===row.legacy_id),m=matches[0]
+            const candidates=targets.filter(r=>r.id===m?.[targetKey]),t=candidates[0]
+            if(matches.length!==1||candidates.length!==1||!m||!t||
+              m.owner_user_id!==row.owner_user_id||t.owner_user_id!==row.owner_user_id||
+              !uuid.test(String(t.id))||!identityOK(raw.rh_user_id,row.owner_user_id)||
+              t.visibility!=='private'||t.team_id!==null||Number(t.revision)!==1||
+              (workflow&&(m.execution_enabled!==false||workflowReferences.some(r=>r.workflow_id===t.id)))){
+              out.association_anomalies++;continue
+            }
+            const projection={legacy_id:row.legacy_id,owner_user_id:t.owner_user_id,name:t.name,
+              created_at:sameDate(t.created_at),updated_at:sameDate(t.updated_at),
+              ...(workflow?{graph:t.graph,source_record:m.source_record}:{description:t.description})}
+            expectedHashes.push(row.payload_sha256);crosswalkHashes.push(String(m.payload_sha256))
+            const actual=contentHash(projection);actualHashes.push(actual)
+            // Workflow payload includes the original SQLite record, including
+            // missing-vs-empty fields and the lexical graph string. KB base
+            // normalization covers all six allowlisted source metadata fields.
+            if(actual!==row.payload_sha256||m.payload_sha256!==row.payload_sha256||
+              (workflow&&contentHash(m.source_record)!==contentHash(raw)))out.blockers.push('checksum_mismatch')
+          }catch{out.association_anomalies++}
+        }
+        if(out.association_anomalies)out.blockers.push('identity_or_association_invalid')
+        if(new Set(mapped.map(r=>r[targetKey])).size!==mapped.length||
+          new Set(mapped.map(r=>r[legacyKey])).size!==mapped.length)out.blockers.push('duplicate_target')
+        const sum=(values:string[])=>contentHash(values.sort())
+        if(expectedHashes.length!==src.count||sum(expectedHashes)!==sum(actualHashes)||
+          sum(expectedHashes)!==sum(crosswalkHashes))out.blockers.push('checksum_mismatch')
+        if(!source.identityPlan)out.blockers.push('reviewed_idp_evidence_required')
+        out.blockers=[...new Set(out.blockers)]
+        // Success means frozen Workflow configuration / KB metadata only.
+        // Execution, ACL, content and RAG retain their separate blocked domains.
+        out.status=out.blockers.length===0?'success':
+          out.blockers.length===1&&out.blockers[0]==='reviewed_idp_evidence_required'?'unsupported':'failed'
+        continue
+      }
       if(d.source!=='agent_specs'){
         for(const r of mapped){
           const target=r.owner_user_id??r.target_user_id

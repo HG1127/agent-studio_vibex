@@ -1,0 +1,56 @@
+# V8.8 opt-in, one-shot approved stage-only migration trial.
+# Not a production deployment. Operators must BACKUP the disposable stage first.
+# Each component has its own transaction; incomplete imports stay quarantined.
+services:
+  stage_operator:
+    profiles: ["stage-operator"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile.operator
+    command: ["node", "services/pg-api/src/stage-migration-operator.mjs", "--execute", "--confirm-isolated-stage", "agentstudio_stage", "--allow-partial-trial", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/approved-map.json", "--oidc", "/run/input/reviewed-oidc.json", "--approval", "/run/input/approved-source.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_OPERATOR_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin
+      AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_OPERATOR_SNAPSHOT_FILE:?Approved frozen SQLite snapshot outside repository required}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_OPERATOR_MANIFEST_FILE:?Complete matching snapshot SHA256 manifest required}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_OPERATOR_MAPPING_FILE:?Operator-reviewed legacy ID to UUID mapping required}
+        target: /run/input/approved-map.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_OPERATOR_OIDC_FILE:?Independently reviewed OIDC subject evidence required}
+        target: /run/input/reviewed-oidc.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_OPERATOR_APPROVAL_FILE:?Operator approval bound to source hash required}
+        target: /run/input/approved-source.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 100
+    stop_grace_period: 30s

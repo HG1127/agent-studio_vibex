@@ -13,7 +13,7 @@ import type {SqlPool,SqlClient} from "./contracts.ts"
 const filePath=fileURLToPath(import.meta.url)
 function stop(code:string):never{throw Error(code)}
 const allowed=new Set([
-  "--plan","--execute","--snapshot","--manifest","--mapping","--approval",
+  "--plan","--execute","--snapshot","--manifest","--mapping","--approval","--reviewed-idp",
 ])
 function parse(argv:string[]){
   const args=new Map<string,string|true>()
@@ -26,7 +26,7 @@ function parse(argv:string[]){
     args.set(flag,value)
   }
   if(args.has("--plan")===args.has("--execute")||
-     [...allowed].filter(x=>x!=="--plan"&&x!=="--execute")
+     [...allowed].filter(x=>x!=="--plan"&&x!=="--execute"&&x!=="--reviewed-idp")
        .some(x=>typeof args.get(x)!=="string"))
     stop("invalid_arguments")
   return {
@@ -34,6 +34,7 @@ function parse(argv:string[]){
     snapshot:String(args.get("--snapshot")),
     manifest:String(args.get("--manifest")),
     mapping:String(args.get("--mapping")),
+    reviewedIdp:typeof args.get("--reviewed-idp")==="string"?String(args.get("--reviewed-idp")):undefined,
     approval:String(args.get("--approval")),
   } as const
 }
@@ -119,6 +120,7 @@ export async function runCli(argv:string[]){
   const input:ReconciliationInput={
     snapshot:args.snapshot,manifest:args.manifest,
     mapping:args.mapping,approval,
+    ...(args.reviewedIdp?{reviewed_idp:args.reviewedIdp}:{}),
   }
   const plan=planOfflineReconciliation(input)
   const base={

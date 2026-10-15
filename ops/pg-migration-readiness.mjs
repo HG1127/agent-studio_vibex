@@ -107,10 +107,12 @@ function rows(db,table){
 function inspect(db){
   const tables=db.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' "+
-    "AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
+    "AND name NOT GLOB 'sqlite_*' ORDER BY name").all()
     .map(row=>String(row.name))
   const items=[]
   for(const table of tables){
+    if(!/^[A-Za-z_][A-Za-z0-9_]{0,120}$/.test(table))
+      fail("snapshot_unknown_table_name")
     const columns=db.prepare("PRAGMA table_info("+quote(table)+")").all()
       .map(x=>String(x.name))
     const count=rows(db,table)
@@ -156,9 +158,14 @@ export async function run(args){
     if(Object.values(ok||{})[0]!=="ok")fail("sqlite_integrity_failed")
     items=inspect(db)
     const actual=new Map(items.map(it=>[it.table,it.rows]))
+    // Coverage is bidirectional: do not accept old fixed-table manifests
+    // that silently omit new or custom PocketBase collections.
+    if(actual.size===0 ||
+       Object.keys(manifest.tables).length!==actual.size)
+      fail("snapshot_manifest_incomplete")
     for(const [name,total] of Object.entries(manifest.tables)){
       if(!Number.isSafeInteger(total)||total<0||
-         actual.get(name)!==total)
+         !actual.has(name)||actual.get(name)!==total)
         fail("snapshot_manifest_count_mismatch")
     }
   }finally{db?.close()}
@@ -195,6 +202,7 @@ export async function run(args){
       "dryrun_row_level_reconciliation_on_new_stage_db",
       "backup_restore_and_rollback_rehearsal",
     ],
+    snapshot_manifest_full_coverage_verified:true,
     scanned_tables:items.length,
     scanned_rows:items.reduce((n,row)=>n+row.rows,0),
     blocking_tables:blockers.length,
@@ -226,6 +234,7 @@ if(process.argv[1] &&
       "invalid_snapshot_file","refuse_live_pocketbase_data",
       "manifest_is_snapshot","invalid_manifest_json","unsupported_snapshot_manifest",
       "snapshot_sha256_mismatch","sqlite_integrity_failed",
+      "snapshot_manifest_incomplete","snapshot_unknown_table_name",
       "snapshot_manifest_count_mismatch","snapshot_mutated_during_read",
       "unsafe_table_count","unsafe_output_path",
     ])

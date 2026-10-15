@@ -18,6 +18,7 @@ function fixture(){
   const snapshot=path.join(dir,"snapshot.sqlite")
   const manifest=path.join(dir,"manifest.json")
   const mapping=path.join(dir,"mapping.json")
+  const oidc=path.join(dir,"reviewed-oidc.json")
   const approval=path.join(dir,"approval.json")
   const db=new DatabaseSync(snapshot)
   db.exec("CREATE TABLE studio_users(id TEXT PRIMARY KEY,password TEXT);"+
@@ -41,18 +42,29 @@ function fixture(){
       approved_at:"2026-10-15T00:00:00Z",
     }],
   }))
+  writeFileSync(oidc,JSON.stringify({
+    schema_version:"studio-reviewed-oidc-provision-v1",
+    source_sha256:hash,
+    records:[{
+      old_id:legacyId,new_studio_user_id:pgId,
+      external_issuer:"https://oidc.example.invalid/tenant/v2.0",
+      external_subject:"private-verified-subject",
+      reviewed_by:"Synthetic IdP reviewer",
+      reviewed_at:"2026-10-15T00:00:00Z",
+    }],
+  }))
   writeFileSync(approval,JSON.stringify({
     source_sha256:hash,
     approved_by:"Synthetic authorised reviewer",
     approved_at:"2026-10-15T00:01:00Z",
   }))
-  return {dir,snapshot,manifest,mapping,approval}
+  return {dir,snapshot,manifest,mapping,approval,oidc}
 }
-function call(f,mode="--plan",extraEnv={}){
+function call(f,mode="--plan",extraEnv={},args=[]){
   return spawnSync(process.execPath,[
     "--experimental-strip-types",cli,mode,
     "--snapshot",f.snapshot,"--manifest",f.manifest,
-    "--mapping",f.mapping,"--approval",f.approval,
+    "--mapping",f.mapping,"--approval",f.approval,...args,
   ],{cwd:root,encoding:"utf8",timeout:22000,
     env:{...process.env,
       AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED:"false",
@@ -79,6 +91,25 @@ test("offline plan reads verified frozen data and emits only domain counts witho
       assert.ok(!output.stdout.includes(personal)&&
         !output.stderr.includes(personal))
     }
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("reviewed OIDC subject can be included for stronger source identity fidelity without DB access",()=>{
+  const f=fixture()
+  try{
+    const out=call(f,"--plan",{},["--reviewed-idp",f.oidc])
+    assert.equal(out.status,0,out.stderr)
+    const report=JSON.parse(out.stdout)
+    assert.equal(report.source_verified,true)
+    assert.equal(report.production_cutover_allowed,false)
+    assert.ok(!out.stdout.includes("private-verified-subject"))
+    assert.ok(!out.stdout.includes(legacyId))
+    const bad=JSON.parse(readFileSync(f.oidc,"utf8"))
+    bad.source_sha256="a".repeat(64)
+    writeFileSync(f.oidc,JSON.stringify(bad))
+    const invalid=call(f,"--plan",{},["--reviewed-idp",f.oidc])
+    assert.equal(invalid.status,2)
+    assert.deepEqual(JSON.parse(invalid.stdout).blockers,
+      ["identity_evidence_invalid"])
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 test("an execute request defaults disabled before connecting to any database",()=>{

@@ -35,7 +35,7 @@ function fixture(extra=false){
   writeFileSync(manifest,JSON.stringify({
     format:"agent-studio-sqlite-snapshot-v1",
     bytes:buf.length,sha256:fingerprint,
-    tables:{agent_specs:1},
+    tables:{agent_specs:1,agent_studio_spec_access:1,studio_users:2},
   }))
   const current={
     schema_version:"studio-approved-identity-map-v2",
@@ -100,6 +100,18 @@ test("stale/template mappings cannot authorize another snapshot or silent user m
     const missing=invoke(f)
     assert.equal(missing.status,2)
     assert.equal(JSON.parse(missing.stdout).unmapped_source_users,1)
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("identity mapping audit rejects a manifest that omits an old collection",()=>{
+  const f=fixture()
+  try{
+    const manifest=JSON.parse(readFileSync(f.manifest,"utf8"))
+    delete manifest.tables.agent_studio_spec_access
+    writeFileSync(f.manifest,JSON.stringify(manifest))
+    const result=invoke(f)
+    assert.equal(result.status,1)
+    assert.match(result.stderr,/identity_manifest_incomplete/)
+    assert.doesNotMatch(result.stderr,/aliceprivate|bobprivate/)
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 test("orphan legacy member references explicitly block identity cutover",()=>{

@@ -33,7 +33,7 @@ function fixture(){
   const sha256=createHash("sha256").update(buf).digest("hex")
   const tables={
     studio_users:1,agent_specs:1,model_connections:1,
-    agent_studio_kb_bases:1,
+    agent_studio_kb_bases:1,other_new_feature:1,
   }
   writeFileSync(manifestFile,JSON.stringify({
     format:"agent-studio-sqlite-snapshot-v1",
@@ -52,6 +52,7 @@ test("read-only scanner reports row counts / feature blockers without leaking se
     const inventory=JSON.parse(r.stdout)
     assert.equal(inventory.format,"agentstudio-pg-migration-readiness-v1")
     assert.equal(inventory.read_only,true)
+    assert.equal(inventory.snapshot_manifest_full_coverage_verified,true)
     assert.equal(inventory.scanned_tables,5)
     assert.equal(inventory.scanned_rows,5)
     assert.equal(inventory.ready_for_production_cutover,false)
@@ -87,6 +88,18 @@ test("missing/altered manifests fail closed without reporting SQLite data",()=>{
       {encoding:"utf8",timeout:15000})
     assert.equal(noManifest.status,1)
     assert.match(noManifest.stderr,/verified_manifest_required/)
+  }finally{rmSync(f.temp,{recursive:true,force:true})}
+})
+test("incomplete legacy backup manifest rejects omitted tables even when SHA matches",()=>{
+  const f=fixture()
+  try{
+    const info=JSON.parse(readFileSync(f.manifestFile,"utf8"))
+    delete info.tables.other_new_feature
+    writeFileSync(f.manifestFile,JSON.stringify(info))
+    const result=cliCall(f)
+    assert.equal(result.status,1)
+    assert.match(result.stderr,/snapshot_manifest_incomplete/)
+    assert.doesNotMatch(result.stderr,/PRIVATE_BODY|owner-sensitive/)
   }finally{rmSync(f.temp,{recursive:true,force:true})}
 })
 test("readiness report is create-only with redacted JSON and no ability to alter backup",()=>{

@@ -7,7 +7,7 @@ services:
     build:
       context: ../../services/pg-api
       dockerfile: Dockerfile
-    command: ["node", "--experimental-strip-types", "src/stage-reconciliation-cli.ts", "--execute", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/mapping.json", "--approval", "/run/input/approval.json"]
+    command: ["node", "--experimental-strip-types", "src/stage-reconciliation-cli.ts", "--execute", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/mapping.json", "--approval", "/run/input/approval.json", "--reviewed-idp", "/run/input/reviewed-oidc.json"]
     restart: "no"
     depends_on:
       postgres:
@@ -36,6 +36,10 @@ services:
       - type: bind
         source: ${AGENT_STUDIO_RECON_APPROVAL_FILE:?Operator-approved source hash binding required}
         target: /run/input/approval.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_RECON_OIDC_REVIEW_FILE:?IdP-issued subject review bound to snapshot required}
+        target: /run/input/reviewed-oidc.json
         read_only: true
     networks:
       - private_db

@@ -46,7 +46,8 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
     "test:stage-collaboration-import","test:stage-kb-content-import",
     "test:stage-kb-atomic-cli","test:stage-history-import",
     "test:stage-user-import","test:stage-migration-identity",
-    "test:stage-reconciliation","test:stage-parallel-migrations"
+    "test:stage-reconciliation","test:stage-domain-import",
+    "test:stage-parallel-migrations"
   ])assert.ok(domains.includes("- "+name),name)
   assert.match(domains,/matrix\.script/)
   assert.doesNotMatch(web,/run test:stage-agent-import/)
@@ -76,6 +77,26 @@ test("Independent PG17 read-only reconciliation job uses an isolated synthetic d
   assert.doesNotMatch(pg17,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE/)
 })
 
+test("PG17 stage-operator end-to-end CI is a separate ephemeral job and fail-closed on non GitHub-hosted machines",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-stage-operator-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"a separate actual PostgreSQL17 stage operator job must exist")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_STAGE_OPERATOR_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-stage-operator\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+  const code=read("services/pg-api/tests/pg17-stage-operator.integration.mjs")
+  assert.match(code,/refuse_non_ephemeral_pg17_stage_operator/)
+  assert.match(code,/RUNNER_ENVIRONMENT/)
+  assert.match(code,/W12_PG17_STAGE_OPERATOR_PASS/)
+  assert.match(code,/production_cutover_allowed/)
+})
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")
   const quality=workflow.split("\n  quality:\n")[1]||""
