@@ -100,6 +100,26 @@ test("PG17 stage-operator end-to-end CI is a separate ephemeral job and fail-clo
   assert.match(code,/W12_PG17_STAGE_OPERATOR_PASS/)
   assert.match(code,/production_cutover_allowed/)
 })
+test("Independent PG17 cross-domain CI uses own fresh synthetic database and strict runner gate",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-crossdomain-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"cross-domain test must be a separate PG17 service, not share W12")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_CROSSDOMAIN_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-crossdomain-stage\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+  const code=read("services/pg-api/tests/pg17-crossdomain-stage.integration.mjs")
+  assert.match(code,/refuse_non_ephemeral_pg17_crossdomain_stage/)
+  assert.match(code,/RUNNER_ENVIRONMENT/)
+  assert.match(code,/W13_PG17_STAGE_OPERATOR_PASS/)
+  assert.match(code,/production_cutover_allowed/)
+})
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")
   const quality=workflow.split("\n  quality:\n")[1]||""
