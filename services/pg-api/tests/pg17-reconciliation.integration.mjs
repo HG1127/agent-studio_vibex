@@ -258,6 +258,10 @@ test('PG17 TCP: W9 reconciliation, real read-only transaction, origin and ACL fe
     assert.equal(report.length,16)
     assert.deepEqual(agent,{domain:'agent_specs',source_count:1,target_count:1,
       blockers:[],association_anomalies:0,status:'success'})
+    // A domain absent from the frozen source manifest has UNKNOWN source
+    // count (null), never a verified empty table (zero). Match the actual
+    // complete manifest instead of assuming all synthetic domains exist.
+    const frozenCounts=JSON.parse(fs.readFileSync(f.input.manifest,"utf8")).tables
     for(const item of report.filter(r=>r.domain!=='agent_specs')){
       // W11 added real field-level validation: the intentionally skeletal
       // source fixtures for Workflow/KB metadata are now INVALID, not merely
@@ -265,7 +269,9 @@ test('PG17 TCP: W9 reconciliation, real read-only transaction, origin and ACL fe
       const malformedSource=['workflows','agent_studio_kb_bases'].includes(item.domain)
       assert.equal(item.status,malformedSource?'failed':'unsupported',item.domain)
       assert.equal(item.association_anomalies,0)
-      assert.equal(item.source_count,item.domain==='studio_users'?1:0)
+      assert.equal(item.source_count,
+        Object.hasOwn(frozenCounts,item.domain)?frozenCounts[item.domain]:null,
+        item.domain)
       if(malformedSource){
         // A target count of null explicitly means reconciliation could not
         // safely inspect this invalid-source domain. It is NOT equivalent to
