@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {createHash} from "node:crypto"
-import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync} from "node:fs"
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,readdirSync} from "node:fs"
 import path from "node:path"
 import {tmpdir} from "node:os"
 import {spawnSync} from "node:child_process"
@@ -101,6 +101,37 @@ test("incomplete legacy backup manifest rejects omitted tables even when SHA mat
     assert.match(result.stderr,/snapshot_manifest_incomplete/)
     assert.doesNotMatch(result.stderr,/PRIVATE_BODY|owner-sensitive/)
   }finally{rmSync(f.temp,{recursive:true,force:true})}
+})
+test("every PocketBase SQL schema-declared business table is classified in migration inventory",()=>{
+  const hooks=path.join(root,"pocketbase","pb_hooks")
+  const files=[]
+  function walk(dir){
+    for(const entry of readdirSync(dir,{withFileTypes:true})){
+      const full=path.join(dir,entry.name)
+      if(entry.isDirectory())walk(full)
+      else if(/\.js$/.test(entry.name))files.push(full)
+    }
+  }
+  walk(hooks)
+  const declared=new Set()
+  for(const file of files){
+    const source=readFileSync(file,"utf8")
+    for(const result of source.matchAll(
+      /CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi
+    ))declared.add(result[1])
+  }
+  assert.ok(declared.size>=20,"must inspect actual old PocketBase SQL schema")
+  const readiness=readFileSync(cli,"utf8")
+  const from=readiness.indexOf("const groups={")
+  const until=readiness.indexOf("\nconst catalog=",from)
+  assert.ok(from>=0&&until>from,"classifications must be explicit")
+  const body=readiness.slice(from,until)
+  const classified=new Set([...body.matchAll(/"([A-Za-z_][A-Za-z0-9_]*)"/g)]
+    .map(x=>x[1]))
+  const missing=[...declared].filter(name=>!classified.has(name))
+  assert.deepEqual(missing,[],
+    "new legacy source table is unclassified; add an explicit migration gate")
+  assert.ok(classified.has("agent_studio_spec_revisions"))
 })
 test("readiness report is create-only with redacted JSON and no ability to alter backup",()=>{
   const f=fixture()

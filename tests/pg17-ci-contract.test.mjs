@@ -47,6 +47,7 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
     "test:stage-kb-atomic-cli","test:stage-history-import",
     "test:stage-user-import","test:stage-migration-identity",
     "test:stage-reconciliation","test:stage-domain-import",
+    "test:stage-kb-embedding-archive","test:stage-kb-embedding-cli",
     "test:stage-parallel-migrations"
   ])assert.ok(domains.includes("- "+name),name)
   assert.match(domains,/matrix\.script/)
@@ -137,6 +138,24 @@ test("Non-empty KB content real PG17 CI has independent synthetic stage and pre-
   assert.match(code,/refuse_non_ephemeral_pg17_kb_content_stage/)
   assert.match(code,/RUNNER_ENVIRONMENT/)
   assert.match(code,/production_cutover_allowed|cutover=NO-GO/)
+})
+test("W17 PG17 Embedding archive CI is isolated, synthetic and never a runtime queue",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-embedding-archive-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"W17 synthetic embedding archive must run separate PG17 service")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_W17_EMBEDDING_ARCHIVE_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-kb-embedding-archive\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+  const source=read("services/pg-api/tests/pg17-kb-embedding-archive.integration.mjs")
+  assert.match(source,/refuse_non_ephemeral_pg17_kb_embedding_archive/)
+  assert.match(source,/RUNNER_ENVIRONMENT/)
+  assert.match(source,/W17_PG17_EMBEDDING_ARCHIVE_PASS/)
 })
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")

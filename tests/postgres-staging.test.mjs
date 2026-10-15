@@ -33,6 +33,7 @@ test("Compose staging is isolated, non-public and cannot invent its own credenti
   assert.match(compose,/009_legacy_collaboration_import\.sql:ro/)
   assert.match(compose,/011_legacy_user_provision\.sql:ro/)
   assert.match(compose,/010_legacy_kb_content\.sql:ro/)
+  assert.match(compose,/013_legacy_kb_embedding_state\.sql:ro/)
   assert.match(compose,/012_legacy_run_history\.sql:ro/)
   const postgresConfig=compose.split(/\n  api:/)[0]
   assert.doesNotMatch(postgresConfig,/^\s*(ports|expose|network_mode|privileged|build):/m)
@@ -354,6 +355,25 @@ test("stage migration operator image copies only PG source and requires explicit
   assert.doesNotMatch(ci,/secrets\.|docker compose up|\bdeploy production\b/)
 })
 
+test("Embedding state archive is one-shot and keeps all model jobs disabled",()=>{
+  const overlay=read("deploy/postgres-staging/stage-embedding-archive.compose.yaml")
+  assert.match(overlay,/profiles:\s*\["stage-embedding-archive"\]/)
+  assert.match(overlay,/AGENT_STUDIO_PG_STAGE_EMBEDDING_ARCHIVE_ENABLED: "true"/)
+  assert.match(overlay,/AGENT_STUDIO_PG_DATABASE: agentstudio_stage/)
+  assert.match(overlay,/AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin/)
+  assert.match(overlay,/AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: \/run\/secrets\/postgres_password/)
+  assert.match(overlay,/AGENT_STUDIO_STAGE_EMBEDDING_SNAPSHOT_FILE/)
+  assert.match(overlay,/AGENT_STUDIO_STAGE_EMBEDDING_MANIFEST_FILE/)
+  assert.match(overlay,/AGENT_STUDIO_STAGE_EMBEDDING_MAPPING_FILE/)
+  assert.match(overlay,/--confirm-stage/)
+  assert.equal((overlay.match(/read_only: true/g)||[]).length,4)
+  assert.match(overlay,/networks:\s*\n\s+- private_db/)
+  assert.doesNotMatch(overlay,/\n\s+(?:ports|privileged|network_mode):|\/var\/run\/docker\.sock/)
+  const source=read("services/pg-api/src/stage-kb-embedding-import-cli.ts")
+  assert.match(source,/AGENT_STUDIO_PG_STAGE_EMBEDDING_ARCHIVE_ENABLED/)
+  assert.match(source,/embedding_enabled:false/)
+  assert.match(source,/jobs_created:0/)
+})
 test("Pilot SQL is not silently wired into the V7 PocketBase application",()=>{
   const pb=read("src/lib/pb.ts")
   const worker=read("worker/run.mjs")
