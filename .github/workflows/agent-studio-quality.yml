@@ -218,6 +218,17 @@ jobs:
           AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
         run: node --experimental-strip-types --test services/pg-api/tests/pg17-stage-operator.integration.mjs
 
+      - name: Rehearse synthetic PG17 pg_dump / pg_restore to NEW database only
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_STAGE_RESTORE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node ops/pg17-stage-restore-ci.mjs
+
   stage-operator-container:
     name: Stage-only migration operator / isolated image
     runs-on: ubuntu-latest
