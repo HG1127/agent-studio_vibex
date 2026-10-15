@@ -405,6 +405,49 @@ jobs:
           AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
         run: node --experimental-strip-types --test services/pg-api/tests/pg17-kb-combined.integration.mjs
 
+  pg17-full-stage-operator-isolated:
+    name: Real PostgreSQL 17 / full stage operator with KB and embeddings (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Full isolated stage operator with synthetic Agent and KB+Embedding
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W20_FULL_STAGE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-combined-stage-operator.integration.mjs
+
   stage-operator-container:
     name: Stage-only migration operator / isolated image
     runs-on: ubuntu-latest

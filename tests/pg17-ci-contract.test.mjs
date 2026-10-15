@@ -176,6 +176,24 @@ test("W19 combined KB real PG17 CI uses its own clean synthetic service and stro
   assert.match(source,/RUNNER_ENVIRONMENT/)
   assert.match(source,/W19_PG17_KB_COMBINED_PASS/)
 })
+test("W20 full stage operator real PG17 CI is independent and fail-closed",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-full-stage-operator-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"separate W20 PostgreSQL 17 service required")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_W20_FULL_STAGE_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-combined-stage-operator\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+  const source=read("services/pg-api/tests/pg17-combined-stage-operator.integration.mjs")
+  assert.match(source,/refuse_non_ephemeral_pg17_full_stage/)
+  assert.match(source,/RUNNER_ENVIRONMENT/)
+  assert.match(source,/W20_PG17_FULL_STAGE_PASS/)
+})
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")
   const quality=workflow.split("\n  quality:\n")[1]||""
