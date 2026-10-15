@@ -62,14 +62,11 @@ test('fail-closed: all W25 environment gates are mandatory before imports or I/O
   for(const run of ['','12x','1\n','1'.repeat(33)])deny({...valid,GITHUB_RUN_ID:run})
   for(const suffix of ['', 'a'.repeat(64)])deny({...valid,
     AGENT_STUDIO_PG17_ADMIN_PASSWORD:'synthetic-agentstudio-pg17-ci-123456-'+suffix})
-  for(const run of ['1\n','1\r','123x'])deny({...valid,GITHUB_RUN_ID:run,
-    AGENT_STUDIO_PG17_ADMIN_PASSWORD:'synthetic-agentstudio-pg17-ci-'+run+'-'+randomBytes(32).toString('hex')})
-  deny({...valid,AGENT_STUDIO_PG17_ADMIN_PASSWORD:valid.AGENT_STUDIO_PG17_ADMIN_PASSWORD+'\n'})
   deny({...valid,RUNNER_ENVIRONMENT:'self-hosted'})
   for(const run of ['1\n','1\r','1\t'])deny({...valid,GITHUB_RUN_ID:run,
     AGENT_STUDIO_PG17_ADMIN_PASSWORD:'synthetic-agentstudio-pg17-ci-'+run+'-'+randomBytes(32).toString('hex')})
   deny({...valid,AGENT_STUDIO_PG17_ADMIN_PASSWORD:valid.AGENT_STUDIO_PG17_ADMIN_PASSWORD+'\n'})
-  for(const temp of ['/','/tmp/../tmp/w25','relative'])deny({...valid,RUNNER_TEMP:temp})
+  for(const temp of ['/','/tmp/../tmp/w25','/tmp//w25','relative'])deny({...valid,RUNNER_TEMP:temp})
 })
 
 test('fail-closed: rejected W25 entry cannot open sockets',()=>{
@@ -370,6 +367,15 @@ function checkFault(seen){
 }
 
 // Run last: guards persist until this dedicated test process exits.
+function archiveMutationBlocked(error,table,sql){
+  if(error?.code==='P0001'&&/immutable$/.test(error.message))return true
+  // PostgreSQL checks the archived child FOREIGN KEY before its parent
+  // statement-level TRUNCATE trigger in some plans. Either is a true
+  // database refusal; a successful mutation must never pass this test.
+  return table==='legacy_run_history'&&sql.startsWith('TRUNCATE ')&&
+    ['0A000','2BP01'].includes(error?.code)&&
+    /cannot truncate a table referenced in a foreign key constraint/i.test(error.message)
+}
 test('PG17 TCP: W25 Agent events parent/child archive, rollback, FK, RLS, NO-GO',async()=>{
   const config=requireEphemeral(process.env)
   const temp=checkedTemp()
@@ -541,18 +547,23 @@ test('PG17 TCP: W25 Agent events parent/child archive, rollback, FK, RLS, NO-GO'
       assert.equal((await admin.query("SELECT count(*)::int AS n FROM pg_policies WHERE schemaname='agentstudio' AND tablename=$1",
         [table])).rows[0].n,0)
     }
+    checkpoint='wrong_role_and_force_rls_role_creation'
     const password='synthetic-'+randomBytes(32).toString('hex')
     await admin.query("CREATE ROLE agentstudio_w25_archive_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '"+password+"'")
     await admin.query('GRANT agentstudio_api,agentstudio_worker TO agentstudio_w25_archive_login')
     await admin.query('GRANT CONNECT ON DATABASE agentstudio_stage TO agentstudio_w25_archive_login')
     api=new pg.Pool({...config,user:'agentstudio_w25_archive_login',password})
+    checkpoint='wrong_role_and_force_rls_importer_denial'
     await assert.rejects(archive(api,f.prepare(prepare)),e=>e.message==='agent_run_events_wrong_stage_database_or_version')
+    checkpoint='wrong_role_and_force_rls_role_switch'
     const client=await api.connect()
     try{
       assert.deepEqual((await client.query('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0],
         {rolsuper:false,rolbypassrls:false})
       for(const role of ['agentstudio_api','agentstudio_worker']){
         await client.query('RESET ROLE');await client.query('SET ROLE '+role)
+        assert.deepEqual((await client.query('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0],
+          {rolsuper:false,rolbypassrls:false})
         for(const actor of ['',randomUUID(),...identity.owners]){
           await client.query("SELECT set_config('agentstudio.actor_id',$1,false)",[actor])
           for(const table of tables)for(const sql of ['SELECT * FROM ','INSERT INTO ','UPDATE ','DELETE FROM ','TRUNCATE ']){
@@ -561,6 +572,7 @@ test('PG17 TCP: W25 Agent events parent/child archive, rollback, FK, RLS, NO-GO'
           }
         }
       }
+      checkpoint='wrong_role_and_force_rls_accidental_grants'
       // Test accidental CRUD grants, not just SELECT. FORCE RLS hides rows;
       // statement-level immutable triggers also deny UPDATE/DELETE/TRUNCATE.
       try{
@@ -576,9 +588,14 @@ test('PG17 TCP: W25 Agent events parent/child archive, rollback, FK, RLS, NO-GO'
               'VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)',[plan.source_snapshot_sha256,plan.identity_mapping_sha256,
                 plan.manifest_sha256,'run_events','g'+f.ids.e.slice(1),identity.owners[0],f.ids.r,
                 JSON.stringify({...f.event,id:'g'+f.ids.e.slice(1)}),contentHash(f.event)]),e=>e.code==='42501')
+            await assert.rejects(client.query('INSERT INTO agentstudio.legacy_run_history(source_snapshot_sha256,'+
+              'identity_mapping_sha256,manifest_sha256,source_table,legacy_id,owner_user_id,source_record,payload_sha256) '+
+              'VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)',[plan.source_snapshot_sha256,plan.identity_mapping_sha256,
+                plan.manifest_sha256,'agent_runs','i'+f.ids.r.slice(1),identity.owners[0],
+                JSON.stringify({...f.run,id:'i'+f.ids.r.slice(1)}),contentHash(f.run)]),e=>e.code==='42501')
             for(const table of tables)for(const sql of ['UPDATE agentstudio.'+table+' SET executable=false',
               'DELETE FROM agentstudio.'+table,'TRUNCATE agentstudio.'+table])
-              await assert.rejects(client.query(sql),e=>e.code==='P0001'&&/immutable$/.test(e.message))
+              await assert.rejects(client.query(sql),e=>archiveMutationBlocked(e,table,sql))
           }
         }
       }finally{
@@ -588,7 +605,7 @@ test('PG17 TCP: W25 Agent events parent/child archive, rollback, FK, RLS, NO-GO'
     checkpoint='immutable_and_no_runtime'
     for(const table of tables)for(const sql of ['UPDATE agentstudio.'+table+' SET executable=false',
       'DELETE FROM agentstudio.'+table,'TRUNCATE agentstudio.'+table])
-      await assert.rejects(admin.query(sql),e=>e.code==='P0001'&&/immutable$/.test(e.message))
+      await assert.rejects(admin.query(sql),e=>archiveMutationBlocked(e,table,sql))
     await zero(admin,unused)
     for(const table of ['model_connections','agent_studio_kb_embedding_queue'])
       assert.equal((await admin.query('SELECT to_regclass($1) AS t',['agentstudio.'+table])).rows[0].t,null)
