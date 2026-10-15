@@ -485,20 +485,27 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
     assert.equal(cb.snapshot,f.digest);assert.equal(token.snapshot,f.digest)
     assert.equal(cb.mapping,token.mapping)
     // Preflight must reject incompatible business data before ANY phase writes.
+    checkpoint='sealed_source_preflight_fingerprint'
     const before=await fingerprint(admin)
+    let preflightProbe=0
     for(const change of [
       db=>db.exec("UPDATE agent_studio_kb_embedding_queue SET base_id='base1'"),
       db=>db.exec("UPDATE agent_studio_kb_chunks SET rh_user_id='employee0000002'"),
       db=>db.exec("INSERT INTO agent_studio_kb_access VALUES('synthetic_acl')"),
       db=>db.exec(`UPDATE agent_specs SET spec=json_set(spec,'$.knowledge_base_ids',json('["base0"]'))`),
     ]){
+      checkpoint='sealed_source_invalid_fixture_'+preflightProbe
       const bad=fixture(DatabaseSync,temp,identity,change)
       privateFile(path.join(bad.dir,'pg-password'),config.password)
+      checkpoint='sealed_source_invalid_operator_'+preflightProbe
       const out=invoke(bad,guard,config.password,identity)
+      checkpoint='sealed_source_invalid_report_'+preflightProbe
       assert.equal(out.status,2);assert.equal(out.report.result,'preflight_blocked')
       assert.deepEqual(out.report.blockers,['unverified_or_incompatible_source_domain'])
       assert.ok(out.report.phase_results.some(p=>p.status==='blocked'))
+      checkpoint='sealed_source_invalid_unchanged_'+preflightProbe
       assert.equal(await fingerprint(admin),before);bad.verify()
+      preflightProbe++
     }
     checkpoint='unified_operator_first_run'
     incomplete(invoke(f,guard,config.password,identity),false)
