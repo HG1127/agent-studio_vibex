@@ -641,7 +641,7 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
       ['legacy_kb_chunk_archive',{legacy_id:'w20_denied_chunk',legacy_document_id:'missing_document'},'true'],
       ['legacy_kb_vector_archive',{legacy_id:'missing_chunk'},'true'],
       ['legacy_kb_embedding_state_archive',{legacy_row_id:'w20_denied_queue',owner_user_id:identity.owners[1]},
-        "source_table='agent_studio_kb_embedding_queue'"],
+        "t.source_table='agent_studio_kb_embedding_queue'"],
     ]){
       checkpoint='cross_domain_FK_owner_fences_'+fkProbeIndex++
       // Embedding archive has GENERATED ALWAYS historical_* columns. An
