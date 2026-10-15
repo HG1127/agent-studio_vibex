@@ -147,14 +147,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Unit regression and TypeScript production build
-        run: pnpm check
-      - name: Internal production readiness policy (offline unit checks only)
-        run: pnpm test:readiness
-      - name: PostgreSQL staging schema and isolation contract (no DB started)
-        run: pnpm test:postgres-staging
-      - name: Ensure local launch scripts never auto-open browser or PocketBase admin
-        run: pnpm test:no-browser
+      - name: Install PostgreSQL API dependencies for root security tests
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Install PocketBase 0.40.5 for integration tests
         run: |
           mkdir -p .ci-bin
@@ -164,6 +158,14 @@ jobs:
           unzip -q .ci-bin/pocketbase.zip pocketbase -d .ci-bin
           chmod +x .ci-bin/pocketbase
           echo "POCKETBASE_BIN=$GITHUB_WORKSPACE/.ci-bin/pocketbase" >> "$GITHUB_ENV"
+      - name: Unit regression and TypeScript production build
+        run: pnpm check
+      - name: Internal production readiness policy (offline unit checks only)
+        run: pnpm test:readiness
+      - name: PostgreSQL staging schema and isolation contract (no DB started)
+        run: pnpm test:postgres-staging
+      - name: Ensure local launch scripts never auto-open browser or PocketBase admin
+        run: pnpm test:no-browser
       - name: PocketBase security integration
         run: pnpm test:integration
       - name: Worker without browser end-to-end

@@ -20,6 +20,8 @@ node-compile-cache/
 !**/.env.*.example
 *.local
 *.local.*
+# Audited source-only Vite proxy config: localhost targets, no secrets.
+!vibex-local/vite.local.config.ts
 !**/.env.local.example
 *.pem
 *.key

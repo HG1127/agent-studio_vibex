@@ -54,6 +54,20 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
   assert.match(web,/run: pnpm check/)
   assert.doesNotMatch(pg+domains,/docker compose up|deploy production|secrets\./i)
 })
+test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const quality=workflow.split("\n  quality:\n")[1]||""
+  const check=quality.indexOf("run: pnpm check")
+  const pg=quality.indexOf("services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts")
+  const pb=quality.indexOf("POCKETBASE_BIN=$GITHUB_WORKSPACE/.ci-bin/pocketbase")
+  assert.ok(check>0&&pg>=0&&pg<check,"PG API imported by CI contract tests must be installed first")
+  assert.ok(pb>=0&&pb<check,"PocketBase standalone-init tests require actual binary before pnpm check")
+  const config=read("vibex-local/vite.local.config.ts")
+  assert.match(config,/target: 'http:\/\/127\.0\.0\.1:7402'/)
+  assert.match(config,/AGENT_STUDIO_PB_ORIGIN must be a loopback HTTP origin/)
+  assert.match(read(".gitignore"),/!vibex-local\/vite\.local\.config\.ts/)
+})
+
 test("CI PG17 test is separate, version-pinned and isolated from production targets",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")
   const pg17Job=workflow.split("\n  pg17-tcp-isolated:\n")[1]
