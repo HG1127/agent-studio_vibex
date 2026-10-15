@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url'
 import {safeWorkflowGraph,isUuid,type SqlPool} from './contracts.ts'
 import {contentHash} from './stage-agent-import.ts'
 
+import {isApprovedStageMigrationOwner} from './stage-migration-identity.ts'
 export class WorkflowImportError extends Error {}
 function fail(code:string):never {throw new WorkflowImportError(code)}
 const id=/^[A-Za-z0-9]{15}$/
@@ -107,8 +108,8 @@ export async function importLegacyWorkflowsToStage(pool:SqlPool,plan:WorkflowImp
     if(untracked.rows.length)fail('workflow_untracked_target')
     let imported=0,replayed=0
     for(const row of rows){
-      const user=await db.query("SELECT id FROM agentstudio.users WHERE id=$1::uuid AND status='active'",[row.owner_user_id])
-      if(user.rows.length!==1)fail('workflow_owner_not_active')
+      if(!await isApprovedStageMigrationOwner(db,row.owner_user_id,source))
+        fail('workflow_owner_not_active')
       const previous=(await db.query<{target_workflow_id:string;payload_sha256:string;owner_user_id:string}>(
         'SELECT target_workflow_id,payload_sha256,owner_user_id FROM agentstudio.legacy_workflow_imports '+
         'WHERE legacy_workflow_id=$1',[row.legacy_id])).rows[0]

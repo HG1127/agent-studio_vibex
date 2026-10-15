@@ -9,18 +9,21 @@ DECLARE
   secured_tables integer;
   policy_count integer;
   vector_present boolean;
-  derived_migration_count integer;  unsafe_logins integer;
+  derived_migration_count integer;
+  unsafe_logins integer;
 BEGIN
   IF current_database()<>'agentstudio_stage' THEN
     RAISE EXCEPTION 'refuse_wrong_stage_database';
   END IF;
 
-  -- Domain importers own additive 006/007 SQL independently of the base.
-  -- The verifier accepts either an old base-only stage or a correctly
-  -- migrated stage, but never accepts a version ledger with missing tables.
-  SELECT count(*) INTO derived_migration_count
+  -- Domain importers own additive schemas independently of the base.
+  -- v8_010 installs four archived content tables; other modules add one.
+  -- Verify both migration ledger and actual RLS-protected table counts.
+  SELECT COALESCE(SUM(CASE WHEN version='pg_v8_010' THEN 4 ELSE 1 END),0)
+    INTO derived_migration_count
   FROM agentstudio.schema_migrations
-  WHERE version IN ('pg_v8_006','pg_v8_007','pg_v8_008');
+  WHERE version IN ('pg_v8_006','pg_v8_007','pg_v8_008',
+    'pg_v8_009','pg_v8_010','pg_v8_011','pg_v8_012');
   IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
      WHERE version='pg_v8_006') AND
      to_regclass('agentstudio.legacy_workflow_imports') IS NULL THEN
@@ -36,6 +39,33 @@ BEGIN
     WHERE version='pg_v8_008') AND
     to_regclass('agentstudio.legacy_schedule_imports') IS NULL THEN
     RAISE EXCEPTION 'schedule_crosswalk_schema_missing';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
+    WHERE version='pg_v8_009') AND
+    to_regclass('agentstudio.legacy_collaboration_imports') IS NULL THEN
+    RAISE EXCEPTION 'collaboration_archive_schema_missing';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
+    WHERE version='pg_v8_010') AND (
+    to_regclass('agentstudio.legacy_kb_content_snapshots') IS NULL OR
+    to_regclass('agentstudio.legacy_kb_document_archive') IS NULL OR
+    to_regclass('agentstudio.legacy_kb_chunk_archive') IS NULL OR
+    to_regclass('agentstudio.legacy_kb_vector_archive') IS NULL) THEN
+    RAISE EXCEPTION 'kb_frozen_content_archive_missing';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
+    WHERE version='pg_v8_011') AND
+    to_regclass('agentstudio.legacy_user_imports') IS NULL THEN
+    RAISE EXCEPTION 'disabled_employee_crosswalk_missing';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM agentstudio.schema_migrations
+    WHERE version='pg_v8_012') AND
+    to_regclass('agentstudio.legacy_run_history') IS NULL THEN
+    RAISE EXCEPTION 'history_archive_table_missing';
   END IF;
 
   SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')

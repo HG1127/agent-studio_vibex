@@ -51,7 +51,7 @@
 - .github/workflows/agent-studio-quality.yml 新增 pg17-tcp-isolated job；由 GitHub 托管 CI runner 新建全新 pgvector/pgvector:pg17 服务容器，只将测试端口映射到 127.0.0.1。
 - 验收脚本在建立连接前要求 GITHUB_ACTIONS=true、开启 AGENT_STUDIO_PG17_TEST_ENABLED、严格的 127.0.0.1/agentstudio_stage/agentstudio_admin 和与当前 GITHUB_RUN_ID 匹配的合成口令；连接后先检查数据库为 PostgreSQL 17 且不存在 agentstudio.runs，避免误改旧库。
 - 先从源码生成旧版 V8.1 stage schema，再实测 pg_v8_004_model_execution.sql 重复迁移；通过真实非超级用户登录验证最小权限。绝不会连接宝塔、公司 PocketBase、正式 OIDC 或真正的模型服务。
-- 测试仅在**包含该 Workflow 的 Git 仓库完成提交/推送、GitHub Actions 启动该 job 后**才能得到真正 PostgreSQL 17 PASS/FAIL。当前 VibeX 下载目录不是 Git 仓库，本轮没有推送，也没有启动此 CI job；代码就绪与真机验收通过必须严格区分。
+- 测试仅在**包含该 Workflow 的 Git 仓库完成提交/推送、GitHub Actions 启动该 job 后**才能得到真正 PostgreSQL 17 PASS/FAIL。截至 V8.5，此源码目录已关联 GitHub 仓库并触发了 CI，但首轮运行器未开始执行步骤、没有 PG17 真机通过记录；本地最新开发改动仍需经过授权的版本提交和 CI 实测，代码就绪与真机验收通过必须严格区分。
 - 离线护栏检查：node --test tests/pg17-ci-contract.test.mjs，断言不在允许的 CI 环境时 PG17 程序直接拒绝执行，且配置固定到隔离环境。
 
 ## PostgreSQL 17 真机阶段必须再验

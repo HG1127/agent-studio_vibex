@@ -1,7 +1,10 @@
 // V8.4 W2: legacy PocketBase Knowledge Base metadata -> isolated PG stage.
-// This slice imports EMPTY private KB bases only. Documents/chunks/vectors/ACL
-// must first get their own lossless importer and are therefore fail-closed.
+// Ordinary W2 imports EMPTY private KB bases only. The verified W6 entry point
+// atomically imports metadata plus frozen content; ACL remains fail-closed.
 import {contentHash,isUuid,type SqlPool} from "./stage-knowledge-base-primitives.ts"
+import type {SqlClient} from './contracts.ts'
+import {requireVerified,isKnownContentBase,type ContentBatch} from './stage-kb-content-import-source.ts'
+import {archiveKbContentInTransaction} from './stage-kb-content-import.ts'
 
 const hash64=/^[0-9a-f]{64}$/
 const id64=/^[A-Za-z0-9_-]{1,64}$/
@@ -44,7 +47,44 @@ export function normalizeLegacyKb(raw:Record<string,unknown>,
   return {...item,payload_sha256:contentHash(item)}
 }
 export async function importLegacyKbsToStage(pool:SqlPool,sourceSha:string,
-  rows:readonly LegacyKbRow[]):Promise<{
+  rows:readonly LegacyKbRow[]){
+  // W6 metadata carries an explicit related-data marker. Ordinary W2 callers
+  // cannot use the verified batch as a metadata-only shortcut.
+  if(!Array.isArray(rows))fail('invalid_stage_kb_batch')
+  if(rows.some(row=>isKnownContentBase(sourceSha,row.legacy_id)||
+    'has_related_data' in row && row.has_related_data===true))
+    fail('legacy_kb_documents_vectors_or_acl_not_migrated')
+  return runKbImport(pool,sourceSha,rows)
+}
+
+// Only the offline reader can mint this immutable capability. No boolean flag,
+// caller-created rows or callback can authorize a content-bearing W2 import.
+export async function importKbSnapshotAtomic(pool:SqlPool,batch:ContentBatch){
+  requireVerified(batch)
+  return runKbImport(pool,batch.snapshot,batch.bases,batch)
+}
+
+async function runKbImport(pool:SqlPool,sourceSha:string,
+  rows:readonly LegacyKbRow[],batch?:ContentBatch){
+  const db=await pool.connect()
+  let begun=false
+  try{
+    await db.query('BEGIN');begun=true
+    const metadata=await importMetadataInTransaction(db,sourceSha,rows,!!batch)
+    const content=batch?await archiveKbContentInTransaction(db,batch):undefined
+    await db.query('COMMIT');begun=false
+    return {...metadata,...(content?{archive:content,archive_only:true,rag_enabled:false,acl_activated:false}: {})}
+  }catch(error){
+    if(begun)try{await db.query('ROLLBACK')}catch{fail('stage_kb_rollback_failed')}
+    if(error instanceof StageKnowledgeError ||
+      error instanceof Error && /^kb_content_[a-zA-Z0-9_]+$/.test(error.message))throw error
+    throw new StageKnowledgeError('stage_kb_sql_failed')
+  }finally{db.release()}
+}
+
+// Private transaction participant: never opens, commits or releases a connection.
+async function importMetadataInTransaction(db:SqlClient,sourceSha:string,
+  rows:readonly LegacyKbRow[],atomic=false):Promise<{
     stage_only:true;production_cutover_allowed:false
     imported:number;replayed:number;reconciled:number
   }>{
@@ -69,13 +109,9 @@ export async function importLegacyKbsToStage(pool:SqlPool,sourceSha:string,
       fail("stage_kb_payload_tampered")
     seen.add(row.legacy_id)
   }
-  const db=await pool.connect()
-  let begun=false
-  try{
-    await db.query("BEGIN");begun=true
     const result=await db.query<{
-      database:string;login:string;admin:boolean;version:number
-    }>("SELECT current_database() AS database,session_user AS login,"+
+      database:string;login:string;role:string;admin:boolean;version:number
+    }>("SELECT current_database() AS database,session_user AS login,current_user AS role,"+
       "(SELECT rolsuper FROM pg_roles WHERE rolname=session_user) AS admin,"+
       "current_setting('server_version_num')::integer AS version")
     const target=result.rows[0]
@@ -83,6 +119,15 @@ export async function importLegacyKbsToStage(pool:SqlPool,sourceSha:string,
        target?.login!=="agentstudio_admin"||target.admin!==true||
        !(Number(target.version)>=170000 && Number(target.version)<180000))
       fail("refuse_nonisolated_pg17_target")
+    if((atomic||target.role) && target.role!=='agentstudio_admin')
+      fail('refuse_nonisolated_pg17_target')
+    if(atomic){
+      // Serialize BEFORE metadata writes, in the same order as archive-only
+      // imports. SHARE followed by a write would deadlock concurrent importers.
+      await db.query("SET LOCAL lock_timeout='5s'")
+      await db.query("SET LOCAL statement_timeout='30s'")
+      await db.query('LOCK TABLE agentstudio.jobs,agentstudio.legacy_knowledge_base_imports,agentstudio.knowledge_bases,agentstudio.users IN SHARE ROW EXCLUSIVE MODE')
+    }
     const ready=await db.query<{ok:boolean}>(
       "SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations "+
       "WHERE version='pg_v8_007') AS ok")
@@ -172,12 +217,6 @@ export async function importLegacyKbsToStage(pool:SqlPool,sourceSha:string,
       "WHERE source_snapshot_sha256=$1::text",[sourceSha])
     if(Number(total.rows[0]?.count)!==rows.length)
       fail("stage_kb_source_batch_incomplete")
-    await db.query("COMMIT");begun=false
     return {stage_only:true,production_cutover_allowed:false,
       imported,replayed,reconciled:rows.length}
-  }catch(error){
-    if(begun)await db.query("ROLLBACK").catch(()=>undefined)
-    if(error instanceof StageKnowledgeError)throw error
-    throw new StageKnowledgeError("stage_kb_sql_failed")
-  }finally{db.release()}
 }

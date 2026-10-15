@@ -1,0 +1,52 @@
+# V8.5 optional disabled-employee STAGING ONLY import.
+# NO password/hash transfer, NO account activation, NO public ports.
+# Use only with operator-approved offline snapshot and OIDC subject review.
+services:
+  stage_user_import:
+    profiles: ["stage-user-import"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/stage-user-import-cli.ts", "--execute", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/identity-map.json", "--oidc", "/run/input/reviewed-oidc.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_USER_IMPORT_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin
+      AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_USER_SNAPSHOT_FILE:?Approved offline snapshot required}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_USER_MANIFEST_FILE:?Snapshot SHA256 manifest required}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_USER_MAPPING_FILE:?Approved PB-to-PG UUID mapping required}
+        target: /run/input/identity-map.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_USER_OIDC_REVIEW_FILE:?Approved OIDC identity subject review required}
+        target: /run/input/reviewed-oidc.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 80
+    stop_grace_period: 25s

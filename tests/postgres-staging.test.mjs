@@ -30,6 +30,10 @@ test("Compose staging is isolated, non-public and cannot invent its own credenti
   assert.match(compose,/006_legacy_workflow_import\.sql:ro/)
   assert.match(compose,/007_legacy_kb_import\.sql:ro/)
   assert.match(compose,/008_legacy_schedule_import\.sql:ro/)
+  assert.match(compose,/009_legacy_collaboration_import\.sql:ro/)
+  assert.match(compose,/011_legacy_user_provision\.sql:ro/)
+  assert.match(compose,/010_legacy_kb_content\.sql:ro/)
+  assert.match(compose,/012_legacy_run_history\.sql:ro/)
   const postgresConfig=compose.split(/\n  api:/)[0]
   assert.doesNotMatch(postgresConfig,/^\s*(ports|expose|network_mode|privileged|build):/m)
   assert.match(compose,/profiles:\s*\["api-pilot"\]/)
@@ -248,6 +252,37 @@ test("First-stage PocketBase Agent import is an explicit one-shot, secret-file i
   assert.match(migration,/pg_v8_005/)
   assert.match(schema,/REVOKE ALL ON agentstudio\.legacy_agent_imports FROM agentstudio_api,agentstudio_worker/)
   assert.match(schema,/ALTER TABLE agentstudio\.legacy_agent_imports FORCE ROW LEVEL SECURITY/)
+})
+
+test("Atomic KB staging requires explicit opt-in, readonly source, isolated private network and no secrets in compose",()=>{
+  const overlay=read("deploy/postgres-staging/stage-kb-atomic-import.compose.yaml")
+  assert.match(overlay,/profiles:\s*\["stage-kb-atomic-import"\]/)
+  assert.match(overlay,/AGENT_STUDIO_PG_STAGE_KB_ATOMIC_ENABLED: "true"/)
+  assert.match(overlay,/AGENT_STUDIO_PG_HOST: postgres/)
+  assert.match(overlay,/AGENT_STUDIO_PG_DATABASE: agentstudio_stage/)
+  assert.match(overlay,/AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: \/run\/secrets\/postgres_password/)
+  assert.match(overlay,/AGENT_STUDIO_KB_ATOMIC_SNAPSHOT_FILE/)
+  assert.match(overlay,/AGENT_STUDIO_KB_ATOMIC_MANIFEST_FILE/)
+  assert.match(overlay,/AGENT_STUDIO_KB_ATOMIC_MAPPING_FILE/)
+  assert.equal((overlay.match(/read_only: true/g)||[]).length,4)
+  assert.match(overlay,/networks:\s*\n\s+- private_db/)
+  assert.doesNotMatch(overlay,/\n\s+ports:|\n\s+privileged:|\/var\/run\/docker\.sock/)
+})
+
+test("Stage-only disabled employee OIDC preprovision requires external reviews and no ports",()=>{
+  const file=read("deploy/postgres-staging/stage-user-import.compose.yaml")
+  assert.match(file,/profiles: \["stage-user-import"\]/)
+  assert.match(file,/AGENT_STUDIO_PG_STAGE_USER_IMPORT_ENABLED: "true"/)
+  assert.match(file,/AGENT_STUDIO_PG_DATABASE: agentstudio_stage/)
+  assert.match(file,/AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: \/run\/secrets\/postgres_password/)
+  assert.match(file,/AGENT_STUDIO_STAGE_USER_OIDC_REVIEW_FILE/)
+  assert.match(file,/AGENT_STUDIO_STAGE_USER_MAPPING_FILE/)
+  assert.match(file,/read_only: true/)
+  assert.doesNotMatch(file,/api_egress|\n\s+ports:/)
+  const sql=read("db/postgres/migrations/pg_v8_011_legacy_user_provision.sql")
+  assert.match(sql,/current_database\(\)<>'agentstudio_stage'/)
+  assert.match(sql,/REVOKE ALL ON agentstudio\.legacy_user_imports/)
+  assert.match(sql,/FORCE ROW LEVEL SECURITY/)
 })
 
 test("Pilot SQL is not silently wired into the V7 PocketBase application",()=>{

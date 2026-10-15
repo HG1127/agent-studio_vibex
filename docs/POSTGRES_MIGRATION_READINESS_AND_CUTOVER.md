@@ -6,11 +6,11 @@
 
 | 领域 | 已实现并有测试 | 尚缺失或未核验 |
 | --- | --- | --- |
-| PG17 | PG Schema/RLS/pgvector、V8.2 SQL 增量、嵌入 PostgreSQL 引擎测试 | 真正 PG17 Docker/TCP 并发 CI 没有实际执行 |
+| PG17 | PG Schema/RLS/pgvector、V8.2–V8.5 受限 SQL 增量、PGlite 引擎/合成数据测试 | GitHub 仓库已连接但 CI 运行器启动受阻，真正 PostgreSQL 17 TCP/多连接验收未实际执行 |
 | Agent | 原子任务领取、租约、准备、审批、模型文本调用、结果持久化、未知外部调用不重放 | 完整 Agent 工具/成本预算/异常审批复核运营 |
-| Workflow | 创建/更新安全节点和连线骨架 | 与旧 Workflow 执行语义、真实运行引擎不一致 |
-| 知识库 | 私有元数据、受限文档导入、关键词搜索 | 旧知识库向量、Embedding、模型连接及共享 ACL 迁移 |
-| 身份/团队 | PG 经签名 OIDC + owner-only RLS | 正式员工登录/Provisioning、团队 RBAC、PB 文本 ID 到 PG UUID 映射 |
+| Workflow | 配置 API 与 v8_006 只读旧图安全子集归档、旧 ID 交叉引用和执行禁用 | 完整原 Workflow 执行引擎、模型/工具运行语义尚未迁移 |
+| 知识库 | 元数据/关键词试验 API、v8_007 安全空知识库元数据导入、v8_010 原始文档/分片/向量冻结归档 | W2 禁止非空知识库导入仍阻断端到端；旧向量恢复、Embedding、真实共享 ACL/完整 RAG 尚未迁移 |
+| 身份/团队 | 签名 OIDC + owner-only RLS；v8_011 经审核快照和 IdP 映射创建 **默认禁用** PG 员工与 crosswalk（合成测试通过）；v8_009 协作关系隔离归档 | 真实 IdP 主体核验、逐账号启用、团队 RBAC 与真正共享权限仍未完成 |
 | 历史和基础数据 | SQLite 一致性备份与只读盘点、经批准的员工身份映射审查、首批严格兼容 Agent 配置的 stage-only 事务导入和旧 ID crosswalk（合成测试通过） | 尚未对真实数据导入；其余业务域 ETL、增量同步和正式切换回退演练未完成 |
 
 旧 PocketBase 文本 ID 与 PG UUID 不同；旧 Agent 配置和 Workflow Graph 可能包含新 API 白名单之外的参数；旧向量可能不匹配目前的样板 1536 维。这些都是**不允许直接复制数据库或静默丢弃字段**的原因。

@@ -43,6 +43,9 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
   for(const name of [
     "test:stage-agent-import","test:stage-workflow-import",
     "test:stage-kb-import","test:stage-schedule-import",
+    "test:stage-collaboration-import","test:stage-kb-content-import",
+    "test:stage-kb-atomic-cli","test:stage-history-import",
+    "test:stage-user-import","test:stage-migration-identity",
     "test:stage-parallel-migrations"
   ])assert.ok(domains.includes("- "+name),name)
   assert.match(domains,/matrix\.script/)

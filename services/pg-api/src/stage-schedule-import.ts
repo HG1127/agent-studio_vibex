@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
 import {fileURLToPath} from 'node:url'
 
+import {isApprovedStageMigrationOwner} from './stage-migration-identity.ts'
 export class ScheduleImportError extends Error {}
 function fail(code:string):never {throw new ScheduleImportError(code)}
 const id=/^[A-Za-z0-9]{15}$/
@@ -68,7 +69,7 @@ export async function importLegacySchedulesToStage(pool:SqlPool,plan:ScheduleImp
     let imported=0,replayed=0
     for(const row of rows){
       const r=row.source_record
-      if((await db.query("SELECT id FROM agentstudio.users WHERE id=$1::uuid AND status='active'",[row.owner_user_id])).rows.length!==1)
+      if(!await isApprovedStageMigrationOwner(db,row.owner_user_id,source))
         fail('schedule_owner_not_active')
       const agent=r.target_kind==='agent'
       const target=(await db.query<{id:string;payload_sha256:string;name:string;spec:unknown;owner_user_id:string;created_at:string|Date;updated_at:string|Date;visibility:string;team_id:string|null;requires_approval:boolean}>(agent?

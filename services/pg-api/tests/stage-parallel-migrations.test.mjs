@@ -16,6 +16,10 @@ const migrationFiles=[
   "db/postgres/migrations/pg_v8_006_legacy_workflow_import.sql",
   "db/postgres/migrations/pg_v8_007_legacy_kb_import.sql",
   "db/postgres/migrations/pg_v8_008_legacy_schedule_import.sql",
+  "db/postgres/migrations/pg_v8_009_legacy_collaboration_import.sql",
+  "db/postgres/migrations/pg_v8_010_legacy_kb_content.sql",
+  "db/postgres/migrations/pg_v8_011_legacy_user_provision.sql",
+  "db/postgres/migrations/pg_v8_012_legacy_run_history.sql",
 ]
 test("parallel domain migrations converge to one consistent schema and read-only stage verification",async()=>{
   const pg=await PGlite.create({extensions:{vector}})
@@ -29,6 +33,7 @@ test("parallel domain migrations converge to one consistent schema and read-only
       // PGlite is PostgreSQL SQL but not necessarily server major v17.
       // Production SQL retains its mandatory real PostgreSQL 17 guard.
       .replaceAll("session_user<>'agentstudio_admin'","false")
+      .replaceAll("current_user<>'agentstudio_admin'","false")
       .replaceAll("current_setting('server_version_num')::integer NOT BETWEEN 170000 AND 179999",
         "false")
     for(const file of migrationFiles){
@@ -38,12 +43,12 @@ test("parallel domain migrations converge to one consistent schema and read-only
     }
     const result=await pg.query(
       "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='agentstudio'")
-    assert.equal(result.rows[0].n,23)
+    assert.equal(result.rows[0].n,30)
     const rls=await pg.query(
       "SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n "+
       "ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' "+
       "AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity")
-    assert.equal(rls.rows[0].n,22)
+    assert.equal(rls.rows[0].n,29)
     const policies=await pg.query(
       "SELECT count(*)::int AS n FROM pg_policies "+
       "WHERE schemaname='agentstudio'")
@@ -52,6 +57,13 @@ test("parallel domain migrations converge to one consistent schema and read-only
       ["pg_v8_006","legacy_workflow_imports"],
       ["pg_v8_007","legacy_knowledge_base_imports"],
       ["pg_v8_008","legacy_schedule_imports"],
+      ["pg_v8_009","legacy_collaboration_imports"],
+      ["pg_v8_010","legacy_kb_content_snapshots"],
+      ["pg_v8_010","legacy_kb_document_archive"],
+      ["pg_v8_010","legacy_kb_chunk_archive"],
+      ["pg_v8_010","legacy_kb_vector_archive"],
+      ["pg_v8_011","legacy_user_imports"],
+      ["pg_v8_012","legacy_run_history"],
     ]){
       assert.equal((await pg.query(
         "SELECT count(*)::int AS n FROM agentstudio.schema_migrations "+
