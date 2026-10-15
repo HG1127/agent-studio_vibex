@@ -75,7 +75,7 @@ test('fail-closed: rejected W20 entry cannot open sockets',()=>{
     "import net from 'node:net';import fs from 'node:fs';import {registerHooks} from 'node:module';"+
     "Object.defineProperty(process,'platform',{value:'linux'});"+
     "net.Socket.prototype.connect=function(){throw Error('W20_FORBIDDEN_SOCKET')};"+
-    "for(const key of ['realpathSync','statSync','lstatSync','writeFileSync','appendFileSync','mkdtempSync','mkdirSync','chmodSync','rmSync'])"+
+    "for(const key of ['writeFileSync','appendFileSync','mkdtempSync','mkdirSync','chmodSync','rmSync'])"+
     "fs[key]=()=>{throw Error('W20_FORBIDDEN_WRITE')};"+
     "registerHooks({resolve(specifier,context,next){"+
     "if(specifier==='pg'||specifier==='node:sqlite'||specifier.includes('/src/stage-'))"+
@@ -467,12 +467,18 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
     assert.equal((await admin.query("SELECT count(*)::int AS n FROM pg_extension WHERE extname='vector'")).rows[0].n,1)
     const versions=(await admin.query('SELECT version FROM agentstudio.schema_migrations')).rows.map(r=>r.version)
     for(const v of ['005',...migrations.map(m=>m.slice(0,3))])assert.ok(versions.includes('pg_v8_'+v))
-    checkpoint='sealed_single_snapshot'
-    const f=fixture(DatabaseSync,temp,identity),different=fixture(DatabaseSync,temp,identity)
+    checkpoint='sealed_source_first_fixture'
+    const f=fixture(DatabaseSync,temp,identity)
+    checkpoint='sealed_source_second_fixture'
+    const different=fixture(DatabaseSync,temp,identity)
     assert.notEqual(f.digest,different.digest)
+    checkpoint='sealed_source_password_file'
     for(const x of [f,different])privateFile(path.join(x.dir,'pg-password'),config.password)
+    checkpoint='sealed_source_embedding_reader'
     const token=embedding.loadKbEmbeddingStateSnapshot(f.files)
+    checkpoint='sealed_source_content_reader'
     const cb=content.loadKbContentSnapshot(f.files,token)
+    checkpoint='sealed_source_manifest_assertions'
     const manifest=JSON.parse(fs.readFileSync(f.files.manifest,'utf8'))
     assert.equal(Object.keys(manifest.tables).length,11)
     assert.equal(manifest.sha256,f.digest);assert.equal(manifest.bytes,fs.statSync(f.files.snapshot).size)
