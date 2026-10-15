@@ -1,0 +1,185 @@
+name: Agent Studio quality
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'vibex-local/start-*'
+      - 'pocketbase/pb_hooks/**'
+      - 'worker/**'
+      - 'ops/**'
+      - 'docs/**'
+      - 'db/postgres/**'
+      - 'services/pg-api/**'
+      - 'deploy/postgres-staging/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/agent-studio-quality.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pg17-tcp-isolated:
+    name: Real PostgreSQL 17 / RLS / multi-worker (ephemeral)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PG API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Real PostgreSQL 17 TCP, parallel Worker, JWT, RLS and crash recovery
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}"
+        run: pnpm --dir services/pg-api run test:pg17
+
+  pg-api-core:
+    name: PostgreSQL core SQL/JWT/RLS (parallel to PocketBase)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Typecheck and mock HTTP contract
+        run: pnpm --dir services/pg-api run check
+      - name: PostgreSQL core SQL/JWT/RLS regression with bounded test concurrency
+        run: |
+          node --experimental-strip-types --test --test-concurrency=2 services/pg-api/tests/auth.test.mjs \
+          services/pg-api/tests/postgres-engine.test.mjs services/pg-api/tests/workflow-engine.test.mjs \
+          services/pg-api/tests/agent-prepare-engine.test.mjs \
+          services/pg-api/tests/model-execution-engine.test.mjs services/pg-api/tests/model-upgrade.test.mjs \
+          services/pg-api/tests/worker-login.test.mjs services/pg-api/tests/worker-upgrade.test.mjs \
+          services/pg-api/tests/knowledge-engine.test.mjs services/pg-api/tests/document-parser.test.mjs \
+          services/pg-api/tests/document-worker.test.mjs services/pg-api/tests/stage-upgrade.test.mjs \
+          services/pg-api/tests/stage-login-smoke.test.mjs services/pg-api/tests/stage-login.test.mjs
+
+  pg-migration-domains:
+    name: Stage migration / ${{ matrix.script }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - test:stage-agent-import
+          - test:stage-workflow-import
+          - test:stage-kb-import
+          - test:stage-schedule-import
+          - test:stage-parallel-migrations
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Independent domain migration SQL and rollback regression
+        run: pnpm --dir services/pg-api run ${{ matrix.script }}
+
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Unit regression and TypeScript production build
+        run: pnpm check
+      - name: Internal production readiness policy (offline unit checks only)
+        run: pnpm test:readiness
+      - name: PostgreSQL staging schema and isolation contract (no DB started)
+        run: pnpm test:postgres-staging
+      - name: Ensure local launch scripts never auto-open browser or PocketBase admin
+        run: pnpm test:no-browser
+      - name: Install PocketBase 0.40.5 for integration tests
+        run: |
+          mkdir -p .ci-bin
+          curl -fsSL --retry 3 \
+            https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/pocketbase_0.40.5_linux_amd64.zip \
+            -o .ci-bin/pocketbase.zip
+          unzip -q .ci-bin/pocketbase.zip pocketbase -d .ci-bin
+          chmod +x .ci-bin/pocketbase
+          echo "POCKETBASE_BIN=$GITHUB_WORKSPACE/.ci-bin/pocketbase" >> "$GITHUB_ENV"
+      - name: PocketBase security integration
+        run: pnpm test:integration
+      - name: Worker without browser end-to-end
+        run: pnpm test:worker
+      - name: Model provider protocol transport through Agent and Workflow
+        run: pnpm test:model-provider
+      - name: Shared calculator execution in Agent and Workflow
+        run: pnpm test:tool-executor
+      - name: Cross-tenant tool debug and explicit external write consent
+        run: pnpm test:tool-debug
+      - name: Internal employee overview and operations data isolation
+        run: pnpm test:internal-overview
+      - name: Reviewed one-time internal Agent sharing and recipient isolation
+        run: pnpm test:internal-templates
+      - name: Prove unproxied PocketBase must not be exposed to employees
+        run: pnpm test:gateway-boundary
+      - name: Concurrent leases and crash replay protections
+        run: pnpm test:concurrency
+      - name: Agent POST side-effect journal
+        run: pnpm test:agent-effects
+      - name: Scheduled Agent and Workflow end-to-end
+        run: pnpm test:schedules
+      - name: Knowledge retrieval, citation and tenant isolation
+        run: pnpm test:knowledge
+      - name: V6 to V7 database upgrade and idempotency
+        run: pnpm test:migrations

@@ -1,0 +1,49 @@
+# EXAMPLE ONLY. Replace server_name and cert paths after review.
+# Listen only on an explicitly-approved company hostname, NEVER proxy raw PB
+# to the public network. nginx must be installed/configured by an operator.
+server {
+    listen 80;
+    server_name agent-studio.internal.example;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name agent-studio.internal.example;
+    ssl_certificate /etc/ssl/agent-studio/fullchain.pem;
+    ssl_certificate_key /etc/ssl/agent-studio/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    root /srv/agent-studio/dist;
+    index index.html;
+    client_max_body_size 16m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # PocketBase's own superuser dashboard and credential endpoints are not
+    # employee-facing; maintenance remains via operator-local PB CLI.
+    location ^~ /__pb/_/ { return 403; }
+    location ^~ /__pb/api/collections/_superusers/ { return 403; }
+
+    # Browser client uses /__pb; strip prefix before talking to loopback PB.
+    location ^~ /__pb/ {
+        proxy_pass http://127.0.0.1:7000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Authorization $http_authorization;
+        # Deny any browser-supplied owner assertion at the network boundary.
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header X_Rh_User_Id "";
+        proxy_set_header X-Agent-Studio-Worker-Token "";
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 240s;
+        proxy_send_timeout 240s;
+        proxy_buffering off;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

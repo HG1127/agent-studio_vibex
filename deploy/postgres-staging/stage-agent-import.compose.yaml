@@ -1,0 +1,49 @@
+# V8.3 additional OPT-IN, one-shot stage Agent configuration import.
+# Requires fresh isolated stage PG + approved, verified offline snapshot,
+# independent reviewed identity UUID map and explicit operator approval.
+# Never run on company BaoTa/production. No public ports or network egress.
+services:
+  stage_agent_import:
+    profiles: ["stage-agent-import"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/stage-agent-import-cli.ts", "--execute", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/approved-map.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_AGENT_IMPORT_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin
+      AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_IMPORT_SNAPSHOT_FILE:?Approved offline SQLite snapshot must be outside source tree}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_IMPORT_MANIFEST_FILE:?Verified SHA256 manifest must be outside source tree}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_IMPORT_MAPPING_FILE:?Approved user UUID mapping must be outside source tree}
+        target: /run/input/approved-map.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 700m
+    cpus: 0.7
+    pids_limit: 80
+    stop_grace_period: 25s

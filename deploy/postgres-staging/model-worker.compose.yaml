@@ -1,0 +1,46 @@
+# EXTRA, opt-in overlay for an approved isolated PostgreSQL model-worker test.
+# Usage requires BOTH -f compose.yaml -f model-worker.compose.yaml AND
+# --profile model-worker. Do NOT deploy to BaoTa or any production environment.
+# Never put a model credential in this repository or an environment variable.
+services:
+  model_worker:
+    profiles: ["model-worker"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/model-worker-loop.ts"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_PILOT_ENABLED: "true"
+      AGENT_STUDIO_PG_MODEL_WORKER_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_WORKER_USER: agentstudio_stage_worker
+      AGENT_STUDIO_PG_WORKER_PASSWORD_FILE: /run/secrets/worker_login_password
+      AGENT_STUDIO_MODEL_API_KEY_FILE: /run/secrets/model_api_key
+      AGENT_STUDIO_MODEL_ENDPOINT: https://api.openai.com/v1/chat/completions
+      AGENT_STUDIO_MODEL_ID: "${AGENT_STUDIO_STAGE_MODEL_ID:?Set an approved test model ID}"
+    secrets:
+      - worker_login_password
+      - model_api_key
+    networks:
+      - private_db
+      - api_egress
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 80
+    stop_grace_period: 60s
+
+secrets:
+  model_api_key:
+    file: ${AGENT_STUDIO_STAGE_MODEL_API_KEY_FILE:?Model API key file outside repo, stage only}

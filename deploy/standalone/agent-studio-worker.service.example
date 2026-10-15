@@ -1,0 +1,25 @@
+# TEMPLATE ONLY: single worker per independent internal instance.
+# Must share the server-only token with PocketBase, but never a browser.
+[Unit]
+Description=Agent Studio background Worker
+Requires=agent-studio-pocketbase.service
+After=agent-studio-pocketbase.service network-online.target
+
+[Service]
+Type=simple
+User=agentstudio
+Group=agentstudio
+WorkingDirectory=/srv/agent-studio
+EnvironmentFile=/etc/agent-studio/studio.env
+ExecStart=/usr/bin/node /srv/agent-studio/worker/run.mjs
+Restart=on-failure
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+TimeoutStopSec=40s
+
+[Install]
+WantedBy=multi-user.target

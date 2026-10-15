@@ -1,0 +1,260 @@
+// V8 PostgreSQL proposal CONTRACT tests only.
+// No Docker containers, PG server, PocketBase server, browser or network calls.
+import test from "node:test"
+import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+import {fileURLToPath} from "node:url"
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
+const read=relative=>fs.readFileSync(path.join(root,relative),"utf8")
+const composePath="deploy/postgres-staging/compose.yaml"
+const compose=read(composePath)
+const schema=read("db/postgres/001_stage_schema.sql")
+const claim=read("db/postgres/002_claim_job.sql")
+const finish=read("db/postgres/003_finish_job.sql")
+const retry=read("db/postgres/004_retry_job.sql")
+
+test("Compose staging is isolated, non-public and cannot invent its own credentials",()=>{
+  assert.match(compose,/name:\s*agentstudio-pg-staging/)
+  assert.match(compose,/image:\s*pgvector\/pgvector:pg17/)
+  assert.match(compose,/POSTGRES_DB:\s*agentstudio_stage/)
+  assert.match(compose,/POSTGRES_PASSWORD_FILE:\s*\/run\/secrets\/postgres_password/)
+  assert.match(compose,/AGENT_STUDIO_STAGE_DB_PASSWORD_FILE:\?/)
+  assert.match(compose,/\binternal:\s*true/)
+  assert.match(compose,/restart:\s*["']?no/)
+  assert.match(compose,/mem_limit:\s*4g/)
+  assert.match(compose,/\bhealthcheck:/)
+  // Only the opt-in API pilot has a LOCALHOST-bound published port.
+  // The PostgreSQL service itself must never publish any port.
+  assert.match(compose,/006_legacy_workflow_import\.sql:ro/)
+  assert.match(compose,/007_legacy_kb_import\.sql:ro/)
+  assert.match(compose,/008_legacy_schedule_import\.sql:ro/)
+  const postgresConfig=compose.split(/\n  api:/)[0]
+  assert.doesNotMatch(postgresConfig,/^\s*(ports|expose|network_mode|privileged|build):/m)
+  assert.match(compose,/profiles:\s*\["api-pilot"\]/)
+  assert.match(compose,/127\.0\.0\.1:7402:7402/)
+  assert.match(compose,/AGENT_STUDIO_STAGE_API_PASSWORD_FILE:\?/)
+  assert.match(compose,/api_login_password/)
+  assert.match(compose,/AGENT_STUDIO_PG_USER:\s*agentstudio_stage_login/)
+  assert.match(compose,/AGENT_STUDIO_PG_PASSWORD_FILE:\s*\/run\/secrets\/api_login_password/)
+  assert.match(compose,/AGENT_STUDIO_OIDC_ISSUER/)
+  assert.match(compose,/AGENT_STUDIO_OIDC_JWKS_URL/)
+  const worker=compose.split(/\n  prepare_worker:/)[1]?.split(/\nnetworks:/)[0]
+  assert.ok(worker,"Worker stage must be opt-in and separate")
+  assert.match(worker,/profiles:\s*\["prepare-worker"\]/)
+  assert.match(worker,/AGENT_STUDIO_PG_PREPARE_WORKER_ENABLED/)
+  assert.match(worker,/agentstudio_stage_worker/)
+  assert.match(worker,/worker_login_password/)
+  assert.doesNotMatch(worker,/\n\s*ports:/)
+  assert.match(compose,/AGENT_STUDIO_STAGE_WORKER_PASSWORD_FILE:\?/)
+  assert.match(compose,/012_stage_worker_login.sql:/)
+
+  assert.doesNotMatch(compose,/\/var\/run\/docker\.sock|0\.0\.0\.0:5432|5432:5432/i)
+  assert.doesNotMatch(compose,/POSTGRES_PASSWORD:\s*\S+/)
+  const mount=path.resolve(root,"deploy/postgres-staging","../../db/postgres/001_stage_schema.sql")
+  assert.equal(fs.existsSync(mount),true,"bootstrap SQL must exist in stage only")
+})
+
+test("Postgres schema includes normalized isolated internal-business records and vector index",()=>{
+  assert.match(schema,/^\\set ON_ERROR_STOP on$/m)
+  assert.match(schema,/\bBEGIN;[\s\S]*\bCOMMIT;/)
+  assert.match(schema,/CREATE EXTENSION IF NOT EXISTS vector;/)
+  assert.match(schema,/CREATE SCHEMA IF NOT EXISTS agentstudio;/)
+  const tables=new Set(Array.from(schema.matchAll(/CREATE TABLE agentstudio\.([a-z_]+)\s*\(/g),m=>m[1]))
+  const expected=[
+    "schema_migrations","users","teams","team_memberships",
+    "agent_specs","legacy_agent_imports","workflows","runs","run_steps","jobs","run_leases",
+    "external_effects","approvals","schedules","schedule_occurrences",
+    "knowledge_bases","knowledge_documents","knowledge_chunks",
+    "template_invites","audit_events",
+  ]
+  assert.deepEqual([...tables].sort(),expected.sort())
+  assert.match(schema,/embedding vector\(1536\)/)
+  const kbTable=schema.split("CREATE TABLE agentstudio.knowledge_bases (")[1]?.split("CREATE INDEX ix_kb_owner")[0]
+  assert.ok(kbTable, "knowledge base table must exist")
+  assert.match(kbTable,/revision bigint NOT NULL DEFAULT 1 CHECK \(revision > 0\)/)
+  assert.match(kbTable,/visibility text NOT NULL DEFAULT 'private'/)
+  assert.match(schema,/CREATE UNIQUE INDEX ux_knowledge_document_active_hash/)
+
+  assert.match(schema,/USING hnsw \(embedding vector_cosine_ops\)/)
+  assert.match(schema,/CHECK\s*\(jsonb_typeof\(graph\)='object'\)/)
+  assert.match(schema,/CHECK \(visibility <> 'team' OR team_id IS NOT NULL\)/)
+  assert.match(schema,/UNIQUE \(owner_user_id,kind,dedupe_key\)/)
+  assert.match(schema,/UNIQUE\(run_id,step_key\)/)
+  assert.doesNotMatch(schema,/\b(?:DROP TABLE|TRUNCATE|DELETE FROM|CREATE DATABASE)\b/i)
+})
+
+test("Row-level security is fail-closed for every business table in staged schema",()=>{
+  const ownerTables=[
+    "agent_specs","workflows","runs","run_steps","jobs","run_leases",
+    "external_effects","approvals","schedules","schedule_occurrences",
+    "knowledge_bases","knowledge_documents","knowledge_chunks",
+    "template_invites","audit_events",
+  ]
+  const loop=schema.match(/FOREACH tab IN ARRAY ARRAY\[([\s\S]*?)\]\s*LOOP/)
+  assert.ok(loop,"owner-policy loop must cover business data")
+  for(const name of ownerTables){
+    assert.match(loop[1],new RegExp("'"+name+"'"),name)
+  }
+  assert.match(schema,/ALTER TABLE agentstudio\.users FORCE ROW LEVEL SECURITY/)
+  assert.match(schema,/ALTER TABLE agentstudio\.teams FORCE ROW LEVEL SECURITY/)
+  assert.match(schema,/ALTER TABLE agentstudio\.team_memberships FORCE ROW LEVEL SECURITY/)
+  assert.match(schema,/EXECUTE format\('ALTER TABLE agentstudio\.%I FORCE ROW LEVEL SECURITY',tab\)/)
+  assert.match(schema,/USING \(owner_user_id=agentstudio\.actor_id\(\)\)/)
+  assert.match(schema,/WITH CHECK \(owner_user_id=agentstudio\.actor_id\(\)\)/)
+  assert.match(schema,/current_setting\('agentstudio\.actor_id',true\)/)
+  assert.match(schema,/CREATE ROLE agentstudio_api NOLOGIN NOINHERIT/)
+  assert.match(schema,/CREATE ROLE agentstudio_worker NOLOGIN NOINHERIT/)
+  assert.match(schema,/REVOKE ALL ON agentstudio\.schema_migrations FROM agentstudio_api/)
+  assert.match(schema,/REVOKE INSERT,UPDATE,DELETE ON agentstudio\.users FROM agentstudio_api/)
+  assert.match(schema,/REVOKE INSERT,UPDATE,DELETE ON agentstudio\.team_memberships FROM agentstudio_api/)
+  assert.match(schema,/GRANT SELECT,UPDATE\(status,attempts,scheduled_at,lease_owner,/)
+  assert.doesNotMatch(schema,/GRANT SELECT,UPDATE ON agentstudio\.jobs TO agentstudio_worker/)
+  assert.match(schema,/CREATE POLICY worker_job_queue ON agentstudio\.jobs/)
+  assert.match(schema,/CREATE POLICY worker_effect_safety_read/)
+  assert.match(schema,/CREATE POLICY worker_run_status/)
+  assert.match(schema,/CREATE POLICY worker_user_active/)
+  assert.match(schema,/FOREIGN KEY \(agent_spec_id,owner_user_id\)/)
+  assert.match(schema,/FOREIGN KEY \(run_id,owner_user_id\)/)
+  // Deleting the author's source Agent must NOT invalidate a frozen, reviewed invite.
+  const invite=schema.split("CREATE TABLE agentstudio.template_invites (")[1]?.split("CREATE INDEX ix_template_invites_owner")[0]
+  assert.ok(invite)
+  assert.match(invite,/safe_snapshot jsonb NOT NULL/)
+  assert.doesNotMatch(invite,/FOREIGN KEY \(source_spec_id,owner_user_id\)/)
+
+})
+
+test("Job claim and completion SQL use SKIP LOCKED and fenced tokens, no blind retry",()=>{
+  assert.match(claim,/FOR UPDATE SKIP LOCKED/)
+  assert.match(claim,/queued_job\.attempts < queued_job\.max_attempts/)
+  assert.match(claim,/lease_token = gen_random_uuid\(\)/)
+  assert.match(claim,/lease_version = j\.lease_version \+ 1/)
+  assert.match(claim,/WHERE j\.id = c\.id/)
+  assert.match(claim,/RETURNING j\.id,j\.owner_user_id,j\.run_id/)
+  for(const text of [finish,retry]){
+    assert.match(text,/lease_token = \$2::uuid/)
+    assert.match(text,/lease_version = \$3::bigint/)
+    assert.match(text,/lease_owner = \$4::text/)
+    assert.match(text,/lease_until > clock_timestamp\(\)/)
+    assert.match(text,/status = 'leased'/)
+    assert.match(text,/RETURNING id/)
+  }
+  assert.match(retry,/attempts < max_attempts/)
+  assert.match(retry,/Ambiguous external writes must NEVER/)
+  assert.match(schema,/status text NOT NULL CHECK\(status IN \('started','succeeded','unknown'\)\)/)
+})
+
+test("Dedicated Agent prepare Worker cannot claim another queue kind or bypass fencing",()=>{
+  const prepare=read("db/postgres/005_claim_agent_prepare.sql")
+  const login=read("db/postgres/012_stage_worker_login.sql")
+  const migration=read("db/postgres/migrations/pg_v8_003_prepare_worker.sql")
+  assert.match(prepare,/kind='run_tick'/)
+  assert.match(prepare,/payload->>'phase'='prepare'/)
+  assert.match(prepare,/status='active'/)
+  assert.match(prepare,/FOR UPDATE OF j SKIP LOCKED/)
+  assert.match(prepare,/lease_version=j\.lease_version\+1/)
+  assert.match(prepare,/x.status IN \('started','unknown'\)/)
+  assert.match(login,/agentstudio_stage_worker LOGIN NOINHERIT/)
+  assert.match(login,/GRANT agentstudio_worker,agentstudio_api/)
+  assert.match(login,/worker_login_password/)
+  assert.match(migration,/pg_v8_003/)
+  assert.match(schema,/CREATE POLICY worker_effect_safety_read/)
+  assert.match(schema,/GRANT SELECT\(id,owner_user_id,status\) ON agentstudio.runs/)
+  assert.match(schema,/GRANT SELECT\(id,status\) ON agentstudio.users/)
+})
+
+test("Staging runtime API uses independent least-privilege SQL login and secrets",()=>{
+  const login=read("db/postgres/011_stage_api_login.sql")
+  const server=read("services/pg-api/src/server.ts")
+  const docker=read("services/pg-api/Dockerfile")
+  assert.match(login,/current_database\(\) <> 'agentstudio_stage'/)
+  assert.match(login,/agentstudio_stage_login LOGIN NOINHERIT/)
+  assert.match(login,/GRANT agentstudio_api TO agentstudio_stage_login/)
+  assert.match(login,/REVOKE CONNECT ON DATABASE agentstudio_stage FROM PUBLIC/)
+  assert.match(login,/REVOKE CREATE ON SCHEMA public FROM PUBLIC/)
+  assert.match(login,/pg_read_file\('\/run\/secrets\/api_login_password'\)/)
+  assert.doesNotMatch(login,/PASSWORD '.*'/)
+  assert.match(server,/user!=="agentstudio_stage_login"/)
+  assert.match(server,/database!=="agentstudio_stage"/)
+  assert.match(server,/AGENT_STUDIO_PG_PASSWORD_FILE/)
+  assert.match(server,/AGENT_STUDIO_PG_PILOT_ENABLED/)
+  assert.match(server,/127\.0\.0\.1/)
+  assert.doesNotMatch(server,/AGENT_STUDIO_PG_DATABASE_URL/)
+  assert.match(docker,/USER node/)
+  assert.doesNotMatch(docker,/COPY .*\.env/)
+})
+
+test("Staging verification SQL does not mutate data and refuses wrong schemas",()=>{
+  const verify=read("db/postgres/010_verify_stage.sql")
+  const script=read("deploy/postgres-staging/verify-stage.sh")
+  assert.match(verify,/BEGIN READ ONLY;/)
+  assert.match(verify,/ON_ERROR_STOP on/)
+  assert.match(verify,/total_tables<>\(20\+derived_migration_count\)/)
+  assert.match(verify,/secured_tables<>\(19\+derived_migration_count\)/)
+  assert.match(verify,/policy_count<>22/)
+  assert.match(verify,/vector_present/)
+  assert.match(verify,/rolcanlogin=true/)
+  assert.doesNotMatch(verify,/\b(?:INSERT|UPDATE|DELETE|TRUNCATE|DROP|CREATE TABLE)\b/i)
+  assert.match(script,/AGENT_STUDIO_STAGE_VERIFY_ONLY/)
+  assert.match(script,/I_APPROVE_STAGING_VERIFY/)
+  assert.match(script,/docker compose.*config --quiet/)
+  assert.match(script,/docker compose.*exec -T postgres/)
+  const executableLines=script.split(/\r?\n/).filter(line=>line.trim() && !/^\s*#/.test(line))
+  assert.doesNotMatch(executableLines.join("\n"),/\b(?:compose up|compose down|docker run|systemctl|docker pull|ssh )\b/i)
+})
+
+test("Isolated RLS rehearsal uses synthetic fixtures and rolls back all writes",()=>{
+  const sql=read("db/postgres/020_exercise_rls_stage.sql")
+  const runner=read("deploy/postgres-staging/exercise-stage.sh")
+  assert.match(sql,/^\\set ON_ERROR_STOP on$/m)
+  assert.match(sql,/^BEGIN;$/m)
+  assert.match(sql,/^ROLLBACK;$/m)
+  assert.doesNotMatch(sql,/^COMMIT;$/m)
+  assert.match(sql,/stage-smoke/)
+  assert.match(sql,/SET LOCAL ROLE agentstudio_api/)
+  assert.match(sql,/set_config\('agentstudio.actor_id'/)
+  assert.match(sql,/cross_employee_update_denied/)
+  assert.match(sql,/invite_survives_source_delete/)
+  assert.match(sql,/employee_b_cannot_read_a_invite/)
+  assert.doesNotMatch(sql,/INSERT INTO agentstudio\.schema_migrations/)
+  assert.match(runner,/AGENT_STUDIO_STAGE_EXERCISE_ACK/)
+  assert.match(runner,/I_APPROVE_SYNTHETIC_STAGING_TEST/)
+  assert.match(runner,/DOCKER_HOST/)
+  assert.match(runner,/DOCKER_CONTEXT/)
+  assert.match(runner,/docker compose.*config --quiet/)
+  assert.match(runner,/docker compose.*exec -T postgres/)
+  const executable=runner.split(/\r?\n/).filter(line=>line.trim()&&!/^\s*#/.test(line)).join("\n")
+  assert.doesNotMatch(executable,/\b(?:docker run|docker pull|compose up|compose down|systemctl|ssh )\b/i)
+})
+
+test("First-stage PocketBase Agent import is an explicit one-shot, secret-file isolated container",()=>{
+  const overlay=read("deploy/postgres-staging/stage-agent-import.compose.yaml")
+  const migration=read("db/postgres/migrations/pg_v8_005_legacy_agent_import.sql")
+  assert.match(overlay,/profiles:\s*\["stage-agent-import"\]/)
+  assert.match(overlay,/--execute/)
+  assert.match(overlay,/AGENT_STUDIO_PG_STAGE_AGENT_IMPORT_ENABLED: "true"/)
+  assert.match(overlay,/AGENT_STUDIO_PG_HOST: postgres/)
+  assert.match(overlay,/AGENT_STUDIO_PG_DATABASE: agentstudio_stage/)
+  assert.match(overlay,/AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin/)
+  assert.match(overlay,/AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: \/run\/secrets\/postgres_password/)
+  assert.match(overlay,/source: \$\{AGENT_STUDIO_STAGE_IMPORT_SNAPSHOT_FILE:\?/)
+  assert.match(overlay,/source: \$\{AGENT_STUDIO_STAGE_IMPORT_MANIFEST_FILE:\?/)
+  assert.match(overlay,/source: \$\{AGENT_STUDIO_STAGE_IMPORT_MAPPING_FILE:\?/)
+  assert.equal((overlay.match(/read_only: true/g)||[]).length,4)
+  assert.match(overlay,/networks:\s*\n\s+- private_db/)
+  assert.doesNotMatch(overlay,/\n\s+ports:|api_egress|\/var\/run\/docker\.sock/)
+  assert.match(migration,/current_database\(\)<>'agentstudio_stage'/)
+  assert.match(migration,/pg_v8_005/)
+  assert.match(schema,/REVOKE ALL ON agentstudio\.legacy_agent_imports FROM agentstudio_api,agentstudio_worker/)
+  assert.match(schema,/ALTER TABLE agentstudio\.legacy_agent_imports FORCE ROW LEVEL SECURITY/)
+})
+
+test("Pilot SQL is not silently wired into the V7 PocketBase application",()=>{
+  const pb=read("src/lib/pb.ts")
+  const worker=read("worker/run.mjs")
+  assert.match(pb,/new PocketBase\(/)
+  assert.match(worker,/\/api\/internal\/worker\/step/)
+  assert.doesNotMatch(compose,/pocketbase/)
+  assert.doesNotMatch(schema,/INSERT INTO agentstudio\.users/i)
+})

@@ -1,0 +1,52 @@
+{
+  "name": "agentstudio-pg-api-pilot",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types src/server.ts",
+    "worker:prepare": "node --experimental-strip-types src/worker-loop.ts",
+    "worker:model": "node --experimental-strip-types src/model-worker-loop.ts",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test:pg17": "node --experimental-strip-types --test tests/pg17-tcp.integration.mjs",
+    "stage-agent-import:plan": "node --experimental-strip-types src/stage-agent-import-cli.ts --plan",
+    "test:stage-agent-import": "node --experimental-strip-types --test tests/stage-agent-import.test.mjs tests/stage-agent-import-cli.test.mjs",
+    "stage-kb-import:plan": "node --experimental-strip-types src/stage-knowledge-base-import-cli.ts --plan",
+    "test:stage-kb-import": "node --experimental-strip-types --test tests/stage-knowledge-base-import.test.mjs tests/stage-knowledge-base-import-cli.test.mjs",
+    "test:stage-workflow-import": "node --experimental-strip-types --test tests/stage-workflow-import.test.mjs",
+    "test:stage-parallel-migrations": "node --experimental-strip-types --test tests/stage-parallel-migrations.test.mjs",
+    "test:stage-schedule-import": "node --experimental-strip-types --test tests/stage-schedule-import.test.mjs",
+    "test:auth": "node --experimental-strip-types --test tests/auth.test.mjs",
+    "test:engine": "node --experimental-strip-types --test tests/postgres-engine.test.mjs",
+    "test:workflow": "node --experimental-strip-types --test tests/workflow-engine.test.mjs",
+    "test:prepare": "node --experimental-strip-types --test tests/agent-prepare-engine.test.mjs",
+    "test:model-execution": "node --experimental-strip-types --test tests/model-execution-engine.test.mjs",
+    "test:model-upgrade": "node --experimental-strip-types --test tests/model-upgrade.test.mjs",
+    "test:worker-login": "node --experimental-strip-types --test tests/worker-login.test.mjs",
+    "test:worker-upgrade": "node --experimental-strip-types --test tests/worker-upgrade.test.mjs",
+    "test:knowledge": "node --experimental-strip-types --test tests/knowledge-engine.test.mjs",
+    "test:document-parser": "node --experimental-strip-types --test tests/document-parser.test.mjs",
+    "test:document-worker": "node --experimental-strip-types --test tests/document-worker.test.mjs",
+    "test:upgrade": "node --experimental-strip-types --test tests/stage-upgrade.test.mjs",
+    "test:role": "node --experimental-strip-types --test tests/stage-login-smoke.test.mjs",
+    "test:role-full": "node --experimental-strip-types --test tests/stage-login.test.mjs",
+    "test": "pnpm check && pnpm test:auth && pnpm test:engine && pnpm test:workflow && pnpm test:prepare && pnpm test:model-execution && pnpm test:model-upgrade && pnpm test:stage-agent-import && pnpm test:stage-workflow-import && pnpm test:stage-kb-import && pnpm test:stage-parallel-migrations && pnpm test:stage-schedule-import && pnpm test:worker-login && pnpm test:worker-upgrade && pnpm test:knowledge && pnpm test:document-parser && pnpm test:document-worker && pnpm test:upgrade && pnpm test:role && pnpm test:role-full"
+  },
+  "dependencies": {
+    "jose": "^6.1.0",
+    "jszip": "3.10.2",
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "6.4.299",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.9",
+    "@electric-sql/pglite-pgvector": "^0.0.10",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.5",
+    "pdf-lib": "1.17.1",
+    "typescript": "~5.9.3"
+  }
+}

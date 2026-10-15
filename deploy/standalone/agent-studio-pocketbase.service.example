@@ -1,0 +1,26 @@
+# TEMPLATE ONLY. Requires an authorized operator to prepare an isolated host.
+# Do not enable before backing up old data and validating service user paths.
+[Unit]
+Description=Agent Studio PocketBase (standalone private API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentstudio
+Group=agentstudio
+WorkingDirectory=/srv/agent-studio
+EnvironmentFile=/etc/agent-studio/studio.env
+ExecStart=/usr/local/bin/pocketbase serve --http=127.0.0.1:7000 --dir=/var/lib/agent-studio/pb_data --hooksDir=/srv/agent-studio/pocketbase/pb_hooks --migrationsDir=/srv/agent-studio/pocketbase/pb_migrations
+Restart=on-failure
+RestartSec=8s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/agent-studio
+TimeoutStopSec=40s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+[Unit]
+Description=Agent Studio VibeX Background Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentstudio
+Group=agentstudio
+WorkingDirectory=/opt/agent-studio
+EnvironmentFile=/etc/agent-studio/worker.env
+ExecStart=/usr/bin/node /opt/agent-studio/worker/run.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

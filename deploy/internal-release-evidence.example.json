@@ -1,0 +1,43 @@
+{
+  "reviewer": "",
+  "reviewed_at": "",
+  "explanation": "Fill ONLY after independently verifying production. Do not put tokens, model keys, customer data or passwords here.",
+  "checks": {
+    "trusted_gateway": {
+      "passed": false,
+      "evidence": ""
+    },
+    "pocketbase_private": {
+      "passed": false,
+      "evidence": ""
+    },
+    "worker_24h": {
+      "passed": false,
+      "evidence": ""
+    },
+    "backup_restore": {
+      "passed": false,
+      "evidence": ""
+    },
+    "real_model": {
+      "passed": false,
+      "evidence": ""
+    },
+    "outbound_filter": {
+      "passed": false,
+      "evidence": ""
+    },
+    "source_published": {
+      "passed": false,
+      "evidence": ""
+    },
+    "two_employee_acceptance": {
+      "passed": false,
+      "evidence": ""
+    },
+    "incident_owner_and_rollback": {
+      "passed": false,
+      "evidence": ""
+    }
+  }
+}

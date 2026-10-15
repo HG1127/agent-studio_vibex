@@ -1,0 +1,143 @@
+# V8 isolated PostgreSQL schema-verification container ONLY.
+# NEVER compose-up on the production BaoTa host before operations approval.
+# The PostgreSQL port is intentionally NOT published to the host or Internet.
+name: agentstudio-pg-staging
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: "no"
+    environment:
+      POSTGRES_DB: agentstudio_stage
+      POSTGRES_USER: agentstudio_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - postgres_password
+      - api_login_password
+      - worker_login_password
+    networks:
+      - private_db
+    volumes:
+      - staging_pgdata:/var/lib/postgresql/data
+      - ../../db/postgres/001_stage_schema.sql:/docker-entrypoint-initdb.d/001_stage_schema.sql:ro
+      # Independently owned migration modules, sorted after 001 before login bootstraps.
+      # Existing named volumes MUST be upgraded separately after verified backup.
+      - ../../db/postgres/migrations/pg_v8_006_legacy_workflow_import.sql:/docker-entrypoint-initdb.d/006_legacy_workflow_import.sql:ro
+      - ../../db/postgres/migrations/pg_v8_007_legacy_kb_import.sql:/docker-entrypoint-initdb.d/007_legacy_kb_import.sql:ro
+      - ../../db/postgres/migrations/pg_v8_008_legacy_schedule_import.sql:/docker-entrypoint-initdb.d/008_legacy_schedule_import.sql:ro
+      - ../../db/postgres/011_stage_api_login.sql:/docker-entrypoint-initdb.d/011_stage_api_login.sql:ro
+      - ../../db/postgres/012_stage_worker_login.sql:/docker-entrypoint-initdb.d/012_stage_worker_login.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentstudio_admin -d agentstudio_stage"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 8
+    mem_limit: 4g
+    cpus: 2.0
+    pids_limit: 250
+    stop_grace_period: 60s
+
+  # Opt-in API pilot. docker compose up postgres alone will NOT start this.
+  # Host interface stays 127.0.0.1; PostgreSQL itself publishes no ports.
+  api:
+    profiles: ["api-pilot"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_PILOT_ENABLED: "true"
+      AGENT_STUDIO_PG_PILOT_CONTAINER: "true"
+      AGENT_STUDIO_PG_API_BIND: "0.0.0.0"
+      AGENT_STUDIO_PG_API_PORT: "7402"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_USER: agentstudio_stage_login
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_PASSWORD_FILE: /run/secrets/api_login_password
+      AGENT_STUDIO_OIDC_ISSUER: "${AGENT_STUDIO_OIDC_ISSUER:?Provide approved OIDC issuer}"
+      AGENT_STUDIO_OIDC_AUDIENCE: "${AGENT_STUDIO_OIDC_AUDIENCE:?Provide approved API audience}"
+      AGENT_STUDIO_OIDC_JWKS_URL: "${AGENT_STUDIO_OIDC_JWKS_URL:?Provide approved JWKS URL}"
+      AGENT_STUDIO_INTERNAL_APP_ORIGIN: "${AGENT_STUDIO_INTERNAL_APP_ORIGIN:?Provide approved internal web origin}"
+    secrets:
+      - api_login_password
+    ports:
+      - "127.0.0.1:7402:7402"
+    networks:
+      - private_db
+      - api_egress
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 128
+    stop_grace_period: 25s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7402/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  # Optional, isolated *preparation only* Worker. It cannot run LLMs,
+  # external tools, schedules or knowledge-ingestion jobs. No public ports.
+  prepare_worker:
+    profiles: ["prepare-worker"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/worker-loop.ts"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_PILOT_ENABLED: "true"
+      AGENT_STUDIO_PG_PREPARE_WORKER_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_WORKER_USER: agentstudio_stage_worker
+      AGENT_STUDIO_PG_WORKER_PASSWORD_FILE: /run/secrets/worker_login_password
+    secrets:
+      - worker_login_password
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 80
+    stop_grace_period: 30s
+
+networks:
+  private_db:
+    driver: bridge
+    internal: true
+
+  api_egress:
+    driver: bridge
+
+volumes:
+  staging_pgdata:
+    # Docker-managed local volume, physically separated from existing BaoTa DBs.
+
+secrets:
+  postgres_password:
+    file: ${AGENT_STUDIO_STAGE_DB_PASSWORD_FILE:?Set to an existing secret file outside the project}
+  api_login_password:
+    file: ${AGENT_STUDIO_STAGE_API_PASSWORD_FILE:?Set to a DIFFERENT existing staging API secret file outside the project}
+  worker_login_password:
+    file: ${AGENT_STUDIO_STAGE_WORKER_PASSWORD_FILE:?Set to an independent staging Worker secret outside the project}

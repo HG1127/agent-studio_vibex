@@ -1,0 +1,65 @@
+"use strict"
+
+// Pure Goja-compatible request builder shared by Agent/Workflow.
+// Server owns tenant authorization, key decryption, timeouts and HTTP transport.
+// Do not log or persist this return value: it includes the live provider secret.
+function buildRequest(provider, opts) {
+  var p = provider === "anthropic" || provider === "gemini" ? provider : "openai"
+  var base = String(opts.baseUrl || "").replace(/\/+$/, "")
+  var key = String(opts.apiKey || "")
+  var model = String(opts.model || "")
+  var messages = Array.isArray(opts.messages) ? opts.messages : []
+  var timeout = Number(opts.timeout)
+  var maxTokens = opts.maxTokens
+  if (p === "anthropic") {
+    var system = ""
+    var adapted = []
+    for (var i = 0; i < messages.length; i++) {
+      var item = messages[i] || {}
+      var role = String(item.role || "user")
+      var text = String(item.content || "")
+      if (role === "system") {
+        system = system ? system + "\n\n" + text : text
+      } else {
+        adapted.push({ role: role === "assistant" ? "assistant" : "user", content: text })
+      }
+    }
+    if (!adapted.length) adapted.push({ role: "user", content: "请继续。" })
+    var body = { model: model, max_tokens: 4096, messages: adapted }
+    if (system) body.system = system
+    return {
+      url: base + "/messages", method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify(body), timeout: timeout,
+    }
+  }
+  if (p === "gemini") {
+    var instruction = ""
+    var contents = []
+    for (var j = 0; j < messages.length; j++) {
+      var msg = messages[j] || {}
+      var msgRole = String(msg.role || "user")
+      var msgText = String(msg.content || "")
+      if (msgRole === "system") {
+        instruction = instruction ? instruction + "\n\n" + msgText : msgText
+      } else {
+        contents.push({ role: msgRole === "assistant" ? "model" : "user", parts: [{ text: msgText }] })
+      }
+    }
+    if (!contents.length) contents.push({ role: "user", parts: [{ text: "请继续。" }] })
+    var data = { contents: contents }
+    if (instruction) data.system_instruction = { parts: [{ text: instruction }] }
+    return {
+      url: base + "/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), timeout: timeout,
+    }
+  }
+  return {
+    url: base + "/chat/completions", method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+    body: JSON.stringify({ model: model, messages: messages, max_tokens: maxTokens || 4096, stream: false }),
+    timeout: timeout,
+  }
+}
+module.exports = { buildRequest: buildRequest }
