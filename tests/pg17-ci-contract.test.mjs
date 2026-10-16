@@ -50,7 +50,8 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
     "test:stage-reconciliation","test:stage-domain-import",
     "test:stage-kb-embedding-archive","test:stage-kb-embedding-cli",
     "test:stage-kb-combined","test:stage-kb-combined-cli",
-    "test:stage-parallel-migrations"
+    "test:stage-execution-fence","test:stage-schedule-occurrences",
+    "test:stage-occurrence-cli","test:stage-parallel-migrations"
   ])assert.ok(domains.includes("- "+name),name)
   assert.match(domains,/matrix\.script/)
   assert.doesNotMatch(web,/run test:stage-agent-import/)
@@ -226,6 +227,42 @@ test("W25 frozen Agent event archive runs only on an isolated synthetic PG17 ser
   assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
   assert.match(job,/services\/pg-api\/tests\/pg17-agent-run-events\.integration\.mjs/)
   assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+})
+test("W27 reviewed structured Workflow history PG17 CI is synthetic-only and isolated",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-structured-workflow-history-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"independent W27 PG17 service required")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_W27_STRUCTURED_HISTORY_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-workflow-structured-history\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+  const src=read("services/pg-api/tests/pg17-workflow-structured-history.integration.mjs")
+  assert.match(src,/refuse_non_ephemeral_pg17_structured_workflow_history/)
+  assert.match(src,/RUNNER_ENVIRONMENT/)
+  assert.match(src,/W27_PG17_STRUCTURED_WORKFLOW_HISTORY_PASS/)
+})
+test("W29 PostgreSQL 17 schedule occurrence archive has independent synthetic service",()=>{
+  const wf=read(".github/workflows/agent-studio-quality.yml")
+  const job=wf.split("\n  pg17-occurrence-history-isolated:\n")[1]
+    ?.split("\n  stage-operator-container:\n")[0]
+  assert.ok(job,"independent PG17 occurrence archive job required")
+  assert.match(job,/pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_W29_OCCURRENCE_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/pg17-occurrence-history\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE/)
+  const source=read("services/pg-api/tests/pg17-occurrence-history.integration.mjs")
+  assert.match(source,/refuse_non_ephemeral_pg17_occurrence/)
+  assert.match(source,/RUNNER_ENVIRONMENT/)
+  assert.match(source,/W29_PG17_OCCURRENCE_ARCHIVE_PASS/)
 })
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")

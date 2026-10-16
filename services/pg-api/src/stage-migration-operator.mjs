@@ -26,6 +26,7 @@ const phases={
   knowledge_atomic:"stage-kb-atomic-import-cli.ts",
   schedules:"stage-domain-import-cli.ts",
   collaboration:"stage-domain-import-cli.ts",
+  occurrence_history:"stage-domain-import-cli.ts",
   agent_events:"stage-domain-import-cli.ts",
   workflow_history:"stage-domain-import-cli.ts",
   history:"stage-domain-import-cli.ts",
@@ -49,11 +50,12 @@ const kbEmbeddingState=[
   "agent_studio_kb_embedding_settings",
   "agent_studio_kb_embedding_queue",
 ]
+const occurrenceHistoryTables=["agent_studio_schedule_occurrences"]
 const workflowHistoryTables=["workflow_runs","workflow_events"]
 const agentEventTables=["run_events"]
 const namesOfKnownBusiness=new Set([
   "studio_users","model_connections",...Object.values(businessTables),
-  ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,...agentEventTables,
+  ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,...agentEventTables,...occurrenceHistoryTables,
   "agent_studio_schema_migrations",
 ])
 // Never skip arbitrary underscore-prefixed SQLite tables. Only these
@@ -205,6 +207,7 @@ function candidatePhases(counts){
   if(sum(counts,workflowHistoryTables)>0)enabled.push("workflow_history")
   if((counts.agent_runs??0)>0)enabled.push("history")
   if(sum(counts,agentEventTables)>0)enabled.push("agent_events")
+  if(sum(counts,occurrenceHistoryTables)>0)enabled.push("occurrence_history")
   enabled.push("reconciliation")
   return enabled
 }
@@ -227,6 +230,7 @@ function commandFor(phase,args,mode){
   const kind={
     workflow:"workflow",schedules:"schedules",
     collaboration:"collaboration",history:"history",
+    occurrence_history:"schedule-occurrences",
     workflow_history:"workflow-history",agent_events:"agent-events",
   }[phase]
   if(kind){
@@ -256,6 +260,7 @@ function runPhase(phase,args,mode){
       workflow:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       schedules:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       collaboration:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
+      occurrence_history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       agent_events:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      workflow_history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       reconciliation:"AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED",
     }[phase]

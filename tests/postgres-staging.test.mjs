@@ -34,6 +34,8 @@ test("Compose staging is isolated, non-public and cannot invent its own credenti
   assert.match(compose,/011_legacy_user_provision\.sql:ro/)
   assert.match(compose,/010_legacy_kb_content\.sql:ro/)
   assert.match(compose,/013_legacy_kb_embedding_state\.sql:ro/)
+  assert.match(compose,/017_legacy_execution_fence_archive\.sql:ro/)
+  assert.match(compose,/018_legacy_schedule_occurrence_history\.sql:ro/)
   assert.match(compose,/015_legacy_agent_run_events\.sql:ro/)
   assert.match(compose,/014_legacy_workflow_history\.sql:ro/)
   assert.match(compose,/012_legacy_run_history\.sql:ro/)

@@ -27,6 +27,8 @@ import {
 import {
   prepareAgentRunEventsImport,importLegacyAgentRunEventsToStage,
 } from "./stage-agent-run-events-import.ts"
+import {prepareScheduleOccurrenceHistory,
+  importLegacyScheduleOccurrenceHistoryToStage} from "./stage-schedule-occurrence-history-import.ts"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../../..")
@@ -40,6 +42,7 @@ const domains={
     "agent_studio_spec_collab_audit","agent_studio_spec_revisions",
   ],
   "agent-events":["run_events"],
+  "schedule-occurrences":["agent_studio_schedule_occurrences"],
   "workflow-history":["workflow_runs","workflow_events"],
   history:["agent_runs"],
 } as const
@@ -204,6 +207,7 @@ function buildPlan(args:ReturnType<typeof parse>){
     case "collaboration":return prepareCollaborationImport(args.snapshot,args.manifest,args.mapping)
     case "agent-events":return prepareAgentRunEventsImport(args.snapshot,args.manifest,args.mapping)
     case "workflow-history":return prepareWorkflowHistoryImport(args.snapshot,args.manifest,args.mapping)
+    case "schedule-occurrences":return prepareScheduleOccurrenceHistory(args.snapshot,args.manifest,args.mapping)
     case "history":return prepareHistoryImport(args.snapshot,args.manifest,args.mapping)
   }
 }
@@ -262,6 +266,8 @@ export async function runCli(argv:string[]){
           importLegacyWorkflowHistoryToStage(adapter,plan as ReturnType<typeof prepareWorkflowHistoryImport>):
         args.domain==="agent-events"?
           importLegacyAgentRunEventsToStage(adapter,plan as ReturnType<typeof prepareAgentRunEventsImport>):
+        args.domain==="schedule-occurrences"?
+          importLegacyScheduleOccurrenceHistoryToStage(adapter,plan as ReturnType<typeof prepareScheduleOccurrenceHistory>):
           importLegacyHistoryToStage(adapter,plan as ReturnType<typeof prepareHistoryImport>))
     console.log(JSON.stringify({...base,result:"stage_domain_reconciled",
       imported:receipt.imported,replayed:receipt.replayed,

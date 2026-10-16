@@ -33,6 +33,8 @@ services:
       - ../../db/postgres/migrations/pg_v8_013_legacy_kb_embedding_state.sql:/docker-entrypoint-initdb.d/013_legacy_kb_embedding_state.sql:ro
       - ../../db/postgres/migrations/pg_v9_014_legacy_workflow_history.sql:/docker-entrypoint-initdb.d/014_legacy_workflow_history.sql:ro
       - ../../db/postgres/migrations/pg_v9_015_legacy_agent_run_events.sql:/docker-entrypoint-initdb.d/015_legacy_agent_run_events.sql:ro
+      - ../../db/postgres/migrations/pg_v9_017_legacy_execution_fence_archive.sql:/docker-entrypoint-initdb.d/017_legacy_execution_fence_archive.sql:ro
+      - ../../db/postgres/migrations/pg_v9_018_legacy_schedule_occurrence_history.sql:/docker-entrypoint-initdb.d/018_legacy_schedule_occurrence_history.sql:ro
       - ../../db/postgres/012_stage_worker_login.sql:/docker-entrypoint-initdb.d/012_stage_worker_login.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U agentstudio_admin -d agentstudio_stage"]
