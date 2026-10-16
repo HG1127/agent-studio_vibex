@@ -19,7 +19,7 @@ const spec=()=>({
   done_criteria:["Caveats"],
   tools:["summarize"],knowledge_base_ids:[],require_approval:true,
 })
-function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,embeddingHistory=false,workflowHistory=false,agentEvents=false}={}){
+function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,hiddenCustom=false,platformTable=false,platformAuthTable=false,embeddingHistory=false,workflowHistory=false,agentEvents=false}={}){
   const dir=mkdtempSync(path.join(tmpdir(),"stage-operator-synthetic-"))
   const snapshot=path.join(dir,"snapshot.sqlite")
   const manifest=path.join(dir,"manifest.json")
@@ -55,6 +55,21 @@ function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=f
     db.exec("CREATE TABLE unexpected_future_module(id TEXT,payload TEXT)")
     db.prepare("INSERT INTO unexpected_future_module VALUES(?,?)")
       .run("synthetic","PRIVATE_TABLE_DATA_NEVER_OUTPUT")
+  }
+  if(hiddenCustom){
+    db.exec('CREATE TABLE "_unreviewed_business"(id TEXT,payload TEXT)')
+    db.prepare('INSERT INTO "_unreviewed_business" VALUES(?,?)')
+      .run("private-row","UNDISCLOSED_PRIVATE_BUSINESS")
+  }
+  if(platformTable){
+    db.exec('CREATE TABLE "_collections"(id TEXT,raw_rules TEXT)')
+    db.prepare('INSERT INTO "_collections" VALUES(?,?)')
+      .run("synthetic","PRIVATE_PB_PLATFORM_CONFIGURATION")
+  }
+  if(platformAuthTable){
+    db.exec('CREATE TABLE "_superusers"(id TEXT,password_hash TEXT)')
+    db.prepare('INSERT INTO "_superusers" VALUES(?,?)')
+      .run("synthetic-superuser","NEVER_MIGRATE_LEGACY_ADMIN_PASSWORD_HASH")
   }
   if(embeddingHistory){
     db.exec(
@@ -281,6 +296,54 @@ test("previously unknown nonempty collection blocks EVERY stage import before ne
       /stage_operator_password_file_required/
     assert.match(cannotExecute.stderr,expected)
     assert.doesNotMatch(cannotExecute.stderr,/ECONNREFUSED|ENOTFOUND/)
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("unknown nonempty underscore-prefixed collection fails before any stage writes",()=>{
+  const f=fixture({hiddenCustom:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,2,out.stderr)
+    const info=JSON.parse(out.stdout)
+    assert.equal(info.result,"preflight_blocked")
+    assert.equal(info.unmapped_nonempty_tables,1)
+    assert.equal(info.excluded_platform_table_count,0)
+    assert.equal(info.phase_results.length,0)
+    assert.deepEqual(info.blockers,["unmapped_nonempty_legacy_tables"])
+    assert.ok(!out.stdout.includes("UNDISCLOSED_PRIVATE_BUSINESS"))
+    assert.equal(info.production_cutover_allowed,false)
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+
+test("explicit PocketBase system metadata exclusion is separately counted and never greenlights production",()=>{
+  const f=fixture({platformTable:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,0,out.stderr)
+    const info=JSON.parse(out.stdout)
+    assert.equal(info.result,"preflight_verified")
+    assert.equal(info.excluded_platform_table_count,1)
+    assert.equal(info.excluded_platform_row_count,1)
+    assert.equal(info.platform_configuration_rebuild_required,true)
+    assert.equal(info.unmapped_nonempty_tables,0)
+    assert.ok(info.blockers.includes("pocketbase_platform_metadata_rebuild_unverified"))
+    assert.equal(info.production_cutover_allowed,false)
+    assert.ok(!out.stdout.includes("PRIVATE_PB_PLATFORM_CONFIGURATION"))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("PocketBase superuser credentials require separate IdP reprovision review, not silent import",()=>{
+  const f=fixture({platformAuthTable:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,0,out.stderr)
+    const result=JSON.parse(out.stdout)
+    assert.equal(result.result,"preflight_verified")
+    assert.equal(result.excluded_auth_table_count,1)
+    assert.equal(result.excluded_auth_row_count,1)
+    assert.equal(result.legacy_auth_reprovision_review_required,true)
+    assert.ok(result.blockers.includes("pocketbase_legacy_auth_reprovision_unverified"))
+    assert.equal(result.production_cutover_allowed,false)
+    assert.ok(!out.stdout.includes("NEVER_MIGRATE_LEGACY_ADMIN_PASSWORD_HASH"))
+    assert.ok(!out.stderr.includes("NEVER_MIGRATE_LEGACY_ADMIN_PASSWORD_HASH"))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 test("expired or mismatched review blocks before planning or connecting to stage",()=>{

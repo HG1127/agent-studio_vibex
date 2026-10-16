@@ -56,6 +56,17 @@ const namesOfKnownBusiness=new Set([
   ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,...agentEventTables,
   "agent_studio_schema_migrations",
 ])
+// Never skip arbitrary underscore-prefixed SQLite tables. Only these
+// audited PocketBase-owned control tables are rebuilt by the new platform,
+// and even then the operator reports their nonzero inventory explicitly.
+// Unknown _tables (including auth-related tables) MUST block stage import.
+const pocketBasePlatformAuthTables=new Set([
+  "_superusers","_mfas","_otps","_externalAuths","_authOrigins",
+])
+const pocketBasePlatformTables=new Set([
+  "_collections","_migrations","_params","_logs","_requests",
+  ...pocketBasePlatformAuthTables,
+])
 function fail(code){throw Error(code)}
 function options(argv){
   const args={}
@@ -299,16 +310,33 @@ export async function run(argv){
   if(args["--execute"])secureOperatorTarget()
   const snapshot=sealedSource(args)
   const phasesToRun=candidatePhases(snapshot.counts)
-  const unmapped=Object.entries(snapshot.counts)
-    .filter(([name,n])=>n>0&&!namesOfKnownBusiness.has(name)&&
-      !name.startsWith("_")&&!name.startsWith("sqlite_"))
-    .map(([name,n])=>({table:name,rows:n}))
+  const inventory=Object.entries(snapshot.counts)
+  const excludedPlatform=inventory.filter(([name,n])=>
+    n>0&&pocketBasePlatformTables.has(name))
+  const excludedAuth=excludedPlatform.filter(([name])=>
+    pocketBasePlatformAuthTables.has(name))
+  const unmapped=inventory.filter(([name,n])=>
+    n>0&&!namesOfKnownBusiness.has(name)&&
+    !pocketBasePlatformTables.has(name)).map(([name,n])=>({
+      table:name,rows:n,
+    }))
   const stage={
     operation:args["--plan"]?"dry_run":"isolated_stage_trial",
     source_sha256:snapshot.source_sha256,
     source_snapshot_verified:true,
     full_manifest_verified:true,
     source_tables:Object.keys(snapshot.counts).length,
+    // Explicitly excluded platform metadata still requires independent
+    // identity/schema/rules reconstruction and operator sign-off. No source
+    // table names, values, account IDs or secrets enter a public report.
+    excluded_platform_table_count:excludedPlatform.length,
+    excluded_platform_row_count:excludedPlatform.reduce(
+      (count,[,rows])=>count+rows,0),
+    excluded_auth_table_count:excludedAuth.length,
+    excluded_auth_row_count:excludedAuth.reduce(
+      (count,[,rows])=>count+rows,0),
+    legacy_auth_reprovision_review_required:excludedAuth.length>0,
+    platform_configuration_rebuild_required:excludedPlatform.length>0,
     unmapped_nonempty_tables:unmapped.length,
     source_credential_rows:snapshot.counts.model_connections??0,
     source_dependent_data_not_activated:true,
@@ -344,6 +372,10 @@ export async function run(argv){
     console.log(JSON.stringify({...stage,result:"preflight_verified",
       phase_results:results,
       blockers:["real_stage_import_not_run",
+        ...(excludedAuth.length?
+          ["pocketbase_legacy_auth_reprovision_unverified"]:[]),
+        ...(excludedPlatform.length?
+          ["pocketbase_platform_metadata_rebuild_unverified"]:[]),
         "credentials_and_unsupported_features_need_separate_policy",
         "production_parity_and_rollback_not_verified"]},null,2))
     return
