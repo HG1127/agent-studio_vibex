@@ -201,7 +201,11 @@ test("PG17 TCP: reviewed occurrence archived inert; transactional recovery, RLS 
       g.role===g.login&&g.version>=170000&&g.version<180000&&g.privileged===true)
     assert.equal((await admin.query("SELECT to_regnamespace('agentstudio') AS namespace"))
       .rows[0].namespace,null,"must be virgin stage DB")
+    // Apply the real V8.3→V9 dependency chain. The schedule importer
+    // requires the Workflow ledger, which requires the Agent ledger.
     const sqls=["db/postgres/001_stage_schema.sql",
+      "db/postgres/migrations/pg_v8_005_legacy_agent_import.sql",
+      "db/postgres/migrations/pg_v8_006_legacy_workflow_import.sql",
       "db/postgres/migrations/pg_v8_008_legacy_schedule_import.sql",
       "db/postgres/migrations/pg_v8_011_legacy_user_provision.sql",
       "db/postgres/migrations/pg_v9_018_legacy_schedule_occurrence_history.sql"]
