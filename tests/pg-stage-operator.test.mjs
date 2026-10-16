@@ -6,7 +6,7 @@ import {tmpdir} from "node:os"
 import path from "node:path"
 import {spawnSync} from "node:child_process"
 import {DatabaseSync} from "node:sqlite"
-import {fileURLToPath} from "node:url"
+import {fileURLToPath,pathToFileURL} from "node:url"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
 const cli=path.join(root,"ops/pg-stage-operator.mjs")
@@ -172,6 +172,43 @@ test("single offline operator plan composes approved disabled identity, Agent an
       "synthetic-verified-subject",f.snapshot]){
       assert.ok(!out.stdout.includes(secret)&&!out.stderr.includes(secret))
     }
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("stage operator subprocesses never inherit unrelated host credentials",()=>{
+  const f=fixture()
+  try{
+    const preload=path.join(f.dir,"synthetic-child-env-guard.mjs")
+    writeFileSync(preload,`
+      import cp from "node:child_process";
+      import {syncBuiltinESMExports} from "node:module";
+      const original=cp.spawnSync;
+      cp.spawnSync=function(exe,args,options){
+        const e=options?.env;
+        if(e&&["OPENAI_API_KEY","DATABASE_URL","AWS_SECRET_ACCESS_KEY",
+               "POCKETBASE_ADMIN_PASSWORD","PGPASSWORD","GH_TOKEN"]
+             .some(k=>Object.hasOwn(e,k)))
+          throw Error("STAGE_SUBPROCESS_LEAKED_UNRELATED_CREDENTIAL");
+        return original.call(this,exe,args,options);
+      };
+      syncBuiltinESMExports();
+    `)
+    const simulated={
+      NODE_OPTIONS:"--import="+pathToFileURL(preload).href,
+      OPENAI_API_KEY:"SYNTHETIC_DO_NOT_COPY_MODEL_KEY",
+      DATABASE_URL:"SYNTHETIC_DO_NOT_COPY_DATABASE_URL",
+      AWS_SECRET_ACCESS_KEY:"SYNTHETIC_DO_NOT_COPY_AWS",
+      POCKETBASE_ADMIN_PASSWORD:"SYNTHETIC_DO_NOT_COPY_PB_SECRET",
+      PGPASSWORD:"SYNTHETIC_DO_NOT_COPY_PG_PASSWORD",
+      GH_TOKEN:"SYNTHETIC_DO_NOT_COPY_GH_TOKEN",
+    }
+    const out=invoke(f,"--plan",[],simulated)
+    assert.equal(out.status,0,out.stderr)
+    const report=JSON.parse(out.stdout)
+    assert.equal(report.result,"preflight_verified")
+    assert.ok(report.phase_results.every(r=>r.status==="passed"))
+    assert.doesNotMatch(out.stderr,/STAGE_SUBPROCESS_LEAKED_UNRELATED_CREDENTIAL/)
+    for(const secret of Object.values(simulated).slice(1))
+      assert.ok(!out.stdout.includes(secret)&&!out.stderr.includes(secret))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 test("stage execution cannot start without explicit operator opt-in and destroyable-stage confirmation",()=>{

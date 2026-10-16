@@ -264,7 +264,23 @@ function commandFor(phase,args,mode){
 }
 function runPhase(phase,args,mode){
   const [entry,flags]=commandFor(phase,args,mode)
-  const env={...process.env,
+  // Security boundary: imported subprocesses need ONLY stage connection
+  // settings and the one enabled importer flag, never arbitrary inherited
+  // credentials or host automation variables. In particular do not spread
+  // process.env: that leaks unrelated secrets and breaks the strict W20
+  // synthetic operator child-process allowlist on GitHub runners.
+  const env={
+    PATH:process.env.PATH||process.env.Path||"",
+    LANG:process.env.LANG||"C.UTF-8",
+    GITHUB_ACTIONS:process.env.GITHUB_ACTIONS||"false",
+    ...(process.env.NODE_OPTIONS?{NODE_OPTIONS:process.env.NODE_OPTIONS}:{}),
+    AGENT_STUDIO_PG_STAGE_OPERATOR_ENABLED:
+      process.env.AGENT_STUDIO_PG_STAGE_OPERATOR_ENABLED||"false",
+    AGENT_STUDIO_PG_HOST:process.env.AGENT_STUDIO_PG_HOST||"",
+    AGENT_STUDIO_PG_DATABASE:process.env.AGENT_STUDIO_PG_DATABASE||"",
+    AGENT_STUDIO_PG_IMPORT_USER:process.env.AGENT_STUDIO_PG_IMPORT_USER||"",
+    AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE:
+      process.env.AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE||"",
     AGENT_STUDIO_PG_STAGE_USER_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_AGENT_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_KB_IMPORT_ENABLED:"false",

@@ -74,8 +74,19 @@ test('fail-closed: rejected real entry performs no fixture FS or TCP access',()=
   const preload='data:text/javascript,'+encodeURIComponent(`
     import fs from 'node:fs';import net from 'node:net';import {syncBuiltinESMExports} from 'node:module';
     import {before} from 'node:test';before(()=>{
-    for(const k of ['mkdirSync','mkdtempSync','writeFileSync','appendFileSync','rmSync'])
-      fs[k]=()=>{throw Error('W30_FORBIDDEN_FS')};
+    // On GitHub's Linux runner the Node test harness can perform its own
+    // filesystem writes after the before() hook, including RUNNER_TEMP
+    // bookkeeping. Only W30's own synthetic fixture files are in scope:
+    // a rejected environment must not create/read those or connect TCP.
+    for(const k of ['mkdirSync','mkdtempSync','writeFileSync','appendFileSync',
+                    'rmSync','readFileSync','openSync']){
+      const original=fs[k];fs[k]=function(...args){
+        const target=String(args[0]??'');
+        if(/w30-pg17-synthetic-/.test(target))
+          throw Error('W30_FORBIDDEN_FS');
+        return original.apply(this,args);
+      };
+    }
     net.Socket.prototype.connect=()=>{throw Error('W30_FORBIDDEN_TCP')};syncBuiltinESMExports();});`)
   for(const change of [{AGENT_STUDIO_PG17_W30_EXECUTION_FENCE_TEST_ENABLED:'false'},
     {AGENT_STUDIO_PG17_HOST:'production.invalid'},{AGENT_STUDIO_PG17_ADMIN_PASSWORD:'real-forbidden'},
