@@ -68,12 +68,13 @@ test('fail-closed: every W30 gate is mandatory before filesystem or TCP',()=>{
 })
 
 test('fail-closed: rejected real entry performs no fixture FS or TCP access',()=>{
-  // Builtin module loading is necessarily Node I/O. These traps detect test-body
-  // FS operations, including the first realpath, and sockets, before any fixture.
+  // Node's test harness performs internal realpath/stat checks on Linux.
+  // Trap source/fixture creation and sockets without intercepting the test
+  // runner's own file metadata access. The pure environment gate remains FIRST.
   const preload='data:text/javascript,'+encodeURIComponent(`
     import fs from 'node:fs';import net from 'node:net';import {syncBuiltinESMExports} from 'node:module';
     import {before} from 'node:test';before(()=>{
-    for(const k of ['realpathSync','statSync','lstatSync','existsSync','mkdirSync','mkdtempSync','writeFileSync'])
+    for(const k of ['mkdirSync','mkdtempSync','writeFileSync','appendFileSync','rmSync'])
       fs[k]=()=>{throw Error('W30_FORBIDDEN_FS')};
     net.Socket.prototype.connect=()=>{throw Error('W30_FORBIDDEN_TCP')};syncBuiltinESMExports();});`)
   for(const change of [{AGENT_STUDIO_PG17_W30_EXECUTION_FENCE_TEST_ENABLED:'false'},

@@ -155,6 +155,7 @@ const envKeys=new Set(['PATH','LANG','GITHUB_ACTIONS','NODE_OPTIONS',
  'AGENT_STUDIO_PG_STAGE_USER_IMPORT_ENABLED','AGENT_STUDIO_PG_STAGE_AGENT_IMPORT_ENABLED',
  'AGENT_STUDIO_PG_STAGE_KB_IMPORT_ENABLED','AGENT_STUDIO_PG_STAGE_KB_COMBINED_ENABLED',
  'AGENT_STUDIO_PG_STAGE_KB_ATOMIC_ENABLED','AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED',
+ 'AGENT_STUDIO_PG_STAGE_FENCE_IMPORT_ENABLED',
  'AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED','AGENT_STUDIO_PG_RECONCILIATION_USER',
  'AGENT_STUDIO_PG_STAGE_RECONCILIATION_PASSWORD_FILE']);
 cp.spawnSync=function(exe,args,options){
@@ -163,6 +164,8 @@ cp.spawnSync=function(exe,args,options){
  args[0]!=='--experimental-strip-types'||!allowed.has(args[1])||!e||
  Object.keys(e).some(k=>!envKeys.has(k))||e.GITHUB_ACTIONS!=='false'||
  e.NODE_OPTIONS!==${JSON.stringify('--import='+pathToFileURL(guard||root).href)}||
+ (e.AGENT_STUDIO_PG_STAGE_FENCE_IMPORT_ENABLED!==undefined&&
+  e.AGENT_STUDIO_PG_STAGE_FENCE_IMPORT_ENABLED!=='false')||
  e.AGENT_STUDIO_PG_HOST!=='127.0.0.1'||e.AGENT_STUDIO_PG_DATABASE!=='agentstudio_stage'||
  e.AGENT_STUDIO_PG_IMPORT_USER!=='agentstudio_admin')throw Error('W20_NON_OPERATOR_CHILD_REFUSED');
  const result=spawn(exe,args,options);
@@ -356,7 +359,7 @@ test('fail-closed: child environment excludes inherited production credentials a
   const preload='data:text/javascript,'+encodeURIComponent(guardSource(guard))
   const code="import assert from 'node:assert/strict';import cp from 'node:child_process';"+
     "const base="+JSON.stringify(env)+";"+
-    "for(const key of ['DATABASE_URL','PGPASSWORD','NODE_PATH','OPENAI_API_KEY'])"+
+    "for(const key of ['DATABASE_URL','PGPASSWORD','NODE_PATH','OPENAI_API_KEY','AGENT_STUDIO_PG_STAGE_FENCE_IMPORT_ENABLED'])"+
     "assert.throws(()=>cp.spawnSync(process.execPath,"+
     JSON.stringify(['--experimental-strip-types',entry])+",{env:{...base,[key]:'synthetic-poison'}}),/W20_NON_OPERATOR_CHILD_REFUSED/);"
   const child=spawnSync(process.execPath,['--import',preload,'--input-type=module','-e',code],
