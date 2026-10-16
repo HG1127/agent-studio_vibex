@@ -11,13 +11,6 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { backup, DatabaseSync } from "node:sqlite"
 
-const FIXED_TABLES = [
-  "agent_studio_kb_bases", "agent_studio_kb_documents", "agent_studio_kb_chunks",
-  "agent_studio_schedules", "agent_studio_schedule_occurrences",
-  "agent_studio_run_leases", "agent_studio_side_effects", "agent_studio_schema_migrations",
-  "agent_runs", "workflow_runs", "agent_specs", "workflows",
-]
-
 async function sha256(file) {
   const hash = createHash("sha256")
   for await (const chunk of createReadStream(file)) hash.update(chunk)
@@ -30,13 +23,27 @@ async function ensureRegularFile(file) {
   return stat
 }
 
+// A migration manifest is complete only when every SQLite user table,
+// including unfamiliar/custom business tables, is counted and reverified.
+// The previous fixed-table allowlist could silently omit employees,
+// credentials, knowledge vectors and newly installed modules.
 function countsFor(db) {
   const result = {}
-  const existing = new Set(db.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-  ).all().map(row => row.name))
-  for (const name of FIXED_TABLES) {
-    if (existing.has(name)) result[name] = Number(db.prepare('SELECT COUNT(*) AS n FROM "' + name + '"').get().n)
+  const tables = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' " +
+    "AND name NOT GLOB 'sqlite_*' ORDER BY name"
+  ).all().map(row => String(row.name))
+  if (tables.length === 0 || tables.length > 10000)
+    throw new Error("snapshot_table_inventory_invalid")
+  for (const name of tables) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,120}$/.test(name))
+      throw new Error("snapshot_unknown_table_name")
+    const count = Number(db.prepare(
+      'SELECT COUNT(*) AS n FROM "' + name + '"'
+    ).get().n)
+    if (!Number.isSafeInteger(count) || count < 0)
+      throw new Error("snapshot_invalid_table_count")
+    result[name] = count
   }
   return result
 }

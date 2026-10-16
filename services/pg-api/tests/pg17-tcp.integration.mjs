@@ -137,28 +137,41 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
     await admin.query(oldSchema)
     for(const id of ["004_model_execution","005_legacy_agent_import",
       "006_legacy_workflow_import","007_legacy_kb_import",
-      "008_legacy_schedule_import"]){
+      "008_legacy_schedule_import","009_legacy_collaboration_import",
+      "010_legacy_kb_content","011_legacy_user_provision",
+      "012_legacy_run_history","013_legacy_kb_embedding_state"]){
       const migration=read("db/postgres/migrations/pg_v8_"+
         id+".sql")
       await admin.query(migration)
       await admin.query(migration)
     }
+    const workflowHistory=read('db/postgres/migrations/pg_v9_014_legacy_workflow_history.sql')
+    await admin.query(workflowHistory)
+    await admin.query(workflowHistory)
+    const agentEvents=read('db/postgres/migrations/pg_v9_015_legacy_agent_run_events.sql')
+    await admin.query(agentEvents)
+    await admin.query(agentEvents)
+    for(const name of ['017_legacy_execution_fence_archive','018_legacy_schedule_occurrence_history']){
+      const sql=read('db/postgres/migrations/pg_v9_'+name+'.sql')
+      await admin.query(sql)
+      await admin.query(sql)
+    }
     const ledger=await admin.query(
       "SELECT count(*)::integer AS n FROM agentstudio.schema_migrations "+
-      "WHERE version IN ('pg_v8_004','pg_v8_005','pg_v8_006','pg_v8_007','pg_v8_008')")
-    assert.equal(ledger.rows[0].n,5)
+      "WHERE version IN ('pg_v8_004','pg_v8_005','pg_v8_006','pg_v8_007','pg_v8_008','pg_v8_009','pg_v8_010','pg_v8_011','pg_v8_012','pg_v8_013','pg_v9_014','pg_v9_015','pg_v9_017','pg_v9_018')")
+    assert.equal(ledger.rows[0].n,14)
     // Independent W1/W2 crosswalk migrations are applied in the same true
     // PostgreSQL 17 database, but are not allowed to execute old workflows.
     const tables=await admin.query(
       "SELECT count(*)::integer AS n FROM pg_tables "+
       "WHERE schemaname='agentstudio'")
-    assert.equal(tables.rows[0].n,23)
+    assert.equal(tables.rows[0].n,37)
     const safeguarded=await admin.query(
       "SELECT count(*)::integer AS n FROM pg_class AS c "+
       "JOIN pg_namespace AS n ON n.oid=c.relnamespace "+
       "WHERE n.nspname='agentstudio' AND c.relkind='r' "+
       "AND c.relrowsecurity AND c.relforcerowsecurity")
-    assert.equal(safeguarded.rows[0].n,22)
+    assert.equal(safeguarded.rows[0].n,36)
 
     const {apiPassword,workerPassword}=await safeRoleBootstrap(
       admin,connection.password)
@@ -279,11 +292,11 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
     await admin.query(
       "INSERT INTO agentstudio.legacy_schedule_imports "+
       "(source_snapshot_sha256,legacy_schedule_id,owner_user_id,"+
-      "target_schedule_id,payload_sha256,projection_sha256,source_record) "+
-      "VALUES($1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::jsonb)",
+      "target_schedule_id,payload_sha256,projection_sha256,identity_mapping_sha256,source_record) "+
+      "VALUES($1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::text,$8::jsonb)",
       ["d".repeat(64),"scheduletest000",ids.alice,
         safeSchedule.rows[0].id,"e".repeat(64),"f".repeat(64),
-        JSON.stringify({kind:"synthetic_quarantine",enabled:0})])
+        "a".repeat(64),JSON.stringify({kind:"synthetic_quarantine",enabled:0})])
     await assert.rejects(admin.query(
       "INSERT INTO agentstudio.schedule_occurrences "+
       "(owner_user_id,schedule_id,scheduled_for,status) "+
@@ -296,10 +309,45 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
     assert.equal((await admin.query(
       "SELECT COUNT(*)::integer AS n FROM agentstudio.schedule_occurrences"
     )).rows[0].n,0)
+    // W5 archived collaboration is evidence only: never a live ACL or RBAC
+    // grant. Keep original record in a superuser-only immutable table.
+    const reviewArchive={
+      owner:"old_alice",recipient:"old_bob",role:"viewer",
+      source:"synthetic_public_ci_test",
+    }
+    const archiveHash=createHash("sha256")
+      .update(JSON.stringify(reviewArchive)).digest("hex")
+    await admin.query(
+      "INSERT INTO agentstudio.legacy_collaboration_imports "+
+      "(source_table,legacy_key,source_snapshot_sha256,mapping_sha256,"+
+      "owner_user_id,target_spec_id,archive,archive_sha256) "+
+      "VALUES('agent_studio_spec_access',$1::text,$2::text,$3::text,"+
+      "$4::uuid,$5::uuid,$6::jsonb,$7::text)",
+      ["a".repeat(64),"d".repeat(64),"b".repeat(64),
+        ids.alice,importedAgent,JSON.stringify(reviewArchive),archiveHash],
+    )
+    const archiveReceipt=await admin.query(
+      "SELECT permissions_enabled,review_status FROM "+
+      "agentstudio.legacy_collaboration_imports")
+    assert.deepEqual(archiveReceipt.rows[0],{
+      permissions_enabled:false,review_status:"pending_manual_review",
+    })
+    await assert.rejects(admin.query(
+      "UPDATE agentstudio.legacy_collaboration_imports "+
+      "SET permissions_enabled=true"),
+      /collaboration_archive_immutable/)
     // A real PostgreSQL transaction enters aborted state on a denied SELECT.
     // Check each privilege in an independent transaction.
     for(const table of ["legacy_agent_imports","legacy_workflow_imports",
-      "legacy_knowledge_base_imports","legacy_schedule_imports"]){
+      "legacy_knowledge_base_imports","legacy_schedule_imports",
+      "legacy_collaboration_imports","legacy_kb_content_snapshots",
+      "legacy_kb_document_archive","legacy_kb_chunk_archive",
+      "legacy_kb_vector_archive","legacy_user_imports",
+      "legacy_execution_fence_archive","legacy_schedule_occurrence_history",
+      "legacy_agent_run_events",
+      "legacy_workflow_history",
+      "legacy_run_history","legacy_kb_embedding_snapshots",
+      "legacy_kb_embedding_base_refs","legacy_kb_embedding_state_archive"]){
       const normalRole=await apiPool.connect()
       try{
         await normalRole.query("BEGIN")

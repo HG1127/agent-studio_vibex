@@ -1,0 +1,56 @@
+# V8.7: OPT-IN, isolated, read-only source-vs-stage reconciliation.
+# Never run on BaoTa or existing PocketBase, no side effects or activation.
+# Expected exit code 2 until unsupported business domains are fully validated.
+services:
+  stage_reconciliation:
+    profiles: ["stage-reconciliation"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/stage-reconciliation-cli.ts", "--execute", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/mapping.json", "--approval", "/run/input/approval.json", "--reviewed-idp", "/run/input/reviewed-oidc.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_RECONCILIATION_USER: agentstudio_admin
+      AGENT_STUDIO_PG_STAGE_RECONCILIATION_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_RECON_SNAPSHOT_FILE:?Approved offline SQLite snapshot outside repo required}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_RECON_MANIFEST_FILE:?Signed-off SHA256 manifest required}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_RECON_MAPPING_FILE:?Operator-approved PB-to-PG UUID mapping required}
+        target: /run/input/mapping.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_RECON_APPROVAL_FILE:?Operator-approved source hash binding required}
+        target: /run/input/approval.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_RECON_OIDC_REVIEW_FILE:?IdP-issued subject review bound to snapshot required}
+        target: /run/input/reviewed-oidc.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 700m
+    cpus: 0.75
+    pids_limit: 80
+    stop_grace_period: 30s

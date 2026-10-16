@@ -14,6 +14,7 @@ on:
       - 'deploy/postgres-staging/**'
       - 'tests/**'
       - 'package.json'
+      - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/agent-studio-quality.yml'
   pull_request:
@@ -59,6 +60,49 @@ jobs:
           AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
           AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}"
         run: pnpm --dir services/pg-api run test:pg17
+
+  pg17-reconciliation-isolated:
+    name: Real PostgreSQL 17 / source-target reconciliation (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Reconcile frozen synthetic SQLite to fresh PostgreSQL 17 under read-only SQL transaction
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_RECONCILIATION_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-reconciliation.integration.mjs
 
   pg-api-core:
     name: PostgreSQL core SQL/JWT/RLS (parallel to PocketBase)
@@ -106,6 +150,24 @@ jobs:
           - test:stage-workflow-import
           - test:stage-kb-import
           - test:stage-schedule-import
+          - test:stage-collaboration-import
+          - test:stage-kb-content-import
+          - test:stage-kb-atomic-cli
+          - test:stage-agent-events
+          - test:stage-workflow-history
+          - test:stage-history-import
+          - test:stage-user-import
+          - test:stage-migration-identity
+          - test:stage-reconciliation
+          - test:stage-domain-import
+          - test:stage-kb-embedding-archive
+          - test:stage-kb-embedding-cli
+          - test:stage-kb-combined
+          - test:stage-kb-combined-cli
+          - test:stage-execution-fence
+          - test:stage-schedule-occurrences
+          - test:stage-fence-cli
+          - test:stage-occurrence-cli
           - test:stage-parallel-migrations
     steps:
       - name: Checkout
@@ -122,6 +184,512 @@ jobs:
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Independent domain migration SQL and rollback regression
         run: pnpm --dir services/pg-api run ${{ matrix.script }}
+
+  pg17-stage-operator-isolated:
+    name: Real PostgreSQL 17 / stage operator end-to-end (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Frozen synthetic backup to PG17 import, idempotence, read-only reconcile and NO-GO
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_STAGE_OPERATOR_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-stage-operator.integration.mjs
+
+      - name: Rehearse synthetic PG17 pg_dump / pg_restore to NEW database only
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_STAGE_RESTORE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node ops/pg17-stage-restore-ci.mjs
+
+  pg17-crossdomain-isolated:
+    name: Real PostgreSQL 17 / cross-domain import (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Cross-domain frozen synthetic Workflow KB schedule migration + RLS + NO-GO
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_CROSSDOMAIN_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-crossdomain-stage.integration.mjs
+
+  pg17-kb-content-isolated:
+    name: Real PostgreSQL 17 / non-empty knowledge archive atomicity (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Frozen synthetic KB document chunk vector atomic import, rollback and RLS
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_KB_CONTENT_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-kb-content-stage.integration.mjs
+
+  pg17-embedding-archive-isolated:
+    name: Real PostgreSQL 17 / frozen embedding state (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Synthetic Embedding settings queue into PG17 frozen history with no workers
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W17_EMBEDDING_ARCHIVE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-kb-embedding-archive.integration.mjs
+
+  pg17-kb-combined-isolated:
+    name: Real PostgreSQL 17 / combined KB metadata content embedding (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Atomic combined W2+W6+W16 synthetic KB import, rollback, retry and RLS
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W19_KB_COMBINED_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-kb-combined.integration.mjs
+
+  pg17-full-stage-operator-isolated:
+    name: Real PostgreSQL 17 / full stage operator with KB and embeddings (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Full isolated stage operator with synthetic Agent and KB+Embedding
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W20_FULL_STAGE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-combined-stage-operator.integration.mjs
+
+  pg17-workflow-history-isolated:
+    name: Real PostgreSQL 17 / frozen Workflow run-event archive (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Synthetic Workflow runs and events frozen history with rollback, RLS and zero workers
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W23_WORKFLOW_HISTORY_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-workflow-history.integration.mjs
+
+  pg17-agent-events-isolated:
+    name: Real PostgreSQL 17 / frozen Agent run events (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Frozen synthetic Agent run/event history parent FK, rollback and RLS
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W25_AGENT_EVENTS_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-agent-run-events.integration.mjs
+
+  pg17-structured-workflow-history-isolated:
+    name: Real PostgreSQL 17 / structured Workflow history (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Review and archive synthetic nested Workflow graph and checkpoint in PG17
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W27_STRUCTURED_HISTORY_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-workflow-structured-history.integration.mjs
+
+  pg17-occurrence-history-isolated:
+    name: Real PostgreSQL 17 / inert schedule occurrence archive (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Archive synthetic schedule occurrences into immutable stage, no jobs
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W29_OCCURRENCE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-occurrence-history.integration.mjs
+
+  stage-operator-container:
+    name: Stage-only migration operator / isolated image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build operator image from PG service files only
+        run: docker build --file services/pg-api/Dockerfile.operator --tag agentstudio-stage-operator-ci:${{ github.sha }} services/pg-api
+      - name: Default stage operator must refuse unapproved invocation without network
+        shell: bash
+        run: |
+          set +e
+          output=$(docker run --rm --network none --read-only --cap-drop ALL             --entrypoint node agentstudio-stage-operator-ci:${{ github.sha }}             services/pg-api/src/stage-migration-operator.mjs --plan 2>&1)
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -q 'Isolated stage operator refused: invalid_arguments' <<< "$output"
+          ! grep -Eq 'ECONNREFUSED|ENOTFOUND|permission denied for schema' <<< "$output"
+
+  pg17-execution-fence-isolated:
+    name: Real PostgreSQL 17 / reviewed execution-fence archive (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentstudio_stage
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_stage"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated PostgreSQL API dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Synthetic reviewed execution-fence archive, rollback and immutable RLS
+        env:
+          AGENT_STUDIO_PG17_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_W30_EXECUTION_FENCE_TEST_ENABLED: "true"
+          AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"
+          AGENT_STUDIO_PG17_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG17_PORT: "5432"
+          AGENT_STUDIO_PG17_DATABASE: "agentstudio_stage"
+          AGENT_STUDIO_PG17_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG17_ADMIN_PASSWORD: "synthetic-agentstudio-pg17-ci-${{ github.run_id }}-${{ github.sha }}0123456789abcdef01234567"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg17-execution-fence.integration.mjs
 
   quality:
     runs-on: ubuntu-latest
@@ -140,14 +708,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Unit regression and TypeScript production build
-        run: pnpm check
-      - name: Internal production readiness policy (offline unit checks only)
-        run: pnpm test:readiness
-      - name: PostgreSQL staging schema and isolation contract (no DB started)
-        run: pnpm test:postgres-staging
-      - name: Ensure local launch scripts never auto-open browser or PocketBase admin
-        run: pnpm test:no-browser
+      - name: Install PostgreSQL API dependencies for root security tests
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Install PocketBase 0.40.5 for integration tests
         run: |
           mkdir -p .ci-bin
@@ -157,6 +719,14 @@ jobs:
           unzip -q .ci-bin/pocketbase.zip pocketbase -d .ci-bin
           chmod +x .ci-bin/pocketbase
           echo "POCKETBASE_BIN=$GITHUB_WORKSPACE/.ci-bin/pocketbase" >> "$GITHUB_ENV"
+      - name: Unit regression and TypeScript production build
+        run: pnpm check
+      - name: Internal production readiness policy (offline unit checks only)
+        run: pnpm test:readiness
+      - name: PostgreSQL staging schema and isolation contract (no DB started)
+        run: pnpm test:postgres-staging
+      - name: Ensure local launch scripts never auto-open browser or PocketBase admin
+        run: pnpm test:no-browser
       - name: PocketBase security integration
         run: pnpm test:integration
       - name: Worker without browser end-to-end

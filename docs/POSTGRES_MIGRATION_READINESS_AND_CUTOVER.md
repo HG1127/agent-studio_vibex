@@ -1,78 +1,60 @@
-# Agent Studio — PocketBase → PostgreSQL 数据迁移门槛与剩余工程量
+# Agent Studio — PocketBase → PostgreSQL 17 迁移就绪与切换门槛（2026-10-16）
 
-**正式生产切换：NO-GO。** 所有步骤必须先在隔离开发或全新 staging 数据库验证；不得修改公司宝塔正式数据库、原 PocketBase 运行数据及当前生产 Worker。本文件是基于目前源码的工程现状，不是已完成生产数据迁移的声明。
+**现状：独立 PostgreSQL 17 的合成数据试迁移链路已通过；公司真实数据与正式生产切换仍为 NO-GO。** 绝不能把历史记录已归档、单元测试通过或 Job 绿灯误写成业务功能完成迁移。禁止直接操作公司宝塔、现存 PocketBase、生产 Worker 或已连接的其他公司数据库。
 
-## 当前状况
+## 已验证的工程基线
 
-| 领域 | 已实现并有测试 | 尚缺失或未核验 |
+| 领域 | 经过测试的能力 | 不可直接声称完成的部分 |
 | --- | --- | --- |
-| PG17 | PG Schema/RLS/pgvector、V8.2 SQL 增量、嵌入 PostgreSQL 引擎测试 | 真正 PG17 Docker/TCP 并发 CI 没有实际执行 |
-| Agent | 原子任务领取、租约、准备、审批、模型文本调用、结果持久化、未知外部调用不重放 | 完整 Agent 工具/成本预算/异常审批复核运营 |
-| Workflow | 创建/更新安全节点和连线骨架 | 与旧 Workflow 执行语义、真实运行引擎不一致 |
-| 知识库 | 私有元数据、受限文档导入、关键词搜索 | 旧知识库向量、Embedding、模型连接及共享 ACL 迁移 |
-| 身份/团队 | PG 经签名 OIDC + owner-only RLS | 正式员工登录/Provisioning、团队 RBAC、PB 文本 ID 到 PG UUID 映射 |
-| 历史和基础数据 | SQLite 一致性备份与只读盘点、经批准的员工身份映射审查、首批严格兼容 Agent 配置的 stage-only 事务导入和旧 ID crosswalk（合成测试通过） | 尚未对真实数据导入；其余业务域 ETL、增量同步和正式切换回退演练未完成 |
+| PostgreSQL 17 | 真正 PG17/pgvector TCP、行级安全 RLS、多个 Worker 领取/恢复、原子事务、schema 重放、隔离服务部署 | 公司生产数据与真实业务负载尚未运行 |
+| 备份与恢复 | SQLite WAL 一致性快照与完整的物理用户表 inventory/SHA-256；PG17 合成库备份到新建数据库、逐表记录数与指纹恢复校验 | 企业备份保留策略、实际 RPO/RTO、业务写入冻结与恢复窗口 |
+| 身份与 Agent | 独立审核的旧文本 ID→PG UUID、OIDC 主体核对文件；员工默认禁用；Agent 配置、任务准备、模型 Worker、审批与审计分链路测试 | 企业真实 IdP 与员工逐个启用、原密钥轮换、工具外部调用与费用策略 |
+| Workflow | 配置图严格兼容子集导入、所有者关联；旧 `workflow_runs`/`workflow_events` 及结构化历史经独立审核后 DBA-only 不可执行归档 | **完整 Workflow 引擎、工具/LLM 节点、暂停/恢复、审批与原语义等价** |
+| 知识库 | W2+W6+W16：元数据、文档、分片、向量原始 JSON 与 Embedding 设置/历史队列**同一事务**归档；跨员工隔离、失败整体回滚、快照幂等 | 原向量索引与 Embedding 模型兼容、重建、RAG 引用、共享 ACL 真实可用性 |
+| 历史与协作 | Agent runs/events、Workflow runs/events、定时与协作历史在隔离 PG 中不可执行保存，含完整来源与 RLS；已核验和未核验状态区分 | 不把旧 running/queued 变为新任务；团队权限和定时任务须重新验收 |
+| 只读对账 | 审核同一快照 SHA、身份映射、关键字段、历史 KB 文本/向量逐行哈希；明确 archive_only、failed 与 unsupported | 所有真实业务域的零差异对账尚未完成，部分运行时功能必然仍是 unsupported |
 
-旧 PocketBase 文本 ID 与 PG UUID 不同；旧 Agent 配置和 Workflow Graph 可能包含新 API 白名单之外的参数；旧向量可能不匹配目前的样板 1536 维。这些都是**不允许直接复制数据库或静默丢弃字段**的原因。
+测试证据（公开仓库，**仅合成数据**）：[W20 统一迁移器及 PG17 全套 CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/38718001907)、[W21 逐行知识库归档对账](https://github.com/HG1127/agent-studio_vibex/actions/runs/38720229239)、[V9 结构化历史及原系统 CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/38832802348)。代码保存在 `migration/postgres-v8-6-staging-20261015` 分支的 [Draft PR #1](https://github.com/HG1127/agent-studio_vibex/pull/1)；**尚未合并 main**。
 
-## 本轮新增迁移前置能力
+## 迁移前只读步骤 — 可以继续推进，不需要接触生产 PG
 
-- ops/pg-migration-readiness.mjs：仅分析由备份工具生成并经 SHA-256 校验的冻结 SQLite snapshot，不触碰运行中的 pb_data。核查 SQLite 完整性、原始备份 manifest 记录数、每个表的行数及分域映射阻断。识别账户、配置、运行历史、知识库、定时任务、协作、模型/工具凭证和不认识的表。报告不包含旧用户 ID、提示词、密钥或原始文件路径。不会连接或写入 PostgreSQL；ready_for_production_cutover 永远为 false。
-- ops/pg-identity-map-audit.mjs：针对同一份备份 SHA-256 固定的、人工审批的 studio-approved-identity-map-v2 用户映射文件，检查每个员工是否有唯一目标 UUID，以及旧业务表出现的 owner/member ID 是否全部有来源。不能自动猜测同一用户，不能复用不同快照的映射，也不会声称 OIDC 用户已经真实建立。
-- tests/pg-migration-readiness.test.mjs、tests/pg-identity-map-audit.test.mjs：使用纯合成 SQLite 数据验证上述安全行为，纳入根目录 pnpm test。
+仅运维与安全负责人可在**经批准的隔离机器**上取得 PocketBase 的一致性快照。禁止手动拷贝热写入的 `data.db` 和 WAL，也禁止将 SQLite 备份、个人身份映射、OIDC subjects、密码或模型 Key 上传 GitHub、聊天或通用 CI 工件。
 
-## 只在授权隔离环境中运行
+1. 使用 SQLite backup API 生成一份新路径上的冻结备份；执行 `pnpm db:backup verify --backup SNAPSHOT.sqlite`。新的 manifest 必须完整覆盖 sqlite_master 中全部实际用户表，未知非空表一律阻断，不允许随意过滤。
+2. 执行 `pnpm db:pg-readiness --snapshot SNAPSHOT.sqlite --manifest SNAPSHOT.sqlite.manifest.json --strict`，取得脱敏的表数、异常类型和业务归属缺口。
+3. 基于**相同源 SHA-256**，分别审核旧用户 ID→PG UUID 映射（`studio-approved-identity-map-v2`）、OIDC issuer/subject（`studio-reviewed-oidc-provision-v1`）、历史正文/事件内容的逐行 hash 和独立来源审批。签名真实性、人员实际身份与权限需要安全负责人核验，软件不能自行替代签字。
+4. 运行统一的离线预检（**不连接 PostgreSQL**）：
 
-必须先由运维批准并生成一致性 WAL 安全快照，不应手工复制正在写入的 data.db。命令模板中的所有尖括号参数都需要替换为本地安全路径：
+```bash
+pnpm db:pg-stage-operator --plan \
+  --snapshot SNAPSHOT.sqlite \
+  --manifest SNAPSHOT.sqlite.manifest.json \
+  --mapping APPROVED_IDENTITY_MAP.json \
+  --oidc REVIEWED_OIDC_SUBJECTS.json \
+  --approval APPROVED_SOURCE_REVIEW.json
+```
 
-    pnpm db:backup backup --source SNAPSHOT_APPROVED_SOURCE --output SNAPSHOT_DESTINATION
-    pnpm db:backup verify --backup SNAPSHOT_DESTINATION
-    pnpm db:pg-readiness --snapshot SNAPSHOT_DESTINATION --manifest SNAPSHOT_DESTINATION.manifest.json
+只允许来源审核全部通过的配置与历史数据进入试迁移；任何 `preflight_blocked`、未知非空表、身份冲突、原文审核缺失或未映射外键都必须修复后重试。PocketBase 的系统管理表与身份凭证另做独立重建审核，不能默默复制旧密码。
 
-可加 --strict 使存在数据但尚未经批准映射的业务表返回非零退出码；可加 --output REPORT_PATH 创建权限受限且不能覆盖旧文件的去标识化报告。
+## 隔离 PG17 试迁移 — 当前工程能力具备，**真实数据尚未执行**
 
-单独的身份映射文件（含敏感 ID，必须保存在源代码库、日志和聊天记录之外）需要如下结构：
+- 创建与生产完全隔离、可以销毁的 `agentstudio_stage`，独立授权 DBA，检查 PostgreSQL 17、pgvector、所有版本迁移、force RLS、默认禁用用户与无活跃新旧 Worker。
+- 可使用 `deploy/postgres-staging/stage-operator.compose.yaml` 的显式 `stage-operator` profile，仅以只读挂载的方式提供**仓库外**快照、完整 manifest、审批的身份文件及 staging Docker secret。试迁移前应记录快照哈希并另做测试库备份。
+- 统一导入顺序：员工身份 → Agent/Workflow 兼容配置 → W2/W6/W16 联合知识库归档 → 调度、协作、旧运行与事件历史 → 只读对账。每一分域单独事务、幂等，**不是整个系统的单个原子事务**；中途失败时隔离 stage 必须恢复/丢弃或使用同一经审核快照严格幂等重试。
+- 导入结束后按源文件的 **每张表、每个主键、owner/外键、重要原始字段/内容 hash、审批链、读写权限、不可变归档** 对账。计数一致不等于核对完成；`archive_only_live_unsupported` 不能作为功能验收通过。
+- 在完全隔离的合成 PG17 中已演练 `pg_dump`→新建数据库 `pg_restore`→全表指纹一致；实际企业数据的恢复演练和恢复时间应重新测量，禁止将恢复命令指向生产库。
 
-    {
-      "schema_version": "studio-approved-identity-map-v2",
-      "source_sha256": "由已验证 manifest 提供的 64 位 SHA256",
-      "records": [
-        {
-          "old_id": "经审核的旧 PB studio_users.id",
-          "new_studio_user_id": "经审核的 PG UUID",
-          "verified_by": "审核人员身份或角色",
-          "approved_at": "2026-10-15T00:00:00Z"
-        }
-      ]
-    }
+## 生产 GO/NO-GO 的硬性阻断
 
-    pnpm db:pg-identity-audit --snapshot SNAPSHOT_DESTINATION --manifest SNAPSHOT_DESTINATION.manifest.json --mapping REVIEWED_MAPPING_FILE
+1. **真实数据证据**：经授权的冻结快照、完整未知表审查、员工身份核验、全表/全行关联及原文无损对账。不合格数据不能通过忽略列、过滤行或复制旧密码解决。
+2. **应用功能等价**：Workflow 真正执行/暂停/审批/恢复、Agent 工具安全、知识库重新索引/Embedding/RAG、团队 RBAC、定时任务、审核与跨租户访问，在新运行时针对代表性企业场景完成 UAT；历史归档本身不等于功能迁移。
+3. **身份与凭据**：正式 IdP/JWKS 签名、每位员工启用/禁用及归属权限复核；API Key、Token 和外部集成必须独立安全轮换与重新配发。
+4. **运行保护**：旧 PocketBase Worker 与新 PG Worker 不能同时认领同一任务；失败或未知外部副作用绝不自动重放；准备冻结写入/停机窗口和监控回退指标。
+5. **可恢复性**：操作负责人/安全/DBA 确认备份、恢复、迁移账本、切回旧库的方法、验收时刻、恢复目标 RPO/RTO，并实际演练回滚。
+6. **正式签收**：任何关键 `failed`、缺失归属、`unsupported` 或未审核业务域都维持 NO-GO。不得因 GitHub 全绿自动部署、更改 DNS/数据库连接串或关闭旧生产服务。
 
-身份映射工具仅检查结构和覆盖率；不能证明真实员工身份或新 OIDC 账户已正确预配。原系统的密码哈希、模型 API Key、第三方 token、插件凭证均应在新系统重新预配/轮换，不能直接复制。
+## 工期口径
 
-## 下一步必须顺序推进的关键路径
+可执行的 **隔离合成试迁移** 已完成。距离**真实生产切换**的工作量主要由实际数据内容、凭据/身份/共享权限、运行时功能差异和业务 UAT 决定；目前没有经过批准的真实快照对账数据，无法可信地给出剩余小时数。取得脱敏 inventory 和实际不兼容项清单后，才能按阻断项估算所需工程人日与并行路径。
 
-1. 获得审批后的真实备份并运行盘点，确认表数、行数、关系数和无损字段映射；目前真实源数据规模未知。
-2. 在真正 PostgreSQL 17 独立 CI/测试库执行多连接、多 Worker 并发、真实角色、RLS 及崩溃隔离验收。目前仅 CI 代码已准备，不是通过结果。
-3. 首批 Agent 配置已具备受限离线 extract → 已批准 ID crosswalk → stage-only 事务型 import → 行级哈希核对（参见 POSTGRES_V8_3_STAGE_AGENT_IMPORT.md），但**尚未在 PG17 或真实业务快照上执行**。继续扩展不兼容 Agent 字段的保真迁移，以及 Workflow/KB/历史事件的功能等价性迁移，不能只迁移骨架就认为完成。
-4. 正式员工 OIDC、团队权限、任务审批、知识库索引、调度 Worker、密钥重置与费用限额补齐。保证老系统不会和新系统同时处理同一外部写任务。
-5. 再进行备份还原、切换演练、回滚、禁用员工及跨租户验证、业务负责人验收，所有重要记录对账通过才允许 GO。
-
-## 条件性工程量估算（非交付时间承诺）
-
-在熟悉代码的 1–2 位开发人员、授权验证快照、持续可用 PG17 隔离环境和身份服务均到位、业务数据量中小且无严重结构冲突的前提下：
-
-| 工作项 | 大致工程工作量 | 可否现在开始 |
-| --- | --- | --- |
-| 冻结快照/离线表盘点和身份核对 | 1–3 个工程人日 | 代码就绪，须获授权真实快照 |
-| 首批非敏感 Agent 配置 ETL、UUID 映射和对账 | 仍需实测、扩展和修复不兼容记录，约 2–7 个工程人日（初估） | 受限 importer 和合成 SQL 测试已完成；PG17 真机、真实备份、人员映射尚缺 |
-| Workflow、知识库/向量、任务历史、定时任务、协作权限及运行功能补齐 | 10–20 个工程人日 | 尚未完成 |
-| PG17 真机并发/正式身份/容灾备份与回滚演练 | 5–10 个工程人日 | CI 代码就绪，真机结果未得 |
-
-这些阶段存在依赖和部分并行空间，但**当前不是只差一次数据库连接切换**。作为项目级参考，要求旧系统所有核心功能与数据保持一致的正式迁移，应按多周完整工程项目评估；初次小范围隔离数据导入则可以更早单独验收。取得真实快照报告后，才能把上述范围收敛为可信的更精确计划。
-
-## GO 签收硬条件
-
-源快照可还原；源/目标数据行数、主键映射、外键及关键字段对账通过；所有机密凭证经独立轮换；OIDC 和员工授权/团队 RLS 实测通过；旧运行、外部写入与审批历史可复核，未发生双 Worker 重放；PG17 TCP 和异常恢复测试通过；Workflow、知识库、日程在真实业务中验收；监控、备份、回滚预案、负责人签收俱全。
-
-**项目生产状态继续 NO-GO。**
+**最终状态：仅独立 staging 合成试迁移能力通过，生产切换 NO-GO。**

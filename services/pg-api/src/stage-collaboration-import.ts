@@ -7,6 +7,7 @@ import {DatabaseSync} from 'node:sqlite'
 import {contentHash} from './stage-agent-import.ts'
 import {isUuid,type SqlPool} from './contracts.ts'
 
+import {isApprovedStageMigrationOwner} from './stage-migration-identity.ts'
 export class CollaborationImportError extends Error {}
 function fail(code:string):never {throw new CollaborationImportError('collaboration_'+code)}
 const schemas:Record<string,string[]>={
@@ -25,6 +26,10 @@ const issued=new WeakMap<CollaborationImportPlan,string>()
 const digest=(p:string)=>createHash('sha256').update(fs.readFileSync(p)).digest('hex')
 
 export function prepareCollaborationImport(snapshotPath:string,manifestPath:string,mappingPath:string){
+  try {return readVerifiedCollaborationSnapshot(snapshotPath,manifestPath,mappingPath)}
+  catch(e){if(e instanceof CollaborationImportError)throw e;fail('offline_preflight_failed')}
+}
+function readVerifiedCollaborationSnapshot(snapshotPath:string,manifestPath:string,mappingPath:string){
   const files=[snapshotPath,manifestPath,mappingPath].map(p=>fs.realpathSync(path.resolve(p)))
   const livePath=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../pocketbase/pb_data')
   const live=(fs.existsSync(livePath)?fs.realpathSync(livePath):livePath).toLowerCase()
@@ -50,7 +55,10 @@ export function prepareCollaborationImport(snapshotPath:string,manifestPath:stri
       if(!/^[A-Za-z_][A-Za-z0-9_]{0,120}$/.test(t)||!Number.isSafeInteger(n)||Number(n)<0)fail('manifest_invalid_count')
       if(db.prepare('SELECT count(*) AS n FROM "'+t+'"').get()?.n!==n)fail('manifest_count_mismatch')
     }
-    const users=new Set(db.prepare('SELECT id FROM studio_users').all().map(r=>String(r.id)))
+    if(Object.keys(schemas).reduce((n,t)=>n+Number(info.tables[t]),0)>20000)fail('batch_too_large')
+    const sourceUsers=db.prepare('SELECT id FROM studio_users').all()
+    const users=new Set(sourceUsers.map(r=>String(r.id)))
+    if(users.size!==sourceUsers.length||[...users].some(id=>!/^[A-Za-z0-9]{15}$/.test(id)))fail('source_users_invalid')
     const owners=new Map<string,string>(),targets=new Set<string>()
     for(const r of identity.records){
       if(!r||typeof r.old_id!=='string'||!/^[A-Za-z0-9]{15}$/.test(r.old_id)||!users.has(r.old_id)||!isUuid(r.new_studio_user_id)||
@@ -76,6 +84,11 @@ export function prepareCollaborationImport(snapshotPath:string,manifestPath:stri
       const requiredColumns=columns.filter(c=>c!=='semantic_allowed')
       if(found.some(c=>!columns.includes(c))||requiredColumns.some(c=>!found.includes(c)))fail('source_schema_unsupported')
       for(const raw of db.prepare('SELECT * FROM "'+table+'"').all()){
+        for(const [c,value] of Object.entries(raw)){
+          const numeric=c.endsWith('_ms')||c==='semantic_allowed'
+          if(numeric?(typeof value!=='number'||!Number.isSafeInteger(value)):
+            (typeof value!=='string'||value.includes('\0')))fail('source_value_unsupported')
+        }
         const identities:Record<string,string>={}
         for(const c of columns.filter(c=>c.endsWith('_uid'))){
           const value=raw[c]
@@ -114,18 +127,22 @@ export async function importLegacyCollaborationsToStage(pool:SqlPool,plan:Collab
     await db.query("SET LOCAL lock_timeout='5s'");await db.query("SET LOCAL statement_timeout='30s'")
     const guard=(await db.query<{database:string;login:string;admin:boolean;version:number}>(
       "SELECT current_database() AS database,session_user AS login,(SELECT rolsuper FROM pg_roles WHERE rolname=session_user) AS admin,current_setting('server_version_num')::integer AS version")).rows[0]
-    if(!guard||guard.database!=='agentstudio_stage'||guard.login!=='agentstudio_admin'||guard.admin!==true||guard.version<170000||guard.version>=180000)fail('refuse_nonisolated_database')
+    if(!guard||guard.database!=='agentstudio_stage'||guard.login!=='agentstudio_admin'||guard.admin!==true||!Number.isInteger(guard.version)||guard.version<170000||guard.version>=180000)fail('refuse_nonisolated_database')
     await db.query('LOCK TABLE agentstudio.legacy_collaboration_imports,agentstudio.legacy_agent_imports,agentstudio.legacy_knowledge_base_imports,agentstudio.agent_specs,agentstudio.knowledge_bases,agentstudio.users IN EXCLUSIVE MODE')
     if((await db.query("SELECT version FROM agentstudio.schema_migrations WHERE version='pg_v8_009'")).rows.length!==1)fail('missing_import_schema')
     if((await db.query('SELECT 1 FROM agentstudio.legacy_collaboration_imports WHERE source_snapshot_sha256<>$1 OR mapping_sha256<>$2 UNION ALL SELECT 1 FROM agentstudio.legacy_agent_imports WHERE source_snapshot_sha256<>$1 UNION ALL SELECT 1 FROM agentstudio.legacy_knowledge_base_imports WHERE source_snapshot_sha256<>$1',[source,mapping])).rows.length)fail('snapshot_or_mapping_conflict')
     let imported=0,replayed=0
     for(const row of rows){
       for(const uuid of new Set(Object.values(row.identities)))
-        if((await db.query("SELECT id FROM agentstudio.users WHERE id=$1::uuid AND status='active'",[uuid])).rows.length!==1)fail('identity_missing_or_disabled')
+        if(!await isApprovedStageMigrationOwner(db,uuid,source))
+          fail('identity_missing_or_disabled')
       const agent=row.resource_kind==='agent',cross=agent?'legacy_agent_imports':'legacy_knowledge_base_imports',table=agent?'agent_specs':'knowledge_bases',legacy=agent?'legacy_spec_id':'legacy_base_id',target=agent?'target_spec_id':'target_base_id'
-      const resource=(await db.query<{id:string}>(`SELECT t.id FROM agentstudio.${cross} m JOIN agentstudio.${table} t ON t.id=m.${target} AND t.owner_user_id=m.owner_user_id WHERE m.${legacy}=$1 AND m.owner_user_id=$2::uuid AND m.source_snapshot_sha256=$3 AND t.visibility='private' AND t.team_id IS NULL`,[row.legacy_resource_id,row.owner_user_id,source])).rows[0]
+      const resource=(await db.query<{id:string;owner_user_id:string;name:string;spec:unknown;description:string;created_at:string|Date;updated_at:string|Date;payload_sha256:string}>(`SELECT t.*,m.payload_sha256 FROM agentstudio.${cross} m JOIN agentstudio.${table} t ON t.id=m.${target} AND t.owner_user_id=m.owner_user_id WHERE m.${legacy}=$1 AND m.owner_user_id=$2::uuid AND m.source_snapshot_sha256=$3 AND t.visibility='private' AND t.team_id IS NULL`,[row.legacy_resource_id,row.owner_user_id,source])).rows[0]
       if(!resource)fail('resource_crosswalk_missing_or_owner_mismatch')
-      const archive={...row,target_spec_id:agent?resource.id:null,target_base_id:agent?null:resource.id,source_snapshot_sha256:source,mapping_sha256:mapping,permissions_enabled:false,review_status:'pending_manual_review'}
+      const resourcePayload={legacy_id:row.legacy_resource_id,owner_user_id:resource.owner_user_id,name:resource.name,
+        ...(agent?{spec:resource.spec}:{description:resource.description}),created_at:new Date(resource.created_at).toISOString(),updated_at:new Date(resource.updated_at).toISOString()}
+      if(contentHash(resourcePayload)!==resource.payload_sha256)fail('resource_crosswalk_payload_mismatch')
+      const archive={...row,resource_payload_sha256:resource.payload_sha256,target_spec_id:agent?resource.id:null,target_base_id:agent?null:resource.id,source_snapshot_sha256:source,mapping_sha256:mapping,permissions_enabled:false,review_status:'pending_manual_review'}
       const storedHash=contentHash(archive)
       const prior=(await db.query<{archive:unknown;archive_sha256:string}>('SELECT archive,archive_sha256 FROM agentstudio.legacy_collaboration_imports WHERE source_table=$1 AND legacy_key=$2',[row.source_table,row.legacy_key])).rows[0]
       if(prior){if(prior.archive_sha256!==storedHash||contentHash(prior.archive)!==storedHash)fail('existing_mismatch');replayed++}

@@ -1,0 +1,48 @@
+# V8.8 OPTIONAL/one-shot: verified legacy Workflow, schedules,
+# collaboration review, or history into isolated PG17 admin-only stage.
+# No model execution, RBAC activation, schedule activation, or live work.
+services:
+  stage_domain_import:
+    profiles: ["stage-domain-import"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/stage-domain-import-cli.ts", "--execute", "--domain", "${AGENT_STUDIO_STAGE_DOMAIN:?Must be workflow/schedules/collaboration/history}", "--confirm-stage", "agentstudio_stage", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/identity-map.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin
+      AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_DOMAIN_SNAPSHOT_FILE:?Frozen approved source SQLite required}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_DOMAIN_MANIFEST_FILE:?Matching complete SHA manifest required}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_DOMAIN_MAPPING_FILE:?Reviewed identity map bound to same snapshot required}
+        target: /run/input/identity-map.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 700m
+    cpus: 0.75
+    pids_limit: 80
+    stop_grace_period: 30s

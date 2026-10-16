@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {createHash} from "node:crypto"
-import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync} from "node:fs"
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,readdirSync} from "node:fs"
 import path from "node:path"
 import {tmpdir} from "node:os"
 import {spawnSync} from "node:child_process"
@@ -33,7 +33,7 @@ function fixture(){
   const sha256=createHash("sha256").update(buf).digest("hex")
   const tables={
     studio_users:1,agent_specs:1,model_connections:1,
-    agent_studio_kb_bases:1,
+    agent_studio_kb_bases:1,other_new_feature:1,
   }
   writeFileSync(manifestFile,JSON.stringify({
     format:"agent-studio-sqlite-snapshot-v1",
@@ -52,6 +52,7 @@ test("read-only scanner reports row counts / feature blockers without leaking se
     const inventory=JSON.parse(r.stdout)
     assert.equal(inventory.format,"agentstudio-pg-migration-readiness-v1")
     assert.equal(inventory.read_only,true)
+    assert.equal(inventory.snapshot_manifest_full_coverage_verified,true)
     assert.equal(inventory.scanned_tables,5)
     assert.equal(inventory.scanned_rows,5)
     assert.equal(inventory.ready_for_production_cutover,false)
@@ -88,6 +89,49 @@ test("missing/altered manifests fail closed without reporting SQLite data",()=>{
     assert.equal(noManifest.status,1)
     assert.match(noManifest.stderr,/verified_manifest_required/)
   }finally{rmSync(f.temp,{recursive:true,force:true})}
+})
+test("incomplete legacy backup manifest rejects omitted tables even when SHA matches",()=>{
+  const f=fixture()
+  try{
+    const info=JSON.parse(readFileSync(f.manifestFile,"utf8"))
+    delete info.tables.other_new_feature
+    writeFileSync(f.manifestFile,JSON.stringify(info))
+    const result=cliCall(f)
+    assert.equal(result.status,1)
+    assert.match(result.stderr,/snapshot_manifest_incomplete/)
+    assert.doesNotMatch(result.stderr,/PRIVATE_BODY|owner-sensitive/)
+  }finally{rmSync(f.temp,{recursive:true,force:true})}
+})
+test("every PocketBase SQL schema-declared business table is classified in migration inventory",()=>{
+  const hooks=path.join(root,"pocketbase","pb_hooks")
+  const files=[]
+  function walk(dir){
+    for(const entry of readdirSync(dir,{withFileTypes:true})){
+      const full=path.join(dir,entry.name)
+      if(entry.isDirectory())walk(full)
+      else if(/\.js$/.test(entry.name))files.push(full)
+    }
+  }
+  walk(hooks)
+  const declared=new Set()
+  for(const file of files){
+    const source=readFileSync(file,"utf8")
+    for(const result of source.matchAll(
+      /CREATE TABLE(?: IF NOT EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi
+    ))declared.add(result[1])
+  }
+  assert.ok(declared.size>=20,"must inspect actual old PocketBase SQL schema")
+  const readiness=readFileSync(cli,"utf8")
+  const from=readiness.indexOf("const groups={")
+  const until=readiness.indexOf("\nconst catalog=",from)
+  assert.ok(from>=0&&until>from,"classifications must be explicit")
+  const body=readiness.slice(from,until)
+  const classified=new Set([...body.matchAll(/"([A-Za-z_][A-Za-z0-9_]*)"/g)]
+    .map(x=>x[1]))
+  const missing=[...declared].filter(name=>!classified.has(name))
+  assert.deepEqual(missing,[],
+    "new legacy source table is unclassified; add an explicit migration gate")
+  assert.ok(classified.has("agent_studio_spec_revisions"))
 })
 test("readiness report is create-only with redacted JSON and no ability to alter backup",()=>{
   const f=fixture()

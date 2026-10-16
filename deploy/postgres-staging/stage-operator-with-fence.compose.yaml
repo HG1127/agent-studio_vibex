@@ -1,0 +1,22 @@
+# Optional W27 reviewed audit evidence for an operator run with nonempty
+# historical run leases/external effects. Must be combined with
+# compose.yaml + stage-operator.compose.yaml; never enabled by default.
+# Reviewer SHA must be obtained independently (not computed from the input
+# snapshot by the operator); missing input prevents the compose config.
+services:
+  stage_operator:
+    command: ["node", "services/pg-api/src/stage-migration-operator.mjs",
+      "--execute", "--confirm-isolated-stage", "agentstudio_stage",
+      "--allow-partial-trial",
+      "--snapshot", "/run/input/snapshot.sqlite",
+      "--manifest", "/run/input/manifest.json",
+      "--mapping", "/run/input/approved-map.json",
+      "--oidc", "/run/input/reviewed-oidc.json",
+      "--approval", "/run/input/approved-source.json",
+      "--fence-review", "/run/input/fence-review.json",
+      "--fence-review-sha256", "${AGENT_STUDIO_STAGE_FENCE_TRUSTED_REVIEW_SHA256:?Independent reviewer SHA256 receipt required}"]
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_STAGE_FENCE_REVIEW_FILE:?Independently approved W27 source review required}
+        target: /run/input/fence-review.json
+        read_only: true

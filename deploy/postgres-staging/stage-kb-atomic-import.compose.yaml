@@ -1,0 +1,48 @@
+# V8.6 OPTIONAL, ONE-SHOT atomic KB metadata+content migration.
+# ONLY isolated agentstudio_stage, never the company BaoTa/PocketBase database.
+# No RAG/ACL activation, no model or embedding provider calls.
+services:
+  stage_kb_atomic_import:
+    profiles: ["stage-kb-atomic-import"]
+    build:
+      context: ../../services/pg-api
+      dockerfile: Dockerfile
+    command: ["node", "--experimental-strip-types", "src/stage-kb-atomic-import-cli.ts", "--execute", "--snapshot", "/run/input/snapshot.sqlite", "--manifest", "/run/input/manifest.json", "--mapping", "/run/input/approved-map.json"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGENT_STUDIO_PG_STAGE_KB_ATOMIC_ENABLED: "true"
+      AGENT_STUDIO_PG_HOST: postgres
+      AGENT_STUDIO_PG_DATABASE: agentstudio_stage
+      AGENT_STUDIO_PG_IMPORT_USER: agentstudio_admin
+      AGENT_STUDIO_PG_IMPORT_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${AGENT_STUDIO_KB_ATOMIC_SNAPSHOT_FILE:?Frozen verified SQLite snapshot must be outside the repository}
+        target: /run/input/snapshot.sqlite
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_KB_ATOMIC_MANIFEST_FILE:?Matching SHA256 snapshot manifest must be outside the repository}
+        target: /run/input/manifest.json
+        read_only: true
+      - type: bind
+        source: ${AGENT_STUDIO_KB_ATOMIC_MAPPING_FILE:?Approved old-to-UUID identity mapping must be outside the repository}
+        target: /run/input/approved-map.json
+        read_only: true
+    networks:
+      - private_db
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 90
+    stop_grace_period: 30s
