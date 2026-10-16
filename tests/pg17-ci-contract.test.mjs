@@ -264,6 +264,26 @@ test("W29 PostgreSQL 17 schedule occurrence archive has independent synthetic se
   assert.match(source,/RUNNER_ENVIRONMENT/)
   assert.match(source,/W29_PG17_OCCURRENCE_ARCHIVE_PASS/)
 })
+test("W30 real PG17 execution-fence evidence uses a separate synthetic database and hard pre-socket gate",()=>{
+  const workflow=read(".github/workflows/agent-studio-quality.yml")
+  const job=workflow.split("\n  pg17-execution-fence-isolated:\n")[1]
+    ?.split("\n  quality:\n")[0]
+  assert.ok(job,"W30 requires its own isolated PostgreSQL 17 service")
+  assert.match(job,/image: pgvector\/pgvector:pg17/)
+  assert.match(job,/POSTGRES_DB: agentstudio_stage/)
+  assert.match(job,/127\.0\.0\.1:5432:5432/)
+  assert.match(job,/AGENT_STUDIO_PG17_W30_EXECUTION_FENCE_TEST_ENABLED: "true"/)
+  assert.match(job,/AGENT_STUDIO_PG17_EPHEMERAL_ISOLATED: "true"/)
+  assert.match(job,/github\.sha \}\}0123456789abcdef01234567/)
+  assert.match(job,/services\/pg-api\/tests\/pg17-execution-fence\.integration\.mjs/)
+  assert.doesNotMatch(job,/secrets\.|AGENT_STUDIO_BAOTA|AGENT_STUDIO_POCKETBASE|docker compose up/)
+  const source=read("services/pg-api/tests/pg17-execution-fence.integration.mjs")
+  assert.match(source,/refuse_non_ephemeral_pg17_execution_fence/)
+  assert.match(source,/RUNNER_ENVIRONMENT/)
+  assert.match(source,/W30_PG17_FENCE_ARCHIVE_PASS/)
+  assert.match(source,/side_effects_created:0/)
+})
+
 test("Quality job provisions PocketBase, PG API modules and local-only Vite source before root tests",()=>{
   const workflow=read(".github/workflows/agent-studio-quality.yml")
   const quality=workflow.split("\n  quality:\n")[1]||""
