@@ -375,6 +375,113 @@ test("Agent events require a reviewed matching historical run before stage write
     assert.ok(!out.stdout.includes(privateText))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
+// W29: a source with real reviewed Agent runs + run_events follows the
+// ACTUAL unified operator path. "running" must remain inert historical text.
+function reviewedAgentEventsFixture(){
+  const f=fixture({agent:true})
+  const runId="bbbbbbbbbbbbbbb",eventId="ccccccccccccccc"
+  const db=new DatabaseSync(f.snapshot)
+  try{
+    db.exec(
+      "CREATE TABLE agent_runs(id TEXT,rh_user_id TEXT,spec_id TEXT,"+
+      "spec_name TEXT,instruction TEXT,status TEXT,current_step NUMERIC,"+
+      "max_steps NUMERIC,model TEXT,config TEXT,spec_snapshot TEXT,result TEXT,"+
+      "error TEXT,checkpoint TEXT,evaluation TEXT,feedback TEXT,"+
+      "created TEXT,updated TEXT);"+
+      "CREATE TABLE run_events(id TEXT,run_id TEXT,step_index NUMERIC,"+
+      "seq NUMERIC,event_type TEXT,content TEXT,created TEXT,updated TEXT)"
+    )
+    db.prepare("INSERT INTO agent_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(runId,employee,"aaaaaaaaaaaaaaa","Synthetic Agent",
+        "SYNTHETIC_REVIEWED_AGENT_RUN_INSTRUCTION","running",1,3,
+        "synthetic-model"," { } ",null,"synthetic prior answer","",
+        " null ","[]","{}","2026-10-15 00:00:00.000Z","2026-10-15 00:01:00.000Z")
+    db.prepare("INSERT INTO run_events VALUES(?,?,?,?,?,?,?,?)")
+      .run(eventId,runId,1,1,"synthetic"," [ ] ",
+        "2026-10-15 00:00:20.000Z","2026-10-15 00:00:21.000Z")
+  }finally{db.close()}
+  const bytes=readFileSync(f.snapshot)
+  const sha=createHash("sha256").update(bytes).digest("hex")
+  for(const [key,file] of [["source_sha256",f.mapping],
+    ["source_sha256",f.oidc],["source_sha256",f.approval]]){
+    const doc=JSON.parse(readFileSync(file,"utf8"))
+    doc[key]=sha
+    writeFileSync(file,JSON.stringify(doc))
+  }
+  function contentHashSynthetic(obj){
+    function canonical(v){
+      if(v===null)return "null"
+      if(typeof v==="string"||typeof v==="boolean"||
+        (typeof v==="number"&&Number.isFinite(v)))return JSON.stringify(v)
+      if(Array.isArray(v))return "["+v.map(canonical).join(",")+"]"
+      if(v&&typeof v==="object")return "{"+Object.keys(v).sort()
+        .map(k=>JSON.stringify(k)+":"+canonical(v[k])).join(",")+"}"
+      throw Error("invalid reviewed synthetic Agent history")
+    }
+    return createHash("sha256").update(canonical(obj)).digest("hex")
+  }
+  const check=new DatabaseSync(f.snapshot,{readOnly:true})
+  let tables,runHash,eventHash
+  try{
+    const names=check.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'"
+    ).all().map(r=>String(r.name))
+    tables=Object.fromEntries(names.map(name=>[
+      name,Number(check.prepare('SELECT COUNT(*) AS n FROM "'+name+'"').get().n),
+    ]))
+    runHash=contentHashSynthetic(check.prepare("SELECT * FROM agent_runs").get())
+    eventHash=contentHashSynthetic(check.prepare("SELECT * FROM run_events").get())
+  }finally{check.close()}
+  const review={credentials_absent:true,
+    verified_by:"Synthetic independent history reviewer",
+    approved_at:"2026-10-15T00:02:00Z"}
+  const manifest={
+    format:"agent-studio-sqlite-snapshot-v1",
+    sha256:sha,bytes:bytes.length,tables,
+    history_archive_review:{...review,source_sha256:sha,
+      table:"agent_runs",row_sha256:[runHash]},
+    agent_run_events_archive_review:{...review,source_sha256:sha,
+      identity_mapping_sha256:createHash("sha256")
+        .update(readFileSync(f.mapping)).digest("hex"),
+      tables:{run_events:{row_sha256:[eventHash]}}},
+  }
+  writeFileSync(f.manifest,JSON.stringify(manifest))
+  return {f,manifest,runId,eventId}
+}
+test("reviewed Agent running history and events pass unified OFFLINE stage preflight without replay",()=>{
+  const {f,runId,eventId}=reviewedAgentEventsFixture()
+  try{
+    const output=invoke(f)
+    assert.equal(output.status,0,output.stderr)
+    const report=JSON.parse(output.stdout)
+    assert.equal(report.result,"preflight_verified")
+    assert.deepEqual(report.phase_results.map(x=>x.phase),[
+      "identity","agent","history","agent_events","reconciliation",
+    ])
+    assert.ok(report.phase_results.every(x=>x.status==="passed"))
+    assert.equal(report.unmapped_nonempty_tables,0)
+    assert.equal(report.production_cutover_allowed,false)
+    assert.ok(report.blockers.includes("real_stage_import_not_run"))
+    for(const secret of ["SYNTHETIC_REVIEWED_AGENT_RUN_INSTRUCTION",
+      employee,runId,eventId,employeeUuid,f.snapshot])
+      assert.ok(!output.stdout.includes(secret)&&!output.stderr.includes(secret))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("reviewed parent Agent run cannot bypass missing independent event review",()=>{
+  const {f,manifest}=reviewedAgentEventsFixture()
+  try{
+    delete manifest.agent_run_events_archive_review
+    writeFileSync(f.manifest,JSON.stringify(manifest))
+    const output=invoke(f)
+    assert.equal(output.status,2,output.stderr)
+    const report=JSON.parse(output.stdout)
+    assert.equal(report.result,"preflight_blocked")
+    assert.equal(report.phase_results.find(x=>x.phase==="history")?.status,"passed")
+    assert.equal(report.phase_results.find(x=>x.phase==="agent_events")?.status,"blocked")
+    assert.equal(report.production_cutover_allowed,false)
+    assert.ok(!output.stdout.includes("SYNTHETIC_REVIEWED_AGENT_RUN_INSTRUCTION"))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
 test("a metadata manifest that forgets any data table cannot authorize a trial even if snapshot SHA matches",()=>{
   const f=fixture()
   try{
