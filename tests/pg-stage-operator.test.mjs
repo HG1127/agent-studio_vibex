@@ -19,7 +19,7 @@ const spec=()=>({
   done_criteria:["Caveats"],
   tools:["summarize"],knowledge_base_ids:[],require_approval:true,
 })
-function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,hiddenCustom=false,platformTable=false,platformAuthTable=false,embeddingHistory=false,workflowHistory=false,agentEvents=false}={}){
+function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=false,hiddenCustom=false,platformTable=false,platformAuthTable=false,embeddingHistory=false,workflowHistory=false,agentEvents=false,executionFence=false}={}){
   const dir=mkdtempSync(path.join(tmpdir(),"stage-operator-synthetic-"))
   const snapshot=path.join(dir,"snapshot.sqlite")
   const manifest=path.join(dir,"manifest.json")
@@ -45,6 +45,11 @@ function fixture({agent=true,workflow=false,orphanKBContent=false,unknownTable=f
   if(agentEvents){
     db.exec("CREATE TABLE agent_runs(id TEXT);CREATE TABLE run_events(id TEXT)")
     db.prepare("INSERT INTO run_events VALUES(?)").run("e".repeat(15))
+  }
+  if(executionFence){
+    db.exec("CREATE TABLE agent_studio_run_leases(kind TEXT,run_id TEXT,evidence TEXT)")
+    db.prepare("INSERT INTO agent_studio_run_leases VALUES(?,?,?)").run(
+      "agent","aaaaaaaaaaaaaaa","SYNTHETIC_UNREVIEWED_FENCE_EVIDENCE")
   }
   if(orphanKBContent){
     db.exec("CREATE TABLE agent_studio_kb_documents(id TEXT)")
@@ -201,6 +206,30 @@ test("unknown legacy workflow content blocks ALL domains before stage writes",()
     assert.equal(info.phase_results.find(x=>x.phase==="workflow").status,"blocked")
     assert.ok(info.phase_results.some(x=>x.phase==="agent"&&x.status==="passed"))
     assert.ok(!out.stdout.includes(privateText))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("nonempty historical execution fences require an INDEPENDENT reviewed source file before ANY database access",()=>{
+  const f=fixture({executionFence:true})
+  try{
+    const out=invoke(f)
+    assert.equal(out.status,2,out.stderr)
+    const report=JSON.parse(out.stdout)
+    assert.equal(report.result,"preflight_blocked")
+    assert.deepEqual(report.blockers,["independent_execution_fence_review_required"])
+    assert.equal(report.unmapped_nonempty_tables,0)
+    assert.equal(report.phase_results.length,0)
+    assert.equal(report.production_cutover_allowed,false)
+    assert.ok(!out.stdout.includes("SYNTHETIC_UNREVIEWED_FENCE_EVIDENCE"))
+    const orphan=invoke(f,"--plan",["--fence-review",f.approval])
+    assert.equal(orphan.status,1)
+    assert.match(orphan.stderr,/invalid_arguments/)
+    const untrusted=invoke(f,"--plan",[
+      "--fence-review",f.approval,
+      "--fence-review-sha256","0".repeat(64),
+    ])
+    assert.equal(untrusted.status,1)
+    assert.match(untrusted.stderr,/untrusted_execution_fence_review_sha/)
+    assert.doesNotMatch(untrusted.stdout+untrusted.stderr,/ECONNREFUSED|ENOTFOUND/)
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
 test("nonempty Workflow run history is routed to audited, inert archive and cannot silently disappear",()=>{

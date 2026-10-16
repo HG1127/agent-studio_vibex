@@ -26,6 +26,7 @@ const phases={
   knowledge_atomic:"stage-kb-atomic-import-cli.ts",
   schedules:"stage-domain-import-cli.ts",
   collaboration:"stage-domain-import-cli.ts",
+  fence_history:"stage-execution-fence-import-cli.ts",
   occurrence_history:"stage-domain-import-cli.ts",
   agent_events:"stage-domain-import-cli.ts",
   workflow_history:"stage-domain-import-cli.ts",
@@ -50,12 +51,13 @@ const kbEmbeddingState=[
   "agent_studio_kb_embedding_settings",
   "agent_studio_kb_embedding_queue",
 ]
+const executionFenceTables=["agent_studio_run_leases","agent_studio_side_effects"]
 const occurrenceHistoryTables=["agent_studio_schedule_occurrences"]
 const workflowHistoryTables=["workflow_runs","workflow_events"]
 const agentEventTables=["run_events"]
 const namesOfKnownBusiness=new Set([
   "studio_users","model_connections",...Object.values(businessTables),
-  ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,...agentEventTables,...occurrenceHistoryTables,
+  ...collaboration,...kbContent,...kbEmbeddingState,...workflowHistoryTables,...agentEventTables,...occurrenceHistoryTables,...executionFenceTables,
   "agent_studio_schema_migrations",
 ])
 // Never skip arbitrary underscore-prefixed SQLite tables. Only these
@@ -74,7 +76,8 @@ function options(argv){
   const args={}
   const fields=new Set([
     "--plan","--execute","--snapshot","--manifest","--mapping",
-    "--oidc","--approval","--confirm-isolated-stage","--allow-partial-trial",
+    "--oidc","--approval","--fence-review","--fence-review-sha256",
+    "--confirm-isolated-stage","--allow-partial-trial",
   ])
   for(let i=0;i<argv.length;i++){
     const flag=argv[i]
@@ -91,6 +94,11 @@ function options(argv){
      ["--snapshot","--manifest","--mapping","--oidc","--approval"]
        .some(k=>typeof args[k]!=="string"))
     fail("invalid_arguments")
+  if(Boolean(args["--fence-review"])!==Boolean(args["--fence-review-sha256"]))
+    fail("invalid_arguments")
+  if(args["--fence-review-sha256"]&&
+     !/^[a-f0-9]{64}$/i.test(args["--fence-review-sha256"]))
+    fail("untrusted_execution_fence_review_sha")
   if(args["--execute"]&&(
      args["--confirm-isolated-stage"]!=="agentstudio_stage"||
      args["--allow-partial-trial"]!==true))
@@ -124,6 +132,15 @@ function sealedSource(args){
     checkedFile(args["--oidc"],"oidc"),
     checkedFile(args["--approval"],"approval"),
   ]
+  // A reviewed execution-fence input is optional for sources WITHOUT
+  // historical leases/effects; when provided it becomes a sealed file,
+  // checked again between every phase, with the externally supplied SHA.
+  if(args["--fence-review"]){
+    const review=checkedFile(args["--fence-review"],"execution_fence_review")
+    if(sha256(review.full)!==args["--fence-review-sha256"].toLowerCase())
+      fail("untrusted_execution_fence_review_sha")
+    paths.push(review)
+  }
   if(new Set(paths.map(p=>p.full.toLowerCase())).size!==paths.length)
     fail("duplicate_operator_files")
   const [source,manifestFile,mappingFile,oidcFile,approvalFile]=paths
@@ -207,6 +224,7 @@ function candidatePhases(counts){
   if(sum(counts,workflowHistoryTables)>0)enabled.push("workflow_history")
   if((counts.agent_runs??0)>0)enabled.push("history")
   if(sum(counts,agentEventTables)>0)enabled.push("agent_events")
+  if(sum(counts,executionFenceTables)>0)enabled.push("fence_history")
   if(sum(counts,occurrenceHistoryTables)>0)enabled.push("occurrence_history")
   enabled.push("reconciliation")
   return enabled
@@ -223,6 +241,11 @@ function commandFor(phase,args,mode){
   ]
   if(phase==="identity")
     command.push("--oidc",args["--oidc"])
+  if(phase==="fence_history"){
+    command.push("--review",args["--fence-review"],
+      "--review-sha256",args["--fence-review-sha256"])
+    if(mode!=="plan")command.push("--confirm-stage","agentstudio_stage")
+  }
   if(phase==="reconciliation")
     command.push("--approval",args["--approval"],"--reviewed-idp",args["--oidc"])
   if(phase==="knowledge_combined"&&mode!=="plan")
@@ -247,6 +270,7 @@ function runPhase(phase,args,mode){
     AGENT_STUDIO_PG_STAGE_KB_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_KB_COMBINED_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_KB_ATOMIC_ENABLED:"false",
+    AGENT_STUDIO_PG_STAGE_FENCE_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED:"false",
     AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED:"false",
   }
@@ -260,6 +284,7 @@ function runPhase(phase,args,mode){
       workflow:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       schedules:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       collaboration:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
+      fence_history:"AGENT_STUDIO_PG_STAGE_FENCE_IMPORT_ENABLED",
       occurrence_history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       agent_events:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      workflow_history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",      history:"AGENT_STUDIO_PG_STAGE_DOMAIN_IMPORT_ENABLED",
       reconciliation:"AGENT_STUDIO_PG_STAGE_RECONCILIATION_ENABLED",
@@ -282,6 +307,9 @@ function runPhase(phase,args,mode){
   // private content. Only return validated redacted JSON summary fields.
   const report=value&&typeof value==="object"?
     {
+      fence_counts:value.counts&&typeof value.counts==="object"?
+        {leases:Number(value.counts.leases||0),
+          effects:Number(value.counts.side_effect_records||0)}:undefined,
       source_count:value.source_rows??value.reviewed_users??value.compatible_records??
         value.metadata_bases_with_content??null,
       blocked:value.incompatible_records??value.blocked_bases??null,
@@ -357,6 +385,13 @@ export async function run(argv){
     process.exitCode=2
     return
   }
+  if(sum(snapshot.counts,executionFenceTables)>0&&
+     (!args["--fence-review"]||!args["--fence-review-sha256"])){
+    console.log(JSON.stringify({...stage,result:"preflight_blocked",
+      phase_results:[],blockers:["independent_execution_fence_review_required"]},null,2))
+    process.exitCode=2
+    return
+  }
   const results=[]
   // Preflight EVERY active domain before ANY database write. Failures stop
   // the entire trial rather than leaving an avoidable partial stage.
@@ -420,6 +455,7 @@ export async function main(argv){
       "invalid_snapshot_input","invalid_manifest_input",
       "invalid_mapping_input","invalid_oidc_input","invalid_approval_input",
       "orphan_kb_content_without_base",
+      "untrusted_execution_fence_review_sha",
       "duplicate_operator_files","live_pocketbase_source_forbidden",
       "source_has_sqlite_sidecars","oversized_review_file",
       "unreadable_operator_metadata","snapshot_manifest_not_verified",

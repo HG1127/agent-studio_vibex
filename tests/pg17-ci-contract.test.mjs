@@ -50,8 +50,8 @@ test("CI splits Web/PocketBase, PostgreSQL core, and migration domains into para
     "test:stage-reconciliation","test:stage-domain-import",
     "test:stage-kb-embedding-archive","test:stage-kb-embedding-cli",
     "test:stage-kb-combined","test:stage-kb-combined-cli",
-    "test:stage-execution-fence","test:stage-schedule-occurrences",
-    "test:stage-occurrence-cli","test:stage-parallel-migrations"
+    "test:stage-execution-fence","test:stage-fence-cli",
+    "test:stage-schedule-occurrences","test:stage-occurrence-cli","test:stage-parallel-migrations"
   ])assert.ok(domains.includes("- "+name),name)
   assert.match(domains,/matrix\.script/)
   assert.doesNotMatch(web,/run test:stage-agent-import/)

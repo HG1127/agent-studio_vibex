@@ -166,6 +166,7 @@ jobs:
           - test:stage-kb-combined-cli
           - test:stage-execution-fence
           - test:stage-schedule-occurrences
+          - test:stage-fence-cli
           - test:stage-occurrence-cli
           - test:stage-parallel-migrations
     steps:
