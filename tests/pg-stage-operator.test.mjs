@@ -217,6 +217,151 @@ test("nonempty Workflow run history is routed to audited, inert archive and cann
     assert.ok(!out.stdout.includes(privateText))
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })
+// W28: full historical Workflow run + event preflight with a single frozen
+// reviewed SQLite snapshot. This exercises the ACTUAL unified operator's
+// dispatch order rather than calling the W22 importer in isolation.
+function reviewedWorkflowHistoryFixture(){
+  const f=fixture({agent:false})
+  const workflowId="bbbbbbbbbbbbbbb"
+  const runId="ccccccccccccccc"
+  const eventId="ddddddddddddddd"
+  const db=new DatabaseSync(f.snapshot)
+  try{
+    db.exec(
+      "CREATE TABLE workflows(id TEXT,rh_user_id TEXT,name TEXT,description TEXT,"+
+      "graph TEXT,source TEXT,spec_id TEXT,require_approval INTEGER,created TEXT,updated TEXT);"+
+      "CREATE TABLE workflow_runs(id TEXT,rh_user_id TEXT,workflow_id TEXT,"+
+      "workflow_name TEXT,instruction TEXT,status TEXT,graph_snapshot TEXT,"+
+      "checkpoint TEXT,result TEXT,error TEXT,done_nodes NUMERIC,total_nodes NUMERIC,"+
+      "created TEXT,updated TEXT);"+
+      "CREATE TABLE workflow_events(id TEXT,run_id TEXT,node_id TEXT,seq NUMERIC,"+
+      "event_type TEXT,content TEXT,created TEXT,updated TEXT)"
+    )
+    const graph={
+      nodes:[
+        {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+        {id:"end",type:"end",data:{title:"End"},position:{x:10,y:20}},
+      ],
+      edges:[{id:"link",source:"start",target:"end"}],
+    }
+    db.prepare("INSERT INTO workflows VALUES(?,?,?,?,?,?,?,?,?,?)").run(
+      workflowId,employee,"Synthetic historical Workflow","",
+      JSON.stringify(graph),"","",1,
+      "2026-10-15 00:00:00.000Z","2026-10-15 00:01:00.000Z")
+    db.prepare("INSERT INTO workflow_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(
+      runId,employee,workflowId,"Synthetic historical Workflow",
+      "SYNTHETIC_REVIEWED_PRIVATE_INSTRUCTION","running",
+      " { } "," null ","Synthetic historical outcome","",1,2,
+      "2026-10-15 00:02:00.000Z","2026-10-15 00:03:00.000Z")
+    db.prepare("INSERT INTO workflow_events VALUES(?,?,?,?,?,?,?,?)").run(
+      eventId,runId,"start",1,"synthetic"," [ ] ",
+      "2026-10-15 00:02:10.000Z","2026-10-15 00:02:11.000Z")
+  }finally{db.close()}
+  const bytes=readFileSync(f.snapshot)
+  const sha=createHash("sha256").update(bytes).digest("hex")
+  const mapping=JSON.parse(readFileSync(f.mapping,"utf8"))
+  mapping.source_sha256=sha
+  writeFileSync(f.mapping,JSON.stringify(mapping))
+  const old=JSON.parse(readFileSync(f.oidc,"utf8"))
+  old.source_sha256=sha
+  writeFileSync(f.oidc,JSON.stringify(old))
+  const approved=JSON.parse(readFileSync(f.approval,"utf8"))
+  approved.source_sha256=sha
+  writeFileSync(f.approval,JSON.stringify(approved))
+  const sqlite=new DatabaseSync(f.snapshot,{readOnly:true})
+  const hashCanonical=value=>{
+    const canonical=item=>{
+      if(item===null)return "null"
+      if(typeof item==="string"||typeof item==="boolean"||
+        (typeof item==="number"&&Number.isFinite(item)))
+        return JSON.stringify(item)
+      if(Array.isArray(item))return "["+item.map(canonical).join(",")+"]"
+      if(item&&typeof item==="object")return "{"+Object.keys(item).sort()
+        .map(key=>JSON.stringify(key)+":"+canonical(item[key])).join(",")+"}"
+      throw Error("invalid synthetic historical source")
+    }
+    return createHash("sha256").update(canonical(value)).digest("hex")
+  }
+  let counts,runHash,eventHash
+  try{
+    const names=sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'"
+    ).all().map(x=>String(x.name))
+    counts=Object.fromEntries(names.map(name=>[
+      name,Number(sqlite.prepare('SELECT COUNT(*) AS n FROM "'+name+'"').get().n),
+    ]))
+    runHash=hashCanonical(sqlite.prepare("SELECT * FROM workflow_runs").get())
+    eventHash=hashCanonical(sqlite.prepare("SELECT * FROM workflow_events").get())
+  }finally{sqlite.close()}
+  const manifest={
+    format:"agent-studio-sqlite-snapshot-v1",
+    sha256:sha,bytes:bytes.length,tables:counts,
+    workflow_history_archive_review:{
+      source_sha256:sha,
+      identity_mapping_sha256:createHash("sha256")
+        .update(readFileSync(f.mapping)).digest("hex"),
+      credentials_absent:true,
+      verified_by:"Synthetic independent historical reviewer",
+      approved_at:"2026-10-15T00:04:00Z",
+      tables:{
+        workflow_runs:{row_sha256:[runHash]},
+        workflow_events:{row_sha256:[eventHash]},
+      },
+    },
+  }
+  writeFileSync(f.manifest,JSON.stringify(manifest))
+  return {f,manifest,workflowId,runId,eventId}
+}
+test("reviewed Workflow run/event history passes unified OFFLINE stage preflight, without replay",()=>{
+  const {f,workflowId,runId,eventId}=reviewedWorkflowHistoryFixture()
+  try{
+    const response=invoke(f)
+    assert.equal(response.status,0,response.stderr)
+    const report=JSON.parse(response.stdout)
+    assert.equal(report.operation,"dry_run")
+    assert.equal(report.result,"preflight_verified")
+    assert.deepEqual(report.phase_results.map(x=>x.phase),[
+      "identity","workflow","workflow_history","reconciliation",
+    ])
+    assert.ok(report.phase_results.every(x=>x.status==="passed"))
+    assert.equal(report.unmapped_nonempty_tables,0)
+    assert.equal(report.production_cutover_allowed,false)
+    assert.ok(report.blockers.includes("real_stage_import_not_run"))
+    for(const secret of [
+      "SYNTHETIC_REVIEWED_PRIVATE_INSTRUCTION",employee,
+      workflowId,runId,eventId,f.snapshot,
+    ])assert.ok(!response.stdout.includes(secret)&&!response.stderr.includes(secret))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+test("unreviewed or cross-snapshot Workflow history halts every stage phase before PG writes",()=>{
+  const {f,manifest}=reviewedWorkflowHistoryFixture()
+  try{
+    delete manifest.workflow_history_archive_review
+    writeFileSync(f.manifest,JSON.stringify(manifest))
+    const absent=invoke(f)
+    assert.equal(absent.status,2,absent.stderr)
+    let report=JSON.parse(absent.stdout)
+    assert.equal(report.result,"preflight_blocked")
+    assert.equal(report.phase_results.find(x=>x.phase==="workflow_history")?.status,"blocked")
+    assert.equal(report.production_cutover_allowed,false)
+    manifest.workflow_history_archive_review={
+      source_sha256:manifest.sha256,
+      identity_mapping_sha256:"0".repeat(64),
+      credentials_absent:true,
+      verified_by:"Synthetic independent historical reviewer",
+      approved_at:"2026-10-15T00:04:00Z",
+      tables:{workflow_runs:{row_sha256:["0".repeat(64)]},
+        workflow_events:{row_sha256:["0".repeat(64)]}},
+    }
+    writeFileSync(f.manifest,JSON.stringify(manifest))
+    const mixed=invoke(f)
+    assert.equal(mixed.status,2,mixed.stderr)
+    report=JSON.parse(mixed.stdout)
+    assert.equal(report.result,"preflight_blocked")
+    assert.equal(report.phase_results.find(x=>x.phase==="workflow_history")?.status,"blocked")
+    assert.ok(!mixed.stdout.includes("SYNTHETIC_REVIEWED_PRIVATE_INSTRUCTION"))
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
 test("Agent events require a reviewed matching historical run before stage writes",()=>{
   const f=fixture({agentEvents:true})
   try{
