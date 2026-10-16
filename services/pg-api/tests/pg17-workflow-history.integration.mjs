@@ -320,9 +320,9 @@ test('PG17 TCP: W23 Workflow history atomic archive, resume, replay, RLS, NO-GO'
       [(db,ids)=>db.prepare('UPDATE workflows SET rh_user_id=?').run(ids.b),()=>{},'workflow_missing_or_foreign'],
       [(db,ids)=>db.prepare('UPDATE agent_specs SET rh_user_id=?').run(ids.b),()=>{},'spec_missing_or_foreign'],
       [(db,ids)=>db.prepare('UPDATE workflow_events SET run_id=?').run(ids.b),()=>{},'run_missing_or_foreign'],
-      [db=>db.prepare('UPDATE workflow_runs SET graph_snapshot=?').run('{"nodes":[]}'),()=>{},'structured_history_not_supported'],
-      [db=>db.prepare('UPDATE workflow_runs SET checkpoint=?').run('0'),()=>{},'structured_history_not_supported'],
-      [db=>db.prepare('UPDATE workflow_events SET content=?').run('{"text":"opaque"}'),()=>{},'structured_history_not_supported']
+      [db=>db.prepare('UPDATE workflow_runs SET graph_snapshot=?').run('{"nodes":[]}'),()=>{},'structured_review_required'],
+      [db=>db.prepare('UPDATE workflow_runs SET checkpoint=?').run('0'),()=>{},'json_root_unsupported'],
+      [db=>db.prepare('UPDATE workflow_events SET content=?').run('{"text":"opaque"}'),()=>{},'structured_review_required']
     ]){
       const bad=fixture(DatabaseSync,temp,identity,contentHash,change,metadata)
       assert.throws(()=>bad.prepare(prepare),e=>e.message==='workflow_history_'+code);bad.verify()

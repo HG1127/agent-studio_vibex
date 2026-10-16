@@ -50,6 +50,20 @@ function source(){
 }
 const edit=(p,fn)=>{const x=JSON.parse(fs.readFileSync(p,'utf8'));fn(x);fs.writeFileSync(p,JSON.stringify(x))}
 const count=async(pg,t)=>(await pg.query('SELECT count(*)::int AS n FROM agentstudio.'+t)).rows[0].n
+// Synthetic attestation only: production approvals must never be generated.
+function structuredApproval(f){
+  edit(f.manifest,x=>{x.workflow_history_structured_review={...review,source_sha256:hash(f.snapshot),
+    identity_mapping_sha256:hash(f.mapping),credentials_absent:true,tables:{}};
+    const db=new DatabaseSync(f.snapshot,{readOnly:true})
+    try{for(const [table,keys] of [['workflow_runs',['graph_snapshot','checkpoint']],['workflow_events',['content']]]){
+      x.workflow_history_structured_review.tables[table]={row_sha256:db.prepare('SELECT * FROM '+table).all()
+        .filter(row=>keys.some(k=>row[k]!==null&&!/^\s*(?:null|\{\s*\}|\[\s*\])\s*$/.test(row[k]))).map(contentHash)}
+    }}finally{db.close()}
+  })
+}
+function setJson(f,text,field='graph_snapshot',table='workflow_runs'){
+  f.mutate(db=>db.prepare('UPDATE '+table+' SET '+field+'=?').run(text));f.refresh()
+}
 async function fixture(){
   const src=source(),pg=await PGlite.create({extensions:{vector}})
   await pg.exec(read('db/postgres/001_stage_schema.sql'))
@@ -173,8 +187,8 @@ test('source schema, complete manifest, owner/workflow/spec/run references, JSON
     [f=>{f.mutate(x=>x.prepare('UPDATE agent_specs SET rh_user_id=?').run(b));f.refresh()},/spec_missing_or_foreign/],
     [f=>{f.mutate(x=>x.exec('DELETE FROM workflows'));f.refresh()},/workflow_missing_or_foreign/],
     [f=>{f.mutate(x=>x.prepare('UPDATE workflow_events SET run_id=?').run(b));f.refresh()},/run_missing_or_foreign/],
-    ...['graph_snapshot','checkpoint'].map(k=>[f=>{f.mutate(x=>x.prepare('UPDATE workflow_runs SET '+k+'=?').run('{"nodes":[{"secret":"opaque"}]}'));f.refresh()},/structured_history_not_supported/]),
-    [f=>{f.mutate(x=>x.prepare('UPDATE workflow_events SET content=?').run('{"text":"opaque"}'));f.refresh()},/structured_history_not_supported/],
+    ...['graph_snapshot','checkpoint'].map(k=>[f=>{f.mutate(x=>x.prepare('UPDATE workflow_runs SET '+k+'=?').run('{"nodes":[{"secret":"opaque"}]}'));f.refresh()},/structured_review_required|possible_secret/]),
+    [f=>{f.mutate(x=>x.prepare('UPDATE workflow_events SET content=?').run('{"text":"opaque"}'));f.refresh()},/structured_review_required|possible_secret/],
     [f=>{f.mutate(x=>x.prepare('UPDATE workflow_runs SET instruction=?').run('api_key=SYNTHETIC'));f.refresh()},/possible_secret/],
     [f=>{f.mutate(x=>x.prepare('UPDATE workflow_runs SET done_nodes=?').run(0.5));f.refresh()},/number_not_lossless/],
     [f=>{f.mutate(x=>x.prepare('UPDATE workflow_events SET node_id=?').run('nul\0text'));f.refresh()},/text_not_lossless/],
@@ -195,4 +209,103 @@ test('reviewed empty tables archive zero records; orphan event cannot be silentl
     assert.equal((await importLegacyWorkflowHistoryToStage(f.pool(),f.prepare())).reconciled,0)
     assert.equal(await count(f.pg,'legacy_workflow_history'),0)
   }finally{await f.close()}
+})
+
+test('W26 nested graph/checkpoint/event archive exact lexical JSON, replay and inert runtime',async()=>{
+  const f=await fixture();try{
+    const graph=' { "nodes": [{"id":"n1","data":{"label":"合成 😀","values":[true,null,1.00,1e999]}}], "edges": [] }\n'
+    const checkpoint='{"outputs":{"n1":[{"text":"done","escaped":"\\u4e2d"}]},"completed":["n1"]}'
+    const content='[{"message":{"text":"historical","tags":[1,false]}}]'
+    setJson(f,graph);setJson(f,checkpoint,'checkpoint');setJson(f,content,'content','workflow_events')
+    structuredApproval(f);await f.syncIdentity()
+    const plan=f.prepare();assert.equal((await importLegacyWorkflowHistoryToStage(f.pool(),plan)).imported,2)
+    const rows=(await f.pg.query('SELECT source_record FROM agentstudio.legacy_workflow_history ORDER BY source_table DESC')).rows
+    assert.equal(rows[0].source_record.graph_snapshot,graph);assert.equal(rows[0].source_record.checkpoint,checkpoint)
+    assert.equal(rows[1].source_record.content,content)
+    assert.equal((await importLegacyWorkflowHistoryToStage(f.pool(),f.prepare())).replayed,2)
+    for(const t of ['runs','jobs','run_steps','approvals','external_effects','run_leases','workflows','schedules'])assert.equal(await count(f.pg,t),0)
+  }finally{await f.close()}
+})
+
+test('W26 independent approval binds source, mapping, every complex row and reviewer UTC',()=>{
+  for(const change of [
+    x=>delete x.workflow_history_structured_review,
+    x=>x.workflow_history_structured_review.source_sha256='0'.repeat(64),
+    x=>x.workflow_history_structured_review.identity_mapping_sha256='0'.repeat(64),
+    x=>x.workflow_history_structured_review.tables.workflow_runs.row_sha256=[],
+    x=>x.workflow_history_structured_review.tables.workflow_runs.row_sha256=['0'.repeat(64)],
+    x=>x.workflow_history_structured_review.tables.workflow_runs.row_sha256.push(x.workflow_history_structured_review.tables.workflow_runs.row_sha256[0]),
+    x=>x.workflow_history_structured_review.tables.workflow_events.row_sha256=['0'.repeat(64)],
+    x=>delete x.workflow_history_structured_review.verified_by,
+    x=>x.workflow_history_structured_review.approved_at='2026-10-15T00:00:00+08:00',
+    x=>x.workflow_history_structured_review.approved_at='2026-02-30T00:00:00Z',
+    x=>x.workflow_history_structured_review.verified_by=' reviewer ',
+    x=>x.workflow_history_structured_review.credentials_absent=false,
+  ]){const f=source();try{
+    setJson(f,'{"nodes":[{"id":"n1"}]}');structuredApproval(f);edit(f.manifest,change)
+    assert.throws(f.prepare,/structured_review_(required|hash_mismatch)/)
+  }finally{f.close()}}
+})
+
+test('W26 decoded deep property names and string values reject embedded credentials',()=>{
+  for(const text of [
+    '{"nested":[{"deeper":{"api\\u005fkey":"synthetic"}}]}',
+    '{"nested":[{"value":"prefix sk-abcdefghijklmnop suffix"}]}',
+    '{"nested":[{"value":"eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ.synthetic"}]}',
+    '{"nested":[{"value":"Bearer synthetic"}]}',
+    '{"nested":[{"value":"-----BEGIN PRIVATE KEY-----"}]}',
+    '{"nested":[{"refreshToken":"synthetic"}]}',
+    '{"nested":[{"privateKey":"synthetic"}]}',
+    '{"nested":[{"value":"AKIAABCDEFGHIJKLMNOP"}]}',
+    '{"nested":[{"value":"\\u0061uthorization"}]}',
+  ]){const f=source();try{setJson(f,text);structuredApproval(f);assert.throws(f.prepare,/possible_secret/)}finally{f.close()}}
+})
+
+test('W26 duplicate decoded keys in every object fail before overwrite; separate objects allowed',()=>{
+  for(const text of ['{"a":1,"a":2}','{"nested":[{"a":1,"\\u0061":2}]}','{"x":{"__proto__":1,"__proto__":2}}']){
+    const f=source();try{setJson(f,text);structuredApproval(f);assert.throws(f.prepare,/json_duplicate_key/)}finally{f.close()}
+  }
+  const f=source();try{setJson(f,'[{"a":1},{"a":2}]');structuredApproval(f);assert.equal(f.prepare().rows.length,2)}finally{f.close()}
+})
+
+test('W26 bounded tokenizer rejects invalid syntax, NUL, Unicode, depth, elements and UTF8 bytes',()=>{
+  for(const [text,expected] of [
+    ['{"x":"\\u0000"}',/json_unicode/],['{"x":"\\ud800"}',/json_unicode/],['{"x":"\\udc00"}',/json_unicode/],
+    ['{"x":1,}',/json_invalid/],['[1,]',/json_invalid/],['{"x":01}',/json_invalid/],
+    ['{"x":"\\q"}',/json_invalid/],['{"x":true} trailing',/json_invalid/],['{"x":NaN}',/json_invalid/],
+    ['\u00a0{"x":1}',/json_invalid/],['42',/json_root_unsupported/],
+    ['['.repeat(33)+']'.repeat(33),/json_depth_limit/],
+    ['['+Array(10000).fill('0').join(',')+']',/json_element_limit/],
+    [JSON.stringify({text:'中'.repeat(90000)}),/json_byte_limit/],
+  ]){const f=source();try{setJson(f,text);structuredApproval(f);assert.throws(f.prepare,expected)}finally{f.close()}}
+  const f=source();try{
+    f.mutate(db=>db.exec("UPDATE workflow_runs SET graph_snapshot=CAST(X'7B2278223A22FF227D' AS TEXT)"));f.refresh()
+    assert.throws(f.prepare,/text_not_lossless/)
+  }finally{f.close()}
+})
+
+test('W26 legacy SQL NULL, lexical null/empty structures need no structured approval',()=>{
+  for(const text of [null,' null \n',' { }\t',' [ ]\r\n']){const f=source();try{
+    setJson(f,text);assert.equal(f.prepare().rows[0].source_record.graph_snapshot,text)
+  }finally{f.close()}}
+})
+
+test('W26 structured insert/readback/count failures rollback whole archive then retry',async()=>{
+  const f=await fixture();try{
+    setJson(f,'{"nodes":[{"data":{"label":"synthetic"}}]}');structuredApproval(f);await f.syncIdentity()
+    for(const options of [{failSecond:true},{corrupt:true},{extraCount:true}]){
+      await assert.rejects(importLegacyWorkflowHistoryToStage(f.pool(options),f.prepare()),/workflow_history_(sql_failed|reconciliation_mismatch|batch_incomplete)/)
+      assert.equal(await count(f.pg,'legacy_workflow_history'),0);assert.equal(await count(f.pg,'jobs'),0)
+    }
+    assert.equal((await importLegacyWorkflowHistoryToStage(f.pool(),f.prepare())).imported,2)
+  }finally{await f.close()}
+})
+
+test('W26 duplicate manifest approval keys cannot silently replace receipts',()=>{
+  const f=source();try{
+    setJson(f,'{"nodes":[1]}');structuredApproval(f)
+    const text=fs.readFileSync(f.manifest,'utf8')
+    fs.writeFileSync(f.manifest,text.replace('"workflow_history_structured_review":','"workflow_history_structured_review":null,"workflow_history_structured_review":'))
+    assert.throws(f.prepare,/json_duplicate_key/)
+  }finally{f.close()}
 })

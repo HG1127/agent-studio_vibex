@@ -1,11 +1,11 @@
-# W22 — legacy Workflow history quarantine
+# W22 / W26 — legacy Workflow history quarantine
 
 Production remains **NO-GO**. This is an independent offline archive library and
 an isolated PG17 schema migration. It is not wired to CI, package scripts, W9,
 Stage Operator, API, UI, Worker, BaoTa, production PocketBase or company Neon.
 The existing Operator still blocks nonempty uncovered Workflow history tables;
 this change alone does not authorize or implement an Operator bypass/cutover.
-No commit or push is part of W22.
+No commit or push is part of W22/W26.
 
 ## Evidence contract
 
@@ -77,16 +77,82 @@ legacy IDs. Timestamps, status and free text stay as original text; no timestamp
 status, whitespace, node names or results are rewritten. The original SQLite
 file SHA additionally binds the physical source representation.
 
-`graph_snapshot`, `checkpoint`, and event `content` support only SQL NULL or JSON
-text spelling `null`, empty object or empty array with arbitrary surrounding
-whitespace. Their original text is preserved, including whitespace. All scalar
-or nonempty structured JSON is rejected, even if reviewed. Complex graph state,
-model connections, nested outputs, duplicate keys or embedded secrets cannot be
-safely validated by this narrow implementation. Do not replace them with empty
-values, redact them or omit rows to pass. Stop and obtain a separately designed,
-reviewed extension. A credential-pattern check is an additional rejection layer;
-it cannot prove arbitrary text secret-free. No API key/token exception is allowed
-in this slice, even if requested in review metadata.
+`graph_snapshot`, `checkpoint`, and event `content` retain W22 compatibility for
+SQL NULL and lexical `null`, empty objects and empty arrays (including existing
+whitespace spellings and the 2,000,000-code-unit field limit). W26 additionally
+supports nonempty OBJECT/ARRAY JSON **only as inert archival text**, with the
+separate approval below. Other scalar roots remain unsupported. JSON text is
+never replaced with a parsed object: whitespace, escapes, key ordering, numeric
+spellings and even numbers outside JavaScript's numeric range remain intact in
+the `source_record` string. No numeric coercion, normalization or graph execution
+occurs. Raw SQLite UTF-8 bytes must still roundtrip exactly before row hashing.
+
+## W26 structured history approval and limits
+
+In addition to the mandatory `workflow_history_archive_review`, the manifest
+must carry this separate attestation whenever any row has a nonempty structured
+JSON field. This is a distinct approval decision; a different human reviewer is
+not mechanically required. Placeholders are documentation, never usable receipts:
+
+```json
+{
+  "workflow_history_structured_review": {
+    "source_sha256": "<SHA256 of the same frozen SQLite file>",
+    "identity_mapping_sha256": "<SHA256 of the same approved v2 mapping file>",
+    "credentials_absent": true,
+    "verified_by": "<accountable structured-content reviewer>",
+    "approved_at": "2026-10-16T00:00:00Z",
+    "tables": {
+      "workflow_runs": {"row_sha256": ["<each complex run's contentHash(rawRow)>"]},
+      "workflow_events": {"row_sha256": ["<each complex event's contentHash(rawRow)>"]}
+    }
+  }
+}
+```
+
+Both table entries are required, with `[]` when that table has no complex rows.
+Each complex row appears exactly once, even when both graph and checkpoint are
+complex. Missing, duplicate, extra, stale or mismatched hashes abort the batch.
+Hashes cover the **whole original row**, including the lexical JSON strings;
+neither parsing nor reserialization supplies a replacement receipt. Source and
+mapping hashes must match the existing approvals. `verified_by` must be trimmed,
+2–120 characters; `approved_at` must be a valid UTC `Z` timestamp (calendar
+normalization is rejected). A supplied malformed structured approval also fails
+for an otherwise empty batch. Existing W22 empty/null rows require no new approval.
+
+For each nonempty JSON field, the tokenizer enforces these fixed limits:
+
+| Limit | Maximum |
+| --- | --- |
+| Original field UTF-8 bytes, including whitespace | 262,144 |
+| Nested object/array containers, including the root | 32 |
+| JSON values, including root, containers and primitive values | 10,000 |
+
+Object member names are scanned too; each member also consumes a value budget.
+The bounded recursive-descent tokenizer consumes the complete JSON grammar. It
+keeps a separate set of decoded keys for every object, so `"a"` and `"\u0061"`
+collide before any object parsing can silently overwrite them. Identical names
+in different objects are allowed. Only JSON space/tab/CR/LF are accepted for new
+structured content. Trailing data/commas, invalid escapes/numbers, literal or
+escaped NUL, malformed UTF-8 and unpaired Unicode surrogates abort. Valid Unicode
+and escape spellings are preserved, not normalized. Manifest and mapping files
+also receive UTF-8, duplicate-key and grammar checks before `JSON.parse`, bounded
+at 5,000,000 bytes, 32 containers and 200,000 values per file.
+
+Every decoded property name and string value at every depth is checked for
+credential patterns: passwords, secrets, credentials, private keys, API keys,
+tokens, authorization/Bearer, JWT-like text and common provider key prefixes.
+Escaped names/values do not bypass this check. The existing raw-row check remains
+an additional rejection layer. Pattern detection is conservative and can reject
+innocent text; it cannot prove arbitrary opaque strings secret-free. Independent
+complete-content review remains mandatory, and local attestations are not signed
+identities. Review never overrides secret/duplicate/Unicode/size failures. Do not
+redact, empty, omit or fabricate rows/receipts to pass these checks.
+
+W26 changes no SQL, Operator, API, UI, Worker or runtime path. All existing DBA-only
+immutable archive, forced RLS, transaction, identity and provenance requirements
+below still apply. Historical running state, queue work, model execution and
+external side effects are never activated.
 
 Runs must reference exactly one original workflow with matching `rh_user_id`.
 A workflow's nonempty `spec_id` must reference exactly one original Agent spec
@@ -163,3 +229,19 @@ The direct parallel E2E runner was attempted but stopped before any test because
 its sibling `D:\Downloads\agentstudio-ci-*` temp directory is outside the writable
 sandbox (EPERM). Accordingly the full canonical `pnpm check` / parallel E2E run
 is **not claimed complete**. No real PG17 W22 run or production import was made.
+
+W26 validation on 2026-10-16: PG API TypeScript (`node
+node_modules/typescript/bin/tsc -p tsconfig.json --noEmit`, from `services/pg-api`)
+passed. The workflow history suite passed **15/15** tests, including eight new
+W26 SQLite/PGlite tests for lexical nested graph/checkpoint/event fidelity,
+independent approvals/hashes/reviewer/UTC, deep escaped secrets, duplicate keys,
+grammar/Unicode/UTF-8/resource limits, legacy empty/null compatibility, structured
+SQL rollback/retry and duplicate manifest approval keys. Final rerun took about
+32 seconds. TEMP/TMP/TMPDIR were set to the project's `.tmp/w26` directory after
+the default Windows temp directory refused synthetic fixture creation (EPERM).
+`git diff --check` passed. Root `pnpm check` and `pnpm test:e2e:parallel` were
+attempted, but Corepack could not retrieve pnpm from the npm registry (network
+EACCES); neither canonical command started its checks. No root full-suite/E2E,
+real PG17 deployment or production validation is claimed for W26. Only synthetic
+identities/content were used; no BaoTa, real PocketBase or company Neon access,
+Git add/commit/push or production import occurred. Production remains **NO-GO**.
