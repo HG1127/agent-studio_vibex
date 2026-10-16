@@ -10,6 +10,8 @@ import {
 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { ToolTestResultPanel } from "@/components/tool-connections/ToolTestResultPanel"
+import { ToolRequestPreviewPanel } from "@/components/tool-connections/ToolRequestPreviewPanel"
+import { OPEN_METEO_EXAMPLE, inspectToolRequest, isOpenMeteoForecast } from "@/lib/toolConnectionUx"
 import {
   maskToolDomain,
   type ToolConnectionRow,
@@ -41,6 +43,10 @@ type ToolCardProps = {
 export function ToolCard(p: ToolCardProps) {
   const { row } = p
   const meta = p.statusMeta[row.status] || p.statusMeta.untested
+  const preflight = inspectToolRequest({
+    url: row.url, method: row.method === "GET" ? "GET" : "POST",
+    input: p.cardTestInput, bodyTemplate: row.body_template, timeout: String(row.timeout_s || 15),
+  })
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-md transition hover:shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -61,7 +67,7 @@ export function ToolCard(p: ToolCardProps) {
                       : "bg-muted-foreground"
                 }`}
               />
-              {meta.label}
+              {meta.label}{row.status === "error" && row.enabled ? " · 已开启" : ""}
             </span>
             {!row.enabled && (
               <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
@@ -88,7 +94,8 @@ export function ToolCard(p: ToolCardProps) {
           {row.status === "error" && row.last_error && (
             <p className="mt-2 inline-flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-xs leading-relaxed text-destructive">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {row.last_error}
+              <span>{row.last_error}<button type="button" onClick={() => p.onEdit(row)}
+                className="ml-2 font-semibold underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-primary">修复配置</button></span>
             </p>
           )}
         </div>
@@ -163,9 +170,14 @@ export function ToolCard(p: ToolCardProps) {
             rows={2}
             value={p.cardTestInput}
             onChange={(e) => p.onCardTestInputChange(e.target.value)}
-            placeholder={'例如 {"city":"杭州"}'}
+            placeholder={isOpenMeteoForecast(row.url) ? OPEN_METEO_EXAMPLE.input : '例如 {"query":"搜索词"}；字段必须与 URL / 请求体里的占位符一致'}
             className="resize-none rounded-lg border-border bg-card font-mono text-xs focus-visible:ring-primary"
           />
+          {isOpenMeteoForecast(row.url) && (
+            <button type="button" className="mt-2 inline-flex min-h-9 items-center rounded-lg border border-primary px-3 text-xs text-primary hover:bg-primary/5"
+              onClick={() => p.onCardTestInputChange(OPEN_METEO_EXAMPLE.input)}>填入杭州经纬度示例</button>
+          )}
+          <ToolRequestPreviewPanel preview={preflight} method={row.method === "GET" ? "GET" : "POST"} />
           {row.method !== "GET" && (
             <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-amber-300/40 bg-amber-50 p-3 text-xs text-amber-950">
               <input type="checkbox" aria-label="确认本次工具 POST 写入" checked={p.confirmCardWrite}
@@ -176,7 +188,7 @@ export function ToolCard(p: ToolCardProps) {
           <button
             type="button"
             onClick={() => p.onCardTest(row)}
-            disabled={p.isTestingCard || (row.method !== "GET" && !p.confirmCardWrite)}
+            disabled={p.isTestingCard || preflight.errors.length > 0 || (row.method !== "GET" && !p.confirmCardWrite)}
             className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
           >
             {p.isTestingCard ? (
@@ -188,7 +200,7 @@ export function ToolCard(p: ToolCardProps) {
           </button>
           {p.cardTestResult && (
             <div className="mt-3">
-              <ToolTestResultPanel result={p.cardTestResult} />
+              <ToolTestResultPanel result={p.cardTestResult} context={{method:row.method,url:row.url}} />
             </div>
           )}
         </div>

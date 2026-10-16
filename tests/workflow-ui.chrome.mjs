@@ -2165,6 +2165,32 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       "Smithery tablet content overflows: "+JSON.stringify(smitheryTablet))
     console.log("CHROME_STUDIO_SMITHERY_RESPONSIVE_PASS",
       JSON.stringify({mobile:smitheryMobile,tablet:smitheryTablet}))
+
+    // Human-friendly API tools UX: preset, method mismatch and local preflight
+    // must work without contacting any external weather provider.
+    await command("Page.navigate",{url:webOrigin+"/tool-connections"})
+    await waitFor('document.querySelector("[data-studio-fluid-page=tools]")!==null',"tool editor workspace")
+    const addToolClicked=await evaluate('(() => {const b=[...document.querySelectorAll("button")].find(x=>x.textContent?.trim()==="添加工具"&&!x.disabled);if(!b)return false;b.click();return true})()')
+    assert.equal(addToolClicked,true,"tool editor Add button must be reachable")
+    await waitFor('document.querySelector("input[placeholder=\\"https://api.example.com/v1/query\\"]")!==null',"add tool form")
+    const presetClicked=await evaluate('(() => {const b=[...document.querySelectorAll("button")].find(x=>x.textContent?.includes("填入天气查询示例"));if(!b)return false;b.click();return true})()')
+    assert.equal(presetClicked,true,"weather preset action missing")
+    await waitFor('document.querySelector("input[placeholder=\\"https://api.example.com/v1/query\\"]")?.value.includes("api.open-meteo.com")',"weather preset filled")
+    const toolPresetState=await evaluate('(() => {const url=document.querySelector("input[placeholder=\\"https://api.example.com/v1/query\\"]")?.value||"";const panel=document.querySelector("section[aria-label=\\"请求配置检查\\"]");const test=[...document.querySelectorAll("button")].find(b=>b.textContent?.trim()==="测试调用");return {methodButtons:[...document.querySelectorAll("button")].filter(b=>["GET","POST"].includes(b.textContent?.trim())).map(b=>({method:b.textContent.trim(),active:b.className.includes("bg-primary/10")})),urlOk:url.includes("latitude={{latitude}}"),checkOk:panel?.textContent?.includes("格式检查通过"),queryKeys:panel?.textContent?.includes("latitude")&&panel?.textContent?.includes("longitude"),testEnabled:!!test&&!test.disabled,previewHidesValues:!panel?.textContent?.includes("30.2741")}})()')
+    assert.equal(toolPresetState.urlOk,true)
+    assert.equal(toolPresetState.checkOk,true)
+    assert.equal(toolPresetState.queryKeys,true)
+    assert.equal(toolPresetState.testEnabled,true)
+    assert.equal(toolPresetState.previewHidesValues,true)
+    assert.ok(toolPresetState.methodButtons.some(v=>v.method==="GET"&&v.active))
+    assert.equal(await evaluate('(() => {const b=[...document.querySelectorAll("button")].find(x=>x.textContent?.trim()==="POST");if(!b)return false;b.click();return true})()'),true)
+    await waitFor('document.body.innerText.includes("Open-Meteo /v1/forecast 应使用 GET")',"POST method warning")
+    const badMethodState=await evaluate('(() => ({fix:[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("切换为 GET")),testDisabled:[...document.querySelectorAll("button")].find(b=>b.textContent?.trim()==="测试调用")?.disabled}))()')
+    assert.deepEqual(badMethodState,{fix:true,testDisabled:true})
+    assert.equal(await evaluate('(() => {const b=[...document.querySelectorAll("button")].find(x=>x.textContent?.trim()==="切换为 GET");if(!b)return false;b.click();return true})()'),true)
+    await waitFor('document.querySelector("section[aria-label=\\"请求配置检查\\"]")?.textContent?.includes("格式检查通过")',"GET quick fix")
+    console.log("CHROME_STUDIO_TOOL_UX_PASS",JSON.stringify({preset:true,localValidation:true,postBlocked:true,oneClickFix:true,previewRedacted:true}))
+
     // Cross-workspace responsive layout regression. Every key product space
     // should expand to the available desktop width without horizontal overflow.
     const responsiveRoutes=[

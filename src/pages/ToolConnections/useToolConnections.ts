@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { OPEN_METEO_EXAMPLE, inspectToolRequest, isOpenMeteoForecast } from "@/lib/toolConnectionUx"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
@@ -78,7 +79,7 @@ export function useToolConnections() {
   const [formName, setFormName] = useState("")
   const [formDesc, setFormDesc] = useState("")
   const [formUrl, setFormUrl] = useState("")
-  const [formMethod, setFormMethod] = useState<"GET" | "POST">("POST")
+  const [formMethod, setFormMethod] = useState<"GET" | "POST">("GET")
   const [formHeaders, setFormHeaders] = useState<HeaderDraft[]>([])
   const [formBody, setFormBody] = useState("")
   const [formTimeout, setFormTimeout] = useState("15")
@@ -86,6 +87,12 @@ export function useToolConnections() {
   const [confirmFormWrite, setConfirmFormWrite] = useState(false)
   const [isTestingForm, setIsTestingForm] = useState(false)
   const [formTestResult, setFormTestResult] = useState<ToolTestResult | null>(null)
+  const formRevisionRef = useRef(0)
+  const invalidateFormTest = useCallback(() => {
+    formRevisionRef.current += 1
+    setFormTestResult(null)
+    setConfirmFormWrite(false)
+  }, [])
   const [isSaving, setIsSaving] = useState(false)
 
   // 卡片操作
@@ -94,6 +101,12 @@ export function useToolConnections() {
   const [cardTestInput, setCardTestInput] = useState("")
   const [confirmCardWrite, setConfirmCardWrite] = useState(false)
   const [cardTestResult, setCardTestResult] = useState<ToolTestResult | null>(null)
+  const cardRevisionRef = useRef(0)
+  const invalidateCardTest = useCallback(() => {
+    cardRevisionRef.current += 1
+    setCardTestResult(null)
+    setConfirmCardWrite(false)
+  }, [])
   const [isTestingCard, setIsTestingCard] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState("")
 
@@ -150,7 +163,7 @@ export function useToolConnections() {
     setFormName("")
     setFormDesc("")
     setFormUrl("")
-    setFormMethod("POST")
+    setFormMethod("GET")
     setFormHeaders([])
     setFormBody("")
     setFormTimeout("15")
@@ -165,6 +178,27 @@ export function useToolConnections() {
     setFormOpen(true)
     setErrorMsg("")
   }, [resetFormState])
+
+  const useWeatherExample = useCallback(() => {
+    if (formMode !== "add") return
+    if ((formName.trim() || formDesc.trim() || formUrl.trim() || formBody.trim() || testInput.trim()) &&
+      !window.confirm("天气示例将替换当前未保存的工具配置，是否继续？")) return
+    setFormName(OPEN_METEO_EXAMPLE.name)
+    setFormDesc(OPEN_METEO_EXAMPLE.description)
+    setFormUrl(OPEN_METEO_EXAMPLE.url)
+    setFormMethod("GET")
+    setFormHeaders([])
+    setFormBody("")
+    setFormTimeout("15")
+    setTestInput(OPEN_METEO_EXAMPLE.input)
+    invalidateFormTest()
+    setErrorMsg("")
+  }, [formMode, formName, formDesc, formUrl, formBody, testInput, invalidateFormTest])
+
+  const formRequestPreview = useMemo(() => inspectToolRequest({
+    url: formUrl, method: formMethod, input: testInput,
+    bodyTemplate: formBody, timeout: formTimeout, headers: formHeaders,
+  }), [formUrl, formMethod, testInput, formBody, formTimeout, formHeaders])
 
   const startEdit = useCallback(
     (row: ToolConnectionRow) => {
@@ -207,6 +241,10 @@ export function useToolConnections() {
   }, [])
 
   const handleTestForm = useCallback(async () => {
+    if (formRequestPreview.errors.length) {
+      setErrorMsg("请先修复请求配置：" + formRequestPreview.errors.join("；"))
+      return
+    }
     if (formMethod === "POST" && !confirmFormWrite) {
       setErrorMsg("POST 测试会向外部服务真实写入，请先确认本次请求")
       return
@@ -218,6 +256,7 @@ export function useToolConnections() {
       return
     }
     setIsTestingForm(true)
+    const startedRevision = formRevisionRef.current
     try {
       const payload = {
         url: formUrl.trim(),
@@ -239,14 +278,14 @@ export function useToolConnections() {
         setErrorMsg(data?.message || "测试请求失败，请稍后重试")
         return
       }
-      setFormTestResult(normalizeTestResult(data))
+      if (formRevisionRef.current === startedRevision) setFormTestResult(normalizeTestResult(data))
     } catch (err) {
       if (!(err instanceof AuthRequiredError)) setErrorMsg("网络异常，测试失败，请重试")
     } finally {
       setIsTestingForm(false)
       setConfirmFormWrite(false)
     }
-  }, [apiFetch, confirmFormWrite, formBody, formHeaders, formMethod, formTimeout, formUrl, testInput])
+  }, [apiFetch, confirmFormWrite, formBody, formHeaders, formMethod, formTimeout, formUrl, testInput, formRequestPreview])
 
   const handleSave = useCallback(async () => {
     setErrorMsg("")
@@ -260,6 +299,14 @@ export function useToolConnections() {
     }
     if (!/^https?:\/\//i.test(formUrl.trim())) {
       setErrorMsg("请求 URL 必须以 http:// 或 https:// 开头")
+      return
+    }
+    if (isOpenMeteoForecast(formUrl) && formMethod !== "GET") {
+      setErrorMsg("Open-Meteo Forecast 请使用 GET，而不是 POST")
+      return
+    }
+    if (!Number.isInteger(Number(formTimeout)) || Number(formTimeout) < 5 || Number(formTimeout) > 60) {
+      setErrorMsg("超时秒数必须是 5–60 之间的整数")
       return
     }
     setIsSaving(true)
@@ -322,6 +369,12 @@ export function useToolConnections() {
   const handleCardTest = useCallback(
     async (row: ToolConnectionRow) => {
       if (busyId || isTestingCard) return
+      const preflight = inspectToolRequest({url: row.url, method: row.method === "GET" ? "GET" : "POST",
+        input: cardTestInput, bodyTemplate: row.body_template, timeout: String(row.timeout_s || 15)})
+      if (preflight.errors.length) {
+        setErrorMsg("请先修复测试配置：" + preflight.errors.join("；"))
+        return
+      }
       if (String(row.method || "POST").toUpperCase() !== "GET" && !confirmCardWrite) {
         setErrorMsg("此工具将真实发送 POST 写请求，请先勾选本次执行确认")
         return
@@ -329,6 +382,7 @@ export function useToolConnections() {
       setErrorMsg("")
       setCardTestResult(null)
       setIsTestingCard(true)
+      const startedRevision = cardRevisionRef.current
       try {
         const res = await apiFetch("/api/tool-connections/test", {
           method: "POST",
@@ -343,7 +397,7 @@ export function useToolConnections() {
           setErrorMsg(data?.message || "测试请求失败，请稍后重试")
           return
         }
-        setCardTestResult(normalizeTestResult(data))
+        if (cardRevisionRef.current === startedRevision) setCardTestResult(normalizeTestResult(data))
         void loadList()
       } catch (err) {
         if (!(err instanceof AuthRequiredError)) setErrorMsg("网络异常，测试失败，请重试")
@@ -363,6 +417,13 @@ export function useToolConnections() {
         setExpandedId(row.id)
         setConfirmCardWrite(false)
         setNoticeMsg("POST 工具不执行一键重试，请展开参数并确认本次真实写入")
+        return
+      }
+      const preflight = inspectToolRequest({url: row.url, method: "GET", input: "{}"})
+      if (preflight.errors.length) {
+        setExpandedId(row.id)
+        setCardTestInput("")
+        setNoticeMsg("请先输入 GET 测试参数：" + preflight.errors.join("；"))
         return
       }
       setErrorMsg("")
@@ -456,6 +517,7 @@ export function useToolConnections() {
     formName.trim().length > 0 &&
     formDesc.trim().length > 0 &&
     /^https?:\/\//i.test(formUrl.trim()) &&
+    !(isOpenMeteoForecast(formUrl) && formMethod !== "GET") &&
     !isSaving
 
   return {
@@ -480,6 +542,9 @@ export function useToolConnections() {
     formBody,
     formTimeout,
     testInput,
+    formRequestPreview,
+    invalidateFormTest,
+    useWeatherExample,
     setFormName,
     confirmFormWrite,
     setConfirmFormWrite,
@@ -506,6 +571,7 @@ export function useToolConnections() {
     toggleExpand,
     cardTestInput,
     setCardTestInput,
+    invalidateCardTest,
     confirmCardWrite,
     setConfirmCardWrite,
     cardTestResult,

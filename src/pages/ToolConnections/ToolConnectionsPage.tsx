@@ -29,12 +29,6 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
   return (
     <SiteShell>
     <div className="relative min-h-screen bg-background text-foreground">
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-32 left-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-secondary blur-3xl" />
-        <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-      </div>
-
       <header className="sticky top-0 z-40 border-b border-border bg-background/70 backdrop-blur-md">
         <TcTopBar />
       </header>
@@ -43,10 +37,10 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
         <section className="mt-4 rounded-xl border border-border bg-card px-4 py-4">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
-              把你的接口接进助手，<span className="text-primary">试跑时真实调用</span>
+              工具连接
             </h1>
             <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-              任何 HTTP 接口都能接进来：填好地址与请求头当场测一次真实返回；已启用的工具会出现在方案编辑器里供勾选。
+              接入常见 GET / POST API，先检查参数、再试调真实返回；只有配置和权限正确的工具才能成功执行。
             </p>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -124,7 +118,7 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
         {p.isLoggedIn && (
           <section className="py-5">
             <div
-              className={`grid min-w-0 items-start gap-5 ${p.formOpen ? "xl:grid-cols-[minmax(310px,390px)_minmax(0,1fr)]" : "grid-cols-1"}`}
+              className={`grid min-w-0 items-start gap-5 ${p.formOpen ? "xl:grid-cols-[minmax(350px,480px)_minmax(0,1fr)]" : "grid-cols-1"}`}
             >
               {p.formOpen && (
                 <div className="lg:sticky lg:top-20">
@@ -138,19 +132,21 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
                     formBody={p.formBody}
                     formTimeout={p.formTimeout}
                     testInput={p.testInput}
+                    requestPreview={p.formRequestPreview}
+                    onUseWeatherExample={p.useWeatherExample}
                     confirmFormWrite={p.confirmFormWrite}
                     onConfirmFormWriteChange={p.setConfirmFormWrite}
                     editingHeaders={editingRow?.headers || []}
                     onFormNameChange={p.setFormName}
                     onFormDescChange={p.setFormDesc}
-                    onFormUrlChange={value => {p.setFormUrl(value);p.setConfirmFormWrite(false)}}
-                    onFormMethodChange={method => { p.setFormMethod(method); p.setConfirmFormWrite(false) }}
-                    onFormBodyChange={value => {p.setFormBody(value);p.setConfirmFormWrite(false)}}
-                    onFormTimeoutChange={p.setFormTimeout}
-                    onTestInputChange={value => {p.setTestInput(value);p.setConfirmFormWrite(false)}}
-                    onAddHeader={p.addHeaderRow}
-                    onUpdateHeader={(index, value) => {p.updateHeaderRow(index,value);p.setConfirmFormWrite(false)}}
-                    onRemoveHeader={p.removeHeaderRow}
+                    onFormUrlChange={value => {p.setFormUrl(value);p.invalidateFormTest()}}
+                    onFormMethodChange={method => { p.setFormMethod(method); p.invalidateFormTest() }}
+                    onFormBodyChange={value => {p.setFormBody(value);p.invalidateFormTest()}}
+                    onFormTimeoutChange={value => {p.setFormTimeout(value);p.invalidateFormTest()}}
+                    onTestInputChange={value => {p.setTestInput(value);p.invalidateFormTest()}}
+                    onAddHeader={() => {p.addHeaderRow();p.invalidateFormTest()}}
+                    onUpdateHeader={(index, value) => {p.updateHeaderRow(index,value);p.invalidateFormTest()}}
+                    onRemoveHeader={index => {p.removeHeaderRow(index);p.invalidateFormTest()}}
                     onTest={p.handleTestForm}
                     isTestingForm={p.isTestingForm}
                     formTestResult={p.formTestResult}
@@ -196,7 +192,7 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
                       onConfirmCardWriteChange={p.setConfirmCardWrite}
                       cardTestResult={p.expandedId === row.id ? p.cardTestResult : null}
                       isTestingCard={p.isTestingCard && p.expandedId === row.id}
-                      onCardTestInputChange={value => {p.setCardTestInput(value);p.setConfirmCardWrite(false)}}
+                      onCardTestInputChange={value => {p.setCardTestInput(value);p.invalidateCardTest()}}
                       onCardTest={p.handleCardTest}
                       onRetest={p.handleRetest}
                       onToggleEnabled={p.handleToggleEnabled}

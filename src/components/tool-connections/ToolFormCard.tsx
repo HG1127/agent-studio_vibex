@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { ToolTestResultPanel } from "@/components/tool-connections/ToolTestResultPanel"
+import { ToolRequestPreviewPanel } from "@/components/tool-connections/ToolRequestPreviewPanel"
+import type { ToolRequestPreview } from "@/lib/toolConnectionUx"
 import type {
   HeaderDraft,
   ToolHeaderMasked,
@@ -20,6 +22,8 @@ type ToolFormCardProps = {
   formTimeout: string
   testInput: string
   confirmFormWrite: boolean
+  requestPreview: ToolRequestPreview
+  onUseWeatherExample: () => void
   onConfirmFormWriteChange: (checked: boolean) => void
   editingHeaders: ToolHeaderMasked[]
   onFormNameChange: (value: string) => void
@@ -71,6 +75,20 @@ export function ToolFormCard(p: ToolFormCardProps) {
       </div>
 
       <div className="flex flex-col gap-4 px-5 py-5">
+        {p.formMode === "add" && (
+          <div className="rounded-xl border border-border bg-secondary/40 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-card-foreground">快速开始</span>
+              <button type="button" onClick={p.onUseWeatherExample}
+                className="min-h-9 rounded-lg border border-primary bg-card px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary">
+                填入天气查询示例（GET）
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              自动填入方法、接口地址和杭州示例经纬度；不会立即访问外部网络。
+            </p>
+          </div>
+        )}
         <div>
           <FieldLabel text="工具名称" required />
           <Input
@@ -111,7 +129,7 @@ export function ToolFormCard(p: ToolFormCardProps) {
           <div>
             <FieldLabel text="请求方法" />
             <div className="flex gap-2">
-              {(["POST", "GET"] as const).map((m) => (
+              {(["GET", "POST"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -139,6 +157,16 @@ export function ToolFormCard(p: ToolFormCardProps) {
             />
           </div>
         </div>
+        <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">
+          {p.formMethod === "GET" ? "GET 用于查询：把字段写在 URL 的 ?参数={{字段}} 中，不发送请求体。" : "POST 用于提交：通常通过 JSON 请求体传值。真实测试可能产生写入或费用。"}
+        </p>
+        {p.requestPreview.isWeatherForecast && p.formMethod === "POST" && (
+          <div className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-950">
+            当前天气接口需要 GET，不是 POST。
+            <button type="button" onClick={() => p.onFormMethodChange("GET")}
+              className="ml-2 rounded-lg border border-amber-500 px-2.5 py-1 font-semibold underline-offset-2 hover:underline">切换为 GET</button>
+          </div>
+        )}
 
         <div>
           <FieldLabel text="自定义请求头（可含 API Key）" />
@@ -202,14 +230,15 @@ export function ToolFormCard(p: ToolFormCardProps) {
         )}
 
         <div className="rounded-xl border border-border bg-background/60 p-4">
-          <FieldLabel text="测试调用（保存前先看真实返回）" />
+          <FieldLabel text="测试参数（JSON 对象）" />
           <Textarea
             rows={2}
             value={p.testInput}
             onChange={(e) => p.onTestInputChange(e.target.value)}
-            placeholder={'测试参数，例如 {"city":"杭州"}；{{input}} 与 {{字段名}} 占位符都会按它替换；留空按 {} 发送'}
+            placeholder={'例如 {"latitude":30.2741,"longitude":120.1551}。GET 需在 URL 使用 {{latitude}} 等占位符；POST 在请求体模板引用参数'}
             className="resize-none rounded-lg border-border bg-card font-mono text-xs focus-visible:ring-primary"
           />
+          {(p.formUrl.trim() || p.testInput.trim() || p.formBody.trim()) && <ToolRequestPreviewPanel preview={p.requestPreview} method={p.formMethod} />}
           {p.formMethod === "POST" && (
             <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-amber-300/40 bg-amber-50 p-3 text-xs text-amber-950">
               <input type="checkbox" aria-label="确认保存前的外部 POST 调用" checked={p.confirmFormWrite}
@@ -222,7 +251,7 @@ export function ToolFormCard(p: ToolFormCardProps) {
             variant="outline"
             size="sm"
             onClick={p.onTest}
-            disabled={p.isTestingForm || (p.formMethod === "POST" && !p.confirmFormWrite) }
+            disabled={p.isTestingForm || p.requestPreview.errors.length > 0 || (p.formMethod === "POST" && !p.confirmFormWrite) }
             className="mt-2 rounded-lg border-primary px-4 text-primary transition hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
           >
             {p.isTestingForm ? (
@@ -239,7 +268,7 @@ export function ToolFormCard(p: ToolFormCardProps) {
           </Button>
           {p.formTestResult && (
             <div className="mt-3">
-              <ToolTestResultPanel result={p.formTestResult} />
+              <ToolTestResultPanel result={p.formTestResult} context={{method:p.formMethod,url:p.formUrl}} />
             </div>
           )}
         </div>

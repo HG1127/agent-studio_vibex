@@ -18,11 +18,20 @@ const upstreamBase="http://127.0.0.1:"+upstreamPort
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 let getCalls=0, postCalls=0, logs=""
 const upstream=createServer(async(req,res)=>{
-  for await(const chunk of req){ void chunk }
+  let received=""
+  for await(const chunk of req){ received+=String(chunk) }
   if(req.method==="POST") postCalls++
   else getCalls++
+  if(req.url==="/strict-json"){
+    try { JSON.parse(received) }
+    catch {
+      res.writeHead(400,{"Content-Type":"application/json"})
+      res.end(JSON.stringify({reason:"Invalid value: The given data was not valid JSON.",error:true}))
+      return
+    }
+  }
   res.writeHead(200,{"Content-Type":"application/json"})
-  res.end(JSON.stringify({ok:true,method:req.method}))
+  res.end(JSON.stringify({ok:true,method:req.method,path:req.url}))
 })
 const server=spawnHeadlessPocketBase(binary,[
   "serve","--http=127.0.0.1:"+port,
@@ -108,16 +117,30 @@ try {
   })
   assert.equal(formGet.ok,true)
   assert.equal(getCalls,2)
+  const forecast=await expect("POST",connectionTest,"A",{
+    url:upstreamBase+"/forecast?latitude={{latitude}}&longitude={{longitude}}",
+    method:"GET",input:'{"latitude":30.2741,"longitude":120.1551}',
+  })
+  assert.equal(forecast.ok,true)
+  const sent=JSON.parse(forecast.response_excerpt)
+  assert.equal(sent.path,"/forecast?latitude=30.2741&longitude=120.1551")
+  const invalidBody=await expect("POST",connectionTest,"A",{
+    url:upstreamBase+"/strict-json",method:"POST",input:'{"city":"杭州"}',
+    body_template:'{"city":{{city}}}',confirm_write:true,
+  })
+  assert.equal(invalidBody.ok,false)
+  assert.equal(invalidBody.status_code,400)
+  assert.match(invalidBody.response_excerpt,/not valid JSON/)
   const formPost=await expect("POST",connectionTest,"A",{
     url:upstreamBase+"/unsaved-write",method:"POST",input:"{}",confirm_write:true,
   })
   assert.equal(formPost.ok,true)
-  assert.equal(postCalls,2)
+  assert.equal(postCalls,3)
   const savedPost=await expect("POST",connectionTest,"A",{
     connection_id:post.item.id,input:"{}",confirm_write:true,
   })
   assert.equal(savedPost.ok,true)
-  assert.equal(postCalls,3)
+  assert.equal(postCalls,4)
 
   // Tool names are unique per owner, NOT globally reserved by another tenant.
   const otherOwner=await expect("POST","/api/tool-connections","B",{
