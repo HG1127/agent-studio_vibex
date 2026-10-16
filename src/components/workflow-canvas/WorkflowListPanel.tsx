@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Copy, FolderOpen, Plus, Sparkles, Trash2 } from "lucide-react"
+import { useRef, useState } from "react"
+import { Copy, Download, FolderOpen, Plus, Sparkles, Trash2, Upload } from "lucide-react"
 import type { WorkflowRow } from "@/pages/WorkflowCanvas/useWorkflowCanvas"
 
 type WorkflowListPanelProps = {
@@ -13,6 +13,8 @@ type WorkflowListPanelProps = {
   specOptions: { id: string; name: string }[]
   genFromSpecBusy: boolean
   handleGenerateFromSpec: (specId: string) => void
+  exportActiveFlow: () => void
+  importFlowFile: (file: File) => Promise<void>
 }
 
 export function WorkflowListPanel({
@@ -26,8 +28,11 @@ export function WorkflowListPanel({
   specOptions,
   genFromSpecBusy,
   handleGenerateFromSpec,
+  exportActiveFlow,
+  importFlowFile,
 }: WorkflowListPanelProps) {
   const [genSpecId, setGenSpecId] = useState("")
+  const importRef = useRef<HTMLInputElement>(null)
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-md">
       <div className="flex items-center justify-between gap-2">
@@ -40,6 +45,18 @@ export function WorkflowListPanel({
           <Plus className="h-3 w-3" />
           新建
         </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={exportActiveFlow} disabled={!activeWorkflowId}
+          className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-40"><Download size={14}/>导出 JSON</button>
+        <button type="button" onClick={()=>importRef.current?.click()}
+          className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs"><Upload size={14}/>导入 JSON</button>
+        <input ref={importRef} type="file" accept=".json,application/json" className="hidden"
+          aria-label="导入工作流 JSON 文件" onChange={e=>{
+            const file=e.target.files?.[0]
+            e.target.value=""
+            if(file) void importFlowFile(file)
+          }}/>
       </div>
       {specOptions.length > 0 && (
         <div className="mt-2 rounded-xl border border-dashed border-border bg-background p-2">

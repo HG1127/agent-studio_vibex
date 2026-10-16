@@ -142,6 +142,13 @@ test("V7 shared PocketBase modules parse as standalone CommonJS", () => {
   }
 })
 
+test("Agent may load only its own enabled, verified marketplace tools", () => {
+  const agent = fs.readFileSync(path.join(hooks,"agent_engine.pb.js"),"utf8")
+  assert.match(agent,/rh_user_id = \{:uid\} && enabled = true && last_probe_status = 'ok' && tool_count > 0/)
+  assert.doesNotMatch(agent,/"id != '' && enabled = true"/,
+    "marketplace tool discovery must not scan cross-employee connections")
+})
+
 test("agent specs require authentication, filter listings and enforce immutable ownership", () => {
   const h = harness("agent_specs", { agent_specs: [
     { id: "mine", rh_user_id: "A", name: "A spec" },

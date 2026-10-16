@@ -59,6 +59,16 @@ try{
  assert.equal(status.data.initialized,false,JSON.stringify(status))
  let denied=await get("/api/agent_specs",{headerUid:"hacker"})
  assert.equal(denied.status,401,"forged owner header unexpectedly authorized: "+JSON.stringify(denied))
+ // Standalone JWT guard must strip forged legacy owner headers on all LLM routes.
+ for(const [method,route,body] of [
+   ["GET","/api/llm/models",undefined],
+   ["POST","/api/llm/chat",{model:"fake",request_id:"fake-request-123456",
+     messages:[{role:"user",content:"test"}]}],
+   ["POST","/api/llm/poll",{request_id:"fake-request-123456"}],
+ ]){
+   const spoofed=await request(method,route,{headerUid:"forged-other-employee",body})
+   assert.equal(spoofed.status,401,"legacy header alone authorized "+method+" "+route)
+ }
  denied=await post("/api/studio/bootstrap",{email:"boss@example.test",password:"S3cure-password-2026",display_name:"负责人"})
  assert.equal(denied.status,403)
  const boot=await post("/api/studio/bootstrap",{email:"boss@example.test",password:"S3cure-password-2026",display_name:"负责人"},{setupKey:key})

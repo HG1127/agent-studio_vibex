@@ -327,7 +327,7 @@ export default function KnowledgeBasesPage() {
     <SiteShell>
       <div className="min-h-screen flex-1 bg-background text-foreground">
         <header className="border-b border-border bg-card px-4 py-5 sm:px-6">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="flex w-full min-w-0 items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="rounded-xl bg-primary/10 p-3 text-primary"><BookOpen className="h-6 w-6" /></span>
               <div>
@@ -341,23 +341,30 @@ export default function KnowledgeBasesPage() {
             </button>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
-          <div className="grid gap-3 md:grid-cols-3">
-            {[
-              { name: "可访问知识库", value: bases.length, icon: FolderOpen },
-              { name: "已导入文档", value: bases.reduce((n, b) => n + b.document_count, 0), icon: FileText },
-              { name: "已建立的文本片段", value: bases.reduce((n, b) => n + b.chunk_count, 0), icon: BookOpen },
-            ].map(item => <div key={item.name} className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center justify-between text-xs text-muted-foreground"><span>{item.name}</span><item.icon className="h-4 w-4" /></div>
-              <div className="mt-2 text-2xl font-semibold tabular-nums">{item.value}</div>
-            </div>)}
-          </div>
+        <main className="w-full min-w-0 space-y-5 p-3 sm:p-5 lg:p-7 2xl:p-10" data-studio-fluid-page="knowledge">
+          <details className="rounded-xl border border-border bg-card p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+              查看知识库用量（{bases.length} 个库）
+            </summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              {[
+                { name: "可访问知识库", value: bases.length, icon: FolderOpen },
+                { name: "已导入文档", value: bases.reduce((n, b) => n + b.document_count, 0), icon: FileText },
+                { name: "已建立的文本片段", value: bases.reduce((n, b) => n + b.chunk_count, 0), icon: BookOpen },
+              ].map(item => <div key={item.name} className="rounded-xl bg-secondary/30 p-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{item.name}</span><item.icon className="h-4 w-4"/>
+                </div>
+                <div className="mt-2 text-xl font-semibold tabular-nums">{item.value}</div>
+              </div>)}
+            </div>
+          </details>
           {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
             <span className="flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0" />{error}</span>
             {error.includes("登录") && <button type="button" onClick={redirectToRhLogin} className="shrink-0 underline">去登录</button>}
           </div>}
           {notice && <p role="status" className="flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />{notice}</p>}
-          <div className="grid items-start gap-5 lg:grid-cols-[310px_minmax(0,1fr)]">
+          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
             <aside className="space-y-4">
               <section id="kb-form" className="rounded-2xl border border-border bg-card p-4">
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Plus className="h-4 w-4 text-primary" />{editing ? "编辑知识库" : "新建知识库"}</h2>
@@ -416,17 +423,17 @@ export default function KnowledgeBasesPage() {
                           className="inline-flex items-center gap-1 rounded-lg border border-destructive/20 px-3 py-2 text-xs text-destructive hover:bg-destructive/5"><Trash2 className="h-3.5 w-3.5" />删除</button>
                       </div>}
                     </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-4 grid gap-3">
                       <button type="button" disabled={uploading || !canEditDocs} onClick={() => uploadRef.current?.click()}
                         className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-primary/35 bg-primary/5 px-3 py-4 text-center hover:bg-primary/10 disabled:opacity-50">
                         {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <UploadCloud className="h-6 w-6 text-primary" />}
                         <span className="text-sm font-medium">{uploading ? "正在建立文档索引…" : "选择文件导入"}</span>
                         <span className="text-[11px] text-muted-foreground">PDF · DOCX · TXT · MD · CSV · JSON</span>
                       </button>
-                      <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                        <p className="font-medium text-foreground">导入规则</p>
-                        <p className="mt-1">支持 PDF 文本层、Word DOCX 和常见文本格式；每份最多 16 万字符、每库 80 份。PDF 扫描件需 OCR。关键词可立即检索；配置模型后后台分批生成语义向量。</p>
-                      </div>
+                      <details className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer font-medium text-foreground">支持的文件格式与导入限制</summary>
+                        <p className="mt-2 leading-relaxed">支持 PDF 文本层、DOCX 和常见文本格式；每份最多 16 万字符、每库 80 份。扫描版 PDF 需要 OCR。关键词可立即检索；语义向量由已授权模型生成。</p>
+                      </details>
                       <input ref={uploadRef} type="file" multiple accept={DOCUMENT_EXTENSIONS}
                         aria-label="上传知识库文件" className="hidden" disabled={!canEditDocs} onChange={event => void importFiles(event)} />
                     </div>

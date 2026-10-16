@@ -79,7 +79,7 @@ export default function StaffPage(){
   }
   const inputStyle="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
   return <SiteShell><main className="min-h-screen flex-1 bg-background p-5 text-foreground md:p-8">
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full min-w-0 space-y-5">
       <header className="flex items-center justify-between">
         <div><h1 className="text-2xl font-semibold">员工与权限</h1><p className="mt-1 text-sm text-muted-foreground">独立管理公司成员账号、共享授权和访问状态</p></div>
         <button className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" onClick={()=>void load()}><RefreshCw size={16}/>刷新</button>

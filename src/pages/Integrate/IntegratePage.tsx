@@ -88,7 +88,7 @@ export function IntegratePage(p: ReturnType<typeof useIntegrate>) {
         </div>
       )}
 
-      <main className="mx-auto max-w-7xl px-4 pb-16">
+      <main className="w-full min-w-0 px-3 pb-12 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="integrate">
         {p.isLoggedIn ? (
           <div className="flex flex-col gap-5">
             <InvocationStatsRow statsRow={p.statsRow} />

@@ -152,7 +152,7 @@ export default function InternalOverviewPage() {
     <SiteShell>
       <div className="min-h-screen flex-1 bg-background text-foreground">
         <header className="border-b border-border bg-card px-4 py-5 sm:px-6">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="rounded-xl bg-primary/10 p-3 text-primary">
                 <ClipboardCheck className="h-6 w-6" />
@@ -171,7 +171,7 @@ export default function InternalOverviewPage() {
             </button>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
+        <main className="w-full min-w-0 space-y-5 px-3 py-5 sm:px-5 lg:px-7 2xl:px-10">
           {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
             <span className="flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0"/>{error}</span>
             {authRequired

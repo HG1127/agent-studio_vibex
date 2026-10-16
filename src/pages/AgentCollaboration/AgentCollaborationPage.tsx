@@ -169,7 +169,7 @@ export default function AgentCollaborationPage(){
  }
  const pendingMine=detail?.proposals.some(x=>x.status==="pending")
  return <SiteShell><main className="min-h-screen flex-1 bg-background p-4 text-foreground md:p-7">
-  <div className="mx-auto max-w-7xl space-y-5">
+  <div className="w-full min-w-0 space-y-5">
    <header className="flex flex-wrap items-start justify-between gap-3">
     <div><h1 className="flex items-center gap-2 text-2xl font-semibold">
       <UsersRound className="h-6 w-6 text-primary"/>多人 Agent 协作</h1>

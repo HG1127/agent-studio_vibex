@@ -1,4 +1,4 @@
-import { Rocket, Save } from "lucide-react"
+import { ArrowLeft, Rocket, Save } from "lucide-react"
 import { Link } from "react-router-dom"
 import { SitePageHeader } from "@/components/site/SitePageHeader"
 
@@ -15,13 +15,16 @@ export function RunTopBar({ saveVersionSpecId = "" }: RunTopBarProps) {
       badge="Agent Studio"
       actions={
         saveVersionSpecId ? (
-          <Link
-            to={`/version-release?spec=${encodeURIComponent(saveVersionSpecId)}`}
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground shadow transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <Save className="h-4 w-4" />
-            <span className="hidden sm:inline">存为版本</span>
-          </Link>
+          <span className="flex flex-wrap items-center gap-2">
+            <Link to={`/agent-create?spec=${encodeURIComponent(saveVersionSpecId)}&step=4`}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary">
+              <ArrowLeft className="h-4 w-4"/>返回创建向导
+            </Link>
+            <Link to={`/version-release?spec=${encodeURIComponent(saveVersionSpecId)}`}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Save className="h-4 w-4" />版本验收
+            </Link>
+          </span>
         ) : null
       }
     />

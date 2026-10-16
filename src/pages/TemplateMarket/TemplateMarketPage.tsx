@@ -23,7 +23,7 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
         <TmTopBar />
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 pb-20">
+      <main className="w-full min-w-0 px-3 pb-12 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="templates">
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 py-4">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">模板市场</h1>

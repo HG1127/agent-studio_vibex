@@ -1,5 +1,6 @@
 import { AlertCircle, LogIn, Rocket, X } from "lucide-react"
 import { ApprovalGateCard } from "@/components/agent-run/ApprovalGateCard"
+import { AgentQualityChecklist } from "@/components/agent-run/AgentQualityChecklist"
 import { MemoryPanel } from "@/components/agent-run/MemoryPanel"
 import { RunControlBar } from "@/components/agent-run/RunControlBar"
 import { RunHistoryList } from "@/components/agent-run/RunHistoryList"
@@ -26,17 +27,13 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
         <RunTopBar saveVersionSpecId={p.selectedSpecId} />
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4">
-        <section className="mt-4 rounded-2xl bg-gradient-to-br from-background via-secondary to-card px-5 py-3.5 shadow-md">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
-              给助手下达任务，<span className="text-primary">看它一步一步真实跑完</span>
-            </h1>
-            <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-              左侧配好模型、工具授权、预算上限与停止条件，右侧输入任务指令发起运行；时间线实时滚动，可暂停、恢复或取消。
-            </p>
+      <main data-studio-fluid-page="run-center" className="w-full min-w-0 px-3 pb-10 sm:px-5 lg:px-7 2xl:px-10">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">运行 Agent</h1>
+            <p className="mt-1 text-xs text-muted-foreground">选择 Agent 和模型，填写任务；实时查看执行结果与需要审批的操作。</p>
           </div>
-        </section>
+        </div>
 
         {p.needsRhLogin && (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 border-primary bg-card p-4 shadow-md">
@@ -72,9 +69,9 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
           </div>
         )}
 
-        <section id="workbench" className="scroll-mt-20 py-10">
-          <div className="grid items-start gap-6 lg:grid-cols-[2fr_3fr]">
-            <div className="flex flex-col gap-6">
+        <section id="workbench" className="scroll-mt-20 py-5">
+          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(290px,350px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+            <div className="flex min-w-0 flex-col gap-4">
             <SpecConfigPanel
               specList={p.specList}
               isLoadingSpecs={p.isLoadingSpecs}
@@ -101,20 +98,27 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               isLoggedIn={p.isLoggedIn}
               isLive={p.isLive}
             />
-            <SpecOptimizeCard
-              selectedSpec={p.selectedSpec}
-              isLoggedIn={p.isLoggedIn}
-              optimizeBusy={p.optimizeBusy}
-              suggestion={p.optimizeSuggestion}
-              optimizeError={p.optimizeError}
-              applyBusy={p.applyBusy}
-              onOptimize={p.handleOptimizeSpec}
-              onApply={p.handleApplyOptimize}
-              onDiscard={p.handleDiscardOptimize}
-              onDismissError={p.dismissOptimizeError}
-            />
+            <details className="rounded-xl border border-border bg-card p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+                高级 · 优化 Agent 方案
+              </summary>
+              <div className="mt-3">
+                <SpecOptimizeCard
+                  selectedSpec={p.selectedSpec}
+                  isLoggedIn={p.isLoggedIn}
+                  optimizeBusy={p.optimizeBusy}
+                  suggestion={p.optimizeSuggestion}
+                  optimizeError={p.optimizeError}
+                  applyBusy={p.applyBusy}
+                  onOptimize={p.handleOptimizeSpec}
+                  onApply={p.handleApplyOptimize}
+                  onDiscard={p.handleDiscardOptimize}
+                  onDismissError={p.dismissOptimizeError}
+                />
+              </div>
+            </details>
             </div>
-            <div className="flex flex-col gap-5">
+            <div className="flex min-w-0 flex-col gap-4">
               <RunLauncher
                 instruction={p.instruction}
                 onInstructionChange={p.setInstruction}
@@ -139,6 +143,15 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 />
               )}
               <RunTimeline events={p.runEvents} isLive={p.isLive} hasRun={Boolean(p.activeRun)} />
+              {p.selectedSpec && (
+                <AgentQualityChecklist key={p.selectedSpecId}
+                  selectedSpec={p.selectedSpec}
+                  activeRun={p.activeRun}
+                  saving={p.qualityBusy}
+                  error={p.qualityError}
+                  onSave={p.handleSaveQualityChecks}
+                />
+              )}
               <RunResultPanel
                 activeRun={p.activeRun}
                 onCopy={p.handleCopyResult}
@@ -159,19 +172,26 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 onEditFeedback={p.handleEditFeedback}
                 onCancelFeedbackEdit={p.handleCancelFeedbackEdit}
               />
-              <MemoryPanel
-                memoryList={p.memoryList}
-                isLoadingMemories={p.isLoadingMemories}
-                memoryDeletingId={p.memoryDeletingId}
-                hasSpec={Boolean(p.selectedSpec)}
-                isLoggedIn={p.isLoggedIn}
-                onDeleteMemory={p.handleDeleteMemory}
-              />
+              <details className="rounded-xl border border-border bg-card p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+                  更多 · Agent 长期记忆
+                </summary>
+                <div className="mt-3">
+                  <MemoryPanel
+                    memoryList={p.memoryList}
+                    isLoadingMemories={p.isLoadingMemories}
+                    memoryDeletingId={p.memoryDeletingId}
+                    hasSpec={Boolean(p.selectedSpec)}
+                    isLoggedIn={p.isLoggedIn}
+                    onDeleteMemory={p.handleDeleteMemory}
+                  />
+                </div>
+              </details>
             </div>
           </div>
         </section>
 
-        <section id="run-history" className="scroll-mt-20 pb-16">
+        <section id="run-history" className="scroll-mt-20 pb-8">
           <RunHistoryList
             runHistory={p.runHistory}
             onViewRun={p.handleViewHistoryRun}
@@ -182,10 +202,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
         </section>
       </main>
 
-      <footer className="mt-4 border-t border-border py-10 text-center">
-        <p className="text-sm font-medium text-card-foreground">Agent Studio</p>
-        <p className="mt-1 text-xs text-muted-foreground">从一句需求，到一个可运行、可回看的助手。</p>
-      </footer>
+
 
     </SiteShell>
   )

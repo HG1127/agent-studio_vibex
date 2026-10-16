@@ -67,7 +67,11 @@ export default function AgentCollabPage(){
  },[revision])
  useEffect(()=>{
   let current=true
-  if(!selected){setDetail(null);return}
+  if(!selected){
+   // Avoid synchronously updating React state inside an effect.
+   void Promise.resolve().then(()=>{if(current)setDetail(null)})
+   return ()=>{current=false}
+  }
   void api<Detail>("GET","/api/studio/agent-collab/detail?spec_id="+encodeURIComponent(selected))
    .then(r=>{
     if(!current)return
@@ -136,7 +140,7 @@ export default function AgentCollabPage(){
   setDraft(s=>({...s,[field]:field==="goal"||field==="task_scope"?value:split(value)}))
  }
  return <SiteShell><main className="min-h-screen flex-1 bg-background p-4 text-foreground sm:p-7">
-  <div className="mx-auto max-w-6xl space-y-5">
+  <div className="w-full min-w-0 space-y-5">
    <header className="flex flex-wrap items-center justify-between gap-3">
     <div><h1 className="flex items-center gap-2 text-2xl font-semibold">
      <UsersRound className="h-6 w-6 text-primary"/>Agent 团队协作

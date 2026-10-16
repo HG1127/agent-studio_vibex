@@ -4,6 +4,7 @@ import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studio
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { CURATED_PLUGINS, curatedZhFor } from "./curated"
+import {safeSmitherySetupUrl} from "@/lib/smitheryMarketplace"
 
 // —— 类型：字段名与后端 /api/market/* 路由返回 1:1（snake_case，禁止转换层）——
 export type MarketRemote = { type: string; url: string }
@@ -26,6 +27,8 @@ export type MarketTool = {
   description: string
   args_hint: string
   input_schema?: Record<string, unknown> | null
+  read_only?: boolean
+  destructive?: boolean
 }
 
 export type ConnectionRow = {
@@ -33,6 +36,7 @@ export type ConnectionRow = {
   server_name: string
   title: string
   url: string
+  is_smithery?: boolean
   headers_count: number
   tools: MarketTool[]
   tool_count: number
@@ -134,8 +138,18 @@ export type SmitheryItem = {
   desc: string
   zh_title?: string
   zh_desc?: string
+  verified?: boolean
+  deployed?: boolean
+  homepage?: string
 }
-
+export type SmitheryConnectOutcome = {
+  id:string
+  state:string
+  tool_count:number
+  setup_url:string
+  missing:string[]
+  message:string
+} | null
 // 容错解析：剥 markdown 围栏 → 平衡方括号扫描（识别字符串/转义态）→ JSON.parse → 逐条校验
 export function parseTranslationJson(text: string): TranslationRow[] {
   const raw = String(text || "").trim()
@@ -200,7 +214,7 @@ function applyCuratedZh(items: MarketPlugin[]): MarketPlugin[] {
 export function usePluginMarket() {
   const base = getPocketBaseUrl()
 
-  const [rhUserId, setRhUserId] = useState("")
+  const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [noticeMsg, setNoticeMsg] = useState("")
@@ -247,11 +261,8 @@ export function usePluginMarket() {
   const [isLoadingLog, setIsLoadingLog] = useState(false)
   const [expandedLogId, setExpandedLogId] = useState("")
   const pollTimerRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    const payload = decodeRhToken()
-    setRhUserId(payload?.sub ? String(payload.sub) : LOCAL_ANON_UID)
-  }, [])
+  const [advancedOpen,setAdvancedOpen] = useState(false)
+  const advancedInitialized = useRef(false)
 
   const apiFetch = useCallback(
     async (path: string, init?: RequestInit): Promise<Response> => {
@@ -380,20 +391,9 @@ export function usePluginMarket() {
     [apiFetch, rhUserId],
   )
 
-  useEffect(() => {
-    if (!rhUserId) return
-    void loadMarket("reset", "")
-    void loadConnections()
-    void loadInvokeLog()
-    void loadFeatured()
-    void loadSmitheryStatus()
-    // 首次进入只拉一遍市场首页，loadMarket 依赖 cursor 状态不入 deps 防重复
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rhUserId, loadConnections, loadInvokeLog, loadFeatured])
-
   // 留档 5s 可见轮询（页面隐藏时暂停）
   useEffect(() => {
-    if (!rhUserId) return
+    if (!rhUserId || !advancedOpen) return
     if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current)
     pollTimerRef.current = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadInvokeLog(true)
@@ -402,7 +402,7 @@ export function usePluginMarket() {
       if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current)
       pollTimerRef.current = null
     }
-  }, [rhUserId, loadInvokeLog])
+  }, [rhUserId, loadInvokeLog, advancedOpen])
 
   const submitMarketSearch = useCallback(() => {
     const q = marketSearchText.trim()
@@ -524,7 +524,8 @@ export function usePluginMarket() {
     return map
   }, [connectionRows])
 
-  const connectedCount = useMemo(() => connectionRows.filter((row) => row.enabled).length, [connectionRows])
+  const connectedCount = useMemo(() => connectionRows.filter(row =>
+    row.enabled && row.tool_count > 0 && row.last_probe_status === "ok").length, [connectionRows])
 
   const openDrawer = useCallback(
     (plugin: MarketPlugin) => {
@@ -708,7 +709,8 @@ export function usePluginMarket() {
     [apiFetch, invokeConnId, loadConnections],
   )
 
-  const enabledConnections = useMemo(() => connectionRows.filter((row) => row.enabled), [connectionRows])
+  const enabledConnections = useMemo(() => connectionRows.filter(row =>
+    row.enabled && row.tool_count > 0 && row.last_probe_status === "ok"), [connectionRows])
 
   const invokeConn = useMemo(() => connectionRows.find((row) => row.id === invokeConnId) || null, [connectionRows, invokeConnId])
 
@@ -767,13 +769,18 @@ export function usePluginMarket() {
       setErrorMsg("参数不是合法 JSON，请检查后再调用")
       return
     }
+    const needsWriteConfirmation = invokeTool?.read_only!==true || invokeTool?.destructive===true
+    if (needsWriteConfirmation && !window.confirm(
+      "此 MCP 工具未被发布者明确标记为只读，可能访问账户数据或执行写操作。\n请核对授权范围和参数，确认仍要立即试调？"
+    )) return
     setErrorMsg("")
     setIsInvoking(true)
     setInvokeOutcome(null)
     try {
       const res = await apiFetch("/api/market/invoke", {
         method: "POST",
-        body: JSON.stringify({ connection_id: invokeConnId, tool_name: invokeToolName, arguments: parsedArgs }),
+        body: JSON.stringify({ connection_id: invokeConnId, tool_name: invokeToolName,
+          arguments: parsedArgs, confirm_external_write: needsWriteConfirmation }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
@@ -795,99 +802,111 @@ export function usePluginMarket() {
     } finally {
       setIsInvoking(false)
     }
-  }, [apiFetch, invokeArgsText, invokeConnId, invokeToolName, isInvoking, loadInvokeLog])
+  }, [apiFetch, invokeArgsText, invokeConnId, invokeToolName, invokeTool, isInvoking, loadInvokeLog])
 
   const toggleLogRow = useCallback((rowId: string) => {
     setExpandedLogId((prev) => (prev === rowId ? "" : rowId))
   }, [])
 
-  // —— Smithery 快连：填一次 Key 浏览并一键连接；另支持自建/内部插件直连 ——
+  // Smithery Connect v2: discover via vendor-side search and use real managed
+  // connection states. Browsing never triggers hidden translation/model fees.
   const [hasSmitheryKey, setHasSmitheryKey] = useState(false)
   const [smitheryKeyTail, setSmitheryKeyTail] = useState("")
   const [smitheryKeyInput, setSmitheryKeyInput] = useState("")
   const [smitheryKeyBusy, setSmitheryKeyBusy] = useState(false)
   const [smitheryItems, setSmitheryItems] = useState<SmitheryItem[]>([])
   const [smitheryQuery, setSmitheryQuery] = useState("")
+  const [smitheryActiveQuery, setSmitheryActiveQuery] = useState("")
+  const [smitheryPage, setSmitheryPage] = useState(1)
+  const [smitheryNextPage, setSmitheryNextPage] = useState(0)
   const [smitheryLoading, setSmitheryLoading] = useState(false)
+  const [smitheryLoadingMore, setSmitheryLoadingMore] = useState(false)
   const [smitheryError, setSmitheryError] = useState("")
   const [smitheryConnectBusy, setSmitheryConnectBusy] = useState("")
+  const [smitheryNamespaces, setSmitheryNamespaces] = useState<string[]>([])
+  const [smitheryNamespace, setSmitheryNamespace] = useState("")
+  const [smitheryNamespacesBusy, setSmitheryNamespacesBusy] = useState(false)
+  const [smitherySelected, setSmitherySelected] = useState<SmitheryItem | null>(null)
+  const [smitheryConnectionResult, setSmitheryConnectionResult] = useState<SmitheryConnectOutcome>(null)
+  const smitheryFetchSequence = useRef(0)
   const [customOpen, setCustomOpen] = useState(false)
   const [customName, setCustomName] = useState("")
   const [customUrl, setCustomUrl] = useState("")
   const [customToken, setCustomToken] = useState("")
   const [customBusy, setCustomBusy] = useState(false)
 
+  const loadSmitheryNamespaces = useCallback(async () => {
+    setSmitheryNamespacesBusy(true)
+    try {
+      const res = await apiFetch("/api/market/smithery/v2/namespaces")
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSmitheryError(String(data.message || "无法读取工作空间，请到 Smithery 后台创建 Namespace"))
+        return
+      }
+      const names = (Array.isArray(data.namespaces) ? data.namespaces : [])
+        .filter((name: unknown): name is string => typeof name === "string")
+      setSmitheryNamespaces(names)
+      setSmitheryNamespace(old => names.includes(old) ? old : names[0] || "")
+    } catch (error) {
+      if (!(error instanceof AuthRequiredError))
+        setSmitheryError("无法获取 Smithery 工作空间，请检查 Key 或网络")
+    } finally {
+      setSmitheryNamespacesBusy(false)
+    }
+  }, [apiFetch])
+
+  const loadSmitheryServers = useCallback(async (query: string, page = 1) => {
+    const seq = ++smitheryFetchSequence.current
+    const first = page === 1
+    if (first) {
+      setSmitheryLoading(true)
+      setSmitheryError("")
+      setSmitheryActiveQuery(query.trim())
+    } else setSmitheryLoadingMore(true)
+    try {
+      const params = new URLSearchParams({q:query.trim(),page:String(page)})
+      const res = await apiFetch("/api/market/smithery/v2/catalog?" + params.toString())
+      const data = await res.json().catch(() => ({}))
+      if(seq!==smitheryFetchSequence.current) return
+      if(!res.ok){
+        setSmitheryError(String(data.message || "Smithery 注册表搜索失败，请检查 Key 后重试"))
+        if(first)setSmitheryItems([])
+        return
+      }
+      const items = Array.isArray(data.items) ? data.items as SmitheryItem[] : []
+      setSmitheryItems(current=>first?items:[
+        ...current,...items.filter(item=>!current.some(existing=>existing.slug===item.slug)),
+      ])
+      setSmitheryPage(page)
+      setSmitheryNextPage(Math.max(0,Number(data.next_page)||0))
+    } catch (err) {
+      if(seq===smitheryFetchSequence.current && !(err instanceof AuthRequiredError))
+        setSmitheryError("Smithery 搜索网络失败，检查连接后重试")
+    } finally {
+      if(seq===smitheryFetchSequence.current){
+        setSmitheryLoading(false)
+        setSmitheryLoadingMore(false)
+      }
+    }
+  },[apiFetch])
+
   const loadSmitheryStatus = useCallback(async () => {
     try {
       const res = await apiFetch("/api/market/smithery/status")
       if (!res.ok) return
       const data = await res.json()
-      setHasSmitheryKey(Boolean(data?.has_key))
-      setSmitheryKeyTail(String(data?.tail || ""))
-      if (data?.has_key) void loadSmitheryServers("")
-    } catch {
-      // 状态加载失败不阻塞页面
-    }
-  }, [apiFetch])
-
-  const loadSmitheryServers = useCallback(
-    async (query: string) => {
-      setSmitheryLoading(true)
-      setSmitheryError("")
-      try {
-        const res = await apiFetch(`/api/market/smithery/servers?q=${encodeURIComponent(query || "")}`)
-        const data = await res.json().catch(() => null)
-        if (!res.ok) {
-          setSmitheryError(String(data?.message || "加载插件列表失败"))
-          setSmitheryItems([])
-          return
-        }
-        const items = (Array.isArray(data?.items) ? data.items : []) as SmitheryItem[]
-        setSmitheryItems(items)
-        // 无中文简介的条目静默批量翻译并缓存（失败不影响列表）
-        const pending = items.filter((it) => !it.zh_desc).slice(0, 12)
-        if (pending.length > 0) {
-          const messages: LlmMessage[] = [
-            { role: "system", content: TRANSLATE_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: JSON.stringify(pending.map((it) => ({ name: it.slug, title: it.title, description: it.desc }))),
-            },
-          ]
-          const result = await callLlmWithFallback(TRANSLATE_MODEL, { messages, page: "plugin-market", max_tokens: 4096 })
-          if (result.ok && result.status === "success") {
-            const rows = parseTranslationJson(result.text || "")
-            if (rows.length > 0) {
-              try {
-                await apiFetch("/api/market/i18n", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    items: rows.map((row) => ({ server_name: row.name, zh_title: row.zh_title, zh_desc: row.zh_desc })),
-                  }),
-                })
-              } catch {
-                // 缓存写入失败不影响本次显示
-              }
-              const byName: Record<string, TranslationRow> = {}
-              for (const row of rows) byName[row.name] = row
-              setSmitheryItems((prev) =>
-                prev.map((it) => {
-                  const hit = byName[it.slug]
-                  if (!hit || it.zh_desc) return it
-                  return { ...it, zh_title: hit.zh_title, zh_desc: hit.zh_desc }
-                }),
-              )
-            }
-          }
-        }
-      } catch {
-        setSmitheryError("网络异常，加载插件列表失败")
-      } finally {
-        setSmitheryLoading(false)
+      const saved=Boolean(data.has_key)
+      setHasSmitheryKey(saved)
+      setSmitheryKeyTail(String(data.tail || ""))
+      if (saved) {
+        void loadSmitheryNamespaces()
+        void loadSmitheryServers("")
       }
-    },
-    [apiFetch],
-  )
+    } catch {
+      // Business page remains usable if vendor key status is temporarily down.
+    }
+  }, [apiFetch,loadSmitheryServers,loadSmitheryNamespaces])
 
   const saveSmitheryKey = useCallback(async () => {
     const keyText = smitheryKeyInput.trim()
@@ -896,62 +915,111 @@ export function usePluginMarket() {
     setSmitheryError("")
     try {
       const res = await apiFetch("/api/market/smithery/key", {
-        method: "POST",
-        body: JSON.stringify({ api_key: keyText }),
+        method: "POST",body:JSON.stringify({api_key:keyText}),
       })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        setSmitheryError(String(data?.message || "Key 校验失败，请检查后重试"))
+      const data = await res.json().catch(() => ({}))
+      if(!res.ok){
+        setSmitheryError(String(data.message || "Smithery Key 校验失败，请检查是否复制了 API Key"))
         return
       }
       setSmitheryKeyInput("")
       setHasSmitheryKey(true)
-      setSmitheryKeyTail(String(data?.tail || ""))
+      setSmitheryKeyTail(String(data.tail || ""))
+      setSmitheryConnectionResult(null)
+      void loadSmitheryNamespaces()
       void loadSmitheryServers("")
-    } catch {
-      setSmitheryError("网络异常，Key 保存失败")
-    } finally {
-      setSmitheryKeyBusy(false)
-    }
-  }, [apiFetch, smitheryKeyInput, smitheryKeyBusy, loadSmitheryServers])
+      await loadConnections()
+    } catch(error){
+      if (!(error instanceof AuthRequiredError))
+        setSmitheryError("Key 保存失败，请检查网络后重试")
+    } finally {setSmitheryKeyBusy(false)}
+  },[apiFetch,smitheryKeyInput,smitheryKeyBusy,loadConnections,loadSmitheryServers,loadSmitheryNamespaces])
 
   const removeSmitheryKey = useCallback(async () => {
-    try {
-      await apiFetch("/api/market/smithery/key", { method: "DELETE" })
+    if(!window.confirm("确定移除 Smithery Key？此账号的托管插件会立即停用，并需重新授权后才能使用。"))return
+    try{
+      const res=await apiFetch("/api/market/smithery/key",{method:"DELETE"})
+      if(!res.ok)throw new Error("key_remove_failed")
       setHasSmitheryKey(false)
       setSmitheryKeyTail("")
       setSmitheryItems([])
-    } catch {
-      // 静默
+      setSmitheryNamespaces([])
+      setSmitheryNamespace("")
+      setSmitheryConnectionResult(null)
+      setSmitherySelected(null)
+      await loadConnections()
+      setNoticeMsg("已移除 Smithery Key，原有托管插件已停用")
+    }catch(error){
+      if(!(error instanceof AuthRequiredError))
+        setSmitheryError("移除 Key 失败，请稍后重试")
     }
-  }, [apiFetch])
+  },[apiFetch,loadConnections])
 
-  const connectSmithery = useCallback(
-    async (item: SmitheryItem) => {
-      if (smitheryConnectBusy) return
-      setSmitheryConnectBusy(item.slug)
-      setSmitheryError("")
-      try {
-        const res = await apiFetch("/api/market/smithery/connect", {
-          method: "POST",
-          body: JSON.stringify({ slug: item.slug, title: item.zh_title || item.title }),
-        })
-        const data = await res.json().catch(() => null)
-        if (!res.ok || !data?.id) {
-          setSmitheryError(String(data?.message || "连接失败，请稍后重试"))
-          return
-        }
-        await apiFetch("/api/market/reprobe", { method: "POST", body: JSON.stringify({ id: String(data.id) }) }).catch(() => null)
-        await loadConnections()
-      } catch {
-        setSmitheryError("网络异常，连接失败")
-      } finally {
-        setSmitheryConnectBusy("")
+  const connectSmithery = useCallback(async (item: SmitheryItem) => {
+    if (smitheryConnectBusy || !smitheryNamespace) {
+      setSmitheryError(!smitheryNamespace?"请先选择 Smithery Namespace":"连接正在处理中")
+      return
+    }
+    setSmitheryConnectBusy(item.slug)
+    setSmitherySelected(item)
+    setSmitheryConnectionResult(null)
+    setSmitheryError("")
+    try {
+      const res=await apiFetch("/api/market/smithery/v2/connect",{
+        method:"POST",body:JSON.stringify({
+          slug:item.slug,title:item.zh_title||item.title,
+          namespace:smitheryNamespace,
+        }),
+      })
+      const data=await res.json().catch(()=>({}))
+      if(!res.ok || !data.ok){
+        setSmitheryError(String(data.message||"Smithery 托管连接失败，请检查 Key、插件和工作空间"))
+        return
       }
-    },
-    [apiFetch, smitheryConnectBusy, loadConnections],
-  )
+      setSmitheryConnectionResult({
+        id:String(data.id||""),state:String(data.state||"error"),
+        tool_count:Number(data.tool_count||0),
+        setup_url:safeSmitherySetupUrl(String(data.setup_url||"")),
+        missing:Array.isArray(data.missing)?data.missing:[],
+        message:String(data.message||""),
+      })
+      await loadConnections()
+      if(data.state==="connected" && Number(data.tool_count)>0)
+        setNoticeMsg(item.title+" 已连接，工具已通过授权验证并可供 Agent 使用")
+    } catch(error){
+      if(!(error instanceof AuthRequiredError))
+        setSmitheryError("连接失败，检查网络和 Smithery 服务状态")
+    } finally {setSmitheryConnectBusy("")}
+  },[apiFetch,smitheryConnectBusy,smitheryNamespace,loadConnections])
 
+  const refreshSmitheryConnection = useCallback(async (row:ConnectionRow) => {
+    if (smitheryConnectBusy) return
+    setSmitheryConnectBusy(row.id)
+    setSmitheryError("")
+    try{
+      const res=await apiFetch("/api/market/smithery/v2/refresh",{
+        method:"POST",body:JSON.stringify({id:row.id}),
+      })
+      const data=await res.json().catch(()=>({}))
+      if(!res.ok){
+        setSmitheryError(String(data.message||"Smithery 连接复核失败"))
+        await loadConnections()
+        return
+      }
+      setSmitheryConnectionResult({
+        id:String(data.id||row.id),state:String(data.state||"error"),
+        tool_count:Number(data.tool_count||0),
+        setup_url:safeSmitherySetupUrl(String(data.setup_url||"")),
+        missing:Array.isArray(data.missing)?data.missing:[],
+        message:String(data.message||""),
+      })
+      await loadConnections()
+      if(data.state==="connected" && data.tool_count>0)
+        setNoticeMsg(row.title+" 已完成授权，发现 "+data.tool_count+" 个工具")
+    }catch(error){
+      if(!(error instanceof AuthRequiredError))setSmitheryError("无法核查授权，请稍后重试")
+    }finally{setSmitheryConnectBusy("")}
+  },[apiFetch,smitheryConnectBusy,loadConnections])
   const connectCustomPlugin = useCallback(async () => {
     const urlText = customUrl.trim()
     if (!urlText || customBusy) return
@@ -985,6 +1053,30 @@ export function usePluginMarket() {
     }
   }, [apiFetch, customUrl, customName, customToken, customBusy, loadConnections])
 
+  // The public MCP registry and invocation logs are advanced diagnostics.
+  // Their dozens of third-party lookups must not delay Smithery discovery.
+  const changeAdvancedOpen=useCallback((next:boolean)=>{
+    setAdvancedOpen(next)
+    if(!next || advancedInitialized.current)return
+    advancedInitialized.current=true
+    void loadMarket("reset","")
+    void loadFeatured()
+    void loadInvokeLog()
+  },[loadMarket,loadFeatured,loadInvokeLog])
+
+  // Initial page data belongs to the authenticated employee. Defer the
+  // first state change, and don't invoke a hook callback before declaration.
+  useEffect(() => {
+    if (!rhUserId) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      void loadConnections()
+      void loadSmitheryStatus()
+    })
+    return () => { cancelled = true }
+  }, [rhUserId, loadConnections, loadSmitheryStatus])
+
   const dismissError = useCallback(() => setErrorMsg(""), [])
   const dismissNotice = useCallback(() => setNoticeMsg(""), [])
 
@@ -996,6 +1088,7 @@ export function usePluginMarket() {
     dismissError,
     noticeMsg,
     dismissNotice,
+    changeAdvancedOpen,
     // 市场浏览
     marketItems,
     marketNextCursor,
@@ -1025,6 +1118,20 @@ export function usePluginMarket() {
     smitheryQuery,
     setSmitheryQuery,
     smitheryLoading,
+    smitheryLoadingMore,
+    smitheryActiveQuery,
+    smitheryPage,
+    smitheryNextPage,
+    smitheryNamespaces,
+    smitheryNamespace,
+    setSmitheryNamespace,
+    smitheryNamespacesBusy,
+    loadSmitheryNamespaces,
+    smitherySelected,
+    setSmitherySelected,
+    smitheryConnectionResult,
+    setSmitheryConnectionResult,
+    refreshSmitheryConnection,
     smitheryError,
     loadSmitheryServers,
     smitheryConnectBusy,

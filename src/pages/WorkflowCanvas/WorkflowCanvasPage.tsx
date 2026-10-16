@@ -1,4 +1,4 @@
-import { Bot, LogIn, Maximize2, Play, TriangleAlert, X } from "lucide-react"
+import { Bot, LogIn, Maximize2, Play, Save, TriangleAlert, X } from "lucide-react"
 import { Link } from "react-router-dom"
 import { FlowCanvas } from "@/components/workflow-canvas/FlowCanvas"
 import { FocusOverlay } from "@/components/workflow-canvas/FocusOverlay"
@@ -26,15 +26,11 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
 
   return (
     <SiteShell>
-    <div className="relative flex h-screen min-w-0 flex-col overflow-hidden bg-background text-foreground">
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-32 left-0 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute right-0 top-1/4 h-80 w-80 rounded-full bg-secondary blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-      </div>
+    <div data-studio-fluid-page="workflow" className="relative flex h-[calc(100svh-7.5rem-env(safe-area-inset-bottom))] min-h-[420px] min-w-0 flex-col overflow-hidden bg-background text-foreground lg:h-[calc(100svh-2.5rem)] lg:min-h-0">
+
 
       <header className="relative z-30 shrink-0 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-5 lg:px-7 2xl:px-10">
           <h1 className="shrink-0 text-lg font-semibold tracking-tight">工作流画布</h1>
           {p.isLoggedIn && (
             <span className="flex min-w-0 items-center gap-2">
@@ -63,6 +59,14 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
           ) : null}
           {p.isLoggedIn && (
             <span className="ml-auto flex shrink-0 items-center gap-2">
+              <button type="button"
+                onClick={p.handleSaveWorkflow}
+                disabled={!p.dirtyFlag || p.savingFlow}
+                title="保存工作流（Ctrl+S）"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-primary px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground disabled:opacity-50">
+                <Save className="h-4 w-4" />
+                {p.savingFlow ? "保存中…" : "保存工作流"}
+              </button>
               <button
                 type="button"
                 onClick={p.enterFocusMode}
@@ -86,15 +90,38 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
       </header>
 
       {!p.isLoggedIn ? (
-        <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-4 py-6">
+        <main className="relative z-10 w-full min-w-0 flex-1 overflow-y-auto px-3 py-5 sm:px-5 lg:px-7 2xl:px-10">
           <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <WcLoginGate onLoginClick={p.onLoginClick} />
+          </section>
+        </main>
+      ) : (p.listLoading || !p.activeWorkflowId) ? (
+        <main role="status" aria-live="polite"
+          className="flex min-h-0 flex-1 items-center justify-center p-5">
+          <section className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+            <h2 className="text-base font-semibold text-foreground">
+              {p.errorMsg ? "工作流暂时无法打开" : "正在准备工作流编辑器…"}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {p.errorMsg || "正在加载已保存的节点和连线。为避免覆盖编辑，加载完成前暂不开放画布操作。"}
+            </p>
+            <button type="button" onClick={() => window.location.reload()}
+              className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary">
+              重新加载
+            </button>
           </section>
         </main>
       ) : p.isFocusMode ? (
         <main className="relative z-10 min-h-0 flex-1" />
       ) : (
-        <main className="relative z-10 mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-3 lg:overflow-hidden">
+        <main className="relative z-10 flex w-full min-w-0 min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 pt-3 sm:px-5 lg:px-6 2xl:px-8 xl:overflow-hidden">
+          {p.noticeMsg && (
+            <div role="status" className="mb-3 flex shrink-0 items-start justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5">
+              <p className="text-sm text-card-foreground">{p.noticeMsg}</p>
+              <button type="button" onClick={p.dismissNotice} aria-label="关闭成功提示"
+                className="shrink-0 rounded-lg p-1 hover:bg-secondary"><X className="h-4 w-4"/></button>
+            </div>
+          )}
           {p.needsRhLogin && (
             <div className="mb-3 flex shrink-0 items-center justify-between gap-3 rounded-2xl border border-primary bg-primary/5 px-4 py-2.5 shadow-md">
               <p className="text-sm text-card-foreground">登录态已过期，请重新登录后继续编排与运行。</p>
@@ -125,13 +152,13 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
             </div>
           )}
 
-          <section className="grid min-h-0 flex-1 animate-in fade-in slide-in-from-bottom-4 gap-4 duration-500 lg:grid-rows-1 lg:grid-cols-[240px_minmax(0,1fr)_340px]">
-            <aside className="min-h-0 lg:overflow-y-auto lg:pb-2 lg:pr-1">
+          <section className="grid min-h-0 flex-1 gap-3 xl:grid-rows-1 xl:grid-cols-[220px_minmax(0,1fr)_300px] 2xl:grid-cols-[240px_minmax(0,1fr)_330px]">
+            <aside className="order-2 min-h-0 xl:order-1 xl:overflow-y-auto xl:pb-2 xl:pr-1">
               <WcLeftColumn p={p} />
             </aside>
 
-            <div className="relative h-[560px] min-h-0 min-w-0 lg:h-full">
-              <div className="h-full w-full overflow-hidden rounded-2xl border border-border bg-card shadow-md">
+            <div className="relative order-1 h-[60vh] min-h-[350px] min-w-0 xl:order-2 xl:h-full xl:min-h-0">
+              <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-card">
                 <FlowCanvas
                   flowNodes={p.flowNodes}
                   flowEdges={p.flowEdges}
@@ -139,6 +166,7 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
                   onEdgesChange={p.onEdgesChange}
                   handleConnect={p.handleConnect}
                   isValidConnection={p.isValidConnection}
+                  explainInvalidConnection={p.explainInvalidConnection}
                   addNodeByType={p.addNodeByType}
                   nodeStatuses={p.nodeStatuses}
                   loopProgress={p.loopProgress}
@@ -156,6 +184,15 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
                   onUserPan={p.noteUserPan}
                   deleteEdgeById={p.deleteEdgeById}
                   onNodeDoubleClick={handleNodeOpen}
+                  addNodeAndConnect={p.addNodeAndConnect}
+                  copySelection={p.copySelection}
+                  pasteClipboard={p.pasteClipboard}
+                  duplicateNodeById={p.duplicateNodeById}
+                  deleteSelection={p.deleteSelection}
+                  selectAll={p.selectAll}
+                  hasClipboard={p.hasClipboard}
+                  alignSelected={p.alignSelected}
+                  loadSampleGraph={p.loadSampleGraph}
                 />
               </div>
               <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 w-max max-w-[92%] -translate-x-1/2">
@@ -175,7 +212,7 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
               </div>
             </div>
 
-            <aside className="min-h-0 lg:overflow-y-auto lg:pb-2 lg:pr-1">
+            <aside className="order-3 min-h-0 xl:overflow-y-auto xl:pb-2 xl:pr-1">
               <WcRightColumn p={p} nodeTitles={nodeTitles} />
             </aside>
           </section>

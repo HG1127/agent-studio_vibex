@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
+import {
+  clearAgentDraft, readAgentDraft, saveAgentDraft, type AgentEditorDraft,
+} from "@/lib/agentEditorDraft"
+import { registerUnsavedWorkCheck } from "@/lib/unsavedNavigation"
+import { useSearchParams } from "react-router-dom"
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
 import {
   BUILTIN_TOOL_OPTIONS,
@@ -92,8 +97,16 @@ function scrollToSpecEditor() {
 }
 
 export function useHome() {
+  const [query] = useSearchParams()
+  const returnSpecRef = useRef(query.get("spec") || "")
+  const specRevisionRef = useRef(0)
 
-  const [rhUserId, setRhUserId] = useState("")
+  const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
+  // A saved draft is offered explicitly, never silently merged with a newer
+  // server snapshot or with a different employee's account.
+  const [pendingDraft, setPendingDraft] = useState<AgentEditorDraft | null>(() => readAgentDraft(rhUserId))
+  const [draftDecisionMade, setDraftDecisionMade] = useState(() => !readAgentDraft(rhUserId))
+  const [draftPersistError, setDraftPersistError] = useState(false)
   const [userInput, setUserInput] = useState("")
   const [reviseInput, setReviseInput] = useState("")
   const [spec, setSpec] = useState<AgentSpec | null>(null)
@@ -107,15 +120,105 @@ export function useHome() {
   const [errorMsg, setErrorMsg] = useState("")
   const [savedMsg, setSavedMsg] = useState("")
   const [savedSpecId, setSavedSpecId] = useState("")
+  const [specDirty, setSpecDirty] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState(0)
+  const [serverUpdated, setServerUpdated] = useState("")
+  const [saveConflict, setSaveConflict] = useState(false)
+  const [draftRestoreNotice, setDraftRestoreNotice] = useState("")
+  const markSpecEdited = useCallback(() => {
+    specRevisionRef.current += 1
+    setSpecDirty(true)
+  }, [])
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [savedList, setSavedList] = useState<SavedSpecRow[]>([])
   const [connectedTools, setConnectedTools] = useState<ConnectedToolOption[]>([])
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
 
+  const currentDraft: AgentEditorDraft = useMemo(() => ({
+    version: 1, ownerId: rhUserId, editedAt: 0,
+    userInput,
+    spec: specDirty ? spec : null,
+    specName: specDirty ? specName : "",
+    sourceMode: specDirty ? sourceMode : "create",
+    templateKey: specDirty ? templateKey : "",
+    editingRecordId: specDirty ? editingRecordId : "",
+    serverUpdated: specDirty ? serverUpdated : "",
+  }), [rhUserId,userInput,spec,specDirty,specName,sourceMode,templateKey,
+    editingRecordId,serverUpdated])
+  const draftRef = useRef<AgentEditorDraft>(currentDraft)
   useEffect(() => {
-    const payload = decodeRhToken()
-    setRhUserId(payload?.sub ? String(payload.sub) : LOCAL_ANON_UID)
-  }, [])
+    draftRef.current = currentDraft
+  }, [currentDraft])
+  const activeDraft = Boolean(specDirty && spec) || Boolean(userInput.trim())
+  useEffect(() => {
+    if (!draftDecisionMade) return
+    const timeout = window.setTimeout(() => {
+      if (activeDraft) {
+        setDraftPersistError(!saveAgentDraft(rhUserId, draftRef.current))
+      } else {
+        clearAgentDraft(rhUserId)
+        setDraftPersistError(false)
+      }
+    }, 450)
+    return () => window.clearTimeout(timeout)
+  }, [rhUserId, draftDecisionMade, activeDraft, spec, userInput, specName,
+    sourceMode, templateKey, editingRecordId, serverUpdated])
+  useEffect(() => {
+    if (!draftDecisionMade) return
+    const saveBeforeExit = () => {
+      if (Boolean(draftRef.current.spec) || draftRef.current.userInput.trim())
+        void saveAgentDraft(rhUserId, draftRef.current)
+      else clearAgentDraft(rhUserId)
+    }
+    window.addEventListener("pagehide", saveBeforeExit)
+    return () => {
+      window.removeEventListener("pagehide", saveBeforeExit)
+      saveBeforeExit()
+    }
+  }, [draftDecisionMade, rhUserId])
+  useEffect(() => {
+    if (!(specDirty && spec) && !userInput.trim()) return
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warnUnsaved)
+    return () => window.removeEventListener("beforeunload", warnUnsaved)
+  }, [specDirty, spec, userInput])
+
+  useEffect(() => registerUnsavedWorkCheck(
+    () => Boolean(specDirty && spec) ||
+      Boolean(userInput.trim()) ||
+      Boolean(pendingDraft),
+  ), [specDirty, spec, userInput, pendingDraft])
+
+  const restoreDraft = useCallback(() => {
+    const draft = pendingDraft
+    if (!draft) return
+    returnSpecRef.current=""
+    setUserInput(draft.userInput)
+
+    setSpec(draft.spec)
+    setSpecName(draft.specName)
+    setSourceMode(draft.sourceMode)
+    setTemplateKey(draft.templateKey)
+    setEditingRecordId(draft.editingRecordId)
+    setServerUpdated(draft.serverUpdated)
+    setSavedSpecId(draft.editingRecordId)
+    setLastSavedAt(Date.parse(draft.serverUpdated) || 0)
+    if (draft.spec) markSpecEdited()
+    setDraftRestoreNotice("已恢复当前浏览器的未提交草稿，请核对后保存到服务器。")
+    setSaveConflict(false)
+    setPendingDraft(null)
+    setDraftDecisionMade(true)
+  }, [pendingDraft, markSpecEdited])
+
+  const discardDraft = useCallback(() => {
+    clearAgentDraft(rhUserId)
+    setPendingDraft(null)
+    setDraftDecisionMade(true)
+    setDraftPersistError(false)
+  }, [rhUserId])
 
   // 登录态下拉取已启用的外部工具连接；失败静默降级为空列表，不阻塞页面
   const loadConnectedTools = useCallback(async () => {
@@ -139,7 +242,12 @@ export function useHome() {
   }, [])
 
   useEffect(() => {
-    if (rhUserId) void loadConnectedTools()
+    if (!rhUserId) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (!cancelled) void loadConnectedTools()
+    })
+    return () => { cancelled = true }
   }, [rhUserId, loadConnectedTools])
 
   useEffect(() => {
@@ -157,13 +265,33 @@ export function useHome() {
       const data = await res.json()
       const items = Array.isArray(data?.items) ? (data.items as SavedSpecRow[]) : []
       setSavedList(items)
+      const targetId=returnSpecRef.current
+      const record=targetId && items.find(item=>item.id===targetId)
+      if(record){
+        returnSpecRef.current=""
+        setSpec(record.spec)
+        setSpecName(record.name||"未命名助手")
+        setSourceMode(record.source==="template"?"template":"create")
+        setTemplateKey(record.template_key||"")
+        setEditingRecordId(record.id)
+        setSavedSpecId(record.id)
+        setSpecDirty(false)
+        setLastSavedAt(Date.parse(record.updated)||0)
+        setServerUpdated(record.updated || "")
+        setSaveConflict(false)
+      }
     } catch {
       // 列表加载失败不阻塞主流程，保存成功后会再次尝试刷新
     }
   }, [])
 
   useEffect(() => {
-    if (rhUserId) void loadSavedList(rhUserId)
+    if (!rhUserId) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (!cancelled) void loadSavedList(rhUserId)
+    })
+    return () => { cancelled = true }
   }, [rhUserId, loadSavedList])
 
   const runGenerate = useCallback(async () => {
@@ -195,11 +323,19 @@ export function useHome() {
     }
     setSpec(parsed.spec)
     setSpecName(parsed.displayName)
+    // Do not leave a consumed requirement as a permanent second unsaved draft.
+    // If the employee typed another requirement during generation, preserve it.
+    setUserInput(current => current.trim() === requirement ? "" : current)
+    markSpecEdited()
+    setSavedSpecId("")
+    setLastSavedAt(0)
+    setServerUpdated("")
+    setSaveConflict(false)
     setSourceMode("create")
     setTemplateKey("")
     setEditingRecordId("")
     scrollToSpecEditor()
-  }, [userInput])
+  }, [userInput, markSpecEdited])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -240,10 +376,11 @@ export function useHome() {
       setErrorMsg("修订结果格式异常，请换个说法再试一次")
       return
     }
-    setSpec((previous) => ({ ...parsed.spec, knowledge_base_ids: previous?.knowledge_base_ids || [], require_approval: previous?.require_approval }))
+    setSpec((previous) => ({ ...parsed.spec, knowledge_base_ids: previous?.knowledge_base_ids || [], require_approval: previous?.require_approval, quality_checks: previous?.quality_checks || [] }))
     setSpecName(parsed.displayName || specName)
+    markSpecEdited()
     setReviseInput("")
-  }, [reviseInput, spec, specName])
+  }, [reviseInput, spec, specName, markSpecEdited])
 
   const handleRevise = useCallback(() => {
     if (!reviseInput.trim() || !spec || isRevising) return
@@ -254,69 +391,122 @@ export function useHome() {
     void runRevise()
   }, [reviseInput, spec, isRevising, rhUserId, runRevise])
 
-  const handleSave = useCallback(async () => {
+  const saveCurrentSpec = useCallback(async (asCopy: boolean) => {
     if (!spec || isSaving) return
     if (!rhUserId) {
       setNeedsRhLogin(true)
       return
     }
+    const target = asCopy ? "" : editingRecordId
+    // A restored draft may have no valid record version; never do an unsafe
+    // overwrite when we cannot prove what server revision was edited.
+    if (target && !serverUpdated) {
+      setSaveConflict(true)
+      setErrorMsg("当前草稿无法核验原版本，请另存为新 Agent，避免覆盖其他人的修改。")
+      return
+    }
     setIsSaving(true)
     setErrorMsg("")
     setSavedMsg("")
+    const startedRevision=specRevisionRef.current
     try {
-      const url = editingRecordId
-        ? `${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(editingRecordId)}`
+      const url = target
+        ? `${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(target)}`
         : `${getPocketBaseUrl()}/api/agent_specs`
       const res = await fetch(url, {
-        method: editingRecordId ? "PATCH" : "POST",
+        method: target ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
         body: JSON.stringify({
           rh_user_id: rhUserId,
-          name: specName.trim() || "未命名助手",
+          name: asCopy ? (specName.trim() || "未命名助手") + "（副本）" : (specName.trim() || "未命名助手"),
           spec,
           source: sourceMode,
           template_key: templateKey,
+          ...(target ? { expected_updated: serverUpdated } : {}),
         }),
       })
-      if (!res.ok) {
-        setErrorMsg("保存失败，请稍后重试")
+      if (res.status === 409) {
+        setSaveConflict(true)
+        setErrorMsg("该 Agent 已在其他页面或协作流程中更新。你的修改仍保留，请「另存为新 Agent」，避免覆盖更新后的版本。")
         return
       }
-      const row = (await res.json()) as SavedSpecRow
-      if (row?.id) {
-        setEditingRecordId(row.id)
-        setSavedSpecId(row.id)
+      if (res.status === 401 || res.status === 412) {
+        setNeedsRhLogin(true)
+        setErrorMsg("员工登录已过期，草稿仍在当前浏览器中；重新登录后再保存。")
+        return
       }
-      setSavedMsg("已保存进「我的助手」，下一步可以为它配置工具并试跑。")
+      if (!res.ok) {
+        setErrorMsg("保存失败，请确认网络和员工权限后重试。改动仍保留在当前页面。")
+        return
+      }
+      const row = await res.json() as SavedSpecRow
+      if (!row?.id) {
+        setErrorMsg("服务器未返回保存记录，无法确认是否保存成功，请先检查「我的 Agent」列表。")
+        return
+      }
+      setEditingRecordId(row.id)
+      setSavedSpecId(row.id)
+      setServerUpdated(row.updated || "")
+      setSaveConflict(false)
+      setLastSavedAt(Date.parse(row.updated) || Date.now())
+      const noFurtherEdits = startedRevision === specRevisionRef.current
+      setSpecDirty(!noFurtherEdits)
+      if (asCopy && noFurtherEdits) setSpecName(row.name)
+      setSavedMsg(noFurtherEdits
+        ? asCopy ? "已另存为独立 Agent，原版本未被覆盖。" :
+          "已保存进「我的 Agent」，接下来可以连接资源并试跑。"
+        : "保存期间又进行了修改，新的改动仍未保存，请再次保存。")
+      if (noFurtherEdits && !draftRef.current.userInput.trim()) clearAgentDraft(rhUserId)
       await loadSavedList(rhUserId)
     } catch {
-      setErrorMsg("网络异常，保存失败，请重试")
+      setErrorMsg("网络异常：当前改动仍保留，恢复网络后可重新保存。")
     } finally {
       setIsSaving(false)
     }
-  }, [spec, isSaving, rhUserId, editingRecordId, specName, sourceMode, templateKey, loadSavedList])
+  }, [spec,isSaving,rhUserId,editingRecordId,serverUpdated,specName,sourceMode,templateKey,loadSavedList])
 
+  const handleSave = useCallback(async () => saveCurrentSpec(false), [saveCurrentSpec])
+  const handleSaveAsCopy = useCallback(async () => saveCurrentSpec(true), [saveCurrentSpec])
   const handleLoadTemplate = useCallback((preset: TemplatePreset) => {
+    if ((specDirty || userInput.trim()) && !window.confirm(
+      "当前存在未保存的 Agent 方案或新需求。切换模板将舍弃这些内容，是否继续？"
+    )) return
+    setUserInput("")
     setSpec(preset.spec)
     setSpecName(preset.defaultName)
+    markSpecEdited()
+    setSavedSpecId("")
+    setLastSavedAt(0)
+    setServerUpdated("")
+    setSaveConflict(false)
     setSourceMode("template")
     setTemplateKey(preset.key)
     setEditingRecordId("")
     setErrorMsg("")
     setSavedMsg("")
     scrollToSpecEditor()
-  }, [])
+  }, [markSpecEdited,specDirty,userInput])
 
   const handleOpenSaved = useCallback((row: SavedSpecRow) => {
+    if ((specDirty || userInput.trim()) && !window.confirm(
+      "当前存在未保存的 Agent 方案或新需求。打开其他 Agent 将舍弃这些内容，是否继续？"
+    )) return
+    setUserInput("")
     setSpec(row.spec)
     setSpecName(row.name || "未命名助手")
     setSourceMode(row.source === "template" ? "template" : "create")
     setTemplateKey(row.template_key || "")
     setEditingRecordId(row.id)
     setErrorMsg("")
+    setSavedSpecId(row.id)
+    setLastSavedAt(Date.parse(row.updated)||0)
+    setServerUpdated(row.updated || "")
+    setSaveConflict(false)
+    setSpecDirty(false)
+
     setSavedMsg("")
     scrollToSpecEditor()
-  }, [])
+  }, [specDirty,userInput])
 
   const handleDeleteSaved = useCallback(
     async (recordId: string) => {
@@ -326,51 +516,80 @@ export function useHome() {
           method: "DELETE",
           headers: { ...vibexAuthHeaders() },
         })
-        if (res.ok && editingRecordId === recordId) {
+        if (!res.ok) {
+          setErrorMsg(res.status === 401 || res.status === 412
+            ? "员工登录已过期，当前 Agent 未被删除。请重新登录。"
+            : "删除失败，Agent 仍保留在服务器，请稍后重试。")
+          return
+        }
+        if (editingRecordId === recordId) {
+          // Preserve the editor as an UNSAVED copy. Do not keep showing a
+          // deleted Agent as saved or allow PATCH against its old record ID.
           setEditingRecordId("")
+          setSavedSpecId("")
+          setServerUpdated("")
+          setLastSavedAt(0)
+          setSaveConflict(false)
+          markSpecEdited()
+          setSavedMsg("已从服务器删除该 Agent；当前编辑器内容仍保留，可另存为新 Agent。")
         }
         await loadSavedList(rhUserId)
       } catch {
-        setErrorMsg("删除失败，请稍后重试")
+        setErrorMsg("网络异常，无法确认是否删除成功。请刷新列表后核对。")
       }
     },
-    [editingRecordId, loadSavedList, rhUserId],
+    [editingRecordId, loadSavedList, rhUserId, markSpecEdited],
   )
 
   const handleClearSpec = useCallback(() => {
+    if ((specDirty || userInput.trim()) && !window.confirm(
+      "当前编辑的 Agent 或新需求尚未保存，确定清空吗？"
+    )) return
+    clearAgentDraft(rhUserId)
     setSpec(null)
     setSpecName("")
+    setSpecDirty(false)
+    setSavedSpecId("")
+    setLastSavedAt(0)
+    setServerUpdated("")
+    setSaveConflict(false)
     setSourceMode("create")
     setTemplateKey("")
     setEditingRecordId("")
     setReviseInput("")
+    setUserInput("")
+    setDraftRestoreNotice("")
     setSavedMsg("")
     setErrorMsg("")
-  }, [])
+  }, [specDirty,userInput,rhUserId])
 
   const updateSpecText = useCallback((field: "goal" | "task_scope", value: string) => {
+    markSpecEdited()
     setSpec((prev) => (prev ? { ...prev, [field]: value } : prev))
-  }, [])
+  }, [markSpecEdited])
 
   const updateSpecListItem = useCallback((field: ListField, index: number, value: string) => {
+    markSpecEdited()
     setSpec((prev) => {
       if (!prev) return prev
       const next = [...prev[field]]
       next[index] = value
       return { ...prev, [field]: next }
     })
-  }, [])
+  }, [markSpecEdited])
 
   const addSpecListItem = useCallback((field: ListField) => {
+    markSpecEdited()
     setSpec((prev) => (prev ? { ...prev, [field]: [...prev[field], ""] } : prev))
-  }, [])
+  }, [markSpecEdited])
 
   const removeSpecListItem = useCallback((field: ListField, index: number) => {
+    markSpecEdited()
     setSpec((prev) => {
       if (!prev) return prev
       return { ...prev, [field]: prev[field].filter((_, i) => i !== index) }
     })
-  }, [])
+  }, [markSpecEdited])
 
   const dismissError = useCallback(() => setErrorMsg(""), [])
 
@@ -381,6 +600,7 @@ export function useHome() {
 
   // 勾选/取消勾选工具 → 写进 spec.tools（内置 id 或已连接工具名精确匹配）
   const handleToggleSpecTool = useCallback((toolName: string, checked: boolean) => {
+    markSpecEdited()
     setSpec((prev) => {
       if (!prev) return prev
       const trimmed = toolName.trim()
@@ -392,9 +612,10 @@ export function useHome() {
       }
       return prev
     })
-  }, [])
+  }, [markSpecEdited])
 
   const toggleKnowledgeBase = useCallback((id: string, checked: boolean) => {
+    markSpecEdited()
     setSpec(prev => {
       if (!prev) return prev
       const current = prev.knowledge_base_ids || []
@@ -402,7 +623,7 @@ export function useHome() {
       const tools = checked && !prev.tools.includes("knowledge_search") ? [...prev.tools, "knowledge_search"] : prev.tools
       return { ...prev, knowledge_base_ids: ids, tools }
     })
-  }, [])
+  }, [markSpecEdited])
 
   return {
     templates: TEMPLATE_PRESETS,
@@ -415,7 +636,10 @@ export function useHome() {
     isGenerating,
     spec,
     specName,
-    setSpecName,
+    setSpecName: (value:string) => {
+      setSpecName(value)
+      markSpecEdited()
+    },
     sourceMode,
     updateSpecText,
     updateSpecListItem,
@@ -436,7 +660,18 @@ export function useHome() {
     savedMsg,
     savedSpecId,
     errorMsg,
-    dismissError,
+    specDirty,
+    lastSavedAt,
+
+    dismissError,    pendingDraft,
+    restoreDraft,
+    discardDraft,
+    draftPersistError,
+    draftRestoreNotice,
+    saveConflict,
+    handleSaveAsCopy,
+
+
     handleLoadTemplate,
     handleClearSpec,
     savedList,

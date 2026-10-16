@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -6,6 +6,7 @@ import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import { tickAgentRun } from "@/lib/agentEngine"
 import type { AgentSpec, SavedSpecRow } from "@/pages/Home/useHome"
 import { PROVIDER_META, normalizeProvider } from "@/pages/ModelConnections/useModelConnections"
+import { normalizeAgentQualityChecks, type AgentQualityCheck } from "@/lib/agentQualityChecks"
 
 export type { AgentSpec, SavedSpecRow }
 
@@ -201,7 +202,7 @@ export function useAgentRun() {
   const base = getPocketBaseUrl()
   const [searchParams] = useSearchParams()
 
-  const [rhUserId, setRhUserId] = useState("")
+  const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
 
@@ -233,6 +234,8 @@ export function useAgentRun() {
 
   // 评估与反馈批次
   const [evalBusy, setEvalBusy] = useState(false)
+  const [qualityBusy, setQualityBusy] = useState(false)
+  const [qualityError, setQualityError] = useState("")
   const [feedbackDraft, setFeedbackDraft] = useState<{
     rating: "" | "up" | "down"
     tags: string[]
@@ -249,11 +252,6 @@ export function useAgentRun() {
   const pollBusyRef = useRef(false)
   const specParamAppliedRef = useRef(false)
 
-  useEffect(() => {
-    const payload = decodeRhToken()
-    setRhUserId(payload?.sub ? String(payload.sub) : LOCAL_ANON_UID)
-  }, [])
-
   const selectedSpec = specList.find((row) => row.id === selectedSpecId) || null
 
   // 首页「去配置和试跑」跳转带 ?spec=<id>，方案列表加载后自动选中
@@ -261,13 +259,17 @@ export function useAgentRun() {
     if (specParamAppliedRef.current || specList.length === 0) return
     const wanted = searchParams.get("spec")
     if (!wanted) return
-    if (specList.some((row) => row.id === wanted)) {
+    const row = specList.find(item => item.id === wanted)
+    if (!row) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled || specParamAppliedRef.current) return
       setSelectedSpecId(wanted)
-      const row = specList.find((item) => item.id === wanted)
-      if (row?.spec?.done_criteria?.length) setStopCondition(row.spec.done_criteria.join("；"))
-      setRequireApproval(Boolean(row?.spec?.require_approval))
+      if (row.spec?.done_criteria?.length) setStopCondition(row.spec.done_criteria.join("；"))
+      setRequireApproval(Boolean(row.spec?.require_approval))
       specParamAppliedRef.current = true
-    }
+    })
+    return () => { cancelled = true }
   }, [specList, searchParams])
 
   const loadSpecList = useCallback(async (uid: string) => {
@@ -348,9 +350,14 @@ export function useAgentRun() {
 
   useEffect(() => {
     if (!rhUserId) return
-    void loadSpecList(rhUserId)
-    void loadRunHistory(rhUserId)
-    void loadCustomModels(rhUserId)
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      void loadSpecList(rhUserId)
+      void loadRunHistory(rhUserId)
+      void loadCustomModels(rhUserId)
+    })
+    return () => { cancelled = true }
   }, [rhUserId, loadSpecList, loadRunHistory, loadCustomModels])
 
   const handleSelectSpec = useCallback(
@@ -412,7 +419,11 @@ export function useAgentRun() {
   )
 
   useEffect(() => {
-    void loadMemories(rhUserId, selectedSpecId)
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (!cancelled) void loadMemories(rhUserId, selectedSpecId)
+    })
+    return () => { cancelled = true }
   }, [rhUserId, selectedSpecId, loadMemories])
 
   const handleDeleteMemory = useCallback(
@@ -504,16 +515,19 @@ export function useAgentRun() {
     [fetchRunRecord, fetchRunEvents, loadRunHistory, loadMemories, rhUserId],
   )
 
+  const livePollingRunId=activeRun && LIVE_STATES.includes(activeRun.status)
+    ? activeRun.id : ""
   useEffect(() => {
-    if (!activeRun || !LIVE_STATES.includes(activeRun.status)) return
-    const runId = activeRun.id
-    void pollOnce(runId)
+    if (!livePollingRunId) return
+    const firstPoll = window.setTimeout(() => { void pollOnce(livePollingRunId) }, 0)
     const timer = window.setInterval(() => {
-      void pollOnce(runId)
+      void pollOnce(livePollingRunId)
     }, 3000)
-    return () => window.clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRun?.id, activeRun?.status, pollOnce])
+    return () => {
+      window.clearTimeout(firstPoll)
+      window.clearInterval(timer)
+    }
+  }, [livePollingRunId, pollOnce])
 
   const doStartRun = useCallback(async () => {
     if (!selectedSpec || !instruction.trim()) return
@@ -712,6 +726,47 @@ export function useAgentRun() {
     [activeRun, approvalBusy, base, fetchRunRecord, fetchRunEvents],
   )
 
+  // Human-defined binary assertions are part of the owned AgentSpec JSON.
+  // Existing backend PATCH checks owner, audits revisions and invalidates
+  // incompatible collaboration proposals. Never write to a foreign spec.
+  const handleSaveQualityChecks = useCallback(async (checks: AgentQualityCheck[]): Promise<boolean> => {
+    const selected = specList.find(row => row.id === selectedSpecId)
+    if (!selected || qualityBusy) return false
+    const quality_checks = normalizeAgentQualityChecks(checks)
+    if (quality_checks.some(item => item.type !== "json_object" && !item.expected)) {
+      setQualityError("断言不能为空，请填写要检查的文本")
+      return false
+    }
+    setQualityBusy(true)
+    setQualityError("")
+    try {
+      const response=await fetch(`${base}/api/agent_specs/${encodeURIComponent(selected.id)}`,{
+        method:"PATCH",
+        headers:{"Content-Type":"application/json",...vibexAuthHeaders()},
+        body:JSON.stringify({spec:{...selected.spec,quality_checks}}),
+      })
+      if (response.status===401 || response.status===412) {
+        setNeedsRhLogin(true)
+        setQualityError("员工登录态过期，请重新登录后保存检查条件")
+        return false
+      }
+      if (!response.ok) {
+        setQualityError("检查条件保存失败，请检查权限或刷新方案后重试")
+        return false
+      }
+      const current=await response.json() as SavedSpecRow
+      setSpecList(rows=>rows.map(row=>row.id===selected.id?{
+        ...row,...current,spec:{...selected.spec,quality_checks},
+      }:row))
+      return true
+    } catch {
+      setQualityError("网络错误，检查条件未保存，请稍后重试")
+      return false
+    } finally {
+      setQualityBusy(false)
+    }
+  },[selectedSpecId,specList,qualityBusy,base])
+
   // —— 评估与反馈批次 ——
   // 运行评估：终态后生成评估报告（后端规则分+LLM 评审融合；LLM 不可用降级纯规则）
   const doEvaluate = useCallback(async () => {
@@ -830,13 +885,23 @@ export function useAgentRun() {
 
   // 切换回看的运行时重置反馈草稿；切换方案时收起优化建议卡
   useEffect(() => {
-    setFeedbackEditing(false)
-    setFeedbackDraft({ rating: "", tags: [], comment: "" })
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setFeedbackEditing(false)
+      setFeedbackDraft({ rating: "", tags: [], comment: "" })
+    })
+    return () => { cancelled = true }
   }, [activeRun?.id])
 
   useEffect(() => {
-    setOptimizeSuggestion(null)
-    setOptimizeError("")
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setOptimizeSuggestion(null)
+      setOptimizeError("")
+    })
+    return () => { cancelled = true }
   }, [selectedSpecId])
 
   // 反馈驱动方案优化：聚合该方案全部反馈与最近评估建议 → 一次 LLM 生成改进稿（只生成不写回）
@@ -968,7 +1033,7 @@ export function useAgentRun() {
   const dismissError = useCallback(() => setErrorMsg(""), [])
 
   // 待批调用：从事件流里取最新一条 approval_pending（仅 awaiting_approval 态展示）
-  const pendingApproval = useMemo<PendingApproval>(() => {
+  const pendingApproval: PendingApproval = (() => {
     if (!activeRun || activeRun.status !== "awaiting_approval") return null
     for (let i = runEvents.length - 1; i >= 0; i--) {
       const evItem = runEvents[i]
@@ -981,7 +1046,7 @@ export function useAgentRun() {
       }
     }
     return null
-  }, [activeRun, runEvents])
+  })()
 
   // harness 核算摘要行（终态与进行中都可看，checkpoint 缺 stats 时为 null）
   const harnessLine = formatHarnessStats(activeRun?.checkpoint)
@@ -1045,6 +1110,9 @@ export function useAgentRun() {
     handleDeleteMemory,
     evalBusy,
     handleEvaluate,
+    qualityBusy,
+    qualityError,
+    handleSaveQualityChecks,
     feedbackDraft,
     feedbackBusy,
     feedbackEditing,

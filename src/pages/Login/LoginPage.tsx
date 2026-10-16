@@ -2,12 +2,16 @@ import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { AlertCircle, ArrowRight, Bot, KeyRound, LockKeyhole, Loader2, ShieldCheck } from "lucide-react"
 import { pb, getPocketBaseUrl } from "@/lib/pb"
+import { verifyStudioSession } from "@/lib/studioAuth"
 
 type SetupStatus = {initialized: boolean; can_setup: boolean}
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const requestedPath = params.get("next") || ""
+  const afterLogin = requestedPath.startsWith("/") && !requestedPath.startsWith("//")
+    ? requestedPath : "/"
   const [setup, setSetup] = useState<SetupStatus | null>(null)
   const [statusError, setStatusError] = useState(false)
   const [email, setEmail] = useState("")
@@ -17,17 +21,25 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    if(pb.authStore.isValid) {
-      void pb.collection("studio_users").authRefresh()
-        .then(() => navigate("/", {replace:true})).catch(() => pb.authStore.clear())
+    let mounted = true
+    // Reuse the exact same single-flight account verification as AuthGate.
+    // Aborted / transient requests must never clear an otherwise valid JWT.
+    if (pb.authStore.isValid) {
+      void verifyStudioSession().then(status => {
+        if (!mounted) return
+        if (status === "authenticated") navigate(afterLogin, {replace:true})
+        else if (status === "unavailable") setStatusError(true)
+      })
     }
     void fetch(getPocketBaseUrl() + "/api/studio/bootstrap/status")
       .then(async r => {
         if (!r.ok) throw new Error("studio_status_unavailable")
         return await r.json() as SetupStatus
       })
-      .then(setSetup).catch(() => {setSetup(null);setStatusError(true)})
-  }, [navigate])
+      .then(result => { if (mounted) setSetup(result) })
+      .catch(() => { if (mounted) {setSetup(null);setStatusError(true)} })
+    return () => { mounted = false }
+  }, [navigate, afterLogin])
   const submit = async (event:FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if(busy)return
@@ -46,7 +58,7 @@ export default function LoginPage() {
         setSetup({initialized:true,can_setup:false})
       }
       await pb.collection("studio_users").authWithPassword(email.trim(),password)
-      navigate(params.get("next")?.startsWith("/") && !params.get("next")?.startsWith("//") ? params.get("next")! : "/",{replace:true})
+      navigate(afterLogin,{replace:true})
     } catch(err) {
       setError((err as Error).message.includes("初始化失败") || (err as Error).message.includes("已经有") ? (err as Error).message : "登录失败，请检查邮箱、密码或账号是否已被停用。")
     } finally {setBusy(false)}

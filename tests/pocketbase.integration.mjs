@@ -51,6 +51,17 @@ try {
   assert.equal(listA.items[0].id, a.id)
   await expected("GET", "/api/agent_specs/" + encodeURIComponent(a.id), "B", undefined, 404)
   await expected("PATCH", "/api/agent_specs/" + encodeURIComponent(a.id), "B", { name: "hacked" }, 404)
+  // Two browser tabs started with the same original server revision.
+  // The later stale write must never overwrite the first tab's changes.
+  await pause(1150)
+  const edited=await expected("PATCH","/api/agent_specs/"+encodeURIComponent(a.id),"A",
+    {name:"A updated in first tab",expected_updated:a.updated},200)
+  assert.notEqual(edited.updated,a.updated,"edit should move updated timestamp")
+  const conflict=await expected("PATCH","/api/agent_specs/"+encodeURIComponent(a.id),"A",
+    {name:"overwritten stale second tab",expected_updated:a.updated},409)
+  assert.equal(conflict.error,"spec_updated_conflict")
+  const protectedRecord=await expected("GET","/api/agent_specs/"+encodeURIComponent(a.id),"A",undefined,200)
+  assert.equal(protectedRecord.name,"A updated in first tab")
   const wf = await expected("POST", "/api/workflow-studio/create", "A", { name: "Private workflow" }, 200)
   await expected("GET", "/api/workflow-studio/get?id=" + encodeURIComponent(wf.id), "B", undefined, 404)
   const conn = await expected("POST", "/api/model-connections", "B", { name: "Private model", provider: "openai", base_url: "https://example.com/v1", api_key: "test-secret-not-real", models: ["model-x"] }, 200)

@@ -85,7 +85,7 @@ export function ToolHubPage(p: ReturnType<typeof useToolHub>) {
         </div>
       )}
 
-      <main className="mx-auto max-w-7xl px-4 pb-16">
+      <main className="w-full min-w-0 px-3 pb-12 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="tool-hub">
         {p.isLoggedIn ? (
           <div className="space-y-5">
             <WorkerStatusPanel status={p.workerStatus} onRefresh={p.refreshWorkerStatus} />

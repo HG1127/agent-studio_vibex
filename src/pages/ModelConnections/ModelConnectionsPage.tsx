@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, PlugZap, Plus, ShieldCheck, X, Zap } from "lucide-react"
+import { AlertCircle, CheckCircle2, PlugZap, Plus, ShieldCheck, X } from "lucide-react"
 import { Link } from "react-router-dom"
 import { ConnectionCard } from "@/components/model-connections/ConnectionCard"
 import { ConnectionFormCard } from "@/components/model-connections/ConnectionFormCard"
@@ -39,8 +39,8 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
         <McTopBar />
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-6xl px-4">
-        <section className="mt-4 rounded-2xl bg-gradient-to-br from-background via-secondary to-card px-5 py-3.5 shadow-md">
+      <main className="relative z-10 w-full min-w-0 px-3 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="models">
+        <section className="mt-4 rounded-xl border border-border bg-card px-4 py-4">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
               接入你自己的模型服务，<span className="text-primary">让助手用你的密钥跑</span>
@@ -59,15 +59,10 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
                 <Plus className="h-4 w-4" />
                 添加连接
               </button>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                密钥只存服务端 · 界面只显示 ••••尾4位
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-                <Zap className="h-3.5 w-3.5 text-primary" />
-                使用你自己的密钥，费用由你的服务商计
-              </span>
-            </div>
+              <span className="text-xs text-muted-foreground">
+                <ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-primary"/>
+                凭据加密存储于服务端 · 模型费用由服务商结算
+              </span>            </div>
         </section>
 
         {!p.isLoggedIn && <McLoginGate onLoginClick={p.onLoginClick} />}
@@ -123,9 +118,9 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
         )}
 
         {p.isLoggedIn && (
-          <section className="py-10">
+          <section className="py-5">
             <div
-              className={`grid items-start gap-6 ${p.formOpen ? "lg:grid-cols-[2fr_3fr]" : "grid-cols-1"}`}
+              className={`grid min-w-0 items-start gap-5 ${p.formOpen ? "xl:grid-cols-[minmax(310px,390px)_minmax(0,1fr)]" : "grid-cols-1"}`}
             >
               {p.formOpen && (
                 <div className="lg:sticky lg:top-20">
@@ -197,33 +192,23 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
           </section>
         )}
 
-        <section className="pb-16">
-          <div className="grid gap-4 sm:grid-cols-3">
+        <details className="mb-8 rounded-xl border border-border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary">
+            需要帮助？查看模型接入指引
+          </summary>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {HOW_IT_WORKS.map((item, itemIndex) => (
-              <div
-                key={item.title}
-                className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-md"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                  {itemIndex + 1}
-                </span>
-                <h3 className="mt-3 text-sm font-semibold text-card-foreground">{item.title}</h3>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{item.desc}</p>
+              <div key={item.title} className="rounded-xl bg-secondary/35 p-4">
+                <span className="text-xs font-semibold text-primary">步骤 {itemIndex+1}</span>
+                <h3 className="mt-2 text-sm font-semibold">{item.title}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.desc}</p>
               </div>
             ))}
           </div>
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            想现在就试试？
-            <Link
-              to="/agent-run"
-              className="ml-1 font-medium text-primary underline-offset-4 transition hover:underline"
-            >
-              去助手配置与试跑页
-            </Link>
-            选择自定义模型运行。
-          </p>
-        </section>
-      </main>
+          <Link to="/agent-run" className="mt-4 inline-flex min-h-9 items-center text-xs font-medium text-primary hover:underline">
+            前往 Agent 试跑 →
+          </Link>
+        </details>      </main>
 
       <footer className="relative z-10 mt-4 border-t border-border py-10 text-center">
         <p className="text-sm font-medium text-card-foreground">Agent Studio · 模型连接</p>

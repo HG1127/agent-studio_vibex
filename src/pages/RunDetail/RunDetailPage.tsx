@@ -25,7 +25,7 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
         <RdTopBar />
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4">
+      <main className="w-full min-w-0 px-3 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="run-detail">
         <section className="mt-4 rounded-2xl bg-gradient-to-br from-background via-secondary to-card px-5 py-3.5 shadow-md">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">

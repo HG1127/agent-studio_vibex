@@ -55,6 +55,13 @@ export function FocusOverlay({ p }: { p: ReturnType<typeof useWorkflowCanvas> })
         </div>
       </div>
 
+      {p.noticeMsg && (
+        <div role="status" className="flex shrink-0 items-start justify-between gap-2 border-b border-border bg-primary/5 px-4 py-2">
+          <p className="text-xs text-card-foreground">{p.noticeMsg}</p>
+          <button type="button" onClick={p.dismissNotice} aria-label="关闭成功提示"
+            className="shrink-0 rounded-md p-1 hover:bg-secondary"><X className="h-3.5 w-3.5"/></button>
+        </div>
+      )}
       {p.needsRhLogin && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-primary bg-primary/5 px-4 py-2">
           <p className="text-xs text-card-foreground">登录态已过期，请重新登录后继续编排与运行。</p>
@@ -93,6 +100,7 @@ export function FocusOverlay({ p }: { p: ReturnType<typeof useWorkflowCanvas> })
           onEdgesChange={p.onEdgesChange}
           handleConnect={p.handleConnect}
           isValidConnection={p.isValidConnection}
+          explainInvalidConnection={p.explainInvalidConnection}
           addNodeByType={p.addNodeByType}
           nodeStatuses={p.nodeStatuses}
           loopProgress={p.loopProgress}
@@ -110,6 +118,15 @@ export function FocusOverlay({ p }: { p: ReturnType<typeof useWorkflowCanvas> })
           onUserPan={p.noteUserPan}
           deleteEdgeById={p.deleteEdgeById}
           onNodeDoubleClick={handleNodeOpen}
+          addNodeAndConnect={p.addNodeAndConnect}
+          copySelection={p.copySelection}
+          pasteClipboard={p.pasteClipboard}
+          duplicateNodeById={p.duplicateNodeById}
+          deleteSelection={p.deleteSelection}
+          selectAll={p.selectAll}
+          hasClipboard={p.hasClipboard}
+          alignSelected={p.alignSelected}
+          loadSampleGraph={p.loadSampleGraph}
         />
 
         {p.pendingApproval && (
@@ -126,7 +143,9 @@ export function FocusOverlay({ p }: { p: ReturnType<typeof useWorkflowCanvas> })
           type="button"
           onClick={p.toggleFocusLeft}
           title={p.focusLeftOpen ? "收起节点面板" : "展开节点面板"}
-          className={`absolute left-2 top-1/2 z-30 flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded-r-xl border border-border bg-card shadow-md transition hover:text-card-foreground focus-visible:ring-2 focus-visible:ring-primary ${
+          aria-label={p.focusLeftOpen ? "收起节点面板" : "展开节点面板"}
+          aria-expanded={p.focusLeftOpen}
+          className={`absolute left-2 top-1/2 z-30 flex h-11 w-11 sm:h-12 sm:w-10 -translate-y-1/2 items-center justify-center rounded-r-xl border border-border bg-card shadow-md transition hover:text-card-foreground focus-visible:ring-2 focus-visible:ring-primary ${
             p.focusLeftOpen ? "text-primary" : "text-muted-foreground"
           }`}
         >
@@ -136,20 +155,42 @@ export function FocusOverlay({ p }: { p: ReturnType<typeof useWorkflowCanvas> })
           type="button"
           onClick={p.toggleFocusRight}
           title={p.focusRightOpen ? "收起配置面板" : "展开配置面板"}
-          className={`absolute right-2 top-1/2 z-30 flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded-l-xl border border-border bg-card shadow-md transition hover:text-card-foreground focus-visible:ring-2 focus-visible:ring-primary ${
+          aria-label={p.focusRightOpen ? "收起配置面板" : "展开配置面板"}
+          aria-expanded={p.focusRightOpen}
+          className={`absolute right-2 top-1/2 z-30 flex h-11 w-11 sm:h-12 sm:w-10 -translate-y-1/2 items-center justify-center rounded-l-xl border border-border bg-card shadow-md transition hover:text-card-foreground focus-visible:ring-2 focus-visible:ring-primary ${
             p.focusRightOpen ? "text-primary" : "text-muted-foreground"
           }`}
         >
           <PanelRight className="h-4 w-4" />
         </button>
 
+        {(p.focusLeftOpen || p.focusRightOpen) && (
+          <button type="button" aria-label="关闭侧边面板" onClick={p.closeFocusPanels}
+            className="absolute inset-0 z-10 cursor-default bg-black/15 sm:bg-black/5"/>
+        )}
         {p.focusLeftOpen && (
-          <aside className="absolute bottom-0 left-0 top-0 z-20 w-64 animate-in fade-in slide-in-from-left-4 overflow-y-auto border-r border-border bg-card p-3 shadow-xl duration-300">
+          <aside aria-label="节点列表抽屉"
+            className="absolute bottom-0 left-0 top-0 z-20 w-[min(88vw,18rem)] animate-in fade-in slide-in-from-left-4 overflow-y-auto border-r border-border bg-card p-3 shadow-xl duration-300">
+            <div className="sticky top-0 z-10 mb-3 flex items-center justify-between rounded-lg bg-card px-1 py-2">
+              <h2 className="text-sm font-semibold">节点与工作流</h2>
+              <button type="button" aria-label="关闭节点面板" onClick={p.closeFocusPanels}
+                className="rounded-lg border border-border p-2 hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary">
+                <X className="h-4 w-4"/>
+              </button>
+            </div>
             <WcLeftColumn p={p} />
           </aside>
         )}
         {p.focusRightOpen && (
-          <aside className="absolute bottom-0 right-0 top-0 z-20 w-80 animate-in fade-in slide-in-from-right-4 overflow-y-auto border-l border-border bg-card p-3 shadow-xl duration-300">
+          <aside aria-label="节点配置抽屉"
+            className="absolute bottom-0 right-0 top-0 z-20 w-[min(90vw,20rem)] animate-in fade-in slide-in-from-right-4 overflow-y-auto border-l border-border bg-card p-3 shadow-xl duration-300">
+            <div className="sticky top-0 z-10 mb-3 flex items-center justify-between rounded-lg bg-card px-1 py-2">
+              <h2 className="text-sm font-semibold">配置、诊断与运行</h2>
+              <button type="button" aria-label="关闭配置面板" onClick={p.closeFocusPanels}
+                className="rounded-lg border border-border p-2 hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary">
+                <X className="h-4 w-4"/>
+              </button>
+            </div>
             <WcRightColumn p={p} nodeTitles={nodeTitles} />
           </aside>
         )}

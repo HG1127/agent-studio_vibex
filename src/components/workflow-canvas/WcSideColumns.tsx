@@ -6,6 +6,8 @@ import { NodePalette } from "./NodePalette"
 import { RecentRunsList, RunSummaryPanel } from "./RunSummaryPanel"
 import { WorkflowInfoPanel } from "./WorkflowInfoPanel"
 import { WorkflowListPanel } from "./WorkflowListPanel"
+import { WorkflowDiagnosticsPanel } from "./WorkflowDiagnosticsPanel"
+import { WorkflowNodePreviewPanel } from "./WorkflowNodePreviewPanel"
 import { RunTraceCard } from "@/components/run-detail/RunTraceCard"
 
 type WcColumnProps = { p: ReturnType<typeof useWorkflowCanvas> }
@@ -25,6 +27,8 @@ export function WcLeftColumn({ p }: WcColumnProps) {
         specOptions={p.specOptions}
         genFromSpecBusy={p.genFromSpecBusy}
         handleGenerateFromSpec={p.handleGenerateFromSpec}
+        exportActiveFlow={p.exportActiveFlow}
+        importFlowFile={p.importFlowFile}
       />
       <footer className="mt-auto rounded-2xl border border-border bg-card p-4 shadow-md">
         <h2 className="text-sm font-semibold tracking-tight text-card-foreground">变量引用速查</h2>
@@ -49,6 +53,7 @@ export function WcRightColumn({ p, nodeTitles }: WcColumnProps & { nodeTitles: s
           wfApprovalBusy={p.wfApprovalBusy}
         />
       )}
+      <WorkflowDiagnosticsPanel issues={p.workflowDiagnostics} onSelectNode={p.openNodeConfig}/>
       {p.selectedNode && (
         <div id="wc-node-config-anchor" className="scroll-mt-2">
           <NodeConfigPanel
@@ -69,6 +74,16 @@ export function WcRightColumn({ p, nodeTitles }: WcColumnProps & { nodeTitles: s
             nodeRunInfo={p.nodeRunInfo}
           />
         </div>
+      )}
+      {p.selectedNode && (
+        <WorkflowNodePreviewPanel key={p.selectedNode.id} node={p.selectedNode}
+          nodes={p.flowNodes} edges={p.flowEdges}
+          allowedModelSelections={p.customModels.map(item => item.value)}
+          lastRun={p.activeRun?.workflow_id === p.activeWorkflowId
+            ? {instruction: p.activeRun.instruction,
+               outputs: p.activeRun.checkpoint?.outputs || {}}
+            : undefined}
+        />
       )}
       {!p.selectedNode && p.selectedEdge && (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-md">

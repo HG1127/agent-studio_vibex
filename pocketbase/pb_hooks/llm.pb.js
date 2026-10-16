@@ -120,7 +120,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     return null
   }
   // 三协议出站 → { ok, content } / { ok:false, error, detail }
-  function callConn(conn, modelId, messages, maxTokens, timeoutSec) {
+  function callConn(conn, modelId, messages, maxTokens, timeoutSec, strictDebugBudget) {
     var base = String(conn.getString("base_url") || "").replace(/\/+$/, "")
     var key = deobfKey(String(conn.getString("api_key") || ""))
     var prov = "openai"
@@ -161,12 +161,17 @@ routerAdd("POST", "/api/llm/chat", function (e) {
         }
         if (gContents.length === 0) gContents.push({ role: "user", parts: [{ text: "请继续。" }] })
         var gBody = { contents: gContents }
+        // Gemini requires an explicit generationConfig for the debug output
+        // cap; otherwise the stated 512-token budget would not be enforced.
+        if (strictDebugBudget) gBody.generationConfig = { maxOutputTokens: maxT }
         if (gInstr) gBody.system_instruction = { parts: [{ text: gInstr }] }
         res = $http.send({ url: base + "/models/" + encodeURIComponent(modelId) + ":generateContent?key=" + encodeURIComponent(key), method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(gBody), timeout: timeoutSec })
       } else {
         // 推理型模型可能把 max_tokens 全耗在 reasoning 上（finish_reason=length 且 content 空）→ 加大预算重试一次
         var maxTry = maxT
-        for (var ati = 0; ati < 2; ati++) {
+        // Model-node debug is explicitly single-shot. Never multiply its
+        // token budget or silently call the provider a second time.
+        for (var ati = 0; ati < (strictDebugBudget ? 1 : 2); ati++) {
           res = $http.send({ url: base + "/chat/completions", method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + key }, body: JSON.stringify({ model: modelId, messages: messages, max_tokens: maxTry, stream: false }), timeout: timeoutSec })
           if (!res || res.statusCode < 200 || res.statusCode >= 300) break
           var pd = null
@@ -222,6 +227,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
   function findOrCreateJob(coll, requestId, modelName, page, uid) {
     var rec = null
     try { rec = $app.findFirstRecordByFilter("llm_jobs", "request_id = {:r} && rh_user_id = {:uid}", { r: requestId, uid: uid }) } catch (_) {}
+    var existing = !!rec
     if (!rec) {
       rec = new Record(coll)
       rec.set("request_id", requestId)
@@ -231,7 +237,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
       rec.set("status", "pending")
       $app.save(rec)
     }
-    return rec
+    return { record: rec, existing: existing }
   }
 
   var requestId = ""
@@ -243,6 +249,27 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录账号" })
 
     var body = e.requestInfo().body || {}
+    // A Workflow model-node debug request is cost-bearing. Browsers can be
+    // bypassed, so enforce scope and budgets on the server as well.
+    // Other Agent/Workflow model calls preserve their existing contracts.
+    var isNodeDebug = String(body.page || "") === "workflow_node_debug"
+    if (isNodeDebug) {
+      var selectedConnection = String(body.connection_id || "").trim()
+      var selectedModel = String(body.model || "").trim()
+      var tokenLimit = Number(body.max_tokens)
+      var debugMessages = body.messages
+      if (!selectedConnection || !selectedModel || body.strict_model !== true)
+        return e.json(400, { error: "debug_binding_required", message: "节点调试必须明确指定当前员工授权的连接和模型" })
+      if (!isFinite(tokenLimit) || tokenLimit < 16 || tokenLimit > 512 || Math.floor(tokenLimit) !== tokenLimit)
+        return e.json(400, { error: "debug_token_limit", message: "单节点真实调试的输出上限为 512 tokens" })
+      if (!Array.isArray(debugMessages) || debugMessages.length !== 1 ||
+          !debugMessages[0] || String(debugMessages[0].role || "") !== "user" ||
+          typeof debugMessages[0].content !== "string" ||
+          !debugMessages[0].content.trim() || debugMessages[0].content.length > 8000)
+        return e.json(400, { error: "debug_prompt_limit", message: "调试只接受单条不超过 8000 字符的用户提示词" })
+      if (!/^[a-zA-Z0-9-]{12,120}$/.test(String(body.request_id || "")))
+        return e.json(400, { error: "debug_request_id_invalid", message: "单节点调试请求编号无效" })
+    }
     var conn = resolveConn(uid, String(body.connection_id || "").trim())
     if (!conn) {
       return e.json(400, {
@@ -253,6 +280,15 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     var mList = (function (r) { try { var s = r.getString("models"); return s ? JSON.parse(s) : [] } catch (_p) { return [] } })(conn)
     if (!Array.isArray(mList)) mList = []
     var wanted = String(body.model || "").trim()
+    // Opt-in strict binding for the workflow model-node debugger. The normal
+    // chat endpoint retains its legacy fallback contract; debug never runs a
+    // different model when a chosen model has been disabled or removed.
+    if (body.strict_model === true && (!wanted || mList.indexOf(wanted) < 0)) {
+      return e.json(400, {
+        error: "model_not_permitted",
+        message: "节点调试的模型已不在当前账号授权连接中，请刷新模型列表后重新选择",
+      })
+    }
     var modelName = ""
     if (wanted && mList.indexOf(wanted) >= 0) modelName = wanted
     else if (mList.length > 0) modelName = String(mList[0])
@@ -266,7 +302,8 @@ routerAdd("POST", "/api/llm/chat", function (e) {
 
     var page = String(body.page || "")
     var coll = ensureLlmJobsColl()
-    jobRec = findOrCreateJob(coll, requestId, modelName, page, uid)
+    var jobState = findOrCreateJob(coll, requestId, modelName, page, uid)
+    jobRec = jobState.record
 
     var existingStatus = jobRec.getString("status")
     if (existingStatus === "success" || existingStatus === "failed") {
@@ -279,12 +316,20 @@ routerAdd("POST", "/api/llm/chat", function (e) {
       })
     }
 
+    // Previously claimed debugs must not trigger duplicate provider charges.
+    // The client queries /api/llm/poll using the original request ID.
+    if (isNodeDebug && jobState.existing &&
+        (existingStatus === "running" || existingStatus === "pending")) {
+      return e.json(200, { ok: false, status: existingStatus,
+        text: "", error: "", model: jobRec.getString("model_name") })
+    }
+
     jobRec.set("status", "running")
     $app.save(jobRec)
 
     var maxTokens = Number(body.max_tokens || 8192)
     if (!maxTokens || maxTokens < 16) maxTokens = 8192
-    var ret = callConn(conn, modelName, messages, maxTokens, 120)
+    var ret = callConn(conn, modelName, messages, maxTokens, 120, isNodeDebug)
     if (!ret || ret.ok !== true) {
       var em = String((ret && ret.error) || "llm_failed") + (ret && ret.detail ? ": " + ret.detail : "")
       jobRec.set("status", "failed")

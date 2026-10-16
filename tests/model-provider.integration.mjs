@@ -28,9 +28,11 @@ const provider=createServer(async (req,res)=>{
   const isWorkflow=body.includes("workflow-probe")
   const answer=isWorkflow?"workflow-provider-passed"
     : JSON.stringify({action:"final",thought:"Model provider smoke test",final_answer:"agent-provider-passed"})
+  const debugEmpty=kind==="openai" && body.includes("debug-empty-no-retry")
   const payload=kind==="anthropic"?{content:[{type:"text",text:answer}]}
     :kind==="gemini"?{candidates:[{content:{parts:[{text:answer}]}}]}
-    :{choices:[{message:{role:"assistant",content:answer}}]}
+    :{choices:[{message:{role:"assistant",content:debugEmpty?"":answer},
+      finish_reason:debugEmpty?"length":"stop"}]}
   res.writeHead(200,{"Content-Type":"application/json"})
   res.end(JSON.stringify(payload))
 })
@@ -140,6 +142,76 @@ try {
       base_url:"http://127.0.0.1:"+modelPort+"/v1",
       api_key:"mock-secret-"+kind,models:["mock-"+kind],
     })
+    // Strict employee-scoped model-node debugger must refuse stale model
+    // selections BEFORE any outbound provider call or billing.
+    const beforeDenied=calls.length
+    const strictDenied=await api("POST","/api/llm/chat",{
+      connection_id:conn.item.id,model:"removed-model",strict_model:true,
+      page:"workflow_node_debug",request_id:"strict-denied-"+kind,
+      max_tokens:512,messages:[{role:"user",content:"never-call-provider"}],
+    })
+    assert.equal(strictDenied.status,400,JSON.stringify(strictDenied.data))
+    assert.equal(strictDenied.data.error,"model_not_permitted")
+    assert.equal(calls.length,beforeDenied,"denied debug model must not contact provider")
+    const debugBase={
+      connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+      page:"workflow_node_debug",request_id:"workflow-debug-invalid-"+kind,
+      max_tokens:512,messages:[{role:"user",content:"debug validation probe"}],
+    }
+    const invalidCases=[
+      [{...debugBase,strict_model:false},"debug_binding_required"],
+      [{...debugBase,connection_id:""},"debug_binding_required"],
+      [{...debugBase,max_tokens:513},"debug_token_limit"],
+      [{...debugBase,max_tokens:-1},"debug_token_limit"],
+      [{...debugBase,messages:[{role:"user",content:"A".repeat(8001)}]},"debug_prompt_limit"],
+      [{...debugBase,messages:[{role:"system",content:"bypass"}]},"debug_prompt_limit"],
+      [{...debugBase,request_id:"bad"},"debug_request_id_invalid"],
+    ]
+    for(const [payload,error] of invalidCases){
+      const rejected=await api("POST","/api/llm/chat",payload)
+      assert.equal(rejected.status,400,JSON.stringify(rejected.data))
+      assert.equal(rejected.data.error,error)
+    }
+    assert.equal(calls.length,beforeDenied,
+      "rejected debug requests must not invoke a provider")
+    const debugId="workflow-debug-"+kind
+    const debug=await expect("POST","/api/llm/chat",{
+      connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+      page:"workflow_node_debug",request_id:debugId,
+      max_tokens:512,messages:[{role:"user",content:"debug fixture (no real service)"}],
+    })
+    assert.equal(debug.status,"success")
+    const debugCall=calls[calls.length-1]
+    assert.equal(debugCall.kind,kind,"authorized debug node must use selected provider")
+    if(kind==="openai")assert.equal(debugCall.body.max_tokens,512)
+    if(kind==="anthropic")assert.equal(debugCall.body.max_tokens,512)
+    if(kind==="gemini")assert.equal(debugCall.body.generationConfig?.maxOutputTokens,512,
+      "Gemini debug must enforce maxOutputTokens instead of using an uncapped default")
+    const callsAfterAuthorizedDebug=calls.length
+    const cachedDebug=await expect("POST","/api/llm/chat",{
+      connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+      page:"workflow_node_debug",request_id:debugId,
+      max_tokens:512,messages:[{role:"user",content:"debug fixture (no real service)"}],
+    })
+    assert.equal(cachedDebug.cached,true,"same debug request ID must reuse previous result")
+    assert.equal(calls.length,callsAfterAuthorizedDebug,"cached request must not invoke provider twice")
+    const polled=await expect("POST","/api/llm/poll",{request_id:debugId})
+    assert.equal(polled.status,"success")
+    const other=await api("POST","/api/llm/poll",{request_id:debugId},"other-user")
+    assert.equal(other.status,200)
+    assert.equal(other.data.status,"not_found","debug result must be owner-scoped")
+    if(kind==="openai"){
+      const beforeEmpty=calls.length
+      const truncated=await api("POST","/api/llm/chat",{
+        connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+        page:"workflow_node_debug",request_id:"debug-empty-no-retry-openai",
+        max_tokens:512,messages:[{role:"user",content:"debug-empty-no-retry"}],
+      })
+      assert.equal(truncated.status,502,
+        "empty reasoning output should fail without a second billable request")
+      assert.equal(calls.length,beforeEmpty+1,
+        "node debug must never auto-retry with 2048 or 16384 tokens")
+    }
     await runAgent(conn.item.id,kind)
     await runWorkflow(conn.item.id,kind)
     const kindCalls=calls.filter(c=>c.kind===kind)

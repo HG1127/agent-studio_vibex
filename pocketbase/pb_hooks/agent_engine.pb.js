@@ -627,13 +627,14 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
 
       // —— 市场插件工具（plugin-market）：本人全部已启用的 market_connections 连接，
-      // 其工具快照以 mkt__<connectionId>__<toolName> 名进入工具集（全局授权，不经 spec.tools 勾选）；
+      // 其工具快照以 mkt__<connectionId>__<toolName> 名进入工具集；严格同一员工 owner，
+      // 必须具有已验证的工具清单，不能从其它员工连接表借出凭据或工具。
       // dispatch 命中前缀时按 MCP streamable-http tools/call 真实调用并写 tool_invocations ——
       var marketToolMap = {}
       try {
         var mkRows = $app.findRecordsByFilter(
           "market_connections",
-          "id != '' && enabled = true",
+          "rh_user_id = {:uid} && enabled = true && last_probe_status = 'ok' && tool_count > 0",
           "-created",
           50,
           0,

@@ -1,16 +1,13 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { ChevronDown, LogOut, Settings, UsersRound } from "lucide-react"
 import { Link } from "react-router-dom"
-import { fetchStudioAccountInfo, logoutStudioAccount, type StudioProfile } from "@/lib/studioAuth"
+import { getStudioAccountInfo, logoutStudioAccount } from "@/lib/studioAuth"
 
 export function StudioAccountMenu() {
-  const [profile, setProfile] = useState<StudioProfile | null>(null)
+  // Route-level AuthGate already verified this account: never race it with
+  // another authRefresh() solely to display the user's name.
+  const profile = getStudioAccountInfo()
   const [open, setOpen] = useState(false)
-  useEffect(() => {
-    let active = true
-    void fetchStudioAccountInfo().then(info => { if (active) setProfile(info) })
-    return () => { active = false }
-  }, [])
   return (
     <div className="relative min-w-0">
       <button type="button" aria-haspopup="menu" aria-expanded={open}

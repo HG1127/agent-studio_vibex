@@ -193,6 +193,15 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
       try { rec = tx.findRecordById("agent_specs", id) } catch (_) { rec = null }
       if (!rec || String(rec.get("rh_user_id") || "") !== uid)
         helper.fail("not_found",404)
+      // Owner editor may supply its last known server timestamp; stale tabs
+      // must not silently overwrite newer changes by collaborators.
+      if (body.expected_updated !== undefined) {
+        var expectedUpdated = String(body.expected_updated || "")
+        if (!expectedUpdated || expectedUpdated.length > 80)
+          helper.fail("invalid_expected_updated",400)
+        if (expectedUpdated !== String(rec.getString("updated") || ""))
+          helper.fail("spec_updated_conflict",409)
+      }
       var previous = helper.decode(rec)
       var oldHash = helper.digest(previous)
       // Optional optimistic fence for future Owner editor clients. Current

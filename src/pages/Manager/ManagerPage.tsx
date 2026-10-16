@@ -149,7 +149,7 @@ export default function ManagerPage(){
   ]:[]
   return <SiteShell>
     <main className="min-h-screen flex-1 bg-background p-4 text-foreground sm:p-7">
-      <div className="mx-auto max-w-7xl space-y-5">
+      <div className="w-full min-w-0 space-y-5">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -169,6 +169,13 @@ export default function ManagerPage(){
         {notice&&<div role="status" className="flex gap-2 rounded-xl border bg-secondary p-3 text-sm">
           <CheckCircle2 size={18} className="text-primary"/>{notice}
         </div>}
+        {assigned.length>0 && <a href="#delegated-approvals"
+          className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary transition hover:bg-primary/10">
+          <span className="flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4"/>有 {assigned.length} 项委托审批等待处理
+          </span>
+          <span className="text-xs">前往审批 →</span>
+        </a>}
         {loading?<div role="status" className={card+" flex items-center gap-2 text-sm text-muted-foreground"}>
           <Activity size={18} className="animate-pulse"/>正在验证权限并读取运行状态…
         </div>:<>
@@ -191,8 +198,12 @@ export default function ManagerPage(){
                   <p className="mt-2 text-2xl font-semibold tabular-nums">{s.value}</p>
                 </div>)}
               </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[720px] text-left text-xs">
+              <details className="mt-4 rounded-lg border border-border bg-background/60 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+                  按员工查看运行统计（{company.employees.length} 人）
+                </summary>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-left text-xs">
                   <thead><tr className="border-b text-muted-foreground">
                     {["员工","状态","Agent执行中","Workflow执行中","待审批","7天失败","超期计划"].map(s=>
                       <th key={s} className="px-2 py-3 font-medium">{s}</th>)}
@@ -206,11 +217,12 @@ export default function ManagerPage(){
                     <td className="px-2 py-3 tabular-nums">{emp.failed_7d}</td>
                     <td className="px-2 py-3 tabular-nums">{emp.overdue_schedules}</td>
                   </tr>)}</tbody>
-                </table>
-              </div>
+                  </table>
+                </div>
+              </details>
               {company.truncated&&<p className="mt-2 text-xs text-amber-700">当前只统计前200名员工，请由运维升级分页后再用于全员报表。</p>}
             </section>
-            <section className={card}>
+            <section id="delegated-approvals" className={card+" scroll-mt-20"}>
               <h2 className="flex items-center gap-2 font-semibold"><ClipboardCheck size={17}/>委托给我的审批
                 <span className="text-xs font-normal text-muted-foreground">（{assigned.length}）</span></h2>
               <p className="mt-1 text-xs text-muted-foreground">

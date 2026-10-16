@@ -1,0 +1,42 @@
+/* React Flow scales handles together with the graph. Keep the visible
+ * connector dot small, while giving coarse pointers a larger physical target
+ * at normal editing zoom (including a fitted 10–15-node graph). */
+@media (pointer: coarse) {
+  .agent-workflow-flow .react-flow__handle {
+    min-width: 48px !important;
+    min-height: 48px !important;
+    touch-action: none;
+    background: transparent !important;
+    border: 0 !important;
+  }
+  .agent-workflow-flow .react-flow__handle-left {
+    left: -24px !important;
+  }
+  .agent-workflow-flow .react-flow__handle-right {
+    right: -24px !important;
+  }
+  .agent-workflow-flow .react-flow__handle::after {
+    content: "";
+    position: absolute;
+    inset: 18px;
+    border: 2px solid hsl(var(--card));
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    pointer-events: none;
+  }
+  .agent-workflow-flow .react-flow__panel button {
+    min-width: 42px;
+    min-height: 42px;
+  }
+  .agent-workflow-flow .react-flow__edge .react-flow__edge-path {
+    pointer-events: stroke;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-workflow-flow .react-flow__node,
+  .agent-workflow-flow .react-flow__edge,
+  .agent-workflow-flow .animated {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

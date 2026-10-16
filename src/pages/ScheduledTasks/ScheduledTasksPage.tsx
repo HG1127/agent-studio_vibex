@@ -20,7 +20,7 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
   return <SiteShell>
     <div className="min-h-screen flex-1 bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border bg-background/90 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="rounded-xl bg-primary/10 p-2.5 text-primary"><CalendarClock className="h-5 w-5"/></span>
             <div><h1 className="text-lg font-semibold">定时任务</h1>
@@ -33,19 +33,24 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
           </button>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            {label:"全部计划",value:p.items.length,icon:CalendarClock},
-            {label:"已启用",value:activeCount,icon:Activity},
-            {label:"最近执行记录",value:p.history.length,icon:History},
-          ].map(m=><div key={m.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{m.label}</span><m.icon className="h-4 w-4"/>
-            </div>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{m.value}</p>
-          </div>)}
-        </div>
+      <main className="w-full min-w-0 space-y-5 px-3 py-5 sm:px-5 lg:px-7 2xl:px-10">
+        <details className="rounded-xl border border-border bg-card p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+            计划概览 · {activeCount} 项已启用
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {[
+              {label:"全部计划",value:p.items.length,icon:CalendarClock},
+              {label:"已启用",value:activeCount,icon:Activity},
+              {label:"最近执行记录",value:p.history.length,icon:History},
+            ].map(m=><div key={m.label} className="rounded-xl bg-secondary/35 p-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{m.label}</span><m.icon className="h-4 w-4"/>
+              </div>
+              <p className="mt-2 text-xl font-semibold tabular-nums">{m.value}</p>
+            </div>)}
+          </div>
+        </details>
         {p.workerAlive===false && <div className="rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
           <strong>后台执行器未在线。</strong> 可以保存计划，但自动触发需要在服务器上运行独立 Worker；
           请前往 <Link to="/tool-hub" className="underline">调试监控</Link> 检查。
@@ -59,7 +64,7 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
         {p.notice && <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm">
           <CheckCircle2 className="h-4 w-4 text-primary"/>{p.notice}
         </div>}
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(320px,0.95fr)_minmax(360px,1.4fr)]">
+        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
           <ScheduleEditor {...p}/>
           <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">

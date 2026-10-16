@@ -13,36 +13,30 @@ import type { usePluginMarket } from "./usePluginMarket"
 export function PluginMarketPage(p: ReturnType<typeof usePluginMarket>) {
   return (
     <SiteShell>
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/60 to-card text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
         <PmTopBar />
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-20">
+      <main className="w-full min-w-0 px-3 pb-12 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="plugins">
         {/* hero */}
-        <section className="relative overflow-hidden py-4">
-          <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-20 top-24 h-56 w-56 rounded-full bg-primary/5 blur-3xl" />
+        <section className="relative border-b border-border py-4">
           <div className="relative z-10 flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
               插件<span className="text-primary">市场</span>
             </h1>
             <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-              填一次 Smithery API Key 即可浏览并一键连接插件（简介自动翻成中文）；也支持直连自建 / 内部 MCP 服务。连接后的工具自动进入助手可调用工具集，可在线试调并留档。
+              搜索插件、了解权限、完成 Smithery 托管授权并验证工具；只有通过验证的工具才会供 Agent 调用。自建 MCP、运行诊断和日志放在高级功能中。
             </p>
           </div>
           {p.isLoggedIn && (
               <div className="mt-5 flex flex-wrap gap-2">
-                <span className="rounded-full bg-card px-3.5 py-1.5 text-xs font-medium text-card-foreground shadow-md">
-                  已收录插件 <span className="font-mono text-primary">{p.marketItems.length}</span> 条{p.marketNextCursor ? "（可继续加载更多）" : ""}
+                <span className="rounded-full bg-card px-3.5 py-1.5 text-xs font-medium text-card-foreground shadow-sm">
+                  当前 Smithery 列表 <span className="font-mono text-primary">{p.smitheryItems.length}</span> 条{p.smitheryNextPage ? " · 可继续加载" : ""}
                 </span>
-                <span className="rounded-full bg-card px-3.5 py-1.5 text-xs font-medium text-card-foreground shadow-md">
-                  我的连接 <span className="font-mono text-primary">{p.connectionRows.length}</span> 个 · 启用 {p.connectedCount} 个
-                </span>
-                <span className="rounded-full bg-card px-3.5 py-1.5 text-xs font-medium text-card-foreground shadow-md">
-                  市场调用留档 <span className="font-mono text-primary">{p.invokeLog.length}</span> 条
-                </span>
-              </div>
+                <span className="rounded-full bg-card px-3.5 py-1.5 text-xs font-medium text-card-foreground shadow-sm">
+                  我的连接 <span className="font-mono text-primary">{p.connectionRows.length}</span> 个 · 验证可用 {p.enabledConnections.length} 个
+                </span>              </div>
             )}
         </section>
 
@@ -96,10 +90,18 @@ export function PluginMarketPage(p: ReturnType<typeof usePluginMarket>) {
               connectedCount={p.connectedCount}
               onToggle={p.toggleConnection}
               onReprobe={p.reprobeConnection}
+              onRefreshSmithery={p.refreshSmitheryConnection}
               onDelete={p.deleteConnection}
               onTryInvoke={p.startInvokeFromDrawer}
             />
 
+            <details onToggle={event=>p.changeAdvancedOpen(event.currentTarget.open)}
+              className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+              <summary className="cursor-pointer text-sm font-semibold text-foreground focus-visible:ring-2 focus-visible:ring-primary">
+                高级功能 · MCP 公共注册表、工具试调与调用日志
+                <span className="ml-2 text-xs font-normal text-muted-foreground">面向企业自建或需要手动管理的 MCP</span>
+              </summary>
+              <div className="mt-4 space-y-5">
             <MarketBrowser
               featuredItems={p.featuredItems}
               isFeaturedLoading={p.isFeaturedLoading}
@@ -143,6 +145,8 @@ export function PluginMarketPage(p: ReturnType<typeof usePluginMarket>) {
                 invokeStatusMeta={p.invokeStatusMeta}
               />
             </div>
+              </div>
+            </details>
           </div>
         )}
       </main>
@@ -151,9 +155,9 @@ export function PluginMarketPage(p: ReturnType<typeof usePluginMarket>) {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4">
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShoppingBag className="h-4 w-4 text-primary" />
-            插件市场 · 数据实时代理自 MCP 官方注册表，连接与调用均为真实远程请求
+            Smithery 托管连接 + MCP 官方公共注册表；真实授权和工具发现均由服务端核验
           </p>
-          <p className="text-xs text-muted-foreground">仅本地进程类插件暂不支持连接，页内会如实标注</p>
+          <p className="text-xs text-muted-foreground">未经授权或尚无工具的连接不会标记为可使用；本地进程插件仍需单独部署</p>
         </div>
       </footer>
 

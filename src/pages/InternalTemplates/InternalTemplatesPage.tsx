@@ -195,7 +195,7 @@ export default function InternalTemplatesPage() {
     <SiteShell>
       <div className="min-h-screen flex-1 bg-background text-foreground">
         <header className="border-b border-border bg-card px-4 py-5 sm:px-6">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="rounded-xl bg-primary/10 p-3 text-primary"><UsersRound className="h-6 w-6"/></span>
               <div>
@@ -209,7 +209,7 @@ export default function InternalTemplatesPage() {
             </button>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+        <main className="w-full min-w-0 space-y-5 p-3 sm:p-5 lg:p-7 2xl:p-10">
           {loading && <p role="status" className="py-8 text-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin"/>正在获取内部分享权限…
           </p>}

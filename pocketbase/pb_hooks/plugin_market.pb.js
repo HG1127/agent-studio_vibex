@@ -608,6 +608,7 @@ routerAdd("GET", "/api/market/connections", function (e) {
     try {
       rows = $app.findRecordsByFilter("market_connections", "rh_user_id = {:uid}", "-created", 100, 0, { uid: uid })
     } catch (_) {}
+    var smitheryManaged=require(__hooks+"/modules/smithery_managed.js")
     var items = []
     for (var ri = 0; ri < rows.length; ri++) {
       var rec = rows[ri]
@@ -621,11 +622,36 @@ routerAdd("GET", "/api/market/connections", function (e) {
       } catch (_) {}
       var enabledVal = true
       try { enabledVal = rec.getBool("enabled") } catch (_) {}
+      var rawUrl=String(rec.get("url")||"")
+      var isLegacySmithery=rawUrl.indexOf("server.smithery.ai/")>=0 &&
+        /[?&]api_key=/i.test(rawUrl)
+      if (isLegacySmithery || (enabledVal && (Number(rec.get("tool_count")||0)===0 ||
+          String(rec.get("last_probe_status")||"")!=="ok"))) {
+        // Quarantine never-verified connections before any Agent can use them.
+        enabledVal=false
+        try {
+          rec.set("enabled",false)
+          rec.set("last_probe_status",isLegacySmithery?"legacy_reconnect":"needs_refresh")
+          rec.set("last_probe_msg",isLegacySmithery?
+            "旧版连接包含敏感查询参数，请重新接入 Smithery Connect":
+            "当前没有经过验证的工具清单，需重新检查")
+          $app.save(rec)
+        }catch(_){}
+      }
+      // Permanently scrub the retired plaintext key query rather than only
+      // masking it in API responses. The row remains disabled for migration.
+      if(isLegacySmithery){
+        var scrubbed=rawUrl.replace(/([?&](?:api_key|access_token|token|key)=)[^&]+/ig,"$1REDACTED")
+        try{rec.set("url",scrubbed);$app.save(rec)}catch(_){}
+        rawUrl=scrubbed
+      }
+      var publicUrl=rawUrl.replace(/([?&](?:api_key|access_token|token|key)=)[^&]+/ig,"$1***")
       items.push({
         id: String(rec.id),
         server_name: String(rec.get("server_name") || ""),
         title: String(rec.get("title") || ""),
-        url: String(rec.get("url") || ""),
+        url: publicUrl,
+        is_smithery: !!smitheryManaged.decodeProxy(rawUrl),
         headers_count: Number(rec.get("headers_count") || 0),
         tools: toolsVal,
         tool_count: Number(rec.get("tool_count") || 0),
@@ -654,6 +680,13 @@ routerAdd("POST", "/api/market/toggle", function (e) {
     var rec = null
     try { rec = $app.findRecordById("market_connections", id) } catch (_) {}
     if (!rec || String(rec.get("rh_user_id") || "") !== uid) return e.json(404, { error: "connection_not_found", message: "连接不存在或已断开" })
+    if(body.enabled === true){
+      var url=String(rec.getString("url")||"")
+      if(url.indexOf("server.smithery.ai/")>=0 && /[?&]api_key=/i.test(url))
+        return e.json(409,{error:"legacy_reconnect",message:"旧版 Smithery 连接不能重新启用；请使用新版托管连接"})
+      if(Number(rec.get("tool_count")||0)<1 || String(rec.get("last_probe_status")||"")!=="ok")
+        return e.json(409,{error:"not_verified",message:"未验证通过的连接不能启用；请先完成授权和工具发现"})
+    }
     rec.set("enabled", body.enabled === true)
     $app.save(rec)
     return e.json(200, { ok: true, id: id, enabled: body.enabled === true })
@@ -898,8 +931,27 @@ routerAdd("DELETE", "/api/market/connections/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("market_connections", id) } catch (_) {}
     if (!rec || String(rec.get("rh_user_id") || "") !== uid) return e.json(404, { error: "connection_not_found", message: "连接不存在或已断开" })
+    // Removing a Smithery managed row must also revoke its vendor-side
+    // connection. Failing a remote revoke is not a successful disconnect:
+    // immediately disable local execution and tell the user to retry.
+    var smithery=require(__hooks+"/modules/smithery_managed.js")
+    var pair=smithery.decodeProxy(String(rec.getString("url")||""))
+    if(pair){
+      var vendorKey=smithery.key(uid)
+      var revoke=vendorKey ? smithery.send("DELETE","/connect/"+
+        encodeURIComponent(pair.namespace)+"/"+encodeURIComponent(pair.connectionId),vendorKey) :
+        {ok:false,status:0,error:"smithery_key_required"}
+      if(!revoke.ok && revoke.status!==404){
+        rec.set("enabled",false)
+        rec.set("last_probe_status","needs_revoke")
+        rec.set("last_probe_msg","已停用本地执行，但未确认 Smithery 远端已撤销，请修复 Key 后再次断开")
+        $app.save(rec)
+        return e.json(502,{error:"smithery_remote_revoke_failed",
+          message:"本地工具已停用，但尚未确认 Smithery 远端连接已撤销。请检查 Smithery Key 后重试断开"})
+      }
+    }
     $app.delete(rec)
-    return e.json(200, { ok: true, id: id })
+    return e.json(200, { ok: true, id: id, remote_revoked: !!pair })
   } catch (err) {
     var msg = String((err && err.message) || err)
     try { $app.logger().error("market delete error", "err", msg) } catch (_) {}
@@ -923,6 +975,20 @@ routerAdd("POST", "/api/market/invoke", function (e) {
     var enabledVal = false
     try { enabledVal = rec.getBool("enabled") } catch (_) {}
     if (!enabledVal) return e.json(409, { error: "connection_disabled", message: "该插件连接已停用，请先启用后再试调" })
+    var allowedTools=[]
+    try{allowedTools=JSON.parse(String(rec.getString("tools")||"[]"))}catch(_){}
+    var selectedTool=null
+    for(var ti=0;ti<allowedTools.length;ti++){
+      if(String((allowedTools[ti]||{}).name||"")===toolName){selectedTool=allowedTools[ti];break}
+    }
+    if(!selectedTool)return e.json(403,{error:"tool_not_authorized",
+      message:"此工具未通过当前连接的能力发现，不能执行"})
+    // Only confirmed read-only tools are directly trial-callable; other
+    // external tools must go through the Agent/Workflow approval policy.
+    var flags=selectedTool.read_only===true && selectedTool.destructive!==true
+    if(!flags && body.confirm_external_write!==true)
+      return e.json(428,{error:"external_action_confirmation_required",
+        message:"此插件可能执行写操作。请确认授权范围和风险后再调用"})
 
     var PREVIEW_HINT = "预览环境可能无法访问该外部地址，发布后重试。"
     var utf8ToStr = function (bytes) {
@@ -1111,7 +1177,9 @@ routerAdd("POST", "/api/market/invoke", function (e) {
     }
     var retried = false
     var r = callOnce("")
-    if (r.net) {
+    if (r.net && flags) {
+      // Only explicitly confirmed read-only tools may be repeated after
+      // uncertain network outcomes. Never retry a potentially mutating tool.
       retried = true
       r = callOnce("")
     }
@@ -1126,7 +1194,7 @@ routerAdd("POST", "/api/market/invoke", function (e) {
       if (!result && needsInit(r)) {
         var sessInit = doInit(targetUrl) || String(r.session || "")
         var r2 = callOnce(sessInit)
-        if (r2.net) {
+        if (r2.net && flags) {
           retried = true
           r2 = callOnce(sessInit)
         }
@@ -1440,12 +1508,15 @@ routerAdd("POST", "/api/market/smithery/key", function (e) {
     var apiKey = String(body.api_key || "").trim()
     if (!apiKey) return e.json(400, { error: "bad_request", message: "请填写 Smithery API Key" })
     // 先向 Smithery 注册表验证 Key 有效性
-    var check = null
-    try {
-      check = $http.send({ url: "https://registry.smithery.ai/servers?pageSize=1", method: "GET", headers: { Authorization: "Bearer " + apiKey }, timeout: 15 })
-    } catch (_) {}
-    if (!check || check.statusCode === 401 || check.statusCode === 403) {
-      return e.json(400, { error: "invalid_key", message: "Key 验证失败：Smithery 拒绝了这把钥匙，请检查后重试" })
+    var smithery=require(__hooks+"/modules/smithery_managed.js")
+    var check=smithery.send("GET","/servers?page=1&pageSize=1",apiKey)
+    if(!check.ok){
+      if(check.error==="invalid_token")
+        return e.json(400,{error:"invalid_key",message:"Smithery 拒绝该 API Key。请在 Smithery 后台重新生成，并确认复制的是 API Key 而非登录 Token"})
+      return e.json(check.error==="rate_limited"?429:502,{
+        error:check.error||"smithery_unreachable",
+        message:check.error==="rate_limited"?"Smithery 请求限流，请稍后验证":
+          "无法访问 Smithery API 验证服务。Key 尚未保存，请检查网络或服务状态"})
     }
     var obf = function (plain) {
       var _secretKey = String($os.getenv("AGENT_STUDIO_SECRET_KEY") || "")
@@ -1478,6 +1549,23 @@ routerAdd("POST", "/api/market/smithery/key", function (e) {
     rec.set("api_key", obf(apiKey))
     rec.set("key_tail", apiKey.slice(-4))
     $app.save(rec)
+    // A rotated key does not grant already stored gateway connections access
+    // using old credentials. User must refresh after changing API credentials.
+    try {
+      var connRows=$app.findRecordsByFilter("market_connections",
+        "rh_user_id = {:u}","-created",200,0,{u:uid})
+      for(var ir=0;ir<connRows.length;ir++){
+        var cr=connRows[ir]
+        if(smithery.decodeProxy(String(cr.getString("url")||""))){
+          cr.set("enabled",false)
+          cr.set("headers_sec","[]")
+          cr.set("headers_count",0)
+          cr.set("last_probe_status","needs_refresh")
+          cr.set("last_probe_msg","Smithery Key 已更新，请重新完成连接验证")
+          $app.save(cr)
+        }
+      }
+    }catch(_){}
     return e.json(200, { ok: true, tail: apiKey.slice(-4) })
   } catch (err) {
     var msg = String((err && err.message) || err)
@@ -1493,6 +1581,23 @@ routerAdd("DELETE", "/api/market/smithery/key", function (e) {
     var rec = null
     try { rec = $app.findFirstRecordByFilter("smithery_keys", "rh_user_id = {:u}", { u: uid }) } catch (_) {}
     if (rec) $app.delete(rec)
+    // Credential removal must also revoke all managed MCP connections from
+    // local Agent/Workflow execution (not just hide the Key UI).
+    try{
+      var rows=$app.findRecordsByFilter("market_connections",
+        "rh_user_id = {:u}","-created",200,0,{u:uid})
+      for(var j=0;j<rows.length;j++){
+        var conn=rows[j]
+        if(require(__hooks+"/modules/smithery_managed.js").decodeProxy(String(conn.getString("url")||""))){
+          conn.set("enabled",false)
+          conn.set("headers_sec","[]")
+          conn.set("headers_count",0)
+          conn.set("last_probe_status","needs_key")
+          conn.set("last_probe_msg","已移除 Smithery Key，使用前需重新授权连接")
+          $app.save(conn)
+        }
+      }
+    }catch(_){}
     return e.json(200, { ok: true })
   } catch (err) {
     var msg = String((err && err.message) || err)
@@ -1572,58 +1677,9 @@ routerAdd("GET", "/api/market/smithery/servers", function (e) {
   }
 })
 
-routerAdd("POST", "/api/market/smithery/connect", function (e) {
-  try {
-    var h = (e.requestInfo() || {}).headers || {}
-    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
-    if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录账号" })
-    var body = (e.requestInfo() || {}).body || {}
-    var slug = String(body.slug || "").trim().slice(0, 200)
-    if (!slug || slug.indexOf(" ") >= 0 || slug.charAt(0) === "/" || slug.indexOf("?") >= 0) {
-      return e.json(400, { error: "bad_request", message: "插件标识不合法" })
-    }
-    var keyRec = null
-    try { keyRec = $app.findFirstRecordByFilter("smithery_keys", "rh_user_id = {:u}", { u: uid }) } catch (_) {}
-    if (!keyRec) return e.json(400, { error: "smithery_key_required", message: "请先填写 Smithery API Key" })
-    var deobf = function (stored) {
-      var s = String(stored || "")
-      if (s.indexOf("gcm1:") === 0) {
-        var _secretKey = String($os.getenv("AGENT_STUDIO_SECRET_KEY") || "")
-        if (_secretKey.length !== 32) return ""
-        try { return String($security.decrypt(s.substring(5), _secretKey)) } catch (_) { return "" }
-      }
-
-      if (!s) return ""
-      if (s.indexOf(".") < 0 && !/^[0-9]+$/.test(s)) return s
-      var parts = s.split(".")
-      var out = ""
-      for (var di = 0; di < parts.length; di++) {
-        var dn = parseInt(parts[di], 10)
-        if (isNaN(dn)) return s
-        out += String.fromCharCode(dn - 3)
-      }
-      return out
-    }
-    var apiKey = deobf(String(keyRec.getString("api_key") || ""))
-    if (!apiKey) return e.json(400, { error: "smithery_key_required", message: "Smithery API Key 已失效，请重新填写" })
-    var targetUrl = "https://server.smithery.ai/" + slug + "/mcp?api_key=" + encodeURIComponent(apiKey)
-    var titleVal = String(body.title || "").trim().slice(0, 200) || slug
-    var conn = null
-    try { conn = $app.findFirstRecordByFilter("market_connections", "rh_user_id = {:uid} && url = {:url}", { uid: uid, url: targetUrl }) } catch (_) {}
-    var coll = $app.findCollectionByNameOrId("market_connections")
-    if (!conn) conn = new Record(coll)
-    conn.set("rh_user_id", uid)
-    conn.set("server_name", slug)
-    conn.set("title", titleVal)
-    conn.set("url", targetUrl)
-    conn.set("headers_sec", "[]")
-    conn.set("headers_count", 0)
-    conn.set("enabled", true)
-    conn.set("last_probe_status", "pending")
-    $app.save(conn)
-    return e.json(200, { ok: true, id: String(conn.id), url_masked: "https://server.smithery.ai/" + slug + "/mcp?api_key=***" })
-  } catch (err) {
-    var msg = String((err && err.message) || err)
-    return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
-  }
+// Retired: the legacy endpoint put a full API key in a URL and marked untested
+// connections as enabled. All new connections must use managed Smithery V2.
+routerAdd("POST", "/api/market/smithery/connect", function(e) {
+  return e.json(410, {error:"legacy_smithery_connection_disabled",
+    message:"旧版连接方式已停用。请在插件市场使用 Smithery 托管连接（需完成授权和工具发现）"})
 })

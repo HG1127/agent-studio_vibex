@@ -1,5 +1,7 @@
 // AgentSpec 数据类型与三个内置示例模板（研究助手 / 知识库问答助手 / 数据分析助手）
 
+import type { AgentQualityCheck } from "../../lib/agentQualityChecks"
+
 export type AgentSpec = {
   goal: string
   task_scope: string
@@ -7,6 +9,8 @@ export type AgentSpec = {
   tools: string[]
   task_plan: string[]
   done_criteria: string[]
+  /** 人工定义并可机器验证的文本断言；不等同于事实准确性认证。 */
+  quality_checks?: AgentQualityCheck[]
   /** 服务端仅检索当前账号拥有的知识库（最多 10 个） */
   knowledge_base_ids?: string[]
   /** 写操作审批门：开启后运行中调用外部写工具/市场插件前暂停等待用户批准（默认 false） */
