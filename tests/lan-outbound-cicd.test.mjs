@@ -94,3 +94,20 @@ test("isolated PostgreSQL 17 test fixture supplies the current required identity
  const src=readFileSync("services/pg-api/tests/pg17-tcp.integration.mjs","utf8");
  assert.match(src,/target_schedule_id,payload_sha256,projection_sha256,identity_mapping_sha256,source_record/);
 });
+test("trusted root deploy manager drops privileges before executing untrusted build steps",()=>{
+ const unit=readFileSync("deploy/lan/agentstudio-lan-update.service.example","utf8");
+ const source=readFileSync("deploy/lan/pull-update.py","utf8");
+ assert.match(unit,/^User=root$/m);
+ assert.match(unit,/^NoNewPrivileges=false$/m);
+ assert.match(unit,/^ProtectSystem=strict$/m);
+ assert.match(unit,/^ReadWritePaths=/m);
+ assert.match(source,/"\/usr\/bin\/setpriv"/);
+ assert.match(source,/"--reuid=" \+ BUILDER/);
+ assert.match(source,/"--regid=" \+ BUILDER/);
+ assert.match(source,/"--no-new-privs"/);
+ assert.match(source,/"\/usr\/bin\/env", "-i"/);
+ assert.doesNotMatch(source,/"\/usr\/sbin\/runuser"/);
+ const workflow=readFileSync(".github/workflows/agent-studio-quality.yml","utf8");
+ assert.ok(workflow.includes("Ubuntu builder privilege-drop smoke (ephemeral)"));
+ assert.match(workflow,/LINUX_BUILDER_PRIVDROP_OK/);
+});

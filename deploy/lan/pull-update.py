@@ -70,10 +70,25 @@ def subprocess_checked(args: list[str], *, cwd: Path | None = None,
                       as_builder: bool = False, timeout: int = 180) -> str:
     run_args = list(args)
     if as_builder:
-        run_args = ["/usr/sbin/runuser", "-u", BUILDER, "--", "/usr/bin/env",
-                    "HOME=" + str(BUILD_HOME),
-                    "PATH=/opt/agent-studio-lan/tools/bin:/usr/bin:/bin",
-                    *run_args]
+        # Trusted root orchestrator must be able to DROP UID/GID; invoking
+        # runuser in the old NoNewPrivileges=true parent unit failed with
+        # EPERM under Ubuntu's systemd sandbox. setpriv does not use PAM and
+        # applies NoNewPrivileges to the unprivileged build CHILD instead.
+        # Clear inherited environment: no production tokens/keys may reach
+        # git, pnpm, build scripts, or downloaded dependencies.
+        run_args = [
+            "/usr/bin/setpriv",
+            "--reuid=" + BUILDER,
+            "--regid=" + BUILDER,
+            "--init-groups",
+            "--no-new-privs",
+            "/usr/bin/env", "-i",
+            "HOME=" + str(BUILD_HOME),
+            "PATH=/opt/agent-studio-lan/tools/bin:/usr/bin:/bin",
+            "GIT_TERMINAL_PROMPT=0",
+            "XDG_CACHE_HOME=" + str(BUILD_HOME / ".cache"),
+            *run_args,
+        ]
     result = subprocess.run(run_args, cwd=cwd, check=True, timeout=timeout,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             encoding="utf8")
@@ -87,8 +102,8 @@ def validate_paths() -> None:
         raise PullBlocked("dedicated_builder_directory_not_prepared")
     if not BUILD_HOME.is_dir() or BUILD_HOME.is_symlink():
         raise PullBlocked("builder_home_not_prepared")
-    if not BINARY.is_file() or not Path(NODE).is_file():
-        raise PullBlocked("node_or_locked_pnpm_missing")
+    if not BINARY.is_file() or not Path(NODE).is_file() or not Path("/usr/bin/setpriv").is_file():
+        raise PullBlocked("node_pnpm_or_setpriv_missing")
     for path in (INCOMING, RELEASES, SOURCE):
         if not path.is_dir() or path.is_symlink():
             raise PullBlocked("lan_release_directories_not_prepared")

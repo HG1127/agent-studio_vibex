@@ -161,6 +161,12 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p test_lan_outbound_ci.py -v
           node --test tests/lan-outbound-cicd.test.mjs
+      - name: Ubuntu builder privilege-drop smoke (ephemeral)
+        run: |
+          # No production privileges or credentials; only synthetic nobody.
+          test "$(sudo -n /usr/bin/setpriv --reuid=nobody --regid=nogroup --init-groups --no-new-privs /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp /usr/bin/id -u)" = "$(id -u nobody)"
+          sudo -n /usr/bin/setpriv --reuid=nobody --regid=nogroup --init-groups --no-new-privs /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp /usr/bin/bash -c 'test ! -r /etc/shadow'
+          echo "LINUX_BUILDER_PRIVDROP_OK"
       - name: Unit regression and TypeScript production build
         run: pnpm check
       - name: Internal production readiness policy (offline unit checks only)
