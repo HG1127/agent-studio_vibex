@@ -3,6 +3,7 @@
 面向公司员工、非技术人员的 Agent 创建、运行、调试及集成工作台。当前分支已改为独立 PocketBase 员工账号认证，不再依赖 VibeX/RunningHub SSO；保留 React + TypeScript + Vite、PocketBase + SQLite、独立 Node Worker 及原业务模块。**仅隔离环境通过自动化测试，尚未正式上线。**
 
 **独立安装与迁移说明：**[Agent Studio 独立账号与部署指南](docs/STANDALONE_AUTH_AND_DEPLOYMENT.md)。
+**Ubuntu 宝塔内网主动同步（默认关闭）：**[GitHub CI 通过后服务器主动拉取、SQLite 备份和发布回滚指南](docs/LAN_OUTBOUND_CICD_UBUNTU.md)。
 **语义知识库指南：**[Embedding、混合检索、Agent RAG 与索引运维](docs/KNOWLEDGE_SEMANTIC_RAG.md)。
 **公司负责人工作台：**[跨员工运行统计、单次授权代审批与数据隔离](docs/COMPANY_OVERSIGHT_RBAC.md)。
 **团队协作版本：**[团队知识库 ACL、同一 Agent 的提案与版本审核](docs/TEAM_COLLABORATION_V1.md)。

@@ -12,6 +12,8 @@ on:
       - 'db/postgres/**'
       - 'services/pg-api/**'
       - 'deploy/postgres-staging/**'
+      - 'deploy/lan/**'
+      - 'pnpm-workspace.yaml'
       - 'tests/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -140,6 +142,12 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install isolated PostgreSQL CI-only dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: LAN outbound CI gate, bundle and deployment safety tests (offline)
+        run: |
+          python3 -m unittest discover -s tests -p test_lan_outbound_ci.py -v
+          node --test tests/lan-outbound-cicd.test.mjs
       - name: Unit regression and TypeScript production build
         run: pnpm check
       - name: Internal production readiness policy (offline unit checks only)
