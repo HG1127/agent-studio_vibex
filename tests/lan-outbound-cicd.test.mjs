@@ -82,3 +82,15 @@ test("active symlink and release directories require root-only mutation rights",
  assert.match(activator,/lan_release_root_not_operator_owned/);
  assert.match(activator,/lan_directory_missing_or_symlink/);
 });
+
+test("quality CI provisions verified PocketBase before the standalone unit suite",()=>{
+ const workflow=readFileSync(".github/workflows/agent-studio-quality.yml","utf8");
+ const install=workflow.indexOf("Install PocketBase 0.40.5 for integration and unit tests");
+ const unit=workflow.indexOf("Unit regression and TypeScript production build");
+ assert.ok(install>0 && unit>install,"PocketBase must be provisioned before unit tests");
+ assert.match(workflow,/sha256sum --check/);
+});
+test("isolated PostgreSQL 17 test fixture supplies the current required identity mapping SHA",()=>{
+ const src=readFileSync("services/pg-api/tests/pg17-tcp.integration.mjs","utf8");
+ assert.match(src,/target_schedule_id,payload_sha256,projection_sha256,identity_mapping_sha256,source_record/);
+});
