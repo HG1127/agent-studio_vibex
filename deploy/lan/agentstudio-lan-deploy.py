@@ -343,6 +343,63 @@ def await_healthy() -> None:
             raise DeploymentRefused("lan_https_gateway_health_failed")
 
 
+def changed_application(previous: Path, candidate: Path) -> list[str]:
+    """Hash-verify BOTH release manifests and compare all deployed bytes.
+
+    A clean manifest-only (e.g., CI/deployment scripts) commit may advance the
+    immutable release pointer without touching database or running processes.
+    """
+    def fingerprints(release: Path) -> dict[str, str]:
+        manifest_file = release / "release-manifest.json"
+        if (manifest_file.is_symlink() or not manifest_file.is_file()
+                or manifest_file.stat().st_size > MAX_MANIFEST_BYTES):
+            raise DeploymentRefused("no_op_release_manifest_missing_link_or_oversized")
+        manifest = json.loads(manifest_file.read_text("utf8"))
+        files = manifest.get("files")
+        if manifest.get("schema") != 1 or not isinstance(files, list) or len(files) > MAX_FILES:
+            raise DeploymentRefused("no_op_release_manifest_invalid")
+        entries = {}
+        for item in files:
+            if not isinstance(item, dict):
+                raise DeploymentRefused("no_op_release_manifest_entry_invalid")
+            name, declared_hash, declared_size = item.get("path"), item.get("sha256"), item.get("bytes")
+            if (not isinstance(name, str) or not allowed_file(name)
+                    or name in entries or not isinstance(declared_hash, str)
+                    or not CHECKSUM_RE.fullmatch(declared_hash)
+                    or not isinstance(declared_size, int) or isinstance(declared_size, bool)
+                    or declared_size < 0 or declared_size > MAX_SINGLE_FILE_BYTES):
+                raise DeploymentRefused("no_op_release_entry_invalid")
+            file = release / name
+            if file.is_symlink() or not file.is_file():
+                raise DeploymentRefused("no_op_release_file_missing_or_link")
+            if file.stat().st_size != declared_size:
+                raise DeploymentRefused("no_op_release_size_mismatch")
+            if hashlib.sha256(file.read_bytes()).hexdigest() != declared_hash:
+                raise DeploymentRefused("no_op_release_digest_mismatch")
+            entries[name] = declared_hash
+        # Fail closed if the installed release contains undeclared runtime
+        # files or symlinks, including files that are not in the hash manifest.
+        # A root-owned release directory is not by itself proof of integrity.
+        found = set()
+        for actual in release.rglob("*"):
+            if actual.is_symlink():
+                raise DeploymentRefused("no_op_release_unexpected_symlink")
+            if actual.is_file():
+                relative = actual.relative_to(release).as_posix()
+                if relative != "release-manifest.json" and relative not in entries:
+                    raise DeploymentRefused("no_op_release_undeclared_file")
+                found.add(relative)
+            elif not actual.is_dir():
+                raise DeploymentRefused("no_op_release_special_file")
+        if found != set(entries) | {"release-manifest.json"}:
+            raise DeploymentRefused("no_op_release_file_set_mismatch")
+        return entries
+
+    before, after = fingerprints(previous), fingerprints(candidate)
+    return sorted(name for name in before.keys() | after.keys()
+                  if before.get(name) != after.get(name))
+
+
 def changed_runtime(previous: Path, candidate: Path) -> list[str]:
     def entries(directory: Path) -> dict[str, str]:
         raw = json.loads((directory / "release-manifest.json").read_text("utf8"))
@@ -389,11 +446,27 @@ def deploy(commit: str, reviewed_runtime: bool = False) -> None:
         verify_migration_compatibility(previous_dir, candidate)
         if changed_runtime(previous_dir, candidate) and not reviewed_runtime:
             raise DeploymentRefused("backend_or_worker_change_requires_operator_review")
+        all_changes = changed_application(previous_dir, candidate)
         nginx = "/www/server/nginx/sbin/nginx" if Path("/www/server/nginx/sbin/nginx").is_file() else "/usr/sbin/nginx"
         sudo(nginx, "-t")
     except BaseException:
         shutil.rmtree(candidate)
         raise
+
+    if not all_changes:
+        # Only the Git release metadata changed. Keep PB, Worker, Nginx and
+        # SQLite running; update the version pointer so the next timer run
+        # does not repeat this same no-op commit.
+        await_healthy()
+        switch_to(commit)
+        try:
+            await_healthy()
+        except BaseException:
+            switch_to(previous)
+            raise
+        print("LAN_NOOP_RELEASE_ADVANCED", commit,
+              "services_unchanged=yes", "sqlite_untouched=yes")
+        return
 
     # Quiescent backup must fit on the backup volume. Fail before stopping
     # services if insufficient storage. Actual backup still verifies SQLite.
