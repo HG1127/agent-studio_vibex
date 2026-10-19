@@ -1,6 +1,6 @@
 # Agent Studio Ubuntu 宝塔 LAN 主动拉取 GitHub CI/CD
 
-> 2026-10-19，开发中的部署方案。代码尚未合并 main，未接触用户宝塔服务器、SQLite 或 PostgreSQL。**自动更新默认关闭。**
+> 2026-10-19，Ubuntu 宝塔局域网部署运维说明。自动更新脚本已纳入代码库，但**受控部署控制器须在服务器手动审核更新，自动更新默认关闭**。本文命令不允许修改任何 PostgreSQL 生产数据。
 
 ## 1. 固定的现有环境（不准覆盖）
 
@@ -24,6 +24,7 @@
 
 - 无 GitHub 向 LAN 的 SSH 连接；没有公网域名、GitHub Runner 或外部 22 端口开放。
 - 只更新 `dist` 前端的变更可自动激活；PocketBase Hooks / Worker / package.json 变化必须经运维审批，**迁移目录变化一律不自动执行**。
+- **纯部署元数据版本（no-op）**：候选与运行版本的全部应用文件和哈希一致时，执行两次运行健康检查并仅原子移动 `current` 版本指针，**不会停止或重启 Nginx/PocketBase/Worker，也不对 SQLite 进行任何写入或备份**。第二次健康检查失败会立即恢复旧指针。只有 `LAN_NOOP_RELEASE_ADVANCED` 才表示成功。旧版控制器没有此分支，必须经过固定提交、SHA-256、Python 检查和运维审核后手动替换该 root-owned 控制器；禁止因 `NO_APPLICATION_RUNTIME_CHANGES` 直接调用旧版 `--auto`。
 - GitHub 网络/CI 检查缺失、主分支已移动、构建脚本失败、归档校验失败、证书失效等情况全部拒绝部署。
 - root 安装在 `/usr/local/libexec/agentstudio-lan/` 的三个控制器**必须手工审批**，不会随着 GitHub 自动被覆盖。
 - 备份目录 `/var/backups/agentstudio-lan` 为 root 独占，包含冻结的 SQLite 快照和原有附件；代码回滚**不意味着数据库回滚**。
@@ -78,6 +79,9 @@ stat -c '%a %U:%G %n' /srv/agent-studio-lan /srv/agent-studio-lan/source /var/li
 7. 先检查 nginx -t、systemd-analyze verify，再按维护窗口重启 PB 和 Worker、平滑重载 Nginx；检验 HTTPS（**不得 -k**）、管理员重新登录、员工数据、后台任务和备份完整性。
 8. 人工安装 `deploy/lan/*.service.example` 与 `*.timer.example` 对应 root-owned systemd 配置。先 `--check`（只读查询 GitHub CI）和 `--stage`（仅下载构建不影响现网），确认后再考虑自动更新。
 9. 最后单独批准并创建 `enable-lan-autoupdate` root-owned 0600 文件，启用定时器。出现异常先停 timer、移除启用标记，不删除数据库和历史版本。
+### 更新现有 root-owned 控制器（需要独立审批）
+
+服务器在首次安装时部署了一个旧版 `agentstudio-lan-deploy.py`；后续只修复 no-op 流程时，不应将整个 `deploy/lan` 目录直接复制到生产。应先确认该修复已在 GitHub `main` 通过完整 CI，记下 **完整 40 位 SHA** 和 `deploy/lan/agentstudio-lan-deploy.py` 的 SHA-256，下载到 `/root` 临时目录验证哈希、执行 `python3 -m py_compile`，备份已有 `/usr/local/libexec/agentstudio-lan/agentstudio-lan-deploy.py`，确认定时器未启用，再以 `root:root 0755` 原子替换**这一份**已审核的控制器。不调用 `--bootstrap`，不触碰 `current` 或数据库。替换后优先运行 `--check`，并对已暂存的无变化版本做人工无停机演练，成功再考虑启用 timer。
 
 ## 5. GitHub 访问权限
 

@@ -216,6 +216,7 @@ class LANReleaseSafety(unittest.TestCase):
              patch.object(LAN, "extract_checked"), \
              patch.object(LAN, "verify_migration_compatibility"), \
              patch.object(LAN, "changed_runtime", return_value=[]), \
+             patch.object(LAN, "changed_application", return_value=["dist/index.html"]), \
              patch.object(LAN, "sudo", side_effect=lambda *argv: calls.append(argv)), \
              patch.object(LAN.shutil, "disk_usage", return_value=SimpleNamespace(free=0)):
             with self.assertRaisesRegex(LAN.DeploymentRefused, "insufficient_disk"):
@@ -253,6 +254,7 @@ class LANReleaseSafety(unittest.TestCase):
              patch.object(LAN, "extract_checked"), \
              patch.object(LAN, "verify_migration_compatibility"), \
              patch.object(LAN, "changed_runtime", return_value=[]), \
+             patch.object(LAN, "changed_application", return_value=["dist/index.html"]), \
              patch.object(LAN, "switch_to", side_effect=switch), \
              patch.object(LAN, "sqlite_backup", return_value=backup), \
              patch.object(LAN.shutil, "disk_usage", return_value=SimpleNamespace(free=2**33)), \
@@ -264,5 +266,126 @@ class LANReleaseSafety(unittest.TestCase):
         self.assertEqual(count[0], 2)
         self.assertIn(("/usr/bin/systemctl", "stop", LAN.WORKER_SERVICE), services)
         self.assertIn(("/usr/bin/systemctl", "start", LAN.PB_SERVICE), services)
+    def _verified_release(self, directory, commit, frontend=b"same frontend", worker=b"same worker"):
+        contents = {
+            "dist/index.html": frontend,
+            "worker/run.mjs": worker,
+            "package.json": b'{"type":"module"}',
+            "src/lib/scheduleTime.js": b"export const x=1;",
+        }
+        directory.mkdir(parents=True, exist_ok=True)
+        entries = []
+        for name, value in contents.items():
+            target = directory / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(value)
+            entries.append({"path": name, "sha256": hashlib.sha256(value).hexdigest(),
+                            "bytes": len(value)})
+        (directory / "release-manifest.json").write_text(
+            json.dumps({"schema": 1, "commit": commit, "files": entries}))
+        return directory
+
+    def _prepare_noop(self):
+        base = self.path / "app"
+        incoming = base / "incoming"
+        incoming.mkdir(parents=True)
+        releases = base / "releases"
+        releases.mkdir()
+        archive = incoming / (SHA_A + ".tar.gz")
+        archive.write_bytes(b"synthetic-archive-candidate")
+        (incoming / (SHA_A + ".sha256")).write_text(
+            hashlib.sha256(archive.read_bytes()).hexdigest())
+        self._verified_release(releases / SHA_B, SHA_B)
+        return base, releases
+
+    def test_noop_release_advances_only_version_pointer_without_restart_or_backup(self):
+        base, releases = self._prepare_noop()
+        active = [SHA_B]
+        operations = []
+        def extract(_, destination, commit):
+            self._verified_release(destination, commit)
+            return {"commit": commit, "files": 4}
+        def switch(commit):
+            operations.append(("switch", commit))
+            active[0] = commit
+        with patch.object(LAN, "BASE", base), \
+             patch.object(LAN, "require_runtime"), \
+             patch.object(LAN, "get_previous", return_value=SHA_B), \
+             patch.object(LAN, "extract_checked", side_effect=extract), \
+             patch.object(LAN, "switch_to", side_effect=switch), \
+             patch.object(LAN, "sudo", side_effect=lambda *args: operations.append(args)), \
+             patch.object(LAN, "await_healthy") as healthy, \
+             patch.object(LAN, "sqlite_backup", side_effect=AssertionError("no backup for no-op")):
+            LAN.deploy(SHA_A)
+        self.assertEqual(active[0], SHA_A)
+        self.assertEqual(healthy.call_count, 2)
+        self.assertEqual([x for x in operations if x[0] == "switch"], [("switch", SHA_A)])
+        self.assertFalse(any(len(x) > 1 and x[0].endswith("systemctl")
+                             and x[1] in ("stop", "start", "restart") for x in operations))
+        self.assertTrue((releases / SHA_A / "release-manifest.json").is_file())
+
+    def test_noop_release_rolls_back_pointer_when_health_check_fails(self):
+        base, _ = self._prepare_noop()
+        active = [SHA_B]
+        operations = []
+        def extract(_, destination, commit):
+            self._verified_release(destination, commit)
+            return {"commit": commit, "files": 4}
+        def switch(commit):
+            active[0] = commit
+            operations.append(("switch", commit))
+        with patch.object(LAN, "BASE", base), \
+             patch.object(LAN, "require_runtime"), \
+             patch.object(LAN, "get_previous", return_value=SHA_B), \
+             patch.object(LAN, "extract_checked", side_effect=extract), \
+             patch.object(LAN, "switch_to", side_effect=switch), \
+             patch.object(LAN, "sudo", side_effect=lambda *args: operations.append(args)), \
+             patch.object(LAN, "await_healthy", side_effect=[
+                 None, LAN.DeploymentRefused("synthetic_noop_health_failure")]), \
+             patch.object(LAN, "sqlite_backup", side_effect=AssertionError("no backup for no-op")):
+            with self.assertRaisesRegex(LAN.DeploymentRefused, "synthetic_noop_health_failure"):
+                LAN.deploy(SHA_A)
+        self.assertEqual(active[0], SHA_B)
+        self.assertEqual([x for x in operations if x[0] == "switch"],
+                         [("switch", SHA_A), ("switch", SHA_B)])
+        self.assertFalse(any(len(x) > 1 and x[0].endswith("systemctl")
+                             and x[1] in ("stop", "start", "restart") for x in operations))
+
+    def test_same_manifest_requires_real_file_digest_match(self):
+        prev = self._verified_release(self.path / "prev", SHA_B)
+        newer = self._verified_release(self.path / "new", SHA_A)
+        self.assertEqual(LAN.changed_application(prev, newer), [])
+        self._verified_release(newer, SHA_A, frontend=b"new frontend")
+        self.assertEqual(LAN.changed_application(prev, newer), ["dist/index.html"])
+        (prev / "dist/index.html").write_bytes(b"tampered old frontend")
+        with self.assertRaisesRegex(LAN.DeploymentRefused, "digest_mismatch|size_mismatch"):
+            LAN.changed_application(prev, newer)
+
+
+    def test_noop_release_rejects_unlisted_files_and_symlinks(self):
+        prev = self._verified_release(self.path / "prev", SHA_B)
+        newer = self._verified_release(self.path / "new", SHA_A)
+        self.assertEqual(LAN.changed_application(prev, newer), [])
+        (newer / "worker" / "untracked.pb.js").write_text("unaudited", encoding="utf8")
+        with self.assertRaisesRegex(LAN.DeploymentRefused, "undeclared_file"):
+            LAN.changed_application(prev, newer)
+        (newer / "worker" / "untracked.pb.js").unlink()
+        link = newer / "worker" / "link.mjs"
+        try:
+            link.symlink_to(newer / "worker" / "run.mjs")
+        except OSError as exc:
+            # Developer-mode symlink privileges are optional on Windows;
+            # GitHub Linux CI exercises the real symlink assertion.
+            if getattr(exc, "winerror", None) != 1314:
+                raise
+        else:
+            with self.assertRaisesRegex(LAN.DeploymentRefused, "unexpected_symlink"):
+                LAN.changed_application(prev, newer)
+            link.unlink()
+        (newer / "release-manifest.json").write_bytes(b"x" * (LAN.MAX_MANIFEST_BYTES + 1))
+        with self.assertRaisesRegex(LAN.DeploymentRefused, "oversized"):
+            LAN.changed_application(prev, newer)
+
+
 if __name__ == "__main__":
     unittest.main()
