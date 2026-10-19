@@ -29,6 +29,7 @@
 - root 安装在 `/usr/local/libexec/agentstudio-lan/` 的三个控制器**必须手工审批**，不会随着 GitHub 自动被覆盖。
 - 备份目录 `/var/backups/agentstudio-lan` 为 root 独占，包含冻结的 SQLite 快照和原有附件；代码回滚**不意味着数据库回滚**。
 - 默认不启用 timer，必须创建 root:root 0600 文件 `/etc/agentstudio-lan/enable-lan-autoupdate`，内容单行 `AUTO_FRONTEND_ONLY` 才启用。
+- **构建身份切换与 sandbox：**旧 systemd 模板在 root 控制器上设置 `NoNewPrivileges=true` 后再调用 `runuser -u agentstudio-build`，在 Ubuntu 的 systemd 沙箱下可出现 `runuser: cannot set user id: Operation not permitted`。新版模板仅为可信 root-owned 部署**协调器**使用 `NoNewPrivileges=false`，保留 `ProtectSystem=strict`、`PrivateTmp`、`ProtectHome` 和限定的 `ReadWritePaths`；`pull-update.py` 在执行 git、pnpm、构建指令前，通过 `setpriv --reuid=agentstudio-build --regid=agentstudio-build --init-groups --no-new-privs` 降权，并以 `env -i` 清空继承环境。这不等于取消构建进程的安全隔离。只有 GitHub main CI 成功并完成**单独的 Ubuntu builder sandbox 联调**后才允许安装或启用新配置。不要在已有 unit 中单独关闭 `NoNewPrivileges` 却继续使用旧 `runuser` 流程；两个文件必须作为受审核的一组更新。
 
 ## 3. 现在请先执行只读预检
 

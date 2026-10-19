@@ -11,7 +11,10 @@ WorkingDirectory=/
 ExecStart=/usr/bin/python3 /usr/local/libexec/agentstudio-lan/pull-update.py --auto
 TimeoutStartSec=25min
 UMask=0077
-NoNewPrivileges=true
+# Root release orchestrator needs CAP_SETUID/CAP_SETGID to drop into the builder.
+# Only the trusted root-owned Python controller runs here; downloaded build
+# commands run through setpriv as agentstudio-build with --no-new-privs.
+NoNewPrivileges=false
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict

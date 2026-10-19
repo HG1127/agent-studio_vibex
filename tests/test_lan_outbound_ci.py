@@ -387,5 +387,38 @@ class LANReleaseSafety(unittest.TestCase):
             LAN.changed_application(prev, newer)
 
 
+    def test_builder_commands_drop_uid_gid_then_enable_no_new_privs(self):
+        # Regression for Ubuntu systemd-run: runuser inside a root unit with
+        # NoNewPrivileges=true failed with EPERM before pnpm/git could run.
+        command = ["/usr/bin/git", "ls-remote", "--heads", "https://github.com/example/repo", "main"]
+        with patch.object(PULL.subprocess, "run",
+                          return_value=SimpleNamespace(stdout="OK\n")) as launch:
+            response = PULL.subprocess_checked(command, as_builder=True,
+                                               cwd=self.path, timeout=17)
+        self.assertEqual(response, "OK")
+        args = launch.call_args.args[0]
+        self.assertEqual(args[0], "/usr/bin/setpriv")
+        self.assertIn("--reuid=agentstudio-build", args)
+        self.assertIn("--regid=agentstudio-build", args)
+        self.assertIn("--init-groups", args)
+        self.assertIn("--no-new-privs", args)
+        self.assertIn("/usr/bin/env", args)
+        index = args.index("/usr/bin/env")
+        self.assertEqual(args[index + 1], "-i")
+        self.assertIn("HOME=" + str(PULL.BUILD_HOME), args)
+        self.assertIn("GIT_TERMINAL_PROMPT=0", args)
+        self.assertEqual(args[-len(command):], command)
+        self.assertNotIn("/usr/sbin/runuser", args)
+        self.assertEqual(launch.call_args.kwargs["cwd"], self.path)
+        self.assertEqual(launch.call_args.kwargs["timeout"], 17)
+
+    def test_non_builder_commands_are_not_rewritten(self):
+        command = ["/usr/bin/git", "version"]
+        with patch.object(PULL.subprocess, "run",
+                          return_value=SimpleNamespace(stdout="ok\n")) as proc:
+            self.assertEqual(PULL.subprocess_checked(command), "ok")
+        self.assertEqual(proc.call_args.args[0], command)
+
+
 if __name__ == "__main__":
     unittest.main()
