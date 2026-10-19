@@ -1,0 +1,20 @@
+[Unit]
+Description=Agent Studio LAN outbound GitHub CI-gated updater (no inbound SSH)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/
+ExecStart=/usr/bin/python3 /usr/local/libexec/agentstudio-lan/pull-update.py --auto
+TimeoutStartSec=25min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# pnpm also needs its isolated builder HOME/cache writable.
+ReadWritePaths=/srv/agent-studio-lan /var/backups/agentstudio-lan /var/lib/agentstudio-build
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

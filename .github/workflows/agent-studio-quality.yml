@@ -12,6 +12,8 @@ on:
       - 'db/postgres/**'
       - 'services/pg-api/**'
       - 'deploy/postgres-staging/**'
+      - 'deploy/lan/**'
+      - 'pnpm-workspace.yaml'
       - 'tests/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -140,6 +142,25 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install isolated PostgreSQL CI-only dependencies
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Install PocketBase 0.40.5 for integration and unit tests
+        run: |
+          mkdir -p .ci-bin
+          curl -fsSL --retry 3 \
+            https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/pocketbase_0.40.5_linux_amd64.zip \
+            -o .ci-bin/pocketbase.zip
+          curl -fsSL --retry 3 \
+            https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/checksums.txt \
+            -o .ci-bin/checksums.txt
+          (cd .ci-bin && grep -F 'pocketbase_0.40.5_linux_amd64.zip' checksums.txt | sed 's/  pocketbase_0.40.5_linux_amd64.zip/  pocketbase.zip/' | sha256sum --check)
+          unzip -q .ci-bin/pocketbase.zip pocketbase -d .ci-bin
+          chmod +x .ci-bin/pocketbase
+          echo "POCKETBASE_BIN=$GITHUB_WORKSPACE/.ci-bin/pocketbase" >> "$GITHUB_ENV"
+      - name: LAN outbound CI gate, bundle and deployment safety tests (offline)
+        run: |
+          python3 -m unittest discover -s tests -p test_lan_outbound_ci.py -v
+          node --test tests/lan-outbound-cicd.test.mjs
       - name: Unit regression and TypeScript production build
         run: pnpm check
       - name: Internal production readiness policy (offline unit checks only)
@@ -148,15 +169,6 @@ jobs:
         run: pnpm test:postgres-staging
       - name: Ensure local launch scripts never auto-open browser or PocketBase admin
         run: pnpm test:no-browser
-      - name: Install PocketBase 0.40.5 for integration tests
-        run: |
-          mkdir -p .ci-bin
-          curl -fsSL --retry 3 \
-            https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/pocketbase_0.40.5_linux_amd64.zip \
-            -o .ci-bin/pocketbase.zip
-          unzip -q .ci-bin/pocketbase.zip pocketbase -d .ci-bin
-          chmod +x .ci-bin/pocketbase
-          echo "POCKETBASE_BIN=$GITHUB_WORKSPACE/.ci-bin/pocketbase" >> "$GITHUB_ENV"
       - name: PocketBase security integration
         run: pnpm test:integration
       - name: Worker without browser end-to-end

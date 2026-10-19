@@ -279,10 +279,10 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
     await admin.query(
       "INSERT INTO agentstudio.legacy_schedule_imports "+
       "(source_snapshot_sha256,legacy_schedule_id,owner_user_id,"+
-      "target_schedule_id,payload_sha256,projection_sha256,source_record) "+
-      "VALUES($1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::jsonb)",
+      "target_schedule_id,payload_sha256,projection_sha256,identity_mapping_sha256,source_record) "+
+      "VALUES($1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::text,$8::jsonb)",
       ["d".repeat(64),"scheduletest000",ids.alice,
-        safeSchedule.rows[0].id,"e".repeat(64),"f".repeat(64),
+        safeSchedule.rows[0].id,"e".repeat(64),"f".repeat(64),"a".repeat(64),
         JSON.stringify({kind:"synthetic_quarantine",enabled:0})])
     await assert.rejects(admin.query(
       "INSERT INTO agentstudio.schedule_occurrences "+

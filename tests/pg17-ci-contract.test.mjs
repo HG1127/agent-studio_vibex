@@ -8,7 +8,8 @@ import path from "node:path"
 import {fileURLToPath} from "node:url"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
-const read=file=>readFileSync(path.join(root,file),"utf8")
+// Normalize Windows CRLF so the same CI contract runs identically on Ubuntu.
+const read=file=>readFileSync(path.join(root,file),"utf8").replace(/\r\n/g,"\n")
 
 test("PG17 integration refuses any non-ephemeral CI environment before networking",()=>{
   const file=path.join(root,"services/pg-api/tests/pg17-tcp.integration.mjs")
