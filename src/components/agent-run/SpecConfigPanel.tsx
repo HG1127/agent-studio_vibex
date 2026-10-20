@@ -21,6 +21,8 @@ type SpecConfigPanelProps = {
   onMaxStepsChange: (value: number) => void
   maxModelCalls: number
   onMaxModelCallsChange: (value: number) => void
+  maxRuntimeMinutes: number
+  onMaxRuntimeMinutesChange: (value: number) => void
   stopCondition: string
   onStopConditionChange: (value: string) => void
   stopOnComplete: boolean
@@ -50,6 +52,8 @@ export function SpecConfigPanel({
   onMaxStepsChange,
   maxModelCalls,
   onMaxModelCallsChange,
+  maxRuntimeMinutes,
+  onMaxRuntimeMinutesChange,
   stopCondition,
   onStopConditionChange,
   stopOnComplete,
@@ -249,6 +253,26 @@ export function SpecConfigPanel({
           disabled={isLive} onChange={(e) => onMaxModelCallsChange(Number(e.target.value))}
           className="w-full accent-primary disabled:opacity-60" />
         <p className="text-xs text-muted-foreground">服务端强制限额，包含规划、摘要与上下文压缩。此上限不是 Token 或费用硬上限。</p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="max-runtime-minutes" className="text-sm font-medium text-card-foreground">
+          任务最长运行时间
+        </label>
+        <select id="max-runtime-minutes" value={maxRuntimeMinutes} disabled={isLive}
+          onChange={(e) => onMaxRuntimeMinutesChange(Number(e.target.value))}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">
+          <option value={0}>不限制（沿用步数与模型调用预算）</option>
+          <option value={30}>30 分钟</option>
+          <option value={60}>1 小时</option>
+          <option value={120}>2 小时</option>
+          <option value={240}>4 小时</option>
+          <option value={480}>8 小时</option>
+          <option value={1440}>24 小时</option>
+        </select>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          从创建任务起计时，包含排队及审批等待。达到时限后，在下一次执行步骤前终止并保留已有检查点；不会强制中断正在进行的网络请求。
+        </p>
       </div>
 
       <div className="mt-auto flex flex-col gap-2">

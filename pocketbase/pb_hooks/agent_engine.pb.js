@@ -91,6 +91,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     var modelWire = require(__hooks + "/modules/model_wire.js")
     var bytesToStr = modelWire.bytesToStr
     var executionGuard = require(__hooks + "/modules/harness_execution_guard.js")
+    var runLifecycle = require(__hooks + "/modules/harness_run_lifecycle.js")
 
     var logErr = function (where, err) {
       try {
@@ -555,6 +556,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
       // Harness 核算：每次引擎模型调用估算输入/输出字符数，累进 checkpoint.harness_stats
       var callEngineLlm = function (messages, maxTokens, timeoutSec) {
+        if (!runLifecycle.withinDeadline(cp, new Date().getTime()))
+          return { ok: false, error: "run_runtime_deadline_exceeded" }
         var pChars0 = 0
         for (var mci0 = 0; mci0 < messages.length; mci0++) {
           pChars0 += String((messages[mci0] || {}).content || "").length
@@ -926,6 +929,12 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           finishRun(runId, "failed", "", "model_call_budget_exhausted", stepIndex, seq, "模型调用预算耗尽，已停止运行")
           return
         }
+        if (llm.error === "run_runtime_deadline_exceeded") {
+          addEvent(runId, stepIndex, seq, "error", { message: "run_runtime_deadline_exceeded：任务最长运行时间已达到" })
+          persistStats()
+          finishRun(runId, "failed", "", "run_runtime_deadline_exceeded", stepIndex, seq, "任务总时限已达到，已停止运行")
+          return
+        }
         addEvent(runId, stepIndex, seq, "error", { message: "规划调用失败：" + llm.error, detail: llm.detail || "" })
         var pf1 = Number(cp.parse_failures || 0) + 1
         if (pf1 >= 3) {
@@ -1056,6 +1065,13 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         return
       }
       toolInput = checkedInput.value
+      if (!runLifecycle.withinDeadline(cp, new Date().getTime())) {
+        seq++
+        addEvent(runId, stepIndex, seq, "error", { message: "run_runtime_deadline_exceeded：已禁止新的工具调用" })
+        persistStats()
+        finishRun(runId, "failed", "", "run_runtime_deadline_exceeded", stepIndex, seq, "任务总时限已达到")
+        return
+      }
       var audit = require(__hooks + "/modules/harness_audit.js")
 
       var invInputStr = ""
@@ -1555,42 +1571,26 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     if (status0 !== "running") {
       return e.json(200, { ok: true, run_id: id, status: status0, stepped: false })
     }
-    var cpRaw = loadJson(run, "checkpoint")
-    var tsNow = new Date().getTime()
-    // The SQLite lease is authoritative. checkpoint.claim_until is a stale UI
-    // hint after crash/restart and must not block an otherwise claimable run.
     var leaseToken = $security.randomString(40)
-    var leaseUntil = tsNow + 600000
-    var leaseAcquired = false
+    var admission = null
     try {
-      leaseAcquired = executionGuard.claim($app, "agent", id, uid, leaseToken, tsNow, 600000)
+      admission = runLifecycle.enter($app, executionGuard, {
+        kind: "agent", runId: id, owner: uid, token: leaseToken,
+        loadCheckpoint: function (r) { return loadJson(r, "checkpoint") },
+      })
     } catch (leaseErr) {
-      try { $app.logger().error("agent execution lease unavailable", "err", String(leaseErr)) } catch (_) {}
+      try { $app.logger().error("agent execution admission failed", "err", String(leaseErr)) } catch (_) {}
       return e.json(503, { error: "execution_lease_unavailable", message: "执行租约暂不可用，已禁止非原子回退" })
     }
-    if (!leaseAcquired) {
-      return e.json(200, { ok: true, run_id: id, status: "running", stepped: false, busy: true })
+    if (!admission.acquired) {
+      return e.json(200, runLifecycle.response(id, "running", { busy: true }))
     }
     try {
-    var claimCp = {
-      steps: cpRaw.steps || [],
-      seq: Number(cpRaw.seq || 0),
-      claim_until: leaseUntil,
-      done_steps: Number(cpRaw.done_steps || 0),
-      parse_failures: Number(cpRaw.parse_failures || 0),
-      compact_summary: String(cpRaw.compact_summary || ""),
-      compact_done: Number(cpRaw.compact_done || 0),
-      harness_stats: cpRaw.harness_stats || {},
-      evidence_refs: cpRaw.evidence_refs || [],
-      call_sig_recent: cpRaw.call_sig_recent || [],
-      pending_approval: cpRaw.pending_approval || null,
-      approval_decision: String(cpRaw.approval_decision || ""),
-      approved_step: Number(cpRaw.approved_step || 0),
+    if (admission.deadlineExceeded) {
+      addEvent(id, 0, Number(admission.checkpoint.seq || 0) + 1, "status",
+        { message: "run_runtime_deadline_exceeded：本次任务运行总时限已达到" })
+      return e.json(200, runLifecycle.response(id, "failed", { deadlineExceeded: true }))
     }
-    executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, claimedRun) {
-      claimedRun.set("checkpoint", claimCp)
-      tx.save(claimedRun)
-    })
     var stepFailed = false
     try {
       executeStep(id)
@@ -1627,7 +1627,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     })
     } finally {
       try {
-        executionGuard.release($app, "agent", id, uid, leaseToken)
+        runLifecycle.leave($app, executionGuard, { kind: "agent", runId: id, owner: uid, token: leaseToken })
       } catch (leaseReleaseErr) {
         try { $app.logger().error("agent execution lease release failed", "err", String(leaseReleaseErr)) } catch (_) {}
       }
@@ -1786,6 +1786,10 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
     if (maxSteps > 30) maxSteps = 30
     var normalizedBudget = require(__hooks + "/modules/harness_budget.js").normalize(maxSteps, cfgIn.max_model_calls)
     if (!normalizedBudget.ok) return e.json(400, { error: normalizedBudget.error, message: "模型调用预算必须是 1 至 100 的整数" })
+    var runtimeDeadline = require(__hooks + "/modules/harness_run_lifecycle.js")
+      .deadlineFromMinutes(cfgIn.max_runtime_minutes, new Date().getTime())
+    if (!runtimeDeadline.ok)
+      return e.json(400, { error: runtimeDeadline.error, message: "任务最长运行时间需为 1-1440 分钟，或留空禁用" })
     var config = {
       tools: {
         calculate: toolsIn.calculate === true,
@@ -1796,6 +1800,7 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       },
       max_steps: maxSteps,
       max_model_calls: normalizedBudget.max_model_calls,
+      max_runtime_minutes: runtimeDeadline.minutes,
       stop_condition: String(cfgIn.stop_condition || "").slice(0, 500),
       stop_on_complete: cfgIn.stop_on_complete !== false,
       require_approval: cfgIn.require_approval === true,
@@ -1958,6 +1963,7 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       seq: 1,
       claim_until: 0,
       done_steps: 0,
+      execution_deadline_ms: runtimeDeadline.deadline_ms,
       parse_failures: 0,
       harness_stats: { llm_calls: 0, est_prompt_chars: 0, est_out_chars: 0, tool_calls: 0, retries: 0, compressions: 0, approvals: 0 },
       evidence_refs: [],

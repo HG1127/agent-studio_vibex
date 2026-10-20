@@ -269,6 +269,32 @@ try {
   }
   const minimalWf = await api("POST", "/api/workflow-studio/create", { name: "Lease scheduling check", graph: basicGraph })
   assert.equal(minimalWf.status, 200)
+  // Workflow and Agent share one runtime admission deadline contract. An
+  // overdue workflow must fail BEFORE executing the first graph node.
+  const expiringWf = await api("POST","/api/workflow-runs/start",{
+    workflow_id:minimalWf.result.id,instruction:"expired",max_runtime_minutes:1,
+  })
+  assert.equal(expiringWf.status,200)
+  db = new DatabaseSync(path.join(dataDir,"data.db"),{timeout:5000})
+  try {
+    const original = JSON.parse(db.prepare("SELECT checkpoint FROM workflow_runs WHERE id=?")
+      .get(expiringWf.result.run_id).checkpoint)
+    assert.ok(original.execution_deadline_ms>Date.now())
+    original.execution_deadline_ms=Date.now()-1500
+    original.outputs={previous:"retained"}
+    db.prepare("UPDATE workflow_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify(original),expiringWf.result.run_id)
+  } finally {db.close()}
+  const expiredTick=await tick(expiringWf.result.run_id)
+  assert.equal(expiredTick.status,200)
+  assert.equal(expiredTick.result.deadline_exceeded,true)
+  const expiredRow=await detail(expiringWf.result.run_id)
+  assert.equal(expiredRow.status,"failed")
+  assert.equal(expiredRow.error,"run_runtime_deadline_exceeded")
+  assert.equal(expiredRow.checkpoint.outputs.previous,"retained")
+  assert.equal(expiredRow.done_nodes,0)
+
+
   const busyRun = await api("POST", "/api/workflow-runs/start", { workflow_id: minimalWf.result.id, instruction: "occupied" })
   const readyRun = await api("POST", "/api/workflow-runs/start", { workflow_id: minimalWf.result.id, instruction: "ready" })
   assert.equal(busyRun.status, 200)

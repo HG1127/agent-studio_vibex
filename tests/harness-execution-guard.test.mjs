@@ -72,6 +72,108 @@ function appHarness() {
   }
   return { app, db }
 }
+
+const lifecycleLoaded = { module: { exports: {} } }
+vm.runInNewContext(
+  fs.readFileSync("pocketbase/pb_hooks/modules/harness_run_lifecycle.js", "utf8"),
+  lifecycleLoaded, { timeout: 1200 },
+)
+const lifecycle = lifecycleLoaded.module.exports
+
+test("shared lifecycle validates bounded optional wall-clock runtime", () => {
+  assert.equal(lifecycle.normalizeRuntimeMinutes(undefined).minutes, 0)
+  assert.equal(lifecycle.normalizeRuntimeMinutes("").minutes, 0)
+  assert.equal(lifecycle.normalizeRuntimeMinutes(1).minutes, 1)
+  assert.equal(lifecycle.normalizeRuntimeMinutes(1440).minutes, 1440)
+  for (const input of [0, -1, 1.5, 1441, "bad", NaN]) {
+    assert.equal(lifecycle.normalizeRuntimeMinutes(input).ok, false)
+  }
+  assert.equal(lifecycle.deadlineFromMinutes(2, 100000).deadline_ms, 220000)
+  assert.equal(lifecycle.deadlineFromMinutes(undefined, 100000).deadline_ms, 0)
+  assert.equal(lifecycle.deadlineFromMinutes(5, NaN).ok, false)
+  assert.equal(lifecycle.withinDeadline({ execution_deadline_ms: 10000 }, 9999), true)
+  assert.equal(lifecycle.withinDeadline({ execution_deadline_ms: 10000 }, 10000), false)
+  assert.equal(lifecycle.withinDeadline({ execution_deadline_ms: 0 }, 20000), true)
+  assert.equal(lifecycle.withinDeadline({}, 20000), true)
+  assert.equal(lifecycle.withinDeadline({ execution_deadline_ms: "broken" }, 20000), false)
+  assert.equal(lifecycle.ownershipLost(new Error("execution_lease_lost")), true)
+  assert.equal(lifecycle.ownershipLost(new Error("execution_run_not_running")), true)
+  assert.equal(lifecycle.ownershipLost(new Error("random")), false)
+})
+
+test("Agent and Workflow share atomic admission and preserve prior checkpoint fields", () => {
+  const { app, db } = appHarness()
+  try {
+    for (const [kind, id] of [["agent", AGENT], ["workflow", WORKFLOW]]) {
+      db.prepare("UPDATE " + kind + "_runs SET checkpoint=? WHERE id=?")
+        .run(JSON.stringify({ seq: 2, evidence_refs: [{ locator: "doc:a" }], legacy: "preserved", claim_until: 9999999999999 }), id)
+      const entered = lifecycle.enter(app, guard, {
+        kind, runId: id, owner: OWNER, token: A,
+        loadCheckpoint: (r) => JSON.parse(String(r.get("checkpoint"))),
+      })
+      assert.equal(entered.acquired, true)
+      assert.equal(entered.deadlineExceeded, false)
+      assert.equal(entered.checkpoint.legacy, "preserved")
+      assert.equal(entered.checkpoint.evidence_refs[0].locator, "doc:a")
+      const cp = JSON.parse(db.prepare("SELECT checkpoint FROM " + kind + "_runs WHERE id=?").get(id).checkpoint)
+      assert.equal(cp.legacy, "preserved")
+      assert.ok(cp.claim_until > Date.now())
+      const busy = lifecycle.enter(app, guard, {
+        kind, runId: id, owner: OWNER, token: B,
+        loadCheckpoint: (r) => JSON.parse(String(r.get("checkpoint"))),
+      })
+      assert.equal(busy.acquired, false)
+      assert.equal(busy.busy, true)
+      assert.equal(lifecycle.leave(app, guard, { kind, runId: id, owner: OWNER, token: A }), true)
+    }
+  } finally { db.close() }
+})
+
+test("expired Agent and Workflow run deadlines fail admission without erasing evidence", () => {
+  const { app, db } = appHarness()
+  try {
+    for (const [kind, id] of [["agent", AGENT], ["workflow", WORKFLOW]]) {
+      db.prepare("UPDATE " + kind + "_runs SET checkpoint=? WHERE id=?")
+        .run(JSON.stringify({ seq: 9, outputs: { n1: "already done" },
+          evidence_refs: [{ locator: "source:1" }], execution_deadline_ms: Date.now() - 1000 }), id)
+      const admission = lifecycle.enter(app, guard, {
+        kind, runId: id, owner: OWNER, token: A,
+        loadCheckpoint: (r) => JSON.parse(String(r.get("checkpoint"))),
+      })
+      assert.equal(admission.acquired, true)
+      assert.equal(admission.deadlineExceeded, true)
+      const persisted = db.prepare("SELECT status,checkpoint FROM " + kind + "_runs WHERE id=?").get(id)
+      assert.equal(persisted.status, "failed")
+      const saved = JSON.parse(persisted.checkpoint)
+      assert.equal(saved.claim_until, 0)
+      assert.equal(saved.seq, 9)
+      assert.equal(saved.outputs.n1, "already done")
+      assert.equal(saved.evidence_refs[0].locator, "source:1")
+      assert.equal(lifecycle.leave(app, guard, { kind, runId: id, owner: OWNER, token: A }), true)
+    }
+  } finally { db.close() }
+})
+
+test("shared lifecycle refuses to start a step if lease state changed before checkpoint lock", () => {
+  const { app, db } = appHarness()
+  try {
+    const guarded = {
+      ...guard,
+      claim(...args) {
+        const acquired = guard.claim(...args)
+        if (acquired) db.prepare("UPDATE agent_runs SET status='cancelled' WHERE id=?").run(AGENT)
+        return acquired
+      },
+    }
+    assert.throws(() => lifecycle.enter(app, guarded, {
+      kind: "agent", runId: AGENT, owner: OWNER, token: A,
+      loadCheckpoint: (r) => JSON.parse(String(r.get("checkpoint"))),
+    }), /execution_run_not_running/)
+    const lease = db.prepare("SELECT lease_token FROM agent_studio_run_leases WHERE kind='agent'").get()
+    assert.equal(lease.lease_token, "", "admission cleanup only releases the acquired token")
+    assert.equal(db.prepare("SELECT status FROM agent_runs WHERE id=?").get(AGENT).status, "cancelled")
+  } finally { db.close() }
+})
 test("shared Agent/Workflow CAS lease excludes concurrent owner and fences takeovers", () => {
   const { app, db } = appHarness()
   try {

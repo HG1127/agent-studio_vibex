@@ -81,34 +81,19 @@ routerAdd("POST", "/api/internal/worker/step", function (e) {
     } catch (leaseReadErr) {
       try { $app.logger().error("worker active lease scan", "err", String(leaseReadErr)) } catch (_) {}
     }
-    var candidates = []
     var sources = [
       { collection: "agent_runs", kind: "agent", endpoint: "/api/llm/agent-engine/" },
       { collection: "workflow_runs", kind: "workflow", endpoint: "/api/llm/workflow-engine/" },
     ]
-    for (var si = 0; si < sources.length; si++) {
-      var source = sources[si]
-      var records = []
-      try {
-        records = $app.findRecordsByFilter(source.collection, "status = 'running'", "updated", 60, 0)
-      } catch (err) {
-        // Missing collection is not fatal during initialization.
-        continue
-      }
-      for (var ri = 0; ri < records.length; ri++) {
-        var record = records[ri]
-        if (leasedRuns[source.kind + ":" + String(record.id)]) continue
-        // Never filter by checkpoint.claim_until. A crashed worker can leave a
-        // future UI hint while the authoritative DB lease is already expired.
-        // The tick-level atomic claim still resolves races safely.
-        var owner = String(record.get("rh_user_id") || "").trim()
-        if (!owner) continue
-        var ageKey = String(record.getString("updated") || record.getString("created") || "")
-        candidates.push({ source: source, id: String(record.id), owner: owner, ageKey: ageKey })
-      }
-    }
-    if (candidates.length === 0) return e.json(200, { ok: true, stepped: false, idle: true })
-    candidates.sort(function (a, b) { return a.ageKey < b.ageKey ? -1 : a.ageKey > b.ageKey ? 1 : a.id < b.id ? -1 : 1 })
+    // Shared bounded scanner paginates beyond leased tasks. The atomic
+    // lease claim in the tick remains the concurrency authority.
+    var discovery = require(__hooks + "/modules/harness_worker_scheduler.js")
+      .discover($app, sources, leasedRuns)
+    var candidates = discovery.candidates
+    if (!candidates.length) return e.json(200, {
+      ok: true, stepped: false, idle: true, scanned: discovery.examined,
+      scan_capped: discovery.scan_capped,
+    })
     var selected = candidates[0]
     var tickUrl = base + selected.source.endpoint + encodeURIComponent(selected.id) + "/tick"
     var response = null
@@ -149,7 +134,7 @@ routerAdd("POST", "/api/internal/worker/step", function (e) {
     var latest = null
     try { latest = $app.findRecordById(selected.source.collection, selected.id) } catch (_) {}
     var status = latest ? String(latest.get("status") || "") : "unknown"
-    return e.json(200, { ok: true, stepped: Boolean(moved), idle: !moved, busy: Boolean(busy), kind: selected.source.kind, run_id: selected.id, status: status })
+    return e.json(200, { ok: true, stepped: Boolean(moved), idle: !moved, busy: Boolean(busy), kind: selected.source.kind, run_id: selected.id, status: status, scanned: discovery.examined, scan_capped: discovery.scan_capped })
   } catch (err) {
     var message = String((err && err.message) || err)
     try { $app.logger().error("worker step unexpected", "err", message) } catch (_) {}

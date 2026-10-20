@@ -92,6 +92,8 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               onMaxStepsChange={p.setMaxSteps}
               maxModelCalls={p.maxModelCalls}
               onMaxModelCallsChange={p.setMaxModelCalls}
+              maxRuntimeMinutes={p.maxRuntimeMinutes}
+              onMaxRuntimeMinutesChange={p.setMaxRuntimeMinutes}
               stopCondition={p.stopCondition}
               onStopConditionChange={p.setStopCondition}
               stopOnComplete={p.stopOnComplete}
