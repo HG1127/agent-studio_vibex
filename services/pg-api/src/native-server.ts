@@ -210,20 +210,26 @@ async function verifyNativeAuthService(pool:SqlPool){
     }finally{await client.query("ROLLBACK")}
   }finally{client.release()}
 }
-export async function startNativePg18Server(env=process.env,listen=true){
+export async function startNativePg18Server(
+  env=process.env,listen=true,credentialMode=listen
+){
+  // Nonroot preflight MUST validate the exact credentials/uid/origin of the
+  // future systemd service, without opening a listener or enabling writes.
+  if(credentialMode!==listen && !(credentialMode===true&&listen===false))
+    reject()
   // Do not rewrite the caller environment to simulate root-vault paths.
   // The real non-root systemd LoadCredential paths must pass unchanged.
-  const cfg=nativePg18ServerConfig(env,process.platform,listen)
+  const cfg=nativePg18ServerConfig(env,process.platform,credentialMode)
   // Plain HTTP is allowed ONLY to make read-only local deployment checks.
   // Real employee sessions use Secure host-only cookies behind HTTPS.
-  assertNativeServeOrigin(cfg.allowedOrigin,listen)
+  assertNativeServeOrigin(cfg.allowedOrigin,credentialMode)
   // Explicit non-root, HTTPS-only opt-in. Default always remains READ ONLY.
   // No UAT capabilities are permitted with --preflight.
   const capabilities=selectNativePg18UatCapabilities(
     env,listen,cfg.allowedOrigin)
-  const files=nativeRuntimeCredentialConfig(env,listen)
-  const apiSecret=safeSecret(files.apiFile,listen,env)
-  const authSecret=safeSecret(files.authFile,listen,env)
+  const files=nativeRuntimeCredentialConfig(env,credentialMode)
+  const apiSecret=safeSecret(files.apiFile,credentialMode,env)
+  const authSecret=safeSecret(files.authFile,credentialMode,env)
   if(apiSecret.stat.dev===authSecret.stat.dev&&
      apiSecret.stat.ino===authSecret.stat.ino)reject()
   // Resolve pg only for explicit --preflight/--serve, so offline --plan
@@ -247,6 +253,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       await Promise.all([businessPool.end(),authPool.end()])
       return {mode:"preflight",ready:true,target:"agent_studio",
         verified_roles:2,verified_active_admins:1,
+        credential_mode:credentialMode?"systemd_nonroot":"root_offline",
         writes_performed:false,port_opened:false,
         workers_started:false,production_cutover_allowed:false}
     }
@@ -321,10 +328,11 @@ if(process.argv[1]&&path.resolve(process.argv[1])===here){
   if(args.length===1&&args[0]==="--plan"){
     process.stdout.write(JSON.stringify(nativePg18ServerPlan())+"\n")
   }else if(args.length===1&&
-           ["--preflight","--serve"].includes(args[0]??"")){
-    void startNativePg18Server(process.env,args[0]==="--serve")
+           ["--preflight","--preflight-nonroot","--serve"].includes(args[0]??"")){
+    void startNativePg18Server(process.env,args[0]==="--serve",
+      args[0]!=="--preflight")
       .then(result=>{
-        if(args[0]==="--preflight")
+        if(args[0]!=="--serve")
           process.stdout.write(JSON.stringify(result)+"\n")
       })
       .catch(()=>{

@@ -153,3 +153,29 @@ test("native PG18 refuses nonapproved targets, role reuse, implicit URLs and uns
   },"linux")
   assert.equal(local.allowedOrigin,"http://127.0.0.1:8000")
 })
+
+test("native systemd nonroot preflight checks live credential binding but never opens HTTP",()=>{
+  const file=path.resolve(path.dirname(fileURLToPath(import.meta.url)),
+    "../src/native-server.ts")
+  const src=readFileSync(file,"utf8")
+  assert.match(src,/--preflight-nonroot/)
+  assert.match(src,/startNativePg18Server\(process\.env,args\[0\]==="--serve",/)
+  assert.match(src,/args\[0\]!=="--preflight"\)/)
+  assert.match(src,/credential_mode:credentialMode\?"systemd_nonroot":"root_offline"/)
+  assert.match(src,/selectNativePg18UatCapabilities\(\s*env,listen/)
+  assert.match(src,/assertNativeServeOrigin\(cfg\.allowedOrigin,credentialMode\)/)
+  const beforeListen=src.indexOf("if(!listen){",src.indexOf("export async function startNativePg18Server"))
+  const socketSetup=src.indexOf("localServer.listen(",beforeListen)
+  assert.ok(beforeListen>0 && socketSetup>beforeListen,
+    "no HTTP socket may be opened before readonly preflight returns")
+  const noEnv=spawnSync(process.execPath,
+    ["--experimental-strip-types",file,"--preflight-nonroot"],
+    {encoding:"utf8",timeout:12000,
+      env:{PATH:process.env.PATH??"",HOME:process.env.HOME??"",
+        DATABASE_URL:"postgres://127.0.0.1:5333/agent_studio"}}
+  )
+  assert.equal(noEnv.status,1)
+  assert.equal(noEnv.stdout,"")
+  assert.match(noEnv.stderr,/native_server_start_refused/)
+  assert.doesNotMatch(noEnv.stderr,/ECONNREFUSED|password authentication failed/)
+})

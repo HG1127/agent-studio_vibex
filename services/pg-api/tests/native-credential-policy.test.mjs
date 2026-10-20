@@ -144,7 +144,7 @@ test("service source never rewrites supplied systemd env back to root vault",()=
     "services/pg-api/src/native-server.ts"),"utf8")
   const service=readFileSync(path.join(root,
     "ops/templates/agentstudio-pg18-native.service.example"),"utf8")
-  assert.match(native,/nativePg18ServerConfig\(env,process\.platform,listen\)/)
+  assert.match(native,/nativePg18ServerConfig\(env,process\.platform,credentialMode\)/)
   assert.match(native,/assertNativePg18Credential/)
   assert.match(native,/accessSync\(file,constants\.R_OK\)/)
   assert.doesNotMatch(native,/AGENT_STUDIO_PG_PASSWORD_FILE:rootVault/)
