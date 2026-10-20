@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 from pathlib import Path
 import sqlite3
 import tarfile
@@ -418,6 +419,55 @@ class LANReleaseSafety(unittest.TestCase):
                           return_value=SimpleNamespace(stdout="ok\n")) as proc:
             self.assertEqual(PULL.subprocess_checked(command), "ok")
         self.assertEqual(proc.call_args.args[0], command)
+
+
+    def test_stage_diagnostics_report_phase_without_leaking_stderr(self):
+        from contextlib import redirect_stdout
+        fake = subprocess.CalledProcessError(
+            128, ["git", "clone", "https://token:private@example.test"],
+            stderr="Authorization Bearer very-private-token",
+            output="secret-workflow-request",
+        )
+        output = io.StringIO()
+        with patch.object(PULL.subprocess, "run", side_effect=fake):
+            with redirect_stdout(output):
+                with self.assertRaisesRegex(PULL.PullBlocked, "stage_git_clone_exit_128"):
+                    PULL.subprocess_checked(
+                        ["/usr/bin/git", "clone", "fake-source"], phase="git_clone",
+                        as_builder=True,
+                    )
+        self.assertIn("LAN_STAGE_BEGIN:git_clone", output.getvalue())
+        self.assertNotIn("private", output.getvalue())
+        self.assertNotIn("token", output.getvalue())
+        self.assertNotIn("Bearer", output.getvalue())
+
+    def test_stage_diagnostics_identify_timeout_and_success(self):
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with patch.object(PULL.subprocess, "run", side_effect=subprocess.TimeoutExpired(
+                ["/usr/bin/git", "clone"], timeout=5)):
+            with redirect_stdout(output):
+                with self.assertRaisesRegex(PULL.PullBlocked, "stage_git_clone_timeout"):
+                    PULL.subprocess_checked(["/usr/bin/git", "clone"], phase="git_clone")
+        self.assertIn("LAN_STAGE_BEGIN:git_clone", output.getvalue())
+        self.assertNotIn("LAN_STAGE_OK:git_clone", output.getvalue())
+
+        output = io.StringIO()
+        with patch.object(PULL.subprocess, "run",
+                          return_value=SimpleNamespace(stdout="ok\n")):
+            with redirect_stdout(output):
+                self.assertEqual(PULL.subprocess_checked(
+                    ["/usr/bin/node", "-v"], phase="frontend_build"), "ok")
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            ["LAN_STAGE_BEGIN:frontend_build", "LAN_STAGE_OK:frontend_build"],
+        )
+
+    def test_stage_diagnostics_reject_untrusted_phase_strings(self):
+        with patch.object(PULL.subprocess, "run") as runner:
+            with self.assertRaisesRegex(PULL.PullBlocked, "invalid_stage_diagnostic_phase"):
+                PULL.subprocess_checked(["false"], phase="--secret_api_token")
+        runner.assert_not_called()
 
 
 if __name__ == "__main__":

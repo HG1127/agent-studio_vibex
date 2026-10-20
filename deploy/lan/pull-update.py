@@ -67,7 +67,8 @@ def controller_modules():
 
 
 def subprocess_checked(args: list[str], *, cwd: Path | None = None,
-                      as_builder: bool = False, timeout: int = 180) -> str:
+                      as_builder: bool = False, timeout: int = 180,
+                      phase: str | None = None) -> str:
     run_args = list(args)
     if as_builder:
         # Trusted root orchestrator must be able to DROP UID/GID; invoking
@@ -89,9 +90,32 @@ def subprocess_checked(args: list[str], *, cwd: Path | None = None,
             "XDG_CACHE_HOME=" + str(BUILD_HOME / ".cache"),
             *run_args,
         ]
-    result = subprocess.run(run_args, cwd=cwd, check=True, timeout=timeout,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            encoding="utf8")
+    # Never log command arguments, stdout/stderr, environment, URLs, or paths:
+    # subprocess output may contain OAuth credentials, customer data or prompts.
+    if phase is not None and phase not in {
+        "git_clone", "git_head", "pnpm_install", "frontend_build", "release_pack"
+    }:
+        raise PullBlocked("invalid_stage_diagnostic_phase")
+    if phase:
+        print("LAN_STAGE_BEGIN:" + phase, flush=True)
+    try:
+        result = subprocess.run(run_args, cwd=cwd, check=True, timeout=timeout,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                encoding="utf8")
+    except subprocess.CalledProcessError as exc:
+        if phase:
+            raise PullBlocked(f"stage_{phase}_exit_{exc.returncode}") from None
+        raise
+    except subprocess.TimeoutExpired:
+        if phase:
+            raise PullBlocked(f"stage_{phase}_timeout") from None
+        raise
+    except OSError as exc:
+        if phase:
+            raise PullBlocked(f"stage_{phase}_launch_{type(exc).__name__}") from None
+        raise
+    if phase:
+        print("LAN_STAGE_OK:" + phase, flush=True)
     return result.stdout.strip()
 
 
@@ -243,21 +267,25 @@ def stage_release(sha: str, lan_module) -> Path:
         os.chown(workspace, pwd.getpwnam(BUILDER).pw_uid, pwd.getpwnam(BUILDER).pw_gid)
         subprocess_checked(["/usr/bin/git", "clone", "--depth", "1", "--branch", "main",
                             "--single-branch", "--", REPOSITORY_URL, str(workspace / "repo")],
-                           as_builder=True, timeout=240)
+                           as_builder=True, timeout=240, phase="git_clone")
         checkout = workspace / "repo"
-        commit = subprocess_checked(["/usr/bin/git", "rev-parse", "HEAD"], cwd=checkout, as_builder=True)
+        commit = subprocess_checked(["/usr/bin/git", "rev-parse", "HEAD"],
+                                    cwd=checkout, as_builder=True, phase="git_head")
         if commit != sha:
             raise PullBlocked("github_main_changed_while_cloning")
         # Lockfile immutable dependency install; run everything as unprivileged
         # builder without access to production SQLite, /etc, or systemd.
         subprocess_checked([str(BINARY), "install", "--frozen-lockfile"],
-                           cwd=checkout, as_builder=True, timeout=480)
+                           cwd=checkout, as_builder=True, timeout=480,
+                           phase="pnpm_install")
         subprocess_checked([str(BINARY), "build"],
-                           cwd=checkout, as_builder=True, timeout=480)
+                           cwd=checkout, as_builder=True, timeout=480,
+                           phase="frontend_build")
         staged = workspace / "files"
         subprocess_checked([NODE, "deploy/lan/build-lan-bundle.mjs",
                             "--sha", sha, "--out", str(staged)],
-                           cwd=checkout, as_builder=True, timeout=60)
+                           cwd=checkout, as_builder=True, timeout=60,
+                           phase="release_pack")
         manifest = json.loads((staged / "release-manifest.json").read_text("utf8"))
         if manifest.get("commit") != sha:
             raise PullBlocked("built_manifest_sha_mismatch")
@@ -299,6 +327,8 @@ def main() -> int:
                           "needs_update": previous != sha}))
         return 0
     validate_paths()
+    if mode == "--stage":
+        print("LAN_STAGE_ENVIRONMENT_READY", flush=True)
     if previous == sha:
         print("LAN_UP_TO_DATE", sha)
         return 0

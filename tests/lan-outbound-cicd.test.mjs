@@ -111,3 +111,14 @@ test("trusted root deploy manager drops privileges before executing untrusted bu
  assert.ok(workflow.includes("Ubuntu builder privilege-drop smoke (ephemeral)"));
  assert.match(workflow,/LINUX_BUILDER_PRIVDROP_OK/);
 });
+test("stage diagnostics identify safe phases without printing subprocess output",()=>{
+ const source=readFileSync("deploy/lan/pull-update.py","utf8");
+ for(const phase of ["git_clone","git_head","pnpm_install","frontend_build","release_pack"]){
+   assert.ok(source.includes('phase="'+phase+'"'),"missing phase "+phase);
+ }
+ assert.match(source,/LAN_STAGE_BEGIN:/);
+ assert.match(source,/LAN_STAGE_OK:/);
+ assert.match(source,/stage_\{phase\}_exit_\{exc\.returncode\}/);
+ assert.match(source,/subprocess\.PIPE/);
+ assert.match(source,/LAN_STAGE_ENVIRONMENT_READY/);
+});
