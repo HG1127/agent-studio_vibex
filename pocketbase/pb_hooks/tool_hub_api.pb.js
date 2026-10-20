@@ -71,16 +71,31 @@ routerAdd("GET", "/api/tool-hub/stats", function (e) {
     var h = (e.requestInfo() || {}).headers || {}
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
+    // PocketBase 0.40.5 countRecords() cannot accept a filter string
+    // in place of a dbx.Expression. Fixed owner-bound SQL avoids a
+    // misleading 500-row fallback or a fabricated zero on DB errors.
     var countOf = function (col, filter, params) {
-      try {
-        return Number($app.countRecords(col, filter, params) || 0)
-      } catch (_) {}
-      try {
-        var rows = $app.findRecordsByFilter(col, filter, "-created", 500, 0, params)
-        return rows.length
-      } catch (_) {
-        return 0
-      }
+      var query = ""
+      if (col === "agent_runs" && filter === "rh_user_id = {:uid}")
+        query = "SELECT COUNT(*) AS total FROM agent_runs WHERE rh_user_id = {:uid}"
+      else if (col === "workflow_runs" && filter === "rh_user_id = {:uid}")
+        query = "SELECT COUNT(*) AS total FROM workflow_runs WHERE rh_user_id = {:uid}"
+      else if (col === "tool_invocations" && filter === "rh_user_id = {:uid}")
+        query = "SELECT COUNT(*) AS total FROM tool_invocations WHERE rh_user_id = {:uid}"
+      else if (col === "tool_invocations" && filter === "rh_user_id = {:uid} && (status = 'success' || status = 'retried_success')")
+        query = "SELECT COUNT(*) AS total FROM tool_invocations WHERE rh_user_id = {:uid} AND status IN ('success','retried_success')"
+      else if (col === "tool_invocations" && filter === "rh_user_id = {:uid} && status = 'failed'")
+        query = "SELECT COUNT(*) AS total FROM tool_invocations WHERE rh_user_id = {:uid} AND status = 'failed'"
+      else if (col === "tool_invocations" && filter === "rh_user_id = {:uid} && retried = true")
+        query = "SELECT COUNT(*) AS total FROM tool_invocations WHERE rh_user_id = {:uid} AND retried = 1"
+      else if (col === "tool_invocations" && filter === "rh_user_id = {:uid} && tool_kind = 'external'")
+        query = "SELECT COUNT(*) AS total FROM tool_invocations WHERE rh_user_id = {:uid} AND tool_kind = 'external'"
+      else throw new Error("unsupported_stats_count")
+      var row = new DynamicModel({ total: -1 })
+      $app.db().newQuery(query).bind({ uid: params.uid }).one(row)
+      var n = Number(row.total)
+      if (!isFinite(n) || n < 0 || Math.floor(n) !== n) throw new Error("invalid_stats_count")
+      return n
     }
     var agentRuns = countOf("agent_runs", "rh_user_id = {:uid}", { uid: uid })
     var wfRuns = countOf("workflow_runs", "rh_user_id = {:uid}", { uid: uid })
@@ -122,11 +137,7 @@ routerAdd("GET", "/api/harness/monitor", function (e) {
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
 
     var safeRows = function (col, limitN) {
-      try {
-        return $app.findRecordsByFilter(col, "rh_user_id = {:uid}", "-created", limitN, 0, { uid: uid })
-      } catch (_) {
-        return []
-      }
+      return $app.findRecordsByFilter(col, "rh_user_id = {:uid}", "-created", limitN, 0, { uid: uid })
     }
     // checkpoint json 读取：getString 优先（与 workflow_api.loadJson 同款），解析失败回 get()，全缺返回 {}
     var loadCpJson = function (rec) {

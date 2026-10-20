@@ -53,6 +53,7 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
   {
     to: "/agent-run", label: "运行中心", icon: PlayCircle,
     keywords: "执行 调试 监控 历史", children: [
+      {to:"/harness",label:"Harness 运行与治理",icon: SearchCheck,keywords:"监控 心跳 队列 人工核查 历史"},
       {to:"/agent-run",label:"Agent 试跑",icon: Rocket},
       {to:"/run-detail",label:"执行记录",icon: ClipboardCheck},
       {to:"/scheduled-tasks",label:"定时任务",icon: CalendarClock},
