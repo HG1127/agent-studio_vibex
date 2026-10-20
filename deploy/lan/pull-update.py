@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -43,6 +44,10 @@ class PullBlocked(RuntimeError):
     pass
 
 
+def interrupt_update(_signum, _frame):
+    raise PullBlocked("update_interrupted_requires_operator_review")
+
+
 def _module(name: str, filename: Path):
     spec = importlib.util.spec_from_file_location(name, filename)
     if spec is None or spec.loader is None:
@@ -55,12 +60,12 @@ def _module(name: str, filename: Path):
 def controller_modules():
     # Operator manually copies these scripts into protected root-owned /usr/local/libexec.
     root = Path("/usr/local/libexec/agentstudio-lan")
-    for p in (root, root / "ci-gate.py", root / "agentstudio-lan-deploy.py",
+    for p in (*root.parents, root, root / "ci-gate.py", root / "agentstudio-lan-deploy.py",
               root / "pull-update.py"):
         if p.is_symlink() or not p.exists():
             raise PullBlocked("reviewed_operator_scripts_not_installed")
         st = p.stat()
-        if st.st_uid != 0 or st.st_mode & 0o022:
+        if st.st_uid != 0 or st.st_gid != 0 or st.st_mode & 0o022:
             raise PullBlocked("operator_script_not_root_owned")
     return (_module("agentstudio_ci_gate", root / "ci-gate.py"),
             _module("agentstudio_release_activate", root / "agentstudio-lan-deploy.py"))
@@ -87,6 +92,8 @@ def subprocess_checked(args: list[str], *, cwd: Path | None = None,
             "HOME=" + str(BUILD_HOME),
             "PATH=/opt/agent-studio-lan/tools/bin:/usr/bin:/bin",
             "GIT_TERMINAL_PROMPT=0",
+            "GIT_CONFIG_NOSYSTEM=1",
+            "GIT_CONFIG_GLOBAL=/dev/null",
             "XDG_CACHE_HOME=" + str(BUILD_HOME / ".cache"),
             *run_args,
         ]
@@ -226,6 +233,7 @@ def bootstrap_current(lan) -> str:
         (target / "release-manifest.json").write_text(
             json.dumps({"schema": 1, "commit": sha, "files": manifest}, indent=2) + "\n",
             encoding="utf8")
+        lan.release_permissions(target)
         (BASE / "current").symlink_to("releases/" + sha)
     except BaseException:
         shutil.rmtree(target)
@@ -233,24 +241,64 @@ def bootstrap_current(lan) -> str:
     return sha
 
 
-def auto_enabled() -> bool:
-    if not GATE.is_file() or GATE.is_symlink():
-        return False
+def auto_policy() -> str | None:
+    if GATE.is_symlink():
+        raise PullBlocked("enable_file_symlink_forbidden")
+    if not GATE.exists():
+        return None
+    if not GATE.is_file():
+        raise PullBlocked("enable_file_not_regular")
     st = GATE.stat()
-    if st.st_uid != 0 or st.st_mode & 0o077:
+    if st.st_uid != 0 or st.st_gid != 0 or st.st_mode & 0o7777 != 0o600:
         raise PullBlocked("enable_file_permissions_invalid")
-    if GATE.read_text("ascii").strip() != "AUTO_FRONTEND_ONLY":
+    policy = GATE.read_text("ascii").strip()
+    if policy not in ("AUTO_FRONTEND_ONLY", "AUTO_CI_VERIFIED_RUNTIME"):
         raise PullBlocked("enable_file_contents_invalid")
-    return True
+    return policy
 
 
-def stage_release(sha: str, lan_module) -> Path:
+def auto_enabled() -> bool:
+    return auto_policy() is not None
+
+
+def verify_auto_changes(checkout: Path, previous: str, sha: str) -> None:
+    if not SHA_RE.fullmatch(previous) or not SHA_RE.fullmatch(sha):
+        raise PullBlocked("auto_diff_requires_exact_baseline")
+    subprocess_checked(["/usr/bin/git", "fetch", "--depth", "1", "origin", previous],
+                       cwd=checkout, as_builder=True)
+    names = subprocess_checked(["/usr/bin/git", "diff", "--no-renames", "--name-only", "-z", previous, sha, "--"],
+                               cwd=checkout, as_builder=True).split("\0")
+    # Review trust/trigger/dependency/schema changes out of band. These files
+    # never upgrade the installed root controller through a Git pull.
+    for name in filter(None, names):
+        if (name.startswith(("deploy/", ".github/", "db/", "services/pg-api/",
+                             "pocketbase/pb_migrations/", "ops/"))
+                or name in ("package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml")
+                or "schema" in name.lower() or "migration" in name.lower()
+                or name.startswith(".") or name.endswith((".service", ".timer"))):
+            raise PullBlocked("automatic_trust_or_schema_change_requires_operator_review")
+        if (not name.startswith(("src/", "public/", "worker/", "pocketbase/pb_hooks/", "docs/", "tests/"))
+                or re.search(r"(?:auth|secret|credential|gateway|execution_guard|run_lifecycle)", name, re.I)):
+            raise PullBlocked("automatic_sensitive_path_requires_operator_review")
+    hook_diff = subprocess_checked(["/usr/bin/git", "diff", "--no-ext-diff", "--no-textconv",
+                                   "--unified=0", previous, sha,
+                                   "--", "pocketbase/pb_hooks/"], cwd=checkout, as_builder=True)
+    if re.search(r"^\+(?!\+).*(?:\b(?:CREATE|ALTER|DROP|TRUNCATE)\b|applySteps|onBootstrap)",
+                 hook_diff, re.I | re.M):
+        raise PullBlocked("automatic_hook_schema_change_requires_operator_review")
+
+
+def stage_release(sha: str, lan_module, *, auto_previous: str | None = None) -> Path:
     if not SHA_RE.fullmatch(sha):
         raise PullBlocked("invalid_sha")
     archive = INCOMING / (sha + ".tar.gz")
     checksum = INCOMING / (sha + ".sha256")
+    # Auto mode must inspect preexisting artifacts too. In particular never
+    # follow a symlinked .sha256 when writing the rebuilt checksum as root.
+    if archive.is_symlink() or checksum.is_symlink():
+        raise PullBlocked("incoming_artifact_collision")
     if archive.exists() or checksum.exists():
-        if archive.is_symlink() or checksum.is_symlink() or not archive.is_file() or not checksum.is_file():
+        if not archive.is_file() or not checksum.is_file():
             raise PullBlocked("incoming_artifact_collision")
         if archive.stat().st_size > 100 * 1024 * 1024:
             raise PullBlocked("incoming_archive_too_large")
@@ -259,7 +307,8 @@ def stage_release(sha: str, lan_module) -> Path:
             raise PullBlocked("incoming_checksum_invalid")
         if hashlib.sha256(archive.read_bytes()).hexdigest() != claimed:
             raise PullBlocked("incoming_bundle_checksum_mismatch")
-        return archive
+        if auto_previous is None:
+            return archive
 
     import pwd  # Only used during actual Linux build operations.
     workspace = Path(tempfile.mkdtemp(prefix="agentstudio-lan-", dir=BUILDS))
@@ -273,6 +322,8 @@ def stage_release(sha: str, lan_module) -> Path:
                                     cwd=checkout, as_builder=True, phase="git_head")
         if commit != sha:
             raise PullBlocked("github_main_changed_while_cloning")
+        if auto_previous is not None:
+            verify_auto_changes(checkout, auto_previous, sha)
         # Lockfile immutable dependency install; run everything as unprivileged
         # builder without access to production SQLite, /etc, or systemd.
         subprocess_checked([str(BINARY), "install", "--frozen-lockfile"],
@@ -316,7 +367,8 @@ def main() -> int:
         sha = bootstrap_current(lan)
         print("LAN_BASELINE_REGISTERED", sha, "services_unchanged=yes")
         return 0
-    if mode == "--auto" and not auto_enabled():
+    policy = auto_policy() if mode == "--auto" else None
+    if mode == "--auto" and policy is None:
         print("LAN_AUTO_DISABLED")
         return 0
     sha, run_id = ci.confirmed_head()
@@ -332,19 +384,30 @@ def main() -> int:
     if previous == sha:
         print("LAN_UP_TO_DATE", sha)
         return 0
-    stage_release(sha, lan)
+    if mode == "--auto" and previous is None:
+        raise PullBlocked("operator_must_bootstrap_versioned_current_first")
+    stage_release(sha, lan, auto_previous=previous if mode == "--auto" else None)
     if mode == "--stage":
         print("LAN_RELEASE_STAGED", sha, "archive_ready=yes")
         return 0
     latest_sha, _ = ci.confirmed_head()
     if latest_sha != sha:
         raise PullBlocked("main_changed_during_build")
-    lan.deploy(sha, reviewed_runtime=False)
+    if auto_policy() != policy:
+        raise PullBlocked("auto_policy_changed_during_build")
+    import fcntl
+    with (BASE / ".lan-deploy.lock").open("a+b") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if release_sha() != previous:
+            raise PullBlocked("current_changed_during_build")
+        lan.deploy(sha, reviewed_runtime=False,
+                   auto_runtime=policy == "AUTO_CI_VERIFIED_RUNTIME", automatic=True)
     print("LAN_OUTBOUND_UPDATE_SUCCEEDED", sha)
     return 0
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, interrupt_update)
     try:
         raise SystemExit(main())
     except Exception as error:

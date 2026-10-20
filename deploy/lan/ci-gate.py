@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
 
 REPOSITORY = "HG1127/agent-studio_vibex"
 WORKFLOW_FILE = "agent-studio-quality.yml"
@@ -25,6 +25,11 @@ MAX_RESPONSE = 1024 * 1024
 
 class CIGateBlocked(Exception):
     pass
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise CIGateBlocked("github_redirect_forbidden")
 
 
 def accepted_sha(value: object) -> bool:
@@ -101,7 +106,10 @@ def api_json(url: str, token: str | None = None) -> object:
         headers["Authorization"] = "Bearer " + token
     try:
         req = Request(url, headers=headers, method="GET")
-        with urlopen(req, timeout=12) as response:
+        # Only this pinned GitHub API request bypasses inherited proxies. Keep
+        # default certificate verification and refuse token-bearing redirects.
+        opener = build_opener(ProxyHandler({}), NoRedirect())
+        with opener.open(req, timeout=12) as response:
             if response.status != 200:
                 raise CIGateBlocked("github_response_not_200")
             raw = response.read(MAX_RESPONSE + 1)

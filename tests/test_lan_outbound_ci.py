@@ -5,6 +5,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 import sqlite3
 import tarfile
@@ -48,6 +49,24 @@ def manifest(path, files):
 
 
 class GitHubCIGate(unittest.TestCase):
+    def test_pinned_api_disables_all_proxies_and_refuses_redirect(self):
+        response = SimpleNamespace(status=200, read=lambda *_: b'{}')
+        opener = SimpleNamespace(open=unittest.mock.MagicMock())
+        opener.open.return_value.__enter__.return_value = response
+        with patch.dict(os.environ, {"HTTP_PROXY": "http://invalid:1", "HTTPS_PROXY": "http://invalid:1",
+                                     "ALL_PROXY": "http://invalid:1"}), \
+             patch.object(CI, "build_opener", return_value=opener) as build:
+            self.assertEqual(CI.api_json(CI.API + "/git/ref/heads/main", "synthetic"), {})
+        self.assertEqual(build.call_args.args[0].proxies, {})
+        self.assertIsInstance(build.call_args.args[1], CI.NoRedirect)
+        with self.assertRaisesRegex(CI.CIGateBlocked, "redirect_forbidden"):
+            CI.NoRedirect().redirect_request(None, None, 302, "", {}, "https://evil.invalid")
+        opener.open.side_effect = OSError("secret-token https://private.invalid")
+        with patch.object(CI, "build_opener", return_value=opener):
+            with self.assertRaises(CI.CIGateBlocked) as error:
+                CI.api_json(CI.API + "/git/ref/heads/main", "secret-token")
+        self.assertEqual(str(error.exception), "github_api_unavailable_or_invalid")
+
     def test_accepts_exact_current_main_push_ci_only(self):
         assert CI.parse_head({"object": {"sha": SHA_A}}) == SHA_A
         self.assertEqual(CI.parse_verified_run({"workflow_runs": [run()]}, SHA_A), 6001)
@@ -95,6 +114,212 @@ class LANReleaseSafety(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name)
 
+    def idle_db(self):
+        data = self.path / "idle.db"
+        with closing(sqlite3.connect(data)) as db:
+            for sql in [
+                "CREATE TABLE agent_runs (id TEXT, status TEXT)",
+                "CREATE TABLE workflow_runs (id TEXT, status TEXT)",
+                "CREATE TABLE agent_studio_run_leases (expires_ms INTEGER)",
+                "CREATE TABLE agent_studio_side_effects (status TEXT)",
+                "CREATE TABLE agent_studio_schedule_occurrences (status TEXT, locked_until_ms INTEGER)",
+                "CREATE TABLE agent_studio_kb_embedding_queue (lease_until_ms INTEGER)",
+                "CREATE TABLE agent_studio_schedules (deleted INTEGER, enabled INTEGER, next_at_ms INTEGER)",
+            ]:
+                db.execute(sql)
+        return data
+
+    def test_readonly_idle_check_blocks_active_pending_unknown_and_missing_schema(self):
+        data = self.idle_db()
+        with patch.object(LAN, "DATA", data):
+            initial = LAN.idle_snapshot()
+            cases = [
+                ("agent_runs", "INSERT INTO agent_runs VALUES ('1','running')"),
+                ("workflow_runs", "INSERT INTO workflow_runs VALUES ('1','paused')"),
+                ("agent_runs", "INSERT INTO agent_runs VALUES ('1','future_status')"),
+                ("agent_studio_run_leases", "INSERT INTO agent_studio_run_leases VALUES (9999999999999)"),
+                ("agent_studio_side_effects", "INSERT INTO agent_studio_side_effects VALUES ('unknown')"),
+                ("agent_studio_schedule_occurrences", "INSERT INTO agent_studio_schedule_occurrences VALUES ('pending',0)"),
+                ("agent_studio_schedule_occurrences", "INSERT INTO agent_studio_schedule_occurrences VALUES ('started',9999999999999)"),
+                ("agent_studio_kb_embedding_queue", "INSERT INTO agent_studio_kb_embedding_queue VALUES (0)"),
+                ("agent_studio_schedules", "INSERT INTO agent_studio_schedules VALUES (0,1,0)"),
+            ]
+            for table, sql in cases:
+                with self.subTest(table=table, sql=sql):
+                    with closing(sqlite3.connect(data)) as db:
+                        db.execute(sql)
+                        db.commit()
+                    before = data.read_bytes()
+                    with self.assertRaisesRegex(LAN.DeploymentRefused, "active_or_pending"):
+                        LAN.idle_snapshot()
+                    self.assertEqual(data.read_bytes(), before)
+                    with closing(sqlite3.connect(data)) as db:
+                        db.execute("DELETE FROM " + table)
+                        db.commit()
+            self.assertEqual(initial, LAN.idle_snapshot())
+            with closing(sqlite3.connect(data)) as db:
+                db.execute("INSERT INTO agent_runs VALUES ('1','succeeded')")
+                db.commit()
+            self.assertNotEqual(initial, LAN.idle_snapshot())
+            with closing(sqlite3.connect(data)) as db:
+                db.execute("DROP TABLE agent_studio_side_effects")
+            with self.assertRaisesRegex(LAN.DeploymentRefused, "schema_or_read_failed"):
+                LAN.idle_snapshot()
+
+    def test_auto_policy_exact_modes_owner_group_and_0600(self):
+        marker = unittest.mock.MagicMock()
+        marker.is_file.return_value = True
+        marker.is_symlink.return_value = False
+        marker.stat.return_value = SimpleNamespace(st_uid=0, st_gid=0, st_mode=0o100600)
+        with patch.object(PULL, "GATE", marker):
+            for mode in ("AUTO_FRONTEND_ONLY", "AUTO_CI_VERIFIED_RUNTIME"):
+                marker.read_text.return_value = mode + "\n"
+                self.assertEqual(PULL.auto_policy(), mode)
+            marker.read_text.return_value = "UNKNOWN"
+            with self.assertRaises(PULL.PullBlocked):
+                PULL.auto_policy()
+            for uid, gid, mode in ((1,0,0o600), (0,1,0o600), (0,0,0o640), (0,0,0o400), (0,0,0o4600)):
+                marker.stat.return_value = SimpleNamespace(st_uid=uid, st_gid=gid, st_mode=mode)
+                with self.assertRaisesRegex(PULL.PullBlocked, "permissions_invalid"):
+                    PULL.auto_policy()
+
+    def test_auto_main_rechecks_ci_policy_and_passes_explicit_runtime_permission(self):
+        for policy in ("AUTO_FRONTEND_ONLY", "AUTO_CI_VERIFIED_RUNTIME"):
+            ci = SimpleNamespace(confirmed_head=unittest.mock.MagicMock(return_value=(SHA_A, 6001)))
+            lan = SimpleNamespace(deploy=unittest.mock.MagicMock())
+            locks = SimpleNamespace(LOCK_EX=2, LOCK_NB=4, flock=unittest.mock.MagicMock())
+            with patch.object(PULL, "BASE", self.path), \
+                 patch.object(PULL, "controller_modules", return_value=(ci, lan)), \
+                 patch.object(PULL, "auto_policy", return_value=policy), \
+                 patch.object(PULL, "release_sha", return_value=SHA_B), \
+                 patch.object(PULL, "validate_paths"), \
+                 patch.object(PULL, "stage_release") as stage, \
+                 patch.object(sys, "argv", ["pull-update.py", "--auto"]), \
+                 patch.dict(sys.modules, {"fcntl": locks}):
+                self.assertEqual(PULL.main(), 0)
+            stage.assert_called_once_with(SHA_A, lan, auto_previous=SHA_B)
+            self.assertEqual(ci.confirmed_head.call_count, 2)
+            lan.deploy.assert_called_once_with(SHA_A, reviewed_runtime=False,
+                auto_runtime=policy == "AUTO_CI_VERIFIED_RUNTIME", automatic=True)
+            locks.flock.assert_called_once()
+
+    def test_final_check_requires_both_writers_dead_and_control_group(self):
+        good = "ActiveState=inactive\nSubState=dead\nMainPID=0\nControlPID=0\nKillMode=control-group\n"
+        with patch.object(LAN.subprocess, "check_output", return_value=good) as show:
+            LAN.verify_stopped()
+        self.assertEqual(show.call_count, 2)
+        for bad in (good.replace("inactive", "active"), good.replace("MainPID=0", "MainPID=123"),
+                    good.replace("control-group", "process"), ""):
+            with patch.object(LAN.subprocess, "check_output", return_value=bad):
+                with self.assertRaisesRegex(LAN.DeploymentRefused, "writers_not_fully_stopped"):
+                    LAN.verify_stopped()
+
+    def test_auto_diff_blocks_trust_and_schema_but_allows_worker(self):
+        for name in ("deploy/lan/ci-gate.py", ".github/workflows/agent-studio-quality.yml",
+                     "package.json", "pocketbase/pb_migrations/new.js", "ops/init.mjs",
+                     "pocketbase/pb_hooks/modules/runtime_schema.js", "pocketbase/pb_hooks/auth.pb.js"):
+            with patch.object(PULL, "subprocess_checked", side_effect=["", name + "\0"]):
+                with self.assertRaises(PULL.PullBlocked):
+                    PULL.verify_auto_changes(self.path, SHA_B, SHA_A)
+        with patch.object(PULL, "subprocess_checked", side_effect=["", "worker/run.mjs\0", ""]):
+            PULL.verify_auto_changes(self.path, SHA_B, SHA_A)
+        with patch.object(PULL, "subprocess_checked", side_effect=["", "pocketbase/pb_hooks/feature.pb.js\0",
+                                                                    '+  "ALTER TABLE x"']):
+            with self.assertRaisesRegex(PULL.PullBlocked, "hook_schema_change"):
+                PULL.verify_auto_changes(self.path, SHA_B, SHA_A)
+
+    def test_automatic_deployment_runtime_migration_and_final_quiescence_gates(self):
+        from contextlib import ExitStack
+        for case in ("frontend_policy", "migration", "busy", "stop_race", "healthy", "rollback", "interrupted"):
+            with self.subTest(case=case), ExitStack() as stack:
+                base = self.path / case
+                incoming = base / "incoming"
+                incoming.mkdir(parents=True)
+                (base / "releases").mkdir()
+                archive = incoming / (SHA_A + ".tar.gz")
+                archive.write_bytes(b"synthetic")
+                (incoming / (SHA_A + ".sha256")).write_text(hashlib.sha256(b"synthetic").hexdigest())
+                calls = []
+                active = [SHA_B]
+                stack.enter_context(patch.object(LAN, "BASE", base))
+                stack.enter_context(patch.object(LAN, "DATA", self.path / "idle.db"))
+                stack.enter_context(patch.object(LAN, "require_runtime"))
+                stack.enter_context(patch.object(LAN, "get_previous", return_value=SHA_B))
+                def extract(_, destination, commit):
+                    destination.mkdir()
+                stack.enter_context(patch.object(LAN, "extract_checked", side_effect=extract))
+                migration = stack.enter_context(patch.object(LAN, "verify_migration_compatibility"))
+                if case == "migration":
+                    migration.side_effect = LAN.DeploymentRefused("migration_changed")
+                stack.enter_context(patch.object(LAN, "changed_runtime", return_value=["worker/run.mjs"]))
+                stack.enter_context(patch.object(LAN, "changed_application", return_value=["worker/run.mjs"]))
+                stack.enter_context(patch.object(LAN.shutil, "disk_usage", return_value=SimpleNamespace(free=2**40)))
+                idle = stack.enter_context(patch.object(LAN, "idle_snapshot", return_value="stable"))
+                if case == "busy":
+                    idle.side_effect = LAN.DeploymentRefused("active_work")
+                elif case == "stop_race":
+                    idle.side_effect = ["stable", "changed"]
+                stack.enter_context(patch.object(LAN, "sudo", side_effect=lambda *args: calls.append(args)))
+                stack.enter_context(patch.object(LAN, "verify_stopped"))
+                backup = stack.enter_context(patch.object(LAN, "sqlite_backup", return_value=self.path))
+                def switch(commit):
+                    active[0] = commit
+                stack.enter_context(patch.object(LAN, "switch_to", side_effect=switch))
+                healthy = stack.enter_context(patch.object(LAN, "await_healthy"))
+                if case in ("rollback", "interrupted"):
+                    healthy.side_effect = [LAN.DeploymentRefused(
+                        "update_interrupted_requires_operator_review" if case == "interrupted" else "health_failure"), None]
+                if case == "healthy":
+                    LAN.deploy(SHA_A, auto_runtime=True)
+                    self.assertEqual(active[0], SHA_A)
+                    backup.assert_called_once()
+                    self.assertEqual(idle.call_count, 2)
+                else:
+                    with self.assertRaises(LAN.DeploymentRefused):
+                        LAN.deploy(SHA_A, auto_runtime=case != "frontend_policy", automatic=True)
+                    self.assertEqual(active[0], SHA_B)
+                    if case in ("frontend_policy", "migration", "busy"):
+                        self.assertFalse(any("stop" in c for c in calls))
+                    if case == "stop_race":
+                        backup.assert_not_called()
+                        self.assertEqual(healthy.call_count, 1)
+                    if case in ("rollback", "interrupted"):
+                        backup.assert_called_once()
+                        self.assertEqual(healthy.call_count, 2)
+
+    def test_sigterm_handlers_enter_failure_path(self):
+        with self.assertRaisesRegex(PULL.PullBlocked, "update_interrupted"):
+            PULL.interrupt_update(15, None)
+        with self.assertRaisesRegex(LAN.DeploymentRefused, "update_interrupted"):
+            LAN.interrupt_update(15, None)
+
+    def test_extract_under_umask_077_has_all_directories_traversable(self):
+        source = self._verified_release(self.path / "source", SHA_A)
+        deep = source / "dist/assets/deep"
+        deep.mkdir(parents=True)
+        (deep / "empty").mkdir()
+        # Include nested directories without relying on explicit tar entries.
+        raw = b"asset"
+        (deep / "x.js").write_bytes(raw)
+        manifest_file = source / "release-manifest.json"
+        doc = json.loads(manifest_file.read_text())
+        doc["files"].append({"path":"dist/assets/deep/x.js", "sha256":hashlib.sha256(raw).hexdigest(), "bytes":len(raw)})
+        manifest_file.write_text(json.dumps(doc))
+        archive = self.path / "code.tar.gz"
+        with tarfile.open(archive, "w:gz") as out:
+            for file in source.rglob("*"):
+                if file.is_file():
+                    out.add(file, arcname=file.relative_to(source).as_posix())
+        old = os.umask(0o077)
+        destination = self.path / "unpacked"
+        try:
+            LAN.extract_checked(archive, destination, SHA_A)
+        finally:
+            os.umask(old)
+        if os.name != "nt":
+            for file in [destination, *destination.rglob("*")]:
+                self.assertEqual(file.stat().st_mode & 0o777, 0o755 if file.is_dir() else 0o644)
+
     def test_runtime_diff_guards_hooks_and_worker_but_allows_frontend_only(self):
         prev, newer = self.path / "prev", self.path / "new"
         manifest(prev, {"dist/index.html": "1" * 64, "worker/run.mjs": "3" * 64})
@@ -122,8 +347,24 @@ class LANReleaseSafety(unittest.TestCase):
         (attachments / "file.txt").write_text("important", encoding="utf8")
         backup_root = self.path / "backups"
         backup_root.mkdir()
-        with patch.object(LAN, "DATA", live / "data.db"), patch.object(LAN, "BACKUPS", backup_root):
+        config = self.path / "studio.env"
+        config.write_text("SYNTHETIC_CONFIG=1")
+        units = self.path / "units"
+        units.mkdir()
+        # Patch the fixed config sources; never read real machine credentials.
+        for name in (LAN.PB_SERVICE, LAN.WORKER_SERVICE):
+            (units / name).write_text("synthetic unit")
+        real_copy = LAN.shutil.copyfile
+        def copy_config(source, target, **kwargs):
+            if Path(source).name in (LAN.PB_SERVICE, LAN.WORKER_SERVICE):
+                source = units / Path(source).name
+            return real_copy(source, target, **kwargs)
+        with patch.object(LAN, "DATA", live / "data.db"), patch.object(LAN, "BACKUPS", backup_root), \
+             patch.object(LAN, "ENV_FILE", config), patch.object(LAN, "CA_CERT", config), \
+             patch.object(LAN, "NGINX_SITE", config), patch.object(LAN, "get_previous", return_value=SHA_B), \
+             patch.object(LAN.shutil, "copyfile", side_effect=copy_config):
             backup = LAN.sqlite_backup(SHA_A)
+        self.assertEqual((backup / "config/0-studio.env").read_text(), "SYNTHETIC_CONFIG=1")
         self.assertEqual((backup / "pb_data" / "storage/folder/file.txt").read_text(), "important")
         with closing(sqlite3.connect(backup / "pb_data" / "data.db")) as db:
             self.assertEqual(db.execute("SELECT id FROM agent").fetchone()[0], 10)
@@ -139,6 +380,29 @@ class LANReleaseSafety(unittest.TestCase):
         with patch.object(PULL, "INCOMING", incoming):
             with self.assertRaises(PULL.PullBlocked):
                 PULL.stage_release(SHA_A, LAN)
+
+    def test_auto_stage_rejects_partial_invalid_and_symlinked_release_artifacts(self):
+        incoming = self.path / "auto-incoming"
+        incoming.mkdir()
+        archive = incoming / (SHA_A + ".tar.gz")
+        checksum = incoming / (SHA_A + ".sha256")
+        with patch.object(PULL, "INCOMING", incoming):
+            archive.write_bytes(b"previous-manual-stage")
+            with self.assertRaisesRegex(PULL.PullBlocked, "artifact_collision"):
+                PULL.stage_release(SHA_A, LAN, auto_previous=SHA_B)
+            checksum.write_text("0" * 64)
+            with self.assertRaisesRegex(PULL.PullBlocked, "checksum_mismatch"):
+                PULL.stage_release(SHA_A, LAN, auto_previous=SHA_B)
+            checksum.unlink()
+            secret = self.path / "do-not-touch"
+            secret.write_text("original")
+            try:
+                checksum.symlink_to(secret)
+            except (OSError, NotImplementedError):
+                self.skipTest("OS does not allow test symlinks")
+            with self.assertRaisesRegex(PULL.PullBlocked, "artifact_collision"):
+                PULL.stage_release(SHA_A, LAN, auto_previous=SHA_B)
+            self.assertEqual(secret.read_text(), "original")
 
     def test_worker_and_backend_auto_changes_require_review(self):
         doc = (ROOT / "deploy/lan/agentstudio-lan-deploy.py").read_text()
@@ -342,7 +606,7 @@ class LANReleaseSafety(unittest.TestCase):
              patch.object(LAN, "switch_to", side_effect=switch), \
              patch.object(LAN, "sudo", side_effect=lambda *args: operations.append(args)), \
              patch.object(LAN, "await_healthy", side_effect=[
-                 None, LAN.DeploymentRefused("synthetic_noop_health_failure")]), \
+                 None, LAN.DeploymentRefused("synthetic_noop_health_failure"), None]), \
              patch.object(LAN, "sqlite_backup", side_effect=AssertionError("no backup for no-op")):
             with self.assertRaisesRegex(LAN.DeploymentRefused, "synthetic_noop_health_failure"):
                 LAN.deploy(SHA_A)

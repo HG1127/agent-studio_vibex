@@ -2,22 +2,7 @@ name: Agent Studio quality
 
 on:
   push:
-    paths:
-      - 'src/**'
-      - 'vibex-local/start-*'
-      - 'pocketbase/pb_hooks/**'
-      - 'worker/**'
-      - 'ops/**'
-      - 'docs/**'
-      - 'db/postgres/**'
-      - 'services/pg-api/**'
-      - 'deploy/postgres-staging/**'
-      - 'deploy/lan/**'
-      - 'pnpm-workspace.yaml'
-      - 'tests/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/agent-studio-quality.yml'
+    # Every main SHA needs a full push CI, including docs/config-only commits.
   pull_request:
   workflow_dispatch:
 

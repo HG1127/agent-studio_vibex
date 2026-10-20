@@ -10,6 +10,9 @@ Group=root
 WorkingDirectory=/
 ExecStart=/usr/bin/python3 /usr/local/libexec/agentstudio-lan/pull-update.py --auto
 TimeoutStartSec=25min
+# Give the trusted controller time to recover old code on SIGTERM/timeout.
+TimeoutStopSec=5min
+KillMode=control-group
 UMask=0077
 # Root release orchestrator needs CAP_SETUID/CAP_SETGID to drop into the builder.
 # Only the trusted root-owned Python controller runs here; downloaded build

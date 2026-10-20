@@ -16,12 +16,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
 import tarfile
 import time
 from datetime import datetime, timezone
+from contextlib import closing
 from urllib.request import urlopen
 
 BASE = Path("/srv/agent-studio-lan")
@@ -50,6 +52,66 @@ PREFIXES = ("dist/", "pocketbase/pb_hooks/", "pocketbase/pb_migrations/", "worke
 
 class DeploymentRefused(RuntimeError):
     pass
+
+
+def interrupt_update(_signum, _frame):
+    raise DeploymentRefused("update_interrupted_requires_operator_review")
+
+
+def release_permissions(directory: Path) -> None:
+    # mkdir(mode=0755) is still filtered by the service's private UMask=0077.
+    # Only freshly created, root-owned code trees become readable/traversable.
+    for path in [directory, *directory.rglob("*")]:
+        if path.is_symlink():
+            raise DeploymentRefused("release_symlink_forbidden")
+        os.chmod(path, 0o755 if path.is_dir() else 0o644)
+
+
+def idle_snapshot() -> str:
+    """Read-only, consistent SQLite snapshot; missing schema is never idle.
+
+    Hash the full logical DB so even a completed write between the pre-stop
+    check and final stopped check defers activation. No customer values logged.
+    """
+    try:
+        with closing(sqlite3.connect(DATA.as_uri() + "?mode=ro", uri=True, timeout=5)) as db:
+            db.execute("PRAGMA query_only=ON")
+            db.execute("BEGIN")
+            if db.execute("PRAGMA quick_check").fetchone() != ("ok",):
+                raise DeploymentRefused("idle_database_integrity_failed")
+            queries = [
+                "SELECT 1 FROM agent_runs WHERE status IS NULL OR status NOT IN ('succeeded','failed','cancelled') LIMIT 1",
+                "SELECT 1 FROM workflow_runs WHERE status IS NULL OR status NOT IN ('succeeded','failed','cancelled') LIMIT 1",
+                "SELECT 1 FROM agent_studio_run_leases WHERE expires_ms > ? LIMIT 1",
+                "SELECT 1 FROM agent_studio_side_effects WHERE status IS NULL OR status != 'succeeded' LIMIT 1",
+                "SELECT 1 FROM agent_studio_schedule_occurrences WHERE status IS NULL OR status NOT IN ('started','failed_start','cancelled_schedule','skipped_changed','skipped_overlap','invalid_schedule') OR locked_until_ms > ? LIMIT 1",
+                "SELECT 1 FROM agent_studio_kb_embedding_queue LIMIT 1",
+                "SELECT 1 FROM agent_studio_schedules WHERE deleted = 0 AND enabled != 0 AND next_at_ms <= ? LIMIT 1",
+            ]
+            now = int(time.time() * 1000)
+            for query in queries:
+                if db.execute(query, (now,) if "?" in query else ()).fetchone():
+                    raise DeploymentRefused("active_or_pending_work_blocks_deploy")
+            digest = hashlib.sha256()
+            for line in db.iterdump():
+                digest.update(line.encode("utf8"))
+                digest.update(b"\n")
+            return digest.hexdigest()
+    except sqlite3.Error:
+        raise DeploymentRefused("idle_database_schema_or_read_failed") from None
+
+
+def verify_stopped() -> None:
+    for service in (WORKER_SERVICE, PB_SERVICE):
+        raw = subprocess.check_output([
+            "/usr/bin/systemctl", "show", service, "--no-pager",
+            "--property=ActiveState,SubState,MainPID,ControlPID,KillMode",
+        ], timeout=10, encoding="ascii")
+        values = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+        if any(values.get(key) != value for key, value in {
+                "ActiveState": "inactive", "SubState": "dead", "MainPID": "0",
+                "ControlPID": "0", "KillMode": "control-group"}.items()):
+            raise DeploymentRefused("writers_not_fully_stopped")
 
 
 def safe_rel(name: str) -> str:
@@ -156,6 +218,7 @@ def extract_checked(bundle: Path, destination: Path, commit: str) -> dict:
         for name in ("dist/index.html", "package.json", "worker/run.mjs", "src/lib/scheduleTime.js"):
             if name not in claimed:
                 raise DeploymentRefused("missing_required_runtime_file")
+        release_permissions(destination)
         return {"commit": commit, "files": len(claimed)}
     except BaseException:
         # This is a freshly-created candidate directory, never the active
@@ -262,6 +325,14 @@ def sqlite_backup(commit: str) -> Path:
                 shutil.copy2(original, destination)
             else:
                 raise DeploymentRefused("unexpected_pb_data_file_type")
+        config = folder / "config"
+        config.mkdir(mode=0o700)
+        for index, original in enumerate((ENV_FILE, CA_CERT, NGINX_SITE,
+                Path("/etc/systemd/system") / PB_SERVICE,
+                Path("/etc/systemd/system") / WORKER_SERVICE)):
+            shutil.copyfile(original, config / (str(index) + "-" + original.name))
+            os.chmod(config / (str(index) + "-" + original.name), 0o600)
+        (folder / "previous-release.txt").write_text(str(get_previous()) + "\n", encoding="ascii")
         return folder
     except BaseException:
         shutil.rmtree(folder)
@@ -411,7 +482,8 @@ def changed_runtime(previous: Path, candidate: Path) -> list[str]:
                   if not path.startswith("dist/") and old.get(path) != new.get(path))
 
 
-def deploy(commit: str, reviewed_runtime: bool = False) -> None:
+def deploy(commit: str, reviewed_runtime: bool = False, *, auto_runtime: bool = False,
+           automatic: bool = False) -> None:
     if not SHA_RE.fullmatch(commit):
         raise DeploymentRefused("invalid_sha")
     require_runtime()
@@ -444,7 +516,7 @@ def deploy(commit: str, reviewed_runtime: bool = False) -> None:
     try:
         previous_dir = BASE / "releases" / previous
         verify_migration_compatibility(previous_dir, candidate)
-        if changed_runtime(previous_dir, candidate) and not reviewed_runtime:
+        if changed_runtime(previous_dir, candidate) and not (reviewed_runtime or auto_runtime):
             raise DeploymentRefused("backend_or_worker_change_requires_operator_review")
         all_changes = changed_application(previous_dir, candidate)
         nginx = "/www/server/nginx/sbin/nginx" if Path("/www/server/nginx/sbin/nginx").is_file() else "/usr/sbin/nginx"
@@ -458,11 +530,17 @@ def deploy(commit: str, reviewed_runtime: bool = False) -> None:
         # SQLite running; update the version pointer so the next timer run
         # does not repeat this same no-op commit.
         await_healthy()
-        switch_to(commit)
         try:
+            switch_to(commit)
             await_healthy()
         except BaseException:
             switch_to(previous)
+            try:
+                await_healthy()
+                print("LAN_CODE_ROLLBACK_OK", previous, file=sys.stderr)
+            except Exception:
+                print("LAN_RECOVERY_REQUIRES_OPERATOR", file=sys.stderr)
+            print("LAN_DEPLOY_FAILED_REQUIRES_OPERATOR", file=sys.stderr)
             raise
         print("LAN_NOOP_RELEASE_ADVANCED", commit,
               "services_unchanged=yes", "sqlite_untouched=yes")
@@ -473,20 +551,36 @@ def deploy(commit: str, reviewed_runtime: bool = False) -> None:
     data_bytes = sum(p.stat().st_size for p in DATA.parent.rglob("*") if p.is_file())
     remaining = shutil.disk_usage(BACKUPS).free
     if remaining < max(data_bytes * 2, data_bytes + 512 * 1024 * 1024):
+        if candidate.exists():
+            shutil.rmtree(candidate)
         raise DeploymentRefused("insufficient_disk_for_lan_backup")
     switched = False
     backup = None
+    # Check immediately before stopping; repeat after BOTH writers are stopped.
+    automatic = automatic or auto_runtime
+    try:
+        before = idle_snapshot() if automatic else None
+    except BaseException:
+        shutil.rmtree(candidate)
+        raise
     try:
         sudo("/usr/bin/systemctl", "stop", WORKER_SERVICE)
         sudo("/usr/bin/systemctl", "stop", PB_SERVICE)
+        if automatic:
+            verify_stopped()
+        if automatic and idle_snapshot() != before:
+            raise DeploymentRefused("database_changed_during_stop_retry_later")
         backup = sqlite_backup(commit)
-        switch_to(commit)
+        # Set before the atomic rename: SIGTERM can arrive immediately after
+        # replace() returns, before Python executes the next assignment.
         switched = True
+        switch_to(commit)
         sudo("/usr/bin/systemctl", "start", PB_SERVICE)
         sudo("/usr/bin/systemctl", "start", WORKER_SERVICE)
         await_healthy()
         print("LAN_DEPLOY_OK", commit, "data_backup=yes")
-    except BaseException:
+    except BaseException as failure:
+        print("LAN_DEPLOY_FAILED_REQUIRES_OPERATOR; database never auto-restored", file=sys.stderr)
         try:
             sudo("/usr/bin/systemctl", "stop", WORKER_SERVICE)
             sudo("/usr/bin/systemctl", "stop", PB_SERVICE)
@@ -500,6 +594,9 @@ def deploy(commit: str, reviewed_runtime: bool = False) -> None:
             print("LAN_RECOVERY_REQUIRES_OPERATOR", file=sys.stderr)
         if backup:
             print("LAN_DATA_BACKUP_SAVED; database never auto-restored", file=sys.stderr)
+        if (not switched and isinstance(failure, DeploymentRefused)
+                and str(failure) == "database_changed_during_stop_retry_later"):
+            shutil.rmtree(candidate)
         raise
 
 
@@ -522,6 +619,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, interrupt_update)
     try:
         raise SystemExit(main())
     except (DeploymentRefused, OSError, subprocess.CalledProcessError, sqlite3.Error, tarfile.TarError) as ex:

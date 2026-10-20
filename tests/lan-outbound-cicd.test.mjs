@@ -122,3 +122,28 @@ test("stage diagnostics identify safe phases without printing subprocess output"
  assert.match(source,/subprocess\.PIPE/);
  assert.match(source,/LAN_STAGE_ENVIRONMENT_READY/);
 });
+
+test("runtime auto policy retains private umask, read-only drain and protected controllers",()=>{
+ const pull=readFileSync("deploy/lan/pull-update.py","utf8");
+ const deploy=readFileSync("deploy/lan/agentstudio-lan-deploy.py","utf8");
+ const gate=readFileSync("deploy/lan/ci-gate.py","utf8");
+ const unit=readFileSync("deploy/lan/agentstudio-lan-update.service.example","utf8");
+ assert.match(unit,/^UMask=0077$/m);
+ assert.match(unit,/^TimeoutStopSec=5min$/m);
+ assert.match(deploy,/signal\.signal\(signal\.SIGTERM, interrupt_update\)/);
+ assert.match(pull,/signal\.signal\(signal\.SIGTERM, interrupt_update\)/);
+ assert.match(pull,/AUTO_CI_VERIFIED_RUNTIME/);
+ assert.match(pull,/automatic_trust_or_schema_change_requires_operator_review/);
+ assert.match(pull,/auto_policy_changed_during_build/);
+ assert.match(pull,/fcntl\.flock/);
+ assert.match(deploy,/release_permissions\(destination\)/);
+ assert.match(deploy,/0o755 if path.is_dir\(\) else 0o644/);
+ assert.match(deploy,/PRAGMA query_only=ON/);
+ assert.match(deploy,/database_changed_during_stop_retry_later/);
+ assert.match(deploy,/LAN_DEPLOY_FAILED_REQUIRES_OPERATOR/);
+ assert.match(gate,/ProxyHandler\(\{\}\)/);
+ assert.match(gate,/NoRedirect\(\)/);
+ assert.doesNotMatch(gate,/environ\[|CERT_NONE|_create_unverified_context/);
+ const workflow=readFileSync(".github/workflows/agent-studio-quality.yml","utf8");
+ assert.doesNotMatch(workflow.slice(workflow.indexOf("  push:"),workflow.indexOf("  pull_request:")),/paths:/);
+});
