@@ -358,7 +358,14 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     var saveCheckpoint = function (runId, newCp, doneSteps) {
       try {
         executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, r) {
-          r.set("checkpoint", newCp)
+          // Checkpoints are incremental: never drop deadline/provenance
+          // metadata when the legacy step writer supplies a partial snapshot.
+          var persistedCp = loadJson(r, "checkpoint")
+          for (var cpKey in newCp) {
+            if (Object.prototype.hasOwnProperty.call(newCp, cpKey))
+              persistedCp[cpKey] = newCp[cpKey]
+          }
+          r.set("checkpoint", persistedCp)
           r.set("current_step", Number(doneSteps) || 0)
           tx.save(r)
         })
@@ -382,8 +389,15 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           r = ownedRun
           ownedRun.set("status", newStatus)
           if (resultText) ownedRun.set("result", sanitizeFinalSecrets(String(resultText)))
-          if (errText) ownedRun.set("error", String(errText))
+          if (errText) ownedRun.set("error", require(__hooks + "/modules/harness_audit.js").excerpt(errText, 300))
           var cp = loadJson(ownedRun, "checkpoint")
+          if (String(newStatus) === "failed") {
+            cp.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
+              .diagnose(errText || message, { kind: "agent", stage: "runtime",
+                stepRef: String(stepIndex), seq: seq })
+          } else if (String(newStatus) === "succeeded") {
+            cp.failure_diagnostic = null
+          }
           cp.claim_until = 0
           cp.seq = Number(seq) || 0
           ownedRun.set("checkpoint", cp)
@@ -1604,6 +1618,10 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       admission = runLifecycle.enter($app, executionGuard, {
         kind: "agent", runId: id, owner: uid, token: leaseToken,
         loadCheckpoint: function (r) { return loadJson(r, "checkpoint") },
+        classifyFailure: function (reason) {
+          return require(__hooks + "/modules/harness_failure_triage.js")
+            .diagnose(reason, { kind: "agent", stage: "runtime" })
+        },
       })
     } catch (leaseErr) {
       try { $app.logger().error("agent execution admission failed", "err", String(leaseErr)) } catch (_) {}
@@ -1634,6 +1652,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           var cp2 = loadJson(r2, "checkpoint")
           cp2.claim_until = 0
           cp2.seq = Number(cp2.seq || 0) + 1
+          cp2.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
+            .diagnose(diagnostic, { kind: "agent", stage: "worker",
+              stepRef: String(r2.get("current_step") || 0), seq: cp2.seq })
           r2.set("checkpoint", cp2)
           r2.set("status", "failed")
           r2.set("error", "execution_step_failed: see sanitized worker diagnostics")

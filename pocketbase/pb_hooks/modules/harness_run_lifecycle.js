@@ -75,6 +75,11 @@ function enter(app, guard, options) {
       record.set("checkpoint", snapshot)
       if (deadlineExceeded) {
         // Preserve prior steps/evidence, stop new model or tool operations.
+        // The optional structured failure classifier is pure and cannot
+        // override the lease owner's transactional status decision.
+        if (typeof p.classifyFailure === "function")
+          snapshot.failure_diagnostic = p.classifyFailure("run_runtime_deadline_exceeded")
+        record.set("checkpoint", snapshot)
         record.set("status", "failed")
         record.set("error", "run_runtime_deadline_exceeded")
       }

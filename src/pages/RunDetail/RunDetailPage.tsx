@@ -8,6 +8,7 @@ import { RecentRunsList } from "@/components/run-detail/RecentRunsList"
 import { RunEvalFeedbackCard } from "@/components/run-detail/RunEvalFeedbackCard"
 import { RunOverviewCard } from "@/components/run-detail/RunOverviewCard"
 import { RunResultCard } from "@/components/run-detail/RunResultCard"
+import { FailureTriageCard } from "@/components/run-detail/FailureTriageCard"
 import { RunTimelineBody } from "@/components/run-detail/RunTimelineBody"
 import { RunTraceCard } from "@/components/run-detail/RunTraceCard"
 import { SpecSnapshotCard } from "@/components/run-detail/SpecSnapshotCard"
@@ -167,6 +168,7 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
                     stateMeta={p.runStateMeta}
                   />
                   <RunEvalFeedbackCard run={p.runDetail} />
+                  <FailureTriageCard status={p.runDetail.status} checkpoint={p.runDetail.checkpoint} />
                   <SpecSnapshotCard snapshot={p.specSnapshot} run={p.runDetail} />
                   <RdActionBar
                     run={p.runDetail}
