@@ -26,6 +26,7 @@ const WorkflowCanvasRoute = lazy(() => import("./pages/WorkflowCanvas/index.tsx"
 const ScheduledTasksRoute = lazy(() => import("./pages/ScheduledTasks/index.tsx"))
 const KnowledgeBasesRoute = lazy(() => import("./pages/KnowledgeBases/index.tsx"))
 const ToolHubRoute = lazy(() => import("./pages/ToolHub/index.tsx"))
+const HarnessRoute = lazy(() => import("./pages/Harness/HarnessPage.tsx"))
 const IntegrateRoute = lazy(() => import("./pages/Integrate/index.tsx"))
 const PluginMarketRoute = lazy(() => import("./pages/PluginMarket/index.tsx"))
 const LoginRoute = lazy(() => import("./pages/Login/LoginPage.tsx"))
@@ -105,6 +106,7 @@ function App() {
         <Route path="/scheduled-tasks" element={<ScheduledTasksRoute />} />
         <Route path="/knowledge-bases" element={<KnowledgeBasesRoute />} />
         <Route path="/tool-hub" element={<ToolHubRoute />} />
+        <Route path="/harness" element={<HarnessRoute />} />
         <Route path="/integrate" element={<IntegrateRoute />} />
         <Route path="/plugin-market" element={<PluginMarketRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />

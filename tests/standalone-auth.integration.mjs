@@ -59,6 +59,11 @@ try{
  assert.equal(status.data.initialized,false,JSON.stringify(status))
  let denied=await get("/api/agent_specs",{headerUid:"hacker"})
  assert.equal(denied.status,401,"forged owner header unexpectedly authorized: "+JSON.stringify(denied))
+ const harnessPaths=["/api/worker/status","/api/harness/monitor","/api/tool-hub/stats",
+  "/api/agent-runs/recent?limit=20","/api/workflow-runs/recent?limit=20"]
+ for(const route of harnessPaths){
+  assert.equal((await get(route,{headerUid:"forged-owner"})).status,401,route)
+ }
  // Standalone JWT guard must strip forged legacy owner headers on all LLM routes.
  for(const [method,route,body] of [
    ["GET","/api/llm/models",undefined],
@@ -88,6 +93,13 @@ try{
  const staffLogin=await post("/api/collections/studio_users/auth-with-password",{identity:"staff@example.test",password:"S3cure-password-2026"})
  assert.equal(staffLogin.status,200,JSON.stringify(staffLogin))
  const staffToken=staffLogin.data.token
+ for(const route of harnessPaths){
+  const snapshot=await get(route,{token:staffToken,headerUid:boss})
+  assert.equal(snapshot.status,200,route+": "+JSON.stringify(snapshot))
+  assert.equal(snapshot.data.ok,true,route)
+  if(route.includes("recent"))assert.deepEqual(snapshot.data.items,[])
+  if(route.includes("tool-hub/stats"))assert.equal(snapshot.data.run_count,0)
+ }
  const fromBoss=await post("/api/agent_specs",{name:"主管的独立 Agent",spec:{goal:"研究公开财报"}},{token:bossToken})
  assert.equal(fromBoss.status,200,JSON.stringify(fromBoss))
  const own=await get("/api/agent_specs",{token:bossToken})
@@ -127,6 +139,7 @@ try{
  assert.equal(disableUser.status,200,JSON.stringify(disableUser))
  assert.equal((await get("/api/agent_specs",{token:staffToken})).status,401)
  assert.equal((await get("/api/studio/me",{token:staffToken})).status,401)
+ for(const route of harnessPaths)assert.equal((await get(route,{token:staffToken})).status,401,route)
  console.log("standalone auth E2E passed: bootstrap, login, admin, owner-scoping, spoof denial, sharing toggle, user deactivation")
 }catch(err){
  console.error("standalone auth integration failed:",err)

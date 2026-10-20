@@ -148,8 +148,8 @@ routerAdd("GET", "/api/worker/status", function (e) {
     var uid = String(headers["x_rh_user_id"] || headers["X-Rh-User-Id"] || headers["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required" })
     var enabled = $os.getenv("AGENT_STUDIO_BACKGROUND_WORKER") === "true" && String($os.getenv("AGENT_STUDIO_WORKER_TOKEN") || "").length >= 32
-    var health = null
-    try { health = $app.findFirstRecordByFilter("agent_worker_health", "worker_name = 'main'") } catch (_) {}
+    var healthRows = $app.findRecordsByFilter("agent_worker_health", "worker_name = 'main'", "", 1, 0)
+    var health = healthRows.length ? healthRows[0] : null
     var lastSeen = health ? String(health.getString("last_seen") || "") : ""
     var lastStepAt = health ? String(health.getString("last_step_at") || "") : ""
     var lastMs = lastSeen ? new Date(lastSeen).getTime() : 0
@@ -175,7 +175,7 @@ routerAdd("GET", "/api/worker/status", function (e) {
         qRows = $app.findRecordsByFilter(
           collections[qi].name, "rh_user_id = {:uid}", "-updated", 101, 0, { uid: uid }
         )
-      } catch (_) {}
+      } catch (err) { throw err }
       if (qRows.length > 100) queue.sampled = true
       for (var qr = 0; qr < qRows.length && qr < 100; qr++) {
         var qRun = qRows[qr]
@@ -197,7 +197,7 @@ routerAdd("GET", "/api/worker/status", function (e) {
         "OR (kind = 'workflow' AND run_id IN (SELECT id FROM workflow_runs WHERE rh_user_id = {:uid})))"
       ).bind({ now: nowMs, uid: uid }).one(inflightRow)
       queue.inflight = Number(inflightRow.total || 0)
-    } catch (_) {}
+    } catch (err) { throw err }
     // Count owner-scoped writes that need manual confirmation, including stale intent
     // records from a crashed process. No arguments, secrets, or other tenants leak.
     try {
@@ -209,7 +209,7 @@ routerAdd("GET", "/api/worker/status", function (e) {
         "OR (kind = 'workflow' AND run_id IN (SELECT id FROM workflow_runs WHERE rh_user_id = {:uid})))"
       ).bind({ stale: nowMs - 600000, uid: uid }).one(reviewRow)
       queue.needs_review = Number(reviewRow.total || 0)
-    } catch (_) {}
+    } catch (err) { throw err }
     try {
       var activeSchedules = new DynamicModel({ total: 0 })
       $app.db().newQuery(
@@ -232,7 +232,7 @@ routerAdd("GET", "/api/worker/status", function (e) {
       queue.scheduled_overdue = Number(overdue.total || 0)
       queue.oldest_due_age_ms = queue.scheduled_overdue > 0
         ? Math.max(0, nowMs - Number(overdue.oldest || 0)) : 0
-    } catch (_) {}
+    } catch (err) { throw err }
     queue.ready_estimate = Math.max(0, queue.agent_running + queue.workflow_running - queue.inflight)
     return e.json(200, {
       ok: true,

@@ -123,12 +123,7 @@ routerAdd("GET", "/api/agent-runs/recent", function (e) {
     if (!limit || limit < 1) limit = 5
     if (limit > 20) limit = 20
 
-    var rows = []
-    try {
-      rows = $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid}", "-created", limit, 0, { uid: uid })
-    } catch (_) {
-      rows = []
-    }
+    var rows = $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid}", "-created", limit, 0, { uid: uid })
     var items = []
     for (var i = 0; i < rows.length; i++) {
       var rec = rows[i]
