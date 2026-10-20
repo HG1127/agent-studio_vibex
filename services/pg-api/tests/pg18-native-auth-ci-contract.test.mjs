@@ -67,7 +67,17 @@ test("real PG18 Native HTTPS UAT is strictly localhost TLS without model, provid
   assert.match(entry,/SameSite=Strict/)
   assert.match(entry,/SET LOCAL ROLE agentstudio_native_auth/)
   assert.match(entry,/SET LOCAL ROLE agentstudio_api/)
-  assert.match(entry,/native\.authenticateRequest\(req\)/)
+  assert.match(entry,/authenticateRequest:native\.authenticateRequest/)
+  assert.match(entry,/createHandler\(/)
+  assert.match(entry,/\/api\/v2\/agent-specs/)
+  assert.match(entry,/ci_readonly_business_only/)
+  assert.doesNotMatch(entry,/\/uat\/agents/)
+  const business=fs.readFileSync(path.join(root,
+    "services/pg-api/src/http.ts"),"utf8")
+  assert.match(business,/authenticateRequest\?:/)
+  assert.match(business,/identity=await deps\.authenticateRequest\(req\)/)
+  assert.match(business,/native_request_origin_denied/)
+  assert.match(business,/identity=await deps\.verifyToken\(tokenFrom\(req\)\)/)
   for(const illegal of [
     /--serve/,/systemctl/,/PocketBase\.collection/,/createStagingOpenAIProvider/,
     /DATABASE_URL\s*=/,/https?:\/\/(?:192\.168|10\.|172\.|baota)/,

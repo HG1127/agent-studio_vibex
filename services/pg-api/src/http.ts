@@ -12,6 +12,9 @@ export interface AppDependencies {
   workflowRepository?: WorkflowRepository
   knowledgeRepository?: KnowledgeBaseRepository
   verifyToken(token: string): Promise<Identity>
+  // Only an explicitly injected, server-trusted Native session verifier
+  // may replace OIDC; never accept browser-supplied identity or bearer.
+  authenticateRequest?: (req:IncomingMessage)=>Promise<Identity>
   allowedOrigin: string
 }
 
@@ -84,10 +87,17 @@ export function createHandler(deps:AppDependencies) {
 
       // Explicitly ignore X-Rh-User-Id. Only a cryptographically verified token
       // from the configured issuer yields an employee identity.
-      const token=tokenFrom(req)
       let identity:Identity
-      try{identity=await deps.verifyToken(token)}
-      catch{throw new HttpError(401,"invalid_token")}
+      try{
+        if(deps.authenticateRequest)
+          identity=await deps.authenticateRequest(req)
+        else identity=await deps.verifyToken(tokenFrom(req))
+      }catch(error){
+        if(deps.authenticateRequest &&
+           (error as {status?:number})?.status===403)
+          throw new HttpError(403,"native_request_origin_denied")
+        throw new HttpError(401,"invalid_token")
+      }
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")

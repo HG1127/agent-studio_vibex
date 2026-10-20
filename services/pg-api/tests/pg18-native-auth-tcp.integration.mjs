@@ -19,6 +19,7 @@ import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {AgentSpecRepository} from "../src/repository.ts"
+import {createHandler} from "../src/http.ts"
 
 function adapter(pool){
   return {async connect(){
@@ -115,25 +116,6 @@ function callHttps(port,ca,route,{method="GET",body,cookie,origin,
     request.end(bytes??undefined)
   })
 }
-async function businessProfile(req,res,native,agentRepository){
-  try{
-    if(req.url!=="/uat/agents"||req.method!=="GET"){
-      res.writeHead(404,{"Content-Type":"application/json"})
-      res.end(JSON.stringify({error:"uat_route_not_found"}))
-      return
-    }
-    const identity=await native.authenticateRequest(req)
-    const records=await agentRepository.list(identity)
-    res.writeHead(200,{"Content-Type":"application/json",
-      "Cache-Control":"no-store"})
-    res.end(JSON.stringify({names:records.map(r=>r.name)}))
-  }catch(error){
-    const status=Number.isInteger(error?.status)?error.status:503
-    res.writeHead(status,{"Content-Type":"application/json"})
-    res.end(JSON.stringify({error:status===503?"uat_unavailable":error.code??error.message}))
-  }
-}
-
 test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolated role and owner RLS",async()=>{
   // No Pool, OpenSSL or network before the exact CI-only target guard.
   const target=requireEphemeralPg18Ci(process.env)
@@ -185,11 +167,27 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
     assert.equal(adminAgent.owner_user_id,owner.id)
 
     let native
+    let nativeBusiness
     native=createNativeAuthHttpHandler({
       auth,allowedOrigin:"https://localhost",allowEmployeeProvisioning:true,
       businessHandler:(req,res)=>{
-        void businessProfile(req,res,native,agentRepo)
+        // CI exposes only real owner-scoped API v2 GET endpoints, no writes,
+        // queues, model calls, document uploads or scheduling.
+        if(req.method!=="GET"||!
+           (req.url==="/api/v2/agent-specs"||
+             /^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(req.url||""))){
+          res.writeHead(405,{"Content-Type":"application/json"})
+          res.end(JSON.stringify({error:"ci_readonly_business_only"}))
+          return
+        }
+        return nativeBusiness(req,res)
       }
+    })
+    nativeBusiness=createHandler({
+      allowedOrigin:"https://localhost",
+      repository:agentRepo,
+      verifyToken:async()=>{throw Error("oidc_forbidden_in_native_mode")},
+      authenticateRequest:native.authenticateRequest,
     })
     fixture=startTrustedTlsFixture(native.handler)
     const localServer=fixture.server
@@ -228,10 +226,17 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
     const adminCookie=administrator.cookie.split(";")[0]
     const adminProfile=await request("/api/native-auth/me",{cookie:adminCookie})
     assert.equal(adminProfile.body.user.email,"admin@example.com")
-    const adminRecords=await request("/uat/agents",{cookie:adminCookie})
+    const adminRecords=await request("/api/v2/agent-specs",{cookie:adminCookie})
     assert.equal(adminRecords.status,200)
-    assert.deepEqual(adminRecords.body.names,["Synthetic private admin research"])
-    const bearerAttempt=await request("/uat/agents",{
+    assert.deepEqual(adminRecords.body.items.map(item=>item.name),
+      ["Synthetic private admin research"])
+    assert.equal(adminRecords.body.items[0].id,adminAgent.id)
+    const adminDetail=await request("/api/v2/agent-specs/"+adminAgent.id,{
+      cookie:adminCookie
+    })
+    assert.equal(adminDetail.status,200)
+    assert.equal(adminDetail.body.item.id,adminAgent.id)
+    const bearerAttempt=await request("/api/v2/agent-specs",{
       cookie:adminCookie,authorization:"Bearer forged.token"
     })
     assert.equal(bearerAttempt.status,401)
@@ -251,10 +256,20 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
     })
     assert.equal(member.status,200)
     const staffCookie=member.cookie.split(";")[0]
-    const staffRecords=await request("/uat/agents",{cookie:staffCookie})
+    const staffRecords=await request("/api/v2/agent-specs",{cookie:staffCookie})
     assert.equal(staffRecords.status,200)
-    assert.deepEqual(staffRecords.body.names,[],
+    assert.deepEqual(staffRecords.body.items,[],
       "real PG18 RLS must hide admin's private Agent from employee")
+    const staffCrossOwner=await request("/api/v2/agent-specs/"+adminAgent.id,{
+      cookie:staffCookie
+    })
+    assert.equal(staffCrossOwner.status,404)
+    const disabledWrite=await request("/api/v2/agent-specs",{
+      method:"POST",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{name:"should-not-write"}
+    })
+    assert.equal(disabledWrite.status,405)
     const noAdmin=await request("/api/native-auth/employees",{
       method:"POST",cookie:staffCookie,origin:"https://localhost",
       extraHeaders:{"X-AgentStudio-Request":"1"},
@@ -268,7 +283,7 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
     })
     assert.equal(signedOut.status,200)
     assert.match(signedOut.cookie,/Max-Age=0/)
-    const revoked=await request("/uat/agents",{cookie:staffCookie})
+    const revoked=await request("/api/v2/agent-specs",{cookie:staffCookie})
     assert.equal(revoked.status,401)
 
     // No local business account can SELECT credential hashes or sessions.
