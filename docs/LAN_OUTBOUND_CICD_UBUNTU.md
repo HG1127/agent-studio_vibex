@@ -26,6 +26,7 @@
 - 只更新 `dist` 前端的变更可自动激活；PocketBase Hooks / Worker / package.json 变化必须经运维审批，**迁移目录变化一律不自动执行**。
 - **纯部署元数据版本（no-op）**：候选与运行版本的全部应用文件和哈希一致时，执行两次运行健康检查并仅原子移动 `current` 版本指针，**不会停止或重启 Nginx/PocketBase/Worker，也不对 SQLite 进行任何写入或备份**。第二次健康检查失败会立即恢复旧指针。只有 `LAN_NOOP_RELEASE_ADVANCED` 才表示成功。旧版控制器没有此分支，必须经过固定提交、SHA-256、Python 检查和运维审核后手动替换该 root-owned 控制器；禁止因 `NO_APPLICATION_RUNTIME_CHANGES` 直接调用旧版 `--auto`。
 - GitHub 网络/CI 检查缺失、主分支已移动、构建脚本失败、归档校验失败、证书失效等情况全部拒绝部署。
+- **暂存失败分段定位**：新 `pull-update.py` 在 `--stage` 时分别输出 `LAN_STAGE_BEGIN:git_clone`、`git_head`、`pnpm_install`、`frontend_build`、`release_pack`，成功则输出 `LAN_STAGE_OK:<phase>`；失败只返回 `LAN_PULL_BLOCKED:stage_<phase>_exit_<number>` 或 `stage_<phase>_timeout`。它不打印子进程 stdout/stderr、密钥、完整命令或环境变量。此前 `status=2` 无法单靠 systemd 退出码定位原因；正式控制器升级必须使用固定 CI 成功提交和 SHA-256 验证，备份原 root-owned 文件、禁止直接启用自动 timer。
 - root 安装在 `/usr/local/libexec/agentstudio-lan/` 的三个控制器**必须手工审批**，不会随着 GitHub 自动被覆盖。
 - 备份目录 `/var/backups/agentstudio-lan` 为 root 独占，包含冻结的 SQLite 快照和原有附件；代码回滚**不意味着数据库回滚**。
 - 默认不启用 timer，必须创建 root:root 0600 文件 `/etc/agentstudio-lan/enable-lan-autoupdate`，内容单行 `AUTO_FRONTEND_ONLY` 才启用。
@@ -91,6 +92,7 @@ stat -c '%a %U:%G %n' /srv/agent-studio-lan /srv/agent-studio-lan/source /var/li
 **私有仓库还需要 git clone 的独立只读授权**，当前公开仓库部署方案不会把 PAT 塞进 Git URL；私有场景应另行设计凭据助手。
 
 ## 6. 本地零服务器验收
+**systemd 暂存诊断：** 仅在 `pull-update.py` 升级验收、`enable-lan-autoupdate` 不存在、现有 PB/Worker 仍为 active 的条件下，用独立 transient `systemd-run` 执行 `pull-update.py --stage`。`--stage` 不切换 `current`，但会访问 GitHub、pnpm registry 并写入隔离 builds/incoming。结束后必须检查退出状态、阶段码、`current` 软链接和服务 PID；任何不明错误停止自动化启用。
 
 ~~~bash
 python3 -m unittest discover -s tests -p test_lan_outbound_ci.py -v
