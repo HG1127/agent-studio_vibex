@@ -54,7 +54,7 @@ export function ApprovalGateCard({ pendingApproval, approvalBusy, onDecision }: 
         >
           {approvalBusy === "reject" ? "提交中…" : "拒绝这次调用"}
         </button>
-        <p className="text-xs text-muted-foreground">拒绝后引擎会收到拒绝原因，换个思路继续规划</p>
+        <p className="text-xs text-muted-foreground">本次批准仅适用于当前工具、参数与连接目标；执行前如发生变化，系统会再次请求批准。拒绝后引擎将换一种思路继续。</p>
       </div>
     </div>
   )

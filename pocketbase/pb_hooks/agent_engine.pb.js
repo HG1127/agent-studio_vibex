@@ -556,8 +556,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
       // Harness 核算：每次引擎模型调用估算输入/输出字符数，累进 checkpoint.harness_stats
       var callEngineLlm = function (messages, maxTokens, timeoutSec) {
-        if (!runLifecycle.withinDeadline(cp, new Date().getTime()))
-          return { ok: false, error: "run_runtime_deadline_exceeded" }
+        var modelGate = require(__hooks + "/modules/harness_step_executor.js")
+          .prepareModelStep(cp, runLifecycle.withinDeadline, new Date().getTime())
+        if (!modelGate.ok) return modelGate
         var pChars0 = 0
         for (var mci0 = 0; mci0 < messages.length; mci0++) {
           pChars0 += String((messages[mci0] || {}).content || "").length
@@ -1048,30 +1049,73 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
       }
 
-      // Shared schema validation before any tool action, including approved calls.
+      // Shared preflight contract: identical Goja validation, deadline and
+      // risk classification for Agent + Workflow. Auth/ACL remains server-side.
+      var stepExecutor = require(__hooks + "/modules/harness_step_executor.js")
       var toolContract = require(__hooks + "/modules/harness_tool_contracts.js")
-      var checkedInput = toolContract.checkToolInput(toolName, toolInput)
-      if (!checkedInput.ok) {
+      var toolPolicyService = require(__hooks + "/modules/tool_policy.js")
+      var configuredToolMethod = "POST"
+      var configuredConnectionId = ""
+      var configuredDestinationHash = ""
+      if (customConns[toolName]) {
+        try {
+          var targetConn = customConns[toolName]
+          configuredToolMethod = String(targetConn.getString("method") || "POST")
+          configuredConnectionId = String(targetConn.id || "")
+          configuredDestinationHash = $security.sha256(
+            String(targetConn.getString("url") || "") + "\n" +
+            String(targetConn.getString("headers") || "") + "\n" +
+            String(targetConn.getString("body_template") || ""))
+        } catch (_) {}
+      } else if (marketToolMap[toolName] && marketToolMap[toolName].conn) {
+        try {
+          var marketConn = marketToolMap[toolName].conn
+          configuredConnectionId = String(marketConn.id || "")
+          configuredDestinationHash = $security.sha256(
+            String(marketConn.getString("url") || "") + "\n" +
+            String(marketConn.getString("headers_sec") || ""))
+        } catch (_) {}
+      }
+      var plan = stepExecutor.prepareToolStep({
+        toolName: toolName, input: toolInput, checkpoint: cp,
+        market: Boolean(marketToolMap[toolName]),
+        external: Boolean(customConns[toolName]),
+        method: configuredToolMethod,
+        requireApproval: cfg.require_approval === true || resumeApprovedCall,
+        mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true",
+        nowMs: new Date().getTime(),
+      }, toolContract, toolPolicyService, runLifecycle.withinDeadline)
+      if (!plan.ok) {
         seq++
-        addEvent(runId, stepIndex, seq, "error", {
-          message: "工具参数未通过安全校验：" + checkedInput.error, tool: toolName,
-        })
-        pushStepAndSave({ thought: thought.slice(0, 200), action: "tool_input_invalid",
-          tool: toolName, obs: "工具参数无效，请按工具 Schema 修正：" + checkedInput.error }, 0)
-        if (doneSteps + 1 >= maxSteps) {
+        addEvent(runId, stepIndex, seq, "error", { message: "tool_step_denied：" + plan.error, tool: toolName })
+        if (plan.error === "run_runtime_deadline_exceeded") {
           persistStats()
-          finishRun(runId, "failed", "", "工具参数无效且已达到步数上限", stepIndex, seq, "运行预算已耗尽")
+          finishRun(runId, "failed", "", plan.error, stepIndex, seq, "任务总时限已达到")
+        } else {
+          pushStepAndSave({ thought: thought.slice(0, 200), action: "tool_input_invalid",
+            tool: toolName, obs: "工具输入未通过安全校验：" + plan.error }, 0)
+          if (doneSteps + 1 >= maxSteps) {
+            persistStats()
+            finishRun(runId, "failed", "", "工具参数无效且已达到步数上限", stepIndex, seq, "运行预算已耗尽")
+          }
         }
         return
       }
-      toolInput = checkedInput.value
-      if (!runLifecycle.withinDeadline(cp, new Date().getTime())) {
-        seq++
-        addEvent(runId, stepIndex, seq, "error", { message: "run_runtime_deadline_exceeded：已禁止新的工具调用" })
-        persistStats()
-        finishRun(runId, "failed", "", "run_runtime_deadline_exceeded", stepIndex, seq, "任务总时限已达到")
-        return
-      }
+      toolInput = plan.value
+      var currentApprovalDigest = stepExecutor.approvalDigest(function (src) { return $security.sha256(src) }, {
+        toolName: toolName, method: configuredToolMethod,
+        connectionId: configuredConnectionId, destination: configuredDestinationHash,
+        value: toolInput,
+      })
+      var approvedCallMatches = resumeApprovedCall &&
+        stepExecutor.approvalMatches(pendingAp && pendingAp.approval_digest, currentApprovalDigest)
+      var toolPolicy = approvedCallMatches ? toolPolicyService.classify({
+        toolName: toolName, market: Boolean(marketToolMap[toolName]),
+        external: Boolean(customConns[toolName]), method: configuredToolMethod,
+        requireApproval: cfg.require_approval === true,
+        mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true",
+        alreadyApproved: true,
+      }) : plan.policy
       var audit = require(__hooks + "/modules/harness_audit.js")
 
       var invInputStr = ""
@@ -1101,20 +1145,6 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
 
       // —— 写操作审批门：运行配置开启 require_approval 时，外部写工具（method != GET）与
       // 市场插件工具不直接执行，转 awaiting_approval 等用户在 approve 路由上决定 ——
-      var toolPolicyService = require(__hooks + "/modules/tool_policy.js")
-      var configuredToolMethod = "POST"
-      if (customConns[toolName]) {
-        try { configuredToolMethod = String(customConns[toolName].getString("method") || "POST") } catch (_) {}
-      }
-      var toolPolicy = toolPolicyService.classify({
-        toolName: toolName,
-        market: Boolean(marketToolMap[toolName]),
-        external: Boolean(customConns[toolName]),
-        method: configuredToolMethod,
-        requireApproval: cfg.require_approval === true,
-        mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true",
-        alreadyApproved: resumeApprovedCall,
-      })
       var needApproval = toolPolicy.requiresApproval
       if (needApproval) {
         statsBump("approvals", 1)
@@ -1128,7 +1158,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         })
         executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, apRunRec) {
           var apCp = loadJson(apRunRec, "checkpoint")
-          apCp.pending_approval = { step_index: stepIndex, tool: toolName, input: toolInput, thought: thought.slice(0, 200) }
+          apCp.pending_approval = { step_index: stepIndex, tool: toolName, input: toolInput, thought: thought.slice(0, 200), approval_digest: currentApprovalDigest }
           apCp.approval_decision = ""
           apCp.claim_until = 0
           apCp.seq = seq
@@ -1476,13 +1506,10 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
 
       var toolT0 = new Date().getTime()
-      var attempt1 = effectCached ? { output: effectCachedOutput, toolErr: "", retryable: false } : execToolOnce()
-      var toolRetried = false
-      var attemptFinal = attempt1
-      if (attempt1.toolErr && toolPolicyService.allowAutomaticRetry(toolPolicy, attempt1.retryable)) {
-        toolRetried = true
-        attemptFinal = execToolOnce()
-      }
+      var attempts = stepExecutor.executeWithRetry(toolPolicy, execToolOnce,
+        effectCached ? { output: effectCachedOutput, toolErr: "", retryable: false } : null)
+      var toolRetried = attempts.retried
+      var attemptFinal = attempts.result
       var output = String(attemptFinal.output || "")
       var toolErr = String(attemptFinal.toolErr || "")
       if (effectClaimed) {

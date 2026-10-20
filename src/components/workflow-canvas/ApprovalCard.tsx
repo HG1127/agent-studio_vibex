@@ -46,7 +46,7 @@ export function ApprovalCard({ pendingApproval, decideApproval, wfApprovalBusy }
           拒绝
         </button>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">拒绝后该节点会标记为跳过，流程按既有连线继续走下游。</p>
+      <p className="mt-2 text-xs text-muted-foreground">批准仅适用于当前参数及工具连接；若执行内容变更会重新确认。拒绝后节点跳过，流程按既有连线继续。</p>
     </div>
   )
 }

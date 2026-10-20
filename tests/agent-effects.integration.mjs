@@ -16,11 +16,17 @@ const modelPort = Number(process.env.PB_AGENT_MODEL_PORT || 7248)
 const origin = "http://127.0.0.1:" + port
 const authHeaders = { "X-Rh-User-Id": "agent-write-user" }
 const env = { ...process.env, AGENT_STUDIO_ALLOW_ANON: "false" }
-let successfulPosts = 0, ambiguousPosts = 0, modelRequests = 0
+let successfulPosts = 0, ambiguousPosts = 0, approvalPosts = 0, modelRequests = 0
 let logs = ""
 const pause = ms => new Promise(r => setTimeout(r, ms))
 const sideEffect = createServer(async (req,res) => {
   for await (const _chunk of req) { /* drain */ }
+  if (req.url === "/approved" || req.url === "/approved-changed") {
+    approvalPosts++
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ receipt: "approval-test-" + approvalPosts }))
+    return
+  }
   if (req.url === "/uncertain") {
     ambiguousPosts++
     req.socket.destroy()
@@ -43,7 +49,8 @@ const model = createServer(async (req,res) => {
     reply = JSON.stringify({
       thought: "Call the authorized external tool exactly once",
       action: "tool",
-      tool: user.includes("uncertain") ? "AgentAmbiguousWrite" : "AgentWriteOnce",
+      tool: user.includes("APPROVAL_BINDING_CASE") ? "AgentApprovalWrite" :
+        (user.includes("uncertain") ? "AgentAmbiguousWrite" : "AgentWriteOnce"),
       tool_input: { message: "once", api_key: "fake-test-secret-never-log" },
     })
   } else {
@@ -76,7 +83,7 @@ async function read(id) {
   assert.equal(r.status, 200, JSON.stringify(r))
   return r.data
 }
-async function start(tool, instruction, connId) {
+async function start(tool, instruction, connId, requireApproval = false) {
   const spec = await api("POST", "/api/agent_specs", {
     name: tool, spec: {
       goal: "Execute the tool once", task_scope: "Authorized POST only",
@@ -87,7 +94,8 @@ async function start(tool, instruction, connId) {
   assert.equal(spec.status, 200)
   const run = await api("POST", "/api/agent-runs/start", {
     spec_id: spec.data.id, instruction, model: "mock-model",
-    config: { max_steps: 4, tools: { [tool]: true }, custom_model: { connection_id: connId, model_id: "mock-model" } },
+    config: { max_steps: 4, tools: { [tool]: true }, require_approval: requireApproval,
+      custom_model: { connection_id: connId, model_id: "mock-model" } },
   })
   assert.equal(run.status, 200, JSON.stringify(run))
   return { id: run.data.run_id, before: (await read(run.data.run_id)).checkpoint }
@@ -162,6 +170,37 @@ try {
   assert.equal(uncertainAfter.status, "failed")
   assert.equal(ambiguousPosts, 1, "Unknown outcome must be blocked after a simulated restart")
 
+  // A human approves a POST; if connection target changes before execution,
+  // the next tick must invalidate the old approval and obtain a new one.
+  await addTool("AgentApprovalWrite", "http://127.0.0.1:" + httpPort + "/approved")
+  const approvalRun = await start("AgentApprovalWrite", "APPROVAL_BINDING_CASE", connId, true)
+  await tick(approvalRun.id)
+  const approvalPending1 = await read(approvalRun.id)
+  assert.equal(approvalPending1.status, "awaiting_approval")
+  const firstProof = approvalPending1.checkpoint.pending_approval.approval_digest
+  assert.match(firstProof, /^[0-9a-f]{64}$/)
+  const firstApproval = await api("POST", "/api/agent-runs/" + approvalRun.id + "/approve",
+    { decision: "approve" })
+  assert.equal(firstApproval.status, 200)
+  const mutationDb = new DatabaseSync(path.join(dataDir, "data.db"), { timeout: 5000 })
+  try {
+    const result = mutationDb.prepare("UPDATE tool_connections SET url=? WHERE name=?")
+      .run("http://127.0.0.1:" + httpPort + "/approved-changed", "AgentApprovalWrite")
+    assert.equal(result.changes, 1)
+  } finally { mutationDb.close() }
+  await tick(approvalRun.id)
+  const approvalPending2 = await read(approvalRun.id)
+  assert.equal(approvalPending2.status, "awaiting_approval",
+    "Changed connection target must invalidate original approval")
+  assert.equal(approvalPosts, 0, "No external write before new approval")
+  assert.notEqual(approvalPending2.checkpoint.pending_approval.approval_digest, firstProof)
+  const secondApproval = await api("POST", "/api/agent-runs/" + approvalRun.id + "/approve",
+    { decision: "approve" })
+  assert.equal(secondApproval.status, 200)
+  const authorizedResult = await complete(approvalRun.id)
+  assert.equal(authorizedResult.status, "succeeded", JSON.stringify(authorizedResult))
+  assert.equal(approvalPosts, 1, "Newly authorized changed target only called once")
+
   const db = new DatabaseSync(path.join(dataDir, "data.db"), { readOnly: true })
   try {
     assert.equal(db.prepare("SELECT status FROM agent_studio_side_effects WHERE kind='agent' AND run_id=?").get(good.id).status, "succeeded")
@@ -170,7 +209,8 @@ try {
   assert.ok(modelRequests >= 4)
   console.log(JSON.stringify({
     status: "PASS", agentSuccessfulPost: successfulPosts, agentAmbiguousPost: ambiguousPosts,
-    journalCached: true, journalBlocksUnknown: true, modelRequests,
+    journalCached: true, journalBlocksUnknown: true, approvalHashRejectsChangedTarget: true,
+    modelRequests,
   }))
 } catch (err) {
   console.error("AGENT_EFFECTS_FAILED", err.stack || String(err))

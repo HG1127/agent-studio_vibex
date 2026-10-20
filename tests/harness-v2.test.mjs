@@ -86,8 +86,11 @@ test("Harness V2: both execution engines invoke server-side tool contract", () =
   for (const f of ["pocketbase/pb_hooks/agent_engine.pb.js", "pocketbase/pb_hooks/workflow_api.pb.js"]) {
     const source = fs.readFileSync(f, "utf8")
     assert.match(source, /modules\/harness_tool_contracts\.js/)
-    assert.match(source, /checkToolInput\(/)
+    assert.match(source, /modules\/harness_step_executor\.js/)
+    assert.match(source, /prepareToolStep\(/)
   }
+  const shared = fs.readFileSync("pocketbase/pb_hooks/modules/harness_step_executor.js", "utf8")
+  assert.match(shared, /checkToolInput\(/)
   const agent = fs.readFileSync("pocketbase/pb_hooks/agent_engine.pb.js", "utf8")
   assert.match(agent, /model_call_budget_exhausted/)
   assert.match(agent, /model_budget_persist_failed/)
