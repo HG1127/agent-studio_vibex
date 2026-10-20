@@ -41,3 +41,18 @@ jobs:
         run: |
           node ops/pg18-fresh-cutover-gate.mjs --assert-ready > cutover-report.json && exit 1 || test "$?" -eq 3
           node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("cutover-report.json","utf8"));if(r.cutover_allowed||r.writes_performed||!r.old_pocketbase_must_remain_running)process.exit(1)'
+
+      - name: Integrity manifest for reviewed standalone static files
+        run: |
+          cd dist-pg18
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          test -s SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Upload verified PG18 standalone static artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentstudio-pg18-standalone-preview
+          path: dist-pg18/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
