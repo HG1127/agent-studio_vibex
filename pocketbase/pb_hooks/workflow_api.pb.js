@@ -728,6 +728,7 @@ routerAdd("POST", "/api/workflow-runs/start", function (e) {
       execution_deadline_ms: runtimeDeadline.deadline_ms,
       harness_stats: { llm_calls: 0, est_prompt_chars: 0, est_out_chars: 0, tool_calls: 0, retries: 0, truncations: 0, approvals: 0 },
       exec_sig: {}, approved_node: "", reject_node: "", pending_approval: null,
+      approved_input_hash: "",
       schedule_force_approval: Boolean(scheduledRunId),
     })
     rec.set("result", "")
@@ -856,6 +857,7 @@ routerAdd("POST", "/api/workflow-runs/{id}/approve", function (e) {
     }
     if (decision === "approve") {
       cp.approved_node = pNodeId
+      cp.approved_input_hash = String(pending.approval_digest || "")
       cp.reject_node = ""
       run.set("status", "running")
       run.set("checkpoint", cp)
@@ -867,6 +869,7 @@ routerAdd("POST", "/api/workflow-runs/{id}/approve", function (e) {
     } else {
       cp.approved_node = ""
       cp.reject_node = pNodeId
+      cp.approved_input_hash = ""
       run.set("status", "running")
       run.set("checkpoint", cp)
       $app.save(run)
@@ -1111,6 +1114,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       }
       var execSig = cp.exec_sig || {}
       var approvedNode = String(cp.approved_node || "")
+      var approvedInputHash = String(cp.approved_input_hash || "")
       var rejectNode = String(cp.reject_node || "")
       var pendingApproval = cp.pending_approval || null
       var requireApproval = false
@@ -1200,8 +1204,9 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
         return outcome
       }
       var callNodeLlm = function (modelSel, messages, maxTokens) {
-        if (!runLifecycle.withinDeadline(cp, new Date().getTime()))
-          return { ok: false, error: "run_runtime_deadline_exceeded" }
+        var modelGate = require(__hooks + "/modules/harness_step_executor.js")
+          .prepareModelStep(cp, runLifecycle.withinDeadline, new Date().getTime())
+        if (!modelGate.ok) return modelGate
         // Keep the authoritative lease current before an external model call.
         if (!executionGuard.renew($app, "workflow", runId, uid, leaseToken))
           return { ok: false, error: "execution_lease_lost" }
@@ -1471,6 +1476,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             cp.harness_stats = harnessStats
             cp.exec_sig = execSig
             cp.approved_node = approvedNode
+            cp.approved_input_hash = approvedInputHash
             cp.reject_node = rejectNode
             cp.pending_approval = pendingApproval
             r2.set("checkpoint", cp)
@@ -1667,58 +1673,104 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           break
         }
       }
-      // —— 审批门：require_approval 开启时，目标为写操作（tool_connections method≠GET 或 mkt__ 市场工具）的
-      // 工具节点不直接执行，转 awaiting_approval 释放认领，等用户在 approve 路由上决定 ——
-      if (nType === "tool" && (requireApproval || $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true") && approvedNode !== nextId && rejectNode !== nextId) {
+      var verifiedApprovalDigestWf = ""
+      // Server-side approval is bound to the exact *validated* arguments,
+      // registered target, method and node. A changed request must be approved
+      // again rather than reusing a stale node-only approval.
+      if (nType === "tool" && (requireApproval ||
+          $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true") &&
+          rejectNode !== nextId) {
         var gateTool = String(nData.tool || "").trim()
-        var policyService = require(__hooks + "/modules/tool_policy.js")
         var gateMarket = gateTool.indexOf("mkt__") === 0
-        var gateNeeded = policyService.classify({
-          toolName: gateTool, market: gateMarket, requireApproval: requireApproval,
-          mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true"
-        }).requiresApproval
-        if (!gateMarket) {
+        var gateBuiltin = ["calculate", "summarize", "knowledge_search", "web_fetch", "web_search"].indexOf(gateTool) >= 0
+        var gateMethod = "POST"
+        var gateExternal = gateMarket
+        var gateConnectionId = ""
+        var gateDestinationHash = ""
+        if (!gateMarket && !gateBuiltin) {
           var gateRows = []
           try {
-            gateRows = $app.findRecordsByFilter("tool_connections", "rh_user_id = {:uid} && enabled = true", "-created", 100, 0, { uid: uid })
+            gateRows = $app.findRecordsByFilter("tool_connections",
+              "rh_user_id = {:uid} && enabled = true && name = {:name}", "-created", 1, 0,
+              { uid: uid, name: gateTool })
           } catch (gateQErr) {
             logErr("gate load tool_connections", gateQErr)
+            throw new Error("tool_policy_lookup_unavailable")
           }
           for (var gti = 0; gti < gateRows.length; gti++) {
-            var gtName = ""
-            try { gtName = String(gateRows[gti].getString("name") || "") } catch (_) {}
-            if (gtName !== gateTool) continue
-            var gtMethod = "POST"
-            try { gtMethod = String(gateRows[gti].getString("method") || "POST").toUpperCase() } catch (_) {}
-            gateNeeded = policyService.classify({
-              toolName: gateTool, external: true, method: gtMethod, requireApproval: requireApproval,
-              mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true"
-            }).requiresApproval
+            var rowGate = gateRows[gti]
+            if (String(rowGate.getString("name") || "") !== gateTool) continue
+            gateExternal = true
+            gateMethod = String(rowGate.getString("method") || "POST").toUpperCase() === "GET" ? "GET" : "POST"
+            gateConnectionId = String(rowGate.id || "")
+            gateDestinationHash = $security.sha256(
+              String(rowGate.getString("url") || "") + "\n" +
+              String(rowGate.getString("headers") || "") + "\n" +
+              String(rowGate.getString("body_template") || ""))
             break
           }
         }
-        if (gateNeeded) {
-          var gateMissing = []
-          var gateParams = renderTemplate(String(nData.params_template || ""), gateMissing)
-          if (gateParams.length > 8000) gateParams = gateParams.slice(0, 8000) + "\n…已截断"
-          var gateSummary = require(__hooks + "/modules/harness_audit.js").excerpt(gateParams, 300)
-          statsBump("approvals", 1)
-          seq++
-          var gateContent = {
-            message: "等待你的批准：节点「" + nTitle + "」将调用工具 " + gateTool,
-            node_id: nextId, title: nTitle, tool_name: gateTool, input_summary: gateSummary,
+        var policyService = require(__hooks + "/modules/tool_policy.js")
+        var stepExecutorWf = require(__hooks + "/modules/harness_step_executor.js")
+        var gateRisk = policyService.classify({
+          toolName: gateTool, market: gateMarket, external: gateExternal,
+          method: gateMethod, requireApproval: requireApproval,
+          mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true",
+        })
+        if (gateRisk.requiresApproval) {
+        var gateMissing = []
+        var gateParams = renderTemplate(String(nData.params_template || ""), gateMissing)
+        var gateValue = {}
+        if (gateParams.trim()) {
+          try { gateValue = JSON.parse(gateParams) }
+          catch (_) { throw new Error("approval_tool_input_invalid_json") }
+        }
+        var gatePlan = stepExecutorWf.prepareToolStep({
+          toolName: gateTool, input: gateValue, checkpoint: cp,
+          nowMs: new Date().getTime(),
+          market: gateMarket, external: gateExternal, method: gateMethod,
+          requireApproval: requireApproval,
+          mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true",
+        }, require(__hooks + "/modules/harness_tool_contracts.js"),
+          policyService, runLifecycle.withinDeadline)
+        if (!gatePlan.ok) throw new Error("approval_" + gatePlan.error)
+        if (gatePlan.requiresApproval) {
+          var gateDigest = stepExecutorWf.approvalDigest(
+            function (src) { return $security.sha256(src) },
+            { toolName: gateTool, method: gateMethod, connectionId: gateConnectionId,
+              destination: gateDestinationHash, value: gatePlan.value })
+          var gateMatches = approvedNode === nextId &&
+            stepExecutorWf.approvalMatches(approvedInputHash, gateDigest)
+          if (gateMatches) verifiedApprovalDigestWf = gateDigest
+          if (!gateMatches) {
+            var gateSummary = require(__hooks + "/modules/harness_audit.js")
+              .excerpt(gatePlan.value, 300)
+            statsBump("approvals", 1)
+            seq++
+            var gateContent = {
+              message: "等待你的批准：节点「" + nTitle + "」将调用工具 " + gateTool,
+              node_id: nextId, title: nTitle, tool_name: gateTool, input_summary: gateSummary,
+            }
+            if (curLoopCtx) gateContent.round = curLoopCtx.round
+            addEvent(runId, nextId, seq, "approval_pending", gateContent)
+            pendingApproval = {
+              node_id: nextId, tool: gateTool, title: nTitle,
+              input_summary: gateSummary, approval_digest: gateDigest,
+            }
+            approvedNode = ""
+            approvedInputHash = ""
+            queue.unshift(nextId)
+            saveCp({ status: "awaiting_approval" })
+            return e.json(200, { ok: true, run_id: id,
+              status: "awaiting_approval", stepped: false, node_id: nextId })
           }
-          if (curLoopCtx) gateContent.round = curLoopCtx.round
-          addEvent(runId, nextId, seq, "approval_pending", gateContent)
-          pendingApproval = { node_id: nextId, tool: gateTool, title: nTitle, input_summary: gateSummary }
-          approvedNode = ""
-          // 节点未执行：放回队列头，不消耗 execCount，不写 node_start
-          queue.unshift(nextId)
-          saveCp({ status: "awaiting_approval" })
-          return e.json(200, { ok: true, run_id: id, status: "awaiting_approval", stepped: false, node_id: nextId })
+        }
         }
       }
-      if (approvedNode === nextId) approvedNode = ""
+      if (approvedNode === nextId) {
+        approvedNode = ""
+        approvedInputHash = ""
+      }
       // —— 审批拒绝：该节点标 skipped，写拒绝说明事件，按既有出边继续下游（含循环回边推进）——
       if (rejectNode === nextId) {
         rejectNode = ""
@@ -1937,7 +1989,10 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             var agParams = (agDec.params && typeof agDec.params === "object") ? agDec.params : {}
             var agOut = ""
             var agErrT = ""
-            var agChecked = require(__hooks + "/modules/harness_tool_contracts.js").checkToolInput(agTool, agParams)
+            var agChecked = require(__hooks + "/modules/harness_step_executor.js").prepareToolStep({
+              toolName: agTool, input: agParams, checkpoint: cp, nowMs: new Date().getTime(),
+            }, require(__hooks + "/modules/harness_tool_contracts.js"),
+              require(__hooks + "/modules/tool_policy.js"), runLifecycle.withinDeadline)
             if (!agChecked.ok) agErrT = "tool_input_invalid：" + agChecked.error
             else {
             agParams = agChecked.value
@@ -1991,30 +2046,35 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             nodeErrDetail = paramsStr.slice(0, 300)
           }
         }
+        // Shared schema, deadline and retry-policy preflight with Agent.
+        var stepExecutorNode = require(__hooks + "/modules/harness_step_executor.js")
+        var toolPolicyServiceWf = require(__hooks + "/modules/tool_policy.js")
+        var stepPlanWf = null
         if (!nodeErr) {
-          var checkedNodeInput = require(__hooks + "/modules/harness_tool_contracts.js").checkToolInput(toolName, inputObj)
-          if (!checkedNodeInput.ok) {
-            nodeErr = "tool_input_invalid：" + checkedNodeInput.error
-            nodeErrDetail = "工具输入未通过统一安全校验"
-          } else inputObj = checkedNodeInput.value
+          stepPlanWf = stepExecutorNode.prepareToolStep({
+            toolName: toolName, input: inputObj, checkpoint: cp,
+            nowMs: new Date().getTime(), market: toolName.indexOf("mkt__") === 0,
+          }, require(__hooks + "/modules/harness_tool_contracts.js"),
+            toolPolicyServiceWf, runLifecycle.withinDeadline)
+          if (!stepPlanWf.ok) {
+            nodeErr = "tool_input_invalid：" + stepPlanWf.error
+            nodeErrDetail = "工具输入未通过统一 Harness 安全校验"
+          } else inputObj = stepPlanWf.value
         }
         var wfAudit = require(__hooks + "/modules/harness_audit.js")
-        if (!nodeErr && !runLifecycle.withinDeadline(cp, new Date().getTime()))
-          nodeErr = "run_runtime_deadline_exceeded：任务最长运行时间已达到"
         inputSummary = wfAudit.excerpt(paramsStr, 600)
         if (harnessInput && harnessInput.truncated) inputSummary = inputSummary + "\n…已截断"
-        // —— 重试对齐批次：工具执行包成可重入的单次尝试；网络类失败（$http.send 抛错/超时/5xx）
-        //    立即自动重试 1 次；业务错误（4xx/配置错误）与模型调用（summarize）不重试 ——
-        // Treat external non-GET calls as potentially non-idempotent. Durable intent is
-        // committed BEFORE network I/O. A crashed/ambiguous write is never replayed.
-        var toolPolicyServiceWf = require(__hooks + "/modules/tool_policy.js")
-        var effectNeededWf = toolPolicyServiceWf.classify({
+        // Classify the *real* tool connection before durability and retry. The
+        // journal remains authoritative for unknown external write outcomes.
+        var toolExecPolicyWf = stepPlanWf ? stepPlanWf.policy : toolPolicyServiceWf.classify({
           toolName: toolName, market: toolName.indexOf("mkt__") === 0
-        }).write
+        })
+        var effectNeededWf = toolExecPolicyWf.write
         var effectKeyWf = ""
         var effectClaimedWf = false
         var effectCachedWf = false
         var effectCachedOutputWf = ""
+        var resolvedToolConnectionWf = null
         if (!nodeErr && toolName !== "calculate" && toolName !== "summarize" &&
             toolName !== "knowledge_search" && toolName !== "web_fetch" && toolName !== "web_search") {
           try {
@@ -2023,12 +2083,36 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
               "-created", 1, 0, { uid: uid, name: toolName }
             )
             if (methodRows.length > 0) {
-              effectNeededWf = toolPolicyServiceWf.classify({
+              resolvedToolConnectionWf = methodRows[0]
+              toolExecPolicyWf = toolPolicyServiceWf.classify({
                 toolName: toolName, external: true, market: toolName.indexOf("mkt__") === 0,
                 method: String(methodRows[0].getString("method") || "POST")
-              }).write
-            }
-          } catch (_) {}
+              })
+              effectNeededWf = toolExecPolicyWf.write
+            } else nodeErr = "tool_connection_missing：未找到已启用且归属当前员工的工具连接"
+          } catch (lookupErrorWf) {
+            nodeErr = "tool_policy_lookup_unavailable：无法确认外部工具风险，已拒绝执行"
+          }
+        }
+        if (!nodeErr && effectNeededWf &&
+            (requireApproval || $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true") &&
+            !verifiedApprovalDigestWf)
+          nodeErr = "tool_approval_required：工具策略发生变化或未完成写操作审批"
+        if (!nodeErr && verifiedApprovalDigestWf && resolvedToolConnectionWf) {
+          var boundMethodWf = String(resolvedToolConnectionWf.getString("method") || "POST")
+            .toUpperCase() === "GET" ? "GET" : "POST"
+          var boundDestinationWf = $security.sha256(
+            String(resolvedToolConnectionWf.getString("url") || "") + "\n" +
+            String(resolvedToolConnectionWf.getString("headers") || "") + "\n" +
+            String(resolvedToolConnectionWf.getString("body_template") || ""))
+          var actualHashWf = stepExecutorNode.approvalDigest(
+            function (src) { return $security.sha256(src) }, {
+              toolName: toolName, method: boundMethodWf,
+              connectionId: String(resolvedToolConnectionWf.id || ""),
+              destination: boundDestinationWf, value: inputObj,
+            })
+          if (!stepExecutorNode.approvalMatches(verifiedApprovalDigestWf, actualHashWf))
+            nodeErr = "tool_approval_changed：执行目标与已批准内容不一致"
         }
         var effectStepKeyWf = String(nextId) + ":" + String(execCount)
         if (!nodeErr && effectNeededWf &&
@@ -2133,22 +2217,10 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             }
           } else {
             // —— 外部工具连接代理（与 agent_engine 相同模式）——
-            var tcRows = []
-            try {
-              tcRows = $app.findRecordsByFilter(
-                "tool_connections",
-                "rh_user_id = {:uid} && enabled = true",
-                "-created", 100, 0, { uid: uid }
-              )
-            } catch (tcqErr) {
-              logErr("load tool_connections", tcqErr)
-            }
-            var tcRec = null
-            for (var tci = 0; tci < tcRows.length; tci++) {
-              var tcName0 = ""
-              try { tcName0 = String(tcRows[tci].getString("name") || "") } catch (_) {}
-              if (tcName0 === toolName) { tcRec = tcRows[tci]; break }
-            }
+            // Reuse the same validated connection snapshot used for risk
+            // classification and durable journal decisions. Never resolve a
+            // changed destination/method after recording a read-only policy.
+            var tcRec = resolvedToolConnectionWf
             if (!tcRec) {
               aErr = "工具「" + toolName + "」不是内置工具，且未找到同名的已启用工具连接"
             } else {
@@ -2232,12 +2304,12 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           return { out: aOut, err: aErr, errDetail: aErrDetail, retryable: aRetryable }
         }
         if (!nodeErr) {
-          var toolAttempt = effectCachedWf ? { out: effectCachedOutputWf, err: "", errDetail: "", retryable: false } : runToolAttempt()
-          if (toolAttempt.err && toolAttempt.retryable && !effectNeededWf) {
-            // 网络类失败：立即重试 1 次，harness_stats.retries 记账
+          var invoked = stepExecutorNode.executeWithRetry(toolExecPolicyWf, runToolAttempt,
+            effectCachedWf ? { out: effectCachedOutputWf, err: "", errDetail: "", retryable: false } : null)
+          var toolAttempt = invoked.result
+          if (invoked.retried) {
             toolRetried = true
             statsBump("retries", 1)
-            toolAttempt = runToolAttempt()
           }
           if (effectClaimedWf) {
             try {

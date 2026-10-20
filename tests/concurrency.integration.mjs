@@ -23,7 +23,7 @@ const env = {
   AGENT_STUDIO_WORKER_INTERNAL_URL: base,
   AGENT_STUDIO_ALLOW_ANON: "false",
 }
-let succeededCalls = 0, ambiguousCalls = 0, fencedCalls = 0, cancelledCalls = 0, providerReady = false, logs = ""
+let succeededCalls = 0, ambiguousCalls = 0, fencedCalls = 0, cancelledCalls = 0, approvedPosts = 0, getReads = 0, providerReady = false, logs = ""
 let signalFencedRequest = null
 const fencedRequestReceived = new Promise(resolve => { signalFencedRequest = resolve })
 let signalCancelledRequest = null
@@ -31,6 +31,18 @@ const cancelledRequestReceived = new Promise(resolve => { signalCancelledRequest
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const provider = createServer(async (req, res) => {
   for await (const _part of req) { /* drain request to simulate accepted write */ }
+  if (req.url === "/approved") {
+    approvedPosts++
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ approved: true }))
+    return
+  }
+  if (req.url === "/get") {
+    getReads++
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ read: true }))
+    return
+  }
   if (req.url === "/cancelled") {
     cancelledCalls++
     if (signalCancelledRequest) signalCancelledRequest()
@@ -86,7 +98,7 @@ async function detail(runId) {
   assert.equal(r.status, 200, JSON.stringify(r))
   return r.result.run
 }
-async function workflowFor(toolName) {
+async function workflowFor(toolName, requireApproval = false) {
   const graph = {
     nodes: [
       { id: "st", type: "start", data: { title: "开始" }, position: { x: 0, y: 0 } },
@@ -97,6 +109,13 @@ async function workflowFor(toolName) {
   }
   const wf = await api("POST", "/api/workflow-studio/create", { name: toolName, graph })
   assert.equal(wf.status, 200, JSON.stringify(wf))
+  if (requireApproval) {
+    const updated = await api("PATCH", "/api/workflow-studio/update", {
+      id: wf.result.id, require_approval: true,
+    })
+    assert.equal(updated.status, 200, JSON.stringify(updated))
+  }
+
   const started = await api("POST", "/api/workflow-runs/start", { workflow_id: wf.result.id, instruction: "write once" })
   assert.equal(started.status, 200, JSON.stringify(started))
   const runId = started.result.run_id
@@ -122,10 +141,10 @@ async function finishAfterTool(runId) {
   }
   return detail(runId)
 }
-async function addTool(name, suffix) {
+async function addTool(name, suffix, method = "POST") {
   const c = await api("POST", "/api/tool-connections", {
     name, description: "side-effect integration test",
-    url: toolUrl + suffix, method: "POST", headers: [], body_template: "{{input}}",
+    url: toolUrl + suffix, method, headers: [], body_template: "{{input}}",
   })
   assert.equal(c.status, 200, JSON.stringify(c))
 }
@@ -258,6 +277,55 @@ try {
   assert.equal((await detail(cancelledRun.runId)).status, "cancelled")
   assert.equal(cancelledCalls, 1, "Cancelled writes must never auto-replay")
 
+  // A high-risk approval is bound to the exact rendered parameters. When a
+  // run snapshot changes after approval (e.g. a stale operator/controller),
+  // the old approved-node flag must NOT authorize a new POST.
+  await addTool("ApprovalBoundWrite", "/approved")
+  const protectedRun = await workflowFor("ApprovalBoundWrite", true)
+  const approvalGate1 = await tick(protectedRun.runId)
+  assert.equal(approvalGate1.status, 200)
+  assert.equal(approvalGate1.result.status, "awaiting_approval")
+  const firstPending = await detail(protectedRun.runId)
+  const firstDigest = firstPending.checkpoint.pending_approval.approval_digest
+  assert.match(firstDigest, /^[0-9a-f]{64}$/)
+  const approved1 = await api("POST", "/api/workflow-runs/" + protectedRun.runId + "/approve", {
+    decision: "approve",
+  })
+  assert.equal(approved1.status, 200, JSON.stringify(approved1))
+  db = new DatabaseSync(path.join(dataDir, "data.db"), { timeout: 5000 })
+  try {
+    const row = db.prepare("SELECT graph_snapshot FROM workflow_runs WHERE id=?")
+      .get(protectedRun.runId)
+    const graph = JSON.parse(row.graph_snapshot)
+    graph.nodes.find(n => n.id === "tl").data.params_template = '{"message":"changed-after-approval"}'
+    db.prepare("UPDATE workflow_runs SET graph_snapshot=? WHERE id=?")
+      .run(JSON.stringify(graph), protectedRun.runId)
+  } finally { db.close() }
+  const gateAfterMutation = await tick(protectedRun.runId)
+  assert.equal(gateAfterMutation.status, 200)
+  assert.equal(gateAfterMutation.result.status, "awaiting_approval",
+    "Mutated approved params must require a new human approval")
+  assert.equal(approvedPosts, 0, "Changed tool call must not reach external service")
+  const secondPending = await detail(protectedRun.runId)
+  assert.notEqual(secondPending.checkpoint.pending_approval.approval_digest, firstDigest)
+  const approved2 = await api("POST", "/api/workflow-runs/" + protectedRun.runId + "/approve", {
+    decision: "approve",
+  })
+  assert.equal(approved2.status, 200)
+  const safeCompletion = await finishAfterTool(protectedRun.runId)
+  assert.equal(safeCompletion.status, "succeeded", JSON.stringify(safeCompletion))
+  assert.equal(approvedPosts, 1, "Newly approved call must execute exactly once")
+
+  // Safe registered GET tools should not trigger a needless write approval.
+  await addTool("ApprovalReadOnly", "/get", "GET")
+  const readOnlyRun = await workflowFor("ApprovalReadOnly", true)
+  const readOnlyStep = await tick(readOnlyRun.runId)
+  assert.equal(readOnlyStep.status, 200)
+  assert.equal(readOnlyStep.result.status, "running")
+  const readOnlyEnd = await finishAfterTool(readOnlyRun.runId)
+  assert.equal(readOnlyEnd.status, "succeeded")
+  assert.equal(getReads, 1)
+
   // Scheduler fairness: another worker already holds a live lease on the older run.
   // This replica must skip it and advance the second run rather than spin on busy.
   const basicGraph = {
@@ -345,6 +413,7 @@ try {
     schedulerSkipsActiveLeases: true, staleLeaseRecovered: true, staleCheckpointHintIgnored: true,
     inFlightStaleWriteFenced: true, postWriteReplayedFromJournal: true,
     cancellationWinsOverInFlightWrite: true,
+    approvalDigestPreventsChangedParams: true, safeGetBypassesWriteApproval: true,
   }))
 } catch (err) {
   console.error("CONCURRENCY_E2E_FAILED", err.stack || String(err))
