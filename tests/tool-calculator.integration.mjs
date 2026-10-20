@@ -22,14 +22,18 @@ const server=spawnHeadlessPocketBase(pb,["serve","--http=127.0.0.1:"+port,"--dir
 let logs=""
 server.stdout.on("data",x=>logs=(logs+x).slice(-15000))
 server.stderr.on("data",x=>logs=(logs+x).slice(-15000))
+let modelRequests = 0
 const model=createServer(async(request,response)=>{
   let raw=""
   for await(const chunk of request) raw+=chunk.toString()
   const message=JSON.parse(raw||"{}")
+  modelRequests++
   const texts=(message.messages||[]).filter(item=>item.role==="user").map(item=>String(item.content||"")).join("\n")
   const initial=texts.includes("（尚无，这是第一步）")
   const content=initial
-    ? JSON.stringify({action:"tool",thought:"Use the calculator",tool:"calculate",tool_input:{expression:"(2+3)*4"}})
+    ? JSON.stringify(texts.includes("HARNESS_INVALID_ARGS_CASE")
+      ? {action:"tool",thought:"Bad calculator parameters",tool:"calculate",tool_input:{expression:{nested:"unsafe"}}}
+      : {action:"tool",thought:"Use the calculator",tool:"calculate",tool_input:{expression:"(2+3)*4"}})
     : JSON.stringify({action:"final",thought:"Verified calculation",final_answer:"CALCULATOR_AGENT_COMPLETE 20"})
   response.writeHead(200,{"Content-Type":"application/json"})
   response.end(JSON.stringify({choices:[{message:{role:"assistant",content}}]}))
@@ -105,6 +109,34 @@ try {
   assert.ok(agentTrace.summary.model_calls >= 1)
   assert.ok(agentTrace.summary.tool_calls >= 1)
   assert.doesNotMatch(JSON.stringify(agentTrace),/expression|api_key|headers|Bearer /i)
+  // A real test-only PocketBase Agent must reserve calls before provider I/O.
+  // The second planning step cannot reach the mock model after a one-call cap.
+  const beforeBudget = modelRequests
+  const budgeted=await call("POST","/api/agent-runs/start",{
+    spec_id:spec.id,instruction:"HARNESS_BUDGET_TEST calculate",model:"calc-model",
+    config:{max_steps:5,max_model_calls:1,tools:{calculate:true},
+      custom_model:{connection_id:conn.item.id,model_id:"calc-model"}},
+  })
+  await call("POST","/api/llm/agent-engine/"+budgeted.run_id+"/tick",{})
+  await call("POST","/api/llm/agent-engine/"+budgeted.run_id+"/tick",{})
+  const budgetRow=await call("GET","/api/agent_runs/"+budgeted.run_id)
+  assert.equal(budgetRow.status,"failed",JSON.stringify(budgetRow))
+  assert.match(budgetRow.error,/model_call_budget_exhausted/)
+  assert.equal(budgetRow.checkpoint.harness_stats.llm_calls,1)
+  assert.equal(modelRequests-beforeBudget,1,"Budget must prevent a second paid model request")
+
+  const invalid=await call("POST","/api/agent-runs/start",{
+    spec_id:spec.id,instruction:"HARNESS_INVALID_ARGS_CASE",model:"calc-model",
+    config:{max_steps:5,max_model_calls:4,tools:{calculate:true},
+      custom_model:{connection_id:conn.item.id,model_id:"calc-model"}},
+  })
+  await call("POST","/api/llm/agent-engine/"+invalid.run_id+"/tick",{})
+  const denied=await call("GET","/api/agent_runs/"+invalid.run_id)
+  assert.equal(denied.checkpoint.steps[0].action,"tool_input_invalid")
+  const deniedDetail=await call("GET","/api/agent-runs/"+invalid.run_id+"/detail")
+  assert.match(JSON.stringify(deniedDetail.events||[]),/tool_input_expression_invalid/)
+  console.log("HARNESS_V2_E2E_BUDGET_AND_TOOL_SCHEMA_PASS")
+
   console.log("PASS shared calculator and owner-scoped tool traces: real Workflow and Agent")
 } finally {
   server.kill()

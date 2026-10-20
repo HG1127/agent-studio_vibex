@@ -12,8 +12,8 @@ type HarnessPanelProps = {
 const CAPABILITIES = [
   {
     icon: Brain,
-    title: "思考-行动-观察 三段式",
-    desc: "助手每一步都会记录思考、执行的动作与观察到的结果，运行档案里可逐步回看",
+    title: "服务端模型调用预算",
+    desc: "运行前设置模型请求上限，每次调用在发出前写入预算检查点；Token/费用仍为估算",
   },
   {
     icon: RefreshCw,
@@ -22,13 +22,13 @@ const CAPABILITIES = [
   },
   {
     icon: Layers,
-    title: "长任务上下文压缩",
-    desc: "观察内容超过 8000 字符时自动摘要早期步骤，长任务不会因上下文过长而中断",
+    title: "任务来源线索保留",
+    desc: "压缩旧步骤时仍保留检索来源 URL 与知识片段引用，明确区分已检索和已核验",
   },
   {
     icon: ShieldCheck,
-    title: "全量调用留档",
-    desc: "内置与外部工具的每次调用都写入调用记录，按账号隔离，可追溯耗时与成败",
+    title: "调用审计与安全校验",
+    desc: "工具调用经参数校验、权限策略及必要审批，日志按账号归属并对常见密钥脱敏",
   },
 ]
 

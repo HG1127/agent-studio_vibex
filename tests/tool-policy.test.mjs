@@ -35,6 +35,20 @@ test("market tools are always treated as writes and require approval when enable
   assert.equal(allowAutomaticRetry(p,true),false)
   assert.equal(classify({toolName:"mkt__remote",market:true,alreadyApproved:true,requireApproval:true}).requiresApproval,false)
 })
+test("operator mandatory approval cannot be disabled by employee settings",()=>{
+  const write=classify({toolName:"Payment",external:true,method:"POST",
+    requireApproval:false,mandatoryApproval:true})
+  assert.equal(write.requiresApproval,true)
+  assert.equal(write.approvalPolicy,"mandatory")
+  assert.equal(allowAutomaticRetry(write,true),false)
+  const approved=classify({toolName:"Payment",external:true,method:"POST",
+    requireApproval:false,mandatoryApproval:true,alreadyApproved:true})
+  assert.equal(approved.requiresApproval,false)
+  const read=classify({toolName:"Read",external:true,method:"GET",
+    requireApproval:false,mandatoryApproval:true})
+  assert.equal(read.requiresApproval,false)
+})
+
 test("unresolved external names cannot be marked authorized or safely retried by guesswork",()=>{
   const p=classify({toolName:"NotConfigured",external:false,requireApproval:true})
   assert.equal(p.external,false)

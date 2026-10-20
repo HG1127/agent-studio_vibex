@@ -15,12 +15,16 @@ function classify(input) {
   var external = Boolean(o.external) || market
   var method = String(o.method || "POST").toUpperCase()
   var requiresJournal = !builtin && external && (market || method !== "GET")
-  var requiresApproval = Boolean(o.requireApproval) && !Boolean(o.alreadyApproved) && requiresJournal
+  // An operator may make write approval non-bypassable for all employees.
+  // This cannot be weakened by a model decision or a client-side toggle.
+  var requiresApproval = (Boolean(o.requireApproval) || Boolean(o.mandatoryApproval)) &&
+    !Boolean(o.alreadyApproved) && requiresJournal
   return {
     builtin: builtin,
     external: external,
     write: requiresJournal,
     requiresApproval: requiresApproval,
+    approvalPolicy: o.mandatoryApproval && requiresJournal ? "mandatory" : (o.requireApproval ? "configured" : "none"),
     retryAllowed: !requiresJournal,
   }
 }

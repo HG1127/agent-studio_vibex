@@ -19,6 +19,8 @@ type SpecConfigPanelProps = {
   onToggleTool: (toolId: string) => void
   maxSteps: number
   onMaxStepsChange: (value: number) => void
+  maxModelCalls: number
+  onMaxModelCallsChange: (value: number) => void
   stopCondition: string
   onStopConditionChange: (value: string) => void
   stopOnComplete: boolean
@@ -46,6 +48,8 @@ export function SpecConfigPanel({
   onToggleTool,
   maxSteps,
   onMaxStepsChange,
+  maxModelCalls,
+  onMaxModelCallsChange,
   stopCondition,
   onStopConditionChange,
   stopOnComplete,
@@ -237,6 +241,15 @@ export function SpecConfigPanel({
         />
         <p className="text-xs text-muted-foreground">每一步都会调用一次模型做规划决策，步数越多费用越高。</p>
       </div>
+      <div className="flex flex-col gap-2">
+        <label htmlFor="max-model-calls" className="flex items-center justify-between text-sm font-medium text-card-foreground">
+          <span>模型调用次数上限</span><span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">{maxModelCalls} 次</span>
+        </label>
+        <input id="max-model-calls" type="range" min={1} max={100} step={1} value={maxModelCalls}
+          disabled={isLive} onChange={(e) => onMaxModelCallsChange(Number(e.target.value))}
+          className="w-full accent-primary disabled:opacity-60" />
+        <p className="text-xs text-muted-foreground">服务端强制限额，包含规划、摘要与上下文压缩。此上限不是 Token 或费用硬上限。</p>
+      </div>
 
       <div className="mt-auto flex flex-col gap-2">
         <label htmlFor="stop-condition" className="text-sm font-medium text-card-foreground">
@@ -278,7 +291,7 @@ export function SpecConfigPanel({
           <div className="min-w-0">
             <p className="text-sm font-medium text-card-foreground">写操作需我确认</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              开启后，调用外部写操作工具或市场插件工具前会暂停运行，等你批准后才继续（随方案保存）
+              推荐保持开启。外部写操作和市场插件执行前须经你批准；管理员可强制执行写入审批政策。
             </p>
           </div>
           <button

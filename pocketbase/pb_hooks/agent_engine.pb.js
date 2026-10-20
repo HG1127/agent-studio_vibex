@@ -455,6 +455,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         compressions: Number(hsRaw.compressions || 0),
         approvals: Number(hsRaw.approvals || 0),
       }
+      var budgetService = require(__hooks + "/modules/harness_budget.js")
+      var modelCallLimit = budgetService.normalize(maxSteps, cfg.max_model_calls)
+      if (!modelCallLimit.ok) throw new Error("invalid_model_call_budget")
       var statsBump = function (field, n) {
         harnessStats[field] = Number(harnessStats[field] || 0) + (Number(n) || 1)
       }
@@ -550,8 +553,35 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         for (var mci0 = 0; mci0 < messages.length; mci0++) {
           pChars0 += String((messages[mci0] || {}).content || "").length
         }
-        statsBump("llm_calls", 1)
-        statsBump("est_prompt_chars", pChars0)
+        var admitted = budgetService.allowModelCall(harnessStats, modelCallLimit.max_model_calls)
+        if (!admitted.ok) return { ok: false, error: admitted.error, detail: "本次运行的模型调用预算已用尽" }
+
+        // Reserve the next LLM attempt DURABLY before outbound billing.
+        // The atomic per-run lease prevents ordinary competing ticks, but
+        // strict fencing/expired-lease races still require a future upgrade.
+        var previousCalls = harnessStats.llm_calls
+        var previousChars = harnessStats.est_prompt_chars
+        try {
+          var budgetRecord = $app.findRecordById("agent_runs", runId)
+          if (String(budgetRecord.get("rh_user_id") || "") !== uid ||
+              String(budgetRecord.get("status") || "") !== "running")
+            return { ok: false, error: "model_budget_run_inactive" }
+          var budgetCheckpoint = loadJson(budgetRecord, "checkpoint")
+          var budgetStored = budgetCheckpoint.harness_stats || {}
+          var storedCalls = Number(budgetStored.llm_calls || 0)
+          if (!Number.isInteger(storedCalls) || storedCalls > previousCalls)
+            return { ok: false, error: "model_budget_checkpoint_conflict" }
+          statsBump("llm_calls", 1)
+          statsBump("est_prompt_chars", pChars0)
+          budgetCheckpoint.harness_stats = harnessStats
+          budgetRecord.set("checkpoint", budgetCheckpoint)
+          $app.save(budgetRecord)
+        } catch (budgetError) {
+          // Fail closed. A failed reservation MUST NOT send a paid request.
+          harnessStats.llm_calls = previousCalls
+          harnessStats.est_prompt_chars = previousChars
+          return { ok: false, error: "model_budget_persist_failed" }
+        }
         var engineRes = callEngineLlmBase(messages, maxTokens, timeoutSec)
         if (engineRes && engineRes.ok === true) statsBump("est_out_chars", String(engineRes.content || "").length)
         return engineRes
@@ -560,6 +590,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       var rawSteps = cp.steps || []
       var steps = []
       for (var s = 0; s < rawSteps.length; s++) steps.push(rawSteps[s])
+      var evidenceService = require(__hooks + "/modules/harness_evidence.js")
+      var evidenceRefs = Array.isArray(cp.evidence_refs) ? cp.evidence_refs.slice(-64) : []
       var doneSteps = Number(cp.done_steps || 0)
       var seq = Number(cp.seq || 0)
       var stepIndex = doneSteps + 1
@@ -728,6 +760,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
               compact_summary: cp.compact_summary,
               compact_done: cp.compact_done,
               harness_stats: harnessStats,
+              evidence_refs: evidenceRefs,
               call_sig_recent: sigRecent,
               pending_approval: cp.pending_approval || null,
               approval_decision: String(cp.approval_decision || ""),
@@ -755,6 +788,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             compact_summary: String(cp.compact_summary || ""),
             compact_done: newCompactDone,
             harness_stats: harnessStats,
+            evidence_refs: evidenceRefs,
             call_sig_recent: sigRecent,
             pending_approval: cp.pending_approval || null,
             approval_decision: String(cp.approval_decision || ""),
@@ -856,6 +890,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         "\n\n【本次任务指令】\n" + instruction +
         (stopCondition ? "\n\n【用户停止条件】\n" + stopCondition : "") +
         (cp.compact_summary ? "\n\n【已压缩的早期观察摘要】\n" + String(cp.compact_summary) : "") +
+        (evidenceRefs.length ? "\n\n【已保存的来源线索（尚未独立核验）】\n" + evidenceService.formatPrompt(evidenceRefs) : "") +
         "\n\n【已完成步骤】\n" + (histLines.length ? histLines.join("\n") : "（尚无，这是第一步）") +
         "\n\n【预算】当前第 " + stepIndex + " 步，最多 " + maxSteps + " 步，剩余 " + budgetLeft + " 步。" +
         "\n请输出下一步动作的 JSON。"
@@ -870,6 +905,12 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
 
       if (!llm.ok) {
         seq++
+        if (llm.error === "model_call_budget_exhausted") {
+          addEvent(runId, stepIndex, seq, "error", { message: "model_call_budget_exhausted：已达到模型调用上限" })
+          persistStats()
+          finishRun(runId, "failed", "", "model_call_budget_exhausted", stepIndex, seq, "模型调用预算耗尽，已停止运行")
+          return
+        }
         addEvent(runId, stepIndex, seq, "error", { message: "规划调用失败：" + llm.error, detail: llm.detail || "" })
         var pf1 = Number(cp.parse_failures || 0) + 1
         if (pf1 >= 3) {
@@ -983,6 +1024,25 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
       }
 
+      // Shared schema validation before any tool action, including approved calls.
+      var toolContract = require(__hooks + "/modules/harness_tool_contracts.js")
+      var checkedInput = toolContract.checkToolInput(toolName, toolInput)
+      if (!checkedInput.ok) {
+        seq++
+        addEvent(runId, stepIndex, seq, "error", {
+          message: "工具参数未通过安全校验：" + checkedInput.error, tool: toolName,
+        })
+        pushStepAndSave({ thought: thought.slice(0, 200), action: "tool_input_invalid",
+          tool: toolName, obs: "工具参数无效，请按工具 Schema 修正：" + checkedInput.error }, 0)
+        if (doneSteps + 1 >= maxSteps) {
+          persistStats()
+          finishRun(runId, "failed", "", "工具参数无效且已达到步数上限", stepIndex, seq, "运行预算已耗尽")
+        }
+        return
+      }
+      toolInput = checkedInput.value
+      var audit = require(__hooks + "/modules/harness_audit.js")
+
       var invInputStr = ""
       try {
         invInputStr = JSON.stringify(toolInput)
@@ -1021,6 +1081,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         external: Boolean(customConns[toolName]),
         method: configuredToolMethod,
         requireApproval: cfg.require_approval === true,
+        mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true",
         alreadyApproved: resumeApprovedCall,
       })
       var needApproval = toolPolicy.requiresApproval
@@ -1030,7 +1091,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         addEvent(runId, stepIndex, seq, "approval_pending", {
           message: "等待你的批准：" + toolName,
           tool_name: toolName,
-          args_summary: invInputStr.slice(0, 300),
+          args_summary: audit.excerpt(toolInput, 300),
           step_index: stepIndex,
           thought: thought.slice(0, 200),
         })
@@ -1051,9 +1112,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       seq++
       addEvent(runId, stepIndex, seq, "tool_call", {
         tool: toolName,
-        input: toolInput,
+        input: audit.redact(toolInput),
         thought: thought.slice(0, 200),
-        action: "tool:" + toolName + " " + invInputStr.slice(0, 200),
+        action: "tool:" + toolName + " " + audit.excerpt(toolInput, 200),
         observation: "",
       })
 
@@ -1415,6 +1476,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         return
       }
 
+      if (!toolErr) evidenceRefs = evidenceService.collect(
+        evidenceRefs, toolName, toolInput, output, stepIndex)
+
       var toolLatency = new Date().getTime() - toolT0
       var invKind = marketToolMap[toolName] || customConns[toolName] || customToolNames.indexOf(toolName) >= 0 ? "external" : "builtin"
       var invStatus = toolErr ? "failed" : toolRetried ? "retried_success" : "success"
@@ -1425,7 +1489,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
       statsBump("tool_calls", 1)
       if (toolRetried) statsBump("retries", 1)
-      writeInvocation(uid, toolName, invKind, "agent_run", runId, invStatus, toolLatency, invInputStr, toolErr ? toolErr : output, invErrCode, toolRetried)
+      writeInvocation(uid, toolName, invKind, "agent_run", runId, invStatus, toolLatency,
+        audit.excerpt(toolInput, 500), audit.excerpt(toolErr ? toolErr : output, 1000), invErrCode, toolRetried)
       // One metadata-only span per logical tool call (including a retry if performed).
       // Never store the tool input, output, credentials or arbitrary error text in traces.
       try {
@@ -1442,24 +1507,24 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         seq++
         addEvent(runId, stepIndex, seq, "error", {
           tool: toolName,
-          message: "工具执行失败：" + toolErr + (toolRetried ? "（已自动重试 1 次仍失败）" : ""),
+          message: "工具执行失败：" + audit.excerpt(toolErr, 300) + (toolRetried ? "（已自动重试 1 次仍失败）" : ""),
           retried: toolRetried,
           thought: thought.slice(0, 200),
-          action: "tool:" + toolName + " " + invInputStr.slice(0, 200),
-          observation: ("工具执行失败：" + toolErr).slice(0, 240),
+          action: "tool:" + toolName + " " + audit.excerpt(toolInput, 200),
+          observation: ("工具执行失败：" + audit.excerpt(toolErr, 200)).slice(0, 240),
         })
-        pushStepAndSave({ thought: thought.slice(0, 200), action: "tool_error", tool: toolName, obs: ("工具执行失败：" + toolErr + (toolRetried ? "（已重试 1 次）" : "")).slice(0, 240) }, 0)
+        pushStepAndSave({ thought: thought.slice(0, 200), action: "tool_error", tool: toolName, obs: ("工具执行失败：" + audit.excerpt(toolErr, 180) + (toolRetried ? "（已重试 1 次）" : "")).slice(0, 240) }, 0)
       } else {
         seq++
         addEvent(runId, stepIndex, seq, "tool_result", {
           tool: toolName,
-          output: String(output).slice(0, 2000),
+          output: audit.excerpt(output, 2000),
           retried: toolRetried,
           thought: thought.slice(0, 200),
-          action: "tool:" + toolName + " " + invInputStr.slice(0, 200),
-          observation: String(output).slice(0, 240),
+          action: "tool:" + toolName + " " + audit.excerpt(toolInput, 200),
+          observation: audit.excerpt(output, 240),
         })
-        pushStepAndSave({ thought: thought.slice(0, 200), action: "tool", tool: toolName, obs: String(output).slice(0, 280) }, 0)
+        pushStepAndSave({ thought: thought.slice(0, 200), action: "tool", tool: toolName, obs: audit.excerpt(output, 280) }, 0)
       }
 
       if (doneSteps + 1 >= maxSteps) {
@@ -1510,6 +1575,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       compact_summary: String(cpRaw.compact_summary || ""),
       compact_done: Number(cpRaw.compact_done || 0),
       harness_stats: cpRaw.harness_stats || {},
+      evidence_refs: cpRaw.evidence_refs || [],
       call_sig_recent: cpRaw.call_sig_recent || [],
       pending_approval: cpRaw.pending_approval || null,
       approval_decision: String(cpRaw.approval_decision || ""),
@@ -1703,6 +1769,8 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
     var maxSteps = parseInt(cfgIn.max_steps, 10)
     if (isNaN(maxSteps) || maxSteps < 1) maxSteps = 10
     if (maxSteps > 30) maxSteps = 30
+    var normalizedBudget = require(__hooks + "/modules/harness_budget.js").normalize(maxSteps, cfgIn.max_model_calls)
+    if (!normalizedBudget.ok) return e.json(400, { error: normalizedBudget.error, message: "模型调用预算必须是 1 至 100 的整数" })
     var config = {
       tools: {
         calculate: toolsIn.calculate === true,
@@ -1712,6 +1780,7 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
         web_search: toolsIn.web_search === true,
       },
       max_steps: maxSteps,
+      max_model_calls: normalizedBudget.max_model_calls,
       stop_condition: String(cfgIn.stop_condition || "").slice(0, 500),
       stop_on_complete: cfgIn.stop_on_complete !== false,
       require_approval: cfgIn.require_approval === true,
@@ -1876,6 +1945,7 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       done_steps: 0,
       parse_failures: 0,
       harness_stats: { llm_calls: 0, est_prompt_chars: 0, est_out_chars: 0, tool_calls: 0, retries: 0, compressions: 0, approvals: 0 },
+      evidence_refs: [],
       call_sig_recent: [],
       pending_approval: null,
       approval_decision: "",

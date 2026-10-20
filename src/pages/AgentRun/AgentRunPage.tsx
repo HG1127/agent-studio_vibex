@@ -1,6 +1,7 @@
 import { AlertCircle, LogIn, Rocket, X } from "lucide-react"
 import { ApprovalGateCard } from "@/components/agent-run/ApprovalGateCard"
 import { AgentQualityChecklist } from "@/components/agent-run/AgentQualityChecklist"
+import { EvidenceLedgerPanel } from "@/components/agent-run/EvidenceLedgerPanel"
 import { MemoryPanel } from "@/components/agent-run/MemoryPanel"
 import { RunControlBar } from "@/components/agent-run/RunControlBar"
 import { RunHistoryList } from "@/components/agent-run/RunHistoryList"
@@ -89,6 +90,8 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               onToggleTool={p.handleToggleTool}
               maxSteps={p.maxSteps}
               onMaxStepsChange={p.setMaxSteps}
+              maxModelCalls={p.maxModelCalls}
+              onMaxModelCallsChange={p.setMaxModelCalls}
               stopCondition={p.stopCondition}
               onStopConditionChange={p.setStopCondition}
               stopOnComplete={p.stopOnComplete}
@@ -143,6 +146,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 />
               )}
               <RunTimeline events={p.runEvents} isLive={p.isLive} hasRun={Boolean(p.activeRun)} />
+              <EvidenceLedgerPanel checkpoint={p.activeRun?.checkpoint} />
               {p.selectedSpec && (
                 <AgentQualityChecklist key={p.selectedSpecId}
                   selectedSpec={p.selectedSpec}

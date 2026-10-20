@@ -213,6 +213,7 @@ export function useAgentRun() {
   const [model, setModel] = useState("")
   const [enabledTools, setEnabledTools] = useState<string[]>(BUILTIN_TOOLS.map((t) => t.id))
   const [maxSteps, setMaxSteps] = useState(10)
+  const [maxModelCalls, setMaxModelCalls] = useState(30)
   const [stopCondition, setStopCondition] = useState("")
   const [stopOnComplete, setStopOnComplete] = useState(true)
   const [instruction, setInstruction] = useState("")
@@ -226,7 +227,7 @@ export function useAgentRun() {
   const [customModels, setCustomModels] = useState<CustomModelOption[]>([])
 
   // 审批门 + 方案记忆（harness 增强批次）
-  const [requireApproval, setRequireApproval] = useState(false)
+  const [requireApproval, setRequireApproval] = useState(true)
   const [approvalBusy, setApprovalBusy] = useState<"" | "approve" | "reject">("")
   const [memoryList, setMemoryList] = useState<AgentMemoryRow[]>([])
   const [isLoadingMemories, setIsLoadingMemories] = useState(false)
@@ -367,7 +368,7 @@ export function useAgentRun() {
       if (row?.spec?.done_criteria?.length) {
         setStopCondition(row.spec.done_criteria.join("；"))
       }
-      setRequireApproval(Boolean(row?.spec?.require_approval))
+      setRequireApproval(row?.spec?.require_approval !== false)
     },
     [specList],
   )
@@ -543,6 +544,7 @@ export function useAgentRun() {
         model: parsedCustom ? parsedCustom.modelId : model,
         config: {
           max_steps: maxSteps,
+          max_model_calls: maxModelCalls,
           stop_condition: stopCondition.trim(),
           stop_on_complete: stopOnComplete,
           require_approval: requireApproval,
@@ -592,6 +594,7 @@ export function useAgentRun() {
     model,
     enabledTools,
     maxSteps,
+    maxModelCalls,
     stopCondition,
     stopOnComplete,
     requireApproval,
@@ -1054,8 +1057,8 @@ export function useAgentRun() {
   const isLive = Boolean(activeRun && LIVE_STATES.includes(activeRun.status))
   const isCustomModel = parseCustomModelValue(model) !== null
   const priceHint = isCustomModel
-    ? `使用你自己的密钥，费用由你的服务商计 · 最多 ${maxSteps} 步`
-    : `按实际 token 用量扣费 · 最多 ${maxSteps} 步`
+    ? `自备模型密钥 · 上限 ${maxSteps} 步 / ${maxModelCalls} 次模型调用（非费用上限）`
+    : `按服务商实际用量计费 · 上限 ${maxSteps} 步 / ${maxModelCalls} 次模型调用`
 
   return {
     isLoggedIn: Boolean(rhUserId),
@@ -1079,6 +1082,8 @@ export function useAgentRun() {
     handleToggleTool,
     maxSteps,
     setMaxSteps,
+    maxModelCalls,
+    setMaxModelCalls,
     stopCondition,
     setStopCondition,
     stopOnComplete,

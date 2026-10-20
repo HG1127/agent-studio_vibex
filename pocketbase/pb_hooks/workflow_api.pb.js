@@ -1666,12 +1666,13 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       }
       // —— 审批门：require_approval 开启时，目标为写操作（tool_connections method≠GET 或 mkt__ 市场工具）的
       // 工具节点不直接执行，转 awaiting_approval 释放认领，等用户在 approve 路由上决定 ——
-      if (nType === "tool" && requireApproval && approvedNode !== nextId && rejectNode !== nextId) {
+      if (nType === "tool" && (requireApproval || $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true") && approvedNode !== nextId && rejectNode !== nextId) {
         var gateTool = String(nData.tool || "").trim()
         var policyService = require(__hooks + "/modules/tool_policy.js")
         var gateMarket = gateTool.indexOf("mkt__") === 0
         var gateNeeded = policyService.classify({
-          toolName: gateTool, market: gateMarket, requireApproval: true
+          toolName: gateTool, market: gateMarket, requireApproval: requireApproval,
+          mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true"
         }).requiresApproval
         if (!gateMarket) {
           var gateRows = []
@@ -1687,7 +1688,8 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             var gtMethod = "POST"
             try { gtMethod = String(gateRows[gti].getString("method") || "POST").toUpperCase() } catch (_) {}
             gateNeeded = policyService.classify({
-              toolName: gateTool, external: true, method: gtMethod, requireApproval: true
+              toolName: gateTool, external: true, method: gtMethod, requireApproval: requireApproval,
+              mandatoryApproval: $os.getenv("AGENT_STUDIO_HARNESS_V2_STRICT_WRITES") === "true"
             }).requiresApproval
             break
           }
@@ -1696,7 +1698,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           var gateMissing = []
           var gateParams = renderTemplate(String(nData.params_template || ""), gateMissing)
           if (gateParams.length > 8000) gateParams = gateParams.slice(0, 8000) + "\n…已截断"
-          var gateSummary = gateParams.slice(0, 300)
+          var gateSummary = require(__hooks + "/modules/harness_audit.js").excerpt(gateParams, 300)
           statsBump("approvals", 1)
           seq++
           var gateContent = {
@@ -1932,6 +1934,10 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             var agParams = (agDec.params && typeof agDec.params === "object") ? agDec.params : {}
             var agOut = ""
             var agErrT = ""
+            var agChecked = require(__hooks + "/modules/harness_tool_contracts.js").checkToolInput(agTool, agParams)
+            if (!agChecked.ok) agErrT = "tool_input_invalid：" + agChecked.error
+            else {
+            agParams = agChecked.value
             if (agTool === "calculate") {
               try { agOut = String(agParams.expression || "") + " = " + String(evalExpr(agParams.expression)) } catch (ce) { agErrT = String((ce && ce.message) || ce) }
             } else if (agTool === "web_fetch") {
@@ -1951,6 +1957,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
               if (agSm.ok) agOut = String(agSm.content); else agErrT = String(agSm.error || "summarize 失败")
             } else {
               agErrT = "不支持的工具：" + agTool
+            }
             }
             seq++
             addEvent(runId, nextId, seq, "observation", {
@@ -1981,7 +1988,15 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             nodeErrDetail = paramsStr.slice(0, 300)
           }
         }
-        inputSummary = paramsStr.slice(0, 600)
+        if (!nodeErr) {
+          var checkedNodeInput = require(__hooks + "/modules/harness_tool_contracts.js").checkToolInput(toolName, inputObj)
+          if (!checkedNodeInput.ok) {
+            nodeErr = "tool_input_invalid：" + checkedNodeInput.error
+            nodeErrDetail = "工具输入未通过统一安全校验"
+          } else inputObj = checkedNodeInput.value
+        }
+        var wfAudit = require(__hooks + "/modules/harness_audit.js")
+        inputSummary = wfAudit.excerpt(paramsStr, 600)
         if (harnessInput && harnessInput.truncated) inputSummary = inputSummary + "\n…已截断"
         // —— 重试对齐批次：工具执行包成可重入的单次尝试；网络类失败（$http.send 抛错/超时/5xx）
         //    立即自动重试 1 次；业务错误（4xx/配置错误）与模型调用（summarize）不重试 ——
@@ -2252,7 +2267,8 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           var invCodeMatch = String(nodeErr).match(/^[a-z][a-z0-9_]+/)
           invErrCodeWf = invCodeMatch ? invCodeMatch[0] : "tool_error"
         }
-        writeInvocation(toolName, invKindWf, nodeErr ? "failed" : toolRetried ? "retried_success" : "success", new Date().getTime() - t0, inputSummary, nodeErr ? nodeErr : String(output), invErrCodeWf, toolRetried)
+        writeInvocation(toolName, invKindWf, nodeErr ? "failed" : toolRetried ? "retried_success" : "success", new Date().getTime() - t0,
+          inputSummary, wfAudit.excerpt(nodeErr ? nodeErr : String(output), 1000), invErrCodeWf, toolRetried)
         // Metadata-only tool trace. The existing audit continues to own detailed tool logs.
         try {
           require(__hooks + "/modules/execution_trace.js").record($app, {

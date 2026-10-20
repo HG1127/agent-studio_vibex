@@ -44,7 +44,7 @@ const model = createServer(async (req,res) => {
       thought: "Call the authorized external tool exactly once",
       action: "tool",
       tool: user.includes("uncertain") ? "AgentAmbiguousWrite" : "AgentWriteOnce",
-      tool_input: { message: "once" },
+      tool_input: { message: "once", api_key: "fake-test-secret-never-log" },
     })
   } else {
     reply = JSON.stringify({
@@ -139,6 +139,10 @@ try {
   const finished = await complete(good.id)
   assert.equal(finished.status, "succeeded", JSON.stringify(finished))
   assert.equal(successfulPosts, 1)
+  const safeEvents = await api("GET", "/api/agent-runs/" + good.id + "/detail")
+  assert.equal(safeEvents.status, 200)
+  assert.doesNotMatch(JSON.stringify(safeEvents.data.events || []), /fake-test-secret-never-log/,
+    "Tool credentials in model-generated parameters must not be stored in run events")
   await restart(good.id, good.before)
   const replay = await tick(good.id)
   assert.equal(replay.status, 200)
