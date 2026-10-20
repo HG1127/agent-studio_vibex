@@ -40,7 +40,7 @@ node worker/run.mjs --once
 
 - Worker Token 是高权限服务端凭证，不能写入网页 JavaScript、公开仓库、日志或 VibeX ZIP。
 - 服务端仅从数据库读取任务归属，调用者不能通过请求体指定 owner 或任意 URL。
-- **已实现 SQLite 原子租约**：`execution_leases.pb.js` 创建 `agent_studio_run_leases`。Agent/Workflow Tick 使用 `INSERT … ON CONFLICT DO UPDATE … WHERE expires_ms < now` 条件写入领取，并通过唯一 Token 释放；多个后台 Worker 与浏览器轮询均通过此检查。默认租约 10 分钟，租约过期允许重新领取。单个 Tick 超出该时长时仍可能发生重复 LLM 调用，因此**这不是完整的分布式 fencing 或 exactly-once**。
+- **统一受保护 SQLite 租约**：`execution_leases.pb.js` 创建 `agent_studio_run_leases`；共享 `modules/harness_execution_guard.js` 为 Agent/Workflow 提供原子 CAS 领取、条件续期、事务内核验 lease token + 存活期 + 员工归属、受保护的 checkpoint/status 更新及条件释放。失去租约的旧 Worker 不得覆盖新执行者的持久状态。后台调度只依赖数据库活跃租约，不将可能过期的 `checkpoint.claim_until` 提示当成权威依据。默认最长 10 分钟，模型/外部写操作前可续期。**这是状态提交保护，不是完整分布式 exactly-once**：外部系统必须结合写意图日志、专有幂等协议和人工核验，原始事件仍可能重复。
 - **外部写操作审计与安全恢复**：`agent_studio_side_effects` 在 HTTP POST / MCP 调用前写入 `started`；明确成功写入 `succeeded`，结果不确定写入 `unknown`。同一步、同工具、相同入参才能复用成功结果；`unknown` 或尚未确认的 `started` 会阻断重复 POST，并以需要人工核查的错误终止当前任务。读操作可按既有规则重试，未知第三方写操作不会自动重试。
 - **不盲目附加 Idempotency-Key**：部分底层 HTTP 传输层可能据此自动重发 POST，即使应用层禁止重试。当前对未知第三方接口不发送该 Header；只有第三方明确实现按业务键幂等时，才能在专属适配器中协商开启。
 - **多 Worker 调度**：后台调度扫描有效租约，跳过其他执行者已领取的任务。多个副本的原子竞争已在本地验证，但目前缺少执行期间续租、严格 fencing 和多实例心跳登记；正式生产仍建议先保持一份 Worker 并限额压测。
