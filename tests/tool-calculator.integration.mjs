@@ -91,7 +91,7 @@ try {
   })
   const run=await call("POST","/api/agent-runs/start",{
     spec_id:spec.id,instruction:"CALCULATOR_AGENT_TEST calculate (2+3)*4",
-    model:"calc-model",config:{max_steps:5,tools:{calculate:true},
+    model:"calc-model",config:{max_steps:5,max_runtime_minutes:60,tools:{calculate:true},
       custom_model:{connection_id:conn.item.id,model_id:"calc-model"}},
   })
   // Reboot recovery: only checkpoint claims the worker is busy, but the
@@ -113,6 +113,8 @@ try {
   }
   assert.equal(result?.status,"succeeded",JSON.stringify(result))
   assert.match(result.result,/CALCULATOR_AGENT_COMPLETE 20/)
+  assert.ok(result.checkpoint.execution_deadline_ms > Date.now(),
+    "A completed multi-step Agent must not drop its configured deadline while saving partial checkpoints")
   const detail=await call("GET","/api/agent-runs/"+run.run_id+"/detail")
   assert.match(JSON.stringify(detail.events||[]),/20/,"Agent must have run a real calculator, not only printed final answer")
   const agentTrace=await call("GET","/api/execution-traces?kind=agent&run_id="+run.run_id)
@@ -134,6 +136,8 @@ try {
   const budgetRow=await call("GET","/api/agent_runs/"+budgeted.run_id)
   assert.equal(budgetRow.status,"failed",JSON.stringify(budgetRow))
   assert.match(budgetRow.error,/model_call_budget_exhausted/)
+  assert.equal(budgetRow.checkpoint.failure_diagnostic?.category, "model_budget")
+  assert.equal(budgetRow.checkpoint.failure_diagnostic?.auto_retry_allowed, false)
   assert.equal(budgetRow.checkpoint.harness_stats.llm_calls,1)
   assert.equal(modelRequests-beforeBudget,1,"Budget must prevent a second paid model request")
 
@@ -172,6 +176,8 @@ try {
   const deadlineRow=await call("GET","/api/agent_runs/"+deadlineRun.run_id)
   assert.equal(deadlineRow.status,"failed")
   assert.equal(deadlineRow.error,"run_runtime_deadline_exceeded")
+  assert.equal(deadlineRow.checkpoint.failure_diagnostic?.category, "deadline")
+  assert.equal(deadlineRow.checkpoint.failure_diagnostic?.recommended_action, "adjust_limits")
   assert.equal(deadlineRow.checkpoint.evidence_refs[0].locator,"test-doc")
   assert.equal(modelRequests,modelCallsBeforeDeadline,"Expired run may not send a model request")
   console.log("HARNESS_V2_AGENT_DEADLINE_PASS")

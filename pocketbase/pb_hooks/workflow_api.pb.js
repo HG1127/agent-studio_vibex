@@ -1057,6 +1057,10 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       admission = runLifecycle.enter($app, executionGuard, {
         kind: "workflow", runId: id, owner: uid, token: leaseToken,
         loadCheckpoint: function (r) { return loadJson(r, "checkpoint") },
+        classifyFailure: function (reason) {
+          return require(__hooks + "/modules/harness_failure_triage.js")
+            .diagnose(reason, { kind: "workflow", stage: "runtime" })
+        },
       })
     } catch (leaseErr) {
       try { $app.logger().error("workflow execution admission failed", "err", String(leaseErr)) } catch (_) {}
@@ -1479,12 +1483,24 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             cp.approved_input_hash = approvedInputHash
             cp.reject_node = rejectNode
             cp.pending_approval = pendingApproval
+            if (extraStatus && String(extraStatus.status || "") === "failed") {
+              cp.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
+                .diagnose(extraStatus.error || "execution_step_failed", {
+                  kind: "workflow", stage: "workflow_node",
+                  stepRef: String(nextId || ""), seq: seq,
+                })
+            } else if (extraStatus && String(extraStatus.status || "") === "succeeded") {
+              cp.failure_diagnostic = null
+            }
             r2.set("checkpoint", cp)
             r2.set("done_nodes", doneCount)
             if (extraStatus) {
               r2.set("status", String(extraStatus.status || ""))
               if (extraStatus.result !== undefined) r2.set("result", String(extraStatus.result))
-              if (extraStatus.error !== undefined) r2.set("error", String(extraStatus.error))
+              if (extraStatus.error !== undefined) {
+                r2.set("error", require(__hooks + "/modules/harness_audit.js")
+                  .excerpt(extraStatus.error, 300))
+              }
             }
             tx.save(r2)
           })
@@ -1865,7 +1881,10 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       var failNode = function (errText, detailText) {
         statuses[nextId] = "failed"
         seq++
-        var failContent = { title: nTitle, type: nType, error: String(errText).slice(0, 500), detail: String(detailText || "").slice(0, 400) }
+        var failureAudit = require(__hooks + "/modules/harness_audit.js")
+        var failContent = { title: nTitle, type: nType,
+          error: failureAudit.excerpt(errText, 300),
+          detail: failureAudit.excerpt(detailText || "", 200) }
         if (toolRetried === true) failContent.retried = true
         if (curLoopCtx) failContent.round = curLoopCtx.round
         addEvent(runId, nextId, seq, "node_failed", failContent)
@@ -2583,6 +2602,8 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             var cp3 = loadJson(r3, "checkpoint")
             cp3.claim_until = 0
             cp3.seq = Number(cp3.seq || 0) + 1
+            cp3.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
+              .diagnose(stepMsg, { kind: "workflow", stage: "worker", seq: cp3.seq })
             failureSeq = Number(cp3.seq)
             r3.set("checkpoint", cp3)
             r3.set("status", "failed")

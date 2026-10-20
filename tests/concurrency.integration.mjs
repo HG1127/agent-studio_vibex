@@ -190,6 +190,9 @@ try {
   const unknown = await detail(uncertain.runId)
   assert.equal(unknown.status, "failed")
   assert.match(unknown.error, /write_outcome_unknown/)
+  assert.equal(unknown.checkpoint.failure_diagnostic?.category, "external_write")
+  assert.equal(unknown.checkpoint.failure_diagnostic?.recommended_action, "verify_external_write")
+  assert.equal(unknown.checkpoint.failure_diagnostic?.auto_retry_allowed, false)
   assert.equal(ambiguousCalls, 1, "Non-idempotent POST must not be auto-retried after network failure")
 
   await resumeRaw(uncertain.runId, uncertain.before)
@@ -359,6 +362,8 @@ try {
   const expiredRow=await detail(expiringWf.result.run_id)
   assert.equal(expiredRow.status,"failed")
   assert.equal(expiredRow.error,"run_runtime_deadline_exceeded")
+  assert.equal(expiredRow.checkpoint.failure_diagnostic?.category,"deadline")
+  assert.equal(expiredRow.checkpoint.failure_diagnostic?.auto_retry_allowed,false)
   assert.equal(expiredRow.checkpoint.outputs.previous,"retained")
   assert.equal(expiredRow.done_nodes,0)
 
