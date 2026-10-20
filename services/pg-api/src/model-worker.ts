@@ -7,6 +7,7 @@ import {fileURLToPath} from "node:url"
 import {isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
 import type {ModelInput,ModelProvider} from "./model-provider.ts"
 import type {LeasedPrepareJob} from "./agent-worker.ts"
+import {gatherAgentKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
 
 const sql=(name:string)=>readFileSync(
   fileURLToPath(new URL("../../../db/postgres/"+name,import.meta.url)),"utf8")
@@ -136,21 +137,36 @@ export class AgentModelWorker {
         return {status:"blocked"}
       }
       const data=spec.spec
+      const bases=data.knowledge_base_ids===undefined?[]:data.knowledge_base_ids
+      const evidence=await gatherAgentKnowledgeEvidence(db,current.owner_user_id,
+        bases,data.tools,run.instruction)
       const input:ModelInput={
         goal:typeof data.goal==="string"?data.goal:"",
         instruction:run.instruction,
         taskScope:typeof data.task_scope==="string"?data.task_scope:"",
         deliverables:Array.isArray(data.deliverables)?data.deliverables as string[]:[],
         doneCriteria:Array.isArray(data.done_criteria)?data.done_criteria as string[]:[],
+        ...(Array.isArray(bases)&&bases.length?{
+          knowledgeEvidence:evidence.map(({citation,snippet})=>({citation,snippet}))
+        }:{}),
       }
       if(!input.goal||input.goal.length>2000||input.instruction.length>1200)
         throw Error("model_input_invalid")
       const fingerprint=hash({input,model_phase:"v8_2"})
+      const knowledgeAudit=Array.isArray(bases)&&bases.length?{
+        knowledge_mode:"literal_keyword",
+        citations:evidence.map(hit=>hit.citation),
+        sources:evidence.map(hit=>({base_id:hit.baseId,
+          document_id:hit.documentId,chunk_index:hit.chunkIndex,
+          citation:hit.citation})),
+        knowledge_input_sha256:hash(evidence)
+      }:{}
       const step=await db.query<{id:string}>(
         "INSERT INTO agentstudio.run_steps(owner_user_id,run_id,step_key,"+
         "status,metadata) VALUES($1::uuid,$2::uuid,'model','running',"+
-        "'{\"category\":\"approved_text_generation\"}'::jsonb) RETURNING id",
-        [current.owner_user_id,current.run_id])
+        "$3::jsonb) RETURNING id",
+        [current.owner_user_id,current.run_id,
+          JSON.stringify({category:"approved_text_generation",...knowledgeAudit})])
       if(step.rows.length!==1)throw Error("model_step_exists")
       const effect=await db.query<{run_id:string}>(
         "INSERT INTO agentstudio.external_effects "+
@@ -188,7 +204,7 @@ export class AgentModelWorker {
       if(effect.rows.length!==1)throw Error("model_effect_not_started")
       const step=await db.query<{id:string}>(
         "UPDATE agentstudio.run_steps SET status='succeeded',"+
-        "metadata=$3::jsonb,updated_at=clock_timestamp() "+
+        "metadata=metadata || $3::jsonb,updated_at=clock_timestamp() "+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid "+
         "AND step_key='model' AND status='running' RETURNING id",
         [current.run_id,current.owner_user_id,
