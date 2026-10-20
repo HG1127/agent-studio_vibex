@@ -1,0 +1,53 @@
+name: Agent Studio PG18 isolated TCP verification
+
+on:
+  push:
+    branches:
+      - 'migration/pg18-tcp-ci-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pg18-tcp-ephemeral:
+    name: PostgreSQL 18 pgvector / real TCP / isolated lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout isolated test branch
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pilot API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Offline fail-closed guard and concurrent idempotency unit tests
+        run: node --experimental-strip-types --test services/pg-api/tests/pg18-tcp-ci-contract.test.mjs services/pg-api/tests/pg18-run-idempotency-race.test.mjs
+      - name: Real PostgreSQL 18, separate worker processes, roles and fencing
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: "agentstudio_pg18_ci"
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg18-tcp.integration.mjs
