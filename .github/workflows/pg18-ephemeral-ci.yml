@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'migration/pg18-tcp-ci-*'
+      - 'migration/pg18-agent-kb-ci-*'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +42,8 @@ jobs:
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Offline fail-closed guard and concurrent idempotency unit tests
         run: node --experimental-strip-types --test services/pg-api/tests/pg18-tcp-ci-contract.test.mjs services/pg-api/tests/pg18-run-idempotency-race.test.mjs
+      - name: Agent KB citation / owner-only grounding PGlite UAT
+        run: node --experimental-strip-types --test services/pg-api/tests/agent-knowledge-grounding.test.mjs
       - name: Real PostgreSQL 18, separate worker processes, roles and fencing
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"

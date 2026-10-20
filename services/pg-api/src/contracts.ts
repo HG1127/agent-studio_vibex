@@ -29,7 +29,7 @@ export interface AgentSpecInput {
   task_plan: string[]
   done_criteria: string[]
   tools: string[]
-  knowledge_base_ids: []
+  knowledge_base_ids: string[]
   require_approval: true
 }
 
@@ -46,6 +46,14 @@ function textList(value:unknown):string[] {
   if(!Array.isArray(value) || value.length>20)throw new HttpError(400,"invalid_agent_spec")
   return value.map(v=>field(v,300))
 }
+function knowledgeBaseIds(value:unknown,tools:readonly string[]):string[]{
+  if(value===undefined)return []
+  if(!Array.isArray(value)||value.length>3||
+     value.some(x=>!isUuid(x))||new Set(value).size!==value.length||
+     (value.length>0&&!tools.includes("knowledge_search")))
+    throw new HttpError(400,"invalid_agent_knowledge_scope")
+  return [...value]
+}
 export function safeAgentSpec(raw:unknown):AgentSpecInput {
   if(!raw || typeof raw!=="object" || Array.isArray(raw))throw new HttpError(400,"invalid_agent_spec")
   const data=raw as Record<string,unknown>
@@ -57,6 +65,7 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
   // first pilot slice; the future authenticated repository must manage those.
   const permitted=new Set([
     "goal","task_scope","deliverables","task_plan","done_criteria","tools",
+    "knowledge_base_ids",
   ])
   if(Object.keys(data).some(k=>!permitted.has(k)))throw new HttpError(400,"unsafe_agent_spec_field")
   return {
@@ -65,7 +74,7 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
     task_plan:textList(data.task_plan),
     done_criteria:textList(data.done_criteria),
     tools:[...new Set(tools)],
-    knowledge_base_ids:[],
+    knowledge_base_ids:knowledgeBaseIds(data.knowledge_base_ids,tools),
     require_approval:true,
   }
 }

@@ -14,6 +14,7 @@ import pgPackage from "pg"
 import {loadPg18CiBaseline} from "../src/pg18-ci-schema.mjs"
 import {requireEphemeralPg18Ci} from "../src/pg18-ephemeral-ci-guard.mjs"
 import {AgentSpecRepository} from "../src/repository.ts"
+import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
 import {RunRepository} from "../src/run-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
@@ -165,14 +166,36 @@ test("PG18 CI: genuine two-connection Prepare/Model lifecycle and RLS fencing",a
     assert.equal((await agents.list(bob)).length,1)
     assert.equal(await agents.get(bob,aliceSpec.id),null)
 
+    // The disposable CI DB holds only synthetic, owner-private evidence.
+    const knowledgeRepo=new KnowledgeBaseRepository(adapter(apiPool))
+    const ownKb=await knowledgeRepo.create(alice,"Alice synthetic KB","")
+    const otherKb=await knowledgeRepo.create(bob,"Bob private KB","")
+    await assert.rejects(agents.update(alice,aliceSpec.id,"Wrong owner",{
+      ...spec,tools:["knowledge_search"],knowledge_base_ids:[otherKb.id],
+      require_approval:true
+    },1),error=>error?.status===404&&error?.code==="knowledge_base_not_found")
+    const linked=await agents.update(alice,aliceSpec.id,"Synthetic Alice",{
+      ...spec,tools:["knowledge_search"],knowledge_base_ids:[ownKb.id],
+      require_approval:true
+    },1)
+    assert.equal(linked.revision,2)
+    assert.deepEqual(linked.spec.knowledge_base_ids,[ownKb.id])
+    const syntheticDoc=await knowledgeRepo.createTextDocument(alice,ownKb.id,{
+      filename:"pg18-ci-evidence.md",
+      text:"量子计算合成行业资料，仅用于真实 PG18 CI 验证引用来源。"
+    })
+    assert.equal(syntheticDoc.status,"indexed")
+    assert.equal((await knowledgeRepo.list(bob)).length,1)
+    assert.equal(await knowledgeRepo.get(bob,ownKb.id),null)
+
     // Two requests with one idempotency key can truly race on distinct PG18
     // connections. Exactly one run/job must persist; the other returns a
     // replay after its aborted INSERT transaction has rolled back.
     const [ra,raReplay,rb]=await Promise.all([
       runRepo.submit(alice,aliceSpec.id,{
-        instruction:"Synthetic Alice prep",idempotency_key:"pg18ci_alice_001"}),
+        instruction:"知识检索：量子计算",idempotency_key:"pg18ci_alice_001"}),
       runRepo.submit(alice,aliceSpec.id,{
-        instruction:"Synthetic Alice prep",idempotency_key:"pg18ci_alice_001"}),
+        instruction:"知识检索：量子计算",idempotency_key:"pg18ci_alice_001"}),
       runRepo.submit(bob,bobSpec.id,{
         instruction:"Synthetic Bob prep",idempotency_key:"pg18ci_bob_001"})
     ])
@@ -238,12 +261,29 @@ test("PG18 CI: genuine two-connection Prepare/Model lifecycle and RLS fencing",a
     assert.notEqual(modelLeaseA.id,modelLeaseB.id)
     const modelInput=await modelA.begin(modelLeaseA)
     assert.equal(modelInput.status,"ready")
+    if(modelLeaseA.run_id===ra.run.id){
+      assert.deepEqual(modelInput.input.knowledgeEvidence?.map(x=>x.citation),
+        ["pg18-ci-evidence.md#chunk-0"])
+      assert.doesNotMatch(JSON.stringify(modelInput.input.knowledgeEvidence),
+        /documentId|baseId|object_key|embedding/)
+    }else assert.equal(modelInput.input.knowledgeEvidence,undefined)
     const result=await modelA.succeed(modelLeaseA,
       await modelA.provider.generate(modelInput.input))
     assert.equal(result.status,"succeeded")
     assert.equal((await modelA.succeed(modelLeaseA,"duplicate")).status,"stale")
     const failingInput=await modelB.begin(modelLeaseB)
     assert.equal(failingInput.status,"ready")
+    if(modelLeaseB.run_id===ra.run.id)
+      assert.deepEqual(failingInput.input.knowledgeEvidence?.map(x=>x.citation),
+        ["pg18-ci-evidence.md#chunk-0"])
+    else assert.equal(failingInput.input.knowledgeEvidence,undefined)
+    const knowledgeAudit=(await admin.query(
+      "SELECT metadata FROM agentstudio.run_steps "+
+      "WHERE run_id=$1 AND step_key='model'",[ra.run.id])).rows[0].metadata
+    assert.equal(knowledgeAudit.sources.length,1)
+    assert.equal(knowledgeAudit.sources[0].base_id,ownKb.id)
+    assert.equal(knowledgeAudit.sources[0].document_id,syntheticDoc.id)
+    assert.equal(knowledgeAudit.sources[0].chunk_index,0)
     await assert.rejects(modelB.provider.generate(failingInput.input),
       /synthetic_model_timeout_no_network/)
     assert.equal((await modelB.unknown(modelLeaseB)).status,"quarantined")
