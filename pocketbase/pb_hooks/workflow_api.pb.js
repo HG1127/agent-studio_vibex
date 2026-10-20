@@ -709,6 +709,11 @@ routerAdd("POST", "/api/workflow-runs/start", function (e) {
       }
     }
 
+    var runtimeDeadline = require(__hooks + "/modules/harness_run_lifecycle.js")
+      .deadlineFromMinutes(body.max_runtime_minutes, new Date().getTime())
+    if (!runtimeDeadline.ok)
+      return e.json(400, { error: runtimeDeadline.error, message: "任务最长运行时间需为 1-1440 分钟，或留空禁用" })
+
     var col = $app.findCollectionByNameOrId("workflow_runs")
     var rec = new Record(col)
     rec.set("rh_user_id", uid)
@@ -720,6 +725,7 @@ routerAdd("POST", "/api/workflow-runs/start", function (e) {
     rec.set("graph_snapshot", { nodes: nodes, edges: edges })
     rec.set("checkpoint", {
       queue: [startId], statuses: {}, outputs: {}, seq: 1, claim_until: 0, done_count: 0,
+      execution_deadline_ms: runtimeDeadline.deadline_ms,
       harness_stats: { llm_calls: 0, est_prompt_chars: 0, est_out_chars: 0, tool_calls: 0, retries: 0, truncations: 0, approvals: 0 },
       exec_sig: {}, approved_node: "", reject_node: "", pending_approval: null,
       schedule_force_approval: Boolean(scheduledRunId),
@@ -1039,30 +1045,29 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
     var modelWire = require(__hooks + "/modules/model_wire.js")
     var bytesToStr = modelWire.bytesToStr
     var executionGuard = require(__hooks + "/modules/harness_execution_guard.js")
+    var runLifecycle = require(__hooks + "/modules/harness_run_lifecycle.js")
 
     // —— 认领防重叠 ——
-    var cpRaw = loadJson(run, "checkpoint")
-    var tsNow = new Date().getTime()
-    // checkpoint.claim_until is a UI hint only; the atomic SQLite CAS is the
-    // authoritative recovery mechanism even after a crashed worker.
     var leaseToken = $security.randomString(40)
-    var leaseUntil = tsNow + 600000
-    var leaseAcquired = false
+    var admission = null
     try {
-      leaseAcquired = executionGuard.claim($app, "workflow", id, uid, leaseToken, tsNow, 600000)
+      admission = runLifecycle.enter($app, executionGuard, {
+        kind: "workflow", runId: id, owner: uid, token: leaseToken,
+        loadCheckpoint: function (r) { return loadJson(r, "checkpoint") },
+      })
     } catch (leaseErr) {
-      try { $app.logger().error("workflow execution lease unavailable", "err", String(leaseErr)) } catch (_) {}
+      try { $app.logger().error("workflow execution admission failed", "err", String(leaseErr)) } catch (_) {}
       return e.json(503, { error: "execution_lease_unavailable", message: "执行租约暂不可用，已禁止非原子回退" })
     }
-    if (!leaseAcquired) {
-      return e.json(200, { ok: true, run_id: id, status: "running", stepped: false, busy: true })
+    if (!admission.acquired) {
+      return e.json(200, runLifecycle.response(id, "running", { busy: true }))
     }
     try {
-    cpRaw.claim_until = leaseUntil
-    executionGuard.mutate($app, "workflow", id, uid, leaseToken, function (tx, claimedRun) {
-      claimedRun.set("checkpoint", cpRaw)
-      tx.save(claimedRun)
-    })
+    if (admission.deadlineExceeded) {
+      addEvent(id, "", Number(admission.checkpoint.seq || 0) + 1, "status",
+        { message: "run_runtime_deadline_exceeded：本次任务运行总时限已达到" })
+      return e.json(200, runLifecycle.response(id, "failed", { deadlineExceeded: true }))
+    }
 
     try {
       // —— 重新加载后执行一个节点 ——
@@ -1195,6 +1200,8 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
         return outcome
       }
       var callNodeLlm = function (modelSel, messages, maxTokens) {
+        if (!runLifecycle.withinDeadline(cp, new Date().getTime()))
+          return { ok: false, error: "run_runtime_deadline_exceeded" }
         // Keep the authoritative lease current before an external model call.
         if (!executionGuard.renew($app, "workflow", runId, uid, leaseToken))
           return { ok: false, error: "execution_lease_lost" }
@@ -1992,6 +1999,8 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           } else inputObj = checkedNodeInput.value
         }
         var wfAudit = require(__hooks + "/modules/harness_audit.js")
+        if (!nodeErr && !runLifecycle.withinDeadline(cp, new Date().getTime()))
+          nodeErr = "run_runtime_deadline_exceeded：任务最长运行时间已达到"
         inputSummary = wfAudit.excerpt(paramsStr, 600)
         if (harnessInput && harnessInput.truncated) inputSummary = inputSummary + "\n…已截断"
         // —— 重试对齐批次：工具执行包成可重入的单次尝试；网络类失败（$http.send 抛错/超时/5xx）
@@ -2493,8 +2502,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       return e.json(200, { ok: true, run_id: id, status: "running", stepped: true, node_id: nextId })
     } catch (stepErr) {
       var stepMsg = String((stepErr && stepErr.message) || stepErr)
-      var ownershipLost = stepMsg === "execution_lease_lost" ||
-        stepMsg === "execution_run_not_running" || stepMsg === "run_not_running"
+      var ownershipLost = runLifecycle.ownershipLost(stepErr)
       logErr("tick step", stepErr)
       try {
         if (stepMsg !== "run_not_running") {
@@ -2522,7 +2530,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
     }
     } finally {
       try {
-        executionGuard.release($app, "workflow", id, uid, leaseToken)
+        runLifecycle.leave($app, executionGuard, { kind: "workflow", runId: id, owner: uid, token: leaseToken })
       } catch (leaseReleaseErr) {
         try { $app.logger().error("workflow execution lease release failed", "err", String(leaseReleaseErr)) } catch (_) {}
       }

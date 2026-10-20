@@ -147,6 +147,35 @@ try {
   assert.equal(denied.checkpoint.steps[0].action,"tool_input_invalid")
   const deniedDetail=await call("GET","/api/agent-runs/"+invalid.run_id+"/detail")
   assert.match(JSON.stringify(deniedDetail.events||[]),/tool_input_expression_invalid/)
+  // Optional wall-clock guard: expired run preserves its checkpoint and must
+  // not call the model even once after the deadline is reached.
+  const modelCallsBeforeDeadline = modelRequests
+  const deadlineRun = await call("POST","/api/agent-runs/start",{
+    spec_id:spec.id,instruction:"HARNESS_DEADLINE_TEST",model:"calc-model",
+    config:{max_steps:5,max_model_calls:4,max_runtime_minutes:1,tools:{calculate:true},
+      custom_model:{connection_id:conn.item.id,model_id:"calc-model"}},
+  })
+  const deadlineDb = new DatabaseSync(path.join(dir,"data.db"),{timeout:5000})
+  try {
+    const raw = deadlineDb.prepare("SELECT checkpoint FROM agent_runs WHERE id=?")
+      .get(deadlineRun.run_id).checkpoint
+    const expired = JSON.parse(raw)
+    assert.ok(expired.execution_deadline_ms>Date.now())
+    expired.execution_deadline_ms = Date.now()-1000
+    expired.evidence_refs = [{type:"knowledge",locator:"test-doc",excerpt:"preexisting",step:1,status:"retrieved"}]
+    deadlineDb.prepare("UPDATE agent_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify(expired),deadlineRun.run_id)
+  } finally {deadlineDb.close()}
+  const prevented=await call("POST","/api/llm/agent-engine/"+deadlineRun.run_id+"/tick",{})
+  assert.equal(prevented.status,"failed")
+  assert.equal(prevented.deadline_exceeded,true)
+  const deadlineRow=await call("GET","/api/agent_runs/"+deadlineRun.run_id)
+  assert.equal(deadlineRow.status,"failed")
+  assert.equal(deadlineRow.error,"run_runtime_deadline_exceeded")
+  assert.equal(deadlineRow.checkpoint.evidence_refs[0].locator,"test-doc")
+  assert.equal(modelRequests,modelCallsBeforeDeadline,"Expired run may not send a model request")
+  console.log("HARNESS_V2_AGENT_DEADLINE_PASS")
+
   console.log("HARNESS_V2_E2E_BUDGET_TOOL_SCHEMA_STALE_HINT_PASS")
 
   console.log("PASS shared calculator and owner-scoped tool traces: real Workflow and Agent")
