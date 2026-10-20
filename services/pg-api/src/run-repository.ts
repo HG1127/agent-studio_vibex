@@ -49,6 +49,14 @@ const cols=
 function normalized(row:RunRow):RunRow {
   return {...row,step_count:Number(row.step_count)}
 }
+// Identical SQL is used both for the initial idempotency check and for
+// recovering a concurrent unique-key race only AFTER transaction rollback.
+const runByIdempotencyKeySql=
+  "SELECT r."+cols.replaceAll(",",",r.")+" FROM agentstudio.jobs AS j "+
+  "JOIN agentstudio.runs AS r ON r.id=j.run_id "+
+  "AND r.owner_user_id=j.owner_user_id "+
+  "WHERE j.owner_user_id=$1::uuid AND j.kind='run_tick' "+
+  "AND j.dedupe_key=$2::text LIMIT 1"
 export class RunRepository {
   readonly pool:SqlPool
   constructor(pool:SqlPool){this.pool=pool}
@@ -159,55 +167,67 @@ export class RunRepository {
       return {run:normalized(updated.rows[0]!),approval:decision,replayed:false}
     })
   }
-  submit(identity:Identity,specId:string,raw:unknown):Promise<RunSubmission> {
+  async submit(identity:Identity,specId:string,raw:unknown):Promise<RunSubmission> {
     if(!isUuid(specId))throw new HttpError(400,"invalid_spec_id")
     const request=safeRunRequest(raw)
-    return withActor(this.pool,identity,async(db,actor)=>{
-      const prev=await db.query<RunRow>(
-        "SELECT r."+cols.replaceAll(",",
-          ",r.")+" FROM agentstudio.jobs AS j "+
-        "JOIN agentstudio.runs AS r ON r.id=j.run_id "+
-        "AND r.owner_user_id=j.owner_user_id "+
-        "WHERE j.owner_user_id=$1::uuid AND j.kind='run_tick' "+
-        "AND j.dedupe_key=$2::text LIMIT 1",
-        [actor,request.idempotency_key])
-      const existing=prev.rows[0]
-      if(existing){
-        if(existing.agent_spec_id!==specId||
-          existing.instruction!==request.instruction)
-          throw new HttpError(409,"idempotency_key_conflict")
-        return {run:normalized(existing),replayed:true}
-      }
-      const specs=await db.query<{id:string;revision:string|number}>(
-        "SELECT id,revision FROM agentstudio.agent_specs "+
-        "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
-        [specId,actor])
-      const spec=specs.rows[0]
-      if(!spec)throw new HttpError(404,"spec_not_found")
-      const version=Number(spec.revision)
-      if(!Number.isSafeInteger(version)||version<1)
-        throw new Error("invalid_spec_revision")
-      const result=await db.query<RunRow>(
-        "INSERT INTO agentstudio.runs "+
-        "(owner_user_id,kind,agent_spec_id,status,instruction) "+
-        "VALUES($1::uuid,'agent',$2::uuid,'queued',$3::text) "+
-        "RETURNING "+cols,
-        [actor,specId,request.instruction])
-      const run=result.rows[0]
-      if(!run)throw new Error("missing_run_record")
-      try{
-        await db.query(
-          "INSERT INTO agentstudio.jobs "+
-          "(owner_user_id,run_id,kind,dedupe_key,payload) "+
-          "VALUES($1::uuid,$2::uuid,'run_tick',$3::text,$4::jsonb)",
-          [actor,run.id,request.idempotency_key,
-            JSON.stringify({phase:"prepare",spec_revision:version})])
-      }catch(error){
-        if((error as {code?:string}).code==="23505")
-          throw new HttpError(409,"idempotency_key_conflict")
-        throw error
-      }
-      return {run:normalized(run),replayed:false}
-    })
+    try{
+      return await withActor(this.pool,identity,async(db,actor)=>{
+        const prev=await db.query<RunRow>(runByIdempotencyKeySql,
+          [actor,request.idempotency_key])
+        const existing=prev.rows[0]
+        if(existing){
+          if(existing.agent_spec_id!==specId||
+            existing.instruction!==request.instruction)
+            throw new HttpError(409,"idempotency_key_conflict")
+          return {run:normalized(existing),replayed:true}
+        }
+        const specs=await db.query<{id:string;revision:string|number}>(
+          "SELECT id,revision FROM agentstudio.agent_specs "+
+          "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
+          [specId,actor])
+        const spec=specs.rows[0]
+        if(!spec)throw new HttpError(404,"spec_not_found")
+        const version=Number(spec.revision)
+        if(!Number.isSafeInteger(version)||version<1)
+          throw new Error("invalid_spec_revision")
+        const result=await db.query<RunRow>(
+          "INSERT INTO agentstudio.runs "+
+          "(owner_user_id,kind,agent_spec_id,status,instruction) "+
+          "VALUES($1::uuid,'agent',$2::uuid,'queued',$3::text) "+
+          "RETURNING "+cols,
+          [actor,specId,request.instruction])
+        const run=result.rows[0]
+        if(!run)throw new Error("missing_run_record")
+        try{
+          await db.query(
+            "INSERT INTO agentstudio.jobs "+
+            "(owner_user_id,run_id,kind,dedupe_key,payload) "+
+            "VALUES($1::uuid,$2::uuid,'run_tick',$3::text,$4::jsonb)",
+            [actor,run.id,request.idempotency_key,
+              JSON.stringify({phase:"prepare",spec_revision:version})])
+        }catch(error){
+          if((error as {code?:string}).code==="23505")
+            throw new HttpError(409,"idempotency_key_conflict")
+          throw error
+        }
+        return {run:normalized(run),replayed:false}      })
+    }catch(error){
+      if(!(error instanceof HttpError && error.status===409 &&
+           error.code==="idempotency_key_conflict"))throw error
+      // Concurrent identical requests may both see no job before insert.
+      // The losing INSERT receives SQLSTATE 23505, rolling back its run.
+      // Recheck in a NEW owner-scoped transaction after the winning commit;
+      // return its original run only for an EXACT same spec + instruction.
+      // A genuinely different payload still returns 409.
+      const previous=await withActor(this.pool,identity,async(db,actor)=>{
+        const rows=await db.query<RunRow>(runByIdempotencyKeySql,
+          [actor,request.idempotency_key])
+        return rows.rows[0]??null
+      })
+      if(previous && previous.agent_spec_id===specId &&
+         previous.instruction===request.instruction)
+        return {run:normalized(previous),replayed:true}
+      throw error
+    }
   }
 }
