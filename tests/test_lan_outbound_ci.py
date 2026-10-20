@@ -381,6 +381,29 @@ class LANReleaseSafety(unittest.TestCase):
             with self.assertRaises(PULL.PullBlocked):
                 PULL.stage_release(SHA_A, LAN)
 
+    def test_auto_stage_rejects_partial_invalid_and_symlinked_release_artifacts(self):
+        incoming = self.path / "auto-incoming"
+        incoming.mkdir()
+        archive = incoming / (SHA_A + ".tar.gz")
+        checksum = incoming / (SHA_A + ".sha256")
+        with patch.object(PULL, "INCOMING", incoming):
+            archive.write_bytes(b"previous-manual-stage")
+            with self.assertRaisesRegex(PULL.PullBlocked, "artifact_collision"):
+                PULL.stage_release(SHA_A, LAN, auto_previous=SHA_B)
+            checksum.write_text("0" * 64)
+            with self.assertRaisesRegex(PULL.PullBlocked, "checksum_mismatch"):
+                PULL.stage_release(SHA_A, LAN, auto_previous=SHA_B)
+            checksum.unlink()
+            secret = self.path / "do-not-touch"
+            secret.write_text("original")
+            try:
+                checksum.symlink_to(secret)
+            except (OSError, NotImplementedError):
+                self.skipTest("OS does not allow test symlinks")
+            with self.assertRaisesRegex(PULL.PullBlocked, "artifact_collision"):
+                PULL.stage_release(SHA_A, LAN, auto_previous=SHA_B)
+            self.assertEqual(secret.read_text(), "original")
+
     def test_worker_and_backend_auto_changes_require_review(self):
         doc = (ROOT / "deploy/lan/agentstudio-lan-deploy.py").read_text()
         self.assertIn("backend_or_worker_change_requires_operator_review", doc)

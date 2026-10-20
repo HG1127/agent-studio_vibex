@@ -293,8 +293,12 @@ def stage_release(sha: str, lan_module, *, auto_previous: str | None = None) -> 
         raise PullBlocked("invalid_sha")
     archive = INCOMING / (sha + ".tar.gz")
     checksum = INCOMING / (sha + ".sha256")
-    if (archive.exists() or checksum.exists()) and auto_previous is None:
-        if archive.is_symlink() or checksum.is_symlink() or not archive.is_file() or not checksum.is_file():
+    # Auto mode must inspect preexisting artifacts too. In particular never
+    # follow a symlinked .sha256 when writing the rebuilt checksum as root.
+    if archive.is_symlink() or checksum.is_symlink():
+        raise PullBlocked("incoming_artifact_collision")
+    if archive.exists() or checksum.exists():
+        if not archive.is_file() or not checksum.is_file():
             raise PullBlocked("incoming_artifact_collision")
         if archive.stat().st_size > 100 * 1024 * 1024:
             raise PullBlocked("incoming_archive_too_large")
@@ -303,7 +307,8 @@ def stage_release(sha: str, lan_module, *, auto_previous: str | None = None) -> 
             raise PullBlocked("incoming_checksum_invalid")
         if hashlib.sha256(archive.read_bytes()).hexdigest() != claimed:
             raise PullBlocked("incoming_bundle_checksum_mismatch")
-        return archive
+        if auto_previous is None:
+            return archive
 
     import pwd  # Only used during actual Linux build operations.
     workspace = Path(tempfile.mkdtemp(prefix="agentstudio-lan-", dir=BUILDS))
