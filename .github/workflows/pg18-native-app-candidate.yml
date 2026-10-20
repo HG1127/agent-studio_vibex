@@ -1,0 +1,43 @@
+name: PG18 Native standalone web/API candidate (synthetic)
+
+on:
+  push:
+    branches:
+      - 'migration/pg18-native-app-candidate-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-candidate-synthetic:
+    name: Native HTTPS-cookie policy, owner RLS and PB-free standalone build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout reviewed migration candidate
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install root dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install independent pg API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Synthetic Native Cookie, RLS, config UAT, schedule and KB tests
+        run: pnpm test:pg18:native-candidate
+      - name: Frontend TypeScript
+        run: pnpm exec tsc -p tsconfig.app.json --noEmit
+      - name: PG18 API TypeScript
+        run: pnpm --dir services/pg-api check
+      - name: PB-free standalone PG18 candidate build, no dev write panel
+        run: pnpm build:pg18:trial
+      - name: Cutover gate MUST remain NO-GO
+        run: |
+          node ops/pg18-fresh-cutover-gate.mjs --assert-ready > cutover-report.json && exit 1 || test "$?" -eq 3
+          node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("cutover-report.json","utf8"));if(r.cutover_allowed||r.writes_performed||!r.old_pocketbase_must_remain_running)process.exit(1)'

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
 import { RunRepository } from "./run-repository.ts"
+import { ScheduleInventoryRepository } from "./schedule-inventory-repository.ts"
 import { WorkflowRepository } from "./workflow-repository.ts"
 import { KnowledgeBaseRepository, safeDescription, safeKnowledgeQuery, safeTextDocumentInput } from "./knowledge-repository.ts"
 import {parseDocumentIsolated} from "./document-worker.ts"
@@ -9,12 +10,12 @@ import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Ide
 export interface AppDependencies {
   repository: AgentSpecRepository
   runRepository?: RunRepository
+  scheduleInventory?: ScheduleInventoryRepository
   workflowRepository?: WorkflowRepository
   knowledgeRepository?: KnowledgeBaseRepository
   verifyToken(token: string): Promise<Identity>
-  // Only an explicitly injected, server-trusted Native session verifier
-  // may replace OIDC; never accept browser-supplied identity or bearer.
-  authenticateRequest?: (req:IncomingMessage)=>Promise<Identity>
+  /** Local-cookie mode: server-validated session only, never a client user ID. */
+  authenticateRequest?(req: IncomingMessage): Promise<Identity>
   allowedOrigin: string
 }
 
@@ -78,29 +79,52 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}\/runs$/.test(path)
       const knowledgeRoute=path==="/api/v2/knowledge-bases" ||
         /^\/api\/v2\/knowledge-bases\/[0-9a-fA-F-]{36}(?:\/(?:documents|search|text-documents|document-files))?$/.test(path)
-      if(!workflowRoute && !knowledgeRoute && !runRoute &&
+      const schedulesRoute=path==="/api/v2/schedules" ||
+        /^\/api\/v2\/schedules\/[0-9a-fA-F-]{36}\/occurrences$/.test(path)
+      if(!workflowRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
       if(!["GET","POST","PATCH"].includes(method))
         throw new HttpError(405,"method_not_allowed")
 
-      // Explicitly ignore X-Rh-User-Id. Only a cryptographically verified token
-      // from the configured issuer yields an employee identity.
+      // Explicitly ignore X-Rh-User-Id. In native mode the server-side
+      // cookie verifier supplies a DB-verified identity. Legacy PG OIDC mode
+      // still requires a cryptographically signed Bearer token.
       let identity:Identity
-      try{
-        if(deps.authenticateRequest)
-          identity=await deps.authenticateRequest(req)
-        else identity=await deps.verifyToken(tokenFrom(req))
-      }catch(error){
-        if(deps.authenticateRequest &&
-           (error as {status?:number})?.status===403)
+      try {
+        identity=deps.authenticateRequest
+          ?await deps.authenticateRequest(req)
+          :await deps.verifyToken(tokenFrom(req))
+      } catch(error) {
+        // Distinguish native Cookie CSRF/origin violations from an expired
+        // session. Neither may fall back to PocketBase/OIDC credentials.
+        if(deps.authenticateRequest&&
+           (error as {status?:unknown})?.status===403)
           throw new HttpError(403,"native_request_origin_denied")
         throw new HttpError(401,"invalid_token")
       }
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(schedulesRoute){
+        if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+        const scheduleRepo=deps.scheduleInventory
+        if(!scheduleRepo)throw new HttpError(503,"schedule_inventory_disabled")
+        const requested=Number(new URL(req.url||"/","http://127.0.0.1")
+          .searchParams.get("limit")||30)
+        if(!Number.isSafeInteger(requested)||requested<1||requested>50)
+          throw new HttpError(400,"invalid_schedule_limit")
+        if(path==="/api/v2/schedules"){
+          const items=await scheduleRepo.list(identity,requested)
+          return send(res,200,{items,mode:"readonly_inventory",scheduler_started:false})
+        }
+        const id=path.slice("/api/v2/schedules/".length,-"/occurrences".length)
+        if(!isUuid(id))throw new HttpError(400,"invalid_schedule_id")
+        const items=await scheduleRepo.occurrences(identity,id,requested)
+        if(!items)throw new HttpError(404,"schedule_not_found")
+        return send(res,200,{items,mode:"readonly_history",scheduler_started:false})
+      }
       if(runRoute){
         const runner=deps.runRepository
         if(!runner)throw new HttpError(503,"agent_prepare_pilot_disabled")
