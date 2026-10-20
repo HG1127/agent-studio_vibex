@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { spawnHeadlessPocketBase } from "./helpers/headless-pocketbase.mjs"
 import { createServer } from "node:http"
+import { DatabaseSync } from "node:sqlite"
 
 const root=process.cwd()
 const pb=process.env.POCKETBASE_BIN||path.join(root,"vibex-local/bin/windows/pocketbase.exe")
@@ -93,6 +94,17 @@ try {
     model:"calc-model",config:{max_steps:5,tools:{calculate:true},
       custom_model:{connection_id:conn.item.id,model_id:"calc-model"}},
   })
+  // Reboot recovery: only checkpoint claims the worker is busy, but the
+  // authoritative lease table contains no live holder. New tick must proceed.
+  const agentDB = new DatabaseSync(path.join(dir,"data.db"), {timeout:5000})
+  try {
+    const raw = agentDB.prepare("SELECT checkpoint FROM agent_runs WHERE id=?")
+      .get(run.run_id).checkpoint
+    const stalled = JSON.parse(raw)
+    stalled.claim_until = Date.now()+3600_000
+    agentDB.prepare("UPDATE agent_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify(stalled),run.run_id)
+  } finally {agentDB.close()}
   let result
   for(let i=0;i<7;i++){
     await call("POST","/api/llm/agent-engine/"+run.run_id+"/tick",{})
@@ -135,7 +147,7 @@ try {
   assert.equal(denied.checkpoint.steps[0].action,"tool_input_invalid")
   const deniedDetail=await call("GET","/api/agent-runs/"+invalid.run_id+"/detail")
   assert.match(JSON.stringify(deniedDetail.events||[]),/tool_input_expression_invalid/)
-  console.log("HARNESS_V2_E2E_BUDGET_AND_TOOL_SCHEMA_PASS")
+  console.log("HARNESS_V2_E2E_BUDGET_TOOL_SCHEMA_STALE_HINT_PASS")
 
   console.log("PASS shared calculator and owner-scoped tool traces: real Workflow and Agent")
 } finally {

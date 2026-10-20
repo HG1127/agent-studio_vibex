@@ -1038,39 +1038,31 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
     // Provider adapter only loads after owner checks and valid running status.
     var modelWire = require(__hooks + "/modules/model_wire.js")
     var bytesToStr = modelWire.bytesToStr
+    var executionGuard = require(__hooks + "/modules/harness_execution_guard.js")
 
     // —— 认领防重叠 ——
     var cpRaw = loadJson(run, "checkpoint")
     var tsNow = new Date().getTime()
-    var claimUntil = Number(cpRaw.claim_until || 0)
-    if (tsNow < claimUntil) {
-      return e.json(200, { ok: true, run_id: id, status: "running", stepped: false, busy: true })
-    }
-    // Authoritative atomic SQLite lease across workers and browser polls.
+    // checkpoint.claim_until is a UI hint only; the atomic SQLite CAS is the
+    // authoritative recovery mechanism even after a crashed worker.
     var leaseToken = $security.randomString(40)
     var leaseUntil = tsNow + 600000
-    var leaseAcquire = null
+    var leaseAcquired = false
     try {
-      leaseAcquire = $app.db().newQuery(
-        "INSERT INTO agent_studio_run_leases(kind, run_id, lease_token, acquired_ms, expires_ms, attempts) " +
-        "SELECT 'workflow', {:rid}, {:token}, {:now}, {:until}, 1 " +
-        "FROM workflow_runs WHERE id = {:rid} AND rh_user_id = {:uid} AND status = 'running' " +
-        "ON CONFLICT(kind, run_id) DO UPDATE SET " +
-          "lease_token = excluded.lease_token, acquired_ms = excluded.acquired_ms, " +
-          "expires_ms = excluded.expires_ms, attempts = agent_studio_run_leases.attempts + 1 " +
-        "WHERE agent_studio_run_leases.expires_ms < {:now}"
-      ).bind({ rid: id, uid: uid, token: leaseToken, now: tsNow, until: leaseUntil }).execute()
+      leaseAcquired = executionGuard.claim($app, "workflow", id, uid, leaseToken, tsNow, 600000)
     } catch (leaseErr) {
       try { $app.logger().error("workflow execution lease unavailable", "err", String(leaseErr)) } catch (_) {}
       return e.json(503, { error: "execution_lease_unavailable", message: "执行租约暂不可用，已禁止非原子回退" })
     }
-    if (Number(leaseAcquire.rowsAffected()) !== 1) {
+    if (!leaseAcquired) {
       return e.json(200, { ok: true, run_id: id, status: "running", stepped: false, busy: true })
     }
     try {
     cpRaw.claim_until = leaseUntil
-    run.set("checkpoint", cpRaw)
-    $app.save(run)
+    executionGuard.mutate($app, "workflow", id, uid, leaseToken, function (tx, claimedRun) {
+      claimedRun.set("checkpoint", cpRaw)
+      tx.save(claimedRun)
+    })
 
     try {
       // —— 重新加载后执行一个节点 ——
@@ -1203,6 +1195,9 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
         return outcome
       }
       var callNodeLlm = function (modelSel, messages, maxTokens) {
+        // Keep the authoritative lease current before an external model call.
+        if (!executionGuard.renew($app, "workflow", runId, uid, leaseToken))
+          return { ok: false, error: "execution_lease_lost" }
         // harness_stats：每次模型节点 LLM 调用按发送/返回字符累加
         var pCharsW = 0
         for (var pwi = 0; pwi < messages.length; pwi++) {
@@ -1453,35 +1448,36 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
 
       var saveCp = function (extraStatus) {
         try {
-          var r2 = $app.findRecordById("workflow_runs", runId)
-          var doneCount = 0
-          if (String(r2.get("status") || "") === "cancelled") return
-          for (var sk in statuses) {
-            if (statuses[sk] === "done") doneCount++
-          }
-          cp.queue = queue
-          cp.statuses = statuses
-          cp.outputs = outputs
-          cp.seq = seq
-          cp.done_count = doneCount
-          cp.claim_until = 0
-          cp.loop_state = loopState
-          cp.exec_count = execCount
-          cp.harness_stats = harnessStats
-          cp.exec_sig = execSig
-          cp.approved_node = approvedNode
-          cp.reject_node = rejectNode
-          cp.pending_approval = pendingApproval
-          r2.set("checkpoint", cp)
-          r2.set("done_nodes", doneCount)
-          if (extraStatus) {
-            r2.set("status", String(extraStatus.status || ""))
-            if (extraStatus.result !== undefined) r2.set("result", String(extraStatus.result))
-            if (extraStatus.error !== undefined) r2.set("error", String(extraStatus.error))
-          }
-          $app.save(r2)
+          executionGuard.mutate($app, "workflow", runId, uid, leaseToken, function (tx, r2) {
+            var doneCount = 0
+            for (var sk in statuses) {
+              if (statuses[sk] === "done") doneCount++
+            }
+            cp.queue = queue
+            cp.statuses = statuses
+            cp.outputs = outputs
+            cp.seq = seq
+            cp.done_count = doneCount
+            cp.claim_until = 0
+            cp.loop_state = loopState
+            cp.exec_count = execCount
+            cp.harness_stats = harnessStats
+            cp.exec_sig = execSig
+            cp.approved_node = approvedNode
+            cp.reject_node = rejectNode
+            cp.pending_approval = pendingApproval
+            r2.set("checkpoint", cp)
+            r2.set("done_nodes", doneCount)
+            if (extraStatus) {
+              r2.set("status", String(extraStatus.status || ""))
+              if (extraStatus.result !== undefined) r2.set("result", String(extraStatus.result))
+              if (extraStatus.error !== undefined) r2.set("error", String(extraStatus.error))
+            }
+            tx.save(r2)
+          })
         } catch (err) {
           logErr("saveCp", err)
+          throw err // Lost checkpoints must not masquerade as successful nodes.
         }
       }
 
@@ -2026,6 +2022,9 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           } catch (_) {}
         }
         var effectStepKeyWf = String(nextId) + ":" + String(execCount)
+        if (!nodeErr && effectNeededWf &&
+            !executionGuard.renew($app, "workflow", runId, uid, leaseToken))
+          throw new Error("execution_lease_lost")
         if (!nodeErr && effectNeededWf) {
           effectKeyWf = "as-" + $security.sha256("workflow:" + runId + ":" + effectStepKeyWf)
           var effectArgsHashWf = $security.sha256(paramsStr)
@@ -2494,38 +2493,36 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       return e.json(200, { ok: true, run_id: id, status: "running", stepped: true, node_id: nextId })
     } catch (stepErr) {
       var stepMsg = String((stepErr && stepErr.message) || stepErr)
+      var ownershipLost = stepMsg === "execution_lease_lost" ||
+        stepMsg === "execution_run_not_running" || stepMsg === "run_not_running"
       logErr("tick step", stepErr)
       try {
-        var r3 = $app.findRecordById("workflow_runs", id)
-        if (String(r3.get("status")) === "running" && stepMsg !== "run_not_running") {
-          var cp3 = loadJson(r3, "checkpoint")
-          cp3.claim_until = 0
-          cp3.seq = Number(cp3.seq || 0) + 1
-          r3.set("checkpoint", cp3)
-          r3.set("status", "failed")
-          r3.set("error", "引擎执行异常：" + stepMsg.slice(0, 300))
-          $app.save(r3)
-          addEvent(id, "", Number(cp3.seq), "status", { message: "引擎执行异常，运行终止" })
-        } else {
-          var cp4 = loadJson(r3, "checkpoint")
-          cp4.claim_until = 0
-          r3.set("checkpoint", cp4)
-          $app.save(r3)
+        if (stepMsg !== "run_not_running") {
+          var failureSeq = 0
+          executionGuard.mutate($app, "workflow", id, uid, leaseToken, function (tx, r3) {
+            var cp3 = loadJson(r3, "checkpoint")
+            cp3.claim_until = 0
+            cp3.seq = Number(cp3.seq || 0) + 1
+            failureSeq = Number(cp3.seq)
+            r3.set("checkpoint", cp3)
+            r3.set("status", "failed")
+            r3.set("error", "execution_step_failed: see sanitized worker diagnostics")
+            tx.save(r3)
+          })
+          addEvent(id, "", failureSeq, "status", { message: "引擎执行异常，运行终止" })
         }
-      } catch (_) {}
+      } catch (_) { /* cancelled/stolen lease: the old worker cannot overwrite state */ }
       var finalStatus = "failed"
       try {
         var r4 = $app.findRecordById("workflow_runs", id)
         finalStatus = String(r4.get("status"))
       } catch (_) {}
-      return e.json(200, { ok: true, run_id: id, status: finalStatus, stepped: true })
+      return e.json(200, { ok: true, run_id: id, status: finalStatus,
+        stepped: !ownershipLost, busy: ownershipLost })
     }
     } finally {
       try {
-        $app.db().newQuery(
-          "UPDATE agent_studio_run_leases SET expires_ms = 0, lease_token = '' " +
-          "WHERE kind = 'workflow' AND run_id = {:rid} AND lease_token = {:token}"
-        ).bind({ rid: id, token: leaseToken }).execute()
+        executionGuard.release($app, "workflow", id, uid, leaseToken)
       } catch (leaseReleaseErr) {
         try { $app.logger().error("workflow execution lease release failed", "err", String(leaseReleaseErr)) } catch (_) {}
       }

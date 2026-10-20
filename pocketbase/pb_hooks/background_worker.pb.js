@@ -98,12 +98,9 @@ routerAdd("POST", "/api/internal/worker/step", function (e) {
       for (var ri = 0; ri < records.length; ri++) {
         var record = records[ri]
         if (leasedRuns[source.kind + ":" + String(record.id)]) continue
-        var cp = {}
-        try {
-          var cpText = record.getString("checkpoint")
-          if (cpText) cp = JSON.parse(cpText) || {}
-        } catch (_) {}
-        if (Number(cp.claim_until || 0) > now) continue
+        // Never filter by checkpoint.claim_until. A crashed worker can leave a
+        // future UI hint while the authoritative DB lease is already expired.
+        // The tick-level atomic claim still resolves races safely.
         var owner = String(record.get("rh_user_id") || "").trim()
         if (!owner) continue
         var ageKey = String(record.getString("updated") || record.getString("created") || "")

@@ -23,10 +23,32 @@ const env = {
   AGENT_STUDIO_WORKER_INTERNAL_URL: base,
   AGENT_STUDIO_ALLOW_ANON: "false",
 }
-let succeededCalls = 0, ambiguousCalls = 0, providerReady = false, logs = ""
+let succeededCalls = 0, ambiguousCalls = 0, fencedCalls = 0, cancelledCalls = 0, providerReady = false, logs = ""
+let signalFencedRequest = null
+const fencedRequestReceived = new Promise(resolve => { signalFencedRequest = resolve })
+let signalCancelledRequest = null
+const cancelledRequestReceived = new Promise(resolve => { signalCancelledRequest = resolve })
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const provider = createServer(async (req, res) => {
   for await (const _part of req) { /* drain request to simulate accepted write */ }
+  if (req.url === "/cancelled") {
+    cancelledCalls++
+    if (signalCancelledRequest) signalCancelledRequest()
+    await delay(1400)
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ receipt: "accepted-before-cancel" }))
+    return
+  }
+  if (req.url === "/fenced") {
+    fencedCalls++
+    if (signalFencedRequest) signalFencedRequest()
+    // The DB lease is intentionally stolen while the old execution is waiting
+    // on this accepted remote write. Completion must not commit stale state.
+    await delay(1450)
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ receipt: "fenced-write" }))
+    return
+  }
   if (req.url === "/uncertain") {
     ambiguousCalls++
     req.socket.destroy() // remote side effect may have happened; acknowledgement is lost
@@ -166,6 +188,76 @@ try {
   const queue = await api("GET", "/api/worker/status")
   assert.equal(queue.status, 200)
   assert.ok(queue.result.queue.failed_recent >= 1)
+  // Simulate an in-flight tool call from a stale worker. Its remote write
+  // completes, but it must not overwrite a newer lease owner's checkpoint.
+  await addTool("FencedWrite", "/fenced")
+  const fenceRun = await workflowFor("FencedWrite")
+  const oldTick = tick(fenceRun.runId)
+  await Promise.race([
+    fencedRequestReceived,
+    delay(8000).then(() => { throw new Error("test_fenced_tool_never_started") }),
+  ])
+  db = new DatabaseSync(path.join(dataDir, "data.db"), { timeout: 5000 })
+  try {
+    const updated = db.prepare(
+      "UPDATE agent_studio_run_leases SET lease_token=?,expires_ms=? " +
+      "WHERE kind='workflow' AND run_id=? AND expires_ms>?"
+    ).run("B".repeat(40), Date.now() + 60000, fenceRun.runId, Date.now())
+    assert.equal(updated.changes, 1, "The original worker must have held the lease")
+  } finally { db.close() }
+  const staleCompletion = await oldTick
+  assert.equal(staleCompletion.status, 200, JSON.stringify(staleCompletion))
+  assert.equal(staleCompletion.result.stepped, false,
+    "Old worker must not report a successful tick after losing execution ownership")
+  assert.equal(staleCompletion.result.busy, true)
+  const staleRun = await detail(fenceRun.runId)
+  assert.equal(staleRun.status, "running",
+    "A stale worker must never record a completed or failed run over the new owner")
+  assert.notEqual((staleRun.checkpoint.statuses || {}).tl, "done",
+    "Stale executor must not persist a completed tool checkpoint")
+  assert.equal(fencedCalls, 1)
+  db = new DatabaseSync(path.join(dataDir, "data.db"), { timeout: 5000 })
+  try {
+    const savedEffect = db.prepare(
+      "SELECT status FROM agent_studio_side_effects WHERE kind='workflow' AND run_id=?"
+    ).get(fenceRun.runId)
+    assert.equal(savedEffect.status, "succeeded",
+      "Remote write audit survives a stale worker and is available for replay")
+    db.prepare(
+      "UPDATE agent_studio_run_leases SET expires_ms=? WHERE kind='workflow' AND run_id=?"
+    ).run(Date.now() - 5, fenceRun.runId)
+  } finally { db.close() }
+  const resumedTick = await tick(fenceRun.runId)
+  assert.equal(resumedTick.status, 200, JSON.stringify(resumedTick))
+  const eventuallyFinished = await finishAfterTool(fenceRun.runId)
+  assert.equal(eventuallyFinished.status, "succeeded", JSON.stringify(eventuallyFinished))
+  assert.equal(fencedCalls, 1,
+    "Taking over the lease must reuse the prior successful write, never issue a second POST")
+
+  // Cancelling a task while the remote service is still responding must be
+  // terminal: neither a successful remote response nor the fallback handler
+  // can mark the same Workflow as succeeded/failed after cancellation.
+  await addTool("CancelledWrite", "/cancelled")
+  const cancelledRun = await workflowFor("CancelledWrite")
+  const tickBeforeCancel = tick(cancelledRun.runId)
+  await Promise.race([
+    cancelledRequestReceived,
+    delay(8000).then(() => { throw new Error("cancelled_tool_never_started") }),
+  ])
+  const manualCancel = await api("POST", "/api/workflow-runs/" + cancelledRun.runId + "/cancel", {})
+  assert.equal(manualCancel.status, 200, JSON.stringify(manualCancel))
+  assert.equal(manualCancel.result.status, "cancelled")
+  const cancelledTick = await tickBeforeCancel
+  assert.equal(cancelledTick.status, 200)
+  const finalCancelled = await detail(cancelledRun.runId)
+  assert.equal(finalCancelled.status, "cancelled",
+    "Explicit cancellation must win against a delayed HTTP write result")
+  assert.equal(cancelledTick.result.stepped, false,
+    "A cancelled in-flight Tick cannot report a durable completed step")
+  await tick(cancelledRun.runId)
+  assert.equal((await detail(cancelledRun.runId)).status, "cancelled")
+  assert.equal(cancelledCalls, 1, "Cancelled writes must never auto-replay")
+
   // Scheduler fairness: another worker already holds a live lease on the older run.
   // This replica must skip it and advance the second run rather than spin on busy.
   const basicGraph = {
@@ -198,6 +290,14 @@ try {
   try {
     db.prepare("UPDATE agent_studio_run_leases SET expires_ms=?,lease_token='crashed-worker' WHERE kind='workflow' AND run_id=?")
       .run(Date.now() - 1000, busyRun.result.run_id)
+    // Simulate the stale checkpoint timer left behind by a process crash.
+    // The worker must trust the expired DB lease instead of blocking for an hour.
+    const lastCheckpoint = JSON.parse(db.prepare(
+      "SELECT checkpoint FROM workflow_runs WHERE id=?"
+    ).get(busyRun.result.run_id).checkpoint)
+    lastCheckpoint.claim_until = Date.now() + 3600_000
+    db.prepare("UPDATE workflow_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify(lastCheckpoint), busyRun.result.run_id)
   } finally { db.close() }
   const afterRelease = await api("POST", "/api/internal/worker/step", {}, {
     "X-Agent-Studio-Worker-Token": "test-only-worker-secret-must-be-long",
@@ -216,7 +316,9 @@ try {
     status: "PASS", concurrency: 6, postWriteCount: succeededCalls,
     successfulReplayUsesCache: true, ambiguousPostCount: ambiguousCalls,
     ambiguousReplayBlocked: true, activeLeases: 0, queueVisible: true,
-    schedulerSkipsActiveLeases: true, staleLeaseRecovered: true,
+    schedulerSkipsActiveLeases: true, staleLeaseRecovered: true, staleCheckpointHintIgnored: true,
+    inFlightStaleWriteFenced: true, postWriteReplayedFromJournal: true,
+    cancellationWinsOverInFlightWrite: true,
   }))
 } catch (err) {
   console.error("CONCURRENCY_E2E_FAILED", err.stack || String(err))

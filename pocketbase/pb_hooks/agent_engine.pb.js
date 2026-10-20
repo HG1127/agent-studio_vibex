@@ -90,6 +90,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     // Load provider response helpers only after validating run ownership.
     var modelWire = require(__hooks + "/modules/model_wire.js")
     var bytesToStr = modelWire.bytesToStr
+    var executionGuard = require(__hooks + "/modules/harness_execution_guard.js")
 
     var logErr = function (where, err) {
       try {
@@ -355,12 +356,14 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     }
     var saveCheckpoint = function (runId, newCp, doneSteps) {
       try {
-        var r = $app.findRecordById("agent_runs", runId)
-        r.set("checkpoint", newCp)
-        r.set("current_step", Number(doneSteps) || 0)
-        $app.save(r)
+        executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, r) {
+          r.set("checkpoint", newCp)
+          r.set("current_step", Number(doneSteps) || 0)
+          tx.save(r)
+        })
       } catch (err) {
         logErr("saveCheckpoint", err)
+        throw err // Never silently lose a checkpoint after an irreversible tool call.
       }
     }
     // 结果脱敏：最终成果落库前统一抹疑似钥匙模式（与 workflow 引擎同规则）
@@ -373,17 +376,19 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     }
     var finishRun = function (runId, newStatus, resultText, errText, stepIndex, seq, message) {
       try {
-        var r = $app.findRecordById("agent_runs", runId)
-        r.set("status", newStatus)
-        if (String(r.get("status") || "") === "cancelled") return
-        if (resultText) r.set("result", sanitizeFinalSecrets(String(resultText)))
-        if (errText) r.set("error", String(errText))
-        var cp = loadJson(r, "checkpoint")
-        cp.claim_until = 0
-        cp.seq = Number(seq) || 0
-        r.set("checkpoint", cp)
-        r.set("current_step", Number(stepIndex) || 0)
-        $app.save(r)
+        var r = null
+        executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, ownedRun) {
+          r = ownedRun
+          ownedRun.set("status", newStatus)
+          if (resultText) ownedRun.set("result", sanitizeFinalSecrets(String(resultText)))
+          if (errText) ownedRun.set("error", String(errText))
+          var cp = loadJson(ownedRun, "checkpoint")
+          cp.claim_until = 0
+          cp.seq = Number(seq) || 0
+          ownedRun.set("checkpoint", cp)
+          ownedRun.set("current_step", Number(stepIndex) || 0)
+          tx.save(ownedRun)
+        })
         addEvent(runId, stepIndex, Number(seq) + 1, "status", { message: message })
         // —— 失败沉淀教训：failed 终态（含卡死/预算耗尽/致命错误）写一条 kind=lesson 记忆，
         // cancelled 不经本函数（cancel 路由直接改状态）天然不写；写失败不影响 run 终态 ——
@@ -416,6 +421,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         }
       } catch (err) {
         logErr("finishRun", err)
+        throw err
       }
     }
 
@@ -556,26 +562,33 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         var admitted = budgetService.allowModelCall(harnessStats, modelCallLimit.max_model_calls)
         if (!admitted.ok) return { ok: false, error: admitted.error, detail: "本次运行的模型调用预算已用尽" }
 
+        // Renew an unexpired owned lease before potentially slow provider I/O.
+        // This is a per-operation extension, not a long-running heartbeat.
+        try {
+          if (!executionGuard.renew($app, "agent", runId, uid, leaseToken))
+            return { ok: false, error: "execution_lease_lost" }
+        } catch (_) {
+          return { ok: false, error: "execution_lease_lost" }
+        }
         // Reserve the next LLM attempt DURABLY before outbound billing.
         // The atomic per-run lease prevents ordinary competing ticks, but
         // strict fencing/expired-lease races still require a future upgrade.
         var previousCalls = harnessStats.llm_calls
         var previousChars = harnessStats.est_prompt_chars
         try {
-          var budgetRecord = $app.findRecordById("agent_runs", runId)
-          if (String(budgetRecord.get("rh_user_id") || "") !== uid ||
-              String(budgetRecord.get("status") || "") !== "running")
-            return { ok: false, error: "model_budget_run_inactive" }
-          var budgetCheckpoint = loadJson(budgetRecord, "checkpoint")
-          var budgetStored = budgetCheckpoint.harness_stats || {}
-          var storedCalls = Number(budgetStored.llm_calls || 0)
-          if (!Number.isInteger(storedCalls) || storedCalls > previousCalls)
-            return { ok: false, error: "model_budget_checkpoint_conflict" }
-          statsBump("llm_calls", 1)
-          statsBump("est_prompt_chars", pChars0)
-          budgetCheckpoint.harness_stats = harnessStats
-          budgetRecord.set("checkpoint", budgetCheckpoint)
-          $app.save(budgetRecord)
+          executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, budgetRecord) {
+            var budgetCheckpoint = loadJson(budgetRecord, "checkpoint")
+            var budgetStored = budgetCheckpoint.harness_stats || {}
+            var storedCalls = Number(budgetStored.llm_calls || 0)
+            if (!Number.isInteger(storedCalls) || storedCalls !== previousCalls ||
+                storedCalls >= modelCallLimit.max_model_calls)
+              throw new Error("model_budget_checkpoint_conflict")
+            statsBump("llm_calls", 1)
+            statsBump("est_prompt_chars", pChars0)
+            budgetCheckpoint.harness_stats = harnessStats
+            budgetRecord.set("checkpoint", budgetCheckpoint)
+            tx.save(budgetRecord)
+          })
         } catch (budgetError) {
           // Fail closed. A failed reservation MUST NOT send a paid request.
           harnessStats.llm_calls = previousCalls
@@ -800,14 +813,16 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       // 直达终态（成功/失败）前把本次累积的 harness 核算先落库，避免最后一次调用漏计
       var persistStats = function () {
         try {
-          var psRec = $app.findRecordById("agent_runs", runId)
+          executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, psRec) {
           var psCp = loadJson(psRec, "checkpoint")
           psCp.harness_stats = harnessStats
           psCp.call_sig_recent = sigRecent
           psRec.set("checkpoint", psCp)
-          $app.save(psRec)
+          tx.save(psRec)
+        })
         } catch (psErr) {
           logErr("persistStats", psErr)
+          throw psErr
         }
       }
 
@@ -1095,17 +1110,18 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           step_index: stepIndex,
           thought: thought.slice(0, 200),
         })
-        var apRunRec = $app.findRecordById("agent_runs", runId)
-        var apCp = loadJson(apRunRec, "checkpoint")
-        apCp.pending_approval = { step_index: stepIndex, tool: toolName, input: toolInput, thought: thought.slice(0, 200) }
-        apCp.approval_decision = ""
-        apCp.claim_until = 0
-        apCp.seq = seq
-        apCp.harness_stats = harnessStats
-        apCp.call_sig_recent = sigRecent
-        apRunRec.set("checkpoint", apCp)
-        apRunRec.set("status", "awaiting_approval")
-        $app.save(apRunRec)
+        executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, apRunRec) {
+          var apCp = loadJson(apRunRec, "checkpoint")
+          apCp.pending_approval = { step_index: stepIndex, tool: toolName, input: toolInput, thought: thought.slice(0, 200) }
+          apCp.approval_decision = ""
+          apCp.claim_until = 0
+          apCp.seq = seq
+          apCp.harness_stats = harnessStats
+          apCp.call_sig_recent = sigRecent
+          apRunRec.set("checkpoint", apCp)
+          apRunRec.set("status", "awaiting_approval")
+          tx.save(apRunRec)
+        })
         return
       }
 
@@ -1401,6 +1417,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       var effectCachedOutput = ""
       var effectUnknown = ""
       if (effectNeeded) {
+        if (!executionGuard.renew($app, "agent", runId, uid, leaseToken))
+          throw new Error("execution_lease_lost")
         effectKey = "as-" + $security.sha256("agent:" + runId + ":" + stepIndex)
         var effectArgsHash = $security.sha256(invInputStr)
         try {
@@ -1539,30 +1557,18 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     }
     var cpRaw = loadJson(run, "checkpoint")
     var tsNow = new Date().getTime()
-    var claimUntil = Number(cpRaw.claim_until || 0)
-    if (tsNow < claimUntil) {
-      return e.json(200, { ok: true, run_id: id, status: "running", stepped: false, busy: true })
-    }
-    // Atomic CAS in SQLite (across browser ticks, worker replicas and PocketBase processes).
-    // Checkpoint claim_until is only a UI hint; this database lease is authoritative.
+    // The SQLite lease is authoritative. checkpoint.claim_until is a stale UI
+    // hint after crash/restart and must not block an otherwise claimable run.
     var leaseToken = $security.randomString(40)
     var leaseUntil = tsNow + 600000
-    var leaseAcquire = null
+    var leaseAcquired = false
     try {
-      leaseAcquire = $app.db().newQuery(
-        "INSERT INTO agent_studio_run_leases(kind, run_id, lease_token, acquired_ms, expires_ms, attempts) " +
-        "SELECT 'agent', {:rid}, {:token}, {:now}, {:until}, 1 " +
-        "FROM agent_runs WHERE id = {:rid} AND rh_user_id = {:uid} AND status = 'running' " +
-        "ON CONFLICT(kind, run_id) DO UPDATE SET " +
-          "lease_token = excluded.lease_token, acquired_ms = excluded.acquired_ms, " +
-          "expires_ms = excluded.expires_ms, attempts = agent_studio_run_leases.attempts + 1 " +
-        "WHERE agent_studio_run_leases.expires_ms < {:now}"
-      ).bind({ rid: id, uid: uid, token: leaseToken, now: tsNow, until: leaseUntil }).execute()
+      leaseAcquired = executionGuard.claim($app, "agent", id, uid, leaseToken, tsNow, 600000)
     } catch (leaseErr) {
       try { $app.logger().error("agent execution lease unavailable", "err", String(leaseErr)) } catch (_) {}
       return e.json(503, { error: "execution_lease_unavailable", message: "执行租约暂不可用，已禁止非原子回退" })
     }
-    if (Number(leaseAcquire.rowsAffected()) !== 1) {
+    if (!leaseAcquired) {
       return e.json(200, { ok: true, run_id: id, status: "running", stepped: false, busy: true })
     }
     try {
@@ -1581,21 +1587,32 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       approval_decision: String(cpRaw.approval_decision || ""),
       approved_step: Number(cpRaw.approved_step || 0),
     }
-    run.set("checkpoint", claimCp)
-    $app.save(run)
+    executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, claimedRun) {
+      claimedRun.set("checkpoint", claimCp)
+      tx.save(claimedRun)
+    })
+    var stepFailed = false
     try {
       executeStep(id)
     } catch (err) {
+      stepFailed = true
+      var diagnostic = String((err && (err.code || err.message)) || "execution_step_failed")
       try {
-        $app.logger().error("agent tick step error", "err", String((err && err.message) || err))
+        $app.logger().error("agent tick step error", "err", diagnostic.slice(0, 140))
       } catch (_) {}
+      // Do not silently return a successful Tick after an uncommitted step.
+      // A stolen lease / cancelled run must not be overwritten by this worker.
       try {
-        var r2 = $app.findRecordById("agent_runs", id)
-        var cp2 = loadJson(r2, "checkpoint")
-        cp2.claim_until = 0
-        r2.set("checkpoint", cp2)
-        $app.save(r2)
-      } catch (_) {}
+        executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, r2) {
+          var cp2 = loadJson(r2, "checkpoint")
+          cp2.claim_until = 0
+          cp2.seq = Number(cp2.seq || 0) + 1
+          r2.set("checkpoint", cp2)
+          r2.set("status", "failed")
+          r2.set("error", "execution_step_failed: see sanitized worker diagnostics")
+          tx.save(r2)
+        })
+      } catch (_) { /* stale worker cannot replace the current owner */ }
     }
     var after = null
     try {
@@ -1605,14 +1622,12 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       ok: true,
       run_id: id,
       status: after ? String(after.get("status")) : "running",
-      stepped: true,
+      stepped: !stepFailed,
+      error: stepFailed ? "execution_step_failed" : undefined,
     })
     } finally {
       try {
-        $app.db().newQuery(
-          "UPDATE agent_studio_run_leases SET expires_ms = 0, lease_token = '' " +
-          "WHERE kind = 'agent' AND run_id = {:rid} AND lease_token = {:token}"
-        ).bind({ rid: id, token: leaseToken }).execute()
+        executionGuard.release($app, "agent", id, uid, leaseToken)
       } catch (leaseReleaseErr) {
         try { $app.logger().error("agent execution lease release failed", "err", String(leaseReleaseErr)) } catch (_) {}
       }
