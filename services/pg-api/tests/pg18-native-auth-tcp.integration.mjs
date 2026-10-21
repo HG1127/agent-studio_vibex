@@ -19,6 +19,10 @@ import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {AgentSpecRepository} from "../src/repository.ts"
+import {WorkflowRepository} from "../src/workflow-repository.ts"
+import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
+import {permitNativePg18BusinessUatRequest}
+  from "../src/native-config-uat-policy.ts"
 import {createHandler} from "../src/http.ts"
 
 function adapter(pool){
@@ -166,18 +170,21 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
       })
     assert.equal(adminAgent.owner_user_id,owner.id)
 
+    // Explicitly approved only inside DISPOSABLE GitHub PG18.
+    // Run, approval, model, Worker, tools, file ingestion remain disabled.
+    const configUat={configurationWrites:true,employeeProvisioning:false,
+      runApprovalUat:false,knowledgeIngestUat:false}
     let native
     let nativeBusiness
     native=createNativeAuthHttpHandler({
       auth,allowedOrigin:"https://localhost",allowEmployeeProvisioning:true,
+      allowConfigurationWrites:true,
       businessHandler:(req,res)=>{
-        // CI exposes only real owner-scoped API v2 GET endpoints, no writes,
-        // queues, model calls, document uploads or scheduling.
-        if(req.method!=="GET"||!
-           (req.url==="/api/v2/agent-specs"||
-             /^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(req.url||""))){
+        const route=new URL(req.url||"/","http://127.0.0.1").pathname
+        if(!permitNativePg18BusinessUatRequest(
+          route,req.method||"",configUat)){
           res.writeHead(405,{"Content-Type":"application/json"})
-          res.end(JSON.stringify({error:"ci_readonly_business_only"}))
+          res.end(JSON.stringify({error:"ci_config_scope_denied"}))
           return
         }
         return nativeBusiness(req,res)
@@ -186,6 +193,8 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
     nativeBusiness=createHandler({
       allowedOrigin:"https://localhost",
       repository:agentRepo,
+      workflowRepository:new WorkflowRepository(adapter(apiPool)),
+      knowledgeRepository:new KnowledgeBaseRepository(adapter(apiPool)),
       verifyToken:async()=>{throw Error("oidc_forbidden_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
     })
@@ -226,6 +235,13 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
     const adminCookie=administrator.cookie.split(";")[0]
     const adminProfile=await request("/api/native-auth/me",{cookie:adminCookie})
     assert.equal(adminProfile.body.user.email,"admin@example.com")
+    const noSessionCapabilities=await request("/api/native-auth/capabilities")
+    assert.equal(noSessionCapabilities.status,401)
+    const approved=await request("/api/native-auth/capabilities",{cookie:adminCookie})
+    assert.equal(approved.status,200)
+    assert.deepEqual(approved.body,{
+      mode:"native_pg18",config_writes_enabled:true,run_execution_enabled:false
+    })
     const adminRecords=await request("/api/v2/agent-specs",{cookie:adminCookie})
     assert.equal(adminRecords.status,200)
     assert.deepEqual(adminRecords.body.items.map(item=>item.name),
@@ -264,10 +280,72 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
       cookie:staffCookie
     })
     assert.equal(staffCrossOwner.status,404)
-    const disabledWrite=await request("/api/v2/agent-specs",{
+    const staffSpec={goal:"Synthetic private employee review",
+      task_scope:"Disposable PG18 metadata only",deliverables:[],
+      task_plan:[],done_criteria:[],tools:[]}
+    const csrfBlocked=await request("/api/v2/agent-specs",{
+      method:"POST",cookie:staffCookie,origin:"https://localhost",
+      body:{name:"CSRF forbidden",spec:staffSpec}
+    })
+    assert.equal(csrfBlocked.status,403)
+    const createdAgent=await request("/api/v2/agent-specs",{
       method:"POST",cookie:staffCookie,origin:"https://localhost",
       extraHeaders:{"X-AgentStudio-Request":"1"},
-      body:{name:"should-not-write"}
+      body:{name:"Synthetic staff agent",spec:staffSpec}
+    })
+    assert.equal(createdAgent.status,201,JSON.stringify(createdAgent.body))
+    const staffAgent=createdAgent.body.item
+    assert.ok(staffAgent.id)
+    const updatedAgent=await request("/api/v2/agent-specs/"+staffAgent.id,{
+      method:"PATCH",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{name:"Synthetic updated staff agent",spec:staffSpec,
+        expected_revision:Number(staffAgent.revision)}
+    })
+    assert.equal(updatedAgent.status,200,JSON.stringify(updatedAgent.body))
+    assert.equal(updatedAgent.body.item.name,"Synthetic updated staff agent")
+    const stale=await request("/api/v2/agent-specs/"+staffAgent.id,{
+      method:"PATCH",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{name:"Stale revision",spec:staffSpec,
+        expected_revision:Number(staffAgent.revision)}
+    })
+    assert.equal(stale.status,409)
+    const attemptedCrossOwner=await request("/api/v2/agent-specs/"+adminAgent.id,{
+      method:"PATCH",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{name:"Cross-owner",spec:staffSpec,
+        expected_revision:Number(adminAgent.revision)}
+    })
+    assert.equal(attemptedCrossOwner.status,404)
+    const graph={nodes:[
+      {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+      {id:"end",type:"end",data:{title:"End"},position:{x:250,y:0}}
+    ],edges:[{id:"flow-start-end",source:"start",target:"end"}]}
+    const workflow=await request("/api/v2/workflows",{
+      method:"POST",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{name:"Synthetic staff workflow",graph}
+    })
+    assert.equal(workflow.status,201,JSON.stringify(workflow.body))
+    const kb=await request("/api/v2/knowledge-bases",{
+      method:"POST",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{name:"Synthetic staff KB",description:"Metadata only"}
+    })
+    assert.equal(kb.status,201,JSON.stringify(kb.body))
+    const staffOwnAgent=await request("/api/v2/agent-specs",{cookie:staffCookie})
+    assert.deepEqual(staffOwnAgent.body.items.map(x=>x.id),[staffAgent.id])
+    const staffOwnWorkflow=await request("/api/v2/workflows",{cookie:staffCookie})
+    assert.deepEqual(staffOwnWorkflow.body.items.map(x=>x.id),[workflow.body.item.id])
+    const staffOwnKb=await request("/api/v2/knowledge-bases",{cookie:staffCookie})
+    assert.deepEqual(staffOwnKb.body.items.map(x=>x.id),[kb.body.item.id])
+    const adminOwnAgent=await request("/api/v2/agent-specs",{cookie:adminCookie})
+    assert.deepEqual(adminOwnAgent.body.items.map(x=>x.id),[adminAgent.id])
+    const disabledWrite=await request("/api/v2/agent-specs/"+staffAgent.id+"/runs",{
+      method:"POST",cookie:staffCookie,origin:"https://localhost",
+      extraHeaders:{"X-AgentStudio-Request":"1"},
+      body:{instruction:"No Worker or model",idempotency_key:"pg18_ci_no_run_001"}
     })
     assert.equal(disabledWrite.status,405)
     const noAdmin=await request("/api/native-auth/employees",{
@@ -307,6 +385,10 @@ test("PG18 real-TCP Native employee login uses verified localhost HTTPS, isolate
       "SELECT count(*)::integer AS n FROM agentstudio.jobs")).rows[0].n,0)
     assert.equal((await admin.query(
       "SELECT count(*)::integer AS n FROM agentstudio.external_effects")).rows[0].n,0)
+    assert.equal((await admin.query(
+      "SELECT count(*)::integer AS n FROM agentstudio.workflows")).rows[0].n,1)
+    assert.equal((await admin.query(
+      "SELECT count(*)::integer AS n FROM agentstudio.knowledge_bases")).rows[0].n,1)
   }finally{
     if(fixture){
       await new Promise(resolve=>fixture.server.close(resolve))

@@ -56,3 +56,47 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
+
+  native-config-write-real-pg18:
+    name: Real PG18 Native Cookie HTTPS plus config owner-RLS UAT
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout reviewed PG18 candidate
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked pg API dependencies without scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Offline real PG18 guard and production endpoint refusal
+        run: node --experimental-strip-types --test services/pg-api/tests/pg18-native-auth-ci-contract.test.mjs
+      - name: Real PG18 HTTPS Native CRUD RLS CSRF and no Worker
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: "agentstudio_pg18_ci"
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: node --experimental-strip-types --test services/pg-api/tests/pg18-native-auth-tcp.integration.mjs
