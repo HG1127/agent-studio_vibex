@@ -22,5 +22,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 # pnpm also needs its isolated builder HOME/cache writable.
-ReadWritePaths=/srv/agent-studio-lan /var/backups/agentstudio-lan /var/lib/agentstudio-build
+# nginx -t opens the configured error log and PID path during validation.
+# Expose only this Nginx log directory as writable; never allow all of /www or /run.
+ReadWritePaths=/srv/agent-studio-lan /var/backups/agentstudio-lan /var/lib/agentstudio-build /www/server/nginx/logs
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

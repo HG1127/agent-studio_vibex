@@ -73,6 +73,15 @@ test("LAN service keeps builder HOME writeable, uses local pinned CA and never b
  assert.doesNotMatch(controller,/["']-k["']/);
 });
 
+test("updater sandbox permits only the configured Nginx log/PID directory",()=>{
+ const unit=readFileSync("deploy/lan/agentstudio-lan-update.service.example","utf8");
+ const writablePaths=unit.split(/\r?\n/).find(line=>line.startsWith("ReadWritePaths="));
+ assert.ok(writablePaths);
+ assert.match(writablePaths,/\/www\/server\/nginx\/logs/);
+ assert.doesNotMatch(writablePaths,/(?:^|\s)\/www(?:\s|$)|(?:^|\s)\/run(?:\s|$)/);
+ assert.match(unit,/ProtectSystem=strict/);
+});
+
 test("active symlink and release directories require root-only mutation rights",()=>{
  const pull=readFileSync("deploy/lan/pull-update.py","utf8");
  const activator=readFileSync("deploy/lan/agentstudio-lan-deploy.py","utf8");
