@@ -6,7 +6,7 @@
 
 这个补丁仅修改部署控制器 deploy/lan/pull-update.py。它增加可选的 root 管理配置文件 /etc/agentstudio-lan/git-https-proxy。Git Clone 和 Git Fetch 使用该代理与 HTTP/1.1；pnpm、node、PocketBase 和 Worker 不继承代理。没有配置文件仍保留直连行为；有文件但内容或权限不安全时拒绝 Git 操作，而不是自动忽略错误。
 
-配置文件必须是非链接普通文件，root:root，精确 0600，且只能存在于不可被其他用户修改的 root 管理目录。只允许带有效显式端口的 http/https/socks5/socks5h 代理地址；禁止账号、密码、URL path、query、fragment 和控制字符。不要在日志、CI、Git、工单或聊天中记录实际代理 URL。
+配置文件必须是非链接普通文件，root:root，精确 0600，且只能存在于 root 所有、组和其他用户不可写的目录。实际生产 `/etc/agentstudio-lan` 为 `root:agentstudio-lan`、`0750`（UID 0、GID 983）：这是允许的，**禁止为了通过检查而将整目录 chgrp root/chmod -R**，否则可能破坏 Worker/PocketBase 读取配置。只允许带有效显式端口的 http/https/socks5/socks5h 代理地址；禁止账号、密码、URL path、query、fragment 和控制字符。不要在日志、CI、Git、工单或聊天中记录实际代理 URL。
 
 ## 安装顺序：仅由宝塔 root 运维操作
 

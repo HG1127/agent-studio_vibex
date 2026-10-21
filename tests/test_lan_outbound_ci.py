@@ -152,10 +152,18 @@ class LANReleaseSafety(unittest.TestCase):
                     with self.assertRaisesRegex(PULL.PullBlocked, "permissions"):
                         PULL.git_https_proxy()
             stub.stat.return_value = original
+            # Actual production directory is root:agentstudio-lan mode 0750.
             stub.parent.stat.return_value = SimpleNamespace(
-                st_mode=0o40777, st_uid=0, st_gid=0)
-            with self.assertRaisesRegex(PULL.PullBlocked, "directory"):
-                PULL.git_https_proxy()
+                st_mode=0o40750, st_uid=0, st_gid=983)
+            self.assertEqual(PULL.git_https_proxy(), "http://127.0.0.1:7890")
+            for unsafe in (
+                SimpleNamespace(st_mode=0o40770, st_uid=0, st_gid=983),
+                SimpleNamespace(st_mode=0o40755, st_uid=1000, st_gid=983),
+                SimpleNamespace(st_mode=0o40777, st_uid=0, st_gid=0),
+            ):
+                stub.parent.stat.return_value = unsafe
+                with self.assertRaisesRegex(PULL.PullBlocked, "directory"):
+                    PULL.git_https_proxy()
 
     def test_git_proxy_rejects_credentials_malformed_urls_and_sensitive_errors(self):
         stub = self._git_proxy_stub()

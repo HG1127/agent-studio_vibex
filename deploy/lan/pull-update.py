@@ -92,8 +92,11 @@ def git_https_proxy() -> str | None:
         if parent.is_symlink():
             raise PullBlocked("git_proxy_directory_invalid")
         parent_info = parent.stat()
+        # Existing LAN config directory is root:agentstudio-lan 0750.
+        # Group read/traverse is required by services; only group/other WRITE
+        # would let a non-root actor replace this root-controlled proxy file.
         if (not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != 0
-                or parent_info.st_gid != 0 or parent_info.st_mode & 0o022):
+                or parent_info.st_mode & 0o022):
             raise PullBlocked("git_proxy_directory_invalid")
         info = GIT_PROXY_FILE.stat()
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
