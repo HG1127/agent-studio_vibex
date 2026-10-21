@@ -6,6 +6,17 @@ import {fileURLToPath} from "node:url"
 import {createPgNativePilotApi,PgNativePilotError}
   from "../src/lib/pgNativePilotApi.ts"
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
+test("first anonymous GET /me 401 is a normal login page, not a false authentication error",()=>{
+  const page=fs.readFileSync(path.join(root,
+    "src/pages/PgNativePilot/PgNativePilotPage.tsx"),"utf8")
+  assert.match(page,/const expectedAnonymous=err instanceof PgNativePilotError&&\s*err\.status===401/)
+  assert.match(page,/setStatus\(expectedAnonymous\?"signedout":"unavailable"\)/)
+  assert.match(page,/setError\(expectedAnonymous\?"":describe\(err\)\)/)
+  assert.match(page,/await api\.login\(email,password\)/)
+  // Failed real login or an expired authenticated API request still alerts.
+  assert.match(page,/setPassword\(""\);setProfile\(null\);setStatus\("signedout"\)\s*setError\(describe\(err\)\)/)
+  assert.match(page,/sessionFence\.current\.invalidate\(\)/)
+})
 test("native client uses same-origin HttpOnly cookies and never PocketBase tokens",async()=>{
   const calls=[]
   const response=(payload,status=200)=>new Response(JSON.stringify(payload),{

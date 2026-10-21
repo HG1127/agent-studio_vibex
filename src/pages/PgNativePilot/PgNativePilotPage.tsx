@@ -106,9 +106,13 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       void refresh()
     }).catch(err=>{
       if(!active||!sessionFence.current.acceptsSession(sessionAtStart))return
-      setStatus(err instanceof PgNativePilotError&&err.status===401
-        ?"signedout":"unavailable")
-      setError(describe(err))
+      const expectedAnonymous=err instanceof PgNativePilotError&&
+        err.status===401
+      setStatus(expectedAnonymous?"signedout":"unavailable")
+      // Initial GET /me returning 401 is an expected anonymous state.
+      // Keep the login form available without a misleading red error.
+      // Actual login failure or a signed-in session expiry still reports it.
+      setError(expectedAnonymous?"":describe(err))
     })
     return ()=>{active=false}
   },[api,refresh,productionRoot])
