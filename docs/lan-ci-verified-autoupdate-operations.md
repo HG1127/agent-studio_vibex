@@ -111,6 +111,10 @@ sudo -u agentstudio-lan test ! -w "$RELEASE"
 
 nginx/current 和 PB hooks/Worker 路径尚未连接时，先按原 LAN 基线手册完成 `--bootstrap` 及 systemd/nginx 路径切换、备份和健康验收；不要用新版本的 SHA 冒充当前运行版本。
 
+## Nginx 配置检查与 systemd 只读沙盒
+
+自动更新器执行 nginx -t 时会按现有 Nginx 配置打开 /www/server/nginx/logs/error.log 并访问/创建 PID 文件。如果 update unit 保留 ProtectSystem=strict 却没有允许这个实际目录写入，Nginx 检查会返回 EROFS，自动部署必须失败关闭。最小修复是在已审查的 agentstudio-lan-update.service 中仅增加 /www/server/nginx/logs 到 ReadWritePaths；不要放开整个 /www、/run 或关闭 nginx -t。安装更新 unit 后必须 systemctl daemon-reload，再通过 systemctl show/cat 验证生效配置，最后执行只暂存和服务检查。服务失败时保持 timer 禁用直到验收通过。
+
 ## 模拟、基线升级与验收
 
 ```bash
