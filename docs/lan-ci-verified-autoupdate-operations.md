@@ -196,6 +196,31 @@ journalctl -u agentstudio-lan-update.service --since today --no-pager
 
 回退控制器也须先停止 timer/等待 oneshot、持同一部署锁，从 SAVE 逐文件原子恢复并核对旧 sha256，再恢复单元并 daemon-reload；保持自动标记不存在，先重新验收。不要自动 restore pb_data，不要移除用户/系统文件腾盘，不要连接生产 PG 来“修复”本流程。
 
+## 自动部署失败告警：本地审计 + 可选企业微信/飞书（2026-10-21）
+
+此功能由更新单元的 OnFailure=agentstudio-lan-update-alert.service 触发，单独运行经人工审核安装的 root 只读脚本 /usr/local/libexec/agentstudio-lan/notify-failure.py。它不构建、不发布、不停止服务、不改数据库，也不会由自动 Git Pull 自行安装。告警服务用 ProtectSystem=strict 和 NoNewPrivileges=true 运行，仅能写入 /var/backups/agentstudio-lan/alerts。每个失败生成一个 root:root、0600 的脱敏 JSON 事件，仅包含发生时间、失败类别、systemd 结果/退出码、当前 SHA；不保存应用日志、用户信息、密钥、Webhook URL 或 HTTP 错误正文。
+
+运维应在确认 timer 已停止且更新服务不活跃后，从固定的、CI 已通过的 GitHub main SHA 下载并独立比对 SHA256，再备份现有 update service 和全部 drop-in。以下示例假设 AUDITED 是经过审核且干净的源码目录，不得直接从未审查分支执行：
+
+    CTL=/usr/local/libexec/agentstudio-lan
+    install -d -o root -g root -m 0700 /var/backups/agentstudio-lan/alerts
+    install -o root -g root -m 0755 "$AUDITED/deploy/lan/notify-failure.py" "$CTL/.notify-failure.py.next"
+    mv -T "$CTL/.notify-failure.py.next" "$CTL/notify-failure.py"
+    install -o root -g root -m 0644 "$AUDITED/deploy/lan/agentstudio-lan-update-alert.service.example" /etc/systemd/system/.agentstudio-lan-update-alert.service.next
+    mv -T /etc/systemd/system/.agentstudio-lan-update-alert.service.next /etc/systemd/system/agentstudio-lan-update-alert.service
+    # 对原 agentstudio-lan-update.service 做完整备份并核对后，原子替换为经审查的新模板；
+    # 保留现有 Nginx 两个日志目录和 SQLite WAL 精确路径例外，切勿删除 drop-in。
+    systemctl daemon-reload
+    systemd-analyze verify /etc/systemd/system/agentstudio-lan-update.service /etc/systemd/system/agentstudio-lan-update-alert.service
+    systemctl show agentstudio-lan-update.service -p OnFailure -p ProtectSystem -p ReadWritePaths
+    python3 "$CTL/notify-failure.py" --self-test
+
+缺少通知配置时，self-test 只显示 webhook_configured=no；告警也只会保存在本地 JSON 和 systemd journal，**不会主动发送微信/飞书消息**。要启用远程通知，运维可自主选择唯一的企业微信/飞书机器人，手工创建 /etc/agentstudio-lan/alert-webhook.json 普通文件并设置 root:root 0600，内容为两个且仅两个键：provider 为 feishu 或 wecom，webhook_url 为该厂商官方 HTTPS Webhook 地址。禁止把 URL、Token 或原始配置发到聊天/工单/Git；不要引用内部中转器、HTTP 地址、IP、URL 重定向或客户端代理。程序只允许 open.feishu.cn、open.larksuite.com 或 qyapi.weixin.qq.com 官方地址，并要求默认 HTTPS 证书验证、无重定向。通知正文只发脱敏的运行失败分类、SHA 和操作提示，不发送生产日志或数据。
+
+配置完成后，人工执行 python3 "$CTL/notify-failure.py" --self-test，然后明确执行 --test-delivery （它会向机器人发送 TEST、不会制造真实更新失败）；确认运维人员实际收到测试消息才能声明外部告警交付完成。普通成功执行不会发送告警；同种失败类别和当前 SHA 的外部消息 1 小时节流一次，每次失败仍保留本地事件。Webhook 异常时仍保留本地事件，告警单元返回非零并留下 LAN_ALERT_FAILED 分类供运维排查。OnFailure 机制只负责更新服务失败，不会发现被手动停用的定时器或 CI 成功但从未被检查的版本，此类失联监控可独立增加。
+
+最后安装和验证必须在定时器仍关闭的情况下进行。不要为了测试 OnFailure 人为令真实更新失败；可在安全状态下单独运行告警脚本 --self-test/--test-delivery。真实故障时查看 journalctl -u agentstudio-lan-update-alert.service 与 /var/backups/agentstudio-lan/alerts 中的权限受控事件。确认安装成功、业务 UAT/回滚能力合格，再由运维恢复定时器。定时器错误需要主动停用时，不要清理 WAL/SHM、绕过数据库闲置检查或自动重放不可确定结果的业务任务。
+
 ## 本地交付验证记录（2026-10-20）
 
 独立工作树基于 main 810002a。Python 部署回归 32/32、Node LAN 回归 10/10；pnpm check 的单元 167/167，TypeScript 和生产构建通过；pnpm test:e2e:parallel 的真实隔离 PocketBase 测试 19/19，两个 worker，91.4 秒。后续仅修改部署 Python、unit 和手册，重跑部署回归通过。

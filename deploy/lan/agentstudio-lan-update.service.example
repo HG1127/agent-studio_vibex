@@ -2,6 +2,7 @@
 Description=Agent Studio LAN outbound GitHub CI-gated updater (no inbound SSH)
 Wants=network-online.target
 After=network-online.target
+OnFailure=agentstudio-lan-update-alert.service
 
 [Service]
 Type=oneshot
