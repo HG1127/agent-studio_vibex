@@ -18,18 +18,13 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
   return (
     <SiteShell>
     <div className="relative min-h-screen bg-background text-foreground">
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-32 left-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-secondary blur-3xl" />
-        <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-      </div>
 
       <header className="sticky top-0 z-40 border-b border-border bg-background/70 backdrop-blur-md">
         <VrTopBar />
       </header>
 
       <main className="relative z-10 w-full min-w-0 px-3 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="release">
-        <section className="mt-4 rounded-2xl bg-gradient-to-br from-background via-secondary to-card px-5 py-3.5 shadow-md">
+        <section className="mt-4 rounded-2xl border border-border bg-card px-5 py-3.5 shadow-sm">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
               测试通过后存版本，<span className="text-primary">放心发布每一次改动</span>
@@ -134,6 +129,7 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                   isTestLive={p.isTestLive}
                   testRun={p.testRun}
                   testPassed={p.testPassed}
+                  isTestCurrentVersion={p.isTestCurrentVersion}
                   testMaxSteps={p.testMaxSteps}
                   onRunTest={p.handleRunTest}
                 />
@@ -145,7 +141,7 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                   isSavingVersion={p.isSavingVersion}
                   onSave={p.handleSaveVersion}
                   testPassed={p.testPassed}
-                  hasTestRun={Boolean(p.testRun)}
+                  testRunStatus={p.testRun?.status || ""}
                 />
                 <PublishCard
                   hasSpec={hasSpec}

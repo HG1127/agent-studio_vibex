@@ -8,10 +8,12 @@ import { SiteShell } from "@/components/site/SiteShell"
 import { CreateComposer } from "@/components/home/CreateComposer"
 import { AgentDraftRecoveryNotice } from "@/components/home/AgentDraftRecoveryNotice"
 import { SpecEditorCard } from "@/components/home/SpecEditorCard"
+import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
 import { useHome } from "@/pages/Home/useHome"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
 import { evaluateAgentJourney } from "@/lib/agentCreateJourney"
+import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
 
 const STAGES = [
   {id:"describe",label:"描述需求",hint:"一句话明确目标"},
@@ -48,6 +50,13 @@ export default function AgentCreateRoute() {
   const [runError,setRunError]=useState("")
   const [notice,setNotice]=useState("")
   const [resourceMessage,setResourceMessage]=useState("")
+  const [localEditorOpen,setLocalEditorOpen]=useState(false)
+  useEffect(()=>{
+    const openEditor=()=>setLocalEditorOpen(true)
+    window.addEventListener("studio:open-current-agent-editor",openEditor)
+    return()=>window.removeEventListener("studio:open-current-agent-editor",openEditor)
+  },[])
+
 
   const refreshModels=useCallback(async()=>{
     setModelState("loading")
@@ -72,6 +81,11 @@ export default function AgentCreateRoute() {
     void Promise.resolve().then(()=>{if(!cancelled)void refreshModels()})
     return ()=>{cancelled=true}
   },[refreshModels])
+  useEffect(()=>{
+    // KBs can be created in another tab after wizard initialization.
+    if(step!==2)return
+    void p.refreshKnowledgeBases()
+  },[step,p.refreshKnowledgeBases])
 
   const refreshRuns=useCallback(async()=>{
     if(!p.savedSpecId)return
@@ -140,10 +154,16 @@ export default function AgentCreateRoute() {
   const editorProps = p.spec ? {
     spec:p.spec,specName:p.specName,sourceMode:p.sourceMode,
     onSpecNameChange:p.setSpecName,onTextChange:p.updateSpecText,
+    onTogglePlanReview:p.togglePlanReview,
     onListItemChange:p.updateSpecListItem,onListItemAdd:p.addSpecListItem,
     onListItemRemove:p.removeSpecListItem,toolStatusOf:p.toolStatusOf,
     builtinTools:p.builtinToolOptions,connectedTools:p.connectedTools,
+    connectedMarketTools:p.connectedMarketTools,
+    toolAnalysis:p.toolAnalysis,toolMatchNotice:p.toolMatchNotice,
+    onRematchTools:p.rematchAgentTools,
     knowledgeBases:p.knowledgeBases,onToggleKnowledgeBase:p.toggleKnowledgeBase,
+    knowledgeBasesError:p.knowledgeBasesError,knowledgeBasesLoading:p.knowledgeBasesLoading,
+    onRefreshKnowledgeBases:p.refreshKnowledgeBases,
     onToggleTool:p.handleToggleSpecTool,reviseInput:p.reviseInput,
     onReviseInputChange:p.setReviseInput,onRevise:p.handleRevise,
     isRevising:p.isRevising,onSave:p.handleSave,isSaving:p.isSaving,dirty:p.specDirty,
@@ -156,10 +176,19 @@ export default function AgentCreateRoute() {
     [...evaluated.planIssues,...evaluated.resourceIssues,...evaluated.qualityIssues]
   const runStatus=run?.status==="succeeded"?"试跑已成功":
     run?.status==="failed"?"最近试跑失败":run?.status==="awaiting_approval"?"等待审批":
+    run?.status==="awaiting_input"?"等待方案确认／补充信息":
     run?.status==="running"?"试跑进行中":
     run?"最近试跑："+run.status:"暂无试跑记录"
 
   return <SiteShell>
+    <AgentDraftDrawer open={localEditorOpen} onClose={()=>setLocalEditorOpen(false)}
+      title="随时调整 Agent 创建方案"
+      description="五个创建阶段都可以打开此窗，直接修改同一份草稿。保存后再试跑；进行中的 Agent 仍使用旧快照。">
+      {editorProps ? <SpecEditorCard {...editorProps} focus="all" showClear={false}/>:
+        <p className="rounded-xl border border-border p-5 text-sm text-muted-foreground">
+          先在第一步描述需求并生成草案，随后可以随时在这个窗口调整目标、任务步骤、工具和完成标准。
+        </p>}
+    </AgentDraftDrawer>
     <main data-studio-fluid-page="agent-create" className="flex min-h-0 w-full min-w-0 flex-1 flex-col px-3 pb-12 pt-4 sm:px-5 lg:px-7 2xl:px-10">
       <AgentDraftRecoveryNotice draft={p.pendingDraft}
         persistError={p.draftPersistError}
@@ -208,6 +237,24 @@ export default function AgentCreateRoute() {
         {p.errorMsg||notice}
       </div>}
 
+      {step>0 && <section aria-label="当前阶段待完成事项"
+        className="mt-3 rounded-xl border border-border bg-card px-4 py-3 xl:hidden">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <ClipboardCheck className="h-4 w-4 text-primary"/>当前步骤 · {STAGES[step].label}
+        </h2>
+        {[...new Set(blockers)].length ? <ul className="mt-2 space-y-1.5">
+          {[...new Set(blockers)].slice(0,5).map((reason,index)=>
+            <li key={index} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive"/>
+              {reason}
+            </li>)}
+          {[...new Set(blockers)].length>5&&<li className="text-xs text-muted-foreground">
+            还有 {[...new Set(blockers)].length-5} 项待完成，完整说明可在桌面侧栏查看。
+          </li>}
+        </ul> : <p className="mt-2 flex items-center gap-1.5 text-xs text-primary">
+          <CheckCircle2 className="h-4 w-4"/>当前阶段没有阻断项，可以继续
+        </p>}
+      </section>}
       <div className="mt-5 grid min-w-0 flex-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)] 2xl:gap-7 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
         <section id="spec-editor" className="min-w-0 space-y-4 scroll-mt-28">
           {step===0 && <>
@@ -249,16 +296,16 @@ export default function AgentCreateRoute() {
                   modelState==="ready"?`已发现 ${enabledModels} 个可选模型，试跑时仍需确认具体模型。`:
                   resourceMessage}
               </p>
-              <Link to="/model-connections" className="mt-3 inline-flex min-h-10 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
+              <Link to={addReturnAgentToUrl("/model-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
                 前往资源中心配置模型 <ArrowRight className="h-4 w-4"/>
               </Link>
             </div>
             {editorProps && <SpecEditorCard {...editorProps} focus="resources"/>}
             <div className="grid gap-2 sm:grid-cols-2">
-              <Link to="/tool-connections" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
+              <Link to={addReturnAgentToUrl("/tool-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
                 <Wrench className="mr-2 inline h-4 w-4 text-primary"/>管理工具与授权
               </Link>
-              <Link to="/knowledge-bases" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
+              <Link to={addReturnAgentToUrl("/knowledge-bases",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
                 <BookOpen className="mr-2 inline h-4 w-4 text-primary"/>管理知识库和资料
               </Link>
             </div>

@@ -15,9 +15,6 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
   return (
     <SiteShell>
     <div className="min-h-screen bg-background text-foreground">
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-br from-background via-secondary to-card" />
-      <div className="pointer-events-none fixed -top-24 right-0 -z-10 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
-      <div className="pointer-events-none fixed bottom-0 left-0 -z-10 h-64 w-64 rounded-full bg-primary/5 blur-3xl" />
 
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
         <TmTopBar />
@@ -28,7 +25,7 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">模板市场</h1>
             <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-              挑现成模板一键复制成自己的助手直接试跑；也可以把你调好的方案发布出来。官方内置 + 社区发布，模板持续生长。
+              复制模板为自己的 Agent，再连接你的模型与知识库并试跑；也可以发布经过审核的方案供同事或社区复用。
             </p>
           </div>
         </section>
@@ -90,6 +87,7 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
                 <button
                   type="button"
                   onClick={() => p.setActiveTab("market")}
+                  aria-pressed={p.activeTab === "market"}
                   className={`rounded-full px-6 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-primary ${
                     p.activeTab === "market"
                       ? "bg-primary text-primary-foreground shadow"
@@ -101,6 +99,7 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
                 <button
                   type="button"
                   onClick={() => p.setActiveTab("mine")}
+                  aria-pressed={p.activeTab === "mine"}
                   className={`rounded-full px-6 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-primary ${
                     p.activeTab === "mine"
                       ? "bg-primary text-primary-foreground shadow"
@@ -126,6 +125,17 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
                   <div className="flex items-center justify-center gap-2 rounded-3xl border border-border bg-card p-12 text-sm text-muted-foreground shadow-md">
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     正在加载模板…
+                  </div>
+                ) : p.marketLoadError ? (
+                  <div role="alert" className="rounded-2xl border border-destructive/30 bg-card p-6 text-sm">
+                    <p className="font-medium text-destructive">{p.marketLoadError}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      无法确认当前市场状态，暂不展示“没有模板”的结论。
+                    </p>
+                    <button type="button" onClick={p.retryMarket}
+                      className="mt-3 min-h-10 rounded-lg border border-border px-4 py-2 font-semibold text-primary">
+                      重新加载模板市场
+                    </button>
                   </div>
                 ) : p.filteredMarket.length === 0 ? (
                   <TmEmpty
@@ -158,6 +168,8 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
                   myList={p.myList}
                   isLoadingMine={p.isLoadingMine}
                   busyMineId={p.busyMineId}
+                  error={p.mineError}
+                  onRetry={p.retryMine}
                   onUnpublish={p.handleUnpublish}
                   onRepublish={p.handleRepublish}
                   onDelete={p.handleDeleteMine}
@@ -185,6 +197,8 @@ export function TemplateMarketPage(p: ReturnType<typeof useTemplateMarket>) {
         specList={p.specList}
         isLoadingSpecs={p.isLoadingSpecs}
         publishSpecId={p.publishSpecId}
+        specListError={p.specListError}
+        onRetrySpecs={p.retrySpecList}
         publishName={p.publishName}
         publishDescription={p.publishDescription}
         publishCategory={p.publishCategory}

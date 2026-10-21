@@ -5,6 +5,7 @@ import { ConnectionFormCard } from "@/components/model-connections/ConnectionFor
 import { ConnectionsEmpty } from "@/components/model-connections/ConnectionsEmpty"
 import { McLoginGate } from "@/components/model-connections/McLoginGate"
 import { SiteShell } from "@/components/site/SiteShell"
+import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
 import { McTopBar } from "@/components/model-connections/McTopBar"
 import type { useModelConnections } from "./useModelConnections"
 
@@ -29,11 +30,6 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
   return (
     <SiteShell>
     <div className="relative min-h-screen bg-background text-foreground">
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-32 left-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-secondary blur-3xl" />
-        <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-      </div>
 
       <header className="sticky top-0 z-40 border-b border-border bg-background/70 backdrop-blur-md">
         <McTopBar />
@@ -65,6 +61,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
               </span>            </div>
         </section>
 
+        <ReturnToAgentResources what="模型连接"/>
         {!p.isLoggedIn && <McLoginGate onLoginClick={p.onLoginClick} />}
 
         {p.isLoggedIn && p.needsRhLogin && (

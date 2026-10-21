@@ -118,18 +118,59 @@ test("worker status distinguishes absent heartbeat from failed queue/SQL/heartbe
     if (!fail) assert.equal(adaptHarnessData("worker", result.data).metrics[0].value, "未启用")
   }
 })
-test("both recent APIs restrict owner and cap history; Agent query failure is explicit", () => {
+test("recent Agent and Workflow APIs remain owner-scoped, bounded, and fail on query errors", () => {
   for (const kind of ["agent", "workflow"]) {
-    const app = { findRecordsByFilter(collection, filter, order, limit, offset, params) {
+    let recentCalls = 0, pendingCalls = 0, sqlCounts = 0
+    const getRecords = (collection, filter, order, limit, offset, params) => {
       assert.equal(params.uid, "verified-owner")
-      assert.equal(filter, "rh_user_id = {:uid}")
       assert.equal(limit, 20)
+      assert.equal(offset, 0)
+      if (kind === "agent" && filter.includes("awaiting_input")) {
+        pendingCalls++
+        assert.equal(collection, "agent_runs")
+        assert.match(filter, /rh_user_id = \{:uid\}/)
+        assert.match(filter, /awaiting_approval/)
+      } else {
+        recentCalls++
+        assert.equal(filter, "rh_user_id = {:uid}")
+      }
       return []
-    } }
+    }
+    const app = {
+      findRecordsByFilter: getRecords,
+      db: () => ({ newQuery(sql) {
+        sqlCounts++
+        assert.match(sql, /COUNT\(\*\).*agent_runs/)
+        assert.match(sql, /rh_user_id=\{:uid\}/)
+        assert.match(sql, /awaiting_input/)
+        return { bind(params) {
+          assert.equal(params.uid, "verified-owner")
+          return { one(model) { model.total = 0 } }
+        } }
+      } }),
+    }
     const file = kind === "agent" ? "agent_runs_api" : "workflow_api"
-    const handler = route(`pocketbase/pb_hooks/${file}.pb.js`, `/api/${kind}-runs/recent`, app)
-    assert.equal(handler(event()).status, 200)
+    const handler = route("pocketbase/pb_hooks/" + file + ".pb.js",
+      "/api/" + kind + "-runs/recent", app)
+    const successful = handler(event())
+    assert.equal(successful.status, 200, JSON.stringify(successful.data))
+    assert.equal(recentCalls, 1)
+    if (kind === "agent") {
+      assert.equal(pendingCalls, 1)
+      assert.equal(sqlCounts, 1)
+      assert.equal(successful.data.pending_count, 0)
+      assert.equal(successful.data.pending_items.length, 0)
+    } else {
+      assert.equal(pendingCalls, 0)
+      assert.equal(sqlCounts, 0)
+    }
     app.findRecordsByFilter = () => { throw Error("query_failed") }
     assert.equal(handler(event()).status, 500)
+    if (kind === "agent") {
+      app.findRecordsByFilter = getRecords
+      app.db = () => ({ newQuery() { throw Error("pending_count_unavailable") } })
+      assert.equal(handler(event()).status, 500,
+        "A failed pending count cannot be silently reported as zero")
+    }
   }
 })

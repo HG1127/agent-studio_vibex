@@ -15,10 +15,9 @@ function classify(input) {
   var external = Boolean(o.external) || market
   var method = String(o.method || "POST").toUpperCase()
   var requiresJournal = !builtin && external && (market || method !== "GET")
-  // An operator may make write approval non-bypassable for all employees.
-  // This cannot be weakened by a model decision or a client-side toggle.
-  var requiresApproval = (Boolean(o.requireApproval) || Boolean(o.mandatoryApproval)) &&
-    !Boolean(o.alreadyApproved) && requiresJournal
+  // Market MCP approval is always per call; administrator write policies remain mandatory.
+  var requiresApproval = !Boolean(o.alreadyApproved) &&
+    (market || ((Boolean(o.requireApproval) || Boolean(o.mandatoryApproval)) && requiresJournal))
   return {
     builtin: builtin,
     external: external,

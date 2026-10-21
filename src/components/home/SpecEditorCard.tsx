@@ -21,6 +21,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { AgentSpec, ListField } from "@/pages/Home/useHome"
+import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
+import type { ToolResolution } from "@/lib/agentToolMatcher"
+import { safeMarketplaceQuery, addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { AgentToolAutoConnect } from "@/components/home/AgentToolAutoConnect"
 
 type SpecEditorCardProps = {
   spec: AgentSpec
@@ -28,13 +32,21 @@ type SpecEditorCardProps = {
   sourceMode: "create" | "template"
   onSpecNameChange: (value: string) => void
   onTextChange: (field: "goal" | "task_scope", value: string) => void
+  onTogglePlanReview: (enabled: boolean) => void
   onListItemChange: (field: ListField, index: number, value: string) => void
   onListItemAdd: (field: ListField) => void
   onListItemRemove: (field: ListField, index: number) => void
   toolStatusOf: (toolName: string) => "ready" | "pending"
   builtinTools: { id: string; title: string; desc: string }[]
   connectedTools: { name: string; description: string }[]
+  connectedMarketTools: VerifiedMarketTool[]
+  toolAnalysis: ToolResolution | null
+  toolMatchNotice: string
+  onRematchTools: () => void
   knowledgeBases: { id: string; name: string; document_count: number }[]
+  knowledgeBasesError?: string
+  knowledgeBasesLoading?: boolean
+  onRefreshKnowledgeBases?: () => void
   onToggleKnowledgeBase: (id: string, checked: boolean) => void
   onToggleTool: (toolName: string, checked: boolean) => void
   reviseInput: string
@@ -50,6 +62,8 @@ type SpecEditorCardProps = {
   savedSpecId?: string
   focus?: "all" | "plan" | "resources"
   onClear: () => void
+  showClear?: boolean
+  compactActions?: boolean
 }
 
 function SectionBlock({ title, icon, children, featured = false }: {
@@ -162,15 +176,19 @@ function ToolPickerBlock({
   toolStatusOf,
   builtinTools,
   connectedTools,
+  connectedMarketTools,
   onToggleTool,
   onRemovePending,
+  returnSpecId,
 }: {
   spec: AgentSpec
   toolStatusOf: (toolName: string) => "ready" | "pending"
   builtinTools: { id: string; title: string; desc: string }[]
   connectedTools: { name: string; description: string }[]
+  connectedMarketTools: VerifiedMarketTool[]
   onToggleTool: (toolName: string, checked: boolean) => void
   onRemovePending: (toolName: string) => void
+  returnSpecId?: string
 }) {
   const specTools = spec.tools.map((item) => item.trim()).filter((item) => item !== "")
   const isChecked = (toolName: string) => specTools.includes(toolName.trim())
@@ -222,6 +240,24 @@ function ToolPickerBlock({
           </p>
         )}
       </div>
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            已验证的市场插件工具 · 按需授权
+          </p>
+          <Link to="/plugin-market" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:underline">管理插件（新标签）→</Link>
+        </div>
+        {connectedMarketTools.length > 0
+          ? <div className="max-h-72 space-y-1.5 overflow-y-auto">
+            {connectedMarketTools.map(tool=><ToolToggleRow key={tool.id}
+              label={tool.label} desc={tool.description}
+              checked={isChecked(tool.id)}
+              onToggle={value=>onToggleTool(tool.id,value)} />)}
+          </div>
+          : <p className="rounded-lg border border-dashed border-border p-3 text-xs leading-relaxed text-muted-foreground">
+              还没有经过验证并启用的插件工具。连接插件并通过工具发现后，具体可选工具会出现在这里。
+            </p>}
+      </div>
       {pendingTools.length > 0 && (
         <div>
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -235,6 +271,8 @@ function ToolPickerBlock({
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
                 {toolName}
+                <Link to={addReturnAgentToUrl(safeMarketplaceQuery(toolName) ? `/plugin-market?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/plugin-market",returnSpecId||"")} target="_blank" rel="noopener noreferrer" className="rounded-md border border-primary/30 px-2 py-1 text-primary hover:bg-primary/10">寻找插件</Link>
+                <Link to={safeMarketplaceQuery(toolName) ? `/tool-connections?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/tool-connections"} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">自定义连接</Link>
                 <button
                   type="button"
                   aria-label={`从方案里移除 ${toolName}`}
@@ -249,7 +287,7 @@ function ToolPickerBlock({
         </div>
       )}
       <p className="text-xs leading-relaxed text-muted-foreground">
-        勾选结果会写进方案的所需工具清单；助手试跑时按工具名命中：内置工具直接执行，已连接工具由服务端代理真实调用。
+        勾选后将工具的真实标识写入方案。内置和已启用 HTTP 工具可按授权调用；市场插件执行前仍需人工审批。选定具体插件工具后，本 Agent 将只获得这些已验证的插件工具。
       </p>
     </div>
   )
@@ -275,19 +313,18 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             </span>
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={p.onClear}
-          className="shrink-0 rounded-lg text-muted-foreground hover:text-destructive"
-        >
-          <X className="mr-1 h-4 w-4" />
-          清空
-        </Button>
+        {p.showClear !== false && <Button
+          type="button" variant="ghost" size="sm" onClick={p.onClear}
+          className="shrink-0 rounded-lg text-muted-foreground hover:text-destructive">
+          <X className="mr-1 h-4 w-4" />清空
+        </Button>}
       </div>
 
       <div className="grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2">
+        <AgentToolAutoConnect analysis={p.toolAnalysis}
+          selectedTools={p.spec.tools} notice={p.toolMatchNotice}
+          returnSpecId={p.savedSpecId}
+          onRematch={p.onRematchTools} onToggleTool={p.onToggleTool}/>
         {p.focus !== "resources" && (<>
         <SectionBlock title="目标 · 优先确认" featured icon={<Target className="h-4 w-4" />}>
           <Textarea
@@ -323,15 +360,31 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             toolStatusOf={p.toolStatusOf}
             builtinTools={p.builtinTools}
             connectedTools={p.connectedTools}
+            connectedMarketTools={p.connectedMarketTools}
             onToggleTool={p.onToggleTool}
+            returnSpecId={p.savedSpecId}
             onRemovePending={(toolName) => p.onToggleTool(toolName, false)}
           />
         </SectionBlock>
         <SectionBlock title="关联知识库" icon={<BookOpen className="h-4 w-4" />}>
-          <p className="mb-2 text-xs leading-relaxed text-muted-foreground">选中后 Agent 可检索你的专属资料，并按片段出处引用。</p>
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              选中后 Agent 可检索你的专属资料，并按片段出处引用。
+            </p>
+            {p.onRefreshKnowledgeBases && <button type="button"
+              aria-label="刷新知识库列表" disabled={p.knowledgeBasesLoading}
+              onClick={p.onRefreshKnowledgeBases}
+              className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-secondary disabled:opacity-50">
+              {p.knowledgeBasesLoading?"同步中…":"刷新"}
+            </button>}
+          </div>
+          {p.knowledgeBasesError && <p role="alert"
+            className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive">
+            {p.knowledgeBasesError}
+          </p>}
           {p.knowledgeBases.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-              尚无知识库。<Link to="/knowledge-bases" className="text-primary hover:underline">创建并上传资料 →</Link>
+              {p.knowledgeBasesLoading?"正在读取已授权知识库…":"尚无已授权知识库。"}<Link to={addReturnAgentToUrl("/knowledge-bases",p.savedSpecId||"")} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">创建并上传资料 →</Link>
             </p>
           ) : (
             <div className="max-h-40 space-y-2 overflow-auto">
@@ -343,7 +396,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
               </label>)}
             </div>
           )}
-          <Link to="/knowledge-bases" className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+          <Link to={addReturnAgentToUrl("/knowledge-bases",p.savedSpecId||"")} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
             管理知识库 <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </SectionBlock>
@@ -360,6 +413,20 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             addLabel="添加步骤"
           />
         </SectionBlock>
+        <div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 xl:col-span-2">
+          <label className="flex cursor-pointer items-center gap-3">
+            <input type="checkbox" checked={Boolean(p.spec.require_plan_review)}
+              onChange={event => p.onTogglePlanReview(event.target.checked)}
+              className="h-4 w-4 shrink-0 accent-primary"/>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">阶段方案需我确认后才继续</span>
+              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                适用于需求落地、研究计划和多阶段交付：先展示方案草案，等待批准或提出修改意见；
+                确认后再完成后续计划。不同于外部写操作的权限审批。
+              </span>
+            </span>
+          </label>
+        </div>
         <SectionBlock title="完成标准 · 如何验收" featured icon={<Flag className="h-4 w-4" />}>
           <ListRows
             field="done_criteria"
@@ -387,7 +454,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             另存为新 Agent
           </button>}
         </div>}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        {!p.compactActions && <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
             请核对目标、执行步骤和完成标准，保存后再进行资源配置与试跑。
           </p>
@@ -402,7 +469,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
               <Save className="mr-2 h-4 w-4"/>保存到我的助手
             </>}
           </Button>
-        </div>
+        </div>}
         {p.focus !== "resources" && <details className="mt-4 rounded-xl border border-border bg-background/60 p-3">
           <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
             <Wand2 className="mr-1 inline h-3.5 w-3.5"/>可选 · 让 AI 帮我调整方案
@@ -427,7 +494,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             AI 修订会使用你已连接的模型，可能产生费用；请检查修订结果后保存。
           </p>
         </details>}
-        {p.savedMsg && (
+        {!p.compactActions && p.savedMsg && (
           <p role="status" className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-primary/5 px-3 py-2 text-sm text-primary">
             <CheckCircle2 className="h-4 w-4 shrink-0"/>
             {p.savedMsg}

@@ -9,6 +9,8 @@ import {
 import { registerUnsavedWorkCheck } from "@/lib/unsavedNavigation"
 import { useSearchParams } from "react-router-dom"
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
+import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
+import { resolveAgentToolRequirements, chooseVerifiedAgentTool } from "@/lib/agentToolMatcher"
 import {
   BUILTIN_TOOL_OPTIONS,
   TEMPLATE_PRESETS,
@@ -52,13 +54,14 @@ const SYSTEM_PROMPT = [
   'tools：字符串数组，完成任务所需的通用工具能力名（如「网络搜索」「文档解析」「数据图表」），2-6 项，不写具体产品名',
   'task_plan：字符串数组，按执行顺序拆解的任务步骤（3-7 步）',
   'done_criteria：字符串数组，判断任务完成的标准（2-5 条）',
+  'require_plan_review：布尔值；明确要求先由人确认草案、确认后才进入落地计划/下一阶段时为 true，否则为 false',
   "所有内容使用简体中文，贴合用户的真实需求，不空泛。",
 ].join("\n")
 
 const REVISE_SYSTEM_PROMPT = [
   "你是「Agent Studio」的助手方案修订器。用户会给你一份现有方案 JSON 和一句修改要求。",
   "请在现有方案基础上做增量修订：只改与修改要求相关的部分，其余字段保持原样。",
-  "只输出修订后的完整 JSON 对象（字段结构与原方案一致：name/goal/task_scope/deliverables/tools/task_plan/done_criteria），",
+  "只输出修订后的完整 JSON 对象（字段结构与原方案一致：name/goal/task_scope/deliverables/tools/task_plan/done_criteria/require_plan_review），",
   "不要 markdown 代码块，不要任何额外文字。所有内容使用简体中文。",
 ].join("\n")
 
@@ -83,6 +86,7 @@ function parseSpecJson(raw: string): { displayName: string; spec: AgentSpec } | 
         tools: toStrArr(obj.tools),
         task_plan: toStrArr(obj.task_plan),
         done_criteria: toStrArr(obj.done_criteria),
+        require_plan_review: obj.require_plan_review === true,
       },
     }
   } catch {
@@ -111,6 +115,8 @@ export function useHome() {
   const [reviseInput, setReviseInput] = useState("")
   const [spec, setSpec] = useState<AgentSpec | null>(null)
   const [specName, setSpecName] = useState("")
+  const [requirementForTools, setRequirementForTools] = useState("")
+  const [toolMatchNotice, setToolMatchNotice] = useState("")
   const [sourceMode, setSourceMode] = useState<"create" | "template">("create")
   const [templateKey, setTemplateKey] = useState("")
   const [editingRecordId, setEditingRecordId] = useState("")
@@ -131,8 +137,12 @@ export function useHome() {
   }, [])
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [savedList, setSavedList] = useState<SavedSpecRow[]>([])
+  const [savedTotal,setSavedTotal] = useState(0)
   const [connectedTools, setConnectedTools] = useState<ConnectedToolOption[]>([])
+  const [connectedMarketTools, setConnectedMarketTools] = useState<VerifiedMarketTool[]>([])
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [knowledgeBasesError,setKnowledgeBasesError]=useState("")
+  const [knowledgeBasesLoading,setKnowledgeBasesLoading]=useState(false)
 
   const currentDraft: AgentEditorDraft = useMemo(() => ({
     version: 1, ownerId: rhUserId, editedAt: 0,
@@ -220,53 +230,83 @@ export function useHome() {
     setDraftPersistError(false)
   }, [rhUserId])
 
-  // 登录态下拉取已启用的外部工具连接；失败静默降级为空列表，不阻塞页面
+  // 按当前员工权限拉取真实启用的 HTTP 连接和验证通过的市场插件工具。
+  // 任一来源失败时不伪造连接；已经保存的工具清单不会被自动删除。
   const loadConnectedTools = useCallback(async () => {
-    try {
-      const res = await fetch(`${getPocketBaseUrl()}/api/tool-connections`, {
-        headers: { ...vibexAuthHeaders() },
-      })
-      if (!res.ok) return
-      const data = await res.json()
-      const items = Array.isArray(data?.items)
-        ? (data.items as { name: string; description: string; enabled: boolean }[])
-        : []
-      setConnectedTools(
-        items
-          .filter((item) => item.enabled && item.name)
-          .map((item) => ({ name: item.name, description: item.description || "" })),
-      )
-    } catch {
-      // 工具连接列表加载失败不阻塞方案编辑
+    const headers={...vibexAuthHeaders()}
+    const [toolRes,marketRes]=await Promise.all([
+      fetch(`${getPocketBaseUrl()}/api/tool-connections`,{headers}).catch(()=>null),
+      fetch(`${getPocketBaseUrl()}/api/market/connections`,{headers}).catch(()=>null),
+    ])
+    if(toolRes?.ok){
+      const data=await toolRes.json().catch(()=>null)
+      const items=Array.isArray(data?.items)
+        ? data.items as {name:string;description:string;enabled:boolean;method?:string;status?:string}[] : []
+      setConnectedTools(items.filter(item=>item.enabled&&item.name)
+        .map(item=>({name:item.name,description:item.description||"",method:item.method,status:item.status})))
+    }
+    if(marketRes?.ok){
+      const data=await marketRes.json().catch(()=>null)
+      setConnectedMarketTools(getVerifiedMarketTools(data?.items))
     }
   }, [])
 
   useEffect(() => {
     if (!rhUserId) return
-    let cancelled = false
-    void Promise.resolve().then(() => {
-      if (!cancelled) void loadConnectedTools()
-    })
-    return () => { cancelled = true }
+    // Plugin OAuth may complete in a second tab. Refresh when the editor regains focus,
+    // without throwing away an employee's unsaved Agent configuration.
+    const refresh = () => { void loadConnectedTools() }
+    void Promise.resolve().then(refresh)
+    window.addEventListener("focus", refresh)
+    return () => { window.removeEventListener("focus", refresh) }
   }, [rhUserId, loadConnectedTools])
 
-  useEffect(() => {
-    if (rhUserId) void getKnowledgeBases().then(setKnowledgeBases).catch(() => setKnowledgeBases([]))
-  }, [rhUserId])
+  const refreshKnowledgeBases=useCallback(async()=>{
+    setKnowledgeBasesLoading(true)
+    setKnowledgeBasesError("")
+    try {
+      setKnowledgeBases(await getKnowledgeBases())
+    } catch {
+      // Avoid presenting permission/network failures as an empty personal library.
+      setKnowledgeBasesError("知识库列表暂不可用，请刷新资源连接后继续。")
+    } finally {setKnowledgeBasesLoading(false)}
+  },[])
+  useEffect(()=>{
+    if(!rhUserId)return
+    void refreshKnowledgeBases()
+    const onFocus=()=>{if(document.visibilityState==="visible")void refreshKnowledgeBases()}
+    window.addEventListener("focus",onFocus)
+    return()=>window.removeEventListener("focus",onFocus)
+  },[rhUserId,refreshKnowledgeBases])
 
+  // The catalog fetches just its own server-paged 18 visible rows. The
+  // workbench only needs the accurate total and a refresh signal here;
+  // requesting 200 complete AgentSpecs on every open adds unnecessary payload.
+  // An explicitly selected older Agent is retrieved via owner-scoped GET by ID.
   const loadSavedList = useCallback(async (uid: string) => {
     if (!uid) return
     try {
       const res = await fetch(
-        `${getPocketBaseUrl()}/api/agent_specs?rh_user_id=${encodeURIComponent(uid)}`,
+        `${getPocketBaseUrl()}/api/agent_specs?perPage=1&sort=-updated`,
         { headers: { ...vibexAuthHeaders() } },
       )
       if (!res.ok) return
       const data = await res.json()
       const items = Array.isArray(data?.items) ? (data.items as SavedSpecRow[]) : []
       setSavedList(items)
+      setSavedTotal(Number.isFinite(Number(data?.totalItems)) ? Number(data.totalItems) : items.length)
       const targetId=returnSpecRef.current
-      const record=targetId && items.find(item=>item.id===targetId)
+      let record=targetId && items.find(item=>item.id===targetId)
+      if(!record && targetId && /^[A-Za-z0-9]{15}$/.test(targetId)){
+        // Older Agent direct links are not guaranteed to be in the first 200
+        // sorted records; exact owner-scoped lookup prevents wrong editing.
+        const detail=await fetch(getPocketBaseUrl()+"/api/agent_specs/"+
+          encodeURIComponent(targetId),{headers:{...vibexAuthHeaders()}})
+        if(detail.ok){
+          const candidate=await detail.json() as SavedSpecRow
+          if(candidate?.id===targetId)record=candidate
+        }
+      }
       if(record){
         returnSpecRef.current=""
         setSpec(record.spec)
@@ -321,7 +361,15 @@ export function useHome() {
       setErrorMsg("方案格式异常，请换个说法再试一次")
       return
     }
-    setSpec(parsed.spec)
+    const matched = resolveAgentToolRequirements(requirement, parsed.spec, connectedTools, connectedMarketTools)
+    setSpec({...parsed.spec, tools:[
+      ...matched.resolvedTools,
+      ...matched.gaps.map(row=>row.name).filter(name=>!matched.resolvedTools.includes(name)),
+    ]})
+    setRequirementForTools(requirement)
+    setToolMatchNotice(matched.safeAutoBindings.length
+      ? `已自动匹配 ${matched.safeAutoBindings.length} 项无需新授权的工具；其余所需能力请检查下方连接建议。`
+      : "已核对当前账号的工具权限；未连接的能力会引导你去插件市场完成连接。")
     setSpecName(parsed.displayName)
     // Do not leave a consumed requirement as a permanent second unsaved draft.
     // If the employee typed another requirement during generation, preserve it.
@@ -335,7 +383,7 @@ export function useHome() {
     setTemplateKey("")
     setEditingRecordId("")
     scrollToSpecEditor()
-  }, [userInput, markSpecEdited])
+  }, [userInput, markSpecEdited, connectedTools, connectedMarketTools])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -376,11 +424,23 @@ export function useHome() {
       setErrorMsg("修订结果格式异常，请换个说法再试一次")
       return
     }
-    setSpec((previous) => ({ ...parsed.spec, knowledge_base_ids: previous?.knowledge_base_ids || [], require_approval: previous?.require_approval, quality_checks: previous?.quality_checks || [] }))
+    setSpec((previous) => {
+      const explicitlySelected=(previous?.tools||[]).filter(name=>
+        connectedMarketTools.some(tool=>tool.id===name) || connectedTools.some(tool=>tool.name===name))
+      const matched=resolveAgentToolRequirements(requirementForTools, parsed.spec,
+        connectedTools,connectedMarketTools,explicitlySelected)
+      return {...parsed.spec, tools:[
+        ...matched.resolvedTools,
+        ...matched.gaps.map(item=>item.name).filter(name=>!matched.resolvedTools.includes(name)),
+      ],knowledge_base_ids: previous?.knowledge_base_ids || [],
+        require_approval: previous?.require_approval,
+        require_plan_review: previous?.require_plan_review,
+        quality_checks: previous?.quality_checks || []}
+    })
     setSpecName(parsed.displayName || specName)
     markSpecEdited()
     setReviseInput("")
-  }, [reviseInput, spec, specName, markSpecEdited])
+  }, [reviseInput, spec, specName, markSpecEdited, requirementForTools, connectedTools, connectedMarketTools])
 
   const handleRevise = useCallback(() => {
     if (!reviseInput.trim() || !spec || isRevising) return
@@ -563,6 +623,11 @@ export function useHome() {
     setErrorMsg("")
   }, [specDirty,userInput,rhUserId])
 
+  const togglePlanReview = useCallback((enabled: boolean) => {
+    markSpecEdited()
+    setSpec(previous => previous ? { ...previous, require_plan_review: enabled } : previous)
+  }, [markSpecEdited])
+
   const updateSpecText = useCallback((field: "goal" | "task_scope", value: string) => {
     markSpecEdited()
     setSpec((prev) => (prev ? { ...prev, [field]: value } : prev))
@@ -594,9 +659,33 @@ export function useHome() {
   const dismissError = useCallback(() => setErrorMsg(""), [])
 
   const toolStatusOf = useCallback(
-    (toolName: string) => toolConnectionStatus(toolName, connectedTools),
-    [connectedTools],
+    (toolName: string) => toolConnectionStatus(toolName,
+      [...connectedTools,...connectedMarketTools.map(tool=>({name:tool.id,description:tool.description}))]),
+    [connectedTools,connectedMarketTools],
   )
+
+  const toolAnalysis = useMemo(() => spec
+    ? resolveAgentToolRequirements(requirementForTools, spec, connectedTools, connectedMarketTools,
+        (spec.tools||[]).filter(tool=>connectedTools.some(conn=>conn.name===tool) ||
+          connectedMarketTools.some(conn=>conn.id===tool)))
+    : null,[requirementForTools,spec,connectedTools,connectedMarketTools])
+
+  const rematchAgentTools = useCallback(() => {
+    if(!spec)return
+    const currentSelections=(spec.tools||[]).filter(tool=>
+      connectedTools.some(conn=>conn.name===tool) || connectedMarketTools.some(conn=>conn.id===tool))
+    const result=resolveAgentToolRequirements(requirementForTools,spec,
+      connectedTools,connectedMarketTools,currentSelections)
+    const updated=[...result.resolvedTools,
+      ...result.gaps.map(row=>row.name).filter(name=>!result.resolvedTools.includes(name))]
+    if(JSON.stringify(updated)!==JSON.stringify(spec.tools)){
+      markSpecEdited()
+      setSpec(previous=>previous?{...previous,tools:updated}:previous)
+    }
+    setToolMatchNotice(result.gaps.length
+      ? `已匹配 ${result.resolvedTools.length} 项工具，还有 ${result.gaps.length} 项能力需要连接或人工确认。`
+      : `已匹配 ${result.resolvedTools.length} 项工具，当前方案所需能力均已核对。`)
+  },[spec,requirementForTools,connectedTools,connectedMarketTools,markSpecEdited])
 
   // 勾选/取消勾选工具 → 写进 spec.tools（内置 id 或已连接工具名精确匹配）
   const handleToggleSpecTool = useCallback((toolName: string, checked: boolean) => {
@@ -605,14 +694,10 @@ export function useHome() {
       if (!prev) return prev
       const trimmed = toolName.trim()
       if (!trimmed) return prev
-      const exists = prev.tools.some((item) => item.trim() === trimmed)
-      if (checked && !exists) return { ...prev, tools: [...prev.tools, trimmed] }
-      if (!checked && exists) {
-        return { ...prev, tools: prev.tools.filter((item) => item.trim() !== trimmed) }
-      }
-      return prev
+      const tools=chooseVerifiedAgentTool(prev.tools,trimmed,checked,connectedMarketTools)
+      return tools.join("\u0000")===prev.tools.join("\u0000")?prev:{...prev,tools}
     })
-  }, [markSpecEdited])
+  }, [markSpecEdited,connectedMarketTools])
 
   const toggleKnowledgeBase = useCallback((id: string, checked: boolean) => {
     markSpecEdited()
@@ -641,15 +726,23 @@ export function useHome() {
       markSpecEdited()
     },
     sourceMode,
+    togglePlanReview,
     updateSpecText,
     updateSpecListItem,
     addSpecListItem,
     removeSpecListItem,
     toolStatusOf,
-    connectedTools,
+    connectedTools,    toolAnalysis,
+    toolMatchNotice,
+    rematchAgentTools,
+
+    connectedMarketTools,
     builtinToolOptions: BUILTIN_TOOL_OPTIONS,
     knowledgeBases,
-    toggleKnowledgeBase,
+    toggleKnowledgeBase,    knowledgeBasesError,
+    knowledgeBasesLoading,
+    refreshKnowledgeBases,
+
     handleToggleSpecTool,
     reviseInput,
     setReviseInput,
@@ -675,6 +768,7 @@ export function useHome() {
     handleLoadTemplate,
     handleClearSpec,
     savedList,
+    savedTotal,
     handleOpenSaved,
     handleDeleteSaved,
   }

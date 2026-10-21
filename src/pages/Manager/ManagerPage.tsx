@@ -239,9 +239,9 @@ export default function ManagerPage(){
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <button className={btn+" inline-flex items-center gap-1"} disabled={saving}
+                      <button type="button" aria-label={"拒绝待审批调用："+item.title} className={btn+" inline-flex items-center gap-1"} disabled={saving}
                         onClick={()=>void decide(item,"reject")}><XCircle size={14}/>拒绝</button>
-                      <button className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-40"
+                      <button type="button" aria-label={"批准待审批调用："+item.title} className="inline-flex min-h-10 items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-40"
                         disabled={saving} onClick={()=>void decide(item,"approve")}>
                         <CheckCircle2 size={14}/>批准
                       </button>

@@ -16,7 +16,7 @@ import type { useIntegrate } from "./useIntegrate"
 export function IntegratePage(p: ReturnType<typeof useIntegrate>) {
   return (
     <SiteShell>
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary to-card">
+    <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
         <ItTopBar />
       </header>
@@ -24,10 +24,10 @@ export function IntegratePage(p: ReturnType<typeof useIntegrate>) {
       <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 px-4 pb-4 pt-4">
         <div className="mx-auto flex max-w-7xl flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
-            把助手<span className="text-primary">接进你的产品</span>
+            已发布 Agent 的集成与调用
           </h1>
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-            已发布助手可生成网页嵌入悬浮球或发放 API 钥匙；嵌入预览与在线试调走真实链路，外部调用全部留档可过滤。
+            为已发布版本生成网页嵌入配置、API 密钥并进行在线试调；连接状态、调用结果和历史记录集中在当前工作空间。
           </p>
         </div>
       </section>

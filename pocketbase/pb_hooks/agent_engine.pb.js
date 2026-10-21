@@ -92,6 +92,31 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     var bytesToStr = modelWire.bytesToStr
     var executionGuard = require(__hooks + "/modules/harness_execution_guard.js")
     var runLifecycle = require(__hooks + "/modules/harness_run_lifecycle.js")
+    // Decode server-only tool authorization headers. Market/HTTP connectors use
+    // gcm1: encrypted values; older local-only fixtures can carry legacy obfuscation.
+    // Never return ciphertext on decrypt failure or send it to the model/event log.
+    var deobfKey = function (stored) {
+      var value = String(stored || "")
+      if (!value) return ""
+      if (value.indexOf("gcm1:") === 0) {
+        var secret = String($os.getenv("AGENT_STUDIO_SECRET_KEY") || "")
+        if (secret.length !== 32) return ""
+        try { return String($security.decrypt(value.substring(5), secret)) }
+        catch (_) { return "" }
+      }
+      if (/^[0-9]+(?:\.[0-9]+)*$/.test(value)) {
+        var parts = value.split(".")
+        var decoded = ""
+        for (var i = 0; i < parts.length; i++) {
+          var point = Number(parts[i]) - 3
+          if (isNaN(point) || point < 0 || point > 65535) return ""
+          decoded += String.fromCharCode(point)
+        }
+        return decoded
+      }
+      return value
+    }
+
 
     var logErr = function (where, err) {
       try {
@@ -694,6 +719,12 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       // 必须具有已验证的工具清单，不能从其它员工连接表借出凭据或工具。
       // dispatch 命中前缀时按 MCP streamable-http tools/call 真实调用并写 tool_invocations ——
       var marketToolMap = {}
+      // Explicitly selected MCP tools are captured at start, owned and verified again
+      // at invocation. Old already-running records without this field keep their
+      // historical behavior; every newly-created run is least-privilege by default.
+      var selectedMarketIds = cfg.market_tool_ids
+      var restrictMarket = Array.isArray(selectedMarketIds)
+
       try {
         var mkRows = $app.findRecordsByFilter(
           "market_connections",
@@ -724,6 +755,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             var mkTName = String(mkT.name || "")
             if (!mkTName) continue
             var mkFull = "mkt__" + String(mkRec.id) + "__" + mkTName
+            if (restrictMarket && selectedMarketIds.indexOf(mkFull) < 0) continue
             marketToolMap[mkFull] = { conn: mkRec, tool: mkTName, title: mkTitle }
             var mkHint = String(mkT.args_hint || "")
             enabledTools.push(
@@ -794,6 +826,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
               evidence_refs: evidenceRefs,
               call_sig_recent: sigRecent,
               pending_approval: cp.pending_approval || null,
+              pending_input: cp.pending_input || null,
+              plan_review_confirmed: cp.plan_review_confirmed === true,
               approval_decision: String(cp.approval_decision || ""),
               approved_step: Number(cp.approved_step || 0),
             },
@@ -822,6 +856,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             evidence_refs: evidenceRefs,
             call_sig_recent: sigRecent,
             pending_approval: cp.pending_approval || null,
+            pending_input: cp.pending_input || null,
+            plan_review_confirmed: cp.plan_review_confirmed === true,
             approval_decision: String(cp.approval_decision || ""),
             approved_step: Number(cp.approved_step || 0),
           },
@@ -871,6 +907,25 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         cp.approval_decision = ""
       }
 
+      // Approval is not a permanent capability grant. Verify the live MCP
+      // connection and this run's selected tool set again on the actual tick.
+      // A revoked plugin must never be invoked, even from an approved checkpoint.
+      if (resumeApprovedCall && toolName.indexOf("mkt__") === 0 && !marketToolMap[toolName]) {
+        seq++
+        addEvent(runId, stepIndex, seq, "error", {
+          message: "市场插件已断开、停用或当前方案不再拥有此工具权限；原审批失效，本次调用未执行",
+          tool: toolName,
+        })
+        pushStepAndSave({
+          thought: thought.slice(0, 200), action: "tool_denied", tool: toolName,
+          obs: "工具权限已撤销或连接未验证，本次调用被阻止；请使用其他已授权工具，或报告无法完成的部分",
+        }, 0)
+        if (doneSteps + 1 >= maxSteps) {
+          finishRun(runId, "failed", "", "工具权限已撤销且任务步数预算耗尽", stepIndex, seq, "授权已失效")
+        }
+        return
+      }
+
       if (!resumeApprovedCall) {
       var histLines = []
       var histFrom = steps.length > 8 ? steps.length - 8 : 0
@@ -903,11 +958,18 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       var sysPrompt =
         "你是「Agent Studio」里的助手执行引擎。你要基于助手方案与任务指令，逐步完成任务。" +
         "每次只输出下一步动作，必须是且仅是一个单行 JSON 对象（不要 markdown 代码块、不要多余文字；字符串内的换行与双引号必须转义为 \\n 与 \\\"），格式：" +
-        '{"thought":"这一步的思考","action":"tool 或 final","tool":"工具名(action=tool 时必填)","tool_input":{...},"final_answer":"最终成果(action=final 时必填)"}。' +
+        '{"thought":"这一步的思考","action":"tool 或 ask_user 或 final","tool":"工具名(action=tool 时必填)","tool_input":{...},"question":"需要用户补充/确认的具体问题(action=ask_user 时必填)","final_answer":"完整成果(action=final 时必填)"}。' +
         "规则：只能调用已授权工具清单里的工具；工具不可用或失败时换思路继续，不要重复同一失败调用；" +
-        "满足完成标准或停止条件时立刻 action=final 给出完整最终成果；剩余预算不足时尽快收敛。"
+        "缺少决定性交付条件、或任务要求先提交方案供用户确认时，用 action=ask_user 说明当前方案与具体待确认事项（最多3个关键问题），必须等待用户回复再继续；不要将澄清问题作为 final 成果。仅在真正交付完成标准要求的最终内容时 action=final；每次 ask_user 消耗一步预算，预算不足时尽快收敛。"
       if (enabledTools.length === 0) sysPrompt += "当前没有任何已授权工具，只能靠自身推理推进并尽早给出 final。"
       else sysPrompt += "已授权工具清单：\n" + enabledTools.join("\n")
+      if (cfg.require_plan_review === true) {
+        if (cp.plan_review_confirmed === true) {
+          sysPrompt += "\n【方案确认关卡已通过】用户已确认需求草案。现在必须依据已完成步骤中的用户确认或修改意见，继续产出真正的后续落地计划和验收方案；若未遇到新重大障碍，不要重复要求确认。"
+        } else {
+          sysPrompt += "\n【必须经过人工确认的阶段关卡】本次任务在需求方案草案被用户批准前，不允许直接结束。请先生成结构化需求草案（目标、范围、交付物、限制、验收标准），用 action=ask_user 把草案展示给用户，等待用户明确批准或提出修改。仅用户批准后才能编制后续落地计划；不得冒充已获批准。"
+        }
+      }
       // —— 跨运行记忆注入：start 时按指令与 fact 重叠度检索的 top3 同方案过往经验 ——
       var memHints = cfg.memory_hints || []
       if (memHints && memHints.length > 0) {
@@ -979,8 +1041,62 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       seq++
       addEvent(runId, stepIndex, seq, "thinking", { thought: thought })
 
+      // "需要补充信息" 与 "需要批准阶段草案" 使用同一持久化等待状态，
+      // 但明确区分审批性质。后端关卡不能仅依赖模型自觉遵守提示词。
+      var pauseForUser = function (rawQuestion, kind, draft) {
+        var askQuestion = String(rawQuestion || "").trim().slice(0, 12000)
+        if (!askQuestion || stepIndex >= maxSteps) {
+          seq++
+          addEvent(runId, stepIndex, seq, "error", {
+            message: !askQuestion ? "模型请求用户确认却没有具体问题，下一步重新规划" :
+              "剩余步数不足以在人工确认之后继续执行",
+          })
+          if (stepIndex >= maxSteps) {
+            persistStats()
+            finishRun(runId, "failed", "", "本次预算不足，人工确认后无法继续；请提高最大步数重试", stepIndex, seq, "预算耗尽")
+          } else pushStepAndSave({
+            thought: thought.slice(0, 200), action: "invalid_user_question",
+            obs: "缺少需确认的具体内容，请补全需求方案草案或者直接交付成果",
+          }, 0)
+          return
+        }
+        seq++
+        addEvent(runId, stepIndex, seq, "input_pending", {
+          message: kind === "plan_review" ? "已生成阶段草案，等待人工批准或提出修改意见" : "等待用户补充信息",
+          question: askQuestion, kind: kind, step_index: stepIndex,
+        })
+        var inputRun = $app.findRecordById("agent_runs", runId)
+        var inputCp = loadJson(inputRun, "checkpoint")
+        inputCp.pending_input = {
+          step_index: stepIndex, question: askQuestion, kind: kind,
+          draft: String(draft || "").slice(0, 12000),
+        }
+        inputCp.claim_until = 0
+        inputCp.seq = seq
+        inputCp.harness_stats = harnessStats
+        inputCp.call_sig_recent = sigRecent
+        inputRun.set("checkpoint", inputCp)
+        inputRun.set("current_step", stepIndex)
+        inputRun.set("status", "awaiting_input")
+        $app.save(inputRun)
+      }
+
+      if (String(decision.action) === "ask_user") {
+        pauseForUser(decision.question,
+          cfg.require_plan_review === true && cp.plan_review_confirmed !== true ?
+            "plan_review" : "clarification", "")
+        return
+      }
+
       if (String(decision.action) === "final") {
         var finalAnswer = String(decision.final_answer || decision.finalAnswer || "")
+        if (cfg.require_plan_review === true && cp.plan_review_confirmed !== true) {
+          // 即使模型擅自 final，也不能绕过显式配置的人工方案审核。
+          pauseForUser("【待确认需求方案草案】\n" + finalAnswer +
+            "\n\n请先核对上述内容：批准后才会制定后续落地计划；如需调整请选择提出修改意见。",
+            "plan_review", finalAnswer)
+          return
+        }
         // —— 跨运行记忆写入：成功结束先尝试一次轻量 LLM 提炼（≤200 字可复用经验，出站 ≤25s），
         // 提炼失败/超时/为空回退成果前 500 字符截选；写入失败不影响 run 终态 ——
         if (finalAnswer) {
@@ -1786,6 +1902,26 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
     }catch(_) {}
 
     // 结果脱敏（与 tick 端同规则，回调内 self-contained）：记忆内容落库前抹疑似钥匙
+    // Explicitly link a retest to one accepted feedback-driven version.
+    // Reject forged IDs and any later Agent edit that invalidates the version.
+    // No lineage is inferred merely from timestamps or matching feedback text.
+    var optimizationLineageId=String((body.config||{}).optimization_lineage_id||"").trim()
+    if(optimizationLineageId){
+      if(!/^[A-Za-z0-9]{15}$/.test(optimizationLineageId))
+        return e.json(400,{error:"invalid_optimization_lineage"})
+      var trace=new DynamicModel({id:"",after_hash:""})
+      try{
+        $app.db().newQuery(
+          "SELECT id,after_hash FROM agent_optimization_lineage "+
+          "WHERE id={:audit} AND spec_id={:spec} AND owner_uid={:owner}"
+        ).bind({audit:optimizationLineageId,spec:specId,owner:uid}).one(trace)
+      }catch(_){return e.json(404,{error:"optimization_lineage_not_found"})}
+      var currentHash=String($security.sha256(JSON.stringify(specObj)))
+      if(String(trace.after_hash)!==currentHash)
+        return e.json(409,{error:"optimization_spec_changed",
+          message:"优化后方案已再次修改，请重新核对版本后试跑"})
+    }
+
     var sanitizeSecretsLocal = function (s) {
       return String(s || "")
         .replace(/sk-[A-Za-z0-9_-]{8,}/g, "***")
@@ -1838,6 +1974,17 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       .deadlineFromMinutes(cfgIn.max_runtime_minutes, new Date().getTime())
     if (!runtimeDeadline.ok)
       return e.json(400, { error: runtimeDeadline.error, message: "任务最长运行时间需为 1-1440 分钟，或留空禁用" })
+    // MCP tool selection is authored in the owned AgentSpec, not in an
+    // untrusted run-start body. Empty list means no marketplace tool is granted.
+    var marketSelections = []
+    var selectedIds = {}
+    var specToolNames = Array.isArray(specObj.tools) ? specObj.tools : []
+    for (var smi = 0; smi < specToolNames.length && marketSelections.length < 60; smi++) {
+      var smt = String(specToolNames[smi] || "").trim()
+      if (!/^mkt__[A-Za-z0-9]{15}__[A-Za-z0-9_./:-]{1,120}$/.test(smt) || selectedIds[smt]) continue
+      selectedIds[smt] = true
+      marketSelections.push(smt)
+    }
     var config = {
       tools: {
         calculate: toolsIn.calculate === true,
@@ -1852,7 +1999,11 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       stop_condition: String(cfgIn.stop_condition || "").slice(0, 500),
       stop_on_complete: cfgIn.stop_on_complete !== false,
       require_approval: cfgIn.require_approval === true,
+      require_plan_review: cfgIn.require_plan_review === true ||
+        (cfgIn.require_plan_review === undefined && specObj.require_plan_review === true),
+      market_tool_ids: marketSelections,
       source: String(cfgIn.source || "").slice(0, 40) || null,
+      optimization_lineage_id: optimizationLineageId || null,
       custom_model: isCustomModel
         ? {
             connection_id: String(customIn.connection_id),
@@ -2017,6 +2168,8 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       evidence_refs: [],
       call_sig_recent: [],
       pending_approval: null,
+      pending_input: null,
+      plan_review_confirmed: false,
       approval_decision: "",
       approved_step: 0,
     })
@@ -2229,93 +2382,181 @@ routerAdd("POST", "/api/agent-runs/{id}/cancel", function (e) {
 routerAdd("POST", "/api/agent-runs/{id}/approve", function (e) {
   try {
     var h = (e.requestInfo() || {}).headers || {}
-    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
-    if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
+    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] ||
+      ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
+    if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录员工账号" })
     var body = (e.requestInfo() || {}).body || {}
     var decision = String(body.decision || "")
-    if (decision !== "approve" && decision !== "reject") {
+    if (decision !== "approve" && decision !== "reject")
       return e.json(400, { error: "bad_request", message: "decision 只支持 approve 或 reject" })
-    }
     var id = String(e.request.pathValue("id") || "")
-    var run = null
+    var status = 200
+    var result = { ok: true, run_id: id, status: "running", decision: decision }
     try {
-      run = $app.findRecordById("agent_runs", id)
-    } catch (_) {}
-    // 归属校验：非本人与不存在一律 404，不泄漏他人运行是否存在
-    if (!run || String(run.get("rh_user_id") || "") !== uid) {
-      return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
-    }
-    var st = String(run.get("status"))
-    if (st !== "awaiting_approval") {
-      return e.json(409, { error: "bad_state", message: "当前状态（" + st + "）没有等待批准的调用" })
-    }
-    var cp = {}
-    var cpStr = ""
-    try {
-      cpStr = run.getString("checkpoint")
-    } catch (_) {
-      cpStr = ""
-    }
-    if (cpStr) {
-      try {
-        var cpParsed = JSON.parse(cpStr)
-        if (cpParsed && typeof cpParsed === "object" && !Array.isArray(cpParsed)) cp = cpParsed
-      } catch (_) {}
-    }
-    var pending = cp.pending_approval || null
-    var pTool = pending ? String(pending.tool || "") : ""
-    var pStep = pending ? Number(pending.step_index || 0) : Number(run.get("current_step")) || 0
-    var seqN = Number(cp.seq || 0) + 1
-    cp.seq = seqN
-    cp.claim_until = 0
-    var evColA = $app.findCollectionByNameOrId("run_events")
-    var addApproveEvent = function (evType, content) {
-      try {
-        var ev = new Record(evColA)
+      $app.runInTransaction(function (tx) {
+        // Atomic owner-bound reservation BEFORE checkpoint reads. Two tabs
+        // cannot approve the same tool, even with concurrent HTTP requests.
+        var claimed = tx.db().newQuery(
+          "UPDATE agent_runs SET status='running' WHERE id={:id} "+
+          "AND rh_user_id={:uid} AND status='awaiting_approval'"
+        ).bind({ id: id, uid: uid }).execute()
+        if (Number(claimed.rowsAffected()) !== 1) {
+          var previous = null
+          try { previous = tx.findRecordById("agent_runs", id) } catch (_) {}
+          status = (!previous || String(previous.get("rh_user_id") || "") !== uid) ? 404 : 409
+          result = status === 404
+            ? { error: "run_not_found", message: "运行记录不存在" }
+            : { error: "bad_state", message: "这次工具调用已被处理，请刷新任务状态" }
+          return
+        }
+        var run = tx.findRecordById("agent_runs", id)
+        var cp = {}
+        try { cp = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+        var pending = cp.pending_approval || null
+        if (!pending || !pending.tool) throw new Error("missing_pending_approval")
+        var pTool = String(pending.tool || "")
+        var pStep = Number(pending.step_index || 0)
+        var seq = Number(cp.seq || 0) + 1
+        cp.seq = seq
+        cp.claim_until = 0
+        cp.approval_decision = decision
+        if (decision === "approve") cp.approved_step = pStep
+        run.set("status", "running")
+        run.set("checkpoint", cp)
+        tx.save(run)
+
+        var ev = new Record(tx.findCollectionByNameOrId("run_events"))
         ev.set("run_id", id)
         ev.set("step_index", pStep)
-        ev.set("seq", seqN)
-        ev.set("event_type", evType)
+        ev.set("seq", seq)
+        ev.set("event_type", decision === "approve" ? "approval" : "observation")
+        var content = decision === "approve"
+          ? { message: "已批准，引擎将继续执行该调用：" + pTool,
+              tool: pTool, decision: "approve", step_index: pStep }
+          : { message: "用户拒绝了这次调用：" + pTool,
+              tool: pTool, decision: "reject", step_index: pStep,
+              observation: "用户拒绝了这次调用：" + pTool }
         ev.set("content", content)
-        $app.save(ev)
-      } catch (evErr) {
-        try {
-          $app.logger().error("agent approve addEvent", "err", String((evErr && evErr.message) || evErr))
-        } catch (_) {}
-      }
-    }
-    if (decision === "approve") {
-      cp.approval_decision = "approve"
-      cp.approved_step = pStep
-      run.set("status", "running")
-      run.set("checkpoint", cp)
-      $app.save(run)
-      addApproveEvent("approval", {
-        message: "已批准，引擎将继续执行该调用：" + pTool,
-        tool: pTool,
-        decision: "approve",
-        step_index: pStep,
+        tx.save(ev)
       })
-    } else {
-      cp.approval_decision = "reject"
-      run.set("status", "running")
-      run.set("checkpoint", cp)
-      $app.save(run)
-      addApproveEvent("observation", {
-        message: "用户拒绝了这次调用：" + pTool,
-        tool: pTool,
-        decision: "reject",
-        step_index: pStep,
-        observation: "用户拒绝了这次调用：" + pTool,
-      })
+    } catch (transactionError) {
+      if (String((transactionError && transactionError.message) || transactionError) === "missing_pending_approval")
+        return e.json(409, { error: "missing_pending_approval", message: "未找到可审批的工具调用，请刷新任务" })
+      throw transactionError
     }
-    return e.json(200, { ok: true, run_id: id, status: "running", decision: decision })
+    return e.json(status, result)
   } catch (err) {
     var msg = String((err && err.message) || err)
+    try { $app.logger().error("agent approve error", "err", msg) } catch (_) {}
+    return e.json(500, { error: "internal", message: "审批未确认，请刷新后重试", fingerprint: msg.slice(0, 80) })
+  }
+})
+
+// —— 人工澄清续跑：只有处于 awaiting_input 且属于当前用户的任务允许回复 ——
+// 用户回复进入持久化 checkpoint.steps，模型下一步可以引用澄清内容；重复提交返回 409。
+routerAdd("POST", "/api/agent-runs/{id}/respond", function (e) {
+  try {
+    var h = (e.requestInfo() || {}).headers || {}
+    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] ||
+      ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
+    if (!uid) return e.json(401, { error: "auth_required", message: "请先登录员工账号" })
+    var id = String(e.request.pathValue("id") || "")
+    var body = (e.requestInfo() || {}).body || {}
+    var answer = String(body.answer || "").trim()
+    var decision = String(body.decision || "reply").trim()
+    if (answer.length > 1600) return e.json(400, {
+      error: "invalid_answer", message: "补充或修改说明最多 1600 字",
+    })
+
+    // IMPORTANT: reading status followed by save is NOT a concurrency guard.
+    // Different browser tabs could accept the same pending checkpoint twice.
+    // Acquire SQLite's write lock FIRST using an owner-scoped conditional UPDATE,
+    // then read the checkpoint and persist both run and event in one transaction.
+    // If the checkpoint/decision is invalid, throw to roll back the reservation.
+    var state = 200
+    var payload = { ok: true, run_id: id, status: "running" }
     try {
-      $app.logger().error("agent approve error", "err", msg)
-    } catch (_) {}
-    return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
+      $app.runInTransaction(function (tx) {
+        var claim = tx.db().newQuery(
+          "UPDATE agent_runs SET status='running' WHERE id={:id} "+
+          "AND rh_user_id={:uid} AND status='awaiting_input'"
+        ).bind({ id: id, uid: uid }).execute()
+        if (Number(claim.rowsAffected()) !== 1) {
+          var stale = null
+          try { stale = tx.findRecordById("agent_runs", id) } catch (_) {}
+          state = (!stale || String(stale.get("rh_user_id") || "") !== uid) ? 404 : 409
+          payload = state === 404
+            ? { error: "run_not_found" }
+            : { error: "not_awaiting_input", message: "这一步已经被确认，请刷新查看当前任务" }
+          return
+        }
+        var run = tx.findRecordById("agent_runs", id)
+        var cp = {}
+        try { cp = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+        var pending = cp.pending_input || null
+        if (!pending || !pending.question) throw new Error("missing_pending_input")
+        var isReview = String(pending.kind || "") === "plan_review"
+        if (isReview) {
+          if (decision !== "approve" && decision !== "revise") throw new Error("invalid_review_decision")
+          if (decision === "revise" && !answer) throw new Error("revision_required")
+        } else if (decision !== "reply" || !answer) {
+          throw new Error("invalid_answer")
+        }
+        var step = Number(pending.step_index || 0)
+        var items = Array.isArray(cp.steps) ? cp.steps : []
+        items.push({
+          thought: isReview ? "用户已审阅阶段方案" : "用户已回复澄清问题",
+          action: isReview ? (decision === "approve" ? "review_approved" : "review_revision") : "user_reply",
+          obs: "【Agent 提问／提交的草案】" + String(pending.question).slice(0, 8000) +
+            "\n【用户回复／确认】" + (isReview ?
+              (decision === "approve" ? "草案已批准。补充意见：" + (answer || "无") :
+                "草案不予批准，请按以下意见修改并再次提交审核：" + answer) : answer),
+        })
+        cp.steps = items.slice(-12)
+        cp.done_steps = Math.max(Number(cp.done_steps || 0), step)
+        if (isReview) cp.plan_review_confirmed = decision === "approve"
+        cp.pending_input = null
+        cp.claim_until = 0
+        cp.parse_failures = 0
+        cp.seq = Number(cp.seq || 0) + 1
+        run.set("checkpoint", cp)
+        run.set("current_step", cp.done_steps)
+        run.set("status", "running")
+        tx.save(run)
+
+        var ev = new Record(tx.findCollectionByNameOrId("run_events"))
+        ev.set("run_id", id)
+        ev.set("step_index", step)
+        ev.set("seq", cp.seq)
+        ev.set("event_type", "input_received")
+        ev.set("content", {
+          message: isReview ?
+            (decision === "approve" ? "方案草案已批准，继续制定落地计划" :
+              "已收到修改意见，重新拟定草案") : "已收到补充信息，继续执行",
+          answer: answer.slice(0, 1600),
+          decision: decision,
+          kind: isReview ? "plan_review" : "clarification",
+          step_index: step,
+        })
+        tx.save(ev)
+      })
+    } catch (transactionError) {
+      var reason = String((transactionError && transactionError.message) || transactionError)
+      var known = {
+        missing_pending_input: [409, "没有可回复的待确认问题，请刷新任务"],
+        invalid_review_decision: [400, "请明确选择批准草案或提出修改意见"],
+        revision_required: [400, "请填写需要修改的具体内容"],
+        invalid_answer: [400, "请填写要回复的问题内容"],
+      }
+      var response = known[reason]
+      if (response) return e.json(response[0], { error: reason, message: response[1] })
+      throw transactionError
+    }
+    return e.json(state, payload)
+  } catch (err) {
+    var msg = String((err && err.message) || err)
+    try { $app.logger().error("agent input respond error", "err", msg) } catch (_) {}
+    return e.json(500, { error: "internal", message: "提交失败，请稍后重试", fingerprint: msg.slice(0, 80) })
   }
 })
 

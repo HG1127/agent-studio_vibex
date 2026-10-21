@@ -1,4 +1,5 @@
 import { CalendarClock, Clock3, Plus, RefreshCw, Save, ShieldCheck } from "lucide-react"
+import { Link } from "react-router-dom"
 import { formatScheduledDate, FORM_CLASS, LABEL_CLASS, TIME_ZONES, WEEKDAYS } from "./types"
 import type { useScheduledTasks } from "./useScheduledTasks"
 
@@ -31,7 +32,7 @@ export function ScheduleEditor(p: Props) {
       </div>
       <form onSubmit={p.save} className="space-y-4">
         <label className={LABEL_CLASS}>计划名称
-          <input required maxLength={120} className={FORM_CLASS} value={f.name}
+          <input id="schedule-plan-name" required maxLength={120} className={FORM_CLASS} value={f.name}
             onChange={e=>set("name",e.target.value)} placeholder="例如：每天早晨生成市场观察报告"/>
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -49,6 +50,14 @@ export function ScheduleEditor(p: Props) {
             </select>
           </label>
         </div>
+        {!p.initialLoading && p.targetOptions.length===0 && <p role="status"
+          className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+          当前账号还没有已保存的{f.target_kind==="agent"?" Agent":"工作流"}。
+          <Link to={f.target_kind==="agent"?"/agent-create":"/workflow-canvas"}
+            className="ml-1 font-semibold text-primary underline-offset-2 hover:underline">
+            {f.target_kind==="agent"?"先创建 Agent →":"先创建工作流 →"}
+          </Link>
+        </p>}
         {f.target_kind==="agent" && <>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={LABEL_CLASS}>模型连接
@@ -66,6 +75,11 @@ export function ScheduleEditor(p: Props) {
               </select>
             </label>
           </div>
+          {!p.models.some(m=>m.enabled && m.models?.length) && <p role="status"
+            className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+            尚未发现可用的模型连接。定时 Agent 需要先选定启用的模型。
+            <Link to="/model-connections" className="ml-1 font-semibold text-primary hover:underline">添加并测试模型 →</Link>
+          </p>}
           <label className={LABEL_CLASS}>最大推理步数（1–30）
             <input className={FORM_CLASS} type="number" min={1} max={30} required
               value={f.max_steps} onChange={e=>set("max_steps",Number(e.target.value))}/>

@@ -306,8 +306,8 @@ export default function AgentCollaborationPage(){
            {item.status==="pending"?" 待审核":item.status==="accepted"?" 已采纳":" 已拒绝"}
           </p></div>
          {detail.role==="owner"&&item.status==="pending"&&<div className="flex gap-2">
-          <button disabled={busy} className={button} onClick={()=>void review(item,"reject")}>拒绝</button>
-          <button disabled={busy} className={button+" bg-primary text-primary-foreground hover:bg-primary/90"}
+          <button type="button" aria-label={"拒绝协作提案："+item.comment.slice(0,50)} disabled={busy} className={button} onClick={()=>void review(item,"reject")}>拒绝</button>
+          <button type="button" aria-label={"采纳协作提案："+item.comment.slice(0,50)} disabled={busy} className={button+" bg-primary text-primary-foreground hover:bg-primary/90"}
            onClick={()=>void review(item,"accept")}>采纳</button>
          </div>}
         </div>

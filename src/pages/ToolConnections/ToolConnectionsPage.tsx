@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle2, Info, Plus, ShieldCheck, Wrench, X } from "l
 import { Link } from "react-router-dom"
 import { TcLoginGate } from "@/components/tool-connections/TcLoginGate"
 import { SiteShell } from "@/components/site/SiteShell"
+import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
 import { TcTopBar } from "@/components/tool-connections/TcTopBar"
 import { ToolCard } from "@/components/tool-connections/ToolCard"
 import { ToolFormCard } from "@/components/tool-connections/ToolFormCard"
@@ -63,6 +64,7 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
             </p>
         </section>
 
+        <ReturnToAgentResources what="HTTP 工具"/>
         {!p.isLoggedIn && <TcLoginGate onLoginClick={p.onLoginClick} />}
 
         {p.isLoggedIn && p.needsRhLogin && (

@@ -84,6 +84,7 @@ export function PublishCard({
               <button
                 type="button"
                 onClick={() => onRequestPublish(row)}
+                aria-label={`发布版本 v${row.version_no}`}
                 className="shrink-0 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
               >
                 发布

@@ -28,6 +28,7 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 let authorized=false
 let vendorRequests=[]
 let logs=""
+let selectedMktSearchTool="",selectedMktWriteTool="",agentModelRequests=0
 const provider=createServer(async(req,res)=>{
   let body=""
   for await(const chunk of req)body+=String(chunk)
@@ -40,6 +41,27 @@ const provider=createServer(async(req,res)=>{
   const reply=(code,data)=>{
     res.writeHead(code,{"Content-Type":"application/json"})
     res.end(JSON.stringify(data))
+  }
+  if(req.method==="POST" && url.pathname==="/v1/chat/completions"){
+    agentModelRequests++
+    const messages=Array.isArray(payload.messages)?payload.messages:[]
+    const system=messages.filter(m=>m.role==="system").map(m=>String(m.content||"")).join("\n")
+    const user=messages.filter(m=>m.role==="user").map(m=>String(m.content||"")).join("\n")
+    let answer="Reuse only allowed tools, and never invent external effects."
+    if(system.includes("助手执行引擎")){
+      if(user.includes("（尚无，这是第一步）")){
+        answer=JSON.stringify({thought:"Attempt a concrete market tool",
+          action:"tool",tool:user.includes("FORCE_WRITE_TOOL")?
+            selectedMktWriteTool:selectedMktSearchTool,
+          tool_input:{query:"AI research",action:"mock-change"}})
+      }else{
+        answer=JSON.stringify({thought:"Conclude from the actual tool observation",
+          action:"final",
+          final_answer:"MCP_AGENT_FINAL "+(user.includes("found mock github repository")?
+            "MOCK_MCP_CONFIRMED":"TOOL_NOT_USED")})
+      }
+    }
+    return reply(200,{choices:[{message:{role:"assistant",content:answer}}]})
   }
   if(req.headers.authorization!=="Bearer "+localKey)return reply(401,{error:"invalid_token"})
   if(req.method==="GET" && url.pathname==="/servers"){
@@ -245,6 +267,120 @@ try{
   assert.equal(await api("POST","/api/market/invoke",{
     connection_id:added.id,tool_name:"github_search",arguments:{query:"private"},
   },user2).then(r=>r.status),404,"other employee must not invoke this tool")
+  // Agent now receives ONLY explicit, owner-scoped tool selections from its
+  // saved AgentSpec. A forged start.config.market_tool_ids must grant nothing.
+  selectedMktSearchTool="mkt__"+added.id+"__github_search"
+  selectedMktWriteTool="mkt__"+added.id+"__github_write"
+  const model=must(await api("POST","/api/model-connections",{
+    name:"Mock market-capable model",provider:"openai",
+    base_url:remote+"/v1",api_key:"test-model-secret",models:["market-test-model"],
+  },token))
+  const modelId=model.item.id
+  const specFor=async(tools,name)=>{
+    const created=must(await api("POST","/api/agent_specs",{
+      name,spec:{goal:"Use one verified marketplace tool",
+        task_scope:"Test-only mock server; no external changes",
+        tools,deliverables:["Result"],task_plan:["Call tool","Return observation"],
+        done_criteria:["Correct result"]},
+    },token))
+    return created.id
+  }
+  const runFor=async(specId,instruction)=>{
+    const response=must(await api("POST","/api/agent-runs/start",{
+      spec_id:specId,instruction,model:"market-test-model",
+      config:{max_steps:5,tools:{},require_approval:true,
+        market_tool_ids:[selectedMktWriteTool],
+        custom_model:{connection_id:modelId,model_id:"market-test-model"}},
+    },token))
+    return response.run_id
+  }
+  const runState=async(id)=>must(await api("GET","/api/agent_runs/"+id,undefined,token))
+  const tick=async(id)=>must(await api("POST","/api/llm/agent-engine/"+id+"/tick",{},token))
+  const currentMcpCalls=()=>vendorRequests.filter(v=>v.path.startsWith("/studio-sandbox/")&&
+    v.body?.method==="tools/call").length
+
+  const emptySpec=await specFor([],"Agent no marketplace grant")
+  const emptyRun=await runFor(emptySpec,"ATTEMPT_UNSELECTED_MARKET_TOOL")
+  assert.deepEqual((await runState(emptyRun)).config.market_tool_ids,[],
+    "Client-injected market_tool_ids must NOT bypass saved AgentSpec")
+  const callCountBeforeEmpty=currentMcpCalls()
+  await tick(emptyRun)
+  assert.equal((await runState(emptyRun)).status,"running",
+    "Unselected market tool must not request approval or execute")
+  assert.equal(currentMcpCalls(),callCountBeforeEmpty)
+  const deniedDetail=must(await api("GET","/api/agent-runs/"+emptyRun+"/detail",undefined,token))
+  assert.ok(deniedDetail.events.some(ev=>ev.event_type==="error" &&
+    JSON.stringify(ev.content).includes("未授权")),"Unselected invocation must have an audit event")
+
+  const selectedSpec=await specFor([selectedMktSearchTool],"Agent explicitly selected search")
+  const selectedRun=await runFor(selectedSpec,"SELECT_ONLY_GITHUB_SEARCH")
+  assert.deepEqual((await runState(selectedRun)).config.market_tool_ids,[selectedMktSearchTool])
+  assert.equal((await api("POST","/api/agent-runs/start",{
+    spec_id:selectedSpec,instruction:"other user's Agent",model:"claude-opus-4.8",
+    config:{max_steps:3,tools:{}}},user2)).status,404)
+  const callsBeforeApproved=currentMcpCalls()
+  await tick(selectedRun)
+  const awaitingAgent=await runState(selectedRun)
+  assert.equal(awaitingAgent.status,"awaiting_approval",
+    "Chosen read-only market plugin still needs this Agent's explicit approval")
+  assert.equal(awaitingAgent.checkpoint.pending_approval.tool,selectedMktSearchTool)
+  assert.equal(currentMcpCalls(),callsBeforeApproved,
+    "MCP endpoint must not be invoked before Agent approval")
+  const approvalAnswers=await Promise.all([
+    api("POST","/api/agent-runs/"+selectedRun+"/approve",{decision:"approve"},token),
+    api("POST","/api/agent-runs/"+selectedRun+"/approve",{decision:"approve"},token),
+  ])
+  assert.deepEqual(approvalAnswers.map(row=>row.status).sort((a,b)=>a-b),[200,409],
+    "Concurrent approval must be consumed by exactly one browser tab")
+  await tick(selectedRun)
+  assert.equal(currentMcpCalls(),callsBeforeApproved+1,
+    "Approval must cause exactly one authorized MCP tools/call")
+  const lastAgentRpc=vendorRequests.filter(v=>v.path.startsWith("/studio-sandbox/")&&
+    v.body?.method==="tools/call").at(-1)
+  assert.equal(lastAgentRpc?.tokenOk,true,"Agent MCP call must carry decrypted server-side bearer authorization")
+  assert.equal(lastAgentRpc?.body?.params?.name,"github_search")
+
+  const toolDetail=must(await api("GET","/api/agent-runs/"+selectedRun+"/detail",undefined,token))
+  assert.equal(toolDetail.events.filter(ev=>ev.event_type==="approval").length,1,
+    "Concurrent approval requests must create only one audit event")
+  assert.ok(toolDetail.events.some(ev=>ev.event_type==="tool_result" &&
+    JSON.stringify(ev.content).includes("found mock github repository")),
+    "Actual MCP result must be persisted in Agent history. Events="+JSON.stringify(toolDetail.events.map(ev=>({
+      type:ev.event_type,tool:ev.content?.tool,output:String(ev.content?.output||"").slice(0,100),
+      message:String(ev.content?.message||"").slice(0,100)}))) )
+  assert.doesNotMatch(JSON.stringify(toolDetail),new RegExp(localKey),
+    "Tool call events must not expose Smithery API keys")
+
+  await tick(selectedRun)
+  const finished=await runState(selectedRun)
+  assert.equal(finished.status,"succeeded",JSON.stringify(finished))
+  assert.match(finished.result,/MOCK_MCP_CONFIRMED/)
+  const noWriteSpec=await specFor([selectedMktSearchTool],"Agent cannot write")
+  const noWriteRun=await runFor(noWriteSpec,"FORCE_WRITE_TOOL")
+  const callsBeforeWriteDenied=currentMcpCalls()
+  await tick(noWriteRun)
+  assert.equal(currentMcpCalls(),callsBeforeWriteDenied)
+  assert.notEqual((await runState(noWriteRun)).status,"awaiting_approval",
+    "Unselected WRITE tool cannot become eligible for approval")
+
+  // Live permission check: disconnect after approval request, before actual tick.
+  const revokedRun=await runFor(selectedSpec,"REVOKE_WHILE_PENDING")
+  await tick(revokedRun)
+  assert.equal((await runState(revokedRun)).status,"awaiting_approval")
+  must(await api("POST","/api/market/toggle",{id:added.id,enabled:false},token))
+  must(await api("POST","/api/agent-runs/"+revokedRun+"/approve",
+    {decision:"approve"},token))
+  const beforeRevokedCall=currentMcpCalls()
+  await tick(revokedRun)
+  assert.equal(currentMcpCalls(),beforeRevokedCall,
+    "A disconnected tool must NOT execute after prior Agent approval")
+  const revokedDetail=must(await api("GET","/api/agent-runs/"+revokedRun+"/detail",
+    undefined,token))
+  assert.ok(revokedDetail.events.some(ev=>ev.event_type==="error" &&
+    JSON.stringify(ev.content).includes("原审批失效")),
+    "Revoked MCP permission must produce a clear audit event, not an ambiguous write failure")
+
+  console.log("PASS Agent market least-privilege: saved tool selection, approval, real MCP call, unselected denial, revocation, cross-employee fence",agentModelRequests)
   const revoked=must(await api("DELETE","/api/market/connections/"+added.id,
     undefined,token))
   assert.equal(revoked.remote_revoked,true,

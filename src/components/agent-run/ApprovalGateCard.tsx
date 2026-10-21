@@ -11,6 +11,7 @@ type ApprovalGateCardProps = {
 export function ApprovalGateCard({ pendingApproval, approvalBusy, onDecision }: ApprovalGateCardProps) {
   if (!pendingApproval) return null
   const stepLabel = pendingApproval.stepIndex > 0 ? `第 ${pendingApproval.stepIndex} 步` : "当前步"
+  const marketPlugin=String(pendingApproval.toolName||"").startsWith("mkt__")
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 rounded-2xl border-2 border-primary bg-card p-5 shadow-lg duration-500">
       <div className="flex flex-wrap items-center gap-2">
@@ -18,7 +19,7 @@ export function ApprovalGateCard({ pendingApproval, approvalBusy, onDecision }: 
           <ShieldQuestion className="h-4 w-4" />
         </span>
         <h2 className="text-base font-semibold tracking-tight text-card-foreground">
-          {stepLabel}想执行一个写操作，需要你批准
+          {stepLabel}{marketPlugin?"将调用市场插件，需要你确认":"将执行外部写操作，需要你批准"}
         </h2>
         <span className="ml-auto rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
           等待批准
@@ -54,7 +55,7 @@ export function ApprovalGateCard({ pendingApproval, approvalBusy, onDecision }: 
         >
           {approvalBusy === "reject" ? "提交中…" : "拒绝这次调用"}
         </button>
-        <p className="text-xs text-muted-foreground">本次批准仅适用于当前工具、参数与连接目标；执行前如发生变化，系统会再次请求批准。拒绝后引擎将换一种思路继续。</p>
+          <p className="text-xs text-muted-foreground">{marketPlugin? "市场插件可能拥有写入能力；批准仅适用于本次工具、参数与连接目标，变更后须重新批准。": "本次批准仅适用于当前工具、参数和连接目标；如有变化将重新请求确认。拒绝后 Agent 会尝试调整计划。"}</p>
       </div>
     </div>
   )

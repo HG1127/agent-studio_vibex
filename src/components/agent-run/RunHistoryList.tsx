@@ -30,7 +30,7 @@ export function RunHistoryList({ runHistory, onViewRun, activeRunId, isLoggedIn,
         </span>
         <h2 className="text-lg font-semibold tracking-tight text-card-foreground">历史运行记录</h2>
         <span className="ml-auto rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-          共 {runHistory.length} 次
+          最近 {runHistory.length} 条
         </span>
       </div>
 
@@ -70,6 +70,7 @@ export function RunHistoryList({ runHistory, onViewRun, activeRunId, isLoggedIn,
                 <Link
                   to={`/run-detail?run=${encodeURIComponent(row.id)}`}
                   title="查看运行详情"
+                  aria-label={"查看"+row.spec_name+"的运行详情"}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-medium text-primary shadow-sm transition hover:bg-primary/10 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <ScrollText className="h-3.5 w-3.5" />

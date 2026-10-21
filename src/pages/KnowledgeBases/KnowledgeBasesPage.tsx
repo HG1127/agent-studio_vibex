@@ -6,6 +6,7 @@ import {
   UploadCloud, BrainCircuit, DatabaseZap, RotateCcw, Zap,
 } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
+import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
 import { KnowledgeSharePanel } from "@/components/knowledge/KnowledgeSharePanel"
 import { SharedSemanticStatusPanel } from "@/components/knowledge/SharedSemanticStatusPanel"
 import { redirectToRhLogin } from "@/lib/studioAuth"
@@ -235,7 +236,8 @@ export default function KnowledgeBasesPage() {
   const startEdit = () => {
     if (!selectedBase) return
     setEditing(true); setBaseName(selectedBase.name); setBaseDescription(selectedBase.description)
-    document.getElementById("kb-form")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    document.getElementById("kb-form")?.scrollIntoView({ behavior:"smooth", block:"start" })
+    window.requestAnimationFrame(()=>{document.getElementById("kb-name")?.focus({preventScroll:true})})
   }
   const deleteBase = async () => {
     if (!selectedBase || busy || !window.confirm("确认删除知识库「" + selectedBase.name + "」及其中所有已索引内容？此操作不可撤销。")) return
@@ -342,6 +344,7 @@ export default function KnowledgeBasesPage() {
           </div>
         </header>
         <main className="w-full min-w-0 space-y-5 p-3 sm:p-5 lg:p-7 2xl:p-10" data-studio-fluid-page="knowledge">
+          <ReturnToAgentResources what="知识库"/>
           <details className="rounded-xl border border-border bg-card p-3">
             <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
               查看知识库用量（{bases.length} 个库）
@@ -370,7 +373,7 @@ export default function KnowledgeBasesPage() {
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Plus className="h-4 w-4 text-primary" />{editing ? "编辑知识库" : "新建知识库"}</h2>
                 <form onSubmit={submitBase} className="space-y-3">
                   <label className="block text-xs text-muted-foreground">知识库名称
-                    <input className={"mt-1.5 " + FIELD} maxLength={100} required value={baseName}
+                    <input id="kb-name" className={"mt-1.5 " + FIELD} maxLength={100} required value={baseName}
                       onChange={e => setBaseName(e.target.value)} placeholder="例如：公司产品文档" />
                   </label>
                   <label className="block text-xs text-muted-foreground">简介

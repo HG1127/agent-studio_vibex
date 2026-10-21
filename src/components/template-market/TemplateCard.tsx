@@ -73,7 +73,7 @@ export function TemplateCard({ row, isExpanded, onToggleExpand, onUse }: Templat
           className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-primary"
         >
           <Play className="h-4 w-4" />
-          使用
+          复制并配置
         </button>
       </div>
     </article>

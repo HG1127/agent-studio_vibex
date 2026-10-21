@@ -53,7 +53,7 @@ export type RunDetailLoadState = "idle" | "loading" | "ready" | "not_found" | "e
 
 export type StepGroup = { stepIndex: number; events: RunEventRow[] }
 
-const LIVE_STATES: RunStateKey[] = ["queued", "running", "paused", "awaiting_approval"]
+const LIVE_STATES: RunStateKey[] = ["queued", "running", "paused", "awaiting_approval", "awaiting_input"]
 const POLL_INTERVAL_MS = 3000
 
 export function formatRunDetailTime(raw: string): string {
@@ -310,7 +310,7 @@ export function useRunDetail() {
       lines.push(`- 工具：${(specSnapshot.tools || []).join("、") || "（空）"}`)
       lines.push(`- 完成标准：${(specSnapshot.done_criteria || []).join("；") || "（空）"}`)
     } else {
-      lines.push("（无配置快照）")
+      lines.push("历史方案快照缺失；仅能核验当次运行参数，无法还原该次完整 Agent 方案。")
     }
     lines.push("")
     lines.push("## 运行时间线")

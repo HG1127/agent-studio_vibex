@@ -1,4 +1,4 @@
-// AgentSpec 数据类型与三个内置示例模板（研究助手 / 知识库问答助手 / 数据分析助手）
+// AgentSpec 数据类型与可复用内置模板（需求落地 / 研究 / 知识库 / 数据分析）
 
 import type { AgentQualityCheck } from "../../lib/agentQualityChecks"
 
@@ -15,6 +15,8 @@ export type AgentSpec = {
   knowledge_base_ids?: string[]
   /** 写操作审批门：开启后运行中调用外部写工具/市场插件前暂停等待用户批准（默认 false） */
   require_approval?: boolean
+  /** 阶段方案确认关卡：需求草案必须经用户确认后才能继续执行落地计划。 */
+  require_plan_review?: boolean
 }
 
 export type ListField = "deliverables" | "tools" | "task_plan" | "done_criteria"
@@ -24,7 +26,7 @@ export type TemplatePreset = {
   title: string
   tagline: string
   description: string
-  icon: "research" | "knowledge" | "data"
+  icon: "delivery" | "research" | "knowledge" | "data"
   defaultName: string
   spec: AgentSpec
 }
@@ -44,7 +46,7 @@ export const BUILTIN_TOOL_OPTIONS: { id: string; title: string; desc: string }[]
 
 // 已连接外部工具（由 useHome 登录态拉取）与内置三件套一起决定「可用」，
 // 两边都命不中的工具名维持「待连接」展示。
-export type ConnectedToolOption = { name: string; description: string }
+export type ConnectedToolOption = { name: string; description: string; method?: string; status?: string }
 
 export function toolConnectionStatus(
   toolName: string,
@@ -57,6 +59,37 @@ export function toolConnectionStatus(
 }
 
 export const TEMPLATE_PRESETS: TemplatePreset[] = [
+  {
+    key:"delivery",
+    title:"需求落地规划助手",
+    tagline:"先审核需求方案，再制定实施计划",
+    description:"输入原始需求，形成结构化方案并由人工审核，审核通过后继续拆解任务、资源、风险与验收标准。可按需绑定自己的知识库和 MCP 工具。",
+    icon:"delivery",
+    defaultName:"需求落地规划助手",
+    spec:{
+      goal:"将用户输入的原始需求整理成规范、可审核的需求方案，得到明确批准后再提出分阶段实施计划。",
+      task_scope:"负责：需求澄清、范围与非目标、业务价值、优先级、依赖、资源估算、风险、验收标准及迭代建议。可以读取用户本人已授权的知识库和工具；不自动修改代码、上传机密、发送消息或对外发布。",
+      deliverables:["待人工确认的结构化需求方案","分阶段实施计划及责任人建议","包含验收标准和风险的交付清单"],
+      tools:["knowledge_search","calculate"],
+      task_plan:[
+        "理解需求并识别范围、前提与待确认问题",
+        "如已绑定知识库，则检索术语规范并标注出处",
+        "识别资源依赖、估算与主要风险",
+        "提交结构化需求方案，由业务负责人明确批准或提出修改",
+        "批准后生成具体实施步骤、责任人建议及里程碑",
+        "给出可核查的验收清单，并根据结果反馈形成改进建议",
+      ],
+      done_criteria:[
+        "需求草案说明目标、边界、非目标和依赖条件",
+        "方案经明确人工确认后才生成正式实施计划",
+        "交付计划包含里程碑、责任人建议、风险和可验证验收标准",
+        "使用知识库或外部插件时须有授权和真实来源，不得编造证据",
+      ],
+      require_plan_review:true,
+      require_approval:true,
+    },
+  },
+
   {
     key: "research",
     title: "研究助手",

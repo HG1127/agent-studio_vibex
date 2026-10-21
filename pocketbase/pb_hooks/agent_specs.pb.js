@@ -56,6 +56,19 @@ onBootstrap(function (e) {
       $app.save(col)
       try { $app.logger().info("agent_specs collection created") } catch (_) {}
     }
+    // Index creation must run AFTER the physical collection table exists.
+    // Standalone onBootstrap hooks had race/order dependencies on a fresh DB.
+    var catalogIndexes=[
+      "CREATE INDEX IF NOT EXISTS idx_agent_catalog_owner_updated "+
+        "ON agent_specs(rh_user_id,updated DESC,id DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_agent_catalog_owner_name "+
+        "ON agent_specs(rh_user_id,name COLLATE NOCASE,id)",
+      "CREATE INDEX IF NOT EXISTS idx_agent_catalog_owner_source "+
+        "ON agent_specs(rh_user_id,source,updated DESC)"
+    ]
+    for(var ci=0;ci<catalogIndexes.length;ci++){
+      $app.db().newQuery(catalogIndexes[ci]).execute()
+    }
   } catch (err) {
     try { $app.logger().error("agent_specs bootstrap: " + String(err && err.message || err)) } catch (_) {}
   }
@@ -90,25 +103,62 @@ routerAdd("GET", "/api/agent_specs", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
-    var page = parseInt(String(query.page || "1"), 10) || 1
-    var perPage = parseInt(String(query.perPage || "50"), 10) || 50
-    if (perPage > 200) perPage = 200
-    var sort = String(query.sort || "-created")
-    var filterParts = ["rh_user_id = {:owner_uid}"]
-    var params = { owner_uid: uid }
-    if (query.source !== undefined && query.source !== "") {
-      filterParts.push("source = {:source}")
-      params.source = String(query.source)
+    var page = Math.min(10000, Math.max(1, parseInt(String(query.page || "1"), 10) || 1))
+    var perPage = Math.min(200, Math.max(1, parseInt(String(query.perPage || "50"), 10) || 50))
+    var search = String(query.q || "").trim().slice(0, 100)
+    var favoritesOnly = String(query.favorite || "") === "1"
+    var sortInput = String(query.sort || "-created")
+    // Never concatenate caller input into ORDER BY or SQL filter expressions.
+    var orders = {
+      "-created":"s.created DESC,s.id DESC",
+      "-updated":"s.updated DESC,s.id DESC",
+      "updated_desc":"s.updated DESC,s.id DESC",
+      "created_desc":"s.created DESC,s.id DESC",
+      "name_asc":"s.name COLLATE NOCASE ASC,s.id ASC",
+      "name_desc":"s.name COLLATE NOCASE DESC,s.id DESC",
+      "favorite_desc":"favorite DESC,s.updated DESC,s.id DESC"
     }
-    var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
-    var records = filter
-      ? $app.findRecordsByFilter("agent_specs", filter, sort, perPage, (page - 1) * perPage, params)
-      : $app.findRecordsByFilter("agent_specs", "", sort, perPage, (page - 1) * perPage)
+    var orderSql = orders[sortInput] || orders["-created"]
+    var where = " WHERE s.rh_user_id={:owner}"
+    var params = {owner:uid}
+    if (query.source !== undefined && String(query.source) !== "" && String(query.source) !== "all") {
+      where += " AND s.source={:source}"
+      params.source = String(query.source).slice(0, 20)
+    }
+    if(search){
+      // LIKE escapes % and _ rather than letting a search box become a wildcard.
+      var safeSearch = search.replace(/[!%_]/g,function(ch){return "!"+ch})
+      where += " AND (LOWER(s.name) LIKE {:q} ESCAPE '!' OR LOWER(CAST(s.spec AS TEXT)) LIKE {:q} ESCAPE '!')"
+      params.q = "%" + safeSearch.toLowerCase() + "%"
+    }
+    if(favoritesOnly) where += " AND f.spec_id IS NOT NULL"
+    var sqlFrom = " FROM agent_specs s LEFT JOIN agent_spec_favorites f " +
+      "ON f.spec_id=s.id AND f.owner_uid=s.rh_user_id" + where
+    var totalRow = new DynamicModel({total:0})
+    $app.db().newQuery("SELECT COUNT(*) AS total"+sqlFrom).bind(params).one(totalRow)
+    var rows = arrayOf(new DynamicModel({id:"",favorite:0}))
+    var listParams = {}
+    for(var k in params) listParams[k] = params[k]
+    listParams.limit = perPage
+    listParams.offset = (page - 1) * perPage
+    $app.db().newQuery(
+      "SELECT s.id AS id, CASE WHEN f.spec_id IS NULL THEN 0 ELSE 1 END AS favorite"+
+      sqlFrom+" ORDER BY "+orderSql+" LIMIT {:limit} OFFSET {:offset}"
+    ).bind(listParams).all(rows)
     var items = []
-    for (var i = 0; i < records.length; i++) {
-      items.push(records[i].publicExport())
+    for (var i = 0; i < rows.length; i++) {
+      var rec = null
+      try { rec = $app.findRecordById("agent_specs",String(rows[i].id)) } catch (_) {}
+      if(!rec || String(rec.get("rh_user_id") || "") !== uid) continue
+      var item = rec.publicExport()
+      item.favorite = Number(rows[i].favorite) === 1
+      items.push(item)
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    return e.json(200, {
+      items:items,page:page,perPage:perPage,
+      totalItems:Number(totalRow.total||0),
+      totalPages:Math.max(1,Math.ceil(Number(totalRow.total||0)/perPage)),
+    })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("agent_specs list: " + msg) } catch (_) {}
@@ -220,6 +270,40 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
       if ("template_key" in body) rec.set("template_key", body.template_key === undefined || body.template_key === null ? "" : String(body.template_key))
       var current = helper.decode(rec)
       var changed = "spec" in body && helper.digest(current) !== oldHash
+      var optimizationOrigin=null
+      var feedbackHash=""
+      var changedKeys=[]
+      if(body.optimization_context!==undefined){
+        if(!changed || body.expected_updated===undefined)
+          helper.fail("optimization_requires_changed_spec_and_revision",409)
+        var fromId=String((body.optimization_context||{}).source_run_id||"")
+        if(!/^[A-Za-z0-9]{15}$/.test(fromId))
+          helper.fail("invalid_optimization_source",400)
+        var from=null
+        try{from=tx.findRecordById("agent_runs",fromId)}catch(_){}
+        if(!from || String(from.get("rh_user_id")||"")!==uid ||
+          String(from.get("spec_id")||"")!==String(id))
+          helper.fail("optimization_source_not_found",404)
+        var feedback=null
+        try{feedback=JSON.parse(from.getString("feedback")||"null")}catch(_){}
+        if(!feedback || (feedback.rating!=="up" && feedback.rating!=="down"))
+          helper.fail("optimization_feedback_required",409)
+        feedbackHash=String($security.sha256(JSON.stringify(feedback)))
+        optimizationOrigin=fromId
+        var tracked=[
+          "goal","task_scope","deliverables","task_plan","done_criteria",
+          "tools","knowledge_base_ids","require_plan_review","require_approval"
+        ]
+        for(var ci=0;ci<tracked.length;ci++){
+          var key=tracked[ci]
+          if(JSON.stringify(previous[key]===undefined?null:previous[key]) !==
+             JSON.stringify(current[key]===undefined?null:current[key]))
+            changedKeys.push(key)
+        }
+        // This is an explicit feedback-driven change, not an inference
+        // based merely on adjacent timestamps or similar wording.
+        if(!changedKeys.length)helper.fail("no_trackable_optimization_change",409)
+      }
       if (changed) {
         // Keep safe text only; use direct provenance because this is not an
         // editor proposal or a new approval.
@@ -229,9 +313,25 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
       }
       tx.save(rec)
       if (changed) {
-        history.record(tx,{specId:id,ownerId:uid,actorId:uid,
+        var acceptedRevisionId=history.record(tx,{specId:id,ownerId:uid,actorId:uid,
           kind:"accepted",entryType:"direct",spec:current,
-          note:"所有者直接修改 Agent 配置后"})
+          note:optimizationOrigin?"已确认反馈驱动的 Agent 方案调整":"所有者直接修改 Agent 配置后"})
+        if(optimizationOrigin){
+          var auditId=$security.randomString(15)
+          tx.db().newQuery(
+            "INSERT INTO agent_optimization_lineage "+
+            "(id,owner_uid,spec_id,source_run_id,before_hash,after_hash,"+
+            "feedback_hash,changed_keys_json,accepted_revision_id,created_ms) "+
+            "VALUES({:id},{:owner},{:spec},{:source},{:before},{:after},"+
+            "{:feedback},{:keys},{:revision},{:now})"
+          ).bind({
+            id:auditId,owner:uid,spec:id,source:optimizationOrigin,
+            before:oldHash,after:helper.digest(current),
+            feedback:feedbackHash,keys:JSON.stringify(changedKeys),
+            revision:acceptedRevisionId,now:Date.now(),
+          }).execute()
+          result={optimization_lineage_id:auditId}
+        }
         // Owner changes render any pending collaborator draft stale. Explicitly
         // reject them so they cannot be reviewed accidentally after an ABA.
         tx.db().newQuery(
@@ -240,7 +340,8 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
           "WHERE spec_id={:spec} AND owner_uid={:owner} AND status='pending'"
         ).bind({now:new Date().getTime(),owner:uid,spec:id}).execute()
       }
-      result = rec.publicExport()
+      var updatedRecord=rec.publicExport()
+      result=result?Object.assign(updatedRecord,result):updatedRecord
     })
     return e.json(200, result)
   } catch (err) {
@@ -263,6 +364,9 @@ routerAdd("DELETE", "/api/agent_specs/{id}", function (e) {
     try { rec = $app.findRecordById("agent_specs", id) } catch (_) { rec = null }
     if (!rec || String(rec.get("rh_user_id") || "") !== uid) return e.json(404, { error: "not_found" })
     $app.delete(rec)
+    try{$app.db().newQuery(
+      "DELETE FROM agent_spec_favorites WHERE owner_uid={:uid} AND spec_id={:id}"
+    ).bind({uid:uid,id:id}).execute()}catch(_){}
     return e.json(200, { ok: true })
   } catch (err) {
     var msg = String(err && err.message || err)

@@ -76,6 +76,11 @@ onBootstrap(function (e) {
       $app.save(col)
       try { $app.logger().info("agent_runs collection created") } catch (_) {}
     }
+    // Build the owner-scoped history index after agent_runs was created.
+    $app.db().newQuery(
+      "CREATE INDEX IF NOT EXISTS idx_run_history_owner_spec_created "+
+      "ON agent_runs(rh_user_id,spec_id,created DESC,id DESC)"
+    ).execute()
   } catch (err) {
     try { $app.logger().error("agent_runs bootstrap: " + String(err && err.message || err)) } catch (_) {}
   }

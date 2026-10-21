@@ -43,7 +43,7 @@
     "go-live:preflight": "node ops/standalone-preflight.mjs",
     "go-live:legacy-preflight": "node ops/internal-readiness.mjs",
     "go-live:gateway": "node ops/verify-gateway.mjs",
-    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration",
+    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration",
     "test:e2e:parallel": "node ops/e2e-parallel.mjs",
     "test:e2e:fast": "node ops/e2e-parallel.mjs",
     "worker": "node worker/run.mjs",
@@ -53,7 +53,8 @@
     "test:studio-ux": "node --experimental-strip-types --test tests/agent-studio-ux.test.mjs",
     "test:smithery-market": "node --experimental-strip-types --test tests/smithery-marketplace.test.mjs",
     "test:smithery-integration": "node tests/smithery-connect.integration.mjs",
-    "test:tool-ux": "node --experimental-strip-types --test tests/tool-connection-ux.test.mjs"
+    "test:tool-ux": "node --experimental-strip-types --test tests/tool-connection-ux.test.mjs",
+    "test:v19-integration": "node tests/agent-catalog.integration.mjs && node tests/agent-run-snapshot.integration.mjs && node tests/agent-optimization-history.integration.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

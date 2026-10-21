@@ -10,7 +10,7 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 
 type StatusKind = "agent" | "workflow" | "schedule"
-type ActionCategory = "approval" | "review" | "overdue" | "failed"
+type ActionCategory = "input" | "approval" | "review" | "overdue" | "failed"
 type ActionItem = {
   category: ActionCategory
   kind: StatusKind
@@ -33,6 +33,7 @@ type Overview = {
   counters: {
     running: number
     awaiting_approval: number
+    awaiting_input: number
     failed_7d: number
     paused: number
     schedules_active: number
@@ -56,6 +57,7 @@ type Overview = {
 
 const categories: { value: "all" | ActionCategory; label: string }[] = [
   { value: "all", label: "全部待办" },
+  { value: "input", label: "待我确认" },
   { value: "approval", label: "待审批" },
   { value: "review", label: "待核验" },
   { value: "overdue", label: "超期计划" },
@@ -63,6 +65,7 @@ const categories: { value: "all" | ActionCategory; label: string }[] = [
 ]
 
 const categoryMeta: Record<ActionCategory, { label: string; className: string }> = {
+  input: { label: "等待我回复", className: "border-primary/30 bg-primary/5 text-primary" },
   approval: { label: "需要审批", className: "border-amber-300/40 bg-amber-50 text-amber-900" },
   review: { label: "需要人工核验", className: "border-amber-300/40 bg-amber-50 text-amber-900" },
   overdue: { label: "计划超期", className: "border-amber-300/40 bg-amber-50 text-amber-900" },
@@ -71,7 +74,7 @@ const categoryMeta: Record<ActionCategory, { label: string; className: string }>
 
 const statusNames: Record<string, string> = {
   succeeded: "已完成", failed: "失败", cancelled: "已取消",
-  running: "运行中", awaiting_approval: "待审批",
+  running: "运行中", awaiting_input: "待回复", awaiting_approval: "待审批",
   paused: "已暂停", pending: "待运行",
 }
 
@@ -87,7 +90,9 @@ function displayTime(value: string | number): string {
 
 function actionHref(item: ActionItem): string {
   if (item.kind === "schedule") return "/scheduled-tasks"
-  if (item.kind === "agent") return "/run-detail?run=" + encodeURIComponent(item.id)
+  if (item.kind === "agent") return (item.category==="input" || item.category==="approval")
+    ? "/agent-run?run=" + encodeURIComponent(item.id)
+    : "/run-detail?run=" + encodeURIComponent(item.id)
   return "/workflow-canvas"
 }
 
@@ -140,6 +145,7 @@ export default function InternalOverviewPage() {
   const refresh = () => { setPending(true); setRevision(current => current + 1) }
   const c = overview?.counters
   const stats = [
+    { title: "待我回复", value: c?.awaiting_input ?? 0, icon: ClipboardCheck, href: "/agent-run" },
     { title: "待审批", value: c?.awaiting_approval ?? 0, icon: ClipboardCheck, href: "/agent-run" },
     { title: "外部写入待核验", value: c?.writes_need_review ?? 0, icon: ShieldAlert, href: "/tool-hub" },
     { title: "已超期计划", value: c?.schedules_overdue ?? 0, icon: CalendarClock, href: "/scheduled-tasks" },
@@ -219,7 +225,7 @@ export default function InternalOverviewPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="text-base font-semibold">需要我处理</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">审批、人工核验、计划超期及近期运行失败</p>
+                      <p className="mt-1 text-xs text-muted-foreground">待回复的 Agent、工具审批、人工核验、计划超期及近期运行失败</p>
                     </div>
                     <span className="text-xs text-muted-foreground">最多展示 {overview.sampling.action_limit} 条</span>
                   </div>
@@ -268,7 +274,7 @@ export default function InternalOverviewPage() {
                     <h2 className="text-base font-semibold">常用入口</h2>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       {[
-                        {label:"创建 Agent",href:"/",icon:Play},
+                        {label:"创建 Agent",href:"/agent-create",icon:Play},
                         {label:"运行工作流",href:"/workflow-canvas",icon:GitBranch},
                         {label:"管理定时任务",href:"/scheduled-tasks",icon:Clock3},
                         {label:"管理知识库",href:"/knowledge-bases",icon:BookOpen},

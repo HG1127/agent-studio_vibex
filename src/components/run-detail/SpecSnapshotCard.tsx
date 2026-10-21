@@ -39,7 +39,7 @@ export function SpecSnapshotCard({ snapshot, run }: SpecSnapshotCardProps) {
         <span className="min-w-0">
           <span className="block text-base font-semibold tracking-tight text-card-foreground">方案配置快照</span>
           <span className="block truncate text-xs text-muted-foreground">
-            {snapshot ? snapshot.name || run.spec_name || "运行所用方案" : "方案已删除，展示运行时配置记录"}
+            {snapshot ? run.spec_name || "本次运行的原始方案快照" : "历史方案快照缺失；仅展示当次保存的运行参数"}
           </span>
         </span>
         <ChevronDown
@@ -105,6 +105,9 @@ export function SpecSnapshotCard({ snapshot, run }: SpecSnapshotCardProps) {
             </>
           ) : (
             <>
+              <p role="status" className="rounded-lg border border-border bg-secondary/40 p-3 text-xs leading-relaxed text-muted-foreground">
+                此次运行没有可核验的 Agent 方案快照。以下仅是当次运行参数，不代表当时完整的 Agent 目标、步骤或工具设计；不会用今天的配置补造历史。
+              </p>
               <SnapshotRow label="授权工具">
                 {enabledToolNames.length ? (
                   <div className="flex flex-wrap gap-1.5">

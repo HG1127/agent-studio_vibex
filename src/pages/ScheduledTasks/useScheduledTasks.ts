@@ -132,6 +132,9 @@ export function useScheduledTasks() {
     })
     setNotice("");setError("")
     document.getElementById("schedule-editor")?.scrollIntoView({ behavior:"smooth",block:"start" })
+    window.requestAnimationFrame(()=>{
+      document.getElementById("schedule-plan-name")?.focus({preventScroll:true})
+    })
   }
 
   const save = async (event: FormEvent<HTMLFormElement>) => {

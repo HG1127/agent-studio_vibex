@@ -10,6 +10,8 @@ type MyPublishesListProps = {
   myList: MyPublishRow[]
   isLoadingMine: boolean
   busyMineId: string
+  error?: string
+  onRetry?: () => void
   onUnpublish: (row: MyPublishRow) => void
   onRepublish: (row: MyPublishRow) => void
   onDelete: (row: MyPublishRow) => void
@@ -19,10 +21,19 @@ export function MyPublishesList({
   myList,
   isLoadingMine,
   busyMineId,
-  onUnpublish,
+  onUnpublish,  error,
+  onRetry,
+
   onRepublish,
   onDelete,
 }: MyPublishesListProps) {
+  if (error) return <section role="alert"
+    className="rounded-xl border border-destructive/30 bg-card p-5 text-sm">
+    <p className="text-destructive">{error}</p>
+    <button type="button" onClick={onRetry} className="mt-3 min-h-10 rounded-lg border border-border px-3 py-2 font-medium text-primary">
+      重新读取我的模板
+    </button>
+  </section>
   if (isLoadingMine) {
     return (
       <div className="flex items-center justify-center gap-2 rounded-3xl border border-border bg-card p-10 text-sm text-muted-foreground shadow-md">
@@ -85,7 +96,7 @@ export function MyPublishesList({
                 <button
                   type="button"
                   onClick={() => onUnpublish(row)}
-                  disabled={isBusy}
+                  disabled={Boolean(busyMineId)}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-card-foreground transition hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <EyeOff className="h-4 w-4" />
@@ -95,7 +106,7 @@ export function MyPublishesList({
                 <button
                   type="button"
                   onClick={() => onRepublish(row)}
-                  disabled={isBusy}
+                  disabled={Boolean(busyMineId)}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Megaphone className="h-4 w-4" />
@@ -105,7 +116,7 @@ export function MyPublishesList({
               <button
                 type="button"
                 onClick={() => onDelete(row)}
-                disabled={isBusy}
+                disabled={Boolean(busyMineId)}
                 aria-label={`删除模板 ${row.name}`}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/30 px-3.5 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
               >

@@ -28,12 +28,13 @@ test("GET external is a read; POST, PUT, unknown defaults are writes",()=>{
     assert.equal(allowAutomaticRetry(p,true),false)
   }
 })
-test("market tools are always treated as writes and require approval when enabled",()=>{
+test("market MCP tools always require per-call approval regardless of optional HTTP write gate",()=>{
   const p=classify({toolName:"mkt__remote",market:true,method:"GET",requireApproval:true})
   assert.equal(p.write,true)
   assert.equal(p.requiresApproval,true)
   assert.equal(allowAutomaticRetry(p,true),false)
   assert.equal(classify({toolName:"mkt__remote",market:true,alreadyApproved:true,requireApproval:true}).requiresApproval,false)
+  assert.equal(classify({toolName:"mkt__remote",market:true,method:"GET",requireApproval:false}).requiresApproval,true)
 })
 test("operator mandatory approval cannot be disabled by employee settings",()=>{
   const write=classify({toolName:"Payment",external:true,method:"POST",

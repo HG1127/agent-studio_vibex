@@ -49,17 +49,35 @@ function prepareModelStep(checkpoint, deadlineGuard, nowMs) {
 // Authorization fingerprint binds an approval to the EXACT validated tool
 // arguments, external target and HTTP method. It is stored only as SHA-256;
 // never store complete credentials or rendered headers in the approval log.
+function canonicalApprovalValue(value) {
+  // The Goja/PocketBase JSON serializer may reorder object keys when storing
+  // an awaiting-approval checkpoint. An unchanged call MUST hash identically
+  // after resume; changed arguments, targets or tools MUST still invalidate it.
+  if (Array.isArray(value)) {
+    var list = []
+    for (var i = 0; i < value.length; i++) list.push(canonicalApprovalValue(value[i]))
+    return list
+  }
+  if (value && typeof value === "object") {
+    var keys = Object.keys(value).sort()
+    var out = {}
+    for (var j = 0; j < keys.length; j++)
+      out[keys[j]] = canonicalApprovalValue(value[keys[j]])
+    return out
+  }
+  return value
+}
 function approvalDigest(sha256, input) {
   if (typeof sha256 !== "function")
     throw new Error("approval_digest_provider_required")
   var o = input || {}
   var descriptor = JSON.stringify([
-    "harness-approval-v2",
+    "harness-approval-v3-canonical",
     String(o.toolName || ""),
     String(o.method || "POST").toUpperCase(),
     String(o.connectionId || ""),
     String(o.destination || ""),
-    o.value,
+    canonicalApprovalValue(o.value),
   ])
   if (!descriptor || descriptor.length > 15000)
     throw new Error("approval_digest_input_invalid")

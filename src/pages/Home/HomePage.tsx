@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react"
+import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
 import { AlertCircle, LogIn, PencilLine, Store, X } from "lucide-react"
 import { Link } from "react-router-dom"
 import { CreateComposer } from "@/components/home/CreateComposer"
 import { AgentDraftRecoveryNotice } from "@/components/home/AgentDraftRecoveryNotice"
-import { SavedSpecsList } from "@/components/home/SavedSpecsList"
+import { AgentCatalog } from "@/components/home/AgentCatalog"
 import { SpecEditorCard } from "@/components/home/SpecEditorCard"
 import { TemplateGallery } from "@/components/home/TemplateGallery"
 import { WorkspaceOverview } from "@/components/home/WorkspaceOverview"
@@ -11,8 +13,40 @@ import { SiteShell } from "@/components/site/SiteShell"
 import type { useHome } from "./useHome"
 
 export function HomePage(p: ReturnType<typeof useHome>) {
+  const [localEditorOpen,setLocalEditorOpen]=useState(false)
+  useEffect(()=>{
+    const show=()=>setLocalEditorOpen(true)
+    window.addEventListener("studio:open-current-agent-editor",show)
+    return()=>window.removeEventListener("studio:open-current-agent-editor",show)
+  },[])
+
   return (
     <SiteShell>
+      <AgentDraftDrawer open={localEditorOpen} onClose={()=>setLocalEditorOpen(false)}
+        title="随时调整当前 Agent 方案"
+        description="此处直接编辑当前工作台草稿。修改与原页面实时同步，保存后可以试跑；未保存的草稿不会被静默覆盖。">
+        {p.spec ? <SpecEditorCard
+          spec={p.spec} specName={p.specName} sourceMode={p.sourceMode}
+          onSpecNameChange={p.setSpecName} onTextChange={p.updateSpecText}
+          onTogglePlanReview={p.togglePlanReview}
+          onListItemChange={p.updateSpecListItem} onListItemAdd={p.addSpecListItem}
+          onListItemRemove={p.removeSpecListItem} toolStatusOf={p.toolStatusOf}
+          builtinTools={p.builtinToolOptions} connectedTools={p.connectedTools}
+          connectedMarketTools={p.connectedMarketTools}
+          toolAnalysis={p.toolAnalysis} toolMatchNotice={p.toolMatchNotice}
+          onRematchTools={p.rematchAgentTools} knowledgeBases={p.knowledgeBases}
+          onToggleKnowledgeBase={p.toggleKnowledgeBase} onToggleTool={p.handleToggleSpecTool}
+          reviseInput={p.reviseInput} onReviseInputChange={p.setReviseInput}
+          onRevise={p.handleRevise} isRevising={p.isRevising}
+          onSave={p.handleSave} isSaving={p.isSaving} dirty={p.specDirty}
+          saveConflict={p.saveConflict} onSaveAsCopy={p.handleSaveAsCopy}
+          savedMsg={p.savedMsg} savedSpecId={p.savedSpecId}
+          onClear={p.handleClearSpec} showClear={false}
+        /> : <p className="rounded-xl border border-border p-5 text-sm text-muted-foreground">
+          还没有待修改的 Agent。请先在工作台输入需求，或从「我的 Agent」打开已保存的方案。
+        </p>}
+      </AgentDraftDrawer>
+
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <TopNavBar onGoMySpecs={() =>
           document.getElementById("my-specs")?.scrollIntoView({ behavior: "smooth" })}/>
@@ -20,7 +54,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
 
       <main data-studio-fluid-page="workbench"
         className="w-full min-w-0 px-3 pb-12 pt-1 sm:px-5 lg:px-7 2xl:px-10">
-        <WorkspaceOverview agentCount={p.savedList.length}/>
+        <WorkspaceOverview agentCount={p.savedTotal}/>
         <AgentDraftRecoveryNotice draft={p.pendingDraft}
           persistError={p.draftPersistError}
           restoreNotice={p.draftRestoreNotice}
@@ -51,14 +85,14 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">我的 Agent</h2>
-              <p className="mt-1 text-xs text-muted-foreground">继续编辑或运行之前保存的助手。</p>
+              <p className="mt-1 text-xs text-muted-foreground">按名称、目标、方案内容搜索，筛选收藏与来源；可以直接编辑或试跑。</p>
             </div>
             <Link to="/agent-create"
               className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary hover:bg-primary/5">
               创建新 Agent
             </Link>
           </div>
-          <SavedSpecsList
+          <AgentCatalog
             savedList={p.savedList}
             isLoggedIn={p.isLoggedIn}
             onOpenSaved={p.handleOpenSaved}
@@ -76,13 +110,21 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             sourceMode={p.sourceMode}
             onSpecNameChange={p.setSpecName}
             onTextChange={p.updateSpecText}
+            onTogglePlanReview={p.togglePlanReview}
             onListItemChange={p.updateSpecListItem}
             onListItemAdd={p.addSpecListItem}
             onListItemRemove={p.removeSpecListItem}
             toolStatusOf={p.toolStatusOf}
             builtinTools={p.builtinToolOptions}
             connectedTools={p.connectedTools}
+            connectedMarketTools={p.connectedMarketTools}
+            toolAnalysis={p.toolAnalysis}
+            toolMatchNotice={p.toolMatchNotice}
+            onRematchTools={p.rematchAgentTools}
             knowledgeBases={p.knowledgeBases}
+          knowledgeBasesError={p.knowledgeBasesError}
+          knowledgeBasesLoading={p.knowledgeBasesLoading}
+          onRefreshKnowledgeBases={p.refreshKnowledgeBases}
             onToggleKnowledgeBase={p.toggleKnowledgeBase}
             onToggleTool={p.handleToggleSpecTool}
             reviseInput={p.reviseInput}

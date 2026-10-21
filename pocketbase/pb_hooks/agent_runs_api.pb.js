@@ -1,8 +1,9 @@
 // agent_runs_api.pb.js — 运行详情页（run-detail）归属校验数据通路
 // 表结构由 MCP 装的 agent_runs.pb.js / run_events.pb.js 提供；本文件是运行详情页唯一数据通路：
 //   GET /api/agent-runs/{id}/detail   单次运行完整档案（归属校验，非本人/不存在一律 404）
-//   GET /api/agent-runs/recent?limit=N 当前用户最近运行精简列表（limit 钳制 1..20，默认 5）
-// 安全约束：通用 /api/agent_runs、/api/run_events 路由无归属校验，前端详情数据禁止直读，只走本文件。
+//   GET /api/agent-runs/recent?limit=N 最近运行 + 独立查询的本人全部待办总数及最近待办（limit 1..20）
+// 安全约束：运行详情与事件必须通过身份归属校验，历史方案必须读取 run.spec_snapshot。
+// 禁止从当前 agent_specs 替代已删除或缺失的历史快照；旧记录缺失应明确返回 null。
 // Goja 铁律：全部 var、helper 就地定义、每个回调 self-contained、json 字段 getString 优先、
 // 5xx 一律 { error, message, fingerprint }。
 
@@ -40,21 +41,15 @@ routerAdd("GET", "/api/agent-runs/{id}/detail", function (e) {
     var configObj = parseJsonField(runRec, "config")
     var checkpointObj = parseJsonField(runRec, "checkpoint")
 
-    // 方案配置快照：run 表未存快照列，服务端实时读本人 agent_specs 现配置（已删则回 null，前端回落 config）
-    var specSnapshot = null
-    var specId = String(runRec.get("spec_id") || "")
-    if (specId) {
-      try {
-        var specRec = $app.findRecordById("agent_specs", specId)
-        if (specRec && String(specRec.get("rh_user_id")) === uid) {
-          var specObj = parseJsonField(specRec, "spec")
-          if (specObj && typeof specObj === "object") {
-            specObj.name = String(specRec.getString("name") || "")
-            specSnapshot = specObj
-          }
-        }
-      } catch (_) {}
+    // Exact immutable AgentSpec at the time THIS run started. NEVER substitute
+    // the current AgentSpec: it may have changed since an earlier execution.
+    // Legacy runs without a stored snapshot return null and are explicitly
+    // labelled unavailable in the UI and exported audit report.
+    var specSnapshot = parseJsonField(runRec, "spec_snapshot")
+    if (!specSnapshot || typeof specSnapshot !== "object" || Array.isArray(specSnapshot)) {
+      specSnapshot = null
     }
+    var specId = String(runRec.get("spec_id") || "")
 
     var runOut = {
       id: String(runRec.id),
@@ -112,6 +107,62 @@ routerAdd("GET", "/api/agent-runs/{id}/detail", function (e) {
     return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
   }
 })
+/**
+ * Desktop inbox: all current employee's pending Agent actions, with real
+ * owner-scoped paging instead of the 20-item recent-task shortcut.
+ * No instruction, checkpoint, answer, tool arguments or credentials returned.
+ */
+routerAdd("GET","/api/agent-runs/pending",function(e){
+  try{
+    var h=(e.requestInfo()||{}).headers||{}
+    var uid=String(h["x_rh_user_id"]||h["X-Rh-User-Id"]||h["x-rh-user-id"]||
+      ($os.getenv("AGENT_STUDIO_ALLOW_ANON")==="true"?"local-anon":"")).trim()
+    if(!uid)return e.json(401,{error:"auth_required"})
+    var query=(e.requestInfo()||{}).query||{}
+    var page=Math.min(10000,Math.max(1,parseInt(String(query.page||"1"),10)||1))
+    var perPage=Math.min(30,Math.max(1,parseInt(String(query.perPage||"10"),10)||10))
+    var kind=String(query.status||"all")
+    if(["all","awaiting_input","awaiting_approval"].indexOf(kind)<0)
+      return e.json(400,{error:"invalid_status"})
+    var name=String(query.q||"").trim().slice(0,100)
+    var where=" WHERE rh_user_id={:uid} "+
+      "AND status IN ('awaiting_input','awaiting_approval')"
+    var params={uid:uid}
+    if(kind!=="all"){where+=" AND status={:status}";params.status=kind}
+    if(name){
+      where+=" AND LOWER(spec_name) LIKE {:q} ESCAPE '!'"
+      params.q="%"+name.replace(/[!%_]/g,function(ch){return "!"+ch}).toLowerCase()+"%"
+    }
+    var total=new DynamicModel({total:0})
+    $app.db().newQuery("SELECT COUNT(*) AS total FROM agent_runs"+where).bind(params).one(total)
+    var dataParams={}
+    for(var key in params)dataParams[key]=params[key]
+    dataParams.limit=perPage
+    dataParams.offset=(page-1)*perPage
+    var rows=arrayOf(new DynamicModel({
+      id:"",spec_id:"",spec_name:"",status:"",created:"",updated:""
+    }))
+    $app.db().newQuery(
+      "SELECT id,spec_id,spec_name,status,created,updated FROM agent_runs"+
+      where+" ORDER BY updated DESC,id DESC LIMIT {:limit} OFFSET {:offset}"
+    ).bind(dataParams).all(rows)
+    var items=[]
+    for(var i=0;i<rows.length;i++)items.push({
+      id:String(rows[i].id),spec_id:String(rows[i].spec_id),
+      spec_name:String(rows[i].spec_name),status:String(rows[i].status),
+      created:String(rows[i].created),updated:String(rows[i].updated),
+    })
+    return e.json(200,{
+      ok:true,items:items,page:page,perPage:perPage,
+      totalItems:Number(total.total||0),
+      totalPages:Math.max(1,Math.ceil(Number(total.total||0)/perPage))
+    })
+  }catch(err){
+    try{$app.logger().error("pending inbox error","err",String(err))}catch(_){}
+    return e.json(500,{error:"pending_unavailable"})
+  }
+})
+
 
 routerAdd("GET", "/api/agent-runs/recent", function (e) {
   try {
@@ -147,7 +198,35 @@ routerAdd("GET", "/api/agent-runs/recent", function (e) {
         created: String(rec.getString("created") || ""),
       })
     }
-    return e.json(200, { ok: true, items: items })
+    // Pending approvals must not vanish when later runs push them outside
+    // the recent-run window. Keep the full owner-scoped COUNT separate from
+    // the bounded list and omit sensitive instruction/checkpoint contents.
+    var pendingCountRow = new DynamicModel({ total: 0 })
+    $app.db().newQuery(
+      "SELECT COUNT(*) AS total FROM agent_runs " +
+      "WHERE rh_user_id={:uid} AND status IN ('awaiting_input','awaiting_approval')"
+    ).bind({ uid: uid }).one(pendingCountRow)
+    var pendingRows = $app.findRecordsByFilter(
+      "agent_runs",
+      "rh_user_id = {:uid} && (status = 'awaiting_input' || status = 'awaiting_approval')",
+      "-updated", 20, 0, { uid: uid }
+    )
+    var pendingItems = []
+    for (var pi = 0; pi < pendingRows.length; pi++) {
+      var pending = pendingRows[pi]
+      pendingItems.push({
+        id: String(pending.id),
+        spec_id: String(pending.get("spec_id") || ""),
+        spec_name: String(pending.getString("spec_name") || ""),
+        status: String(pending.getString("status") || ""),
+        created: String(pending.getString("created") || ""),
+      })
+    }
+    return e.json(200, {
+      ok: true, items: items,
+      pending_count: Number(pendingCountRow.total || 0),
+      pending_items: pendingItems,
+    })
   } catch (err) {
     var msg = String((err && err.message) || err)
     try {

@@ -1,6 +1,8 @@
 import { Cpu, Network, PlugZap, SlidersHorizontal, Wrench } from "lucide-react"
 import { Link } from "react-router-dom"
 import type { BuiltinTool, CustomModelOption, SavedSpecRow } from "@/pages/AgentRun/useAgentRun"
+import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
+import { safeMarketplaceQuery } from "@/lib/toolSearchPrivacy"
 
 type SpecConfigPanelProps = {
   specList: SavedSpecRow[]
@@ -8,6 +10,7 @@ type SpecConfigPanelProps = {
   selectedSpecId: string
   onSelectSpec: (specId: string) => void
   selectedSpec: SavedSpecRow | null
+  onEditSpec: () => void
   genWfBusy: boolean
   onGenerateWorkflow: () => void
   customModels: CustomModelOption[]
@@ -15,6 +18,11 @@ type SpecConfigPanelProps = {
   model: string
   onModelChange: (model: string) => void
   builtinTools: BuiltinTool[]
+  connectedToolNames: string[]
+  marketToolCount: number
+  connectedMarketTools: VerifiedMarketTool[]
+  toolConnectionsLoading: boolean
+  onRefreshConnections: () => void
   enabledTools: string[]
   onToggleTool: (toolId: string) => void
   maxSteps: number
@@ -28,6 +36,8 @@ type SpecConfigPanelProps = {
   stopOnComplete: boolean
   onStopOnCompleteChange: (value: boolean) => void
   requireApproval: boolean
+  requirePlanReview: boolean
+  onTogglePlanReview: () => void
   onToggleRequireApproval: () => void
   isLoggedIn: boolean
   isLive: boolean
@@ -39,7 +49,8 @@ export function SpecConfigPanel({
   selectedSpecId,
   onSelectSpec,
   selectedSpec,
-  genWfBusy,
+  genWfBusy,  onEditSpec,
+
   onGenerateWorkflow,
   customModels,
   isCustomModel,
@@ -47,6 +58,11 @@ export function SpecConfigPanel({
   onModelChange,
   builtinTools,
   enabledTools,
+  connectedToolNames,
+  marketToolCount,
+  toolConnectionsLoading,
+  connectedMarketTools,
+  onRefreshConnections,
   onToggleTool,
   maxSteps,
   onMaxStepsChange,
@@ -60,13 +76,18 @@ export function SpecConfigPanel({
   onStopOnCompleteChange,
   requireApproval,
   onToggleRequireApproval,
+  requirePlanReview,
+  onTogglePlanReview,
   isLoggedIn,
   isLive,
 }: SpecConfigPanelProps) {
   const specTools = selectedSpec?.spec?.tools ?? []
+  const selectedMarketCount = specTools.filter(name=>connectedMarketTools.some(tool=>tool.id===name)).length
+  const disconnected = specTools.filter(name => !builtinTools.some(t=>t.id===name) &&
+    !connectedMarketTools.some(t=>t.id===name) && !connectedToolNames.includes(name)).length
 
   return (
-    <div className="flex h-full flex-col gap-5 rounded-2xl border border-border bg-card p-6 shadow-md">
+    <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
           <SlidersHorizontal className="h-4 w-4" />
@@ -101,7 +122,14 @@ export function SpecConfigPanel({
 
       {selectedSpec && (
         <div className="rounded-xl bg-secondary/60 p-4">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">方案速览</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">方案速览</p>
+            <button type="button" onClick={onEditSpec}
+              className="rounded-lg border border-primary/30 bg-card px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+              aria-label={`调整正式 Agent 方案：${selectedSpec.name}`}>
+              调整正式方案 →
+            </button>
+          </div>
           <p className="mt-2 text-sm leading-relaxed text-card-foreground">{selectedSpec.spec.goal}</p>
           {selectedSpec.spec.task_plan.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -158,24 +186,34 @@ export function SpecConfigPanel({
             ，启用后这里会出现「自定义」分组。
           </p>
         )}
-        <button
-          type="button"
-          disabled={!selectedSpec || genWfBusy}
-          onClick={onGenerateWorkflow}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Network className="h-3.5 w-3.5" />
-          {genWfBusy ? "正在生成工作流…" : "生成工作流编排画布"}
-        </button>
-        <p className="text-xs text-muted-foreground">把当前方案一键转成工作流图，生成后跳到画布继续微调。</p>
+        <details className="mt-1 rounded-lg border border-border/70 bg-secondary/30 px-3 py-2">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground">
+            <Network className="h-3.5 w-3.5"/>其他操作 · 转为工作流
+          </summary>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            基于当前方案生成可编辑的工作流画布，此操作不启动 Agent。
+          </p>
+          <button type="button" disabled={!selectedSpec || genWfBusy}
+            onClick={onGenerateWorkflow}
+            className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/35 px-3 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50">
+            <Network className="h-3.5 w-3.5"/>
+            {genWfBusy?"正在生成…":"生成工作流画布"}
+          </button>
+        </details>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-medium text-card-foreground">
-          <Wrench className="h-4 w-4 text-primary" />
-          工具授权
-        </p>
-        <div className="flex flex-col gap-2">
+      <details id="run-tool-permissions" className="rounded-xl border border-border bg-background px-3 py-3">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <Wrench className="h-4 w-4 shrink-0 text-primary"/>
+          工具与连接状态
+          <span className={`ml-auto text-right text-[11px] font-medium ${disconnected>0?"text-amber-700 dark:text-amber-400":"text-muted-foreground"}`}>
+            {disconnected>0 ? `${disconnected} 项待连接` : `${enabledTools.length} 项内置开启 · ${selectedMarketCount} 项市场工具`}
+          </span>
+        </summary>
+        {disconnected>0 && <p role="status" className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+          有 {disconnected} 项所需工具尚未连接，展开后可处理
+        </p>}
+        <div className="mt-3 flex flex-col gap-2">
           {builtinTools.map((tool) => {
             const enabled = enabledTools.includes(tool.id)
             return (
@@ -207,26 +245,42 @@ export function SpecConfigPanel({
               </div>
             )
           })}
-          {specTools.map((toolName, toolIndex) => (
+          {specTools.filter(name => !builtinTools.some(tool => tool.id === name)).map((toolName, toolIndex) => (
             <div
               key={`${toolName}-${toolIndex}`}
               className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-muted/40 p-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-muted-foreground">{toolName}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">方案声明的能力，尚未接入真实执行</p>
+                <p className="truncate text-sm font-medium text-muted-foreground">{connectedMarketTools.find(tool=>tool.id===toolName)?.label || toolName}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{connectedMarketTools.some(tool=>tool.id===toolName) ? "此插件工具已验证，试跑时按当前方案显式授权" : connectedToolNames.includes(toolName) ? "当前账号已启用的 HTTP 工具，试跑时按名称授权" : "当前账号未发现匹配的已启用工具"}</p>
               </div>
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                <PlugZap className="h-3 w-3" />
-                待连接
-              </span>
+              {(connectedToolNames.includes(toolName) || connectedMarketTools.some(tool=>tool.id===toolName)) ? <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">已连接</span> : <div className="flex shrink-0 flex-col items-end gap-1"><span className="text-xs text-muted-foreground">待连接</span><Link to={safeMarketplaceQuery(toolName) ? `/plugin-market?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/plugin-market"} className="rounded-lg border border-primary/30 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">寻找插件</Link><Link to={safeMarketplaceQuery(toolName) ? `/tool-connections?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/tool-connections"} className="text-xs text-primary hover:underline">配置 HTTP 工具</Link></div>}
             </div>
           ))}
+          <div className="rounded-xl border border-border bg-secondary/30 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium">已验证插件工具：{marketToolCount} 个 · 当前方案已选 {selectedMarketCount} 个</span>
+              <button type="button" onClick={onRefreshConnections} disabled={toolConnectionsLoading}
+                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-primary disabled:opacity-50">
+                {toolConnectionsLoading ? "刷新中…" : "刷新连接状态"}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">只有在方案编辑页明确勾选并保存的已验证插件工具才会授权给新的 Agent 运行，实际调用前仍需人工审批；未选中或断开连接的插件不会出现在本次授权清单中。</p>
+            <Link to="/plugin-market" className="mt-2 inline-block text-xs font-medium text-primary hover:underline">查看并管理市场插件 →</Link>
+          </div>
         </div>
-      </div>
+      </details>
 
-      <div className="flex flex-col gap-2">
-        <label htmlFor="max-steps" className="flex items-center justify-between text-sm font-medium text-card-foreground">
+      <details id="run-advanced-settings" className="rounded-xl border border-border bg-background px-3 py-3">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <SlidersHorizontal className="h-4 w-4 shrink-0 text-primary"/>
+          执行规则与高级设置
+          <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+            {maxSteps} 步 · {requirePlanReview?"方案需确认":"自动规划"}
+          </span>
+        </summary>
+        <div className="mt-3 flex flex-col gap-2">
+          <label htmlFor="max-steps" className="flex items-center justify-between text-sm font-medium text-card-foreground">
           <span>预算上限（最大步数）</span>
           <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
             {maxSteps} 步
@@ -275,7 +329,7 @@ export function SpecConfigPanel({
         </p>
       </div>
 
-      <div className="mt-auto flex flex-col gap-2">
+      <div className="mt-4 flex flex-col gap-2">
         <label htmlFor="stop-condition" className="text-sm font-medium text-card-foreground">
           停止条件（完成标准描述）
         </label>
@@ -311,11 +365,29 @@ export function SpecConfigPanel({
             />
           </button>
         </div>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">阶段方案先由我确认</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              打开后，需求方案草案必须由你批准或退回修改，之后才允许生成落地计划。
+              仅对本次试跑生效；要设为助手默认规则，请使用上方「调整正式方案」并保存。
+            </p>
+          </div>
+          <button type="button" role="switch" aria-checked={requirePlanReview}
+            aria-label="阶段方案先由我确认开关"
+            disabled={isLive || !isLoggedIn} onClick={onTogglePlanReview}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50 ${requirePlanReview ? "bg-primary" : "bg-muted"}`}>
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-card shadow ${requirePlanReview ? "left-5" : "left-0.5"}`} />
+          </button>
+        </div>
+        {requirePlanReview && maxSteps < 2 && (
+          <p role="alert" className="text-xs text-destructive">开启阶段确认后至少需要 2 步预算：先送审草案，再生成后续计划。</p>
+        )}
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-card-foreground">写操作需我确认</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              推荐保持开启。外部写操作和市场插件执行前须经你批准；管理员可强制执行写入审批政策。
+              本次试跑控制 HTTP 写操作审批；市场 MCP 插件始终逐次要求确认，管理员也可强制执行写操作审批。正式默认规则请在方案编辑器保存。
             </p>
           </div>
           <button
@@ -336,7 +408,8 @@ export function SpecConfigPanel({
             />
           </button>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
   )
 }

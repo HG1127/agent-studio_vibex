@@ -22,6 +22,7 @@ routerAdd("GET", "/api/internal/overview", function (e) {
     var counters = {
       running: 0,
       awaiting_approval: 0,
+      awaiting_input: 0,
       failed_7d: 0,
       paused: 0,
       schedules_active: 0,
@@ -81,6 +82,21 @@ routerAdd("GET", "/api/internal/overview", function (e) {
         append("approval", source.kind, approvalRows[ai].id,
           approvalRows[ai].getString(source.titleKey),
           approvalRows[ai].getString("updated"))
+      }
+      if (source.kind === "agent") {
+        counters.awaiting_input += count(
+          "SELECT COUNT(*) AS total FROM agent_runs WHERE rh_user_id={:uid} AND status='awaiting_input'",
+          { uid: uid }
+        )
+        var inputRows = $app.findRecordsByFilter(
+          "agent_runs", "rh_user_id = {:uid} && status = 'awaiting_input'",
+          "-updated", 12, 0, { uid: uid }
+        )
+        for (var ui = 0; ui < inputRows.length; ui++) {
+          append("input", "agent", inputRows[ui].id,
+            inputRows[ui].getString("spec_name"),
+            inputRows[ui].getString("updated"))
+        }
       }
       var failRows = $app.findRecordsByFilter(
         source.name,
@@ -146,7 +162,7 @@ routerAdd("GET", "/api/internal/overview", function (e) {
         "外部写操作待核验 · 步骤 " + String(review.step_key).slice(0, 28),
         new Date(Number(review.updated_ms)).toISOString())
     }
-    var priority = { approval: 0, review: 1, overdue: 2, failed: 3 }
+    var priority = { input: 0, approval: 1, review: 2, overdue: 3, failed: 4 }
     actionItems.sort(function(a, b) {
       return priority[a.category] - priority[b.category] ||
         b.timestamp.localeCompare(a.timestamp)

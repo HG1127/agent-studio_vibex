@@ -125,11 +125,11 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                     {task.enabled?<Pause className="h-3.5 w-3.5"/>:<Zap className="h-3.5 w-3.5"/>}
                     {task.enabled?"暂停":"启用"}
                   </button>
-                  <button type="button" onClick={()=>p.edit(task)}
+                  <button type="button" aria-label={"编辑定时计划："+task.name} onClick={()=>p.edit(task)}
                     className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary">
                     <Pencil className="h-3.5 w-3.5"/>编辑
                   </button>
-                  <button type="button" disabled={Boolean(p.busyId)} onClick={()=>void p.action(task,"delete")}
+                  <button type="button" aria-label={"删除定时计划："+task.name} disabled={Boolean(p.busyId)} onClick={()=>void p.action(task,"delete")}
                     className="ml-auto inline-flex items-center gap-1 rounded-lg border border-destructive/20 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/5 disabled:opacity-40">
                     <Trash2 className="h-3.5 w-3.5"/>删除
                   </button>

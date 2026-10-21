@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Plus, Save, Trash2 } from "lucide-react"
 import {
   evaluateAgentQualityChecks, normalizeAgentQualityChecks, QUALITY_CHECK_LIMIT,
@@ -23,6 +23,14 @@ export function AgentQualityChecklist({ selectedSpec, activeRun, saving, error, 
   const [draft,setDraft]=useState<AgentQualityCheck[]>(()=>
     normalizeAgentQualityChecks(selectedSpec.spec.quality_checks))
   const [dirty,setDirty]=useState(false)
+  const [editRevision,setEditRevision]=useState(selectedSpec.updated)
+  const versionChanged=selectedSpec.updated!==editRevision
+  useEffect(()=>{
+    if(!dirty && versionChanged){
+      setDraft(normalizeAgentQualityChecks(selectedSpec.spec.quality_checks))
+      setEditRevision(selectedSpec.updated)
+    }
+  },[selectedSpec.updated, selectedSpec.spec.quality_checks,dirty,versionChanged])
   const [message,setMessage]=useState("")
   const matchRun=activeRun?.spec_id===selectedSpec.id && activeRun.status==="succeeded"
   const saveTime=Date.parse(selectedSpec.updated||"")
@@ -35,7 +43,7 @@ export function AgentQualityChecklist({ selectedSpec, activeRun, saving, error, 
     : []
   const stored=normalizeAgentQualityChecks(selectedSpec.spec.quality_checks)
   const draftDiffers=dirty || JSON.stringify(draft)!==JSON.stringify(stored)
-  const canSave=draftDiffers && !saving &&
+  const canSave=draftDiffers && !saving && !versionChanged &&
     draft.every(item=>item.type==="json_object" || item.expected.trim().length>0)
 
   const update=(index:number,patch:Partial<AgentQualityCheck>)=>{
@@ -66,6 +74,19 @@ export function AgentQualityChecklist({ selectedSpec, activeRun, saving, error, 
         {draft.length}/{QUALITY_CHECK_LIMIT} 条
       </span>
     </div>
+    {versionChanged && dirty && <div role="alert"
+      className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+      该 Agent 已在其他页面更新。为避免用旧检查条件覆盖新版本，已暂停此处保存。
+      请先复制需要保留的条件，再点击下方按钮读取最新版本。
+      <button type="button" onClick={()=>{
+        setDraft(normalizeAgentQualityChecks(selectedSpec.spec.quality_checks))
+        setDirty(false)
+        setEditRevision(selectedSpec.updated)
+        setMessage("已加载服务器最新检查条件，可以重新编辑并保存。")
+      }} className="ml-2 font-semibold underline underline-offset-2">
+        读取最新检查条件
+      </button>
+    </div>}
     {draft.length===0 ? <p className="mt-3 rounded-lg border border-dashed border-border bg-background p-3 text-xs text-muted-foreground">
       尚未配置可自动判断的条件。可以先新增一个“必须包含”或“JSON 对象”断言；没有断言时不显示虚构的质量通过率。
     </p> : <div className="mt-4 space-y-3">

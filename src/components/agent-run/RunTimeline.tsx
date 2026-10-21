@@ -128,6 +128,13 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
                 </li>
               )
             }
+            if (event.event_type === "input_pending" || event.event_type === "input_received") {
+              const pending = event.event_type === "input_pending"
+              return <li key={event.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                <p className="text-xs font-semibold text-primary">{pending ? "等待用户确认" : "用户已确认并恢复执行"} · {stepLabel}</p>
+                <p className="mt-1.5 whitespace-pre-wrap text-sm">{contentText(event.content, pending ? "question" : "answer")}</p>
+              </li>
+            }
             if (event.event_type === "approval_pending") {
               return (
                 <li

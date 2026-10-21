@@ -1,4 +1,5 @@
 import { Ban, CheckCircle2, Loader2, Sparkles, XCircle } from "lucide-react"
+import { ResultDocument } from "@/components/agent-run/ResultDocument"
 import type { RunDetailRow } from "@/pages/RunDetail/useRunDetail"
 
 type RunResultCardProps = {
@@ -56,9 +57,7 @@ export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCard
         </p>
       ) : run.status === "succeeded" ? (
         run.result ? (
-          <div className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border-l-4 border-primary bg-primary/5 px-4 py-3.5 text-sm leading-relaxed text-card-foreground">
-            {run.result}
-          </div>
+          <ResultDocument text={run.result} className="mt-2 max-h-[520px] overflow-y-auto rounded-xl border-l-4 border-primary bg-primary/5 px-4 py-3.5" />
         ) : (
           <p className="mt-2 rounded-xl bg-muted px-4 py-5 text-sm text-muted-foreground">
             这次运行标记为完成，但没有留下成果文本。

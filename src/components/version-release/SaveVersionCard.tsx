@@ -8,7 +8,7 @@ type SaveVersionCardProps = {
   isSavingVersion: boolean
   onSave: () => void
   testPassed: boolean
-  hasTestRun: boolean
+  testRunStatus: string
 }
 
 export function SaveVersionCard({
@@ -19,9 +19,12 @@ export function SaveVersionCard({
   isSavingVersion,
   onSave,
   testPassed,
-  hasTestRun,
+  testRunStatus,
 }: SaveVersionCardProps) {
   const untested = !testPassed
+  const isPending = ["queued","running","paused","awaiting_input","awaiting_approval"].includes(testRunStatus)
+  const hasFailed = ["failed","cancelled"].includes(testRunStatus)
+  const isOutdated = testRunStatus === "succeeded" && !testPassed
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-md">
@@ -56,9 +59,14 @@ export function SaveVersionCard({
         <div className="mt-3 flex items-start gap-2 rounded-xl bg-muted p-3">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
           <p className="text-xs leading-relaxed text-muted-foreground">
-            {hasTestRun
-              ? "最近一次验收测试未通过，建议先调整配置并重新测试；也可以强制保存，版本会标记「未测试」。"
-              : "建议先通过验收测试再保存版本；直接保存也可以，版本会标记「未测试」。"}
+            {isPending
+              ? "验收测试仍在进行或等待你的确认，不属于失败。可以先完成审批后继续验收；此时保存版本会标记「未测试」。"
+              : isOutdated
+              ? "此前成功运行属于旧的 Agent 配置。当前方案发生变化，需要重新验收；提前保存将标记「未测试」。"
+              : hasFailed
+              ? "最近一次验收测试已失败或取消。建议先检查运行结果、修复问题再重新测试；现在保存将标记「未测试」。"
+              : "尚无当前版本的正式验收结果。建议先运行验收测试；提前保存将标记「未测试」。"
+            }
           </p>
         </div>
       )}

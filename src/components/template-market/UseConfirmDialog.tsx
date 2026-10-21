@@ -27,7 +27,7 @@ export function UseConfirmDialog({ useTarget, isUseBusy, onConfirm, onCancel }: 
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
               <CopyPlus className="h-4 w-4" />
             </span>
-            使用这个模板？
+            复制模板到我的 Agent？
           </DialogTitle>
           <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
             {useTarget && (
@@ -39,7 +39,7 @@ export function UseConfirmDialog({ useTarget, isUseBusy, onConfirm, onCancel }: 
           </DialogDescription>
         </DialogHeader>
         <p className="rounded-xl bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
-          确认后会把模板的方案配置复制为你名下的一个新助手方案，并直接进入试跑页；原模板与你的其他方案都不受影响。
+          模板会复制为你名下的独立 Agent，并打开资源配置步骤。原作者的模型密钥、知识库绑定、私人连接和写入审批不会自动转移；请连接你自己的工具与数据后再试跑。
         </p>
         <DialogFooter className="gap-2 sm:gap-2">
           <button
@@ -57,7 +57,7 @@ export function UseConfirmDialog({ useTarget, isUseBusy, onConfirm, onCancel }: 
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isUseBusy && <Loader2 className="h-4 w-4 animate-spin" />}
-            复制为我的方案
+            复制并配置资源
           </button>
         </DialogFooter>
       </DialogContent>

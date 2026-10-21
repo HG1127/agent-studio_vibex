@@ -121,6 +121,55 @@ routerAdd("GET", "/api/templates/market", function (e) {
       rows = []
     }
 
+    // Public templates are descriptive plans, never portable grants or credentials.
+    // Keep known builtin capabilities only; recipient must attach their own resources.
+    var safeTemplateSpec = function (raw) {
+      var input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}
+      var list = function (field) {
+        if (!Array.isArray(input[field])) return []
+        var out = []
+        for (var ii = 0; ii < input[field].length && out.length < 35; ii++) {
+          if (typeof input[field][ii] === "string") {
+            var text = input[field][ii].trim().slice(0, 1200)
+            if (text) out.push(text)
+          }
+        }
+        return out
+      }
+      var allowed = {
+        calculate: "calculate", summarize: "summarize",
+        knowledge_search: "knowledge_search", web_search: "web_search",
+        web_fetch: "web_fetch",
+        "计算器": "calculate", "数学计算": "calculate", "统计计算": "calculate",
+        "文本摘要": "summarize", "内容摘要": "summarize",
+        "知识库检索": "knowledge_search",
+        "网络搜索": "web_search", "网页搜索": "web_search", "联网搜索": "web_search",
+        "网页内容提取": "web_fetch", "网页抓取": "web_fetch",
+      }
+      var allowedTools = [], seen = {}
+      var names = Array.isArray(input.tools) ? input.tools : []
+      for (var ti = 0; ti < names.length && ti < 50; ti++) {
+        if (typeof names[ti] !== "string") continue
+        var name = names[ti].trim()
+        if (/^[A-Za-z_]+$/.test(name)) name = name.toLowerCase()
+        if (!Object.prototype.hasOwnProperty.call(allowed,name)) continue
+        var builtin = allowed[name]
+        if (!seen[builtin]) { seen[builtin] = true; allowedTools.push(builtin) }
+      }
+      return {
+        goal: String(input.goal || "").slice(0, 6000),
+        task_scope: String(input.task_scope || "").slice(0, 6000),
+        deliverables: list("deliverables"),
+        task_plan: list("task_plan"),
+        done_criteria: list("done_criteria"),
+        tools: allowedTools,
+        knowledge_base_ids: [],
+        quality_checks: [],
+        require_approval: true,
+        require_plan_review: input.require_plan_review === true,
+      }
+    }
+
     var rowOut = function (rec) {
       var specText = ""
       try {
@@ -151,7 +200,7 @@ routerAdd("GET", "/api/templates/market", function (e) {
         name: String(rec.getString("name") || ""),
         description: String(rec.getString("description") || ""),
         category: String(rec.getString("category") || "other"),
-        spec: specObj,
+        spec: safeTemplateSpec(specObj),
         source_spec_id: String(rec.getString("source_spec_id") || ""),
         built_in: builtIn,
         public: isPublic,
@@ -244,6 +293,19 @@ routerAdd("POST", "/api/templates/publish", function (e) {
     if (!specRec || String(specRec.get("rh_user_id") || "") !== uid) {
       return e.json(404, { error: "not_found", message: "方案不存在或无权发布" })
     }
+    // Prevent publishing a different plan from the one the employee reviewed.
+    // Publication must be guarded by the saved Agent's exact updated revision.
+    var expectedUpdated = String(body.expected_updated || "").trim()
+    if (!expectedUpdated) return e.json(428, {
+      error: "template_review_required",
+      message: "请先加载并核对当前 Agent 版本，然后再发布模板",
+    })
+    if (String(specRec.getString("updated") || "") !== expectedUpdated) {
+      return e.json(409, {
+        error: "template_source_changed",
+        message: "Agent 方案在审核后已被其他页面修改。请重新打开发布窗口并核对当前内容",
+      })
+    }
     var specText = ""
     try {
       specText = specRec.getString("spec")
@@ -261,6 +323,56 @@ routerAdd("POST", "/api/templates/publish", function (e) {
     if (!specObj || typeof specObj !== "object") {
       return e.json(400, { error: "bad_request", message: "方案配置为空或已损坏，无法发布" })
     }
+    // Public templates are descriptive plans, never portable grants or credentials.
+    // Keep known builtin capabilities only; recipient must attach their own resources.
+    var safeTemplateSpec = function (raw) {
+      var input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}
+      var list = function (field) {
+        if (!Array.isArray(input[field])) return []
+        var out = []
+        for (var ii = 0; ii < input[field].length && out.length < 35; ii++) {
+          if (typeof input[field][ii] === "string") {
+            var text = input[field][ii].trim().slice(0, 1200)
+            if (text) out.push(text)
+          }
+        }
+        return out
+      }
+      var allowed = {
+        calculate: "calculate", summarize: "summarize",
+        knowledge_search: "knowledge_search", web_search: "web_search",
+        web_fetch: "web_fetch",
+        "计算器": "calculate", "数学计算": "calculate", "统计计算": "calculate",
+        "文本摘要": "summarize", "内容摘要": "summarize",
+        "知识库检索": "knowledge_search",
+        "网络搜索": "web_search", "网页搜索": "web_search", "联网搜索": "web_search",
+        "网页内容提取": "web_fetch", "网页抓取": "web_fetch",
+      }
+      var allowedTools = [], seen = {}
+      var names = Array.isArray(input.tools) ? input.tools : []
+      for (var ti = 0; ti < names.length && ti < 50; ti++) {
+        if (typeof names[ti] !== "string") continue
+        var name = names[ti].trim()
+        if (/^[A-Za-z_]+$/.test(name)) name = name.toLowerCase()
+        if (!Object.prototype.hasOwnProperty.call(allowed,name)) continue
+        var builtin = allowed[name]
+        if (!seen[builtin]) { seen[builtin] = true; allowedTools.push(builtin) }
+      }
+      return {
+        goal: String(input.goal || "").slice(0, 6000),
+        task_scope: String(input.task_scope || "").slice(0, 6000),
+        deliverables: list("deliverables"),
+        task_plan: list("task_plan"),
+        done_criteria: list("done_criteria"),
+        tools: allowedTools,
+        knowledge_base_ids: [],
+        quality_checks: [],
+        require_approval: true,
+        require_plan_review: input.require_plan_review === true,
+      }
+    }
+
+    specObj = safeTemplateSpec(specObj)
     if (!tplName) tplName = String(specRec.getString("name") || "").trim().slice(0, 120)
     if (!tplName) return e.json(400, { error: "bad_request", message: "模板名称必填" })
 
@@ -342,6 +454,56 @@ routerAdd("POST", "/api/templates/{id}/use", function (e) {
       return e.json(400, { error: "bad_request", message: "模板配置已损坏，无法使用" })
     }
 
+    // Public templates are descriptive plans, never portable grants or credentials.
+    // Keep known builtin capabilities only; recipient must attach their own resources.
+    var safeTemplateSpec = function (raw) {
+      var input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}
+      var list = function (field) {
+        if (!Array.isArray(input[field])) return []
+        var out = []
+        for (var ii = 0; ii < input[field].length && out.length < 35; ii++) {
+          if (typeof input[field][ii] === "string") {
+            var text = input[field][ii].trim().slice(0, 1200)
+            if (text) out.push(text)
+          }
+        }
+        return out
+      }
+      var allowed = {
+        calculate: "calculate", summarize: "summarize",
+        knowledge_search: "knowledge_search", web_search: "web_search",
+        web_fetch: "web_fetch",
+        "计算器": "calculate", "数学计算": "calculate", "统计计算": "calculate",
+        "文本摘要": "summarize", "内容摘要": "summarize",
+        "知识库检索": "knowledge_search",
+        "网络搜索": "web_search", "网页搜索": "web_search", "联网搜索": "web_search",
+        "网页内容提取": "web_fetch", "网页抓取": "web_fetch",
+      }
+      var allowedTools = [], seen = {}
+      var names = Array.isArray(input.tools) ? input.tools : []
+      for (var ti = 0; ti < names.length && ti < 50; ti++) {
+        if (typeof names[ti] !== "string") continue
+        var name = names[ti].trim()
+        if (/^[A-Za-z_]+$/.test(name)) name = name.toLowerCase()
+        if (!Object.prototype.hasOwnProperty.call(allowed,name)) continue
+        var builtin = allowed[name]
+        if (!seen[builtin]) { seen[builtin] = true; allowedTools.push(builtin) }
+      }
+      return {
+        goal: String(input.goal || "").slice(0, 6000),
+        task_scope: String(input.task_scope || "").slice(0, 6000),
+        deliverables: list("deliverables"),
+        task_plan: list("task_plan"),
+        done_criteria: list("done_criteria"),
+        tools: allowedTools,
+        knowledge_base_ids: [],
+        quality_checks: [],
+        require_approval: true,
+        require_plan_review: input.require_plan_review === true,
+      }
+    }
+
+    specObj = safeTemplateSpec(specObj)
     // 复制到调用者名下 agent_specs
     var tplName = String(tplRec.getString("name") || "助手方案").trim().slice(0, 100)
     var specCol = $app.findCollectionByNameOrId("agent_specs")

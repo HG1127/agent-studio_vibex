@@ -36,11 +36,12 @@ export function sanitizeAgentDraftSpec(input: unknown): AgentSpec | null {
     goal: text(raw.goal, 6000),
     task_scope: text(raw.task_scope, 6000),
     deliverables: texts(raw.deliverables),
-    tools: texts(raw.tools, 32, 140),
+    tools: texts(raw.tools, 32, 180),
     task_plan: texts(raw.task_plan),
     done_criteria: texts(raw.done_criteria),
     knowledge_base_ids: texts(raw.knowledge_base_ids, 10, 100),
     require_approval: raw.require_approval === true,
+    require_plan_review: raw.require_plan_review === true,
   }
   if (Array.isArray(raw.quality_checks)) {
     result.quality_checks = raw.quality_checks.slice(0, 12).flatMap(value => {

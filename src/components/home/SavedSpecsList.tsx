@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
-import { FolderOpen, Lock, Search, Trash2, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Link } from "react-router-dom"
+import { FolderOpen, Lock, Play, Search, Trash2, X } from "lucide-react"
 import type { SavedSpecRow } from "@/pages/Home/useHome"
 
 type SavedSpecsListProps = {
@@ -71,11 +71,18 @@ export function SavedSpecsList({
             </p>
             <p className="mt-2 text-[11px] text-muted-foreground">更新于 {formatRowTime(row.updated)}</p>
           </div>
-          <Button type="button" variant="outline" size="sm"
-            onClick={()=>onOpenSaved(row)}
-            className="min-h-9 rounded-lg border-primary/30 text-primary hover:bg-primary/10">
-            打开
-          </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button type="button" onClick={()=>onOpenSaved(row)}
+              aria-label={`编辑方案：${row.name||"未命名 Agent"}`}
+              className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-xs font-medium hover:border-primary/40 hover:bg-secondary">
+              编辑方案
+            </button>
+            <Link to={`/agent-run?spec=${encodeURIComponent(row.id)}`}
+              aria-label={`试跑 Agent：${row.name||"未命名 Agent"}`}
+              className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+              <Play className="h-3.5 w-3.5"/>试跑
+            </Link>
+          </div>
         </div>
         <div className="mt-3 border-t border-border pt-2">
           {deleteId===row.id ? <div role="group" aria-label={`确认删除 ${row.name||"Agent"}`}

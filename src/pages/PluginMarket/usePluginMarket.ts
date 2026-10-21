@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { CURATED_PLUGINS, curatedZhFor } from "./curated"
 import {safeSmitherySetupUrl} from "@/lib/smitheryMarketplace"
+import { safeMarketplaceQuery, safeChosenCatalogSlug } from "@/lib/toolSearchPrivacy"
 
 // —— 类型：字段名与后端 /api/market/* 路由返回 1:1（snake_case，禁止转换层）——
 export type MarketRemote = { type: string; url: string }
@@ -213,6 +215,10 @@ function applyCuratedZh(items: MarketPlugin[]): MarketPlugin[] {
 
 export function usePluginMarket() {
   const base = getPocketBaseUrl()
+  const [searchParams] = useSearchParams()
+  const requestedTool = safeMarketplaceQuery(searchParams.get("tool") || "") ||
+    safeChosenCatalogSlug(searchParams.get("plugin") || "")
+  const requestedToolApplied = useRef(false)
 
   const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
@@ -891,6 +897,12 @@ export function usePluginMarket() {
     }
   },[apiFetch])
 
+  useEffect(() => {
+    if (!requestedTool || requestedToolApplied.current) return
+    requestedToolApplied.current = true
+    setSmitheryQuery(requestedTool)
+  }, [requestedTool])
+
   const loadSmitheryStatus = useCallback(async () => {
     try {
       const res = await apiFetch("/api/market/smithery/status")
@@ -901,12 +913,12 @@ export function usePluginMarket() {
       setSmitheryKeyTail(String(data.tail || ""))
       if (saved) {
         void loadSmitheryNamespaces()
-        void loadSmitheryServers("")
+        void loadSmitheryServers(requestedTool)
       }
     } catch {
       // Business page remains usable if vendor key status is temporarily down.
     }
-  }, [apiFetch,loadSmitheryServers,loadSmitheryNamespaces])
+  }, [apiFetch,loadSmitheryServers,loadSmitheryNamespaces,requestedTool])
 
   const saveSmitheryKey = useCallback(async () => {
     const keyText = smitheryKeyInput.trim()
@@ -1038,14 +1050,26 @@ export function usePluginMarket() {
         return
       }
       const connId = String(data?.connection?.id || "")
+      let discovered=Number(data?.connection?.tool_count||0)
+      let verified=Boolean(discovered>0 && data?.connection?.last_probe_status==="ok")
       if (connId) {
-        await apiFetch("/api/market/reprobe", { method: "POST", body: JSON.stringify({ id: connId }) }).catch(() => null)
+        try{
+          const probe=await apiFetch("/api/market/reprobe",{
+            method:"POST",body:JSON.stringify({id:connId}),
+          })
+          const details=await probe.json().catch(()=>({}))
+          verified=Boolean(probe.ok && details?.ok===true)
+          if(verified)discovered=Number(details.tool_count||discovered)
+        }catch{verified=false}
       }
       setCustomName("")
       setCustomUrl("")
       setCustomToken("")
       setCustomOpen(false)
       await loadConnections()
+      setNoticeMsg(verified
+        ? `已连接「${nameText}」，真实发现 ${discovered} 个 MCP 工具。请回到 Agent 资源配置，选择具体工具并保存；不会自动授权全部工具。`
+        : `「${nameText}」连接已保存，但二次验证未通过。请到「我的连接」重新探测后再给 Agent 授权。`)
     } catch {
       setSmitheryError("网络异常，连接失败")
     } finally {

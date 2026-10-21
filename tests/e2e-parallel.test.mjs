@@ -27,10 +27,12 @@ test("parallel E2E derives all cases from the canonical serial command",()=>{
  const result=run(["--list"])
  assert.equal(result.status,0,result.stderr)
  assert.deepEqual(result.stdout.trim().split(/\r?\n/),expected)
- assert.equal(expected.length,19)
+ // The canonical script grows as connectors gain integration tests.
+ assert.ok(expected.length>=20,"integration inventory unexpectedly small")
  assert.equal(new Set(expected).size,expected.length)
  assert.ok(expected.includes("tests/knowledge-team.integration.mjs"))
  assert.ok(expected.includes("tests/agent-collaboration.integration.mjs"))
+ assert.ok(expected.includes("tests/smithery-connect.integration.mjs"))
 })
 test("unsafe worker counts, filters and CLI shell syntax fail closed",()=>{
  for(const args of [

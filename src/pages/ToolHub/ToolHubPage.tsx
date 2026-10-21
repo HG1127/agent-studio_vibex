@@ -13,7 +13,7 @@ import type { useToolHub } from "./useToolHub"
 export function ToolHubPage(p: ReturnType<typeof useToolHub>) {
   return (
     <SiteShell>
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary to-card">
+    <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
         <ThTopBar />
       </header>
@@ -21,10 +21,10 @@ export function ToolHubPage(p: ReturnType<typeof useToolHub>) {
       <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 px-4 pb-4 pt-4">
         <div className="mx-auto flex max-w-7xl flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
-            每个工具都能<span className="text-primary">真实试跑</span>
+            工具诊断与运行记录
           </h1>
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-            内置五件套与你连接的外部工具：填好参数立即真实调用，输出、耗时、状态码原样呈现；每次工具调用全部留档可回看。
+            内置和已连接工具可独立测试、查看耗时与结果；外部调用按审批规则执行，失败记录与运行环境在此排查。
           </p>
         </div>
       </section>

@@ -150,6 +150,20 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
                     liveEnabled={p.liveEnabled}
                     onToggleLive={p.handleToggleLive}
                   />
+                  {(p.runDetail.status === "awaiting_input" || p.runDetail.status === "awaiting_approval") && (
+                    <section className="rounded-2xl border-2 border-primary/40 bg-card p-4 shadow-sm">
+                      <h2 className="text-sm font-semibold">
+                        {p.runDetail.status === "awaiting_input" ? "这次任务正在等待你确认方案或补充需求" : "这次任务正在等待工具调用审批"}
+                      </h2>
+                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                        已完成的步骤保存在服务器，返回原任务后可直接继续处理，不需要重新输入任务。
+                      </p>
+                      <Link to={`/agent-run?spec=${encodeURIComponent(p.runDetail.spec_id)}&run=${encodeURIComponent(p.runDetail.id)}#agent-input-review`}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+                        {p.runDetail.status === "awaiting_input" ? "打开人工确认并继续" : "查看待审批调用"}
+                      </Link>
+                    </section>
+                  )}
                   <RunTraceCard runId={p.runDetail.id} kind="agent" />
                   <RunResultCard
                     run={p.runDetail}

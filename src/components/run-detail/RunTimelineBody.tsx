@@ -113,6 +113,23 @@ function EventItem({ evItem }: { evItem: RunEventRow }) {
       </li>
     )
   }
+  if (evItem.event_type === "input_pending" || evItem.event_type === "input_received") {
+    const pending = evItem.event_type === "input_pending"
+    const review = contentText(evItem.content, "kind") === "plan_review"
+    return <li className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+        <ShieldQuestion className="h-3.5 w-3.5"/>
+        {pending ? review ? "等待阶段方案批准" : "等待用户补充信息"
+          : review ? "已处理阶段方案审核" : "已收到补充信息"}
+      </p>
+      <div className="mt-2"><ToolResultText text={contentText(evItem.content,pending?"question":"answer") || contentText(evItem.content,"message")}/></div>
+      {!pending && contentText(evItem.content,"decision") && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {contentText(evItem.content,"decision")==="approve"?"用户批准":contentText(evItem.content,"decision")==="revise"?"退回修改":"已补充信息"}
+        </p>
+      )}
+    </li>
+  }
   if (evItem.event_type === "approval_pending") {
     return (
       <li className="rounded-xl border-2 border-primary bg-card p-3">

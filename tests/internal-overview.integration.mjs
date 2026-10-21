@@ -56,6 +56,7 @@ try {
   const empty = await requireStatus("GET","/api/internal/overview","A")
   assert.equal(empty.scope,"current_user")
   assert.equal(empty.counters.awaiting_approval,0)
+  assert.equal(empty.counters.awaiting_input,0)
   assert.equal(empty.action_items.length,0)
   assert.equal(empty.recent_runs.length,0)
 
@@ -79,6 +80,9 @@ try {
   const aRun=await requireStatus("POST","/api/agent-runs/start","A",{
     spec_id:aSpec.id,instruction:"CONFIDENTIAL-A-INSTRUCTION",
   })
+  const aInputRun=await requireStatus("POST","/api/agent-runs/start","A",{
+    spec_id:aSpec.id,instruction:"CONFIDENTIAL-INPUT-NEEDS-REVIEW",
+  })
   const workflow=await requireStatus("POST","/api/workflow-studio/create","A",{
     name:"内部资料整理流程",graph,
   })
@@ -99,11 +103,11 @@ try {
   assert.match(schedule.id,/^[A-Za-z0-9]{15}$/)
 
   const before=await requireStatus("GET","/api/internal/overview","A")
-  assert.equal(before.counters.running,2)
+  assert.equal(before.counters.running,3)
   assert.equal(before.counters.schedules_active,1)
   assert.equal(before.counters.knowledge_bases,1)
   assert.equal(before.counters.schedules_overdue,0)
-  assert.equal(before.recent_runs.length,2)
+  assert.equal(before.recent_runs.length,3)
   assert.ok(before.recent_runs.every(item=>item.kind==="agent"||item.kind==="workflow"))
   assert.doesNotMatch(JSON.stringify(before),/CONFIDENTIAL|DO-NOT-LEAK/)
 
@@ -113,6 +117,7 @@ try {
   const db=new DatabaseSync(path.join(dir,"data.db"),{timeout:5000})
   try {
     db.prepare("UPDATE agent_runs SET status='awaiting_approval' WHERE id=?").run(aRun.run_id)
+    db.prepare("UPDATE agent_runs SET status='awaiting_input' WHERE id=?").run(aInputRun.run_id)
     db.prepare("UPDATE workflow_runs SET status='failed' WHERE id=?").run(wfRun.run_id)
     db.prepare("UPDATE agent_studio_schedules SET next_at_ms=? WHERE id=?")
       .run(Date.now()-120000,schedule.id)
@@ -126,14 +131,16 @@ try {
   const overview=await requireStatus("GET","/api/internal/overview","A")
   assert.equal(overview.counters.running,0)
   assert.equal(overview.counters.awaiting_approval,1)
+  assert.equal(overview.counters.awaiting_input,1)
   assert.equal(overview.counters.failed_7d,1)
   assert.equal(overview.counters.schedules_active,1)
   assert.equal(overview.counters.schedules_overdue,1)
   assert.equal(overview.counters.writes_need_review,1)
   assert.equal(overview.counters.knowledge_bases,1)
   assert.deepEqual(new Set(overview.action_items.map(item=>item.category)),
-    new Set(["approval","review","overdue","failed"]))
+    new Set(["input","approval","review","overdue","failed"]))
   assert.ok(overview.action_items.some(item=>item.kind==="agent"&&item.id===aRun.run_id))
+  assert.ok(overview.action_items.some(item=>item.category==="input"&&item.id===aInputRun.run_id))
   assert.ok(overview.action_items.some(item=>item.kind==="schedule"&&item.id===schedule.id))
   assert.ok(overview.action_items.some(item=>item.kind==="workflow"&&item.id===wfRun.run_id))
   assert.doesNotMatch(JSON.stringify(overview),/CONFIDENTIAL|DO-NOT-LEAK|args_hash|idempotency/)
@@ -142,6 +149,7 @@ try {
 
   const other=await requireStatus("GET","/api/internal/overview","B")
   assert.equal(other.counters.awaiting_approval,0)
+  assert.equal(other.counters.awaiting_input,0)
   assert.equal(other.counters.failed_7d,0)
   assert.equal(other.counters.schedules_overdue,0)
   assert.equal(other.counters.writes_need_review,0)
@@ -151,12 +159,71 @@ try {
   // a colleague's agent/workflow events into the caller's metrics.
   const monitorA = await requireStatus("GET","/api/harness/monitor","A")
   const monitorB = await requireStatus("GET","/api/harness/monitor","B")
-  assert.equal(monitorA.totals.runs,2)
+  assert.equal(monitorA.totals.runs,3)
   assert.equal(monitorB.totals.runs,1)
 
   assert.ok(other.recent_runs.every(item=>item.id!==aRun.run_id && item.id!==wfRun.run_id))
   assert.doesNotMatch(JSON.stringify(other),/每日内部检查|团队内部 Agent|内部资料整理流程/)
 
+  // Desktop pending queue must include older Agent runs outside the recent-12 window.
+  const oldDb=new DatabaseSync(path.join(dir,"data.db"),{timeout:5000})
+  try {
+    oldDb.prepare("UPDATE agent_runs SET created='2024-01-01 00:00:00.000Z' WHERE id IN (?,?)")
+      .run(aRun.run_id,aInputRun.run_id)
+  } finally {oldDb.close()}
+  for(let i=0;i<14;i++){
+    await requireStatus("POST","/api/agent-runs/start","A",{
+      spec_id:aSpec.id,instruction:"RECENT-WORKBENCH-TEST-"+i,
+    })
+  }
+  const recentA=await requireStatus("GET","/api/agent-runs/recent?limit=12","A")
+  assert.equal(recentA.items.length,12)
+  assert.equal(recentA.pending_count,2,"Pending owner count must not be bounded by recent runs")
+  assert.equal(recentA.pending_items.length,2)
+  assert.deepEqual(new Set(recentA.pending_items.map(row=>row.id)),
+    new Set([aRun.run_id,aInputRun.run_id]))
+  assert.ok(recentA.items.every(row=>row.id!==aRun.run_id&&row.id!==aInputRun.run_id),
+    "Older pending records must be outside recent history in this fixture")
+  assert.doesNotMatch(JSON.stringify(recentA.pending_items),
+    /CONFIDENTIAL|PRIVATE|INSTRUCTION|checkpoint|pending_input|input_preview/)
+  const recentB=await requireStatus("GET","/api/agent-runs/recent?limit=20&rh_user_id=A","B")
+  assert.equal(recentB.pending_count,0)
+  assert.equal(recentB.pending_items.length,0)
+  assert.ok(recentB.items.every(row=>row.id!==aRun.run_id&&row.id!==aInputRun.run_id))
+  assert.doesNotMatch(JSON.stringify(recentB),/CONFIDENTIAL-A|团队内部 Agent/)
+
+  // More than a page of pending tasks: filters and paging must be from SQL,
+  // not an in-memory slice of the 20 latest records.
+  const pagingDb=new DatabaseSync(path.join(dir,"data.db"),{timeout:5000})
+  try{
+    pagingDb.prepare(
+      "UPDATE agent_runs SET status='awaiting_input' "+
+      "WHERE rh_user_id='A' AND instruction LIKE 'RECENT-WORKBENCH-TEST-%'"
+    ).run()
+  }finally{pagingDb.close()}
+  const allPending=await requireStatus("GET","/api/agent-runs/pending?page=1&perPage=5","A")
+  assert.equal(allPending.totalItems,16)
+  assert.equal(allPending.totalPages,4)
+  assert.equal(allPending.items.length,5)
+  const nextPending=await requireStatus("GET","/api/agent-runs/pending?page=2&perPage=5","A")
+  assert.equal(nextPending.items.length,5)
+  assert.equal(new Set([...allPending.items,...nextPending.items].map(item=>item.id)).size,10)
+  const approvals=await requireStatus("GET","/api/agent-runs/pending?status=awaiting_approval","A")
+  assert.equal(approvals.totalItems,1)
+  assert.equal(approvals.items[0].id,aRun.run_id)
+  const replies=await requireStatus("GET","/api/agent-runs/pending?status=awaiting_input&perPage=20","A")
+  assert.equal(replies.totalItems,15)
+  assert.equal(replies.items.length,15)
+  const matched=await requireStatus("GET","/api/agent-runs/pending?q="+encodeURIComponent("团队内部"),"A")
+  assert.equal(matched.totalItems,16)
+  assert.doesNotMatch(JSON.stringify(matched),/INSTRUCTION|CONFIDENTIAL|checkpoint|answer|args_hash/)
+  assert.equal((await call("GET","/api/agent-runs/pending?status=failed","A")).status,400)
+  const denied=await requireStatus("GET","/api/agent-runs/pending?rh_user_id=A","B")
+  assert.equal(denied.totalItems,0)
+  assert.equal(denied.items.length,0)
+  assert.equal((await call("GET","/api/agent-runs/pending","")).status,401)
+  console.log("PASS V18 pending inbox paging + status/search + owner-scoped redaction")
+  console.log("PASS full-owner desktop pending queue: older tasks retained, no leaks")
   console.log("PASS internal employee dashboard: status queue, safe summaries, tenant isolation, no secret text")
 } finally {
   server.kill()

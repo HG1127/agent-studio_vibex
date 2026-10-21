@@ -78,10 +78,12 @@ export function useTemplateMarket() {
 
   const [marketList, setMarketList] = useState<TemplateRow[]>([])
   const [isLoadingMarket, setIsLoadingMarket] = useState(false)
+  const [marketLoadError,setMarketLoadError] = useState("")
   const [expandedId, setExpandedId] = useState("")
 
   const [myList, setMyList] = useState<MyPublishRow[]>([])
   const [isLoadingMine, setIsLoadingMine] = useState(false)
+  const [mineError,setMineError]=useState("")
   const [busyMineId, setBusyMineId] = useState("")
 
   const [useTarget, setUseTarget] = useState<TemplateRow | null>(null)
@@ -90,6 +92,7 @@ export function useTemplateMarket() {
   const [publishOpen, setPublishOpen] = useState(false)
   const [specList, setSpecList] = useState<SavedSpecRow[]>([])
   const [isLoadingSpecs, setIsLoadingSpecs] = useState(false)
+  const [specListError,setSpecListError]=useState("")
   const [publishSpecId, setPublishSpecId] = useState("")
   const [publishName, setPublishName] = useState("")
   const [publishDescription, setPublishDescription] = useState("")
@@ -106,21 +109,24 @@ export function useTemplateMarket() {
 
   const loadMarket = useCallback(async () => {
     setIsLoadingMarket(true)
+    setMarketLoadError("")
     setErrorMsg("")
     try {
       const res = await fetch(`${base}/api/templates/market`, { headers: { ...vibexAuthHeaders() } })
       if (res.status === 401 || res.status === 412) {
         setNeedsRhLogin(true)
+        setMarketLoadError("登录已过期，无法读取市场模板。请重新登录。")
         return
       }
       if (res.ok) {
         const data = await res.json()
-        setMarketList(Array.isArray(data?.items) ? (data.items as TemplateRow[]) : [])
+        if (!Array.isArray(data?.items)) throw new Error("invalid_market_response")
+        setMarketList(data.items as TemplateRow[])
       } else {
-        setErrorMsg("模板列表加载失败，请稍后重试")
+        setMarketLoadError("模板市场加载失败，当前模板列表可能不是最新内容。请重新加载。")
       }
     } catch {
-      setErrorMsg("网络异常，模板列表加载失败")
+      setMarketLoadError("网络异常或服务器数据不完整，暂时无法核验模板市场。")
     } finally {
       setIsLoadingMarket(false)
     }
@@ -128,6 +134,7 @@ export function useTemplateMarket() {
 
   const loadMine = useCallback(async () => {
     setIsLoadingMine(true)
+    setMineError("")
     try {
       const res = await fetch(`${base}/api/templates/mine`, { headers: { ...vibexAuthHeaders() } })
       if (res.status === 401 || res.status === 412) {
@@ -137,9 +144,11 @@ export function useTemplateMarket() {
       if (res.ok) {
         const data = await res.json()
         setMyList(Array.isArray(data?.items) ? (data.items as MyPublishRow[]) : [])
+      } else {
+        setMineError("我的发布列表加载失败，不能据此判断模板数量。请重试。")
       }
     } catch {
-      // 我的发布加载失败不阻塞市场浏览
+      setMineError("网络异常，无法核验我的发布记录；请重试。")
     } finally {
       setIsLoadingMine(false)
     }
@@ -148,6 +157,7 @@ export function useTemplateMarket() {
   const loadSpecList = useCallback(async (uid: string) => {
     if (!uid) return
     setIsLoadingSpecs(true)
+    setSpecListError("")
     try {
       const res = await fetch(`${base}/api/agent_specs?rh_user_id=${encodeURIComponent(uid)}`, {
         headers: { ...vibexAuthHeaders() },
@@ -159,9 +169,11 @@ export function useTemplateMarket() {
       if (res.ok) {
         const data = await res.json()
         setSpecList(Array.isArray(data?.items) ? (data.items as SavedSpecRow[]) : [])
+      } else {
+        setSpecListError("Agent 列表加载失败，请重试，避免错认为没有可发布方案。")
       }
     } catch {
-      // 方案列表加载失败不阻塞浏览
+      setSpecListError("网络异常，无法读取 Agent 列表，请重试。")
     } finally {
       setIsLoadingSpecs(false)
     }
@@ -216,7 +228,7 @@ export function useTemplateMarket() {
       if (res.ok && data?.spec_id) {
         setUseTarget(null)
         void loadMarket()
-        navigate(`/agent-run?spec=${encodeURIComponent(String(data.spec_id))}`)
+        navigate(`/agent-create?spec=${encodeURIComponent(String(data.spec_id))}&step=3`)
         return
       }
       setErrorMsg(String(data?.message || "使用失败，请稍后重试"))
@@ -228,8 +240,8 @@ export function useTemplateMarket() {
   }, [useTarget, base, loadMarket, navigate])
 
   const handleCancelUse = useCallback(() => {
-    setUseTarget(null)
-  }, [])
+    if(!isUseBusy)setUseTarget(null)
+  }, [isUseBusy])
 
   const handleOpenPublish = useCallback(() => {
     setPublishError("")
@@ -242,8 +254,8 @@ export function useTemplateMarket() {
   }, [rhUserId, loadSpecList])
 
   const handleClosePublish = useCallback(() => {
-    setPublishOpen(false)
-  }, [])
+    if(!isPublishing)setPublishOpen(false)
+  }, [isPublishing])
 
   const handleSelectPublishSpec = useCallback(
     (specId: string) => {
@@ -268,6 +280,11 @@ export function useTemplateMarket() {
       setPublishError("简介不能超过 120 字")
       return
     }
+    const sourceVersion=specList.find(row=>row.id===publishSpecId)?.updated || ""
+    if(!sourceVersion){
+      setPublishError("尚未加载到该 Agent 的正式保存版本，请刷新方案列表后重新审核。")
+      return
+    }
     setIsPublishing(true)
     try {
       const res = await fetch(`${base}/api/templates/publish`, {
@@ -275,6 +292,7 @@ export function useTemplateMarket() {
         headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
         body: JSON.stringify({
           source_spec_id: publishSpecId,
+          expected_updated: sourceVersion,
           name: publishName.trim(),
           description: publishDescription.trim(),
           category: publishCategory,
@@ -296,15 +314,23 @@ export function useTemplateMarket() {
         return
       }
       setPublishError(String(data?.message || "发布失败，请稍后重试"))
+      if(res.status===409 || res.status===428) void loadSpecList(rhUserId)
     } catch {
       setPublishError("网络异常，发布失败，请稍后重试")
     } finally {
       setIsPublishing(false)
     }
-  }, [publishSpecId, publishName, publishDescription, publishCategory, base, loadMarket, loadMine])
+  }, [publishSpecId, publishName, publishDescription, publishCategory, base, loadMarket, loadMine,loadSpecList,rhUserId,specList])
 
   const runMineAction = useCallback(
     async (row: MyPublishRow, action: "unpublish" | "republish" | "delete") => {
+      if(busyMineId)return
+      if(action==="delete" && !window.confirm(
+        "永久删除模板「"+row.name+"」？不会删除他人已经复制的 Agent，但模板无法恢复。"
+      ))return
+      if(action==="unpublish" && !window.confirm(
+        "将模板「"+row.name+"」从市场下架？已复制的 Agent 不受影响。"
+      ))return
       setBusyMineId(row.id)
       setErrorMsg("")
       try {
@@ -336,7 +362,7 @@ export function useTemplateMarket() {
         setBusyMineId("")
       }
     },
-    [base, loadMine, loadMarket],
+    [base, loadMine, loadMarket,busyMineId],
   )
 
   const handleUnpublish = useCallback((row: MyPublishRow) => void runMineAction(row, "unpublish"), [runMineAction])
@@ -363,11 +389,15 @@ export function useTemplateMarket() {
     marketList,
     filteredMarket,
     isLoadingMarket,
-    expandedId,
+    expandedId,    marketLoadError,
+    retryMarket:loadMarket,
+
     handleToggleExpand,
     myList,
     isLoadingMine,
-    busyMineId,
+    busyMineId,    mineError,
+    retryMine:loadMine,
+
     useTarget,
     isUseBusy,
     handleRequestUse,
@@ -376,7 +406,9 @@ export function useTemplateMarket() {
     publishOpen,
     specList,
     isLoadingSpecs,
-    publishSpecId,
+    publishSpecId,    specListError,
+    retrySpecList:()=>void loadSpecList(rhUserId),
+
     publishName,
     publishDescription,
     publishCategory,

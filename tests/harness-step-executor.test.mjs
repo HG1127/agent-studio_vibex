@@ -65,6 +65,27 @@ test("approval hash is bound to exact arguments, target, connection and method",
   assert.equal(exec.approvalMatches("0".repeat(64), a), false)
   assert.throws(() => exec.approvalDigest(() => "invalid", base), /approval_digest_invalid/)
 })
+test("approval fingerprint survives JSON object-key reordering across Goja checkpoint saves", () => {
+  const before = { toolName: "mkt__verified__search", method: "POST",
+    connectionId: "same-connection", destination: sha256("same-target"),
+    value: { query: "AI research", action: "mock-change",
+      filter: { z: 3, a: { y: false, b: [ { q: "x", p: 4 }, "tail" ] } } } }
+  const after = { ...before, value: {
+    filter: { a: { b: [ { p: 4, q: "x" }, "tail" ], y: false }, z: 3 },
+    action: "mock-change", query: "AI research" } }
+  const prior = exec.approvalDigest(sha256, before)
+  const restored = exec.approvalDigest(sha256, after)
+  assert.equal(exec.approvalMatches(prior, restored), true,
+    "Persisting and restoring a JSON object must not require second approval")
+  const changedValue = exec.approvalDigest(sha256, {
+    ...after, value: { ...after.value, action: "actual-change" } })
+  assert.equal(exec.approvalMatches(prior, changedValue), false)
+  const changedArrayOrder = exec.approvalDigest(sha256, {
+    ...after, value: { ...after.value,
+      filter: { ...after.value.filter,
+        a: { ...after.value.filter.a, b: [ "tail", { p: 4, q: "x" } ] } } } })
+  assert.equal(exec.approvalMatches(prior, changedArrayOrder), false)
+})
 test("shared retry runner retries read-only transient errors once, never writes", () => {
   let calls = 0
   const readPolicy = prepare({ toolName: "ReadOnce", input: {}, external: true, method: "GET" }).policy

@@ -7,11 +7,12 @@ import { tickAgentRun } from "@/lib/agentEngine"
 import type { AgentSpec, SavedSpecRow } from "@/pages/Home/useHome"
 import { PROVIDER_META, normalizeProvider } from "@/pages/ModelConnections/useModelConnections"
 import { normalizeAgentQualityChecks, type AgentQualityCheck } from "@/lib/agentQualityChecks"
+import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 
 export type { AgentSpec, SavedSpecRow }
 
 // 与后端 agent_runs.status 完全一致（引擎只会产出这些值；awaiting_approval = 写操作等待用户批准）
-export type RunStateKey = "queued" | "running" | "paused" | "awaiting_approval" | "succeeded" | "failed" | "cancelled"
+export type RunStateKey = "queued" | "running" | "paused" | "awaiting_approval" | "awaiting_input" | "succeeded" | "failed" | "cancelled"
 
 // 字段名与 agent_runs collection 1:1（snake_case，禁止转换层）
 export type AgentRunRow = {
@@ -25,6 +26,7 @@ export type AgentRunRow = {
   max_steps: number
   model: string
   config: Record<string, unknown> | null
+  spec_snapshot?: AgentSpec | null
   result: string
   error: string
   checkpoint: Record<string, unknown> | null
@@ -62,6 +64,14 @@ export type SpecOptimizeSuggestion = {
   suggested_tools_note: string
   rationale: string
 }
+export type RecoverableOptimization = {
+  id:string
+  source_run_id:string
+  changed_keys:string[]
+  accepted_revision_id:string
+  feedback_unchanged:boolean
+  is_current_spec:boolean
+}
 
 export type RunEventType =
   | "status"
@@ -71,6 +81,8 @@ export type RunEventType =
   | "error"
   | "context_compact"
   | "approval_pending"
+  | "input_pending"
+  | "input_received"
   | "approval"
   | "observation"
   | "memory_injected"
@@ -93,7 +105,9 @@ export type BuiltinTool = { id: string; title: string; desc: string }
 export const BUILTIN_TOOLS: BuiltinTool[] = [
   { id: "calculate", title: "计算器", desc: "对算术表达式真实求值，支持 + - * / % 与括号" },
   { id: "summarize", title: "文本整理摘要", desc: "调用模型对给定文本做整理、摘要与提炼" },
-  { id: "knowledge_search", title: "知识库检索", desc: "在方案附带的知识文本中按关键词检索相关片段" },
+  { id: "knowledge_search", title: "知识库检索", desc: "在关联知识库中检索片段" },
+  { id: "web_search", title: "网页搜索", desc: "联网查询网页标题与摘要" },
+  { id: "web_fetch", title: "网页抓取", desc: "读取公开网页正文" },
 ]
 
 // 自定义模型选项：value 形如 custom:<connection_id>:<model_id>，启动时解析进 run config
@@ -114,12 +128,13 @@ export const RUN_STATE_META: Record<RunStateKey, { label: string; badge: string 
   running: { label: "运行中", badge: "bg-primary/10 text-primary" },
   paused: { label: "已暂停", badge: "bg-muted text-muted-foreground" },
   awaiting_approval: { label: "待批准", badge: "bg-primary/10 text-primary" },
+  awaiting_input: { label: "等待你的回复", badge: "bg-primary/10 text-primary" },
   succeeded: { label: "已完成", badge: "bg-primary/10 text-primary" },
   failed: { label: "失败", badge: "bg-destructive/10 text-destructive" },
   cancelled: { label: "已取消", badge: "bg-destructive/10 text-destructive" },
 }
 
-const LIVE_STATES: RunStateKey[] = ["queued", "running", "paused", "awaiting_approval"]
+const LIVE_STATES: RunStateKey[] = ["queued", "running", "paused", "awaiting_approval", "awaiting_input"]
 const TERMINAL_STATES: RunStateKey[] = ["succeeded", "failed", "cancelled"]
 
 // harness 运行级核算：checkpoint.harness_stats 的展示格式化（run-detail 也复用）
@@ -200,11 +215,14 @@ export function memoryKindMetaOf(kind: string): { label: string; badgeClass: str
 
 export function useAgentRun() {
   const base = getPocketBaseUrl()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedRunId = searchParams.get("run") || ""
+  const requestedSpecId = searchParams.get("spec") || ""
 
   const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
+  const [specVersionNotice,setSpecVersionNotice] = useState("")
 
   const [specList, setSpecList] = useState<SavedSpecRow[]>([])
   const [isLoadingSpecs, setIsLoadingSpecs] = useState(false)
@@ -226,10 +244,17 @@ export function useAgentRun() {
   const [runHistory, setRunHistory] = useState<AgentRunRow[]>([])
   const [copiedFlag, setCopiedFlag] = useState(false)
   const [customModels, setCustomModels] = useState<CustomModelOption[]>([])
+  const [connectedToolNames, setConnectedToolNames] = useState<string[]>([])
+  const [marketToolCount, setMarketToolCount] = useState(0)
+  const [connectedMarketTools, setConnectedMarketTools] = useState<VerifiedMarketTool[]>([])
+  const [toolConnectionsLoading, setToolConnectionsLoading] = useState(false)
 
   // 审批门 + 方案记忆（harness 增强批次）
-  const [requireApproval, setRequireApproval] = useState(true)
+  const [requireApproval, setRequireApproval] = useState(false)
+  const [requirePlanReview, setRequirePlanReview] = useState(false)
   const [approvalBusy, setApprovalBusy] = useState<"" | "approve" | "reject">("")
+  const [replyText, setReplyText] = useState("")
+  const [replyBusy, setReplyBusy] = useState(false)
   const [memoryList, setMemoryList] = useState<AgentMemoryRow[]>([])
   const [isLoadingMemories, setIsLoadingMemories] = useState(false)
   const [memoryDeletingId, setMemoryDeletingId] = useState("")
@@ -248,13 +273,70 @@ export function useAgentRun() {
   const [optimizeBusy, setOptimizeBusy] = useState(false)
   const [optimizeSuggestion, setOptimizeSuggestion] = useState<SpecOptimizeSuggestion | null>(null)
   const [optimizeError, setOptimizeError] = useState("")
+  const [optimizeSuccess, setOptimizeSuccess] = useState("")
+  const [acceptedOptimizationLineage,setAcceptedOptimizationLineage] = useState<{id:string;specId:string}|null>(null)
+  const [recoverableOptimization,setRecoverableOptimization]=useState<RecoverableOptimization|null>(null)
+  const [recoveryError,setRecoveryError]=useState("")
+  const [recoveryRevision,setRecoveryRevision]=useState(0)
   const [applyBusy, setApplyBusy] = useState(false)
 
   const tickInFlightRef = useRef(false)
+  const startInFlightRef = useRef(false)
   const pollBusyRef = useRef(false)
   const specParamAppliedRef = useRef(false)
+  const optimizeRunIdRef = useRef("")
 
   const selectedSpec = specList.find((row) => row.id === selectedSpecId) || null
+  // History review must optimize its own Agent, never whichever Agent is selected in the left sidebar.
+  const optimizationSpec = activeRun ? specList.find(row => row.id === activeRun.spec_id) || null : null
+  // Only the server can confirm a saved optimization audit still matches
+  // the CURRENT full AgentSpec. Refresh/relogin do not erase audit provenance,
+  // but the employee must explicitly opt in before associating the next run.
+  useEffect(()=>{
+    if(!rhUserId||!selectedSpecId){
+      setRecoverableOptimization(null)
+      setRecoveryError("")
+      return
+    }
+    const abort=new AbortController()
+    setRecoverableOptimization(null)
+    setRecoveryError("")
+    void(async()=>{
+      try{
+        const response=await fetch(base+"/api/agent-specs/"+
+          encodeURIComponent(selectedSpecId)+"/optimization-lineage",{
+          headers:{...vibexAuthHeaders()},signal:abort.signal,
+        })
+        if(!response.ok)throw new Error("lineage_unavailable")
+        const payload=await response.json()
+        if(!Array.isArray(payload?.items))throw new Error("invalid_lineage")
+        const current=payload.items.find((row:RecoverableOptimization)=>
+          row?.is_current_spec===true&&/^[A-Za-z0-9]{15}$/.test(row.id))
+        if(!abort.signal.aborted){
+          setRecoverableOptimization(current||null)
+          if(!current){
+            // Proactively clear a stale selection after an edited Agent is
+            // verified by the server. Never let an older audit slip silently.
+            setAcceptedOptimizationLineage(previous=>
+              previous?.specId===selectedSpecId?null:previous)
+          }
+        }
+      }catch{
+        if(!abort.signal.aborted)
+          setRecoveryError("暂时无法核验此 Agent 是否有可恢复的反馈优化版本。")
+      }
+    })()
+    return()=>abort.abort()
+  },[rhUserId,selectedSpecId,selectedSpec?.updated,base,recoveryRevision])
+  const handleRestoreOptimization=useCallback(()=>{
+    if(!recoverableOptimization?.is_current_spec||!selectedSpecId)return
+    setAcceptedOptimizationLineage({id:recoverableOptimization.id,specId:selectedSpecId})
+  },[recoverableOptimization,selectedSpecId])
+  const handleUnlinkOptimization=useCallback(()=>{
+    setAcceptedOptimizationLineage(null)
+  },[])
+
+  optimizeRunIdRef.current = activeRun?.id || ""
 
   // 首页「去配置和试跑」跳转带 ?spec=<id>，方案列表加载后自动选中
   useEffect(() => {
@@ -269,6 +351,7 @@ export function useAgentRun() {
       setSelectedSpecId(wanted)
       if (row.spec?.done_criteria?.length) setStopCondition(row.spec.done_criteria.join("；"))
       setRequireApproval(Boolean(row.spec?.require_approval))
+      setRequirePlanReview(Boolean(row.spec?.require_plan_review))
       specParamAppliedRef.current = true
     })
     return () => { cancelled = true }
@@ -278,7 +361,7 @@ export function useAgentRun() {
     if (!uid) return
     setIsLoadingSpecs(true)
     try {
-      const res = await fetch(`${base}/api/agent_specs?rh_user_id=${encodeURIComponent(uid)}`, {
+      const res = await fetch(`${base}/api/agent_specs?perPage=200&sort=-updated`, {
         headers: { ...vibexAuthHeaders() },
       })
       if (res.status === 401 || res.status === 412) {
@@ -288,6 +371,21 @@ export function useAgentRun() {
       if (res.ok) {
         const data = await res.json()
         const items = Array.isArray(data?.items) ? (data.items as SavedSpecRow[]) : []
+        // A shared deep link or catalog page can reference an older Agent
+        // outside the 200 most recently edited entries. Resolve it by its
+        // exact owner-scoped ID instead of silently changing to another Agent.
+        if(requestedSpecId && /^[A-Za-z0-9]{15}$/.test(requestedSpecId) &&
+          !items.some(row=>row.id===requestedSpecId)){
+          try{
+            const detail=await fetch(base+"/api/agent_specs/"+encodeURIComponent(requestedSpecId),{
+              headers:{...vibexAuthHeaders()},
+            })
+            if(detail.ok){
+              const row=await detail.json() as SavedSpecRow
+              if(row?.id===requestedSpecId)items.push(row)
+            }
+          }catch{ /* leave missing; never substitute a different Agent */ }
+        }
         setSpecList(items)
       }
     } catch {
@@ -295,7 +393,7 @@ export function useAgentRun() {
     } finally {
       setIsLoadingSpecs(false)
     }
-  }, [base])
+  }, [base,requestedSpecId])
 
   const loadRunHistory = useCallback(async (uid: string) => {
     if (!uid) return
@@ -362,6 +460,50 @@ export function useAgentRun() {
     return () => { cancelled = true }
   }, [rhUserId, loadSpecList, loadRunHistory, loadCustomModels])
 
+  useEffect(()=>{
+    if(!rhUserId)return
+    const onSaved=(event:Event)=>{
+      const specId=String((event as CustomEvent<{specId?:string}>).detail?.specId||"")
+      if(!specId)return
+      void loadSpecList(rhUserId)
+      if(specId===selectedSpecId || specId===activeRun?.spec_id)
+        setSpecVersionNotice("Agent 方案已保存为新版本。下一次试跑将读取新方案；当前进行中的任务仍使用启动时的原始配置。")
+    }
+    window.addEventListener("studio:agent-spec-saved",onSaved)
+    return()=>window.removeEventListener("studio:agent-spec-saved",onSaved)
+  },[rhUserId,loadSpecList,selectedSpecId,activeRun?.spec_id])
+
+  const refreshToolConnections = useCallback(async () => {
+    setToolConnectionsLoading(true)
+    try {
+      const [toolsRes, marketRes] = await Promise.all([
+        fetch(`${base}/api/tool-connections`, { headers: { ...vibexAuthHeaders() } }),
+        fetch(`${base}/api/market/connections`, { headers: { ...vibexAuthHeaders() } }),
+      ])
+      if (toolsRes.ok) {
+        const json = await toolsRes.json()
+        const rows: {name: string; enabled: boolean}[] = Array.isArray(json.items) ? json.items : []
+        setConnectedToolNames(rows.filter(row => row.enabled && row.name).map(row => row.name))
+      }
+      if (marketRes.ok) {
+        const json = await marketRes.json()
+        const options = getVerifiedMarketTools(json?.items)
+        setConnectedMarketTools(options)
+        setMarketToolCount(options.length)
+      }
+    } catch {
+      // 网络错误保留原有状态；未核验的工具绝不标为已连接。
+    } finally { setToolConnectionsLoading(false) }
+  }, [base])
+
+  useEffect(() => {
+    if (!rhUserId) return
+    void refreshToolConnections()
+    const onFocus = () => { void refreshToolConnections() }
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [rhUserId, refreshToolConnections])
+
   const handleSelectSpec = useCallback(
     (specId: string) => {
       setSelectedSpecId(specId)
@@ -369,27 +511,23 @@ export function useAgentRun() {
       if (row?.spec?.done_criteria?.length) {
         setStopCondition(row.spec.done_criteria.join("；"))
       }
-      setRequireApproval(row?.spec?.require_approval !== false)
+      setRequireApproval(Boolean(row?.spec?.require_approval))
+      setRequirePlanReview(Boolean(row?.spec?.require_plan_review))
     },
     [specList],
   )
 
-  // 「写操作需我确认」开关：本地即时生效 + 写回方案 spec（随保存落库）
+  const handleTogglePlanReview = useCallback(() => {
+    const enabled = !requirePlanReview
+    setRequirePlanReview(enabled)
+    if (enabled) setMaxSteps(previous => Math.max(2, previous))
+  }, [requirePlanReview])
+
+  // 运行页是试跑配置，不是正式 Agent 编辑器。明确保存新版本只能在方案编辑窗口完成。
+  // 防止用户切换一次试跑开关就暗中覆盖其它标签已经保存的 Agent 版本。
   const handleToggleRequireApproval = useCallback(() => {
-    const nextValue = !requireApproval
-    setRequireApproval(nextValue)
-    const row = specList.find((item) => item.id === selectedSpecId) || null
-    if (!row) return
-    const mergedSpec = { ...row.spec, require_approval: nextValue }
-    setSpecList((prev) => prev.map((item) => (item.id === row.id ? { ...item, spec: mergedSpec } : item)))
-    void fetch(`${base}/api/agent_specs/${encodeURIComponent(row.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-      body: JSON.stringify({ spec: mergedSpec }),
-    }).catch(() => {
-      // 落库失败不阻塞本次运行（启动时 config 仍携带当前开关值）
-    })
-  }, [requireApproval, specList, selectedSpecId, base])
+    setRequireApproval(previous => !previous)
+  }, [])
 
   // 方案记忆：当前选中方案的沉淀经验（后端启动时会注入规划，这里只做展示与管理）
   const loadMemories = useCallback(
@@ -487,6 +625,37 @@ export function useAgentRun() {
     [base],
   )
 
+  // 将运行 ID 放入当前 URL：刷新/复制链接后可恢复同一次运行，包括尚未回答的审批。
+  // 所有运行详情与事件仍通过服务端按员工身份校验，不依赖本地缓存做授权。
+  const rememberRunUrl = useCallback((runId: string, specId: string) => {
+    if (!runId) return
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous)
+      next.set("run", runId)
+      if (specId) next.set("spec", specId)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  useEffect(() => {
+    if (!requestedRunId || !rhUserId) return
+    let cancelled = false
+    void Promise.all([fetchRunRecord(requestedRunId), fetchRunEvents(requestedRunId)])
+      .then(([run, events]) => {
+        if (cancelled) return
+        if (!run) {
+          setErrorMsg("无法恢复运行记录：任务不存在或当前账号无权查看。")
+          return
+        }
+        setActiveRun(run)
+        setRunEvents(events)
+        setSelectedSpecId(run.spec_id)
+      }).catch(() => {
+        if (!cancelled) setErrorMsg("恢复任务失败，请检查网络并刷新重试。")
+      })
+    return () => { cancelled = true }
+  }, [requestedRunId, rhUserId, fetchRunRecord, fetchRunEvents])
+
   const pollOnce = useCallback(
     async (runId: string) => {
       if (pollBusyRef.current) return
@@ -532,7 +701,10 @@ export function useAgentRun() {
   }, [livePollingRunId, pollOnce])
 
   const doStartRun = useCallback(async () => {
-    if (!selectedSpec || !instruction.trim()) return
+    if (!selectedSpec || !instruction.trim() || startInFlightRef.current) return
+    // Synchronous guard: keyboard shortcut + mouse click before React rerender
+    // must not create two paid Agent runs from the same user intent.
+    startInFlightRef.current = true
     setIsStarting(true)
     setErrorMsg("")
     try {
@@ -550,6 +722,9 @@ export function useAgentRun() {
           stop_condition: stopCondition.trim(),
           stop_on_complete: stopOnComplete,
           require_approval: requireApproval,
+          require_plan_review: requirePlanReview,
+          ...(acceptedOptimizationLineage?.specId===selectedSpec.id
+            ? {optimization_lineage_id:acceptedOptimizationLineage.id}:{}),
           tools: toolsConfig,
           ...(parsedCustom
             ? {
@@ -573,20 +748,29 @@ export function useAgentRun() {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => null)
+        if(res.status===409&&data?.error==="optimization_spec_changed"){
+          setAcceptedOptimizationLineage(null)
+          setRecoveryRevision(n=>n+1)
+          setErrorMsg("当前方案已经变化，旧的反馈版本关联已取消。请核对正式方案后再试跑。")
+          return
+        }
         setErrorMsg(data?.message || "创建运行失败，请稍后重试")
         return
       }
       const data = await res.json()
       const runId = String(data?.run_id || "")
+      if(runId) setAcceptedOptimizationLineage(null)
       setRunEvents([])
       if (runId) {
         const full = await fetchRunRecord(runId)
         if (full) setActiveRun(full)
+        rememberRunUrl(runId, selectedSpec.id)
       }
       void loadRunHistory(rhUserId)
     } catch {
       setErrorMsg("网络异常，创建运行失败，请重试")
     } finally {
+      startInFlightRef.current = false
       setIsStarting(false)
     }
   }, [
@@ -601,9 +785,12 @@ export function useAgentRun() {
     stopCondition,
     stopOnComplete,
     requireApproval,
-    fetchRunRecord,
+    fetchRunRecord,    requirePlanReview,
+
     loadRunHistory,
     rhUserId,
+    rememberRunUrl,
+    acceptedOptimizationLineage,
   ])
 
   const handleRun = useCallback(() => {
@@ -623,7 +810,7 @@ export function useAgentRun() {
       setErrorMsg("请先选择你自己的模型连接里的模型（没有的话先到「模型连接」页添加一个模型连接）")
       return
     }
-    if (isStarting || (activeRun && LIVE_STATES.includes(activeRun.status))) return
+    if (isStarting || startInFlightRef.current || (activeRun && LIVE_STATES.includes(activeRun.status))) return
     // 自备密钥批次：模型调用走用户自己的模型连接，无平台计费，直接启动
     void doStartRun()
   }, [rhUserId, selectedSpec, instruction, isStarting, activeRun, model, doStartRun])
@@ -732,6 +919,42 @@ export function useAgentRun() {
     [activeRun, approvalBusy, base, fetchRunRecord, fetchRunEvents],
   )
 
+  // 同一运行内回复 Agent 的澄清问题，checkpoint 持久化并续跑。
+  const handleReply = useCallback(async (decision: "reply" | "approve" | "revise") => {
+    if (!activeRun || activeRun.status !== "awaiting_input" || replyBusy ||
+      (decision !== "approve" && !replyText.trim())) return
+    setReplyBusy(true)
+    setErrorMsg("")
+    try {
+      const res = await fetch(`${base}/api/agent-runs/${encodeURIComponent(activeRun.id)}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+        body: JSON.stringify({ answer: replyText.trim(), decision }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setErrorMsg(data?.message || "回复失败，请刷新确认任务状态后重试")
+        if (res.status === 401 || res.status === 412) setNeedsRhLogin(true)
+        return
+      }
+      setReplyText("")
+      const fresh = await fetchRunRecord(activeRun.id)
+      if (fresh) setActiveRun(fresh)
+      setRunEvents(await fetchRunEvents(activeRun.id))
+    } catch {
+      setErrorMsg("网络异常，回复未确认，请刷新后重试")
+    } finally {
+      setReplyBusy(false)
+    }
+  }, [activeRun, replyBusy, replyText, base, fetchRunRecord, fetchRunEvents])
+
+  const pendingInputData = activeRun?.checkpoint?.pending_input as {question?: string;kind?: string} | undefined
+  const pendingInput = activeRun?.status === "awaiting_input" ? String(pendingInputData?.question || "") : ""
+  const pendingInputKind: "plan_review" | "clarification" = pendingInputData?.kind === "plan_review" ? "plan_review" : "clarification"
+
+  // 切换运行或进入下一次澄清时清空旧草稿；同一次待审关卡刷新不会擦除输入。
+  useEffect(() => { setReplyText("") }, [activeRun?.id, pendingInput])
+
   // Human-defined binary assertions are part of the owned AgentSpec JSON.
   // Existing backend PATCH checks owner, audits revisions and invalidates
   // incompatible collaboration proposals. Never write to a foreign spec.
@@ -749,11 +972,15 @@ export function useAgentRun() {
       const response=await fetch(`${base}/api/agent_specs/${encodeURIComponent(selected.id)}`,{
         method:"PATCH",
         headers:{"Content-Type":"application/json",...vibexAuthHeaders()},
-        body:JSON.stringify({spec:{...selected.spec,quality_checks}}),
+        body:JSON.stringify({spec:{...selected.spec,quality_checks},expected_updated:selected.updated}),
       })
       if (response.status===401 || response.status===412) {
         setNeedsRhLogin(true)
         setQualityError("员工登录态过期，请重新登录后保存检查条件")
+        return false
+      }
+      if (response.status===409) {
+        setQualityError("其他页面已更新该 Agent。为保护最新版本，未覆盖原方案。请核对修改后重新提交检查条件。")
         return false
       }
       if (!response.ok) {
@@ -761,9 +988,11 @@ export function useAgentRun() {
         return false
       }
       const current=await response.json() as SavedSpecRow
-      setSpecList(rows=>rows.map(row=>row.id===selected.id?{
-        ...row,...current,spec:{...selected.spec,quality_checks},
-      }:row))
+      if (!current?.id || !current.updated) {
+        setQualityError("服务器未返回可验证的保存版本，请刷新核对检查条件。")
+        return false
+      }
+      setSpecList(rows=>rows.map(row=>row.id===selected.id?current:row))
       return true
     } catch {
       setQualityError("网络错误，检查条件未保存，请稍后重试")
@@ -889,7 +1118,7 @@ export function useAgentRun() {
     }
   }, [activeRun, feedbackBusy, feedbackDraft, base, fetchRunRecord, loadMemories, rhUserId])
 
-  // 切换回看的运行时重置反馈草稿；切换方案时收起优化建议卡
+  // 切换回看的运行时重置反馈草稿，并清除上一次运行的优化建议。
   useEffect(() => {
     let cancelled = false
     void Promise.resolve().then(() => {
@@ -906,18 +1135,21 @@ export function useAgentRun() {
       if (cancelled) return
       setOptimizeSuggestion(null)
       setOptimizeError("")
+      setOptimizeSuccess("")
     })
     return () => { cancelled = true }
-  }, [selectedSpecId])
+  }, [activeRun?.id,selectedSpecId])
 
   // 反馈驱动方案优化：聚合该方案全部反馈与最近评估建议 → 一次 LLM 生成改进稿（只生成不写回）
   const doOptimizeSpec = useCallback(async () => {
-    if (!selectedSpec) return
+    if (!optimizationSpec || !activeRun) return
+    const runIdAtStart = activeRun.id
     setOptimizeBusy(true)
     setOptimizeError("")
+    setOptimizeSuccess("")
     try {
       const res = await fetch(
-        `${base}/api/agent-specs/${encodeURIComponent(selectedSpec.id)}/optimize`,
+        `${base}/api/agent-specs/${encodeURIComponent(optimizationSpec.id)}/optimize`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
@@ -934,6 +1166,8 @@ export function useAgentRun() {
         setOptimizeError(data?.message || "生成优化建议失败，请稍后重试")
         return
       }
+      // An older run's async response must never populate the newly selected run.
+      if (optimizeRunIdRef.current !== runIdAtStart) return
       const suggestion = data?.suggestion as SpecOptimizeSuggestion | undefined
       if (suggestion && suggestion.suggested_prompt) {
         setOptimizeSuggestion(suggestion)
@@ -945,19 +1179,20 @@ export function useAgentRun() {
     } finally {
       setOptimizeBusy(false)
     }
-  }, [selectedSpec, base])
+  }, [optimizationSpec, activeRun, base])
 
   const handleOptimizeSpec = useCallback(() => {
-    if (!selectedSpec || optimizeBusy) return
+    if (!optimizationSpec || optimizeBusy) return
     setOptimizeError("")
     void doOptimizeSpec()
-  }, [selectedSpec, optimizeBusy, doOptimizeSpec])
+  }, [optimizationSpec, optimizeBusy, doOptimizeSpec])
 
   // 确认写回：建议稿合并进方案（目标 ← suggested_prompt，完成标准 ← suggested_criteria 分条）
   const handleApplyOptimize = useCallback(async () => {
-    if (!optimizeSuggestion || !selectedSpec || applyBusy) return
+    if (!optimizeSuggestion || !optimizationSpec || applyBusy) return
     setApplyBusy(true)
-    setErrorMsg("")
+    setOptimizeError("")
+    setOptimizeSuccess("")
     try {
       const criteriaList = optimizeSuggestion.suggested_criteria
         .split(/\n|；|;/)
@@ -965,35 +1200,100 @@ export function useAgentRun() {
         .filter(Boolean)
         .slice(0, 8)
       const mergedSpec = {
-        ...selectedSpec.spec,
+        ...optimizationSpec.spec,
         goal: optimizeSuggestion.suggested_prompt,
         ...(criteriaList.length ? { done_criteria: criteriaList } : {}),
       }
-      const res = await fetch(`${base}/api/agent_specs/${encodeURIComponent(selectedSpec.id)}`, {
+      const res = await fetch(`${base}/api/agent_specs/${encodeURIComponent(optimizationSpec.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-        body: JSON.stringify({ spec: mergedSpec }),
+        body: JSON.stringify({spec:mergedSpec,expected_updated:optimizationSpec.updated,
+          ...(activeRun?.feedback?.rating ? {optimization_context:{source_run_id:activeRun.id}} : {}),
+        }),
       })
       if (res.status === 401 || res.status === 412) {
         setNeedsRhLogin(true)
         setErrorMsg("登录态已过期，请重新登录后再写回方案")
         return
       }
-      if (!res.ok) {
-        setErrorMsg("写回方案失败，请稍后重试")
+      if (res.status === 409) {
+        // Optimistic-lock fence: reload the actual server version rather than
+        // leaving a stale local revision that would conflict forever.
+        try {
+          const latest = await fetch(`${base}/api/agent_specs/${encodeURIComponent(optimizationSpec.id)}`, {
+            headers: { ...vibexAuthHeaders() },
+          })
+          if (latest.ok) {
+            const current = await latest.json() as SavedSpecRow
+            if (current?.id === optimizationSpec.id) {
+              setSpecList(prev => prev.map(row => row.id === current.id ? current : row))
+              setOptimizeSuggestion(null)
+              setOptimizeError("其他页面已更新此 Agent。已读取最新方案，旧优化稿已作废；请重新生成建议后再应用。")
+              return
+            }
+          }
+        } catch { /* retain the draft if refreshing the latest version failed */ }
+        setOptimizeError("其他页面已更新此 Agent，当前优化稿未覆盖任何内容。请刷新页面后重新生成建议。")
         return
       }
-      setSpecList((prev) =>
-        prev.map((item) => (item.id === selectedSpec.id ? { ...item, spec: mergedSpec } : item)),
-      )
-      if (criteriaList.length) setStopCondition(criteriaList.join("；"))
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        setOptimizeError(detail?.message || "写回方案失败，请稍后重试")
+        return
+      }
+      const updated = await res.json().catch(() => null)
+      if (!updated || updated.id !== optimizationSpec.id) {
+        setOptimizeError("服务器未返回可核验的方案版本，请重新读取方案后确认是否已保存。")
+        return
+      }
+      setSpecList((prev) => prev.map(item =>
+        item.id === optimizationSpec.id
+          ? { ...item, spec: mergedSpec, updated: String(updated.updated || item.updated) }
+          : item))
+      if (criteriaList.length && selectedSpecId === optimizationSpec.id) setStopCondition(criteriaList.join("；"))
+      if(typeof updated.optimization_lineage_id==="string" &&
+        /^[A-Za-z0-9]{15}$/.test(updated.optimization_lineage_id))
+        setAcceptedOptimizationLineage({id:updated.optimization_lineage_id,specId:optimizationSpec.id})
+      else setAcceptedOptimizationLineage(null)
       setOptimizeSuggestion(null)
+      setOptimizeSuccess(typeof updated.optimization_lineage_id==="string"
+        ? "方案优化已保存为当前 Agent 的新版本。本次用户反馈已关联到方案变更；再次试跑可核验改进来源。"
+        : "方案优化已保存为当前 Agent 的新版本。但当前运行未提交反馈，不会标记为反馈驱动；旧快照不变。")
     } catch {
-      setErrorMsg("网络异常，写回方案失败，请重试")
+      setOptimizeError("网络异常，无法确认是否保存成功。请刷新方案记录后核验。")
     } finally {
       setApplyBusy(false)
     }
-  }, [optimizeSuggestion, selectedSpec, applyBusy, base])
+  }, [optimizeSuggestion, optimizationSpec, applyBusy, base, selectedSpecId, activeRun])
+
+  // After an employee explicitly accepts a new AgentSpec version, prepare
+  // another run of the same request. This does NOT launch a model call or
+  // change the previous run; the user reviews the instruction and clicks Run.
+  const handlePrepareOptimizedRetest = useCallback(()=>{
+    if(!activeRun || !optimizationSpec || !optimizeSuccess ||
+      !TERMINAL_STATES.includes(activeRun.status))return
+    const target=specList.find(item=>item.id===optimizationSpec.id)
+    if(!target)return
+    setSelectedSpecId(target.id)
+    setRequirePlanReview(Boolean(target.spec.require_plan_review))
+    setRequireApproval(Boolean(target.spec.require_approval))
+    if(target.spec.done_criteria?.length)
+      setStopCondition(target.spec.done_criteria.join("；"))
+    setInstruction(activeRun.instruction || "")
+    setActiveRun(null)
+    setRunEvents([])
+    setErrorMsg("")
+    setSearchParams(previous=>{
+      const next=new URLSearchParams(previous)
+      next.delete("run")
+      next.set("spec",target.id)
+      return next
+    },{replace:true})
+    window.requestAnimationFrame(()=>{
+      document.getElementById("agent-task-instruction")?.focus({preventScroll:true})
+      document.getElementById("workbench")?.scrollIntoView({behavior:"smooth",block:"start"})
+    })
+  },[activeRun,optimizationSpec,optimizeSuccess,specList,setSearchParams])
 
   const handleDiscardOptimize = useCallback(() => {
     setOptimizeSuggestion(null)
@@ -1006,6 +1306,8 @@ export function useAgentRun() {
       setErrorMsg("")
       setRunEvents([])
       setActiveRun(row)
+      setSelectedSpecId(row.spec_id)
+      rememberRunUrl(row.id, row.spec_id)
       try {
         const full = await fetchRunRecord(row.id)
         if (full) setActiveRun(full)
@@ -1015,7 +1317,7 @@ export function useAgentRun() {
         // 回看失败时保留列表行数据展示状态
       }
     },
-    [fetchRunRecord, fetchRunEvents],
+    [fetchRunRecord, fetchRunEvents, rememberRunUrl],
   )
 
   const handleToggleTool = useCallback((toolId: string) => {
@@ -1067,19 +1369,31 @@ export function useAgentRun() {
     isLoggedIn: Boolean(rhUserId),
     needsRhLogin,
     onLoginClick: redirectToRhLogin,
+    specVersionNotice,
     errorMsg,
     dismissError,
     specList,
     isLoadingSpecs,
     selectedSpecId,
     selectedSpec,
-    handleSelectSpec,
+    handleSelectSpec,    recoverableOptimization,
+    recoveryError,
+    optimizationLinked:Boolean(acceptedOptimizationLineage&&acceptedOptimizationLineage.specId===selectedSpecId),
+    handleRestoreOptimization,
+    handleUnlinkOptimization,
+    retryOptimizationRecovery:()=>setRecoveryRevision(n=>n+1),
+
     customModels,
     genWfBusy,
     handleGenerateWorkflow,
     isCustomModel,
     model,
     setModel,
+    connectedToolNames,
+    marketToolCount,
+    toolConnectionsLoading,
+    connectedMarketTools,
+    refreshToolConnections,
     builtinTools: BUILTIN_TOOLS,
     enabledTools,
     handleToggleTool,
@@ -1108,8 +1422,16 @@ export function useAgentRun() {
     runHistory,
     handleViewHistoryRun,
     priceHint,
+    requirePlanReview,
+    handleTogglePlanReview,
     requireApproval,
     handleToggleRequireApproval,
+    pendingInput,
+    replyText,    pendingInputKind,
+
+    setReplyText,
+    replyBusy,
+    handleReply,
     pendingApproval,
     approvalBusy,
     handleApproval,
@@ -1133,11 +1455,14 @@ export function useAgentRun() {
     handleSubmitFeedback,
     handleEditFeedback,
     handleCancelFeedbackEdit,
+    optimizationSpec,
+    optimizeSuccess,
     optimizeBusy,
     optimizeSuggestion,
     optimizeError,
     applyBusy,
     handleOptimizeSpec,
+    handlePrepareOptimizedRetest,
     handleApplyOptimize,
     handleDiscardOptimize,
     dismissOptimizeError,

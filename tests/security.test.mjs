@@ -56,6 +56,70 @@ function harness(file, seeds = {}, opts = {}) {
       if (filter.includes("status = {:status}")) list = list.filter(r => r.get("status") === params.status)
       return list.slice(offset || 0, (offset || 0) + (limit || 100))
     },
+    // Model the approval route's owner/status-conditional UPDATE reservation.
+    // Unknown SQL fails closed so this harness cannot accidentally approve a
+    // different write path without an explicit test implementation.
+    db() {
+      return {
+        newQuery(sql) {
+          let params = {}
+          const agentListing = () => {
+            if (!sql.includes(" FROM agent_specs s LEFT JOIN agent_spec_favorites f "))
+              throw new Error("unsupported_security_test_query")
+            return (collections.agent_specs || []).filter(r => {
+              if (r.get("rh_user_id") !== params.owner) return false
+              if (params.source && r.get("source") !== params.source) return false
+              if (params.q) {
+                const q = String(params.q).replace(/^%|%$/g,"").toLowerCase()
+                if (!String(r.get("name") || "").toLowerCase().includes(q) &&
+                    !r.getString("spec").toLowerCase().includes(q)) return false
+              }
+              if (sql.includes("AND f.spec_id IS NOT NULL") &&
+                !(collections.agent_spec_favorites || []).some(x =>
+                  x.get("spec_id") === r.id && x.get("owner_uid") === params.owner))
+                return false
+              return true
+            })
+          }
+          return {
+            bind(values) { params = values; return this },
+            // Agent list SQL now uses an owner-filtered LEFT JOIN and
+            // aggregate SELECT; model it explicitly instead of permitting
+            // an arbitrary query to succeed in security unit tests.
+            one(out) {
+              if (!sql.startsWith("SELECT COUNT(*) AS total FROM agent_specs s LEFT JOIN agent_spec_favorites f "))
+                throw new Error("unsupported_security_test_query")
+              out.total = agentListing().length
+              return out
+            },
+            all(out) {
+              if (!sql.startsWith("SELECT s.id AS id, CASE WHEN f.spec_id IS NULL THEN 0 ELSE 1 END AS favorite FROM agent_specs s LEFT JOIN agent_spec_favorites f "))
+                throw new Error("unsupported_security_test_query")
+              const start = Number(params.offset || 0)
+              const limit = Number(params.limit || 100)
+              for (const r of agentListing().slice(start, start + limit)) {
+                const favorite = (collections.agent_spec_favorites || []).some(x =>
+                  x.get("spec_id") === r.id && x.get("owner_uid") === params.owner)
+                out.push({ id: r.id, favorite: favorite ? 1 : 0 })
+              }
+              return out
+            },
+            execute() {
+              const reservedStatus = sql === "UPDATE agent_runs SET status='running' WHERE id={:id} AND rh_user_id={:uid} AND status='awaiting_approval'"
+                ? "awaiting_approval"
+                : sql === "UPDATE agent_runs SET status='running' WHERE id={:id} AND rh_user_id={:uid} AND status='awaiting_input'"
+                  ? "awaiting_input" : ""
+              if (!reservedStatus) throw new Error("unsupported_security_test_query")
+              const rows = (collections.agent_runs || []).filter(r =>
+                r.id === params.id && r.get("rh_user_id") === params.uid &&
+                r.get("status") === reservedStatus)
+              for (const row of rows) row.set("status", "running")
+              return { rowsAffected() { return rows.length } }
+            },
+          }
+        },
+      }
+    },
     save(rec) { (collections[rec.collection] ||= []).push(rec) },
     delete(rec) {
       const rows = collections[rec.collection] || []
@@ -103,6 +167,8 @@ function harness(file, seeds = {}, opts = {}) {
     __hooks:hooks,
     require:loadModule,
     Record,
+    DynamicModel: class { constructor(defaults){Object.assign(this,defaults)} },
+    arrayOf(){return []},
     Collection: class {},
     Field: class {},
     console,
@@ -197,7 +263,7 @@ test("agent execution and approval cannot operate on another user's runs", () =>
     agent_runs: [{ id: "run-b", rh_user_id: "B", status: "running" }],
   })
   assert.equal(h.call("POST", "/api/agent-runs/start", { user: "A", body: { spec_id: "owned-by-b", instruction: "test", model: "claude-opus-4.8" } }).status, 404)
-  for (const route of ["/api/llm/agent-engine/{id}/tick", "/api/agent-runs/{id}/pause", "/api/agent-runs/{id}/resume", "/api/agent-runs/{id}/cancel", "/api/agent-runs/{id}/approve", "/api/agent-runs/{id}/feedback", "/api/agent-runs/{id}/evaluate"]) {
+  for (const route of ["/api/llm/agent-engine/{id}/tick", "/api/agent-runs/{id}/pause", "/api/agent-runs/{id}/resume", "/api/agent-runs/{id}/cancel", "/api/agent-runs/{id}/approve", "/api/agent-runs/{id}/respond", "/api/agent-runs/{id}/feedback", "/api/agent-runs/{id}/evaluate"]) {
     const result = h.call("POST", route, { user: "A", id: "run-b", body: { decision: "approve" } })
     assert.equal(result.status, 404, route)
   }

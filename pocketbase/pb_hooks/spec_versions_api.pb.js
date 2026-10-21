@@ -143,6 +143,22 @@ routerAdd("POST", "/api/spec-versions", function (e) {
       saved_at: new Date().toISOString(),
     }
 
+    // Key-order independent comparison: when Agent settings change after a
+    // successful run, that OLD run must not certify the NEW saved version.
+    var canonicalSpec = function (value, depth) {
+      if (depth > 30) throw new Error("spec_too_deep")
+      if (Array.isArray(value)) return value.map(function (part) {return canonicalSpec(part, depth + 1)})
+      if (value && typeof value === "object") {
+        var keys = Object.keys(value).sort(), out = {}
+        for (var k = 0; k < keys.length; k++) {
+          var key = keys[k]
+          if (key === "__proto__" || key === "constructor" || key === "prototype") throw new Error("unsafe_spec_key")
+          if (value[key] !== undefined) out[key] = canonicalSpec(value[key], depth + 1)
+        }
+        return out
+      }
+      return value
+    }
     // 关联测试运行：服务端核验归属 + 由 run 终态计算 test_passed，不信任前端布尔
     var testRunId = String(body.test_run_id || "").trim().slice(0, 64)
     var testPassed = false
@@ -154,7 +170,20 @@ routerAdd("POST", "/api/spec-versions", function (e) {
       if (!runRec || String(runRec.get("rh_user_id") || "") !== uid || String(runRec.get("spec_id")) !== specId) {
         testRunId = ""
       } else {
-        testPassed = String(runRec.getString("status") || "") === "succeeded"
+        var snapshotMatches = false
+        try {
+          var snapshotText = runRec.getString("spec_snapshot") || ""
+          var runSpec = JSON.parse(snapshotText || "null")
+          if (runSpec && typeof runSpec === "object" && !Array.isArray(runSpec)) {
+            snapshotMatches = JSON.stringify(canonicalSpec(specObj, 0)) ===
+              JSON.stringify(canonicalSpec(runSpec, 0))
+          }
+        } catch (_) { snapshotMatches = false }
+        var runConfig = {}
+        try { runConfig = JSON.parse(runRec.getString("config") || "{}") || {} } catch (_) {}
+        var isAcceptance = String(runConfig.source || "") === "acceptance_test"
+        testPassed = String(runRec.getString("status") || "") === "succeeded" &&
+          snapshotMatches && isAcceptance
       }
     }
 

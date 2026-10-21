@@ -100,13 +100,9 @@ export function RunEvaluationCard({ evaluation, evalBusy, onGenerate }: RunEvalu
                   评估于 {formatEvaluatedAt(evaluation.evaluated_at)}
                 </p>
               )}
-              <button
-                type="button"
-                onClick={onGenerate}
-                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-card-foreground transition hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                重新评估
-              </button>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                本次评估已保存。要检验优化后的效果，请使用更新的 Agent 再执行一次任务并评估。
+              </p>
             </div>
           </div>
 
