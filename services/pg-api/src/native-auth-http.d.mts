@@ -6,5 +6,6 @@ export function createNativeAuthHttpHandler(deps:{
   auth:NativeAuthRepository
   allowedOrigin:string
   businessHandler:HttpHandler
+  allowConfigurationWrites?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}

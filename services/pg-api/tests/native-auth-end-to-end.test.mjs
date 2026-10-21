@@ -46,6 +46,7 @@ async function startFixture(policy=null){
   const native=createNativeAuthHttpHandler({
     auth,allowedOrigin:origin,
     ...(policy?{allowEmployeeProvisioning:policy.employeeProvisioning}:{}),
+    allowConfigurationWrites:policy?.configurationWrites===true,
     businessHandler:(req,res)=>{
       const route=new URL(req.url||"/","http://localhost").pathname
       if(policy&&!permitNativePg18BusinessUatRequest(route,req.method||"",policy)){
@@ -132,6 +133,40 @@ test("real HTTP -> native cookie -> Auth Role -> Pg RLS -> Agent/Workflow/KB CRU
 })
 
 
+test("Native config-write discovery follows approved owner policy and never enables model work",async()=>{
+  for(const writeApproved of [false,true]){
+    const f=await startFixture({
+      configurationWrites:writeApproved,employeeProvisioning:false,
+      runApprovalUat:false,knowledgeIngestUat:false
+    })
+    try{
+      await assert.rejects(f.api.getConfigCapabilities(),
+        error=>error.status===401&&error.code==="session_required")
+      await f.api.login("admin@example.com","SyntheticAdminStrongPassword#2026")
+      const capabilities=await f.api.getConfigCapabilities()
+      assert.deepEqual(capabilities,{
+        mode:"native_pg18",config_writes_enabled:writeApproved,
+        run_execution_enabled:false
+      })
+      if(writeApproved){
+        const item=await f.api.createAgent("Approved metadata","No execution")
+        assert.ok(item.id)
+      }else{
+        await assert.rejects(f.api.createAgent("Denied metadata","No execution"),
+          error=>error.status===405&&
+            error.code==="pilot_business_writes_disabled")
+      }
+      for(const table of ["jobs","runs","external_effects"]){
+        const check=await f.db.query(
+          "SELECT count(*)::integer AS n FROM agentstudio."+table)
+        assert.equal(check.rows[0].n,0)
+      }
+      await f.api.logout()
+      await assert.rejects(f.api.getConfigCapabilities(),
+        error=>error.status===401)
+    }finally{await f.close()}
+  }
+})
 test("configuration UAT stores the three PostgreSQL object types",async()=>{
   const policy={configurationWrites:true,employeeProvisioning:false}
   const f=await startFixture(policy)

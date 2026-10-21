@@ -6,6 +6,54 @@ import {fileURLToPath} from "node:url"
 import {createPgNativePilotApi,PgNativePilotError}
   from "../src/lib/pgNativePilotApi.ts"
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
+test("Native config capability uses same-origin GET and rejects malformed grants",async()=>{
+  const calls=[]
+  const api=createPgNativePilotApi(async(url,init)=>{
+    calls.push({url,init})
+    return new Response(JSON.stringify({
+      mode:"native_pg18",config_writes_enabled:true,run_execution_enabled:false
+    }),{status:200})
+  },"")
+  assert.deepEqual(await api.getConfigCapabilities(),{
+    mode:"native_pg18",config_writes_enabled:true,run_execution_enabled:false
+  })
+  assert.deepEqual(calls.map(x=>x.url),["/api/native-auth/capabilities"])
+  assert.equal(calls[0].init.method,"GET")
+  assert.equal(calls[0].init.credentials,"same-origin")
+  assert.equal(calls[0].init.redirect,"error")
+  assert.equal(Object.hasOwn(calls[0].init.headers,"Authorization"),false)
+  for(const invalid of [
+    {mode:"native_pg18",config_writes_enabled:"true",run_execution_enabled:false},
+    {mode:"native_pg18",config_writes_enabled:true,run_execution_enabled:true},
+    {mode:"wrong",config_writes_enabled:true,run_execution_enabled:false},
+    {}
+  ]){
+    const broken=createPgNativePilotApi(async()=>
+      new Response(JSON.stringify(invalid),{status:200}),"")
+    await assert.rejects(broken.getConfigCapabilities(),
+      error=>error.status===503&&error.code==="invalid_native_capabilities")
+  }
+})
+
+test("PG18 standalone configuration editing requires server authenticated approval",()=>{
+  const page=fs.readFileSync(path.join(root,
+    "src/pages/PgNativePilot/PgNativePilotPage.tsx"),"utf8")
+  assert.match(page,/api\.getConfigCapabilities\(\)/)
+  assert.match(page,/\.catch\(\(\)=>false\)/)
+  assert.match(page,/const canEditConfig=!productionRoot\|\|configEditEnabled/)
+  assert.match(page,/setConfigEditEnabled\(false\)/)
+  assert.match(page,/setConfigEditEnabled\(serverConfigAllowed\)/)
+  assert.match(page,/\{canEditConfig&&<CreateCard title="创建 Agent 配置"/)
+  assert.match(page,/\{canEditConfig&&<CreateCard title="创建 Workflow"/)
+  assert.match(page,/\{canEditConfig&&<CreateCard title="创建知识库"/)
+  assert.match(page,/\{editing&&canEditConfig&&editing.kind===section&&/)
+  for(const pattern of [
+    /RunUatPanel&&!productionRoot/,
+    /TextIngestUatPanel&&!productionRoot/,
+    /AgentKnowledgeUatPanel&&!productionRoot/,
+    /section==="employees"&&profile\.is_admin&&!productionRoot/
+  ])assert.match(page,pattern)
+})
 test("first anonymous GET /me 401 is a normal login page, not a false authentication error",()=>{
   const page=fs.readFileSync(path.join(root,
     "src/pages/PgNativePilot/PgNativePilotPage.tsx"),"utf8")

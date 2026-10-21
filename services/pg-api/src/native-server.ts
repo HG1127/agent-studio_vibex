@@ -260,6 +260,7 @@ export async function startNativePg18Server(
     const auth=new NativeAuthRepository(adapter(authPool))
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+      allowConfigurationWrites:capabilities.configurationWrites,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an

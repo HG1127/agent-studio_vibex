@@ -52,6 +52,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [profile,setProfile]=useState<PgNativeStaff|null>(null)
   const [section,setSection]=useState<Screen>("agents")
   const [loading,setLoading]=useState(false)
+  const [configEditEnabled,setConfigEditEnabled]=useState(false)
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState("")
   const [notice,setNotice]=useState("")
@@ -72,18 +73,25 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [staffPassword,setStaffPassword]=useState("")
   const refresh=useCallback(async()=>{
     const ticket=sessionFence.current.beginRead()
+    setConfigEditEnabled(false)
     setLoading(true)
     try{
-      const [a,w,k]=await Promise.all([
-        api.listAgents(),api.listWorkflows(),api.listKnowledge()
+      const [a,w,k,serverConfigAllowed]=await Promise.all([
+        api.listAgents(),api.listWorkflows(),api.listKnowledge(),
+        // Fail closed if the employee-authenticated capability is unavailable.
+        productionRoot?api.getConfigCapabilities()
+          .then(value=>value.config_writes_enabled).catch(()=>false)
+          :Promise.resolve(false),
       ])
       if(!sessionFence.current.acceptsRead(ticket))return
-      setAgents(a);setWorkflows(w);setKnowledge(k);setError("")
+      setAgents(a);setWorkflows(w);setKnowledge(k)
+      setConfigEditEnabled(serverConfigAllowed);setError("")
     }catch(err){
       if(!sessionFence.current.acceptsRead(ticket))return
       if(err instanceof PgNativePilotError&&err.status===401){
         sessionFence.current.invalidate()
         setProfile(null);setStatus("signedout")
+        setConfigEditEnabled(false)
         setAgents([]);setWorkflows([]);setKnowledge([])
         setEditing(null);setDetailTarget(null);setLoading(false)
       }
@@ -91,7 +99,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     }finally{
       if(sessionFence.current.acceptsRead(ticket))setLoading(false)
     }
-  },[api])
+  },[api,productionRoot])
   useEffect(()=>{
     let active=true
     const sessionAtStart=sessionFence.current.session()
@@ -125,6 +133,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     }
     if(busy)return
     const sessionAtStart=sessionFence.current.invalidate()
+    setConfigEditEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([])
     setEditing(null);setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
@@ -149,6 +158,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     const sessionAtStart=sessionFence.current.invalidate()
     // Hide all private information before the network logout completes.
     setProfile(null);setStatus("checking")
+    setConfigEditEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([])
     setEditing(null);setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
@@ -205,6 +215,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       [{key:"runs" as const,label:"运行与审批 UAT",icon:ClipboardCheck,count:null}]:[]),
     {key:"employees" as const,label:"员工管理",icon:Users,count:null},
   ]
+  // The API alone grants metadata write permission to an authenticated user.
+  // Browser flags cannot unlock production configuration editing.
+  const canEditConfig=!productionRoot||configEditEnabled
   // The independent PG18 build may be hosted only on company-trusted HTTPS.
   // Never display password input or initiate login on a plain HTTP origin.
   if(productionRoot && typeof window!=="undefined" &&
@@ -296,7 +309,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
           </nav>
           <section className="min-w-0 space-y-5">
             {section==="agents"&&<>
-              {!productionRoot&&<CreateCard title="创建 Agent 配置" description="创建后写入本人独立的 PG18 Agent 记录，不会自动运行。">
+              {canEditConfig&&<CreateCard title="创建 Agent 配置" description="创建后写入本人独立的 PG18 Agent 记录，不会自动运行。">
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>
                   api.createAgent(newName.trim(),newGoal.trim()),"Agent 配置已保存")}}>
                   <input required maxLength={120} className={field} placeholder="Agent 名称" value={newName} onChange={e=>setNewName(e.target.value)}/>
@@ -308,13 +321,13 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 id:x.id,name:x.name,description:x.spec?.goal||"",
                 revision:x.revision,meta:"修订 "+x.revision}))}
                 onInspect={item=>setDetailTarget({kind:"agents",id:item.id})}
-                onEdit={!productionRoot?item=>setEditing({
+                onEdit={canEditConfig?item=>setEditing({
                   kind:"agents",id:item.id,revision:item.revision,
                   name:item.name,detail:item.description
                 }):undefined}/>
             </>}
             {section==="workflows"&&<>
-              {!productionRoot&&<CreateCard title="创建 Workflow" description="仅保存开始 → 结束的最小工作流，不会执行节点或调用模型。">
+              {canEditConfig&&<CreateCard title="创建 Workflow" description="仅保存开始 → 结束的最小工作流，不会执行节点或调用模型。">
                 <form className="flex flex-wrap gap-3" onSubmit={e=>{e.preventDefault();void action(()=>
                   api.createWorkflow(newName.trim()),"Workflow 结构已保存")}}>
                   <input required maxLength={120} className={field+" flex-1"} value={newName} placeholder="Workflow 名称" onChange={e=>setNewName(e.target.value)}/>
@@ -325,7 +338,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 id:x.id,name:x.name,description:"结构化工作流配置",
                 revision:x.revision,meta:"修订 "+x.revision}))}
                 onInspect={item=>setDetailTarget({kind:"workflows",id:item.id})}
-                onEdit={!productionRoot?item=>setEditing({
+                onEdit={canEditConfig?item=>setEditing({
                   kind:"workflows",id:item.id,revision:item.revision,
                   name:item.name,detail:""
                 }):undefined}/>
@@ -335,7 +348,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 agents={agents} bases={knowledge} onSaved={refresh}/>
             }
             {section==="knowledge"&&<>
-              {!productionRoot&&<CreateCard title="创建知识库" description="已支持本人已索引文本的关键词搜索；Embedding 和语义检索仍需后续联调。">
+              {canEditConfig&&<CreateCard title="创建知识库" description="已支持本人已索引文本的关键词搜索；Embedding 和语义检索仍需后续联调。">
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>
                   api.createKnowledge(newName.trim(),newDescription.trim()),"知识库已创建")}}>
                   <input required maxLength={120} className={field} placeholder="知识库名称" value={newName} onChange={e=>setNewName(e.target.value)}/>
@@ -347,7 +360,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 id:x.id,name:x.name,description:x.description,
                 revision:x.revision,meta:"修订 "+x.revision}))}
                 onInspect={item=>setDetailTarget({kind:"knowledge",id:item.id})}
-                onEdit={!productionRoot?item=>setEditing({
+                onEdit={canEditConfig?item=>setEditing({
                   kind:"knowledge",id:item.id,revision:item.revision,
                   name:item.name,detail:item.description
                 }):undefined}/>
@@ -366,7 +379,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             {section==="runs"&&RunUatPanel&&!productionRoot&&
               <RunUatPanel key={profile.id} api={api} agents={agents}/>
             }
-            {editing&&!productionRoot&&editing.kind===section&&
+            {editing&&canEditConfig&&editing.kind===section&&
               <PgConfigRecordEditor
                 key={editing.kind+":"+editing.id+":"+editing.revision}
                 target={editing} busy={busy}
@@ -384,7 +397,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               </CreateCard>}
           </section>
         </div>
-        <p className="text-center text-xs text-slate-400">{productionRoot?"独立 PostgreSQL 只读验证版 · Worker 未启用 · 正式迁移未完成":"开发模式试验页面 · 后台 Worker 已禁用 · 未批准正式切换"}</p>
+        <p className="text-center text-xs text-slate-400">{productionRoot?(configEditEnabled?"独立 PostgreSQL 受控配置管理 · Worker 未启用 · 正式迁移未完成":"独立 PostgreSQL 只读验证版 · Worker 未启用 · 正式迁移未完成"):"开发模式试验页面 · 后台 Worker 已禁用 · 未批准正式切换"}</p>
       </>}
     </div>
   </main>

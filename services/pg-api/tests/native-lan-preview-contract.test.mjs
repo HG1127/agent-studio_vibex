@@ -62,3 +62,37 @@ test("actual systemd nonroot readonly credential check fails before any socket w
   assert.match(service,/IPAddressAllow=127\.0\.0\.0\/8/)
   assert.doesNotMatch(service,/^\[Install\]$/m)
 })
+test("opt-in Native config-write vhost permits only Agent/Workflow/KB metadata routes",()=>{
+  const site=read("ops/templates/agentstudio-pg18-config-write-7443.conf.example")
+  assert.match(site,/listen 192\.168\.1\.133:7443 ssl;/)
+  assert.match(site,/location ~ "\^\/api\/v2\/\(agent-specs\|workflows\|knowledge-bases\)\$"/)
+  assert.match(site,/location ~ "\^\/api\/v2\/\(agent-specs\|workflows\|knowledge-bases\)\/\[0-9a-fA-F-\]\{36\}\$"/)
+  assert.match(site,/limit_except GET POST \{ deny all; \}/)
+  assert.match(site,/limit_except GET PATCH \{ deny all; \}/)
+  assert.match(site,/location \/api\/v2\/ \{\s*limit_except GET \{ deny all; \}/)
+  assert.match(site,/location \^~ \/api\/v2\/runs \{ return 404; \}/)
+  assert.match(site,/location = \/api\/native-auth\/employees \{ return 403;/)
+  assert.match(site,/proxy_set_header X-Rh-User-Id "";/)
+  assert.doesNotMatch(site,/location \^~ \/api\/v2\/ \{/)
+  // Audit method allowances per directive, not a cross-block /s regex:
+  // /api/v2/runs is intentionally listed as a denied location above.
+  const methodRules=site.split(/\r?\n/).map(line=>line.trim())
+    .filter(line=>line.startsWith("limit_except "))
+  const permittedMethods=[
+    "limit_except GET POST { deny all; }", // Native auth login/logout
+    "limit_except POST { deny all; }", // Bounded read-only KB search
+    "limit_except GET POST { deny all; }", // Three config collections
+    "limit_except GET PATCH { deny all; }", // Config UUID records
+    "limit_except GET { deny all; }", // Everything else
+  ]
+  assert.deepEqual(methodRules.sort(),permittedMethods.sort())
+  const locationLines=site.split(/\r?\n/).map(line=>line.trim())
+    .filter(line=>line.startsWith("location "))
+  assert.ok(locationLines.every(line=>
+    !/\/(document-files|text-documents|model-approval)(?:[\/$"]|$)/.test(line)),
+    "no upload, task approval or ingestion location is permitted")
+  assert.doesNotMatch(site,/proxy_pass.*(?:(?:8090|5333)|pocketbase)/i)
+  const base=read("ops/templates/agentstudio-pg18-standalone-7443.conf.example")
+  assert.match(base,/location \/api\/v2\/ \{\s*limit_except GET \{ deny all; \}/)
+  assert.doesNotMatch(base,/location ~ "\^\/api\/v2\/\(agent-specs\|workflows\|knowledge-bases\)/)
+})

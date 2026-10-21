@@ -1,0 +1,134 @@
+# CONFIG WRITES REVIEW ONLY — do not install/reload without operator-approved Native server policy.
+# Intended ONLY for independently trusted LAN TLS IP SAN 192.168.1.133.
+# Leaf certificate MUST contain subjectAltName=IP:192.168.1.133.
+# Must be included from an approved Nginx http{} vhost location.
+# Legacy 8090 PocketBase, panel port 82, sites on 80/443 stay unchanged.
+server {
+    listen 192.168.1.133:7443 ssl;
+    server_name 192.168.1.133;
+    ssl_certificate /www/server/panel/vhost/cert/agentstudio-pg18-lan/lan-ip-fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/agentstudio-pg18-lan/lan-ip-key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_tickets off;
+    allow 127.0.0.1;
+    allow 192.168.1.0/24;
+    deny all;
+    if ($http_host != "192.168.1.133:7443") { return 421; }
+
+    root /opt/agentstudio-pg18-native-preview/www;
+    index index.html;
+    autoindex off;
+    client_max_body_size 16k;
+    client_body_timeout 12s;
+    send_timeout 15s;
+    access_log off;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Frame-Options DENY always;
+    add_header Cache-Control "no-store" always;
+    add_header Content-Security-Policy "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;" always;
+
+    # Immutable Vite assets are checksummed before operator approval.
+    location ^~ /assets/ {
+        try_files $uri =404;
+    }
+    location = / {
+        try_files /index.html =404;
+    }
+    location = /index.html {
+        try_files /index.html =404;
+    }
+    location ~ /[.] {
+        return 404;
+    }
+
+    # Employee creation remains off during this read-only pilot.
+    location = /api/native-auth/employees { return 403; }
+    location ^~ /api/native-auth/ {
+        limit_except GET POST { deny all; }
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;
+    }
+
+    # No model/task submission, approvals or worker execution on this site.
+    location ^~ /api/v2/runs { return 404; }
+    # Keyword matching is read-only SQL, but POST keeps private search terms
+    # out of URL/access logs. Narrowly allow this POST URL only.
+    location ~ "^/api/v2/knowledge-bases/[0-9A-Fa-f-]{36}/search$" {
+        limit_except POST { deny all; }
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;
+    }
+    # All other business endpoints only expose employee-owned GET metadata.
+    # REVIEW ONLY: POST/PATCH metadata allowed by path, but still denied
+    # by Native API unless nonroot HTTPS operator UAT is approved.
+    # Never enable employee creation, Run/approvals, file uploads or jobs.
+    location ~ "^/api/v2/(agent-specs|workflows|knowledge-bases)$" {
+        limit_except GET POST { deny all; }
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;
+    }
+    location ~ "^/api/v2/(agent-specs|workflows|knowledge-bases)/[0-9a-fA-F-]{36}$" {
+        limit_except GET PATCH { deny all; }
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;
+    }
+    location /api/v2/ {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;
+    }
+    location / { return 404; }
+}

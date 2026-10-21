@@ -1,6 +1,9 @@
 /** Separate, local-only PostgreSQL 18 native-auth test client.
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
+export type PgNativeConfigCapabilities={
+  mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
+}
 export type PgNativeStaff={
   id:string;email:string;display_name:string;is_admin:boolean
 }
@@ -69,6 +72,7 @@ const routes={
   login:"/api/native-auth/login",
   me:"/api/native-auth/me",
   logout:"/api/native-auth/logout",
+  capabilities:"/api/native-auth/capabilities",
   employees:"/api/native-auth/employees",
   agents:"/api/v2/agent-specs",
   workflows:"/api/v2/workflows",
@@ -201,6 +205,14 @@ export function createPgNativePilotApi(
     request<T>(route,"PATCH",body,transport,rootPath)
   return {
     me:async()=> (await get<{authenticated:true;user:PgNativeStaff}>(routes.me)).user,
+    getConfigCapabilities:async()=>{
+      const value=await get<PgNativeConfigCapabilities>(routes.capabilities)
+      if(value?.mode!=="native_pg18"||
+         typeof value.config_writes_enabled!=="boolean"||
+         value.run_execution_enabled!==false)
+        throw new PgNativePilotError(503,"invalid_native_capabilities")
+      return value
+    },
     login:(email:string,password:string)=>post<{authenticated:true;role:string}>(
       routes.login,{email,password}),
     logout:()=>post<{ok:true}>(routes.logout,{}),
