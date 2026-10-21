@@ -1,0 +1,25 @@
+[Unit]
+Description=Agent Studio LAN automatic deployment failure notification
+After=systemd-journald.socket
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /usr/local/libexec/agentstudio-lan/notify-failure.py
+TimeoutStartSec=35s
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/backups/agentstudio-lan/alerts
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agentstudio-lan-alert
