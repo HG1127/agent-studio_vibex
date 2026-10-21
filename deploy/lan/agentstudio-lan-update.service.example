@@ -2,6 +2,7 @@
 Description=Agent Studio LAN outbound GitHub CI-gated updater (no inbound SSH)
 Wants=network-online.target
 After=network-online.target
+OnFailure=agentstudio-lan-update-alert.service
 
 [Service]
 Type=oneshot
@@ -25,5 +26,8 @@ ProtectSystem=strict
 # nginx -t opens /www/server/nginx/logs/nginx.pid and BaoTa's
 # /www/wwwlogs/nginx_error.log (plus tcp-error.log) during validation.
 # Grant only these log directories, not all of /www or /run.
-ReadWritePaths=/srv/agent-studio-lan /var/backups/agentstudio-lan /var/lib/agentstudio-build /www/server/nginx/logs /www/wwwlogs
+# After PocketBase/Worker stop, WAL/SHM may disappear. SQLite mode=ro
+# still needs this exact directory writable to reopen the offline WAL DB.
+# Keep the root controller's PRAGMA query_only and idle/unchanged-data gates.
+ReadWritePaths=/srv/agent-studio-lan /var/backups/agentstudio-lan /var/lib/agentstudio-build /www/server/nginx/logs /www/wwwlogs /var/lib/agentstudio-lan/pb_data
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

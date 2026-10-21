@@ -25,6 +25,8 @@ def load(name, relative):
 CI = load("ci_lan_test", "deploy/lan/ci-gate.py")
 PULL = load("pull_lan_test", "deploy/lan/pull-update.py")
 LAN = load("release_lan_test", "deploy/lan/agentstudio-lan-deploy.py")
+ALERT = load("alert_lan_test", "deploy/lan/notify-failure.py")
+
 SHA_A = "a" * 40
 SHA_B = "b" * 40
 
@@ -842,6 +844,118 @@ class LANReleaseSafety(unittest.TestCase):
             with self.assertRaisesRegex(PULL.PullBlocked, "invalid_stage_diagnostic_phase"):
                 PULL.subprocess_checked(["false"], phase="--secret_api_token")
         runner.assert_not_called()
+
+
+class LANFailureAlertSecurity(unittest.TestCase):
+    def test_allowed_webhook_hosts_and_shapes_only(self):
+        good = (
+            ("feishu", "https://open.feishu.cn/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa"),
+            ("feishu", "https://open.larksuite.com/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa"),
+            ("wecom", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=aaaaaaaaaaaaaaaaaaaa"),
+        )
+        for provider, url in good:
+            with self.subTest(provider=provider, url=url):
+                payload = json.dumps({"provider": provider, "webhook_url": url}).encode()
+                self.assertEqual(ALERT.webhook_config(payload)["provider"], provider)
+        for url in (
+            "http://open.feishu.cn/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa",
+            "https://evil.invalid/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa",
+            "https://user:password@open.feishu.cn/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa",
+            "https://open.feishu.cn:8443/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa",
+            "https://open.feishu.cn/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa#fragment",
+            "https://open.feishu.cn/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa?next=x",
+            "https://open.feishu.cn@127.0.0.1/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa",
+            "https://127.0.0.1/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(ALERT.AlertError):
+                    ALERT.webhook_config(json.dumps({
+                        "provider": "feishu", "webhook_url": url}).encode())
+        with self.assertRaises(ALERT.AlertError):
+            ALERT.webhook_config(b'{"provider":"wecom","webhook_url":"https://evil.invalid"}')
+
+    def test_alert_is_inert_after_success_and_never_sends_without_config(self):
+        with patch.object(ALERT, "status", return_value={
+                    "ActiveState": "inactive", "Result": "success", "ExecMainStatus": "0"}), \
+             patch.object(ALERT, "save_incident") as save, \
+             patch.object(ALERT, "post_webhook") as post:
+            self.assertEqual(ALERT.main([]), 0)
+            save.assert_not_called()
+            post.assert_not_called()
+        with patch.object(ALERT, "status", return_value={
+                    "ActiveState": "failed", "Result": "exit-code", "ExecMainStatus": "2"}), \
+             patch.object(ALERT, "current_sha", return_value=SHA_A), \
+             patch.object(ALERT, "failure_classification", return_value="stage_git_clone_timeout"), \
+             patch.object(ALERT, "save_incident", return_value=Path("incident.json")) as save, \
+             patch.object(ALERT, "safe_file", return_value=None), \
+             patch.object(ALERT, "post_webhook") as post:
+            self.assertEqual(ALERT.main([]), 0)
+            saved = save.call_args.args[0]
+            self.assertEqual(saved["current_sha"], SHA_A)
+            self.assertEqual(saved["category"], "stage_git_clone_timeout")
+            self.assertEqual(saved["unit"], ALERT.UPDATER)
+            post.assert_not_called()
+
+    def test_classification_does_not_print_log_secrets(self):
+        entries = ("LAN_PULL_BLOCKED:stage_git_clone_timeout\n"
+                   "AUTH_PASSWORD=do_not_log_me\n"
+                   "LAN_DEPLOY_FAILED_REQUIRES_OPERATOR; database never auto-restored\n")
+        with patch.object(ALERT.subprocess, "check_output", return_value=entries):
+            self.assertEqual(ALERT.failure_classification(), "deploy_failed_requires_operator")
+        entries = "LAN_PULL_BLOCKED:secret=MYTOKEN https://malicious.invalid\n"
+        with patch.object(ALERT.subprocess, "check_output", return_value=entries):
+            self.assertEqual(ALERT.failure_classification(), "unspecified_failure")
+
+    def test_error_classifier_ignores_older_service_invocations(self):
+        logs = ("Starting agentstudio-lan-update.service\n"
+                "LAN_PULL_BLOCKED:old_failure\n"
+                "Starting agentstudio-lan-update.service\n"
+                "LAN_PULL_BLOCKED:new_failure\n")
+        with patch.object(ALERT.subprocess, "check_output", return_value=logs):
+            self.assertEqual(ALERT.failure_classification(), "new_failure")
+        logs = ("Starting agentstudio-lan-update.service\n"
+                "LAN_PULL_BLOCKED:old_failure\n"
+                "Starting agentstudio-lan-update.service\n"
+                "something unrelated\n")
+        with patch.object(ALERT.subprocess, "check_output", return_value=logs):
+            self.assertEqual(ALERT.failure_classification(), "unspecified_failure")
+
+    def test_webhook_delivery_disables_proxies_and_redirects(self):
+        opener = SimpleNamespace(open=unittest.mock.MagicMock())
+        resp = opener.open.return_value.__enter__.return_value
+        resp.status = 200
+        resp.read.return_value = b'{"code":0}'
+        cfg = ALERT.webhook_config(json.dumps({
+            "provider": "feishu",
+            "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/aaaaaaaaaaaaaaaaaaaa"}).encode())
+        with patch.object(ALERT, "build_opener", return_value=opener) as build:
+            ALERT.post_webhook(cfg, "test only")
+        self.assertEqual(build.call_args.args[0].proxies, {})
+        self.assertIsInstance(build.call_args.args[1], ALERT.RejectRedirect)
+        with self.assertRaisesRegex(ALERT.AlertError, "redirect_forbidden"):
+            ALERT.RejectRedirect().redirect_request(None, None, 302, "", {}, cfg["webhook_url"])
+
+    def test_incident_file_is_unique_and_private(self):
+        with tempfile.TemporaryDirectory(prefix="lan-alert-unit-") as root:
+            folder = Path(root)
+            with patch.object(ALERT, "ALERT_DIR", folder), \
+                 patch.object(ALERT, "verified_directory"):
+                incident = ALERT.save_incident({"category": "test_only", "schema": 1})
+                self.assertTrue(incident.is_file())
+                self.assertEqual(json.loads(incident.read_text())["category"], "test_only")
+                if os.name != "nt":
+                    self.assertEqual(incident.stat().st_mode & 0o777, 0o600)
+
+    def test_template_wires_onfailure_but_never_auto_deploys_in_alert_service(self):
+        service = (ROOT / "deploy/lan/agentstudio-lan-update.service.example").read_text()
+        alert = (ROOT / "deploy/lan/agentstudio-lan-update-alert.service.example").read_text()
+        self.assertIn("OnFailure=agentstudio-lan-update-alert.service", service)
+        self.assertIn("ProtectSystem=strict", alert)
+        self.assertIn("NoNewPrivileges=true", alert)
+        self.assertIn("ReadWritePaths=/var/backups/agentstudio-lan/alerts", alert)
+        self.assertIn("/usr/local/libexec/agentstudio-lan/notify-failure.py", alert)
+        self.assertNotIn("pull-update.py --auto", alert)
+        self.assertNotIn("systemctl restart", alert)
 
 
 if __name__ == "__main__":
