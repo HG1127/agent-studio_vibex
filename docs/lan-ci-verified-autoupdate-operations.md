@@ -115,6 +115,14 @@ nginx/current 和 PB hooks/Worker 路径尚未连接时，先按原 LAN 基线�
 
 自动更新器执行 nginx -t 时会按现有宝塔 Nginx 配置访问两个日志目录：/www/server/nginx/logs/nginx.pid，以及 /www/wwwlogs/nginx_error.log 和 /www/wwwlogs/tcp-error.log。此前仅放行 /www/server/nginx/logs 后，独立 systemd-run 测试仍因 /www/wwwlogs/nginx_error.log 的 EROFS 失败。因此 update unit 必须在保留 ProtectSystem=strict 的同时把这两个日志目录都列入 ReadWritePaths，**不得**放开整个 /www、/run 或关闭 nginx -t。先在生产服务器执行仅包含这两个日志目录的独立 nginx -t 沙盒测试，确认退出码 0，才允许更新 unit 并 systemctl daemon-reload；若仍失败，保持 timer 禁用并根据真实日志定位其他路径。
 
+## 停服后的 SQLite WAL 沙盒权限（2026-10-21）
+
+实际内网自动更新验证中，Git/pnpm/构建/`nginx -t` 已通过，但在停止 PocketBase 和 Worker 之后执行第二次 `idle_snapshot()` 时出现 `LAN_PULL_BLOCKED:idle_database_schema_or_read_failed`，控制器已回滚至原版本。生产 DB 在两个服务运行时为 WAL 模式，`PRAGMA quick_check=ok`，定时器已人工禁用。独立合成 WAL 数据库（最后连接关闭、`-wal`/`-shm` 消失）在 `ProtectSystem=strict` 的原系统沙盒内只读打开失败（EXIT=1），只给合成库目录写例外后成功（EXIT=0）。该对照试验说明离线 WAL 初始化可能需要所在目录可写，但不能替代真实生产最终验收。
+
+只在 `agentstudio-lan-update.service` 中额外允许 `ReadWritePaths=/var/lib/agentstudio-lan/pb_data`，并保留已审核的 `/www/server/nginx/logs`、`/www/wwwlogs` 和构建/备份目录；**不得**扩大到 `/var/lib`、`/var/lib/agentstudio-lan` 或 `/`。此项是 systemd mount 权限例外，不修改数据库目录所有权、数据文件或 WAL/SHM；更新控制器仍以 URI `mode=ro` + `PRAGMA query_only=ON`、活跃任务检查、两次逻辑数据库指纹一致、停服与完整备份/回滚为条件，禁止自动执行迁移。
+
+运维安装前必须保持 timer 禁用，确认没有自动更新进程，备份当前 unit，验证新 unit SHA 与成功 CI 的审查版本，原子安装后 `systemctl daemon-reload`；先核对生效 `ReadWritePaths` 的精确范围，使用合成 WAL/临时 systemd 沙盒验证，再安排无人工作的维护窗口进行真实发布（可能重启 PB/Worker）。SQLite 出错、数据变化或恢复失败时停用定时器，记录日志，不删除真实 `-wal`/`-shm`，不恢复 DB，也不在未知状态下重复发布。
+
 ## 模拟、基线升级与验收
 
 ```bash
