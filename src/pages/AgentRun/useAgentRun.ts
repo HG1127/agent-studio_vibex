@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import { tickAgentRun } from "@/lib/agentEngine"
-import type { AgentSpec, SavedSpecRow } from "@/pages/Home/useHome"
+import type { AgentSpec, ConnectedToolOption, SavedSpecRow } from "@/pages/Home/useHome"
 import { PROVIDER_META, normalizeProvider } from "@/pages/ModelConnections/useModelConnections"
 import { normalizeAgentQualityChecks, type AgentQualityCheck } from "@/lib/agentQualityChecks"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
+import { agentRunReadiness, enabledRunToolConnections } from "@/lib/agentRunReadiness"
 
 export type { AgentSpec, SavedSpecRow }
 
@@ -244,10 +245,10 @@ export function useAgentRun() {
   const [runHistory, setRunHistory] = useState<AgentRunRow[]>([])
   const [copiedFlag, setCopiedFlag] = useState(false)
   const [customModels, setCustomModels] = useState<CustomModelOption[]>([])
-  const [connectedToolNames, setConnectedToolNames] = useState<string[]>([])
-  const [marketToolCount, setMarketToolCount] = useState(0)
+  const [connectedTools, setConnectedTools] = useState<ConnectedToolOption[]>([])
   const [connectedMarketTools, setConnectedMarketTools] = useState<VerifiedMarketTool[]>([])
-  const [toolConnectionsLoading, setToolConnectionsLoading] = useState(false)
+  const [toolConnectionsLoading, setToolConnectionsLoading] = useState(true)
+  const [toolConnectionsError, setToolConnectionsError] = useState("")
 
   // 审批门 + 方案记忆（harness 增强批次）
   const [requireApproval, setRequireApproval] = useState(false)
@@ -285,8 +286,16 @@ export function useAgentRun() {
   const pollBusyRef = useRef(false)
   const specParamAppliedRef = useRef(false)
   const optimizeRunIdRef = useRef("")
+  const toolConnectionRequestRef = useRef(0)
 
   const selectedSpec = specList.find((row) => row.id === selectedSpecId) || null
+  const connectedToolNames = connectedTools.map(tool => tool.name)
+  const marketToolCount = connectedMarketTools.length
+  const runReadiness = useMemo(() => agentRunReadiness(selectedSpec?.spec || null, {
+    connections: connectedTools,
+    marketTools: connectedMarketTools,
+    disabledToolIds: BUILTIN_TOOLS.filter(tool => !enabledTools.includes(tool.id)).map(tool => tool.id),
+  }), [selectedSpec?.spec, connectedTools, connectedMarketTools, enabledTools])
   // History review must optimize its own Agent, never whichever Agent is selected in the left sidebar.
   const optimizationSpec = activeRun ? specList.find(row => row.id === activeRun.spec_id) || null : null
   // Only the server can confirm a saved optimization audit still matches
@@ -474,26 +483,26 @@ export function useAgentRun() {
   },[rhUserId,loadSpecList,selectedSpecId,activeRun?.spec_id])
 
   const refreshToolConnections = useCallback(async () => {
+    const requestId = ++toolConnectionRequestRef.current
     setToolConnectionsLoading(true)
-    try {
-      const [toolsRes, marketRes] = await Promise.all([
-        fetch(`${base}/api/tool-connections`, { headers: { ...vibexAuthHeaders() } }),
-        fetch(`${base}/api/market/connections`, { headers: { ...vibexAuthHeaders() } }),
-      ])
-      if (toolsRes.ok) {
-        const json = await toolsRes.json()
-        const rows: {name: string; enabled: boolean}[] = Array.isArray(json.items) ? json.items : []
-        setConnectedToolNames(rows.filter(row => row.enabled && row.name).map(row => row.name))
-      }
-      if (marketRes.ok) {
-        const json = await marketRes.json()
-        const options = getVerifiedMarketTools(json?.items)
-        setConnectedMarketTools(options)
-        setMarketToolCount(options.length)
-      }
-    } catch {
-      // 网络错误保留原有状态；未核验的工具绝不标为已连接。
-    } finally { setToolConnectionsLoading(false) }
+    setToolConnectionsError("")
+    const readItems = async (path: string) => {
+      const response = await fetch(`${base}${path}`, { headers: { ...vibexAuthHeaders() }, signal: AbortSignal.timeout(12000) })
+      if (!response.ok) throw new Error("connection_list_unavailable")
+      const json = await response.json()
+      if (!Array.isArray(json?.items)) throw new Error("invalid_connection_list")
+      return json.items as unknown[]
+    }
+    const [http, market] = await Promise.allSettled([
+      readItems("/api/tool-connections"), readItems("/api/market/connections"),
+    ])
+    if (requestId !== toolConnectionRequestRef.current) return
+    // Failed or stale reads never retain a prior verified capability for a new run.
+    setConnectedTools(http.status === "fulfilled" ? enabledRunToolConnections(http.value) : [])
+    setConnectedMarketTools(market.status === "fulfilled" ? getVerifiedMarketTools(market.value) : [])
+    if (http.status === "rejected" || market.status === "rejected")
+      setToolConnectionsError("部分工具连接暂时无法核验，请刷新连接状态后检查所需能力。")
+    setToolConnectionsLoading(false)
   }, [base])
 
   useEffect(() => {
@@ -799,7 +808,7 @@ export function useAgentRun() {
       return
     }
     if (!selectedSpec) {
-      setErrorMsg("请先在左侧选择一个助手方案")
+      setErrorMsg("请先在「本次任务与运行设置」中选择一个已保存的助手方案")
       return
     }
     if (!instruction.trim()) {
@@ -811,9 +820,17 @@ export function useAgentRun() {
       return
     }
     if (isStarting || startInFlightRef.current || (activeRun && LIVE_STATES.includes(activeRun.status))) return
+    if (toolConnectionsLoading) {
+      setErrorMsg("正在核验工具连接，请稍候再试跑")
+      return
+    }
+    if (!runReadiness.ready) {
+      setErrorMsg("请先补齐运行配置：" + runReadiness.issues.join("；"))
+      return
+    }
     // 自备密钥批次：模型调用走用户自己的模型连接，无平台计费，直接启动
     void doStartRun()
-  }, [rhUserId, selectedSpec, instruction, isStarting, activeRun, model, doStartRun])
+  }, [rhUserId, selectedSpec, instruction, isStarting, activeRun, model, doStartRun, toolConnectionsLoading, runReadiness])
 
   // 双渠道对应批次：把当前方案一键生成工作流画布并跳过去继续微调
   const navigate = useNavigate()
@@ -1390,8 +1407,10 @@ export function useAgentRun() {
     model,
     setModel,
     connectedToolNames,
+    runReadiness,
     marketToolCount,
     toolConnectionsLoading,
+    toolConnectionsError,
     connectedMarketTools,
     refreshToolConnections,
     builtinTools: BUILTIN_TOOLS,

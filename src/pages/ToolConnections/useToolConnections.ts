@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { OPEN_METEO_EXAMPLE, inspectToolRequest, isOpenMeteoForecast } from "@/lib/toolConnectionUx"
+import { executionConnectionPreset } from "@/lib/executionCapabilities"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
@@ -60,6 +62,10 @@ class AuthRequiredError extends Error {}
 
 export function useToolConnections() {
   const base = getPocketBaseUrl()
+  const [searchParams] = useSearchParams()
+  const requestedPreset = executionConnectionPreset(searchParams.get("preset"))
+  const requestedConnection = searchParams.get("connection") || ""
+  const appliedEntryRef = useRef("")
 
   const [rhUserId] = useState(() => {
     const payload = decodeRhToken()
@@ -221,6 +227,33 @@ export function useToolConnections() {
     },
     [],
   )
+
+  // Entry links contain only a known preset or an owned record ID. No endpoint,
+  // credential or arbitrary template is imported from URL parameters.
+  useEffect(() => {
+    if (formOpen || !rhUserId) return
+    if (requestedPreset && appliedEntryRef.current !== `preset:${requestedPreset.id}`) {
+      appliedEntryRef.current = `preset:${requestedPreset.id}`
+      resetFormState()
+      invalidateFormTest()
+      setFormMode("add")
+      setEditingId("")
+      setFormName(requestedPreset.name)
+      setFormDesc(requestedPreset.description)
+      setFormMethod(requestedPreset.method)
+      setFormBody(requestedPreset.bodyTemplate)
+      setTestInput(requestedPreset.exampleInput)
+      setFormOpen(true)
+      setNoticeMsg("已填入「" + requestedPreset.title + "」接入模板。请填写实际执行器地址与凭据，再测试和保存。" + requestedPreset.contract)
+      return
+    }
+    if (!/^[A-Za-z0-9]{15}$/.test(requestedConnection) || appliedEntryRef.current === `connection:${requestedConnection}`) return
+    const row = toolList.find(item => item.id === requestedConnection)
+    if (!row) return
+    appliedEntryRef.current = `connection:${requestedConnection}`
+    invalidateFormTest()
+    startEdit(row)
+  }, [formOpen, rhUserId, requestedPreset, requestedConnection, toolList, resetFormState, invalidateFormTest, startEdit])
 
   const closeForm = useCallback(() => {    setConfirmFormWrite(false)
     setFormOpen(false)

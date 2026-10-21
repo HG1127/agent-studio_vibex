@@ -108,7 +108,7 @@ export function AgentVersionHistory({specId,currentHash,current,onRestored}:{
   if(!window.confirm(
    "确定恢复到 "+time(target.occurred_ms)+" 的描述/任务规划？\n"+
    "仅更改目标、任务范围、计划、交付物及完成标准；"+
-   "不会恢复模型、工具、知识库或执行权限。\n"+
+   "角色分工、能力需求、模型、工具与知识库授权保留当前配置。\n"+
    "所有待审核草稿将取消，并保留完整审计。"
   ))return
   setBusy(true);setError("");setNotice("")
@@ -130,7 +130,7 @@ export function AgentVersionHistory({specId,currentHash,current,onRestored}:{
     <History size={17}/>Agent 描述与规划版本
    </h3>
    <p className="mt-1 text-xs text-muted-foreground">
-    记录 Owner 直接修改、协作审核和恢复产生的安全文本版本；不存储模型密钥或受保护配置。
+    记录目标、任务范围、步骤、交付物与完成标准的历史。角色分工与能力需求随当前方案保存，恢复描述版本时保留当前配置。
    </p></div>
    <button type="button" onClick={()=>setNonce(x=>x+1)}
     className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-secondary">
@@ -162,8 +162,8 @@ export function AgentVersionHistory({specId,currentHash,current,onRestored}:{
     <AgentPlanDiff current={current} proposed={target.safe}/>
     <p className="flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
      <ShieldCheck className="h-4 w-4 shrink-0"/>
-     恢复只作用于文本与规划，且需要当前完整配置版本匹配。受保护的工具、模型、
-     知识库授权不会被旧快照覆盖。
+     恢复目标、范围、步骤、交付物和完成标准，且需要当前完整配置版本匹配。
+     角色分工、能力需求、工具、模型与知识库授权保留当前配置。
     </p>
     <label className="block text-xs font-medium">恢复理由（仅所有者可操作）
      <textarea rows={2} value={reason} maxLength={500}

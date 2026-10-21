@@ -14,6 +14,7 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
 import { evaluateAgentJourney } from "@/lib/agentCreateJourney"
 import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { agentCapabilityReadiness } from "@/lib/agentCapabilityPlan"
 
 const STAGES = [
   {id:"describe",label:"描述需求",hint:"一句话明确目标"},
@@ -33,7 +34,7 @@ const NEED_EXAMPLES = [
 ]
 
 type ModelState="loading"|"ready"|"unavailable"
-type RecentRun={id:string;spec_id:string;status:string;created:string;instruction:string;result?:string}
+type RecentRun={id:string;spec_id:string;status:string;created:string;instruction:string;result?:string;spec_snapshot?:unknown}
 function progressFromQuery(raw:string|null):number{
   const val=Number.parseInt(raw||"1",10)
   return Number.isFinite(val)?Math.max(0,Math.min(4,val-1)):0
@@ -107,10 +108,10 @@ export default function AgentCreateRoute() {
           headers:{...vibexAuthHeaders()},
         })
         if(!detail.ok)throw new Error("无法核验最近试跑的真实输出")
-        const response=await detail.json() as {run?:{id:string;spec_id:string;status:string;result:string}}
+        const response=await detail.json() as {run?:{id:string;spec_id:string;status:string;result:string};spec_snapshot?:unknown}
         if(response.run?.id!==recent.id || response.run.spec_id!==p.savedSpecId ||
           response.run.status!=="succeeded") throw new Error("试跑详情身份或状态不一致")
-        setRun({...recent,result:response.run.result})
+        setRun({...recent,result:response.run.result,spec_snapshot:response.spec_snapshot})
       } else setRun(recent)
       setRunChecked(true)
     }catch{
@@ -131,8 +132,9 @@ export default function AgentCreateRoute() {
     toolStatusOf:p.toolStatusOf,
     accessibleKnowledgeBaseIds:p.knowledgeBases.map(item=>item.id),
     run,lastSavedAt:p.lastSavedAt,
+    capabilityIssues:p.spec?agentCapabilityReadiness(p.spec,p.toolAnalysis,p.connectedTools,p.connectedMarketTools):[],
   }),[p.spec,p.specName,p.savedSpecId,p.specDirty,p.toolStatusOf,
-    p.knowledgeBases,enabledModels,modelState,run,p.lastSavedAt])
+    p.knowledgeBases,enabledModels,modelState,run,p.lastSavedAt,p.toolAnalysis,p.connectedTools,p.connectedMarketTools])
   const planReady=Boolean(p.spec && p.savedSpecId && !p.specDirty &&
     evaluated.planIssues.length===0)
   const maxStep=evaluated.canPublish?4:evaluated.canTry?3:planReady?2:p.spec?1:0
@@ -152,7 +154,7 @@ export default function AgentCreateRoute() {
   }
 
   const editorProps = p.spec ? {
-    spec:p.spec,specName:p.specName,sourceMode:p.sourceMode,
+    spec:p.spec,onSpecChange:p.updateFullSpec,specName:p.specName,sourceMode:p.sourceMode,
     onSpecNameChange:p.setSpecName,onTextChange:p.updateSpecText,
     onTogglePlanReview:p.togglePlanReview,
     onListItemChange:p.updateSpecListItem,onListItemAdd:p.addSpecListItem,
@@ -167,6 +169,7 @@ export default function AgentCreateRoute() {
     onToggleTool:p.handleToggleSpecTool,reviseInput:p.reviseInput,
     onReviseInputChange:p.setReviseInput,onRevise:p.handleRevise,
     isRevising:p.isRevising,onSave:p.handleSave,isSaving:p.isSaving,dirty:p.specDirty,
+    revisionProposal:p.revisionProposal,onApplyRevision:p.applyRevisionProposal,onDiscardRevision:p.discardRevisionProposal,
     savedMsg:p.savedMsg,savedSpecId:p.savedSpecId,onClear:p.handleClearSpec,
     saveConflict:p.saveConflict,onSaveAsCopy:p.handleSaveAsCopy,
   } : null
@@ -198,10 +201,10 @@ export default function AgentCreateRoute() {
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="min-w-0">
             <h1 className="text-xl font-bold tracking-tight text-card-foreground sm:text-2xl">
-              创建一个真正可运行的 Agent
+              设计你的 Agent
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              从描述需求开始，逐步配置并完成试跑。
+              描述目标，安排角色，由 Harness 帮你规划工具，再用真实任务试跑。
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
@@ -275,7 +278,7 @@ export default function AgentCreateRoute() {
           </>}
 
           {step===1 && <>
-            <h2 className="text-base font-semibold">第二步 · 审核目标、任务规划与完成标准</h2>
+            <h2 className="text-base font-semibold">第二步 · 设计目标、角色分工与完成标准</h2>
             {editorProps ? <SpecEditorCard {...editorProps} focus="plan"/>:
               <p className="rounded-xl border border-border bg-card p-6 text-sm">请先在第一步生成方案。</p>}
             <p className="text-xs text-muted-foreground">必须保存经过审阅的方案，才能进入资源连接步骤。</p>

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useId, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import {
   ArrowRight,
@@ -15,19 +15,23 @@ import {
   Target,
   Wand2,
   Wrench,
+  UsersRound,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { AgentSpec, ListField } from "@/pages/Home/useHome"
+import type { AgentSpec, ConnectedToolOption, ListField } from "@/pages/Home/useHome"
 import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
 import type { ToolResolution } from "@/lib/agentToolMatcher"
 import { safeMarketplaceQuery, addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
-import { AgentToolAutoConnect } from "@/components/home/AgentToolAutoConnect"
+import { AgentCapabilityPlanner } from "@/components/home/AgentCapabilityPlanner"
+import { AgentRoleDesigner } from "@/components/agents/AgentRoleDesigner"
+import { AgentRevisionPreview, type AgentRevisionProposal } from "./AgentRevisionPreview"
 
 type SpecEditorCardProps = {
   spec: AgentSpec
+  onSpecChange: (next: AgentSpec) => void
   specName: string
   sourceMode: "create" | "template"
   onSpecNameChange: (value: string) => void
@@ -38,7 +42,7 @@ type SpecEditorCardProps = {
   onListItemRemove: (field: ListField, index: number) => void
   toolStatusOf: (toolName: string) => "ready" | "pending"
   builtinTools: { id: string; title: string; desc: string }[]
-  connectedTools: { name: string; description: string }[]
+  connectedTools: ConnectedToolOption[]
   connectedMarketTools: VerifiedMarketTool[]
   toolAnalysis: ToolResolution | null
   toolMatchNotice: string
@@ -53,6 +57,9 @@ type SpecEditorCardProps = {
   onReviseInputChange: (value: string) => void
   onRevise: () => void
   isRevising: boolean
+  revisionProposal?: AgentRevisionProposal | null
+  onApplyRevision?: () => void
+  onDiscardRevision?: () => void
   onSave: () => void
   dirty?: boolean
   saveConflict?: boolean
@@ -197,7 +204,7 @@ function ToolPickerBlock({
     <div className="flex flex-col gap-3">
       <div>
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          内置工具 · 始终可用
+          内置能力 · 无需新增连接
         </p>
         <div className="flex flex-col gap-1.5">
           {builtinTools.map((tool) => (
@@ -294,6 +301,16 @@ function ToolPickerBlock({
 }
 
 export function SpecEditorCard(p: SpecEditorCardProps) {
+  const [selectedTab, setSelectedTab] = useState("goal")
+  const tabId = useId()
+  const tabs = [
+    {id:"goal",label:"目标与交付",icon:Target},
+    {id:"roles",label:"角色与任务",icon:UsersRound},
+    ...(p.focus === "plan" ? [] : [{id:"resources",label:"工具与资料",icon:Wrench}]),
+    {id:"criteria",label:"完成标准",icon:Flag},
+  ]
+  const activeTab = p.focus === "resources" ? "resources" :
+    tabs.some(tab=>tab.id===selectedTab) ? selectedTab : "goal"
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/25 px-4 py-4 sm:px-6">
@@ -309,7 +326,8 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
               className="h-8 w-full max-w-xs border-0 bg-transparent p-0 text-lg font-semibold shadow-none focus-visible:ring-0"
             />
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              {p.sourceMode === "template" ? "模板方案" : "可编辑的 Agent 方案"}
+              {p.sourceMode === "template" ? "模板方案" : "Agent 设计工作台"}
+              <span className="ml-2">{p.dirty ? "有未保存修改" : p.savedSpecId ? "已保存" : "草稿"}</span>
             </span>
           </div>
         </div>
@@ -320,12 +338,30 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
         </Button>}
       </div>
 
-      <div className="grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2">
-        <AgentToolAutoConnect analysis={p.toolAnalysis}
-          selectedTools={p.spec.tools} notice={p.toolMatchNotice}
-          returnSpecId={p.savedSpecId}
-          onRematch={p.onRematchTools} onToggleTool={p.onToggleTool}/>
-        {p.focus !== "resources" && (<>
+      {p.focus !== "resources" && <div role="tablist" aria-label="Agent 方案设计模块"
+        className="flex flex-wrap gap-1 border-b border-border bg-background/60 px-3 py-2 sm:px-5">
+        {tabs.map((tab,index)=><button key={tab.id} type="button" role="tab"
+          id={`${tabId}-tab-${tab.id}`} aria-controls={`${tabId}-panel-${tab.id}`}
+          aria-selected={activeTab===tab.id} tabIndex={activeTab===tab.id?0:-1}
+          onClick={()=>setSelectedTab(tab.id)}
+          onKeyDown={event=>{
+            if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return
+            event.preventDefault()
+            const next=event.key==="Home"?0:event.key==="End"?tabs.length-1:
+              (index+(event.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length
+            setSelectedTab(tabs[next].id)
+            document.getElementById(`${tabId}-tab-${tabs[next].id}`)?.focus()
+          }}
+          className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition sm:text-sm ${activeTab===tab.id?"bg-primary/10 text-primary":"text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
+          <tab.icon className="h-4 w-4"/>{tab.label}
+          {tab.id==="roles"&&Boolean(p.spec.roles?.length)&&<span className="rounded-full bg-primary/10 px-1.5 text-[10px]">{p.spec.roles?.length}</span>}
+        </button>)}
+      </div>}
+
+      <div role={p.focus === "resources"?undefined:"tabpanel"}
+        id={`${tabId}-panel-${activeTab}`} aria-labelledby={p.focus === "resources"?undefined:`${tabId}-tab-${activeTab}`}
+        className="grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2">
+        {activeTab === "goal" && (<>
         <SectionBlock title="目标 · 优先确认" featured icon={<Target className="h-4 w-4" />}>
           <Textarea
             rows={4}
@@ -353,8 +389,15 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           />
         </SectionBlock>
         </>)}
-        {p.focus !== "plan" && (<>
-        <SectionBlock title="所需工具" icon={<Wrench className="h-4 w-4" />}>
+        {activeTab === "resources" && (<>
+        <AgentCapabilityPlanner spec={p.spec} onChange={p.onSpecChange}
+          analysis={p.toolAnalysis} connections={p.connectedTools} marketTools={p.connectedMarketTools}
+          returnSpecId={p.savedSpecId} notice={p.toolMatchNotice}
+          onRematch={p.onRematchTools}/>
+        <SectionBlock title="手动选择工具" icon={<Wrench className="h-4 w-4" />}>
+          <details>
+            <summary className="cursor-pointer text-xs text-muted-foreground">查看内置工具和已有连接 · {p.spec.tools.length} 项已加入方案</summary>
+            <div className="mt-3">
           <ToolPickerBlock
             spec={p.spec}
             toolStatusOf={p.toolStatusOf}
@@ -365,6 +408,8 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             returnSpecId={p.savedSpecId}
             onRemovePending={(toolName) => p.onToggleTool(toolName, false)}
           />
+            </div>
+          </details>
         </SectionBlock>
         <SectionBlock title="关联知识库" icon={<BookOpen className="h-4 w-4" />}>
           <div className="mb-2 flex items-start justify-between gap-2">
@@ -401,7 +446,8 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           </Link>
         </SectionBlock>
         </>)}
-        {p.focus !== "resources" && (<>
+        {activeTab === "roles" && (<>
+        <div className="xl:col-span-2"><AgentRoleDesigner spec={p.spec} onChange={p.onSpecChange}/></div>
         <SectionBlock title="任务规划 · 执行步骤" featured icon={<Route className="h-4 w-4" />}>
           <ListRows
             field="task_plan"
@@ -413,6 +459,8 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             addLabel="添加步骤"
           />
         </SectionBlock>
+        </>)}
+        {activeTab === "criteria" && (<>
         <div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 xl:col-span-2">
           <label className="flex cursor-pointer items-center gap-3">
             <input type="checkbox" checked={Boolean(p.spec.require_plan_review)}
@@ -470,30 +518,34 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             </>}
           </Button>
         </div>}
-        {p.focus !== "resources" && <details className="mt-4 rounded-xl border border-border bg-background/60 p-3">
-          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
-            <Wand2 className="mr-1 inline h-3.5 w-3.5"/>可选 · 让 AI 帮我调整方案
-          </summary>
+        <section aria-label="随时调整方案" className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <h3 className="text-xs font-semibold text-foreground">
+            <Wand2 className="mr-1 inline h-3.5 w-3.5 text-primary"/>让 AI 帮我调整方案
+          </h3>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <Input value={p.reviseInput}
               onChange={(e)=>p.onReviseInputChange(e.target.value)}
               onKeyDown={(e)=>{
                 if(e.key==="Enter" && !p.isRevising && p.reviseInput.trim())p.onRevise()
               }}
-              placeholder="例如：增加一步来源核验，将交付物改为报告大纲"
+              aria-label="方案修改要求"
+              placeholder="例如：增加事实核验角色，或改用我已连接的工具"
               className="h-11 min-w-0 flex-1 rounded-lg border-border bg-card text-sm"/>
             <Button type="button" variant="outline" onClick={p.onRevise}
               disabled={p.isRevising || !p.reviseInput.trim()}
               className="h-11 shrink-0 rounded-lg border-primary/40 px-4 text-primary hover:bg-primary/10">
               {p.isRevising?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:
                 <Wand2 className="mr-2 h-4 w-4"/>}
-              {p.isRevising?"修订中…":"应用修改建议"}
+              {p.isRevising?"修订中…":"生成修改预览"}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             AI 修订会使用你已连接的模型，可能产生费用；请检查修订结果后保存。
           </p>
-        </details>}
+          {p.revisionProposal && p.onApplyRevision && p.onDiscardRevision &&
+            <AgentRevisionPreview current={p.spec} proposal={p.revisionProposal}
+              onApply={p.onApplyRevision} onDiscard={p.onDiscardRevision}/>}
+        </section>
         {!p.compactActions && p.savedMsg && (
           <p role="status" className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-primary/5 px-3 py-2 text-sm text-primary">
             <CheckCircle2 className="h-4 w-4 shrink-0"/>

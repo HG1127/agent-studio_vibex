@@ -112,14 +112,15 @@ test("unsaved SPA navigation guard prompts only for a real route change and clea
 test("navigation has five distinct main spaces and no duplicate leaf routes",()=>{
   assert.equal(STUDIO_WORKSPACES.length,5)
   assert.deepEqual(STUDIO_WORKSPACES.map(x=>x.label),[
-    "工作台","创建与编排","资源中心","运行中心","管理中心",
+    "工作台","设计与编排","工具与连接","运行与验收","管理中心",
   ])
   const leaves=routesForRole("admin")
   assert.equal(new Set(leaves.map(x=>x.to)).size,leaves.length)
-  assert.equal(workspaceForPath("/agent-create","employee")?.label,"创建与编排")
-  assert.equal(workspaceForPath("/workflow-canvas","employee")?.label,"创建与编排")
-  assert.equal(workspaceForPath("/knowledge-bases","employee")?.label,"资源中心")
-  assert.equal(workspaceForPath("/scheduled-tasks","employee")?.label,"运行中心")
+  assert.equal(workspaceForPath("/agent-create","employee")?.label,"设计与编排")
+  assert.equal(workspaceForPath("/workflow-canvas","employee")?.label,"设计与编排")
+  assert.equal(workspaceForPath("/knowledge-bases","employee")?.label,"工具与连接")
+  assert.equal(workspaceForPath("/execution-connections","employee")?.label,"工具与连接")
+  assert.equal(workspaceForPath("/scheduled-tasks","employee")?.label,"运行与验收")
 })
 test("navigation hides staff and management destinations from employee UI including Ctrl+K",()=>{
   assert.equal(workspacesForRole("employee").length,4)
@@ -150,13 +151,16 @@ test("journey requires editable real plan, an enabled model and a saved snapshot
     canTry:true,canPublish:false})
 })
 test("journey only unlocks publish after an authorized successful run of the saved revision",()=>{
-  const succeed={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z"}
+  const succeed={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z",spec_snapshot:spec}
   assert.equal(evaluateAgentJourney({...ready,run:succeed}).canPublish,true)
   for(const bad of [
     {...succeed,status:"failed"},
     {...succeed,status:"awaiting_approval"},
     {...succeed,spec_id:"another-owner-spec"},
     {...succeed,created:"2026-10-15T00:00:00Z"},
+    {...succeed,spec_snapshot:undefined},
+    {...succeed,spec_snapshot:{...spec,roles:[{id:"changed_after_run"}]}},
+    {...succeed,spec_snapshot:{...spec,capability_requirements:[{id:"changed_after_run"}]}},
   ]) assert.equal(evaluateAgentJourney({...ready,run:bad}).canPublish,false)
   assert.equal(evaluateAgentJourney({...ready,dirty:true,run:succeed}).canPublish,false)
   assert.equal(evaluateAgentJourney({...ready,modelState:"unavailable",run:succeed}).canPublish,false)
@@ -189,7 +193,7 @@ test("deterministic result assertions are bounded and do not claim factual verif
 test("publish with configured quality assertions must verify actual owner-scoped output",()=>{
   const checked={...spec,quality_checks:[{type:"contains",expected:"研究结论"},
     {type:"not_contains",expected:"拒绝审核"}]}
-  const run={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z"}
+  const run={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z",spec_snapshot:checked}
   const absent=evaluateAgentJourney({...ready,spec:checked,run})
   assert.equal(absent.canPublish,false)
   assert.ok(absent.qualityIssues.some(x=>x.includes("真实结果")))

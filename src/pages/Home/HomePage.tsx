@@ -26,7 +26,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         title="随时调整当前 Agent 方案"
         description="此处直接编辑当前工作台草稿。修改与原页面实时同步，保存后可以试跑；未保存的草稿不会被静默覆盖。">
         {p.spec ? <SpecEditorCard
-          spec={p.spec} specName={p.specName} sourceMode={p.sourceMode}
+          spec={p.spec} onSpecChange={p.updateFullSpec} specName={p.specName} sourceMode={p.sourceMode}
           onSpecNameChange={p.setSpecName} onTextChange={p.updateSpecText}
           onTogglePlanReview={p.togglePlanReview}
           onListItemChange={p.updateSpecListItem} onListItemAdd={p.addSpecListItem}
@@ -38,6 +38,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           onToggleKnowledgeBase={p.toggleKnowledgeBase} onToggleTool={p.handleToggleSpecTool}
           reviseInput={p.reviseInput} onReviseInputChange={p.setReviseInput}
           onRevise={p.handleRevise} isRevising={p.isRevising}
+          revisionProposal={p.revisionProposal} onApplyRevision={p.applyRevisionProposal}
+          onDiscardRevision={p.discardRevisionProposal}
           onSave={p.handleSave} isSaving={p.isSaving} dirty={p.specDirty}
           saveConflict={p.saveConflict} onSaveAsCopy={p.handleSaveAsCopy}
           savedMsg={p.savedMsg} savedSpecId={p.savedSpecId}
@@ -106,6 +108,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           </h2>
           <SpecEditorCard
             spec={p.spec}
+            onSpecChange={p.updateFullSpec}
             specName={p.specName}
             sourceMode={p.sourceMode}
             onSpecNameChange={p.setSpecName}
@@ -131,6 +134,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             onReviseInputChange={p.setReviseInput}
             onRevise={p.handleRevise}
             isRevising={p.isRevising}
+            revisionProposal={p.revisionProposal} onApplyRevision={p.applyRevisionProposal}
+            onDiscardRevision={p.discardRevisionProposal}
             onSave={p.handleSave}
             dirty={p.specDirty}
             saveConflict={p.saveConflict}

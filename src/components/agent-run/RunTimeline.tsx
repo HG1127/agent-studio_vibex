@@ -11,6 +11,7 @@ import {
   Flag,
   ShieldCheck,
   ShieldQuestion,
+  UsersRound,
   Wrench,
 } from "lucide-react"
 import { memoryKindMetaOf } from "@/pages/AgentRun/useAgentRun"
@@ -68,6 +69,19 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
         <ol className="mt-4 flex flex-col gap-3">
           {events.map((event) => {
             const stepLabel = event.step_index > 0 ? `第 ${event.step_index} 步` : "准备"
+            const roleName = typeof event.content.role_name === "string" ? event.content.role_name : ""
+            const rolePhase = event.content.role_phase
+            if (event.event_type === "status" && roleName && (rolePhase === "started" || rolePhase === "completed")) {
+              const output = typeof event.content.output === "string" ? event.content.output : ""
+              return <li key={event.id} className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary"><UsersRound className="h-3.5 w-3.5" />{roleName} · {rolePhase === "started" ? "阶段开始" : "阶段已交付"} · {stepLabel}</p>
+                <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed">{contentText(event.content, "message")}</p>
+                {output && <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-medium text-primary">查看本次交接成果 · 内容仍需验收</summary>
+                  <div className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-background p-3 text-sm leading-relaxed">{output}</div>
+                </details>}
+              </li>
+            }
             if (event.event_type === "thinking") {
               return (
                 <li
@@ -76,7 +90,7 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
                 >
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
                     <Brain className="h-3.5 w-3.5" />
-                    思考 · {stepLabel}
+                    思考 · {stepLabel}{roleName && ` · ${roleName}`}
                   </p>
                   <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-card-foreground">
                     {contentText(event.content, "thought")}
@@ -89,7 +103,7 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
                 <li key={event.id} className="animate-in fade-in slide-in-from-bottom-2 rounded-xl bg-secondary/60 p-3 duration-300">
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-card-foreground">
                     <Wrench className="h-3.5 w-3.5 text-primary" />
-                    调用工具 · {stepLabel}
+                    调用工具 · {stepLabel}{roleName && ` · ${roleName}`}
                   </p>
                   <p className="mt-1.5 text-sm font-medium text-card-foreground">
                     {contentText(event.content, "tool") || "(未指定)"}

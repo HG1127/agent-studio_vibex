@@ -20,6 +20,7 @@ const AgentRunRoute = lazy(() => import("./pages/AgentRun/index.tsx"))
 const ModelConnectionsRoute = lazy(() => import("./pages/ModelConnections/index.tsx"))
 const VersionReleaseRoute = lazy(() => import("./pages/VersionRelease/index.tsx"))
 const ToolConnectionsRoute = lazy(() => import("./pages/ToolConnections/index.tsx"))
+const ExecutionConnectionsRoute = lazy(() => import("./pages/ExecutionConnections/ExecutionConnectionsPage.tsx"))
 const RunDetailRoute = lazy(() => import("./pages/RunDetail/index.tsx"))
 const TemplateMarketRoute = lazy(() => import("./pages/TemplateMarket/index.tsx"))
 const WorkflowCanvasRoute = lazy(() => import("./pages/WorkflowCanvas/index.tsx"))
@@ -100,6 +101,7 @@ function App() {
         <Route path="/model-connections" element={<ModelConnectionsRoute />} />
         <Route path="/version-release" element={<VersionReleaseRoute />} />
         <Route path="/tool-connections" element={<ToolConnectionsRoute />} />
+        <Route path="/execution-connections" element={<ExecutionConnectionsRoute />} />
         <Route path="/run-detail" element={<RunDetailRoute />} />
         <Route path="/template-market" element={<TemplateMarketRoute />} />
         <Route path="/workflow-canvas" element={<WorkflowCanvasRoute />} />

@@ -13,6 +13,8 @@ import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToo
 import { safeAgentSpecId } from "@/lib/toolSearchPrivacy"
 import { resolveAgentToolRequirements } from "@/lib/agentToolMatcher"
 import { callLlmWithFallback } from "@/lib/llm"
+import { normalizeCapabilityRequirements, toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
+import { sanitizeAgentRoles } from "@/lib/agentRoles"
 import { readQuickAgentDraft, saveQuickAgentDraft, clearQuickAgentDraft, type QuickAgentDraft } from "@/lib/quickAgentDraft"
 
 type Props={open:boolean;onClose:()=>void;preferredSpecId?:string}
@@ -22,6 +24,8 @@ const cloneSpec=(spec:AgentSpec):AgentSpec=>({
   task_plan:[...(spec.task_plan||[])],done_criteria:[...(spec.done_criteria||[])],
   knowledge_base_ids:[...(spec.knowledge_base_ids||[])],
   quality_checks:[...(spec.quality_checks||[])],
+  roles:sanitizeAgentRoles(spec.roles),
+  capability_requirements:normalizeCapabilityRequirements(spec.capability_requirements),
 })
 const defaultSpec=():AgentSpec=>({goal:"",task_scope:"",deliverables:[],tools:[],
   task_plan:[],done_criteria:[]})
@@ -42,6 +46,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   const [error,setError]=useState("")
   const [notice,setNotice]=useState("")
   const [reviseInstruction,setReviseInstruction]=useState("")
+  const [revisionProposal,setRevisionProposal]=useState<{name:string;spec:AgentSpec;basis:number}|null>(null)
   const [connectedTools,setConnectedTools]=useState<ConnectedToolOption[]>([])
   const [marketTools,setMarketTools]=useState<VerifiedMarketTool[]>([])
   const [knowledge,setKnowledge]=useState<KnowledgeBase[]>([])
@@ -52,6 +57,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   const [draftStorageError,setDraftStorageError]=useState(false)
   const revision=useRef(0)
   const loadSequence=useRef(0)
+  const connectedLoadSequence=useRef(0)
   const latestDraft=useRef({record:null as SavedSpecRow|null,draft,
     name,dirty,baseUpdated,pendingQuickDraft})
   useEffect(()=>{
@@ -84,7 +90,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     safeAgentSpecId(new URLSearchParams(loc.search).get("spec")||"")
   const runId=new URLSearchParams(loc.search).get("run")||""
 
-  const modified=useCallback(()=>{revision.current++;setDirty(true);setNotice("");setConflict(false)},[])
+  const modified=useCallback(()=>{revision.current++;setDirty(true);setNotice("");setConflict(false);setRevisionProposal(null)},[])
   const request=useCallback(async(route:string,init?:RequestInit)=>{
     return fetch(base+route,{
       ...init,headers:{"Content-Type":"application/json",...vibexAuthHeaders(),...init?.headers},
@@ -92,28 +98,51 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     })
   },[base])
   const refreshConnected=useCallback(async()=>{
+    const requestId=++connectedLoadSequence.current
     const [http,market,bases]=await Promise.allSettled([
       request("/api/tool-connections"),
       request("/api/market/connections"),
       getKnowledgeBases(),
     ])
-    if(http.status==="fulfilled" && http.value.ok){
-      const data=await http.value.json().catch(()=>null)
-      setConnectedTools((Array.isArray(data?.items)?data.items:[])
+    const [httpData,marketData]=await Promise.all([
+      http.status==="fulfilled"&&http.value.ok?http.value.json().catch(()=>null):null,
+      market.status==="fulfilled"&&market.value.ok?market.value.json().catch(()=>null):null,
+    ])
+    if(requestId!==connectedLoadSequence.current)
+      return {http:[],market:[],verified:false,stale:true}
+    let freshHttp:ConnectedToolOption[]=[]
+    let freshMarket:VerifiedMarketTool[]=[]
+    const httpValid=Array.isArray(httpData?.items) && httpData.items.every((item:unknown)=>
+      Boolean(item && typeof item==="object" && !Array.isArray(item) &&
+        typeof (item as {name?:unknown}).name==="string" &&
+        typeof (item as {enabled?:unknown}).enabled==="boolean"))
+    const marketValid=Array.isArray(marketData?.items) && marketData.items.every((item:unknown)=>
+      Boolean(item && typeof item==="object" && !Array.isArray(item) &&
+        typeof (item as {id?:unknown}).id==="string" &&
+        typeof (item as {enabled?:unknown}).enabled==="boolean"))
+    if(httpValid){
+      freshHttp=httpData.items
         .filter((item:{name?:string;enabled?:boolean})=>item.enabled===true&&item.name)
         .map((item:{name:string;description?:string;method?:string;status?:string})=>
-          ({name:item.name,description:item.description||"",method:item.method,status:item.status})))
-    }
-    if(market.status==="fulfilled" && market.value.ok){
-      const data=await market.value.json().catch(()=>null)
-      setMarketTools(getVerifiedMarketTools(data?.items))
-    }
+          ({name:item.name,description:typeof item.description==="string"?item.description:"",
+            method:item.method,status:typeof item.status==="string"?item.status:"unknown"}))
+      setConnectedTools(freshHttp)
+    }else setConnectedTools(previous=>previous.map(tool=>({...tool,status:"unknown"})))
+    if(marketValid){
+      freshMarket=getVerifiedMarketTools(marketData.items)
+      setMarketTools(freshMarket)
+    }else setMarketTools([])
     if(bases.status==="fulfilled")setKnowledge(bases.value)
+    const verified=httpValid&&marketValid
+    if(!verified)setToolNotice("部分连接状态刷新失败，原方案仍保留；外部能力暂按待核验处理。")
+    else setToolNotice(previous=>previous.startsWith("部分连接状态刷新失败")?"":previous)
+    return {http:freshHttp,market:freshMarket,verified,stale:false}
   },[request])
 
   const loadRecord=useCallback(async(id:string,guard?:()=>boolean)=>{
     const loadId=++loadSequence.current
     const isCurrent=()=>loadSequence.current===loadId && (!guard || guard())
+    setSaving(false)
     setLoading(true)
     setError("")
     try {
@@ -129,6 +158,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       setDirty(false);setConflict(false);setNotice("");setNextTrialUrl("")
       setList(prev=>prev.map(row=>row.id===item.id?item:row))
       setReviseInstruction("")
+      setRevisionProposal(null)
       revision.current++
     }catch(err){
       if(isCurrent())setError(err instanceof Error?err.message:"读取 Agent 失败")
@@ -183,11 +213,11 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     if(!open)return
     const reload=()=>{void refreshConnected()}
     window.addEventListener("focus",reload)
-    return()=>window.removeEventListener("focus",reload)
+    return()=>{connectedLoadSequence.current++;window.removeEventListener("focus",reload)}
   },[open,refreshConnected])
 
   const toolStatusOf=useCallback((tool:string)=>toolConnectionStatus(tool,[
-    ...connectedTools,...marketTools.map(item=>({name:item.id,description:item.description})),
+    ...connectedTools,...marketTools.map(item=>({name:item.id,description:item.description,status:"ok"})),
   ]),[connectedTools,marketTools])
   const analysis=useMemo(()=>resolveAgentToolRequirements("",
     draft,connectedTools,marketTools,draft.tools.filter(tool=>
@@ -210,8 +240,11 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     setDraft(prev=>({...prev,tools:on?[...new Set([...prev.tools,tool])]:
       prev.tools.filter(value=>value!==tool)}))
   }
-  const matchTools=()=>{
-    const result=analysis
+  const matchTools=async()=>{
+    const basis=revision.current
+    const fresh=await refreshConnected()
+    if(fresh.stale||!fresh.verified||basis!==revision.current)return
+    const result=resolveAgentToolRequirements("",draft,fresh.http,fresh.market,draft.tools)
     modified()
     setDraft(prev=>({...prev,tools:[
       ...new Set([...prev.tools,...result.safeAutoBindings].filter(Boolean)),
@@ -269,6 +302,8 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     }
     setSaving(true);setError("");setNotice("")
     const version=revision.current
+    const saveContext=loadSequence.current
+    const isCurrentContext=()=>saveContext===loadSequence.current
     try {
       const res=await request(copy?"/api/agent_specs":"/api/agent_specs/"+encodeURIComponent(record.id),{
         method:copy?"POST":"PATCH",
@@ -278,6 +313,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
           ...(copy?{}:{expected_updated:baseUpdated}),
         }),
       })
+      if(!isCurrentContext())return ""
       if(res.status===409){
         setConflict(true)
         setError("方案已在另一页面修改。为避免覆盖，你可以另存为副本，或关闭窗口后重新读取新版本。")
@@ -285,10 +321,12 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       }
       if(!res.ok){
         const info=await res.json().catch(()=>null)
+        if(!isCurrentContext())return ""
         setError(info?.message||"方案保存失败，编辑内容仍保留。")
         return ""
       }
       const saved=await res.json() as SavedSpecRow
+      if(!isCurrentContext())return ""
       if(!saved?.id || !saved.updated){
         setError("服务器未返回有效版本，无法确认保存是否完成。请核验后再试跑。")
         return ""
@@ -303,26 +341,33 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       window.dispatchEvent(new CustomEvent("studio:agent-spec-saved",{detail:{specId:saved.id}}))
       return saved.id
     }catch{
-      setError("网络异常，无法确认方案已保存；请先检查服务器版本。")
+      if(isCurrentContext())setError("网络异常，无法确认方案已保存；请先检查服务器版本。")
       return ""
-    }finally{setSaving(false)}
+    }finally{if(isCurrentContext())setSaving(false)}
   }
   const saveAndTest=async()=>{
     const draftRevision=revision.current
-    const id=dirty?await save():record?.id||""
-    if(!id)return
-    if(revision.current!==draftRevision){
-      setNotice("保存期间方案又被修改。为避免试跑旧版本，请先再次保存最新改动。")
-      return
+    const trialContext=loadSequence.current
+    const canContinue=()=>{
+      if(trialContext!==loadSequence.current)return false
+      if(revision.current!==draftRevision){
+        setNotice("保存期间方案又被修改。为避免试跑旧版本，请先再次保存最新改动。")
+        return false
+      }
+      return true
     }
+    const id=dirty?await save():record?.id||""
+    if(!id||!canContinue())return
     const target="/agent-run?spec="+encodeURIComponent(id)
     if(loc.pathname==="/agent-run" && runId){
       // This run may be driven by this browser's polling loop; switching tabs
       // must not silently abandon an in-progress run or its human approval.
       try {
         const current=await request("/api/agent_runs/"+encodeURIComponent(runId))
+        if(!canContinue())return
         if(current.ok){
           const live=await current.json() as {status?:string}
+          if(!canContinue())return
           if(["queued","running","paused","awaiting_approval","awaiting_input"]
             .includes(String(live.status||""))){
             setNextTrialUrl(target)
@@ -331,11 +376,13 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
           }
         }
       }catch{
+        if(!canContinue())return
         setNextTrialUrl(target)
         setNotice("暂时无法确认当前运行是否结束。为避免中断任务，请在新标签中试跑新版本。")
         return
       }
     }
+    if(!canContinue())return
     onClose()
     navigate(target)
   }
@@ -348,8 +395,9 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     const result=await callLlmWithFallback("gemini-3.1-flash-lite-preview",{
       page:"home",max_tokens:4096,
       messages:[
-        {role:"system",content:"你是 Agent 方案修改助手。根据人类修改要求调整 JSON 中的 name、goal、task_scope、deliverables、task_plan、done_criteria。严格返回 JSON 对象，不要 Markdown。不得输出密钥，不得自作主张增删已经获授权的 tools、knowledge_base_ids、quality_checks 或审批选项。"},
-        {role:"user",content:JSON.stringify({name,...draft,modification:requestText})},
+        {role:"system",content:"你是 Agent 方案修改助手。按要求调整 name、goal、task_scope、deliverables、task_plan、done_criteria、roles、capability_requirements。严格返回 JSON，不要 Markdown。保留未要求修改的角色/能力配置；roles为空代表单助手，否则为顺序角色阶段，依赖不能成环，新增角色tools为空。能力建议仅使用附带目录的真实ID，不得假定连接可用。不得扩大 tools、knowledge_base_ids、quality_checks、审批或角色工具权限。"},
+        {role:"user",content:JSON.stringify({name,...draft,modification:requestText,
+          available_tools:toolCatalogForDesign(connectedTools,marketTools)})},
       ],
     })
     setRevising(false)
@@ -371,22 +419,26 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
         Array.isArray(item[key])?
           (item[key] as unknown[]).filter((entry):entry is string=>typeof entry==="string")
             .map(entry=>entry.slice(0,1200)).slice(0,40):draft[key as "deliverables"]
-      modified()
-      setDraft(prev=>({
-        ...prev,goal:(item.goal as string).slice(0,6000),
+      const existingRoles=new Map((draft.roles||[]).map(role=>[role.id,role]))
+      const proposedRoles=Array.isArray(item.roles)?sanitizeAgentRoles(item.roles).map(role=>({...role,
+        tools:existingRoles.get(role.id)?.tools.filter(tool=>draft.tools.includes(tool))||[]})):draft.roles
+      setRevisionProposal({name:typeof item.name==="string"?item.name.slice(0,90):name,basis:currentRev,spec:{
+        ...draft,goal:(item.goal as string).slice(0,6000),
         task_scope:(item.task_scope as string).slice(0,6000),
         deliverables:cleanList("deliverables"),
         task_plan:cleanList("task_plan"),
         done_criteria:cleanList("done_criteria"),
-      }))
-      if(typeof item.name==="string")setName(item.name.slice(0,90))
-      setReviseInstruction("")
-      setNotice("AI 已生成可编辑修订稿；请核对后点击保存，不会自动覆盖正式版本。")
+        roles:proposedRoles,
+        capability_requirements:Array.isArray(item.capability_requirements)?normalizeCapabilityRequirements(item.capability_requirements):draft.capability_requirements,
+      }})
+      setNotice("AI 修改建议已生成，请先核对预览，再应用到草稿。")
     }catch{setError("AI 修订结果格式无法核验，方案未被改动。")}
   }
   const close=()=>{
     if(dirty && !persistUnsavedDraft() &&
       !window.confirm("未能暂存草稿。直接关闭将丢失本次未保存的改动，确定关闭吗？"))return
+    loadSequence.current++
+    setSaving(false)
     onClose()
   }
   const changeAgent=(id:string)=>{
@@ -451,6 +503,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     {!loading&&record&&!pendingQuickDraft&&<>
       <SpecEditorCard
         spec={draft} specName={name} sourceMode={record.source==="template"?"template":"create"}
+        onSpecChange={next=>{modified();setDraft(next)}}
         onSpecNameChange={value=>{setName(value);modified()}}
         onTextChange={updateText}
         onTogglePlanReview={on=>{modified();setDraft(prev=>({...prev,require_plan_review:on}))}}
@@ -462,6 +515,13 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
         onToggleTool={toggleTool} reviseInput={reviseInstruction}
         onReviseInputChange={setReviseInstruction} onRevise={()=>void revise()}
         isRevising={revising} onSave={()=>void save()} isSaving={saving}
+        revisionProposal={revisionProposal}
+        onApplyRevision={()=>{
+          if(!revisionProposal)return
+          if(revisionProposal.basis!==revision.current){setRevisionProposal(null);setError("方案已有新修改，请重新生成建议。");return}
+          setDraft(revisionProposal.spec);setName(revisionProposal.name);modified();setReviseInstruction("")
+        }}
+        onDiscardRevision={()=>setRevisionProposal(null)}
         dirty={dirty} saveConflict={conflict} onSaveAsCopy={()=>void save(true)}
         savedMsg={notice} savedSpecId={record.id} onClear={()=>{}}
         showClear={false} compactActions

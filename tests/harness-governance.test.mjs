@@ -7,7 +7,7 @@ import { HarnessAuthError, requestHarnessSource } from "../src/lib/harnessReques
 import { searchStudioRoutes, workspaceForPath } from "../src/lib/studioNavigation.ts"
 
 test("Harness is an employee-accessible second-level route in the run center", () => {
-  assert.equal(workspaceForPath("/harness", "employee").label, "运行中心")
+  assert.equal(workspaceForPath("/harness", "employee").label, "运行与验收")
   assert.equal(searchStudioRoutes("Harness", "employee")[0].to, "/harness")
 })
 test("refresh transport issues real bounded GETs with auth, no cache, cancellation and no owner header", async () => {

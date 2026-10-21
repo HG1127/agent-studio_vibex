@@ -8,7 +8,7 @@ import {
   Bot, BookOpen, CalendarClock, ClipboardCheck, GitBranch, Home,
   LayoutGrid, Library, Network, PlayCircle, Plug, Puzzle, Rocket,
   SearchCheck, Settings2, ShieldCheck, Sparkles, Store, UsersRound,
-  Workflow, Wrench,
+  Workflow, Wrench, Monitor,
 } from "lucide-react"
 
 export type StudioRoute = {
@@ -30,32 +30,33 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
     ],
   },
   {
-    to: "/agent-create", label: "创建与编排", icon: Sparkles,
+    to: "/agent-create", label: "设计与编排", icon: Sparkles,
     keywords: "创建助手 Agent workflow 编辑", children: [
-      {to:"/agent-create",label:"创建 Agent",icon: Bot,keywords:"引导创建 生成方案 新手"},
+      {to:"/agent-create",label:"设计 Agent",icon: Bot,keywords:"创建 助手 引导创建 生成方案 新手 角色分工"},
       {to:"/workflow-canvas",label:"工作流编排",icon: Workflow,keywords:"workflow 节点 流程图"},
       {to:"/template-market",label:"模板中心",icon: Store},
       {to:"/internal-templates",label:"团队共享 Agent",icon: UsersRound},
-      {to:"/agent-collaboration",label:"多人 Agent 协作",icon: Network},
+      {to:"/agent-collaboration",label:"成员协作与评审",icon: Network,keywords:"多人 Agent 协作 员工 编辑"},
       {to:"/version-release",label:"版本与发布",icon: GitBranch},
       {to:"/integrate",label:"发布后集成",icon: Plug},
     ],
   },
   {
-    to: "/model-connections", label: "资源中心", icon: Library,
+    to: "/model-connections", label: "工具与连接", icon: Library,
     keywords: "资源 模型 知识库 插件 工具", children: [
       {to:"/model-connections",label:"模型连接",icon: Sparkles,keywords:"LLM API"},
       {to:"/knowledge-bases",label:"知识库",icon: BookOpen,keywords:"RAG 语义检索"},
       {to:"/tool-connections",label:"工具连接",icon: Wrench},
-      {to:"/plugin-market",label:"插件",icon: Puzzle},
+      {to:"/plugin-market",label:"插件市场",icon: Puzzle},
+      {to:"/execution-connections",label:"电脑与浏览器",icon:Monitor,keywords:"执行器 软件 本地 browser desktop MCP"},
     ],
   },
   {
-    to: "/agent-run", label: "运行中心", icon: PlayCircle,
+    to: "/agent-run", label: "运行与验收", icon: PlayCircle,
     keywords: "执行 调试 监控 历史", children: [
-      {to:"/harness",label:"Harness 运行与治理",icon: SearchCheck,keywords:"监控 心跳 队列 人工核查 历史"},
       {to:"/agent-run",label:"Agent 试跑",icon: Rocket},
       {to:"/run-detail",label:"执行记录",icon: ClipboardCheck},
+      {to:"/harness",label:"运行监控",icon: SearchCheck,keywords:"Harness 治理 监控 心跳 队列 人工核查 历史"},
       {to:"/scheduled-tasks",label:"定时任务",icon: CalendarClock},
       {to:"/tool-hub",label:"诊断与工具调试",icon: SearchCheck},
     ],

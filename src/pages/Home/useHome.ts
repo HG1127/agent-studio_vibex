@@ -11,6 +11,8 @@ import { useSearchParams } from "react-router-dom"
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 import { resolveAgentToolRequirements, chooseVerifiedAgentTool } from "@/lib/agentToolMatcher"
+import { normalizeCapabilityRequirements, toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
+import { sanitizeAgentRoles } from "@/lib/agentRoles"
 import {
   BUILTIN_TOOL_OPTIONS,
   TEMPLATE_PRESETS,
@@ -55,13 +57,16 @@ const SYSTEM_PROMPT = [
   'task_plan：字符串数组，按执行顺序拆解的任务步骤（3-7 步）',
   'done_criteria：字符串数组，判断任务完成的标准（2-5 条）',
   'require_plan_review：布尔值；明确要求先由人确认草案、确认后才进入落地计划/下一阶段时为 true，否则为 false',
+  'capability_requirements：数组，每项含 id/title/purpose/kind/access/required/role_ids/search_terms/suggested_tool_ids。解释为什么需要、哪个角色使用。kind 只能为 web_search/web_fetch/knowledge/calculate/text/document/browser/desktop/integration/custom；access 为 read 或 write。search_terms 只写通用能力类别，不写业务主体或机密。',
+  'suggested_tool_ids 只能从用户消息所附实际工具目录中选择，找不到就留空，不得编造工具、授权或在线状态。读工具不能满足写入或网页点击任务。浏览器工具与网页正文抓取是不同能力。',
+  'roles：简单任务用空数组；用户明确要求多角色或任务确有独立交接时，输出 2-5 个顺序角色，每项含 id/name/responsibility/tasks/inputs/deliverables/depends_on/tools/done_criteria。id 英文，depends_on 只能引用已有角色且不能成环。tools 初始留空，待用户按角色绑定真实工具。此系统为单次运行的分阶段角色执行，不是并行独立 Agent。',
   "所有内容使用简体中文，贴合用户的真实需求，不空泛。",
 ].join("\n")
 
 const REVISE_SYSTEM_PROMPT = [
   "你是「Agent Studio」的助手方案修订器。用户会给你一份现有方案 JSON 和一句修改要求。",
   "请在现有方案基础上做增量修订：只改与修改要求相关的部分，其余字段保持原样。",
-  "只输出修订后的完整 JSON 对象（字段结构与原方案一致：name/goal/task_scope/deliverables/tools/task_plan/done_criteria/require_plan_review），",
+  "只输出修订后的完整 JSON 对象。保留 roles 与 capability_requirements；要求修改分工时可编辑角色的职责、任务和依赖，工具权限只能保留原授权范围，新增角色 tools 留空。不得擅自扩大已有工具、知识库或审批权限。",
   "不要 markdown 代码块，不要任何额外文字。所有内容使用简体中文。",
 ].join("\n")
 
@@ -87,6 +92,8 @@ function parseSpecJson(raw: string): { displayName: string; spec: AgentSpec } | 
         task_plan: toStrArr(obj.task_plan),
         done_criteria: toStrArr(obj.done_criteria),
         require_plan_review: obj.require_plan_review === true,
+        ...(Array.isArray(obj.roles) ? {roles: sanitizeAgentRoles(obj.roles)} : {}),
+        ...(Array.isArray(obj.capability_requirements) ? {capability_requirements: normalizeCapabilityRequirements(obj.capability_requirements)} : {}),
       },
     }
   } catch {
@@ -104,6 +111,8 @@ export function useHome() {
   const [query] = useSearchParams()
   const returnSpecRef = useRef(query.get("spec") || "")
   const specRevisionRef = useRef(0)
+  const specContextRef = useRef(0)
+  const connectedLoadSequence = useRef(0)
 
   const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   // A saved draft is offered explicitly, never silently merged with a newer
@@ -127,6 +136,7 @@ export function useHome() {
   const [savedMsg, setSavedMsg] = useState("")
   const [savedSpecId, setSavedSpecId] = useState("")
   const [specDirty, setSpecDirty] = useState(false)
+  const [revisionProposal, setRevisionProposal] = useState<{name:string;spec:AgentSpec;basis:number}|null>(null)
   const [lastSavedAt, setLastSavedAt] = useState(0)
   const [serverUpdated, setServerUpdated] = useState("")
   const [saveConflict, setSaveConflict] = useState(false)
@@ -134,6 +144,16 @@ export function useHome() {
   const markSpecEdited = useCallback(() => {
     specRevisionRef.current += 1
     setSpecDirty(true)
+    setRevisionProposal(null)
+  }, [])
+  const invalidateSpecContext = useCallback(() => {
+    specContextRef.current += 1
+    specRevisionRef.current += 1
+    returnSpecRef.current = ""
+    setIsSaving(false)
+    setRevisionProposal(null)
+    setRequirementForTools("")
+    setToolMatchNotice("")
   }, [])
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [savedList, setSavedList] = useState<SavedSpecRow[]>([])
@@ -205,7 +225,7 @@ export function useHome() {
   const restoreDraft = useCallback(() => {
     const draft = pendingDraft
     if (!draft) return
-    returnSpecRef.current=""
+    invalidateSpecContext()
     setUserInput(draft.userInput)
 
     setSpec(draft.spec)
@@ -221,7 +241,7 @@ export function useHome() {
     setSaveConflict(false)
     setPendingDraft(null)
     setDraftDecisionMade(true)
-  }, [pendingDraft, markSpecEdited])
+  }, [pendingDraft, markSpecEdited, invalidateSpecContext])
 
   const discardDraft = useCallback(() => {
     clearAgentDraft(rhUserId)
@@ -233,32 +253,56 @@ export function useHome() {
   // 按当前员工权限拉取真实启用的 HTTP 连接和验证通过的市场插件工具。
   // 任一来源失败时不伪造连接；已经保存的工具清单不会被自动删除。
   const loadConnectedTools = useCallback(async () => {
+    const requestId=++connectedLoadSequence.current
     const headers={...vibexAuthHeaders()}
     const [toolRes,marketRes]=await Promise.all([
-      fetch(`${getPocketBaseUrl()}/api/tool-connections`,{headers}).catch(()=>null),
-      fetch(`${getPocketBaseUrl()}/api/market/connections`,{headers}).catch(()=>null),
+      fetch(`${getPocketBaseUrl()}/api/tool-connections`,{headers,signal:AbortSignal.timeout(12000)}).catch(()=>null),
+      fetch(`${getPocketBaseUrl()}/api/market/connections`,{headers,signal:AbortSignal.timeout(12000)}).catch(()=>null),
     ])
-    if(toolRes?.ok){
-      const data=await toolRes.json().catch(()=>null)
-      const items=Array.isArray(data?.items)
-        ? data.items as {name:string;description:string;enabled:boolean;method?:string;status?:string}[] : []
-      setConnectedTools(items.filter(item=>item.enabled&&item.name)
-        .map(item=>({name:item.name,description:item.description||"",method:item.method,status:item.status})))
-    }
-    if(marketRes?.ok){
-      const data=await marketRes.json().catch(()=>null)
-      setConnectedMarketTools(getVerifiedMarketTools(data?.items))
-    }
+    const [httpData,marketData]=await Promise.all([
+      toolRes?.ok?toolRes.json().catch(()=>null):null,
+      marketRes?.ok?marketRes.json().catch(()=>null):null,
+    ])
+    // Both headers and JSON bodies can finish out of order. Only the newest
+    // refresh may update availability or feed a rematch of the current draft.
+    if(requestId!==connectedLoadSequence.current)
+      return {http:[],market:[],verified:false,stale:true}
+    let http:ConnectedToolOption[]=[]
+    let market:VerifiedMarketTool[]=[]
+    const httpValid=Array.isArray(httpData?.items) && httpData.items.every((item:unknown)=>
+      Boolean(item && typeof item==="object" && !Array.isArray(item) &&
+        typeof (item as {name?:unknown}).name==="string" &&
+        typeof (item as {enabled?:unknown}).enabled==="boolean"))
+    const marketValid=Array.isArray(marketData?.items) && marketData.items.every((item:unknown)=>
+      Boolean(item && typeof item==="object" && !Array.isArray(item) &&
+        typeof (item as {id?:unknown}).id==="string" &&
+        typeof (item as {enabled?:unknown}).enabled==="boolean"))
+    if(httpValid){
+      const items=httpData.items as {name:string;description?:string;enabled:boolean;method?:string;status?:string}[]
+      http=items.filter(item=>item.enabled===true&&item.name)
+        .map(item=>({name:item.name,description:typeof item.description==="string"?item.description:"",
+          method:item.method,status:typeof item.status==="string"?item.status:"unknown"}))
+      setConnectedTools(http)
+    }else setConnectedTools(previous=>previous.map(tool=>({...tool,status:"unknown"})))
+    if(marketValid){
+      market=getVerifiedMarketTools(marketData.items)
+      setConnectedMarketTools(market)
+    }else setConnectedMarketTools([])
+    const verified=httpValid&&marketValid
+    if(!verified)setToolMatchNotice("部分连接状态未能刷新，已保留方案选择；恢复连接后重新匹配，暂不自动认定外部工具就绪。")
+    else setToolMatchNotice(previous=>previous.startsWith("部分连接状态未能刷新")?"":previous)
+    return {http,market,verified,stale:false}
   }, [])
 
   useEffect(() => {
     if (!rhUserId) return
     // Plugin OAuth may complete in a second tab. Refresh when the editor regains focus,
     // without throwing away an employee's unsaved Agent configuration.
-    const refresh = () => { void loadConnectedTools() }
+    let cancelled=false
+    const refresh = () => { if(!cancelled)void loadConnectedTools() }
     void Promise.resolve().then(refresh)
     window.addEventListener("focus", refresh)
-    return () => { window.removeEventListener("focus", refresh) }
+    return () => { cancelled=true;connectedLoadSequence.current++;window.removeEventListener("focus", refresh) }
   }, [rhUserId, loadConnectedTools])
 
   const refreshKnowledgeBases=useCallback(async()=>{
@@ -285,6 +329,8 @@ export function useHome() {
   // An explicitly selected older Agent is retrieved via owner-scoped GET by ID.
   const loadSavedList = useCallback(async (uid: string) => {
     if (!uid) return
+    const requestedRevision=specRevisionRef.current
+    const targetId=returnSpecRef.current
     try {
       const res = await fetch(
         `${getPocketBaseUrl()}/api/agent_specs?perPage=1&sort=-updated`,
@@ -295,7 +341,6 @@ export function useHome() {
       const items = Array.isArray(data?.items) ? (data.items as SavedSpecRow[]) : []
       setSavedList(items)
       setSavedTotal(Number.isFinite(Number(data?.totalItems)) ? Number(data.totalItems) : items.length)
-      const targetId=returnSpecRef.current
       let record=targetId && items.find(item=>item.id===targetId)
       if(!record && targetId && /^[A-Za-z0-9]{15}$/.test(targetId)){
         // Older Agent direct links are not guaranteed to be in the first 200
@@ -307,8 +352,9 @@ export function useHome() {
           if(candidate?.id===targetId)record=candidate
         }
       }
-      if(record){
-        returnSpecRef.current=""
+      if(record && targetId===returnSpecRef.current){
+        if(requestedRevision!==specRevisionRef.current){returnSpecRef.current="";return}
+        invalidateSpecContext()
         setSpec(record.spec)
         setSpecName(record.name||"未命名助手")
         setSourceMode(record.source==="template"?"template":"create")
@@ -323,7 +369,7 @@ export function useHome() {
     } catch {
       // 列表加载失败不阻塞主流程，保存成功后会再次尝试刷新
     }
-  }, [])
+  }, [invalidateSpecContext])
 
   useEffect(() => {
     if (!rhUserId) return
@@ -342,10 +388,15 @@ export function useHome() {
     setSavedMsg("")
     const messages: LlmMessage[] = [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `我的需求：${requirement}` },
+      { role: "user", content: JSON.stringify({requirement, available_tools: toolCatalogForDesign(connectedTools, connectedMarketTools)}) },
     ]
-    const result = await callLlmWithFallback(MODEL_SHORT, { messages, page: "home", max_tokens: 4096 })
+    const startedRevision = specRevisionRef.current
+    const result = await callLlmWithFallback(MODEL_SHORT, { messages, page: "home", max_tokens: 6500 })
     setIsGenerating(false)
+    if (startedRevision !== specRevisionRef.current) {
+      setErrorMsg("生成期间当前方案发生修改，已保留你的编辑。请确认需求后重新生成。")
+      return
+    }
     if (result.needsLogin) {
       setNeedsRhLogin(true)
       setErrorMsg(LLM_ERROR_TEXT.rh_login_required)
@@ -362,6 +413,7 @@ export function useHome() {
       return
     }
     const matched = resolveAgentToolRequirements(requirement, parsed.spec, connectedTools, connectedMarketTools)
+    invalidateSpecContext()
     setSpec({...parsed.spec, tools:[
       ...matched.resolvedTools,
       ...matched.gaps.map(row=>row.name).filter(name=>!matched.resolvedTools.includes(name)),
@@ -383,7 +435,7 @@ export function useHome() {
     setTemplateKey("")
     setEditingRecordId("")
     scrollToSpecEditor()
-  }, [userInput, markSpecEdited, connectedTools, connectedMarketTools])
+  }, [userInput, markSpecEdited, connectedTools, connectedMarketTools, invalidateSpecContext])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -400,15 +452,22 @@ export function useHome() {
     setIsRevising(true)
     setErrorMsg("")
     setSavedMsg("")
+    setRevisionProposal(null)
+    const startedRevision = specRevisionRef.current
     const messages: LlmMessage[] = [
       { role: "system", content: REVISE_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `现有方案 JSON：\n${JSON.stringify({ name: specName, ...spec })}\n\n修改要求：${instruction}`,
+        content: JSON.stringify({current:{name:specName,...spec}, modification:instruction,
+          available_tools:toolCatalogForDesign(connectedTools,connectedMarketTools)}),
       },
     ]
     const result = await callLlmWithFallback(MODEL_SHORT, { messages, page: "home", max_tokens: 4096 })
     setIsRevising(false)
+    if (startedRevision !== specRevisionRef.current) {
+      setErrorMsg("生成建议期间方案发生修改，旧建议未覆盖你的编辑。请重新提出调整要求。")
+      return
+    }
     if (result.needsLogin) {
       setNeedsRhLogin(true)
       setErrorMsg(LLM_ERROR_TEXT.rh_login_required)
@@ -424,22 +483,16 @@ export function useHome() {
       setErrorMsg("修订结果格式异常，请换个说法再试一次")
       return
     }
-    setSpec((previous) => {
-      const explicitlySelected=(previous?.tools||[]).filter(name=>
-        connectedMarketTools.some(tool=>tool.id===name) || connectedTools.some(tool=>tool.name===name))
-      const matched=resolveAgentToolRequirements(requirementForTools, parsed.spec,
-        connectedTools,connectedMarketTools,explicitlySelected)
-      return {...parsed.spec, tools:[
-        ...matched.resolvedTools,
-        ...matched.gaps.map(item=>item.name).filter(name=>!matched.resolvedTools.includes(name)),
-      ],knowledge_base_ids: previous?.knowledge_base_ids || [],
-        require_approval: previous?.require_approval,
-        require_plan_review: previous?.require_plan_review,
-        quality_checks: previous?.quality_checks || []}
-    })
-    setSpecName(parsed.displayName || specName)
-    markSpecEdited()
-    setReviseInput("")
+    const existingRoleMap = new Map((spec.roles || []).map(role=>[role.id,role]))
+    const proposedRoles = parsed.spec.roles?.map(role=>({...role,
+      tools: existingRoleMap.get(role.id)?.tools.filter(tool=>spec.tools.includes(tool)) || []}))
+    setRevisionProposal({name:parsed.displayName || specName,basis:startedRevision,spec:{
+      ...spec,...parsed.spec,tools:[...spec.tools],
+      roles: proposedRoles ?? spec.roles,
+      capability_requirements:parsed.spec.capability_requirements ?? spec.capability_requirements,
+      knowledge_base_ids:spec.knowledge_base_ids,require_approval:spec.require_approval,
+      require_plan_review:spec.require_plan_review,quality_checks:spec.quality_checks,
+    }})
   }, [reviseInput, spec, specName, markSpecEdited, requirementForTools, connectedTools, connectedMarketTools])
 
   const handleRevise = useCallback(() => {
@@ -450,6 +503,19 @@ export function useHome() {
     }
     void runRevise()
   }, [reviseInput, spec, isRevising, rhUserId, runRevise])
+
+  const applyRevisionProposal = useCallback(()=>{
+    if(!revisionProposal)return
+    if(revisionProposal.basis!==specRevisionRef.current){
+      setRevisionProposal(null);setErrorMsg("方案已有新修改，请重新生成调整建议。");return
+    }
+    setSpec(revisionProposal.spec);setSpecName(revisionProposal.name)
+    markSpecEdited();setReviseInput("")
+  },[revisionProposal,markSpecEdited])
+
+  const updateFullSpec = useCallback((next:AgentSpec)=>{
+    markSpecEdited();setSpec(next)
+  },[markSpecEdited])
 
   const saveCurrentSpec = useCallback(async (asCopy: boolean) => {
     if (!spec || isSaving) return
@@ -469,6 +535,8 @@ export function useHome() {
     setErrorMsg("")
     setSavedMsg("")
     const startedRevision=specRevisionRef.current
+    const startedContext=specContextRef.current
+    const isCurrentContext=()=>startedContext===specContextRef.current
     try {
       const url = target
         ? `${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(target)}`
@@ -485,6 +553,9 @@ export function useHome() {
           ...(target ? { expected_updated: serverUpdated } : {}),
         }),
       })
+      // Saving a snapshot may finish after another Agent was opened. It still
+      // saves on the server, but must not rebind the new editor to that record.
+      if(!isCurrentContext())return
       if (res.status === 409) {
         setSaveConflict(true)
         setErrorMsg("该 Agent 已在其他页面或协作流程中更新。你的修改仍保留，请「另存为新 Agent」，避免覆盖更新后的版本。")
@@ -500,6 +571,7 @@ export function useHome() {
         return
       }
       const row = await res.json() as SavedSpecRow
+      if(!isCurrentContext())return
       if (!row?.id) {
         setErrorMsg("服务器未返回保存记录，无法确认是否保存成功，请先检查「我的 Agent」列表。")
         return
@@ -519,9 +591,9 @@ export function useHome() {
       if (noFurtherEdits && !draftRef.current.userInput.trim()) clearAgentDraft(rhUserId)
       await loadSavedList(rhUserId)
     } catch {
-      setErrorMsg("网络异常：当前改动仍保留，恢复网络后可重新保存。")
+      if(isCurrentContext())setErrorMsg("网络异常：当前改动仍保留，恢复网络后可重新保存。")
     } finally {
-      setIsSaving(false)
+      if(isCurrentContext())setIsSaving(false)
     }
   }, [spec,isSaving,rhUserId,editingRecordId,serverUpdated,specName,sourceMode,templateKey,loadSavedList])
 
@@ -531,6 +603,7 @@ export function useHome() {
     if ((specDirty || userInput.trim()) && !window.confirm(
       "当前存在未保存的 Agent 方案或新需求。切换模板将舍弃这些内容，是否继续？"
     )) return
+    invalidateSpecContext()
     setUserInput("")
     setSpec(preset.spec)
     setSpecName(preset.defaultName)
@@ -545,12 +618,13 @@ export function useHome() {
     setErrorMsg("")
     setSavedMsg("")
     scrollToSpecEditor()
-  }, [markSpecEdited,specDirty,userInput])
+  }, [markSpecEdited,specDirty,userInput,invalidateSpecContext])
 
   const handleOpenSaved = useCallback((row: SavedSpecRow) => {
     if ((specDirty || userInput.trim()) && !window.confirm(
       "当前存在未保存的 Agent 方案或新需求。打开其他 Agent 将舍弃这些内容，是否继续？"
     )) return
+    invalidateSpecContext()
     setUserInput("")
     setSpec(row.spec)
     setSpecName(row.name || "未命名助手")
@@ -566,25 +640,27 @@ export function useHome() {
 
     setSavedMsg("")
     scrollToSpecEditor()
-  }, [specDirty,userInput])
+  }, [specDirty,userInput,invalidateSpecContext])
 
   const handleDeleteSaved = useCallback(
     async (recordId: string) => {
       if (!recordId) return
+      const startedContext=specContextRef.current
       try {
         const res = await fetch(`${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(recordId)}`, {
           method: "DELETE",
           headers: { ...vibexAuthHeaders() },
         })
         if (!res.ok) {
-          setErrorMsg(res.status === 401 || res.status === 412
+          if(startedContext===specContextRef.current)setErrorMsg(res.status === 401 || res.status === 412
             ? "员工登录已过期，当前 Agent 未被删除。请重新登录。"
             : "删除失败，Agent 仍保留在服务器，请稍后重试。")
           return
         }
-        if (editingRecordId === recordId) {
+        if (editingRecordId === recordId && startedContext===specContextRef.current) {
           // Preserve the editor as an UNSAVED copy. Do not keep showing a
           // deleted Agent as saved or allow PATCH against its old record ID.
+          invalidateSpecContext()
           setEditingRecordId("")
           setSavedSpecId("")
           setServerUpdated("")
@@ -595,16 +671,17 @@ export function useHome() {
         }
         await loadSavedList(rhUserId)
       } catch {
-        setErrorMsg("网络异常，无法确认是否删除成功。请刷新列表后核对。")
+        if(startedContext===specContextRef.current)setErrorMsg("网络异常，无法确认是否删除成功。请刷新列表后核对。")
       }
     },
-    [editingRecordId, loadSavedList, rhUserId, markSpecEdited],
+    [editingRecordId, loadSavedList, rhUserId, markSpecEdited, invalidateSpecContext],
   )
 
   const handleClearSpec = useCallback(() => {
     if ((specDirty || userInput.trim()) && !window.confirm(
       "当前编辑的 Agent 或新需求尚未保存，确定清空吗？"
     )) return
+    invalidateSpecContext()
     clearAgentDraft(rhUserId)
     setSpec(null)
     setSpecName("")
@@ -621,7 +698,7 @@ export function useHome() {
     setDraftRestoreNotice("")
     setSavedMsg("")
     setErrorMsg("")
-  }, [specDirty,userInput,rhUserId])
+  }, [specDirty,userInput,rhUserId,invalidateSpecContext])
 
   const togglePlanReview = useCallback((enabled: boolean) => {
     markSpecEdited()
@@ -660,7 +737,7 @@ export function useHome() {
 
   const toolStatusOf = useCallback(
     (toolName: string) => toolConnectionStatus(toolName,
-      [...connectedTools,...connectedMarketTools.map(tool=>({name:tool.id,description:tool.description}))]),
+      [...connectedTools,...connectedMarketTools.map(tool=>({name:tool.id,description:tool.description,status:"ok"}))]),
     [connectedTools,connectedMarketTools],
   )
 
@@ -670,12 +747,15 @@ export function useHome() {
           connectedMarketTools.some(conn=>conn.id===tool)))
     : null,[requirementForTools,spec,connectedTools,connectedMarketTools])
 
-  const rematchAgentTools = useCallback(() => {
+  const rematchAgentTools = useCallback(async () => {
     if(!spec)return
+    const basis=specRevisionRef.current
+    const fresh=await loadConnectedTools()
+    if(fresh.stale||!fresh.verified||basis!==specRevisionRef.current)return
     const currentSelections=(spec.tools||[]).filter(tool=>
-      connectedTools.some(conn=>conn.name===tool) || connectedMarketTools.some(conn=>conn.id===tool))
+      fresh.http.some(conn=>conn.name===tool) || fresh.market.some(conn=>conn.id===tool))
     const result=resolveAgentToolRequirements(requirementForTools,spec,
-      connectedTools,connectedMarketTools,currentSelections)
+      fresh.http,fresh.market,currentSelections)
     const updated=[...result.resolvedTools,
       ...result.gaps.map(row=>row.name).filter(name=>!result.resolvedTools.includes(name))]
     if(JSON.stringify(updated)!==JSON.stringify(spec.tools)){
@@ -684,8 +764,8 @@ export function useHome() {
     }
     setToolMatchNotice(result.gaps.length
       ? `已匹配 ${result.resolvedTools.length} 项工具，还有 ${result.gaps.length} 项能力需要连接或人工确认。`
-      : `已匹配 ${result.resolvedTools.length} 项工具，当前方案所需能力均已核对。`)
-  },[spec,requirementForTools,connectedTools,connectedMarketTools,markSpecEdited])
+      : `已刷新连接并匹配 ${result.resolvedTools.length} 项工具。请按能力清单确认角色分配与待连接项。`)
+  },[spec,requirementForTools,loadConnectedTools,markSpecEdited])
 
   // 勾选/取消勾选工具 → 写进 spec.tools（内置 id 或已连接工具名精确匹配）
   const handleToggleSpecTool = useCallback((toolName: string, checked: boolean) => {
@@ -720,6 +800,10 @@ export function useHome() {
     handleCreate,
     isGenerating,
     spec,
+    updateFullSpec,
+    revisionProposal,
+    applyRevisionProposal,
+    discardRevisionProposal:()=>setRevisionProposal(null),
     specName,
     setSpecName: (value:string) => {
       setSpecName(value)

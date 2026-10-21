@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Info, Plus, ShieldCheck, Wrench, X } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { TcLoginGate } from "@/components/tool-connections/TcLoginGate"
 import { SiteShell } from "@/components/site/SiteShell"
 import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
@@ -7,6 +7,7 @@ import { TcTopBar } from "@/components/tool-connections/TcTopBar"
 import { ToolCard } from "@/components/tool-connections/ToolCard"
 import { ToolFormCard } from "@/components/tool-connections/ToolFormCard"
 import { ToolsEmpty } from "@/components/tool-connections/ToolsEmpty"
+import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
 import type { useToolConnections } from "./useToolConnections"
 
 const HOW_IT_WORKS = [
@@ -26,6 +27,7 @@ const HOW_IT_WORKS = [
 
 export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
   const editingRow = p.toolList.find((row) => row.id === p.editingId) || null
+  const [searchParams] = useSearchParams()
 
   return (
     <SiteShell>
@@ -57,7 +59,12 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
               <span className="text-xs text-muted-foreground">
                 <ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-primary"/>
                 凭据仅服务端保存 · 写入型工具试调需要确认
-              </span>            </div>
+              </span>
+              <Link to={addReturnAgentToUrl("/execution-connections", searchParams.get("returnSpec") || "")}
+                className="inline-flex min-h-9 items-center text-xs font-medium text-primary hover:underline">
+                接入浏览器或电脑软件 →
+              </Link>
+            </div>
             <p className="mt-2 text-xs text-muted-foreground">
               <Info className="h-3.5 w-3.5 text-primary" />
               计算、总结、知识库检索为内置工具，所有助手始终可用，无需接入。
