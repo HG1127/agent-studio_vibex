@@ -147,8 +147,13 @@ test("journey requires editable real plan, an enabled model and a saved snapshot
   assert.equal(noResources.canTry,false)
   assert.ok(noResources.resourceIssues.some(x=>x.includes("工具")))
   const good=evaluateAgentJourney(ready)
-  assert.deepEqual(good,{planIssues:[],resourceIssues:[],qualityIssues:[],
-    canTry:true,canPublish:false})
+  assert.deepEqual(good.planIssues,[])
+  assert.deepEqual(good.resourceIssues,[])
+  assert.deepEqual(good.qualityIssues,[])
+  assert.equal(good.canTry,true)
+  assert.equal(good.canPublish,false)
+  assert.equal(good.trial.state,"untried")
+  assert.ok(good.trialIssues.length>0)
 })
 test("journey only unlocks publish after an authorized successful run of the saved revision",()=>{
   const succeed={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z",spec_snapshot:spec}
@@ -171,6 +176,83 @@ test("journey catches missing completion criteria and missing knowledge authoriz
   assert.equal(state.canTry,false)
   assert.ok(state.planIssues.some(x=>x.includes("完成标准")))
   assert.ok(state.resourceIssues.some(x=>x.includes("知识库")))
+})
+
+test("trial presentation and publish gate agree after saved goal, role or capability changes",()=>{
+  const run={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z",spec_snapshot:spec}
+  for(const changed of [
+    {...spec,goal:"改为研究另一行业"},
+    {...spec,roles:[{id:"researcher",name:"研究员",responsibility:"研究",tasks:["研究"],inputs:[],
+      deliverables:["报告"],done_criteria:["有来源"],depends_on:[],tools:[]}]},
+    {...spec,capability_requirements:[{id:"research",description:"搜索资料",kind:"tool"}]},
+  ]){
+    const state=evaluateAgentJourney({...ready,spec:changed,run})
+    assert.equal(state.canPublish,false)
+    assert.equal(state.canTry,true,"saved valid edits remain runnable")
+    assert.deepEqual(state.qualityIssues,[],"trial evidence has its own blocker even without assertions")
+    assert.equal(state.trial.state,"stale")
+    assert.equal(state.trial.action,"retry")
+    assert.match(state.trial.label,/旧版本.*重新试跑/)
+    assert.ok(state.trialIssues.length>0,"sidebar must explain blocked continuation even without quality assertions")
+  }
+  assert.deepEqual(run.spec_snapshot,spec,"evaluation preserves original frozen evidence")
+})
+
+test("trial states retain original run recovery and give an actionable next step",()=>{
+  const run={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z",spec_snapshot:spec}
+  for(const [status,state,action] of [
+    ["queued","running","view"],["running","running","view"],
+    ["awaiting_approval","waiting","view"],["awaiting_input","waiting","view"],
+    ["failed","failed","retry"],["cancelled","failed","retry"],["aborted","failed","retry"],
+    ["unexpected","unknown","view"],
+  ]){
+    const output=evaluateAgentJourney({...ready,run:{...run,status}})
+    assert.equal(output.trial.state,state)
+    assert.equal(output.trial.action,action)
+    assert.equal(output.canPublish,false)
+    assert.ok(output.trialIssues.length>0)
+  }
+  for(const runState of ["checking","unavailable"]){
+    const output=evaluateAgentJourney({...ready,run,runState})
+    assert.equal(output.canPublish,false,"cached success cannot override an unverified refresh")
+    assert.equal(output.trial.state,runState)
+    assert.equal(output.trial.action,"refresh")
+  }
+  const unsaved=evaluateAgentJourney({...ready,run,dirty:true})
+  assert.equal(unsaved.trial.state,"unsaved")
+  assert.equal(unsaved.trial.action,"save")
+  for(const spec_snapshot of [undefined,null,"{}",[],{}]){
+    const output=evaluateAgentJourney({...ready,run:{...run,spec_snapshot}})
+    assert.equal(output.canPublish,false)
+    assert.equal(output.trial.state,"unproven")
+    assert.ok(output.trialIssues.length>0)
+    assert.equal(output.trial.action,"retry")
+  }
+  assert.equal(evaluateAgentJourney({...ready,run:{...run,spec_id:"other"}}).trial.state,"untried")
+})
+
+test("trial uses full content evidence across timestamp formats and precision boundaries",()=>{
+  const run={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:00:00Z",spec_snapshot:spec}
+  const reordered=Object.fromEntries(Object.entries(spec).reverse())
+  for(const created of ["2026-10-16 00:00:00.000Z","2026-10-16T08:00:00+08:00",
+    "2026-10-15T23:59:59.500Z"]){
+    const output=evaluateAgentJourney({...ready,run:{...run,created,spec_snapshot:reordered}})
+    assert.equal(output.canPublish,true)
+    assert.equal(output.trial.state,"ready")
+    assert.deepEqual(output.trialIssues,[])
+    assert.match(output.trial.detail,/不代表内容质量已验证/)
+    const mismatch=evaluateAgentJourney({...ready,run:{...run,created,spec_snapshot:{...spec,goal:"changed"}}})
+    assert.equal(mismatch.canPublish,false,"same instant is insufficient when complete content differs")
+    assert.equal(mismatch.trial.state,"stale")
+  }
+  for(const created of ["invalid","2026-10-15T23:59:58Z"]){
+    const output=evaluateAgentJourney({...ready,run:{...run,created}})
+    assert.equal(output.canPublish,false)
+    assert.equal(output.trial.state,"unproven")
+  }
+  for(const lastSavedAt of [undefined,NaN,0]){
+    assert.equal(evaluateAgentJourney({...ready,lastSavedAt,run}).canPublish,false)
+  }
 })
 
 test("deterministic result assertions are bounded and do not claim factual verification",()=>{
@@ -199,9 +281,26 @@ test("publish with configured quality assertions must verify actual owner-scoped
   assert.ok(absent.qualityIssues.some(x=>x.includes("真实结果")))
   const bad=evaluateAgentJourney({...ready,spec:checked,run:{...run,result:"暂无报告"}})
   assert.equal(bad.canPublish,false)
+  assert.equal(bad.trial.state,"quality_blocked")
+  assert.ok(bad.trialIssues.length>0)
   assert.ok(bad.qualityIssues.some(x=>x.includes("未通过")))
   const good=evaluateAgentJourney({...ready,spec:checked,run:{...run,result:"研究结论：依据公开来源"}})
   assert.equal(good.canPublish,true)
+  assert.equal(good.trial.state,"ready")
   assert.deepEqual(good.qualityIssues,[])
   assert.equal(evaluateAgentJourney({...ready,spec:checked,run:{...run,result:"研究结论 拒绝审核"}}).canPublish,false)
+})
+
+test("resource failures do not mislabel verified passing output assertions as a failed trial",()=>{
+  const checked={...spec,quality_checks:[{type:"contains",expected:"研究结论"}]}
+  const run={spec_id:ready.savedId,status:"succeeded",created:"2026-10-16T00:02:00Z",spec_snapshot:checked,result:"研究结论：依据公开来源"}
+  for(const modelState of ["loading","unavailable"]){
+    const state=evaluateAgentJourney({...ready,spec:checked,run,modelState})
+    assert.equal(state.canTry,false)
+    assert.equal(state.canPublish,false,"a verified result never bypasses unavailable resources")
+    assert.equal(state.trial.state,"blocked")
+    assert.ok(state.resourceIssues.length>0)
+    assert.deepEqual(state.qualityIssues,[],"the existing real output passes its configured assertion")
+    assert.match(state.trial.detail,/方案与资源/)
+  }
 })

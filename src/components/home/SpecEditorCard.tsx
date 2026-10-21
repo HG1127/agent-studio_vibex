@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { AgentSpec, ConnectedToolOption, ListField } from "@/pages/Home/useHome"
 import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
 import type { ToolResolution } from "@/lib/agentToolMatcher"
-import { safeMarketplaceQuery, addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { safeMarketplaceQuery, agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { AgentCapabilityPlanner } from "@/components/home/AgentCapabilityPlanner"
 import { AgentRoleDesigner } from "@/components/agents/AgentRoleDesigner"
 import { AgentRevisionPreview, type AgentRevisionProposal } from "./AgentRevisionPreview"
@@ -67,6 +67,8 @@ type SpecEditorCardProps = {
   isSaving: boolean
   savedMsg: string
   savedSpecId?: string
+  /** Changes only when switching Agent or starting a different draft session. */
+  editorContextKey?: string | number
   focus?: "all" | "plan" | "resources"
   onClear: () => void
   showClear?: boolean
@@ -238,7 +240,8 @@ function ToolPickerBlock({
           <p className="rounded-lg border border-dashed border-border bg-background/60 p-2.5 text-xs leading-relaxed text-muted-foreground">
             还没有已启用的外部工具，
             <Link
-              to="/tool-connections"
+              to={agentResourceSetupUrl("/tool-connections", returnSpecId || "")}
+              target="_blank" rel="noopener noreferrer"
               className="ml-1 font-medium text-primary underline-offset-4 transition hover:underline"
             >
               去工具连接页接入
@@ -252,7 +255,7 @@ function ToolPickerBlock({
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             已验证的市场插件工具 · 按需授权
           </p>
-          <Link to="/plugin-market" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:underline">管理插件（新标签）→</Link>
+          <Link to={agentResourceSetupUrl("/plugin-market", returnSpecId || "")} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:underline">管理插件（新标签）→</Link>
         </div>
         {connectedMarketTools.length > 0
           ? <div className="max-h-72 space-y-1.5 overflow-y-auto">
@@ -278,8 +281,8 @@ function ToolPickerBlock({
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
                 {toolName}
-                <Link to={addReturnAgentToUrl(safeMarketplaceQuery(toolName) ? `/plugin-market?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/plugin-market",returnSpecId||"")} target="_blank" rel="noopener noreferrer" className="rounded-md border border-primary/30 px-2 py-1 text-primary hover:bg-primary/10">寻找插件</Link>
-                <Link to={safeMarketplaceQuery(toolName) ? `/tool-connections?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/tool-connections"} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">自定义连接</Link>
+                <Link to={agentResourceSetupUrl(safeMarketplaceQuery(toolName) ? `/plugin-market?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/plugin-market",returnSpecId||"")} target="_blank" rel="noopener noreferrer" className="rounded-md border border-primary/30 px-2 py-1 text-primary hover:bg-primary/10">寻找插件</Link>
+                <Link to={agentResourceSetupUrl(safeMarketplaceQuery(toolName) ? `/tool-connections?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/tool-connections", returnSpecId || "")} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">自定义连接</Link>
                 <button
                   type="button"
                   aria-label={`从方案里移除 ${toolName}`}
@@ -303,10 +306,11 @@ function ToolPickerBlock({
 export function SpecEditorCard(p: SpecEditorCardProps) {
   const [selectedTab, setSelectedTab] = useState("goal")
   const tabId = useId()
+  const editorContextKey = p.editorContextKey ?? p.savedSpecId ?? "draft"
   const tabs = [
     {id:"goal",label:"目标与交付",icon:Target},
     {id:"roles",label:"角色与任务",icon:UsersRound},
-    ...(p.focus === "plan" ? [] : [{id:"resources",label:"工具与资料",icon:Wrench}]),
+    {id:"resources",label:"工具与资料",icon:Wrench},
     {id:"criteria",label:"完成标准",icon:Flag},
   ]
   const activeTab = p.focus === "resources" ? "resources" :
@@ -358,10 +362,9 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
         </button>)}
       </div>}
 
-      <div role={p.focus === "resources"?undefined:"tabpanel"}
-        id={`${tabId}-panel-${activeTab}`} aria-labelledby={p.focus === "resources"?undefined:`${tabId}-tab-${activeTab}`}
-        className="grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2">
-        {activeTab === "goal" && (<>
+      <div>
+        {activeTab === "goal" && <div role="tabpanel" id={`${tabId}-panel-goal`} aria-labelledby={`${tabId}-tab-goal`}
+          className="grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2">
         <SectionBlock title="目标 · 优先确认" featured icon={<Target className="h-4 w-4" />}>
           <Textarea
             rows={4}
@@ -388,9 +391,15 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             addLabel="添加交付物"
           />
         </SectionBlock>
-        </>)}
-        {activeTab === "resources" && (<>
+        </div>}
+        {/* Keep pending capability edits and undo state when navigating between design modules. */}
+        <div role={p.focus === "resources" ? undefined : "tabpanel"}
+          id={`${tabId}-panel-resources`} aria-labelledby={p.focus === "resources" ? undefined : `${tabId}-tab-resources`}
+          hidden={activeTab !== "resources"} inert={activeTab !== "resources"} aria-hidden={activeTab !== "resources"}
+          className={activeTab === "resources" ? "grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2" : "hidden"}>
         <AgentCapabilityPlanner spec={p.spec} onChange={p.onSpecChange}
+          editorContextKey={editorContextKey}
+          active={activeTab === "resources"}
           analysis={p.toolAnalysis} connections={p.connectedTools} marketTools={p.connectedMarketTools}
           returnSpecId={p.savedSpecId} notice={p.toolMatchNotice}
           onRematch={p.onRematchTools}/>
@@ -429,7 +438,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           </p>}
           {p.knowledgeBases.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-              {p.knowledgeBasesLoading?"正在读取已授权知识库…":"尚无已授权知识库。"}<Link to={addReturnAgentToUrl("/knowledge-bases",p.savedSpecId||"")} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">创建并上传资料 →</Link>
+              {p.knowledgeBasesLoading?"正在读取已授权知识库…":"尚无已授权知识库。"}<Link to={agentResourceSetupUrl("/knowledge-bases",p.savedSpecId||"")} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">创建并上传资料 →</Link>
             </p>
           ) : (
             <div className="max-h-40 space-y-2 overflow-auto">
@@ -441,13 +450,22 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
               </label>)}
             </div>
           )}
-          <Link to={addReturnAgentToUrl("/knowledge-bases",p.savedSpecId||"")} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+          <Link to={agentResourceSetupUrl("/knowledge-bases",p.savedSpecId||"")} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">
             管理知识库 <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </SectionBlock>
-        </>)}
-        {activeTab === "roles" && (<>
-        <div className="xl:col-span-2"><AgentRoleDesigner spec={p.spec} onChange={p.onSpecChange}/></div>
+        </div>
+        {/* Keep role selection and recovery state across tabs; the context key isolates different drafts. */}
+        <div role={p.focus === "resources" ? undefined : "tabpanel"} id={`${tabId}-panel-roles`}
+          aria-labelledby={p.focus === "resources" ? undefined : `${tabId}-tab-roles`}
+          hidden={activeTab !== "roles"} inert={activeTab !== "roles"} aria-hidden={activeTab !== "roles"}
+          className={activeTab === "roles" ? "grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2" : "hidden"}>
+        <div className="xl:col-span-2"><AgentRoleDesigner key={editorContextKey} spec={p.spec} onChange={p.onSpecChange}
+          builtinTools={p.builtinTools} connectedTools={p.connectedTools} connectedMarketTools={p.connectedMarketTools}
+          onOpenResources={() => {
+            setSelectedTab("resources")
+            document.getElementById(`${tabId}-tab-resources`)?.focus()
+          }}/></div>
         <SectionBlock title="任务规划 · 执行步骤" featured icon={<Route className="h-4 w-4" />}>
           <ListRows
             field="task_plan"
@@ -459,8 +477,9 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             addLabel="添加步骤"
           />
         </SectionBlock>
-        </>)}
-        {activeTab === "criteria" && (<>
+        </div>
+        {activeTab === "criteria" && <div role="tabpanel" id={`${tabId}-panel-criteria`} aria-labelledby={`${tabId}-tab-criteria`}
+          className="grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2">
         <div className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 xl:col-span-2">
           <label className="flex cursor-pointer items-center gap-3">
             <input type="checkbox" checked={Boolean(p.spec.require_plan_review)}
@@ -485,7 +504,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
             addLabel="添加标准"
           />
         </SectionBlock>
-        </>)}
+        </div>}
       </div>
 
       <div className="border-t border-border px-4 py-4 sm:px-6">

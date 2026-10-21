@@ -800,6 +800,7 @@ export function useHome() {
     handleCreate,
     isGenerating,
     spec,
+    editorContextKey: specContextRef.current,
     updateFullSpec,
     revisionProposal,
     applyRevisionProposal,

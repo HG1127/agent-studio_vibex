@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
-import { safeMarketplaceQuery, addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { safeMarketplaceQuery, agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { ExternalLink, Search } from "lucide-react"
 import { Link } from "react-router-dom"
 import type { ToolResolution } from "@/lib/agentToolMatcher"
@@ -65,13 +65,13 @@ export function AgentToolAutoConnect({analysis,returnSpecId}:Props){
   return <section aria-label="插件市场自动发现" className="rounded-xl border border-border bg-card p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="flex items-center gap-2 text-sm font-semibold"><Search className="h-4 w-4 text-primary"/>插件市场候选</h4>
-      <Link to={addReturnAgentToUrl("/plugin-market",returnSpecId||"")} target="_blank" rel="noopener noreferrer"
+      <Link to={agentResourceSetupUrl("/plugin-market",returnSpecId||"")} target="_blank" rel="noopener noreferrer"
         className="inline-flex min-h-9 items-center gap-1 text-xs font-medium text-primary hover:underline">
         打开插件市场<ExternalLink className="h-3.5 w-3.5"/>
       </Link>
     </div>
-    {discoveryStatus==="loading" && <p role="status" className="mt-2 text-xs text-muted-foreground">正在按待连接能力查询当前已授权的 Smithery 目录…</p>}
-    {discoveryStatus==="idle" && <p className="mt-2 text-xs text-muted-foreground">这些需求暂无通用搜索词，请到插件市场选择能力关键词。</p>}
+    {(discoveryStatus==="loading" || discoveryStatus==="idle" && Boolean(discoveryQuery)) && <p role="status" className="mt-2 text-xs text-muted-foreground">正在按待连接能力查询当前已授权的 Smithery 目录…</p>}
+    {discoveryStatus==="idle" && !discoveryQuery && <p className="mt-2 text-xs text-muted-foreground">这些需求暂无通用搜索词，请到插件市场选择能力关键词。</p>}
     {discoveryStatus==="needs_key" && <p className="mt-2 text-xs text-muted-foreground">连接 Smithery 后，可自动发现真实插件候选。在插件市场完成账号授权，再返回此方案。</p>}
     {discoveryStatus==="unavailable" && <p className="mt-2 text-xs text-muted-foreground">插件目录暂不可用，可以打开插件市场手动搜索。</p>}
     {discoveryStatus==="ok" && discoveries.length===0 && <p className="mt-2 text-xs text-muted-foreground">本次没有找到已验证的候选，可以调整关键词或接入自定义工具。</p>}
@@ -82,7 +82,7 @@ export function AgentToolAutoConnect({analysis,returnSpecId}:Props){
           <p className="mt-1 text-muted-foreground">{row.desc||"市场已验证的工具服务"}</p>
           <p className="mt-1 text-muted-foreground">匹配能力：{row.query}</p>
         </div>
-        <Link to={addReturnAgentToUrl(`/plugin-market?plugin=${encodeURIComponent(row.slug)}`,returnSpecId||"")}
+        <Link to={agentResourceSetupUrl(`/plugin-market?plugin=${encodeURIComponent(row.slug)}`,returnSpecId||"")}
           target="_blank" rel="noopener noreferrer"
           className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-primary/40 px-2.5 text-xs font-medium text-primary">
           查看并连接<ExternalLink className="h-3.5 w-3.5"/>

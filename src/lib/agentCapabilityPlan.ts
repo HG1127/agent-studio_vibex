@@ -27,13 +27,20 @@ export type CapabilityCandidate = {
   description?: string
   /** A real, compatible connection that still needs an explicit capability mapping. */
   needsMapping?: boolean
+  /** Whether the named roles (or an existing responsible role) already hold this tool. */
+  roleAssigned?: boolean
 }
 export type CapabilityPlanRow = AgentCapabilityRequirement & {
   candidates: CapabilityCandidate[]
-  state: "selected" | "available" | "needs_test" | "missing"
+  state: "selected" | "available" | "needs_test" | "needs_role" | "missing"
   searchTerm: string
   roleNames: string[]
 }
+
+export const MAX_AGENT_CAPABILITIES = 20
+export type CapabilityRequirementChanges = Partial<Pick<AgentCapabilityRequirement,
+  "title" | "purpose" | "kind" | "access" | "required" | "role_ids">>
+export type RemovedAgentCapability = { requirement: AgentCapabilityRequirement; index: number }
 
 const KINDS: CapabilityKind[] = ["web_search", "web_fetch", "knowledge", "calculate",
   "text", "document", "browser", "desktop", "integration", "custom"]
@@ -46,7 +53,7 @@ const strings = (value: unknown, limit = 12): string[] => Array.isArray(value)
 export function normalizeCapabilityRequirements(value: unknown): AgentCapabilityRequirement[] {
   if (!Array.isArray(value)) return []
   const ids = new Set<string>()
-  return value.slice(0, 20).flatMap((item, index) => {
+  return value.slice(0, MAX_AGENT_CAPABILITIES).flatMap((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return []
     const raw = item as Record<string, unknown>
     const title = string(raw.title, 100)
@@ -92,8 +99,10 @@ export function inferCapabilityKind(title: string): CapabilityKind {
 
 /** Old saved Agents remain usable; new structured needs come from the design model. */
 export function agentCapabilityRequirements(spec: AgentSpec, resolution?: ToolResolution | null): AgentCapabilityRequirement[] {
-  const defined = normalizeCapabilityRequirements(spec.capability_requirements)
-  const needs = [...defined]
+  // An explicit list is the employee's current configuration, including an
+  // intentionally empty one. Only old Agents without the field use inference.
+  if (Array.isArray(spec.capability_requirements)) return normalizeCapabilityRequirements(spec.capability_requirements)
+  const needs: AgentCapabilityRequirement[] = []
   const add = (title: string, kind: CapabilityKind, tools: string[] = [], purpose = "由当前方案中的任务和工具整理", access: "read"|"write" = writing.test(title)?"write":"read") => {
     if (needs.some(need => fold(need.title) === fold(title) ||
       tools.some(id => need.suggested_tool_ids.includes(id)) ||
@@ -101,11 +110,9 @@ export function agentCapabilityRequirements(spec: AgentSpec, resolution?: ToolRe
     needs.push({id: `inferred_${needs.length + 1}`, title, kind, purpose, access, required: true,
       role_ids: [], search_terms: [safeMarketplaceQuery(title)].filter(Boolean), suggested_tool_ids: tools})
   }
-  if (!defined.length) {
-    for (const rec of resolution?.recommendations || []) {
-      const builtin = BUILTINS[rec.id]
-      add(builtin?.title || rec.label, builtin?.kind || inferCapabilityKind(rec.label), [rec.id])
-    }
+  for (const rec of resolution?.recommendations || []) {
+    const builtin = BUILTINS[rec.id]
+    add(builtin?.title || rec.label, builtin?.kind || inferCapabilityKind(rec.label), [rec.id])
   }
   for (const gap of resolution?.gaps || []) add(gap.name, inferCapabilityKind(gap.name))
   const context = [spec.goal, spec.task_scope, ...spec.task_plan,
@@ -114,7 +121,68 @@ export function agentCapabilityRequirements(spec: AgentSpec, resolution?: ToolRe
     !deny(context, /浏览器|browser|网页操作/i)) add("浏览器操作", "browser", [], "任务需要打开、读取或操作页面，请连接真实浏览器执行工具", writing.test(context)?"write":"read")
   if (/(?:本地软件|电脑软件|桌面软件|操作电脑|desktop|computer.?use)/i.test(context) &&
     !deny(context, /电脑|软件|desktop/i)) add("电脑软件操作", "desktop", [], "任务需要本地执行器或软件接口；网页本身无法直接调度电脑", writing.test(context)?"write":"read")
-  return needs.slice(0, 20)
+  return needs.slice(0, MAX_AGENT_CAPABILITIES)
+}
+
+/** Editing a requirement never changes global or role tool permissions. */
+export function updateAgentCapability(spec: AgentSpec, needId: string,
+  changes: CapabilityRequirementChanges, resolution: ToolResolution | null = null): AgentSpec {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const previous = requirements.find(row => row.id === needId)
+  if (!previous) return spec
+  const currentRoleIds = new Set((spec.roles || []).map(role => role.id))
+  const next = normalizeCapabilityRequirements([{
+    ...previous,
+    title: changes.title ?? previous.title,
+    purpose: changes.purpose ?? previous.purpose,
+    kind: changes.kind ?? previous.kind,
+    access: changes.access ?? previous.access,
+    required: changes.required ?? previous.required,
+    role_ids: changes.role_ids === undefined ? previous.role_ids
+      : changes.role_ids.filter(id => currentRoleIds.has(id)),
+  }])[0]
+  if (!next) return spec
+  if (["title", "purpose", "kind", "access"].some(key =>
+    next[key as keyof AgentCapabilityRequirement] !== previous[key as keyof AgentCapabilityRequirement])) {
+    // A prior suggestion/mapping does not establish that the revised operation
+    // has the same inputs or effects. Recheck it against the current catalog.
+    next.suggested_tool_ids = []
+    next.search_terms = [safeMarketplaceQuery(`${next.title} ${next.purpose}`) ||
+      safeMarketplaceQuery(next.kind)].filter(Boolean)
+  }
+  return {...spec, capability_requirements: requirements.map(row => row.id === needId ? next : row)}
+}
+
+export function addAgentCapability(spec: AgentSpec, requirement: AgentCapabilityRequirement,
+  resolution: ToolResolution | null = null): AgentSpec {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const next = normalizeCapabilityRequirements([requirement])[0]
+  if (!next || requirements.length >= MAX_AGENT_CAPABILITIES || requirements.some(row => row.id === next.id)) return spec
+  const roleIds = new Set((spec.roles || []).map(role => role.id))
+  return {...spec, capability_requirements: [...requirements,
+    {...next, role_ids: next.role_ids.filter(id => roleIds.has(id)), suggested_tool_ids: []}]}
+}
+
+/** Remove only this requirement; another task may still need its permissions. */
+export function removeAgentCapability(spec: AgentSpec, needId: string,
+  resolution: ToolResolution | null = null): { spec: AgentSpec; removed: RemovedAgentCapability | null } {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const index = requirements.findIndex(row => row.id === needId)
+  if (index < 0) return {spec, removed: null}
+  return {spec: {...spec, capability_requirements: requirements.filter(row => row.id !== needId)},
+    removed: {requirement: requirements[index], index}}
+}
+
+/** Undo inserts one requirement into the current draft, preserving later edits. */
+export function restoreAgentCapability(spec: AgentSpec, removed: RemovedAgentCapability,
+  resolution: ToolResolution | null = null): AgentSpec {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const restored = normalizeCapabilityRequirements([removed.requirement])[0]
+  if (!restored || requirements.length >= MAX_AGENT_CAPABILITIES || requirements.some(row => row.id === restored.id)) return spec
+  const roleIds = new Set((spec.roles || []).map(role => role.id))
+  restored.role_ids = restored.role_ids.filter(id => roleIds.has(id))
+  requirements.splice(Math.max(0, Math.min(removed.index, requirements.length)), 0, restored)
+  return {...spec, capability_requirements: requirements}
 }
 
 const domainMatch = (kind: CapabilityKind, text: string): boolean => {
@@ -195,9 +263,14 @@ export function buildAgentCapabilityPlan(spec: AgentSpec, resolution: ToolResolu
       : !spec.roles?.length || spec.roles.some(role=>role.tools.includes(toolId))
     const isBound = (tool:CapabilityCandidate) => tool.selected && !tool.needsMapping && roleAssignmentsValid(tool.id)
     const chosen = candidates.filter(isBound)
+    const roleMissing = Boolean(spec.roles?.length) && candidates.length > 0 && (
+      need.role_ids.some(id => !spec.roles?.some(role => role.id === id)) ||
+      (!need.role_ids.length && !candidates.some(tool => tool.selected && roleAssignmentsValid(tool.id))) ||
+      candidates.some(tool => tool.selected && !tool.needsMapping && !roleAssignmentsValid(tool.id))
+    )
     const state = chosen.some(tool => tool.tested) ? "selected" : chosen.length ? "needs_test"
-      : candidates.some(tool => tool.tested) ? "available" : candidates.length ? "needs_test" : "missing"
-    return {...need, candidates:candidates.map(tool=>({...tool,selected:isBound(tool)})), state,
+      : roleMissing ? "needs_role" : candidates.some(tool => tool.tested) ? "available" : candidates.length ? "needs_test" : "missing"
+    return {...need, candidates:candidates.map(tool=>({...tool,selected:isBound(tool),roleAssigned:roleAssignmentsValid(tool.id)})), state,
       searchTerm: need.search_terms.map(safeMarketplaceQuery).find(Boolean) ||
         safeMarketplaceQuery(need.kind + " " + need.title),
       roleNames: (spec.roles || []).filter(role => need.role_ids.includes(role.id)).map(role => role.name),
@@ -210,6 +283,7 @@ export function agentCapabilityReadiness(spec:AgentSpec, resolution:ToolResoluti
   return buildAgentCapabilityPlan(spec,resolution,connections,market)
     .filter(row=>row.required&&row.state!=="selected")
     .map(row=>`${row.title}：${row.state==="needs_test"?"请先测试连接":
+      row.state==="needs_role"?"请选择负责角色，再选用并分配工具":
       row.state==="available"?spec.roles?.length?"请选用工具并分配给负责角色":"请选择已连接工具":"请连接工具或调整能力需求"}`)
 }
 
@@ -217,7 +291,11 @@ export function agentCapabilityReadiness(spec:AgentSpec, resolution:ToolResoluti
 export function bindAgentCapability(spec:AgentSpec, needId:string, toolId:string,
   resolution:ToolResolution|null, connections:ConnectedToolOption[]=[], market:VerifiedMarketTool[]=[]):AgentSpec {
   const need=buildAgentCapabilityPlan(spec,resolution,connections,market).find(row=>row.id===needId)
-  if(!need || !need.candidates.some(candidate=>candidate.id===toolId))return spec
+  const candidate=need?.candidates.find(candidate=>candidate.id===toolId)
+  if(!need || !candidate)return spec
+  if(spec.roles?.length && (need.role_ids.length
+    ? need.role_ids.some(id=>!spec.roles?.some(role=>role.id===id))
+    : !(candidate.roleAssigned && spec.tools.includes(toolId))))return spec
   const otherRoleUsesAlias=spec.roles?.some(role=>!need.role_ids.includes(role.id)&&role.tools.includes(need.title))
   return {...spec,
     capability_requirements:agentCapabilityRequirements(spec,resolution)

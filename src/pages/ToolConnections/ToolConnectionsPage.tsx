@@ -7,7 +7,7 @@ import { TcTopBar } from "@/components/tool-connections/TcTopBar"
 import { ToolCard } from "@/components/tool-connections/ToolCard"
 import { ToolFormCard } from "@/components/tool-connections/ToolFormCard"
 import { ToolsEmpty } from "@/components/tool-connections/ToolsEmpty"
-import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { continueAgentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import type { useToolConnections } from "./useToolConnections"
 
 const HOW_IT_WORKS = [
@@ -60,14 +60,14 @@ export function ToolConnectionsPage(p: ReturnType<typeof useToolConnections>) {
                 <ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-primary"/>
                 凭据仅服务端保存 · 写入型工具试调需要确认
               </span>
-              <Link to={addReturnAgentToUrl("/execution-connections", searchParams.get("returnSpec") || "")}
+              <Link to={continueAgentResourceSetupUrl("/execution-connections", searchParams)}
                 className="inline-flex min-h-9 items-center text-xs font-medium text-primary hover:underline">
                 接入浏览器或电脑软件 →
               </Link>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               <Info className="h-3.5 w-3.5 text-primary" />
-              计算、总结、知识库检索为内置工具，所有助手始终可用，无需接入。
+              计算、总结和知识库检索为内置能力，无需新增连接；仍需按方案和角色分配，知识库内容受资料授权约束。
             </p>
         </section>
 

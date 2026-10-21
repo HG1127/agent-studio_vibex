@@ -1,5 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom"
-import { safeAgentSpecId } from "@/lib/toolSearchPrivacy"
+import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
 import { AlertTriangle, CheckCircle2, ShoppingBag, X } from "lucide-react"
 import { MarketBrowser } from "@/components/plugin-market/MarketBrowser"
 import { SmitheryConnectCard } from "@/components/plugin-market/SmitheryConnectCard"
@@ -13,8 +12,6 @@ import { InvokeTestPanel } from "@/components/plugin-market/InvokeTestPanel"
 import type { usePluginMarket } from "./usePluginMarket"
 
 export function PluginMarketPage(p: ReturnType<typeof usePluginMarket>) {
-  const [query]=useSearchParams()
-  const returnSpec=safeAgentSpecId(query.get("returnSpec")||"")
   return (
     <SiteShell>
     <div className="min-h-screen bg-background text-foreground">
@@ -44,18 +41,7 @@ export function PluginMarketPage(p: ReturnType<typeof usePluginMarket>) {
             )}
         </section>
 
-        {returnSpec && <section aria-label="连接完成后返回原 Agent" className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-          <div>
-            <p className="text-sm font-semibold">正在为一个 Agent 连接工具</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              请先完成插件连接、OAuth 和工具发现。完成后返回原 Agent 的资源配置，核验工具并明确选择；连接成功不会自动授权所有 Agent。
-            </p>
-          </div>
-          <Link to={`/agent-create?step=3&spec=${encodeURIComponent(returnSpec)}`}
-            className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground">
-            返回原 Agent 配置 →
-          </Link>
-        </section>}
+        <ReturnToAgentResources what="市场插件"/>
         {p.needsRhLogin && (
           <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
             <p className="flex items-center gap-2 text-sm text-destructive">

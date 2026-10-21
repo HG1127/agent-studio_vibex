@@ -2,6 +2,8 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   normalizeCapabilityRequirements, buildAgentCapabilityPlan, toolCatalogForDesign, bindAgentCapability,
+  agentCapabilityRequirements, agentCapabilityReadiness, addAgentCapability, updateAgentCapability,
+  removeAgentCapability, restoreAgentCapability, MAX_AGENT_CAPABILITIES,
 } from "../src/lib/agentCapabilityPlan.ts"
 import { resolveAgentToolRequirements } from "../src/lib/agentToolMatcher.ts"
 import { sanitizeAgentDraftSpec } from "../src/lib/agentEditorDraft.ts"
@@ -216,4 +218,191 @@ test("new MCP tools also need an exact explicit integration mapping", () => {
   const bound = bindAgentCapability(original, "need_1", connection.id, null, [], [connection])
   assert.equal(buildAgentCapabilityPlan(bound, null, [], [connection])[0].state, "selected")
   assert.deepEqual(bound.capability_requirements[0].suggested_tool_ids, [connection.id])
+})
+
+const legacyResolution = {
+  resolvedTools: [], safeAutoBindings: [],
+  recommendations: [{ id: "web_search", label: "网络搜索" }],
+  gaps: [{ name: "浏览器操作", searchTerm: "browser", reason: "读取指定页面" }],
+}
+
+test("an explicit empty or edited requirement list is authoritative over old suggestions and task text", () => {
+  const empty = spec({ goal: "在浏览器里读取资料，再使用电脑软件处理", tools: ["web_search"] })
+  assert.deepEqual(agentCapabilityRequirements(empty, legacyResolution), [])
+  assert.deepEqual(buildAgentCapabilityPlan(empty, legacyResolution), [])
+  const explicit = { ...empty, capability_requirements: [need({ required: false })] }
+  assert.deepEqual(agentCapabilityRequirements(explicit, legacyResolution), explicit.capability_requirements)
+  const { capability_requirements, ...legacy } = empty
+  assert.ok(agentCapabilityRequirements(legacy, legacyResolution).length >= 2,
+    "old saved Agents without the field still receive an inferred plan")
+})
+
+test("draft recovery preserves missing versus explicitly cleared capability requirements", () => {
+  const { capability_requirements, ...legacy } = spec({ goal: "浏览器读取网页" })
+  const oldRestored = sanitizeAgentDraftSpec(JSON.parse(JSON.stringify(legacy)))
+  assert.equal(Object.hasOwn(oldRestored, "capability_requirements"), false)
+  assert.ok(agentCapabilityRequirements(oldRestored, legacyResolution).length)
+  const cleared = sanitizeAgentDraftSpec(JSON.parse(JSON.stringify({ ...legacy, capability_requirements: [] })))
+  assert.equal(Object.hasOwn(cleared, "capability_requirements"), true)
+  assert.deepEqual(agentCapabilityRequirements(cleared, legacyResolution), [])
+})
+
+test("deleting an inferred requirement materializes the remaining list and refresh cannot resurrect it", () => {
+  const { capability_requirements, ...legacy } = spec({ goal: "用浏览器完成任务", tools: ["web_search"] })
+  const originalNeeds = agentCapabilityRequirements(legacy, legacyResolution)
+  const deleted = removeAgentCapability(legacy, originalNeeds[0].id, legacyResolution)
+  assert.ok(deleted.removed)
+  assert.deepEqual(agentCapabilityRequirements(deleted.spec, legacyResolution), originalNeeds.slice(1))
+  let current = deleted.spec
+  for (const requirement of current.capability_requirements) current = removeAgentCapability(current, requirement.id, legacyResolution).spec
+  assert.deepEqual(agentCapabilityRequirements(current, legacyResolution), [])
+  assert.deepEqual(current.tools, legacy.tools, "removing needs does not revoke tools used elsewhere")
+})
+
+test("editing fields rechecks a previous PDF binding against the new Excel export operation", () => {
+  const pdf = market({ id: "mkt__pdf000000000001__pdf_read", name: "pdf_read", label: "读取 PDF", description: "Read PDF document text" })
+  const original = spec({ tools: [pdf.id, "summarize"], roles: [role("writer", [pdf.id]), role("reviewer", ["summarize"])],
+    capability_requirements: [need({ kind: "document", title: "读取 PDF", purpose: "提取 PDF 正文", search_terms: ["pdf"], suggested_tool_ids: [pdf.id], role_ids: ["writer"] })] })
+  assert.equal(buildAgentCapabilityPlan(original, null, [], [pdf])[0].state, "selected")
+  const changed = updateAgentCapability(original, "need_1", {title: "导出 Excel 报表", purpose: "生成含汇总结果的工作簿", kind: "document", access: "write", required: false})
+  assert.equal(changed.capability_requirements[0].title, "导出 Excel 报表")
+  assert.equal(changed.capability_requirements[0].purpose, "生成含汇总结果的工作簿")
+  assert.equal(changed.capability_requirements[0].access, "write")
+  assert.equal(changed.capability_requirements[0].required, false)
+  assert.deepEqual(changed.capability_requirements[0].suggested_tool_ids, [])
+  assert.deepEqual(changed.capability_requirements[0].search_terms, ["spreadsheet"])
+  assert.deepEqual(changed.capability_requirements[0].role_ids, ["writer"])
+  assert.equal(buildAgentCapabilityPlan(changed, null, [], [pdf])[0].state, "missing")
+  assert.deepEqual(changed.roles, original.roles)
+  assert.deepEqual(changed.tools, original.tools)
+  assert.equal(original.capability_requirements[0].title, "读取 PDF", "editing keeps the prior draft snapshot immutable")
+})
+
+test("changing a mapped integration's purpose requires a fresh explicit mapping without revoking existing grants", () => {
+  const connection = {name: "send_email", description: "Send email messages", method: "POST", status: "ok"}
+  const original = spec({tools: [connection.name], roles: [role("sender", [connection.name])],
+    capability_requirements: [need({kind: "integration", title: "发送邮件", purpose: "发送汇总", access: "write", role_ids: ["sender"], suggested_tool_ids: [connection.name]})]})
+  const changed = updateAgentCapability(original, "need_1", {purpose: "发送经人工确认的完整报告"})
+  assert.equal(buildAgentCapabilityPlan(changed, null, [connection])[0].state, "available")
+  assert.deepEqual(changed.tools, original.tools)
+  assert.deepEqual(changed.roles, original.roles)
+  const remapped = bindAgentCapability(changed, "need_1", connection.name, null, [connection])
+  assert.equal(buildAgentCapabilityPlan(remapped, null, [connection])[0].state, "selected")
+})
+
+test("required versus optional edits change the readiness gate without altering a tool mapping", () => {
+  const original = spec({capability_requirements: [need({suggested_tool_ids: [market().id]})]})
+  assert.equal(agentCapabilityReadiness(original, null).length, 1)
+  const optional = updateAgentCapability(original, "need_1", {required: false})
+  assert.deepEqual(agentCapabilityReadiness(optional, null), [])
+  assert.deepEqual(optional.capability_requirements[0].suggested_tool_ids, original.capability_requirements[0].suggested_tool_ids)
+  assert.equal(agentCapabilityReadiness(updateAgentCapability(optional, "need_1", {required: true}), null).length, 1)
+  assert.equal(updateAgentCapability(original, "need_1", {title: "  "}), original, "blank input must not silently delete a requirement")
+})
+
+test("adding capabilities is bounded, rejects duplicates, and grants no suggested permissions", () => {
+  const original = spec({tools: ["summarize"], roles: [role("researcher"), role("reviewer", ["summarize"])]})
+  const added = addAgentCapability(original, need({role_ids: ["researcher", "invented_role"], suggested_tool_ids: [market().id]}))
+  assert.deepEqual(added.capability_requirements[0].role_ids, ["researcher"])
+  assert.deepEqual(added.capability_requirements[0].suggested_tool_ids, [])
+  assert.deepEqual(added.tools, original.tools)
+  assert.deepEqual(added.roles, original.roles)
+  assert.equal(addAgentCapability(added, need()), added)
+  let current = original
+  for (let i = 0; i < MAX_AGENT_CAPABILITIES; i++) current = addAgentCapability(current, need({id: `capability_${i}`}))
+  assert.equal(current.capability_requirements.length, MAX_AGENT_CAPABILITIES)
+  assert.equal(addAgentCapability(current, need({id: "one_too_many"})), current)
+})
+
+test("delete and undo retain shared permissions, later edits and requirement order", () => {
+  const tool = market()
+  const original = spec({tools: [tool.id, "summarize"], roles: [role("researcher", [tool.id]), role("reviewer", ["summarize"])],
+    capability_requirements: [need({id: "first"}), need({id: "second", title: "第二项", role_ids: ["researcher"], suggested_tool_ids: [tool.id]}), need({id: "third", title: "第三项"})]})
+  const deleted = removeAgentCapability(original, "second")
+  assert.deepEqual(deleted.spec.tools, original.tools)
+  assert.deepEqual(deleted.spec.roles, original.roles)
+  const later = {...updateAgentCapability(deleted.spec, "third", {required: false}), goal: "新的任务目标", tools: [...deleted.spec.tools, "calculate"]}
+  const restored = restoreAgentCapability(later, deleted.removed)
+  assert.deepEqual(restored.capability_requirements.map(row => row.id), ["first", "second", "third"])
+  assert.deepEqual(restored.capability_requirements[1], original.capability_requirements[1])
+  assert.equal(restored.capability_requirements[2].required, false)
+  assert.equal(restored.goal, "新的任务目标")
+  assert.deepEqual(restored.tools, later.tools)
+  assert.deepEqual(restored.roles, later.roles)
+  assert.equal(restoreAgentCapability(restored, deleted.removed), restored, "repeated undo cannot duplicate or overwrite a current requirement")
+})
+
+test("undo does not restore deleted roles or grant their former permissions", () => {
+  const original = spec({tools: [market().id], roles: [role("researcher", [market().id]), role("reviewer")], capability_requirements: [need({role_ids: ["researcher"]})]})
+  const deleted = removeAgentCapability(original, "need_1")
+  const later = {...deleted.spec, roles: [role("reviewer")], tools: []}
+  const restored = restoreAgentCapability(later, deleted.removed)
+  assert.deepEqual(restored.capability_requirements[0].role_ids, [])
+  assert.deepEqual(restored.roles, later.roles)
+  assert.deepEqual(restored.tools, [])
+  const full = {...later, capability_requirements: Array.from({length: MAX_AGENT_CAPABILITIES}, (_, i) => need({id: `existing_${i}`}))}
+  assert.equal(restoreAgentCapability(full, deleted.removed), full)
+})
+
+test("a role-less requirement guides role selection before exact tool assignment", () => {
+  const tool = market()
+  const original = spec({roles: [role("researcher"), role("reviewer")], capability_requirements: [need()]})
+  const initial = buildAgentCapabilityPlan(original, null, [], [tool])[0]
+  assert.equal(initial.state, "needs_role")
+  assert.equal(initial.candidates.length, 1, "existing tools remain visible instead of sending the employee to the market")
+  assert.match(agentCapabilityReadiness(original, null, [], [tool])[0], /负责角色/)
+  assert.equal(bindAgentCapability(original, "need_1", tool.id, null, [], [tool]), original,
+    "a blocked role-less choice cannot silently broaden global permission")
+  const assigned = updateAgentCapability(original, "need_1", {role_ids: ["researcher"]})
+  assert.deepEqual(assigned.tools, [])
+  assert.deepEqual(assigned.roles.map(row => row.tools), [[], []], "choosing a responsible role is not tool authorization")
+  assert.equal(buildAgentCapabilityPlan(assigned, null, [], [tool])[0].state, "available")
+  const bound = bindAgentCapability(assigned, "need_1", tool.id, null, [], [tool])
+  assert.equal(buildAgentCapabilityPlan(bound, null, [], [tool])[0].state, "selected")
+  assert.deepEqual(bound.roles.map(row => row.tools), [[tool.id], []])
+})
+
+test("an already authorized role can fulfill an unscoped legacy requirement without granting other roles", () => {
+  const tool = market()
+  const original = spec({tools: [tool.id], roles: [role("researcher", [tool.id]), role("reviewer")], capability_requirements: [need()]})
+  const row = buildAgentCapabilityPlan(original, null, [], [tool])[0]
+  assert.equal(row.state, "selected")
+  assert.equal(row.candidates[0].roleAssigned, true)
+  assert.deepEqual(original.roles[1].tools, [])
+})
+
+test("moving responsibility does not transfer authorization until the employee assigns the tool", () => {
+  const tool = market()
+  const original = spec({tools: [tool.id], roles: [role("researcher", [tool.id]), role("reviewer")], capability_requirements: [need({role_ids: ["researcher"], suggested_tool_ids: [tool.id]})]})
+  const moved = updateAgentCapability(original, "need_1", {role_ids: ["reviewer"]})
+  assert.deepEqual(moved.roles, original.roles)
+  assert.equal(buildAgentCapabilityPlan(moved, null, [], [tool])[0].state, "needs_role")
+  const bound = bindAgentCapability(moved, "need_1", tool.id, null, [], [tool])
+  assert.equal(buildAgentCapabilityPlan(bound, null, [], [tool])[0].state, "selected")
+  assert.deepEqual(bound.roles[0].tools, [tool.id], "the earlier role may still need the tool for another task")
+  assert.deepEqual(bound.roles[1].tools, [tool.id])
+})
+
+test("role assignment cannot turn an unknown or untested connection into a ready capability", () => {
+  const tool = {name: "browser_read", description: "Read browser page", method: "GET", status: "unknown"}
+  const original = spec({roles: [role("researcher")], capability_requirements: [need()]})
+  assert.equal(buildAgentCapabilityPlan(original, null, [tool])[0].state, "needs_role")
+  const assigned = updateAgentCapability(original, "need_1", {role_ids: ["researcher"]})
+  const bound = bindAgentCapability(assigned, "need_1", tool.name, null, [tool])
+  assert.equal(buildAgentCapabilityPlan(bound, null, [tool])[0].state, "needs_test")
+  assert.equal(buildAgentCapabilityPlan(bound, null, [{...tool, status: "ok"}])[0].state, "selected")
+  const stale = {...bound, capability_requirements: [need({role_ids: ["missing_role"], suggested_tool_ids: [tool.name]})]}
+  assert.equal(buildAgentCapabilityPlan(stale, null, [{...tool, status: "ok"}])[0].state, "needs_role")
+  assert.equal(bindAgentCapability(stale, "need_1", tool.name, null, [tool]), stale)
+})
+
+test("editing a private task publishes only generic marketplace category words", () => {
+  const original = spec({capability_requirements: [need({search_terms: ["pdf"], suggested_tool_ids: ["old_tool"]})]})
+  const changed = updateAgentCapability(original, "need_1", {kind: "document", title: "为未公开收购项目导出Excel", purpose: "整理客户私有投资数据", access: "write"})
+  assert.deepEqual(changed.capability_requirements[0].search_terms, ["spreadsheet"])
+  assert.equal(buildAgentCapabilityPlan(changed, null)[0].searchTerm, "spreadsheet")
+  assert.deepEqual(changed.capability_requirements[0].suggested_tool_ids, [])
+  const secret = updateAgentCapability(changed, "need_1", {kind: "custom", title: "内部专项报告 token=do-not-send", purpose: "公司私有信息"})
+  assert.deepEqual(secret.capability_requirements[0].search_terms, [])
+  assert.equal(buildAgentCapabilityPlan(secret, null)[0].searchTerm, "")
 })

@@ -26,6 +26,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         title="随时调整当前 Agent 方案"
         description="此处直接编辑当前工作台草稿。修改与原页面实时同步，保存后可以试跑；未保存的草稿不会被静默覆盖。">
         {p.spec ? <SpecEditorCard
+          editorContextKey={p.editorContextKey}
           spec={p.spec} onSpecChange={p.updateFullSpec} specName={p.specName} sourceMode={p.sourceMode}
           onSpecNameChange={p.setSpecName} onTextChange={p.updateSpecText}
           onTogglePlanReview={p.togglePlanReview}
@@ -107,6 +108,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             <PencilLine className="h-5 w-5 text-primary"/>编辑当前 Agent 方案
           </h2>
           <SpecEditorCard
+            editorContextKey={p.editorContextKey}
             spec={p.spec}
             onSpecChange={p.updateFullSpec}
             specName={p.specName}

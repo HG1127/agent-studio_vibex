@@ -3,18 +3,26 @@ import { ArrowRight, CircleAlert, Plus, Trash2, UsersRound } from "lucide-react"
 import type { AgentSpec } from "@/pages/Home/presets"
 import { clearOrphanedCapabilityRoles, createRoleStages, MAX_AGENT_ROLES, orphanedCapabilityRoles,
   replaceAgentRoles, restoreAgentRoles, validateAgentRoles, type AgentRole } from "@/lib/agentRoles"
+import { agentToolDisplay, type AgentToolCatalog } from "@/lib/agentToolDisplay"
 
-type Props = { spec: AgentSpec; onChange: (next: AgentSpec) => void; disabled?: boolean }
+type Props = AgentToolCatalog & {
+  spec: AgentSpec
+  onChange: (next: AgentSpec) => void
+  onOpenResources?: () => void
+  disabled?: boolean
+}
 const fieldClass = "min-h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
 // Preserve a trailing empty line while the user is typing another list item.
 const lines = (text: string) => text.split("\n").slice(0, 32).map(value => value.slice(0, 1600))
 
-export function AgentRoleDesigner({ spec, onChange, disabled = false }: Props) {
+export function AgentRoleDesigner({ spec, onChange, onOpenResources, builtinTools, connectedTools,
+  connectedMarketTools, disabled = false }: Props) {
   const prefix = useId()
   const [selectedId, setSelectedId] = useState("")
   const [previousOrganization, setPreviousOrganization] = useState<AgentSpec | null>(null)
   const roles = spec.roles || []
   const active = roles.find(role => role.id === selectedId) || roles[0]
+  const roleToolIds = [...new Set([...(spec.tools || []), ...(active?.tools || [])])]
   const validation = validateAgentRoles(roles, spec.tools || [])
   const orphanedBindings = orphanedCapabilityRoles(spec)
   const canRestore = Boolean(previousOrganization?.roles?.length)
@@ -134,13 +142,36 @@ export function AgentRoleDesigner({ spec, onChange, disabled = false }: Props) {
           <fieldset disabled={disabled} className="mt-4 border-t border-border pt-4">
             <legend className="text-xs font-semibold">这个角色可调用的工具</legend>
             <p className="mt-1 text-xs text-muted-foreground">只能分配已加入当前方案的工具。未勾选工具时，本角色只根据输入和前序交付推理。</p>
-            <div className="mt-2 flex flex-wrap gap-2">{[...new Set([...(spec.tools || []), ...active.tools])].map(tool => {
+            {roleToolIds.length === 0 && <p className="mt-3 rounded-lg border border-dashed border-border bg-secondary/20 p-3 text-xs leading-6 text-muted-foreground">
+              当前方案还没有可分配的工具。需要查资料或操作外部系统时，先到「工具与资料」选择能力；纯文本角色可以保持当前设置。
+            </p>}
+            <div className="mt-3 grid gap-2 md:grid-cols-2">{roleToolIds.map((tool, index) => {
               const missing = !(spec.tools || []).includes(tool)
-              return <label key={tool} className={`flex min-h-9 max-w-full items-center gap-2 rounded-lg border px-3 text-xs ${missing ? "border-amber-300" : "border-border"}`}>
-                <input type="checkbox" checked={active.tools.includes(tool)} onChange={e => update({ tools: e.target.checked ? [...active.tools, tool] : active.tools.filter(id => id !== tool) })} />
-                <span className="break-all">{tool}{missing ? "（尚未加入方案）" : ""}</span>
-              </label>
+              const display = agentToolDisplay(tool, { builtinTools, connectedTools, connectedMarketTools })
+              const inputId = `${prefix}-tool-${index}`
+              return <div key={tool} className={`min-w-0 rounded-lg border p-3 text-xs ${missing ? "border-amber-300" : "border-border"}`}>
+                <label htmlFor={inputId} className="flex min-h-9 cursor-pointer items-start gap-2">
+                  <input id={inputId} type="checkbox" className="mt-1 shrink-0 accent-primary"
+                    checked={active.tools.includes(tool)}
+                    aria-label={`允许${active.name || "当前角色"}调用${display.label}`}
+                    onChange={e => update({ tools: e.target.checked ? [...active.tools, tool] : active.tools.filter(id => id !== tool) })} />
+                  <span className="min-w-0">
+                    <span className="block break-words font-medium">{display.label}{missing && <span className="ml-1 font-normal text-amber-700 dark:text-amber-400">尚未加入方案</span>}</span>
+                    <span className="mt-1 block text-muted-foreground">{display.sourceLabel} · {display.accessLabel}</span>
+                    {display.description && <span className="mt-1 line-clamp-2 break-words leading-5 text-muted-foreground">{display.description}</span>}
+                  </span>
+                </label>
+                <details className="ml-6 mt-2 text-[11px] text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground">工具说明与标识</summary>
+                  {display.description && <p className="mt-1 break-words leading-5">{display.description}</p>}
+                  <code className="mt-1 block break-all">{display.id}</code>
+                </details>
+              </div>
             })}</div>
+            {onOpenResources && <button type="button" onClick={onOpenResources}
+              className="mt-3 inline-flex min-h-9 items-center gap-1 rounded-lg border border-primary/30 px-3 text-xs font-medium text-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              前往工具与资料<ArrowRight className="h-3.5 w-3.5" />
+            </button>}
           </fieldset>
         </div>}
       </div>

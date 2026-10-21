@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BookOpen, CheckCircle2, CircleHelp,
@@ -13,7 +13,7 @@ import { useHome } from "@/pages/Home/useHome"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
 import { evaluateAgentJourney } from "@/lib/agentCreateJourney"
-import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { agentCapabilityReadiness } from "@/lib/agentCapabilityPlan"
 
 const STAGES = [
@@ -46,9 +46,11 @@ export default function AgentCreateRoute() {
   const step=progressFromQuery(params.get("step"))
   const [modelState,setModelState]=useState<ModelState>("loading")
   const [enabledModels,setEnabledModels]=useState(0)
+  const modelRequest=useRef(0)
   const [run,setRun]=useState<RecentRun|null>(null)
   const [runChecked,setRunChecked]=useState(false)
   const [runError,setRunError]=useState("")
+  const runRequest=useRef(0)
   const [notice,setNotice]=useState("")
   const [resourceMessage,setResourceMessage]=useState("")
   const [localEditorOpen,setLocalEditorOpen]=useState(false)
@@ -60,6 +62,7 @@ export default function AgentCreateRoute() {
 
 
   const refreshModels=useCallback(async()=>{
+    const request=++modelRequest.current
     setModelState("loading")
     setResourceMessage("")
     try{
@@ -70,9 +73,11 @@ export default function AgentCreateRoute() {
       const data=await res.json() as {items?:{enabled:boolean;models:string[]}[]}
       const count=(data.items||[]).filter(conn=>conn.enabled)
         .reduce((sum,conn)=>sum+(Array.isArray(conn.models)?conn.models.length:0),0)
+      if(request!==modelRequest.current)return
       setEnabledModels(count)
       setModelState("ready")
     }catch{
+      if(request!==modelRequest.current)return
       setModelState("unavailable")
       setResourceMessage("暂时无法读取模型连接；请检查网络后刷新。")
     }
@@ -80,7 +85,7 @@ export default function AgentCreateRoute() {
   useEffect(()=>{
     let cancelled=false
     void Promise.resolve().then(()=>{if(!cancelled)void refreshModels()})
-    return ()=>{cancelled=true}
+    return ()=>{cancelled=true;modelRequest.current++}
   },[refreshModels])
   useEffect(()=>{
     // KBs can be created in another tab after wizard initialization.
@@ -90,6 +95,8 @@ export default function AgentCreateRoute() {
 
   const refreshRuns=useCallback(async()=>{
     if(!p.savedSpecId)return
+    const request=++runRequest.current
+    setRunChecked(false)
     setRunError("")
     try{
       const res=await fetch(getPocketBaseUrl()+"/api/agent-runs/recent?limit=20",{
@@ -109,12 +116,17 @@ export default function AgentCreateRoute() {
         })
         if(!detail.ok)throw new Error("无法核验最近试跑的真实输出")
         const response=await detail.json() as {run?:{id:string;spec_id:string;status:string;result:string};spec_snapshot?:unknown}
+        if(request!==runRequest.current)return
         if(response.run?.id!==recent.id || response.run.spec_id!==p.savedSpecId ||
           response.run.status!=="succeeded") throw new Error("试跑详情身份或状态不一致")
         setRun({...recent,result:response.run.result,spec_snapshot:response.spec_snapshot})
-      } else setRun(recent)
+      } else {
+        if(request!==runRequest.current)return
+        setRun(recent)
+      }
       setRunChecked(true)
     }catch{
+      if(request!==runRequest.current)return
       setRunError("无法读取最新的 Agent 试跑记录，请稍后重试。")
       setRunChecked(false)
     }
@@ -123,7 +135,7 @@ export default function AgentCreateRoute() {
     if(step<3 || !p.savedSpecId)return
     let cancelled=false
     void Promise.resolve().then(()=>{if(!cancelled)void refreshRuns()})
-    return ()=>{cancelled=true}
+    return ()=>{cancelled=true;runRequest.current++}
   },[step,p.savedSpecId,refreshRuns])
 
   const evaluated=useMemo(()=>evaluateAgentJourney({
@@ -132,9 +144,10 @@ export default function AgentCreateRoute() {
     toolStatusOf:p.toolStatusOf,
     accessibleKnowledgeBaseIds:p.knowledgeBases.map(item=>item.id),
     run,lastSavedAt:p.lastSavedAt,
+    runState:runError?"unavailable":runChecked?"ready":"checking",
     capabilityIssues:p.spec?agentCapabilityReadiness(p.spec,p.toolAnalysis,p.connectedTools,p.connectedMarketTools):[],
   }),[p.spec,p.specName,p.savedSpecId,p.specDirty,p.toolStatusOf,
-    p.knowledgeBases,enabledModels,modelState,run,p.lastSavedAt,p.toolAnalysis,p.connectedTools,p.connectedMarketTools])
+    p.knowledgeBases,enabledModels,modelState,run,runChecked,runError,p.lastSavedAt,p.toolAnalysis,p.connectedTools,p.connectedMarketTools])
   const planReady=Boolean(p.spec && p.savedSpecId && !p.specDirty &&
     evaluated.planIssues.length===0)
   const maxStep=evaluated.canPublish?4:evaluated.canTry?3:planReady?2:p.spec?1:0
@@ -155,6 +168,7 @@ export default function AgentCreateRoute() {
 
   const editorProps = p.spec ? {
     spec:p.spec,onSpecChange:p.updateFullSpec,specName:p.specName,sourceMode:p.sourceMode,
+    editorContextKey:p.editorContextKey,
     onSpecNameChange:p.setSpecName,onTextChange:p.updateSpecText,
     onTogglePlanReview:p.togglePlanReview,
     onListItemChange:p.updateSpecListItem,onListItemAdd:p.addSpecListItem,
@@ -176,12 +190,7 @@ export default function AgentCreateRoute() {
 
   const blockers=step<=1?evaluated.planIssues:
     step===2?[...evaluated.planIssues,...evaluated.resourceIssues]:
-    [...evaluated.planIssues,...evaluated.resourceIssues,...evaluated.qualityIssues]
-  const runStatus=run?.status==="succeeded"?"试跑已成功":
-    run?.status==="failed"?"最近试跑失败":run?.status==="awaiting_approval"?"等待审批":
-    run?.status==="awaiting_input"?"等待方案确认／补充信息":
-    run?.status==="running"?"试跑进行中":
-    run?"最近试跑："+run.status:"暂无试跑记录"
+    [...evaluated.planIssues,...evaluated.resourceIssues,...evaluated.trialIssues,...evaluated.qualityIssues]
 
   return <SiteShell>
     <AgentDraftDrawer open={localEditorOpen} onClose={()=>setLocalEditorOpen(false)}
@@ -299,16 +308,16 @@ export default function AgentCreateRoute() {
                   modelState==="ready"?`已发现 ${enabledModels} 个可选模型，试跑时仍需确认具体模型。`:
                   resourceMessage}
               </p>
-              <Link to={addReturnAgentToUrl("/model-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
+              <Link to={agentResourceSetupUrl("/model-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
                 前往资源中心配置模型 <ArrowRight className="h-4 w-4"/>
               </Link>
             </div>
             {editorProps && <SpecEditorCard {...editorProps} focus="resources"/>}
             <div className="grid gap-2 sm:grid-cols-2">
-              <Link to={addReturnAgentToUrl("/tool-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
+              <Link to={agentResourceSetupUrl("/tool-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
                 <Wrench className="mr-2 inline h-4 w-4 text-primary"/>管理工具与授权
               </Link>
-              <Link to={addReturnAgentToUrl("/knowledge-bases",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
+              <Link to={agentResourceSetupUrl("/knowledge-bases",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
                 <BookOpen className="mr-2 inline h-4 w-4 text-primary"/>管理知识库和资料
               </Link>
             </div>
@@ -323,28 +332,37 @@ export default function AgentCreateRoute() {
               </p>
               {evaluated.canTry ? <Link to={`/agent-run?spec=${encodeURIComponent(p.savedSpecId)}`}
                 className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-                <Play className="h-4 w-4"/> 前往试跑当前 Agent
+                <Play className="h-4 w-4"/> {evaluated.trial.action==="retry"?"重新试跑当前保存方案":"前往试跑当前 Agent"}
               </Link>:<p className="mt-3 text-sm text-destructive">还有前置事项待完成，暂不能试跑。</p>}
+              {evaluated.trial.action==="save" && <button type="button" onClick={()=>setLocalEditorOpen(true)}
+                className="mt-3 inline-flex min-h-10 items-center rounded-lg border border-border px-3 text-sm hover:bg-secondary">
+                打开方案并保存
+              </button>}
               <div className="mt-5 border-t border-border pt-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm font-semibold">最近一次真实试跑：{runStatus}</p>
+                  <p className="text-sm font-semibold">{evaluated.trial.label}</p>
                   <button type="button" onClick={()=>void refreshRuns()} disabled={!p.savedSpecId}
                     className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs hover:bg-secondary disabled:opacity-50">
                     <RefreshCw className="h-4 w-4"/>刷新试跑结果
                   </button>
                 </div>
+                <p role="status" className="mt-2 text-xs leading-relaxed text-muted-foreground">{evaluated.trial.detail}</p>
                 {runError && <p role="alert" className="mt-2 text-xs text-destructive">{runError}</p>}
                 {runChecked && !run && <p className="mt-2 text-xs text-muted-foreground">当前助手尚无运行记录；完成真实试跑后再返回刷新。</p>}
-                {run && <p className="mt-2 text-xs text-muted-foreground">
+                {run?.spec_id===p.savedSpecId && <p className="mt-2 text-xs text-muted-foreground">
                   运行编号 {run.id} · {run.created} · {run.instruction.slice(0,80)}
                 </p>}
+                {run?.spec_id===p.savedSpecId && <Link to={`/agent-run?run=${encodeURIComponent(run.id)}`}
+                  className="mt-2 inline-flex min-h-10 items-center text-sm font-medium text-primary hover:underline">
+                  查看原运行{evaluated.trial.state==="waiting"?"，继续审批或补充输入":"与结果"}
+                </Link>}
                 {evaluated.qualityIssues.map((issue,i)=>
                   <p key={i} role="alert" className="mt-2 text-xs text-destructive">{issue}</p>)}
                 {p.spec?.quality_checks?.length ? <p className="mt-2 text-xs text-muted-foreground">
                   已配置 {p.spec.quality_checks.length} 条可执行质量断言；需对当前保存版本的真实输出逐项验证。
                 </p>:null}
                 {evaluated.canPublish && <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-primary">
-                  <CheckCircle2 className="h-4 w-4"/> 已确认该方案保存后存在成功运行记录，可以继续发布前验收。
+                  <CheckCircle2 className="h-4 w-4"/> 当前保存方案与成功运行快照一致，可以继续发布前验收。
                 </p>}
               </div>
             </div>

@@ -25,7 +25,7 @@ const cloneSpec=(spec:AgentSpec):AgentSpec=>({
   knowledge_base_ids:[...(spec.knowledge_base_ids||[])],
   quality_checks:[...(spec.quality_checks||[])],
   roles:sanitizeAgentRoles(spec.roles),
-  capability_requirements:normalizeCapabilityRequirements(spec.capability_requirements),
+  ...(Array.isArray(spec.capability_requirements)?{capability_requirements:normalizeCapabilityRequirements(spec.capability_requirements)}:{}),
 })
 const defaultSpec=():AgentSpec=>({goal:"",task_scope:"",deliverables:[],tools:[],
   task_plan:[],done_criteria:[]})
@@ -502,6 +502,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     </div>}
     {!loading&&record&&!pendingQuickDraft&&<>
       <SpecEditorCard
+        editorContextKey={loadSequence.current}
         spec={draft} specName={name} sourceMode={record.source==="template"?"template":"create"}
         onSpecChange={next=>{modified();setDraft(next)}}
         onSpecNameChange={value=>{setName(value);modified()}}

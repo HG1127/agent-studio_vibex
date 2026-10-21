@@ -7,6 +7,8 @@ export type AgentJourneyStatus = {
   planIssues: string[]
   resourceIssues: string[]
   qualityIssues: string[]
+  trialIssues: string[]
+  trial: {state: string; label: string; detail: string; action: "save"|"retry"|"view"|"refresh"}
   canTry: boolean
   canPublish: boolean
 }
@@ -22,6 +24,7 @@ export function evaluateAgentJourney(args:{
   run?:{spec_id:string;status:string;created:string;result?:string;spec_snapshot?:unknown}|null
   capabilityIssues?:string[]
   lastSavedAt?:number
+  runState?:"checking"|"ready"|"unavailable"
 }):AgentJourneyStatus {
   const {spec,specName,savedId,dirty,enabledModelCount,modelState,toolStatusOf,
     accessibleKnowledgeBaseIds,run,lastSavedAt}=args
@@ -52,10 +55,15 @@ export function evaluateAgentJourney(args:{
   if(!savedId)planIssues.push("请先把当前方案保存到「我的 Agent」")
   else if(dirty)planIssues.push("当前方案有未保存的修改，请重新保存")
   const canTry=planIssues.length===0 && resourceIssues.length===0
-  const hasVerifiedRun=Boolean(canTry && run && run.spec_id===savedId &&
-    run.status==="succeeded" && Number.isFinite(Date.parse(run.created)) &&
-    Number.isFinite(lastSavedAt) && Date.parse(run.created)>=Number(lastSavedAt)-1000 &&
-    matchesAgentSpecSnapshot(spec,run.spec_snapshot))
+  // PocketBase uses UTC timestamps with a space; ISO offsets also represent
+  // the same instant. Keep the existing one-second precision allowance, but
+  // never use a timestamp alone as evidence of matching plan content.
+  const created=run ? Date.parse(run.created.trim().replace(/^(\d{4}-\d{2}-\d{2}) /,"$1T")) : NaN
+  const currentSnapshot=matchesAgentSpecSnapshot(spec,run?.spec_snapshot)
+  const currentTime=Number.isFinite(created) && Number.isFinite(lastSavedAt) &&
+    Number(lastSavedAt)>0 && created>=Number(lastSavedAt)-1000
+  const hasVerifiedRun=Boolean(args.runState!=="checking" && args.runState!=="unavailable" &&
+    run && run.spec_id===savedId && run.status==="succeeded" && currentTime && currentSnapshot)
   const checks=normalizeAgentQualityChecks(spec?.quality_checks)
   let checksPassed=true
   if (checks.length>0){
@@ -71,5 +79,39 @@ export function evaluateAgentJourney(args:{
       }
     }
   }
-  return {planIssues,resourceIssues,qualityIssues,canTry,canPublish:hasVerifiedRun && checksPassed}
+  const canPublish=canTry && hasVerifiedRun && checksPassed
+  let trial:AgentJourneyStatus["trial"]
+  if(!savedId || dirty){
+    trial={state:"unsaved",label:"当前方案尚未保存",detail:"先保存当前修改，再试跑保存后的方案；原运行记录仍保留。",action:"save"}
+  }else if(args.runState==="unavailable"){
+    trial={state:"unavailable",label:"试跑记录暂时无法核验",detail:"请刷新试跑记录，核验成功前不能继续发布。",action:"refresh"}
+  }else if(args.runState==="checking"){
+    trial={state:"checking",label:"正在核验试跑记录",detail:"正在读取当前 Agent 的运行快照与真实输出，请稍候。",action:"refresh"}
+  }else if(!run || run.spec_id!==savedId){
+    trial={state:"untried",label:"当前方案尚未试跑",detail:"请保存方案并完成一次真实试跑，再返回刷新结果。",action:"retry"}
+  }else if(["queued","pending","running"].includes(run.status)){
+    trial={state:"running",label:"试跑进行中",detail:"查看原运行的执行进度；运行使用启动时的冻结快照，完成后仍需核对当前方案。",action:"view"}
+  }else if(["awaiting_approval","awaiting_input"].includes(run.status)){
+    trial={state:"waiting",label:run.status==="awaiting_approval"?"等待人工审批":"等待方案确认／补充信息",detail:"前往原运行完成审批或补充输入，继续该运行后再刷新结果。",action:"view"}
+  }else if(["failed","cancelled","aborted"].includes(run.status)){
+    trial={state:"failed",label:run.status==="failed"?"最近试跑失败":"最近试跑已中止",detail:"查看原运行的原因，修正并保存方案后重新试跑。",action:"retry"}
+  }else if(run.status!=="succeeded"){
+    trial={state:"unknown",label:"运行状态尚无法确认",detail:"查看原运行并刷新记录，当前不能继续发布。",action:"view"}
+  }else if(!run.spec_snapshot || typeof run.spec_snapshot!=="object" || Array.isArray(run.spec_snapshot) ||
+    !["goal","task_scope","deliverables","tools","task_plan","done_criteria"].every(key=>
+      Object.hasOwn(run.spec_snapshot as object,key))){
+    trial={state:"unproven",label:"成功运行缺少可核验快照",detail:"无法证明这次成功对应当前方案，请重新试跑；原成功记录仍保留。",action:"retry"}
+  }else if(!currentSnapshot){
+    trial={state:"stale",label:"旧版本试跑成功，需重新试跑",detail:"目标、角色、能力或其他方案内容已与运行冻结快照不同，请试跑当前保存方案。",action:"retry"}
+  }else if(!currentTime){
+    trial={state:"unproven",label:"成功运行的版本时间无法核验",detail:"快照内容一致，但无法确认运行发生在本次保存后，请重新试跑。",action:"retry"}
+  }else if(!checksPassed){
+    trial={state:"quality_blocked",label:"当前版本运行成功，质量断言待通过",detail:"查看真实输出和未通过的断言，修正并保存后重新试跑。运行成功不代表内容质量已验证。",action:"view"}
+  }else if(!canTry){
+    trial={state:"blocked",label:"当前版本运行成功，前置检查待完成",detail:"先解决方案与资源检查提示，再继续发布前验收。运行成功不代表内容质量已验证。",action:"view"}
+  }else{
+    trial={state:"ready",label:"当前版本试跑成功，可进入验收",detail:"已核对完整冻结快照与保存时间；仍须人工核对结果、来源及完成标准。运行成功不代表内容质量已验证。",action:"view"}
+  }
+  const trialIssues=canPublish?[]:[trial.detail]
+  return {planIssues,resourceIssues,qualityIssues,trialIssues,trial,canTry,canPublish}
 }

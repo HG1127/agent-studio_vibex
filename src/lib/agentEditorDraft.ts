@@ -45,7 +45,8 @@ export function sanitizeAgentDraftSpec(input: unknown): AgentSpec | null {
     require_approval: raw.require_approval === true,
     require_plan_review: raw.require_plan_review === true,
     roles: sanitizeAgentRoles(raw.roles),
-    capability_requirements: normalizeCapabilityRequirements(raw.capability_requirements),
+    ...(Array.isArray(raw.capability_requirements)
+      ? {capability_requirements: normalizeCapabilityRequirements(raw.capability_requirements)} : {}),
   }
   if (Array.isArray(raw.quality_checks)) {
     result.quality_checks = raw.quality_checks.slice(0, 12).flatMap(value => {

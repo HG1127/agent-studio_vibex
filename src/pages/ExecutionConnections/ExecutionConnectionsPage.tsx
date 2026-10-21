@@ -5,7 +5,7 @@ import { SiteShell } from "@/components/site/SiteShell"
 import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
-import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+import { continueAgentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import {
   collectExecutionCapabilities, EXECUTION_CONNECTION_PRESETS, formatExecutionCheckTime,
   type ExecutionCapabilityKind,
@@ -19,7 +19,6 @@ const FILTERS: { value: "all" | ExecutionCapabilityKind; label: string }[] = [
 
 export function ExecutionConnectionsPage() {
   const [params] = useSearchParams()
-  const returnSpec = params.get("returnSpec") || ""
   const requestedKind = params.get("capability")
   const [filter, setFilter] = useState<"all" | ExecutionCapabilityKind>(() =>
     requestedKind === "browser" || requestedKind === "desktop" ? requestedKind : "all")
@@ -56,7 +55,7 @@ export function ExecutionConnectionsPage() {
 
   const capabilities = useMemo(() => collectExecutionCapabilities(inventory.http, inventory.market), [inventory.http, inventory.market])
   const visible = capabilities.filter(row => filter === "all" || row.kind === filter)
-  const link = (path: string) => addReturnAgentToUrl(path, returnSpec)
+  const link = (path: string) => continueAgentResourceSetupUrl(path, params)
 
   return <SiteShell>
     <main className="w-full min-w-0 px-4 py-6 sm:px-6 lg:px-8" data-studio-fluid-page="execution-connections">
