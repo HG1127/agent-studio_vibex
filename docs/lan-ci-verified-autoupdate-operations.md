@@ -113,7 +113,7 @@ nginx/current 和 PB hooks/Worker 路径尚未连接时，先按原 LAN 基线�
 
 ## Nginx 配置检查与 systemd 只读沙盒
 
-自动更新器执行 nginx -t 时会按现有 Nginx 配置打开 /www/server/nginx/logs/error.log 并访问/创建 PID 文件。如果 update unit 保留 ProtectSystem=strict 却没有允许这个实际目录写入，Nginx 检查会返回 EROFS，自动部署必须失败关闭。最小修复是在已审查的 agentstudio-lan-update.service 中仅增加 /www/server/nginx/logs 到 ReadWritePaths；不要放开整个 /www、/run 或关闭 nginx -t。安装更新 unit 后必须 systemctl daemon-reload，再通过 systemctl show/cat 验证生效配置，最后执行只暂存和服务检查。服务失败时保持 timer 禁用直到验收通过。
+自动更新器执行 nginx -t 时会按现有宝塔 Nginx 配置访问两个日志目录：/www/server/nginx/logs/nginx.pid，以及 /www/wwwlogs/nginx_error.log 和 /www/wwwlogs/tcp-error.log。此前仅放行 /www/server/nginx/logs 后，独立 systemd-run 测试仍因 /www/wwwlogs/nginx_error.log 的 EROFS 失败。因此 update unit 必须在保留 ProtectSystem=strict 的同时把这两个日志目录都列入 ReadWritePaths，**不得**放开整个 /www、/run 或关闭 nginx -t。先在生产服务器执行仅包含这两个日志目录的独立 nginx -t 沙盒测试，确认退出码 0，才允许更新 unit 并 systemctl daemon-reload；若仍失败，保持 timer 禁用并根据真实日志定位其他路径。
 
 ## 模拟、基线升级与验收
 

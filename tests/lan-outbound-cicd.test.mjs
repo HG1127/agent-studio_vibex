@@ -73,11 +73,11 @@ test("LAN service keeps builder HOME writeable, uses local pinned CA and never b
  assert.doesNotMatch(controller,/["']-k["']/);
 });
 
-test("updater sandbox permits only the configured Nginx log/PID directory",()=>{
+test("updater sandbox permits only the two configured Nginx log/PID directories",()=>{
  const unit=readFileSync("deploy/lan/agentstudio-lan-update.service.example","utf8");
  const writablePaths=unit.split(/\r?\n/).find(line=>line.startsWith("ReadWritePaths="));
  assert.ok(writablePaths);
- assert.match(writablePaths,/\/www\/server\/nginx\/logs/);
+ assert.match(writablePaths,/\/www\/server\/nginx\/logs/); assert.match(writablePaths,/(?:^|\s)\/www\/wwwlogs(?:\s|$)/);
  assert.doesNotMatch(writablePaths,/(?:^|\s)\/www(?:\s|$)|(?:^|\s)\/run(?:\s|$)/);
  assert.match(unit,/ProtectSystem=strict/);
 });
