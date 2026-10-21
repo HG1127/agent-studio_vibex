@@ -82,6 +82,24 @@ test("updater sandbox permits only the two configured Nginx log/PID directories"
  assert.match(unit,/ProtectSystem=strict/);
 });
 
+test("LAN updater permits WAL auxiliary files only inside the PocketBase data directory",()=>{
+ const unit=readFileSync("deploy/lan/agentstudio-lan-update.service.example","utf8");
+ const deploy=readFileSync("deploy/lan/agentstudio-lan-deploy.py","utf8");
+ const paths=unit.split(/\r?\n/).filter(line=>line.startsWith("ReadWritePaths="));
+ assert.equal(paths.length,1);
+ const allowed=paths[0].slice("ReadWritePaths=".length).trim().split(/\s+/);
+ assert.ok(allowed.includes("/var/lib/agentstudio-lan/pb_data"));
+ for(const forbidden of ["/","/var","/var/lib","/var/lib/agentstudio-lan","/www","/run"]){
+   assert.ok(!allowed.includes(forbidden),"unbounded writable path: "+forbidden);
+ }
+ assert.match(unit,/^ProtectSystem=strict$/m);
+ assert.match(deploy,/sqlite3\.connect\(DATA\.as_uri\(\) \+ "\?mode=ro"/);
+ assert.match(deploy,/PRAGMA query_only=ON/);
+ assert.match(deploy,/verify_stopped\(\)/);
+ assert.match(deploy,/if automatic and idle_snapshot\(\) != before/);
+ assert.match(deploy,/database_changed_during_stop_retry_later/);
+});
+
 test("active symlink and release directories require root-only mutation rights",()=>{
  const pull=readFileSync("deploy/lan/pull-update.py","utf8");
  const activator=readFileSync("deploy/lan/agentstudio-lan-deploy.py","utf8");
