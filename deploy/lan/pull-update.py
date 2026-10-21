@@ -21,10 +21,12 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+from urllib.parse import urlsplit
 
 BASE = Path("/srv/agent-studio-lan")
 BUILDS = BASE / "builds"
@@ -32,6 +34,7 @@ INCOMING = BASE / "incoming"
 RELEASES = BASE / "releases"
 SOURCE = BASE / "source"
 GATE = Path("/etc/agentstudio-lan/enable-lan-autoupdate")
+GIT_PROXY_FILE = Path("/etc/agentstudio-lan/git-https-proxy")
 BINARY = Path("/opt/agent-studio-lan/tools/bin/pnpm")
 NODE = "/usr/bin/node"
 BUILDER = "agentstudio-build"
@@ -71,6 +74,55 @@ def controller_modules():
             _module("agentstudio_release_activate", root / "agentstudio-lan-deploy.py"))
 
 
+
+
+def git_https_proxy() -> str | None:
+    """An optional operator-owned, credential-free proxy used by Git only.
+
+    The caller must not pass this value to pnpm, node, hooks, or their children.
+    A malformed present file blocks Git; silently falling back to direct would
+    make the updater repeatedly time out on LAN environments requiring a proxy.
+    """
+    try:
+        if GIT_PROXY_FILE.is_symlink():
+            raise PullBlocked("git_proxy_symlink_forbidden")
+        if not GIT_PROXY_FILE.exists():
+            return None
+        parent = GIT_PROXY_FILE.parent
+        if parent.is_symlink():
+            raise PullBlocked("git_proxy_directory_invalid")
+        parent_info = parent.stat()
+        if (not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != 0
+                or parent_info.st_gid != 0 or parent_info.st_mode & 0o022):
+            raise PullBlocked("git_proxy_directory_invalid")
+        info = GIT_PROXY_FILE.stat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+                or info.st_gid != 0 or info.st_nlink != 1
+                or info.st_mode & 0o7777 != 0o600):
+            raise PullBlocked("git_proxy_file_permissions_invalid")
+        if not 1 <= info.st_size <= 512:
+            raise PullBlocked("git_proxy_file_size_invalid")
+        raw = GIT_PROXY_FILE.read_bytes()
+        if not 1 <= len(raw) <= 512:
+            raise PullBlocked("git_proxy_file_size_invalid")
+        setting = raw.decode("ascii")
+        if setting.endswith("\n"):
+            setting = setting[:-1]
+        if not setting or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in setting):
+            raise PullBlocked("git_proxy_url_invalid")
+        parsed = urlsplit(setting)
+        if (parsed.scheme not in ("http", "https", "socks5", "socks5h")
+                or not parsed.hostname or parsed.username is not None
+                or parsed.password is not None or "@" in parsed.netloc
+                or parsed.path or parsed.query or parsed.fragment
+                or parsed.port is None or parsed.port < 1):
+            raise PullBlocked("git_proxy_url_invalid")
+        return setting
+    except PullBlocked:
+        raise
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise PullBlocked("git_proxy_configuration_invalid") from None
+
 def subprocess_checked(args: list[str], *, cwd: Path | None = None,
                       as_builder: bool = False, timeout: int = 180,
                       phase: str | None = None) -> str:
@@ -82,6 +134,18 @@ def subprocess_checked(args: list[str], *, cwd: Path | None = None,
         # applies NoNewPrivileges to the unprivileged build CHILD instead.
         # Clear inherited environment: no production tokens/keys may reach
         # git, pnpm, build scripts, or downloaded dependencies.
+        git_env = []
+        if args and args[0] == "/usr/bin/git":
+            # HTTP/1.1 and the root-approved proxy apply ONLY to Git. Keep
+            # downloaded npm lifecycle/build scripts in their env -i sandbox.
+            git_env = [
+                "GIT_CONFIG_COUNT=1",
+                "GIT_CONFIG_KEY_0=http.version",
+                "GIT_CONFIG_VALUE_0=HTTP/1.1",
+            ]
+            proxy = git_https_proxy()
+            if proxy is not None:
+                git_env.extend(("HTTPS_PROXY=" + proxy, "https_proxy=" + proxy))
         run_args = [
             "/usr/bin/setpriv",
             "--reuid=" + BUILDER,
@@ -95,6 +159,7 @@ def subprocess_checked(args: list[str], *, cwd: Path | None = None,
             "GIT_CONFIG_NOSYSTEM=1",
             "GIT_CONFIG_GLOBAL=/dev/null",
             "XDG_CACHE_HOME=" + str(BUILD_HOME / ".cache"),
+            *git_env,
             *run_args,
         ]
     # Never log command arguments, stdout/stderr, environment, URLs, or paths:

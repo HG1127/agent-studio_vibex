@@ -114,6 +114,108 @@ class LANReleaseSafety(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name)
 
+    def _git_proxy_stub(self, content=b"http://127.0.0.1:7890\n"):
+        file = unittest.mock.MagicMock()
+        file.is_symlink.return_value = False
+        file.exists.return_value = True
+        file.parent.is_symlink.return_value = False
+        file.parent.stat.return_value = SimpleNamespace(
+            st_mode=0o40700, st_uid=0, st_gid=0)
+        file.stat.return_value = SimpleNamespace(
+            st_mode=0o100600, st_uid=0, st_gid=0,
+            st_nlink=1, st_size=len(content))
+        file.read_bytes.return_value = content
+        return file
+
+    def test_git_proxy_is_optional_and_requires_root_private_file(self):
+        stub = self._git_proxy_stub()
+        with patch.object(PULL, "GIT_PROXY_FILE", stub):
+            self.assertEqual(PULL.git_https_proxy(), "http://127.0.0.1:7890")
+            stub.exists.return_value = False
+            self.assertIsNone(PULL.git_https_proxy())
+            stub.exists.return_value = True
+            stub.is_symlink.return_value = True
+            with self.assertRaisesRegex(PULL.PullBlocked, "symlink"):
+                PULL.git_https_proxy()
+            stub.is_symlink.return_value = False
+            original = stub.stat.return_value
+            for new in (
+                SimpleNamespace(st_mode=0o100644, st_uid=0, st_gid=0,
+                                st_nlink=1, st_size=original.st_size),
+                SimpleNamespace(st_mode=0o100600, st_uid=1000, st_gid=0,
+                                st_nlink=1, st_size=original.st_size),
+                SimpleNamespace(st_mode=0o100600, st_uid=0, st_gid=0,
+                                st_nlink=2, st_size=original.st_size),
+            ):
+                with self.subTest(properties=new):
+                    stub.stat.return_value = new
+                    with self.assertRaisesRegex(PULL.PullBlocked, "permissions"):
+                        PULL.git_https_proxy()
+            stub.stat.return_value = original
+            stub.parent.stat.return_value = SimpleNamespace(
+                st_mode=0o40777, st_uid=0, st_gid=0)
+            with self.assertRaisesRegex(PULL.PullBlocked, "directory"):
+                PULL.git_https_proxy()
+
+    def test_git_proxy_rejects_credentials_malformed_urls_and_sensitive_errors(self):
+        stub = self._git_proxy_stub()
+        invalid = [
+            b"http://user:pass@127.0.0.1:7890",
+            b"http://127.0.0.1",
+            b"http://127.0.0.1:notaport",
+            b"file:///tmp/socket",
+            b"http://127.0.0.1:7890/path",
+            b"https://proxy.local:7890?secret=x",
+            b"http://127.0.0.1:7890\nEVIL=1",
+            b"http://127.0.0.1:7890\r\n",
+            b"",
+        ]
+        with patch.object(PULL, "GIT_PROXY_FILE", stub):
+            for raw in invalid:
+                with self.subTest(raw=raw):
+                    stub.read_bytes.return_value = raw
+                    stub.stat.return_value.st_size = len(raw)
+                    with self.assertRaises(PULL.PullBlocked) as error:
+                        PULL.git_https_proxy()
+                    self.assertNotIn("user:pass", str(error.exception))
+                    self.assertNotIn("secret=", str(error.exception))
+            stub.stat.return_value.st_size = 24
+            stub.read_bytes.side_effect = OSError("secret-value from /etc")
+            with self.assertRaisesRegex(PULL.PullBlocked, "configuration_invalid") as error:
+                PULL.git_https_proxy()
+            self.assertNotIn("secret-value", str(error.exception))
+
+    def test_git_proxy_reaches_git_only_not_pnpm_node_or_regular_commands(self):
+        calls = []
+        def fake_run(argv, **_kwargs):
+            calls.append(argv)
+            return SimpleNamespace(stdout="ok")
+        with patch.object(PULL, "git_https_proxy", return_value="http://127.0.0.1:7890") as proxy, \
+             patch.object(PULL.subprocess, "run", side_effect=fake_run):
+            PULL.subprocess_checked(["/usr/bin/git", "clone", "--depth", "1"],
+                                    as_builder=True, phase="git_clone")
+            PULL.subprocess_checked(["/usr/bin/git", "fetch", "origin", SHA_A],
+                                    as_builder=True)
+            PULL.subprocess_checked([str(PULL.BINARY), "install", "--frozen-lockfile"],
+                                    as_builder=True, phase="pnpm_install")
+            PULL.subprocess_checked([PULL.NODE, "deploy/lan/build-lan-bundle.mjs"],
+                                    as_builder=True)
+            PULL.subprocess_checked(["/usr/bin/git", "rev-parse", "HEAD"],
+                                    as_builder=False)
+        self.assertEqual(proxy.call_count, 2)
+        for argv in calls[:2]:
+            self.assertIn("/usr/bin/env", argv)
+            self.assertIn("-i", argv)
+            self.assertIn("HTTPS_PROXY=http://127.0.0.1:7890", argv)
+            self.assertIn("https_proxy=http://127.0.0.1:7890", argv)
+            self.assertIn("GIT_CONFIG_KEY_0=http.version", argv)
+            self.assertIn("GIT_CONFIG_VALUE_0=HTTP/1.1", argv)
+            self.assertNotIn("GIT_SSL_NO_VERIFY=1", argv)
+        for argv in calls[2:]:
+            self.assertFalse(any(x.startswith(("HTTPS_PROXY=", "https_proxy=",
+                                               "GIT_CONFIG_COUNT=")) for x in argv))
+        self.assertEqual(calls[-1], ["/usr/bin/git", "rev-parse", "HEAD"])
+
     def idle_db(self):
         data = self.path / "idle.db"
         with closing(sqlite3.connect(data)) as db:
