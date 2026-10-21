@@ -4,6 +4,8 @@
  * Only bounded generic vocabulary is eligible for automatic outbound search.
  */
 const SAFE_CATEGORY_TERMS: readonly [RegExp,string][] = [
+  [/(?:browser|playwright|puppeteer|浏览器|网页操作|点击网页|填写表单)/i,"browser"],
+  [/(?:desktop|computer.?use|电脑软件|本地软件|桌面软件|操作电脑)/i,"desktop"],
   [/(?:pdf|附件解析|文档解析|文件解析|文件提取|解析文件|document.?parse|pdf.?extract)/i,"pdf"],
   [/(?:ocr|扫描件|图片转文字|文字识别)/i,"ocr"],
   [/(?:github|代码仓库|git.?repo)/i,"github"],

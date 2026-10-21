@@ -78,6 +78,14 @@ function fromGenerated(spec:AgentSpec,terms:readonly string[]):boolean {
   return (spec.tools||[]).some(item=>terms.some(term=>norm(item)===norm(term)))
 }
 function excerpt(text:string):string {return text.length>64?text.slice(0,64)+"…":text}
+function compatibleAction(name:string,description:string,request:string):boolean {
+  const writes=/(?:\b(?:send|write|create|update|delete|submit|fill|click|upload|export)\b|(?:^|_)(?:send|write|create|update|delete|submit|fill|click|upload|export)(?:_|$)|发送|写入|创建|修改|删除|提交|填写|点击|上传|导出)/i
+  const reads=/(?:\b(?:read|search|fetch|list|get|query|extract)\b|(?:^|_)(?:read|search|fetch|list|get|query|extract)(?:_|$)|读取|检索|搜索|查询|抓取|提取)/i
+  const tool=name+" "+description
+  if(writes.test(request)&&!reads.test(request)&&!writes.test(tool))return false
+  if(reads.test(request)&&!writes.test(request)&&writes.test(tool)&&!reads.test(tool))return false
+  return true
+}
 function explicitVendorMatch(name:string,input:string):boolean {
   const canonical=norm(name)
   if(!canonical)return false
@@ -89,6 +97,7 @@ function explicitVendorMatch(name:string,input:string):boolean {
 
 /** Action AND domain must be recognizable; a generic "search" label is insufficient. */
 function semanticConnectorMatch(name:string,description:string,requirement:string):boolean {
+  if(!compatibleAction(name,description,requirement))return false
   const tool=(name+" "+description).toLocaleLowerCase()
   const desired=requirement.toLocaleLowerCase()
   const pairs:[RegExp,RegExp][]=[
@@ -172,7 +181,7 @@ export function resolveAgentToolRequirements(
   for(const tool of marketTools){
     if(!tool.id || !tool.name)continue
     const matched=generated.some(term=>norm(term)===norm(tool.id)||norm(term)===norm(tool.name)) ||
-      (explicitVendorMatch(tool.name,context) || semanticConnectorMatch(tool.name,tool.description,context))
+      (explicitVendorMatch(tool.name,context) && compatibleAction(tool.name,tool.description,context) || semanticConnectorMatch(tool.name,tool.description,context))
     if(!matched)continue
     const safe=tool.readOnly===true && tool.destructive!==true
     recommend.push({
@@ -185,7 +194,7 @@ export function resolveAgentToolRequirements(
   for(const tool of connectedHttp){
     if(!tool.name)continue
     const matched=generated.some(item=>norm(item)===norm(tool.name)) ||
-      (explicitVendorMatch(tool.name,context) || semanticConnectorMatch(tool.name,tool.description,context))
+      (explicitVendorMatch(tool.name,context) && compatibleAction(tool.name,tool.description,context) || semanticConnectorMatch(tool.name,tool.description,context))
     if(!matched)continue
     const safe=(tool.method||"").toUpperCase()==="GET" &&
       ["ok","success","connected"].includes((tool.status||"").toLowerCase())

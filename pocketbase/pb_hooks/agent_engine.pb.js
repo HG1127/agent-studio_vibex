@@ -652,7 +652,30 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       var seq = Number(cp.seq || 0)
       var stepIndex = doneSteps + 1
 
-      var toolsOn = cfg.tools || {}
+      var roleService = require(__hooks + "/modules/agent_roles.js")
+      var rolePlan = roleService.validatePlan(spec.roles, spec.tools)
+      if (!rolePlan.valid) throw new Error("invalid_agent_roles")
+      var roleOrder = rolePlan.orderedRoles
+      cp.role_state = roleService.stateFor(roleOrder, cp.role_state)
+      var activeRole = roleService.currentRole(roleOrder, cp.role_state)
+      if (activeRole && cp.role_state.started_role_id !== activeRole.id) {
+        cp.role_state.started_role_id = activeRole.id
+        seq++
+        addEvent(runId, stepIndex, seq, "status", {
+          message: "进入角色阶段「" + activeRole.name + "」：" + activeRole.responsibility,
+          role_id: activeRole.id, role_name: activeRole.name, role_phase: "started",
+        })
+        saveCheckpoint(runId, { role_state: cp.role_state, seq: seq }, doneSteps)
+      }
+      // Intersect with existing authorization; a role can narrow, never expand,
+      // the tools granted to the immutable run snapshot.
+      var configuredTools = cfg.tools || {}
+      var toolsOn = {}
+      for (var roleToolName in configuredTools) {
+        if (Object.prototype.hasOwnProperty.call(configuredTools, roleToolName) &&
+            configuredTools[roleToolName] === true && roleService.mayUseTool(activeRole, roleToolName))
+          toolsOn[roleToolName] = true
+      }
       var enabledTools = []
       if (toolsOn.calculate === true)
         enabledTools.push('calculate —— 计算器：入参 {"expression":"算术表达式"}，支持 + - * / % 与括号')
@@ -756,6 +779,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             if (!mkTName) continue
             var mkFull = "mkt__" + String(mkRec.id) + "__" + mkTName
             if (restrictMarket && selectedMarketIds.indexOf(mkFull) < 0) continue
+            if (!roleService.mayUseTool(activeRole, mkFull)) continue
             marketToolMap[mkFull] = { conn: mkRec, tool: mkTName, title: mkTitle }
             var mkHint = String(mkT.args_hint || "")
             enabledTools.push(
@@ -837,6 +861,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
 
       var pushStepAndSave = function (stepObj, parseFailures) {
+        if (activeRole) { stepObj.role_id = activeRole.id; stepObj.role_name = activeRole.name }
         steps.push(stepObj)
         var trimmed = steps.length > 12 ? steps.slice(steps.length - 12) : steps
         var shiftN = steps.length - trimmed.length
@@ -860,6 +885,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             plan_review_confirmed: cp.plan_review_confirmed === true,
             approval_decision: String(cp.approval_decision || ""),
             approved_step: Number(cp.approved_step || 0),
+            role_state: cp.role_state,
           },
           doneSteps + 1
         )
@@ -871,6 +897,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           var psCp = loadJson(psRec, "checkpoint")
           psCp.harness_stats = harnessStats
           psCp.call_sig_recent = sigRecent
+          psCp.role_state = cp.role_state
           psRec.set("checkpoint", psCp)
           tx.save(psRec)
         })
@@ -925,6 +952,13 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         }
         return
       }
+      if (resumeApprovedCall && !roleService.mayUseTool(activeRole, toolName)) {
+        seq++
+        addEvent(runId, stepIndex, seq, "error", { message: "当前角色无权调用这个工具，原审批不扩展角色权限", tool: toolName })
+        pushStepAndSave({ thought: "", action: "tool_denied", tool: toolName, obs: "工具超出当前角色范围，未执行" }, 0)
+        if (stepIndex >= maxSteps) finishRun(runId, "failed", "", "角色权限不匹配且步数预算耗尽", stepIndex, seq, "预算耗尽")
+        return
+      }
 
       if (!resumeApprovedCall) {
       var histLines = []
@@ -961,8 +995,11 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         '{"thought":"这一步的思考","action":"tool 或 ask_user 或 final","tool":"工具名(action=tool 时必填)","tool_input":{...},"question":"需要用户补充/确认的具体问题(action=ask_user 时必填)","final_answer":"完整成果(action=final 时必填)"}。' +
         "规则：只能调用已授权工具清单里的工具；工具不可用或失败时换思路继续，不要重复同一失败调用；" +
         "缺少决定性交付条件、或任务要求先提交方案供用户确认时，用 action=ask_user 说明当前方案与具体待确认事项（最多3个关键问题），必须等待用户回复再继续；不要将澄清问题作为 final 成果。仅在真正交付完成标准要求的最终内容时 action=final；每次 ask_user 消耗一步预算，预算不足时尽快收敛。"
-      if (enabledTools.length === 0) sysPrompt += "当前没有任何已授权工具，只能靠自身推理推进并尽早给出 final。"
+      if (enabledTools.length === 0) sysPrompt += activeRole ?
+        "当前角色没有已授权工具，请依据已提供信息完成本阶段，缺少决定性资料时如实说明或询问用户。" :
+        "当前没有任何已授权工具，只能靠自身推理推进并尽早给出 final。"
       else sysPrompt += "已授权工具清单：\n" + enabledTools.join("\n")
+      if (activeRole) sysPrompt += "\n\n" + roleService.rolePrompt(activeRole, roleOrder, cp.role_state)
       if (cfg.require_plan_review === true) {
         if (cp.plan_review_confirmed === true) {
           sysPrompt += "\n【方案确认关卡已通过】用户已确认需求草案。现在必须依据已完成步骤中的用户确认或修改意见，继续产出真正的后续落地计划和验收方案；若未遇到新重大障碍，不要重复要求确认。"
@@ -1039,7 +1076,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
 
       thought = String(decision.thought || "")
       seq++
-      addEvent(runId, stepIndex, seq, "thinking", { thought: thought })
+      addEvent(runId, stepIndex, seq, "thinking", { thought: thought,
+        role_id: activeRole ? activeRole.id : "", role_name: activeRole ? activeRole.name : "" })
 
       // "需要补充信息" 与 "需要批准阶段草案" 使用同一持久化等待状态，
       // 但明确区分审批性质。后端关卡不能仅依赖模型自觉遵守提示词。
@@ -1088,6 +1126,35 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         return
       }
 
+      if (activeRole && String(decision.action) === "role_complete") {
+        if (cfg.require_plan_review === true && cp.plan_review_confirmed !== true) {
+          pauseForUser("【待确认阶段方案】\n" + String(decision.role_output || "") +
+            "\n\n请确认方案后继续后续角色阶段。", "plan_review", String(decision.role_output || ""))
+          return
+        }
+        var handoff = roleService.completeStage(roleOrder, cp.role_state,
+          String(decision.role_id || ""), sanitizeFinalSecrets(String(decision.role_output || "")))
+        if (!handoff.ok || !handoff.nextRole) {
+          seq++
+          var handoffError = handoff.ok ? "最后一个角色应核对全部成果后使用 action=final 完成交付" : handoff.error
+          addEvent(runId, stepIndex, seq, "error", { message: handoffError, role_id: activeRole.id })
+          pushStepAndSave({ thought: thought.slice(0, 200), action: "role_handoff_rejected", obs: handoffError }, 0)
+          if (stepIndex >= maxSteps) finishRun(runId, "failed", "", "角色交接无效且预算耗尽", stepIndex, seq, "预算耗尽")
+          return
+        }
+        cp.role_state = handoff.state
+        seq++
+        addEvent(runId, stepIndex, seq, "status", {
+          message: "角色「" + activeRole.name + "」已交付，下一阶段由「" + handoff.nextRole.name + "」接手。阶段内容仍需核验。",
+          role_id: activeRole.id, role_name: activeRole.name, role_phase: "completed",
+          next_role_id: handoff.nextRole.id, output: handoff.state.outputs[activeRole.id],
+        })
+        pushStepAndSave({ thought: thought.slice(0, 200), action: "role_complete",
+          obs: "已保存角色「" + activeRole.name + "」的交接成果：" + handoff.state.outputs[activeRole.id] }, 0)
+        if (stepIndex >= maxSteps) finishRun(runId, "failed", "", "角色成果已保存，但后续阶段未完成且预算耗尽", stepIndex, seq, "后续角色尚未执行，预算耗尽")
+        return
+      }
+
       if (String(decision.action) === "final") {
         var finalAnswer = String(decision.final_answer || decision.finalAnswer || "")
         if (cfg.require_plan_review === true && cp.plan_review_confirmed !== true) {
@@ -1096,6 +1163,28 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             "\n\n请先核对上述内容：批准后才会制定后续落地计划；如需调整请选择提出修改意见。",
             "plan_review", finalAnswer)
           return
+        }
+        if (activeRole && cp.role_state.completed.length < roleOrder.length - 1) {
+          seq++
+          addEvent(runId, stepIndex, seq, "error", { message: "还有后续角色未执行，不能提前报告任务完成", role_id: activeRole.id })
+          pushStepAndSave({ thought: thought.slice(0, 200), action: "role_final_rejected",
+            obs: "当前角色「" + activeRole.name + "」需通过 action=role_complete、role_id 和 role_output 提交交接成果，之后才由后续角色继续。" }, 0)
+          if (stepIndex >= maxSteps) finishRun(runId, "failed", "", "后续角色未完成且步数预算耗尽", stepIndex, seq, "预算耗尽")
+          return
+        }
+        if (activeRole) {
+          var finalRole = roleService.completeStage(roleOrder, cp.role_state, activeRole.id,
+            sanitizeFinalSecrets(finalAnswer).slice(0, 12000))
+          if (!finalRole.ok) {
+            seq++
+            addEvent(runId, stepIndex, seq, "error", { message: finalRole.error, role_id: activeRole.id })
+            pushStepAndSave({ thought: thought.slice(0, 200), action: "role_final_rejected", obs: finalRole.error }, 0)
+            if (stepIndex >= maxSteps) finishRun(runId, "failed", "", "最终角色没有有效交付且预算耗尽", stepIndex, seq, "预算耗尽")
+            return
+          }
+          cp.role_state = finalRole.state
+          seq++
+          addEvent(runId, stepIndex, seq, "status", { message: "最终角色「" + activeRole.name + "」已提交成果", role_id: activeRole.id, role_name: activeRole.name, role_phase: "completed" })
         }
         // —— 跨运行记忆写入：成功结束先尝试一次轻量 LLM 提炼（≤200 字可复用经验，出站 ≤25s），
         // 提炼失败/超时/为空回退成果前 500 字符截选；写入失败不影响 run 终态 ——
@@ -1304,6 +1393,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       seq++
       addEvent(runId, stepIndex, seq, "tool_call", {
         tool: toolName,
+        role_id: activeRole ? activeRole.id : "", role_name: activeRole ? activeRole.name : "",
         input: audit.redact(toolInput),
         thought: thought.slice(0, 200),
         action: "tool:" + toolName + " " + audit.excerpt(toolInput, 200),
@@ -1901,6 +1991,12 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
         specObj=snapParsed
     }catch(_) {}
 
+    var startRoleService = require(__hooks + "/modules/agent_roles.js")
+    var startRolePlan = startRoleService.validatePlan(specObj.roles, specObj.tools)
+    if (!startRolePlan.valid) return e.json(400, {
+      error: "invalid_agent_roles", message: "请先完善角色分工：" + startRolePlan.errors.join("；"),
+    })
+
     // 结果脱敏（与 tick 端同规则，回调内 self-contained）：记忆内容落库前抹疑似钥匙
     // Explicitly link a retest to one accepted feedback-driven version.
     // Reject forged IDs and any later Agent edit that invalidates the version.
@@ -1968,6 +2064,9 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
     var maxSteps = parseInt(cfgIn.max_steps, 10)
     if (isNaN(maxSteps) || maxSteps < 1) maxSteps = 10
     if (maxSteps > 30) maxSteps = 30
+    if (startRolePlan.orderedRoles.length > maxSteps) return e.json(400, {
+      error: "role_budget_too_small", message: "当前有 " + startRolePlan.orderedRoles.length + " 个角色阶段，最大步数至少需要相同数量，并为工具调用预留额外步数。",
+    })
     var normalizedBudget = require(__hooks + "/modules/harness_budget.js").normalize(maxSteps, cfgIn.max_model_calls)
     if (!normalizedBudget.ok) return e.json(400, { error: normalizedBudget.error, message: "模型调用预算必须是 1 至 100 的整数" })
     var runtimeDeadline = require(__hooks + "/modules/harness_run_lifecycle.js")
@@ -2172,6 +2271,7 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       plan_review_confirmed: false,
       approval_decision: "",
       approved_step: 0,
+      role_state: startRoleService.stateFor(startRolePlan.orderedRoles, null),
     })
     $app.save(rec)
 

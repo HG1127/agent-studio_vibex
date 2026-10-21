@@ -1,4 +1,6 @@
 import type { AgentSpec } from "../pages/Home/presets"
+import { sanitizeAgentRoles } from "./agentRoles.ts"
+import { normalizeCapabilityRequirements } from "./agentCapabilityPlan.ts"
 
 /**
  * Ephemeral draft in the current tab's sessionStorage, scoped by verified
@@ -42,6 +44,8 @@ export function sanitizeAgentDraftSpec(input: unknown): AgentSpec | null {
     knowledge_base_ids: texts(raw.knowledge_base_ids, 10, 100),
     require_approval: raw.require_approval === true,
     require_plan_review: raw.require_plan_review === true,
+    roles: sanitizeAgentRoles(raw.roles),
+    capability_requirements: normalizeCapabilityRequirements(raw.capability_requirements),
   }
   if (Array.isArray(raw.quality_checks)) {
     result.quality_checks = raw.quality_checks.slice(0, 12).flatMap(value => {

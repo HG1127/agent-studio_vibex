@@ -1,6 +1,8 @@
 // AgentSpec 数据类型与可复用内置模板（需求落地 / 研究 / 知识库 / 数据分析）
 
 import type { AgentQualityCheck } from "../../lib/agentQualityChecks"
+import type { AgentCapabilityRequirement } from "../../lib/agentCapabilityPlan"
+import type { AgentRole } from "../../lib/agentRoles"
 
 export type AgentSpec = {
   goal: string
@@ -9,6 +11,10 @@ export type AgentSpec = {
   tools: string[]
   task_plan: string[]
   done_criteria: string[]
+  /** Task-level capability requirements; suggestions do not grant tool access. */
+  capability_requirements?: AgentCapabilityRequirement[]
+  /** 同一 Agent 运行按依赖顺序执行的角色阶段；省略或空列表为单助手。 */
+  roles?: AgentRole[]
   /** 人工定义并可机器验证的文本断言；不等同于事实准确性认证。 */
   quality_checks?: AgentQualityCheck[]
   /** 服务端仅检索当前账号拥有的知识库（最多 10 个） */
@@ -55,7 +61,11 @@ export function toolConnectionStatus(
   const trimmed = toolName.trim()
   if (BUILTIN_TOOL_OPTIONS.some((tool) => tool.id === trimmed)) return "ready"
   if (CONFIGURED_TOOLS.includes(trimmed)) return "ready"
-  return connectedTools.some((tool) => tool.name === trimmed) ? "ready" : "pending"
+  return connectedTools.some((tool) => tool.name === trimmed &&
+    // Older callers only pass names. When a caller supplies a health result,
+    // an unavailable/unknown test must not be promoted to a ready connection.
+    (tool.status === undefined || ["ok", "success", "connected"].includes(String(tool.status || "").toLowerCase())))
+    ? "ready" : "pending"
 }
 
 export const TEMPLATE_PRESETS: TemplatePreset[] = [

@@ -135,8 +135,9 @@ function harness(file, seeds = {}, opts = {}) {
     }
   }
   // Agent owner PATCH now records transactional safe-text revisions. Stub
-  // only the two internal helpers in the pure JSVM security unit harness;
-  // actual SQL/JWT history is exercised by the real PocketBase E2E tests.
+  // only the two history helpers in the pure JSVM security unit harness;
+  // load the real pure role validator so role-shape protection stays covered.
+  // Actual SQL/JWT history is exercised by real PocketBase E2E tests.
   const mockModules={
     collab:{
       decode(rec) {
@@ -157,6 +158,11 @@ function harness(file, seeds = {}, opts = {}) {
     const path=String(modulePath||"")
     if(path.endsWith("/modules/agent_collab.js"))return mockModules.collab
     if(path.endsWith("/modules/agent_collab_history.js"))return mockModules.history
+    if(path === hooks + "/modules/agent_roles.js") {
+      const roleScope = {module:{exports:{}}}
+      vm.runInNewContext(fs.readFileSync(path,"utf8"),roleScope,{filename:"agent_roles.js",timeout:1000})
+      return roleScope.module.exports
+    }
     throw new Error("unsupported_mock_hook_module")
   }
   const scope = {
@@ -236,6 +242,33 @@ test("agent specs require authentication, filter listings and enforce immutable 
   const create = h.call("POST", "/api/agent_specs", { user: "A", body: { rh_user_id: "B", name: "mine", spec: {} } })
   assert.equal(create.status, 200)
   assert.equal(create.rh_user_id, "A")
+})
+
+test("role validation preserves owner boundaries and legacy omission cannot clear role scopes",()=>{
+  const roles=[{id:"research",name:"研究",responsibility:"整理资料",tasks:["核对来源"],
+    inputs:[],deliverables:["资料清单"],depends_on:[],tools:[],done_criteria:["带引用"]}]
+  const capability_requirements=[{id:"lookup",title:"公开资料查询",kind:"web_search",access:"read",
+    required:true,role_ids:["research"],suggested_tool_ids:["web_search"],search_terms:["web search"],purpose:"核对资料"}]
+  const h=harness("agent_specs",{agent_specs:[
+    {id:"mine",rh_user_id:"A",name:"A spec",spec:{roles,capability_requirements}},
+    {id:"other",rh_user_id:"B",name:"B spec",spec:{roles}},
+  ]})
+  assert.equal(h.call("PATCH","/api/agent_specs/{id}",{
+    user:"A",id:"other",body:{spec:{roles:"invalid"}},
+  }).status,404,"Ownership is checked before exposing role validation")
+  assert.equal(h.call("POST","/api/agent_specs",{
+    user:"A",body:{name:"Invalid role",spec:{roles:"invalid"}},
+  }).status,400,"The real role module rejects malformed role data")
+  assert.equal(h.call("PATCH","/api/agent_specs/{id}",{
+    user:"A",id:"mine",body:{spec:{roles:"invalid"}},
+  }).status,400)
+  const saved=h.call("PATCH","/api/agent_specs/{id}",{
+    user:"A",id:"mine",body:{spec:{}},
+  })
+  assert.equal(saved.status,200)
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.spec.roles)),roles)
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.spec.capability_requirements)),capability_requirements)
+  assert.equal(saved.rh_user_id,"A")
 })
 
 test("run records and event listings cannot be read across tenants", () => {

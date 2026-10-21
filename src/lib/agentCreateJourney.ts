@@ -1,5 +1,7 @@
 import type { AgentSpec } from "../pages/Home/presets"
 import { evaluateAgentQualityChecks, normalizeAgentQualityChecks } from "./agentQualityChecks.ts"
+import { agentRoleReadiness } from "./agentRoles.ts"
+import { matchesAgentSpecSnapshot } from "./agentSpecRevision.ts"
 
 export type AgentJourneyStatus = {
   planIssues: string[]
@@ -17,7 +19,8 @@ export function evaluateAgentJourney(args:{
   modelState:"loading"|"ready"|"unavailable"
   toolStatusOf:(name:string)=>"ready"|"pending"
   accessibleKnowledgeBaseIds:string[]
-  run?:{spec_id:string;status:string;created:string;result?:string}|null
+  run?:{spec_id:string;status:string;created:string;result?:string;spec_snapshot?:unknown}|null
+  capabilityIssues?:string[]
   lastSavedAt?:number
 }):AgentJourneyStatus {
   const {spec,specName,savedId,dirty,enabledModelCount,modelState,toolStatusOf,
@@ -28,6 +31,8 @@ export function evaluateAgentJourney(args:{
   if(!spec){
     planIssues.push("先描述需求并生成可编辑的 Agent 方案")
   }else{
+    planIssues.push(...agentRoleReadiness(spec))
+    resourceIssues.push(...(args.capabilityIssues||[]))
     if(!specName.trim())planIssues.push("请填写 Agent 名称")
     if(!spec.goal.trim())planIssues.push("请说明 Agent 的明确目标")
     if(!spec.task_scope.trim())planIssues.push("请说明任务范围与边界")
@@ -49,7 +54,8 @@ export function evaluateAgentJourney(args:{
   const canTry=planIssues.length===0 && resourceIssues.length===0
   const hasVerifiedRun=Boolean(canTry && run && run.spec_id===savedId &&
     run.status==="succeeded" && Number.isFinite(Date.parse(run.created)) &&
-    Number.isFinite(lastSavedAt) && Date.parse(run.created)>=Number(lastSavedAt)-1000)
+    Number.isFinite(lastSavedAt) && Date.parse(run.created)>=Number(lastSavedAt)-1000 &&
+    matchesAgentSpecSnapshot(spec,run.spec_snapshot))
   const checks=normalizeAgentQualityChecks(spec?.quality_checks)
   let checksPassed=true
   if (checks.length>0){

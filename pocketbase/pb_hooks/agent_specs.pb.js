@@ -211,6 +211,8 @@ routerAdd("POST", "/api/agent_specs", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var roleShapeErrors = require(__hooks + "/modules/agent_roles.js").shapeErrors((body.spec || {}).roles)
+    if (roleShapeErrors.length) return e.json(400, { error: "invalid_agent_roles", message: roleShapeErrors.join("；") })
     var rec = new Record(coll)
     rec.set("rh_user_id", uid)
     rec.set("name", body.name === undefined || body.name === null ? "" : String(body.name))
@@ -253,6 +255,20 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
           helper.fail("spec_updated_conflict",409)
       }
       var previous = helper.decode(rec)
+      if ("spec" in body && body.spec && typeof body.spec === "object" && !Array.isArray(body.spec)) {
+        // An older editor has no role field. Preserve role scopes unless the
+        // caller explicitly submits roles: [] to switch to a single assistant.
+        if (body.spec.roles === undefined && previous.roles !== undefined)
+          body.spec.roles = previous.roles
+        if (body.spec.capability_requirements === undefined && previous.capability_requirements !== undefined)
+          body.spec.capability_requirements = previous.capability_requirements
+        var roleErrors = require(__hooks + "/modules/agent_roles.js").shapeErrors(body.spec.roles)
+        if (roleErrors.length) {
+          var roleError = new Error(roleErrors.join("；"))
+          roleError.code = "invalid_agent_roles"; roleError.httpStatus = 400
+          throw roleError
+        }
+      }
       var oldHash = helper.digest(previous)
       // Optional optimistic fence for future Owner editor clients. Current
       // existing clients remain backward compatible if no hash is supplied.
@@ -292,7 +308,7 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
         optimizationOrigin=fromId
         var tracked=[
           "goal","task_scope","deliverables","task_plan","done_criteria",
-          "tools","knowledge_base_ids","require_plan_review","require_approval"
+          "tools","knowledge_base_ids","require_plan_review","require_approval","roles","capability_requirements"
         ]
         for(var ci=0;ci<tracked.length;ci++){
           var key=tracked[ci]
@@ -346,7 +362,8 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
     return e.json(200, result)
   } catch (err) {
     if(err&&err.httpStatus)
-      return e.json(err.httpStatus,{error:String(err.code||"update_failed")})
+      return e.json(err.httpStatus,{error:String(err.code||"update_failed"),
+        message:err.code === "invalid_agent_roles" ? String(err.message) : undefined})
     try{$app.logger().error("agent_specs owner update failed","error",String(err))}catch(_){}
     return e.json(500,{error:"update_failed"})
   }
