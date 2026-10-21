@@ -119,7 +119,8 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowEmployeeProvisioning=true,limiter=new NativeLoginLimiter()}){
+    allowConfigurationWrites=false,allowEmployeeProvisioning=true,
+    limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
      typeof auth.getSessionProfile!=="function"||
      typeof auth.revokeSession!=="function"||
@@ -175,6 +176,19 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         const profile=await auth.getSessionProfile(token)
         if(!profile)abort(401,"session_required")
         return respond(res,200,{authenticated:true,user:publicProfile(profile)})
+      }
+      if(pathname===prefix+"/capabilities"&&method==="GET"){
+        const token=nativeSessionToken(req)
+        if(!token)abort(401,"session_required")
+        const profile=await auth.getSessionProfile(token)
+        if(!profile)abort(401,"session_required")
+        // Authenticated, server-derived config capability only. Never expose
+        // passwords, raw role grants, runtime UAT markers, or task controls.
+        return respond(res,200,{
+          mode:"native_pg18",
+          config_writes_enabled:allowConfigurationWrites===true,
+          run_execution_enabled:false,
+        })
       }
       if(pathname===prefix+"/logout"&&method==="POST"){
         const token=nativeSessionToken(req)

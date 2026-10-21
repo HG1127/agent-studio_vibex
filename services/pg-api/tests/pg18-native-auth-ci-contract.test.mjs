@@ -70,14 +70,20 @@ test("real PG18 Native HTTPS UAT is strictly localhost TLS without model, provid
   assert.match(entry,/authenticateRequest:native\.authenticateRequest/)
   assert.match(entry,/createHandler\(/)
   assert.match(entry,/\/api\/v2\/agent-specs/)
-  assert.match(entry,/ci_readonly_business_only/)
+  assert.match(entry,/ci_config_scope_denied/)
+  assert.match(entry,/permitNativePg18BusinessUatRequest/)
+  assert.match(entry,/allowConfigurationWrites:true/)
+  assert.match(entry,/runApprovalUat:false/)
+  assert.match(entry,/knowledgeIngestUat:false/)
+  assert.match(entry,/attemptedCrossOwner/)
+  assert.match(entry,/disabledWrite.status,405/)
   assert.doesNotMatch(entry,/\/uat\/agents/)
   const business=fs.readFileSync(path.join(root,
     "services/pg-api/src/http.ts"),"utf8")
-  assert.match(business,/authenticateRequest\?:/)
-  assert.match(business,/identity=await deps\.authenticateRequest\(req\)/)
+  assert.match(business,/authenticateRequest\?\(req: IncomingMessage\)/)
+  assert.match(business,/\?await deps\.authenticateRequest\(req\)/)
   assert.match(business,/native_request_origin_denied/)
-  assert.match(business,/identity=await deps\.verifyToken\(tokenFrom\(req\)\)/)
+  assert.match(business,/:await deps\.verifyToken\(tokenFrom\(req\)\)/)
   for(const illegal of [
     /--serve/,/systemctl/,/PocketBase\.collection/,/createStagingOpenAIProvider/,
     /DATABASE_URL\s*=/,/https?:\/\/(?:192\.168|10\.|172\.|baota)/,

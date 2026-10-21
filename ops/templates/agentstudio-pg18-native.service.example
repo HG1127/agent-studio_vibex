@@ -1,0 +1,61 @@
+# REVIEW TEMPLATE — NOT INSTALLED OR ENABLED.
+# Requires Ubuntu systemd >= 252 with LoadCredential + DynamicUser.
+# Confirm service dependencies, SSL certificate and Nginx IP:7443 first.
+# This unit is intentionally NOT pulled in by multi-user.target by default.
+[Unit]
+Description=Agent Studio Native PG18 API (isolated pilot, no Worker)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=agentstudio-native
+DynamicUser=yes
+WorkingDirectory=/opt/agentstudio-pg18-native-api-v2/services/pg-api
+ExecStart=/opt/agentstudio-node24/bin/node --experimental-strip-types /opt/agentstudio-pg18-native-api-v2/services/pg-api/src/native-server.ts --serve
+Restart=no
+UMask=0077
+
+# The systemd manager reads the root vault and delivers protected copies
+# to a non-root service user at /run/credentials/agentstudio-pg18-native.service.
+# Do not expose /root secrets to the runtime and do not use sudo node --serve.
+LoadCredential=api.secret:/root/.agentstudio-pg18-secrets/api.secret
+LoadCredential=native-auth.secret:/root/.agentstudio-pg18-secrets/native-auth.secret
+
+Environment=AGENT_STUDIO_PG_NATIVE_PILOT_ENABLED=true
+Environment=AGENT_STUDIO_PG_NATIVE_REVIEWED=true
+Environment=AGENT_STUDIO_PG_PILOT_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_TARGET_CONFIRMED=true
+Environment=AGENT_STUDIO_PG_HOST=127.0.0.1
+Environment=AGENT_STUDIO_PG_PORT=5333
+Environment=AGENT_STUDIO_PG_DATABASE=agent_studio
+Environment=AGENT_STUDIO_PG_USER=agentstudio_stage_login
+Environment=AGENT_STUDIO_PG_NATIVE_AUTH_USER=agentstudio_native_login
+# Explicit unit-bound credential paths, avoiding the unexpanded %d value
+# already observed in BaoTa transient systemd-run environments.
+# Keep unit name synchronized with nativeRuntimeCredentialConfig.
+Environment=AGENT_STUDIO_PG_PASSWORD_FILE=/run/credentials/agentstudio-pg18-native.service/api.secret
+Environment=AGENT_STUDIO_PG_NATIVE_AUTH_PASSWORD_FILE=/run/credentials/agentstudio-pg18-native.service/native-auth.secret
+Environment=AGENT_STUDIO_INTERNAL_APP_ORIGIN=https://192.168.1.133:7443
+Environment=AGENT_STUDIO_PG_NATIVE_API_PORT=7403
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+CapabilityBoundingSet=
+AmbientCapabilities=
+StandardOutput=journal
+StandardError=journal
+
+# Deliberately no [Install]. Any pilot startup must be an explicit,
+# audited step after HTTPS trusted certificate and human authorization.
