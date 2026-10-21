@@ -26,7 +26,7 @@ export function SiteShell({ children }: SiteShellProps) {
     return () => document.removeEventListener("click", guard, true)
   }, [])
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div data-deployment-channel="ci-verified" className="flex min-h-screen bg-background text-foreground">
       <SiteSidebar />
       <div className="flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] pt-14 lg:pb-0 lg:pt-0">
         <SectionTabs />
