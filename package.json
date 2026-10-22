@@ -43,7 +43,7 @@
     "go-live:preflight": "node ops/standalone-preflight.mjs",
     "go-live:legacy-preflight": "node ops/internal-readiness.mjs",
     "go-live:gateway": "node ops/verify-gateway.mjs",
-    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration && pnpm test:agent-role-stages",
+    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration && pnpm test:agent-role-stages && pnpm test:local-executor",
     "test:e2e:parallel": "node ops/e2e-parallel.mjs",
     "test:e2e:fast": "node ops/e2e-parallel.mjs",
     "worker": "node worker/run.mjs",
@@ -56,7 +56,9 @@
     "test:tool-ux": "node --experimental-strip-types --test tests/tool-connection-ux.test.mjs",
     "test:v19-integration": "node tests/agent-catalog.integration.mjs && node tests/agent-run-snapshot.integration.mjs && node tests/agent-optimization-history.integration.mjs",
     "test:agent-role-stages": "node tests/agent-role-stages.integration.mjs",
-    "test:design-workspace": "node tests/design-workspace.chrome.mjs"
+    "test:design-workspace": "node tests/design-workspace.chrome.mjs",
+    "test:local-executor": "node tests/local-executor.integration.mjs && node tests/local-executor-agent.integration.mjs",
+    "local-executor:pilot": "node ops/local-executor.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -92,6 +94,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "4.4.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.14.0",
     "mammoth": "^1.13.0",

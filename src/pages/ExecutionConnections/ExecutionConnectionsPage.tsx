@@ -11,7 +11,7 @@ import {
   type ExecutionCapabilityKind,
 } from "@/lib/executionCapabilities"
 
-type Inventory = { http: unknown[]; market: unknown[]; errors: string[]; loading: boolean }
+type Inventory = { http: unknown[]; market: unknown[]; errors: string[]; snapshotKey: string }
 const FILTERS: { value: "all" | ExecutionCapabilityKind; label: string }[] = [
   { value: "all", label: "全部连接" }, { value: "browser", label: "浏览器" },
   { value: "desktop", label: "电脑软件" }, { value: "api", label: "其他 API / MCP" },
@@ -23,16 +23,17 @@ export function ExecutionConnectionsPage() {
   const [filter, setFilter] = useState<"all" | ExecutionCapabilityKind>(() =>
     requestedKind === "browser" || requestedKind === "desktop" ? requestedKind : "all")
   const [refresh, setRefresh] = useState(0)
-  const [inventory, setInventory] = useState<Inventory>({ http: [], market: [], errors: [], loading: true })
-  const isLoggedIn = Boolean(decodeRhToken()?.sub)
+  const [inventory, setInventory] = useState<Inventory>({ http: [], market: [], errors: [], snapshotKey: "" })
+  const employeeId = decodeRhToken()?.sub || ""
+  const isLoggedIn = Boolean(employeeId)
+  // Never display a previous employee's results (or stale refresh results)
+  // while the newly scoped inventory is loading.
+  const snapshotKey = employeeId + ":" + refresh
+  const inventoryLoading = isLoggedIn && inventory.snapshotKey !== snapshotKey
 
   useEffect(() => {
     const controller = new AbortController()
-    if (!isLoggedIn) {
-      setInventory({ http: [], market: [], errors: [], loading: false })
-      return () => controller.abort()
-    }
-    setInventory(current => ({ ...current, errors: [], loading: true }))
+    if (!employeeId) return () => controller.abort()
     const load = async (path: string): Promise<unknown[]> => {
       const response = await fetch(getPocketBaseUrl() + path, { headers: vibexAuthHeaders(), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]) })
       if (!response.ok) throw new Error(response.status === 401 || response.status === 412 ? "登录已过期，请重新登录" : "暂时无法取得连接清单")
@@ -47,13 +48,15 @@ export function ExecutionConnectionsPage() {
       if (market.status === "rejected") errors.push("MCP 连接：" + (market.reason instanceof Error ? market.reason.message : "读取失败"))
       setInventory({
         http: http.status === "fulfilled" ? http.value : [],
-        market: market.status === "fulfilled" ? market.value : [], errors, loading: false,
+        market: market.status === "fulfilled" ? market.value : [], errors, snapshotKey,
       })
     })
     return () => controller.abort()
-  }, [refresh, isLoggedIn])
+  }, [employeeId, snapshotKey])
 
-  const capabilities = useMemo(() => collectExecutionCapabilities(inventory.http, inventory.market), [inventory.http, inventory.market])
+  const capabilities = useMemo(() =>
+    !isLoggedIn || inventoryLoading ? [] : collectExecutionCapabilities(inventory.http, inventory.market),
+    [isLoggedIn, inventoryLoading, inventory.http, inventory.market])
   const visible = capabilities.filter(row => filter === "all" || row.kind === filter)
   const link = (path: string) => continueAgentResourceSetupUrl(path, params)
 
@@ -67,9 +70,9 @@ export function ExecutionConnectionsPage() {
             让助手使用网页交互、本地软件和业务接口。先接入实际执行器，再把它提供的具体工具分配到 Agent 任务。
           </p>
         </div>
-        <button type="button" disabled={inventory.loading || !isLoggedIn} onClick={() => setRefresh(value => value + 1)}
+        <button type="button" disabled={inventoryLoading || !isLoggedIn} onClick={() => setRefresh(value => value + 1)}
           className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm hover:bg-secondary disabled:opacity-50">
-          <RefreshCw className={`h-4 w-4 ${inventory.loading ? "animate-spin" : ""}`} />刷新连接清单
+          <RefreshCw className={`h-4 w-4 ${inventoryLoading ? "animate-spin" : ""}`} />刷新连接清单
         </button>
       </header>
 
@@ -106,6 +109,47 @@ export function ExecutionConnectionsPage() {
         </article>
       </section>
 
+      <section aria-labelledby="local-executor-heading" className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-primary">本机受控能力 · 开发试用</p>
+            <h2 id="local-executor-heading" className="mt-1 text-base font-semibold">真实浏览器与 PDF / Excel 执行器</h2>
+          </div>
+          <span className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">默认关闭 · 必须手动启动</span>
+        </div>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          项目包含隔离的本机 MCP 执行器，可使用独立 Chromium 读取逐路径授权的本地测试网页、解析真实 PDF / XLSX 文件。
+          需要填写表单时，可额外登记固定动作和可写路径；文件导出与表单提交均单独启用并经人工审批。它不会接管你的日常浏览器或整台电脑。
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg bg-secondary/40 p-3">
+            <p className="text-xs font-semibold">1 · 限定资源</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              配置独立文件目录、精确的网页 origin + path 白名单，以及随机授权令牌；默认拒绝未登记路径。
+            </p>
+          </div>
+          <div className="rounded-lg bg-secondary/40 p-3">
+            <p className="text-xs font-semibold">2 · 手动启动执行器</p>
+            <code className="mt-2 block break-all rounded border border-border bg-background px-2 py-2 text-xs">node ops/local-executor.mjs</code>
+            <p className="mt-1 text-xs text-muted-foreground">必须设置 AGENT_STUDIO_LOCAL_EXECUTOR_ENABLED=1 及所需环境变量。</p>
+          </div>
+          <div className="rounded-lg bg-secondary/40 p-3">
+            <p className="text-xs font-semibold">3 · MCP 连接与角色授权</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              用执行器输出的 MCP 地址和 Bearer 令牌创建连接。发现工具后，按角色明确分配并逐次批准调用。
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          仅限在同一台机器上能够访问执行器的开发后端；远程服务器上的 localhost 不是你个人电脑。
+          PDF / Excel 文件须放入显式工作目录，所有文件和浏览器测试先在隔离数据下验收。运行条件与 Windows 启动示例见项目文档
+          <code className="ml-1 break-all">docs/LOCAL_EXECUTOR_PILOT_20261022.md</code>。
+        </p>
+        <Link to={link("/plugin-market")} className="mt-3 inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+          前往 MCP 插件连接 <ArrowRight className="h-4 w-4" />
+        </Link>
+      </section>
+
       <section aria-labelledby="execution-inventory-heading" className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -123,7 +167,7 @@ export function ExecutionConnectionsPage() {
         {!isLoggedIn ? <div className="rounded-lg bg-secondary/40 p-4 text-sm">
           <p>登录后查看自己的工具连接。</p>
           <button type="button" onClick={redirectToRhLogin} className="mt-3 min-h-9 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground">登录账号</button>
-        </div> : inventory.loading ? <p role="status" className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在读取已保存的连接…</p> : <>
+        </div> : inventoryLoading ? <p role="status" className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在读取已保存的连接…</p> : <>
           {inventory.errors.length > 0 && <div role="alert" className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
             <p className="flex items-center gap-2 text-sm font-medium"><CircleAlert className="h-4 w-4" />连接清单未完整加载</p>
             {inventory.errors.map(error => <p key={error} className="mt-1 text-xs text-muted-foreground">{error}</p>)}

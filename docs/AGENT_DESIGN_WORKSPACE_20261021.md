@@ -216,7 +216,7 @@ webCodex Agent 实际参与实现本轮试跑状态修复。现在试跑卡标�
 | --- | --- |
 | `pnpm test:agent-role-stages` | 通过；真实 PocketBase/SQLite、五角色有序交接、D2/D3 真实重启、前序工具无重复调用及审批后写入 |
 | `pnpm test:design-workspace` | 通过；完整 Chrome 用户旅程，18 组检查、AI 修订错误可见且可重试、五角色 UI 审阅、MCP EOF 不重放、Smithery 授权先验与审批交付；HTTP 400 和浏览器控制台错误均为 0 |
-| `pnpm test:e2e:parallel` | 24 / 24 项隔离集成任务通过，2 个独立 worker |
+| `pnpm test:e2e:parallel` | 26 / 26 项隔离集成任务通过，2 个独立 worker；包括本地 MCP 执行器与真实 Agent Engine 任务 |
 | `pnpm check` | 310 项单元/回归测试通过，0 失败、0 跳过；TypeScript、正式生产构建与 106 个资源的隔离检查通过 |
 | 审批上下文专项测试与 ESLint | 6 / 6 项通过；相关 UI 文件的 ESLint 检查通过 |
 
@@ -227,3 +227,12 @@ webCodex Agent 实际参与实现本轮试跑状态修复。现在试跑卡标�
 这套验收证明系统在确定性 fixture 下的 UI、持久化、顺序角色执行、审批和权限边界能贯通。它不证明任意真实模型的推理质量、外部插件的 SLA、桌面软件控制器已安装，或生产部署已获批准。多角色并行、角色专属模型和自由协商仍不在本轮范围。
 
 具体场景定义、五个角色的输入输出、测试数据、故障注入、复验命令和发现问题的归因见 [2026-10-22 复杂 Agent 可重复验收记录](COMPLEX_AGENT_ACCEPTANCE_20261022.md)。该文档和脚本均在独立开发分支，尚未合并或发布。
+
+### 第四轮：真实本地工具执行器（2026-10-22）
+
+- 新增 ops/local-executor.mjs：默认关闭、绑定 127.0.0.1、强制随机 Bearer 令牌；要求明确的工作目录、origin 白名单与每个 origin 的精确 path 白名单。
+- 真实能力：隔离 Chromium 网页读取、PDF.js 逐页提取、ExcelJS 数值单元格分析、经审批创建新的 XLSX、以及操作员预登记的表单动作。表单动作 ID/URL/选择器/输入键/写入路径固定在执行器配置中，模型不能自行发明。
+- 浏览器请求在每个任务内限制为同一 origin 与精确路径；只读模式阻断 POST、WebSocket、下载和新窗口；写操作工具默认不暴露，并由 Agent Engine 逐次审批。
+- pnpm test:local-executor 通过：真实本地 MCP 安全测试通过；真实员工账号经 Agent Studio 后端连接执行器，五角色依序调用 Chromium、PDF、XLSX，逐次审批后创建并重新读取真实 Excel 交付。另一个隔离 Agent 验证预登记表单动作：未批准时不提交、匿名用户不能批准、授权后恰好执行一次。
+- pnpm check 通过：单元测试、TypeScript、生产构建与 106 项 bundle 隔离检查通过。相关执行器/连接页面/集成测试的 ESLint 通过。
+- 安全边界：本地 UAT 工具，不是通用电脑接管软件；不使用个人浏览器登录态、不访问公网、不控制 Office 原生 UI、不做 OCR 或 Excel 公式重算，也不具备跨机器设备认证。启动说明见 docs/LOCAL_EXECUTOR_PILOT_20261022.md。

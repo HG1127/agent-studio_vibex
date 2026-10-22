@@ -3,8 +3,8 @@
 **日期：**2026-10-22  
 **目标项目：**独立 Agent Studio（不是原始 VibeX 运行应用）  
 **工作分支：**`feat/harness-design-workspace-20261021`  
-**测试类型：**真实 React/Chromium 页面 + 员工测试登录 + 临时 PocketBase/SQLite + 本地确定性模型及 MCP/HTTP fixture  
-**重要边界：**这一套是用真实执行引擎调度**模拟外部工具**的集成与 UX 验收，不是真实公司尽调，不连接真实发行人、办公室软件或邮箱，也不向真实收件人发送内容。
+**测试类型：**真实 React/Chromium 页面 + 员工测试登录 + 临时 PocketBase/SQLite + 本地确定性模型 fixture；另含真实隔离 Chromium、PDF.js、ExcelJS 及本机 MCP 执行器。
+**重要边界：**原有 UX 旅程使用确定性工具 fixture；第四轮新增真实本地浏览器/PDF/XLSX 执行器并通过真实 Agent Engine 调用。全部只访问临时本机测试资产，不是真实公司尽调，不连接真实发行人、Office 桌面应用或邮箱，也不向真实收件人发送内容。
 
 ## 1. 复杂任务定义
 
@@ -109,10 +109,35 @@ AGENT_STUDIO_PLAYWRIGHT_MODULE
 - 五角色 HTTP/PocketBase 集成：**通过**，包含 D2/D3 边界真实服务重启和工具调用不重放。
 - Chrome：**完整用户旅程通过**，18 组关键操作；五角色编辑、审批上下文、异常 AI 修订后的同窗重试、快捷编辑器跨 Agent 编辑，以及模拟 MCP EOF 后不重放均经过实际页面和数据库核验；正常复杂任务内四个工具各执行一次。未配置 Smithery Key 时共成功检查授权状态 4 次，目录请求 **0 次**，HTTP 400 **0 次**，浏览器控制台错误 **0 条**。
 - 单元/回归：**310 项通过**（含 6 项审批上下文测试、跨 Agent 迟到修订回归，以及 Smithery 授权预检专项的 5 项测试），0 失败、0 跳过；最新 `pnpm check` 再次通过。
-- 24 项隔离集成测试：**24/24 通过**；最新复验用两个独立 worker 完成。
+- 隔离集成测试：**26/26 通过**；两个独立 worker，含本地 MCP 执行器与真实 Agent Engine 的浏览器/PDF/XLSX 调用。
 - TypeScript、正式生产构建及 106 个构建资源隔离检查：**通过**；相关 UI 文件的 ESLint 检查通过。
 - **额外修复的产品缺陷：**快捷编辑器初始化 effect 多调用了 Promise，导致页面运行时崩溃。修复后完整 Chrome 流程成功打开快捷编辑器并完成 Agent 切换/保存。
 - **异步响应隔离：**正式编辑器和快捷编辑器在切换或关闭 Agent 后，旧修订请求不能改变新窗口的错误、修改预览或加载状态。相关专项行为回归 **23/23** 通过；当前 Web 旅程验证 AI 错误后重试成功，跨 Agent 迟到返回通过真实源码抽取的回调回归核验。
+
+## 第四轮：真实本地工具执行与精确权限边界
+
+本轮新增独立的本机 MCP 执行器 ops/local-executor.mjs，与之前的 fixture UX 测试分开。它直接启动真实的隔离 Chromium，使用 PDF.js 解析真实 PDF 字节，使用 ExcelJS 读取/生成真实 XLSX；Agent Studio 的临时 PocketBase 员工账号通过正式 /api/market/connect 保存连接，再由 Agent Engine 发起调用。
+
+真实执行器工具及授权规则：
+
+- browser_read_page：独立 Chromium context，只允许已登记 origin 和精确路径，且每个任务限制在启动时的单一 origin；GET/HEAD 以外的请求、WebSocket、下载和新窗口被拦截。
+- document_pdf_extract：读取显式沙箱内的 PDF，返回逐页文本、页码和文件 SHA-256；限制文件大小与页数。
+- spreadsheet_analyze：读取显式沙箱内的 XLSX 数值单元格并执行独立数值运算；不把公式缓存值误报为已重新计算的公式结果。
+- spreadsheet_export_report：默认不出现在工具列表。单独开启后才允许生成新 XLSX，路径固定在 artifacts/，使用原子新建方式且拒绝覆盖同名文件。
+- browser_registered_action：默认不出现在工具列表。操作员预先登记 action ID、起始 URL、固定选择器、输入键和可写路径；Agent 只能传登记 ID 和指定字符串值，不能自行指定网址/选择器/脚本。工具被标记为写操作，由 Agent Engine 逐次请求员工审批后执行。
+
+安全与边界测试覆盖了：无授权令牌、越界文件路径、符号链接逃逸、外部/未登记网页来源、另一个已登记 origin 的子资源、恶意 POST、WebSocket、外部重定向、未知动作 ID、额外参数、未批准表单提交、导出覆盖，以及敏感令牌不得出现在 API 响应或审计中。
+
+真实五角色链：网页研究 → PDF 证据 → Excel 数值核对 → 无写工具的独立审核 → 审批后 Excel 导出。另以独立员工权限和第二个 Agent 运行验证预登记表单动作：审批前提交计数为 0，匿名审批返回 401，员工批准后恰好提交一次。测试文件、网页、模型和数据库都在本机临时环境；不使用用户日常浏览器登录态，不连接真实发行人或外部业务系统。
+
+复验命令：
+
+    pnpm test:local-executor
+    pnpm check
+    pnpm test:e2e:parallel
+
+该执行器是 opt-in 的本地 UAT 能力，不是通用远程桌面，也不意味着任意真实网站、扫描 PDF OCR、Office 原生 UI、动态公式重算、跨机器身份管理或生产审计已经通过验收。启用前必须遵循 docs/LOCAL_EXECUTOR_PILOT_20261022.md，配置每个 origin 的精确 path 白名单，并使用独立随机令牌。
+
 - **运行故障注入：**整场浏览器验收中 `browser_page_inspect` 共记录 3 次：独立审批场景一次、故障注入模拟发送但连接 EOF 一次、正常复杂任务一次。这是不同运行的合计，**不是任何一次任务被重试三次**。模拟失败后的外部结果视为未知，执行引擎停止，不重放。
 - **后续范围：**本轮环境只测试本地确定性 fixture，真实外部插件重试幂等、长时间 Worker、Office 文件读写与 PostgreSQL 迁移仍需另外验收。
 - **已结案的网络控制台观察：**原有 8 次 HTTP 400 均为缺少账号 Smithery API Key 时自动调用插件目录导致，属于市场发现链路的授权预检缺失；修复后同一 Chrome 任务记录 `smitheryStatusChecks=4`、`smitheryCatalogRequests=0`、`http400Responses=[]`、`consoleErrors=[]`。新增 5 项测试覆盖无 Key、正常 Key、非法状态、授权撤销和网络故障。未授权场景不会把“无插件结果”谎称为“已连接”或自动扩大角色工具权限。
