@@ -14,15 +14,26 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstudio-role-stages-"
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const ownerHeaders = { "X-Rh-User-Id": "role-stage-owner" }
 const counts = { researcher: 0, executor: 0, reviewer: 0 }
+const complexCounts = { dd_researcher: 0, dd_documenter: 0, dd_analyst: 0, dd_reviewer: 0, dd_sender: 0 }
+const complexToolCalls = { browser_read: 0, pdf_read: 0, sheet_analyze: 0 }
 let writes = 0, modelCalls = 0, logs = "", pb = null
-let handoffWasReceived = false
+let handoffWasReceived = false, complexHandoff = false
 const local = createServer(async (request, response) => {
   let raw = ""
   for await (const chunk of request) raw += chunk.toString()
   response.setHeader("Content-Type", "application/json")
   if (request.url === "/write") {
     writes++
-    response.end(JSON.stringify({ saved: true, count: writes }))
+    response.end(JSON.stringify({ saved: true, count: writes, fixture_only: true }))
+    return
+  }
+  if (["/read", "/pdf", "/sheet"].includes(request.url)) {
+    const key = request.url === "/read" ? "browser_read" : request.url === "/pdf" ? "pdf_read" : "sheet_analyze"
+    complexToolCalls[key]++
+    const evidence = key === "browser_read" ? { source_url: "https://fixture.invalid/issuer", revenue: 120, risk: "R1" } :
+      key === "pdf_read" ? { document: "fixture.pdf", page: 4, liabilities: 30, note: 7 } :
+      { workbook: "fixture.xlsx", rows: [2, 4], revenue: 120, liabilities: 30, metric: 90 }
+    response.end(JSON.stringify(evidence))
     return
   }
   modelCalls++
@@ -45,6 +56,27 @@ const local = createServer(async (request, response) => {
       const n = ++counts.reviewer
       content = JSON.stringify(n === 1 ? { action: "tool", tool: "role_write", tool_input: { result: "FORBIDDEN_REVIEW_WRITE" } } :
         { action: "final", final_answer: "FINAL_REVIEWED_DELIVERY: Research computed 42; execution saved it once; reviewer has no write tools." })
+    } else if (system.includes("当前角色：网页研究（dd_researcher）")) {
+      const n = ++complexCounts.dd_researcher
+      content = JSON.stringify(n === 1 ? { action: "tool", tool: "browser_read", tool_input: {} } : { action: "role_complete", role_id: "dd_researcher", role_output: "SOURCE_EVIDENCE: https://fixture.invalid/issuer; revenue 120; risk R1" })
+    } else if (system.includes("当前角色：文档分析（dd_documenter）")) {
+      const n = ++complexCounts.dd_documenter
+      complexHandoff ||= system.includes("SOURCE_EVIDENCE")
+      content = JSON.stringify(n === 1 ? { action: "tool", tool: "pdf_read", tool_input: {} } : { action: "role_complete", role_id: "dd_documenter", role_output: "PDF_EVIDENCE: fixture.pdf page 4; liabilities 30; note 7" })
+    } else if (system.includes("当前角色：财务分析（dd_analyst）")) {
+      const n = ++complexCounts.dd_analyst
+      complexHandoff ||= system.includes("PDF_EVIDENCE")
+      content = JSON.stringify(n === 1 ? { action: "tool", tool: "sheet_analyze", tool_input: {} } : { action: "role_complete", role_id: "dd_analyst", role_output: "SHEET_EVIDENCE: rows 2,4; revenue 120 - liabilities 30 = metric 90" })
+    } else if (system.includes("当前角色：交叉审核（dd_reviewer）")) {
+      complexCounts.dd_reviewer++
+      assert.match(system, /SOURCE_EVIDENCE/)
+      assert.match(system, /PDF_EVIDENCE/)
+      assert.match(system, /SHEET_EVIDENCE/)
+      content = JSON.stringify({ action: "role_complete", role_id: "dd_reviewer", role_output: "REVIEW_PASS: sources agree; revenue 120; PDF p.4; metric 90; no UNVERIFIED_CLAIM" })
+    } else if (system.includes("当前角色：邮件交付（dd_sender）")) {
+      const n = ++complexCounts.dd_sender
+      assert.match(system, /REVIEW_PASS/)
+      content = JSON.stringify(n === 1 ? { action: "tool", tool: "role_write", tool_input: { result: "FINAL_DUE_DILIGENCE_REPORT revenue 120; PDF p.4; metric 90" } } : { action: "final", final_answer: "FINAL_DUE_DILIGENCE_REPORT: revenue 120; PDF p.4; metric 90; source https://fixture.invalid/issuer; rows 2,4; local email fixture accepted; no real email sent." })
     } else content = JSON.stringify({ action: "final", final_answer: "single assistant result" })
   }
   response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content } }] }))
@@ -171,7 +203,74 @@ try {
   assert.equal(detail.events.filter(event => event.content?.role_phase === "started").length, 3)
   assert.equal(detail.events.filter(event => event.content?.role_phase === "completed").length, 3)
   assert.equal(detail.events.filter(event => event.event_type === "tool_call" && event.content?.role_id === "reviewer").length, 0)
-  console.log("Role stages integration: persisted roles + cycle/budget preflight + early-final gate + real restart + isolated write approval + scope enforcement + immutable snapshot + final handoff: PASS")
+  // Run a more complex five-stage due-diligence Agent against real PocketBase/SQLite
+  // and deterministic local browser/PDF/sheet/email fixtures. No external writes occur.
+  for (const [name, route, method] of [["browser_read", "/read", "GET"], ["pdf_read", "/pdf", "GET"], ["sheet_analyze", "/sheet", "GET"]])
+    await ok("POST", "/api/tool-connections", { name, description: "Local fixture " + name, method, url: localOrigin + route, headers: [], body_template: "" })
+  const complexRoles = [
+    role("dd_researcher", "网页研究", [], ["browser_read"]),
+    role("dd_documenter", "文档分析", ["dd_researcher"], ["pdf_read"]),
+    role("dd_analyst", "财务分析", ["dd_documenter"], ["sheet_analyze", "calculate"]),
+    role("dd_reviewer", "交叉审核", ["dd_analyst"], []),
+    role("dd_sender", "邮件交付", ["dd_reviewer"], ["role_write"]),
+  ]
+  const complexCapabilities = [
+    { id: "source", title: "读取网页", purpose: "读取本地公开资料 fixture", kind: "browser", access: "read", required: true, role_ids: ["dd_researcher"], search_terms: ["browser"], suggested_tool_ids: ["browser_read"] },
+    { id: "pdf", title: "提取 PDF 证据", purpose: "保留 PDF 页码与附注", kind: "document", access: "read", required: true, role_ids: ["dd_documenter"], search_terms: ["pdf"], suggested_tool_ids: ["pdf_read"] },
+    { id: "sheet", title: "分析财务表格", purpose: "核对表格数字和公式", kind: "document", access: "read", required: true, role_ids: ["dd_analyst"], search_terms: ["spreadsheet"], suggested_tool_ids: ["sheet_analyze"] },
+    { id: "email", title: "批准后交付邮件", purpose: "仅向本地 fixture 提交审核后的报告", kind: "integration", access: "write", required: true, role_ids: ["dd_sender"], search_terms: ["email"], suggested_tool_ids: ["role_write"] },
+  ]
+  const complexSpec = await ok("POST", "/api/agent_specs", { name: "Complex Due Diligence Acceptance", spec: {
+    goal: "Cross-check issuer source, PDF note and spreadsheet, then deliver a reviewed report",
+    task_scope: "Isolated local fixtures only; no real issuer access or email delivery",
+    tools: ["browser_read", "pdf_read", "sheet_analyze", "calculate", "role_write"],
+    task_plan: ["Read source", "Extract PDF evidence", "Analyze spreadsheet", "Review cross-source consistency", "Send approved report"],
+    deliverables: ["Source index", "PDF page evidence", "Spreadsheet calculation", "Risk review", "Delivery receipt"],
+    done_criteria: ["Source URL retained", "PDF page retained", "Sheet rows and calculation retained", "Write has an approval event"],
+    roles: complexRoles, capability_requirements: complexCapabilities, require_approval: true,
+    quality_checks: [{type:"contains",expected:"revenue 120"},{type:"contains",expected:"PDF p.4"},{type:"contains",expected:"metric 90"},{type:"not_contains",expected:"UNVERIFIED_CLAIM"}],
+  } })
+  const complexRunId = (await ok("POST", "/api/agent-runs/start", { spec_id: complexSpec.id,
+    instruction: "COMPLEX_DUE_DILIGENCE_FIXTURE", model: "roles-fixture",
+    config: { max_steps: 20, max_model_calls: 30, tools: { calculate: true }, require_approval: true,
+      custom_model: { connection_id: model.item.id, model_id: "roles-fixture" } } })).run_id
+  const complexState = () => ok("GET", "/api/agent_runs/" + complexRunId)
+  const complexTick = () => ok("POST", "/api/llm/agent-engine/" + complexRunId + "/tick", {})
+  await complexTick(); assert.equal((await complexState()).checkpoint.role_state.active_role_id, "dd_researcher")
+  await complexTick(); await complexTick(); assert.equal((await complexState()).checkpoint.role_state.active_role_id, "dd_documenter")
+  await complexTick(); await complexTick()
+  const complexBeforeRestart = await complexState()
+  assert.equal(complexBeforeRestart.checkpoint.role_state.active_role_id, "dd_analyst")
+  assert.deepEqual(complexBeforeRestart.checkpoint.role_state.completed, ["dd_researcher", "dd_documenter"])
+  assert.match(complexBeforeRestart.checkpoint.role_state.outputs.dd_researcher, /SOURCE_EVIDENCE/)
+  assert.match(complexBeforeRestart.checkpoint.role_state.outputs.dd_documenter, /PDF_EVIDENCE/)
+  const priorToolCalls = { ...complexToolCalls }
+  await stopHeadlessPocketBase(pb)
+  await startPocketBase()
+  const restoredComplex = await complexState()
+  assert.deepEqual(restoredComplex.checkpoint.role_state, complexBeforeRestart.checkpoint.role_state,
+    "Actual backend restart between document and analysis must preserve the complete multi-role checkpoint")
+  assert.deepEqual(complexToolCalls, priorToolCalls, "Recovering a run must not replay prior read tools")
+  await complexTick(); assert.equal((await complexState()).checkpoint.role_state.active_role_id, "dd_reviewer")
+  await complexTick(); assert.equal((await complexState()).checkpoint.role_state.active_role_id, "dd_sender")
+  const complexWaiting = await complexTick()
+  assert.equal(complexWaiting.status, "awaiting_approval")
+  assert.equal(writes, 1, "Complex report must not be written before approval")
+  assert.equal((await api("POST", "/api/agent-runs/" + complexRunId + "/approve", { decision: "approve" })).status, 200)
+  await complexTick()
+  await complexTick()
+  const complexFinal = await complexState()
+  assert.equal(complexFinal.status, "succeeded", JSON.stringify(complexFinal))
+  assert.deepEqual(complexFinal.checkpoint.role_state.completed, ["dd_researcher", "dd_documenter", "dd_analyst", "dd_reviewer", "dd_sender"])
+  assert.equal(writes, 2, "Only the final approved local fixture write executes once")
+  assert.deepEqual(complexToolCalls, { browser_read: 1, pdf_read: 1, sheet_analyze: 1 })
+  assert.deepEqual(complexCounts, { dd_researcher: 2, dd_documenter: 2, dd_analyst: 2, dd_reviewer: 1, dd_sender: 2 })
+  assert.equal(complexHandoff, true, "Source and PDF evidence must be carried into later stages")
+  assert.match(complexFinal.result, /revenue 120/); assert.match(complexFinal.result, /PDF p\.4/); assert.match(complexFinal.result, /metric 90/)
+  const complexDetail = await ok("GET", "/api/agent-runs/" + complexRunId + "/detail")
+  assert.equal(complexDetail.events.filter(event => event.content?.role_phase === "completed").length, 5)
+  assert.equal(complexDetail.events.filter(event => event.event_type === "tool_call" && event.content?.role_id === "dd_reviewer").length, 0)
+  console.log("Role stages integration: baseline authorization/restart tests + five-role due diligence Agent, source/PDF/sheet evidence handoff, restarted mid-run, review gate, quality output and approved local-only delivery: PASS")
 } catch (error) {
   console.error(logs.slice(-4000))
   throw error

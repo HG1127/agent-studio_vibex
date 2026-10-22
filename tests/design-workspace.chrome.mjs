@@ -19,11 +19,36 @@ import { spawnHeadlessPocketBase, stopHeadlessPocketBase } from "./helpers/headl
 
 const root = process.cwd()
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
-const playwrightPath = process.env.AGENT_STUDIO_PLAYWRIGHT_MODULE || path.join(
-  process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES || "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules",
-  "playwright/index.mjs",
-)
-async function freePort() {
+const playwrightPath = process.env.AGENT_STUDIO_PLAYWRIGHT_MODULE || path.join(root, "node_modules", "playwright", "index.mjs")
+function firstExisting(paths, label) {
+  const found = paths.filter(Boolean).find(candidate => fs.existsSync(candidate))
+  assert.ok(found, `Missing ${label}. Checked: ${paths.filter(Boolean).join(", ")}`)
+  return found
+}
+function pocketBaseBinary() {
+  return firstExisting([
+    process.env.POCKETBASE_BIN,
+    path.join(root, "vibex-local", "bin", "windows", "pocketbase.exe"),
+    "/tmp/agentstudio-test-bin/pocketbase",
+  ], "PocketBase test binary")
+}
+function chromeBinaryPath() {
+  const localBrowsers = process.env.LOCALAPPDATA && fs.existsSync(path.join(process.env.LOCALAPPDATA, "ms-playwright"))
+    ? fs.readdirSync(path.join(process.env.LOCALAPPDATA, "ms-playwright"))
+      .filter(name => name.startsWith("chromium-"))
+      .flatMap(name => [
+        path.join(process.env.LOCALAPPDATA, "ms-playwright", name, "chrome-win64", "chrome.exe"),
+        path.join(process.env.LOCALAPPDATA, "ms-playwright", name, "chrome-win", "chrome.exe"),
+      ])
+    : []
+  return firstExisting([
+    process.env.AGENT_STUDIO_UI_CHROME_BIN,
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env["PROGRAMFILES(X86)"] && path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
+    ...localBrowsers,
+    "/tmp/agentstudio-test-bin/chrome-linux64/chrome",
+  ], "Chromium/Chrome test executable")
+}async function freePort() {
   const server = net.createServer()
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve) })
   const port = server.address().port
@@ -41,11 +66,11 @@ async function ready(url, child, logs) {
 }
 async function visible(locator) { await locator.waitFor({ state: "visible", timeout: 30_000 }) }
 
-test("design workspace: real login, editable capabilities, role grants, resource return and versioned trial", { timeout: 240_000 }, async () => {
-  const pbBinary = process.env.POCKETBASE_BIN || "/tmp/agentstudio-test-bin/pocketbase"
-  const chromeBinary = process.env.AGENT_STUDIO_UI_CHROME_BIN || "/tmp/agentstudio-test-bin/chrome-linux64/chrome"
+test("design workspace: real login, editable capabilities, role grants, resource return and versioned trial", { timeout: 300_000 }, async () => {
+  const pbBinary = pocketBaseBinary()
+  const chromeBinary = chromeBinaryPath()
   const vite = path.join(root, "node_modules/vite/bin/vite.js")
-  for (const file of [pbBinary, chromeBinary, vite, playwrightPath]) assert.ok(fs.existsSync(file), "Missing local test dependency: " + file)
+  for (const file of [vite, playwrightPath]) assert.ok(fs.existsSync(file), "Missing local test dependency: " + file)
   const { chromium } = await import(pathToFileURL(playwrightPath).href)
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstudio-design-db-"))
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstudio-design-evidence-"))
@@ -57,6 +82,9 @@ test("design workspace: real login, editable capabilities, role grants, resource
   const password = "Fixture-" + randomBytes(20).toString("hex") + "!"
   let pb, frontend, fixture, browser, page, token = "", pbLogs = "", viteLogs = "", selectedToolId = ""
   let designCalls = 0, revisionCalls = 0, approvalModelCalls = 0, inputModelCalls = 0, mcpCalls = 0
+  const complexToolCalls = { browser_page_inspect: 0, document_extract: 0, spreadsheet_analyze: 0, send_email: 0 }
+  const complexRoleTurns = { researcher: 0, documenter: 0, analyst: 0, reviewer: 0, sender: 0 }
+  const complexToolIds = { browser_page_inspect: "", document_extract: "", spreadsheet_analyze: "", send_email: "" }
   const errors = []
   const results = []
   const capabilityRequirements = [
@@ -89,9 +117,24 @@ test("design workspace: real login, editable capabilities, role grants, resource
           if (input.method === "tools/list") result = { tools: [
             { name: "browser_page_inspect", description: "Inspect a test browser page", annotations: { readOnlyHint: true }, inputSchema: { type: "object", properties: { query: { type: "string" } } } },
             { name: "send_email", description: "Send email through the local acceptance fixture; no email is delivered", annotations: { readOnlyHint: false, destructiveHint: false }, inputSchema: { type: "object", properties: { body: { type: "string" } } } },
+            { name: "document_extract", description: "Extract text and source locations from an authorized local PDF fixture", annotations: { readOnlyHint: true }, inputSchema: { type: "object", properties: { document_id: { type: "string" } } } },
+            { name: "spreadsheet_analyze", description: "Analyze a bounded local spreadsheet fixture and return deterministic totals", annotations: { readOnlyHint: true }, inputSchema: { type: "object", properties: { sheet_id: { type: "string" } } } },
           ] }
           else if (input.method === "initialize") result = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "design-ui-fixture", version: "1" } }
-          else { if (input.method === "tools/call") mcpCalls++; result = { content: [{ type: "text", text: "FIXTURE_TOOL_EVIDENCE: approved local MCP call completed" }] } }
+          else {
+            if (input.method === "tools/call") {
+              mcpCalls++
+              const name = input.params?.name
+              if (Object.hasOwn(complexToolCalls, name)) complexToolCalls[name]++
+            }
+            const name = input.params?.name
+            const evidence = name === "browser_page_inspect" ? "SOURCE_EVIDENCE: fixture issuer reported revenue 120 and risk factor R1; source URL https://fixture.invalid/issuer" :
+              name === "document_extract" ? "PDF_EVIDENCE: audited note 7 confirms liabilities 30; page 4; document fixture-report.pdf" :
+              name === "spreadsheet_analyze" ? "SHEET_EVIDENCE: revenue 120 - liabilities 30 = net metric 90; row references 2,4" :
+              name === "send_email" ? "LOCAL_EMAIL_FIXTURE: message accepted by fixture only; no real email sent" :
+              "FIXTURE_TOOL_EVIDENCE: approved local MCP call completed"
+            result = { content: [{ type: "text", text: evidence }] }
+          }
           res.end(JSON.stringify({ jsonrpc: "2.0", id: input.id, result })); return
         }
         if (req.method === "GET" && req.url?.endsWith("/models")) { res.end(JSON.stringify({ data: [{ id: "design-ui-fixture-model" }] })); return }
@@ -106,6 +149,23 @@ test("design workspace: real login, editable capabilities, role grants, resource
           revisionCalls++
           const request = JSON.parse(user)
           content = JSON.stringify({ ...request.current, name: "设计工作台验收助手（已修订）", goal: request.current.goal + "；补充证据索引" })
+        } else if (system.includes("助手执行引擎") && user.includes("COMPLEX_AGENT_ACCEPTANCE")) {
+          const roleId = ["researcher", "documenter", "analyst", "reviewer", "sender"].find(id => system.includes("（" + id + "）")) || "unknown"
+          const plan = {
+            researcher: { tool: "browser_page_inspect", input: { query: "issuer revenue and risk" }, output: "Research evidence captured with source URL." },
+            documenter: { tool: "document_extract", input: { document_id: "fixture-report.pdf" }, output: "PDF note 7 extracted with page citation." },
+            analyst: { tool: "spreadsheet_analyze", input: { sheet_id: "fixture-financials.xlsx" }, output: "Spreadsheet arithmetic cross-checked." },
+            reviewer: { output: "Reviewed source URL, PDF page 4 and spreadsheet rows 2,4; revenue 120, liabilities 30, derived metric 90. No unsupported claims." },
+            sender: { tool: "send_email", input: { body: "Approved local acceptance report: revenue 120; liabilities 30; metric 90; source fixture.invalid; PDF p.4; sheet rows 2,4." }, output: "FINAL_DUE_DILIGENCE_REPORT: revenue 120; liabilities 30; metric 90; source https://fixture.invalid/issuer; PDF p.4; spreadsheet rows 2,4; risk R1; LOCAL_EMAIL_FIXTURE accepted locally; no real email sent." },
+          }
+          const current = plan[roleId]
+          if (!current) content = JSON.stringify({ action: "final", final_answer: "ERROR: unknown complex acceptance role " + roleId })
+          else {
+            const turn = ++complexRoleTurns[roleId]
+            if (current.tool && turn === 1) content = JSON.stringify({ action: "tool", tool: complexToolIds[current.tool], tool_input: current.input, thought: "Run only the explicitly authorized local fixture action." })
+            else if (roleId === "sender") content = JSON.stringify({ action: "final", final_answer: current.output, thought: "Return the reviewed report after the approved local delivery fixture." })
+            else content = JSON.stringify({ action: "role_complete", role_id: roleId, role_output: current.output })
+          }
         } else if (system.includes("助手执行引擎") && user.includes("DESIGN_WORKSPACE_APPROVAL")) {
           approvalModelCalls++
           content = JSON.stringify(approvalModelCalls === 1 ? { action: "tool", tool: selectedToolId, tool_input: { query: "test-only" }, thought: "Use the approved fixture tool" } : { action: "final", final_answer: "核心结论：本地审批链路已完成。来源：FIXTURE_TOOL_EVIDENCE。仅为界面验收数据。", thought: "Return the fixture evidence" })
@@ -286,6 +346,10 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const market = await api("POST", "/api/market/connect", { name: "design_browser_fixture", title: "本地浏览器验收连接", url: fixtureOrigin + "/mcp", headers: [] })
     assert.equal(market.ok, true); selectedToolId = `mkt__${market.connection.id}__browser_page_inspect`
     const emailToolId = `mkt__${market.connection.id}__send_email`
+    complexToolIds.browser_page_inspect = selectedToolId
+    complexToolIds.document_extract = `mkt__${market.connection.id}__document_extract`
+    complexToolIds.spreadsheet_analyze = `mkt__${market.connection.id}__spreadsheet_analyze`
+    complexToolIds.send_email = emailToolId
     const emailNeed = { id: "email_need", title: "发送邮件", purpose: "发送经用户确认的报告邮件", kind: "integration", access: "write", required: true, role_ids: [], search_terms: ["email"], suggested_tool_ids: [] }
     const mappingSpec = await api("POST", "/api/agent_specs", { name: "邮件能力映射验收助手", spec: { goal: "通过授权邮件连接发送报告", task_scope: "仅验证界面映射，不实际发送邮件", tools: [emailToolId], task_plan: ["发送确认后的邮件"], deliverables: ["邮件发送记录"], done_criteria: ["返回发送回执"], require_approval: true, capability_requirements: [emailNeed] } })
     await page.goto(`${webOrigin}/agent-create?spec=${mappingSpec.id}&step=3`)
@@ -392,6 +456,110 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal((await api("GET", "/api/agent_runs/" + inputRunId)).status, "succeeded")
     results.push("employee reply remains visible, persists through real respond API, and resumes execution")
 
+    // Complex multi-role Agent: all integrations terminate at a local fixture.
+    const marketId = (await api("GET", "/api/market/connections")).items.find(row => row.id === market.connection.id).id
+    const complexRoles = [
+      { id: "researcher", name: "资料研究", responsibility: "收集公开来源并标注风险", tasks: ["读取发行人公开资料", "记录来源和风险"], inputs: ["用户任务"], deliverables: ["来源索引"], done_criteria: ["有来源 URL"], depends_on: [], tools: [selectedToolId] },
+      { id: "documenter", name: "文档分析", responsibility: "提取 PDF 证据与页码", tasks: ["读取附注 7", "标注页码"], inputs: ["来源索引"], deliverables: ["PDF 证据"], done_criteria: ["包含页码"], depends_on: ["researcher"], tools: [complexToolIds.document_extract] },
+      { id: "analyst", name: "财务分析", responsibility: "交叉核对财务表格并计算指标", tasks: ["分析表格", "复核计算"], inputs: ["来源索引", "PDF 证据"], deliverables: ["计算结果"], done_criteria: ["包含行号和公式"], depends_on: ["documenter"], tools: [complexToolIds.spreadsheet_analyze, "calculate"] },
+      { id: "reviewer", name: "交叉审核", responsibility: "检查网页、PDF、表格数字一致性", tasks: ["核验数字", "检查引用和风险"], inputs: ["前序证据"], deliverables: ["审核意见"], done_criteria: ["没有未标注矛盾"], depends_on: ["analyst"], tools: [] },
+      { id: "sender", name: "邮件交付", responsibility: "只在审批后交付本地测试邮件", tasks: ["整理最终报告", "等待审批后提交"], inputs: ["审核意见"], deliverables: ["本地交付回执"], done_criteria: ["审批和回执可追溯"], depends_on: ["reviewer"], tools: [emailToolId] },
+    ]
+    const complexCapabilities = [
+      { id: "source_read", title: "读取发行人网页", purpose: "获取公开事实与来源 URL", kind: "browser", access: "read", required: true, role_ids: ["researcher"], search_terms: ["browser"], suggested_tool_ids: [selectedToolId] },
+      { id: "pdf_read", title: "提取 PDF 证据", purpose: "读取授权 PDF 附注并保留页码", kind: "document", access: "read", required: true, role_ids: ["documenter"], search_terms: ["pdf"], suggested_tool_ids: [complexToolIds.document_extract] },
+      { id: "sheet_read", title: "核对财务表格", purpose: "复核收入和负债并计算指标", kind: "document", access: "read", required: true, role_ids: ["analyst"], search_terms: ["spreadsheet"], suggested_tool_ids: [complexToolIds.spreadsheet_analyze] },
+      { id: "email_write", title: "发送经批准的报告邮件", purpose: "将审核后的摘要提交给本地验收服务", kind: "integration", access: "write", required: true, role_ids: ["sender"], search_terms: ["email"], suggested_tool_ids: [emailToolId] },
+    ]
+    const complexSpec = await api("POST", "/api/agent_specs", { name: "复杂验证：发行人尽调与财务交付", spec: {
+      goal: "基于网页、授权 PDF 和财务表格完成可追溯发行人尽调，并经人工批准后交付",
+      task_scope: "只处理本地测试 fixture，不访问真实发行人、不发送真实邮件；数字必须有来源，缺证据必须标注。",
+      tools: [selectedToolId, complexToolIds.document_extract, complexToolIds.spreadsheet_analyze, "calculate", emailToolId],
+      task_plan: ["研究网页来源", "提取 PDF 页码证据", "复核财务表格", "交叉审核", "人工批准后邮件交付"],
+      deliverables: ["结构化尽调摘要", "来源与页码索引", "财务计算结果", "风险清单", "交付回执"],
+      done_criteria: ["来源 URL 明确", "PDF 结论带页码", "表格结论带行号和公式", "交付操作有审批事件"],
+      roles: complexRoles, capability_requirements: complexCapabilities, require_approval: true,
+      quality_checks: [{ type: "contains", expected: "revenue 120" }, { type: "contains", expected: "PDF p.4" }, { type: "contains", expected: "metric 90" }, { type: "not_contains", expected: "UNVERIFIED_CLAIM" }],
+    } })
+    assert.equal(marketId, market.connection.id)
+    // Inspect the five-stage specification in the actual design UI before
+    // running it. The fixture creates the exact owner-scoped record through
+    // the public API; the user then reviews role and capability ownership.
+    await page.goto(`${webOrigin}/agent-create?spec=${complexSpec.id}&step=2`)
+    const complexModules = page.getByRole("tablist", { name: "Agent 方案设计模块" })
+    await visible(complexModules.getByRole("tab", { name: /^角色与任务/ }))
+    await complexModules.getByRole("tab", { name: /^角色与任务/ }).click()
+    const complexDesigner = page.getByRole("region", { name: "角色与任务分工", exact: true })
+    for (const role of complexRoles) {
+      await complexDesigner.getByRole("button", { name: new RegExp("^\\d+\\s+" + role.name + "$") }).click()
+      await visible(complexDesigner.getByRole("heading", { name: `编辑「${role.name}」`, exact: true }))
+    }
+    await complexDesigner.getByRole("button", { name: /^\d+\s+交叉审核$/ }).click()
+    const reviewerGrants = complexDesigner.getByRole("checkbox", { name: /^允许交叉审核调用/ })
+    assert.ok((await reviewerGrants.count()) >= 4, "The audit role must display its explicit tool scope")
+    for (let i = 0; i < await reviewerGrants.count(); i++) {
+      assert.equal(await reviewerGrants.nth(i).isChecked(), false, "The audit role must have no execution tool grants")
+    }
+    await complexDesigner.getByRole("button", { name: /^\d+\s+邮件交付$/ }).click()
+    assert.equal(await complexDesigner.getByRole("checkbox", { name: /^允许邮件交付调用.*send_email/ }).isChecked(), true)
+    await complexModules.getByRole("tab", { name: "工具与资料", exact: true }).click()
+    const complexHarness = page.getByRole("region", { name: "Harness 能力规划", exact: true })
+    for (const requirement of complexCapabilities) {
+      const capability = complexHarness.getByRole("article", { name: `能力需求：${requirement.title}`, exact: true })
+      await visible(capability.getByText("已选用", { exact: true }).first())
+    }
+    assert.deepEqual((await api("GET", "/api/agent_specs/" + complexSpec.id)).spec.roles, complexRoles,
+      "Reviewing a five-stage configuration cannot mutate the saved Agent")
+    results.push("five-role Agent design UI exposes role boundaries, per-role tool grants and four selected capabilities without altering the server record")
+    await page.goto(`${webOrigin}/agent-run?spec=${complexSpec.id}`)
+    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), complexSpec.id)
+    await page.locator("#agent-task-instruction").fill("COMPLEX_AGENT_ACCEPTANCE 完成发行人尽调，核验 revenue 120、PDF p.4、metric 90，并仅在审批后交付本地邮件。")
+    const complexReadiness = page.getByRole("region", { name: "新任务启动检查", exact: true })
+    if (await complexReadiness.count()) {
+      const complexReadinessText = await complexReadiness.innerText()
+      assert.ok(!/(?:请连接工具|缺少必需能力|尚未测试)/.test(complexReadinessText), "Complex Agent readiness must have no blockers: " + complexReadinessText)
+    }
+    assert.equal(await page.getByRole("button", { name: "运行", exact: true }).isDisabled(), false, "A complex Agent with validated resources must be runnable")
+    const complexToolBaseline = { ...complexToolCalls }
+    const emailCallsBeforeComplexRun = complexToolCalls.send_email
+    const complexRunResponse = page.waitForResponse(item => new URL(item.url()).pathname.endsWith("/api/agent-runs/start") && item.request().method() === "POST")
+    await page.getByRole("button", { name: "运行", exact: true }).click()
+    const complexRunId = (await (await complexRunResponse).json()).run_id
+    assert.ok(complexRunId)
+    const complexApproval = page.getByRole("button", { name: "批准并继续执行", exact: true })
+    for (const [roleId, toolName] of [["researcher", "browser_page_inspect"], ["documenter", "document_extract"], ["analyst", "spreadsheet_analyze"], ["sender", "send_email"]]) {
+      await visible(complexApproval)
+      const waitingState = await api("GET", "/api/agent_runs/" + complexRunId)
+      assert.equal(waitingState.status, "awaiting_approval", roleId + " must pause for human approval")
+      assert.equal(waitingState.checkpoint.role_state.active_role_id, roleId)
+      const approvalDetail = await page.getByRole("region", { name: "待处理的工具审批", exact: true }).innerText()
+      const stageNames = { researcher: "资料研究", documenter: "文档分析", analyst: "财务分析", sender: "邮件交付" }
+      assert.match(approvalDetail, new RegExp("负责阶段：" + stageNames[roleId]), "The approver must see which role owns the pending action")
+      assert.match(approvalDetail, /逐次审批|本次调用/, "The approval card must explain this operation's scope")
+      if (roleId === "sender") {
+        assert.match(approvalDetail, /可能操作或写入/, "Email delivery must not look read-only")
+        assert.equal(complexToolCalls.send_email - complexToolBaseline.send_email, 0, "No email write before approval")
+      }
+      await complexApproval.click()
+      if (roleId !== "sender") await visible(complexApproval)
+      else await visible(page.getByRole("heading", { name: "运行成果", exact: true }))
+      assert.equal(complexToolCalls[toolName] - complexToolBaseline[toolName], 1, toolName + " must execute exactly once in this complex run after approval")
+    }
+    const complexFinal = await api("GET", "/api/agent_runs/" + complexRunId)
+    assert.equal(complexFinal.status, "succeeded")
+    assert.deepEqual(complexFinal.checkpoint.role_state.completed, ["researcher", "documenter", "analyst", "reviewer", "sender"])
+    const complexDetail = await api("GET", "/api/agent-runs/" + complexRunId + "/detail")
+    assert.equal(complexDetail.events.filter(event => event.content?.role_phase === "completed").length, 5)
+    assert.equal(complexDetail.events.filter(event => event.event_type === "tool_call" && event.content?.role_id === "reviewer").length, 0)
+    assert.match(complexFinal.result, /revenue 120/i)
+    assert.match(complexFinal.result, /PDF p\.4/i)
+    assert.match(complexFinal.result, /metric 90/i)
+    assert.deepEqual(Object.fromEntries(Object.keys(complexToolCalls).map(name => [name, complexToolCalls[name] - complexToolBaseline[name]])), { browser_page_inspect: 1, document_extract: 1, spreadsheet_analyze: 1, send_email: 1 })
+    assert.equal(complexToolCalls.send_email - emailCallsBeforeComplexRun, 1, "Only one local email fixture write is allowed for this run")
+    assert.deepEqual(complexRoleTurns, { researcher: 2, documenter: 2, analyst: 2, reviewer: 1, sender: 2 })
+    await screenshot("complex-agent-five-stage-completed")
+    results.push("complex five-role due diligence Agent: source browser + PDF page extraction + spreadsheet analysis + cross-check reviewer + human-approved local-only email; all stages persisted and each tool executed exactly once")
+
     await page.getByRole("button", { name: "随时调整 Agent 方案", exact: true }).click()
     const quickEditor = page.getByRole("dialog", { name: "随时调整 Agent 方案", exact: true })
     await quickEditor.locator("#quick-agent-select").selectOption(mappingSpec.id)
@@ -434,7 +602,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
     results.push("after a real successful run, saving a changed goal marks the prior run as stale, gives an explicit retry action, and blocks publishing without contradictory success messaging")
     assert.ok(designCalls >= 1 && revisionCalls >= 1 && approvalModelCalls >= 2 && inputModelCalls >= 2)
     assert.deepEqual(errors, [], "No unhandled browser exceptions")
-    const report = { passed: true, fixtureOnly: true, independentEmployeeLogin: true, temporarySQLite: true, designCalls, revisionCalls, approvalModelCalls, inputModelCalls, mcpCalls, checks: results, evidenceDir }
+    const report = { passed: true, fixtureOnly: true, independentEmployeeLogin: true, temporarySQLite: true, designCalls, revisionCalls, approvalModelCalls, inputModelCalls, mcpCalls, complexToolCalls, checks: results, evidenceDir }
     fs.writeFileSync(path.join(evidenceDir, "evidence.json"), JSON.stringify(report, null, 2))
     console.log("DESIGN_WORKSPACE_ACCEPTANCE", JSON.stringify(report))
   } catch (error) {

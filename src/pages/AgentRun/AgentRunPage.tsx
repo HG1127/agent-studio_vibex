@@ -171,6 +171,8 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               {p.activeRun?.status === "awaiting_approval" && (
                 <ApprovalGateCard
                   pendingApproval={p.pendingApproval}
+                  activeRun={p.activeRun}
+                  marketTools={p.connectedMarketTools}
                   approvalBusy={p.approvalBusy}
                   onDecision={p.handleApproval}
                 />
