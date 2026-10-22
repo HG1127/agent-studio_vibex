@@ -39,8 +39,9 @@ function fakeRace({secondLookup=winner,sqlError="23505"}={}){
             lookup++
             return {rows:lookup===1?[]:(secondLookup?[secondLookup]:[])}
           }
-          if(sql.startsWith("SELECT id,revision FROM agentstudio.agent_specs"))
-            return {rows:[{id:spec,revision:1}]}
+          if(sql.startsWith("SELECT id,revision")&&
+             sql.includes("FROM agentstudio.agent_specs"))
+            return {rows:[{id:spec,revision:1,spec:{goal:"Synthetic test only"}}]}
           if(sql.startsWith("INSERT INTO agentstudio.runs "))
             return {rows:[{...winner,
               id:"a8f14130-cb93-48b4-9e8e-41a49e8c204c"}]}

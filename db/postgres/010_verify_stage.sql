@@ -108,28 +108,78 @@ BEGIN
   SELECT count(*) INTO total_tables
   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='agentstudio' AND c.relkind='r';
-  IF total_tables<>(20+derived_migration_count) THEN RAISE EXCEPTION
+  IF total_tables<>(23+derived_migration_count) THEN RAISE EXCEPTION
     'staging_table_count_mismatch: %',total_tables; END IF;
 
   SELECT count(*) INTO secured_tables
   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='agentstudio' AND c.relkind='r'
     AND c.relrowsecurity=true AND c.relforcerowsecurity=true;
-  IF secured_tables<>(19+derived_migration_count) THEN RAISE EXCEPTION
+  IF secured_tables<>(22+derived_migration_count) THEN RAISE EXCEPTION
     'staging_forced_rls_count_mismatch: %',secured_tables; END IF;
 
   SELECT count(*) INTO policy_count FROM pg_policies
   WHERE schemaname='agentstudio';
-  IF policy_count<>22 THEN RAISE EXCEPTION
+  IF policy_count<>27 THEN RAISE EXCEPTION
     'staging_policy_count_mismatch: %',policy_count; END IF;
 
   SELECT count(*) INTO unsafe_logins FROM pg_roles
-  WHERE rolname IN ('agentstudio_api','agentstudio_worker') AND rolcanlogin=true;
+  WHERE rolname IN ('agentstudio_api','agentstudio_worker',
+                    'agentstudio_model_broker') AND rolcanlogin=true;
   IF unsafe_logins<>0 THEN RAISE EXCEPTION
     'service_group_roles_must_not_login: %',unsafe_logins; END IF;
 
+  IF NOT EXISTS(SELECT 1 FROM pg_roles
+      WHERE rolname='agentstudio_model_broker' AND NOT rolcanlogin
+        AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit) THEN
+    RAISE EXCEPTION 'unsafe_or_missing_model_broker_group_role';
+  END IF;
+  -- No role reachable by ordinary API or Worker may read key material.
+  -- Check both group grants and login-role inheritance paths.
+  IF has_column_privilege('agentstudio_api',
+       'agentstudio.model_connections','api_key_ciphertext','SELECT') OR
+     has_column_privilege('agentstudio_api',
+       'agentstudio.model_connections','api_key_nonce','SELECT') OR
+     has_column_privilege('agentstudio_api',
+       'agentstudio.model_connections','api_key_tag','SELECT') OR
+     has_column_privilege('agentstudio_worker',
+       'agentstudio.model_connections','api_key_ciphertext','SELECT') OR
+     has_column_privilege('agentstudio_worker',
+       'agentstudio.model_connections','api_key_nonce','SELECT') OR
+     has_column_privilege('agentstudio_worker',
+       'agentstudio.model_connections','api_key_tag','SELECT') OR
+     NOT has_column_privilege('agentstudio_model_broker',
+       'agentstudio.model_connections','api_key_ciphertext','SELECT') OR
+     NOT has_column_privilege('agentstudio_model_broker',
+       'agentstudio.model_connections','api_key_nonce','SELECT') OR
+     NOT has_column_privilege('agentstudio_model_broker',
+       'agentstudio.model_connections','api_key_tag','SELECT') OR
+     has_table_privilege('agentstudio_model_broker',
+       'agentstudio.model_connections','INSERT') OR
+     has_table_privilege('agentstudio_model_broker',
+       'agentstudio.model_connections','UPDATE') OR
+     has_table_privilege('agentstudio_model_broker',
+       'agentstudio.model_connections','DELETE') OR
+     has_column_privilege('agentstudio_api',
+       'agentstudio.tool_connection_headers','value_ciphertext','SELECT') OR
+     has_column_privilege('agentstudio_worker',
+       'agentstudio.tool_connection_headers','value_ciphertext','SELECT') OR
+     NOT has_column_privilege('agentstudio_model_broker',
+       'agentstudio.tool_connection_headers','value_ciphertext','SELECT') OR
+     has_table_privilege('agentstudio_model_broker',
+       'agentstudio.tool_connection_headers','INSERT') OR
+     has_table_privilege('agentstudio_model_broker',
+       'agentstudio.tool_connection_headers','UPDATE') OR
+     has_table_privilege('agentstudio_model_broker',
+       'agentstudio.tool_connection_headers','DELETE') OR
+     EXISTS(SELECT 1 FROM pg_roles w,pg_roles b
+       WHERE w.rolname IN ('agentstudio_stage_login','agentstudio_stage_worker')
+         AND b.rolname='agentstudio_model_broker'
+         AND pg_has_role(w.oid,b.oid,'member')) THEN
+    RAISE EXCEPTION 'model_credential_broker_privilege_invariant_failed';
+  END IF;
   RAISE NOTICE
-    'V8_STAGING_READONLY_CHECK_PASSED: tables=%, forced_rls=%, policies=%, migration_modules=%',
+    'V8_STAGING_READONLY_CHECK_PASSED: tables=%, forced_rls=%, policies=%, migration_modules=%, broker_secret_isolation=verified',
     total_tables,secured_tables,policy_count,derived_migration_count;
 END
 $checks$;

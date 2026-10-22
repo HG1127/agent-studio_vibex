@@ -48,16 +48,16 @@ test("parallel domain migrations converge to one consistent schema and read-only
     }
     const result=await pg.query(
       "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='agentstudio'")
-    assert.equal(result.rows[0].n,37)
+    assert.equal(result.rows[0].n,40)
     const rls=await pg.query(
       "SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n "+
       "ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' "+
       "AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity")
-    assert.equal(rls.rows[0].n,36)
+    assert.equal(rls.rows[0].n,39)
     const policies=await pg.query(
       "SELECT count(*)::int AS n FROM pg_policies "+
       "WHERE schemaname='agentstudio'")
-    assert.equal(policies.rows[0].n,22)
+    assert.equal(policies.rows[0].n,27)
     for(const [migration,table] of [
       ["pg_v8_006","legacy_workflow_imports"],
       ["pg_v8_007","legacy_knowledge_base_imports"],
