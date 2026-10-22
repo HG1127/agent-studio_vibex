@@ -11,6 +11,8 @@ import {inspectWorkflowAgentState,recordWorkflowAgentResult,type WorkflowAgentSt
 import {verifyWorkflowAgentResources} from "./workflow-v2-agent-resources.ts"
 import {createHash} from "node:crypto"
 import {safeWorkflowNodeDebugRequest,workflowNodeDebugGraph,workflowNodeDebugFingerprintData,type WorkflowNodeDebug} from "./workflow-v2-node-debug.ts"
+import {workflowV2OutputProjection} from "./workflow-v2-output-projection.ts"
+import {validWorkflowOutputCursor} from "./workflow-v2-output-contract.ts"
 export type WorkflowV2StoredState={
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
   graph:WorkflowGraph;machine:WorkflowV2Checkpoint
@@ -191,13 +193,14 @@ export class WorkflowV2RunRepository{
       return row?this.assemble(db,owner,row,true):null
     })
   }
-  async list(identity:Identity,limit=30){
+  async list(identity:Identity,limit=30,workflowId?:string){
     if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,"invalid_workflow_run_limit")
+    if(workflowId!==undefined&&(this.root.kind!=="workflow"||!isUuid(workflowId)))throw new HttpError(400,"invalid_workflow_history_scope")
     return withActor(this.pool,identity,async(db,owner)=>(await db.query(
       "SELECT id,"+this.root.id+",status,left(instruction,180) AS instruction_preview,left(result_text,240) AS result_preview,"+
       "step_count,last_error_code,created_at,updated_at,finished_at,checkpoint->>'stage' AS stage "+(this.root.kind==="workflow"?",checkpoint->'node_debug'->>'node_id' AS debug_node_id ":"")+
       "FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND kind='"+this.root.kind+"' "+
-      "AND checkpoint->>'execution_mode'='"+this.root.mode+"' ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit])).rows)
+      "AND checkpoint->>'execution_mode'='"+this.root.mode+"'"+(workflowId!==undefined?" AND workflow_id=$3::uuid":"")+" ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit,...(workflowId!==undefined?[workflowId]:[])])).rows)
   }
   async steps(identity:Identity,id:string,after="",limit=100){
     if(!isUuid(id)||!Number.isSafeInteger(limit)||limit<1||limit>200||
@@ -211,6 +214,25 @@ export class WorkflowV2RunRepository{
       const items=rows.slice(0,limit).map(item=>({...item,metadata:safeRunStepMetadata(item.metadata)}))
       return {items,next_after:rows.length>limit?items.at(-1)!.step_key:null}
     })
+  }
+  private async outputProjection(identity:Identity,id:string){
+    if(this.root.mode!=="workflow_native_v2"||!isUuid(id))throw new HttpError(400,"invalid_workflow_output_request")
+    return withActor(this.pool,identity,async(db,owner)=>{
+      const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid "+
+        "AND kind='workflow' AND checkpoint->>'execution_mode'='workflow_native_v2'",[id,owner])).rows[0]
+      if(!row)throw new HttpError(404,"workflow_run_not_found")
+      if(!isUuid(row.workflow_id)||row.agent_spec_id)throw new HttpError(409,"invalid_v2_root")
+      const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+      // Historical reads use the sealed owner snapshot, not current resource
+      // readiness. They never expose arbitrary step JSON or Agent child state.
+      return workflowV2OutputProjection(state.graph,state.machine,{run_id:row.id,workflow_id:row.workflow_id,workflow_revision:state.workflow_revision!,
+        status:row.status,instruction:row.instruction,updated_at:row.updated_at,...(state.node_debug?{node_debug_id:state.node_debug.node_id}:{})})
+    })
+  }
+  async outputs(identity:Identity,id:string){return (await this.outputProjection(identity,id)).latest()}
+  async outputHistory(identity:Identity,id:string,after="",limit=25){
+    if(!validWorkflowOutputCursor(after)||!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,"invalid_workflow_output_cursor")
+    return (await this.outputProjection(identity,id)).history(after,limit)
   }
   async decide(identity:Identity,id:string,raw:unknown){
     if(!isUuid(id)||!raw||typeof raw!=="object"||Array.isArray(raw))invalid()

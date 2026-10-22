@@ -2,6 +2,8 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {parseWorkflowLatestOutputs,parseWorkflowOutputHistory,validWorkflowOutputCursor} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
+export type {WorkflowLatestOutputs,WorkflowOutputHistory,WorkflowOutputHeader,WorkflowLatestNodeOutput,WorkflowHistoricalNodeOutput} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   model_probe_enabled:boolean
@@ -523,7 +525,21 @@ export function createPgNativePilotApi(
       let body:WorkflowNodeDebugRequest;try{body=safeWorkflowNodeDebugRequest(raw)}catch{throw new PgNativePilotError(400,"invalid_workflow_node_debug_request")}
       return post<PgNativeWorkflowV2Result>((route+"/model-node-debug") as Route,body)
     },
-    listWorkflowV2Runs:async()=> (await get<{items:PgNativeWorkflowV2Summary[]}>(routes.workflowV2Runs)).items,
+    listWorkflowV2Runs:async(workflowId?:string)=>{
+      if(workflowId!==undefined)recordRoute(routes.workflows,workflowId)
+      return (await get<{items:PgNativeWorkflowV2Summary[]}>((routes.workflowV2Runs+(workflowId!==undefined?"?workflow_id="+encodeURIComponent(workflowId):"")) as Route)).items
+    },
+    getWorkflowV2Outputs:async(id:string)=>{
+      const payload=await get<unknown>((recordRoute(routes.workflowV2Runs,id)+"/outputs") as Route)
+      try{return parseWorkflowLatestOutputs(payload,id.toLowerCase())}catch{throw new PgNativePilotError(503,"invalid_workflow_output_response")}
+    },
+    getWorkflowV2OutputHistory:async(id:string,after="",limit=25)=>{
+      const route=recordRoute(routes.workflowV2Runs,id)
+      if(!validWorkflowOutputCursor(after)||!Number.isSafeInteger(limit)||limit<1||limit>50)throw new PgNativePilotError(400,"invalid_workflow_output_cursor")
+      const payload=await get<unknown>((route+"/output-history?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
+      try{const page=parseWorkflowOutputHistory(payload,id.toLowerCase());if(page.items.length>limit||page.items.some(item=>item.step_key<=after))throw Error();return page}
+      catch{throw new PgNativePilotError(503,"invalid_workflow_output_response")}
+    },
     decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
          !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")

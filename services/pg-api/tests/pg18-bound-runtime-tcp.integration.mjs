@@ -292,6 +292,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256)
       await v2Worker.tick();await v2Worker.tick()
       assert.equal((await api.getWorkflowV2Run(v2.run.id)).run.result_text,"Synthetic PG18 V2 result")
+      const outputs=await api.getWorkflowV2Outputs(v2.run.id),outputPage=await api.getWorkflowV2OutputHistory(v2.run.id,"",1)
+      assert.equal(outputs.nodes.find(node=>node.node_type==="model").output_text,"Synthetic PG18 V2 result")
+      assert.equal(outputPage.run.output_version,outputs.run.output_version);assert.ok(outputPage.next_after)
+      assert.equal((await api.getWorkflowV2OutputHistory(v2.run.id,outputPage.next_after,50)).items.length,2)
+      await api.login("other@example.com","SyntheticOtherPassword#2026")
+      await assert.rejects(api.getWorkflowV2Outputs(v2.run.id),error=>error.status===404);await assert.rejects(api.getWorkflowV2OutputHistory(v2.run.id),error=>error.status===404)
+      await api.login("admin@example.com","SyntheticAdminPassword#2026")
       assert.equal((await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")).replayed,true)
       assert.equal(v2Calls,1)
       assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[v2.run.id])).rows,
@@ -314,6 +321,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         await nodeWorker.tick();await nodeWorker.tick();await debug.refresh()
         assert.equal(debug.snapshot().detail.run.status,"succeeded");assert.equal(debug.snapshot().detail.run.result_text,"Synthetic PG18 node debug result");assert.equal(nodeDebugCalls,1)
         assert.equal(JSON.stringify(debug.snapshot().detail.run.checkpoint).includes("outputs"),false)
+        const output=await api.getWorkflowV2Outputs(runId);assert.equal(output.run.node_debug_id,"model");assert.equal(output.nodes.find(node=>node.node_type==="model").output_text,"Synthetic PG18 node debug result")
         assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.external_effects WHERE run_id=$1",[runId])).rows[0].n,2)
       }finally{debug.dispose()}
     },{handlerFactory:createWorkflowV2ModelInternalHandler})

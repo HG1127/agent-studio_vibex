@@ -18,6 +18,7 @@ export type WorkflowNodeTransition={
   step_key:string;node_id:string;node_type:string
   status:"running"|"awaiting_approval"|"succeeded"|"skipped"|"failed"
   output?:string;missing?:string[];branch?:"true"|"false";round?:number;total?:number
+  loop_path?:{node_id:string;round:number;total:number}[]
   agent_context?:WorkflowEffectRequest["agent_context"]
 }
 type NodeState={status:"pending"|"active"|"waiting"|"done"|"skipped"|"failed";key?:string;output?:string}
@@ -96,7 +97,10 @@ class Machine{
   }
   emit(node:WorkflowNode,status:WorkflowNodeTransition["status"],extra:Partial<WorkflowNodeTransition>={}){
     const key=this.key(node)
-    this.events.push({step_key:key,node_id:node.id,node_type:node.type,status,...extra});return key
+    const path=[...this.frames.values()].filter(frame=>frame.active&&this.bodies.get(frame.id)?.has(node.id))
+      .sort((a,b)=>this.bodies.get(b.id)!.size-this.bodies.get(a.id)!.size)
+      .map(frame=>({node_id:frame.id,round:frame.round,total:frame.items.length}))
+    this.events.push({step_key:key,node_id:node.id,node_type:node.type,status,...extra,...(path.length?{loop_path:path}:{})});return key
   }
   template(source:string,nodeId:string,jsonStrings=false):{text:string;missing:string[]}{
     const frames=[...this.frames.values()].filter(f=>f.active&&this.bodies.get(f.id)!.has(nodeId))
@@ -254,9 +258,12 @@ class Machine{
     loops:[...this.frames.values()].map(frame=>({id:frame.id,round:frame.round,total:frame.items.length,active:frame.active}))}}
 }
 
-function restore(rawGraph:unknown,raw:unknown){
+function restore(rawGraph:unknown,raw:unknown,history?:Map<string,WorkflowNodeTransition>){
   const checked=graph(rawGraph),hash=sha(JSON.stringify(checked)),cp=checkpoint(raw,hash),machine=new Machine(checked,cp)
-  for(let cursor=0;cursor<cp.cursor;cursor++)if(machine.step()===null)fail("invalid_workflow_checkpoint")
+  for(let cursor=0;cursor<cp.cursor;cursor++){
+    const events=machine.step();if(events===null)fail("invalid_workflow_checkpoint")
+    if(history)for(const event of events)history.set(event.step_key,event)
+  }
   for(const result of cp.effects)if(machine.requests.get(result.step_key)!==result.input_sha256)fail("invalid_workflow_checkpoint")
   return {cp,machine}
 }
@@ -266,6 +273,12 @@ export function createWorkflowV2Checkpoint(rawGraph:unknown,instruction:string):
 }
 export function inspectWorkflowV2Checkpoint(rawGraph:unknown,raw:unknown):WorkflowV2View{
   return restore(rawGraph,raw).machine.view()
+}
+// Read-only replay of committed outer Workflow transitions. Agent child
+// planner/tool journals are deliberately not inputs to this projection.
+export function inspectWorkflowV2OutputState(rawGraph:unknown,raw:unknown){
+  const history=new Map<string,WorkflowNodeTransition>(),{machine}=restore(rawGraph,raw,history)
+  return {view:machine.view(),events:[...history.values()].sort((a,b)=>a.step_key<b.step_key?-1:a.step_key>b.step_key?1:0)}
 }
 export function advanceWorkflowV2Checkpoint(rawGraph:unknown,raw:unknown){
   const {cp,machine}=restore(rawGraph,raw),events=machine.step()

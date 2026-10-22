@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef,useState} from "react"
-import type {createPgNativePilotApi,PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeWorkflow} from "@/lib/pgNativePilotApi"
+import type {createPgNativePilotApi,PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeWorkflow,WorkflowLatestOutputs} from "@/lib/pgNativePilotApi"
 import {createPgNativeWorkflowEditor,emptyWorkflowEditor} from "@/lib/pgNativeWorkflowEditor"
 import {addPgWorkflowNode,connectPgWorkflowNodes,patchPgWorkflowNode,removePgWorkflowNode,workflowGraphIssues,workflowExecutionIssues,workflowNodeNames,
   type WorkflowGraph,type WorkflowNodeType} from "@/lib/pgNativeWorkflowGraph"
@@ -11,6 +11,7 @@ import PgNativeWorkflowAuthoringTools from "./PgNativeWorkflowAuthoringTools"
 import PgNativeWorkflowNodePreview from "./PgNativeWorkflowNodePreview"
 import PgNativeWorkflowModelDebugPanel from "./PgNativeWorkflowModelDebugPanel"
 import type {WorkflowDebugDraft} from "@/lib/pgNativeWorkflowDebugSession"
+import PgNativeWorkflowSampleSource from "./PgNativeWorkflowSampleSource"
 type Controller=ReturnType<typeof createPgNativeWorkflowEditor>
 type Change={kind:"fresh";name:string}|{kind:"open";id:string}|{kind:"import";name:string;graph:WorkflowGraph}
 export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,tools,bases,active,writeEnabled,executionEnabled,onExpired,onSaved,onRun}:{
@@ -22,6 +23,7 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
   const [formDirty,setFormDirty]=useState(false),[error,setError]=useState("")
   const [changing,setChanging]=useState<Change|null>(null)
   const [selectedIds,setSelectedIds]=useState<string[]>([]),[clipboardCount,setClipboardCount]=useState(0),[debugDraft,setDebugDraft]=useState<WorkflowDebugDraft|null>(null)
+  const [runSamples,setRunSamples]=useState<WorkflowLatestOutputs|null>(null)
   const clipboard=useRef<PgWorkflowFragment|null>(null),importRead=useRef(0),ui=useRef({active,writeEnabled,formDirty})
   ui.current={active,writeEnabled,formDirty}
   const editor=useRef<Controller|null>(null)
@@ -136,6 +138,7 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
         onCopy={copySelection} onPaste={()=>paste()} onDuplicate={()=>paste(selectedPgWorkflowFragment(graph,selection))} onDelete={deleteSelection}
         onSelectAll={()=>{setSelectedIds(graph.nodes.map(node=>node.id));setNodeId("");setEdgeId("")}} onClear={()=>{setSelectedIds([]);setNodeId("");setEdgeId("")}}
         onAlign={mode=>alter(current=>alignPgWorkflowNodes(current,selection,mode))} onTemplate={kind=>{const preset=pgWorkflowTemplate(kind);void change({kind:"import",...preset})}} onError={setError}/>
+      {draft.id&&<PgNativeWorkflowSampleSource key={draft.id} api={api} workflowId={draft.id} active={active} onExpired={onExpired} onSnapshot={setRunSamples}/>}
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3" aria-label="添加工作流节点">
         {(Object.keys(workflowNodeNames) as WorkflowNodeType[]).map(type=><button key={type} type="button" className={workflowSecondary} disabled={!editable||formDirty||type==="start"}
           onClick={()=>alter(current=>addPgWorkflowNode(current,type,edge?.id))}>添加{workflowNodeNames[type]}</button>)}
@@ -158,6 +161,7 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
             try{editor.current?.edit(current.name,patchPgWorkflowNode(current.graph,selected.id,data));setError("");return undefined}
             catch(cause){return cause instanceof Error&&cause.message!=="invalid_workflow_graph_v2"?cause.message:"请检查节点名称、绑定、轮数和模板长度。"}
           }}/><PgNativeWorkflowNodePreview key={draft.id+":"+draft.revision+":"+selected.id} node={selected} graph={graph} workflowId={draft.id} revision={draft.revision}
+            history={runSamples?.run.workflow_id===draft.id?runSamples:null}
             canDebug={executionEnabled&&!view.dirty&&!formDirty&&!locked} onPrepare={request=>setDebugDraft({...request,nodeTitle:selected.data.title,workflowName:draft.name})}/></div>:<div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
             <p>{edge?"已选择连线，可插入节点或删除此连线。":"点击节点配置字段，点击连线插入节点。"}</p>
             {edge&&<><p className="break-words">{graph.nodes.find(node=>node.id===edge.source)?.data.title} → {graph.nodes.find(node=>node.id===edge.target)?.data.title}</p>

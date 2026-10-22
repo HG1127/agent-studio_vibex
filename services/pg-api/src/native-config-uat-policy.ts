@@ -177,7 +177,7 @@ export function permitNativePg18BusinessUatRequest(
     new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/decision$").test(pathname)))return true
   // Existing safe Start/End Workflow run history is owner-scoped READ ONLY.
   if(method==="GET"&&(pathname==="/api/v2/workflow-v2-runs"||new RegExp(
-    "^/api/v2/workflow-v2-runs/"+uuid+"(?:/steps)?$").test(pathname)))return true
+    "^/api/v2/workflow-v2-runs/"+uuid+"(?:/(?:steps|outputs|output-history))?$").test(pathname)))return true
   // A verified owner can stop unstarted work even after submission permission
   // is revoked. The repository refuses cancellation of in-flight/unknown effects.
   if(method==="POST"&&new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/cancel$").test(pathname))return true

@@ -18,13 +18,15 @@ test("static Workflow forms cover seven native types and retain fail-closed revi
     optimizeDeps:{noDiscovery:true,include:[],entries:[]},ssr:{optimizeDeps:{noDiscovery:true,include:[],entries:[]}},
     server:{middlewareMode:true,host:"127.0.0.1",hmr:{host:"127.0.0.1",port:0},watch:null}})
   try{
-    const [{default:Form},{default:Workspace},{default:Detail},{default:Preview},{default:Tools},{default:Debug}]=await Promise.all([
+    const [{default:Form},{default:Workspace},{default:Detail},{default:Preview},{default:Tools},{default:Debug},{WorkflowOutputSnapshot:Output},{default:Source}]=await Promise.all([
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowNodeForm.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowRunDetail.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowNodePreview.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowAuthoringTools.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowModelDebugPanel.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowRunOutputs.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowSampleSource.tsx"),
     ])
     let graph=newPgWorkflowGraph();const noop=()=>{}
     const resources={agents:[],models:[],tools:[],bases:[]}
@@ -53,6 +55,17 @@ test("static Workflow forms cover seven native types and retain fail-closed revi
     const preview=renderToStaticMarkup(createElement(Preview,{node:untrustedNode,graph:{...graph,nodes:graph.nodes.map(node=>node.id===modelNode.id?untrustedNode:node)},workflowId:flow,revision:1,canDebug:true,onPrepare:noop}))
     assert.match(preview,/&lt;script&gt;untrusted&lt;\/script&gt;/);assert.equal(preview.includes("<script>"),false)
     assert.match(preview,/<button[^>]*disabled=""[^>]*>准备单模型测试<\/button>/)
+    const snapshot={format:"workflow_v2_outputs_v1",kind:"latest",run:{run_id:run,workflow_id:flow,workflow_revision:1,graph_sha256:"a".repeat(64),output_version:"b".repeat(64),status:"succeeded",instruction:"HISTORICAL_TASK_NOT_AUTOMATIC",updated_at:"2026-10-23",max_output_chars:4000},
+      nodes:graph.nodes.map(node=>({node_id:node.id,title:node.data.title,node_type:node.type,node_status:"done",output_text:'<script>business output</script>',private_planner:"PRIVATE_INTERNAL_PLAN"}))}
+    const output=renderToStaticMarkup(createElement(Output,{latest:snapshot,history:[],historyLoaded:false,total:0,nextAfter:null,historyBusy:false,active:true,onHistory:noop}))
+    assert.match(output,/&lt;script&gt;business output&lt;\/script&gt;/);assert.equal(output.includes("<script>"),false);assert.equal(output.includes("PRIVATE_INTERNAL_PLAN"),false)
+    const clean={...snapshot,nodes:snapshot.nodes.map(({private_planner,...node})=>node)}
+    const sampleNode={...modelNode,data:{...modelNode.data,prompt:"{{input}}"}},sampleGraph={...graph,nodes:graph.nodes.map(node=>node.id===modelNode.id?sampleNode:node)}
+    const optIn=renderToStaticMarkup(createElement(Preview,{node:sampleNode,graph:sampleGraph,workflowId:flow,revision:1,canDebug:true,history:clean,onPrepare:noop}))
+    assert.match(optIn,/使用所选历史运行样本/);assert.equal(optIn.includes("HISTORICAL_TASK_NOT_AUTOMATIC"),false)
+    assert.match(optIn,/<button[^>]*disabled=""[^>]*>准备单模型测试<\/button>/)
+    const inactiveSource=renderToStaticMarkup(createElement(Source,{api:{},workflowId:flow,active:false,onExpired:noop,onSnapshot:noop}))
+    assert.match(inactiveSource,/<button[^>]*disabled=""[^>]*>读取本人近期运行（最多30条）<\/button>/)
     const pending={step_key:"wf2_00001_model",node_id:modelNode.id,input_sha256:"a".repeat(64),kind:"model",input:"Own <script>task</script>",configuration:{title:"Model",model_binding:binding},missing:[]}
     const detail={run:{id:run,kind:"workflow",workflow_id:flow,status:"awaiting_approval",instruction:"Own task",checkpoint:{workflow_revision:1},step_count:0,updated_at:"synthetic",result_text:""},pending_effect:pending,approvals:[],steps:[],execution_mode:"workflow_native_v2",replayed:false,
       review:{workflow:{id:flow,revision:1,name:"Own flow",graph},model,unavailable:false}}

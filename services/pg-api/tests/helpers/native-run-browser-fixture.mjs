@@ -100,7 +100,8 @@ try{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async()=>{if(!workflow)throw Error("direct_fallback_forbidden");state.generated++;return "Browser synthetic workflow model output"},pool,{
       nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
       allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;return JSON.stringify(JSON.parse(prompt).round===1?
-        {action:"tool",tool:"calculate",params:{expression:"2+2"}}:{action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4"})}})),
+        {action:"tool",tool:"calculate",params:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
+        {action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4",think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined})}})),
     tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{},pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow})),
   }:verified
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},

@@ -3,6 +3,7 @@ import {PgNativePilotError,type createPgNativePilotApi} from "@/lib/pgNativePilo
 import {workflowApprovalReady,workflowStepReview,type WorkflowRunView} from "@/lib/pgNativeWorkflowRunSession"
 import {workflowButton,workflowSecondary} from "./PgNativeWorkflowNodeForm"
 import {autonomousStates} from "./PgNativeAutonomousAgentDetail"
+import PgNativeWorkflowRunOutputs from "./PgNativeWorkflowRunOutputs"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecision,onRetry,onCancel,api,onExpired}:{
   view:Pick<WorkflowRunView,"detail"|"busy"|"loading"|"pendingMutation">&{pendingSubmit:object|null};enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
@@ -44,6 +45,7 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
     <WorkflowSteps key={detail.run.id+":"+detail.run.updated_at} api={api} runId={detail.run.id} initial={detail.steps} total={detail.run.step_count} active={active} onExpired={onExpired}/>
     {detail.run.result_text&&<section aria-label="Workflow 执行结果"><h4 className="mb-2 text-sm font-semibold">执行结果</h4>
       <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 font-sans text-sm leading-6">{detail.run.result_text}</pre></section>}
+    <PgNativeWorkflowRunOutputs key={detail.run.id+":"+detail.run.updated_at} api={api} runId={detail.run.id} workflowId={detail.run.workflow_id} active={active} onExpired={onExpired}/>
     {!["succeeded","failed","cancelled"].includes(detail.run.status)&&<div className="space-y-2">
       <button type="button" className={workflowSecondary} disabled={!active||locked} onClick={()=>setCancelFor(detail.run.id)}>取消工作流任务</button>
       {cancelFor===detail.run.id&&<div role="group" aria-label="确认取消工作流" className="space-y-2 rounded-xl border border-slate-200 p-3 text-sm">

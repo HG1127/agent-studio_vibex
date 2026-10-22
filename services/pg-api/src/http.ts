@@ -99,7 +99,7 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/workflow-runs\/[0-9a-fA-F-]{36}$/.test(path)
       const workflowV2Submit=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/native-runs$/.exec(path)
       const workflowNodeDebug=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/model-node-debug$/.exec(path)
-      const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps))?)?$/.exec(path)
+      const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|outputs|output-history))?)?$/.exec(path)
       const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps))?)?$/.exec(path)
       const autonomousAgentSubmit=/^\/api\/v2\/agent-specs\/([0-9a-fA-F-]{36})\/autonomous-runs$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
@@ -526,7 +526,7 @@ export function createHandler(deps:AppDependencies) {
         if(!id){
           if(method!=="GET")throw new HttpError(405,"method_not_allowed")
           const query=new URL(req.url||"/","http://127.0.0.1").searchParams
-          return send(res,200,{items:await repo.list(identity,Number(query.get("limit")??30))})
+          return send(res,200,{items:await repo.list(identity,Number(query.get("limit")??30),query.get("workflow_id")??undefined)})
         }
         if(action==="decision"){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
@@ -538,6 +538,11 @@ export function createHandler(deps:AppDependencies) {
           return send(res,200,{...await repo.cancel(identity,id),worker_started_by_api:false})
         }
         if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+        if(action==="outputs"||action==="output-history"){
+          const query=new URL(req.url||"/","http://127.0.0.1").searchParams,names=[...query.keys()]
+          if(names.length!==new Set(names).size||names.some(name=>action==="outputs"||!["after","limit"].includes(name)))throw new HttpError(400,"invalid_workflow_output_query")
+          return send(res,200,action==="outputs"?await repo.outputs(identity,id):await repo.outputHistory(identity,id,query.get("after")??"",Number(query.get("limit")??25)))
+        }
         if(action==="steps"){
           const query=new URL(req.url||"/","http://127.0.0.1").searchParams
           return send(res,200,await repo.steps(identity,id,query.get("after")??"",Number(query.get("limit")??100)))
