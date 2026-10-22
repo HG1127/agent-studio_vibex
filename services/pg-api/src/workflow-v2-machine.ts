@@ -1,6 +1,7 @@
 // Deterministic Workflow interpreter. Replays bounded committed transitions;
 // it never performs I/O, imports a provider/tool, or treats a request as a result.
 import {createHash} from "node:crypto"
+import {renderWorkflowTemplate,workflowCondition,workflowLoopItems,WorkflowValueError} from "./workflow-v2-values.ts"
 import {HttpError,safeWorkflowGraph,type WorkflowGraph,type WorkflowNode} from "./contracts.ts"
 
 export type WorkflowEffectRequest={
@@ -30,7 +31,7 @@ export type WorkflowV2View={
 }
 const sha=(text:string)=>createHash("sha256").update(text).digest("hex")
 function fail(code:string):never{throw new HttpError(409,code)}
-const code=(error:unknown)=>error instanceof HttpError?error.code:"workflow_machine_failed"
+const code=(error:unknown)=>error instanceof HttpError||error instanceof WorkflowValueError?error.code:"workflow_machine_failed"
 const plain=(raw:unknown):Record<string,unknown>=>{
   if(!raw||typeof raw!=="object"||Array.isArray(raw)||
      ![Object.prototype,null].includes(Object.getPrototypeOf(raw)))fail("invalid_workflow_checkpoint")
@@ -100,31 +101,17 @@ class Machine{
   template(source:string,nodeId:string,jsonStrings=false):{text:string;missing:string[]}{
     const frames=[...this.frames.values()].filter(f=>f.active&&this.bodies.get(f.id)!.has(nodeId))
       .sort((a,b)=>this.bodies.get(a.id)!.size-this.bodies.get(b.id)!.size)
-    const frame=frames[0],missing=new Set<string>(),pieces:string[]=[]
-    let length=0,last=0,inString=false,escaped=false
-    const scan=(text:string)=>{if(!jsonStrings)return;for(const character of text){
-      if(escaped){escaped=false;continue}
-      if(inString&&character==="\\"){escaped=true;continue}
-      if(character==='"')inString=!inString
-    }}
-    const add=(value:string)=>{length+=value.length;if(length>12000)fail("workflow_rendered_input_too_large");pieces.push(value)}
-    for(const match of source.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)){
-      const literal=source.slice(last,match.index);add(literal);scan(literal);last=match.index+match[0].length
-      const key=match[1]!.trim();let value:string|undefined
-      if(key==="input")value=this.cp.instruction
-      else if(key==="loop.item"&&frame)value=frame.items[frame.round-1]??""
-      else if(key==="loop.index"&&frame)value=String(frame.round)
-      else if(key.endsWith(".output")){
-        const title=key.slice(0,-7),ref=this.graph.nodes.find(n=>n.data.title===title)
-        if(ref)value=this.nodes.get(ref.id)!.output
+    const frame=frames[0]
+    return renderWorkflowTemplate(source,key=>{
+      if(key==="input")return this.cp.instruction
+      if(key==="loop.item"&&frame)return frame.items[frame.round-1]??""
+      if(key==="loop.index"&&frame)return String(frame.round)
+      if(key.endsWith(".output")){
+        const ref=this.graph.nodes.find(n=>n.data.title===key.slice(0,-7))
+        if(ref)return this.nodes.get(ref.id)!.output
       }
-      if(value===undefined){missing.add(key);value=""}
-      if(jsonStrings&&inString){
-        if(escaped)fail("workflow_tool_template_invalid")
-        add(JSON.stringify(value).slice(1,-1))
-      }else{add(value);scan(value)}
-    }
-    add(source.slice(last));return {text:pieces.join(""),missing:[...missing]}
+      return undefined
+    },jsonStrings)
   }
   forwardIncoming(id:string){return this.graph.edges.filter(e=>e.target===id&&!this.returns.has(e.id))}
   ready(id:string){
@@ -191,16 +178,7 @@ class Machine{
     }
   }
   loopItems(node:WorkflowNode):{items:string[];missing:string[]}{
-    const max=node.data.max_iterations??10
-    if(node.data.mode==="count")return {items:Array.from({length:Math.min(node.data.count!,max)},(_,i)=>String(i+1)),missing:[]}
-    const rendered=this.template(node.data.list_source??"",node.id)
-    let items:string[]
-    if(node.data.delimiter==="json_array"){
-      let raw:unknown;try{raw=JSON.parse(rendered.text)}catch{fail("workflow_loop_list_invalid")}
-      if(!Array.isArray(raw))fail("workflow_loop_list_invalid")
-      items=raw.slice(0,50).map(item=>item===null?"":typeof item==="object"?JSON.stringify(item):String(item))
-    }else items=rendered.text.split(node.data.delimiter==="comma"?/[,，]/:/\r?\n/)
-    return {items:items.map(item=>item.trim()).filter(Boolean).slice(0,Math.min(50,max)),missing:rendered.missing}
+    return workflowLoopItems(node.data,node.data.mode==="count"?undefined:this.template(node.data.list_source??"",node.id))
   }
   step():WorkflowNodeTransition[]|null{
     if(this.status==="succeeded"||this.status==="failed")return null
@@ -233,13 +211,8 @@ class Machine{
       }else if(node.type==="condition"){
         const ref=node.data.ref_title?this.graph.nodes.find(n=>n.data.title===node.data.ref_title):undefined
         const input=ref&&this.nodes.get(ref.id)!.output!==undefined?this.nodes.get(ref.id)!.output!:this.outputFromIncoming(node.id)
-        const op=node.data.op??"contains",value=node.data.value??"";let yes=false
-        if(op==="contains")yes=value!==""&&input.includes(value)
-        else if(op==="not_contains")yes=value!==""&&!input.includes(value)
-        else{const match=input.match(/-?\d+(?:\.\d+)?/),a=match?parseFloat(match[0]):NaN,b=parseFloat(value)
-          if(Number.isNaN(a)||Number.isNaN(b))yes=op==="eq"&&input===value
-          else yes=op==="gt"?a>b:op==="lt"?a<b:a===b}
-        this.done(node,(yes?"条件满足":"条件不满足")+"（规则："+op+" "+value+"）",{branch:yes?"true":"false"})
+        const result=workflowCondition(input,node.data.op,node.data.value)
+        this.done(node,result.output,{branch:result.branch})
       }else if(node.type==="loop"){
         const items=this.loopItems(node);state.status="active"
         const key=this.emit(node,"running",{round:items.items.length?1:0,total:items.items.length,missing:items.missing})
@@ -253,9 +226,10 @@ class Machine{
       }else{
         if(node.type==="model"&&!node.data.model_binding)fail("workflow_model_binding_missing")
         if(node.type==="agent"&&!node.data.agent_binding)fail("workflow_agent_binding_missing")
+        if(node.type==="tool"&&(!node.data.tool&&!node.data.tool_binding||node.data.tool_binding_required))fail("workflow_tool_binding_missing")
         const template=node.type==="tool"?(node.data.params_template||"{}"):
           node.type==="agent"?(node.data.prompt||"{{input}}"):node.data.prompt??""
-        const rendered=this.template(template,node.id,node.type==="tool")
+        const rendered=node.type==="model"&&node.data.prompt_format==="literal"?{text:template,missing:[]}:this.template(template,node.id,node.type==="tool")
         if(!rendered.text.trim())fail("workflow_effect_input_empty")
         const signature=sha(node.id+"\0"+rendered.text),count=(this.signatures.get(signature)??0)+1
         if(this.results.get(state.key!)?.outcome!=="rejected"){

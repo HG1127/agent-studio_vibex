@@ -50,3 +50,14 @@ test("undo groups a drag, returns to the saved baseline and clears redo on a new
   await editor.save();assert.equal(editor.snapshot().dirty,false);assert.equal(editor.snapshot().undoDepth,0)
   editor.undo();assert.equal(editor.snapshot().draft.name,"New name");editor.dispose()
 })
+
+test("import creates a new local identity only after explicit dirty-draft discard and cannot replace an uncertain write",async()=>{
+  let creates=0
+  const editor=createPgNativeWorkflowEditor({getWorkflow:async()=>row(),createWorkflowGraph:async()=>{creates++;throw new PgNativePilotError(0,"lost")}},()=>{},()=>id)
+  await editor.open(id);editor.edit("Unsaved",newPgWorkflowGraph());const graph={...newPgWorkflowGraph(),description:"Imported description"}
+  editor.importDraft("Imported",graph);assert.equal(editor.snapshot().draft.name,"Unsaved")
+  editor.importDraft("Imported",graph,true);assert.equal(editor.snapshot().draft.id,"");assert.equal(editor.snapshot().draft.revision,0);assert.equal(creates,0)
+  assert.equal(editor.snapshot().draft.graph.description,"Imported description");assert.equal(editor.snapshot().dirty,true)
+  await editor.save();assert.equal(creates,1);assert.ok(editor.snapshot().pending)
+  editor.importDraft("Overwrite pending",newPgWorkflowGraph(),true);assert.equal(editor.snapshot().draft.name,"Imported");editor.dispose()
+})

@@ -65,7 +65,7 @@ export function patchPgWorkflowNode(graph:WorkflowGraph,id:string,data:WorkflowN
   const from="{{"+node.data.title+".output}}",to="{{"+data.title.trim()+".output}}"
   return {...graph,nodes:graph.nodes.map(item=>{
     const next:WorkflowNodeDataV2=item.id===id?{...data,title:data.title.trim()}:{...item.data}
-    for(const [field,value] of Object.entries(next))if(field!=="title"&&typeof value==="string"){
+    for(const [field,value] of Object.entries(next))if(field!=="title"&&!(field==="prompt"&&next.prompt_format==="literal")&&typeof value==="string"){
       const replacement=field==="ref_title"&&value===node.data.title?data.title.trim():value.split(from).join(to)
       Object.assign(next,{[field]:replacement})
     }

@@ -48,7 +48,7 @@ export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,reques
     "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[c.run_id,owner,request.step_key])).rows[0]
   if(approval?.status!=="approved"||approval.reason_code!=="wf2:"+request.input_sha256||
      effect?.status!=="started"||effect.arguments_sha256!==request.input_sha256||effect.tool_name!=="workflow:"+kind)changed(kind)
-  return pending
+  return {...pending,node_debug:Boolean(state.node_debug)}
 }
 export async function reserveWorkflowEffectDispatch(db:SqlClient,owner:string,r:WorkflowV2ModelRequest,kind:WorkflowDispatchKind){
   const reserved=await db.query("INSERT INTO agentstudio.external_effects "+

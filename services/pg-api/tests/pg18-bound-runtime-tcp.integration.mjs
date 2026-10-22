@@ -17,6 +17,7 @@ import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
 import {createPgNativeWorkflowRunSession,workflowApprovalReady} from "../../../src/lib/pgNativeWorkflowRunSession.ts"
+import {createPgNativeWorkflowDebugSession} from "../../../src/lib/pgNativeWorkflowDebugSession.ts"
 import {createHandler} from "../src/http.ts"
 import {createNativeRunRepository} from "../src/native-run-repository.ts"
 import {AgentSpecRepository} from "../src/repository.ts"
@@ -272,12 +273,12 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
 
     // Actual restricted PG18 identities and V2 mTLS transport, with only the
     // final provider function replaced by a local synthetic response/failure.
-    let v2Calls=0
+    let v2Calls=0,nodeDebugCalls=0
     const v2Broker=new WorkflowV2ModelDispatch(apiPool,key,async(material,prompt)=>{
       assert.equal(material.api_key,secret);v2Calls++
       if(prompt==="Synthetic unknown result")throw Error("synthetic_response_lost")
       assert.equal(prompt,"Synthetic V2 task");return "Synthetic PG18 V2 result"
-    },brokerPool)
+    },brokerPool,{nodeDebugExecutor:async(material,prompt)=>{nodeDebugCalls++;assert.equal(material.api_key,secret);assert.equal(prompt,"Synthetic {{literal}} node test");return "Synthetic PG18 node debug result"}})
     const v2Dispatch=verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),v2Broker)
     await withDisposableBoundModelTls(v2Dispatch,async config=>{
       const v2=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")
@@ -304,6 +305,17 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await unknownWorker.tick()).status,"idle");assert.equal(v2Calls,2)
       assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[uncertain.run.id])).rows,
         [{status:"unknown"},{status:"unknown"}])
+      const debug=createPgNativeWorkflowDebugSession(api,{key:()=>"pg18-native-node-debug-0001"})
+      try{debug.setActive(true);await debug.refresh();await debug.submit({workflowId:workflow.id,revision:2,nodeId:"model",samples:{input:"Synthetic {{literal}} node test",outputs:{}}})
+        assert.equal(debug.snapshot().error,"");const runId=debug.snapshot().detail.run.id
+        const nodeWorker=new WorkflowV2Worker(workerPool,"ci-node-debug",{executor:workflowV2ModelEffectExecutor(config)})
+        assert.equal((await nodeWorker.tick()).status,"awaiting_approval");await debug.refresh()
+        assert.equal(workflowApprovalReady(debug.snapshot().detail),true);await debug.decide("approved",true)
+        await nodeWorker.tick();await nodeWorker.tick();await debug.refresh()
+        assert.equal(debug.snapshot().detail.run.status,"succeeded");assert.equal(debug.snapshot().detail.run.result_text,"Synthetic PG18 node debug result");assert.equal(nodeDebugCalls,1)
+        assert.equal(JSON.stringify(debug.snapshot().detail.run.checkpoint).includes("outputs"),false)
+        assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.external_effects WHERE run_id=$1",[runId])).rows[0].n,2)
+      }finally{debug.dispose()}
     },{handlerFactory:createWorkflowV2ModelInternalHandler})
     // Tool identity/ciphertext column permissions are exercised with the real
     // three restricted logins. Only the last outbound provider is synthetic.

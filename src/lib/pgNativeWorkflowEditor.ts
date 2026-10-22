@@ -47,6 +47,12 @@ export function createPgNativeWorkflowEditor(api:Api,onExpired:()=>void,makeId=(
       if(closed||state.busy||state.pending||state.dirty&&!discard)return
       ++read;reset({id:"",revision:0,name:name.trim(),graph:newPgWorkflowGraph()},"");update({loading:false,error:"",notice:""})
     },
+    importDraft(name:string,graph:WorkflowGraph,discard=false){
+      if(closed||state.busy||state.pending||state.dirty&&!discard)return
+      const checked=parseWorkflowGraphV2(graph)
+      if(!name.trim()||name.trim().length>120)throw Error("工作流名称不能为空，且不超过 120 字。")
+      ++read;reset({id:"",revision:0,name:name.trim(),graph:checked},"");update({loading:false,error:"",notice:"已载入新的本地草稿。请重新绑定资源并保存，尚未创建或运行任务。"})
+    },
     edit(name:string,graph:WorkflowGraph){
       if(closed||!state.draft||state.busy||state.loading||state.pending)return
       const next={...state.draft,name,graph:structuredClone(graph)}

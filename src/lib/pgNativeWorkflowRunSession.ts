@@ -10,8 +10,7 @@ export type WorkflowRunView=DurableRunView<WorkflowRunDetail,PgNativeWorkflowV2S
 export const emptyWorkflowRunView=emptyDurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowRunDraft>()
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 async function optional<T>(work:Promise<T>):Promise<T|undefined>{try{return await work}catch(error){if(error instanceof PgNativePilotError&&error.status===401)throw error;return undefined}}
-export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=>void;key?:()=>string}={}){
-  const get=async(id:string):Promise<WorkflowRunDetail>=>{
+export async function loadWorkflowRunReview(api:Api,id:string):Promise<WorkflowRunDetail>{
     const detail=await api.getWorkflowV2Run(id),pending=detail.pending_effect
     if(detail.run.status!=="awaiting_approval"||!pending)return detail
     const ref=pending.configuration.model_binding as WorkflowNodeDataV2["model_binding"]
@@ -30,8 +29,10 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
     if(pending.kind==="agent"&&!ref&&agent?.spec.model_binding)model=await optional(api.getModelConnection(agent.spec.model_binding.connection_id))
     return {...detail,review:{workflow,agent,model,tool,unavailable:!workflow||Boolean((ref||pending.kind==="agent")&&!model)||Boolean(toolRef&&!tool)||Boolean((agentRef||pending.agent_context)&&!agent)}}
   }
+export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=>void;key?:()=>string}={}){
+
   return createPgNativeDurableRunSession<WorkflowRunDraft,WorkflowRunDetail,PgNativeWorkflowV2Summary>({
-    get,list:()=>api.listWorkflowV2Runs(),submit:body=>api.submitWorkflowV2Run(body.workflowId,body.revision,body.instruction,body.key),
+    get:id=>loadWorkflowRunReview(api,id),list:()=>api.listWorkflowV2Runs(),submit:body=>api.submitWorkflowV2Run(body.workflowId,body.revision,body.instruction,body.key),
     decide:(...args)=>api.decideWorkflowV2Node(...args),cancel:id=>api.cancelWorkflowV2Run(id),
   },{...options,describe:autonomousError,submittedNotice:"工作流任务已提交，外部操作将逐步请求审批。",
     freezeDraft(draft){const instruction=draft.instruction.trim()
@@ -39,7 +40,7 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
       return {workflowId:draft.workflowId.toLowerCase(),revision:draft.revision,instruction}
     },
     acceptDetail:result=>result.execution_mode==="workflow_native_v2"&&result.run.kind==="workflow"&&uuid.test(result.run.workflow_id),
-    acceptSubmit:(result,body)=>result.run.workflow_id===body.workflowId&&result.run.instruction===body.instruction&&result.run.checkpoint.workflow_revision===body.revision,
+    acceptSubmit:(result,body)=>!result.run.checkpoint.node_debug&&result.run.workflow_id===body.workflowId&&result.run.instruction===body.instruction&&result.run.checkpoint.workflow_revision===body.revision,
   })
 }
 export function workflowApprovalReady(detail:WorkflowRunDetail|null){

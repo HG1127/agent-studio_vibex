@@ -5,7 +5,7 @@ import {workflowButton,workflowSecondary} from "./PgNativeWorkflowNodeForm"
 import {autonomousStates} from "./PgNativeAutonomousAgentDetail"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecision,onRetry,onCancel,api,onExpired}:{
-  view:WorkflowRunView;enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
+  view:Pick<WorkflowRunView,"detail"|"busy"|"loading"|"pendingMutation">&{pendingSubmit:object|null};enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
 }){
   const [consent,setConsent]=useState(""),[cancelFor,setCancelFor]=useState("")
   const detail=view.detail,pending=detail?.pending_effect,mutation=view.pendingMutation
@@ -14,7 +14,8 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
   const ready=workflowApprovalReady(detail),locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)
   const loops=Array.isArray(detail.run.checkpoint.loop_progress)?detail.run.checkpoint.loop_progress as Array<{id:string;round:number;total:number}>:[]
   return <article aria-label="Workflow 运行详情" className="space-y-4 rounded-2xl border border-indigo-200 bg-white p-5">
-    <h3 className="font-semibold">工作流任务 · {autonomousStates[detail.run.status]??"状态未知"}</h3>
+    <h3 className="font-semibold">{detail.run.checkpoint.node_debug?"单模型节点测试":"工作流任务"} · {autonomousStates[detail.run.status]??"状态未知"}</h3>
+    {Boolean(detail.run.checkpoint.node_debug)&&<p className="text-sm leading-6 text-slate-600">仅测试已保存的选定模型节点，最多请求 512 个输出 token；上游结果来自手工样本，其他模型、工具和 Agent 节点不会执行。</p>}
     <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{detail.run.instruction}</p>
     {detail.run.status==="queued"&&<p role="status" className="text-sm text-slate-500">工作流已排队，等待后台处理。</p>}
     {detail.run.status==="paused"&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">执行结果需要管理员核对，任务已暂停。请勿重新提交或重放已有操作。</p>}

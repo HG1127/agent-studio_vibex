@@ -1,6 +1,7 @@
 /** Separate, local-only PostgreSQL 18 native-auth test client.
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
+import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   model_probe_enabled:boolean
@@ -27,7 +28,7 @@ export type PgNativeAgent={
     knowledge_base_ids?:string[];model_binding?:PgNativeAgentModelBinding}
 }
 export type PgNativeWorkflow={id:string;name:string;revision:number;
-  graph?:{version?:2;nodes:unknown[];edges:unknown[]}}
+  graph?:{version?:2;description?:string;nodes:unknown[];edges:unknown[]}}
 export type PgNativeWorkflowValidationResult={
   run:{id:string;workflow_id:string;kind:"workflow";status:string
     step_count:number;result_text:string;checkpoint:Record<string,unknown>}
@@ -59,7 +60,7 @@ export type PgNativeWorkflowV2Result={
   decision_confirmation?:{run_id:string;step_key:string;input_sha256:string;status:"approved"|"rejected"}
 }
 export type PgNativeWorkflowV2Summary={id:string;workflow_id:string;status:string;instruction_preview:string;result_preview:string;
-  step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string}
+  step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string;debug_node_id?:string|null}
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
   execution_mode:"agent_native_v2";run:Omit<PgNativeWorkflowV2Result["run"],"kind"|"workflow_id">&{kind:"agent";workflow_id:null;agent_spec_id:string}
 }
@@ -517,6 +518,11 @@ export function createPgNativePilotApi(
         expected_revision:safeRevision(expected_revision),instruction,idempotency_key})
     },
     getWorkflowV2Run:async(id:string)=>get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id)),
+    submitWorkflowNodeDebug:async(id:string,raw:WorkflowNodeDebugRequest)=>{
+      const route=recordRoute(routes.workflows,id)
+      let body:WorkflowNodeDebugRequest;try{body=safeWorkflowNodeDebugRequest(raw)}catch{throw new PgNativePilotError(400,"invalid_workflow_node_debug_request")}
+      return post<PgNativeWorkflowV2Result>((route+"/model-node-debug") as Route,body)
+    },
     listWorkflowV2Runs:async()=> (await get<{items:PgNativeWorkflowV2Summary[]}>(routes.workflowV2Runs)).items,
     decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||

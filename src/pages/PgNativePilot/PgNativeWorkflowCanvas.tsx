@@ -17,11 +17,12 @@ const Card=memo(function Card({data,type,selected}:NodeProps<FlowNode>){
   </div>
 })
 const nodeTypes={start:Card,end:Card,model:Card,agent:Card,tool:Card,condition:Card,loop:Card}
-export default function PgNativeWorkflowCanvas({graph,selectedNode,selectedEdge,enabled,onGraph,onNode,onEdge,onConnect,onGesture}:{
-  graph:WorkflowGraph;selectedNode:string;selectedEdge:string;enabled:boolean;onGraph:(update:(current:WorkflowGraph)=>WorkflowGraph)=>void;
+export default function PgNativeWorkflowCanvas({graph,selectedNodes,selectedEdge,enabled,onGraph,onNode,onEdge,onConnect,onGesture,onSelection,onShortcut}:{
+  graph:WorkflowGraph;selectedNodes:string[];selectedEdge:string;enabled:boolean;onGraph:(update:(current:WorkflowGraph)=>WorkflowGraph)=>void;
   onNode:(id:string)=>void;onEdge:(id:string)=>void;onConnect:(connection:Connection)=>void;onGesture:(begin:boolean)=>void
+  onSelection:(ids:string[])=>void;onShortcut:(action:string)=>void
 }){
-  const nodes:FlowNode[]=graph.nodes.map(node=>({...node,data:{...node.data},selected:node.id===selectedNode,deletable:node.type!=="start",ariaLabel:workflowNodeNames[node.type]+"节点："+node.data.title}))
+  const nodes:FlowNode[]=graph.nodes.map(node=>({...node,data:{...node.data},selected:selectedNodes.includes(node.id),deletable:node.type!=="start",ariaLabel:workflowNodeNames[node.type]+"节点："+node.data.title}))
   const edges=graph.edges.map(edge=>({...edge,selected:edge.id===selectedEdge,
     sourceHandle:!edge.sourceHandle&&graph.nodes.find(node=>node.id===edge.source)?.type==="loop"?"body":edge.sourceHandle,
     label:edge.sourceHandle==="true"?"满足":edge.sourceHandle==="false"?"不满足":edge.sourceHandle==="done"?"结束":""}))
@@ -38,9 +39,14 @@ export default function PgNativeWorkflowCanvas({graph,selectedNode,selectedEdge,
     if(!enabled)return;const removed=new Set(changes.filter(change=>change.type==="remove").map(change=>change.id))
     if(removed.size)onGraph(current=>({...current,edges:current.edges.filter(edge=>!removed.has(edge.id))}))
   }
-  return <div aria-label="PG Workflow 可视化画布" className="h-[460px] min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 sm:h-[540px]">
+  return <div aria-label="PG Workflow 可视化画布" tabIndex={0} className="h-[460px] min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 sm:h-[540px]" onKeyDown={event=>{
+    if(!(event.ctrlKey||event.metaKey)||event.altKey||(event.target instanceof HTMLElement&&(event.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(event.target.tagName))))return
+    const key=event.key.toLowerCase();if(!["c","v","d","a","z","y"].includes(key))return
+    event.preventDefault();event.stopPropagation();onShortcut(key==="z"?(event.shiftKey?"redo":"undo"):key==="y"?"redo":key)
+  }}>
     <ReactFlow<FlowNode> nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={positions} onEdgesChange={edgeChanges}
       onNodeClick={(_event,node)=>onNode(node.id)} onEdgeClick={(_event,edge)=>onEdge(edge.id)} onConnect={onConnect}
+      onSelectionChange={({nodes})=>onSelection(nodes.map(node=>node.id))} selectionOnDrag selectionKeyCode="Shift" multiSelectionKeyCode={["Shift","Control","Meta"]}
       onNodeDragStart={()=>onGesture(true)} onNodeDragStop={()=>onGesture(false)} nodesDraggable={enabled} nodesConnectable={enabled} edgesReconnectable={false}
       deleteKeyCode={enabled?["Backspace","Delete"]:null} fitView fitViewOptions={{padding:0.3}} minZoom={0.15} maxZoom={1.8}
       proOptions={{hideAttribution:true}}>

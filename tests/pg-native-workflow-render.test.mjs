@@ -16,12 +16,15 @@ test("static Workflow forms cover seven native types and retain fail-closed revi
   const server=await createServer({configFile:false,envFile:false,root,mode:"test",plugins:[react()],
     cacheDir:path.join(root,".tmp/pg-migration-completion/workflow-ssr-cache"),resolve:{alias:{"@":path.join(root,"src")}},
     optimizeDeps:{noDiscovery:true,include:[],entries:[]},ssr:{optimizeDeps:{noDiscovery:true,include:[],entries:[]}},
-    server:{middlewareMode:true,hmr:false,watch:null}})
+    server:{middlewareMode:true,host:"127.0.0.1",hmr:{host:"127.0.0.1",port:0},watch:null}})
   try{
-    const [{default:Form},{default:Workspace},{default:Detail}]=await Promise.all([
+    const [{default:Form},{default:Workspace},{default:Detail},{default:Preview},{default:Tools},{default:Debug}]=await Promise.all([
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowNodeForm.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowRunDetail.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowNodePreview.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowAuthoringTools.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowModelDebugPanel.tsx"),
     ])
     let graph=newPgWorkflowGraph();const noop=()=>{}
     const resources={agents:[],models:[],tools:[],bases:[]}
@@ -35,10 +38,21 @@ test("static Workflow forms cover seven native types and retain fail-closed revi
     const blocked=renderToStaticMarkup(createElement(Workspace,{...resources,api:{},workflows:[],active:true,writeEnabled:false,executionEnabled:false,onExpired:noop,onSaved:async()=>{},onRun:noop}))
     assert.match(blocked,/当前环境只允许查看工作流/)
     assert.match(blocked,/<input[^>]*aria-label="新工作流名称"[^>]*disabled=""/)
+    assert.match(blocked,/<input[^>]*aria-label="导入 Workflow JSON"[^>]*disabled=""/)
+    const tools=renderToStaticMarkup(createElement(Tools,{graph,name:"Synthetic",selected:0,clipboard:0,readEnabled:false,editEnabled:false}))
+    assert.match(tools,/手写在文本中的凭据不会被自动识别/)
+    assert.match(tools,/<button[^>]*disabled=""[^>]*>导出可移植 Workflow JSON<\/button>/)
+    const debug=renderToStaticMarkup(createElement(Debug,{api:{},draft:{workflowId:flow,revision:1,nodeId:"node",samples:{input:"Own task",outputs:{}}},active:true,enabled:false,onExpired:noop}))
+    assert.match(debug,/当前环境未开放单模型节点测试及审批/)
+    assert.match(debug,/<button[^>]*disabled=""[^>]*>提交单模型节点测试<\/button>/)
     const model={id:connection,revision:1,name:"Own model",provider:"openai",base_url:"https://api.openai.com/v1",enabled:true,status:"ok",models:["synthetic"]}
     const binding={connection_id:connection,connection_revision:1,model_id:"synthetic"}
     graph=addPgWorkflowNode(graph,"model",graph.edges[0].id)
     const modelNode=graph.nodes.find(node=>node.type==="model");modelNode.data={title:"Model",prompt:"Own task",model_binding:binding}
+    const untrustedNode={...modelNode,data:{...modelNode.data,prompt:'<script>untrusted</script> {{Missing.output}}'}}
+    const preview=renderToStaticMarkup(createElement(Preview,{node:untrustedNode,graph:{...graph,nodes:graph.nodes.map(node=>node.id===modelNode.id?untrustedNode:node)},workflowId:flow,revision:1,canDebug:true,onPrepare:noop}))
+    assert.match(preview,/&lt;script&gt;untrusted&lt;\/script&gt;/);assert.equal(preview.includes("<script>"),false)
+    assert.match(preview,/<button[^>]*disabled=""[^>]*>准备单模型测试<\/button>/)
     const pending={step_key:"wf2_00001_model",node_id:modelNode.id,input_sha256:"a".repeat(64),kind:"model",input:"Own <script>task</script>",configuration:{title:"Model",model_binding:binding},missing:[]}
     const detail={run:{id:run,kind:"workflow",workflow_id:flow,status:"awaiting_approval",instruction:"Own task",checkpoint:{workflow_revision:1},step_count:0,updated_at:"synthetic",result_text:""},pending_effect:pending,approvals:[],steps:[],execution_mode:"workflow_native_v2",replayed:false,
       review:{workflow:{id:flow,revision:1,name:"Own flow",graph},model,unavailable:false}}

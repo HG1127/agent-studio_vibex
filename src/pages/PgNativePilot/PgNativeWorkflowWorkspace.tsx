@@ -1,12 +1,18 @@
-import {useEffect,useRef,useState} from "react"
+import {useCallback,useEffect,useRef,useState} from "react"
 import type {createPgNativePilotApi,PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeWorkflow} from "@/lib/pgNativePilotApi"
 import {createPgNativeWorkflowEditor,emptyWorkflowEditor} from "@/lib/pgNativeWorkflowEditor"
 import {addPgWorkflowNode,connectPgWorkflowNodes,patchPgWorkflowNode,removePgWorkflowNode,workflowGraphIssues,workflowExecutionIssues,workflowNodeNames,
   type WorkflowGraph,type WorkflowNodeType} from "@/lib/pgNativeWorkflowGraph"
 import PgNativeWorkflowCanvas from "./PgNativeWorkflowCanvas"
 import PgNativeWorkflowNodeForm,{workflowButton,workflowSecondary} from "./PgNativeWorkflowNodeForm"
+import {importPgWorkflowJson,selectedPgWorkflowFragment,pastePgWorkflowFragment,alignPgWorkflowNodes,PG_WORKFLOW_TRANSFER_BYTES,type PgWorkflowFragment} from "@/lib/pgNativeWorkflowTransfer"
+import {pgWorkflowTemplate} from "@/lib/pgNativeWorkflowTemplates"
+import PgNativeWorkflowAuthoringTools from "./PgNativeWorkflowAuthoringTools"
+import PgNativeWorkflowNodePreview from "./PgNativeWorkflowNodePreview"
+import PgNativeWorkflowModelDebugPanel from "./PgNativeWorkflowModelDebugPanel"
+import type {WorkflowDebugDraft} from "@/lib/pgNativeWorkflowDebugSession"
 type Controller=ReturnType<typeof createPgNativeWorkflowEditor>
-type Change={kind:"fresh";name:string}|{kind:"open";id:string}
+type Change={kind:"fresh";name:string}|{kind:"open";id:string}|{kind:"import";name:string;graph:WorkflowGraph}
 export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,tools,bases,active,writeEnabled,executionEnabled,onExpired,onSaved,onRun}:{
   api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];agents:PgNativeAgent[];models:PgNativeModelConnection[];tools:PgNativeToolConnection[];bases:PgNativeKnowledge[];
   active:boolean;writeEnabled:boolean;executionEnabled:boolean;onExpired:()=>void;onSaved:()=>Promise<void>;onRun:(id:string,revision:number)=>void
@@ -15,11 +21,14 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
   const [nodeId,setNodeId]=useState(""),[edgeId,setEdgeId]=useState("")
   const [formDirty,setFormDirty]=useState(false),[error,setError]=useState("")
   const [changing,setChanging]=useState<Change|null>(null)
+  const [selectedIds,setSelectedIds]=useState<string[]>([]),[clipboardCount,setClipboardCount]=useState(0),[debugDraft,setDebugDraft]=useState<WorkflowDebugDraft|null>(null)
+  const clipboard=useRef<PgWorkflowFragment|null>(null),importRead=useRef(0),ui=useRef({active,writeEnabled,formDirty})
+  ui.current={active,writeEnabled,formDirty}
   const editor=useRef<Controller|null>(null)
   useEffect(()=>{
-    const controller=createPgNativeWorkflowEditor(api,onExpired);editor.current=controller;setView(controller.snapshot())
+    const controller=createPgNativeWorkflowEditor(api,onExpired);editor.current=controller;setView(controller.snapshot());clipboard.current=null;setClipboardCount(0)
     const unsubscribe=controller.subscribe(()=>setView(controller.snapshot()))
-    return ()=>{unsubscribe();controller.dispose();if(editor.current===controller)editor.current=null}
+    return ()=>{unsubscribe();controller.dispose();++importRead.current;clipboard.current=null;if(editor.current===controller)editor.current=null}
   },[api,onExpired])
   useEffect(()=>{
     if(!view.dirty&&!formDirty&&!view.pending)return
@@ -29,12 +38,16 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
   },[view.dirty,view.pending,formDirty])
   const draft=view.draft,graph=draft?.graph,selected=graph?.nodes.find(node=>node.id===nodeId),edge=graph?.edges.find(item=>item.id===edgeId)
   const locked=view.busy||view.loading||Boolean(view.pending),editable=active&&writeEnabled&&!locked
+  const selection=graph?.nodes.filter(node=>selectedIds.includes(node.id)).map(node=>node.id)??[]
+  const handleSelection=useCallback((ids:string[])=>{if(!active||formDirty)return;setSelectedIds(current=>current.length===ids.length&&current.every(id=>ids.includes(id))?current:ids)},[active,formDirty])
   const issues=graph?workflowGraphIssues(graph):[],runIssues=graph?workflowExecutionIssues(graph):[]
   const change=async(request:Change,discard=false)=>{
-    if(locked)return
-    if(!discard&&(view.dirty||formDirty)){setChanging(request);return}
-    setChanging(null);setFormDirty(false);setNodeId("");setEdgeId("");setError("")
+    const controller=editor.current,snapshot=controller?.snapshot()
+    if(!controller||!snapshot||!ui.current.active||snapshot.busy||snapshot.pending||snapshot.loading||request.kind!=="open"&&!ui.current.writeEnabled)return
+    if(!discard&&(snapshot.dirty||ui.current.formDirty)){setChanging(request);return}
+    ++importRead.current;setChanging(null);setFormDirty(false);setNodeId("");setEdgeId("");setSelectedIds([]);setError("")
     if(request.kind==="fresh")editor.current?.fresh(request.name,true)
+    else if(request.kind==="import")controller.importDraft(request.name,request.graph,true)
     else await editor.current?.open(request.id,true)
   }
   const alter=(work:(current:WorkflowGraph)=>WorkflowGraph)=>{
@@ -50,7 +63,30 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
     await controller.save()
     if(editor.current===controller&&!controller.snapshot().dirty&&controller.snapshot().notice)await onSaved()
   }
-  const selectNode=(id:string)=>{if(formDirty){setError("请先应用或撤销当前节点配置。");return}setNodeId(id);setEdgeId("");setError("")}
+  const selectNode=(id:string,replaceSelection=true)=>{if(formDirty){setError("请先应用或撤销当前节点配置。");return}setNodeId(id);if(replaceSelection)setSelectedIds(id?[id]:[]);setEdgeId("");setError("")}
+  const copySelection=()=>{
+    if(!active||locked||formDirty||!graph)return
+    const fragment=selectedPgWorkflowFragment(graph,selection)
+    if(!fragment.nodes.length){setError("请选择需要复制的节点；开始节点不能复制。");return}
+    clipboard.current=fragment;setClipboardCount(fragment.nodes.length);setError("")
+  }
+  const paste=(fragment=clipboard.current)=>{if(!fragment)return;let added:string[]|undefined
+    alter(current=>{const result=pastePgWorkflowFragment(current,fragment);added=result.selected;return result.graph})
+    if(added){setSelectedIds(added);setNodeId(added.length===1?added[0]:"");setEdgeId("")}
+  }
+  const deleteSelection=()=>{alter(current=>{const removed=new Set(current.nodes.filter(node=>node.type!=="start"&&selection.includes(node.id)).map(node=>node.id))
+    return {...current,nodes:current.nodes.filter(node=>!removed.has(node.id)),edges:current.edges.filter(edge=>!removed.has(edge.source)&&!removed.has(edge.target))}});if(editable&&!formDirty){setNodeId("");setSelectedIds([])}}
+  const loadFile=async(file:File)=>{
+    const controller=editor.current;if(!controller||!ui.current.active||!ui.current.writeEnabled)return
+    const ticket=++importRead.current,before=JSON.stringify(controller.snapshot().draft)
+    try{
+      if(file.size>PG_WORKFLOW_TRANSFER_BYTES)throw Error("导入文件最大 512KB。")
+      const parsed=importPgWorkflowJson(await file.text())
+      if(editor.current!==controller||ticket!==importRead.current||!ui.current.active||!ui.current.writeEnabled)return
+      if(JSON.stringify(controller.snapshot().draft)!==before)throw Error("读取文件期间画布已变化，请重新选择文件。")
+      await change({kind:"import",name:(parsed.name+"（导入）").slice(0,120),graph:parsed.graph})
+    }catch(cause){if(editor.current===controller&&ticket===importRead.current)setError(cause instanceof Error?cause.message:"导入失败，请检查文件。")}
+  }
   return <section aria-label="PG Workflow 工作台" className="space-y-4">
     {error&&<p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
     {view.error&&<p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{view.error}</p>}
@@ -70,6 +106,8 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
           className="mt-1.5 min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm" onChange={event=>setName(event.target.value)}/></label>
         <button type="submit" className={workflowButton} disabled={!writeEnabled||locked||!name.trim()}>新建画布草稿</button>
       </form>
+      <label className="block text-sm font-medium">导入 Workflow JSON<input type="file" aria-label="导入 Workflow JSON" accept="application/json,.json" disabled={!active||!writeEnabled||locked}
+        className="mt-1.5 block w-full text-sm" onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void loadFile(file)}}/></label>
       {!writeEnabled&&<p role="status" className="text-sm text-amber-800">当前环境只允许查看工作流，尚未开放配置保存。</p>}
     </div>
     {changing&&<div role="group" aria-label="确认切换工作流" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
@@ -89,26 +127,38 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
           {view.busy?"保存中…":view.pending?"核对并确认上次保存":"保存工作流"}
         </button>
         <button type="button" className={workflowButton} disabled={!active||!executionEnabled||locked||formDirty||view.dirty||!draft.id||Boolean(runIssues.length)} onClick={()=>onRun(draft.id,draft.revision)}>运行已保存工作流</button>
+        <label className="basis-full text-sm font-medium">工作流描述<textarea aria-label="工作流描述" rows={2} maxLength={500} disabled={!editable||formDirty} value={graph.description??""}
+          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" onChange={event=>editor.current?.edit(draft.name,{...graph,description:event.target.value})}/></label>
       </div>
       {view.pending&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">上次保存尚未确认。原请求和版本已保留，请确认原保存结果后再编辑或切换。</p>}
       {!!issues.length&&<div role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"><p className="font-medium">保存前需要修正</p><ul className="mt-2 list-inside list-disc">{issues.map(issue=><li key={issue}>{issue}</li>)}</ul></div>}
+      <PgNativeWorkflowAuthoringTools graph={graph} name={draft.name} selected={selection.length} clipboard={clipboardCount} readEnabled={active&&!locked&&!formDirty} editEnabled={editable&&!formDirty}
+        onCopy={copySelection} onPaste={()=>paste()} onDuplicate={()=>paste(selectedPgWorkflowFragment(graph,selection))} onDelete={deleteSelection}
+        onSelectAll={()=>{setSelectedIds(graph.nodes.map(node=>node.id));setNodeId("");setEdgeId("")}} onClear={()=>{setSelectedIds([]);setNodeId("");setEdgeId("")}}
+        onAlign={mode=>alter(current=>alignPgWorkflowNodes(current,selection,mode))} onTemplate={kind=>{const preset=pgWorkflowTemplate(kind);void change({kind:"import",...preset})}} onError={setError}/>
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3" aria-label="添加工作流节点">
         {(Object.keys(workflowNodeNames) as WorkflowNodeType[]).map(type=><button key={type} type="button" className={workflowSecondary} disabled={!editable||formDirty||type==="start"}
           onClick={()=>alter(current=>addPgWorkflowNode(current,type,edge?.id))}>添加{workflowNodeNames[type]}</button>)}
         <p className="basis-full text-xs leading-5 text-slate-500">先点击连线再添加，可插入节点；条件会建立两个出口，循环会建立循环体和返回边。也可直接拖动节点端口连接。</p>
       </div>
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_350px]">
-        <PgNativeWorkflowCanvas graph={graph} selectedNode={selected?.id??""} selectedEdge={edge?.id??""} enabled={editable&&!formDirty}
-          onGraph={alter} onNode={selectNode} onEdge={id=>{if(formDirty){setError("请先应用或撤销当前节点配置。");return}setEdgeId(id);setNodeId("")}}
+        <PgNativeWorkflowCanvas graph={graph} selectedNodes={selection} selectedEdge={edge?.id??""} enabled={editable&&!formDirty}
+          onGraph={alter} onNode={id=>selectNode(id,false)} onSelection={handleSelection} onShortcut={action=>{
+            if(!active||locked||formDirty)return
+            if(action==="c")copySelection()
+            else if(action==="a"){setSelectedIds(graph.nodes.map(node=>node.id));setNodeId("");setEdgeId("")}
+            else if(editable){if(action==="v")paste();else if(action==="d")paste(selectedPgWorkflowFragment(graph,selection));else if(action==="undo")editor.current?.undo();else if(action==="redo")editor.current?.redo()}
+          }} onEdge={id=>{if(formDirty){setError("请先应用或撤销当前节点配置。");return}setEdgeId(id);setNodeId("")}}
           onConnect={connection=>{if(connection.source&&connection.target)alter(current=>connectPgWorkflowNodes(current,connection.source,connection.target,connection.sourceHandle==="body"?undefined:connection.sourceHandle??undefined))}}
           onGesture={begin=>{if(begin)editor.current?.beginGesture();else editor.current?.endGesture()}}/>
-        {selected?<PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases}
+        {selected?<div className="space-y-4"><PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases}
           enabled={editable} onDirty={setFormDirty} onApply={data=>{
             if(!editable)return "当前环境未开放配置编辑。"
             const current=editor.current?.snapshot().draft;if(!current)return "草稿已关闭。"
             try{editor.current?.edit(current.name,patchPgWorkflowNode(current.graph,selected.id,data));setError("");return undefined}
             catch(cause){return cause instanceof Error&&cause.message!=="invalid_workflow_graph_v2"?cause.message:"请检查节点名称、绑定、轮数和模板长度。"}
-          }}/>:<div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+          }}/><PgNativeWorkflowNodePreview key={draft.id+":"+draft.revision+":"+selected.id} node={selected} graph={graph} workflowId={draft.id} revision={draft.revision}
+            canDebug={executionEnabled&&!view.dirty&&!formDirty&&!locked} onPrepare={request=>setDebugDraft({...request,nodeTitle:selected.data.title,workflowName:draft.name})}/></div>:<div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
             <p>{edge?"已选择连线，可插入节点或删除此连线。":"点击节点配置字段，点击连线插入节点。"}</p>
             {edge&&<><p className="break-words">{graph.nodes.find(node=>node.id===edge.source)?.data.title} → {graph.nodes.find(node=>node.id===edge.target)?.data.title}</p>
               <button type="button" className={workflowSecondary} disabled={!editable} onClick={()=>{alter(current=>({...current,edges:current.edges.filter(item=>item.id!==edge.id)}));setEdgeId("")}}>删除所选连线</button></>}
@@ -127,5 +177,6 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
       {selected&&selected.type!=="start"&&<button type="button" className={workflowSecondary} disabled={!editable||formDirty} onClick={()=>{alter(current=>removePgWorkflowNode(current,selected.id));setNodeId("")}}>删除所选节点</button>}
       {!issues.length&&!!runIssues.length&&<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">结构可以保存；运行前还需补齐：{runIssues.join("；")}</p>}
     </>}
+    <PgNativeWorkflowModelDebugPanel api={api} draft={debugDraft} active={active} enabled={executionEnabled} onExpired={onExpired}/>
   </section>
 }

@@ -183,6 +183,7 @@ export function permitNativePg18BusinessUatRequest(
   if(method==="POST"&&new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/cancel$").test(pathname))return true
   if(policy.configurationWrites===true&&policy.workflowV2ExecutionUat===true&&method==="POST"&&(
     new RegExp("^/api/v2/workflows/"+uuid+"/native-runs$").test(pathname)||
+    new RegExp("^/api/v2/workflows/"+uuid+"/model-node-debug$").test(pathname)||
     new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/decision$").test(pathname)))return true
   // It never queues work and is available without any execution approval.
   if(method==="GET"&&(pathname==="/api/v2/workflow-runs"||new RegExp(

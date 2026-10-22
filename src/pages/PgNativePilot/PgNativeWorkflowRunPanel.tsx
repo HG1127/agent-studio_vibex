@@ -57,7 +57,7 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,t
       {view.loading&&<p role="status" className="text-sm text-slate-500">读取任务中…</p>}
       {view.runs.map(run=><button type="button" className="flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-left text-sm disabled:opacity-50" key={run.id}
         disabled={view.busy||view.loading||Boolean(view.pendingMutation)} aria-pressed={view.detail?.run.id===run.id} onClick={()=>void model.current?.select(run.id)}>
-        <span className="min-w-0 truncate">{run.instruction_preview||"工作流任务"}</span><span className="shrink-0 text-xs">{autonomousStates[run.status]??"状态未知"}</span>
+        <span className="min-w-0 truncate">{run.debug_node_id?"[单模型测试] ":""}{run.instruction_preview||"工作流任务"}</span><span className="shrink-0 text-xs">{autonomousStates[run.status]??"状态未知"}</span>
       </button>)}
     </div>
     <PgNativeWorkflowRunDetail key={view.detail?.run.id??"none"} view={view} active={active} enabled={active&&enabled} api={api} onExpired={onExpired}

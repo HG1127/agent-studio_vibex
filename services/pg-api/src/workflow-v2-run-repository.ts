@@ -9,9 +9,12 @@ import {createWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2E
 import {safeRunStepMetadata} from "./run-step-metadata.ts"
 import {inspectWorkflowAgentState,recordWorkflowAgentResult,type WorkflowAgentState} from "./workflow-v2-agent-machine.ts"
 import {verifyWorkflowAgentResources} from "./workflow-v2-agent-resources.ts"
+import {createHash} from "node:crypto"
+import {safeWorkflowNodeDebugRequest,workflowNodeDebugGraph,workflowNodeDebugFingerprintData,type WorkflowNodeDebug} from "./workflow-v2-node-debug.ts"
 export type WorkflowV2StoredState={
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
   graph:WorkflowGraph;machine:WorkflowV2Checkpoint
+  node_debug?:WorkflowNodeDebug
   agent_state?:WorkflowAgentState
   agent_dispatch?:{step_key:string;input_sha256:string;kind:"model"|"tool";parent_step_key:string}
 }
@@ -35,11 +38,18 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
   let root:ReturnType<typeof durableV2Root>
   try{root=durableV2Root(value.execution_mode)}catch{throw new HttpError(409,"invalid_workflow_v2_state")}
   const required=["stage","execution_mode",root.revision,"graph","machine"]
-  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch"].includes(key))||
+  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug"].includes(key))||
      typeof value.stage!=="string"||!new RegExp("^"+root.stage+"[a-z_]{1,60}$").test(value.stage)||
      !Number.isSafeInteger(value[root.revision])||Number(value[root.revision])<1||
      !value.machine||value.machine.instruction!==instruction)throw new HttpError(409,"invalid_workflow_v2_state")
   const graph=safeWorkflowGraph(value.graph)
+  let nodeDebug:WorkflowNodeDebug|undefined
+  if(Object.hasOwn(value,"node_debug"))try{
+    if(root.kind!=="workflow"||!value.node_debug||Object.keys(value.node_debug).length!==2||value.agent_state||value.agent_dispatch)throw Error()
+    const debug=safeWorkflowNodeDebugRequest({...value.node_debug,expected_revision:value.workflow_revision,idempotency_key:"stored-debug-state"})
+    if(graph.nodes.length!==3||graph.nodes[1]?.id!==debug.node_id||graph.nodes[1]?.type!=="model"||graph.nodes[1]?.data.prompt_format!=="literal")throw Error()
+    nodeDebug={node_id:debug.node_id,samples:debug.samples}
+  }catch{throw new HttpError(409,"invalid_workflow_v2_state")}
   const parent=inspectWorkflowV2Checkpoint(graph,value.machine).pending
   if(Object.hasOwn(value,"agent_state")){
     if(!value.agent_state||parent?.kind!=="agent")throw new HttpError(409,"invalid_workflow_v2_state")
@@ -49,7 +59,7 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
          dispatch.kind!==pending.kind||dispatch.parent_step_key!==parent.step_key)throw new HttpError(409,"invalid_workflow_v2_state")
     }
   }else if(value.agent_dispatch)throw new HttpError(409,"invalid_workflow_v2_state")
-  return {...value,graph}
+  return {...value,graph,...(nodeDebug?{node_debug:nodeDebug}:{})}
 }
 export function workflowV2ExecutionRequest(state:WorkflowV2StoredState):WorkflowEffectRequest|null{
   const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending
@@ -65,9 +75,12 @@ export async function auditWorkflowV2(db:SqlClient,owner:string,runId:string,act
 export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState){
   const root=durableV2Root(state.execution_mode)
   if(run.kind!==root.kind||!run[root.id]||run[root.id==="workflow_id"?"agent_spec_id":"workflow_id"])throw new HttpError(409,"invalid_v2_root")
-  const current=(await db.query<{revision:number|string}>("SELECT revision FROM agentstudio."+root.table+
+  const current=(await db.query<{revision:number|string;graph?:unknown}>("SELECT revision"+(state.node_debug?",graph":"")+" FROM agentstudio."+root.table+
     " WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[run[root.id],owner])).rows[0]
   if(Number(current?.revision)!==state[root.revision])throw new HttpError(409,root.kind+"_revision_changed")
+  if(state.node_debug)try{
+    if(root.kind!=="workflow"||workflowAgentJson(workflowNodeDebugGraph(current!.graph,state.node_debug))!==workflowAgentJson(state.graph))throw Error()
+  }catch{throw new HttpError(409,"workflow_node_debug_state_changed")}
   if(root.kind==="agent"){
     const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0)
     if(workflowAgentJson(graph)!==workflowAgentJson(state.graph))throw new HttpError(409,"invalid_v2_root")
@@ -95,6 +108,7 @@ export class WorkflowV2RunRepository{
     // run history. The current pending request is shown only for explicit review.
     return {run:{...row,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
       [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps}:{}),
+      ...(state.node_debug?{node_debug:{node_id:state.node_debug.node_id,request_sha256:createHash("sha256").update(workflowNodeDebugFingerprintData(row.workflow_id!,state.workflow_revision!,state.node_debug)).digest("hex")}}:{}),
       graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,
       executions:view.executions,loop_progress:view.loops}},
       steps:steps.rows.map(step=>({...step,metadata:safeRunStepMetadata(step.metadata)})),
@@ -140,6 +154,35 @@ export class WorkflowV2RunRepository{
       return this.assemble(db,owner,run,false)
     })
   }
+  async submitNodeDebug(identity:Identity,id:string,raw:unknown){
+    if(this.root.mode!=="workflow_native_v2"||!isUuid(id))throw new HttpError(400,"invalid_workflow_node_debug_request")
+    let request:ReturnType<typeof safeWorkflowNodeDebugRequest>
+    try{request=safeWorkflowNodeDebugRequest(raw)}catch{throw new HttpError(400,"invalid_workflow_node_debug_request")}
+    const key="workflow_v2_debug:"+request.idempotency_key,node_debug={node_id:request.node_id,samples:request.samples}
+    return withActor(this.pool,identity,async(db,owner)=>{
+      await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":"+key])
+      const prior=(await db.query<WorkflowV2RunRow>("SELECT r."+workflowV2RunColumns.replaceAll(",",",r.")+" FROM agentstudio.runs r JOIN agentstudio.jobs j "+
+        "ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1::uuid AND j.kind='workflow_tick' "+
+        "AND j.dedupe_key=$2::text AND j.payload->>'phase'='workflow_native_v2'",[owner,key])).rows[0]
+      if(prior){const state=checkedWorkflowV2StoredState(prior.checkpoint,prior.instruction)
+        if(!state.node_debug||prior.workflow_id!==id||state.workflow_revision!==request.expected_revision||workflowAgentJson(state.node_debug)!==workflowAgentJson(node_debug))throw new HttpError(409,"workflow_idempotency_conflict")
+        return this.assemble(db,owner,prior,true)
+      }
+      const flow=(await db.query<{graph:unknown;revision:number|string}>("SELECT graph,revision FROM agentstudio.workflows WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
+      if(!flow)throw new HttpError(404,"workflow_not_found")
+      if(Number(flow.revision)!==request.expected_revision)throw new HttpError(409,"workflow_revision_changed")
+      let graph:WorkflowGraph
+      try{graph=workflowNodeDebugGraph(flow.graph,node_debug)}catch{throw new HttpError(400,"workflow_node_debug_input_not_ready")}
+      await verifyWorkflowGraphResources(db,owner,graph)
+      const machine=createWorkflowV2Checkpoint(graph,request.samples.input),checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",workflow_revision:request.expected_revision,graph,machine,node_debug}
+      const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs (owner_user_id,kind,workflow_id,status,instruction,checkpoint) "+
+        "VALUES($1::uuid,'workflow',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,[owner,id,request.samples.input,JSON.stringify(checkpoint)])).rows[0]!
+      await db.query("INSERT INTO agentstudio.jobs(owner_user_id,run_id,kind,dedupe_key,payload,max_attempts) VALUES($1::uuid,$2::uuid,'workflow_tick',$3::text,$4::jsonb,30)",
+        [owner,run.id,key,JSON.stringify({phase:"workflow_native_v2",workflow_id:id,workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})])
+      await auditWorkflowV2(db,owner,run.id,"workflow.v2_node_debug_submit",{node_id:request.node_id,workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})
+      return this.assemble(db,owner,run,false)
+    })
+  }
   async get(identity:Identity,id:string){
     if(!isUuid(id))throw new HttpError(400,"invalid_run_id")
     return withActor(this.pool,identity,async(db,owner)=>{
@@ -152,7 +195,7 @@ export class WorkflowV2RunRepository{
     if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,"invalid_workflow_run_limit")
     return withActor(this.pool,identity,async(db,owner)=>(await db.query(
       "SELECT id,"+this.root.id+",status,left(instruction,180) AS instruction_preview,left(result_text,240) AS result_preview,"+
-      "step_count,last_error_code,created_at,updated_at,finished_at,checkpoint->>'stage' AS stage "+
+      "step_count,last_error_code,created_at,updated_at,finished_at,checkpoint->>'stage' AS stage "+(this.root.kind==="workflow"?",checkpoint->'node_debug'->>'node_id' AS debug_node_id ":"")+
       "FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND kind='"+this.root.kind+"' "+
       "AND checkpoint->>'execution_mode'='"+this.root.mode+"' ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit])).rows)
   }

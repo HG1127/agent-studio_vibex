@@ -98,6 +98,7 @@ try{
   const verified=createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(pool),broker)
   const dispatch=modern?{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async()=>{if(!workflow)throw Error("direct_fallback_forbidden");state.generated++;return "Browser synthetic workflow model output"},pool,{
+      nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
       allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;return JSON.stringify(JSON.parse(prompt).round===1?
         {action:"tool",tool:"calculate",params:{expression:"2+2"}}:{action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4"})}})),
     tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{},pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow})),
@@ -131,6 +132,9 @@ try{
       state.submitHashes.push(createHash("sha256").update(JSON.stringify({specId,...body})).digest("hex"))
       return submit(identity,specId,body)
     }
+    if(workflow){const submitDebug=runs.submitNodeDebug.bind(runs);runs.submitNodeDebug=async(identity,id,body)=>{
+      state.submitHashes.push(createHash("sha256").update(JSON.stringify({workflowId:id,...body})).digest("hex"));return submitDebug(identity,id,body)
+    }}
     const flows=new WorkflowRepository(pool),create=flows.createIdempotent.bind(flows)
     flows.createIdempotent=async(identity,requestId,name,graph)=>{state.configHashes.push(createHash("sha256").update(JSON.stringify({requestId,name,graph})).digest("hex"));return create(identity,requestId,name,graph)}
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("native_cookie_required")},
@@ -163,7 +167,7 @@ try{
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(output));return
       }
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
-      if(req.method==="POST"&&(autonomous?/^\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/:workflow?/^\/api\/v2\/workflows\/[^/]+\/native-runs$/:/^\/api\/v2\/agent-specs\/[^/]+\/runs$/).test(req.url)){
+      if(req.method==="POST"&&(autonomous?/^\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/:workflow?/^\/api\/v2\/workflows\/[^/]+\/(?:native-runs|model-node-debug)$/:/^\/api\/v2\/agent-specs\/[^/]+\/runs$/).test(req.url)){
         state.submissions++
         if(state.drop){state.drop=false;res.end=()=>{res.destroy();return res}}
       }

@@ -14,7 +14,7 @@ import {boundCertificateFingerprint} from "./bound-worker-mtls.ts"
 import {boundCredentialDirectory,readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
 import {verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "./bound-dispatch-role-preflight.ts"
 import {parseModelEncryptionKey} from "./model-connection-crypto.ts"
-import {selectBoundGenerationUat,createIsolatedBoundModelExecutor,createIsolatedWorkflowModelExecutor,createIsolatedWorkflowAgentModelExecutor,createIsolatedAutonomousAgentModelExecutor} from "./model-connection-executor.ts"
+import {selectBoundGenerationUat,createIsolatedBoundModelExecutor,createIsolatedWorkflowModelExecutor,createIsolatedWorkflowNodeDebugExecutor,createIsolatedWorkflowAgentModelExecutor,createIsolatedAutonomousAgentModelExecutor} from "./model-connection-executor.ts"
 import {OwnerBoundModelDispatch} from "./owner-model-dispatch.ts"
 import {BoundLeaseIdentityRepository,createVerifiedBoundDispatchAdapter} from "./bound-lease-identity.ts"
 import {createIsolatedBoundModelInternalHandler} from "./bound-model-internal-handler.ts"
@@ -164,7 +164,8 @@ export async function startBoundDispatchServer(
         model:cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
             new WorkflowV2ModelDispatch(adapter(api),encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
-              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,agentExecutor}))}):undefined,
+              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,agentExecutor,
+              nodeDebugExecutor:autonomous?undefined:createIsolatedWorkflowNodeDebugExecutor(env,origin,true)}))}):undefined,
         tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
             new WorkflowV2ToolDispatch(adapter(api),encryptionKey,{...createWorkflowToolNetwork(),

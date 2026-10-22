@@ -4,17 +4,19 @@
 export type WorkflowNodeType="start"|"end"|"model"|"tool"|"agent"|"condition"|"loop"
 export interface WorkflowNode{id:string;type:WorkflowNodeType;data:WorkflowNodeDataV2;position:{x:number;y:number}}
 export interface WorkflowEdge{id:string;source:string;target:string;sourceHandle?:"true"|"false"|"done"}
-export interface WorkflowGraph{version?:2;nodes:WorkflowNode[];edges:WorkflowEdge[]}
+export interface WorkflowGraph{version?:2;description?:string;nodes:WorkflowNode[];edges:WorkflowEdge[]}
 
 export interface WorkflowNodeDataV2 {
   title:string
   input_hint?:string
   prompt?:string
+  prompt_format?:"literal"
   model_binding?:{connection_id:string;connection_revision:number;model_id:string}
   agent_binding?:{spec_id:string;spec_revision:number}
   max_steps?:number
   tool?:"calculate"|"summarize"|"knowledge_search"|"web_fetch"|"web_search"
   tool_binding?:{connection_id:string;connection_revision:number}
+  tool_binding_required?:true
   params_template?:string
   knowledge_base_ids?:string[]
   ref_title?:string
@@ -30,9 +32,9 @@ export interface WorkflowNodeDataV2 {
 }
 const fields:Record<WorkflowNodeType,string[]>={
   start:["title","input_hint"],
-  model:["title","model_binding","prompt"],
+  model:["title","model_binding","prompt","prompt_format"],
   agent:["title","agent_binding","prompt","max_steps","model_binding"],
-  tool:["title","tool","tool_binding","params_template","knowledge_base_ids","model_binding"],
+  tool:["title","tool","tool_binding","tool_binding_required","params_template","knowledge_base_ids","model_binding"],
   condition:["title","ref_title","op","value"],
   loop:["title","mode","count","list_source","delimiter","stop_keyword","max_iterations"],
   end:["title","output_template"],
@@ -91,6 +93,8 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
     else if(key==="agent_binding")output[key]=reference(value,"agent")
     else if(key==="tool_binding")output[key]=reference(value,"tool")
     else if(key==="tool")output[key]=enumValue(value,["calculate","summarize","knowledge_search","web_fetch","web_search"])
+    else if(key==="prompt_format")output[key]=enumValue(value,["literal"])
+    else if(key==="tool_binding_required"){if(value!==true)invalid();output[key]=true}
     else if(key==="op")output[key]=enumValue(value,["contains","not_contains","gt","lt","eq"])
     else if(key==="mode")output[key]=enumValue(value,["count","list"])
     else if(key==="delimiter")output[key]=enumValue(value,["line","comma","json_array"])
@@ -104,7 +108,8 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
     }else invalid()
   }
   if(type==="tool"){
-    if(Boolean(output.tool)===Boolean(output.tool_binding))invalid()
+    if(output.tool_binding_required){if(output.tool||output.tool_binding||output.knowledge_base_ids||output.model_binding)invalid()}
+    else if(Boolean(output.tool)===Boolean(output.tool_binding))invalid()
     if(output.knowledge_base_ids&&output.tool!=="knowledge_search")invalid()
     if(output.model_binding&&output.tool!=="summarize")invalid()
   }
@@ -187,7 +192,7 @@ function structure(nodes:WorkflowNode[],edges:WorkflowEdge[]):void{
 }
 
 export function parseWorkflowGraphV2(raw:unknown):WorkflowGraph{
-  const input=object(raw);only(input,["version","nodes","edges"])
+  const input=object(raw);only(input,["version","description","nodes","edges"])
   if(input.version!==2||!Array.isArray(input.nodes)||!Array.isArray(input.edges)||
      input.nodes.length<2||input.nodes.length>40||input.edges.length>100)invalid()
   const nodes:WorkflowNode[]=[],ids=new Set<string>(),titles=new Set<string>()
@@ -218,7 +223,7 @@ export function parseWorkflowGraphV2(raw:unknown):WorkflowGraph{
   structure(nodes,edges)
   // Explicit references must be unambiguous; titles are unique above.
   for(const node of nodes)if(node.data.ref_title&&(!titles.has(node.data.ref_title)||node.data.ref_title===node.data.title))invalid()
-  const result:WorkflowGraph={version:2,nodes,edges}
+  const result:WorkflowGraph={version:2,...(Object.hasOwn(input,"description")?{description:text(input.description,500)}:{}),nodes,edges}
   // Serialize only reconstructed JSON primitives. Never invoke a caller's
   // toJSON/valueOf hook while checking untrusted configuration objects.
   if(new TextEncoder().encode(JSON.stringify(result)).length>131072)invalid()

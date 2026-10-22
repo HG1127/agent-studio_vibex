@@ -34,9 +34,9 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
     </select></label>
   const agentValue=data.agent_binding?JSON.stringify(data.agent_binding):""
   const httpValue=data.tool_binding?JSON.stringify(data.tool_binding):""
-  const toolValue=httpValue?"http:"+httpValue:data.tool??"calculate"
+  const toolValue=httpValue?"http:"+httpValue:data.tool??""
   const variables=["input",...nodes.filter(item=>item.id!==node.id).map(item=>item.data.title+".output"),"loop.item","loop.index"]
-  const variableFields=node.type==="loop"?data.mode==="list":["model","agent","tool","end"].includes(node.type)
+  const variableFields=node.type==="loop"?data.mode==="list":["model","agent","tool","end"].includes(node.type)&&data.prompt_format!=="literal"
   const variableTarget=node.type==="tool"?"params_template":node.type==="end"?"output_template":node.type==="loop"?"list_source":target
   return <form aria-label="Workflow 节点配置" className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4" onSubmit={event=>{
     event.preventDefault();if(!enabled)return
@@ -47,7 +47,8 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
     <fieldset disabled={!enabled} className="space-y-3"><legend className="sr-only">所选节点配置字段</legend>
       <label className="block text-sm font-medium">节点名称<input aria-label="节点名称" className={field} maxLength={120} required value={data.title} onChange={event=>change({title:event.target.value})}/></label>
       {node.type==="start"&&text("input_hint","输入提示",2000)}
-      {node.type==="model"&&<>{modelSelect()}{text("prompt","模型提示词")}</>}
+      {node.type==="model"&&<>{modelSelect()}<label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={data.prompt_format==="literal"}
+        onChange={event=>event.target.checked?change({prompt_format:"literal"}):change({},["prompt_format"])}/>按原文发送提示词（不替换变量）</label>{text("prompt","模型提示词")}</>}
       {node.type==="agent"&&<>
         <label className="block text-sm font-medium">Agent 方案<select aria-label="Agent 方案" className={field} value={agentValue}
           onChange={event=>event.target.value?change({agent_binding:JSON.parse(event.target.value)}):change({},["agent_binding"])}>
@@ -60,9 +61,11 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
       {node.type==="tool"&&<>
         <label className="block text-sm font-medium">工具<select aria-label="工具" className={field} value={toolValue} onChange={event=>{
           const value=event.target.value
-          if(value.startsWith("http:"))change({tool_binding:JSON.parse(value.slice(5)),params_template:data.params_template??"{}"},["tool","model_binding","knowledge_base_ids"])
-          else change({tool:value as WorkflowNodeDataV2["tool"],params_template:defaults[value]},["tool_binding","model_binding","knowledge_base_ids"])
+          if(value.startsWith("http:"))change({tool_binding:JSON.parse(value.slice(5)),params_template:data.params_template??"{}"},["tool","model_binding","knowledge_base_ids","tool_binding_required"])
+          else if(value)change({tool:value as WorkflowNodeDataV2["tool"],params_template:defaults[value]},["tool_binding","model_binding","knowledge_base_ids","tool_binding_required"])
+          else change({tool_binding_required:true},["tool","tool_binding","model_binding","knowledge_base_ids"])
         }}>
+          <option value="">请选择工具后再运行</option>
           <option value="calculate">计算</option><option value="summarize">摘要</option><option value="knowledge_search">知识库检索</option><option value="web_fetch">读取网页</option><option value="web_search">网页搜索</option>
           {httpValue&&!tools.some(tool=>JSON.stringify({connection_id:tool.id,connection_revision:tool.revision})===httpValue)&&<option value={toolValue}>已绑定 HTTP 版本不可用，请重新选择</option>}
           {tools.filter(tool=>tool.enabled).map(tool=><option key={tool.id} value={"http:"+JSON.stringify({connection_id:tool.id,connection_revision:tool.revision})}>{tool.name} · HTTP</option>)}

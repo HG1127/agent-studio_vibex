@@ -93,6 +93,10 @@ export function preparedWorkflowModelRequest(material:SelectedModelMaterial,prom
     throw Error("invalid_workflow_model_prompt")
   return preparedTextRequest(material,prompt,65536)
 }
+export function preparedWorkflowNodeDebugRequest(material:SelectedModelMaterial,prompt:string):PreparedSelectedModelRequest{
+  if(typeof prompt!=="string"||!prompt.trim()||prompt.length>8000||prompt.includes("\0"))throw Error("invalid_workflow_node_debug_prompt")
+  return preparedTextRequest(material,prompt,65536,512)
+}
 export function preparedWorkflowAgentModelRequest(material:SelectedModelMaterial,prompt:string):PreparedSelectedModelRequest{
   if(typeof prompt!=="string"||!prompt.trim()||prompt.length>131072||prompt.includes("\0"))throw Error("invalid_workflow_agent_prompt")
   return preparedTextRequest(material,prompt,524288,4096,agentSystemInstruction)
@@ -199,6 +203,14 @@ export function createIsolatedWorkflowModelExecutor(
   selectBoundGenerationUat(env,listen,origin,uid)
   if(!selectWorkflowV2ModelExecution(env))throw Error("workflow_v2_model_not_approved")
   return selectedTransport(resolver,request,preparedWorkflowModelRequest,25000)
+}
+export function createIsolatedWorkflowNodeDebugExecutor(
+  env:NodeJS.ProcessEnv,origin:string,listen:boolean,
+  resolver:ProviderResolver={resolve4,resolve6},request:typeof httpsRequest=httpsRequest,uid=process.getuid?.(),
+):(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>{
+  selectBoundGenerationUat(env,listen,origin,uid)
+  if(!selectWorkflowV2ModelExecution(env))throw Error("workflow_v2_model_not_approved")
+  return selectedTransport(resolver,request,preparedWorkflowNodeDebugRequest,25000)
 }
 function selectedTransport<T>(resolver:ProviderResolver,request:typeof httpsRequest,
   prepare:(material:SelectedModelMaterial,input:T)=>PreparedSelectedModelRequest,timeout:number
