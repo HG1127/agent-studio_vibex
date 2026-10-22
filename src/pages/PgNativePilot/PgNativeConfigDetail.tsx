@@ -88,7 +88,7 @@ export default function PgNativeConfigDetail({api,kind,id,onClose}:{
             {detail.value.spec?.model_binding
               ?detail.value.spec.model_binding.model_id+
                 " · 绑定版本 "+detail.value.spec.model_binding.connection_revision+
-                "（仅配置，当前 Worker 不支持该连接执行）"
+                "（实际执行取决于环境授权与审批）"
               :"尚未绑定模型"}
           </p>
         </div>
@@ -114,6 +114,7 @@ export default function PgNativeConfigDetail({api,kind,id,onClose}:{
       <h3 className="flex items-center gap-2 text-lg font-semibold"><GitBranch size={19}/> {detail.value.name}</h3>
       <p className="mt-1 text-xs text-slate-500">Workflow 配置 · 版本 {detail.value.revision} · 只读结构核对</p>
       <p className="mt-3 text-sm text-slate-600">{workflowNodes.length} 个节点 · {workflowEdges.length} 条连线</p>
+      {workflow?.version===2&&<p className="mt-2 text-sm text-amber-800">已保存节点配置。完整流程执行尚未开放。</p>}
       <ol className="mt-3 space-y-2">
         {workflowNodes.slice(0,50).map((node,index)=>
           <li key={index} className="rounded-xl border border-slate-100 px-3 py-2 text-sm">

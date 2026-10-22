@@ -753,3 +753,24 @@ jobs:
         run: pnpm test:knowledge
       - name: V6 to V7 database upgrade and idempotency
         run: pnpm test:migrations
+
+  pg-workflow-v2-config:
+    name: Workflow V2 configuration / native Cookie / owner RLS (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Typed configuration and real embedded SQL / Native Cookie / audit rollback
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:workflow-v2-config

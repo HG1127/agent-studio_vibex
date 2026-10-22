@@ -520,14 +520,14 @@ export function createHandler(deps:AppDependencies) {
           return send(res,200,{items})
         }
         if(method==="POST"&&!workflowSuffix){
-          const body=await readBody(req)
+          const body=await readBody(req,135168)
           allowBodyFields(body,["name","graph"])
           const item=await workflowRepo.create(identity,
             safeName(body.name),safeWorkflowGraph(body.graph))
           return send(res,201,{item})
         }
         if(method==="PATCH"&&workflowSuffix){
-          const body=await readBody(req)
+          const body=await readBody(req,135168)
           allowBodyFields(body,["name","graph","expected_revision"])
           const revision=body.expected_revision
           if(!Number.isSafeInteger(revision)||(revision as number)<1)

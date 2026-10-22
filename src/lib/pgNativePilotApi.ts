@@ -25,7 +25,7 @@ export type PgNativeAgent={
     knowledge_base_ids?:string[];model_binding?:PgNativeAgentModelBinding}
 }
 export type PgNativeWorkflow={id:string;name:string;revision:number;
-  graph?:{nodes:unknown[];edges:unknown[]}}
+  graph?:{version?:2;nodes:unknown[];edges:unknown[]}}
 export type PgNativeWorkflowValidationResult={
   run:{id:string;workflow_id:string;kind:"workflow";status:string
     step_count:number;result_text:string;checkpoint:Record<string,unknown>}
@@ -488,6 +488,12 @@ export function createPgNativePilotApi(
         name,graph:simpleWorkflowGraph()
       })
     ).item,
+    createWorkflowGraph:async(name:string,graph:unknown)=>
+      (await post<{item:PgNativeWorkflow}>(routes.workflows,{name,graph})).item,
+    updateWorkflowGraph:async(id:string,expected_revision:number,name:string,graph:unknown)=>
+      (await patch<{item:PgNativeWorkflow}>(recordRoute(routes.workflows,id),{
+        name,graph,expected_revision:safeRevision(expected_revision)
+      })).item,
     getWorkflow:async(id:string)=>
       (await get<{item:PgNativeWorkflow}>(recordRoute(routes.workflows,id))).item,
     updateWorkflow:async(id:string,expected_revision:number,name:string)=>{

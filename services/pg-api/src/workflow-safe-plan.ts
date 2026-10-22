@@ -12,7 +12,7 @@ export function safeWorkflowPlan(raw:unknown):SafeWorkflowPlan{
   let graph:WorkflowGraph
   try{graph=safeWorkflowGraph(raw)}
   catch{throw new HttpError(409,"workflow_execution_graph_invalid")}
-  if(graph.nodes.some(n=>n.type!=="start"&&n.type!=="end"))
+  if(graph.version!==undefined||graph.nodes.some(n=>n.type!=="start"&&n.type!=="end"))
     throw new HttpError(409,"workflow_execution_node_not_supported")
   const start=graph.nodes.find(n=>n.type==="start")
   if(!start||graph.nodes.length<2||

@@ -24,7 +24,7 @@ export default function PgNativeWorkflowValidationPanel({
   const [runMessage,setRunMessage]=useState("")
   const pendingRun=useRef<{workflow_id:string;revision:number;key:string}|null>(null)
   const workflow=workflows.find(w=>w.id===selected)
-  const eligible=!!workflow&&Array.isArray(workflow.graph?.nodes)&&
+  const eligible=!!workflow&&workflow.graph?.version===undefined&&Array.isArray(workflow.graph?.nodes)&&
     workflow.graph.nodes.length>=2&&workflow.graph.nodes.every(node=>
       !!node&&typeof node==="object"&&"type" in node&&
       (node.type==="start"||node.type==="end"))

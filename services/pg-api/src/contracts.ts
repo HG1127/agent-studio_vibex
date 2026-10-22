@@ -1,4 +1,5 @@
 // V8 standalone API pilot. Current V7 PocketBase runtime remains authoritative.
+import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeDataV2} from "./workflow-graph-v2.ts"
 export type Identity = { issuer: string; subject: string }
 
 export interface QueryResult<Row> { rows: Row[] }
@@ -112,23 +113,25 @@ export function isUuid(raw:unknown):raw is string {
   return typeof raw==="string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
 }
-// Workflow storage pilot only. Graph nodes intentionally exclude runnable
-// model prompts, HTTP URLs, credentials, resource IDs, and tool arguments.
-// This skeleton is NOT an executable Workflow.
+// Unversioned graphs retain the original title-only storage contract.
+// Explicit version 2 adds bounded node configuration and owner-checked resource
+// revisions. Neither format alone authorizes model/tool/Workflow execution.
 export type WorkflowNodeType =
   "start" | "end" | "model" | "tool" | "agent" | "condition" | "loop"
 export interface WorkflowNode {
   id:string
   type:WorkflowNodeType
-  data:{title:string}
+  data:WorkflowNodeDataV2
   position:{x:number;y:number}
 }
 export interface WorkflowEdge {
   id:string
   source:string
   target:string
+  sourceHandle?:"true"|"false"|"done"
 }
 export interface WorkflowGraph {
+  version?:2
   nodes:WorkflowNode[]
   edges:WorkflowEdge[]
 }
@@ -149,6 +152,10 @@ function graphId(value:unknown):string {
 }
 export function safeWorkflowGraph(raw:unknown):WorkflowGraph {
   const input=object(raw)
+  if(input.version===2){
+    try{return parseWorkflowGraphV2(input)}
+    catch(error){if(error instanceof InvalidWorkflowGraphV2)graphError();throw error}
+  }
   onlyFields(input,["nodes","edges"])
   if(!Array.isArray(input.nodes) || !Array.isArray(input.edges) ||
      input.nodes.length<2 || input.nodes.length>40 || input.edges.length>100)

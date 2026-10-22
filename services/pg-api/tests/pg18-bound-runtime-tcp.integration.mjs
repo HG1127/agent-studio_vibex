@@ -19,6 +19,8 @@ import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
 import {createHandler} from "../src/http.ts"
 import {createNativeRunRepository} from "../src/native-run-repository.ts"
 import {AgentSpecRepository} from "../src/repository.ts"
+import {WorkflowRepository} from "../src/workflow-repository.ts"
+import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
@@ -68,6 +70,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
+      workflowRepository:new WorkflowRepository(pool),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
     server.on("request",native.handler)
@@ -215,6 +218,34 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const effects=(await admin.query("SELECT step_key,status FROM agentstudio.external_effects "+
       "WHERE run_id=$1 ORDER BY step_key",[submitted.run.id])).rows
     assert.deepEqual(effects,[{step_key:"model",status:"succeeded"},{step_key:"model_bound_dispatch",status:"succeeded"}])
+
+    // Full-node configuration uses the actual restricted API login, including
+    // owner resource locks and atomic audit. It must not enter the V1 Worker.
+    const graph={version:2,nodes:[
+      {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+      {id:"model",type:"model",data:{title:"Model",prompt:"{{input}}",
+        model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}},position:{x:200,y:0}},
+      {id:"end",type:"end",data:{title:"End",output_template:"{{Model.output}}"},position:{x:400,y:0}},
+    ],edges:[{id:"start-model",source:"start",target:"model"},{id:"model-end",source:"model",target:"end"}]}
+    const workflow=await api.createWorkflowGraph("V2 configuration only",graph)
+    assert.deepEqual(workflow.graph,graph)
+    const renamed=await api.updateWorkflow(workflow.id,1,"V2 keeps complete graph")
+    assert.deepEqual(renamed.graph,graph);assert.equal(renamed.revision,2)
+    await api.login("other@example.com","SyntheticOtherPassword#2026")
+    await assert.rejects(api.getWorkflow(workflow.id),e=>e.status===404)
+    await assert.rejects(api.updateWorkflowGraph(workflow.id,2,"foreign",graph),e=>e.status===404)
+    await assert.rejects(api.createWorkflowGraph("foreign resource",graph),e=>e.status===404)
+    await api.login("admin@example.com","SyntheticAdminPassword#2026")
+    const ownerSession=await auth.login("admin@example.com","SyntheticAdminPassword#2026")
+    const owner=(await auth.getSessionProfile(ownerSession.token)).identity
+    await assert.rejects(new WorkflowSafeRunRepository(apiPool).submit(owner,workflow.id,{
+      expected_revision:2,idempotency_key:"v2-execution-stays-closed"}),e=>e.code==="workflow_execution_node_not_supported")
+    assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n,0)
+    const configAudit=(await admin.query("SELECT action,metadata FROM agentstudio.audit_events "+
+      "WHERE target_kind='workflow' AND target_id=$1 ORDER BY occurred_at",[workflow.id])).rows
+    assert.deepEqual(configAudit.map(row=>row.action),["workflow.config_create","workflow.config_update"])
+    assert.equal(JSON.stringify(configAudit).includes(secret),false)
+    assert.equal(generated,1)
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)

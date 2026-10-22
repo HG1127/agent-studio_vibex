@@ -107,6 +107,7 @@ test('rejects metadata, approvals, unknown columns, real node config, missing gr
   const owners=new Map([[oldA,'11111111-1111-1111-1111-111111111111']])
   for(const change of [{description:'keep me'},{source:'template'},{spec_id:oldB},{require_approval:0},{require_approval:undefined},
     {unknown:'keep me'},{graph:JSON.stringify({...graph(),viewport:{x:0}})},
+    {graph:JSON.stringify({version:2,...graph()})},
     {graph:JSON.stringify({...graph(),nodes:graph().nodes.map(n=>({...n,data:{...n.data,prompt:'real config'}}))})},
     {graph:JSON.stringify({...graph(),nodes:graph().nodes.map(n=>({...n,data:{title:' padded '}}))})},
     {graph:raw().graph.replace('0,','0.0000000000000000000001,')},{graph:raw().graph.replace('"nodes":','"nodes":[],"nodes":')},
