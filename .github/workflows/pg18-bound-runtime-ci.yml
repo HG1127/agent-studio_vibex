@@ -43,16 +43,6 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:pg18:tcp:guard
-      - name: Private transport and embedded Native execution regression
-        run: |
-          pnpm --dir services/pg-api test:bound-transport
-          pnpm --dir services/pg-api test:bound-runtime
-      - name: Owner connections, inert schedules and no-effect Workflow regression
-        run: |
-          pnpm --dir services/pg-api test:model-connections
-          pnpm --dir services/pg-api test:schedule-drafts
-          pnpm --dir services/pg-api test:workflow-validation
-          pnpm --dir services/pg-api test:workflow-safe-run
       - name: Real PG18 native approval and private Broker, synthetic provider only
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
@@ -63,3 +53,13 @@ jobs:
           AGENT_STUDIO_PG18_CI_ADMIN_USER: "agentstudio_admin"
           AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
         run: pnpm --dir services/pg-api test:pg18:bound-runtime:ci
+      - name: Private transport and embedded Native execution regression
+        run: |
+          pnpm --dir services/pg-api test:bound-transport
+          pnpm --dir services/pg-api test:bound-runtime
+      - name: Owner connections, inert schedules and no-effect Workflow regression
+        run: |
+          pnpm --dir services/pg-api test:model-connections
+          pnpm --dir services/pg-api test:schedule-drafts
+          pnpm --dir services/pg-api test:workflow-validation
+          pnpm --dir services/pg-api test:workflow-safe-run

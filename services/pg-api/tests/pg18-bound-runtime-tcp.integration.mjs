@@ -38,7 +38,7 @@ const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true}
 
-async function startNativeHttps(auth,pool,key){
+async function startNativeHttps(auth,pool,key,brokerPool){
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
   assert.equal(path.dirname(realpathSync(folder)),parent)
@@ -67,7 +67,7 @@ async function startNativeHttps(auth,pool,key){
       verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
-      modelConnectionRepository:new ModelConnectionRepository(pool,key),
+      modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
     server.on("request",native.handler)
     let cookie=""
@@ -170,7 +170,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await verifyBoundDispatchPrivileges(apiPool,"api")
     const auth=new NativeAuthRepository(adapter(authPool))
     await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
-    front=await startNativeHttps(auth,apiPool,key)
+    front=await startNativeHttps(auth,apiPool,key,brokerPool)
     const api=front.api
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     const secret="SyntheticProviderCredentialNeverSentToProvider012345"
