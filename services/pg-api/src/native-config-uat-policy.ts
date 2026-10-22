@@ -11,6 +11,7 @@ export interface NativePg18UatCapabilities {
   knowledgeIngestUat:boolean
   /** External GET /models is a separate opt-in, never inherited from configuration writes. */
   modelProbeUat:boolean
+  mcpDiscoveryUat?:boolean
   /** Additional opt-in for inert Start/End-only Workflow validation records. */
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
@@ -52,6 +53,8 @@ export function selectNativePg18UatCapabilities(
   const ingestMarker=env.AGENT_STUDIO_PG18_KNOWLEDGE_INGEST_UAT_APPROVED
   const probe=env.AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED
   const probeMarker=env.AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED
+  const mcp=env.AGENT_STUDIO_PG18_MCP_DISCOVERY_UAT_ENABLED
+  const mcpMarker=env.AGENT_STUDIO_PG18_MCP_DISCOVERY_UAT_APPROVED
   const flow=env.AGENT_STUDIO_PG18_WORKFLOW_VALIDATION_UAT_ENABLED
   const flowMarker=env.AGENT_STUDIO_PG18_WORKFLOW_VALIDATION_UAT_APPROVED
   const execution=env.AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED
@@ -60,13 +63,15 @@ export function selectNativePg18UatCapabilities(
   const flowV2Marker=env.AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED
   const boundModel=env.AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_ENABLED
   const boundModelMarker=env.AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_APPROVED
-  for(const value of [config,employees,run,ingest,probe,flow,execution,flowV2,boundModel])
+  for(const value of [config,employees,run,ingest,probe,mcp,flow,execution,flowV2,boundModel])
     if(value!==undefined&&value!=="true")refuse()
   const configUat=config==="true"
   const employeeUat=employees==="true"
   const runUat=run==="true"
   const ingestUat=ingest==="true"
   const modelProbeUat=probe==="true"
+  const mcpDiscoveryUat=mcp==="true"
+  if(!mcpDiscoveryUat&&mcpMarker!==undefined)refuse()
   const workflowValidationUat=flow==="true"
   const workflowExecutionUat=execution==="true"
   const workflowV2ExecutionUat=flowV2==="true"
@@ -79,14 +84,15 @@ export function selectNativePg18UatCapabilities(
   if(!workflowExecutionUat&&executionMarker!==undefined)refuse()
   if(!workflowV2ExecutionUat&&flowV2Marker!==undefined)refuse()
   if(!configUat&&!employeeUat&&!runUat&&!ingestUat&&!modelProbeUat&&
-     !workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
+     !mcpDiscoveryUat&&!workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
     if(marker!==undefined)refuse()
     return {...empty}
   }
   if(!listen||!Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !origin.startsWith("https://")||
      marker!==permissionMarker||
-     ((employeeUat||runUat||ingestUat||modelProbeUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
+     ((employeeUat||runUat||ingestUat||modelProbeUat||mcpDiscoveryUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
+     (mcpDiscoveryUat&&mcpMarker!=="APPROVE_DISPOSABLE_PG18_MCP_DISCOVERY_ONLY")||
      (runUat&&runMarker!==runApprovalMarker)||
      (ingestUat&&ingestMarker!==kbIngestMarker)||
      (modelProbeUat&&probeMarker!==modelProbeMarker)||
@@ -97,6 +103,7 @@ export function selectNativePg18UatCapabilities(
   return {configurationWrites:configUat,
     employeeProvisioning:employeeUat,runApprovalUat:runUat,
     knowledgeIngestUat:ingestUat,modelProbeUat,
+    ...(mcpDiscoveryUat?{mcpDiscoveryUat:true}:{}),
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
@@ -104,7 +111,7 @@ export function selectNativePg18UatCapabilities(
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }
 const uuid="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-const configEntities=new Set(["agent-specs","workflows","knowledge-bases","model-connections","tool-connections"])
+const configEntities=new Set(["agent-specs","workflows","knowledge-bases","model-connections","tool-connections","mcp-connections"])
 function configuredPath(pathname:string):"collection"|"item"|null{
   const collection=/^\/api\/v2\/([a-z-]+)$/.exec(pathname)
   if(collection&&configEntities.has(collection[1]!))return "collection"
@@ -117,6 +124,10 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  if(method==="POST"&&policy.configurationWrites===true&&policy.mcpDiscoveryUat===true&&
+    new RegExp("^/api/v2/mcp-connections/"+uuid+"/discover$").test(pathname))return true
+  if(method==="DELETE"&&policy.configurationWrites===true&&
+    new RegExp("^/api/v2/mcp-connections/"+uuid+"$").test(pathname))return true
   // Schedule *configuration* drafts may be saved only with config UAT.
   // There is NO toggle/enable/run/occurrence mutation or scheduler.
   const scheduleId=new RegExp("^/api/v2/schedules/"+uuid+"$")

@@ -34,6 +34,9 @@ import {workflowV2ToolEffectExecutor} from "../src/workflow-v2-tool-client.ts"
 import {createWorkflowV2ToolInternalHandler} from "../src/workflow-v2-tool-handler.ts"
 import {prepareWorkflowToolHttp,redactWorkflowToolResponse} from "../src/workflow-v2-tool-network.ts"
 import {ToolConnectionRepository} from "../src/tool-connection-repository.ts"
+import {McpConnectionRepository} from "../src/mcp-connection-repository.ts"
+import {createMcpDiscovery} from "../src/mcp-discovery.ts"
+import {verifyMcpDiscoveryPrivileges} from "../src/mcp-privileges.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
@@ -52,7 +55,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 
 async function startNativeHttps(auth,pool,key,brokerPool){
   const parent=realpathSync(tmpdir())
@@ -71,6 +74,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     let backend
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
+      allowMcpDiscovery:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -89,6 +93,11 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       workflowV2RunRepository:new WorkflowV2RunRepository(pool),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
+      mcpConnectionRepository:new McpConnectionRepository(pool,key,brokerPool),
+      mcpDiscovery:createMcpDiscovery(async(material,wire)=>{
+        assert.equal(material.headers[0].value,"Bearer SyntheticMcpHeaderNeverSent012345");assert.equal(wire.body.method,"tools/list")
+        return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{tools:[{name:"synthetic_lookup",inputSchema:{type:"object"}}]}})}
+      }),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
     server.on("request",native.handler)
     let cookie=""
@@ -166,6 +175,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_026_workflow_tool_identity.sql"))
     await admin.query(upgrade("pg_v9_027_workflow_agent_identity.sql"))
     await admin.query(upgrade("pg_v9_028_autonomous_agent_identity.sql"))
+    await admin.query(upgrade("pg_v9_029_mcp_connections.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -196,6 +206,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query("REVOKE SELECT(api_key_ciphertext) ON agentstudio.model_connections FROM agentstudio_api")
     await verifyBoundDispatchPrivileges(apiPool,"api")
     const auth=new NativeAuthRepository(adapter(authPool))
+    await verifyMcpDiscoveryPrivileges(apiPool,brokerPool)
     await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
     front=await startNativeHttps(auth,apiPool,key,brokerPool)
     const api=front.api
@@ -204,6 +215,15 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(capabilities.run_submission_enabled,true)
     assert.equal(capabilities.bound_model_runs_enabled,true)
     assert.equal(capabilities.workflow_v2_submission_enabled,true)
+    assert.equal(capabilities.mcp_discovery_enabled,true)
+    const mcpInput={name:"CI MCP",description:"Synthetic discovery only",url:"https://mcp.example.com/server",enabled:true,
+      headers:[{key:"Authorization",value:"Bearer SyntheticMcpHeaderNeverSent012345"}]}
+    const mcpRequest=randomUUID(),mcp=await api.createMcpConnection(mcpInput,mcpRequest)
+    assert.equal((await api.createMcpConnection(mcpInput,mcpRequest)).id,mcp.id)
+    const discovered=await api.discoverMcpConnection(mcp.id,mcp.revision)
+    assert.equal(discovered.status,"ok");assert.equal(discovered.catalog.tools[0].name,"synthetic_lookup")
+    assert.equal(JSON.stringify(discovered).includes("SyntheticMcpHeaderNeverSent012345"),false)
+    assert.deepEqual((await admin.query("SELECT (SELECT count(*) FROM agentstudio.jobs)::int AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::int AS effects")).rows[0],{jobs:0,effects:0})
     const secret="SyntheticProviderCredentialNeverSentToProvider012345"
     const saved=await api.createModelConnection({name:"CI owner",provider:"openai",
       base_url:"https://api.openai.com/v1",api_key:secret,models:["gpt-4.1-mini"],enabled:true})
@@ -215,6 +235,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const submitted=await api.submitRun(agent.id,instruction,requestKey)
     await api.createEmployee("other@example.com","SyntheticOtherPassword#2026","Other employee")
     await api.login("other@example.com","SyntheticOtherPassword#2026")
+    await assert.rejects(api.getMcpConnection(mcp.id),error=>error.status===404)
     await assert.rejects(api.getRun(submitted.run.id),e=>e.status===404)
     await assert.rejects(api.decideModel(submitted.run.id,"approved"),e=>e.status===404)
     const prepare=new AgentPrepareWorker(workerPool,"ci-bound-prepare")

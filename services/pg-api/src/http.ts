@@ -11,6 +11,9 @@ import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import { KnowledgeBaseRepository, safeDescription, safeKnowledgeQuery, safeTextDocumentInput } from "./knowledge-repository.ts"
 import {ModelConnectionRepository,safeModelConnectionInput} from "./model-connection-repository.ts"
 import {ToolConnectionRepository,safeToolConnectionInput} from "./tool-connection-repository.ts"
+import type {McpConnectionRepository} from "./mcp-connection-repository.ts"
+import type {McpMaterial} from "./mcp-discovery.ts"
+import type {McpCatalog} from "./mcp-catalog.ts"
 import type {ProviderProbeInput,ProviderProbeResult} from "./model-connection-probe.ts"
 import {parseDocumentIsolated} from "./document-worker.ts"
 import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Identity } from "./contracts.ts"
@@ -28,6 +31,8 @@ export interface AppDependencies {
   knowledgeRepository?: KnowledgeBaseRepository
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
+  mcpConnectionRepository?:McpConnectionRepository
+  mcpDiscovery?:(material:McpMaterial,signal:AbortSignal)=>Promise<McpCatalog>
   modelConnectionProbe?:(input:ProviderProbeInput)=>Promise<ProviderProbeResult>
   verifyToken(token: string): Promise<Identity>
   /** Local-cookie mode: server-validated session only, never a client user ID. */
@@ -114,10 +119,11 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/model-connections\/[0-9a-fA-F-]{36}(?:\/probe)?$/.test(path)
       const toolConnectionsRoute=path==="/api/v2/tool-connections" ||
         /^\/api\/v2\/tool-connections\/[0-9a-fA-F-]{36}$/.test(path)
+      const mcpRoute=/^\/api\/v2\/mcp-connections(?:\/([0-9a-fA-F-]{36})(?:\/(discover))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -144,6 +150,40 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(mcpRoute){
+        const repo=deps.mcpConnectionRepository
+        if(!repo)throw new HttpError(503,"mcp_connections_disabled")
+        const connection=mcpRoute[1],discovery=mcpRoute[2]==="discover"
+        if(discovery){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          if(!deps.mcpDiscovery)throw new HttpError(503,"mcp_discovery_disabled")
+          const body=await readBody(req);allowBodyFields(body,["expected_revision"])
+          if(!Number.isSafeInteger(body.expected_revision)||(body.expected_revision as number)<1)throw new HttpError(400,"invalid_revision")
+          return send(res,200,{item:await repo.discover(identity,connection!,body.expected_revision as number,deps.mcpDiscovery),mode:"mcp_tools_discovery_only",execution_enabled:false})
+        }
+        if(method==="GET"){
+          if(new URL(req.url!,"http://127.0.0.1").search)throw new HttpError(400,"invalid_mcp_query")
+          if(!connection)return send(res,200,{items:await repo.list(identity),execution_enabled:false})
+          const item=await repo.get(identity,connection)
+          if(!item)throw new HttpError(404,"mcp_connection_not_found")
+          return send(res,200,{item,execution_enabled:false})
+        }
+        const body=await readBody(req,65536)
+        if(method==="POST"&&!connection){
+          allowBodyFields(body,["request_id","name","description","url","headers","enabled"])
+          const {request_id,...input}=body
+          if(!isUuid(request_id))throw new HttpError(400,"invalid_mcp_request_id")
+          return send(res,201,{item:await repo.create(identity,input,request_id),execution_enabled:false})
+        }
+        if((method==="PATCH"||method==="DELETE")&&connection){
+          allowBodyFields(body,method==="DELETE"?["expected_revision"]:["expected_revision","name","description","url","headers","enabled"])
+          const {expected_revision,...input}=body
+          if(!Number.isSafeInteger(expected_revision)||(expected_revision as number)<1)throw new HttpError(400,"invalid_revision")
+          if(method==="DELETE")return send(res,200,await repo.delete(identity,connection,expected_revision as number))
+          return send(res,200,{item:await repo.update(identity,connection,input,expected_revision as number),execution_enabled:false})
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
       if(schedulesRoute){
         const scheduleRepo=deps.scheduleInventory
         if(!scheduleRepo)throw new HttpError(503,"schedule_inventory_disabled")

@@ -76,3 +76,5 @@ pnpm db:pg-stage-operator --plan \
 2026-10-23 Workflow 历史输出与样本复用增量：已接本人只读节点结果、循环各轮分页、输出版本一致性检查及画布中明确勾选的历史样本复用；跨工作流、类型变化、未执行结果和单模型测试虚拟节点均不作为样本。接口只重建主工作流业务输出，不返回原始步骤元数据或 Agent 内部规划，也不新增任务或效果记录。浏览器与实际 PG18 的扩展 CI 尚未执行；主工作区只读门禁为 263 个前端文件、38 个 PocketBase 依赖文件、10 项阻断，仍为 NO-GO。详见 [历史输出与样本记录](PG18_WORKFLOW_OUTPUTS_AND_SAMPLES.md)。
 
 2026-10-23 Agent 自定义 HTTP 工具增量：在 b05fcb8 之后接通工作流 Agent 节点及独立多轮 Agent 的自有连接声明、版本冻结、逐步审批和私有 Broker 调用；12 项合成数据专项测试通过。编辑目标、模型和知识库会保留 HTTP 声明，旧单次 Agent 队列拒绝不支持的声明。真实 PG TCP/浏览器新增用例尚未运行；MCP/Smithery、共享/语义知识、调度/协作及运维/UAT 签收仍待完成。候选仅本地，正式切换仍为 NO-GO。
+
+2026-10-23 MCP 连接与发现增量：在 2b29492 之后新增提案迁移 029、Native Cookie 配置接口和员工界面；只读工具发现支持新旧 Streamable HTTP、JSON/SSE、独立授权、加密请求头及所有者隔离。13 项合成数据专项测试通过，详细回归证据见 PG18_MCP_CONNECTIONS_AND_DISCOVERY.md。Agent/Workflow MCP 执行、Smithery 托管流程与其他功能/运维验收仍未完成，新增真实 PG18/浏览器用例尚未运行。候选仅本地，生产切换仍为 NO-GO。

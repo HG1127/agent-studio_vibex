@@ -33,6 +33,8 @@ import {WorkflowSafeRunRepository} from "../../src/workflow-safe-run-repository.
 import {KnowledgeBaseRepository} from "../../src/knowledge-repository.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
+import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
+import {createMcpDiscovery} from "../../src/mcp-discovery.ts"
 import {AgentPrepareWorker} from "../../src/agent-worker.ts"
 import {AgentModelWorker} from "../../src/model-worker.ts"
 import {OwnerBoundModelDispatch} from "../../src/owner-model-dispatch.ts"
@@ -64,7 +66,7 @@ const pool={async connect(){
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous,workflowV2ExecutionUat:workflow}
-const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
+const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpDiscoveries:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
 try{
   await db.exec("CREATE DATABASE agent_studio")
   await db.exec(freshSchemaForTest().sql)
@@ -74,7 +76,7 @@ try{
   await db.exec("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic browser predecessor')")
   await db.exec(load("db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql")
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql"])
+  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
@@ -120,10 +122,11 @@ try{
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowConfigurationWrites:state.configAllowed,allowEmployeeProvisioning:state.configAllowed,
+      allowMcpDiscovery:modern&&state.configAllowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:autonomous&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
-          {...policy,configurationWrites:state.configAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
+          {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
         return backend(req,res)
@@ -144,7 +147,12 @@ try{
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
-      modelConnectionRepository:models,toolConnectionRepository:new ToolConnectionRepository(pool,key)})
+      modelConnectionRepository:models,toolConnectionRepository:new ToolConnectionRepository(pool,key),
+      ...(modern?{mcpConnectionRepository:new McpConnectionRepository(pool,key,pool),mcpDiscovery:createMcpDiscovery(async(_material,wire)=>{
+        if(wire.body.method!=="tools/list")throw Error("unexpected_synthetic_mcp_method")
+        state.mcpDiscoveries++
+        return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{tools:[{name:"synthetic_lookup",description:"Synthetic MCP tool",inputSchema:{type:"object"}}]}})}
+      })}:{})})
     server=createServer((req,res)=>{void(async()=>{
       if(req.url.startsWith("/__fixture/")){
         if(req.headers["x-agentstudio-synthetic-fixture"]!=="1"){
@@ -153,7 +161,8 @@ try{
         let output
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
-          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,
+          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,mcpDiscoveries:state.mcpDiscoveries,
+            ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n}}
           finally{c.release()}

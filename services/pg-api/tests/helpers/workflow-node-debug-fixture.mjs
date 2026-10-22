@@ -13,10 +13,11 @@ import {WorkflowRepository} from "../../src/workflow-repository.ts"
 import {WorkflowV2RunRepository} from "../../src/workflow-v2-run-repository.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
+import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
 import {createHandler} from "../../src/http.ts"
 import {createPgNativePilotApi} from "../../../../src/lib/pgNativePilotApi.ts"
 export const debugKey=Buffer.from("0123456789abcdef".repeat(4),"hex"),debugCredential="synthetic-node-debug-credential-never-send"
-export async function workflowNodeDebugFixture({toolConnections=false}={}){
+export async function workflowNodeDebugFixture({toolConnections=false,mcpDiscovery}={}){
   const db=await PGlite.create({extensions:{vector}});let server
   try{
     await db.exec("CREATE DATABASE agent_studio");await db.exec(freshSchemaForTest().sql)
@@ -24,6 +25,8 @@ export async function workflowNodeDebugFixture({toolConnections=false}={}){
     await db.exec(reviewedNativeSqlForEmbeddedTest(readFileSync(new URL("../../../../db/postgres/010_pg18_native_auth_proposed.sql",import.meta.url),"utf8")))
     await db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic predecessor') ON CONFLICT DO NOTHING")
     for(const file of ["pg_v9_024_bound_dispatch_identity.sql","pg_v9_025_workflow_model_identity.sql"])
+      await db.exec(readFileSync(new URL("../../../../db/postgres/migrations/"+file,import.meta.url),"utf8").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+    if(mcpDiscovery)for(const file of ["pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql"])
       await db.exec(readFileSync(new URL("../../../../db/postgres/migrations/"+file,import.meta.url),"utf8").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
     let tail=Promise.resolve()
     const pool={async connect(){const previous=tail;let release;tail=new Promise(resolve=>{release=resolve});await previous;return {query:(sql,args=[])=>db.query(sql,args),release}}}
@@ -42,13 +45,14 @@ export async function workflowNodeDebugFixture({toolConnections=false}={}){
     const flow=await new WorkflowRepository(pool).create(owner,"Synthetic debug workflow",graph)
     const samples={input:"Synthetic {{unknown}} task",outputs:{tool:'quoted "sample"\nline'}},body={node_id:"model",expected_revision:1,idempotency_key:"synthetic-node-debug-request",samples}
     let native,backend,enabled=true;const origin="https://node-debug.test.invalid"
-    const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:true,allowWorkflowV2Submission:enabled,
-      businessHandler:(req,res)=>{if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,{configurationWrites:true,workflowV2ExecutionUat:enabled})){
+    const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:true,allowWorkflowV2Submission:enabled,allowMcpDiscovery:Boolean(mcpDiscovery)&&enabled,
+      businessHandler:(req,res)=>{if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,{configurationWrites:true,workflowV2ExecutionUat:enabled,mcpDiscoveryUat:Boolean(mcpDiscovery)&&enabled})){
         res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return}return backend(req,res)}})}
     configure();const runs=new WorkflowV2RunRepository(pool)
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("cookie_required")},authenticateRequest:req=>native.authenticateRequest(req),
       repository:new AgentSpecRepository(pool),workflowRepository:new WorkflowRepository(pool),workflowV2RunRepository:runs,modelConnectionRepository:models,
-      ...(toolConnections?{toolConnectionRepository:new ToolConnectionRepository(pool,debugKey)}:{})})
+      ...(toolConnections?{toolConnectionRepository:new ToolConnectionRepository(pool,debugKey)}:{}),
+      ...(mcpDiscovery?{mcpConnectionRepository:new McpConnectionRepository(pool,debugKey,pool),mcpDiscovery}:{})})
     server=createServer((req,res)=>{void native.handler(req,res).catch(()=>res.destroy())});await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
     const base="http://127.0.0.1:"+server.address().port,client=()=>{
       let cookie="";const dropped={submit:false,decision:false},calls=[]

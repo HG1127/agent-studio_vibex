@@ -3,12 +3,15 @@
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
+import {parsePgMcpConnection,type PgNativeMcpInput,type PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
+export type {PgNativeMcpInput,PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
 export type {AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
 import {parseWorkflowLatestOutputs,parseWorkflowOutputHistory,validWorkflowOutputCursor} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 export type {WorkflowLatestOutputs,WorkflowOutputHistory,WorkflowOutputHeader,WorkflowLatestNodeOutput,WorkflowHistoricalNodeOutput} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   model_probe_enabled:boolean
+  mcp_discovery_enabled?:boolean
   run_submission_enabled?:boolean
   bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
@@ -181,6 +184,7 @@ const routes={
   schedules:"/api/v2/schedules",
   modelConnections:"/api/v2/model-connections",
   toolConnections:"/api/v2/tool-connections",
+  mcpConnections:"/api/v2/mcp-connections",
 } as const
 type Route=typeof routes[keyof typeof routes]|`/api/v2/workflow-v2-runs/${string}`|
   `/api/v2/runs/${string}`|`/api/v2/agent-specs/${string}/runs`|
@@ -191,6 +195,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/workflow-v2-runs/${string
   | `/api/v2/schedules/${string}`
   | `/api/v2/model-connections/${string}`
   | `/api/v2/tool-connections/${string}`
+  | `/api/v2/mcp-connections/${string}`
   | `/api/v2/workflows/${string}/validate`
   | `/api/v2/workflow-validations/${string}`
   | `/api/v2/workflows/${string}/runs`
@@ -201,6 +206,7 @@ async function request<T>(
   body?:Record<string,unknown>,
   transport:typeof fetch=fetch,
   rootPath:RootPath="/__pg_native",
+  timeoutMs=12000,
 ):Promise<T> {
   let response:Response
   try{
@@ -216,7 +222,7 @@ async function request<T>(
           "Content-Type":"application/json"}:{}),
       },
       ...(body?{body:JSON.stringify(body)}:{}),
-      signal:AbortSignal.timeout(12000),
+      signal:AbortSignal.timeout(timeoutMs),
     })
   }catch{throw new PgNativePilotError(0,"pg_native_connection_unavailable")}
   let result:unknown
@@ -343,6 +349,13 @@ export function createPgNativePilotApi(
   const patch=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"PATCH",body,transport,rootPath)
   const del=<T>(route:Route)=>request<T>(route,"DELETE",undefined,transport,rootPath)
+  const mcpRoute=(id:string):`/api/v2/mcp-connections/${string}`=>{
+    if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_mcp_connection_id")
+    return `/api/v2/mcp-connections/${id}`
+  }
+  const mcpItem=(raw:unknown):PgNativeMcpConnection=>{
+    try{return parsePgMcpConnection(raw)}catch{throw new PgNativePilotError(503,"invalid_mcp_connection_response")}
+  }
   return {
     me:async()=> (await get<{authenticated:true;user:PgNativeStaff}>(routes.me)).user,
     getConfigCapabilities:async()=>{
@@ -350,6 +363,8 @@ export function createPgNativePilotApi(
       if(value?.mode!=="native_pg18"||
          typeof value.config_writes_enabled!=="boolean"||
          typeof value.model_probe_enabled!=="boolean"||
+          (value.mcp_discovery_enabled!==undefined&&typeof value.mcp_discovery_enabled!=="boolean")||
+          (value.mcp_discovery_enabled===true&&value.config_writes_enabled!==true)||
           (value.workflow_validation_enabled!==undefined&&
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&
@@ -415,6 +430,21 @@ export function createPgNativePilotApi(
     deleteToolConnection:async(id:string)=>
       del<{ok:true;id:string;execution_enabled:false}>(
         toolConnectionRoute(id)),
+    listMcpConnections:async()=>{
+      const {items}=await get<{items:unknown[]}>(routes.mcpConnections)
+      if(!Array.isArray(items)||items.length>50)throw new PgNativePilotError(503,"invalid_mcp_connection_response")
+      return items.map(mcpItem)
+    },
+    getMcpConnection:async(id:string)=>mcpItem((await get<{item:unknown}>(mcpRoute(id))).item),
+    createMcpConnection:async(input:PgNativeMcpInput,requestId:string)=>{
+      mcpRoute(requestId)
+      return mcpItem((await post<{item:unknown}>(routes.mcpConnections,{...input,request_id:requestId})).item)
+    },
+    updateMcpConnection:async(id:string,expected_revision:number,input:PgNativeMcpInput)=>
+      mcpItem((await patch<{item:unknown}>(mcpRoute(id),{...input,expected_revision:safeRevision(expected_revision)})).item),
+    deleteMcpConnection:(id:string,expected_revision:number)=>request<{ok:true}>(mcpRoute(id),"DELETE",{expected_revision:safeRevision(expected_revision)},transport,rootPath),
+    discoverMcpConnection:async(id:string,expected_revision:number)=>mcpItem((await request<{item:unknown}>(`${mcpRoute(id)}/discover`,"POST",
+      {expected_revision:safeRevision(expected_revision)},transport,rootPath,25000)).item),
     listAgents:async()=> (await get<{items:PgNativeAgent[]}>(routes.agents)).items,
     createAgent:async(name:string,goal:string)=>(
       await post<{item:PgNativeAgent}>(routes.agents,{name,spec:{

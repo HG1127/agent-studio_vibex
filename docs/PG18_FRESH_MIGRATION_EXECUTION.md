@@ -97,3 +97,7 @@ Owner-only GETs now reconstruct bounded latest/step outputs from canonical outer
 ## Subsequent Agent HTTP tools candidate — 2026-10-23
 
 The local increment after b05fcb8 adds bounded owner/revision-pinned HTTP tool declarations to both PG Agent roots, owner configuration UI and per-step approval. Existing private mTLS Tool Broker and ambiguity/no-resend guards are reused; no new SQL or credential grants. The 12 focused Native Cookie/SQL/private TLS/client/static SSR tests passed. Full regression results are recorded in docs/PG18_AGENT_HTTP_TOOLS.md. New hosted PG TCP/browser source has not run. MCP/Smithery and the remaining semantic/shared knowledge, schedule/collaboration and operational/UAT gates remain open. This increment is local and unuploaded; production cutover remains NO-GO.
+
+## Subsequent MCP connection and discovery candidate — 2026-10-23
+
+After 2b29492, proposed migration 029 and the Native Cookie API/UI add owner-scoped MCP connection CRUD and explicit tool discovery. API/Broker credentials remain separate, forced RLS and startup privilege checks cover both new tables, and discovery supports bounded modern/legacy Streamable HTTP with JSON/SSE. Thirteen synthetic SQL/protocol/client/SSR checks passed. Full regression evidence is in docs/PG18_MCP_CONNECTIONS_AND_DISCOVERY.md. New hosted PG18/HTTPS/browser cases have not run. Agent/Workflow MCP calls and Smithery managed setup remain outstanding, as do shared/semantic KB, schedules/collaboration and operational/UAT signoff. This candidate is local/unuploaded; production remains NO-GO.

@@ -27,6 +27,10 @@ import {NativeAuthRepository} from "./native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "./native-auth-http.mjs"
 import {ModelConnectionRepository} from "./model-connection-repository.ts"
 import {ToolConnectionRepository} from "./tool-connection-repository.ts"
+import {McpConnectionRepository} from "./mcp-connection-repository.ts"
+import {createMcpDiscovery} from "./mcp-discovery.ts"
+import {createMcpNetwork} from "./mcp-network.ts"
+import {verifyMcpDiscoveryPrivileges} from "./mcp-privileges.ts"
 import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
@@ -261,7 +265,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const authSecret=safeSecret(files.authFile,listen,env)
   const modelKeySecret=safeSecret(files.modelKeyFile,listen,env)
   const brokerFile=nativeBrokerCredentialConfig(
-    env,listen,capabilities.modelProbeUat)
+    env,listen,capabilities.modelProbeUat||capabilities.mcpDiscoveryUat===true)
   const brokerSecret=brokerFile?safeSecret(brokerFile,listen,env):null
   const {parseModelEncryptionKey}=await import("./model-connection-crypto.ts")
   const modelEncryptionKey=parseModelEncryptionKey(modelKeySecret.password)
@@ -317,6 +321,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
       }finally{db.release()}
     }
     // A separate, strictly read-only deployment preflight never opens HTTP.
+    if(capabilities.mcpDiscoveryUat===true){
+      if(!brokerPool)reject()
+      await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
+    }
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -330,6 +338,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
+      allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
       allowWorkflowValidation:capabilities.workflowValidationUat===true,
@@ -362,6 +371,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
         brokerPool?adapter(brokerPool):adapter(businessPool)),
       toolConnectionRepository:new ToolConnectionRepository(
         adapter(businessPool),modelEncryptionKey),
+      mcpConnectionRepository:new McpConnectionRepository(adapter(businessPool),modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),
+      ...(capabilities.mcpDiscoveryUat===true?{mcpDiscovery:createMcpDiscovery(createMcpNetwork())}:{}),
       // Explicit opt-in is required for ANY provider-network egress.
       ...(capabilities.modelProbeUat===true
         ?{modelConnectionProbe:createProviderConnectivityProbe()}:{}),
