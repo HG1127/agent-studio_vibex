@@ -1,0 +1,107 @@
+import {test,expect,chromium} from "@playwright/test"
+import {spawn} from "node:child_process"
+import {fileURLToPath} from "node:url"
+import path from "node:path"
+import {requireNativeBrowserCi} from "./ci-guard.mjs"
+
+test("native Workflow canvas: seven types, exact save recovery, per-step consent and private mTLS",async({},testInfo)=>{
+  const approved=requireNativeBrowserCi() // FIRST: no file, child, socket or browser before this guard.
+  const root=path.resolve(fileURLToPath(new URL("../../",import.meta.url)))
+  const env=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))
+  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true"})
+  const child=spawn(process.execPath,["--experimental-strip-types",path.join(root,"services/pg-api/tests/helpers/native-run-browser-fixture.mjs")],{cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true})
+  let browser,context,control,timer,output=""
+  const ready=new Promise((resolve,reject)=>{
+    timer=setTimeout(()=>reject(Error("synthetic_fixture_start_timeout")),45000)
+    const chunk=bytes=>{output=(output+bytes.toString()).slice(-32768)
+      for(const line of output.split(/\r?\n/))if(line.startsWith('{"synthetic_only":true,'))try{resolve(JSON.parse(line))}catch{}}
+    child.stdout.on("data",chunk);child.stderr.on("data",chunk);child.once("error",reject);child.once("exit",code=>reject(Error("fixture_exit_"+code)))
+  })
+  try{
+    const info=await ready;clearTimeout(timer)
+    expect(info.synthetic_only).toBe(true);expect(new URL(info.url).origin).toBe(approved.origin)
+    expect(Number.isSafeInteger(info.apiPort)&&info.apiPort>1024&&info.apiPort<65536).toBe(true)
+    control=async(name,method="POST")=>{const response=await fetch("http://127.0.0.1:"+info.apiPort+"/__fixture/"+name,{method,headers:{"X-AgentStudio-Synthetic-Fixture":"1"},signal:AbortSignal.timeout(15000)})
+      expect(response.status).toBe(200);return response.json()}
+    browser=await chromium.launch({headless:true});context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:"block"})
+    const external=[]
+    await context.route("**/*",async route=>{if(new URL(route.request().url()).origin!==approved.origin){external.push(route.request().url());await route.abort()}else await route.continue()})
+    const page=await context.newPage();await page.goto(info.url,{waitUntil:"domcontentloaded"})
+    await page.getByRole("textbox",{name:"员工邮箱",exact:true}).fill("alice@example.com")
+    await page.getByLabel("密码",{exact:true}).fill("SyntheticAlicePassword#2026")
+    await page.getByRole("button",{name:"登录独立工作台",exact:true}).click()
+    const canvasTab=()=>page.getByRole("button",{name:/^Workflow \d+$/})
+    await canvasTab().click();await page.getByRole("textbox",{name:"新工作流名称",exact:true}).fill("Alice synthetic seven-node Workflow")
+    await page.getByRole("button",{name:"新建画布草稿",exact:true}).click()
+    const edge=label=>page.getByRole("combobox",{name:"选择连线",exact:true}).selectOption({label})
+    const node=label=>page.getByRole("combobox",{name:"选择节点",exact:true}).selectOption({label})
+    const apply=()=>page.getByRole("button",{name:"应用节点配置",exact:true}).click()
+    await edge("开始 → 结束");await page.getByRole("button",{name:"添加条件",exact:true}).click()
+    await edge("条件 → 结束 · 满足");await page.getByRole("button",{name:"添加循环",exact:true}).click()
+    await edge("循环 → 循环步骤 · 循环体");await page.getByRole("button",{name:"添加模型",exact:true}).click()
+    await node("模型");await page.getByRole("combobox",{name:"绑定模型",exact:true}).selectOption({label:"Alice synthetic model · gpt-4.1-mini"})
+    await page.getByRole("textbox",{name:"模型提示词",exact:true}).fill("{{input}} / {{loop.item}}");await apply()
+    await node("循环");await page.getByRole("spinbutton",{name:"重复次数",exact:true}).fill("2")
+    await page.getByRole("spinbutton",{name:"最多循环次数",exact:true}).fill("2");await apply()
+    await edge("循环 → 结束 · 结束");await page.getByRole("button",{name:"添加Agent",exact:true}).click()
+    await node("Agent");await page.getByRole("combobox",{name:"Agent 方案",exact:true}).selectOption({label:"Alice Browser Agent · 修订 1"});await apply()
+    await node("结束");await page.getByRole("textbox",{name:"结果模板",exact:true}).fill("{{Agent.output}}");await apply()
+    await control("drop-next-config");await page.getByRole("button",{name:"保存工作流",exact:true}).click()
+    await expect(page.getByRole("button",{name:"核对并确认上次保存",exact:true})).toBeEnabled()
+    await page.getByRole("button",{name:"知识库 0",exact:true}).click();await canvasTab().click()
+    await page.getByRole("button",{name:"核对并确认上次保存",exact:true}).click()
+    await expect(page.getByText("工作流已保存并核对服务器版本。",{exact:true})).toBeVisible()
+    const saved=await control("state","GET");expect(saved.workflows).toBe(1);expect(saved.runs).toBe(0)
+    expect(saved.configRequests).toBe(2);expect(saved.configHashes[0]).toBe(saved.configHashes[1])
+    const readGraph=()=>page.evaluate(async()=>{const response=await fetch("/__pg_native/api/v2/workflows",{credentials:"same-origin"});if(!response.ok)throw Error("own_workflow_read_failed");return response.json()})
+    const listed=await readGraph(),flow=listed.items[0]
+    expect(flow.graph.nodes.map(node=>node.type).sort()).toEqual(["start","end","condition","loop","model","tool","agent"].sort())
+    await node("模型")
+    const card=page.locator('.react-flow__node[aria-label="模型节点：模型"]');await card.scrollIntoViewIfNeeded()
+    const box=await card.boundingBox();expect(box).not.toBeNull()
+    await page.mouse.move(box.x+box.width/2,box.y+20);await page.mouse.down();await page.mouse.move(box.x+box.width/2+32,box.y+44,{steps:8});await page.mouse.up()
+    await expect(page.getByRole("button",{name:"撤销画布更改",exact:true})).toBeEnabled()
+    await page.getByRole("button",{name:"撤销画布更改",exact:true}).click()
+    await expect(page.getByRole("button",{name:"保存工作流",exact:true})).toBeDisabled()
+    await page.getByRole("button",{name:"重做画布更改",exact:true}).click();await page.getByRole("button",{name:"保存工作流",exact:true}).click()
+    await expect(page.getByRole("button",{name:"运行已保存工作流",exact:true})).toBeEnabled()
+    const changed=(await readGraph()).items[0]
+    expect(changed.revision).toBe(2);expect(changed.graph.nodes.find(node=>node.type==="model").position).not.toEqual(flow.graph.nodes.find(node=>node.type==="model").position)
+    await page.screenshot({path:testInfo.outputPath("workflow-canvas-desktop.png"),fullPage:true})
+    await page.getByRole("button",{name:"运行已保存工作流",exact:true}).click()
+    await page.getByRole("textbox",{name:"工作流运行要求",exact:true}).fill("完成 Workflow synthetic task")
+    await control("drop-next");await page.getByRole("button",{name:"提交工作流任务",exact:true}).click()
+    await expect(page.getByRole("button",{name:"确认上次工作流提交",exact:true})).toBeEnabled()
+    await page.getByRole("button",{name:"确认上次工作流提交",exact:true}).click()
+    expect((await control("state","GET")).runs).toBe(1)
+    const refresh=()=>page.getByRole("button",{name:"刷新工作流任务",exact:true}).click()
+    let approvals=0,succeeded=false
+    for(let i=0;i<45;i++){
+      const tick=await control("workflow")
+      if(tick.status==="succeeded"){succeeded=true;break}
+      if(tick.status!=="awaiting_approval")continue
+      await refresh()
+      const approve=page.getByRole("button",{name:"批准工作流当前步骤",exact:true});await expect(approve).toBeDisabled()
+      await page.getByRole("checkbox",{name:/^我已核对本次/}).check();await approve.click()
+      await expect(page.getByText("已批准当前步骤。",{exact:true})).toBeVisible();approvals++
+    }
+    expect(succeeded).toBe(true);expect(approvals).toBe(8);await refresh()
+    await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic Workflow result 4")
+    expect((await control("state","GET")).generated).toBe(4)
+    await page.screenshot({path:testInfo.outputPath("workflow-result-desktop.png"),fullPage:true})
+    await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
+    await page.screenshot({path:testInfo.outputPath("workflow-result-mobile.png"),fullPage:true});await canvasTab().click()
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
+    await page.screenshot({path:testInfo.outputPath("workflow-canvas-mobile.png"),fullPage:true})
+    await control("deny-config");await control("deny-runs");await page.getByRole("button",{name:"刷新",exact:true}).click()
+    await expect(page.getByRole("textbox",{name:"新工作流名称",exact:true})).toBeDisabled()
+    await expect(page.getByRole("button",{name:"运行已保存工作流",exact:true})).toBeDisabled()
+    await page.getByRole("button",{name:"Workflow 运行与审批",exact:true}).click()
+    await expect(page.getByRole("button",{name:"提交工作流任务",exact:true})).toBeDisabled()
+    expect(external).toEqual([])
+  }finally{
+    clearTimeout(timer);if(context)await context.close();if(browser)await browser.close()
+    if(control)await control("stop").catch(()=>{})
+    if(child.exitCode===null){const exited=new Promise(resolve=>child.once("exit",resolve)),forced=setTimeout(()=>child.kill("SIGTERM"),5000);await exited;clearTimeout(forced)}
+  }
+})

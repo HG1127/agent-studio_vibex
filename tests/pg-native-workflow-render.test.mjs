@@ -1,0 +1,57 @@
+// Static SSR contract checks; these do not claim browser acceptance.
+import test from "node:test"
+import assert from "node:assert/strict"
+import {createElement} from "react"
+import {renderToStaticMarkup} from "react-dom/server"
+import {createServer} from "vite"
+import react from "@vitejs/plugin-react"
+import path from "node:path"
+import {fileURLToPath} from "node:url"
+import {newPgWorkflowGraph,addPgWorkflowNode} from "../src/lib/pgNativeWorkflowGraph.ts"
+import {emptyWorkflowRunView} from "../src/lib/pgNativeWorkflowRunSession.ts"
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
+const flow="11111111-1111-4111-8111-111111111111",connection="22222222-2222-4222-8222-222222222222",run="33333333-3333-4333-8333-333333333333"
+
+test("static Workflow forms cover seven native types and retain fail-closed review and escaped external text",async()=>{
+  const server=await createServer({configFile:false,envFile:false,root,mode:"test",plugins:[react()],
+    cacheDir:path.join(root,".tmp/pg-migration-completion/workflow-ssr-cache"),resolve:{alias:{"@":path.join(root,"src")}},
+    optimizeDeps:{noDiscovery:true,include:[],entries:[]},ssr:{optimizeDeps:{noDiscovery:true,include:[],entries:[]}},
+    server:{middlewareMode:true,hmr:false,watch:null}})
+  try{
+    const [{default:Form},{default:Workspace},{default:Detail}]=await Promise.all([
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowNodeForm.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeWorkflowRunDetail.tsx"),
+    ])
+    let graph=newPgWorkflowGraph();const noop=()=>{}
+    const resources={agents:[],models:[],tools:[],bases:[]}
+    const expected={start:"输入提示",end:"结果模板",model:"绑定模型",agent:"Agent 方案",tool:"工具参数模板",condition:"条件规则",loop:"循环方式"}
+    for(const [type,label] of Object.entries(expected)){
+      const node=type==="start"?graph.nodes[0]:addPgWorkflowNode(graph,type).nodes.findLast(node=>node.type===type)
+      const markup=renderToStaticMarkup(createElement(Form,{node,nodes:[node],...resources,enabled:false,onApply:noop,onDirty:noop}))
+      assert.ok(markup.includes(label),type+" should expose "+label)
+      assert.match(markup,/<fieldset disabled=""/)
+    }
+    const blocked=renderToStaticMarkup(createElement(Workspace,{...resources,api:{},workflows:[],active:true,writeEnabled:false,executionEnabled:false,onExpired:noop,onSaved:async()=>{},onRun:noop}))
+    assert.match(blocked,/当前环境只允许查看工作流/)
+    assert.match(blocked,/<input[^>]*aria-label="新工作流名称"[^>]*disabled=""/)
+    const model={id:connection,revision:1,name:"Own model",provider:"openai",base_url:"https://api.openai.com/v1",enabled:true,status:"ok",models:["synthetic"]}
+    const binding={connection_id:connection,connection_revision:1,model_id:"synthetic"}
+    graph=addPgWorkflowNode(graph,"model",graph.edges[0].id)
+    const modelNode=graph.nodes.find(node=>node.type==="model");modelNode.data={title:"Model",prompt:"Own task",model_binding:binding}
+    const pending={step_key:"wf2_00001_model",node_id:modelNode.id,input_sha256:"a".repeat(64),kind:"model",input:"Own <script>task</script>",configuration:{title:"Model",model_binding:binding},missing:[]}
+    const detail={run:{id:run,kind:"workflow",workflow_id:flow,status:"awaiting_approval",instruction:"Own task",checkpoint:{workflow_revision:1},step_count:0,updated_at:"synthetic",result_text:""},pending_effect:pending,approvals:[],steps:[],execution_mode:"workflow_native_v2",replayed:false,
+      review:{workflow:{id:flow,revision:1,name:"Own flow",graph},model,unavailable:false}}
+    const render=(value,enabled=true,change={})=>renderToStaticMarkup(createElement(Detail,{api:{},active:true,enabled,onDecision:noop,onRetry:noop,onCancel:noop,onExpired:noop,view:{...emptyWorkflowRunView,detail:value,...change}}))
+    const review=render(detail)
+    assert.match(review,/确认可能产生费用/);assert.match(review,/&lt;script&gt;task&lt;\/script&gt;/);assert.equal(review.includes("<script>"),false)
+    assert.match(review,/<button[^>]*disabled=""[^>]*>批准工作流当前步骤<\/button>/)
+    assert.match(render(detail,false),/当前环境未开放工作流审批/)
+    const tool={...detail,pending_effect:{...pending,kind:"tool",input:JSON.stringify({value:"<img src=x onerror=alert(1)>"}),configuration:{tool_binding:{connection_id:connection,connection_revision:1}}}}
+    assert.match(render(tool),/&lt;img/);assert.equal(render(tool).includes("<img"),false)
+    const agent={...detail,pending_effect:{...pending,agent_context:{round:1,phase:"model"},input:JSON.stringify({task:"Visible task",think:"PRIVATE_REASONING",note:"PRIVATE_NOTE"})}}
+    const agentHtml=render(agent);assert.match(agentHtml,/Visible task/);assert.equal(agentHtml.includes("PRIVATE_REASONING"),false);assert.equal(agentHtml.includes("PRIVATE_NOTE"),false)
+    const recovery=render(detail,true,{pendingMutation:{kind:"decision",id:run,decision:"approved",step:pending.step_key,hash:pending.input_sha256}})
+    assert.match(recovery,/确认上次批准/);assert.equal(recovery.includes("批准工作流当前步骤"),false)
+  }finally{await server.close()}
+})

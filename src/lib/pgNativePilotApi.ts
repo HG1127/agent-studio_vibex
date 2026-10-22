@@ -56,7 +56,10 @@ export type PgNativeWorkflowV2Result={
   steps:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>
   steps_truncated:boolean;approvals:Array<{step_key:string;status:string}>;approvals_truncated?:boolean
   pending_effect:PgNativeWorkflowV2Pending|null;replayed:boolean;execution_mode:"workflow_native_v2";worker_started_by_api?:false
+  decision_confirmation?:{run_id:string;step_key:string;input_sha256:string;status:"approved"|"rejected"}
 }
+export type PgNativeWorkflowV2Summary={id:string;workflow_id:string;status:string;instruction_preview:string;result_preview:string;
+  step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string}
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
   execution_mode:"agent_native_v2";run:Omit<PgNativeWorkflowV2Result["run"],"kind"|"workflow_id">&{kind:"agent";workflow_id:null;agent_spec_id:string}
 }
@@ -376,6 +379,7 @@ export function createPgNativePilotApi(
     },
     listModelConnections:async()=>
       (await get<{items:PgNativeModelConnection[]}>(routes.modelConnections)).items,
+    getModelConnection:async(id:string)=>(await get<{item:PgNativeModelConnection}>(modelConnectionRoute(id))).item,
     createModelConnection:async(input:PgNativeModelConnectionInput)=>
       (await post<{item:PgNativeModelConnection}>(routes.modelConnections,
         input as unknown as Record<string,unknown>)).item,
@@ -393,6 +397,7 @@ export function createPgNativePilotApi(
     listToolConnections:async()=>
       (await get<{items:PgNativeToolConnection[];execution_enabled:false}>(
         routes.toolConnections)).items,
+    getToolConnection:async(id:string)=>(await get<{item:PgNativeToolConnection}>(toolConnectionRoute(id))).item,
     createToolConnection:async(input:PgNativeToolConnectionInput)=>
       (await post<{item:PgNativeToolConnection;execution_enabled:false}>(
         routes.toolConnections,input as unknown as Record<string,unknown>)).item,
@@ -512,7 +517,7 @@ export function createPgNativePilotApi(
         expected_revision:safeRevision(expected_revision),instruction,idempotency_key})
     },
     getWorkflowV2Run:async(id:string)=>get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id)),
-    listWorkflowV2Runs:async()=> (await get<{items:Array<Record<string,unknown>>}>(routes.workflowV2Runs)).items,
+    listWorkflowV2Runs:async()=> (await get<{items:PgNativeWorkflowV2Summary[]}>(routes.workflowV2Runs)).items,
     decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
          !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
@@ -553,8 +558,10 @@ export function createPgNativePilotApi(
         name,graph:simpleWorkflowGraph()
       })
     ).item,
-    createWorkflowGraph:async(name:string,graph:unknown)=>
-      (await post<{item:PgNativeWorkflow}>(routes.workflows,{name,graph})).item,
+    createWorkflowGraph:async(name:string,graph:unknown,request_id?:string)=>{
+      if(request_id!==undefined)recordRoute(routes.workflows,request_id)
+      return (await post<{item:PgNativeWorkflow}>(routes.workflows,{name,graph,...(request_id?{request_id}:{})})).item
+    },
     updateWorkflowGraph:async(id:string,expected_revision:number,name:string,graph:unknown)=>
       (await patch<{item:PgNativeWorkflow}>(recordRoute(routes.workflows,id),{
         name,graph,expected_revision:safeRevision(expected_revision)

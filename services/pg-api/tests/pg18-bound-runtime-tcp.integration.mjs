@@ -2,7 +2,7 @@
 // owner RLS and private mTLS; synthetic model executor, no provider traffic.
 import test from "node:test"
 import assert from "node:assert/strict"
-import {createHash,randomBytes} from "node:crypto"
+import {createHash,randomBytes,randomUUID} from "node:crypto"
 import {createServer,request} from "node:https"
 import {execFileSync} from "node:child_process"
 import {mkdtempSync,readFileSync,realpathSync,rmSync} from "node:fs"
@@ -16,6 +16,7 @@ import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowMode
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
+import {createPgNativeWorkflowRunSession,workflowApprovalReady} from "../../../src/lib/pgNativeWorkflowRunSession.ts"
 import {createHandler} from "../src/http.ts"
 import {createNativeRunRepository} from "../src/native-run-repository.ts"
 import {AgentSpecRepository} from "../src/repository.ts"
@@ -342,7 +343,11 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     const agentGraph={version:2,nodes:[graph.nodes[0],{id:"agent",type:"agent",data:{title:"Role",agent_binding:{spec_id:role.id,spec_revision:role.revision},max_steps:3},position:{x:200,y:0}},
       {...graph.nodes[2],data:{title:"End",output_template:"{{Role.output}}"}}],edges:[{id:"a",source:"start",target:"agent"},{id:"b",source:"agent",target:"end"}]}
-    const agentFlow=await api.createWorkflowGraph("CI Agent Workflow",agentGraph)
+    const requestId=randomUUID()
+    const [agentFlow,replayedFlow]=await Promise.all([api.createWorkflowGraph("CI Agent Workflow",agentGraph,requestId),api.createWorkflowGraph("CI Agent Workflow",agentGraph,requestId)])
+    assert.equal(agentFlow.id,requestId);assert.equal(replayedFlow.id,agentFlow.id)
+    assert.equal(Number((await admin.query("SELECT count(*) AS n FROM agentstudio.workflows WHERE id=$1",[requestId])).rows[0].n),1)
+    await assert.rejects(api.createWorkflowGraph("Conflicting title",agentGraph,requestId),error=>error.status===409)
     for(const autonomous of [false,true]){
     let agentCalls=0
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
@@ -360,20 +365,26 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await withDisposableBoundModelTls(agentDispatch,async config=>{
       const adapters=[workflowV2ModelEffectExecutor(config),workflowV2ToolEffectExecutor(config)]
       const executor={supports:req=>adapters.some(adapter=>adapter.supports(req)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}
-      const run=autonomous?await api.submitAutonomousAgentRun(role.id,1,"Synthetic Agent input","ci-native-agent-mtls-0001",3):
-        await api.submitWorkflowV2Run(agentFlow.id,1,"Synthetic Agent input","ci-v2-agent-mtls-0001")
+      const ui=autonomous?null:createPgNativeWorkflowRunSession(api,{key:()=>"ci-v2-agent-mtls-0001"})
+      if(ui){ui.setActive(true);await ui.refresh();await ui.submit({workflowId:agentFlow.id,revision:1,instruction:"Synthetic Agent input"});assert.equal(ui.snapshot().error,"")}
+      const run=autonomous?await api.submitAutonomousAgentRun(role.id,1,"Synthetic Agent input","ci-native-agent-mtls-0001",3):ui.snapshot().detail
       const get=id=>autonomous?api.getAutonomousAgentRun(id):api.getWorkflowV2Run(id)
       for(let i=0;i<20;i++){
         await new WorkflowV2Worker(workerPool,"ci-agent-"+i,{agentExecutionApproved:true,executor,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}).tick()
-        const detail=await get(run.run.id)
+        if(ui)await ui.poll()
+        const detail=ui?ui.snapshot().detail:await get(run.run.id)
         if(detail.run.status==="succeeded")break
-        if(detail.run.status==="awaiting_approval")(autonomous?await api.decideAutonomousAgentNode(run.run.id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256):await api.decideWorkflowV2Node(run.run.id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256))
+        if(detail.run.status==="awaiting_approval"){
+          if(ui){assert.equal(workflowApprovalReady(detail),true);await ui.decide("approved",true);assert.equal(ui.snapshot().error,"");assert.equal(ui.snapshot().pendingMutation,null)}
+          else await api.decideAutonomousAgentNode(run.run.id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+        }
       }
       const detail=await get(run.run.id)
       assert.equal(detail.run.status,"succeeded");assert.equal(detail.run.result_text,"Synthetic Agent result 4");assert.equal(agentCalls,2)
       assert.equal(detail.steps.filter(step=>step.metadata.parent_step_key).length,3)
       const ledger=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[run.run.id])).rows
       assert.equal(ledger.length,7);assert.equal(ledger.every(row=>row.status==="succeeded"),true)
+      ui?.dispose()
     },{handlerFactory:handlers})
     }
   }finally{

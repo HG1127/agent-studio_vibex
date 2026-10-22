@@ -37,7 +37,9 @@ test("PG-only trial UI blocks credential requests on HTTP",()=>{
   // Approved configuration editing is available in the independent build;
   // a browser flag alone must never grant it on the production root.
   assert.match(page,/canEditConfig=!productionRoot\|\|configEditEnabled/)
-  assert.match(page,/setConfigEditEnabled\(productionRoot&&capability\?\.config_writes_enabled===true\)/)
+  assert.match(page,/setConfigEditEnabled\(capability\?\.config_writes_enabled===true\)/)
+  assert.match(page,/writeEnabled=\{configEditEnabled&&!loading&&!busy\}/)
+  assert.match(page,/setWorkflowV2Enabled\(capability\?\.config_writes_enabled===true&&capability\.workflow_v2_submission_enabled===true\)/)
 })
 test("PG-only bundle verifier rejects old web auth routes",()=>{
   const file=read("ops/verify-pg18-only-web-build.mjs")

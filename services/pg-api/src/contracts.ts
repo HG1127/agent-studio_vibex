@@ -1,5 +1,6 @@
 // V8 standalone API pilot. Current V7 PocketBase runtime remains authoritative.
-import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeDataV2} from "./workflow-graph-v2.ts"
+import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeType,type WorkflowNode,type WorkflowEdge,type WorkflowGraph} from "./workflow-graph-v2.ts"
+export type {WorkflowNodeType,WorkflowNode,WorkflowEdge,WorkflowGraph} from "./workflow-graph-v2.ts"
 export type Identity = { issuer: string; subject: string }
 
 export interface QueryResult<Row> { rows: Row[] }
@@ -116,25 +117,6 @@ export function isUuid(raw:unknown):raw is string {
 // Unversioned graphs retain the original title-only storage contract.
 // Explicit version 2 adds bounded node configuration and owner-checked resource
 // revisions. Neither format alone authorizes model/tool/Workflow execution.
-export type WorkflowNodeType =
-  "start" | "end" | "model" | "tool" | "agent" | "condition" | "loop"
-export interface WorkflowNode {
-  id:string
-  type:WorkflowNodeType
-  data:WorkflowNodeDataV2
-  position:{x:number;y:number}
-}
-export interface WorkflowEdge {
-  id:string
-  source:string
-  target:string
-  sourceHandle?:"true"|"false"|"done"
-}
-export interface WorkflowGraph {
-  version?:2
-  nodes:WorkflowNode[]
-  edges:WorkflowEdge[]
-}
 const workflowTypes=new Set([
   "start","end","model","tool","agent","condition","loop",
 ])

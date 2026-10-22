@@ -1,6 +1,10 @@
 // Versioned configuration for the full Workflow node vocabulary. This is a
 // bounded, data-only contract; accepting a graph never authorizes execution.
-import type {WorkflowGraph,WorkflowNode,WorkflowNodeType,WorkflowEdge} from "./contracts.ts"
+// Browser-safe canonical contract. Do not import SQL, auth, Node or runtime code.
+export type WorkflowNodeType="start"|"end"|"model"|"tool"|"agent"|"condition"|"loop"
+export interface WorkflowNode{id:string;type:WorkflowNodeType;data:WorkflowNodeDataV2;position:{x:number;y:number}}
+export interface WorkflowEdge{id:string;source:string;target:string;sourceHandle?:"true"|"false"|"done"}
+export interface WorkflowGraph{version?:2;nodes:WorkflowNode[];edges:WorkflowEdge[]}
 
 export interface WorkflowNodeDataV2 {
   title:string
@@ -107,6 +111,10 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
   if(type==="loop"&&(!output.mode||(output.mode==="count"&&!output.count)||
      (output.mode==="list"&&!Object.hasOwn(output,"list_source"))))invalid()
   return output as unknown as WorkflowNodeDataV2
+}
+export function parseWorkflowNodeDataV2(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
+  if(!Object.hasOwn(fields,type))invalid()
+  return nodeData(raw,type)
 }
 
 /** Allows structured, nested bounded loops; every other cycle is rejected. */

@@ -21,6 +21,7 @@ import {createHandler} from "../src/http.ts"
 import {freshSchemaForTest} from "../src/baota-pg18-fresh-init.mjs"
 import {reviewedNativeSqlForEmbeddedTest,prepareNativeAuthPgliteRoles} from "./helpers/native-pg18-embedded.mjs"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
+import {createPgNativeWorkflowEditor} from "../../../src/lib/pgNativeWorkflowEditor.ts"
 const node=(id,type,data={})=>({id,type,data:{title:id,...data},position:{x:0,y:0}})
 const edge=(source,target,sourceHandle)=>({id:source+"-"+target+"-"+(sourceHandle??"default"),source,target,
   ...(sourceHandle?{sourceHandle}:{})})
@@ -209,6 +210,54 @@ test("graph write rejects every foreign or stale resource and atomically rolls b
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,1)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.audit_events WHERE target_kind='workflow'")).rows[0].n,1)
   }finally{await f.close()}
+})
+
+test("Native idempotent V2 creation binds a stable UUID to one owner/body and never creates jobs",async()=>{
+  const f=await fixture(),request="abcd1234-1111-4111-8111-111111111111"
+  try{
+    const graph=bound(f.resources.alice)
+    const [first,replay]=await Promise.all([
+      f.api.createWorkflowGraph("Idempotent canvas",graph,request.toUpperCase()),
+      f.api.createWorkflowGraph("Idempotent canvas",graph,request),
+    ])
+    assert.equal(first.id,request);assert.equal(replay.id,request);assert.equal(first.revision,1)
+    assert.equal((await f.api.listWorkflows()).length,1)
+    await assert.rejects(f.api.createWorkflowGraph("Another name",graph,request),e=>e.status===409)
+    const changed=structuredClone(graph);changed.nodes[1].data.prompt="Changed private prompt"
+    await assert.rejects(f.api.createWorkflowGraph("Idempotent canvas",changed,request),e=>e.status===409)
+    const bob=f.makeApi();await bob.login("bob@example.com","SyntheticWorkflowPassword#2026")
+    await assert.rejects(bob.createWorkflowGraph("Idempotent canvas",bound(f.resources.bob),request),e=>e.status===409)
+    assert.deepEqual(await bob.listWorkflows(),[])
+    const audit=(await f.db.query("SELECT action FROM agentstudio.audit_events WHERE target_kind='workflow' AND target_id=$1",[request])).rows
+    assert.deepEqual(audit,[{action:"workflow.config_create"}])
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.jobs")).rows[0].n,0)
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,0)
+    await f.api.updateWorkflowGraph(request,1,"Changed later",graph)
+    await assert.rejects(f.api.createWorkflowGraph("Idempotent canvas",graph,request),e=>e.status===409)
+    assert.equal((await f.api.getWorkflow(request)).name,"Changed later")
+    const legacy={nodes:[node("start","start"),node("end","end")],edges:[edge("start","end")]}
+    await assert.rejects(f.api.createWorkflowGraph("Legacy cannot use new creation protocol",legacy,"abcd1234-2222-4222-8222-222222222222"),e=>e.status===400)
+  }finally{await f.close()}
+})
+
+test("employee canvas controller confirms lost create/CAS responses through real Cookie HTTP without duplicate configurations",async()=>{
+  const f=await fixture();let loseCreate=true,loseUpdate=true
+  const editor=createPgNativeWorkflowEditor({...f.api,async createWorkflowGraph(...args){const result=await f.api.createWorkflowGraph(...args)
+    if(loseCreate){loseCreate=false;throw Error("synthetic committed create response lost")};return result},
+    async updateWorkflowGraph(...args){const result=await f.api.updateWorkflowGraph(...args)
+      if(loseUpdate){loseUpdate=false;throw Error("synthetic committed CAS response lost")};return result}},()=>{},()=>"abcd1234-3333-4333-8333-333333333333")
+  try{
+    editor.fresh("Canvas recovery");editor.edit("Canvas recovery",bound(f.resources.alice))
+    await editor.save();assert.ok(editor.snapshot().pending);await editor.save();assert.equal(editor.snapshot().pending,null)
+    assert.equal(editor.snapshot().draft.revision,1);assert.equal((await f.api.listWorkflows()).length,1)
+    const changed=structuredClone(editor.snapshot().draft.graph);changed.nodes[1].data.prompt="Canvas revised private text"
+    editor.edit("Canvas recovery",changed);await editor.save();assert.ok(editor.snapshot().pending)
+    await editor.save();assert.equal(editor.snapshot().pending,null);assert.equal(editor.snapshot().draft.revision,2)
+    assert.equal((await f.api.getWorkflow(editor.snapshot().draft.id)).graph.nodes[1].data.prompt,"Canvas revised private text")
+    const rows=(await f.db.query("SELECT action FROM agentstudio.audit_events WHERE target_kind='workflow' ORDER BY occurred_at")).rows
+    assert.deepEqual(rows.map(row=>row.action),["workflow.config_create","workflow.config_update"])
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.jobs")).rows[0].n,0)
+  }finally{editor.dispose();await f.close()}
 })
 
 test("audit failure rolls back the graph insert/update and preserves the previous revision",async()=>{

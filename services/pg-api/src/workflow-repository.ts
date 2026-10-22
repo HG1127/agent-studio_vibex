@@ -100,6 +100,30 @@ export class WorkflowRepository {
       return normalizeWorkflow(rows.rows[0])
     })
   }
+  async createIdempotent(identity:Identity,requestId:string,name:string,graph:WorkflowGraph){
+    if(!isUuid(requestId)||graph.version!==2)throw new HttpError(400,"invalid_workflow_create_request")
+    const id=requestId.toLowerCase(),checked=safeWorkflowGraph(graph),checkedName=safeName(name)
+    return withActor(this.pool,identity,async(db,actor)=>{
+      // A random request UUID is also this configuration's stable record UUID.
+      // It never determines the owner or creates a job. Normalize before locking.
+      await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[actor+":"+id])
+      const existing=async()=>{
+        const row=(await db.query<WorkflowRow>("SELECT "+columns+" FROM agentstudio.workflows "+
+          "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,actor])).rows[0]
+        if(!row||Number(row.revision)!==1||row.name!==checkedName||JSON.stringify(safeWorkflowGraph(row.graph))!==JSON.stringify(checked))
+          throw new HttpError(409,"workflow_create_request_conflict")
+        return {item:normalizeWorkflow(row),replayed:true}
+      }
+      if((await db.query("SELECT id FROM agentstudio.workflows WHERE id=$1::uuid AND owner_user_id=$2::uuid",[id,actor])).rows.length)return existing()
+      await verifyWorkflowGraphResources(db,actor,checked)
+      const row=(await db.query<WorkflowRow>("INSERT INTO agentstudio.workflows(id,owner_user_id,name,graph) "+
+        "VALUES($1::uuid,$2::uuid,$3::text,$4::jsonb) ON CONFLICT(id) DO NOTHING RETURNING "+columns,
+        [id,actor,checkedName,JSON.stringify(checked)])).rows[0]
+      if(!row)return existing() // A foreign UUID collision remains a generic conflict under owner RLS.
+      await auditGraphWrite(db,actor,row,"workflow.config_create")
+      return {item:normalizeWorkflow(row),replayed:false}
+    })
+  }
   async update(identity:Identity,id:string,name:string,graph:WorkflowGraph,revision:number):
     Promise<WorkflowRow|null> {
     if(!isUuid(id))throw new HttpError(400,"invalid_workflow_id")

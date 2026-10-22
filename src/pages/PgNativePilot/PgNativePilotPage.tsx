@@ -1,4 +1,4 @@
-import {lazy,useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from "react"
+import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from "react"
 import {Bot,BookOpen,BriefcaseBusiness,CheckCircle2,Database,
   KeyRound,Loader2,LogOut,Plus,RefreshCcw,ShieldCheck,Users,Workflow,
   AlertTriangle,ClipboardCheck,CalendarClock,Wrench} from "lucide-react"
@@ -18,6 +18,8 @@ import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
+const PgNativeWorkflowWorkspace=lazy(()=>import("./PgNativeWorkflowWorkspace"))
+const PgNativeWorkflowRunPanel=lazy(()=>import("./PgNativeWorkflowRunPanel"))
 
 // The isolated Run UAT view is excluded from production builds and never
 // unlocks backend task execution: the server enforces a separate approval.
@@ -35,7 +37,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="agents"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="agents"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -65,6 +67,10 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [modelProbeEnabled,setModelProbeEnabled]=useState(false)
   const [workflowValidationEnabled,setWorkflowValidationEnabled]=useState(false)
   const [workflowExecutionEnabled,setWorkflowExecutionEnabled]=useState(false)
+  const [workflowV2Enabled,setWorkflowV2Enabled]=useState(false)
+  const [workflowCanvasOpened,setWorkflowCanvasOpened]=useState(false)
+  const [workflowRunsOpened,setWorkflowRunsOpened]=useState(false)
+  const [workflowRunTarget,setWorkflowRunTarget]=useState<{id:string;revision:number;selection:number}|null>(null)
   const [runSubmissionEnabled,setRunSubmissionEnabled]=useState(false)
   const [boundModelRunsEnabled,setBoundModelRunsEnabled]=useState(false)
   const [autonomousEnabled,setAutonomousEnabled]=useState(false)
@@ -100,11 +106,12 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setNewName("");setNewGoal("");setNewDescription("")
     setStaffEmail("");setStaffName("");setStaffPassword("")
     setModelName("");setModelApiKey("");setModelModels("");setNotice("")
+    setWorkflowCanvasOpened(false);setWorkflowRunsOpened(false);setWorkflowRunTarget(null)
   },[])
   const expireAgentSession=useCallback(()=>{
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
     setAutonomousEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     clearPrivateDrafts()
@@ -112,7 +119,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   },[clearPrivateDrafts])
   const refresh=useCallback(async()=>{
     const ticket=sessionFence.current.beginRead()
-    setConfigEditEnabled(false)
+    setConfigEditEnabled(false);setWorkflowV2Enabled(false)
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setLoading(true)
     try{
@@ -126,10 +133,11 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       if(!sessionFence.current.acceptsRead(ticket))return
       setAgents(a);setWorkflows(w);setKnowledge(k);setModelConnections(m)
       setToolConnections(t)
-      setConfigEditEnabled(productionRoot&&capability?.config_writes_enabled===true)
+      setConfigEditEnabled(capability?.config_writes_enabled===true)
       setModelProbeEnabled(capability?.model_probe_enabled===true)
       setWorkflowValidationEnabled(capability?.workflow_validation_enabled===true)
       setWorkflowExecutionEnabled(capability?.workflow_execution_enabled===true)
+      setWorkflowV2Enabled(capability?.config_writes_enabled===true&&capability.workflow_v2_submission_enabled===true)
       setRunSubmissionEnabled(capability?.config_writes_enabled===true&&capability.run_submission_enabled===true)
       setBoundModelRunsEnabled(capability?.bound_model_runs_enabled===true)
       setAutonomousEnabled(capability?.config_writes_enabled===true&&capability.autonomous_agent_submission_enabled===true)
@@ -190,7 +198,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     clearPrivateDrafts()
     setAgents([]);setWorkflows([]);setKnowledge([]);setModelConnections([])
     setToolConnections([])
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
     try{
@@ -218,7 +226,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([])
     setToolConnections([])
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
     try{
@@ -331,6 +339,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     {key:"schedules" as const,label:"定时计划草稿",icon:CalendarClock,count:null},
     {key:"autonomousAgent" as const,label:"多轮 Agent",icon:Bot,count:null},
     {key:"runs" as const,label:"Agent 运行历史（只读）",icon:ClipboardCheck,count:null},
+    {key:"workflowNativeRuns" as const,label:"Workflow 运行与审批",icon:Workflow,count:null},
     {key:"workflowRuns" as const,label:"Workflow 运行历史（只读）",icon:Workflow,count:null},
     ...(RUN_UAT_LOCAL_ONLY&&!productionRoot?
       [{key:"runUat" as const,label:"运行与审批 UAT",icon:ClipboardCheck,count:null}]:[]),
@@ -422,7 +431,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
           <nav aria-label="独立 PostgreSQL 功能" className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-3 lg:flex-col lg:gap-1 lg:self-start">
             {title.filter(x=>(x.key!=="employees"||profile.is_admin)&&
               (!productionRoot||x.key!=="employees")).map(item=>
-              <button key={item.key} type="button" onClick={()=>{setSection(item.key);setEditing(null);setDetailTarget(null)}}
+              <button key={item.key} type="button" onClick={()=>{setSection(item.key);setEditing(null);setDetailTarget(null);if(item.key==="workflows")setWorkflowCanvasOpened(true);if(item.key==="workflowNativeRuns")setWorkflowRunsOpened(true)}}
                 className={"flex min-w-max items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium lg:w-full "+
                   (section===item.key?"bg-indigo-50 text-indigo-700":"text-slate-600 hover:bg-slate-50")}>
                 <item.icon size={17}/>
@@ -465,24 +474,22 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 key={profile.id} api={api} agents={agents}
                 connections={modelConnections} onUpdated={refresh} runtimeSubmissionEnabled={canRunOwnerModel}/>}
             </>}
-            {section==="workflows"&&<>
-              {canEditConfig&&<CreateCard title="创建 Workflow" description="仅保存开始 → 结束的最小工作流，不会执行节点或调用模型。">
-                <form className="flex flex-wrap gap-3" onSubmit={e=>{e.preventDefault();void action(()=>
-                  api.createWorkflow(newName.trim()),"Workflow 结构已保存")}}>
-                  <input required maxLength={120} className={field+" flex-1"} value={newName} placeholder="Workflow 名称" onChange={e=>setNewName(e.target.value)}/>
-                  <button className={button} disabled={busy} type="submit"><Plus size={16}/>保存结构</button>
-                </form>
-              </CreateCard>}
-              <Records title="我的 Workflow" items={workflows.map(x=>({
-                id:x.id,name:x.name,description:"结构化工作流配置",
-                revision:x.revision,meta:"修订 "+x.revision}))}
-                onInspect={item=>setDetailTarget({kind:"workflows",id:item.id})}
-                onEdit={canEditConfig?item=>setEditing({
-                  kind:"workflows",id:item.id,revision:item.revision,
-                  name:item.name,detail:""
-                }):undefined}/>
-            </>}
-            {section==="workflows"&&(workflowValidationEnabled||workflowExecutionEnabled)&&
+            <div hidden={section!=="workflows"}>
+              {(workflowCanvasOpened||section==="workflows")&&<Suspense fallback={<p role="status">加载工作流画布中…</p>}>
+                <PgNativeWorkflowWorkspace key={profile.id} api={api} workflows={workflows} agents={agents} models={modelConnections} tools={toolConnections} bases={knowledge}
+                  active={section==="workflows"} writeEnabled={configEditEnabled&&!loading&&!busy} executionEnabled={workflowV2Enabled&&!loading&&!busy}
+                  onExpired={expireAgentSession} onSaved={refresh} onRun={(id,revision)=>{
+                    setWorkflowRunTarget(previous=>({id,revision,selection:(previous?.selection??0)+1}));setWorkflowRunsOpened(true);setSection("workflowNativeRuns")
+                  }}/>
+              </Suspense>}
+            </div>
+            <div hidden={section!=="workflowNativeRuns"}>
+              {(workflowRunsOpened||section==="workflowNativeRuns")&&<Suspense fallback={<p role="status">加载工作流任务中…</p>}>
+                <PgNativeWorkflowRunPanel key={profile.id} api={api} workflows={workflows} active={section==="workflowNativeRuns"}
+                  enabled={workflowV2Enabled&&!loading&&!busy} target={workflowRunTarget} onExpired={expireAgentSession}/>
+              </Suspense>}
+            </div>
+            {section==="workflows"&&workflows.some(flow=>flow.graph?.version!==2)&&(workflowValidationEnabled||workflowExecutionEnabled)&&
               <PgNativeWorkflowValidationPanel key={profile.id} api={api}
                 workflows={workflows} validationEnabled={workflowValidationEnabled}
                 executionEnabled={workflowExecutionEnabled}/>}

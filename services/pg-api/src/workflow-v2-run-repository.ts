@@ -186,7 +186,8 @@ export class WorkflowV2RunRepository{
       const approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[id,owner,item.step_key])).rows[0]
       if(!approval||approval.reason_code!=="wf2:"+item.input_sha256)throw new HttpError(409,"workflow_approval_input_changed")
-      if(approval.status===item.decision)return this.assemble(db,owner,run,true)
+      const decision_confirmation={run_id:id,step_key:item.step_key as string,input_sha256:item.input_sha256 as string,status:item.decision as "approved"|"rejected"}
+      if(approval.status===item.decision)return {...(await this.assemble(db,owner,run,true)),decision_confirmation}
       const pending=workflowV2ExecutionRequest(state)
       if(run.status!=="awaiting_approval"||approval.status!=="pending"||!pending||pending.step_key!==item.step_key||pending.input_sha256!==item.input_sha256)
         throw new HttpError(409,"workflow_approval_state_changed")
@@ -204,7 +205,7 @@ export class WorkflowV2RunRepository{
       const updated=(await db.query<WorkflowV2RunRow>("UPDATE agentstudio.runs SET status='queued',checkpoint=$3::jsonb,updated_at=clock_timestamp() "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid RETURNING "+workflowV2RunColumns,[id,owner,JSON.stringify(state)])).rows[0]!
       await auditWorkflowV2(db,owner,id,"workflow.v2_decision",{step_key:item.step_key,input_sha256:item.input_sha256,decision:item.decision})
-      return this.assemble(db,owner,updated,false)
+      return {...(await this.assemble(db,owner,updated,false)),decision_confirmation}
     })
   }
   async cancel(identity:Identity,id:string){

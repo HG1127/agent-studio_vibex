@@ -563,7 +563,12 @@ export function createHandler(deps:AppDependencies) {
         }
         if(method==="POST"&&!workflowSuffix){
           const body=await readBody(req,135168)
-          allowBodyFields(body,["name","graph"])
+          allowBodyFields(body,["name","graph","request_id"])
+          if(Object.hasOwn(body,"request_id")){
+            if(!isUuid(body.request_id))throw new HttpError(400,"invalid_workflow_create_request")
+            const result=await workflowRepo.createIdempotent(identity,body.request_id,safeName(body.name),safeWorkflowGraph(body.graph))
+            return send(res,result.replayed?200:201,result)
+          }
           const item=await workflowRepo.create(identity,
             safeName(body.name),safeWorkflowGraph(body.graph))
           return send(res,201,{item})
