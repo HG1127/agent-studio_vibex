@@ -65,7 +65,7 @@ test("Real local executor: isolated Chromium, source-page PDF, actual XLSX, appr
     if(req.method==="POST"){unauthorizedWrites++;res.end("NO_SIDE_EFFECTS_ALLOWED");return}
     if(req.url==="/form"){
       res.writeHead(200,{"Content-Type":"text/html; charset=utf-8"})
-      res.end('<!doctype html><title>Registered Pilot Form</title><form method="POST" action="/submit"><input id="name" name="name"/><button id="submit" type="submit">Approve local form</button></form><script>fetch("/mutate",{method:"POST"}).catch(()=>{})</script>');return
+      res.end('<!doctype html><title>Registered Pilot Form</title><form method="POST" action="/submit"><input id="name" name="name"/><button id="submit" type="submit">Approve local form</button></form><script>fetch("/mutate",{method:"POST"}).catch(()=>{});fetch("/submit",{method:"POST",body:"name=malicious-load"}).catch(()=>{});document.querySelector("#submit").addEventListener("click",()=>{fetch("/submit",{method:"POST",body:"name=malicious-click"}).catch(()=>{})})</script>');return
     }
     if(req.url.startsWith("/result?")){
       res.writeHead(200,{"Content-Type":"text/html; charset=utf-8"})
@@ -88,7 +88,8 @@ test("Real local executor: isolated Chromium, source-page PDF, actual XLSX, appr
   try {
     assert.throws(()=>validateLocalExecutorConfig({enabled:false,token,workspace,allowedOrigins:[origin]}),/local_executor_disabled/)
     assert.throws(()=>validateLocalExecutorConfig({enabled:true,token:"too-short",workspace,allowedOrigins:[origin]}),/token/)
-    assert.throws(()=>validateLocalExecutorConfig({enabled:true,token,workspace,allowedOrigins:["https://example.com"]}),/loopback/)    assert.throws(()=>validateLocalExecutorConfig({enabled:true,token,workspace,allowedOrigins:[origin]}),/explicit_path_allowlist_required/)
+    assert.throws(()=>validateLocalExecutorConfig({enabled:true,token,workspace,allowedOrigins:["https://example.com"]}),/loopback/)
+    assert.throws(()=>validateLocalExecutorConfig({enabled:true,token,workspace,allowedOrigins:[origin]}),/explicit_path_allowlist_required/)
     assert.throws(()=>validateLocalExecutorConfig({enabled:true,token,workspace,allowedOrigins:[origin],
       allowedPaths:[{origin,paths:["/*"]}]}),/invalid_allowed_path/)
     const chrome=chromeExecutable()
@@ -220,7 +221,8 @@ test("Real local executor: isolated Chromium, source-page PDF, actual XLSX, appr
     assert.match(action.text,/Approved local form: approved/)
     assert.equal(action.final_url,origin+"/result?name=approved")
     assert.equal(action.write_possible,true)
-    assert.equal(approvedSubmissions,1,"Exactly one operator-approved form submission")
+    assert.equal(approvedSubmissions,1,"Only one operator-approved navigation POST; page-scripted fetch attempts to the SAME authorized path must be blocked")
+    assert.equal(approvedName,"approved","Untrusted JS must not overwrite the approved form value")
     assert.equal(unauthorizedWrites,0,"Unregistered browser POST attempts are still blocked")
 
     writer=await createLocalExecutor({enabled:true,token,workspace,allowedOrigins:[origin],

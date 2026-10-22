@@ -12,7 +12,7 @@
 | spreadsheet_export_report | ExcelJS 写出并重新验证真实 XLSX | 需独立启用写权限，生成工作目录 artifacts 下的新文件，绝不覆盖 |
 | browser_registered_action | Playwright 执行预先登记的表单动作 | 需单独启用；模型只能传登记 ID 与指定输入值，不能指定网址/选择器；只能向允许的精确路径 POST |
 
-浏览器读取和登记动作均要求对每个 origin 配置精确的路径白名单。单个任务只允许请求它起始的那个 origin；页面即使尝试访问另一个已登记 origin 的资源，也会被拦截。读取动作只允许 GET/HEAD，阻止 POST、WebSocket、下载与新窗口。登记动作仅对明确列出的写入路径开放 POST。
+浏览器读取和登记动作均要求对每个 origin 配置精确的路径白名单。单个任务只允许请求它起始的那个 origin；页面即使尝试访问另一个已登记 origin 的资源，也会被拦截。读取动作只允许 GET/HEAD，阻止 POST、WebSocket、下载与新窗口。登记动作仅对明确列出的写入路径开放**正式点击期间的 HTML 表单导航 POST**；页面脚本通过 fetch/XHR 发出的 POST 即使路径相同，也不能因此取得权限。本阶段不支持任意 JavaScript 驱动的 AJAX 提交。
 
 ## 2. 手动启动（Windows PowerShell；项目源码根目录）
 
@@ -37,7 +37,7 @@
     $env:AGENT_STUDIO_LOCAL_EXECUTOR_ENABLE_BROWSER_ACTIONS = "1"
     $env:AGENT_STUDIO_LOCAL_EXECUTOR_ACTIONS_JSON = '[{"id":"approved_form","url":"http://127.0.0.1:9876/form","steps":[{"kind":"fill","selector":"#name","arg_key":"name"},{"kind":"click","selector":"#submit"}],"write_paths":["/submit"]}]'
 
-动作 ID、选择器、输入键和可写路径由操作员在启动时登记，Agent 只能传入受限参数，例如 action_id 为 approved_form，arguments 只有 name。任何动作都应通过 Agent Studio 的人工审批；不得将未经审查的业务提交页面登记为动作。
+动作 ID、选择器、输入键和可写路径由操作员在启动时登记，Agent 只能传入受限参数，例如 action_id 为 approved_form，arguments 只有 name。**预登记动作只支持页面填入字段与 HTML 表单导航提交**；它不是“任意自动点击网页”或“执行外部脚本”能力。任何动作都应通过 Agent Studio 的人工审批；不得将未经审查的业务提交页面登记为动作。如果浏览器在提交后返回超时/连接中断，外部提交可能已经发生，应人工核查，不得盲目再次发起。
 
 可选的文件导出写权限
 
@@ -74,7 +74,7 @@
     pnpm check
     pnpm test:e2e:parallel
 
-- tests/local-executor.integration.mjs：真实 Chromium + PDF + XLSX + 文件写出 + 预登记表单提交；覆盖令牌验证、精确路径/来源隔离、跨 origin 子资源、POST/WebSocket 阻断、外部重定向、目录逃逸、符号链接、不能相信缓存公式、文件覆盖拒绝与去敏审计。
+- tests/local-executor.integration.mjs：真实 Chromium + PDF + XLSX + 文件写出 + 预登记表单提交；覆盖令牌验证、精确路径/来源隔离、跨 origin 子资源、POST/WebSocket 阻断、页面加载或点击时以 JavaScript 向**同一个获授权写入路径**进行未授权 fetch 的拦截、外部重定向、目录逃逸、符号链接、不能相信缓存公式、文件覆盖拒绝与去敏审计。
 - tests/local-executor-agent.integration.mjs：真正的 PocketBase Agent Engine 与员工身份、后端安全存储 MCP 认证头、五角色保存和运行、四次人工审批、四项真实工具调用、事件历史与 Excel 产物重读。
 - 所有测试站点、PDF/XLSX、测试员工和模型数据均在独立临时目录/本地服务，未连接真实发行人、真实邮件或生产服务。
 

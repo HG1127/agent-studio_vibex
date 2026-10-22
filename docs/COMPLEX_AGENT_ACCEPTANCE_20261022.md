@@ -107,7 +107,7 @@ AGENT_STUDIO_PLAYWRIGHT_MODULE
 ### 当前验证状态
 
 - 五角色 HTTP/PocketBase 集成：**通过**，包含 D2/D3 边界真实服务重启和工具调用不重放。
-- Chrome：**完整用户旅程通过**，18 组关键操作；五角色编辑、审批上下文、异常 AI 修订后的同窗重试、快捷编辑器跨 Agent 编辑，以及模拟 MCP EOF 后不重放均经过实际页面和数据库核验；正常复杂任务内四个工具各执行一次。未配置 Smithery Key 时共成功检查授权状态 4 次，目录请求 **0 次**，HTTP 400 **0 次**，浏览器控制台错误 **0 条**。
+- Chrome：**完整用户旅程通过**，19 组关键操作；新增“真实浏览器与 PDF / Excel 执行器”接入说明的实际页面核验，并检查五角色编辑、审批上下文、异常 AI 修订后的同窗重试、快捷编辑器跨 Agent 编辑，以及模拟 MCP EOF 后不重放均经过实际页面和数据库核验；正常复杂任务内四个工具各执行一次。未配置 Smithery Key 时共成功检查授权状态 4 次，目录请求 **0 次**，HTTP 400 **0 次**，浏览器控制台错误 **0 条**。
 - 单元/回归：**310 项通过**（含 6 项审批上下文测试、跨 Agent 迟到修订回归，以及 Smithery 授权预检专项的 5 项测试），0 失败、0 跳过；最新 `pnpm check` 再次通过。
 - 隔离集成测试：**26/26 通过**；两个独立 worker，含本地 MCP 执行器与真实 Agent Engine 的浏览器/PDF/XLSX 调用。
 - TypeScript、正式生产构建及 106 个构建资源隔离检查：**通过**；相关 UI 文件的 ESLint 检查通过。
@@ -121,10 +121,10 @@ AGENT_STUDIO_PLAYWRIGHT_MODULE
 真实执行器工具及授权规则：
 
 - browser_read_page：独立 Chromium context，只允许已登记 origin 和精确路径，且每个任务限制在启动时的单一 origin；GET/HEAD 以外的请求、WebSocket、下载和新窗口被拦截。
+- browser_registered_action：只由操作员提前登记动作 ID、起始页面、固定 CSS 选择器、输入字段键及允许写入路径；默认不暴露，Agent 不能指定网址、选择器或脚本。明确启用后，必须通过员工角色授权与逐次审批。只允许注册点击窗口内、来自当前主页面的 HTML 表单导航 POST；网页脚本在加载/点击时试图用 fetch/XHR 向同路径 POST，仍须被拒绝。
 - document_pdf_extract：读取显式沙箱内的 PDF，返回逐页文本、页码和文件 SHA-256；限制文件大小与页数。
 - spreadsheet_analyze：读取显式沙箱内的 XLSX 数值单元格并执行独立数值运算；不把公式缓存值误报为已重新计算的公式结果。
 - spreadsheet_export_report：默认不出现在工具列表。单独开启后才允许生成新 XLSX，路径固定在 artifacts/，使用原子新建方式且拒绝覆盖同名文件。
-- browser_registered_action：默认不出现在工具列表。操作员预先登记 action ID、起始 URL、固定选择器、输入键和可写路径；Agent 只能传登记 ID 和指定字符串值，不能自行指定网址/选择器/脚本。工具被标记为写操作，由 Agent Engine 逐次请求员工审批后执行。
 
 安全与边界测试覆盖了：无授权令牌、越界文件路径、符号链接逃逸、外部/未登记网页来源、另一个已登记 origin 的子资源、恶意 POST、WebSocket、外部重定向、未知动作 ID、额外参数、未批准表单提交、导出覆盖，以及敏感令牌不得出现在 API 响应或审计中。
 

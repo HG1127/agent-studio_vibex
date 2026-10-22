@@ -237,6 +237,14 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await page.waitForURL("**/agent-create")
     results.push("employee UI login without injected credentials or browser auth state")
 
+    await page.goto(webOrigin + "/execution-connections")
+    const pilotInfo = page.getByRole("region", { name: "真实浏览器与 PDF / Excel 执行器" })
+    await visible(pilotInfo.getByText("node ops/local-executor.mjs", { exact: true }))
+    await visible(pilotInfo.getByText(/默认关闭/))
+    assert.equal(await pilotInfo.getByRole("link", { name: /前往 MCP 插件连接/ }).getAttribute("href"), "/plugin-market")
+    results.push("execution connections UI explains the real opt-in local Chromium/PDF/XLSX MCP bridge without claiming a live desktop connection")
+    await page.goto(webOrigin + "/agent-create")
+
     await page.locator("#agent-requirement").fill("DESIGN_WORKSPACE_CREATE 创建一个需要浏览器读取资料、电脑软件整理表格并核验报告的助手。")
     await page.getByRole("button", { name: "生成 Agent 方案", exact: true }).click()
     await page.getByRole("button", { name: "进入方案编辑", exact: true }).click()

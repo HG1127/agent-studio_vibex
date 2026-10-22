@@ -243,6 +243,10 @@ export async function createLocalExecutor(config) {
 
   async function freshBrowserContext({origin,writeOrigin="",postPaths=new Set()}={}) {
     // Concurrent tool calls share the process but never cookies or page state.
+    // Registered POSTs are permitted only while a configured click is underway
+    // and only for top-level HTML form navigations (not page-initiated fetch/XHR).
+    let approvedNavigationWindow = false
+    let approvedMainFrame = null
     if (!browserLaunch) {
       browserLaunch = chromium.launch({
         headless:true, ...(settings.chromeExecutable ? {executablePath:settings.chromeExecutable}:{}),
@@ -268,7 +272,8 @@ export async function createLocalExecutor(config) {
           // POSTs need the additional per-action write allowlist.
           permitted = Boolean(onAllowlist) && destination.origin === origin &&
             (["GET","HEAD"].includes(request.method()) ||
-              request.method() === "POST" &&
+              request.method() === "POST" && approvedNavigationWindow &&
+              request.isNavigationRequest() && request.frame() === approvedMainFrame &&
               destination.origin === writeOrigin && postPaths.has(destination.pathname))
         } catch {}
         if (!permitted) { blocked++; await route.abort("blockedbyclient").catch(()=>{}) }
@@ -277,7 +282,9 @@ export async function createLocalExecutor(config) {
       if (typeof context.routeWebSocket !== "function") err("browser_websocket_guard_unavailable")
       await context.routeWebSocket("**/*", websocket => { blocked++; websocket.close() })
       await context.addInitScript(() => { window.open = () => null })
-      return {context, getBlocked:()=>blocked}
+      return {context, getBlocked:()=>blocked,
+        setApprovedMainFrame:frame=>{approvedMainFrame=frame},
+        setApprovedNavigationWindow:value=>{approvedNavigationWindow=value===true}}
     } catch(error) {
       await context.close().catch(()=>{})
       throw error
@@ -310,16 +317,21 @@ export async function createLocalExecutor(config) {
       err("invalid_action_arguments")
     const target=validateUrl(action.url,settings.allowedOrigins)
     if (!settings.allowedPaths.get(target.origin)?.has(target.pathname)) err("action_path_not_authorized")
-    const {context,getBlocked}=await freshBrowserContext({
+    const {context,getBlocked,setApprovedNavigationWindow,setApprovedMainFrame}=await freshBrowserContext({
       origin:target.origin,writeOrigin:target.origin,postPaths:action.writePaths,
     })
     try{
       const page=await context.newPage()
+      setApprovedMainFrame(page.mainFrame())
       await page.goto(target.href,{waitUntil:"domcontentloaded",timeout:DEFAULT_BROWSER_TIMEOUT})
       let completed=0
       for(const step of action.steps){
         if(step.kind==="fill")await page.locator(step.selector).fill(inputs[step.arg_key],{timeout:4000})
-        else await page.locator(step.selector).click({timeout:4000})
+        else {
+          setApprovedNavigationWindow(true)
+          try { await page.locator(step.selector).click({timeout:4000}) }
+          finally { setApprovedNavigationWindow(false) }
+        }
         completed++
       }
       const finalUrl=validateUrl(page.url(),settings.allowedOrigins)
