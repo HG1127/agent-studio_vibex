@@ -12,7 +12,7 @@ import pg from "pg"
 import {requireEphemeralPg18Ci} from "../src/pg18-ephemeral-ci-guard.mjs"
 import {loadPg18CiBaseline} from "../src/pg18-ci-schema.mjs"
 import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
-import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole} from "../src/bound-dispatch-role-preflight.ts"
+import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
@@ -23,6 +23,9 @@ import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
 import {WorkflowV2RunRepository} from "../src/workflow-v2-run-repository.ts"
 import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
+import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../src/workflow-v2-model-dispatch.ts"
+import {workflowV2ModelEffectExecutor} from "../src/workflow-v2-model-client.ts"
+import {createWorkflowV2ModelInternalHandler} from "../src/workflow-v2-model-handler.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
@@ -149,6 +152,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       "VALUES('pg_v9_022','synthetic CI predecessor')")
     await admin.query(upgrade("pg_v9_023_workflow_safe_worker.sql"))
     await admin.query(upgrade("pg_v9_024_bound_dispatch_identity.sql"))
+    await admin.query(upgrade("pg_v9_025_workflow_model_identity.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -162,7 +166,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
     const workerPool=adapter(byLogin.agentstudio_stage_worker)
     for(const [kind,pool] of [["api",apiPool],["identity",identityPool],["broker",brokerPool]])
-      await verifyBoundDispatchPrivileges(pool,kind)
+      {await verifyBoundDispatchPrivileges(pool,kind);await verifyWorkflowModelIdentityPrivileges(pool,kind)}
     // A disposable CI database must NOT pass the actual deployment target
     // wrapper. The privilege inspector above does not bypass that wrapper.
     await assert.rejects(verifyBoundDispatchRole(apiPool,{mode:"baota_pg18",host:"127.0.0.1",
@@ -252,35 +256,41 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(JSON.stringify(configAudit).includes(secret),false)
     assert.equal(generated,1)
 
-    // V2 queue/approval/replay over actual PG18 roles and native HTTPS. This
-    // adapter is deliberately synthetic and local; V2 private Broker dispatch
-    // is NOT inferred from the separate Agent mTLS proof above.
-    const v2=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")
+    // Actual restricted PG18 identities and V2 mTLS transport, with only the
+    // final provider function replaced by a local synthetic response/failure.
     let v2Calls=0
-    const v2Worker=new WorkflowV2Worker(workerPool,"ci-workflow-v2",{executor:{async execute(request,lease){
-      assert.equal(request.kind,"model");assert.equal(request.configuration.model_binding.connection_id,ready.id)
-      assert.equal(lease.run_id,v2.run.id);assert.equal(Object.hasOwn(lease,"owner_user_id"),false)
-      v2Calls++;return "Synthetic PG18 V2 result"
-    }}})
-    assert.equal((await v2Worker.tick()).status,"awaiting_approval")
-    const pending=(await api.getWorkflowV2Run(v2.run.id)).pending_effect
-    await api.login("other@example.com","SyntheticOtherPassword#2026")
-    await assert.rejects(api.getWorkflowV2Run(v2.run.id),e=>e.status===404)
-    await assert.rejects(api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256),e=>e.status===404)
-    await api.login("admin@example.com","SyntheticAdminPassword#2026")
-    await api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256)
-    await v2Worker.tick();await v2Worker.tick()
-    assert.equal((await api.getWorkflowV2Run(v2.run.id)).run.result_text,"Synthetic PG18 V2 result")
-    assert.equal((await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")).replayed,true)
-    assert.equal(v2Calls,1)
-    const uncertain=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic unknown result","pg18-native-v2-runtime-0002")
-    const unknownWorker=new WorkflowV2Worker(workerPool,"ci-v2-unknown",{executor:{async execute(){v2Calls++;throw Error("synthetic_response_lost")}}})
-    await unknownWorker.tick()
-    const unknownPending=(await api.getWorkflowV2Run(uncertain.run.id)).pending_effect
-    await api.decideWorkflowV2Node(uncertain.run.id,"approved",unknownPending.step_key,unknownPending.input_sha256)
-    assert.equal((await unknownWorker.tick()).status,"paused")
-    assert.equal((await unknownWorker.tick()).status,"idle");assert.equal(v2Calls,2)
-    assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[uncertain.run.id])).rows,[{status:"unknown"}])
+    const v2Broker=new WorkflowV2ModelDispatch(apiPool,key,async(material,prompt)=>{
+      assert.equal(material.api_key,secret);v2Calls++
+      if(prompt==="Synthetic unknown result")throw Error("synthetic_response_lost")
+      assert.equal(prompt,"Synthetic V2 task");return "Synthetic PG18 V2 result"
+    },brokerPool)
+    const v2Dispatch=verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),v2Broker)
+    await withDisposableBoundModelTls(v2Dispatch,async config=>{
+      const v2=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")
+      const v2Worker=new WorkflowV2Worker(workerPool,"ci-workflow-v2",{executor:workflowV2ModelEffectExecutor(config)})
+      assert.equal((await v2Worker.tick()).status,"awaiting_approval")
+      const pending=(await api.getWorkflowV2Run(v2.run.id)).pending_effect
+      await api.login("other@example.com","SyntheticOtherPassword#2026")
+      await assert.rejects(api.getWorkflowV2Run(v2.run.id),e=>e.status===404)
+      await assert.rejects(api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256),e=>e.status===404)
+      await api.login("admin@example.com","SyntheticAdminPassword#2026")
+      await api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256)
+      await v2Worker.tick();await v2Worker.tick()
+      assert.equal((await api.getWorkflowV2Run(v2.run.id)).run.result_text,"Synthetic PG18 V2 result")
+      assert.equal((await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")).replayed,true)
+      assert.equal(v2Calls,1)
+      assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[v2.run.id])).rows,
+        [{status:"succeeded"},{status:"succeeded"}])
+      const uncertain=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic unknown result","pg18-native-v2-runtime-0002")
+      const unknownWorker=new WorkflowV2Worker(workerPool,"ci-v2-unknown",{executor:workflowV2ModelEffectExecutor(config)})
+      await unknownWorker.tick()
+      const unknownPending=(await api.getWorkflowV2Run(uncertain.run.id)).pending_effect
+      await api.decideWorkflowV2Node(uncertain.run.id,"approved",unknownPending.step_key,unknownPending.input_sha256)
+      assert.equal((await unknownWorker.tick()).status,"paused")
+      assert.equal((await unknownWorker.tick()).status,"idle");assert.equal(v2Calls,2)
+      assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[uncertain.run.id])).rows,
+        [{status:"unknown"},{status:"unknown"}])
+    },{handlerFactory:createWorkflowV2ModelInternalHandler})
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)

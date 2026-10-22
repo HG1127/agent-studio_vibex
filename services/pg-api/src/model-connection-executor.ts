@@ -9,6 +9,7 @@ import {exactProviderEndpoint,resolveSafeProviderAddress,
   type ProviderResolver} from "./model-connection-probe.ts"
 import type {ModelProvider as ProviderKind} from "./model-connection-repository.ts"
 import type {ModelInput} from "./model-provider.ts"
+import {selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
 
 export interface SelectedModelMaterial {
   provider:ProviderKind
@@ -75,6 +76,16 @@ const systemInstruction=
 export function preparedSelectedModelRequest(
   material:SelectedModelMaterial,input:ModelInput,
 ):PreparedSelectedModelRequest{
+  return preparedTextRequest(material,validateInput(input),16384)
+}
+// The prompt is reconstructed by the private Workflow Broker from its sealed
+// checkpoint. Never call this with an unverified public request body.
+export function preparedWorkflowModelRequest(material:SelectedModelMaterial,prompt:string):PreparedSelectedModelRequest{
+  if(typeof prompt!=="string"||!prompt.trim()||prompt.length>12000||prompt.includes("\0"))
+    throw Error("invalid_workflow_model_prompt")
+  return preparedTextRequest(material,prompt,65536)
+}
+function preparedTextRequest(material:SelectedModelMaterial,text:string,maxBytes:number):PreparedSelectedModelRequest{
   const endpoint=exactProviderEndpoint(material)
   if(typeof material.api_key!=="string"||
      material.api_key.length<8||material.api_key.length>4096||
@@ -83,7 +94,6 @@ export function preparedSelectedModelRequest(
   if(typeof material.model_id!=="string"||
      !/^[A-Za-z0-9._:/-]{1,120}$/.test(material.model_id))
     throw Error("invalid_bound_model_id")
-  const text=validateInput(input)
   const headers:Record<string,string>={
     Accept:"application/json",
     "Content-Type":"application/json",
@@ -123,7 +133,7 @@ export function preparedSelectedModelRequest(
     }
   }
   const body=Buffer.from(JSON.stringify(payload),"utf8")
-  if(body.length>16384)throw Error("invalid_bound_model_input")
+  if(body.length>maxBytes)throw Error("invalid_bound_model_input")
   headers["Content-Length"]=String(body.length)
   return {host:endpoint.host,path,headers,body}
 }
@@ -168,8 +178,22 @@ export function createIsolatedBoundModelExecutor(
   uid=process.getuid?.(),
 ):(material:SelectedModelMaterial,input:ModelInput)=>Promise<string>{
   selectBoundGenerationUat(env,listen,origin,uid)
-  return async (material,input)=>{
-    const prepared=preparedSelectedModelRequest(material,input)
+  return selectedTransport(resolver,request,preparedSelectedModelRequest,fixedTimeout)
+}
+export function createIsolatedWorkflowModelExecutor(
+  env:NodeJS.ProcessEnv,origin:string,listen:boolean,
+  resolver:ProviderResolver={resolve4,resolve6},request:typeof httpsRequest=httpsRequest,uid=process.getuid?.(),
+):(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>{
+  selectBoundGenerationUat(env,listen,origin,uid)
+  if(!selectWorkflowV2ModelExecution(env))throw Error("workflow_v2_model_not_approved")
+  return selectedTransport(resolver,request,preparedWorkflowModelRequest,25000)
+}
+function selectedTransport<T>(resolver:ProviderResolver,request:typeof httpsRequest,
+  prepare:(material:SelectedModelMaterial,input:T)=>PreparedSelectedModelRequest,timeout:number
+):(material:SelectedModelMaterial,input:T,signal?:AbortSignal)=>Promise<string>{
+  return async (material,input,signal)=>{
+    signal?.throwIfAborted()
+    const prepared=prepare(material,input)
     let address:{address:string;family:4|6}
     try{address=await resolveSafeProviderAddress(resolver,prepared.host)}
     catch{throw Error("bound_model_dns_unavailable_or_unsafe")}
@@ -195,7 +219,7 @@ export function createIsolatedBoundModelExecutor(
         lookup:(_host,_opts,callback)=>callback(
           null,address.address,address.family),
         headers:prepared.headers,
-        timeout:fixedTimeout,signal:AbortSignal.timeout(fixedTimeout),
+        timeout,signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout),
       }
       const req=request(options,response=>{
         if(response.statusCode!==200){
@@ -232,7 +256,7 @@ export function createIsolatedBoundModelExecutor(
         response.on("aborted",()=>fail("bound_model_transport_unknown"))
       })
       req.on("error",()=>fail("bound_model_transport_unknown"))
-      req.setTimeout(fixedTimeout,
+      req.setTimeout(timeout,
         ()=>req.destroy(Error("bound_model_transport_unknown")))
       req.end(prepared.body)
     })

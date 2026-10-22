@@ -64,3 +64,14 @@ test("private Broker preview unit cannot become a paid service by installation",
   assert.match(unit,/^DynamicUser=yes/m)
   assert.match(unit,/^IPAddressAllow=127\.0\.0\.0\/8/m)
 })
+
+test("Workflow V2 serving needs its own enable pair and a distinct client certificate pin",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY"}
+  assert.equal(boundDispatchServerConfig(paid,"serve","linux",1001).workflowModelEnabled,false)
+  for(const delta of [flags,{...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:baseline.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT},
+    {AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true"}])
+    assert.throws(()=>boundDispatchServerConfig({...paid,...delta},"serve","linux",1001))
+  const cfg=boundDispatchServerConfig({...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)},"serve","linux",1001)
+  assert.equal(cfg.workflowModelEnabled,true)
+})

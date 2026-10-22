@@ -12,6 +12,7 @@ type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phas
   lease_owner:string;lease_token:string;lease_version:string|number;lease_until:Date|string;attempts:number;max_attempts:number}
 export type WorkflowV2Tick={status:"idle"|"progressed"|"awaiting_approval"|"succeeded"|"failed"|"paused"|"stale";run_id?:string}
 export interface WorkflowV2EffectExecutor{
+  supports?(request:WorkflowEffectRequest):boolean
   execute(request:WorkflowEffectRequest,lease:{job_id:string;run_id:string;lease_token:string;lease_version:number;worker_id:string;signal:AbortSignal}):Promise<string>
 }
 async function tx<T>(pool:SqlPool,fn:(db:SqlClient)=>Promise<T>):Promise<T>{
@@ -142,7 +143,7 @@ export class WorkflowV2Worker{
           state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:pending.step_key,input_sha256:pending.input_sha256,output:saved.output})
           view=inspectWorkflowV2Checkpoint(state.graph,state.machine);continue
         }
-        if(!this.executor){
+        if(!this.executor||(this.executor.supports&&!this.executor.supports(pending))){
           await this.persist(db,job,state,"paused","workflow_v2_effect_executor_unavailable")
           await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}
         }

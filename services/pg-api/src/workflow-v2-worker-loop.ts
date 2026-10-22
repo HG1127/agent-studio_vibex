@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Explicit PG18 V2 Worker entrypoint. No effect adapter is installed here;
-// external nodes pause after approval until the private adapter is integrated.
+// Explicit PG18 V2 Worker. Optional model-only private mTLS adapter, disabled
+// by default. Tool/Agent nodes pause before creating an external effect.
 import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
 import {randomUUID} from "node:crypto"
 import {setTimeout as sleep} from "node:timers/promises"
@@ -9,10 +9,14 @@ import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
 import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
 import {assertPgWorkerActivation,assertPg18WorkerCredentialBinding,pgWorkerOfflinePlan} from "./worker-activation-guard.ts"
 import {WorkflowV2Worker} from "./workflow-v2-worker.ts"
+import {selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
+import {readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
+import {workflowV2ModelEffectExecutor} from "./workflow-v2-model-client.ts"
 import type {SqlPool} from "./contracts.ts"
 const marker="APPROVE_ISOLATED_PG_WORKFLOW_V2_RUNTIME_ONLY"
 function required(name:string){const value=process.env[name]?.trim();if(!value)throw Error("missing_"+name);return value}
 async function main(mode:"serve"|"preflight"){
+  const modelEnabled=selectWorkflowV2ModelExecution(process.env)
   if(mode==="serve"){
     assertPgWorkerActivation(process.env,["--serve"])
     if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true"||
@@ -35,12 +39,17 @@ async function main(mode:"serve"|"preflight"){
   let stop=false;process.once("SIGTERM",()=>{stop=true});process.once("SIGINT",()=>{stop=true})
   try{
     await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
+    const executor=modelEnabled?workflowV2ModelEffectExecutor({approvedForIsolatedUat:true,
+      origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),
+      ca:readBoundRuntimeCredential("workflow","dispatch-ca.pem",process.env),
+      cert:readBoundRuntimeCredential("workflow","dispatch-workflow.pem",process.env),
+      key:readBoundRuntimeCredential("workflow","dispatch-workflow.key",process.env)}):undefined
     if(mode==="preflight"){
       process.stdout.write(JSON.stringify({mode,worker:"workflow_v2",verified_roles:true,db_writes_performed:false,
-        worker_started:false,effect_executor_installed:false,production_cutover_allowed:false})+"\n");return
+        worker_started:false,effect_executor_installed:false,model_adapter_config_verified:modelEnabled,production_cutover_allowed:false})+"\n");return
     }
-    const worker=new WorkflowV2Worker(adapter,"pg-workflow-v2-"+randomUUID().slice(0,8))
-    process.stdout.write(JSON.stringify({service:"pg-workflow-v2",state:"ready",effect_executor_installed:false,
+    const worker=new WorkflowV2Worker(adapter,"pg-workflow-v2-"+randomUUID().slice(0,8),{executor})
+    process.stdout.write(JSON.stringify({service:"pg-workflow-v2",state:"ready",effect_executor_installed:modelEnabled,
       scheduler_started:false,production_cutover_allowed:false})+"\n")
     while(!stop){
       try{const result=await worker.tick()

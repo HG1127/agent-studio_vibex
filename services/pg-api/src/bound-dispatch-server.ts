@@ -10,12 +10,15 @@ import type {SqlPool,SqlClient} from "./contracts.ts"
 import {selectPgRuntimeTarget} from "./pg-runtime-target.ts"
 import {boundCertificateFingerprint} from "./bound-worker-mtls.ts"
 import {boundCredentialDirectory,readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
-import {verifyBoundDispatchRole} from "./bound-dispatch-role-preflight.ts"
+import {verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges} from "./bound-dispatch-role-preflight.ts"
 import {parseModelEncryptionKey} from "./model-connection-crypto.ts"
-import {selectBoundGenerationUat,createIsolatedBoundModelExecutor} from "./model-connection-executor.ts"
+import {selectBoundGenerationUat,createIsolatedBoundModelExecutor,createIsolatedWorkflowModelExecutor} from "./model-connection-executor.ts"
 import {OwnerBoundModelDispatch} from "./owner-model-dispatch.ts"
 import {BoundLeaseIdentityRepository,createVerifiedBoundDispatchAdapter} from "./bound-lease-identity.ts"
 import {createIsolatedBoundModelInternalHandler} from "./bound-model-internal-handler.ts"
+import {workflowV2ModelRoute,selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
+import {createWorkflowV2ModelInternalHandler} from "./workflow-v2-model-handler.ts"
+import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "./workflow-v2-model-dispatch.ts"
 
 const origin="https://127.0.0.1:7453"
 const directory=boundCredentialDirectory("dispatch")
@@ -38,9 +41,15 @@ export function boundDispatchServerConfig(
   if(target.mode!=="baota_pg18")refuse()
   try{boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)}
   catch{refuse()}
+  const workflowModelEnabled=selectWorkflowV2ModelExecution(env)
+  const workflowFingerprint=env.AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT
+  if(workflowModelEnabled)try{
+    const workflowPin=boundCertificateFingerprint(workflowFingerprint)
+    if(workflowPin.equals(boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)))refuse()
+  }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
   return {target,origin,directory,port:7453 as const,
-    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!}
+    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowFingerprint}
 }
 export function assertBoundDispatchTlsMaterial(
   ca:Buffer,cert:Buffer,key:Buffer,now=Date.now(),
@@ -104,6 +113,11 @@ export async function startBoundDispatchServer(
     await verifyBoundDispatchRole(adapter(api),cfg.target,"api")
     await verifyBoundDispatchRole(adapter(identities),cfg.target,"identity")
     await verifyBoundDispatchRole(adapter(broker),cfg.target,"broker")
+    if(cfg.workflowModelEnabled){
+      await verifyWorkflowModelIdentityPrivileges(adapter(api),"api")
+      await verifyWorkflowModelIdentityPrivileges(adapter(identities),"identity")
+      await verifyWorkflowModelIdentityPrivileges(adapter(broker),"broker")
+    }
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -117,8 +131,13 @@ export async function startBoundDispatchServer(
       approvedForIsolatedUat:true,reviewedClientFingerprint256:cfg.workerFingerprint,
       dispatch:createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(adapter(identities)),dispatch),
     })
+    const workflowHandler=cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({
+      approvedForIsolatedUat:true,reviewedClientFingerprint256:cfg.workflowFingerprint!,
+      dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
+        new WorkflowV2ModelDispatch(adapter(api),encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker))),
+    }):undefined
     server=createServer({key,cert,ca,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},
-      (req,res)=>{void handler(req,res).catch(()=>res.destroy())})
+      (req,res)=>{void (workflowHandler&&req.url===workflowV2ModelRoute?workflowHandler:handler)(req,res).catch(()=>res.destroy())})
     server.requestTimeout=60000
     server.headersTimeout=12000
     server.maxRequestsPerSocket=1

@@ -61,3 +61,7 @@ pnpm test:pg18:bound-runtime
 ```
 
 Never commit `.tmp`, runtime DBs, generated certificates or private credentials. Do not change the production cutover gate from unit/CI success alone.
+
+## Subsequent private Workflow model candidate
+
+The new local model-only adapter sends only lease/key/hash over a separate private mTLS route. A proposed V2-only identity function and the Broker's replay of the sealed database state verify the exact approved owner/node/input. An independently committed per-node dispatch reservation prevents repeated/concurrent provider POSTs. The Worker has independent opt-in, protected Workflow TLS files and no model key access; the Broker requires a distinct client pin and verifies the new function's privilege boundary. Tool/Agent nodes pause before external effects. The real PG18 CI assertions have been updated to exercise this path with a synthetic provider response, but have not run remotely. See [private model scope and operator prerequisites](PG18_WORKFLOW_V2_PRIVATE_MODEL.md). Existing UI/configuration/runtime candidate refs remain unchanged; this later source is not covered by the earlier UI upload question. No production gate is enabled.

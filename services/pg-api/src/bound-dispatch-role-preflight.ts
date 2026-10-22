@@ -95,3 +95,26 @@ export async function verifyBoundDispatchPrivileges(
     if(rollbackFailed)refuse()
   }
 }
+
+// Optional V2 extension. The original role boundary must pass first.
+export async function verifyWorkflowModelIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole):Promise<void>{
+  if(!Object.hasOwn(groups,kind))refuse()
+  const db=await pool.connect();let begun=false
+  try{
+    await db.query("BEGIN READ ONLY");begun=true;await db.query("SET LOCAL ROLE "+groups[kind])
+    const rows=(await db.query<{definer:boolean;config:string[];volatile:string;can:boolean;public:boolean;api:boolean;worker:boolean;broker:boolean}>(
+      "SELECT p.prosecdef AS definer,p.proconfig AS config,p.provolatile AS volatile,"+
+      "has_function_privilege(current_user,p.oid,'EXECUTE') AS can,"+
+      "has_function_privilege('agentstudio_api',p.oid,'EXECUTE') AS api,"+
+      "has_function_privilege('agentstudio_worker',p.oid,'EXECUTE') AS worker,"+
+      "has_function_privilege('agentstudio_model_broker',p.oid,'EXECUTE') AS broker,"+
+      "EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a "+
+      "WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS public FROM pg_proc p "+
+      "WHERE p.oid=to_regprocedure('agentstudio.workflow_model_lease_identity(uuid,uuid,uuid,bigint,text,text,text)')")).rows
+    const row=rows[0]
+    if(rows.length!==1||!row||!row.definer||row.volatile!=="v"||row.can!==(kind==="identity")||
+       row.public!==false||row.api!==false||row.worker!==false||row.broker!==false||
+       !Array.isArray(row.config)||!row.config.some(value=>value.replace(/\s/g,"")==="search_path=pg_catalog,agentstudio"))refuse()
+  }catch{refuse()}
+  finally{let failed=false;if(begun)try{await db.query("ROLLBACK")}catch{failed=true};db.release();if(failed)refuse()}
+}
