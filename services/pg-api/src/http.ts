@@ -6,6 +6,7 @@ import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
 import { WorkflowRepository } from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
 import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
+import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import { KnowledgeBaseRepository, safeDescription, safeKnowledgeQuery, safeTextDocumentInput } from "./knowledge-repository.ts"
 import {ModelConnectionRepository,safeModelConnectionInput} from "./model-connection-repository.ts"
 import {ToolConnectionRepository,safeToolConnectionInput} from "./tool-connection-repository.ts"
@@ -21,6 +22,7 @@ export interface AppDependencies {
   workflowRepository?: WorkflowRepository
   workflowValidationRepository?: WorkflowValidationRepository
   workflowSafeRunRepository?: WorkflowSafeRunRepository
+  workflowV2RunRepository?: WorkflowV2RunRepository
   knowledgeRepository?: KnowledgeBaseRepository
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
@@ -93,6 +95,8 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/workflows\/[0-9a-fA-F-]{36}\/runs$/.test(path)
       const workflowSafeRunReadRoute=path==="/api/v2/workflow-runs" ||
         /^\/api\/v2\/workflow-runs\/[0-9a-fA-F-]{36}$/.test(path)
+      const workflowV2Submit=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/native-runs$/.exec(path)
+      const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps))?)?$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
       const submitPrepareRoute=
@@ -107,7 +111,7 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/tool-connections\/[0-9a-fA-F-]{36}$/.test(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
-         !workflowSafeRunReadRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
+         !workflowSafeRunReadRoute && !workflowV2Submit && !workflowV2Route && !knowledgeRoute && !runRoute && !schedulesRoute &&
          !modelConnectionsRoute && !toolConnectionsRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
@@ -497,6 +501,39 @@ export function createHandler(deps:AppDependencies) {
         if(!result)throw new HttpError(404,"workflow_validation_not_found")
         return send(res,200,{...result,
           scheduler_started:false,workflow_worker_started:false})
+      }
+
+      if(workflowV2Submit||workflowV2Route){
+        const repo=deps.workflowV2RunRepository
+        if(!repo)throw new HttpError(503,"workflow_v2_disabled")
+        if(workflowV2Submit){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const result=await repo.submit(identity,workflowV2Submit[1]!,await readBody(req,8192))
+          return send(res,result.replayed?200:201,{...result,worker_started_by_api:false})
+        }
+        const id=workflowV2Route![1],action=workflowV2Route![2]
+        if(!id){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          const query=new URL(req.url||"/","http://127.0.0.1").searchParams
+          return send(res,200,{items:await repo.list(identity,Number(query.get("limit")??30))})
+        }
+        if(action==="decision"){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          return send(res,200,{...await repo.decide(identity,id,await readBody(req,1024)),worker_started_by_api:false})
+        }
+        if(action==="cancel"){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          allowBodyFields(await readBody(req,64),[])
+          return send(res,200,{...await repo.cancel(identity,id),worker_started_by_api:false})
+        }
+        if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+        if(action==="steps"){
+          const query=new URL(req.url||"/","http://127.0.0.1").searchParams
+          return send(res,200,await repo.steps(identity,id,query.get("after")??"",Number(query.get("limit")??100)))
+        }
+        const result=await repo.get(identity,id)
+        if(!result)throw new HttpError(404,"workflow_run_not_found")
+        return send(res,200,{...result,worker_started_by_api:false})
       }
 
       if(workflowRoute){

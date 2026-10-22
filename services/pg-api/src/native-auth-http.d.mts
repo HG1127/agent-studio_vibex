@@ -12,5 +12,6 @@ export function createNativeAuthHttpHandler(deps:{
   allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean
   allowWorkflowExecution?:boolean
+  allowWorkflowV2Submission?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}

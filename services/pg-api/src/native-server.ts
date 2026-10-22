@@ -19,6 +19,7 @@ import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
 import {WorkflowRepository} from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
 import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
+import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {KnowledgeBaseRepository} from "./knowledge-repository.ts"
 import {createHandler} from "./http.ts"
 import {NativeAuthRepository} from "./native-auth-repository.mjs"
@@ -332,6 +333,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
       allowWorkflowValidation:capabilities.workflowValidationUat===true,
       allowWorkflowExecution:capabilities.workflowExecutionUat===true,
+      allowWorkflowV2Submission:capabilities.workflowV2ExecutionUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
@@ -371,6 +373,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(adapter(businessPool)),
+      workflowV2RunRepository:new WorkflowV2RunRepository(adapter(businessPool)),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
         ?{workflowValidationRepository:new WorkflowValidationRepository(
@@ -400,6 +403,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       provider_probe_uat_enabled:capabilities.modelProbeUat,
       workflow_validation_uat_enabled:capabilities.workflowValidationUat===true,
       workflow_execution_uat_enabled:capabilities.workflowExecutionUat===true,
+      workflow_v2_submission_uat_enabled:capabilities.workflowV2ExecutionUat===true,
       workers_started:false,production_cutover_allowed:false})+"\n")
     let shuttingDown=false
     const shutdown=()=>{

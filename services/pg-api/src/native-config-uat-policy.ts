@@ -14,6 +14,8 @@ export interface NativePg18UatCapabilities {
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
   workflowExecutionUat?:boolean
+  /** Versioned Workflow queue/approval UAT, independent of Start/End-only. */
+  workflowV2ExecutionUat?:boolean
   /** Additional independent UAT prerequisite; does not register a paid transport. */
   boundModelExecutionUat?:boolean
 }
@@ -28,6 +30,7 @@ const kbIngestMarker="APPROVE_DISPOSABLE_PG18_TEXT_INGEST_UAT_ONLY"
 const modelProbeMarker="APPROVE_DISPOSABLE_PG18_PROVIDER_READONLY_PROBE_ONLY"
 const workflowValidationMarker="APPROVE_DISPOSABLE_PG18_WORKFLOW_VALIDATION_ONLY"
 const workflowExecutionMarker="APPROVE_DISPOSABLE_PG18_WORKFLOW_EXECUTION_ONLY"
+const workflowV2Marker="APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY"
 const boundModelExecutionMarker="APPROVE_DISPOSABLE_PG18_OWNER_BOUND_GENERATION_UAT_ONLY"
 
 // Explicit operator acknowledgement is required only for an isolated
@@ -50,9 +53,11 @@ export function selectNativePg18UatCapabilities(
   const flowMarker=env.AGENT_STUDIO_PG18_WORKFLOW_VALIDATION_UAT_APPROVED
   const execution=env.AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED
   const executionMarker=env.AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_APPROVED
+  const flowV2=env.AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED
+  const flowV2Marker=env.AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED
   const boundModel=env.AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_ENABLED
   const boundModelMarker=env.AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_APPROVED
-  for(const value of [config,employees,run,ingest,probe,flow,execution,boundModel])
+  for(const value of [config,employees,run,ingest,probe,flow,execution,flowV2,boundModel])
     if(value!==undefined&&value!=="true")refuse()
   const configUat=config==="true"
   const employeeUat=employees==="true"
@@ -61,6 +66,7 @@ export function selectNativePg18UatCapabilities(
   const modelProbeUat=probe==="true"
   const workflowValidationUat=flow==="true"
   const workflowExecutionUat=execution==="true"
+  const workflowV2ExecutionUat=flowV2==="true"
   const boundModelExecutionUat=boundModel==="true"
   if(!boundModelExecutionUat&&boundModelMarker!==undefined)refuse()
   if(!runUat&&runMarker!==undefined)refuse()
@@ -68,26 +74,29 @@ export function selectNativePg18UatCapabilities(
   if(!modelProbeUat&&probeMarker!==undefined)refuse()
   if(!workflowValidationUat&&flowMarker!==undefined)refuse()
   if(!workflowExecutionUat&&executionMarker!==undefined)refuse()
+  if(!workflowV2ExecutionUat&&flowV2Marker!==undefined)refuse()
   if(!configUat&&!employeeUat&&!runUat&&!ingestUat&&!modelProbeUat&&
-     !workflowValidationUat&&!workflowExecutionUat&&!boundModelExecutionUat){
+     !workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat){
     if(marker!==undefined)refuse()
     return {...empty}
   }
   if(!listen||!Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !origin.startsWith("https://")||
      marker!==permissionMarker||
-     ((employeeUat||runUat||ingestUat||modelProbeUat||workflowValidationUat||workflowExecutionUat||boundModelExecutionUat)&&!configUat)||
+     ((employeeUat||runUat||ingestUat||modelProbeUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat)&&!configUat)||
      (runUat&&runMarker!==runApprovalMarker)||
      (ingestUat&&ingestMarker!==kbIngestMarker)||
      (modelProbeUat&&probeMarker!==modelProbeMarker)||
      (workflowValidationUat&&flowMarker!==workflowValidationMarker)||
      (workflowExecutionUat&&executionMarker!==workflowExecutionMarker)||
+     (workflowV2ExecutionUat&&flowV2Marker!==workflowV2Marker)||
       (boundModelExecutionUat&&(!runUat||boundModelMarker!==boundModelExecutionMarker)))refuse()
   return {configurationWrites:configUat,
     employeeProvisioning:employeeUat,runApprovalUat:runUat,
     knowledgeIngestUat:ingestUat,modelProbeUat,
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
+    ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }
 const uuid="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -157,6 +166,14 @@ export function permitNativePg18BusinessUatRequest(
       "^/api/v2/workflow-validations/"+uuid+"$").test(pathname))return true
   }
   // Existing safe Start/End Workflow run history is owner-scoped READ ONLY.
+  if(method==="GET"&&(pathname==="/api/v2/workflow-v2-runs"||new RegExp(
+    "^/api/v2/workflow-v2-runs/"+uuid+"(?:/steps)?$").test(pathname)))return true
+  // A verified owner can stop unstarted work even after submission permission
+  // is revoked. The repository refuses cancellation of in-flight/unknown effects.
+  if(method==="POST"&&new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/cancel$").test(pathname))return true
+  if(policy.configurationWrites===true&&policy.workflowV2ExecutionUat===true&&method==="POST"&&(
+    new RegExp("^/api/v2/workflows/"+uuid+"/native-runs$").test(pathname)||
+    new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/decision$").test(pathname)))return true
   // It never queues work and is available without any execution approval.
   if(method==="GET"&&(pathname==="/api/v2/workflow-runs"||new RegExp(
     "^/api/v2/workflow-runs/"+uuid+"$").test(pathname)))return true

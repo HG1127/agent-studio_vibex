@@ -8,6 +8,7 @@ export type PgNativeConfigCapabilities={
   bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
   workflow_execution_enabled?:boolean
+  workflow_v2_submission_enabled?:boolean
 }
 export type PgNativeStaff={
   id:string;email:string;display_name:string;is_admin:boolean
@@ -44,6 +45,15 @@ export type PgNativeWorkflowSafeRunResult={
     execution_mode:"start_end_only";external_effects_executed:false}}>
   job_status:string;replayed:boolean;execution_mode:"start_end_only"
   external_effects_executed:false;worker_started_by_api?:false
+}
+export type PgNativeWorkflowV2Pending={step_key:string;node_id:string;kind:"model"|"tool"|"agent";
+  input:string;input_sha256:string;configuration:Record<string,unknown>;missing:string[]}
+export type PgNativeWorkflowV2Result={
+  run:{id:string;workflow_id:string;kind:"workflow";status:string;instruction:string;result_text:string;
+    step_count:number;checkpoint:Record<string,unknown>;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null}
+  steps:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>
+  steps_truncated:boolean;approvals:Array<{step_key:string;status:string}>
+  pending_effect:PgNativeWorkflowV2Pending|null;replayed:boolean;execution_mode:"workflow_native_v2";worker_started_by_api?:false
 }
 export type PgNativeKnowledge={id:string;name:string;description:string;revision:number}
 export type PgNativeModelProvider="openai"|"anthropic"|"gemini"
@@ -151,11 +161,12 @@ const routes={
   bases:"/api/v2/knowledge-bases",
   runs:"/api/v2/runs",
   workflowRuns:"/api/v2/workflow-runs",
+  workflowV2Runs:"/api/v2/workflow-v2-runs",
   schedules:"/api/v2/schedules",
   modelConnections:"/api/v2/model-connections",
   toolConnections:"/api/v2/tool-connections",
 } as const
-type Route=typeof routes[keyof typeof routes]|
+type Route=typeof routes[keyof typeof routes]|`/api/v2/workflow-v2-runs/${string}`|
   `/api/v2/runs/${string}`|`/api/v2/agent-specs/${string}/runs`|
   `/api/v2/knowledge-bases/${string}/documents`|
   `/api/v2/knowledge-bases/${string}/search`|
@@ -207,7 +218,7 @@ async function request<T>(
 const safeId=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 function recordRoute(route:Route,id:string):Route {
   if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_pg_native_id")
-  if(route!==routes.agents&&route!==routes.workflows&&route!==routes.bases)
+  if(route!==routes.agents&&route!==routes.workflows&&route!==routes.bases&&route!==routes.workflowV2Runs)
     throw new PgNativePilotError(400,"invalid_pg_native_resource")
   return (route+"/"+id) as Route
 }
@@ -327,6 +338,9 @@ export function createPgNativePilotApi(
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&
             typeof value.workflow_execution_enabled!=="boolean")||
+          (value.workflow_v2_submission_enabled!==undefined&&
+            typeof value.workflow_v2_submission_enabled!=="boolean")||
+          (value.workflow_v2_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.run_submission_enabled!==undefined&&
             typeof value.run_submission_enabled!=="boolean")||
           (value.bound_model_runs_enabled!==undefined&&
@@ -481,6 +495,26 @@ export function createPgNativePilotApi(
       get<PgNativeWorkflowSafeRunResult>(workflowSafeRunResultRoute(runId)),
     listWorkflowRuns:async()=>
       (await get<{runs:PgNativeWorkflowSafeRunResult[]}>(routes.workflowRuns)).runs,
+    submitWorkflowV2Run:async(id:string,expected_revision:number,instruction:string,idempotency_key:string)=>{
+      if(typeof instruction!=="string"||!instruction.trim()||instruction.length>1200||instruction.includes("\0")||
+         !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
+      return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflows,id)+"/native-runs") as Route,{
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key})
+    },
+    getWorkflowV2Run:async(id:string)=>get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id)),
+    listWorkflowV2Runs:async()=> (await get<{items:Array<Record<string,unknown>>}>(routes.workflowV2Runs)).items,
+    decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
+      if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(step_key)||
+         !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
+      return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/decision") as Route,{decision,step_key,input_sha256})
+    },
+    cancelWorkflowV2Run:async(id:string)=>post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/cancel") as Route,{}),
+    getWorkflowV2Steps:async(id:string,after="",limit=100)=>{
+      if(!Number.isSafeInteger(limit)||limit<1||limit>200||(after!==""&&!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(after)))
+        throw new PgNativePilotError(400,"invalid_workflow_step_cursor")
+      return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
+        (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
+    },
     listWorkflows:async()=> (
       await get<{items:PgNativeWorkflow[]}>(routes.workflows)).items,
     createWorkflow:async(name:string)=> (

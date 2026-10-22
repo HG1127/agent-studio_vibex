@@ -18,6 +18,11 @@ export function safeRunStepMetadata(raw:unknown):Record<string,unknown>{
     const v=value[key]
     if(Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<=20000)safe[key]=v
   }
+  if(value.branch==="true"||value.branch==="false")safe.branch=value.branch
+  for(const key of ["round","total"]){
+    const v=value[key]
+    if(Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<=20)safe[key]=v
+  }
   if(Array.isArray(value.citations)){
     const citations=value.citations.filter((v):v is string=>
       typeof v==="string"&&v.length>0&&v.length<=400).slice(0,12)

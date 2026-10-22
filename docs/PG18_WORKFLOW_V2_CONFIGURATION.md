@@ -42,6 +42,8 @@ The existing `workflow_safe_v1` Worker and validation route explicitly reject ev
 
 The Native client has `createWorkflowGraph` and `updateWorkflowGraph`; existing rename preserves the full stored graph and optimistic revision. The employee canvas/editor still needs a PG data adapter and resource-selection controls. Model/tool/Agent dispatch, variable propagation, condition/loop runtime, approval, durable effects and restart recovery remain required for full Workflow parity.
 
+Subsequent local runtime work now implements deterministic propagation/branches/loops, a separate V2 queue, fixed-request node approval, effect journals and crash recovery under an independent UAT gate; see [V2 runtime evidence](PG18_WORKFLOW_V2_RUNTIME.md). The old routes above still reject V2. The new Worker entrypoint has no production effect adapter installed, and the canvas and full execution parity remain incomplete.
+
 ## Verification
 
 `pnpm --dir services/pg-api test:workflow-v2-config` covers real embedded PostgreSQL/RLS and real Native Cookie HTTP with synthetic employees and resource material. No provider, production host or installed PostgreSQL is contacted. Coverage includes nested graph structure and malformed payload rejection, all resource types, owner isolation, optimistic updates, audit privacy, fault-injected rollback and rejection by the old executor with zero queued jobs/runs.

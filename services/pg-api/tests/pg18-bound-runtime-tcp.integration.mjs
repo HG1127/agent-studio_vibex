@@ -21,6 +21,8 @@ import {createNativeRunRepository} from "../src/native-run-repository.ts"
 import {AgentSpecRepository} from "../src/repository.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
+import {WorkflowV2RunRepository} from "../src/workflow-v2-run-repository.ts"
+import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
@@ -38,7 +40,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,workflowV2ExecutionUat:true}
 
 async function startNativeHttps(auth,pool,key,brokerPool){
   const parent=realpathSync(tmpdir())
@@ -58,6 +60,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
+      allowWorkflowV2Submission:policy.workflowV2ExecutionUat,
       businessHandler:(req,res)=>{
         const route=new URL(req.url,"https://localhost").pathname
         if(!permitNativePg18BusinessUatRequest(route,req.method,policy)){
@@ -71,6 +74,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
       workflowRepository:new WorkflowRepository(pool),
+      workflowV2RunRepository:new WorkflowV2RunRepository(pool),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
     server.on("request",native.handler)
@@ -180,6 +184,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const capabilities=await api.getConfigCapabilities()
     assert.equal(capabilities.run_submission_enabled,true)
     assert.equal(capabilities.bound_model_runs_enabled,true)
+    assert.equal(capabilities.workflow_v2_submission_enabled,true)
     const secret="SyntheticProviderCredentialNeverSentToProvider012345"
     const saved=await api.createModelConnection({name:"CI owner",provider:"openai",
       base_url:"https://api.openai.com/v1",api_key:secret,models:["gpt-4.1-mini"],enabled:true})
@@ -246,6 +251,36 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.deepEqual(configAudit.map(row=>row.action),["workflow.config_create","workflow.config_update"])
     assert.equal(JSON.stringify(configAudit).includes(secret),false)
     assert.equal(generated,1)
+
+    // V2 queue/approval/replay over actual PG18 roles and native HTTPS. This
+    // adapter is deliberately synthetic and local; V2 private Broker dispatch
+    // is NOT inferred from the separate Agent mTLS proof above.
+    const v2=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")
+    let v2Calls=0
+    const v2Worker=new WorkflowV2Worker(workerPool,"ci-workflow-v2",{executor:{async execute(request,lease){
+      assert.equal(request.kind,"model");assert.equal(request.configuration.model_binding.connection_id,ready.id)
+      assert.equal(lease.run_id,v2.run.id);assert.equal(Object.hasOwn(lease,"owner_user_id"),false)
+      v2Calls++;return "Synthetic PG18 V2 result"
+    }}})
+    assert.equal((await v2Worker.tick()).status,"awaiting_approval")
+    const pending=(await api.getWorkflowV2Run(v2.run.id)).pending_effect
+    await api.login("other@example.com","SyntheticOtherPassword#2026")
+    await assert.rejects(api.getWorkflowV2Run(v2.run.id),e=>e.status===404)
+    await assert.rejects(api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256),e=>e.status===404)
+    await api.login("admin@example.com","SyntheticAdminPassword#2026")
+    await api.decideWorkflowV2Node(v2.run.id,"approved",pending.step_key,pending.input_sha256)
+    await v2Worker.tick();await v2Worker.tick()
+    assert.equal((await api.getWorkflowV2Run(v2.run.id)).run.result_text,"Synthetic PG18 V2 result")
+    assert.equal((await api.submitWorkflowV2Run(workflow.id,2,"Synthetic V2 task","pg18-native-v2-runtime-0001")).replayed,true)
+    assert.equal(v2Calls,1)
+    const uncertain=await api.submitWorkflowV2Run(workflow.id,2,"Synthetic unknown result","pg18-native-v2-runtime-0002")
+    const unknownWorker=new WorkflowV2Worker(workerPool,"ci-v2-unknown",{executor:{async execute(){v2Calls++;throw Error("synthetic_response_lost")}}})
+    await unknownWorker.tick()
+    const unknownPending=(await api.getWorkflowV2Run(uncertain.run.id)).pending_effect
+    await api.decideWorkflowV2Node(uncertain.run.id,"approved",unknownPending.step_key,unknownPending.input_sha256)
+    assert.equal((await unknownWorker.tick()).status,"paused")
+    assert.equal((await unknownWorker.tick()).status,"idle");assert.equal(v2Calls,2)
+    assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[uncertain.run.id])).rows,[{status:"unknown"}])
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)

@@ -122,6 +122,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
     allowConfigurationWrites=false,allowModelProbe=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
+    allowWorkflowV2Submission=false,
     allowEmployeeProvisioning=true,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
@@ -193,6 +194,8 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
           workflow_validation_enabled:allowConfigurationWrites===true&&allowWorkflowValidation===true,
           workflow_execution_enabled:allowConfigurationWrites===true&&allowWorkflowExecution===true,
+          ...(allowConfigurationWrites===true&&allowWorkflowV2Submission===true
+            ?{workflow_v2_submission_enabled:true}:{}),
           run_submission_enabled:allowConfigurationWrites===true&&allowRunSubmission===true,
           bound_model_runs_enabled:allowConfigurationWrites===true&&allowRunSubmission===true&&allowBoundRunSubmission===true,
           run_execution_enabled:false,

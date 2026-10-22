@@ -24,7 +24,7 @@ const columns="id,owner_user_id,name,graph,revision,created_at,updated_at"
 
 // Resource identity and revisions are checked under the SAME owner transaction
 // as the graph write. No credentials, URL overrides or user IDs enter the graph.
-async function verifyGraphResources(db:SqlClient,actor:string,graph:WorkflowGraph){
+export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,graph:WorkflowGraph){
   if(graph.version!==2)return
   for(const node of graph.nodes){
     const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=node.data
@@ -89,7 +89,7 @@ export class WorkflowRepository {
   async create(identity:Identity,name:string,graph:WorkflowGraph):Promise<WorkflowRow> {
     const checked=safeWorkflowGraph(graph),checkedName=safeName(name)
     return withActor(this.pool,identity,async(db,actor)=>{
-      await verifyGraphResources(db,actor,checked)
+      await verifyWorkflowGraphResources(db,actor,checked)
       const rows=await db.query<WorkflowRow>(
         "INSERT INTO agentstudio.workflows(owner_user_id,name,graph) "+
         "VALUES($1::uuid,$2::text,$3::jsonb) RETURNING "+columns,
@@ -112,7 +112,7 @@ export class WorkflowRepository {
         "SELECT revision FROM agentstudio.workflows WHERE id=$1::uuid "+
         "AND owner_user_id=$2::uuid FOR UPDATE",[id,actor])).rows[0]
       if(!current||Number(current.revision)!==revision)return null
-      await verifyGraphResources(db,actor,checked)
+      await verifyWorkflowGraphResources(db,actor,checked)
       const rows=await db.query<WorkflowRow>(
         "UPDATE agentstudio.workflows SET "+
         "name=$3::text,graph=$4::jsonb,revision=revision+1,updated_at=now() "+
