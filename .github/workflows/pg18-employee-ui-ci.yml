@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'codex/pg18-employee-run-ui-20261022'
+      - 'codex/pg18-workflow-v2-config-20261022'
   workflow_dispatch:
 
 permissions:

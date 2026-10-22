@@ -52,13 +52,13 @@ The existing Workflow/import/Worker regression also runs separately:
 node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/workflow-engine.test.mjs services/pg-api/tests/workflow-safe-run.test.mjs services/pg-api/tests/workflow-validation.test.mjs services/pg-api/tests/stage-workflow-import.test.mjs
 ```
 
-The V2 suite is included in the root default test command and has a separate synthetic CI job in the local quality workflow. That new source has not been uploaded or run remotely. Local checks are not real PG18 TCP, company HTTPS UAT, or production approval.
+The V2 suite is included in the root default test command and has a separate synthetic CI job in the local quality workflow. The bound-runtime and employee-browser workflows also include this candidate branch, so its eventual upload will request verification for the same release source. That new source has not been uploaded or run remotely. Local checks are not real PG18 TCP, company HTTPS UAT, or production approval.
 
 Local verification checkpoint:
 
 - V2 configuration: **6/6**, including serialization-hook rejection without invoking caller code.
 - Main worktree: `pnpm check` **287/287**, TypeScript/build and **90-asset** production isolation; PocketBase E2E **23/23**, two workers, **117.1 seconds**.
-- Separate local branch `codex/pg18-workflow-v2-config-20261022`, based on UI commit `2af22c5`: **17 allowlisted source/test/CI/document files**. Its own final `pnpm check` passed **190/190**, TypeScript/build and **95-asset** isolation; API TypeScript and independent PG-only build passed. Its preserved older PocketBase baseline explains the different default count.
+- Separate local branch `codex/pg18-workflow-v2-config-20261022`, based on UI commit `2af22c5`: **19 allowlisted source/test/CI/document files**, including the two CI branch filters. Its own final `pnpm check` passed **190/190**, TypeScript/build and **95-asset** isolation; API TypeScript and independent PG-only build passed. Its preserved older PocketBase baseline explains the different default count.
 - The candidate's old Workflow/import/Worker regression passed **21/21**, Native authentication/session/RLS **91/91**, and PocketBase E2E **19/19**, two workers, **84.0 seconds**. The archive-version boundary is included in the regression.
 - Ordinary-machine PG18 rejection/CI contracts: **9/9**. Extra V2 configuration assertions over real PG18 TCP/HTTPS and restricted logins are prepared in that test, **not yet remotely executed**.
 
