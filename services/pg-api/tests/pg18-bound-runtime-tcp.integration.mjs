@@ -115,20 +115,12 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.ok(observed.version>=180000&&observed.version<190000)
     assert.equal(observed.existing,0);assert.equal(observed.roles,1) // only the CI administrator
     await admin.query(loadPg18CiBaseline().sql)
-    // The fresh schema contains V9 table shapes. This marker is explicitly
-    // synthetic CI setup, never proof of a historical migration on a host.
-    await admin.query("INSERT INTO agentstudio.schema_migrations(version,description) "+
-      "VALUES('pg_v9_022','synthetic CI predecessor')")
-    await admin.query(upgrade("pg_v9_023_workflow_safe_worker.sql"))
-    await admin.query(upgrade("pg_v9_024_bound_dispatch_identity.sql"))
     const accounts=[
       ["agentstudio_stage_login","agentstudio_api"],
       ["agentstudio_stage_worker","agentstudio_worker,agentstudio_api"],
-      ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
-      ["agentstudio_model_broker_login","agentstudio_model_broker"],
     ]
     const byLogin={}
-    for(const [login,roles] of accounts){
+    const installLogin=async([login,roles])=>{
       // All identifiers are literal constants and every password is ASCII
       // hex derived from the disposable Actions password. Never print them.
       const password="synthetic-"+createHash("sha256").update(target.password+":"+login).digest("hex")
@@ -138,7 +130,21 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const pool=new pg.Pool({...target,user:login,password,max:5})
       pools.push(pool);byLogin[login]=pool
     }
+    for(const account of accounts)await installLogin(account)
+    // Native Auth deliberately accepts ONLY the exact fresh three-entry
+    // ledger. Apply it before later queue/identity migrations, preserving
+    // its production guards rather than translating away that invariant.
     await admin.query(loadNativeAuthPg18CiSchema().sql)
+    // The fresh schema contains V9 table shapes. This marker is explicitly
+    // synthetic CI setup, never proof of a historical migration on a host.
+    await admin.query("INSERT INTO agentstudio.schema_migrations(version,description) "+
+      "VALUES('pg_v9_022','synthetic CI predecessor')")
+    await admin.query(upgrade("pg_v9_023_workflow_safe_worker.sql"))
+    await admin.query(upgrade("pg_v9_024_bound_dispatch_identity.sql"))
+    for(const account of [
+      ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
+      ["agentstudio_model_broker_login","agentstudio_model_broker"],
+    ])await installLogin(account)
     const authPassword="synthetic-"+createHash("sha256").update(target.password+":auth").digest("hex")
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
