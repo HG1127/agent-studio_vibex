@@ -1,0 +1,56 @@
+name: Agent Studio PG18 employee UI isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-employee-run-ui-20261022'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-employee-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-employee-browser:
+    name: Native employee UI / synthetic SQL / private mTLS / browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Types, fail-closed CI guard and independent PG-only build
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
+          pnpm build:pg18:trial
+      - name: Install isolated Chromium on the disposable runner
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual browser / Cookie / SQL / private mTLS, synthetic model only
+        env:
+          AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
+        run: pnpm test:pg18:employee-ui:ci
+      - name: Retain synthetic UI screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-employee-ui-synthetic
+          path: .tmp/pg-migration-completion/ci-browser-results/**/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7

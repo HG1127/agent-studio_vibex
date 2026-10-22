@@ -133,9 +133,10 @@ try{
     })().catch(()=>{res.destroy()})})
     await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
     const apiPort=server.address().port
-    writeFileSync(path.join(scratch,"index.html"),'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Synthetic PG employee UI</title></head><body><div id="root"></div><script type="module" src="./entry.tsx"></script></body></html>')
+    writeFileSync(path.join(scratch,"index.html"),'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Synthetic PG employee UI</title></head><body><div id="root"></div><script type="module" src="./entry.tsx"></script></body></html>')
     writeFileSync(path.join(scratch,"entry.tsx"),'import React from "react";import {createRoot} from "react-dom/client";import PgNativePilotPage from "/src/pages/PgNativePilot/PgNativePilotPage.tsx";import "/src/index.css";createRoot(document.getElementById("root")!).render(<React.StrictMode><PgNativePilotPage/></React.StrictMode>);')
-    vite=await createViteServer({configFile:false,root,plugins:[react()],resolve:{alias:{"@":path.join(root,"src")}},
+    vite=await createViteServer({configFile:false,envFile:false,root,cacheDir:path.join(scratch,"vite-cache"),
+      plugins:[react()],resolve:{alias:{"@":path.join(root,"src")}},
       server:{host:"127.0.0.1",port:17443,strictPort:true,
         watch:{ignored:["**/.worktrees/**","**/.webcodex-worktrees/**","**/.tmp/**","**/dist/**","**/dist-pg18/**","**/pocketbase/**"]},
         proxy:{"/__pg_native":{

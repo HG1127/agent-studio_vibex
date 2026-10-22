@@ -18,7 +18,7 @@ Status: implementation and isolated checks in progress. **Production NO-GO.** Th
 - Main workspace `pnpm check`: **280/280**, TypeScript/build and **90-asset** production isolation passed.
 - Native HTTP/client, independent-entry and retry contracts: **46/46** passed. Separate PG18 Web build passed, with no legacy PocketBase authentication/proxy or development-only UAT panels in the artifact.
 - Current PocketBase/SQLite regression: **23/23**, two workers, **114.3 seconds**.
-- Separate local branch `codex/pg18-employee-run-ui-20261022`, based on `055c655`: **41 allowlisted source/test/document files**. Its own full `pnpm check` passed **183/183** and **95-asset** production isolation; Native authentication/session/RLS regression **91/91**; UI/session/retry/HTTP contracts **51/51**; API/frontend TypeScript and independent PG18 build passed. The smaller default-test count reflects the preserved older PocketBase workbench baseline, not removed tests. The file review found no env/DB/private-key/generated-binary entries or matches for the checked common credential formats.
+- Separate local branch `codex/pg18-employee-run-ui-20261022`, based on `055c655`: the initial 41-file UI checkpoint was committed as `eca9a32`. After adding the browser CI guard and pinned test dependency, its own full `pnpm check` passed **184/184** and **95-asset** production isolation. Native authentication/session/RLS regression **91/91** and UI/session/retry/HTTP contracts **51/51** passed at the UI checkpoint; API/frontend TypeScript and the final independent PG18 build passed. The smaller default-test count reflects the preserved older PocketBase workbench baseline, not removed tests. The file review found no env/DB/private-key/generated-binary entries or matches for the checked common credential formats.
 - Actual submission-controller integration: **1/1** passed against real local Native HTTP/Cookie/CSRF, embedded PostgreSQL/RLS and private loopback mTLS. A response was deliberately lost after the database committed; two identical request hashes produced one task. Another employee could neither read nor approve it. Repeated approval and Model Worker ticks produced exactly one synthetic result.
 - The browser reached Native employee login, owner Agent selection, the capability-gated Run entry and the uncertain-submission screen. Full browser submission/approval/result, account-switch and capability-revocation verification remains pending because another extension UI currently blocks browser automation. Do not infer full browser acceptance from the HTTP integration result.
 
@@ -49,9 +49,17 @@ The test intentionally consumes one synthetic task and refuses a nonempty fixtur
 
 The local Web entry uses the normal development-page variant for HTTP loopback testing. The actual PG-only production-root entry continues to refuse credential entry on plain HTTP. Company-trusted HTTPS browser UAT is still required.
 
+## Disposable CI browser suite
+
+`.github/workflows/pg18-employee-ui-ci.yml` prepares a GitHub-hosted Linux runner with locked dependencies and Chromium. `pnpm test:pg18:employee-ui:ci` refuses execution before starting a child or browser unless it sees the exact hosted-CI marker, a non-root Linux user and no inherited PostgreSQL connection variables. The guard unit test, suite discovery and actual local refusal have passed; **the browser suite itself has not yet run**.
+
+The suite starts its own disposable fixture, allows browser traffic only to its loopback Web origin and covers committed response loss, identical recovery, charge consent, one private mTLS synthetic result, desktop/mobile layout, a held stale response across account switching and revoked server admission. It retains only synthetic PNG screenshots for seven days; traces, videos, databases, generated certificates and credentials are excluded. The helper disables Vite env-file loading and uses an owned per-run cache directory. No model provider is called.
+
+This independent CI cannot attest the real company's HTTPS certificate, deployment configuration, employees or paid model execution. The new UI source and workflow are still local pending upload authorization.
+
 ## Remaining acceptance
 
-1. Finish browser checks after the extension panel is closed, including uncertain recovery, charge acknowledgement, task result, logout/account change and revoked capability.
+1. Run the disposable hosted-CI browser suite; finish local browser checks if the extension panel is closed, including uncertain recovery, charge acknowledgement, task result, logout/account change and revoked capability.
 2. Review/integrate this separate UI candidate and run its complete release-commit CI. These later local changes have not been uploaded or merged into PR #25.
 3. Complete target-host role/certificate provisioning, long-running Worker recovery, trusted HTTPS employee UAT and backup/restore/old-site rollback.
 4. Complete the other migration domains: full Workflow nodes, semantic knowledge/team ACL, real scheduling, tool/plugin execution, collaboration/delegation and replacement of the remaining PocketBase frontend flows.

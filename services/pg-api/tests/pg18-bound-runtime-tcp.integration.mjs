@@ -55,6 +55,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     let backend
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
+      allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       businessHandler:(req,res)=>{
         const route=new URL(req.url,"https://localhost").pathname
         if(!permitNativePg18BusinessUatRequest(route,req.method,policy)){
@@ -173,6 +174,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     front=await startNativeHttps(auth,apiPool,key,brokerPool)
     const api=front.api
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
+    const capabilities=await api.getConfigCapabilities()
+    assert.equal(capabilities.run_submission_enabled,true)
+    assert.equal(capabilities.bound_model_runs_enabled,true)
     const secret="SyntheticProviderCredentialNeverSentToProvider012345"
     const saved=await api.createModelConnection({name:"CI owner",provider:"openai",
       base_url:"https://api.openai.com/v1",api_key:secret,models:["gpt-4.1-mini"],enabled:true})
