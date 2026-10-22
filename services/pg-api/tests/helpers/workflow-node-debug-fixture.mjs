@@ -14,10 +14,11 @@ import {WorkflowV2RunRepository} from "../../src/workflow-v2-run-repository.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
 import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
+import {SmitheryRepository} from "../../src/smithery-repository.ts"
 import {createHandler} from "../../src/http.ts"
 import {createPgNativePilotApi} from "../../../../src/lib/pgNativePilotApi.ts"
 export const debugKey=Buffer.from("0123456789abcdef".repeat(4),"hex"),debugCredential="synthetic-node-debug-credential-never-send"
-export async function workflowNodeDebugFixture({toolConnections=false,mcpDiscovery,mcpExecution=false}={}){
+export async function workflowNodeDebugFixture({toolConnections=false,mcpDiscovery,mcpExecution=false,smitheryTransport}={}){
   const db=await PGlite.create({extensions:{vector}});let server
   try{
     await db.exec("CREATE DATABASE agent_studio");await db.exec(freshSchemaForTest().sql)
@@ -32,6 +33,7 @@ export async function workflowNodeDebugFixture({toolConnections=false,mcpDiscove
       if(!mcpDiscovery)throw Error("mcp_execution_fixture_needs_discovery")
       await db.exec(readFileSync(new URL("../../../../db/postgres/migrations/pg_v9_030_mcp_tool_identity.sql",import.meta.url),"utf8").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
     }
+    if(smitheryTransport){if(!mcpExecution)throw Error("smithery_fixture_needs_mcp_execution");await db.exec(readFileSync(new URL("../../../../db/postgres/migrations/pg_v9_031_smithery_managed.sql",import.meta.url),"utf8"))}
     let tail=Promise.resolve()
     const pool={async connect(){const previous=tail;let release;tail=new Promise(resolve=>{release=resolve});await previous;return {query:(sql,args=[])=>db.query(sql,args),release}}}
     const auth=new NativeAuthRepository(pool),password="SyntheticNodeDebugPassword#2026"
@@ -49,14 +51,15 @@ export async function workflowNodeDebugFixture({toolConnections=false,mcpDiscove
     const flow=await new WorkflowRepository(pool).create(owner,"Synthetic debug workflow",graph)
     const samples={input:"Synthetic {{unknown}} task",outputs:{tool:'quoted "sample"\nline'}},body={node_id:"model",expected_revision:1,idempotency_key:"synthetic-node-debug-request",samples}
     let native,backend,enabled=true;const origin="https://node-debug.test.invalid"
-    const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:true,allowWorkflowV2Submission:enabled,allowMcpDiscovery:Boolean(mcpDiscovery)&&enabled,allowMcpToolExecution:mcpExecution&&enabled,
-      businessHandler:(req,res)=>{if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,{configurationWrites:true,workflowV2ExecutionUat:enabled,mcpDiscoveryUat:Boolean(mcpDiscovery)&&enabled})){
+    const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:true,allowWorkflowV2Submission:enabled,allowMcpDiscovery:Boolean(mcpDiscovery)&&enabled,allowMcpToolExecution:mcpExecution&&enabled,allowSmitheryManagement:Boolean(smitheryTransport)&&enabled,
+      businessHandler:(req,res)=>{if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,{configurationWrites:true,workflowV2ExecutionUat:enabled,mcpDiscoveryUat:Boolean(mcpDiscovery)&&enabled,smitheryManagementUat:Boolean(smitheryTransport)&&enabled})){
         res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return}return backend(req,res)}})}
     configure();const runs=new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:mcpExecution})
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("cookie_required")},authenticateRequest:req=>native.authenticateRequest(req),
       repository:new AgentSpecRepository(pool),workflowRepository:new WorkflowRepository(pool),workflowV2RunRepository:runs,modelConnectionRepository:models,
       ...(toolConnections?{toolConnectionRepository:new ToolConnectionRepository(pool,debugKey)}:{}),
-      ...(mcpDiscovery?{mcpConnectionRepository:new McpConnectionRepository(pool,debugKey,pool),mcpDiscovery}:{})})
+      ...(mcpDiscovery?{mcpConnectionRepository:new McpConnectionRepository(pool,debugKey,pool),mcpDiscovery}:{}),
+      ...(smitheryTransport?{smitheryRepository:new SmitheryRepository(pool,debugKey,pool,smitheryTransport)}:{})})
     server=createServer((req,res)=>{void native.handler(req,res).catch(()=>res.destroy())});await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
     const base="http://127.0.0.1:"+server.address().port,client=()=>{
       let cookie="";const dropped={submit:false,decision:false},calls=[]

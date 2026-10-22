@@ -3,7 +3,7 @@ import {parseMcpBinding,parseAgentMcpTools,type McpBinding,type AgentMcpTool} fr
 export type {McpBinding,AgentMcpTool} from "../../services/pg-api/src/mcp-binding.ts"
 export type PgNativeMcpInput={name:string;description:string;url:string;headers:{key:string;value:string}[];enabled:boolean}
 export type PgNativeMcpConnection=Omit<PgNativeMcpInput,"headers">&{id:string;revision:number;status:"untested"|"ok"|"error";
-  catalog:McpCatalog|null;catalog_sha256?:string;headers:{key:string;value:string}[];last_error:string;last_checked_at:string|null}
+  catalog:McpCatalog|null;catalog_sha256?:string;managed_by?:"smithery";headers:{key:string;value:string}[];last_error:string;last_checked_at:string|null}
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 export function parsePgMcpConnection(raw:unknown):PgNativeMcpConnection{
   const invalid=():never=>{throw Error("invalid_pg_mcp_connection")}
@@ -20,8 +20,10 @@ export function parsePgMcpConnection(raw:unknown):PgNativeMcpConnection{
   const catalog=value.status==="ok"?parseMcpCatalog(value.catalog):null
   if(value.catalog_sha256!==undefined&&(!catalog||typeof value.catalog_sha256!=="string"||!/^[a-f0-9]{64}$/.test(value.catalog_sha256)))invalid()
   if(value.status!=="ok"&&value.catalog!==null)invalid()
+  if(value.managed_by!==undefined&&value.managed_by!=="smithery")invalid()
   return {id:value.id,revision:value.revision,name:value.name,description:value.description,url:value.url,enabled:value.enabled,
-    status:value.status,catalog,...(value.catalog_sha256?{catalog_sha256:value.catalog_sha256}:{}),headers:value.headers.map(header=>({key:header.key,value:"••••"})),last_error:value.last_error,last_checked_at:value.last_checked_at}
+    status:value.status,catalog,...(value.catalog_sha256?{catalog_sha256:value.catalog_sha256}:{}),...(value.managed_by?{managed_by:value.managed_by}:{}),
+    headers:value.headers.map(header=>({key:header.key,value:"••••"})),last_error:value.last_error,last_checked_at:value.last_checked_at}
 }
 export function readyMcpBinding(raw:unknown,connection:PgNativeMcpConnection|undefined):boolean{
   try{const binding=parseMcpBinding(raw);return Boolean(connection&&connection.id===binding.connection_id&&connection.enabled&&connection.status==="ok"&&

@@ -34,11 +34,12 @@ export default function PgNativeMcpConnectionsPanel({api,enabled,discoveryEnable
       aria-pressed={view.selected===row.id} onClick={()=>model.current?.select(row.id)}>
       <span className="break-words">{row.name} · 版本 {row.revision} · {row.status==="ok"?`${row.catalog?.tools.length??0} 个工具`:row.status==="error"?"发现失败":"未发现工具"}</span>
     </button>)}</div>
-    <McpConnectionForm key={view.selected+":"+view.formVersion} row={selected} enabled={enabled&&!locked} onSave={input=>void model.current?.save(selected,input)}/>
+    {selected?.managed_by==="smithery"&&<p className="text-sm text-slate-600">此连接由 Smithery 托管，请在下方 Smithery 面板刷新授权或断开连接；这里可以单独发现工具。</p>}
+    <McpConnectionForm key={view.selected+":"+view.formVersion} row={selected} enabled={enabled&&!locked&&!selected?.managed_by} onSave={input=>void model.current?.save(selected,input)}/>
     {selected&&<div className="space-y-3">
       {!discoveryEnabled&&<p className="text-sm text-amber-900">当前环境未开放外部 MCP 工具发现。</p>}
       <button type="button" className={button} disabled={!enabled||!discoveryEnabled||locked||!selected.enabled} onClick={()=>void model.current?.discover(selected)}>发现此连接的 MCP 工具</button>
-      <button type="button" className={button} disabled={!enabled||locked} onClick={()=>setDeleteFor(selected.id+":"+selected.revision)}>移除 MCP 连接</button>
+      <button type="button" className={button} disabled={!enabled||locked||Boolean(selected.managed_by)} onClick={()=>setDeleteFor(selected.id+":"+selected.revision)}>移除 MCP 连接</button>
       {deleteFor===selected.id+":"+selected.revision&&<div role="group" aria-label="确认移除 MCP 连接" className="space-y-2 rounded-xl border border-slate-200 p-3 text-sm">
         <p>确认移除 {selected.name} 及其已保存的请求头？</p>
         <button type="button" className={button} disabled={!enabled||locked} onClick={()=>{setDeleteFor("");void model.current?.remove(selected)}}>确认移除此连接</button>

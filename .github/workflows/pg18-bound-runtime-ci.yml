@@ -18,6 +18,7 @@ on:
       - 'codex/pg18-agent-http-tools-20261023'
       - 'codex/pg18-mcp-discovery-20261023'
       - 'codex/pg18-mcp-execution-20261023'
+      - 'codex/pg18-smithery-managed-20261023'
   workflow_dispatch:
 
 permissions:

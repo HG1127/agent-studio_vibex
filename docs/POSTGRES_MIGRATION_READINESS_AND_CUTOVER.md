@@ -80,3 +80,5 @@ pnpm db:pg-stage-operator --plan \
 2026-10-23 MCP 连接与发现增量：在 2b29492 之后新增提案迁移 029、Native Cookie 配置接口和员工界面；只读工具发现支持新旧 Streamable HTTP、JSON/SSE、独立授权、加密请求头及所有者隔离。13 项合成数据专项测试通过，详细回归证据见 PG18_MCP_CONNECTIONS_AND_DISCOVERY.md。Agent/Workflow MCP 执行、Smithery 托管流程与其他功能/运维验收仍未完成，新增真实 PG18/浏览器用例尚未运行。候选仅本地，生产切换仍为 NO-GO。
 
 2026-10-23 MCP 执行增量：在 97b0160 之后新增提案迁移 030、三条工作流/Agent MCP 执行路径及员工绑定/审批界面。绑定固定本人连接版本、目录哈希与具体工具；默认关闭独立授权，执行前校验参数并逐步审批，断线或响应不确定时暂停且不重发。17 项合成数据专项测试通过，详见 PG18_MCP_EXECUTION.md。新增托管 PG18/浏览器用例尚未运行，Smithery、其他功能及运维/UAT/恢复回滚签收仍未完成，生产仍为 NO-GO。
+
+2026-10-23 Smithery 托管接入增量：在 a82644d 之后新增提案迁移 031、Native Cookie 接口及员工面板，支持本人加密 Key、目录/工作空间读取、稳定编号连接、授权链接、刷新及远端撤销。密钥轮换/移除使旧 MCP 绑定失效，撤销先停用本地，未知结果由显式读取核对；独立管理授权不包含工具发现或执行。详见 PG18_SMITHERY_MANAGED_CONNECTIONS.md。新增托管 PG18/浏览器及真实供应商 OAuth 验收尚未完成，其他功能、运维/UAT/恢复回滚签收仍待完成，生产仍为 NO-GO。

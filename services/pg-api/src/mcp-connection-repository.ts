@@ -11,7 +11,7 @@ import {mcpCatalogHash} from "./mcp-binding-resources.ts"
 export type McpConnectionInput={name:string;description:string;url:string;headers:{key:string;value:string}[];enabled:boolean}
 export type McpConnectionRow={id:string;owner_user_id:string;name:string;description:string;url:string;enabled:boolean;
   status:"untested"|"ok"|"error";catalog:McpCatalog|null;headers:{key:string;value:string}[];last_checked_at:string|null;last_error:string;
-  catalog_sha256?:string;revision:number;created_at:string;updated_at:string}
+  catalog_sha256?:string;managed_by?:"smithery";revision:number;created_at:string;updated_at:string}
 type Stored=Omit<McpConnectionRow,"headers"|"catalog"|"revision">&{catalog:unknown;revision:number|string}
 type Header={id:string;header_name:string;updated_at:string;value_ciphertext:Uint8Array;value_nonce:Uint8Array;value_tag:Uint8Array}
 const columns="id,owner_user_id,name,description,url,enabled,status,catalog,last_checked_at,last_error,revision,created_at,updated_at"
@@ -41,10 +41,24 @@ export class McpConnectionRepository{
     this.pool=pool;this.brokerPool=brokerPool;this.key=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key)
     if(this.key.length!==32)throw Error("invalid_model_encryption_key")
   }
+  private async isManaged(db:SqlClient,owner:string,connection:string){
+    // Older isolated MCP installations may not include optional Smithery 031.
+    // Once installed, its persistent owner mapping cannot be bypassed by
+    // disabling the Smithery capability or using generic MCP CRUD instead.
+    const schema=(await db.query<{installed:boolean}>("SELECT to_regclass('agentstudio.smithery_connections') IS NOT NULL AS installed")).rows[0]
+    // Mappings are immutable and only created with a new MCP UUID in the same
+    // transaction. Do not reverse Smithery's mapping -> MCP row lock order
+    // when a discovery result has already locked the MCP row.
+    return Boolean(schema?.installed&&(await db.query("SELECT id FROM agentstudio.smithery_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[connection,owner])).rows.length)
+  }
+  private async requireUnmanaged(db:SqlClient,owner:string,connection:string){
+    if(await this.isManaged(db,owner,connection))throw new HttpError(409,"mcp_connection_managed_by_smithery")
+  }
   private async publicRow(db:SqlClient,owner:string,row:Stored):Promise<McpConnectionRow>{
     const headers=(await db.query<{header_name:string}>("SELECT header_name FROM agentstudio.mcp_connection_headers WHERE mcp_connection_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY header_name",[row.id,owner])).rows
     const catalog=row.status==="ok"?parseMcpCatalog(row.catalog):null
-    return {...row,revision:revision(row.revision),catalog,...(catalog?{catalog_sha256:mcpCatalogHash(catalog)}:{}),headers:headers.map(header=>({key:header.header_name,value:"••••"}))}
+    return {...row,revision:revision(row.revision),catalog,...(catalog?{catalog_sha256:mcpCatalogHash(catalog)}:{}),
+      ...(await this.isManaged(db,owner,row.id)?{managed_by:"smithery" as const}:{}),headers:headers.map(header=>({key:header.header_name,value:"••••"}))}
   }
   private async headers(db:SqlClient,owner:string,connection:string,headers:McpConnectionInput["headers"]){
     if(headers.some(header=>!header.value)){
@@ -94,6 +108,7 @@ export class McpConnectionRepository{
   }).catch(error=>{if(error?.code==="23505")throw new HttpError(409,"mcp_create_request_conflict");throw error})}
   update(identity:Identity,connection:string,raw:unknown,expected:number){id(connection);revision(expected);const input=safeMcpConnectionInput(raw)
     return withActor(this.pool,identity,async(db,owner)=>{
+      await this.requireUnmanaged(db,owner,connection)
       const row=(await db.query<Stored>("UPDATE agentstudio.mcp_connections SET name=$3::text,description=$4::text,url=$5::text,enabled=$6::boolean,"+
         "catalog='{}',status='untested',last_checked_at=NULL,last_error='',revision=revision+1,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$7::bigint RETURNING "+columns,
         [connection,owner,input.name,input.description,input.url,input.enabled,expected])).rows[0]
@@ -103,6 +118,7 @@ export class McpConnectionRepository{
     })
   }
   delete(identity:Identity,connection:string,expected:number){id(connection);revision(expected);return withActor(this.pool,identity,async(db,owner)=>{
+    await this.requireUnmanaged(db,owner,connection)
     const removed=(await db.query("DELETE FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$3::bigint RETURNING id",[connection,owner,expected])).rows[0]
     if(!removed)throw new HttpError((await db.query("SELECT id FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[connection,owner])).rows.length?409:404,"mcp_connection_changed")
     await this.audit(db,owner,connection,"mcp.connection_delete",{revision:expected});return {ok:true as const}

@@ -18,6 +18,7 @@ import PgNativeRunHistoryReadonlyPanel from "./PgNativeRunHistoryReadonlyPanel"
 import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistoryReadonlyPanel"
 import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
 import PgNativeMcpConnectionsPanel from "./PgNativeMcpConnectionsPanel"
+import PgNativeSmitheryPanel from "./PgNativeSmitheryPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
@@ -70,6 +71,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [modelProbeEnabled,setModelProbeEnabled]=useState(false)
   const [mcpDiscoveryEnabled,setMcpDiscoveryEnabled]=useState(false)
   const [mcpToolsEnabled,setMcpToolsEnabled]=useState(false)
+  const [smitheryEnabled,setSmitheryEnabled]=useState(false)
   const [workflowValidationEnabled,setWorkflowValidationEnabled]=useState(false)
   const [workflowExecutionEnabled,setWorkflowExecutionEnabled]=useState(false)
   const [workflowV2Enabled,setWorkflowV2Enabled]=useState(false)
@@ -120,7 +122,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const expireAgentSession=useCallback(()=>{
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
     setAutonomousEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     clearPrivateDrafts()
@@ -146,6 +148,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setModelProbeEnabled(capability?.model_probe_enabled===true)
       setMcpDiscoveryEnabled(capability?.mcp_discovery_enabled===true&&capability?.config_writes_enabled===true)
       setMcpToolsEnabled(capability?.mcp_tool_runs_enabled===true&&capability?.config_writes_enabled===true)
+      setSmitheryEnabled(capability?.smithery_management_enabled===true&&capability?.config_writes_enabled===true)
       setWorkflowValidationEnabled(capability?.workflow_validation_enabled===true)
       setWorkflowExecutionEnabled(capability?.workflow_execution_enabled===true)
       setWorkflowV2Enabled(capability?.config_writes_enabled===true&&capability.workflow_v2_submission_enabled===true)
@@ -209,7 +212,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     clearPrivateDrafts()
     setAgents([]);setWorkflows([]);setKnowledge([]);setModelConnections([])
     setToolConnections([])
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
     try{
@@ -237,7 +240,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([])
     setToolConnections([])
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
     try{
@@ -544,6 +547,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               onUpdated={refresh}/>}
             <div hidden={section!=="toolConnections"}>{(mcpOpened||section==="toolConnections")&&<PgNativeMcpConnectionsPanel key={profile.id} api={api}
               active={section==="toolConnections"} enabled={configEditEnabled&&!loading&&!busy} discoveryEnabled={mcpDiscoveryEnabled} onExpired={expireAgentSession}/>}</div>
+            <div hidden={section!=="toolConnections"}>{(mcpOpened||section==="toolConnections")&&<PgNativeSmitheryPanel key={profile.id} api={api}
+              active={section==="toolConnections"} enabled={smitheryEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
             {section==="modelConnections"&&<>
               {canEditConfig&&<CreateCard
                 title={modelEditing?"编辑模型连接":"新增模型连接"}

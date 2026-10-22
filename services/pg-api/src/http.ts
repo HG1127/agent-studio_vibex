@@ -14,6 +14,7 @@ import {ToolConnectionRepository,safeToolConnectionInput} from "./tool-connectio
 import type {McpConnectionRepository} from "./mcp-connection-repository.ts"
 import type {McpMaterial} from "./mcp-discovery.ts"
 import type {McpCatalog} from "./mcp-catalog.ts"
+import type {SmitheryRepository} from "./smithery-repository.ts"
 import type {ProviderProbeInput,ProviderProbeResult} from "./model-connection-probe.ts"
 import {parseDocumentIsolated} from "./document-worker.ts"
 import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Identity } from "./contracts.ts"
@@ -32,6 +33,7 @@ export interface AppDependencies {
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
   mcpConnectionRepository?:McpConnectionRepository
+  smitheryRepository?:SmitheryRepository
   mcpDiscovery?:(material:McpMaterial,signal:AbortSignal)=>Promise<McpCatalog>
   modelConnectionProbe?:(input:ProviderProbeInput)=>Promise<ProviderProbeResult>
   verifyToken(token: string): Promise<Identity>
@@ -120,10 +122,11 @@ export function createHandler(deps:AppDependencies) {
       const toolConnectionsRoute=path==="/api/v2/tool-connections" ||
         /^\/api\/v2\/tool-connections\/[0-9a-fA-F-]{36}$/.test(path)
       const mcpRoute=/^\/api\/v2\/mcp-connections(?:\/([0-9a-fA-F-]{36})(?:\/(discover))?)?$/.exec(path)
+      const smitheryRoute=/^\/api\/v2\/smithery\/(key|namespaces|catalog|connections)(?:\/([0-9a-fA-F-]{36})(?:\/(refresh|revoke|retry|pause))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -150,6 +153,46 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(smitheryRoute){
+        const repo=deps.smitheryRepository
+        if(!repo)throw new HttpError(503,"smithery_management_disabled")
+        if(new URL(req.url||"/","http://127.0.0.1").search)throw new HttpError(400,"invalid_smithery_query")
+        const [,entity,id,action]=smitheryRoute
+        if(id&&entity!=="connections")throw new HttpError(404,"route_not_found")
+        if(entity==="key"){
+          if(method==="GET")return send(res,200,{item:await repo.keyStatus(identity)})
+          if(!["POST","DELETE"].includes(method))throw new HttpError(405,"method_not_allowed")
+          const body=await readBody(req,2048);allowBodyFields(body,method==="POST"?["api_key","expected_revision","request_id"]:["expected_revision","request_id"])
+          if(!isUuid(body.request_id)||!Number.isSafeInteger(body.expected_revision)||(body.expected_revision as number)<0)throw new HttpError(400,"invalid_smithery_key_request")
+          return send(res,200,{item:method==="POST"?await repo.saveKey(identity,body.api_key,body.expected_revision as number,body.request_id):
+            await repo.removeKey(identity,body.expected_revision as number,body.request_id)})
+        }
+        if(entity==="namespaces"||entity==="catalog"){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const body=await readBody(req,1024);allowBodyFields(body,entity==="namespaces"?[]:["query","page"])
+          if(entity==="namespaces")return send(res,200,{namespaces:await repo.namespaces(identity)})
+          if(typeof body.query!=="string"||body.query.length>100||!Number.isSafeInteger(body.page)||(body.page as number)<1||(body.page as number)>100)throw new HttpError(400,"invalid_smithery_catalog_query")
+          return send(res,200,{...await repo.catalog(identity,body.query,body.page as number)})
+        }
+        if(action){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const body=await readBody(req,128);allowBodyFields(body,["expected_revision"])
+          if(!Number.isSafeInteger(body.expected_revision)||(body.expected_revision as number)<1)throw new HttpError(400,"invalid_revision")
+          return send(res,200,{item:action==="pause"?await repo.pause(identity,id!,body.expected_revision as number):
+            await repo.operate(identity,id!,body.expected_revision as number,action==="retry"?"connect":action as "refresh"|"revoke")})
+        }
+        if(method==="GET"){
+          if(!id)return send(res,200,{items:await repo.list(identity)})
+          const item=await repo.get(identity,id);if(!item)throw new HttpError(404,"smithery_connection_not_found")
+          return send(res,200,{item})
+        }
+        if(method==="POST"&&!id){
+          const body=await readBody(req,4096);allowBodyFields(body,["request_id","selection"])
+          if(!isUuid(body.request_id))throw new HttpError(400,"invalid_smithery_create_request")
+          return send(res,201,{item:await repo.connect(identity,body.selection,body.request_id)})
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
       if(mcpRoute){
         const repo=deps.mcpConnectionRepository
         if(!repo)throw new HttpError(503,"mcp_connections_disabled")

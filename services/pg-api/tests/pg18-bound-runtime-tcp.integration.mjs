@@ -38,6 +38,8 @@ import {McpConnectionRepository} from "../src/mcp-connection-repository.ts"
 import {createMcpDiscovery} from "../src/mcp-discovery.ts"
 import {createMcpToolExecutor} from "../src/mcp-call.ts"
 import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "../src/mcp-privileges.ts"
+import {SmitheryRepository} from "../src/smithery-repository.ts"
+import {verifySmitheryPrivileges} from "../src/smithery-privileges.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
@@ -56,7 +58,8 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
   const parent=realpathSync(tmpdir())
@@ -72,10 +75,11 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     server=createServer({cert:ca,key:readFileSync(path.join(folder,"native.key")),minVersion:"TLSv1.2"})
     await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
     const port=server.address().port,origin="https://localhost:"+port
-    let backend
+    let backend;const managedRemote=new Map()
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
+      allowSmitheryManagement:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -95,8 +99,16 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
       mcpConnectionRepository:new McpConnectionRepository(pool,key,brokerPool),
+      smitheryRepository:new SmitheryRepository(pool,key,brokerPool,async(credential,wire)=>{
+        assert.equal([smitherySecret,smitherySecret+"rotated"].includes(credential),true)
+        if(wire.path==="/namespaces")return {status:200,data:{namespaces:["ci-owned"]}}
+        if(wire.method==="GET")return {status:managedRemote.has(wire.path)?200:404,data:managedRemote.has(wire.path)?{...managedRemote.get(wire.path),status:{state:"connected"}}:null}
+        if(wire.method==="DELETE"){managedRemote.delete(wire.path);return {status:204,data:null}}
+        const row={connectionId:wire.path.split("/").at(-1),transport:"http",metadata:wire.body.metadata,status:{state:"auth_required",setupUrl:"https://auth.smithery.ai/setup?state=synthetic"}}
+        managedRemote.set(wire.path,row);return {status:201,data:row}
+      }),
       mcpDiscovery:createMcpDiscovery(async(material,wire)=>{
-        assert.equal(material.headers[0].value,"Bearer SyntheticMcpHeaderNeverSent012345");assert.equal(wire.body.method,"tools/list")
+        assert.equal(["Bearer SyntheticMcpHeaderNeverSent012345","Bearer "+smitherySecret].includes(material.headers[0].value),true);assert.equal(wire.body.method,"tools/list")
         return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{tools:[{name:"synthetic_lookup",inputSchema:{type:"object"}}]}})}
       }),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
@@ -178,6 +190,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_028_autonomous_agent_identity.sql"))
     await admin.query(upgrade("pg_v9_029_mcp_connections.sql"))
     await admin.query(upgrade("pg_v9_030_mcp_tool_identity.sql"))
+    await admin.query(upgrade("pg_v9_031_smithery_managed.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -210,6 +223,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const auth=new NativeAuthRepository(adapter(authPool))
     await verifyMcpDiscoveryPrivileges(apiPool,brokerPool)
     await verifyMcpExecutionSchema(apiPool)
+    await verifySmitheryPrivileges(apiPool,brokerPool)
     await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
     front=await startNativeHttps(auth,apiPool,key,brokerPool)
     const api=front.api
@@ -220,6 +234,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(capabilities.workflow_v2_submission_enabled,true)
     assert.equal(capabilities.mcp_discovery_enabled,true)
     assert.equal(capabilities.mcp_tool_runs_enabled,true)
+    assert.equal(capabilities.smithery_management_enabled,true)
     const mcpInput={name:"CI MCP",description:"Synthetic discovery only",url:"https://mcp.example.com/server",enabled:true,
       headers:[{key:"Authorization",value:"Bearer SyntheticMcpHeaderNeverSent012345"}]}
     const mcpRequest=randomUUID(),mcp=await api.createMcpConnection(mcpInput,mcpRequest)
@@ -228,6 +243,15 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(discovered.status,"ok");assert.equal(discovered.catalog.tools[0].name,"synthetic_lookup")
     assert.equal(JSON.stringify(discovered).includes("SyntheticMcpHeaderNeverSent012345"),false)
     assert.deepEqual((await admin.query("SELECT (SELECT count(*) FROM agentstudio.jobs)::int AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::int AS effects")).rows[0],{jobs:0,effects:0})
+    await api.saveSmitheryKey(smitherySecret,0,randomUUID())
+    assert.deepEqual(await api.readSmitheryNamespaces(),["ci-owned"])
+    const managed=await api.connectSmithery({namespace:"ci-owned",server:"vendor/lookup",name:"CI managed MCP",description:"Synthetic only"},randomUUID())
+    assert.equal(managed.state,"auth_required");assert.equal(managed.enabled,false)
+    const managedReady=await api.operateSmithery(managed.id,managed.revision,"refresh")
+    assert.equal(managedReady.state,"connected");assert.equal(managedReady.mcp_status,"untested")
+    const managedMetadata=await api.getMcpConnection(managed.id);assert.equal(managedMetadata.managed_by,"smithery")
+    const managedCatalog=await api.discoverMcpConnection(managed.id,managedMetadata.revision)
+    const managedBinding={connection_id:managed.id,connection_revision:managedCatalog.revision,tool_name:"synthetic_lookup",catalog_sha256:managedCatalog.catalog_sha256}
     const secret="SyntheticProviderCredentialNeverSentToProvider012345"
     const saved=await api.createModelConnection({name:"CI owner",provider:"openai",
       base_url:"https://api.openai.com/v1",api_key:secret,models:["gpt-4.1-mini"],enabled:true})
@@ -240,6 +264,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await api.createEmployee("other@example.com","SyntheticOtherPassword#2026","Other employee")
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     await assert.rejects(api.getMcpConnection(mcp.id),error=>error.status===404)
+    await assert.rejects(api.getSmitheryConnection(managed.id),error=>error.status===404)
     await assert.rejects(api.getRun(submitted.run.id),e=>e.status===404)
     await assert.rejects(api.decideModel(submitted.run.id,"approved"),e=>e.status===404)
     const prepare=new AgentPrepareWorker(workerPool,"ci-bound-prepare")
@@ -429,7 +454,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       http_tools:[{name:"http_lookup",description:"Lookup; params: query",connection_id:tool.id,connection_revision:tool.revision}],
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     const mcpRole=await new AgentSpecRepository(apiPool).create(owner,"CI MCP Agent role",safeAgentSpec({goal:"Synthetic MCP role",tools:["mcp_lookup"],
-      mcp_tools:[{name:"mcp_lookup",...mcpBinding}],model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
+      mcp_tools:[{name:"mcp_lookup",...managedBinding}],model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp"]){
     const custom=selection==="http",useMcp=selection==="mcp"
     let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0
@@ -439,7 +464,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
       const context=JSON.parse(prompt)
       if(custom){assert.equal(prompt.includes(toolSecret),false);assert.equal(prompt.includes(tool.id),false)}
-      if(useMcp){assert.equal(prompt.includes(discovered.id),false);assert.equal(prompt.includes(mcpInput.url),false);assert.equal(prompt.includes("SyntheticMcpHeaderNeverSent012345"),false)}
+      if(useMcp)for(const privateValue of [discovered.id,mcpInput.url,"SyntheticMcpHeaderNeverSent012345",managed.id,managedMetadata.url,smitherySecret])assert.equal(prompt.includes(privateValue),false)
       if(context.round===1)return JSON.stringify(custom||useMcp?{action:"tool",tool:useMcp?"mcp_lookup":"http_lookup",params:{query:"synthetic owner lookup"}}:{action:"tool",tool:"calculate",params:{expression:"2+2"}})
       assert.match(context.history[0].observation,/4/);return '{"action":"answer","answer":"Synthetic Agent result 4"}'
     }
@@ -448,7 +473,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const request=prepareWorkflowToolHttp(material,args)
       assert.equal(request.headers.authorization,"Bearer "+toolSecret);assert.equal(request.url,tool.url)
       assert.deepEqual(args,{query:"synthetic owner lookup"});return "Synthetic HTTP observation 4"
-    },mcp:createMcpToolExecutor(async(material,wire)=>{agentMcpCalls++;assert.equal(material.headers[0].value,"Bearer SyntheticMcpHeaderNeverSent012345")
+    },mcp:createMcpToolExecutor(async(material,wire)=>{agentMcpCalls++;assert.equal(material.headers[0].value,"Bearer "+smitherySecret)
       assert.equal(wire.body.method,"tools/call");return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{content:[{type:"text",text:"Synthetic MCP observation 4"}]}})}
     })},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous})
     const agentDispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),agentModel),
@@ -484,6 +509,11 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       ui?.dispose()
     },{handlerFactory:handlers})
     }
+    const rotated=await api.saveSmitheryKey(smitherySecret+"rotated",1,randomUUID())
+    assert.equal(rotated.revision,2);assert.equal((await api.getMcpConnection(managed.id)).enabled,false)
+    await assert.rejects(api.submitAutonomousAgentRun(mcpRole.id,1,"Stale managed binding","ci-reject-rotated-managed-mcp",3),error=>error.status===409)
+    const toRevoke=await api.getSmitheryConnection(managed.id),revoked=await api.operateSmithery(managed.id,toRevoke.revision,"revoke")
+    assert.equal(revoked.state,"revoked");assert.equal((await api.removeSmitheryKey(2,randomUUID())).has_key,false)
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)

@@ -4,6 +4,9 @@
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
 import {parsePgMcpConnection,type PgNativeMcpInput,type PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
+import {parsePgSmitheryKey,parsePgSmitheryConnection,parsePgSmitheryCatalog} from "./pgNativeSmithery.ts"
+import {parseSmitherySelection,smitheryApiKey,type SmitherySelection} from "../../services/pg-api/src/smithery-contracts.ts"
+export type {PgNativeSmitheryKey,PgNativeSmitheryConnection,PgNativeSmitheryCatalog} from "./pgNativeSmithery.ts"
 import {parseAgentMcpTools,type AgentMcpTool} from "../../services/pg-api/src/mcp-binding.ts"
 export type {AgentMcpTool} from "../../services/pg-api/src/mcp-binding.ts"
 export type {PgNativeMcpInput,PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
@@ -15,6 +18,7 @@ export type PgNativeConfigCapabilities={
   model_probe_enabled:boolean
   mcp_discovery_enabled?:boolean
   mcp_tool_runs_enabled?:boolean
+  smithery_management_enabled?:boolean
   run_submission_enabled?:boolean
   bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
@@ -199,6 +203,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/workflow-v2-runs/${string
   | `/api/v2/model-connections/${string}`
   | `/api/v2/tool-connections/${string}`
   | `/api/v2/mcp-connections/${string}`
+  | `/api/v2/smithery/${string}`
   | `/api/v2/workflows/${string}/validate`
   | `/api/v2/workflow-validations/${string}`
   | `/api/v2/workflows/${string}/runs`
@@ -359,6 +364,11 @@ export function createPgNativePilotApi(
   const mcpItem=(raw:unknown):PgNativeMcpConnection=>{
     try{return parsePgMcpConnection(raw)}catch{throw new PgNativePilotError(503,"invalid_mcp_connection_response")}
   }
+  const smithery=async<T>(path:string,method:"GET"|"POST"|"DELETE",body:Record<string,unknown>|undefined,parse:(raw:unknown)=>T)=>{
+    const result=await request<{item:unknown}>(`/api/v2/smithery/${path}`,method,body,transport,rootPath,25000)
+    try{return parse(result.item)}catch{throw new PgNativePilotError(503,"invalid_smithery_response")}
+  }
+  const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
     me:async()=> (await get<{authenticated:true;user:PgNativeStaff}>(routes.me)).user,
     getConfigCapabilities:async()=>{
@@ -370,6 +380,8 @@ export function createPgNativePilotApi(
           (value.mcp_discovery_enabled===true&&value.config_writes_enabled!==true)||
           (value.mcp_tool_runs_enabled!==undefined&&typeof value.mcp_tool_runs_enabled!=="boolean")||
           (value.mcp_tool_runs_enabled===true&&value.config_writes_enabled!==true)||
+          (value.smithery_management_enabled!==undefined&&typeof value.smithery_management_enabled!=="boolean")||
+          (value.smithery_management_enabled===true&&value.config_writes_enabled!==true)||
           (value.workflow_validation_enabled!==undefined&&
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&
@@ -435,6 +447,41 @@ export function createPgNativePilotApi(
     deleteToolConnection:async(id:string)=>
       del<{ok:true;id:string;execution_enabled:false}>(
         toolConnectionRoute(id)),
+    getSmitheryKey:()=>smithery("key","GET",undefined,parsePgSmitheryKey),
+    saveSmitheryKey:(api_key:string,expected_revision:number,request_id:string)=>{
+      try{smitheryApiKey(api_key)}catch{throw new PgNativePilotError(400,"invalid_smithery_key")}
+      if(!Number.isSafeInteger(expected_revision)||expected_revision<0)throw new PgNativePilotError(400,"invalid_revision")
+      smitheryId(request_id);return smithery("key","POST",{api_key,expected_revision,request_id},parsePgSmitheryKey)
+    },
+    removeSmitheryKey:(expected_revision:number,request_id:string)=>{
+      if(!Number.isSafeInteger(expected_revision)||expected_revision<0)throw new PgNativePilotError(400,"invalid_revision")
+      smitheryId(request_id);return smithery("key","DELETE",{expected_revision,request_id},parsePgSmitheryKey)
+    },
+    readSmitheryNamespaces:async()=>{
+      const result=await post<{namespaces:unknown}>("/api/v2/smithery/namespaces",{})
+      if(!Array.isArray(result.namespaces)||result.namespaces.length>50||result.namespaces.some(name=>typeof name!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,59}$/.test(name))||new Set(result.namespaces).size!==result.namespaces.length)
+        throw new PgNativePilotError(503,"invalid_smithery_response")
+      return result.namespaces as string[]
+    },
+    searchSmitheryCatalog:async(query:string,page:number)=>{
+      if(typeof query!=="string"||query.length>100||/[\u0000-\u001f\u007f]/.test(query)||!Number.isSafeInteger(page)||page<1||page>100)throw new PgNativePilotError(400,"invalid_smithery_query")
+      const result=await post<unknown>("/api/v2/smithery/catalog",{query,page})
+      try{return parsePgSmitheryCatalog(result)}catch{throw new PgNativePilotError(503,"invalid_smithery_response")}
+    },
+    listSmitheryConnections:async()=>{
+      const result=await get<{items:unknown[]}>("/api/v2/smithery/connections")
+      try{if(!Array.isArray(result.items)||result.items.length>50)throw Error();return result.items.map(parsePgSmitheryConnection)}catch{throw new PgNativePilotError(503,"invalid_smithery_response")}
+    },
+    getSmitheryConnection:(id:string)=>smithery("connections/"+smitheryId(id),"GET",undefined,parsePgSmitheryConnection),
+    connectSmithery:(selection:SmitherySelection,request_id:string)=>{
+      let checked:SmitherySelection;try{checked=parseSmitherySelection(selection)}catch{throw new PgNativePilotError(400,"invalid_smithery_selection")}
+      smitheryId(request_id);return smithery("connections","POST",{selection:checked,request_id},parsePgSmitheryConnection)
+    },
+    operateSmithery:(id:string,expected_revision:number,action:"refresh"|"revoke"|"retry"|"pause")=>{
+      smitheryId(id);safeRevision(expected_revision)
+      if(!["refresh","revoke","retry","pause"].includes(action))throw new PgNativePilotError(400,"invalid_smithery_operation")
+      return smithery("connections/"+id+"/"+action,"POST",{expected_revision},parsePgSmitheryConnection)
+    },
     listMcpConnections:async()=>{
       const {items}=await get<{items:unknown[]}>(routes.mcpConnections)
       if(!Array.isArray(items)||items.length>50)throw new PgNativePilotError(503,"invalid_mcp_connection_response")

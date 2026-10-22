@@ -31,6 +31,9 @@ import {McpConnectionRepository} from "./mcp-connection-repository.ts"
 import {createMcpDiscovery} from "./mcp-discovery.ts"
 import {createMcpNetwork} from "./mcp-network.ts"
 import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "./mcp-privileges.ts"
+import {SmitheryRepository} from "./smithery-repository.ts"
+import {createSmitheryNetwork} from "./smithery-network.ts"
+import {verifySmitheryPrivileges} from "./smithery-privileges.ts"
 import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
@@ -265,7 +268,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const authSecret=safeSecret(files.authFile,listen,env)
   const modelKeySecret=safeSecret(files.modelKeyFile,listen,env)
   const brokerFile=nativeBrokerCredentialConfig(
-    env,listen,capabilities.modelProbeUat||capabilities.mcpDiscoveryUat===true)
+    env,listen,capabilities.modelProbeUat||capabilities.mcpDiscoveryUat===true||capabilities.smitheryManagementUat===true)
   const brokerSecret=brokerFile?safeSecret(brokerFile,listen,env):null
   const {parseModelEncryptionKey}=await import("./model-connection-crypto.ts")
   const modelEncryptionKey=parseModelEncryptionKey(modelKeySecret.password)
@@ -326,6 +329,11 @@ export async function startNativePg18Server(env=process.env,listen=true){
       await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
     }
     if(capabilities.mcpToolExecutionUat===true)await verifyMcpExecutionSchema(adapter(businessPool))
+    if(capabilities.smitheryManagementUat===true){
+      if(!brokerPool)reject()
+      await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
+      await verifySmitheryPrivileges(adapter(businessPool),adapter(brokerPool))
+    }
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -340,6 +348,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
+      allowSmitheryManagement:capabilities.smitheryManagementUat===true,
       allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
@@ -375,6 +384,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
         adapter(businessPool),modelEncryptionKey),
       mcpConnectionRepository:new McpConnectionRepository(adapter(businessPool),modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),
       ...(capabilities.mcpDiscoveryUat===true?{mcpDiscovery:createMcpDiscovery(createMcpNetwork())}:{}),
+      ...(capabilities.smitheryManagementUat===true?{smitheryRepository:new SmitheryRepository(adapter(businessPool),modelEncryptionKey,adapter(brokerPool!),createSmitheryNetwork())}:{}),
       // Explicit opt-in is required for ANY provider-network egress.
       ...(capabilities.modelProbeUat===true
         ?{modelConnectionProbe:createProviderConnectivityProbe()}:{}),

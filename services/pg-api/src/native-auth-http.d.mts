@@ -10,6 +10,7 @@ export function createNativeAuthHttpHandler(deps:{
   allowModelProbe?:boolean
   allowMcpDiscovery?:boolean
   allowMcpToolExecution?:boolean
+  allowSmitheryManagement?:boolean
   allowRunSubmission?:boolean
   allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean
