@@ -154,7 +154,7 @@ test("Job claim and completion SQL use SKIP LOCKED and fenced tokens, no blind r
   }
   assert.match(retry,/attempts < max_attempts/)
   assert.match(retry,/Ambiguous external writes must NEVER/)
-  assert.match(schema,/status text NOT NULL CHECK\(status IN \('started','succeeded','unknown'\)\)/)
+  assert.match(schema,/status text NOT NULL CHECK\(status IN \('started','succeeded','failed','unknown'\)\)/)
 })
 
 test("Dedicated Agent prepare Worker cannot claim another queue kind or bypass fencing",()=>{

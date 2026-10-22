@@ -46,7 +46,13 @@ export async function gatherAgentKnowledgeEvidence(
     throw Error("invalid_agent_knowledge_scope")
   if(ids.length===0)return []
   if(!tools.includes("knowledge_search"))throw Error("unapproved_knowledge_tool")
-  const query=knowledgeSearchTerm(instruction)
+  return gatherPrivateKnowledgeEvidence(db,ownerId,ids,knowledgeSearchTerm(instruction))
+}
+// Literal owner-private lookup for explicit Tool queries. Unlike Agent phrase
+// extraction, a one-character query remains exactly the approved query.
+export async function gatherPrivateKnowledgeEvidence(db:SqlClient,ownerId:string,ids:string[],query:string):Promise<AgentKnowledgeEvidence[]>{
+  if(!isUuid(ownerId)||!Array.isArray(ids)||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!isUuid(id))||
+     typeof query!=="string"||!query.trim()||query.length>80||query.includes("\0"))throw Error("invalid_private_knowledge_query")
   const visible=await db.query<{id:string}>(
     "SELECT id FROM agentstudio.knowledge_bases "+
     "WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) "+

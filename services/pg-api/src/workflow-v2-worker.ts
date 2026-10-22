@@ -7,6 +7,7 @@ import {advanceWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2
   type WorkflowEffectRequest,type WorkflowNodeTransition} from "./workflow-v2-machine.ts"
 import {auditWorkflowV2,checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,
   workflowV2RunColumns,type WorkflowV2RunRow,type WorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
+import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:string;workflow_id:string;workflow_revision:number;graph_sha256:string};
   lease_owner:string;lease_token:string;lease_version:string|number;lease_until:Date|string;attempts:number;max_attempts:number}
@@ -98,7 +99,10 @@ export class WorkflowV2Worker{
         lease_token:job.lease_token,lease_version:Number(job.lease_version),worker_id:this.workerId,signal:controller.signal}),
       new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("workflow_effect_timeout"))},this.timeoutMs)})])
       if(typeof output!=="string"||output.length>20000||output.includes("\0"))unknown=true
-    }catch{unknown=true}finally{if(timer)clearTimeout(timer)}
+    }catch(error){
+      if(error instanceof WorkflowKnownEffectFailure)return this.finishKnownFailure(job,prepared.request,error.code)
+      unknown=true
+    }finally{if(timer)clearTimeout(timer)}
     // A DB failure after the external call is intentionally NOT retried here.
     // The committed started ledger blocks reclaim; reconciliation pauses it.
     return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,4000))
@@ -137,6 +141,7 @@ export class WorkflowV2Worker{
           "AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[job.run_id,job.owner_user_id,pending.step_key])).rows[0]
         if(effect){
           if(effect.arguments_sha256!==pending.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
+          if(effect.status==="failed")throw new HttpError(409,"workflow_v2_effect_failed")
           if(effect.status!=="succeeded")return {tick:{status:"stale",run_id:job.run_id}}
           if(typeof effect.result_reference!=="string")throw new HttpError(409,"workflow_v2_effect_result_missing")
           const saved=JSON.parse(effect.result_reference) as {output:string}
@@ -200,6 +205,23 @@ export class WorkflowV2Worker{
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_succeeded",{step_key:request.step_key,input_sha256:request.input_sha256})
     await acknowledge(db,job,this.workerId,status==="queued"?"queued":status)
     return {status:status==="queued"?"progressed":status,run_id:job.run_id}
+  })}
+  private async finishKnownFailure(job:Job,request:WorkflowEffectRequest,error:string):Promise<WorkflowV2Tick>{return tx(this.pool,async db=>{
+    const current=await lockLease(db,job,this.workerId);if(!current)return {status:"stale",run_id:job.run_id}
+    job=current;await actor(db,job.owner_user_id)
+    const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
+      "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
+    const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    const pending=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending
+    if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
+    const changed=await db.query("UPDATE agentstudio.external_effects SET status='failed',updated_at=clock_timestamp() "+
+      "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' "+
+      "AND arguments_sha256=$4::text RETURNING step_key",[job.run_id,job.owner_user_id,request.step_key,request.input_sha256])
+    if(changed.rows.length!==1)throw Error("workflow_v2_effect_ledger_changed")
+    await stepRows(db,job,[{step_key:request.step_key,node_id:request.node_id,node_type:request.kind,status:"failed"}])
+    await this.persist(db,job,state,"failed",error)
+    await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_failed",{step_key:request.step_key,input_sha256:request.input_sha256,error_code:error})
+    await acknowledge(db,job,this.workerId,"failed");return {status:"failed",run_id:job.run_id}
   })}
   private async fail(job:Job,error:string):Promise<WorkflowV2Tick>{return tx(this.pool,async db=>{
     const current=await lockLease(db,job,this.workerId);if(!current)return {status:"stale",run_id:job.run_id}

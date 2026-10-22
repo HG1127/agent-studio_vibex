@@ -86,6 +86,7 @@ export class WorkflowV2RunRepository{
       for(const node of graph.nodes){
         if(node.type==="model"&&(!node.data.model_binding||!node.data.prompt?.trim()))throw new HttpError(409,"workflow_node_not_ready")
         if(node.type==="agent"&&!node.data.agent_binding)throw new HttpError(409,"workflow_node_not_ready")
+        if(node.type==="tool"&&node.data.tool==="summarize"&&!node.data.model_binding)throw new HttpError(409,"workflow_node_not_ready")
       }
       await verifyWorkflowGraphResources(db,owner,graph)
       const checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",

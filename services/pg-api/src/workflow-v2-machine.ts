@@ -95,14 +95,19 @@ class Machine{
     const key=this.key(node)
     this.events.push({step_key:key,node_id:node.id,node_type:node.type,status,...extra});return key
   }
-  template(source:string,nodeId:string):{text:string;missing:string[]}{
+  template(source:string,nodeId:string,jsonStrings=false):{text:string;missing:string[]}{
     const frames=[...this.frames.values()].filter(f=>f.active&&this.bodies.get(f.id)!.has(nodeId))
       .sort((a,b)=>this.bodies.get(a.id)!.size-this.bodies.get(b.id)!.size)
     const frame=frames[0],missing=new Set<string>(),pieces:string[]=[]
-    let length=0,last=0
+    let length=0,last=0,inString=false,escaped=false
+    const scan=(text:string)=>{if(!jsonStrings)return;for(const character of text){
+      if(escaped){escaped=false;continue}
+      if(inString&&character==="\\"){escaped=true;continue}
+      if(character==='"')inString=!inString
+    }}
     const add=(value:string)=>{length+=value.length;if(length>12000)fail("workflow_rendered_input_too_large");pieces.push(value)}
     for(const match of source.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)){
-      add(source.slice(last,match.index));last=match.index+match[0].length
+      const literal=source.slice(last,match.index);add(literal);scan(literal);last=match.index+match[0].length
       const key=match[1]!.trim();let value:string|undefined
       if(key==="input")value=this.cp.instruction
       else if(key==="loop.item"&&frame)value=frame.items[frame.round-1]??""
@@ -111,7 +116,11 @@ class Machine{
         const title=key.slice(0,-7),ref=this.graph.nodes.find(n=>n.data.title===title)
         if(ref)value=this.nodes.get(ref.id)!.output
       }
-      if(value===undefined){missing.add(key);value=""}add(value)
+      if(value===undefined){missing.add(key);value=""}
+      if(jsonStrings&&inString){
+        if(escaped)fail("workflow_tool_template_invalid")
+        add(JSON.stringify(value).slice(1,-1))
+      }else{add(value);scan(value)}
     }
     add(source.slice(last));return {text:pieces.join(""),missing:[...missing]}
   }
@@ -244,7 +253,7 @@ class Machine{
         if(node.type==="agent"&&!node.data.agent_binding)fail("workflow_agent_binding_missing")
         const template=node.type==="tool"?(node.data.params_template||"{}"):
           node.type==="agent"?(node.data.prompt||"{{input}}"):node.data.prompt??""
-        const rendered=this.template(template,node.id)
+        const rendered=this.template(template,node.id,node.type==="tool")
         if(!rendered.text.trim())fail("workflow_effect_input_empty")
         const signature=sha(node.id+"\0"+rendered.text),count=(this.signatures.get(signature)??0)+1
         if(this.results.get(state.key!)?.outcome!=="rejected"){

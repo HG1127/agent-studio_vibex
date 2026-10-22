@@ -60,3 +60,5 @@ pnpm db:pg-stage-operator --plan \
 **最终状态：仅独立 staging 合成试迁移能力通过，生产切换 NO-GO。**
 
 后续模型通道增量：已实现 V2 专用租约身份函数提案、数据库检查点重放、逐节点一次性 Broker 记录，以及独立证书固定的私有 mTLS 适配器。默认关闭，Tool/Agent 在调用前暂停；本地验证只用合成员工和模型响应。真实 PG18 CI、目标主机核验、完整 Workflow 与员工验收仍未完成，完整迁移门禁保持 NO-GO。范围见 [V2 私有模型通道](PG18_WORKFLOW_V2_PRIVATE_MODEL.md)。
+
+后续工具通道增量：五种内置工具与本人 HTTP 连接已接入 V2 专用身份核验、mTLS 和逐节点防重复记录；摘要必须绑定本人模型，HTTP 密钥由独立 Broker 解密，已知参数错误与外部不确定结果分开记录。当前验证只使用合成 SQL 数据及上游响应，完整 Agent、市场 MCP、PG 画布、语义知识库与团队 ACL、正式环境验收仍待完成。详见 [Workflow V2 工具迁移记录](PG18_WORKFLOW_V2_TOOLS.md)，完整门禁仍为 NO-GO。

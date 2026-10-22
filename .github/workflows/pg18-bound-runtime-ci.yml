@@ -8,6 +8,7 @@ on:
       - 'codex/pg18-workflow-v2-config-20261022'
       - 'codex/pg18-workflow-v2-runtime-20261022'
       - 'codex/pg18-workflow-v2-model-20261022'
+      - 'codex/pg18-workflow-v2-tools-20261022'
   workflow_dispatch:
 
 permissions:

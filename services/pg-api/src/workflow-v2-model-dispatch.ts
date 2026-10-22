@@ -7,9 +7,7 @@ import {withModelBrokerActor} from "./model-broker-actor.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import type {SelectedModelMaterial} from "./model-connection-executor.ts"
-import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,auditWorkflowV2,
-  workflowV2RunColumns,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
-import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
+import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch,finishWorkflowEffectDispatch,WorkflowV2EffectLeaseIdentity} from "./workflow-v2-dispatch-guard.ts"
 import {safeWorkflowV2ModelRequest,type WorkflowV2ModelRequest} from "./workflow-v2-model-contract.ts"
 type Secret={revision:number|string;enabled:boolean;status:string;provider:SelectedModelMaterial["provider"];
   base_url:string;models:unknown;api_key_ciphertext:Uint8Array;api_key_nonce:Uint8Array;api_key_tag:Uint8Array}
@@ -29,47 +27,16 @@ export class WorkflowV2ModelDispatch{
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
-    const request=safeWorkflowV2ModelRequest(raw),c=request.claim
-    const dispatchKey="wf2_model:"+request.step_key
+    const request=safeWorkflowV2ModelRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const job=(await db.query<{payload:{workflow_id:string;workflow_revision:number;graph_sha256:string}}>(
-        "SELECT payload FROM agentstudio.jobs WHERE id=$1::uuid AND run_id=$2::uuid AND owner_user_id=$3::uuid "+
-        "AND kind='workflow_tick' AND payload->>'phase'='workflow_native_v2' AND status='leased' "+
-        "AND lease_token=$4::uuid AND lease_version=$5::bigint AND lease_owner=$6::text "+
-        "AND lease_until>clock_timestamp() FOR UPDATE",
-        [c.job_id,c.run_id,owner,c.lease_token,c.lease_version,c.lease_owner])).rows[0]
-      if(!job)changed()
-      const run=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
-        "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='workflow' FOR UPDATE",[c.run_id,owner])).rows[0]
-      if(!run||run.status!=="running")changed()
-      const state=checkedWorkflowV2StoredState(run.checkpoint,run.instruction)
-      if(state.stage!=="workflow_v2_effect_started"||run.workflow_id!==job.payload.workflow_id||
-         state.workflow_revision!==Number(job.payload.workflow_revision)||state.machine.graph_sha256!==job.payload.graph_sha256)changed()
-      await verifyWorkflowV2Snapshot(db,owner,run,state)
-      const active=(await db.query<{status:string}>("SELECT status FROM agentstudio.users WHERE id=$1::uuid",[owner])).rows[0]
-      if(active?.status!=="active")changed()
-      const pending=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending
-      if(!pending||pending.kind!=="model"||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256||
-         state.machine.effects.some(item=>item.step_key===pending.step_key))changed()
-      const approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
-        "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[c.run_id,owner,request.step_key])).rows[0]
-      const effect=(await db.query<{status:string;arguments_sha256:string;tool_name:string}>(
-        "SELECT status,arguments_sha256,tool_name FROM agentstudio.external_effects "+
-        "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[c.run_id,owner,request.step_key])).rows[0]
-      if(approval?.status!=="approved"||approval.reason_code!=="wf2:"+request.input_sha256||
-         effect?.status!=="started"||effect.arguments_sha256!==request.input_sha256||effect.tool_name!=="workflow:model")changed()
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"model")
       const binding=pending.configuration.model_binding!
       const metadata=(await db.query<Secret>("SELECT revision,enabled,status,provider,base_url,models FROM agentstudio.model_connections "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[binding.connection_id,owner])).rows[0]
       if(!metadata||Number(metadata.revision)!==binding.connection_revision||!metadata.enabled||metadata.status!=="ok"||
          !models(metadata.models).includes(binding.model_id))changed()
       try{exactProviderEndpoint(metadata)}catch{changed()}
-      const reserved=await db.query("INSERT INTO agentstudio.external_effects "+
-        "(run_id,owner_user_id,step_key,tool_name,arguments_sha256,idempotency_key,status) "+
-        "VALUES($1::uuid,$2::uuid,$3::text,'workflow.model_bound_dispatch',$4::text,$5::text,'started') "+
-        "ON CONFLICT DO NOTHING RETURNING step_key",
-        [c.run_id,owner,dispatchKey,request.input_sha256,"workflow-model:"+c.run_id+":"+request.step_key])
-      if(reserved.rows.length!==1)throw new HttpError(409,"workflow_model_already_dispatched")
+      await reserveWorkflowEffectDispatch(db,owner,request,"model")
       return {binding:{...binding},provider:metadata.provider,base_url:metadata.base_url,prompt:pending.input}
     })
     let text="",failed=true
@@ -92,40 +59,15 @@ export class WorkflowV2ModelDispatch{
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_model_output")
       failed=false
     }catch{ /* A committed reservation is never retried, including decryption failure. */ }
-    try{
-      await withActor(this.pool,identity,async(db,owner)=>{
-        const result=await db.query("UPDATE agentstudio.external_effects SET status=$4::text,updated_at=clock_timestamp() "+
-          "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' "+
-          "AND arguments_sha256=$5::text RETURNING step_key",[c.run_id,owner,dispatchKey,failed?"unknown":"succeeded",request.input_sha256])
-        if(result.rows.length!==1)throw Error("workflow_model_commit_unknown")
-        await auditWorkflowV2(db,owner,c.run_id,"workflow.v2_model_dispatch",{step_key:request.step_key,
-          input_sha256:request.input_sha256,outcome:failed?"unknown":"succeeded"})
-      })
-    }catch{throw new HttpError(503,"workflow_model_outcome_unknown")}
+    await finishWorkflowEffectDispatch(this.pool,identity,request,"model",failed)
     if(failed)throw new HttpError(503,"workflow_model_outcome_unknown")
     return {status:"succeeded",text}
   }
 }
 
 // Resolves owner only through the independently authenticated identity login.
-export class WorkflowV2ModelLeaseIdentity{
-  readonly pool:SqlPool
-  constructor(pool:SqlPool){this.pool=pool}
-  async resolve(raw:WorkflowV2ModelRequest):Promise<Identity>{
-    const r=safeWorkflowV2ModelRequest(raw),c=r.claim,db=await this.pool.connect();let begun=false
-    try{
-      await db.query("BEGIN READ ONLY");begun=true
-      await db.query("SET LOCAL ROLE agentstudio_bound_dispatch")
-      const identity=(await db.query<Identity>("SELECT issuer,subject FROM agentstudio.workflow_model_lease_identity("+
-        "$1::uuid,$2::uuid,$3::uuid,$4::bigint,$5::text,$6::text,$7::text)",
-        [c.run_id,c.job_id,c.lease_token,c.lease_version,c.lease_owner,r.step_key,r.input_sha256])).rows
-      if(identity.length!==1||typeof identity[0]?.issuer!=="string"||!identity[0].issuer||identity[0].issuer.length>2048||
-         typeof identity[0]?.subject!=="string"||!identity[0].subject||identity[0].subject.length>512||
-         /[\u0000-\u001f\u007f]/.test(identity[0].issuer+identity[0].subject))throw Error("invalid_identity")
-      await db.query("COMMIT");begun=false;return {issuer:identity[0].issuer,subject:identity[0].subject}
-    }catch{if(begun)await db.query("ROLLBACK").catch(()=>undefined);throw new HttpError(403,"workflow_model_lease_denied")}
-    finally{db.release()}
-  }
+export class WorkflowV2ModelLeaseIdentity extends WorkflowV2EffectLeaseIdentity{
+  constructor(pool:SqlPool){super(pool,"model")}
 }
 export function verifiedWorkflowV2ModelDispatch(identity:WorkflowV2ModelLeaseIdentity,broker:WorkflowV2ModelDispatch){
   return async(raw:WorkflowV2ModelRequest)=>broker.dispatch(await identity.resolve(raw),raw)

@@ -28,7 +28,7 @@ const fields:Record<WorkflowNodeType,string[]>={
   start:["title","input_hint"],
   model:["title","model_binding","prompt"],
   agent:["title","agent_binding","prompt","max_steps"],
-  tool:["title","tool","tool_binding","params_template","knowledge_base_ids"],
+  tool:["title","tool","tool_binding","params_template","knowledge_base_ids","model_binding"],
   condition:["title","ref_title","op","value"],
   loop:["title","mode","count","list_source","delimiter","stop_keyword","max_iterations"],
   end:["title","output_template"],
@@ -102,6 +102,7 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
   if(type==="tool"){
     if(Boolean(output.tool)===Boolean(output.tool_binding))invalid()
     if(output.knowledge_base_ids&&output.tool!=="knowledge_search")invalid()
+    if(output.model_binding&&output.tool!=="summarize")invalid()
   }
   if(type==="loop"&&(!output.mode||(output.mode==="count"&&!output.count)||
      (output.mode==="list"&&!Object.hasOwn(output,"list_source"))))invalid()

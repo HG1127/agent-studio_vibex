@@ -1,6 +1,6 @@
 # PG18 Workflow V2 runtime — local isolated candidate
 
-**Production NO-GO.** A PostgreSQL queue and deterministic V2 interpreter now exist. A subsequent local [private model adapter](PG18_WORKFLOW_V2_PRIVATE_MODEL.md) adds exact lease/node checks and mTLS transport. Tool and Agent adapters, the employee canvas and production verification remain incomplete. No company database, service or paid provider has been used.
+**Production NO-GO.** A PostgreSQL queue and deterministic V2 interpreter now exist. Subsequent local [private model](PG18_WORKFLOW_V2_PRIVATE_MODEL.md) and [Tool](PG18_WORKFLOW_V2_TOOLS.md) adapters add exact lease/node checks and mTLS transport. Agent execution, marketplace plugins, the employee canvas and production verification remain incomplete. No company database, service or paid provider has been used.
 
 ## Implemented execution path
 
@@ -11,7 +11,7 @@
 5. The owner reviews the current request and approves/rejects that exact key/hash. Repeated identical decisions replay; a different decision or changed input conflicts. Approval rechecks current graph/resource revisions. Rejection persists an auditable skipped node and continues without an effect. Explicit cancellation stops unstarted work, even after submission permission is revoked; in-flight/unknown operations return a conflict rather than a false cancellation.
 6. A separately installed Worker adapter must execute approved effects. A committed `started` ledger precedes the single adapter call. Successful results, machine progress and job acknowledgement commit with fencing. An uncertain response becomes `unknown` and pauses the run. A crash/failure after sending cannot cause an automatic resend; expired ambiguous leases are reconciled to paused/unknown. Known succeeded ledger results can restore progress without another call.
 
-The original runtime checkpoint installed no adapter. The subsequent private model candidate optionally installs a model-only adapter under a separate explicit approval pair and protected Workflow TLS credentials; default mode still reports `effect_executor_installed:false`. Tool and Agent nodes continue to pause with `workflow_v2_effect_executor_unavailable`. A separate V2 identity function and private route verify Workflow nodes; the Agent-only route is unchanged. No shared model fallback exists in this Worker.
+The original runtime checkpoint installed no adapter. Subsequent private candidates optionally install Model and Tool adapters under independent explicit approval pairs and protected Workflow TLS credentials; default mode still reports `effect_executor_installed:false`. Agent nodes continue to pause with `workflow_v2_effect_executor_unavailable`. Separate V2 identity functions and private routes verify each node kind; the Agent-only route is unchanged. No shared model fallback exists in this Worker.
 
 ## Deterministic semantics and bounds
 
@@ -67,4 +67,4 @@ Local verification checkpoint:
 
 All these tests use synthetic data. No new source has been pushed. The older UI upload candidate remains `2af22c5` on its named branch; this later runtime work does not expand that pending approval. Configuration candidate `17c940e` also remains unchanged.
 
-The subsequent private model candidate addresses V2 model identity/dispatch in local synthetic tests; it still requires remote PG18 and target-host verification. Required work remains: real tool and Agent execution with scoped credentials, approvals and durable effects; PG canvas and full-node user acceptance; genuine PG18/HTTPS release-commit CI; target-host role/certificate/credential verification, long-running Worker/recovery tests, employee UAT, backup/restore and old-site rollback. The full Workflow migration gate stays false.
+The subsequent private candidates address Model and current builtin/HTTP Tool dispatch in local synthetic tests; they still require remote PG18 and target-host verification. Required work remains: Agent and marketplace MCP execution with scoped credentials, approvals and durable effects; PG canvas and full-node user acceptance; genuine PG18/HTTPS release-commit CI; target-host role/certificate/credential verification, long-running Worker/recovery tests, employee UAT, backup/restore and old-site rollback. The full Workflow migration gate stays false.

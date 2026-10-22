@@ -12,7 +12,7 @@ import pg from "pg"
 import {requireEphemeralPg18Ci} from "../src/pg18-ephemeral-ci-guard.mjs"
 import {loadPg18CiBaseline} from "../src/pg18-ci-schema.mjs"
 import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
-import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
+import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
@@ -26,6 +26,11 @@ import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../src/workflow-v2-model-dispatch.ts"
 import {workflowV2ModelEffectExecutor} from "../src/workflow-v2-model-client.ts"
 import {createWorkflowV2ModelInternalHandler} from "../src/workflow-v2-model-handler.ts"
+import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "../src/workflow-v2-tool-dispatch.ts"
+import {workflowV2ToolEffectExecutor} from "../src/workflow-v2-tool-client.ts"
+import {createWorkflowV2ToolInternalHandler} from "../src/workflow-v2-tool-handler.ts"
+import {prepareWorkflowToolHttp,redactWorkflowToolResponse} from "../src/workflow-v2-tool-network.ts"
+import {ToolConnectionRepository} from "../src/tool-connection-repository.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
@@ -79,6 +84,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       workflowRepository:new WorkflowRepository(pool),
       workflowV2RunRepository:new WorkflowV2RunRepository(pool),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
+      toolConnectionRepository:new ToolConnectionRepository(pool,key),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
     server.on("request",native.handler)
     let cookie=""
@@ -153,6 +159,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_023_workflow_safe_worker.sql"))
     await admin.query(upgrade("pg_v9_024_bound_dispatch_identity.sql"))
     await admin.query(upgrade("pg_v9_025_workflow_model_identity.sql"))
+    await admin.query(upgrade("pg_v9_026_workflow_tool_identity.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -166,7 +173,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
     const workerPool=adapter(byLogin.agentstudio_stage_worker)
     for(const [kind,pool] of [["api",apiPool],["identity",identityPool],["broker",brokerPool]])
-      {await verifyBoundDispatchPrivileges(pool,kind);await verifyWorkflowModelIdentityPrivileges(pool,kind)}
+      {await verifyBoundDispatchPrivileges(pool,kind);await verifyWorkflowModelIdentityPrivileges(pool,kind);await verifyWorkflowEffectIdentityPrivileges(pool,kind,"tool")}
     // A disposable CI database must NOT pass the actual deployment target
     // wrapper. The privilege inspector above does not bypass that wrapper.
     await assert.rejects(verifyBoundDispatchRole(apiPool,{mode:"baota_pg18",host:"127.0.0.1",
@@ -291,6 +298,40 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[uncertain.run.id])).rows,
         [{status:"unknown"},{status:"unknown"}])
     },{handlerFactory:createWorkflowV2ModelInternalHandler})
+    // Tool identity/ciphertext column permissions are exercised with the real
+    // three restricted logins. Only the last outbound provider is synthetic.
+    const toolSecret="SyntheticHttpToolCredentialNeverSentToNetwork012345"
+    const tool=await api.createToolConnection({name:"CI owner Tool",description:"Synthetic only",url:"https://tools.example.com/run",
+      method:"POST",headers:[{key:"Authorization",value:"Bearer "+toolSecret}],body_template:"{{input}}",timeout_s:10,enabled:true})
+    let toolPosts=0
+    const toolBroker=new WorkflowV2ToolDispatch(apiPool,key,{async http(material,args){
+      toolPosts++;assert.equal(material.headers[0].value,"Bearer "+toolSecret)
+      const prepared=prepareWorkflowToolHttp(material,args)
+      return redactWorkflowToolResponse("Synthetic Tool response "+material.headers[0].value,prepared.secrets)
+    }},brokerPool)
+    const toolDispatch=verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),toolBroker)
+    await withDisposableBoundModelTls(toolDispatch,async config=>{
+      const worker=new WorkflowV2Worker(workerPool,"ci-v2-tools",{executor:workflowV2ToolEffectExecutor(config)})
+      for(const [data,expected] of [
+        [{tool_binding:{connection_id:tool.id,connection_revision:tool.revision},params_template:'{"query":"synthetic"}'},"succeeded"],
+        [{tool:"calculate",params_template:'{"expression":"2+2"}'},"succeeded"],
+        [{tool:"calculate",params_template:'{"expression":"1/0"}'},"failed"],
+      ]){
+        const toolGraph={version:2,nodes:[graph.nodes[0],{id:"tool",type:"tool",data:{title:"Tool",...data},position:{x:200,y:0}},
+          {...graph.nodes[2],data:{title:"End",output_template:"{{Tool.output}}"}}],
+          edges:[{id:"a",source:"start",target:"tool"},{id:"b",source:"tool",target:"end"}]}
+        const flow=await api.createWorkflowGraph("Synthetic Tool workflow",toolGraph)
+        const run=await api.submitWorkflowV2Run(flow.id,1,"Synthetic Tool task","ci-v2-tool-"+flow.id)
+        await worker.tick();const pending=(await api.getWorkflowV2Run(run.run.id)).pending_effect
+        await api.decideWorkflowV2Node(run.run.id,"approved",pending.step_key,pending.input_sha256)
+        for(let i=0;i<3;i++)await worker.tick()
+        const detail=await api.getWorkflowV2Run(run.run.id)
+        assert.equal(detail.run.status,expected);assert.equal(JSON.stringify(detail).includes(toolSecret),false)
+        const ledger=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[run.run.id])).rows
+        assert.deepEqual(ledger,expected==="succeeded"?[{status:"succeeded"},{status:"succeeded"}]:[{status:"failed"}])
+      }
+      assert.equal(toolPosts,1);assert.equal((await worker.tick()).status,"idle")
+    },{handlerFactory:createWorkflowV2ToolInternalHandler})
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)

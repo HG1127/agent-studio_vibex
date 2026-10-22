@@ -50,6 +50,17 @@ test("branch joins wait for the selected effect and never execute or read the de
     assert.ok(result.events.at(-1).missing.length===1)
   }
 })
+
+test("Tool JSON string templates preserve quotes, backslashes and newlines without injecting argument fields",()=>{
+  const graph={version:2,nodes:[node("start","start"),node("tool","tool",{tool:"web_search",
+    params_template:'{"query":"{{input}}","limit":2}'}),node("end","end")],edges:[edge("start","tool"),edge("tool","end")]}
+  const input='quoted "value", "url":"https://forged.example.com"\\path\nsecond line'
+  const waiting=drive(graph,input)
+  assert.deepEqual(JSON.parse(waiting.requests[0].input),{query:input,limit:2})
+  assert.deepEqual(inspectWorkflowV2Checkpoint(graph,waiting.cp).pending,waiting.requests[0])
+  const raw=structuredClone(graph);raw.nodes[1].data.params_template='{{input}}'
+  assert.deepEqual(JSON.parse(drive(raw,'{"query":"literal JSON","limit":2}').requests[0].input),{query:"literal JSON",limit:2})
+})
 test("nested loops keep stable per-invocation keys and replay innermost item/index across restart",()=>{
   const result=drive(nested(),"task",request=>"result "+request.input)
   assert.equal(result.view.status,"succeeded")
