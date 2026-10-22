@@ -12,13 +12,17 @@ const assets=path.join(dist,"assets")
 if(!statSync(assets).isDirectory())
   throw Error("production_bundle_assets_missing")
 const files=readdirSync(assets)
-const leaks=files.filter(name=>/^PgPilotPage[-.]/.test(name))
+const leaks=files.filter(name=>/^(?:PgPilotPage|PgNativePilotPage)[-.]/.test(name))
 for(const name of files){
   if(!name.endsWith(".js"))continue
   const code=readFileSync(path.join(assets,name),"utf8")
   if(code.includes("PostgreSQL V8.2 试验工作台")||
     code.includes("/__pg/api/v2")||
-    code.includes("oidc_access_token_required"))
+    code.includes("oidc_access_token_required")||
+    code.includes("独立员工工作台")||
+    code.includes("/__pg_native/")||
+    code.includes("pg_native_connection_unavailable")||
+    code.includes("__Host-agentstudio_session"))
     leaks.push(name)
 }
 if(leaks.length){

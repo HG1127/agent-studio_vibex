@@ -4,6 +4,8 @@
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   model_probe_enabled:boolean
+  run_submission_enabled?:boolean
+  bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
   workflow_execution_enabled?:boolean
 }
@@ -325,6 +327,12 @@ export function createPgNativePilotApi(
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&
             typeof value.workflow_execution_enabled!=="boolean")||
+          (value.run_submission_enabled!==undefined&&
+            typeof value.run_submission_enabled!=="boolean")||
+          (value.bound_model_runs_enabled!==undefined&&
+            typeof value.bound_model_runs_enabled!=="boolean")||
+          (value.run_submission_enabled===true&&value.config_writes_enabled!==true)||
+          (value.bound_model_runs_enabled===true&&value.run_submission_enabled!==true)||
          value.run_execution_enabled!==false)
         throw new PgNativePilotError(503,"invalid_native_capabilities")
       return value

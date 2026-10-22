@@ -328,13 +328,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
+      allowRunSubmission:capabilities.runApprovalUat,
+      allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
       allowWorkflowValidation:capabilities.workflowValidationUat===true,
       allowWorkflowExecution:capabilities.workflowExecutionUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
-        // owner-owned config. Never admit runs, approvals, tool effects or
-        // knowledge imports through this opt-in test service.
+        // owner-owned records. Each mutation needs its independent policy
+        // below; public routes never mount the private Broker or executor.
         const pathname=new URL(req.url||"/","http://127.0.0.1").pathname
         if(!permitNativePg18BusinessUatRequest(
           pathname,req.method||"",capabilities)){

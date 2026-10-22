@@ -8,6 +8,8 @@ export function createNativeAuthHttpHandler(deps:{
   businessHandler:HttpHandler
   allowConfigurationWrites?:boolean
   allowModelProbe?:boolean
+  allowRunSubmission?:boolean
+  allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean
   allowWorkflowExecution?:boolean
   allowEmployeeProvisioning?:boolean
