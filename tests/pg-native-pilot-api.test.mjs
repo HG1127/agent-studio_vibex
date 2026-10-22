@@ -38,6 +38,10 @@ test("Native config capability uses same-origin GET and rejects malformed grants
       workflow_v2_submission_enabled:"yes",run_execution_enabled:false},
     {mode:"native_pg18",config_writes_enabled:false,model_probe_enabled:false,
       workflow_v2_submission_enabled:true,run_execution_enabled:false},
+    {mode:"native_pg18",config_writes_enabled:true,model_probe_enabled:false,
+      autonomous_agent_submission_enabled:"yes",run_execution_enabled:false},
+    {mode:"native_pg18",config_writes_enabled:false,model_probe_enabled:false,
+      autonomous_agent_submission_enabled:true,run_execution_enabled:false},
     {}
   ]){
     const broken=createPgNativePilotApi(async()=>

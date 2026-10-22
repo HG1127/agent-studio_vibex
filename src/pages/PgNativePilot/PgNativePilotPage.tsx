@@ -17,6 +17,7 @@ import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistor
 import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
+import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
 
 // The isolated Run UAT view is excluded from production builds and never
 // unlocks backend task execution: the server enforces a separate approval.
@@ -34,7 +35,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="agents"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"workflowRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="agents"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -66,6 +67,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [workflowExecutionEnabled,setWorkflowExecutionEnabled]=useState(false)
   const [runSubmissionEnabled,setRunSubmissionEnabled]=useState(false)
   const [boundModelRunsEnabled,setBoundModelRunsEnabled]=useState(false)
+  const [autonomousEnabled,setAutonomousEnabled]=useState(false)
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState("")
   const [notice,setNotice]=useState("")
@@ -94,10 +96,24 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [staffEmail,setStaffEmail]=useState("")
   const [staffName,setStaffName]=useState("")
   const [staffPassword,setStaffPassword]=useState("")
+  const clearPrivateDrafts=useCallback(()=>{
+    setNewName("");setNewGoal("");setNewDescription("")
+    setStaffEmail("");setStaffName("");setStaffPassword("")
+    setModelName("");setModelApiKey("");setModelModels("");setNotice("")
+  },[])
+  const expireAgentSession=useCallback(()=>{
+    sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
+    setAutonomousEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
+    setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
+    setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
+    clearPrivateDrafts()
+    setError("员工登录已失效，请重新登录。")
+  },[clearPrivateDrafts])
   const refresh=useCallback(async()=>{
     const ticket=sessionFence.current.beginRead()
     setConfigEditEnabled(false)
-    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
+    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setLoading(true)
     try{
       const [a,w,k,m,t,capability]=await Promise.all([
@@ -116,23 +132,18 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setWorkflowExecutionEnabled(capability?.workflow_execution_enabled===true)
       setRunSubmissionEnabled(capability?.config_writes_enabled===true&&capability.run_submission_enabled===true)
       setBoundModelRunsEnabled(capability?.bound_model_runs_enabled===true)
+      setAutonomousEnabled(capability?.config_writes_enabled===true&&capability.autonomous_agent_submission_enabled===true)
       setError("")
     }catch(err){
       if(!sessionFence.current.acceptsRead(ticket))return
       if(err instanceof PgNativePilotError&&err.status===401){
-        sessionFence.current.invalidate()
-        setProfile(null);setStatus("signedout")
-        setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
-        setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
-        setAgents([]);setWorkflows([]);setKnowledge([]);setModelConnections([])
-        setToolConnections([])
-        setEditing(null);setModelEditing(null);setDetailTarget(null);setLoading(false)
+        expireAgentSession()
       }
       setError(describe(err))
     }finally{
       if(sessionFence.current.acceptsRead(ticket))setLoading(false)
     }
-  },[api,productionRoot])
+  },[api,productionRoot,expireAgentSession])
   useEffect(()=>{
     let active=true
     const sessionAtStart=sessionFence.current.session()
@@ -176,6 +187,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     }
     if(busy)return
     const sessionAtStart=sessionFence.current.invalidate()
+    clearPrivateDrafts()
     setAgents([]);setWorkflows([]);setKnowledge([]);setModelConnections([])
     setToolConnections([])
     setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
@@ -200,9 +212,10 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const logout=async()=>{
     if(busy)return
     const sessionAtStart=sessionFence.current.invalidate()
+    clearPrivateDrafts()
     // Hide all private information before the network logout completes.
     setProfile(null);setStatus("checking")
-    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
+    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([])
     setToolConnections([])
     setConfigEditEnabled(false);setModelProbeEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false)
@@ -316,6 +329,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     {key:"workflows" as const,label:"Workflow",icon:Workflow,count:workflows.length},
     {key:"knowledge" as const,label:"知识库",icon:BookOpen,count:knowledge.length},
     {key:"schedules" as const,label:"定时计划草稿",icon:CalendarClock,count:null},
+    {key:"autonomousAgent" as const,label:"多轮 Agent",icon:Bot,count:null},
     {key:"runs" as const,label:"Agent 运行历史（只读）",icon:ClipboardCheck,count:null},
     {key:"workflowRuns" as const,label:"Workflow 运行历史（只读）",icon:Workflow,count:null},
     ...(RUN_UAT_LOCAL_ONLY&&!productionRoot?
@@ -426,6 +440,10 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             {section==="runAgent"&&!canRunOwnerModel&&<p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
               当前环境未授权提交模型任务。已有记录可在运行历史中查看。
             </p>}
+            <div hidden={section!=="autonomousAgent"}>
+              <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections}
+                active={section==="autonomousAgent"} enabled={autonomousEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>
+            </div>
             {section==="agents"&&<>
               {canEditConfig&&<CreateCard title="创建 Agent 配置" description="创建后写入本人独立的 PG18 Agent 记录，不会自动运行。">
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>

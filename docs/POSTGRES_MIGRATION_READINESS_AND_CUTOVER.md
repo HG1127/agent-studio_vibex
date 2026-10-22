@@ -66,3 +66,5 @@ pnpm db:pg-stage-operator --plan \
 后续 Workflow Agent 增量：已实现本人方案快照、有界多轮 Model/Tool 状态、逐步员工审批、重启重放与私有子步骤身份核验。真实回环 mTLS 和合成 SQL 已覆盖模型→工具→模型、拒绝/已知失败后的继续、不确定结果停止、Worker 提交故障及知识库范围；新增 Native Cookie/CSRF 子步骤测试。独立 Agent 自主运行、市场 MCP、PG 画布及正式验收仍未完成。详见 [Workflow Agent 节点记录](PG18_WORKFLOW_V2_AGENTS.md)，完整迁移仍为 NO-GO。
 
 2026-10-23 独立 Agent 后端增量：已补本人角色直接入队、多轮 Model/Tool、逐步审批、私有 mTLS 身份及独立历史接口；旧单次运行接口不再读取此类内部检查点。独立专项 10/10、主工作区 345 项检查及 PocketBase 23 项隔离 E2E 通过。员工多轮运行 UI、完整功能等价和正式环境验收仍未完成，门禁维持 10 项阻断、cutover=false。用户已确认旧数据全部为测试数据，可不导入；下文历史快照/逐行对账要求仅在以后另行要求保留数据时适用。详见 [独立 Agent 运行记录](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。
+
+2026-10-23 多轮 Agent 员工界面增量：已接原生本人任务提交、逐步费用/操作确认、进度/结果与安全取消；不确定请求保留原幂等键、步骤哈希和决定，跨页保留、退出/401 时销毁。专项 10/10 包含真实 Cookie/SQL 响应丢失恢复与静态组件转义检查；实际浏览器及真实员工验收尚未执行。最新门禁为 244 个前端文件、38 个 PocketBase 依赖文件、10 项阻断，仍为 NO-GO。详见 [多轮 Agent 员工界面记录](PG18_AUTONOMOUS_AGENT_EMPLOYEE_UI.md)。

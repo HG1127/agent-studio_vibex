@@ -60,6 +60,8 @@ export type PgNativeWorkflowV2Result={
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
   execution_mode:"agent_native_v2";run:Omit<PgNativeWorkflowV2Result["run"],"kind"|"workflow_id">&{kind:"agent";workflow_id:null;agent_spec_id:string}
 }
+export type PgNativeAutonomousAgentSummary={id:string;agent_spec_id:string;status:string;instruction_preview:string;result_preview:string;
+  step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string}
 export type PgNativeKnowledge={id:string;name:string;description:string;revision:number}
 export type PgNativeModelProvider="openai"|"anthropic"|"gemini"
 export type PgNativeModelConnection={
@@ -531,7 +533,7 @@ export function createPgNativePilotApi(
         expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps})
     },
     getAutonomousAgentRun:async(id:string)=>get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id)),
-    listAutonomousAgentRuns:async()=> (await get<{items:Array<Record<string,unknown>>}>(routes.autonomousAgentRuns)).items,
+    listAutonomousAgentRuns:async()=> (await get<{items:PgNativeAutonomousAgentSummary[]}>(routes.autonomousAgentRuns)).items,
     decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
          !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")

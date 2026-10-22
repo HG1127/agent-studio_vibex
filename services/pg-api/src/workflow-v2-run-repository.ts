@@ -94,7 +94,8 @@ export class WorkflowV2RunRepository{
     // Do not send graph snapshots, replay journals or private node bodies with
     // run history. The current pending request is shown only for explicit review.
     return {run:{...row,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
-      [this.root.revision]:state[this.root.revision],graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,
+      [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps}:{}),
+      graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,
       executions:view.executions,loop_progress:view.loops}},
       steps:steps.rows.map(step=>({...step,metadata:safeRunStepMetadata(step.metadata)})),
       steps_truncated:Number(row.step_count)>steps.rows.length,approvals:approvals.rows.slice(0,200).reverse(),approvals_truncated:approvals.rows.length>200,

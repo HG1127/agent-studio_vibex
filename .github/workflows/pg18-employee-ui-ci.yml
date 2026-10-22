@@ -10,6 +10,7 @@ on:
       - 'codex/pg18-workflow-v2-tools-20261022'
       - 'codex/pg18-workflow-v2-agents-20261022'
       - 'codex/pg18-autonomous-agent-20261023'
+      - 'codex/pg18-autonomous-agent-ui-20261023'
   workflow_dispatch:
 
 permissions:
@@ -43,7 +44,7 @@ jobs:
         run: |
           pnpm exec tsc -p tsconfig.app.json --noEmit
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
+          node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-autonomous-session.test.mjs tests/pg-native-autonomous-render.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
           pnpm build:pg18:trial
       - name: Install isolated Chromium on the disposable runner
         run: pnpm exec playwright install --with-deps chromium

@@ -19,6 +19,7 @@ import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
 import {createHandler} from "../src/http.ts"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
+import {createPgNativeAutonomousAgentSession} from "../../../src/lib/pgNativeAutonomousAgentSession.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 const config={AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED:"true",AGENT_STUDIO_PG18_UAT_APPROVAL:"APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY"}
@@ -82,7 +83,22 @@ test("Native Cookie autonomous Agent API: strict idempotency, queue isolation, o
     const submit=(max=3)=>alice.api.submitAutonomousAgentRun(role.id,role.revision,"Synthetic task","native-autonomous-0001",max)
     await assert.rejects(submit(),e=>e.status===405);enabled=true;configure()
     assert.equal((await alice.api.getConfigCapabilities()).autonomous_agent_submission_enabled,true)
-    const queued=await submit();assert.equal(queued.run.kind,"agent");assert.equal(queued.run.workflow_id,null)
+    let loseSubmit=true,loseDecision=true
+    const ui=createPgNativeAutonomousAgentSession({...alice.api,async submitAutonomousAgentRun(...args){
+      const result=await alice.api.submitAutonomousAgentRun(...args)
+      if(loseSubmit){loseSubmit=false;throw Error("synthetic committed response lost")};return result
+    },async decideAutonomousAgentNode(...args){
+      const result=await alice.api.decideAutonomousAgentNode(...args)
+      if(loseDecision){loseDecision=false;throw Error("synthetic committed decision response lost")};return result
+    }},{key:()=>"native-autonomous-0001"})
+    ui.setActive(true);await ui.refresh()
+    const uiDraft={agentId:role.id,revision:role.revision,instruction:"Synthetic task",maxSteps:3}
+    await ui.submit(uiDraft);assert.ok(ui.snapshot().pendingSubmit)
+    ui.setActive(false);ui.setActive(true)
+    await ui.submit({...uiDraft,instruction:"Must not replace the committed task",maxSteps:1})
+    assert.equal(ui.snapshot().pendingSubmit,null);assert.equal(ui.snapshot().detail.replayed,true)
+    const queued=ui.snapshot().detail;assert.equal(queued.run.kind,"agent");assert.equal(queued.run.workflow_id,null)
+    assert.equal(queued.run.checkpoint.max_steps,3)
     assert.equal(queued.run.agent_spec_id,role.id);assert.equal(queued.worker_started_by_api,false)
     assert.equal((await submit()).replayed,true);await assert.rejects(submit(2),e=>e.status===409)
     await assert.rejects(bob.api.submitAutonomousAgentRun(role.id,1,"Synthetic task","bob-autonomous-0001",3),e=>e.status===404)
@@ -101,7 +117,7 @@ test("Native Cookie autonomous Agent API: strict idempotency, queue isolation, o
       return JSON.stringify(JSON.parse(request.input).round===1?{action:"tool",tool:"calculate",params:{expression:"2+2"}}:{action:"answer",answer:"Synthetic result 4"})
     }}})
     for(let i=0;i<24;i++){
-      await worker().tick();const detail=await alice.api.getAutonomousAgentRun(queued.run.id)
+      await worker().tick();await ui.refresh();const detail=ui.snapshot().detail
       if(detail.run.status==="succeeded")break
       if(detail.run.status!=="awaiting_approval")continue
       const p=detail.pending_effect
@@ -112,7 +128,7 @@ test("Native Cookie autonomous Agent API: strict idempotency, queue isolation, o
         await assert.rejects(alice.api.decideAutonomousAgentNode(queued.run.id,"approved",p.step_key,p.input_sha256),e=>e.status===405)
         assert.equal((await worker().tick()).status,"idle");enabled=true;configure();revoked=true
       }
-      await alice.api.decideAutonomousAgentNode(queued.run.id,"approved",p.step_key,p.input_sha256)
+      await ui.decide("approved",true)
     }
     const done=await alice.api.getAutonomousAgentRun(queued.run.id)
     assert.equal(done.run.status,"succeeded");assert.equal(done.run.result_text,"Synthetic result 4");assert.equal(calls,3)
@@ -122,6 +138,7 @@ test("Native Cookie autonomous Agent API: strict idempotency, queue isolation, o
     const cancel=await alice.api.submitAutonomousAgentRun(role.id,1,"Cancel me","native-autonomous-cancel-001",3)
     enabled=false;configure();assert.equal((await alice.api.cancelAutonomousAgentRun(cancel.run.id)).run.status,"cancelled")
     assert.equal((await alice.api.listAutonomousAgentRuns()).length,2)
+    ui.dispose();assert.equal(ui.snapshot().detail,null)
     key.fill(0)
   }finally{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}await db.close()}
 })
