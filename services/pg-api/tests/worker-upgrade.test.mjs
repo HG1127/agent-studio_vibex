@@ -40,7 +40,7 @@ test("old staging ledger upgrades Worker status grants and RLS without duplicate
     const count=await pg.query(
       "SELECT count(*)::int AS n FROM pg_policies "+
       "WHERE schemaname='agentstudio'")
-    assert.equal(count.rows[0].n,22)
+    assert.equal(count.rows[0].n,27)
     const ledger=await pg.query(
       "SELECT count(*)::int AS n FROM agentstudio.schema_migrations "+
       "WHERE version='pg_v8_003'")

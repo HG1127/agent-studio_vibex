@@ -5,7 +5,7 @@ import path from "node:path"
 import {fileURLToPath} from "node:url"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
-const read=x=>readFileSync(path.join(root,x),"utf8")
+const read=x=>readFileSync(path.join(root,x),"utf8").replace(/\r\n/g,"\n")
 
 test("pnpm 11 build lifecycle approvals are explicit, not auto-approved",()=>{
   const settings=read("pnpm-workspace.yaml")

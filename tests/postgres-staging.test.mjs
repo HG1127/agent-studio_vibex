@@ -7,7 +7,7 @@ import path from "node:path"
 import {fileURLToPath} from "node:url"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
-const read=relative=>fs.readFileSync(path.join(root,relative),"utf8")
+const read=relative=>fs.readFileSync(path.join(root,relative),"utf8").replace(/\r\n/g,"\n")
 const composePath="deploy/postgres-staging/compose.yaml"
 const compose=read(composePath)
 const schema=read("db/postgres/001_stage_schema.sql")
@@ -75,8 +75,8 @@ test("Postgres schema includes normalized isolated internal-business records and
     "schema_migrations","users","teams","team_memberships",
     "agent_specs","legacy_agent_imports","workflows","runs","run_steps","jobs","run_leases",
     "external_effects","approvals","schedules","schedule_occurrences",
-    "knowledge_bases","knowledge_documents","knowledge_chunks",
-    "template_invites","audit_events",
+    "knowledge_bases","knowledge_documents","knowledge_chunks","model_connections",
+    "tool_connections","tool_connection_headers","template_invites","audit_events",
   ]
   assert.deepEqual([...tables].sort(),expected.sort())
   assert.match(schema,/embedding vector\(1536\)/)
