@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // V8 isolated PostgreSQL preparation Worker. Never starts V7 PocketBase or
 // performs model calls, external tool writes, browser navigation or migration.
-import {readFileSync,statSync} from "node:fs"
+import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
 import {setTimeout as sleep} from "node:timers/promises"
 import {randomUUID} from "node:crypto"
-import {Pool} from "pg"
-import {AgentPrepareWorker} from "./agent-worker.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {selectPgRuntimeTarget,verifyPgRuntimeTarget} from "./pg-runtime-target.ts"
+import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
+import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
+import {assertPgWorkerActivation,assertPg18WorkerCredentialBinding,
+  pgWorkerOfflinePlan}
+  from "./worker-activation-guard.ts"
 
 function requireEnv(name:string):string{
   const value=String(process.env[name]||"").trim()
@@ -14,53 +18,44 @@ function requireEnv(name:string):string{
   return value
 }
 function workerConnection(){
-  const host=requireEnv("AGENT_STUDIO_PG_HOST")
-  const user=requireEnv("AGENT_STUDIO_PG_WORKER_USER")
-  const database=requireEnv("AGENT_STUDIO_PG_DATABASE")
-  if(!["postgres","127.0.0.1","localhost"].includes(host)||
-     user!=="agentstudio_stage_worker"||
-     database!=="agentstudio_stage")
-    throw Error("unsafe_worker_database_config")
+  const target=selectPgRuntimeTarget(process.env,"worker")
   const file=requireEnv("AGENT_STUDIO_PG_WORKER_PASSWORD_FILE")
-  const stat=statSync(file)
-  if(!stat.isFile()||stat.size<32||stat.size>4096)
+  const stat=lstatSync(file)
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.size<32||stat.size>4096)
     throw Error("unsafe_worker_secret_file")
+  if(target.mode==="baota_pg18"){
+    let canRead=false
+    try{accessSync(file,constants.R_OK);canRead=true}catch{}
+    try{assertPg18CredentialMetadata({kind:"prepare",env:process.env,
+      file,stat,uid:process.getuid?.(),canRead})}
+    catch{throw Error("unsafe_worker_secret_file")}
+  }
   const password=readFileSync(file,"utf8").replace(/[\r\n]+$/g,"")
   if(password.length<32||/^(.)\1+$/.test(password))
     throw Error("unsafe_worker_secret_file")
-  return {host,user,database,password}
+  return {...target,password}
 }
-async function verifyRoles(pool:SqlPool){
-  const client=await pool.connect()
-  try{
-    const role=await client.query<{
-      login:string;superuser:boolean;bypass:boolean
-    }>(
-      "SELECT session_user AS login,rolsuper AS superuser,"+
-      "rolbypassrls AS bypass FROM pg_roles WHERE rolname=session_user")
-    const r=role.rows[0]
-    if(!r||r.login!=="agentstudio_stage_worker"||r.superuser||r.bypass)
-      throw Error("unsafe_worker_login")
-    for(const needed of ["agentstudio_worker","agentstudio_api"]){
-      await client.query("BEGIN")
-      try{
-        await client.query("SET LOCAL ROLE "+needed)
-        const changed=await client.query<{role:string}>(
-          "SELECT current_user AS role")
-        if(changed.rows[0]?.role!==needed)
-          throw Error("worker_permission_missing")
-      }finally{
-        await client.query("ROLLBACK")
-      }
-    }
-  }finally{client.release()}
-}
-async function main(){
+async function main(preflight=false){
+  // Real PG18 --preflight and the audited stand-alone PREPARE review entry
+  // share exactly the same read-only implementation; preserve PG17 behavior.
+  if(preflight&&process.env.AGENT_STUDIO_PG_BAOTA18_ENABLED==="true"){
+    const {runPg18NativeWorkerReadonlyPreflight}=await import("./pg18-native-worker-readonly.ts")
+    await runPg18NativeWorkerReadonlyPreflight("prepare")
+    return
+  }
+  if(!preflight)assertPgWorkerActivation(process.env,process.argv.slice(2))
+  assertPg18WorkerCredentialBinding(process.env,"prepare")
   if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true"||
-     process.env.AGENT_STUDIO_PG_PREPARE_WORKER_ENABLED!=="true")
+     (!preflight&&process.env.AGENT_STUDIO_PG_PREPARE_WORKER_ENABLED!=="true"))
     throw Error("worker_disabled")
   const config=workerConnection()
-  const pool=new Pool({...config,max:2,connectionTimeoutMillis:4000,
+  // Keep --plan completely offline; for --preflight load ONLY the DB driver,
+  // never the worker SQL sources or execution engine.
+  const {Pool}=await import("pg")
+  const pool=new Pool({
+    host:config.host,port:config.port,user:config.user,
+    database:config.database,password:config.password,
+    max:2,connectionTimeoutMillis:4000,
     idleTimeoutMillis:10000,statement_timeout:9000})
   const adapter:SqlPool={
     async connect():Promise<SqlClient>{
@@ -78,7 +73,19 @@ async function main(){
   process.once("SIGTERM",()=>{stopping=true})
   process.once("SIGINT",()=>{stopping=true})
   try{
-    await verifyRoles(adapter)
+    await verifyPgRuntimeTarget(adapter,config)
+    await verifyPgWorkerRoleBoundary(adapter,config)
+    if(preflight){
+      process.stdout.write(JSON.stringify({
+        mode:"preflight",worker:"prepare",target:config.database,
+        database_port:config.port,verified_roles:true,
+        db_writes_performed:false,worker_started:false,
+        external_model_calls:false,production_cutover_allowed:false
+      })+"\n")
+      return
+    }
+    // Execution-only code and claim SQL are not loaded during --preflight.
+    const {AgentPrepareWorker}=await import("./agent-worker.ts")
     const worker=new AgentPrepareWorker(adapter,
       "agent-prepare-"+randomUUID().slice(0,8))
     process.stdout.write(JSON.stringify({
@@ -101,12 +108,21 @@ async function main(){
     }
   }finally{await pool.end()}
 }
-main().catch(error=>{
-  const message=error instanceof Error?error.message:"unknown_error"
-  const code=/^(worker_disabled|missing_[A-Z0-9_]+|unsafe_[a-z_]+|worker_permission_missing)$/
-    .test(message)?message:"worker_start_failed"
-  process.stderr.write(JSON.stringify({
-    service:"pg-agent-prepare",error:code,
-  })+"\n")
+const launchArgs=process.argv.slice(2)
+if(launchArgs.length===1&&launchArgs[0]==="--plan"){
+  process.stdout.write(JSON.stringify(pgWorkerOfflinePlan("prepare"))+"\n")
+}else if(launchArgs.length===1&&
+         ["--serve","--preflight"].includes(launchArgs[0]!)){
+  void main(launchArgs[0]==="--preflight").catch(error=>{
+    const message=error instanceof Error?error.message:"unknown_error"
+    const code=/^(worker_disabled|missing_[A-Z0-9_]+|unsafe_[a-z_]+|worker_permission_missing|pg18_worker_not_approved)$/
+      .test(message)?message:"worker_start_failed"
+    process.stderr.write(JSON.stringify({
+      service:"pg-agent-prepare",error:code,
+    })+"\n")
+    process.exitCode=1
+  })
+}else{
+  process.stderr.write("PG_PREPARE_WORKER_EXPLICIT_MODE_REQUIRED\n")
   process.exitCode=1
-})
+}

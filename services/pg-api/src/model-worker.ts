@@ -66,16 +66,21 @@ export class AgentModelWorker {
   readonly workerId:string
   readonly provider:ModelProvider
   readonly boundModelDispatch?:BoundDispatchGateway
+  readonly boundOnly:boolean
   constructor(pool:SqlPool,workerId:string,provider:ModelProvider,
-    options:{boundModelDispatch?:BoundDispatchGateway;boundExecutionApproved?:boolean}={}){
+    options:{boundModelDispatch?:BoundDispatchGateway;boundExecutionApproved?:boolean;
+      boundOnly?:boolean}={}){
     if(!/^[a-zA-Z0-9_-]{1,120}$/.test(workerId))
       throw Error("invalid_worker_id")
     if((!!options.boundModelDispatch)!==(options.boundExecutionApproved===true))
+      throw Error("bound_model_execution_disabled")
+    if(options.boundOnly===true&&!options.boundModelDispatch)
       throw Error("bound_model_execution_disabled")
     this.pool=pool
     this.workerId=workerId
     this.provider=provider
     this.boundModelDispatch=options.boundModelDispatch
+    this.boundOnly=options.boundOnly===true
   }
   async claim(seconds=180):Promise<LeasedModelJob|null>{
     if(!Number.isInteger(seconds)||seconds<60||seconds>300)
@@ -128,13 +133,15 @@ export class AgentModelWorker {
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
         [run.agent_spec_id,current.owner_user_id])
       const spec=specs.rows[0]
-      // No broker transport is registered in model-worker-loop.ts. The
-      // original fixed-provider Worker MUST still refuse employee bindings.
+      // Legacy fixed-provider mode refuses bindings. Independently approved
+      // bound-only mode refuses unbound runs before starting any effect.
       const selectedBinding=!!spec?.spec&&
         Object.hasOwn(spec.spec,"model_binding")
+      const bindingRequired=this.boundOnly&&!selectedBinding
       if(!spec||Number(spec.revision)!==version||
-         (selectedBinding&&!this.boundModelDispatch)){
-        const reason=selectedBinding&&!this.boundModelDispatch?
+         bindingRequired||(selectedBinding&&!this.boundModelDispatch)){
+        const reason=bindingRequired?"model_binding_required":
+          selectedBinding&&!this.boundModelDispatch?
           "model_binding_runtime_not_enabled":"spec_revision_changed"
         const checkpoint={...run.checkpoint,stage:reason}
         const paused=await db.query<{id:string}>(

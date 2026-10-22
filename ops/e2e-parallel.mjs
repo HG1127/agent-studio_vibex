@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Faster isolated E2E for the standalone studio. No shell interpretation.
 // The canonical serial package script is the source of truth for the test
-// inventory; each individual test runs in a distinct D:/project sibling temp
-// directory. Start at concurrency 2 to avoid overloading a dev workstation.
+// inventory; each individual test runs in a distinct disposable temp directory.
+// TMPDIR or AGENT_STUDIO_E2E_TEMP_ROOT may select a dedicated writable volume.
+// Start at concurrency 2 to avoid overloading a dev workstation.
 import fs from "node:fs"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
@@ -58,8 +59,18 @@ function redact(raw){
   .replace(/(?:password|secret|api[_-]?key|access[_-]?token)=[^\s]+/gi,"[REDACTED]")
 }
 function tail(buf,n=9000){return redact(buf.slice(-n))}
-function ensureDisk(){
- const disk=fs.statfsSync(parent)
+function temporaryParent(){
+ const configured=process.env.AGENT_STUDIO_E2E_TEMP_ROOT??process.env.TMPDIR
+ const selected=configured===undefined?parent:configured
+ if(!selected||!path.isAbsolute(selected)||/^[\\/]{2}/.test(selected)||
+    selected.split(/[\\/]/).some(part=>part.toLowerCase()==="pb_data"))
+  throw Error("unsafe_e2e_temp_root")
+ const resolved=fs.realpathSync(selected)
+ if(!fs.statSync(resolved).isDirectory())throw Error("unsafe_e2e_temp_root")
+ return resolved
+}
+function ensureDisk(directory){
+ const disk=fs.statfsSync(directory)
  const free=Number(disk.bavail)*Number(disk.bsize)
  if(!Number.isFinite(free)||free<512*1024*1024)
   throw Error("isolated_test_volume_low_space")
@@ -71,8 +82,9 @@ async function run(){
  if(opts.filter)cases=cases.filter(p=>path.basename(p).includes(opts.filter))
  if(!cases.length)throw Error("no_matching_tests")
  if(opts.listOnly){cases.forEach(t=>process.stdout.write(t+"\n"));return}
- ensureDisk()
- const session=fs.mkdtempSync(path.join(parent,"agentstudio-ci-"))
+ const tempParent=temporaryParent()
+ ensureDisk(tempParent)
+ const session=fs.mkdtempSync(path.join(tempParent,"agentstudio-ci-"))
  const active=new Map(),finished=[]
  let next=0,aborted=false
  const start=performance.now()

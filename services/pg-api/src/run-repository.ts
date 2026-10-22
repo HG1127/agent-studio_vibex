@@ -5,6 +5,7 @@ import {HttpError,isUuid,type Identity,type SqlPool}
 import {withActor} from "./repository.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import type {ModelProvider} from "./model-connection-repository.ts"
+import {safeRunStepMetadata} from "./run-step-metadata.ts"
 
 export type RunStatus =
   "queued"|"running"|"awaiting_approval"|"paused"|
@@ -27,6 +28,10 @@ export interface RunRow {
 export interface RunSubmission {
   run:RunRow
   replayed:boolean
+}
+export interface RunStepRow {
+  step_key:string;status:string;metadata:Record<string,unknown>
+  created_at:string;updated_at:string
 }
 export function safeRunRequest(raw:unknown):{
   instruction:string;idempotency_key:string
@@ -62,8 +67,8 @@ const runByIdempotencyKeySql=
 export class RunRepository {
   readonly pool:SqlPool
   readonly allowBoundModelRuns:boolean
-  // Synthetic, explicit opt-in only; Native/production entrypoints construct
-  // this repository without options, so model-binding runs remain disabled.
+  // Owner-bound admission is an explicit, independent capability. Native
+  // composition requires config + Run/approval + generation UAT approval.
   constructor(pool:SqlPool,options:{allowBoundModelRuns?:boolean}={}){
     this.pool=pool
     this.allowBoundModelRuns=options.allowBoundModelRuns===true
@@ -87,6 +92,19 @@ export class RunRepository {
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='agent'",
         [id,actor])
       return result.rows[0]?normalized(result.rows[0]):null
+    })
+  }
+  steps(identity:Identity,runId:string):Promise<RunStepRow[]> {
+    if(!isUuid(runId))throw new HttpError(400,"invalid_run_id")
+    return withActor(this.pool,identity,async(db,actor)=>{
+      const result=await db.query<RunStepRow>(
+        "SELECT s.step_key,s.status,s.metadata,s.created_at,s.updated_at "+
+        "FROM agentstudio.run_steps AS s JOIN agentstudio.runs AS r "+
+        "ON r.id=s.run_id AND r.owner_user_id=s.owner_user_id "+
+        "WHERE s.run_id=$1::uuid AND s.owner_user_id=$2::uuid "+
+        "AND r.kind='agent' ORDER BY s.created_at,s.step_key LIMIT 40",
+        [runId,actor])
+      return result.rows.map(step=>({...step,metadata:safeRunStepMetadata(step.metadata)}))
     })
   }
   approval(identity:Identity,runId:string):Promise<{status:string;step_key:string}|null> {

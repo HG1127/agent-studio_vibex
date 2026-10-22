@@ -166,6 +166,16 @@ test("separate OS-process Prepare claim fails closed in ordinary local environme
   assert.doesNotMatch(source,/\.prepare\(|\.tick\(|\.generate\(|--serve|fetch\(/)
 })
 
+test("native bound runtime refuses ordinary machines before any PG18 socket or TLS work",()=>{
+  const source=path.join(root,"services/pg-api/tests/pg18-bound-runtime-tcp.integration.mjs")
+  const result=spawnSync(process.execPath,["--experimental-strip-types","--test",source],{
+    encoding:"utf8",timeout:15000,env:{PATH:process.env.PATH??"",SystemRoot:process.env.SystemRoot??"",
+      CI:"false",GITHUB_ACTIONS:"false",DATABASE_URL:"postgres://127.0.0.1:5333/agent_studio"}})
+  assert.equal(result.status,1)
+  assert.match(result.stdout+result.stderr,/refuse_non_ephemeral_pg18_ci/)
+  assert.doesNotMatch(result.stdout+result.stderr,/ECONNREFUSED|ENOTFOUND|password authentication failed|openssl.*not found/)
+})
+
 test("CI image and test credentials are pinned to a disposable PG18-only service",()=>{
   const pipeline=readFileSync(path.join(root,
     ".github/workflows/pg18-ephemeral-ci.yml"),"utf8")

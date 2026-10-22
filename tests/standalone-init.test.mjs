@@ -5,6 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import {spawnSync} from "node:child_process"
+import {pathToFileURL} from "node:url"
 import {DatabaseSync} from "node:sqlite"
 
 test("standalone init creates fresh isolated local DB/secrets once and refuses overwrite",()=>{
@@ -16,7 +17,17 @@ test("standalone init creates fresh isolated local DB/secrets once and refuses o
   const clonedOps=path.join(temp,"ops")
   fs.mkdirSync(clonedOps)
   fs.copyFileSync(path.join(root,"ops/standalone-init.mjs"),path.join(clonedOps,"standalone-init.mjs"))
-  const run=(...args)=>spawnSync(process.execPath,[path.join(clonedOps,"standalone-init.mjs"),...args],{
+  // Force the valid base64url password to begin with '-' in this child only.
+  // The real CLI must preserve it as a positional password, never a flag.
+  const preload=path.join(temp,"force-dash-random.mjs")
+  fs.writeFileSync(preload,[
+   'import crypto from "node:crypto";',
+   'import {syncBuiltinESMExports} from "node:module";',
+   'const original=crypto.randomBytes;',
+   'crypto.randomBytes=size=>{const bytes=original(size);if(bytes.length)bytes[0]=0xfb;return bytes};',
+   'syncBuiltinESMExports();',
+  ].join("\n"),{flag:"wx",mode:0o600})
+  const run=(...args)=>spawnSync(process.execPath,["--import",pathToFileURL(preload).href,path.join(clonedOps,"standalone-init.mjs"),...args],{
    cwd:temp,encoding:"utf8",windowsHide:true,timeout:35000,
    env:{...process.env,AGENT_STUDIO_POCKETBASE_BIN:bin}
   })
@@ -28,6 +39,7 @@ test("standalone init creates fresh isolated local DB/secrets once and refuses o
   assert.equal(fs.existsSync(path.join(temp,"pocketbase/pb_data/data.db")),true)
   const env=fs.readFileSync(path.join(temp,".env.local"),"utf8")
   const creds=fs.readFileSync(path.join(temp,"standalone/operator-credentials.local"),"utf8")
+  assert.match(creds,/^PASSWORD=-/m,"leading-dash password must survive CLI argument parsing")
   assert.match(env,/AGENT_STUDIO_AUTH_MODE=standalone/)
   assert.match(env,/AGENT_STUDIO_ALLOW_ANON=false/)
   assert.match(env,/AGENT_STUDIO_SECRET_KEY=[^\n]{32}/)

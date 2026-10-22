@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {createHash} from "node:crypto"
-import {mkdtempSync,readFileSync,writeFileSync,rmSync} from "node:fs"
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,symlinkSync,mkdirSync,copyFileSync,linkSync} from "node:fs"
 import {tmpdir} from "node:os"
 import path from "node:path"
 import {spawnSync} from "node:child_process"
@@ -674,5 +674,82 @@ test("expired or mismatched review blocks before planning or connecting to stage
     assert.equal(out.status,1)
     assert.match(out.stderr,/unapproved_operator_reviews/)
     assert.equal(out.stdout,"")
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+
+test("stage operator rejects symlinked input directories before reading migration evidence",t=>{
+  const f=fixture()
+  try{
+    const linked=path.join(f.dir,"linked-source")
+    try{
+      symlinkSync(f.dir,linked,process.platform==="win32"?"junction":"dir")
+    }catch(error){
+      if(["EPERM","EACCES","ENOSYS"].includes(error?.code)){t.skip("symlink creation unavailable");return}
+      throw error
+    }
+    const out=invoke({...f,snapshot:path.join(linked,"snapshot.sqlite")})
+    assert.equal(out.status,1)
+    assert.match(out.stderr,/operator_local_files_required/)
+    assert.equal(out.stdout,"")
+    assert.doesNotMatch(out.stderr,/ECONNREFUSED|ENOTFOUND|PRIVATE_TEST_PASSWORD/)
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+
+test("stage operator refuses offline snapshots placed under a pb_data directory",()=>{
+  const f=fixture()
+  try{
+    const folder=path.join(f.dir,"pb_data")
+    mkdirSync(folder)
+    const source=path.join(folder,"snapshot.sqlite")
+    copyFileSync(f.snapshot,source)
+    const out=invoke({...f,snapshot:source})
+    assert.equal(out.status,1)
+    assert.match(out.stderr,/live_pocketbase_source_forbidden/)
+    assert.equal(out.stdout,"")
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+
+test("stage operator preserves exact file IDs above the JavaScript safe integer range",()=>{
+  const f=fixture()
+  try{
+    const preload=path.join(f.dir,"large-file-ids.mjs")
+    writeFileSync(preload,`
+      import fs from "node:fs";
+      import {syncBuiltinESMExports} from "node:module";
+      const original=fs.statSync;
+      const ids=new Map();
+      fs.statSync=function(file,options){
+        const exact=original.call(this,file,{...options,bigint:true});
+        const key=exact.dev+":"+exact.ino;
+        if(!ids.has(key))ids.set(key,2n**60n+BigInt(ids.size));
+        const result=original.call(this,file,options);
+        result.ino=options?.bigint?ids.get(key):Number(ids.get(key));
+        return result;
+      };
+      syncBuiltinESMExports();
+    `)
+    const simulated={NODE_OPTIONS:"--import="+pathToFileURL(preload).href}
+    const out=invoke(f,"--plan",[],simulated)
+    assert.equal(out.status,0,out.stderr)
+    assert.equal(JSON.parse(out.stdout).result,"preflight_verified")
+    const alias=path.join(f.dir,"approval-hardlink.json")
+    linkSync(f.oidc,alias)
+    const linked=invoke({...f,approval:alias},"--plan",[],simulated)
+    assert.equal(linked.status,1)
+    assert.match(linked.stderr,/duplicate_operator_files/)
+    assert.equal(linked.stdout,"")
+  }finally{rmSync(f.dir,{recursive:true,force:true})}
+})
+
+test("stage operator refuses hardlinked evidence inputs sharing a physical file",()=>{
+  const f=fixture()
+  try{
+    const alias=path.join(f.dir,"approval-hardlink.json")
+    linkSync(f.oidc,alias)
+    const out=invoke({...f,approval:alias})
+    assert.equal(out.status,1)
+    assert.match(out.stderr,/duplicate_operator_files/)
+    assert.equal(out.stdout,"")
+    assert.doesNotMatch(out.stderr,/PRIVATE_TEST_PASSWORD|ECONNREFUSED/)
   }finally{rmSync(f.dir,{recursive:true,force:true})}
 })

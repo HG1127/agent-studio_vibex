@@ -196,6 +196,29 @@ test("PGlite employee approval, one model call, tenant isolation, ambiguous fail
     assert.equal((await call("GET",runPath(revision),alice))
       .body.run.checkpoint.stage,"spec_revision_changed")
     assert.equal(calls,1,"only first run was sent to provider")
+    // Simulate a pre-existing/imported approved run whose Agent acquired
+    // a user-specific binding without changing its version. The fixed-key
+    // Worker must pause it BEFORE recording external effects or billing.
+    const boundRun=await submit("model_bound_block_a7",
+      "Never bill a different employee-selected provider")
+    await prepare.tick()
+    assert.equal((await call("POST",approvalPath(boundRun),alice,
+      {decision:"approved"})).status,202)
+    await pg.query("UPDATE agentstudio.agent_specs SET spec="+
+      "jsonb_set(spec,'{model_binding}',$2::jsonb) WHERE id=$1::uuid",
+      [agent.id,JSON.stringify({
+        connection_id:"863eb81f-2a04-4147-91d6-b1c71f0e8d38",
+        connection_revision:1,model_id:"gpt-4.1-mini",
+      })])
+    assert.equal((await worker.tick()).status,"blocked")
+    const blocked=await call("GET",runPath(boundRun),alice)
+    assert.equal(blocked.body.run.status,"paused")
+    assert.equal(blocked.body.run.last_error_code,"model_binding_runtime_not_enabled")
+    const externalCount=await pg.query(
+      "SELECT count(*)::int AS n FROM agentstudio.external_effects "+
+      "WHERE run_id=$1::uuid",[boundRun])
+    assert.equal(externalCount.rows[0].n,0)
+    assert.equal(calls,1,"selected employee model must never call fixed provider")
   }finally{
     if(server)await new Promise(resolve=>server.close(resolve))
     await pg.close()

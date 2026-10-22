@@ -76,8 +76,7 @@ test("Postgres schema includes normalized isolated internal-business records and
     "agent_specs","legacy_agent_imports","workflows","runs","run_steps","jobs","run_leases",
     "external_effects","approvals","schedules","schedule_occurrences",
     "knowledge_bases","knowledge_documents","knowledge_chunks","model_connections",
-    "tool_connections","tool_connection_headers",
-    "template_invites","audit_events",
+    "tool_connections","tool_connection_headers","template_invites","audit_events",
   ]
   assert.deepEqual([...tables].sort(),expected.sort())
   assert.match(schema,/embedding vector\(1536\)/)
@@ -100,8 +99,7 @@ test("Row-level security is fail-closed for every business table in staged schem
     "agent_specs","workflows","runs","run_steps","jobs","run_leases",
     "external_effects","approvals","schedules","schedule_occurrences",
     "knowledge_bases","knowledge_documents","knowledge_chunks","model_connections",
-    "tool_connections","tool_connection_headers",
-    "template_invites","audit_events",
+    "tool_connections","tool_connection_headers","template_invites","audit_events",
   ]
   const loop=schema.match(/FOREACH tab IN ARRAY ARRAY\[([\s\S]*?)\]\s*LOOP/)
   assert.ok(loop,"owner-policy loop must cover business data")
@@ -117,6 +115,9 @@ test("Row-level security is fail-closed for every business table in staged schem
   assert.match(schema,/current_setting\('agentstudio\.actor_id',true\)/)
   assert.match(schema,/CREATE ROLE agentstudio_api NOLOGIN NOINHERIT/)
   assert.match(schema,/CREATE ROLE agentstudio_worker NOLOGIN NOINHERIT/)
+  assert.match(schema,/CREATE ROLE agentstudio_model_broker NOLOGIN NOINHERIT/)
+  assert.match(schema,/REVOKE SELECT ON agentstudio\.tool_connection_headers FROM agentstudio_api/)
+  assert.match(schema,/GRANT SELECT \(id,owner_user_id,tool_connection_id,header_name,created_at,updated_at\)/)
   assert.match(schema,/REVOKE ALL ON agentstudio\.schema_migrations FROM agentstudio_api/)
   assert.match(schema,/REVOKE INSERT,UPDATE,DELETE ON agentstudio\.users FROM agentstudio_api/)
   assert.match(schema,/REVOKE INSERT,UPDATE,DELETE ON agentstudio\.team_memberships FROM agentstudio_api/)
@@ -178,6 +179,7 @@ test("Dedicated Agent prepare Worker cannot claim another queue kind or bypass f
 test("Staging runtime API uses independent least-privilege SQL login and secrets",()=>{
   const login=read("db/postgres/011_stage_api_login.sql")
   const server=read("services/pg-api/src/server.ts")
+  const target=read("services/pg-api/src/pg-runtime-target.ts")
   const docker=read("services/pg-api/Dockerfile")
   assert.match(login,/current_database\(\) <> 'agentstudio_stage'/)
   assert.match(login,/agentstudio_stage_login LOGIN NOINHERIT/)
@@ -186,8 +188,13 @@ test("Staging runtime API uses independent least-privilege SQL login and secrets
   assert.match(login,/REVOKE CREATE ON SCHEMA public FROM PUBLIC/)
   assert.match(login,/pg_read_file\('\/run\/secrets\/api_login_password'\)/)
   assert.doesNotMatch(login,/PASSWORD '.*'/)
-  assert.match(server,/user!=="agentstudio_stage_login"/)
-  assert.match(server,/database!=="agentstudio_stage"/)
+  // Target identity checks live in the shared selector now, and the API
+  // must call it before opening the listener rather than duplicate policy.
+  assert.match(server,/selectPgRuntimeTarget\(process\.env,"api"\)/)
+  assert.match(server,/verifyPgRuntimeTarget\(adapter,credentials\)/)
+  assert.match(target,/const role=kind==="api"\?"agentstudio_stage_login":"agentstudio_stage_worker"/)
+  assert.match(target,/if\(user!==role\)unsafe\(\)/)
+  assert.match(target,/database!=="agentstudio_stage"/)
   assert.match(server,/AGENT_STUDIO_PG_PASSWORD_FILE/)
   assert.match(server,/AGENT_STUDIO_PG_PILOT_ENABLED/)
   assert.match(server,/127\.0\.0\.1/)
@@ -206,6 +213,13 @@ test("Staging verification SQL does not mutate data and refuses wrong schemas",(
   assert.match(verify,/policy_count<>27/)
   assert.match(verify,/vector_present/)
   assert.match(verify,/rolcanlogin=true/)
+  assert.match(verify,/agentstudio_model_broker/)
+  assert.match(verify,/api_key_ciphertext/)
+  assert.match(verify,/tool_connection_headers/)
+  assert.match(verify,/value_ciphertext/)
+  assert.match(verify,/tool_header_secret_privilege_invariant_failed|model_credential_broker_privilege_invariant_failed/)
+  assert.match(verify,/model_credential_broker_privilege_invariant_failed/)
+  assert.match(verify,/pg_has_role\(w\.oid,b\.oid,'member'\)/)
   assert.doesNotMatch(verify,/^\s*(?:INSERT|UPDATE|DELETE|TRUNCATE|DROP|CREATE TABLE)\b/im)
   assert.match(script,/AGENT_STUDIO_STAGE_VERIFY_ONLY/)
   assert.match(script,/I_APPROVE_STAGING_VERIFY/)

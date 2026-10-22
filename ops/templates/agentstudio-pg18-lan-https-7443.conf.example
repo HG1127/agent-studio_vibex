@@ -1,0 +1,93 @@
+# REVIEW TEMPLATE ONLY. Not installed or enabled by any command in this repo.
+# All paths, listener ownership and certificate IP SAN must be approved first.
+# Requires Nginx http{} context; isolated port must be unused.
+server {
+    listen 192.168.1.133:7443 ssl;
+    server_name 192.168.1.133;
+
+    # Certificate must be trusted by company devices and contain
+    # subjectAltName=IP:192.168.1.133. Do not use a bare HTTP login.
+    ssl_certificate     /www/server/panel/vhost/cert/agentstudio-pg18-lan/lan-ip-fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/agentstudio-pg18-lan/lan-ip-key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_tickets off;
+
+    # Pilot restricted to a single company subnet; verify this matches
+    # the real users before enabling.
+    allow 127.0.0.1;
+    allow 192.168.1.0/24;
+    deny all;
+
+    if ($http_host != "192.168.1.133:7443") { return 421; }
+
+    root /opt/agentstudio-pg18-lan-pilot/www;
+    index index.html;
+    autoindex off;
+    client_max_body_size 16k;  # Login/check/logout only; no pilot uploads.
+    client_body_timeout 12s;
+    send_timeout 15s;
+
+    # Same-origin test portal. No Vite development server and no PocketBase.
+    location = / {
+        try_files /index.html =404;
+    }
+    location = /app.js {
+        default_type application/javascript;
+        try_files /app.js =404;
+    }
+    location = /style.css {
+        default_type text/css;
+        try_files /style.css =404;
+    }
+
+    # First-stage pilot deliberately does not expose employee creation.
+    location = /api/native-auth/employees { return 403; }
+
+    location ^~ /api/native-auth/ {
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;  # Never log employee login body or cookies.
+    }
+    location ^~ /api/v2/runs { return 404; }
+
+    location ^~ /api/v2/ {
+        # Only owner-scoped reading is permitted in this initial pilot.
+        # The Native API independently refuses non-GET methods as defense
+        # in depth, even if this proxy is accidentally broadened.
+        limit_except GET { deny all; }
+
+        proxy_pass http://127.0.0.1:7403;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Rh-User-Id "";
+        proxy_set_header Connection "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
+        proxy_buffering off;
+        proxy_cache off;
+        access_log off;
+    }
+
+    # Deny unknown routes and server/admin API leakage.
+    location / { return 404; }
+
+    # No Access-Control-Allow-Origin: the native app is same origin only.
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Frame-Options DENY always;
+    add_header Cache-Control "no-store" always;
+    add_header Content-Security-Policy "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;" always;
+}

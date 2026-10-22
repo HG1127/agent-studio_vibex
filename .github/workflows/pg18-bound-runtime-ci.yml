@@ -1,0 +1,65 @@
+name: Agent Studio PG18 bound runtime isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-native-runtime-20261022'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pg18-bound-runtime:
+    name: PostgreSQL 18 / native HTTPS / private mTLS / synthetic execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout reviewed candidate
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: TypeScript and ordinary-machine fail-closed contract
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:pg18:tcp:guard
+      - name: Private transport and embedded Native execution regression
+        run: |
+          pnpm --dir services/pg-api test:bound-transport
+          pnpm --dir services/pg-api test:bound-runtime
+      - name: Owner connections, inert schedules and no-effect Workflow regression
+        run: |
+          pnpm --dir services/pg-api test:model-connections
+          pnpm --dir services/pg-api test:schedule-drafts
+          pnpm --dir services/pg-api test:workflow-validation
+          pnpm --dir services/pg-api test:workflow-safe-run
+      - name: Real PG18 native approval and private Broker, synthetic provider only
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: "agentstudio_pg18_ci"
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: pnpm --dir services/pg-api test:pg18:bound-runtime:ci

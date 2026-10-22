@@ -41,7 +41,8 @@ try{
   fs.mkdirSync(path.dirname(credentials),{recursive:true,mode:0o700})
   const password=random()
   const email="pb-operator@agentstudio.example.com"
-  const created=spawnSync(pb,["superuser","create",email,password,"--dir="+data],{
+  // base64url passwords may start with '-'; end flag parsing before values.
+  const created=spawnSync(pb,["superuser","create","--dir="+data,"--",email,password],{
     cwd:root,encoding:"utf8",windowsHide:true,timeout:30000,maxBuffer:200000
   })
   if(created.status!==0)fail("初始化 PocketBase 系统维护账号失败；停止而不写入任何 Studio 密钥。请检查隔离数据库目录。")
