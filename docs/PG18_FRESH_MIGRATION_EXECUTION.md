@@ -113,3 +113,7 @@ After a82644d, proposed migration 031, the Native Cookie API and employee panel 
 ## Optional credential preflight and MCP alias follow-up — 2026-10-23
 
 After 434502a, general API/private dispatch/Worker preflights audit installed MCP and Smithery schemas independently of feature flags, including partial-column grants, NOINHERIT shadow roles, and forced RLS. MCP catalog reorder no longer allocates duplicate Agent tool aliases. Readonly review packages include their missing dependencies, and Native API import scanning uses TypeScript syntax. Nine focused checks, nine Worker package/entrypoint checks and twenty-two Python tests passed; see PG18_OPTIONAL_CREDENTIAL_BOUNDARY.md for full regression results. No archive or new source was uploaded, no live DB was contacted, and production cutover remains NO-GO.
+
+## Knowledge sharing foundation — 2026-10-23
+
+After af5561f, proposed migration 032 and an inert repository add per-employee viewer/editor grants, independent semantic consent, active-employee metadata, optimistic revisions, owner-only audit and retry receipts. Exact recipient lookup stays in the native authentication pool, with no API/Worker auth grants. This is a tested foundation only: no sharing route or UI is activated, content/vectors remain private, and Agent/Workflow shared retrieval and semantic provider/indexing are still outstanding. See PG18_KNOWLEDGE_ACCESS_FOUNDATION.md for evidence. Hosted PG18 additions have not run; employee/operational/restore/rollback signoff is still required. Production remains NO-GO.

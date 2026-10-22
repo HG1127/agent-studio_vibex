@@ -43,6 +43,8 @@ import {verifySmitheryPrivileges} from "../src/smithery-privileges.ts"
 import {verifyOptionalCredentialBoundary} from "../src/optional-credential-boundary.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
+import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
+import {KnowledgeAccessRepository} from "../src/knowledge-access-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
 import {OwnerBoundModelDispatch} from "../src/owner-model-dispatch.ts"
@@ -192,6 +194,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_029_mcp_connections.sql"))
     await admin.query(upgrade("pg_v9_030_mcp_tool_identity.sql"))
     await admin.query(upgrade("pg_v9_031_smithery_managed.sql"))
+    await admin.query(upgrade("pg_v9_032_knowledge_access.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -327,6 +330,21 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     const ownerSession=await auth.login("admin@example.com","SyntheticAdminPassword#2026")
     const owner=(await auth.getSessionProfile(ownerSession.token)).identity
+    // Sharing foundation on actual restricted pools; this is not activation
+    // of shared document/vector retrieval or a browser sharing endpoint.
+    const readerSession=await auth.login("other@example.com","SyntheticOtherPassword#2026")
+    const reader=(await auth.getSessionProfile(readerSession.token)).identity
+    const bases=new KnowledgeBaseRepository(apiPool),knowledgeAccess=new KnowledgeAccessRepository(apiPool,
+      (identity,email)=>auth.resolveKnowledgeRecipient(identity,email))
+    const sharedBase=await bases.create(owner,"CI shared metadata","Synthetic metadata only")
+    const shareRequest={action:"grant",recipient_email:"other@example.com",role:"viewer",semantic_allowed:false,expected_revision:0,request_id:randomUUID()}
+    const share=await knowledgeAccess.change(owner,sharedBase.id,shareRequest)
+    assert.equal((await knowledgeAccess.change(owner,sharedBase.id,shareRequest)).replayed,true)
+    assert.equal((await knowledgeAccess.listShared(reader))[0].id,sharedBase.id)
+    assert.equal(await bases.get(reader,sharedBase.id),null)
+    await assert.rejects(knowledgeAccess.listGrants(reader,sharedBase.id),error=>error.status===404)
+    await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:1,request_id:randomUUID()})
+    assert.equal((await knowledgeAccess.listShared(reader)).length,0)
     await assert.rejects(new WorkflowSafeRunRepository(apiPool).submit(owner,workflow.id,{
       expected_revision:2,idempotency_key:"v2-execution-stays-closed"}),e=>e.code==="workflow_execution_node_not_supported")
     assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n,0)

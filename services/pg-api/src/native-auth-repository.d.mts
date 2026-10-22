@@ -20,6 +20,8 @@ export class NativeAuthRepository{
   login(email:string,password:string):Promise<NativeLoginResult>
   getSessionProfile(token:string):Promise<NativeProfile|null>
   verifySession(token:string):Promise<Identity|null>
+  /** Server-internal exact lookup; verified native identity only. No directory endpoint. */
+  resolveKnowledgeRecipient(identity:Identity,email:string):Promise<{id:string;display_name:string}|null>
   revokeSession(token:string):Promise<boolean>
   listEmployees(token:string,limit?:number):Promise<Array<{
     id:string;email:string;display_name:string;is_admin:boolean

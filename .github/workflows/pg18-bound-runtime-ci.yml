@@ -20,6 +20,7 @@ on:
       - 'codex/pg18-mcp-execution-20261023'
       - 'codex/pg18-smithery-managed-20261023'
       - 'codex/pg18-credential-boundary-20261023'
+      - 'codex/pg18-knowledge-access-foundation-20261023'
   workflow_dispatch:
 
 permissions:

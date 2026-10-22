@@ -154,6 +154,26 @@ export class NativeAuthRepository{
     const profile=await this.getSessionProfile(token)
     return profile?.identity??null
   }
+  // Server-internal exact recipient resolution, after Native Cookie identity
+  // verification. Never expose as employee search or accept a browser actor ID.
+  // The business pool receives only id/name; no auth schema privileges change.
+  async resolveKnowledgeRecipient(identity,email){
+    if(identity?.issuer!==NATIVE_LOCAL_ISSUER||typeof identity.subject!=="string"||
+      !identity.subject||identity.subject.length>255)throw Error("native_employee_identity_required")
+    const normalized=normalizeEmployeeEmail(email)
+    return await withNativeAuth(this.pool,async db=>{
+      const caller=(await db.query("SELECT u.id FROM agentstudio.users u "+
+        "JOIN agentstudio_auth.accounts a ON a.user_id=u.id AND a.enabled=true "+
+        "WHERE u.external_issuer=$1 AND u.external_subject=$2 AND u.status='active'",
+        [NATIVE_LOCAL_ISSUER,identity.subject])).rows[0]
+      if(!caller)throw Error("native_employee_identity_required")
+      const row=(await db.query("SELECT u.id,u.display_name FROM agentstudio_auth.accounts a "+
+        "JOIN agentstudio.users u ON u.id=a.user_id AND u.status='active' "+
+        "WHERE a.email=$1 AND a.enabled=true AND u.external_issuer=$2 AND u.id<>$3::uuid",
+        [normalized,NATIVE_LOCAL_ISSUER,caller.id])).rows[0]
+      return row?{id:row.id,display_name:row.display_name}:null
+    })
+  }
   async listEmployees(adminSessionToken,limit=50){
     const bounded=Number.isSafeInteger(limit)?Math.max(1,Math.min(100,limit)):50
     let digest
