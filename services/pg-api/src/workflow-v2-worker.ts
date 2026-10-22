@@ -6,8 +6,10 @@ import {HttpError,isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
 import {advanceWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2EffectResult,
   type WorkflowEffectRequest,type WorkflowNodeTransition} from "./workflow-v2-machine.ts"
 import {auditWorkflowV2,checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,
-  workflowV2RunColumns,type WorkflowV2RunRow,type WorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
+  workflowV2RunColumns,workflowV2ExecutionRequest,type WorkflowV2RunRow,type WorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
 import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
+import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2-agent-machine.ts"
+import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:string;workflow_id:string;workflow_revision:number;graph_sha256:string};
   lease_owner:string;lease_token:string;lease_version:string|number;lease_until:Date|string;attempts:number;max_attempts:number}
@@ -53,6 +55,7 @@ async function stepRows(db:SqlClient,job:Job,events:WorkflowNodeTransition[]){
       execution_mode:"workflow_native_v2",checkpointed:true,output_chars:event.output?.length??0,
       ...(event.output!==undefined?{output_text:event.output}:{}),...(event.branch?{branch:event.branch}:{}),
       ...(event.round!==undefined?{round:event.round,total:event.total}:{}),...(event.missing?.length?{missing:event.missing}:{})}
+    Object.assign(metadata,event.agent_context?{parent_step_key:event.agent_context.parent_step_key,agent_round:event.agent_context.round,agent_phase:event.agent_context.phase}:{})
     await db.query("INSERT INTO agentstudio.run_steps(owner_user_id,run_id,step_key,status,metadata) "+
       "VALUES($1::uuid,$2::uuid,$3::text,$4::text,$5::jsonb) ON CONFLICT(run_id,step_key) DO UPDATE "+
       "SET status=EXCLUDED.status,metadata=EXCLUDED.metadata,updated_at=clock_timestamp() "+
@@ -64,9 +67,11 @@ type Prepared={tick:WorkflowV2Tick}|{request:WorkflowEffectRequest;job:Job}
 export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number}={}){
+  readonly agentEnabled:boolean
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
+    this.agentEnabled=options.agentExecutionApproved===true
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
        !Number.isSafeInteger(this.batch)||this.batch<1||this.batch>20)throw Error("invalid_workflow_v2_worker_options")
@@ -105,7 +110,7 @@ export class WorkflowV2Worker{
     }finally{if(timer)clearTimeout(timer)}
     // A DB failure after the external call is intentionally NOT retried here.
     // The committed started ledger blocks reclaim; reconciliation pauses it.
-    return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,4000))
+    return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,prepared.request.agent_context&&prepared.request.kind==="model"?12000:4000))
   }
   private async prepare(job:Job):Promise<Prepared>{return tx(this.pool,async db=>{
     const leased=await lockLease(db,job,this.workerId)
@@ -125,12 +130,40 @@ export class WorkflowV2Worker{
     for(let i=0;i<this.batch;i++){
       const resolved=view.pending&&state.machine.effects.some(effect=>effect.step_key===view.pending!.step_key)
       if(view.pending&&!resolved){
-        const pending=view.pending
+        let pending=view.pending
+        if(pending.kind==="agent"&&state.agent_state){
+          const parentApproval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
+            "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[job.run_id,job.owner_user_id,pending.step_key])).rows[0]
+          if(parentApproval?.status!=="approved"||parentApproval.reason_code!=="wf2:"+pending.input_sha256)throw new HttpError(409,"workflow_agent_parent_approval_changed")
+          if(!this.agentEnabled){await this.persist(db,job,state,"paused","workflow_agent_execution_disabled");await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}}
+          const agent=inspectWorkflowAgentState(state.agent_state,pending)
+          if(agent.status!=="waiting"){
+            const failed=agent.status==="failed",rejected=agent.status==="rejected"
+            await db.query("INSERT INTO agentstudio.external_effects(run_id,owner_user_id,step_key,tool_name,arguments_sha256,idempotency_key,status,result_reference) "+
+              "VALUES($1::uuid,$2::uuid,$3::text,'workflow:agent',$4::text,$5::text,$6::text,$7::text)",
+              [job.run_id,job.owner_user_id,pending.step_key,pending.input_sha256,"workflow-agent:"+job.run_id+":"+pending.step_key,
+                failed?"failed":"succeeded",JSON.stringify({...(failed?{error_code:agent.error_code}:{output:agent.output}),
+                  agent_snapshot:{spec_id:state.agent_state.spec_id,spec_revision:state.agent_state.spec_revision,spec:state.agent_state.spec,
+                    snapshot_sha256:state.agent_state.snapshot_sha256,max_steps:pending.configuration.max_steps??3}})])
+            delete state.agent_state;delete state.agent_dispatch
+            if(failed){
+              await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"failed"}])
+              await this.persist(db,job,state,"failed",agent.error_code);await acknowledge(db,job,this.workerId,"failed")
+              return {tick:{status:"failed",run_id:job.run_id}}
+            }
+            state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:pending.step_key,input_sha256:pending.input_sha256,
+              output:agent.output,...(rejected?{outcome:"rejected" as const}:{})})
+            await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_completed",{step_key:pending.step_key,rounds:agent.round,rejected})
+            view=inspectWorkflowV2Checkpoint(state.graph,state.machine);continue
+          }
+          pending=agent.pending!
+        }
         const approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
           "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[job.run_id,job.owner_user_id,pending.step_key])).rows[0]
         if(!approval){
           await db.query("INSERT INTO agentstudio.approvals(owner_user_id,run_id,step_key,requested_by,reason_code) "+
             "VALUES($1::uuid,$2::uuid,$3::text,$1::uuid,$4::text)",[job.owner_user_id,job.run_id,pending.step_key,"wf2:"+pending.input_sha256])
+          if(pending.agent_context)await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:pending.kind,status:"awaiting_approval",agent_context:pending.agent_context}])
           await this.persist(db,job,state,"awaiting_approval","")
           await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_approval_requested",{step_key:pending.step_key,input_sha256:pending.input_sha256,kind:pending.kind})
           await acknowledge(db,job,this.workerId,"queued");return {tick:{status:"awaiting_approval",run_id:job.run_id}}
@@ -145,8 +178,24 @@ export class WorkflowV2Worker{
           if(effect.status!=="succeeded")return {tick:{status:"stale",run_id:job.run_id}}
           if(typeof effect.result_reference!=="string")throw new HttpError(409,"workflow_v2_effect_result_missing")
           const saved=JSON.parse(effect.result_reference) as {output:string}
-          state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:pending.step_key,input_sha256:pending.input_sha256,output:saved.output})
+          if(pending.agent_context){const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
+            state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:pending.step_key,input_sha256:pending.input_sha256,output:saved.output})
+            delete state.agent_dispatch
+          }else state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:pending.step_key,input_sha256:pending.input_sha256,output:saved.output})
           view=inspectWorkflowV2Checkpoint(state.graph,state.machine);continue
+        }
+        if(pending.kind==="agent"){
+          if(this.agentEnabled){
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending)
+            await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
+            await this.persist(db,job,state,"queued","")
+            await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_initialized",{step_key:pending.step_key,
+              spec_revision:state.agent_state.spec_revision,snapshot_sha256:state.agent_state.snapshot_sha256})
+            await acknowledge(db,job,this.workerId,"queued")
+            return {tick:{status:"progressed",run_id:job.run_id}}
+          }
+          await this.persist(db,job,state,"paused","workflow_agent_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
+          return {tick:{status:"paused",run_id:job.run_id}}
         }
         if(!this.executor||(this.executor.supports&&!this.executor.supports(pending))){
           await this.persist(db,job,state,"paused","workflow_v2_effect_executor_unavailable")
@@ -156,6 +205,9 @@ export class WorkflowV2Worker{
           "VALUES($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,'started')",[job.run_id,job.owner_user_id,pending.step_key,
           "workflow:"+pending.kind,pending.input_sha256,"workflow_v2:"+job.run_id+":"+pending.step_key])
         state.stage="workflow_v2_effect_started"
+        if(pending.agent_context)state.agent_dispatch={step_key:pending.step_key,input_sha256:pending.input_sha256,kind:pending.kind,
+          parent_step_key:pending.agent_context.parent_step_key}
+        await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:pending.kind,status:"running",agent_context:pending.agent_context}])
         await db.query("UPDATE agentstudio.runs SET status='running',checkpoint=$3::jsonb,updated_at=clock_timestamp() "+
           "WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.run_id,job.owner_user_id,JSON.stringify(state)])
         await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_started",{step_key:pending.step_key,input_sha256:pending.input_sha256})
@@ -187,7 +239,7 @@ export class WorkflowV2Worker{
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
-    const pending=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending
+    const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
     const changed=await db.query("UPDATE agentstudio.external_effects SET status=$4::text,result_reference=$5::text,updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' AND arguments_sha256=$6::text RETURNING step_key",
@@ -196,6 +248,16 @@ export class WorkflowV2Worker{
     if(output===undefined){
       await this.persist(db,job,state,"paused","workflow_v2_effect_outcome_unknown")
       await acknowledge(db,job,this.workerId,"failed");return {status:"paused",run_id:job.run_id}
+    }
+    if(request.agent_context){
+      const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
+      state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:request.step_key,input_sha256:request.input_sha256,output})
+      delete state.agent_dispatch
+      await stepRows(db,job,[{step_key:request.step_key,node_id:request.node_id,node_type:request.kind,status:"succeeded",output,agent_context:request.agent_context}])
+      await this.persist(db,job,state,"queued","")
+      await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_step_succeeded",{step_key:request.step_key,input_sha256:request.input_sha256})
+      await acknowledge(db,job,this.workerId,"queued")
+      return {status:"progressed",run_id:job.run_id}
     }
     state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:request.step_key,input_sha256:request.input_sha256,output})
     const next=advanceWorkflowV2Checkpoint(state.graph,state.machine);state.machine=next.checkpoint
@@ -212,16 +274,20 @@ export class WorkflowV2Worker{
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
-    const pending=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending
+    const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
     const changed=await db.query("UPDATE agentstudio.external_effects SET status='failed',updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' "+
       "AND arguments_sha256=$4::text RETURNING step_key",[job.run_id,job.owner_user_id,request.step_key,request.input_sha256])
     if(changed.rows.length!==1)throw Error("workflow_v2_effect_ledger_changed")
-    await stepRows(db,job,[{step_key:request.step_key,node_id:request.node_id,node_type:request.kind,status:"failed"}])
-    await this.persist(db,job,state,"failed",error)
+    await stepRows(db,job,[{step_key:request.step_key,node_id:request.node_id,node_type:request.kind,status:"failed",agent_context:request.agent_context}])
+    if(request.agent_context){const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
+      state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:request.step_key,input_sha256:request.input_sha256,output:"",outcome:"failed",code:error})
+      delete state.agent_dispatch
+    }
+    await this.persist(db,job,state,request.agent_context?"queued":"failed",request.agent_context?"":error)
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_failed",{step_key:request.step_key,input_sha256:request.input_sha256,error_code:error})
-    await acknowledge(db,job,this.workerId,"failed");return {status:"failed",run_id:job.run_id}
+    await acknowledge(db,job,this.workerId,request.agent_context?"queued":"failed");return {status:request.agent_context?"progressed":"failed",run_id:job.run_id}
   })}
   private async fail(job:Job,error:string):Promise<WorkflowV2Tick>{return tx(this.pool,async db=>{
     const current=await lockLease(db,job,this.workerId);if(!current)return {status:"stale",run_id:job.run_id}
@@ -241,7 +307,8 @@ export class WorkflowV2Worker{
     await actor(db,job.owner_user_id)
     await db.query("UPDATE agentstudio.external_effects SET status='unknown',updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='started'",[job.run_id,job.owner_user_id])
-    await db.query("UPDATE agentstudio.runs SET status='paused',last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
+    await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\"workflow_v2_paused\"'::jsonb),"+
+      "last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id])
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_ambiguous",{})
     await db.query("SET LOCAL ROLE agentstudio_worker")

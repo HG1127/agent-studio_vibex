@@ -12,7 +12,7 @@ import {boundCertificateFingerprint} from "./bound-worker-mtls.ts"
 import {boundCredentialDirectory,readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
 import {verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "./bound-dispatch-role-preflight.ts"
 import {parseModelEncryptionKey} from "./model-connection-crypto.ts"
-import {selectBoundGenerationUat,createIsolatedBoundModelExecutor,createIsolatedWorkflowModelExecutor} from "./model-connection-executor.ts"
+import {selectBoundGenerationUat,createIsolatedBoundModelExecutor,createIsolatedWorkflowModelExecutor,createIsolatedWorkflowAgentModelExecutor} from "./model-connection-executor.ts"
 import {OwnerBoundModelDispatch} from "./owner-model-dispatch.ts"
 import {BoundLeaseIdentityRepository,createVerifiedBoundDispatchAdapter} from "./bound-lease-identity.ts"
 import {createIsolatedBoundModelInternalHandler} from "./bound-model-internal-handler.ts"
@@ -23,6 +23,7 @@ import {workflowV2ToolRoute,selectWorkflowV2ToolExecution} from "./workflow-v2-t
 import {createWorkflowV2ToolInternalHandler} from "./workflow-v2-tool-handler.ts"
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "./workflow-v2-tool-dispatch.ts"
 import {createWorkflowToolNetwork} from "./workflow-v2-tool-network.ts"
+import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
 
 const origin="https://127.0.0.1:7453"
 const directory=boundCredentialDirectory("dispatch")
@@ -47,6 +48,8 @@ export function boundDispatchServerConfig(
   catch{refuse()}
   const workflowModelEnabled=selectWorkflowV2ModelExecution(env)
   const workflowToolsEnabled=selectWorkflowV2ToolExecution(env)
+  const workflowAgentsEnabled=selectWorkflowAgentExecution(env)
+  if(workflowAgentsEnabled&&(!workflowModelEnabled||!workflowToolsEnabled))refuse()
   const workflowFingerprint=env.AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT
   if(workflowModelEnabled||workflowToolsEnabled)try{
     const workflowPin=boundCertificateFingerprint(workflowFingerprint)
@@ -54,7 +57,7 @@ export function boundDispatchServerConfig(
   }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
   return {target,origin,directory,port:7453 as const,
-    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowFingerprint}
+    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint}
 }
 export function assertBoundDispatchTlsMaterial(
   ca:Buffer,cert:Buffer,key:Buffer,now=Date.now(),
@@ -125,6 +128,9 @@ export async function startBoundDispatchServer(
     }
     if(cfg.workflowToolsEnabled)for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
       await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,"tool")
+    if(cfg.workflowAgentsEnabled)for(const effect of ["agent_model","agent_tool"] as const)
+      for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
+        await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -141,12 +147,13 @@ export async function startBoundDispatchServer(
     const workflowHandler=cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({
       approvedForIsolatedUat:true,reviewedClientFingerprint256:cfg.workflowFingerprint!,
       dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
-        new WorkflowV2ModelDispatch(adapter(api),encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker))),
+        new WorkflowV2ModelDispatch(adapter(api),encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
+          allowAgentExecution:cfg.workflowAgentsEnabled,...(cfg.workflowAgentsEnabled?{agentExecutor:createIsolatedWorkflowAgentModelExecutor(env,origin,true)}:{})})),
     }):undefined
     const toolHandler=cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,
       reviewedClientFingerprint256:cfg.workflowFingerprint!,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
         new WorkflowV2ToolDispatch(adapter(api),encryptionKey,{...createWorkflowToolNetwork(),
-          ...(cfg.workflowModelEnabled?{summarize:createIsolatedWorkflowModelExecutor(env,origin,true)}:{})},adapter(broker))),
+          ...(cfg.workflowModelEnabled?{summarize:createIsolatedWorkflowModelExecutor(env,origin,true)}:{})},adapter(broker),{allowAgentExecution:cfg.workflowAgentsEnabled})),
     }):undefined
     server=createServer({key,cert,ca,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},
       (req,res)=>{const selected=toolHandler&&req.url===workflowV2ToolRoute?toolHandler:

@@ -27,7 +27,7 @@ export interface WorkflowNodeDataV2 {
 const fields:Record<WorkflowNodeType,string[]>={
   start:["title","input_hint"],
   model:["title","model_binding","prompt"],
-  agent:["title","agent_binding","prompt","max_steps"],
+  agent:["title","agent_binding","prompt","max_steps","model_binding"],
   tool:["title","tool","tool_binding","params_template","knowledge_base_ids","model_binding"],
   condition:["title","ref_title","op","value"],
   loop:["title","mode","count","list_source","delimiter","stop_keyword","max_iterations"],

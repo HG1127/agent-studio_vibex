@@ -6,6 +6,7 @@ import {HttpError,safeWorkflowGraph,type WorkflowGraph,type WorkflowNode} from "
 export type WorkflowEffectRequest={
   step_key:string;node_id:string;kind:"model"|"tool"|"agent";input:string
   input_sha256:string;configuration:WorkflowNode["data"];missing:string[]
+  agent_context?:{parent_step_key:string;round:number;phase:"model"|"tool"}
 }
 export type WorkflowEffectResult={step_key:string;input_sha256:string;output:string;outcome?:"rejected"}
 export type WorkflowV2Checkpoint={
@@ -16,6 +17,7 @@ export type WorkflowNodeTransition={
   step_key:string;node_id:string;node_type:string
   status:"running"|"awaiting_approval"|"succeeded"|"skipped"|"failed"
   output?:string;missing?:string[];branch?:"true"|"false";round?:number;total?:number
+  agent_context?:WorkflowEffectRequest["agent_context"]
 }
 type NodeState={status:"pending"|"active"|"waiting"|"done"|"skipped"|"failed";key?:string;output?:string}
 type Frame={id:string;items:string[];round:number;active:boolean;key:string}

@@ -47,12 +47,13 @@ export type PgNativeWorkflowSafeRunResult={
   external_effects_executed:false;worker_started_by_api?:false
 }
 export type PgNativeWorkflowV2Pending={step_key:string;node_id:string;kind:"model"|"tool"|"agent";
-  input:string;input_sha256:string;configuration:Record<string,unknown>;missing:string[]}
+  input:string;input_sha256:string;configuration:Record<string,unknown>;missing:string[];
+  agent_context?:{parent_step_key:string;round:number;phase:"model"|"tool"}}
 export type PgNativeWorkflowV2Result={
   run:{id:string;workflow_id:string;kind:"workflow";status:string;instruction:string;result_text:string;
     step_count:number;checkpoint:Record<string,unknown>;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null}
   steps:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>
-  steps_truncated:boolean;approvals:Array<{step_key:string;status:string}>
+  steps_truncated:boolean;approvals:Array<{step_key:string;status:string}>;approvals_truncated?:boolean
   pending_effect:PgNativeWorkflowV2Pending|null;replayed:boolean;execution_mode:"workflow_native_v2";worker_started_by_api?:false
 }
 export type PgNativeKnowledge={id:string;name:string;description:string;revision:number}
@@ -504,13 +505,13 @@ export function createPgNativePilotApi(
     getWorkflowV2Run:async(id:string)=>get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id)),
     listWorkflowV2Runs:async()=> (await get<{items:Array<Record<string,unknown>>}>(routes.workflowV2Runs)).items,
     decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
-      if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(step_key)||
+      if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
          !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/decision") as Route,{decision,step_key,input_sha256})
     },
     cancelWorkflowV2Run:async(id:string)=>post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/cancel") as Route,{}),
     getWorkflowV2Steps:async(id:string,after="",limit=100)=>{
-      if(!Number.isSafeInteger(limit)||limit<1||limit>200||(after!==""&&!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(after)))
+      if(!Number.isSafeInteger(limit)||limit<1||limit>200||(after!==""&&!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(after)))
         throw new PgNativePilotError(400,"invalid_workflow_step_cursor")
       return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)

@@ -100,8 +100,8 @@ export async function verifyBoundDispatchPrivileges(
 export async function verifyWorkflowModelIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole):Promise<void>{
   return verifyWorkflowEffectIdentityPrivileges(pool,kind,"model")
 }
-export async function verifyWorkflowEffectIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole,effect:"model"|"tool"):Promise<void>{
-  if(effect!=="model"&&effect!=="tool")refuse()
+export async function verifyWorkflowEffectIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole,effect:"model"|"tool"|"agent_model"|"agent_tool"):Promise<void>{
+  if(!["model","tool","agent_model","agent_tool"].includes(effect))refuse()
   if(!Object.hasOwn(groups,kind))refuse()
   const db=await pool.connect();let begun=false
   try{
@@ -114,12 +114,12 @@ export async function verifyWorkflowEffectIdentityPrivileges(pool:SqlPool,kind:B
       "has_function_privilege('agentstudio_model_broker',p.oid,'EXECUTE') AS broker,"+
       "EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a "+
       "WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS public FROM pg_proc p "+
-      "WHERE p.oid=to_regprocedure($1::text)",["agentstudio.workflow_"+effect+"_lease_identity(uuid,uuid,uuid,bigint,text,text,text)"])).rows
+      "WHERE p.oid=to_regprocedure($1::text)",["agentstudio.workflow_"+effect+"_lease_identity(uuid,uuid,uuid,bigint,text,text,text"+(effect.startsWith("agent_")?",text":"")+")"])).rows
     const row=rows[0]
     if(rows.length!==1||!row||!row.definer||row.volatile!=="v"||row.can!==(kind==="identity")||
        row.public!==false||row.api!==false||row.worker!==false||row.broker!==false||
        !Array.isArray(row.config)||!row.config.some(value=>value.replace(/\s/g,"")==="search_path=pg_catalog,agentstudio"))refuse()
-    if(effect==="tool"){
+    if(effect!=="model"){
       const constraints=(await db.query<{valid:boolean;definition:string}>("SELECT convalidated AS valid,pg_get_constraintdef(oid) AS definition "+
         "FROM pg_constraint WHERE conrelid=to_regclass('agentstudio.external_effects') AND conname='external_effects_status_check' AND contype='c'")).rows
       if(constraints.length!==1||constraints[0]?.valid!==true||!/'failed'::text/.test(constraints[0].definition))refuse()

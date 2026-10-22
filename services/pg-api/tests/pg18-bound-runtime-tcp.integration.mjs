@@ -31,6 +31,7 @@ import {workflowV2ToolEffectExecutor} from "../src/workflow-v2-tool-client.ts"
 import {createWorkflowV2ToolInternalHandler} from "../src/workflow-v2-tool-handler.ts"
 import {prepareWorkflowToolHttp,redactWorkflowToolResponse} from "../src/workflow-v2-tool-network.ts"
 import {ToolConnectionRepository} from "../src/tool-connection-repository.ts"
+import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
@@ -160,6 +161,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_024_bound_dispatch_identity.sql"))
     await admin.query(upgrade("pg_v9_025_workflow_model_identity.sql"))
     await admin.query(upgrade("pg_v9_026_workflow_tool_identity.sql"))
+    await admin.query(upgrade("pg_v9_027_workflow_agent_identity.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -174,6 +176,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const workerPool=adapter(byLogin.agentstudio_stage_worker)
     for(const [kind,pool] of [["api",apiPool],["identity",identityPool],["broker",brokerPool]])
       {await verifyBoundDispatchPrivileges(pool,kind);await verifyWorkflowModelIdentityPrivileges(pool,kind);await verifyWorkflowEffectIdentityPrivileges(pool,kind,"tool")}
+    for(const [kind,pool] of [["api",apiPool],["identity",identityPool],["broker",brokerPool]])
+      for(const effect of ["agent_model","agent_tool"])await verifyWorkflowEffectIdentityPrivileges(pool,kind,effect)
     // A disposable CI database must NOT pass the actual deployment target
     // wrapper. The privilege inspector above does not bypass that wrapper.
     await assert.rejects(verifyBoundDispatchRole(apiPool,{mode:"baota_pg18",host:"127.0.0.1",
@@ -332,6 +336,40 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       }
       assert.equal(toolPosts,1);assert.equal((await worker.tick()).status,"idle")
     },{handlerFactory:createWorkflowV2ToolInternalHandler})
+    const role=await new AgentSpecRepository(apiPool).create(owner,"CI Agent role",safeAgentSpec({goal:"Synthetic role",tools:["calculate"],
+      model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
+    const agentGraph={version:2,nodes:[graph.nodes[0],{id:"agent",type:"agent",data:{title:"Role",agent_binding:{spec_id:role.id,spec_revision:role.revision},max_steps:3},position:{x:200,y:0}},
+      {...graph.nodes[2],data:{title:"End",output_template:"{{Role.output}}"}}],edges:[{id:"a",source:"start",target:"agent"},{id:"b",source:"agent",target:"end"}]}
+    const agentFlow=await api.createWorkflowGraph("CI Agent Workflow",agentGraph)
+    let agentCalls=0
+    const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
+      const context=JSON.parse(prompt)
+      if(context.round===1)return '{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}'
+      assert.match(context.history[0].observation,/4/);return '{"action":"answer","answer":"Synthetic Agent result 4"}'
+    }
+    const agentModel=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("direct fallback forbidden")},brokerPool,{allowAgentExecution:true,agentExecutor:planning})
+    const agentTool=new WorkflowV2ToolDispatch(apiPool,key,{},brokerPool,{allowAgentExecution:true})
+    const agentDispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),agentModel),
+      tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),agentTool)}
+    const handlers=config=>{const model=createWorkflowV2ModelInternalHandler({...config,dispatch:config.dispatch.model}),
+      tool=createWorkflowV2ToolInternalHandler({...config,dispatch:config.dispatch.tool})
+      return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?tool:model)(req,res)}
+    await withDisposableBoundModelTls(agentDispatch,async config=>{
+      const adapters=[workflowV2ModelEffectExecutor(config),workflowV2ToolEffectExecutor(config)]
+      const executor={supports:req=>adapters.some(adapter=>adapter.supports(req)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}
+      const run=await api.submitWorkflowV2Run(agentFlow.id,1,"Synthetic Agent input","ci-v2-agent-mtls-0001")
+      for(let i=0;i<20;i++){
+        await new WorkflowV2Worker(workerPool,"ci-agent-"+i,{agentExecutionApproved:true,executor}).tick()
+        const detail=await api.getWorkflowV2Run(run.run.id)
+        if(detail.run.status==="succeeded")break
+        if(detail.run.status==="awaiting_approval")await api.decideWorkflowV2Node(run.run.id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+      }
+      const detail=await api.getWorkflowV2Run(run.run.id)
+      assert.equal(detail.run.status,"succeeded");assert.equal(detail.run.result_text,"Synthetic Agent result 4");assert.equal(agentCalls,2)
+      assert.equal(detail.steps.filter(step=>step.metadata.parent_step_key).length,3)
+      const ledger=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[run.run.id])).rows
+      assert.equal(ledger.length,7);assert.equal(ledger.every(row=>row.status==="succeeded"),true)
+    },{handlerFactory:handlers})
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)

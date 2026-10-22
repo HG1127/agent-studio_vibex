@@ -14,12 +14,15 @@ import {readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
 import {workflowV2ModelEffectExecutor} from "./workflow-v2-model-client.ts"
 import {selectWorkflowV2ToolExecution} from "./workflow-v2-tool-contract.ts"
 import {workflowV2ToolEffectExecutor} from "./workflow-v2-tool-client.ts"
+import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
 import type {SqlPool} from "./contracts.ts"
 const marker="APPROVE_ISOLATED_PG_WORKFLOW_V2_RUNTIME_ONLY"
 function required(name:string){const value=process.env[name]?.trim();if(!value)throw Error("missing_"+name);return value}
 async function main(mode:"serve"|"preflight"){
   const modelEnabled=selectWorkflowV2ModelExecution(process.env)
   const toolsEnabled=selectWorkflowV2ToolExecution(process.env)
+  const agentsEnabled=selectWorkflowAgentExecution(process.env)
+  if(agentsEnabled&&(!modelEnabled||!toolsEnabled))throw Error("workflow_v2_agents_not_approved")
   if(mode==="serve"){
     assertPgWorkerActivation(process.env,["--serve"])
     if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true"||
@@ -55,9 +58,10 @@ async function main(mode:"serve"|"preflight"){
       }}:undefined
     if(mode==="preflight"){
       process.stdout.write(JSON.stringify({mode,worker:"workflow_v2",verified_roles:true,db_writes_performed:false,
-        worker_started:false,effect_executor_installed:false,model_adapter_config_verified:modelEnabled,tool_adapter_config_verified:toolsEnabled,production_cutover_allowed:false})+"\n");return
+        worker_started:false,effect_executor_installed:false,model_adapter_config_verified:modelEnabled,tool_adapter_config_verified:toolsEnabled,
+        agent_adapter_config_verified:agentsEnabled,production_cutover_allowed:false})+"\n");return
     }
-    const worker=new WorkflowV2Worker(adapter,"pg-workflow-v2-"+randomUUID().slice(0,8),{executor})
+    const worker=new WorkflowV2Worker(adapter,"pg-workflow-v2-"+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled})
     process.stdout.write(JSON.stringify({service:"pg-workflow-v2",state:"ready",effect_executor_installed:adapters.length>0,
       scheduler_started:false,production_cutover_allowed:false})+"\n")
     while(!stop){

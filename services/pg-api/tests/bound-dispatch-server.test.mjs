@@ -86,3 +86,15 @@ test("Tool serving is independently gated and shares only the reviewed Workflow 
   const config=boundDispatchServerConfig({...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)},"serve","linux",1001)
   assert.equal(config.workflowToolsEnabled,true);assert.equal(config.workflowModelEnabled,false)
 })
+
+test("Agent execution requires its own marker plus both independently approved Model and Tool adapters",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_AGENTS_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)}
+  assert.throws(()=>boundDispatchServerConfig({...paid,...flags},"serve","linux",1001))
+  const ready={...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY"}
+  assert.equal(boundDispatchServerConfig(ready,"serve","linux",1001).workflowAgentsEnabled,true)
+  assert.throws(()=>boundDispatchServerConfig({...ready,AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED:undefined},"preflight","linux",1001))
+})

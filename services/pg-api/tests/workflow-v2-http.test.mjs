@@ -17,6 +17,8 @@ import {WorkflowV2RunRepository} from "../src/workflow-v2-run-repository.ts"
 import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
 import {createHandler} from "../src/http.ts"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
+import {safeAgentSpec} from "../src/contracts.ts"
+import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 const approval="APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY"
 const config={AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED:"true",AGENT_STUDIO_PG18_UAT_APPROVAL:"APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY"}
 const env={...config,AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED:"true",AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED:approval}
@@ -122,5 +124,45 @@ test("Native V2 HTTP preserves Cookie/CSRF/owner scope through approval, replay,
     assert.equal((await alice.api.cancelWorkflowV2Run(cancellable.run.id)).run.status,"cancelled")
     assert.equal((await alice.api.listWorkflowV2Runs()).length,2)
     assert.equal(calls,1)
+    // The new child steps keep the same real Native Cookie/CSRF boundary.
+    const identity=(await auth.getSessionProfile(admin.token)).identity
+    const models=new ModelConnectionRepository(pool,Buffer.from("0123456789abcdef".repeat(4),"hex"))
+    const saved=await models.create(identity,{name:"Synthetic Agent model",provider:"openai",base_url:"https://api.openai.com/v1",
+      api_key:"synthetic-http-agent-key-no-provider",models:["synthetic"],enabled:true})
+    const model=await models.testConnection(identity,saved.id,saved.revision,async()=>({status:"ok",latency_ms:1,error_code:""}))
+    const role=await new AgentSpecRepository(pool).create(identity,"Native role",safeAgentSpec({goal:"Native private role",tools:["calculate"],
+      model_binding:{connection_id:model.id,connection_revision:model.revision,model_id:"synthetic"}}))
+    const longNode="n".repeat(80),agentGraph={version:2,nodes:[graph.nodes[0],{id:longNode,type:"agent",data:{title:"Role",
+      agent_binding:{spec_id:role.id,spec_revision:role.revision},max_steps:3},position:{x:100,y:0}},
+      {...graph.nodes[2],data:{title:"End",output_template:"{{Role.output}}"}}],edges:[{id:"a",source:"start",target:longNode},{id:"b",source:longNode,target:"end"}]}
+    enabled=true;configure()
+    const agentFlow=await alice.api.createWorkflowGraph("Native Agent",agentGraph)
+    const agentRun=await alice.api.submitWorkflowV2Run(agentFlow.id,1,"Agent task","native-agent-child-http-001")
+    let modelCalls=0,toolCalls=0,checkedRevocation=false
+    const agentWorker=new WorkflowV2Worker(pool,"native-agent-http",{agentExecutionApproved:true,executor:{async execute(request){
+      assert.ok(request.agent_context)
+      if(request.kind==="tool"){toolCalls++;return "2+2 = 4"}
+      modelCalls++;return JSON.stringify(JSON.parse(request.input).round===1?
+        {action:"tool",tool:"calculate",params:{expression:"2+2"}}:{action:"answer",answer:"Native Agent result 4"})
+    }}})
+    for(let i=0;i<20;i++){
+      await agentWorker.tick();const detail=await alice.api.getWorkflowV2Run(agentRun.run.id)
+      if(detail.run.status==="succeeded")break
+      if(detail.run.status!=="awaiting_approval")continue
+      const current=detail.pending_effect
+      await assert.rejects(bob.api.decideWorkflowV2Node(agentRun.run.id,"approved",current.step_key,current.input_sha256),e=>e.status===404)
+      if(current.agent_context&&!checkedRevocation){
+        enabled=false;configure();await assert.rejects(alice.api.decideWorkflowV2Node(agentRun.run.id,"approved",current.step_key,current.input_sha256),e=>e.status===405)
+        assert.equal((await agentWorker.tick()).status,"idle");enabled=true;configure();checkedRevocation=true
+      }
+      await alice.api.decideWorkflowV2Node(agentRun.run.id,"approved",current.step_key,current.input_sha256)
+    }
+    const agentDone=await alice.api.getWorkflowV2Run(agentRun.run.id)
+    assert.equal(agentDone.run.status,"succeeded");assert.equal(agentDone.run.result_text,"Native Agent result 4")
+    assert.equal(modelCalls,2);assert.equal(toolCalls,1);assert.equal(checkedRevocation,true)
+    assert.equal(JSON.stringify(agentDone).includes("Native private role"),false)
+    const agentPage=await alice.api.getWorkflowV2Steps(agentRun.run.id,"",3)
+    const agentTail=await alice.api.getWorkflowV2Steps(agentRun.run.id,agentPage.next_after,200)
+    assert.equal(agentPage.items.length+agentTail.items.length,6)
   }finally{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}await db.close()}
 })

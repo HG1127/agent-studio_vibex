@@ -20,16 +20,20 @@ function models(value:unknown):string[]{
 export class WorkflowV2ModelDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer
   readonly executor:(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>
-  constructor(pool:SqlPool,key:Buffer,executor:WorkflowV2ModelDispatch["executor"],brokerPool:SqlPool){
+  readonly allowAgent:boolean;readonly agentExecutor?:WorkflowV2ModelDispatch["executor"]
+  constructor(pool:SqlPool,key:Buffer,executor:WorkflowV2ModelDispatch["executor"],brokerPool:SqlPool,
+    options:{allowAgentExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"]}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||typeof executor!=="function"||!brokerPool)
       throw Error("workflow_model_dispatch_dependencies_required")
     // Share the service-owned key so shutdown zeroizes this reference as well.
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
+    this.allowAgent=options.allowAgentExecution===true;this.agentExecutor=options.agentExecutor
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ModelRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"model")
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent)
+      if(pending.agent_context&&!this.agentExecutor)throw new HttpError(409,"workflow_agent_executor_unavailable")
       const binding=pending.configuration.model_binding!
       const metadata=(await db.query<Secret>("SELECT revision,enabled,status,provider,base_url,models FROM agentstudio.model_connections "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[binding.connection_id,owner])).rows[0]
@@ -37,7 +41,7 @@ export class WorkflowV2ModelDispatch{
          !models(metadata.models).includes(binding.model_id))changed()
       try{exactProviderEndpoint(metadata)}catch{changed()}
       await reserveWorkflowEffectDispatch(db,owner,request,"model")
-      return {binding:{...binding},provider:metadata.provider,base_url:metadata.base_url,prompt:pending.input}
+      return {binding:{...binding},provider:metadata.provider,base_url:metadata.base_url,prompt:pending.input,agent:Boolean(pending.agent_context)}
     })
     let text="",failed=true
     try{
@@ -53,7 +57,7 @@ export class WorkflowV2ModelDispatch{
       })
       const controller=new AbortController()
       let timer:ReturnType<typeof setTimeout>|undefined
-      try{text=await Promise.race([this.executor(material,selected.prompt,controller.signal),new Promise<never>((_,reject)=>{
+      try{text=await Promise.race([(selected.agent?this.agentExecutor!:this.executor)(material,selected.prompt,controller.signal),new Promise<never>((_,reject)=>{
         timer=setTimeout(()=>{controller.abort();reject(Error("workflow_model_timeout"))},25000)
       })])}finally{if(timer)clearTimeout(timer)}
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_model_output")

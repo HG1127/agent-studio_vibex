@@ -26,8 +26,10 @@ const columns="id,owner_user_id,name,graph,revision,created_at,updated_at"
 // as the graph write. No credentials, URL overrides or user IDs enter the graph.
 export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,graph:WorkflowGraph){
   if(graph.version!==2)return
-  for(const node of graph.nodes){
-    const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=node.data
+  for(const node of graph.nodes)await verifyWorkflowResourceReferences(db,actor,node.data)
+}
+export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string,data:WorkflowGraph["nodes"][number]["data"]){
+    const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=data
     if(model){
       const result=await db.query<{revision:number|string;enabled:boolean;status:string;
         models:unknown;provider:"openai"|"anthropic"|"gemini";base_url:string}>(
@@ -54,7 +56,6 @@ export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,gra
         "WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) AND visibility='private' FOR SHARE",[actor,kb])
       if(rows.rows.length!==kb.length)throw new HttpError(404,"workflow_resource_not_found")
     }
-  }
 }
 async function auditGraphWrite(db:SqlClient,actor:string,row:WorkflowRow,action:string){
   await db.query("INSERT INTO agentstudio.audit_events "+

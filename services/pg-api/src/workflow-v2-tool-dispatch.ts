@@ -35,7 +35,7 @@ async function workflowContext(db:SqlClient,owner:string,id:string,query:string)
   const row=(await db.query<{instruction:string;checkpoint:unknown}>("SELECT instruction,checkpoint FROM agentstudio.runs "+
     "WHERE id=$1::uuid AND owner_user_id=$2::uuid",[id,owner])).rows[0]!
   const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction),view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
-  const chunks=[{source:"任务指令",text:row.instruction},...view.nodes.filter(node=>node.output).map(node=>({
+  const chunks=[{source:"任务指令",text:row.instruction},...(state.agent_state&&view.pending?.kind==="agent"?[{source:"Agent 输入",text:view.pending.input}]:[]),...view.nodes.filter(node=>node.output).map(node=>({
     source:state.graph.nodes.find(value=>value.id===node.id)!.data.title,text:node.output!.slice(0,1200)}))]
   const hits=chunks.flatMap(chunk=>{const pos=chunk.text.toLowerCase().indexOf(query.toLowerCase())
     return pos<0?[]:[{source:chunk.source,snippet:chunk.text.slice(Math.max(0,pos-80),pos+300)}]}).slice(0,8)
@@ -43,14 +43,16 @@ async function workflowContext(db:SqlClient,owner:string,id:string,query:string)
 }
 export class WorkflowV2ToolDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer;readonly executor:WorkflowToolExecutor
-  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool){
+  readonly allowAgent:boolean
+  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAgentExecution?:boolean}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||!executor||!brokerPool)throw Error("workflow_tool_dispatch_dependencies_required")
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
+    this.allowAgent=options.allowAgentExecution===true
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ToolRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool"),plan=prepareWorkflowTool(pending)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent),plan=prepareWorkflowTool(pending)
       let output:string|undefined,connection:ToolRow|undefined,model:Pick<ModelRow,"provider"|"base_url">|undefined
       let headerRefs:HeaderRef[]=[]
       if(plan.kind==="calculate")output=plan.output
