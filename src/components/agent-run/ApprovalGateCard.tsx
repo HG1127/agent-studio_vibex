@@ -24,7 +24,7 @@ export function ApprovalGateCard({ pendingApproval, activeRun, marketTools, appr
           <ShieldQuestion className="h-4 w-4" />
         </span>
         <h2 className="text-base font-semibold tracking-tight text-card-foreground">
-          {stepLabel}{marketPlugin ? "将调用市场插件，需要你确认" : "将执行外部写操作，需要你批准"}
+          {stepLabel}{info.approvalTitle}
         </h2>
         <span className="ml-auto rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">等待批准</span>
       </div>

@@ -23,11 +23,20 @@ const makeRun = (active = "researcher", tools = [browserTool]) => ({
 
 test("approval shows the persisted role, stage and exact connected read-only tool", () => {
   const view = projectAgentApprovalPresentation(browserTool, makeRun(), [marketTool(browserTool)])
+  assert.equal(view.approvalTitle, "将调用市场插件，需要你确认")
   assert.equal(view.roleLabel, "网页研究 · 第 1 / 2 阶段")
   assert.equal(view.nextRoleName, "邮件交付")
   assert.equal(view.toolLabel, "本地验证浏览器 · 页面读取")
   assert.match(view.toolAccess, /声明只读.*逐次审批/)
   assert.equal(view.warning, "")
+})
+
+test("an ordinary external tool is not mislabeled as a write operation without evidence", () => {
+  const id = "browser_page_inspect"
+  const view = projectAgentApprovalPresentation(id, makeRun("researcher", [id]), [])
+  assert.equal(view.approvalTitle, "将调用外部工具，需要你确认")
+  assert.doesNotMatch(view.approvalTitle, /写操作/)
+  assert.match(view.toolAccess, /读写权限以服务端策略为准/)
 })
 
 test("an exact write-capable connection is not presented as read-only", () => {

@@ -84,14 +84,16 @@ export default function AgentCreateRoute() {
   },[])
   useEffect(()=>{
     let cancelled=false
+    const modelRequestSequence=modelRequest
     void Promise.resolve().then(()=>{if(!cancelled)void refreshModels()})
-    return ()=>{cancelled=true;modelRequest.current++}
+    return ()=>{cancelled=true;modelRequestSequence.current++}
   },[refreshModels])
+  const refreshKnowledgeBases=p.refreshKnowledgeBases
   useEffect(()=>{
     // KBs can be created in another tab after wizard initialization.
     if(step!==2)return
-    void p.refreshKnowledgeBases()
-  },[step,p.refreshKnowledgeBases])
+    void refreshKnowledgeBases()
+  },[step,refreshKnowledgeBases])
 
   const refreshRuns=useCallback(async()=>{
     if(!p.savedSpecId)return
@@ -134,8 +136,9 @@ export default function AgentCreateRoute() {
   useEffect(()=>{
     if(step<3 || !p.savedSpecId)return
     let cancelled=false
+    const runRequestSequence=runRequest
     void Promise.resolve().then(()=>{if(!cancelled)void refreshRuns()})
-    return ()=>{cancelled=true;runRequest.current++}
+    return ()=>{cancelled=true;runRequestSequence.current++}
   },[step,p.savedSpecId,refreshRuns])
 
   const evaluated=useMemo(()=>evaluateAgentJourney({
@@ -182,7 +185,7 @@ export default function AgentCreateRoute() {
     onRefreshKnowledgeBases:p.refreshKnowledgeBases,
     onToggleTool:p.handleToggleSpecTool,reviseInput:p.reviseInput,
     onReviseInputChange:p.setReviseInput,onRevise:p.handleRevise,
-    isRevising:p.isRevising,onSave:p.handleSave,isSaving:p.isSaving,dirty:p.specDirty,
+    isRevising:p.isRevising,editorError:p.revisionError,onSave:p.handleSave,isSaving:p.isSaving,dirty:p.specDirty,
     revisionProposal:p.revisionProposal,onApplyRevision:p.applyRevisionProposal,onDiscardRevision:p.discardRevisionProposal,
     savedMsg:p.savedMsg,savedSpecId:p.savedSpecId,onClear:p.handleClearSpec,
     saveConflict:p.saveConflict,onSaveAsCopy:p.handleSaveAsCopy,

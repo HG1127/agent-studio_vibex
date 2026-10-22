@@ -57,6 +57,7 @@ type SpecEditorCardProps = {
   onReviseInputChange: (value: string) => void
   onRevise: () => void
   isRevising: boolean
+  editorError?: string
   revisionProposal?: AgentRevisionProposal | null
   onApplyRevision?: () => void
   onDiscardRevision?: () => void
@@ -561,6 +562,13 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           <p className="mt-2 text-xs text-muted-foreground">
             AI 修订会使用你已连接的模型，可能产生费用；请检查修订结果后保存。
           </p>
+          {p.isRevising && <p role="status" className="mt-2 rounded-lg border border-primary/20 bg-background/60 p-3 text-xs text-muted-foreground">
+            正在等待模型生成修改预览。当前方案不会被自动修改，若网络繁忙可在失败提示后重试。
+          </p>}
+          {p.editorError && <p role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive">
+            {p.editorError}
+            <span className="mt-1 block">原草稿仍保留；可检查模型连接或调整要求后重新生成。</span>
+          </p>}
           {p.revisionProposal && p.onApplyRevision && p.onDiscardRevision &&
             <AgentRevisionPreview current={p.spec} proposal={p.revisionProposal}
               onApply={p.onApplyRevision} onDiscard={p.onDiscardRevision}/>}

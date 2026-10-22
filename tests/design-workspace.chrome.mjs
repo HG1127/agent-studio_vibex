@@ -81,11 +81,15 @@ test("design workspace: real login, editable capabilities, role grants, resource
   const email = `design-${randomBytes(6).toString("hex")}@example.test`
   const password = "Fixture-" + randomBytes(20).toString("hex") + "!"
   let pb, frontend, fixture, browser, page, token = "", pbLogs = "", viteLogs = "", selectedToolId = ""
+  let failNextMcpCall = ""
   let designCalls = 0, revisionCalls = 0, approvalModelCalls = 0, inputModelCalls = 0, mcpCalls = 0
   const complexToolCalls = { browser_page_inspect: 0, document_extract: 0, spreadsheet_analyze: 0, send_email: 0 }
   const complexRoleTurns = { researcher: 0, documenter: 0, analyst: 0, reviewer: 0, sender: 0 }
   const complexToolIds = { browser_page_inspect: "", document_extract: "", spreadsheet_analyze: "", send_email: "" }
   const errors = []
+  const consoleErrors = []
+  const http400Responses = []
+  let smitheryStatusChecks = 0, smitheryCatalogRequests = 0
   const results = []
   const capabilityRequirements = [
     { id: "browser_need", title: "浏览器操作", purpose: "读取授权网页", kind: "browser", access: "read", required: true, role_ids: [], search_terms: ["browser"], suggested_tool_ids: [] },
@@ -112,6 +116,10 @@ test("design workspace: real login, editable capabilities, role grants, resource
         for await (const part of req) raw += part
         const input = JSON.parse(raw || "{}")
         res.setHeader("Content-Type", "application/json")
+        // Human approval pauses can exceed Node's default 5s keep-alive timeout.
+        // Close each fixture response explicitly so the MCP client never reuses
+        // a stale pooled socket and mistakes a fixture timeout for a product defect.
+        res.setHeader("Connection", "close")
         if (req.url === "/mcp") {
           let result
           if (input.method === "tools/list") result = { tools: [
@@ -126,6 +134,11 @@ test("design workspace: real login, editable capabilities, role grants, resource
               mcpCalls++
               const name = input.params?.name
               if (Object.hasOwn(complexToolCalls, name)) complexToolCalls[name]++
+              if (failNextMcpCall === name) {
+                failNextMcpCall = ""
+                res.destroy()
+                return
+              }
             }
             const name = input.params?.name
             const evidence = name === "browser_page_inspect" ? "SOURCE_EVIDENCE: fixture issuer reported revenue 120 and risk factor R1; source URL https://fixture.invalid/issuer" :
@@ -148,7 +161,13 @@ test("design workspace: real login, editable capabilities, role grants, resource
         } else if (system.includes("助手方案修订器")) {
           revisionCalls++
           const request = JSON.parse(user)
-          content = JSON.stringify({ ...request.current, name: "设计工作台验收助手（已修订）", goal: request.current.goal + "；补充证据索引" })
+          content = String(request.modification || "").includes("SIMULATED_REVISION_INVALID_JSON")
+            ? "SIMULATED_INVALID_JSON_NO_PREVIEW"
+            : JSON.stringify({ ...request.current, name: "设计工作台验收助手（已修订）", goal: request.current.goal + "；补充证据索引" })
+        } else if (system.includes("助手执行引擎") && user.includes("COMPLEX_AGENT_FAILURE_INJECTION")) {
+          content = JSON.stringify({ action: "tool", tool: complexToolIds.browser_page_inspect,
+            tool_input: { query: "deterministic MCP EOF failure injection" },
+            thought: "Invoke one local read-only fixture to verify ambiguous transport failures are not replayed." })
         } else if (system.includes("助手执行引擎") && user.includes("COMPLEX_AGENT_ACCEPTANCE")) {
           const roleId = ["researcher", "documenter", "analyst", "reviewer", "sender"].find(id => system.includes("（" + id + "）")) || "unknown"
           const plan = {
@@ -199,6 +218,18 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     page = await context.newPage(); page.setDefaultTimeout(25_000)
     page.on("pageerror", error => errors.push(error.message))
+    page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text().slice(0, 1200)) })
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.endsWith("/api/market/smithery/v2/catalog")) smitheryCatalogRequests++
+    })
+    page.on("response", response => {
+      const pathname = new URL(response.url()).pathname
+      if (pathname.endsWith("/api/market/smithery/status") && response.status() === 200) smitheryStatusChecks++
+      if (response.status() === 400) {
+        const request = response.request()
+        http400Responses.push({ method: request.method(), path: pathname })
+      }
+    })
     await page.goto(webOrigin + "/login?next=%2Fagent-create")
     await page.getByLabel("工作邮箱", { exact: true }).fill(email)
     await page.getByLabel("密码", { exact: true }).fill(password)
@@ -292,9 +323,20 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal(await harness.getByRole("button", { name: /^重新匹配/ }).count(), 1, "The capability plan has one rematch entry")
     assert.equal(await drawer.getByRole("heading", { name: /AI 需求识别.*自动匹配工具/ }).count(), 0, "The old duplicate tool summary must be absent")
     await screenshot("design-workspace")
-    await drawer.getByLabel("方案修改要求", { exact: true }).fill("补充证据索引并更新名称；保留我的角色和工具授权。")
+    const revisionInput = drawer.getByLabel("方案修改要求", { exact: true })
+    await revisionInput.fill("SIMULATED_REVISION_INVALID_JSON")
+    await drawer.getByRole("button", { name: "生成修改预览", exact: true }).click()
+    await visible(drawer.getByRole("alert").filter({ hasText: "修订结果格式异常" }))
+    assert.equal(await drawer.getByRole("region", { name: "AI 方案修改预览", exact: true }).count(), 0,
+      "A malformed model response must never create a preview or apply an incomplete draft")
+    assert.deepEqual((await api("GET", "/api/agent_specs/" + saved.id)).spec, saved.spec)
+    await screenshot("revision-error-visible-inside-editor")
+    await revisionInput.fill("补充证据索引并更新名称；保留我的角色和工具授权。")
+    assert.equal(await drawer.getByRole("alert").filter({ hasText: "修订结果格式异常" }).count(), 0,
+      "Updating the revision request must clear the obsolete error inside the active editor")
     await drawer.getByRole("button", { name: "生成修改预览", exact: true }).click()
     await visible(drawer.getByRole("region", { name: "AI 方案修改预览", exact: true }))
+    results.push("malformed AI revision is reported inside the active editor, leaves the saved draft unchanged, and permits a successful retry")
     const nameField = drawer.getByRole("textbox", { name: "助手名称", exact: true })
     assert.equal(await nameField.inputValue(), saved.name, "A proposal must not overwrite the current draft")
     assert.deepEqual((await api("GET", "/api/agent_specs/" + saved.id)).spec, saved.spec)
@@ -511,6 +553,49 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.deepEqual((await api("GET", "/api/agent_specs/" + complexSpec.id)).spec.roles, complexRoles,
       "Reviewing a five-stage configuration cannot mutate the saved Agent")
     results.push("five-role Agent design UI exposes role boundaries, per-role tool grants and four selected capabilities without altering the server record")
+
+    // Fault-inject one ambiguous MCP EOF, prove the potentially side-effecting
+    // POST is not replayed, and show accurate failure guidance before the
+    // healthy five-role run. All traffic terminates at this local fixture.
+    const failureSpec = await api("POST", "/api/agent_specs", { name: "故障注入验收：MCP 结果不明", spec: {
+      goal: "验证 MCP 连接中断时不自动重放，并明确告知人工核查步骤",
+      task_scope: "只调用本地故障注入 fixture，不连接真实外部系统",
+      tools: [complexToolIds.browser_page_inspect],
+      task_plan: ["读取本地测试页面"],
+      deliverables: ["连接失败诊断"],
+      done_criteria: ["失败原因准确", "不重复调用", "人工核查后再决定是否重试"],
+      roles: [{ ...complexRoles[0], tools: [complexToolIds.browser_page_inspect] }],
+      capability_requirements: [{ ...complexCapabilities[0], role_ids: ["researcher"],
+        suggested_tool_ids: [complexToolIds.browser_page_inspect] }],
+      require_approval: true,
+    } })
+    await page.goto(`${webOrigin}/agent-run?spec=${failureSpec.id}`)
+    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), failureSpec.id)
+    await page.locator("#agent-task-instruction").fill("COMPLEX_AGENT_FAILURE_INJECTION 仅测试本地 MCP EOF 的安全处理。")
+    assert.equal(await page.getByRole("button", { name: "运行", exact: true }).isDisabled(), false)
+    const failedCallBaseline = complexToolCalls.browser_page_inspect
+    const failedMcpBaseline = mcpCalls
+    failNextMcpCall = "browser_page_inspect"
+    const failureRunResponse = page.waitForResponse(item => new URL(item.url()).pathname.endsWith("/api/agent-runs/start") && item.request().method() === "POST")
+    await page.getByRole("button", { name: "运行", exact: true }).click()
+    const failureRunId = (await (await failureRunResponse).json()).run_id
+    await visible(page.getByRole("button", { name: "批准并继续执行", exact: true }))
+    await page.getByRole("button", { name: "批准并继续执行", exact: true }).click()
+    let failureState = null
+    for (let attempt = 0; attempt < 50; attempt++) {
+      failureState = await api("GET", "/api/agent_runs/" + failureRunId)
+      if (["failed", "succeeded"].includes(failureState.status)) break
+      await delay(200)
+    }
+    assert.equal(failureState.status, "failed", "An injected EOF must stop the run instead of pretending success")
+    assert.match(failureState.error, /write_outcome_unknown.*外部工具调用结果不明（可能涉及写入或其他副作用）/)
+    assert.doesNotMatch(failureState.error, /外部写操作失败/)
+    assert.equal(failNextMcpCall, "", "The deterministic transport failure must be consumed")
+    assert.equal(complexToolCalls.browser_page_inspect - failedCallBaseline, 1, "An ambiguous MCP POST must never be automatically replayed")
+    assert.equal(mcpCalls - failedMcpBaseline, 1)
+    await visible(page.getByRole("heading", { name: "运行未正常完成", exact: true }))
+    await visible(page.getByText(/终止原因：write_outcome_unknown：外部工具调用结果不明（可能涉及写入或其他副作用）/))
+    results.push("fault-injected MCP EOF is not replayed; the failure UI accurately explains uncertain external side effects and the need for manual reconciliation")
     await page.goto(`${webOrigin}/agent-run?spec=${complexSpec.id}`)
     await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), complexSpec.id)
     await page.locator("#agent-task-instruction").fill("COMPLEX_AGENT_ACCEPTANCE 完成发行人尽调，核验 revenue 120、PDF p.4、metric 90，并仅在审批后交付本地邮件。")
@@ -600,14 +685,25 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal((await api("GET", "/api/agent_runs/" + inputRunId)).status, "succeeded", "Editing a plan must not rewrite its earlier successful run")
     await screenshot("saved-revision-needs-retest")
     results.push("after a real successful run, saving a changed goal marks the prior run as stale, gives an explicit retry action, and blocks publishing without contradictory success messaging")
-    assert.ok(designCalls >= 1 && revisionCalls >= 1 && approvalModelCalls >= 2 && inputModelCalls >= 2)
+    assert.ok(designCalls >= 1 && revisionCalls >= 2 && approvalModelCalls >= 2 && inputModelCalls >= 2)
     assert.deepEqual(errors, [], "No unhandled browser exceptions")
-    const report = { passed: true, fixtureOnly: true, independentEmployeeLogin: true, temporarySQLite: true, designCalls, revisionCalls, approvalModelCalls, inputModelCalls, mcpCalls, complexToolCalls, checks: results, evidenceDir }
+    const runtimeConsoleErrors = consoleErrors.filter(message =>
+      /(?:TypeError:|ReferenceError:|RangeError:|SyntaxError:|Page render failed|Unhandled Promise|is not a function)/i.test(message))
+    assert.deepEqual(runtimeConsoleErrors, [], "No console-reported runtime exceptions")
+    assert.ok(smitheryStatusChecks >= 1, "Marketplace discovery must verify account-scoped authorization before catalog lookup")
+    assert.equal(smitheryCatalogRequests, 0, "Without a Smithery key, no catalog request may be sent")
+    assert.deepEqual(http400Responses.filter(row => row.path.endsWith("/api/market/smithery/v2/catalog")), [],
+      "Missing Smithery credentials must not generate repeated HTTP 400 responses")
+    results.push("Smithery discovery checks account authorization and skips all catalog calls when no API key exists")
+    const report = { passed: true, fixtureOnly: true, independentEmployeeLogin: true, temporarySQLite: true,
+      designCalls, revisionCalls, approvalModelCalls, inputModelCalls, mcpCalls, complexToolCalls,
+      checks: results, consoleErrors, http400Responses, smitheryStatusChecks, smitheryCatalogRequests, evidenceDir }
     fs.writeFileSync(path.join(evidenceDir, "evidence.json"), JSON.stringify(report, null, 2))
     console.log("DESIGN_WORKSPACE_ACCEPTANCE", JSON.stringify(report))
   } catch (error) {
     if (page) await screenshot("failure").catch(() => {})
-    fs.writeFileSync(path.join(evidenceDir, "failure.json"), JSON.stringify({ passed: false, message: String(error.message).slice(0, 900), completedChecks: results, browserErrors: errors, evidenceDir }, null, 2))
+    await delay(50)
+    fs.writeFileSync(path.join(evidenceDir, "failure.json"), JSON.stringify({ passed: false, message: String(error.message).slice(0, 900), completedChecks: results, browserErrors: errors, browserConsoleErrors: consoleErrors, evidenceDir }, null, 2))
     console.error("DESIGN_WORKSPACE_FAILURE_EVIDENCE", evidenceDir)
     throw error
   } finally {

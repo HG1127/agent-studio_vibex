@@ -139,16 +139,16 @@ for (const file of [home, quick]) {
 
 function editorHarness() {
   const state = { spec: null, specDirty: false, proposal: { basis: 0 }, requirement: "原 Agent 的联网搜索要求", notice: "",
-    editingId: "", savedId: "", serverUpdated: "", name: "", saveConflict: false, error: "", savedMsg: "",
-    isSaving: false, needsRhLogin: false, lastSavedAt: 0, userInput: "", clearedDrafts: 0, listLoads: 0 }
+    editingId: "", savedId: "", serverUpdated: "", name: "", editorContextKey: 0, saveConflict: false, error: "", revisionError: "", savedMsg: "",
+    isSaving: false, isRevising: false, needsRhLogin: false, lastSavedAt: 0, userInput: "", clearedDrafts: 0, listLoads: 0 }
   const scope = {
     specRevisionRef: { current: 0 }, specContextRef: { current: 0 }, returnSpecRef: { current: "oldagent0000001" },
     setRevisionProposal: set(state, "proposal"), setRequirementForTools: set(state, "requirement"),
     setToolMatchNotice: set(state, "notice"), setSpec: set(state, "spec"), setSpecDirty: set(state, "specDirty"),
     setUserInput: set(state, "userInput"), setSpecName: set(state, "name"), setSourceMode: () => {}, setTemplateKey: () => {},
-    setEditingRecordId: set(state, "editingId"), setErrorMsg: set(state, "error"), setSavedSpecId: set(state, "savedId"),
+    setEditingRecordId: set(state, "editingId"), setErrorMsg: set(state, "error"), setRevisionError: set(state, "revisionError"), setEditorContextKey: set(state, "editorContextKey"), setSavedSpecId: set(state, "savedId"),
     setLastSavedAt: set(state, "lastSavedAt"), setServerUpdated: set(state, "serverUpdated"), setSaveConflict: set(state, "saveConflict"),
-    setSavedMsg: set(state, "savedMsg"), setIsSaving: set(state, "isSaving"), setNeedsRhLogin: set(state, "needsRhLogin"), scrollToSpecEditor: () => {},
+    setSavedMsg: set(state, "savedMsg"), setIsSaving: set(state, "isSaving"), setIsRevising: set(state, "isRevising"), setNeedsRhLogin: set(state, "needsRhLogin"), scrollToSpecEditor: () => {},
     specDirty: false, userInput: "", window: { confirm: () => true },
   }
   scope.invalidateSpecContext = callback(home, "invalidateSpecContext", scope)
@@ -179,13 +179,17 @@ test("opening another saved Agent invalidates a pending AI revision before it ca
   const target = { ...source, goal: "新任务" }
   const revise = callback(home, "runRevise", { ...h.scope, reviseInput: "完善完成标准", spec: source, specName: "旧 Agent",
     connectedTools: [], connectedMarketTools: [], requirementForTools: "", toolCatalogForDesign,
-    setIsRevising: () => {}, MODEL_SHORT: "fixture", REVISE_SYSTEM_PROMPT: "fixture", LLM_ERROR_TEXT: {},
+    MODEL_SHORT: "fixture", REVISE_SYSTEM_PROMPT: "fixture", LLM_ERROR_TEXT: {},
     callLlmWithFallback: () => pending.promise, parseSpecJson: () => ({ displayName: "旧 Agent 改进版", spec: source }) })
   const running = revise()
+  assert.equal(h.state.isRevising, true)
   h.open({ id: "newagent0000001", name: "新 Agent", updated: "2026-10-21T00:00:00Z", spec: target })
+  assert.equal(h.state.isRevising, false, "Changing Agent must reset the previous revision spinner")
   pending.resolve({ ok: true, status: "success", text: "{}" })
   await running
   assert.equal(h.state.proposal, null)
+  assert.equal(h.state.revisionError, "", "The old revision cannot add an error to Agent B")
+  assert.equal(h.state.isRevising, false)
   assert.deepEqual(h.state.spec, target)
   assert.equal(h.state.specDirty, false)
 })
@@ -304,16 +308,17 @@ test("deleting the current Agent detaches its draft even if an older save return
 function quickSaveHarness() {
   const pending = []
   const state = { record: agentA, draft: agentA.spec, name: agentA.name, dirty: true, saving: false,
-    error: "", conflict: false, notice: "", baseUpdated: agentA.updated, list: [agentA], nextTrialUrl: "",
+    error: "", revisionError: "", revising: false, proposal: null, conflict: false, notice: "", baseUpdated: agentA.updated, list: [agentA], nextTrialUrl: "", editorSessionKey: "",
     closed: 0, clearedDrafts: 0, events: 0, navigations: [] }
   const scope = { revision: { current: 0 }, loadSequence: { current: 0 },
     record: agentA, draft: agentA.spec, name: agentA.name, dirty: true, saving: false,
     pendingQuickDraft: null, baseUpdated: agentA.updated, ownerId: "owner0000000001",
     request: () => { const next = deferred(); pending.push(next); return next.promise },
     setRecord: set(state, "record"), setDraft: set(state, "draft"), setName: set(state, "name"), setDirty: set(state, "dirty"),
-    setSaving: set(state, "saving"), setError: set(state, "error"), setConflict: set(state, "conflict"), setNotice: set(state, "notice"),
+    setSaving: set(state, "saving"), setRevising: set(state, "revising"), setError: set(state, "error"), setRevisionError: set(state, "revisionError"), setConflict: set(state, "conflict"), setNotice: set(state, "notice"),
     setBaseUpdated: set(state, "baseUpdated"), setList: set(state, "list"), setNextTrialUrl: set(state, "nextTrialUrl"),
-    setLoading: () => {}, setPendingQuickDraft: () => {}, setDraftStorageError: () => {}, setReviseInstruction: () => {}, setRevisionProposal: () => {},
+    setEditorSessionKey: set(state, "editorSessionKey"),
+    setLoading: () => {}, setPendingQuickDraft: () => {}, setDraftStorageError: () => {}, setReviseInstruction: () => {}, setRevisionProposal: set(state, "proposal"),
     readQuickAgentDraft: () => null, cloneSpec: spec => structuredClone(spec), persistUnsavedDraft: () => true,
     clearQuickAgentDraft: () => { state.clearedDrafts++ }, onClose: () => { state.closed++ },
     window: { confirm: () => true, dispatchEvent: () => { state.events++ } }, CustomEvent: class { constructor(type) { this.type = type } },
@@ -326,7 +331,31 @@ async function reopenQuickOnB(h) {
   const loading = h.load(agentB.id)
   h.pending.at(-1).resolve(savedResponse(agentB))
   await loading
+  assert.equal(h.state.editorSessionKey, agentB.id + ":" + h.scope.loadSequence.current,
+    "Loading a distinct Agent must assign a fresh editor context from the completed request")
 }
+
+test("quick editor: late AI revision cannot change error, spinner or proposal after another Agent opens", async () => {
+  for (const outcome of ["success", "failure"]) {
+    const h = quickSaveHarness(), pending = deferred()
+    const revise = callback(quick, "revise", { ...h.scope,
+      reviseInstruction: "补充尽调证据", record: agentA, revising: false,
+      draft: agentA.spec, name: agentA.name, connectedTools: [], marketTools: [],
+      toolCatalogForDesign, callLlmWithFallback: () => pending.promise })
+    const previous = revise()
+    assert.equal(h.state.revising, true)
+    await reopenQuickOnB(h)
+    assert.equal(h.state.revising, false)
+    pending.resolve(outcome === "success"
+      ? { ok: true, status: "success", text: "{\"goal\":\"stale\"}" }
+      : { ok: false, status: "error", error: "offline" })
+    await previous
+    assert.equal(h.state.record.id, agentB.id)
+    assert.equal(h.state.revising, false)
+    assert.equal(h.state.revisionError, "", "Old errors belong only to the previous Agent")
+    assert.equal(h.state.proposal, null, "An old revision must never become Agent B's proposal")
+  }
+})
 
 test("quick editor: closing and reopening Agent B isolates Agent A's late save success and errors", async () => {
   for (const status of [200, 409, 500, "network"]) {

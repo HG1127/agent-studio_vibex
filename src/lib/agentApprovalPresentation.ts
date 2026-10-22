@@ -8,6 +8,7 @@ type ApprovalRunSnapshot = {
 }
 
 export type ApprovalPresentation = {
+  approvalTitle: string
   toolLabel: string
   toolId: string
   toolSource: string
@@ -37,6 +38,7 @@ export function projectAgentApprovalPresentation(
   const roleMismatch = Boolean(roleConfig && !roleConfig.tools.includes(toolId))
 
   return {
+    approvalTitle: marketPlugin ? "将调用市场插件，需要你确认" : "将调用外部工具，需要你确认",
     toolLabel: marketTool?.label || toolId || "未能识别工具",
     toolId,
     toolSource: marketTool?.connectionTitle || (marketPlugin ? "市场插件 · 当前连接待核验" : "外部工具"),

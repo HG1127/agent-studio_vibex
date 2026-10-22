@@ -44,6 +44,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   const [revising,setRevising]=useState(false)
   const [conflict,setConflict]=useState(false)
   const [error,setError]=useState("")
+  const [revisionError,setRevisionError]=useState("")
   const [notice,setNotice]=useState("")
   const [reviseInstruction,setReviseInstruction]=useState("")
   const [revisionProposal,setRevisionProposal]=useState<{name:string;spec:AgentSpec;basis:number}|null>(null)
@@ -55,6 +56,8 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   const [baseUpdated,setBaseUpdated]=useState("")
   const [pendingQuickDraft,setPendingQuickDraft]=useState<QuickAgentDraft|null>(null)
   const [draftStorageError,setDraftStorageError]=useState(false)
+  // Updated when an owner-scoped Agent is loaded, not read from mutable refs during render.
+  const [editorSessionKey,setEditorSessionKey]=useState("")
   const revision=useRef(0)
   const loadSequence=useRef(0)
   const connectedLoadSequence=useRef(0)
@@ -90,7 +93,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     safeAgentSpecId(new URLSearchParams(loc.search).get("spec")||"")
   const runId=new URLSearchParams(loc.search).get("run")||""
 
-  const modified=useCallback(()=>{revision.current++;setDirty(true);setNotice("");setConflict(false);setRevisionProposal(null)},[])
+  const modified=useCallback(()=>{revision.current++;setDirty(true);setNotice("");setConflict(false);setRevisionProposal(null);setRevisionError("")},[])
   const request=useCallback(async(route:string,init?:RequestInit)=>{
     return fetch(base+route,{
       ...init,headers:{"Content-Type":"application/json",...vibexAuthHeaders(),...init?.headers},
@@ -143,8 +146,10 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     const loadId=++loadSequence.current
     const isCurrent=()=>loadSequence.current===loadId && (!guard || guard())
     setSaving(false)
+    setRevising(false)
     setLoading(true)
     setError("")
+    setRevisionError("")
     try {
       const res=await request("/api/agent_specs/"+encodeURIComponent(id))
       if(!res.ok)throw new Error("当前 Agent 不存在或无权查看")
@@ -152,6 +157,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       if(!item || item.id!==id || !item.spec)throw new Error("服务器未返回完整方案")
       if(!isCurrent())return
       setRecord(item);setDraft(cloneSpec(item.spec));setName(item.name||"")
+      setEditorSessionKey(`${item.id}:${loadId}`)
       setBaseUpdated(item.updated)
       setPendingQuickDraft(readQuickAgentDraft(ownerId,item.id))
       setDraftStorageError(false)
@@ -168,8 +174,9 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   useEffect(()=>{
     if(!open)return
     let cancelled=false
-    setLoading(true);setError("");setNotice("")
-    void (async()=>{
+    void Promise.resolve().then(async()=>{
+      if(cancelled)return
+      setLoading(true);setError("");setRevisionError("");setNotice("")
       try {
         const res=await request("/api/agent_specs?perPage=200&sort=-updated")
         if(!res.ok)throw new Error("无法加载当前员工的 Agent 列表")
@@ -205,15 +212,16 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       }catch(err){
         if(!cancelled){setError(err instanceof Error?err.message:"读取 Agent 列表失败");setLoading(false)}
       }
-    })()
+    })
     return()=>{cancelled=true}
   },[open,focusSpecId,runId,request,loadRecord,refreshConnected])
 
   useEffect(()=>{
     if(!open)return
     const reload=()=>{void refreshConnected()}
+    const connectionRequestSeq=connectedLoadSequence
     window.addEventListener("focus",reload)
-    return()=>{connectedLoadSequence.current++;window.removeEventListener("focus",reload)}
+    return()=>{connectionRequestSeq.current++;window.removeEventListener("focus",reload)}
   },[open,refreshConnected])
 
   const toolStatusOf=useCallback((tool:string)=>toolConnectionStatus(tool,[
@@ -287,6 +295,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     setDirty(false)
     setConflict(false)
     setError("")
+    setRevisionError("")
   }
 
   const save=async(copy=false):Promise<string>=>{
@@ -388,9 +397,10 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   }
   const revise=async()=>{
     if(!reviseInstruction.trim()||!record || revising)return
-    setRevising(true);setError("")
+    setRevising(true);setError("");setRevisionError("")
     const requestText=reviseInstruction.trim()
     const currentRev=revision.current
+    const startedLoad=loadSequence.current
     const currentAgentId=record.id
     const result=await callLlmWithFallback("gemini-3.1-flash-lite-preview",{
       page:"home",max_tokens:4096,
@@ -400,13 +410,16 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
           available_tools:toolCatalogForDesign(connectedTools,marketTools)})},
       ],
     })
+    // A late result from an Agent that was closed or replaced is not a
+    // revision of the new Agent, and must not clear its busy or error state.
+    if(startedLoad!==loadSequence.current)return
     setRevising(false)
     if(currentRev!==revision.current || currentAgentId!==record?.id){
-      setNotice("AI 生成期间方案或 Agent 已发生变化，本次旧修改建议未自动套用。")
+      setRevisionError("AI 生成期间方案或 Agent 已发生变化，本次旧修改建议未自动套用。")
       return
     }
     if(!result.ok || result.status!=="success"){
-      setError("AI 修订暂时不可用；可以直接修改各项字段，不影响手动保存。")
+      setRevisionError("AI 修订暂时不可用；可以直接修改各项字段，不影响手动保存。")
       return
     }
     try {
@@ -432,13 +445,15 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
         capability_requirements:Array.isArray(item.capability_requirements)?normalizeCapabilityRequirements(item.capability_requirements):draft.capability_requirements,
       }})
       setNotice("AI 修改建议已生成，请先核对预览，再应用到草稿。")
-    }catch{setError("AI 修订结果格式无法核验，方案未被改动。")}
+    }catch{setRevisionError("AI 修订结果格式无法核验，方案未被改动。")}
   }
   const close=()=>{
     if(dirty && !persistUnsavedDraft() &&
       !window.confirm("未能暂存草稿。直接关闭将丢失本次未保存的改动，确定关闭吗？"))return
     loadSequence.current++
     setSaving(false)
+    setRevising(false)
+    setRevisionError("")
     onClose()
   }
   const changeAgent=(id:string)=>{
@@ -502,7 +517,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     </div>}
     {!loading&&record&&!pendingQuickDraft&&<>
       <SpecEditorCard
-        editorContextKey={loadSequence.current}
+        editorContextKey={editorSessionKey}
         spec={draft} specName={name} sourceMode={record.source==="template"?"template":"create"}
         onSpecChange={next=>{modified();setDraft(next)}}
         onSpecNameChange={value=>{setName(value);modified()}}
@@ -514,15 +529,15 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
         toolAnalysis={analysis} toolMatchNotice={toolNotice} onRematchTools={matchTools}
         knowledgeBases={knowledge} onToggleKnowledgeBase={toggleKb}
         onToggleTool={toggleTool} reviseInput={reviseInstruction}
-        onReviseInputChange={setReviseInstruction} onRevise={()=>void revise()}
-        isRevising={revising} onSave={()=>void save()} isSaving={saving}
+        onReviseInputChange={value=>{setReviseInstruction(value);setRevisionError("")}} onRevise={()=>void revise()}
+        isRevising={revising} editorError={revisionError} onSave={()=>void save()} isSaving={saving}
         revisionProposal={revisionProposal}
         onApplyRevision={()=>{
           if(!revisionProposal)return
-          if(revisionProposal.basis!==revision.current){setRevisionProposal(null);setError("方案已有新修改，请重新生成建议。");return}
+          if(revisionProposal.basis!==revision.current){setRevisionProposal(null);setRevisionError("方案已有新修改，请重新生成建议。");return}
           setDraft(revisionProposal.spec);setName(revisionProposal.name);modified();setReviseInstruction("")
         }}
-        onDiscardRevision={()=>setRevisionProposal(null)}
+        onDiscardRevision={()=>{setRevisionProposal(null);setRevisionError("")}}
         dirty={dirty} saveConflict={conflict} onSaveAsCopy={()=>void save(true)}
         savedMsg={notice} savedSpecId={record.id} onClear={()=>{}}
         showClear={false} compactActions

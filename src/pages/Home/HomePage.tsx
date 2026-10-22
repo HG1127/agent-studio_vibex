@@ -38,7 +38,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           onRematchTools={p.rematchAgentTools} knowledgeBases={p.knowledgeBases}
           onToggleKnowledgeBase={p.toggleKnowledgeBase} onToggleTool={p.handleToggleSpecTool}
           reviseInput={p.reviseInput} onReviseInputChange={p.setReviseInput}
-          onRevise={p.handleRevise} isRevising={p.isRevising}
+          onRevise={p.handleRevise} isRevising={p.isRevising} editorError={p.revisionError}
           revisionProposal={p.revisionProposal} onApplyRevision={p.applyRevisionProposal}
           onDiscardRevision={p.discardRevisionProposal}
           onSave={p.handleSave} isSaving={p.isSaving} dirty={p.specDirty}
@@ -135,7 +135,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             reviseInput={p.reviseInput}
             onReviseInputChange={p.setReviseInput}
             onRevise={p.handleRevise}
-            isRevising={p.isRevising}
+            isRevising={p.isRevising} editorError={p.revisionError}
             revisionProposal={p.revisionProposal} onApplyRevision={p.applyRevisionProposal}
             onDiscardRevision={p.discardRevisionProposal}
             onSave={p.handleSave}

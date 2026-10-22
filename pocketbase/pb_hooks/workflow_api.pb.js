@@ -2348,7 +2348,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             }
           }
           if (effectNeededWf && toolAttempt.err) {
-            toolAttempt.err = "write_outcome_unknown：外部写操作失败或结果不明，请人工核查后再决定是否新建任务。详情：" + toolAttempt.err
+            toolAttempt.err = "write_outcome_unknown：外部工具调用结果不明（可能涉及写入或其他副作用），请人工核查连接与目标系统后再决定是否新建任务。详情：" + toolAttempt.err
           }
           if (toolAttempt.err) {
             nodeErr = toolAttempt.err

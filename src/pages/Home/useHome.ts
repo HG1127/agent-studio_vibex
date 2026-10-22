@@ -112,6 +112,7 @@ export function useHome() {
   const returnSpecRef = useRef(query.get("spec") || "")
   const specRevisionRef = useRef(0)
   const specContextRef = useRef(0)
+  const [editorContextKey, setEditorContextKey] = useState(0)
   const connectedLoadSequence = useRef(0)
 
   const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
@@ -133,6 +134,7 @@ export function useHome() {
   const [isRevising, setIsRevising] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
+  const [revisionError, setRevisionError] = useState("")
   const [savedMsg, setSavedMsg] = useState("")
   const [savedSpecId, setSavedSpecId] = useState("")
   const [specDirty, setSpecDirty] = useState(false)
@@ -145,13 +147,17 @@ export function useHome() {
     specRevisionRef.current += 1
     setSpecDirty(true)
     setRevisionProposal(null)
+    setRevisionError("")
   }, [])
   const invalidateSpecContext = useCallback(() => {
     specContextRef.current += 1
+    setEditorContextKey(specContextRef.current)
     specRevisionRef.current += 1
     returnSpecRef.current = ""
     setIsSaving(false)
+    setIsRevising(false)
     setRevisionProposal(null)
+    setRevisionError("")
     setRequirementForTools("")
     setToolMatchNotice("")
   }, [])
@@ -299,10 +305,11 @@ export function useHome() {
     // Plugin OAuth may complete in a second tab. Refresh when the editor regains focus,
     // without throwing away an employee's unsaved Agent configuration.
     let cancelled=false
+    const loadSequence = connectedLoadSequence
     const refresh = () => { if(!cancelled)void loadConnectedTools() }
     void Promise.resolve().then(refresh)
     window.addEventListener("focus", refresh)
-    return () => { cancelled=true;connectedLoadSequence.current++;window.removeEventListener("focus", refresh) }
+    return () => { cancelled=true;loadSequence.current++;window.removeEventListener("focus", refresh) }
   }, [rhUserId, loadConnectedTools])
 
   const refreshKnowledgeBases=useCallback(async()=>{
@@ -317,10 +324,11 @@ export function useHome() {
   },[])
   useEffect(()=>{
     if(!rhUserId)return
-    void refreshKnowledgeBases()
+    let cancelled=false
+    void Promise.resolve().then(()=>{if(!cancelled)void refreshKnowledgeBases()})
     const onFocus=()=>{if(document.visibilityState==="visible")void refreshKnowledgeBases()}
     window.addEventListener("focus",onFocus)
-    return()=>window.removeEventListener("focus",onFocus)
+    return()=>{cancelled=true;window.removeEventListener("focus",onFocus)}
   },[rhUserId,refreshKnowledgeBases])
 
   // The catalog fetches just its own server-paged 18 visible rows. The
@@ -451,9 +459,11 @@ export function useHome() {
     if (!instruction || !spec) return
     setIsRevising(true)
     setErrorMsg("")
+    setRevisionError("")
     setSavedMsg("")
     setRevisionProposal(null)
     const startedRevision = specRevisionRef.current
+    const startedContext = specContextRef.current
     const messages: LlmMessage[] = [
       { role: "system", content: REVISE_SYSTEM_PROMPT },
       {
@@ -463,24 +473,26 @@ export function useHome() {
       },
     ]
     const result = await callLlmWithFallback(MODEL_SHORT, { messages, page: "home", max_tokens: 4096 })
+    // A response for a closed or different Agent must never affect the new editor.
+    if (startedContext !== specContextRef.current) return
     setIsRevising(false)
     if (startedRevision !== specRevisionRef.current) {
-      setErrorMsg("生成建议期间方案发生修改，旧建议未覆盖你的编辑。请重新提出调整要求。")
+      setRevisionError("生成建议期间方案发生修改，旧建议未覆盖你的编辑。请重新提出调整要求。")
       return
     }
     if (result.needsLogin) {
       setNeedsRhLogin(true)
-      setErrorMsg(LLM_ERROR_TEXT.rh_login_required)
+      setRevisionError(LLM_ERROR_TEXT.rh_login_required)
       return
     }
     if (!result.ok || result.status !== "success") {
       const rawCode = result.error || ""
-      setErrorMsg(LLM_ERROR_TEXT[rawCode] || rawCode || "修改失败，请重试")
+      setRevisionError(LLM_ERROR_TEXT[rawCode] || rawCode || "修改失败，请重试")
       return
     }
     const parsed = parseSpecJson(result.text || "")
     if (!parsed) {
-      setErrorMsg("修订结果格式异常，请换个说法再试一次")
+      setRevisionError("修订结果格式异常，请换个说法再试一次")
       return
     }
     const existingRoleMap = new Map((spec.roles || []).map(role=>[role.id,role]))
@@ -493,7 +505,7 @@ export function useHome() {
       knowledge_base_ids:spec.knowledge_base_ids,require_approval:spec.require_approval,
       require_plan_review:spec.require_plan_review,quality_checks:spec.quality_checks,
     }})
-  }, [reviseInput, spec, specName, markSpecEdited, requirementForTools, connectedTools, connectedMarketTools])
+  }, [reviseInput, spec, specName, connectedTools, connectedMarketTools])
 
   const handleRevise = useCallback(() => {
     if (!reviseInput.trim() || !spec || isRevising) return
@@ -507,7 +519,7 @@ export function useHome() {
   const applyRevisionProposal = useCallback(()=>{
     if(!revisionProposal)return
     if(revisionProposal.basis!==specRevisionRef.current){
-      setRevisionProposal(null);setErrorMsg("方案已有新修改，请重新生成调整建议。");return
+      setRevisionProposal(null);setRevisionError("方案已有新修改，请重新生成调整建议。");return
     }
     setSpec(revisionProposal.spec);setSpecName(revisionProposal.name)
     markSpecEdited();setReviseInput("")
@@ -800,11 +812,11 @@ export function useHome() {
     handleCreate,
     isGenerating,
     spec,
-    editorContextKey: specContextRef.current,
+    editorContextKey,
     updateFullSpec,
     revisionProposal,
     applyRevisionProposal,
-    discardRevisionProposal:()=>setRevisionProposal(null),
+    discardRevisionProposal:()=>{setRevisionProposal(null);setRevisionError("")},
     specName,
     setSpecName: (value:string) => {
       setSpecName(value)
@@ -830,7 +842,8 @@ export function useHome() {
 
     handleToggleSpecTool,
     reviseInput,
-    setReviseInput,
+    setReviseInput: (value: string) => { setReviseInput(value); setRevisionError("") },
+    revisionError,
     handleRevise,
     isRevising,
     handleSave,

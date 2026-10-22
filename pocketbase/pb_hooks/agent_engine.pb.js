@@ -1446,7 +1446,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         else toolErr = wsRes.error + "（" + wsRes.message + "）"
       } else if (marketToolMap[toolName]) {
         // —— 市场插件工具真实调用：MCP streamable-http JSON-RPC tools/call（直接 → initialize 回退链），
-        // 授权头服务端解混淆、输出抹授权头明文；网络级失败标 retryable 由外层自动重试 1 次 ——
+        // 授权头服务端解混淆并抹除输出中的授权头；网络错误用于诊断，但市场 MCP 的 POST 结果不明时禁止自动重放。
         var mk = marketToolMap[toolName]
         var mkUrl = ""
         try {
@@ -1749,11 +1749,11 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         }
       }
       if (effectNeeded && toolErr) {
-        var uncertainWriteError = "write_outcome_unknown：外部写操作失败或返回结果不明，已禁止自动重试。请先核查外部系统。详情：" + toolErr
+        var uncertainWriteError = "write_outcome_unknown：外部工具调用结果不明（可能涉及写入或其他副作用），为避免重复操作已禁止自动重试。请核查连接与目标系统后再决定是否新建任务。详情：" + toolErr
         seq++
         addEvent(runId, stepIndex, seq, "error", { message: uncertainWriteError.slice(0, 450), tool: toolName })
         persistStats()
-        finishRun(runId, "failed", "", uncertainWriteError.slice(0, 500), stepIndex, seq, "外部写操作需要人工核查")
+        finishRun(runId, "failed", "", uncertainWriteError.slice(0, 500), stepIndex, seq, "外部工具调用结果不明，已停止自动重试")
         return
       }
 
