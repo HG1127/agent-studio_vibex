@@ -1,3 +1,4 @@
+import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
 // Isolated, API-side provider transport for owner-bound Agent models.
 // Not reachable from public HTTP, worker or production startup. No caller-
 // supplied URL, redirect, tool invocation, proxy, or fallthrough provider.
@@ -10,6 +11,7 @@ import {exactProviderEndpoint,resolveSafeProviderAddress,
 import type {ModelProvider as ProviderKind} from "./model-connection-repository.ts"
 import type {ModelInput} from "./model-provider.ts"
 import {selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
+import {selectWorkflowV2ToolExecution} from "./workflow-v2-tool-contract.ts"
 import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
 
 export interface SelectedModelMaterial {
@@ -277,5 +279,13 @@ export function createIsolatedWorkflowAgentModelExecutor(
 ):(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>{
   selectBoundGenerationUat(env,listen,origin,uid)
   if(!selectWorkflowV2ModelExecution(env)||!selectWorkflowAgentExecution(env))throw Error("workflow_v2_agents_not_approved")
+  return selectedTransport(resolver,request,preparedWorkflowAgentModelRequest,25000)
+}
+
+export function createIsolatedAutonomousAgentModelExecutor(
+  env:NodeJS.ProcessEnv,origin:string,listen:boolean,resolver:ProviderResolver={resolve4,resolve6},request:typeof httpsRequest=httpsRequest,uid=process.getuid?.(),
+):(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>{
+  selectBoundGenerationUat(env,listen,origin,uid)
+  if(!selectWorkflowV2ModelExecution(env)||!selectWorkflowV2ToolExecution(env)||!selectAutonomousAgentExecution(env))throw Error("autonomous_agent_not_approved")
   return selectedTransport(resolver,request,preparedWorkflowAgentModelRequest,25000)
 }

@@ -27,6 +27,7 @@ function reply(res:ServerResponse,status:number,value:Record<string,unknown>){
 }
 export function createWorkflowV2ModelInternalHandler(config:{
   approvedForIsolatedUat:boolean
+  executionMode?:"workflow_native_v2"|"agent_native_v2"
   reviewedClientFingerprint256:string
   dispatch:VerifiedBoundDispatch
 }):(req:IncomingMessage,res:ServerResponse)=>Promise<void>{
@@ -73,6 +74,9 @@ export function createWorkflowV2ModelInternalHandler(config:{
       request=safeWorkflowV2ModelRequest(JSON.parse(decoded))
     }catch{
       reply(res,400,{error:"bound_dispatch_invalid_payload"});return
+    }
+    if((request.execution_mode??"workflow_native_v2")!==(config.executionMode??"workflow_native_v2")){
+      reply(res,403,{error:"bound_dispatch_denied"});return
     }
     try{
       const result=safeBoundModelResult(await config.dispatch(request))

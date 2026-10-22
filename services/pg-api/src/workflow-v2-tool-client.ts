@@ -113,7 +113,7 @@ export function workflowV2ToolEffectExecutor(config:BoundModelClientConfig):Work
     if(request.kind!=="tool")throw Error("workflow_effect_adapter_unavailable")
     const result=await dispatch({claim:{run_id:lease.run_id,job_id:lease.job_id,lease_token:lease.lease_token,
       lease_version:lease.lease_version,lease_owner:lease.worker_id},step_key:request.step_key,
-      input_sha256:request.input_sha256,...(request.agent_context?{parent_step_key:request.agent_context.parent_step_key}:{})},lease.signal)
+      input_sha256:request.input_sha256,...(lease.execution_mode==="agent_native_v2"?{execution_mode:"agent_native_v2" as const}:{}),...(request.agent_context?{parent_step_key:request.agent_context.parent_step_key}:{})},lease.signal)
     return result.text
   }}
 }

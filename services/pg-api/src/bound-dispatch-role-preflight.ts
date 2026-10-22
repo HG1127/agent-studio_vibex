@@ -100,8 +100,8 @@ export async function verifyBoundDispatchPrivileges(
 export async function verifyWorkflowModelIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole):Promise<void>{
   return verifyWorkflowEffectIdentityPrivileges(pool,kind,"model")
 }
-export async function verifyWorkflowEffectIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole,effect:"model"|"tool"|"agent_model"|"agent_tool"):Promise<void>{
-  if(!["model","tool","agent_model","agent_tool"].includes(effect))refuse()
+export async function verifyWorkflowEffectIdentityPrivileges(pool:SqlPool,kind:BoundDispatchRole,effect:"model"|"tool"|"agent_model"|"agent_tool"|"autonomous_model"|"autonomous_tool"):Promise<void>{
+  if(!["model","tool","agent_model","agent_tool","autonomous_model","autonomous_tool"].includes(effect))refuse()
   if(!Object.hasOwn(groups,kind))refuse()
   const db=await pool.connect();let begun=false
   try{
@@ -114,7 +114,7 @@ export async function verifyWorkflowEffectIdentityPrivileges(pool:SqlPool,kind:B
       "has_function_privilege('agentstudio_model_broker',p.oid,'EXECUTE') AS broker,"+
       "EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a "+
       "WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS public FROM pg_proc p "+
-      "WHERE p.oid=to_regprocedure($1::text)",["agentstudio.workflow_"+effect+"_lease_identity(uuid,uuid,uuid,bigint,text,text,text"+(effect.startsWith("agent_")?",text":"")+")"])).rows
+      "WHERE p.oid=to_regprocedure($1::text)",["agentstudio."+(effect.startsWith("autonomous_")?"autonomous_agent_"+effect.slice(11):"workflow_"+effect)+"_lease_identity(uuid,uuid,uuid,bigint,text,text,text"+((effect.startsWith("agent_")||effect.startsWith("autonomous_"))?",text":"")+")"])).rows
     const row=rows[0]
     if(rows.length!==1||!row||!row.definer||row.volatile!=="v"||row.can!==(kind==="identity")||
        row.public!==false||row.api!==false||row.worker!==false||row.broker!==false||

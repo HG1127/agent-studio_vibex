@@ -1,3 +1,4 @@
+import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 // Durable V2 transitions. No provider/tool implementation is imported here.
 // External execution requires an explicitly installed trusted adapter; a missing
 // adapter pauses the run. Started/unknown effects are never sent again.
@@ -11,12 +12,13 @@ import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
 import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2-agent-machine.ts"
 import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
-type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:string;workflow_id:string;workflow_revision:number;graph_sha256:string};
+const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
+type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:DurableV2Mode;workflow_id?:string;agent_spec_id?:string;workflow_revision?:number;spec_revision?:number;graph_sha256:string};
   lease_owner:string;lease_token:string;lease_version:string|number;lease_until:Date|string;attempts:number;max_attempts:number}
 export type WorkflowV2Tick={status:"idle"|"progressed"|"awaiting_approval"|"succeeded"|"failed"|"paused"|"stale";run_id?:string}
 export interface WorkflowV2EffectExecutor{
   supports?(request:WorkflowEffectRequest):boolean
-  execute(request:WorkflowEffectRequest,lease:{job_id:string;run_id:string;lease_token:string;lease_version:number;worker_id:string;signal:AbortSignal}):Promise<string>
+  execute(request:WorkflowEffectRequest,lease:{job_id:string;run_id:string;lease_token:string;lease_version:number;worker_id:string;signal:AbortSignal;execution_mode?:DurableV2Mode}):Promise<string>
 }
 async function tx<T>(pool:SqlPool,fn:(db:SqlClient)=>Promise<T>):Promise<T>{
   const db=await pool.connect();let begun=false
@@ -26,19 +28,20 @@ async function tx<T>(pool:SqlPool,fn:(db:SqlClient)=>Promise<T>):Promise<T>{
 async function actor(db:SqlClient,owner:string){
   await db.query("SET LOCAL ROLE agentstudio_api");await db.query("SELECT set_config('agentstudio.actor_id',$1::text,true)",[owner])
 }
-function valid(job:Job,worker:string){return isUuid(job.id)&&isUuid(job.run_id)&&isUuid(job.owner_user_id)&&isUuid(job.lease_token)&&
-  job.lease_owner===worker&&job.kind==="workflow_tick"&&job.payload?.phase==="workflow_native_v2"&&
-  isUuid(job.payload.workflow_id)&&Number.isSafeInteger(Number(job.lease_version))&&Number(job.lease_version)>0&&
-  Number.isSafeInteger(Number(job.payload.workflow_revision))&&Number(job.payload.workflow_revision)>0&&
+function valid(job:Job,worker:string,mode:DurableV2Mode){const root=durableV2Root(mode);return isUuid(job.id)&&isUuid(job.run_id)&&isUuid(job.owner_user_id)&&isUuid(job.lease_token)&&
+  job.lease_owner===worker&&job.kind===root.job&&job.payload?.phase===mode&&
+  isUuid(job.payload[root.id])&&Number.isSafeInteger(Number(job.lease_version))&&Number(job.lease_version)>0&&
+  Number.isSafeInteger(Number(job.payload[root.revision]))&&Number(job.payload[root.revision])>0&&
   /^[a-f0-9]{64}$/.test(job.payload.graph_sha256)}
 async function lockLease(db:SqlClient,job:Job,worker:string){
+  const root=durableV2Root(job.payload.phase)
   await db.query("SET LOCAL ROLE agentstudio_worker")
   const row=(await db.query<Job>("SELECT id,run_id,owner_user_id,kind,payload,lease_owner,lease_token,lease_version,lease_until,attempts,max_attempts "+
     "FROM agentstudio.jobs WHERE id=$1::uuid AND run_id=$2::uuid AND owner_user_id=$3::uuid AND status='leased' "+
-    "AND kind='workflow_tick' AND payload->>'phase'='workflow_native_v2' AND lease_token=$4::uuid "+
+    "AND kind='"+root.job+"' AND payload->>'phase'='"+root.mode+"' AND lease_token=$4::uuid "+
     "AND lease_version=$5::bigint AND lease_owner=$6::text AND lease_until>clock_timestamp() FOR UPDATE",
     [job.id,job.run_id,job.owner_user_id,job.lease_token,job.lease_version,worker])).rows[0]
-  return row&&valid(row,worker)?row:null
+  return row&&valid(row,worker,root.mode)?row:null
 }
 async function acknowledge(db:SqlClient,job:Job,worker:string,status:"queued"|"succeeded"|"failed"){
   await db.query("SET LOCAL ROLE agentstudio_worker")
@@ -52,7 +55,7 @@ async function acknowledge(db:SqlClient,job:Job,worker:string,status:"queued"|"s
 async function stepRows(db:SqlClient,job:Job,events:WorkflowNodeTransition[]){
   for(const event of events){
     const metadata={index:event.step_key.slice(4,9),node_id:event.node_id,node_type:event.node_type,
-      execution_mode:"workflow_native_v2",checkpointed:true,output_chars:event.output?.length??0,
+      execution_mode:job.payload.phase,checkpointed:true,output_chars:event.output?.length??0,
       ...(event.output!==undefined?{output_text:event.output}:{}),...(event.branch?{branch:event.branch}:{}),
       ...(event.round!==undefined?{round:event.round,total:event.total}:{}),...(event.missing?.length?{missing:event.missing}:{})}
     Object.assign(metadata,event.agent_context?{parent_step_key:event.agent_context.parent_step_key,agent_round:event.agent_context.round,agent_phase:event.agent_context.phase}:{})
@@ -68,18 +71,20 @@ export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
   readonly agentEnabled:boolean
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean}={}){
+  readonly root:ReturnType<typeof durableV2Root>
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;executionMode?:DurableV2Mode}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
     this.agentEnabled=options.agentExecutionApproved===true
+    this.root=durableV2Root(options.executionMode??"workflow_native_v2")
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
        !Number.isSafeInteger(this.batch)||this.batch<1||this.batch>20)throw Error("invalid_workflow_v2_worker_options")
   }
   async claim():Promise<Job|null>{return tx(this.pool,async db=>{
     await db.query("SET LOCAL ROLE agentstudio_worker")
-    const job=(await db.query<Job>(claimSql,[this.workerId,60])).rows[0]
-    if(job&&!valid(job,this.workerId))throw Error("invalid_workflow_v2_claim")
+    const job=(await db.query<Job>(this.root.mode==="agent_native_v2"?agentClaimSql:claimSql,[this.workerId,60])).rows[0]
+    if(job&&!valid(job,this.workerId,this.root.mode))throw Error("invalid_workflow_v2_claim")
     return job??null
   })}
   async tick():Promise<WorkflowV2Tick>{
@@ -88,7 +93,7 @@ export class WorkflowV2Worker{
     const job=await this.claim();return job?this.execute(job):{status:"idle"}
   }
   async execute(job:Job):Promise<WorkflowV2Tick>{
-    if(!valid(job,this.workerId))return {status:"stale",run_id:job.run_id}
+    if(!valid(job,this.workerId,this.root.mode))return {status:"stale",run_id:job.run_id}
     let prepared:Prepared
     try{prepared=await this.prepare(job)}catch(error){
       if(error instanceof HttpError)return this.fail(job,error.code)
@@ -101,7 +106,7 @@ export class WorkflowV2Worker{
     let output:string|undefined,unknown=false
     try{
       output=await Promise.race([this.executor!.execute(prepared.request,{job_id:job.id,run_id:job.run_id,
-        lease_token:job.lease_token,lease_version:Number(job.lease_version),worker_id:this.workerId,signal:controller.signal}),
+        lease_token:job.lease_token,lease_version:Number(job.lease_version),worker_id:this.workerId,execution_mode:this.root.mode,signal:controller.signal}),
       new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("workflow_effect_timeout"))},this.timeoutMs)})])
       if(typeof output!=="string"||output.length>20000||output.includes("\0"))unknown=true
     }catch(error){
@@ -118,10 +123,10 @@ export class WorkflowV2Worker{
     job=leased
     await actor(db,job.owner_user_id)
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
-      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='workflow' FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]
+      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='"+this.root.kind+"' FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]
     if(!row||!["queued","running"].includes(row.status))return {tick:{status:"stale",run_id:job.run_id}}
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
-    if(row.workflow_id!==job.payload.workflow_id||state.workflow_revision!==Number(job.payload.workflow_revision)||
+    if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
     const active=(await db.query<{status:string}>("SELECT status FROM agentstudio.users WHERE id=$1::uuid",[job.owner_user_id])).rows[0]
@@ -204,7 +209,7 @@ export class WorkflowV2Worker{
         await db.query("INSERT INTO agentstudio.external_effects(run_id,owner_user_id,step_key,tool_name,arguments_sha256,idempotency_key,status) "+
           "VALUES($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,'started')",[job.run_id,job.owner_user_id,pending.step_key,
           "workflow:"+pending.kind,pending.input_sha256,"workflow_v2:"+job.run_id+":"+pending.step_key])
-        state.stage="workflow_v2_effect_started"
+        state.stage=this.root.stage+"effect_started"
         if(pending.agent_context)state.agent_dispatch={step_key:pending.step_key,input_sha256:pending.input_sha256,kind:pending.kind,
           parent_step_key:pending.agent_context.parent_step_key}
         await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:pending.kind,status:"running",agent_context:pending.agent_context}])
@@ -224,7 +229,7 @@ export class WorkflowV2Worker{
     return {tick:{status:status==="succeeded"?"succeeded":status==="failed"?"failed":"progressed",run_id:job.run_id}}
   })}
   private async persist(db:SqlClient,job:Job,state:WorkflowV2StoredState,status:string,error:string,result=""){
-    state.stage="workflow_v2_"+status
+    state.stage=this.root.stage+status
     await db.query("UPDATE agentstudio.runs SET status=$3::text,checkpoint=$4::jsonb,result_text=$5::text,last_error_code=$6::text,"+
       "step_count=(SELECT count(*)::int FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid),"+
       "updated_at=clock_timestamp(),finished_at=CASE WHEN $3::text IN ('succeeded','failed') THEN clock_timestamp() ELSE NULL END "+
@@ -299,15 +304,15 @@ export class WorkflowV2Worker{
   })}
   private async reconcileExpired():Promise<WorkflowV2Tick|null>{return tx(this.pool,async db=>{
     await db.query("SET LOCAL ROLE agentstudio_worker")
-    const job=(await db.query<Job>("SELECT j.* FROM agentstudio.jobs j WHERE j.kind='workflow_tick' "+
-      "AND j.payload->>'phase'='workflow_native_v2' AND j.status='leased' AND j.lease_until<=clock_timestamp() "+
+    const job=(await db.query<Job>("SELECT j.* FROM agentstudio.jobs j WHERE j.kind='"+this.root.job+"' "+
+      "AND j.payload->>'phase'='"+this.root.mode+"' AND j.status='leased' AND j.lease_until<=clock_timestamp() "+
       "AND EXISTS(SELECT 1 FROM agentstudio.external_effects x WHERE x.run_id=j.run_id AND x.owner_user_id=j.owner_user_id "+
       "AND x.status IN ('started','unknown')) ORDER BY j.lease_until FOR UPDATE OF j SKIP LOCKED LIMIT 1")).rows[0]
     if(!job)return null
     await actor(db,job.owner_user_id)
     await db.query("UPDATE agentstudio.external_effects SET status='unknown',updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='started'",[job.run_id,job.owner_user_id])
-    await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\"workflow_v2_paused\"'::jsonb),"+
+    await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\""+this.root.stage+"paused\"'::jsonb),"+
       "last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id])
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_ambiguous",{})

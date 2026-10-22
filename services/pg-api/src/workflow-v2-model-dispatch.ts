@@ -20,19 +20,19 @@ function models(value:unknown):string[]{
 export class WorkflowV2ModelDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer
   readonly executor:(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>
-  readonly allowAgent:boolean;readonly agentExecutor?:WorkflowV2ModelDispatch["executor"]
+  readonly allowAutonomous:boolean;readonly allowAgent:boolean;readonly agentExecutor?:WorkflowV2ModelDispatch["executor"]
   constructor(pool:SqlPool,key:Buffer,executor:WorkflowV2ModelDispatch["executor"],brokerPool:SqlPool,
-    options:{allowAgentExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"]}={}){
+    options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"]}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||typeof executor!=="function"||!brokerPool)
       throw Error("workflow_model_dispatch_dependencies_required")
     // Share the service-owned key so shutdown zeroizes this reference as well.
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
-    this.allowAgent=options.allowAgentExecution===true;this.agentExecutor=options.agentExecutor
+    this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true;this.agentExecutor=options.agentExecutor
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ModelRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous)
       if(pending.agent_context&&!this.agentExecutor)throw new HttpError(409,"workflow_agent_executor_unavailable")
       const binding=pending.configuration.model_binding!
       const metadata=(await db.query<Secret>("SELECT revision,enabled,status,provider,base_url,models FROM agentstudio.model_connections "+

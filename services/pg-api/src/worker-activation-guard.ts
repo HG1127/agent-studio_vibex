@@ -3,12 +3,12 @@
 export const PG18_WORKER_TRIAL_APPROVAL =
   "APPROVE_ISOLATED_PG18_WORKER_TRIAL_ONLY"
 export function assertPg18WorkerCredentialBinding(
-  env:NodeJS.ProcessEnv,kind:"prepare"|"model"|"workflow",
+  env:NodeJS.ProcessEnv,kind:"prepare"|"model"|"workflow"|"agent",
   uid=process.getuid?.(),
 ):void{
   if(env.AGENT_STUDIO_PG_BAOTA18_ENABLED!=="true")return
   const service=kind==="prepare"?"agentstudio-pg18-prepare.service":
-    kind==="model"?"agentstudio-pg18-model.service":"agentstudio-pg18-workflow.service"
+    kind==="model"?"agentstudio-pg18-model.service":kind==="agent"?"agentstudio-pg18-agent.service":"agentstudio-pg18-workflow.service"
   const directory="/run/credentials/"+service
   if(!Number.isInteger(uid)||uid===0||
      env.CREDENTIALS_DIRECTORY!==directory||
@@ -17,7 +17,7 @@ export function assertPg18WorkerCredentialBinding(
 }
 
 
-export function pgWorkerOfflinePlan(kind:"prepare"|"model"|"workflow"){
+export function pgWorkerOfflinePlan(kind:"prepare"|"model"|"workflow"|"agent"){
   return {
     mode:"plan",
     worker:kind,

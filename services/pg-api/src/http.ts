@@ -1,3 +1,4 @@
+import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
 import { RunRepository } from "./run-repository.ts"
@@ -22,6 +23,7 @@ export interface AppDependencies {
   workflowRepository?: WorkflowRepository
   workflowValidationRepository?: WorkflowValidationRepository
   workflowSafeRunRepository?: WorkflowSafeRunRepository
+  autonomousAgentRunRepository?:AutonomousAgentRunRepository
   workflowV2RunRepository?: WorkflowV2RunRepository
   knowledgeRepository?: KnowledgeBaseRepository
   modelConnectionRepository?: ModelConnectionRepository
@@ -97,6 +99,8 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/workflow-runs\/[0-9a-fA-F-]{36}$/.test(path)
       const workflowV2Submit=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/native-runs$/.exec(path)
       const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps))?)?$/.exec(path)
+      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps))?)?$/.exec(path)
+      const autonomousAgentSubmit=/^\/api\/v2\/agent-specs\/([0-9a-fA-F-]{36})\/autonomous-runs$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
       const submitPrepareRoute=
@@ -111,7 +115,7 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/tool-connections\/[0-9a-fA-F-]{36}$/.test(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
-         !workflowSafeRunReadRoute && !workflowV2Submit && !workflowV2Route && !knowledgeRoute && !runRoute && !schedulesRoute &&
+         !workflowSafeRunReadRoute && !workflowV2Submit && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
          !modelConnectionsRoute && !toolConnectionsRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
@@ -503,15 +507,16 @@ export function createHandler(deps:AppDependencies) {
           scheduler_started:false,workflow_worker_started:false})
       }
 
-      if(workflowV2Submit||workflowV2Route){
-        const repo=deps.workflowV2RunRepository
+      if(workflowV2Submit||workflowV2Route||autonomousAgentSubmit||autonomousAgentRoute){
+        const submit=autonomousAgentSubmit??workflowV2Submit,route=autonomousAgentRoute??workflowV2Route
+        const repo=autonomousAgentSubmit||autonomousAgentRoute?deps.autonomousAgentRunRepository:deps.workflowV2RunRepository
         if(!repo)throw new HttpError(503,"workflow_v2_disabled")
-        if(workflowV2Submit){
+        if(submit){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
-          const result=await repo.submit(identity,workflowV2Submit[1]!,await readBody(req,8192))
+          const result=await repo.submit(identity,submit[1]!,await readBody(req,8192))
           return send(res,result.replayed?200:201,{...result,worker_started_by_api:false})
         }
-        const id=workflowV2Route![1],action=workflowV2Route![2]
+        const id=route![1],action=route![2]
         if(!id){
           if(method!=="GET")throw new HttpError(405,"method_not_allowed")
           const query=new URL(req.url||"/","http://127.0.0.1").searchParams

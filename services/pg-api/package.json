@@ -90,7 +90,10 @@
     "workflow-v2-worker:preflight": "node --experimental-strip-types src/workflow-v2-worker-loop.ts --preflight",
     "test:workflow-v2-model": "node --experimental-strip-types --test --test-concurrency=1 tests/workflow-v2-model.test.mjs",
     "test:workflow-v2-tools": "node --experimental-strip-types --test --test-concurrency=1 tests/workflow-v2-tool-network.test.mjs tests/workflow-v2-tool-runtime.test.mjs",
-    "test:workflow-v2-agents": "node --experimental-strip-types --test --test-concurrency=1 tests/workflow-v2-agent-machine.test.mjs tests/workflow-v2-agent-runtime.test.mjs"
+    "test:workflow-v2-agents": "node --experimental-strip-types --test --test-concurrency=1 tests/workflow-v2-agent-machine.test.mjs tests/workflow-v2-agent-runtime.test.mjs",
+    "test:autonomous-agent": "node --experimental-strip-types --test --test-concurrency=1 tests/autonomous-agent-runtime.test.mjs tests/autonomous-agent-http.test.mjs tests/autonomous-agent-worker-loop.test.mjs",
+    "autonomous-agent-worker:plan": "node --experimental-strip-types src/autonomous-agent-worker-loop.ts --plan",
+    "autonomous-agent-worker:preflight": "node --experimental-strip-types src/autonomous-agent-worker-loop.ts --preflight"
   },
   "dependencies": {
     "jose": "^6.1.0",

@@ -10,6 +10,7 @@ on:
       - 'codex/pg18-workflow-v2-model-20261022'
       - 'codex/pg18-workflow-v2-tools-20261022'
       - 'codex/pg18-workflow-v2-agents-20261022'
+      - 'codex/pg18-autonomous-agent-20261023'
   workflow_dispatch:
 
 permissions:

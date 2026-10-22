@@ -43,16 +43,16 @@ async function workflowContext(db:SqlClient,owner:string,id:string,query:string)
 }
 export class WorkflowV2ToolDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer;readonly executor:WorkflowToolExecutor
-  readonly allowAgent:boolean
-  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAgentExecution?:boolean}={}){
+  readonly allowAutonomous:boolean;readonly allowAgent:boolean
+  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||!executor||!brokerPool)throw Error("workflow_tool_dispatch_dependencies_required")
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
-    this.allowAgent=options.allowAgentExecution===true
+    this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ToolRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent),plan=prepareWorkflowTool(pending)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous),plan=prepareWorkflowTool(pending)
       let output:string|undefined,connection:ToolRow|undefined,model:Pick<ModelRow,"provider"|"base_url">|undefined
       let headerRefs:HeaderRef[]=[]
       if(plan.kind==="calculate")output=plan.output

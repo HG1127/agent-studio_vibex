@@ -79,7 +79,7 @@ export class RunRepository {
     return withActor(this.pool,identity,async(db,actor)=>{
       const result=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs "+
-        "WHERE kind='agent' AND owner_user_id=$1::uuid "+
+        "WHERE kind='agent' AND coalesce(checkpoint->>'execution_mode','')<>'agent_native_v2' AND owner_user_id=$1::uuid "+
         "ORDER BY created_at DESC,id LIMIT $2::int",[actor,bounded])
       return result.rows.map(normalized)
     })
@@ -89,7 +89,7 @@ export class RunRepository {
     return withActor(this.pool,identity,async(db,actor)=>{
       const result=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs "+
-        "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='agent'",
+        "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='agent' AND coalesce(checkpoint->>'execution_mode','')<>'agent_native_v2'",
         [id,actor])
       return result.rows[0]?normalized(result.rows[0]):null
     })
@@ -102,7 +102,7 @@ export class RunRepository {
         "FROM agentstudio.run_steps AS s JOIN agentstudio.runs AS r "+
         "ON r.id=s.run_id AND r.owner_user_id=s.owner_user_id "+
         "WHERE s.run_id=$1::uuid AND s.owner_user_id=$2::uuid "+
-        "AND r.kind='agent' ORDER BY s.created_at,s.step_key LIMIT 40",
+        "AND r.kind='agent' AND coalesce(r.checkpoint->>'execution_mode','')<>'agent_native_v2' ORDER BY s.created_at,s.step_key LIMIT 40",
         [runId,actor])
       return result.rows.map(step=>({...step,metadata:safeRunStepMetadata(step.metadata)}))
     })
@@ -115,7 +115,7 @@ export class RunRepository {
         "JOIN agentstudio.runs AS r ON r.id=a.run_id "+
         "AND r.owner_user_id=a.owner_user_id "+
         "WHERE r.id=$1::uuid AND r.owner_user_id=$2::uuid "+
-        "AND a.step_key='model'",[runId,actor])
+        "AND r.kind='agent' AND coalesce(r.checkpoint->>'execution_mode','')<>'agent_native_v2' AND a.step_key='model'",[runId,actor])
       return rows.rows[0]??null
     })
   }
@@ -132,7 +132,7 @@ export class RunRepository {
       // Row lock serializes competing approvals, model job creation, and replay.
       const previous=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs WHERE id=$1::uuid "+
-        "AND owner_user_id=$2::uuid AND kind='agent' FOR UPDATE",
+        "AND owner_user_id=$2::uuid AND kind='agent' AND coalesce(checkpoint->>'execution_mode','')<>'agent_native_v2' FOR UPDATE",
         [runId,actor])
       const run=previous.rows[0]
       if(!run)throw new HttpError(404,"run_not_found")

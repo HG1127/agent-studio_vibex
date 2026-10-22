@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
 // Requires separate, non-superuser API and auth-service login accounts.
@@ -333,6 +334,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
       allowWorkflowValidation:capabilities.workflowValidationUat===true,
       allowWorkflowExecution:capabilities.workflowExecutionUat===true,
+      allowAutonomousAgentSubmission:capabilities.autonomousAgentUat===true,
       allowWorkflowV2Submission:capabilities.workflowV2ExecutionUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
@@ -373,6 +375,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(adapter(businessPool)),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(adapter(businessPool)),
       workflowV2RunRepository:new WorkflowV2RunRepository(adapter(businessPool)),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
@@ -403,6 +406,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       provider_probe_uat_enabled:capabilities.modelProbeUat,
       workflow_validation_uat_enabled:capabilities.workflowValidationUat===true,
       workflow_execution_uat_enabled:capabilities.workflowExecutionUat===true,
+      autonomous_agent_submission_uat_enabled:capabilities.autonomousAgentUat===true,
       workflow_v2_submission_uat_enabled:capabilities.workflowV2ExecutionUat===true,
       workers_started:false,production_cutover_allowed:false})+"\n")
     let shuttingDown=false

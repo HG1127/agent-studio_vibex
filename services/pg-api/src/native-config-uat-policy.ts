@@ -1,3 +1,4 @@
+import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -16,6 +17,7 @@ export interface NativePg18UatCapabilities {
   workflowExecutionUat?:boolean
   /** Versioned Workflow queue/approval UAT, independent of Start/End-only. */
   workflowV2ExecutionUat?:boolean
+  autonomousAgentUat?:boolean
   /** Additional independent UAT prerequisite; does not register a paid transport. */
   boundModelExecutionUat?:boolean
 }
@@ -40,6 +42,7 @@ export function selectNativePg18UatCapabilities(
   env:NodeJS.ProcessEnv,listen:boolean,origin:string,
   uid=process.getuid?.(),
 ):NativePg18UatCapabilities {
+  const autonomousAgentUat=selectAutonomousAgentExecution(env)
   const config=env.AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED
   const employees=env.AGENT_STUDIO_PG18_EMPLOYEE_UAT_ENABLED
   const marker=env.AGENT_STUDIO_PG18_UAT_APPROVAL
@@ -76,14 +79,14 @@ export function selectNativePg18UatCapabilities(
   if(!workflowExecutionUat&&executionMarker!==undefined)refuse()
   if(!workflowV2ExecutionUat&&flowV2Marker!==undefined)refuse()
   if(!configUat&&!employeeUat&&!runUat&&!ingestUat&&!modelProbeUat&&
-     !workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat){
+     !workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
     if(marker!==undefined)refuse()
     return {...empty}
   }
   if(!listen||!Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !origin.startsWith("https://")||
      marker!==permissionMarker||
-     ((employeeUat||runUat||ingestUat||modelProbeUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat)&&!configUat)||
+     ((employeeUat||runUat||ingestUat||modelProbeUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
      (runUat&&runMarker!==runApprovalMarker)||
      (ingestUat&&ingestMarker!==kbIngestMarker)||
      (modelProbeUat&&probeMarker!==modelProbeMarker)||
@@ -97,6 +100,7 @@ export function selectNativePg18UatCapabilities(
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
+    ...(autonomousAgentUat?{autonomousAgentUat:true}:{}),
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }
 const uuid="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -165,6 +169,12 @@ export function permitNativePg18BusinessUatRequest(
     if(method==="GET"&&new RegExp(
       "^/api/v2/workflow-validations/"+uuid+"$").test(pathname))return true
   }
+  if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||new RegExp(
+    "^/api/v2/agent-autonomous-runs/"+uuid+"(?:/steps)?$").test(pathname)))return true
+  if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/cancel$").test(pathname))return true
+  if(policy.configurationWrites===true&&policy.autonomousAgentUat===true&&method==="POST"&&(
+    new RegExp("^/api/v2/agent-specs/"+uuid+"/autonomous-runs$").test(pathname)||
+    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/decision$").test(pathname)))return true
   // Existing safe Start/End Workflow run history is owner-scoped READ ONLY.
   if(method==="GET"&&(pathname==="/api/v2/workflow-v2-runs"||new RegExp(
     "^/api/v2/workflow-v2-runs/"+uuid+"(?:/steps)?$").test(pathname)))return true
