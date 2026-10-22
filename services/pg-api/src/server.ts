@@ -11,6 +11,7 @@ import {WorkflowRepository} from "./workflow-repository.ts"
 import {KnowledgeBaseRepository} from "./knowledge-repository.ts"
 import {createHandler} from "./http.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {selectPgRuntimeTarget,verifyPgRuntimeTarget} from "./pg-runtime-target.ts"
 
 function required(name:string):string {
   const value=String(process.env[name]||"").trim()
@@ -18,20 +19,15 @@ function required(name:string):string {
   return value
 }
 function loadStagingDatabaseConfig() {
-  const host=required("AGENT_STUDIO_PG_HOST")
-  const user=required("AGENT_STUDIO_PG_USER")
-  const database=required("AGENT_STUDIO_PG_DATABASE")
+  const target=selectPgRuntimeTarget(process.env,"api")
   const file=required("AGENT_STUDIO_PG_PASSWORD_FILE")
-  if(!["postgres","127.0.0.1","localhost"].includes(host) ||
-     user!=="agentstudio_stage_login" || database!=="agentstudio_stage")
-    throw new Error("unsafe_database_configuration")
   const stat=statSync(file)
   if(!stat.isFile() || stat.size>4096 || stat.size<32)
     throw new Error("unsafe_password_file")
   const password=readFileSync(file,"utf8").replace(/[\r\n]+$/g,"")
   if(password.length<32 || /^(.)\1+$/.test(password))
     throw new Error("unsafe_password_file")
-  return {host,user,database,password}
+  return {...target,password}
 }
 async function main(){
   if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true")
@@ -59,7 +55,10 @@ async function main(){
   if(bind==="0.0.0.0" && process.env.AGENT_STUDIO_PG_PILOT_CONTAINER!=="true")
     throw new Error("unsafe_listen_bind")
 
-  const pool=new Pool({...credentials,max:5,
+  const pool=new Pool({
+    host:credentials.host,port:credentials.port,
+    user:credentials.user,database:credentials.database,
+    password:credentials.password,max:5,
     connectionTimeoutMillis:4000,idleTimeoutMillis:30000,
     statement_timeout:10000})
   const adapter:SqlPool={
@@ -75,6 +74,7 @@ async function main(){
     },
   }
   try{
+    await verifyPgRuntimeTarget(adapter,credentials)
     await verifyDatabaseRole(adapter)
     const repository=new AgentSpecRepository(adapter)
     const runRepository=new RunRepository(adapter)

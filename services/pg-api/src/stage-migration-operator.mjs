@@ -109,18 +109,38 @@ function options(argv){
   return args
 }
 function checkedFile(file,kind){
-  const full=fs.realpathSync(path.resolve(file))
-  const stat=fs.lstatSync(full)
+  // Never dereference a symlink/junction or open a PocketBase live-data
+  // lookalike as an "offline" source. Realpath alone silently follows links.
+  // A mapped local drive still requires operator-side filesystem isolation.
+  if(/^[\\\\/]{2}|^[a-z][a-z0-9+.-]*:\/\//i.test(file)||
+     /^[a-z]:[^\\\\/]/i.test(file))
+    fail("operator_local_files_required")
+  const absolute=path.resolve(file)
+  if(/^[\\\\/]{2}/.test(absolute))
+    fail("operator_local_files_required")
+  let component=path.parse(absolute).root
+  for(const part of absolute.slice(component.length).split(path.sep)){
+    if(!part)continue
+    component=path.join(component,part)
+    if(fs.lstatSync(component).isSymbolicLink())
+      fail("operator_local_files_required")
+  }
+  const full=fs.realpathSync(absolute)
+  // NTFS file IDs can exceed Number.MAX_SAFE_INTEGER. Keep the physical
+  // identity exact so distinct review files cannot round to the same inode.
+  const stat=fs.statSync(full,{bigint:true})
   if(!stat.isFile()||!stat.size)fail("invalid_"+kind+"_input")
   const live=fs.existsSync(liveDir)?fs.realpathSync(liveDir):liveDir
   const normal=(value)=>process.platform==="win32"?
     value.toLowerCase():value
   if(normal(full)===normal(live)||
-     normal(full).startsWith(normal(live+path.sep)))
+     normal(full).startsWith(normal(live+path.sep))||
+     full.split(/[\\\\/]/).some(part=>part.toLowerCase()==="pb_data"))
     fail("live_pocketbase_source_forbidden")
   if(kind!=="snapshot"&&stat.size>5_000_000)
     fail("oversized_review_file")
-  return {full,bytes:stat.size,modified:stat.mtimeMs}
+  if(stat.size>BigInt(Number.MAX_SAFE_INTEGER))fail("invalid_"+kind+"_input")
+  return {full,bytes:Number(stat.size),modified:stat.mtimeNs,device:stat.dev,inode:stat.ino}
 }
 const sha256=file=>createHash("sha256")
   .update(fs.readFileSync(file)).digest("hex")
@@ -141,7 +161,8 @@ function sealedSource(args){
       fail("untrusted_execution_fence_review_sha")
     paths.push(review)
   }
-  if(new Set(paths.map(p=>p.full.toLowerCase())).size!==paths.length)
+  if(new Set(paths.map(p=>p.full.toLowerCase())).size!==paths.length||
+     new Set(paths.map(p=>p.device+":"+p.inode)).size!==paths.length)
     fail("duplicate_operator_files")
   const [source,manifestFile,mappingFile,oidcFile,approvalFile]=paths
   if(["-wal","-shm","-journal"].some(s=>fs.existsSync(source.full+s)))
@@ -195,8 +216,9 @@ function sealedSource(args){
   }finally{sqlite.close()}
   const verify=()=>{
     if(paths.some((p,i)=>{
-      const stat=fs.statSync(p.full)
-      return stat.size!==p.bytes||stat.mtimeMs!==p.modified||
+      const stat=fs.statSync(p.full,{bigint:true})
+      return stat.size!==BigInt(p.bytes)||stat.mtimeNs!==p.modified||
+        stat.dev!==p.device||stat.ino!==p.inode||
         sha256(p.full)!==fingerprints[i]
     })||["-wal","-shm","-journal"].some(s=>fs.existsSync(source.full+s)))
       fail("operator_inputs_modified_during_trial")
@@ -473,6 +495,7 @@ export async function main(argv){
       "orphan_kb_content_without_base",
       "untrusted_execution_fence_review_sha",
       "duplicate_operator_files","live_pocketbase_source_forbidden",
+      "operator_local_files_required",
       "source_has_sqlite_sidecars","oversized_review_file",
       "unreadable_operator_metadata","snapshot_manifest_not_verified",
       "unapproved_operator_reviews","sqlite_integrity_failed",

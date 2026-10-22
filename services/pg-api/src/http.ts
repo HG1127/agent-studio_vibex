@@ -1,17 +1,33 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
 import { RunRepository } from "./run-repository.ts"
+import { ScheduleInventoryRepository } from "./schedule-inventory-repository.ts"
+import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
 import { WorkflowRepository } from "./workflow-repository.ts"
+import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
+import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
 import { KnowledgeBaseRepository, safeDescription, safeKnowledgeQuery, safeTextDocumentInput } from "./knowledge-repository.ts"
+import {ModelConnectionRepository,safeModelConnectionInput} from "./model-connection-repository.ts"
+import {ToolConnectionRepository,safeToolConnectionInput} from "./tool-connection-repository.ts"
+import type {ProviderProbeInput,ProviderProbeResult} from "./model-connection-probe.ts"
 import {parseDocumentIsolated} from "./document-worker.ts"
 import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Identity } from "./contracts.ts"
 
 export interface AppDependencies {
   repository: AgentSpecRepository
   runRepository?: RunRepository
+  scheduleInventory?: ScheduleInventoryRepository
+  scheduleDraftRepository?: ScheduleDraftRepository
   workflowRepository?: WorkflowRepository
+  workflowValidationRepository?: WorkflowValidationRepository
+  workflowSafeRunRepository?: WorkflowSafeRunRepository
   knowledgeRepository?: KnowledgeBaseRepository
+  modelConnectionRepository?: ModelConnectionRepository
+  toolConnectionRepository?: ToolConnectionRepository
+  modelConnectionProbe?:(input:ProviderProbeInput)=>Promise<ProviderProbeResult>
   verifyToken(token: string): Promise<Identity>
+  /** Local-cookie mode: server-validated session only, never a client user ID. */
+  authenticateRequest?(req: IncomingMessage): Promise<Identity>
   allowedOrigin: string
 }
 
@@ -69,28 +85,238 @@ export function createHandler(deps:AppDependencies) {
         throw new HttpError(403,"origin_not_allowed")
       const workflowRoute=path==="/api/v2/workflows" ||
         /^\/api\/v2\/workflows\/[0-9a-fA-F-]{36}$/.test(path)
+      const workflowValidationSubmitRoute=
+        /^\/api\/v2\/workflows\/[0-9a-fA-F-]{36}\/validate$/.test(path)
+      const workflowValidationReadRoute=
+        /^\/api\/v2\/workflow-validations\/[0-9a-fA-F-]{36}$/.test(path)
+      const workflowSafeRunSubmitRoute=
+        /^\/api\/v2\/workflows\/[0-9a-fA-F-]{36}\/runs$/.test(path)
+      const workflowSafeRunReadRoute=path==="/api/v2/workflow-runs" ||
+        /^\/api\/v2\/workflow-runs\/[0-9a-fA-F-]{36}$/.test(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
       const submitPrepareRoute=
         /^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}\/runs$/.test(path)
       const knowledgeRoute=path==="/api/v2/knowledge-bases" ||
         /^\/api\/v2\/knowledge-bases\/[0-9a-fA-F-]{36}(?:\/(?:documents|search|text-documents|document-files))?$/.test(path)
-      if(!workflowRoute && !knowledgeRoute && !runRoute &&
+      const schedulesRoute=path==="/api/v2/schedules" ||
+        /^\/api\/v2\/schedules\/[0-9a-fA-F-]{36}(?:\/occurrences)?$/.test(path)
+      const modelConnectionsRoute=path==="/api/v2/model-connections" ||
+        /^\/api\/v2\/model-connections\/[0-9a-fA-F-]{36}(?:\/probe)?$/.test(path)
+      const toolConnectionsRoute=path==="/api/v2/tool-connections" ||
+        /^\/api\/v2\/tool-connections\/[0-9a-fA-F-]{36}$/.test(path)
+      if(!workflowRoute && !workflowValidationSubmitRoute &&
+         !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
+         !workflowSafeRunReadRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
-      if(!["GET","POST","PATCH"].includes(method))
+      if(!["GET","POST","PATCH","DELETE"].includes(method))
         throw new HttpError(405,"method_not_allowed")
 
-      // Explicitly ignore X-Rh-User-Id. Only a cryptographically verified token
-      // from the configured issuer yields an employee identity.
-      const token=tokenFrom(req)
+
+      // Explicitly ignore X-Rh-User-Id. In native mode the server-side
+      // cookie verifier supplies a DB-verified identity. Legacy PG OIDC mode
+      // still requires a cryptographically signed Bearer token.
       let identity:Identity
-      try{identity=await deps.verifyToken(token)}
-      catch{throw new HttpError(401,"invalid_token")}
+      try {
+        identity=deps.authenticateRequest
+          ?await deps.authenticateRequest(req)
+          :await deps.verifyToken(tokenFrom(req))
+      } catch(error) {
+        // Distinguish native Cookie CSRF/origin violations from an expired
+        // session. Neither may fall back to PocketBase/OIDC credentials.
+        if(deps.authenticateRequest&&
+           (error as {status?:unknown})?.status===403)
+          throw new HttpError(403,"native_request_origin_denied")
+        throw new HttpError(401,"invalid_token")
+      }
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(schedulesRoute){
+        const scheduleRepo=deps.scheduleInventory
+        if(!scheduleRepo)throw new HttpError(503,"schedule_inventory_disabled")
+        const occurrenceRoute=path.endsWith("/occurrences")
+        const suffix=path.startsWith("/api/v2/schedules/")
+          ?path.slice("/api/v2/schedules/".length,
+            occurrenceRoute?-"/occurrences".length:undefined):null
+        if(suffix&&!isUuid(suffix))throw new HttpError(400,"invalid_schedule_id")
+        if(method==="GET"){
+          const requested=Number(new URL(req.url||"/","http://127.0.0.1")
+            .searchParams.get("limit")||30)
+          if(!Number.isSafeInteger(requested)||requested<1||requested>50)
+            throw new HttpError(400,"invalid_schedule_limit")
+          if(!suffix){
+            const items=await scheduleRepo.list(identity,requested)
+            return send(res,200,{items,mode:"readonly_inventory",scheduler_started:false})
+          }
+          if(occurrenceRoute){
+            const items=await scheduleRepo.occurrences(identity,suffix,requested)
+            if(!items)throw new HttpError(404,"schedule_not_found")
+            return send(res,200,{items,mode:"readonly_history",scheduler_started:false})
+          }
+          const item=await scheduleRepo.get(identity,suffix)
+          if(!item)throw new HttpError(404,"schedule_not_found")
+          return send(res,200,{item,scheduler_started:false})
+        }
+        if(occurrenceRoute)throw new HttpError(405,"method_not_allowed")
+        const drafts=deps.scheduleDraftRepository
+        if(!drafts)throw new HttpError(503,"schedule_draft_writes_disabled")
+        if(method==="POST"&&!suffix){
+          const body=await readBody(req,4096)
+          allowBodyFields(body,["name","kind","target_id","time_zone","rule"])
+          const item=await drafts.create(identity,body)
+          return send(res,201,{item,scheduler_started:false,execution_enabled:false})
+        }
+        if(method==="PATCH"&&suffix){
+          const body=await readBody(req,4096)
+          allowBodyFields(body,["name","kind","target_id","time_zone","rule",
+            "expected_revision"])
+          const revision=body.expected_revision
+          if(!Number.isSafeInteger(revision)||(revision as number)<1)
+            throw new HttpError(400,"invalid_revision")
+          const {expected_revision:_discard,...input}=body
+          const item=await drafts.update(identity,suffix,input,revision as number)
+          if(!item){
+            if(!await scheduleRepo.get(identity,suffix))
+              throw new HttpError(404,"schedule_not_found")
+            throw new HttpError(409,"schedule_draft_or_revision_conflict")
+          }
+          return send(res,200,{item,scheduler_started:false,execution_enabled:false})
+        }
+        if(method==="DELETE"&&suffix){
+          const body=await readBody(req,512)
+          allowBodyFields(body,["expected_revision"])
+          if(!Number.isSafeInteger(body.expected_revision)||
+              (body.expected_revision as number)<1)
+            throw new HttpError(400,"invalid_revision")
+          if(!await drafts.delete(identity,suffix,body.expected_revision as number)){
+            if(!await scheduleRepo.get(identity,suffix))
+              throw new HttpError(404,"schedule_not_found")
+            throw new HttpError(409,"schedule_draft_or_revision_conflict")
+          }
+          return send(res,200,{ok:true,id:suffix,
+            scheduler_started:false,execution_enabled:false})
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
+      if(modelConnectionsRoute){
+        const repo=deps.modelConnectionRepository
+        if(!repo)throw new HttpError(503,"model_connections_disabled")
+        const probeRoute=path.endsWith("/probe")
+        const suffix=path.startsWith("/api/v2/model-connections/")
+          ?path.slice("/api/v2/model-connections/".length,
+            probeRoute?-"/probe".length:undefined):null
+        if(suffix&&!isUuid(suffix))
+          throw new HttpError(400,"invalid_model_connection_id")
+        if(probeRoute){
+          if(!suffix||method!=="POST")throw new HttpError(405,"method_not_allowed")
+          if(!deps.modelConnectionProbe)
+            throw new HttpError(503,"provider_probe_disabled")
+          const body=await readBody(req,512)
+          allowBodyFields(body,["expected_revision"])
+          const revision=body.expected_revision
+          if(!Number.isSafeInteger(revision)||(revision as number)<1)
+            throw new HttpError(400,"invalid_revision")
+          const item=await repo.testConnection(identity,suffix,revision as number,
+            deps.modelConnectionProbe)
+          return send(res,200,{item,mode:"read_only_provider_models_probe"})
+        }
+        if(method==="GET"){
+          if(suffix){
+            const item=await repo.get(identity,suffix)
+            if(!item)throw new HttpError(404,"model_connection_not_found")
+            return send(res,200,{item})
+          }
+          const requested=Number(new URL(req.url||"/","http://127.0.0.1")
+            .searchParams.get("limit")||30)
+          if(!Number.isSafeInteger(requested)||requested<1||requested>50)
+            throw new HttpError(400,"invalid_limit")
+          return send(res,200,{items:await repo.list(identity,requested)})
+        }
+        if(method==="POST"&&!suffix){
+          const body=await readBody(req)
+          allowBodyFields(body,["name","provider","base_url","api_key","models","enabled"])
+          const input=safeModelConnectionInput(body,true)
+          return send(res,201,{item:await repo.create(identity,input)})
+        }
+        if(method==="PATCH"&&suffix){
+          const body=await readBody(req)
+          allowBodyFields(body,["name","provider","base_url","api_key","models","enabled","expected_revision"])
+          const revision=body.expected_revision
+          if(!Number.isSafeInteger(revision)||(revision as number)<1)
+            throw new HttpError(400,"invalid_revision")
+          const {expected_revision:_ignored,...fields}=body
+          const input=safeModelConnectionInput(fields,false)
+          const item=await repo.update(identity,suffix,input,revision as number)
+          if(!item){
+            const previous=await repo.get(identity,suffix)
+            if(!previous)throw new HttpError(404,"model_connection_not_found")
+            throw new HttpError(409,"revision_conflict")
+          }
+          return send(res,200,{item})
+        }
+        if(method==="DELETE"&&suffix){
+          if(!await repo.delete(identity,suffix))
+            throw new HttpError(404,"model_connection_not_found")
+          return send(res,200,{ok:true,id:suffix})
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
+
+      if(toolConnectionsRoute){
+        const repo=deps.toolConnectionRepository
+        if(!repo)throw new HttpError(503,"tool_connections_disabled")
+        const suffix=path.startsWith("/api/v2/tool-connections/")
+          ?path.slice("/api/v2/tool-connections/".length):null
+        if(suffix&&!isUuid(suffix))
+          throw new HttpError(400,"invalid_tool_connection_id")
+        if(method==="GET"){
+          if(suffix){
+            const item=await repo.get(identity,suffix)
+            if(!item)throw new HttpError(404,"tool_connection_not_found")
+            return send(res,200,{item,execution_enabled:false})
+          }
+          const requested=Number(new URL(req.url||"/","http://127.0.0.1")
+            .searchParams.get("limit")||30)
+          if(!Number.isSafeInteger(requested)||requested<1||requested>50)
+            throw new HttpError(400,"invalid_tool_connection_limit")
+          return send(res,200,{items:await repo.list(identity,requested),
+            execution_enabled:false})
+        }
+        if(method==="POST"&&!suffix){
+          const body=await readBody(req,65536)
+          allowBodyFields(body,["name","description","url","method",
+            "headers","body_template","timeout_s","enabled"])
+          const item=await repo.create(identity,safeToolConnectionInput(body))
+          return send(res,201,{item,execution_enabled:false})
+        }
+        if(method==="PATCH"&&suffix){
+          const body=await readBody(req,65536)
+          allowBodyFields(body,["name","description","url","method",
+            "headers","body_template","timeout_s","enabled","expected_revision"])
+          const revision=body.expected_revision
+          if(!Number.isSafeInteger(revision)||(revision as number)<1)
+            throw new HttpError(400,"invalid_revision")
+          const {expected_revision:_ignored,...fields}=body
+          const item=await repo.update(identity,suffix,
+            safeToolConnectionInput(fields),revision as number)
+          if(!item){
+            if(!await repo.get(identity,suffix))
+              throw new HttpError(404,"tool_connection_not_found")
+            throw new HttpError(409,"revision_conflict")
+          }
+          return send(res,200,{item,execution_enabled:false})
+        }
+        if(method==="DELETE"&&suffix){
+          if(!await repo.delete(identity,suffix))
+            throw new HttpError(404,"tool_connection_not_found")
+          return send(res,200,{ok:true,id:suffix,execution_enabled:false})
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
       if(runRoute){
         const runner=deps.runRepository
         if(!runner)throw new HttpError(503,"agent_prepare_pilot_disabled")
@@ -109,8 +335,9 @@ export function createHandler(deps:AppDependencies) {
           if(runId){
             const run=await runner.get(identity,runId)
             if(!run)throw new HttpError(404,"run_not_found")
-            const approval=await runner.approval(identity,runId)
-            return send(res,200,{run,approval,mode:"model_pilot"})
+            const [approval,steps]=await Promise.all([
+              runner.approval(identity,runId),runner.steps(identity,runId)])
+            return send(res,200,{run,approval,steps,mode:"model_pilot"})
           }
           const requested=Number(new URL(req.url||"/","http://127.0.0.1")
             .searchParams.get("limit")||30)
@@ -223,6 +450,53 @@ export function createHandler(deps:AppDependencies) {
           return send(res,200,{item})
         }
         throw new HttpError(405,"method_not_allowed")
+      }
+
+      if(workflowSafeRunSubmitRoute||workflowSafeRunReadRoute){
+        const repo=deps.workflowSafeRunRepository
+        if(!repo)throw new HttpError(503,"workflow_execution_disabled")
+        if(workflowSafeRunSubmitRoute){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const id=path.slice("/api/v2/workflows/".length,-"/runs".length)
+          const body=await readBody(req,512)
+          allowBodyFields(body,["expected_revision","idempotency_key"])
+          const result=await repo.submit(identity,id,body)
+          return send(res,result.replayed?200:202,{...result,
+            worker_started_by_api:false})
+        }
+        if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+        if(path==="/api/v2/workflow-runs"){
+          const requested=Number(new URL(req.url||"/","http://127.0.0.1")
+            .searchParams.get("limit")||30)
+          if(!Number.isSafeInteger(requested)||requested<1||requested>50)
+            throw new HttpError(400,"invalid_workflow_run_limit")
+          const runs=await repo.list(identity,requested)
+          return send(res,200,{runs,worker_started_by_api:false})
+        }
+        const id=path.slice("/api/v2/workflow-runs/".length)
+        const result=await repo.get(identity,id)
+        if(!result)throw new HttpError(404,"workflow_run_not_found")
+        return send(res,200,{...result,worker_started_by_api:false})
+      }
+
+      if(workflowValidationSubmitRoute||workflowValidationReadRoute){
+        const validator=deps.workflowValidationRepository
+        if(!validator)throw new HttpError(503,"workflow_validation_disabled")
+        if(workflowValidationSubmitRoute){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const id=path.slice("/api/v2/workflows/".length,-"/validate".length)
+          const body=await readBody(req,512)
+          allowBodyFields(body,["expected_revision","idempotency_key"])
+          const result=await validator.validate(identity,id,body)
+          return send(res,result.replayed?200:201,{...result,
+            scheduler_started:false,workflow_worker_started:false})
+        }
+        if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+        const id=path.slice("/api/v2/workflow-validations/".length)
+        const result=await validator.get(identity,id)
+        if(!result)throw new HttpError(404,"workflow_validation_not_found")
+        return send(res,200,{...result,
+          scheduler_started:false,workflow_worker_started:false})
       }
 
       if(workflowRoute){

@@ -8,7 +8,7 @@ import {timingSafeEqual} from "node:crypto"
 import {TLSSocket} from "node:tls"
 
 function invalid():never{throw Error("bound_dispatch_tls_peer_refused")}
-function digest(input:unknown):Buffer{
+export function boundCertificateFingerprint(input:unknown):Buffer{
   if(typeof input!=="string")invalid()
   // Operator pin is a SHA-256 certificate fingerprint in plain 64-char hex;
   // Node's X509 fingerprint256 additionally supports colon separators.
@@ -22,7 +22,7 @@ function digest(input:unknown):Buffer{
 export function verifyBoundWorkerMutualTlsPeer(
   socket:unknown,reviewedClientFingerprint256:string,
 ):true{
-  const expected=digest(reviewedClientFingerprint256)
+  const expected=boundCertificateFingerprint(reviewedClientFingerprint256)
   // instanceof rejects HTTP sockets and simulated 'authorized' request
   // headers or user-created plain objects with lookalike attributes.
   if(!(socket instanceof TLSSocket)||socket.encrypted!==true||
@@ -32,7 +32,7 @@ export function verifyBoundWorkerMutualTlsPeer(
   try{cert=socket.getPeerCertificate(true)}
   catch{invalid()}
   if(!cert||!Buffer.isBuffer(cert.raw)||cert.raw.length===0)invalid()
-  const actual=digest(cert.fingerprint256)
+  const actual=boundCertificateFingerprint(cert.fingerprint256)
   if(!timingSafeEqual(expected,actual))invalid()
   return true
 }

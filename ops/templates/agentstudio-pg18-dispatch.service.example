@@ -1,0 +1,45 @@
+# REVIEW ONLY. Private Broker read-only preflight; do not install or enable.
+# No paid execution flags, persistent listener, provider request or [Install].
+[Unit]
+Description=Agent Studio PG18 private Broker read-only preflight
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=agentstudio-pg18-dispatch
+DynamicUser=yes
+WorkingDirectory=/opt/agentstudio-pg18-native-api-v2/services/pg-api
+ExecStart=/opt/agentstudio-node24/bin/node --experimental-strip-types /opt/agentstudio-pg18-native-api-v2/services/pg-api/src/bound-dispatch-server.ts --preflight
+Restart=no
+UMask=0077
+LimitCORE=0
+LoadCredential=api.secret:/root/.agentstudio-pg18-secrets/api.secret
+LoadCredential=identity.secret:/root/.agentstudio-pg18-secrets/dispatch-identity.secret
+LoadCredential=broker.secret:/root/.agentstudio-pg18-secrets/model-broker.secret
+LoadCredential=model-encryption.secret:/root/.agentstudio-pg18-secrets/model-encryption.secret
+LoadCredential=dispatch-ca.pem:/root/.agentstudio-pg18-secrets/dispatch-ca.pem
+LoadCredential=dispatch-server.pem:/root/.agentstudio-pg18-secrets/dispatch-server.pem
+LoadCredential=dispatch-server.key:/root/.agentstudio-pg18-secrets/dispatch-server.key
+Environment=AGENT_STUDIO_PG_BOUND_DISPATCH_REVIEWED=true
+Environment=AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT=REPLACE_WITH_REVIEWED_WORKER_SHA256
+Environment=AGENT_STUDIO_PG_PILOT_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_TARGET_CONFIRMED=true
+Environment=AGENT_STUDIO_PG_HOST=127.0.0.1
+Environment=AGENT_STUDIO_PG_PORT=5333
+Environment=AGENT_STUDIO_PG_DATABASE=agent_studio
+Environment=AGENT_STUDIO_PG_USER=agentstudio_stage_login
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+CapabilityBoundingSet=
+AmbientCapabilities=

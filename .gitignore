@@ -2,6 +2,7 @@
 node_modules/
 **/node_modules/
 dist/
+dist-pg18/
 dist-ssr/
 build/
 coverage/
@@ -80,6 +81,9 @@ yarn-debug.log*
 pnpm-debug.log*
 lerna-debug.log*
 tmp/
+.tmp/
+.worktrees/
+.webcodex-worktrees/
 temp/
 agentstudio-ci-*/
 test-results/
