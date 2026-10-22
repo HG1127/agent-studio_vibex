@@ -7,10 +7,11 @@ import {safeToolConnectionInput} from "./tool-connection-repository.ts"
 import {safeToolDestination} from "./workflow-v2-tool-plan.ts"
 import {parseMcpCatalog,type McpCatalog} from "./mcp-catalog.ts"
 import type {McpMaterial} from "./mcp-discovery.ts"
+import {mcpCatalogHash} from "./mcp-binding-resources.ts"
 export type McpConnectionInput={name:string;description:string;url:string;headers:{key:string;value:string}[];enabled:boolean}
 export type McpConnectionRow={id:string;owner_user_id:string;name:string;description:string;url:string;enabled:boolean;
   status:"untested"|"ok"|"error";catalog:McpCatalog|null;headers:{key:string;value:string}[];last_checked_at:string|null;last_error:string;
-  revision:number;created_at:string;updated_at:string}
+  catalog_sha256?:string;revision:number;created_at:string;updated_at:string}
 type Stored=Omit<McpConnectionRow,"headers"|"catalog"|"revision">&{catalog:unknown;revision:number|string}
 type Header={id:string;header_name:string;updated_at:string;value_ciphertext:Uint8Array;value_nonce:Uint8Array;value_tag:Uint8Array}
 const columns="id,owner_user_id,name,description,url,enabled,status,catalog,last_checked_at,last_error,revision,created_at,updated_at"
@@ -42,7 +43,8 @@ export class McpConnectionRepository{
   }
   private async publicRow(db:SqlClient,owner:string,row:Stored):Promise<McpConnectionRow>{
     const headers=(await db.query<{header_name:string}>("SELECT header_name FROM agentstudio.mcp_connection_headers WHERE mcp_connection_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY header_name",[row.id,owner])).rows
-    return {...row,revision:revision(row.revision),catalog:row.status==="ok"?parseMcpCatalog(row.catalog):null,headers:headers.map(header=>({key:header.header_name,value:"••••"}))}
+    const catalog=row.status==="ok"?parseMcpCatalog(row.catalog):null
+    return {...row,revision:revision(row.revision),catalog,...(catalog?{catalog_sha256:mcpCatalogHash(catalog)}:{}),headers:headers.map(header=>({key:header.header_name,value:"••••"}))}
   }
   private async headers(db:SqlClient,owner:string,connection:string,headers:McpConnectionInput["headers"]){
     if(headers.some(header=>!header.value)){

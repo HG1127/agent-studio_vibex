@@ -7,7 +7,7 @@ import {createWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import type {SqlPool} from "./contracts.ts"
 export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
-  constructor(pool:SqlPool){super(pool,"agent_native_v2")}
+  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean}={}){super(pool,"agent_native_v2",options)}
   override async submit(identity:Identity,id:string,raw:unknown){
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_spec_id")
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
@@ -29,6 +29,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
       const checkpoint:WorkflowV2StoredState={stage:"agent_v2_queued",execution_mode:"agent_native_v2",spec_revision:request.expected_revision,graph,machine}
       const spec=(await db.query("SELECT id FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
       if(!spec)throw new HttpError(404,"agent_spec_not_found")
+      await this.checkMcpAdmission(db,owner,graph)
       // Verify before admission and repeat on every decision/tick/dispatch.
       await verifyWorkflowV2Snapshot(db,owner,{kind:"agent",agent_spec_id:id,workflow_id:null} as WorkflowV2RunRow,checkpoint)
       const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs(owner_user_id,kind,agent_spec_id,status,instruction,checkpoint) "+

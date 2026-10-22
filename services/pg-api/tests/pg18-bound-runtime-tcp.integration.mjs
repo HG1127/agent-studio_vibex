@@ -36,7 +36,8 @@ import {prepareWorkflowToolHttp,redactWorkflowToolResponse} from "../src/workflo
 import {ToolConnectionRepository} from "../src/tool-connection-repository.ts"
 import {McpConnectionRepository} from "../src/mcp-connection-repository.ts"
 import {createMcpDiscovery} from "../src/mcp-discovery.ts"
-import {verifyMcpDiscoveryPrivileges} from "../src/mcp-privileges.ts"
+import {createMcpToolExecutor} from "../src/mcp-call.ts"
+import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "../src/mcp-privileges.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
@@ -55,7 +56,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 
 async function startNativeHttps(auth,pool,key,brokerPool){
   const parent=realpathSync(tmpdir())
@@ -74,7 +75,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     let backend
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
-      allowMcpDiscovery:true,
+      allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -90,7 +91,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
       workflowRepository:new WorkflowRepository(pool),
-      workflowV2RunRepository:new WorkflowV2RunRepository(pool),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool),
+      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
       mcpConnectionRepository:new McpConnectionRepository(pool,key,brokerPool),
@@ -176,6 +177,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_027_workflow_agent_identity.sql"))
     await admin.query(upgrade("pg_v9_028_autonomous_agent_identity.sql"))
     await admin.query(upgrade("pg_v9_029_mcp_connections.sql"))
+    await admin.query(upgrade("pg_v9_030_mcp_tool_identity.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -207,6 +209,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await verifyBoundDispatchPrivileges(apiPool,"api")
     const auth=new NativeAuthRepository(adapter(authPool))
     await verifyMcpDiscoveryPrivileges(apiPool,brokerPool)
+    await verifyMcpExecutionSchema(apiPool)
     await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
     front=await startNativeHttps(auth,apiPool,key,brokerPool)
     const api=front.api
@@ -216,6 +219,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(capabilities.bound_model_runs_enabled,true)
     assert.equal(capabilities.workflow_v2_submission_enabled,true)
     assert.equal(capabilities.mcp_discovery_enabled,true)
+    assert.equal(capabilities.mcp_tool_runs_enabled,true)
     const mcpInput={name:"CI MCP",description:"Synthetic discovery only",url:"https://mcp.example.com/server",enabled:true,
       headers:[{key:"Authorization",value:"Bearer SyntheticMcpHeaderNeverSent012345"}]}
     const mcpRequest=randomUUID(),mcp=await api.createMcpConnection(mcpInput,mcpRequest)
@@ -380,6 +384,38 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       }
       assert.equal(toolPosts,1);assert.equal((await worker.tick()).status,"idle")
     },{handlerFactory:createWorkflowV2ToolInternalHandler})
+    const mcpBinding={connection_id:discovered.id,connection_revision:discovered.revision,tool_name:"synthetic_lookup",catalog_sha256:discovered.catalog_sha256}
+    for(const outcome of ["success","business","unknown"]){
+      let posts=0
+      const mcpExecutor=createMcpToolExecutor(async(material,wire)=>{
+        posts++;assert.equal(material.headers[0].value,"Bearer SyntheticMcpHeaderNeverSent012345")
+        assert.equal(wire.body.method,"tools/call");assert.equal(wire.body.params.name,"synthetic_lookup")
+        if(outcome==="unknown")throw Error("synthetic_mcp_response_lost")
+        return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,
+          result:{isError:outcome==="business",content:[{type:"text",text:"Synthetic MCP response 4"}]}})}
+      })
+      const dispatch=verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),new WorkflowV2ToolDispatch(apiPool,key,{mcp:mcpExecutor},brokerPool))
+      await withDisposableBoundModelTls(dispatch,async config=>{
+        const flow=await api.createWorkflowGraph("CI MCP "+outcome,{version:2,nodes:[graph.nodes[0],
+          {id:"tool",type:"tool",data:{title:"MCP",mcp_binding:mcpBinding,params_template:'{"query":"own"}'},position:{x:200,y:0}},
+          {...graph.nodes[2],data:{title:"End",output_template:"{{MCP.output}}"}}],edges:[{id:"a",source:"start",target:"tool"},{id:"b",source:"tool",target:"end"}]})
+        const queued=await api.submitWorkflowV2Run(flow.id,1,"Synthetic MCP","ci-mcp-"+outcome)
+        const worker=new WorkflowV2Worker(workerPool,"ci-mcp-"+outcome,{executor:workflowV2ToolEffectExecutor(config)})
+        await worker.tick();const pending=(await api.getWorkflowV2Run(queued.run.id)).pending_effect
+        await api.login("other@example.com","SyntheticOtherPassword#2026")
+        await assert.rejects(api.decideWorkflowV2Node(queued.run.id,"approved",pending.step_key,pending.input_sha256),error=>error.status===404)
+        await assert.rejects(api.createWorkflowGraph("Foreign MCP",flow.graph),error=>error.status===404)
+        await api.login("admin@example.com","SyntheticAdminPassword#2026")
+        assert.equal(posts,0);await api.decideWorkflowV2Node(queued.run.id,"approved",pending.step_key,pending.input_sha256)
+        for(let i=0;i<4;i++)await worker.tick()
+        const result=await api.getWorkflowV2Run(queued.run.id)
+        assert.equal(result.run.status,outcome==="success"?"succeeded":outcome==="business"?"failed":"paused")
+        assert.equal(posts,1);assert.equal(JSON.stringify(result).includes("SyntheticMcpHeaderNeverSent012345"),false)
+        const status=outcome==="success"?"succeeded":outcome==="business"?"failed":"unknown"
+        assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[queued.run.id])).rows,[{status},{status}])
+        assert.equal((await worker.tick()).status,"idle");assert.equal(posts,1)
+      },{handlerFactory:createWorkflowV2ToolInternalHandler})
+    }
     const role=await new AgentSpecRepository(apiPool).create(owner,"CI Agent role",safeAgentSpec({goal:"Synthetic role",tools:["calculate"],
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     const agentGraph={version:2,nodes:[graph.nodes[0],{id:"agent",type:"agent",data:{title:"Role",agent_binding:{spec_id:role.id,spec_revision:role.revision},max_steps:3},position:{x:200,y:0}},
@@ -392,15 +428,19 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const httpRole=await new AgentSpecRepository(apiPool).create(owner,"CI HTTP Agent role",safeAgentSpec({goal:"Synthetic HTTP role",tools:["http_lookup"],
       http_tools:[{name:"http_lookup",description:"Lookup; params: query",connection_id:tool.id,connection_revision:tool.revision}],
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
-    for(const autonomous of [false,true])for(const custom of [false,true]){
-    let agentCalls=0,agentHttpCalls=0
-    const selectedRole=custom?httpRole:role
-    const selectedFlow=custom?await api.createWorkflowGraph("CI HTTP Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
-      {...node,data:{...node.data,agent_binding:{spec_id:httpRole.id,spec_revision:httpRole.revision}}}:node)}):agentFlow
+    const mcpRole=await new AgentSpecRepository(apiPool).create(owner,"CI MCP Agent role",safeAgentSpec({goal:"Synthetic MCP role",tools:["mcp_lookup"],
+      mcp_tools:[{name:"mcp_lookup",...mcpBinding}],model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
+    for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp"]){
+    const custom=selection==="http",useMcp=selection==="mcp"
+    let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0
+    const selectedRole=useMcp?mcpRole:custom?httpRole:role
+    const selectedFlow=custom||useMcp?await api.createWorkflowGraph("CI "+selection+" Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
+      {...node,data:{...node.data,agent_binding:{spec_id:selectedRole.id,spec_revision:selectedRole.revision}}}:node)}):agentFlow
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
       const context=JSON.parse(prompt)
       if(custom){assert.equal(prompt.includes(toolSecret),false);assert.equal(prompt.includes(tool.id),false)}
-      if(context.round===1)return JSON.stringify(custom?{action:"tool",tool:"http_lookup",params:{query:"synthetic owner lookup"}}:{action:"tool",tool:"calculate",params:{expression:"2+2"}})
+      if(useMcp){assert.equal(prompt.includes(discovered.id),false);assert.equal(prompt.includes(mcpInput.url),false);assert.equal(prompt.includes("SyntheticMcpHeaderNeverSent012345"),false)}
+      if(context.round===1)return JSON.stringify(custom||useMcp?{action:"tool",tool:useMcp?"mcp_lookup":"http_lookup",params:{query:"synthetic owner lookup"}}:{action:"tool",tool:"calculate",params:{expression:"2+2"}})
       assert.match(context.history[0].observation,/4/);return '{"action":"answer","answer":"Synthetic Agent result 4"}'
     }
     const agentModel=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("direct fallback forbidden")},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous,agentExecutor:planning})
@@ -408,7 +448,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const request=prepareWorkflowToolHttp(material,args)
       assert.equal(request.headers.authorization,"Bearer "+toolSecret);assert.equal(request.url,tool.url)
       assert.deepEqual(args,{query:"synthetic owner lookup"});return "Synthetic HTTP observation 4"
-    }},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous})
+    },mcp:createMcpToolExecutor(async(material,wire)=>{agentMcpCalls++;assert.equal(material.headers[0].value,"Bearer SyntheticMcpHeaderNeverSent012345")
+      assert.equal(wire.body.method,"tools/call");return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{content:[{type:"text",text:"Synthetic MCP observation 4"}]}})}
+    })},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous})
     const agentDispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),agentModel),
       tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),agentTool)}
     const handlers=raw=>{const config={...raw,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"};const model=createWorkflowV2ModelInternalHandler({...config,dispatch:config.dispatch.model}),
@@ -417,7 +459,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await withDisposableBoundModelTls(agentDispatch,async config=>{
       const adapters=[workflowV2ModelEffectExecutor(config),workflowV2ToolEffectExecutor(config)]
       const executor={supports:req=>adapters.some(adapter=>adapter.supports(req)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}
-      const suffix=custom?"-http":""
+      const suffix=useMcp?"-mcp":custom?"-http":""
       const ui=autonomous?null:createPgNativeWorkflowRunSession(api,{key:()=>"ci-v2-agent-mtls-0001"+suffix})
       if(ui){ui.setActive(true);await ui.refresh();await ui.submit({workflowId:selectedFlow.id,revision:1,instruction:"Synthetic Agent input"});assert.equal(ui.snapshot().error,"")}
       const run=autonomous?await api.submitAutonomousAgentRun(selectedRole.id,1,"Synthetic Agent input","ci-native-agent-mtls-0001"+suffix,3):ui.snapshot().detail
@@ -435,6 +477,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const detail=await get(run.run.id)
       assert.equal(detail.run.status,"succeeded");assert.equal(detail.run.result_text,"Synthetic Agent result 4");assert.equal(agentCalls,2)
       assert.equal(agentHttpCalls,custom?1:0)
+      assert.equal(agentMcpCalls,useMcp?1:0)
       assert.equal(detail.steps.filter(step=>step.metadata.parent_step_key).length,3)
       const ledger=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[run.run.id])).rows
       assert.equal(ledger.length,7);assert.equal(ledger.every(row=>row.status==="succeeded"),true)

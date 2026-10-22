@@ -1,13 +1,14 @@
 import {useState} from "react"
-import type {PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection} from "@/lib/pgNativePilotApi"
+import type {PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
+import {mcpChoices} from "@/lib/pgNativeMcpConnection"
 import {type WorkflowNode,type WorkflowNodeDataV2} from "@/lib/pgNativeWorkflowGraph"
 const field="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 export const workflowButton="min-h-10 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 export const workflowSecondary="min-h-10 rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const defaults:Record<string,string>={calculate:'{"expression":"1+1"}',summarize:'{"text":"{{input}}"}',knowledge_search:'{"query":"{{input}}"}',web_search:'{"query":"{{input}}"}',web_fetch:'{"url":"https://example.com"}'}
-export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools,bases,enabled,onApply,onDirty}:{
+export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools,bases,mcps=[],enabled,onApply,onDirty}:{
   node:WorkflowNode;nodes:WorkflowNode[];agents:PgNativeAgent[];models:PgNativeModelConnection[];tools:PgNativeToolConnection[];bases:PgNativeKnowledge[];
-  enabled:boolean;onApply:(data:WorkflowNodeDataV2)=>string|undefined;onDirty:(dirty:boolean)=>void
+  mcps?:PgNativeMcpConnection[];enabled:boolean;onApply:(data:WorkflowNodeDataV2)=>string|undefined;onDirty:(dirty:boolean)=>void
 }){
   const [data,setData]=useState(()=>structuredClone(node.data))
   const [dirty,setDirty]=useState(false),[error,setError]=useState("")
@@ -34,7 +35,8 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
     </select></label>
   const agentValue=data.agent_binding?JSON.stringify(data.agent_binding):""
   const httpValue=data.tool_binding?JSON.stringify(data.tool_binding):""
-  const toolValue=httpValue?"http:"+httpValue:data.tool??""
+  const mcpValue=data.mcp_binding?JSON.stringify(data.mcp_binding):"",choices=mcpChoices(mcps)
+  const toolValue=mcpValue?"mcp:"+mcpValue:httpValue?"http:"+httpValue:data.tool??""
   const variables=["input",...nodes.filter(item=>item.id!==node.id).map(item=>item.data.title+".output"),"loop.item","loop.index"]
   const variableFields=node.type==="loop"?data.mode==="list":["model","agent","tool","end"].includes(node.type)&&data.prompt_format!=="literal"
   const variableTarget=node.type==="tool"?"params_template":node.type==="end"?"output_template":node.type==="loop"?"list_source":target
@@ -61,14 +63,17 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
       {node.type==="tool"&&<>
         <label className="block text-sm font-medium">工具<select aria-label="工具" className={field} value={toolValue} onChange={event=>{
           const value=event.target.value
-          if(value.startsWith("http:"))change({tool_binding:JSON.parse(value.slice(5)),params_template:data.params_template??"{}"},["tool","model_binding","knowledge_base_ids","tool_binding_required"])
-          else if(value)change({tool:value as WorkflowNodeDataV2["tool"],params_template:defaults[value]},["tool_binding","model_binding","knowledge_base_ids","tool_binding_required"])
-          else change({tool_binding_required:true},["tool","tool_binding","model_binding","knowledge_base_ids"])
+          if(value.startsWith("mcp:"))change({mcp_binding:JSON.parse(value.slice(4)),params_template:data.params_template??"{}"},["tool","tool_binding","model_binding","knowledge_base_ids","tool_binding_required"])
+          else if(value.startsWith("http:"))change({tool_binding:JSON.parse(value.slice(5)),params_template:data.params_template??"{}"},["tool","mcp_binding","model_binding","knowledge_base_ids","tool_binding_required"])
+          else if(value)change({tool:value as WorkflowNodeDataV2["tool"],params_template:defaults[value]},["tool_binding","mcp_binding","model_binding","knowledge_base_ids","tool_binding_required"])
+          else change({tool_binding_required:true},["tool","tool_binding","mcp_binding","model_binding","knowledge_base_ids"])
         }}>
           <option value="">请选择工具后再运行</option>
           <option value="calculate">计算</option><option value="summarize">摘要</option><option value="knowledge_search">知识库检索</option><option value="web_fetch">读取网页</option><option value="web_search">网页搜索</option>
           {httpValue&&!tools.some(tool=>JSON.stringify({connection_id:tool.id,connection_revision:tool.revision})===httpValue)&&<option value={toolValue}>已绑定 HTTP 版本不可用，请重新选择</option>}
           {tools.filter(tool=>tool.enabled).map(tool=><option key={tool.id} value={"http:"+JSON.stringify({connection_id:tool.id,connection_revision:tool.revision})}>{tool.name} · HTTP</option>)}
+          {mcpValue&&!choices.some(choice=>JSON.stringify(choice.binding)===mcpValue)&&<option value={toolValue}>已保存的 MCP 工具；请读取连接核对版本</option>}
+          {choices.map(choice=><option key={choice.binding.connection_id+":"+choice.binding.tool_name} value={"mcp:"+JSON.stringify(choice.binding)}>{choice.title} · MCP</option>)}
         </select></label>
         {data.tool==="summarize"&&modelSelect()}
         {data.tool==="knowledge_search"&&<fieldset className="space-y-2"><legend className="text-sm font-medium">检索知识库（最多三个）</legend>

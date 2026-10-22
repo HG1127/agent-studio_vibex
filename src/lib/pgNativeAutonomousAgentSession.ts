@@ -1,8 +1,9 @@
 import {createPgNativeDurableRunSession} from "./pgNativeDurableRunSession.ts"
 import {declaredAgentHttpTool,readyAgentHttpTools} from "./pgNativeAgentHttpTools.ts"
+import {declaredAgentMcpTool,readyAgentMcpTools} from "./pgNativeMcpConnection.ts"
 // One employee-view lifetime. No storage, timers, credentials or provider calls.
 import {PgNativePilotError,type PgNativeAutonomousAgentResult,type PgNativeAutonomousAgentSummary,type PgNativeAgent,type PgNativeModelConnection,
-  type PgNativeWorkflowV2Pending,type PgNativeToolConnection} from "./pgNativePilotApi.ts"
+  type PgNativeWorkflowV2Pending,type PgNativeToolConnection,type PgNativeMcpConnection} from "./pgNativePilotApi.ts"
 type Api={
   submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number):Promise<PgNativeAutonomousAgentResult>
   listAutonomousAgentRuns():Promise<PgNativeAutonomousAgentSummary[]>
@@ -33,9 +34,9 @@ export function readyAutonomousModel(agent:PgNativeAgent|undefined,connections:P
   return binding?connections.find(c=>c.id===binding.connection_id&&c.enabled&&c.status==="ok"&&c.base_url===bases[c.provider]&&
     c.revision===binding.connection_revision&&Array.isArray(c.models)&&c.models.includes(binding.model_id)):undefined
 }
-export function autonomousApprovalReady(detail:PgNativeAutonomousAgentResult|null,agents:PgNativeAgent[],connections:PgNativeModelConnection[],tools:PgNativeToolConnection[]=[]){
+export function autonomousApprovalReady(detail:PgNativeAutonomousAgentResult|null,agents:PgNativeAgent[],connections:PgNativeModelConnection[],tools:PgNativeToolConnection[]=[],mcps:PgNativeMcpConnection[]=[],mcpEnabled=false){
   const agent=agents.find(a=>a.id===detail?.run.agent_spec_id),model=readyAutonomousModel(agent,connections),pending=detail?.pending_effect
-  if(!agent||!model||!readyAgentHttpTools(agent,tools)||detail?.run.status!=="awaiting_approval"||detail.run.checkpoint.spec_revision!==agent.revision||!pending)return false
+  if(!agent||!model||!readyAgentHttpTools(agent,tools)||!readyAgentMcpTools(agent,mcps)||agent.spec.mcp_tools?.length&&!mcpEnabled||detail?.run.status!=="awaiting_approval"||detail.run.checkpoint.spec_revision!==agent.revision||!pending)return false
   const binding=pending.configuration.model_binding as Record<string,unknown>|undefined
   if(binding&&(binding.connection_id!==model.id||binding.connection_revision!==model.revision||binding.model_id!==agent.spec.model_binding?.model_id))return false
   if(pending.kind==="agent"){
@@ -44,15 +45,16 @@ export function autonomousApprovalReady(detail:PgNativeAutonomousAgentResult|nul
   }else if(pending.kind==="model"&&!binding)return false
   else if(pending.kind==="tool"){
     const http=pending.configuration.tool_binding
-    if(http?pending.configuration.tool!==undefined||!declaredAgentHttpTool(agent,http):
+    const mcp=pending.configuration.mcp_binding
+    if(mcp?pending.configuration.tool!==undefined||Boolean(http)||!declaredAgentMcpTool(agent,mcp):http?pending.configuration.tool!==undefined||!declaredAgentHttpTool(agent,http):
       !agent.spec.tools?.includes(String(pending.configuration.tool))||pending.configuration.tool==="summarize"&&!binding)return false
   }
   return pending.missing.length===0
 }
 export function autonomousReview(pending:PgNativeWorkflowV2Pending){
   if(pending.kind==="agent")return {title:"启动 Agent",text:pending.input,charged:false}
-  if(pending.kind==="tool")return {title:pending.configuration.tool_binding?"HTTP 工具操作":"工具操作",
-    text:JSON.stringify({tool:pending.configuration.tool??pending.configuration.title,parameters:parseJson(pending.input)},null,2),charged:pending.configuration.tool==="summarize"}
+  if(pending.kind==="tool")return {title:pending.configuration.mcp_binding?"MCP 工具操作":pending.configuration.tool_binding?"HTTP 工具操作":"工具操作",
+    text:JSON.stringify({tool:(pending.configuration.mcp_binding as {tool_name?:string}|undefined)?.tool_name??pending.configuration.tool??pending.configuration.title,parameters:parseJson(pending.input)},null,2),charged:pending.configuration.tool==="summarize"}
   const input=parseJson(pending.input) as {task?:unknown;round?:unknown;history?:unknown[]}
   // Model planning is not shown as a transcript. Only task and observation count.
   return {title:"模型调用",text:typeof input?.task==="string"?input.task:"按当前任务、角色配置和已有工具结果生成下一步操作。",charged:true}

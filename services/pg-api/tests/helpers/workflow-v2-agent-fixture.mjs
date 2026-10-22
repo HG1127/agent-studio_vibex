@@ -20,10 +20,10 @@ import {withDisposableBoundModelTls} from "./bound-model-loopback-tls.mjs"
 export const issuer="https://synthetic-workflow-agent.invalid",alice={issuer,subject:"alice"},bob={issuer,subject:"bob"}
 const sql=file=>readFileSync(new URL("../../../../db/postgres/"+file,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
-export async function agentFixture({autonomous=false}={}){
+export async function agentFixture({autonomous=false,mcp=false}={}){
   const db=await PGlite.create({extensions:{vector}});await db.exec(sql("001_stage_schema.sql"))
   await db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic predecessor')")
-  for(const migration of ["pg_v9_024_bound_dispatch_identity.sql","pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql",...(autonomous?["pg_v9_028_autonomous_agent_identity.sql"]:[])])
+  for(const migration of ["pg_v9_024_bound_dispatch_identity.sql","pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql",...(autonomous||mcp?["pg_v9_028_autonomous_agent_identity.sql"]:[]),...(mcp?["pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql"]:[])])
     await db.exec(sql("migrations/"+migration))
   const users={};for(const subject of ["alice","bob"])users[subject]=(await db.query("INSERT INTO agentstudio.users(external_issuer,external_subject) VALUES($1,$2) RETURNING id",[issuer,subject])).rows[0].id
   let tail=Promise.resolve(),fault,beforeDispatch
@@ -41,7 +41,7 @@ export async function agentFixture({autonomous=false}={}){
       task_plan:[],tools:["calculate","summarize","knowledge_search","web_fetch","web_search"],knowledge_base_ids:[kb.id],model_binding:binding}))
     resources[who]={model,binding,kb,spec}
   }
-  const flows=new WorkflowRepository(pool),runs=autonomous?new AutonomousAgentRunRepository(pool):new WorkflowV2RunRepository(pool);let sequence=0
+  const flows=new WorkflowRepository(pool),runs=autonomous?new AutonomousAgentRunRepository(pool,{allowMcpExecution:mcp}):new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:mcp});let sequence=0
   async function make({nodeId="agent",maxSteps=3,input="synthetic Agent task",spec=resources.alice.spec,override}={}){
     if(autonomous)return runs.submit(alice,spec.id,{expected_revision:spec.revision,max_steps:maxSteps,idempotency_key:"synthetic-native-agent-"+(++sequence),instruction:input})
     const graph={version:2,nodes:[{id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},

@@ -3,6 +3,7 @@ import {verifyWorkflowResourceReferences} from "./workflow-repository.ts"
 import {createWorkflowAgentState,inspectWorkflowAgentState,workflowAgentJson,workflowAgentSpec,type WorkflowAgentState} from "./workflow-v2-agent-machine.ts"
 import type {WorkflowEffectRequest} from "./workflow-v2-machine.ts"
 import {verifyAgentHttpTools} from "./repository.ts"
+import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
 async function currentSpec(db:SqlClient,owner:string,parent:WorkflowEffectRequest){
   const ref=parent.configuration.agent_binding
   if(parent.kind!=="agent"||!ref)throw new HttpError(409,"workflow_agent_binding_missing")
@@ -19,8 +20,11 @@ export async function verifyWorkflowAgentResources(db:SqlClient,owner:string,par
   if(!binding)throw new HttpError(409,"workflow_agent_model_binding_missing")
   await verifyWorkflowResourceReferences(db,owner,{title:parent.configuration.title,model_binding:binding,knowledge_base_ids:spec.knowledge_base_ids})
   await verifyAgentHttpTools(db,owner,spec)
-  return spec
+  const definitions=await resolveAgentMcpTools(db,owner,spec.mcp_tools,!state)
+  if(state&&workflowAgentJson(definitions)!==workflowAgentJson(state.mcp_tool_definitions??[]))throw new HttpError(409,"workflow_agent_snapshot_changed")
+  return {spec,definitions}
 }
 export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest){
-  return createWorkflowAgentState(parent,await verifyWorkflowAgentResources(db,owner,parent))
+  const {spec,definitions}=await verifyWorkflowAgentResources(db,owner,parent)
+  return createWorkflowAgentState(parent,spec,definitions)
 }

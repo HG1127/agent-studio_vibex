@@ -5,19 +5,12 @@ import type {ClientRequest,IncomingMessage} from "node:http"
 import {resolve4,resolve6} from "node:dns/promises"
 import {resolveSafeProviderAddress,type ProviderResolver} from "./model-connection-probe.ts"
 import {safeToolDestination} from "./workflow-v2-tool-plan.ts"
-import type {McpTransport,McpWireResponse} from "./mcp-discovery.ts"
+import type {McpTransport,McpWireResponse,McpMaterial} from "./mcp-discovery.ts"
 type Requester=(options:RequestOptions,callback:(response:IncomingMessage)=>void)=>ClientRequest
 export function createMcpNetwork(resolver:ProviderResolver={resolve4,resolve6},request:Requester=httpsRequest):McpTransport{
   return async(material,wire,signal)=>{
     signal.throwIfAborted()
-    const url=safeToolDestination(material.url),headers:Record<string,string>={"user-agent":"agentstudio-pg18-mcp/1","accept-encoding":"identity"}
-    if(!Array.isArray(material.headers)||material.headers.length>20)throw Error("invalid_mcp_headers")
-    for(const header of material.headers){
-      if(!header||typeof header.key!=="string"||!/^[-!#$%&'*+.^_`|~0-9A-Za-z]{1,80}$/.test(header.key)||
-        /^(?:host|connection|content-length|transfer-encoding|trailer|te|upgrade|expect|accept-encoding|proxy-.*|x-forwarded-.*|forwarded|x-rh-user-id|mcp-.*|accept|content-type|user-agent)$/i.test(header.key)||
-        typeof header.value!=="string"||header.value.length>2048||/[\u0000-\u001f\u007f]/.test(header.value)||Object.hasOwn(headers,header.key.toLowerCase()))throw Error("invalid_mcp_headers")
-      headers[header.key.toLowerCase()]=header.value
-    }
+    const {url,headers}=prepareMcpEgress(material)
     if(Object.entries(wire.headers).some(([name,value])=>!/^mcp-(?:protocol-version|method|name|session-id|param-[-!#$%&'*+.^_`|~0-9a-z]+)$/i.test(name)||
       typeof value!=="string"||value.length>2048||/[\u0000-\u001f\u007f]/.test(value)))throw Error("invalid_mcp_headers")
     const body=Buffer.from(JSON.stringify(wire.body))
@@ -49,4 +42,15 @@ export function createMcpNetwork(resolver:ProviderResolver={resolve4,resolve6},r
       req.once("error",fail);req.setTimeout(20000,()=>req.destroy(Error("mcp_timeout")));req.end(body)
     })
   }
+}
+export function prepareMcpEgress(material:McpMaterial){
+    const url=safeToolDestination(material.url),headers:Record<string,string>={"user-agent":"agentstudio-pg18-mcp/1","accept-encoding":"identity"}
+    if(!Array.isArray(material.headers)||material.headers.length>20)throw Error("invalid_mcp_headers")
+    for(const header of material.headers){
+      if(!header||typeof header.key!=="string"||!/^[-!#$%&'*+.^_`|~0-9A-Za-z]{1,80}$/.test(header.key)||
+        /^(?:host|connection|content-length|transfer-encoding|trailer|te|upgrade|expect|accept-encoding|proxy-.*|x-forwarded-.*|forwarded|x-rh-user-id|mcp-.*|accept|content-type|user-agent)$/i.test(header.key)||
+        typeof header.value!=="string"||header.value.length>2048||/[\u0000-\u001f\u007f]/.test(header.value)||Object.hasOwn(headers,header.key.toLowerCase()))throw Error("invalid_mcp_headers")
+      headers[header.key.toLowerCase()]=header.value
+    }
+    return {url,headers}
 }

@@ -33,6 +33,8 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
       {detail.review?.model&&<p className="break-words text-sm">模型连接：{detail.review.model.name}</p>}
       {detail.review?.agent&&<p className="break-words text-sm">Agent 方案：{detail.review.agent.name} · 当前修订 {detail.review.agent.revision}</p>}
       {detail.review?.tool&&<p className="break-words text-sm leading-6">HTTP 连接：{detail.review.tool.name} · {detail.review.tool.method} {detail.review.tool.url}</p>}
+      {detail.review?.mcp&&<p className="break-words text-sm leading-6">MCP 连接：{detail.review.mcp.name} · {detail.review.mcp.url} · 版本 {detail.review.mcp.revision}</p>}
+      {detail.review?.mcpEnabled===false&&<p className="text-sm text-amber-900">当前环境未开放 MCP 调用，仍可查看或拒绝当前步骤。</p>}
       {pending.kind==="agent"&&<p className="text-sm leading-6">此步骤启动已绑定的 Agent，后续模型调用和工具操作仍会逐一请求审批。</p>}
       {!ready&&<p className="text-sm leading-6 text-amber-900">工作流或绑定资源的版本暂时不可用，请刷新核对；仍可拒绝当前步骤。</p>}
       {!enabled&&<p className="text-sm text-amber-900">当前环境未开放工作流审批，可继续查看记录。</p>}

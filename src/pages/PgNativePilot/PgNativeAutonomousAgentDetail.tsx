@@ -1,13 +1,13 @@
 import {useState} from "react"
 import {ShieldCheck} from "lucide-react"
-import type {PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection} from "@/lib/pgNativePilotApi"
+import type {PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
 import {autonomousApprovalReady,autonomousReview,readyAutonomousModel,type AutonomousView} from "@/lib/pgNativeAutonomousAgentSession"
 export const autonomousStates:Record<string,string>={queued:"排队中",running:"处理中",awaiting_approval:"等待审批",paused:"已暂停",succeeded:"已完成",failed:"失败",cancelled:"已取消",skipped:"已跳过"}
 export const autonomousButton="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 export const autonomousSecondary="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const tools:Record<string,string>={calculate:"计算",summarize:"摘要",knowledge_search:"知识库检索",web_fetch:"读取网页",web_search:"网页搜索"}
-export default function PgNativeAutonomousAgentDetail({view,agents,connections,toolConnections=[],enabled,onDecision,onRetry,onCancel}:{
-  view:AutonomousView;agents:PgNativeAgent[];connections:PgNativeModelConnection[];toolConnections?:PgNativeToolConnection[];enabled:boolean;
+export default function PgNativeAutonomousAgentDetail({view,agents,connections,toolConnections=[],mcpConnections=[],mcpEnabled=false,enabled,onDecision,onRetry,onCancel}:{
+  view:AutonomousView;agents:PgNativeAgent[];connections:PgNativeModelConnection[];toolConnections?:PgNativeToolConnection[];mcpConnections?:PgNativeMcpConnection[];mcpEnabled?:boolean;enabled:boolean;
   onDecision:(value:"approved"|"rejected",consent:boolean)=>void;onRetry:()=>void;onCancel:()=>void
 }){
   const [consent,setConsent]=useState("")
@@ -15,11 +15,13 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
   const detail=view.detail,pending=detail?.pending_effect,mutation=view.pendingMutation
   if(!detail)return null
   const current=pending?detail.run.id+":"+pending.step_key+":"+pending.input_sha256:""
-  const approvedReady=autonomousApprovalReady(detail,agents,connections,toolConnections)
+  const approvedReady=autonomousApprovalReady(detail,agents,connections,toolConnections,mcpConnections,mcpEnabled)
   const role=agents.find(a=>a.id===detail.run.agent_spec_id),model=readyAutonomousModel(role,connections)
   const review=pending?autonomousReview(pending):null
   const http=pending?.configuration.tool_binding as {connection_id?:string}|undefined
   const connection=http?toolConnections.find(tool=>tool.id===http.connection_id):undefined
+  const mcp=pending?.configuration.mcp_binding as {connection_id?:string}|undefined
+  const mcpConnection=mcp?mcpConnections.find(row=>row.id===mcp.connection_id):undefined
   const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)
   return <article aria-label="多轮任务详情" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">
     <h3 className="font-semibold">多轮任务 · {autonomousStates[detail.run.status]??"状态未知"}</h3>
@@ -47,9 +49,10 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
       {pending.kind==="agent"&&approvedReady&&role&&<div className="space-y-1 text-sm leading-6">
         <p className="whitespace-pre-wrap break-words">角色目标：{role.spec.goal}</p>
         <p className="whitespace-pre-wrap break-words">任务边界：{role.spec.task_scope||"按当前角色配置执行"}</p>
-        <p>授权工具：{role.spec.tools?.length?role.spec.tools.map(tool=>tools[tool]??role.spec.http_tools?.find(item=>item.name===tool)?.description??tool).join("、"):"无"}；已绑定 {role.spec.knowledge_base_ids?.length??0} 个知识库。</p>
+        <p>授权工具：{role.spec.tools?.length?role.spec.tools.map(tool=>tools[tool]??role.spec.http_tools?.find(item=>item.name===tool)?.description??role.spec.mcp_tools?.find(item=>item.name===tool)?.tool_name??tool).join("、"):"无"}；已绑定 {role.spec.knowledge_base_ids?.length??0} 个知识库。</p>
       </div>}
       {connection&&<p className="break-words text-sm leading-6">HTTP 连接：{connection.name} · {connection.method} {connection.url} · 版本 {connection.revision}</p>}
+      {mcpConnection&&<p className="break-words text-sm leading-6">MCP 连接：{mcpConnection.name} · {mcpConnection.url} · 版本 {mcpConnection.revision}</p>}
       {!approvedReady&&<p className="text-sm leading-6 text-amber-900">角色或模型配置已变化，请先刷新并核对配置。仍可拒绝当前步骤。</p>}
       {!enabled&&<p className="text-sm">当前环境未开放任务审批，可继续查看记录。</p>}
       <label className="flex items-start gap-2 text-sm leading-6">

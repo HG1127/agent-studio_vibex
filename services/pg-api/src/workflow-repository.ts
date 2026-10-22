@@ -4,6 +4,7 @@ import {HttpError,isUuid,safeName,safeWorkflowGraph,type Identity,type SqlPool,t
   from "./contracts.ts"
 import {withActor} from "./repository.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
+import {resolveMcpBinding} from "./mcp-binding-resources.ts"
 
 export interface WorkflowRow {
   id:string
@@ -30,6 +31,7 @@ export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,gra
 }
 export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string,data:WorkflowGraph["nodes"][number]["data"]){
     const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=data
+    if(data.mcp_binding)await resolveMcpBinding(db,actor,data.mcp_binding,true)
     if(model){
       const result=await db.query<{revision:number|string;enabled:boolean;status:string;
         models:unknown;provider:"openai"|"anthropic"|"gemini";base_url:string}>(

@@ -1,12 +1,13 @@
-import {PgNativePilotError,type createPgNativePilotApi,type PgNativeAgent,type PgNativeModelConnection,type PgNativeToolConnection,
+import {PgNativePilotError,type createPgNativePilotApi,type PgNativeAgent,type PgNativeModelConnection,type PgNativeToolConnection,type PgNativeMcpConnection,
   type PgNativeWorkflow,type PgNativeWorkflowV2Pending,type PgNativeWorkflowV2Result,type PgNativeWorkflowV2Summary} from "./pgNativePilotApi.ts"
 import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
 import {autonomousError,autonomousReview} from "./pgNativeAutonomousAgentSession.ts"
 import {parseWorkflowGraphV2,type WorkflowNodeDataV2} from "./pgNativeWorkflowGraph.ts"
 import {declaredAgentHttpTool} from "./pgNativeAgentHttpTools.ts"
+import {declaredAgentMcpTool,readyAgentMcpTools,readyMcpBinding} from "./pgNativeMcpConnection.ts"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export type WorkflowRunDraft={workflowId:string;revision:number;instruction:string}
-export type WorkflowRunDetail=PgNativeWorkflowV2Result&{review?:{workflow?:PgNativeWorkflow;agent?:PgNativeAgent;model?:PgNativeModelConnection;tool?:PgNativeToolConnection;unavailable:boolean}}
+export type WorkflowRunDetail=PgNativeWorkflowV2Result&{review?:{workflow?:PgNativeWorkflow;agent?:PgNativeAgent;model?:PgNativeModelConnection;tool?:PgNativeToolConnection;mcp?:PgNativeMcpConnection;mcpConnections?:PgNativeMcpConnection[];mcpEnabled?:boolean;unavailable:boolean}}
 export type WorkflowRunView=DurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowRunDraft>
 export const emptyWorkflowRunView=emptyDurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowRunDraft>()
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
@@ -16,11 +17,13 @@ export async function loadWorkflowRunReview(api:Api,id:string):Promise<WorkflowR
     if(detail.run.status!=="awaiting_approval"||!pending)return detail
     const ref=pending.configuration.model_binding as WorkflowNodeDataV2["model_binding"]
     const toolRef=pending.configuration.tool_binding as WorkflowNodeDataV2["tool_binding"]
+    const mcpRef=pending.configuration.mcp_binding as WorkflowNodeDataV2["mcp_binding"]
     // Metadata reads never probe a provider or retrieve decrypted material.
     const flowPromise=optional(api.getWorkflow(detail.run.workflow_id))
     const modelPromise=ref?optional(api.getModelConnection(ref.connection_id)):Promise.resolve(undefined)
     const toolPromise=toolRef?optional(api.getToolConnection(toolRef.connection_id)):Promise.resolve(undefined)
-    const [workflow,initialModel,tool]=await Promise.all([flowPromise,modelPromise,toolPromise])
+    const mcpPromise=mcpRef?optional(api.getMcpConnection(mcpRef.connection_id)):Promise.resolve(undefined)
+    const [workflow,initialModel,tool,mcp]=await Promise.all([flowPromise,modelPromise,toolPromise,mcpPromise])
     let agentRef=pending.configuration.agent_binding as WorkflowNodeDataV2["agent_binding"]
     if(!agentRef&&pending.agent_context&&workflow?.graph?.version===2)try{
       agentRef=parseWorkflowGraphV2(workflow.graph).nodes.find(node=>node.id===pending.node_id)?.data.agent_binding
@@ -28,7 +31,12 @@ export async function loadWorkflowRunReview(api:Api,id:string):Promise<WorkflowR
     const agent=agentRef?await optional(api.getAgent(agentRef.spec_id)):undefined
     let model=initialModel
     if(pending.kind==="agent"&&!ref&&agent?.spec.model_binding)model=await optional(api.getModelConnection(agent.spec.model_binding.connection_id))
-    return {...detail,review:{workflow,agent,model,tool,unavailable:!workflow||Boolean((ref||pending.kind==="agent")&&!model)||Boolean(toolRef&&!tool)||Boolean((agentRef||pending.agent_context)&&!agent)}}
+    const needsMcp=Boolean(mcpRef||agent?.spec.mcp_tools?.length)
+    const mcpIds=[...new Set(agent?.spec.mcp_tools?.map(tool=>tool.connection_id)??[])]
+    const [capability,metadata]=needsMcp?await Promise.all([optional(api.getConfigCapabilities()),Promise.all(mcpIds.map(id=>id===mcp?.id?Promise.resolve(mcp):optional(api.getMcpConnection(id))))]):[undefined,[]]
+    const mcps=metadata.filter((row):row is PgNativeMcpConnection=>Boolean(row)),mcpEnabled=capability?.mcp_tool_runs_enabled===true
+    return {...detail,review:{workflow,agent,model,tool,...(needsMcp?{mcp,mcpConnections:mcps,mcpEnabled}:{}),
+      unavailable:!workflow||Boolean((ref||pending.kind==="agent")&&!model)||Boolean(toolRef&&!tool)||Boolean((agentRef||pending.agent_context)&&!agent)||needsMcp&&(!mcpEnabled||Boolean(mcpRef&&!mcp)||mcps.length!==mcpIds.length)}}
   }
 export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=>void;key?:()=>string}={}){
 
@@ -46,14 +54,15 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
 }
 export function workflowApprovalReady(detail:WorkflowRunDetail|null){
   if(!detail||detail.run.status!=="awaiting_approval"||!detail.pending_effect||detail.pending_effect.missing.length||detail.review?.unavailable)return false
-  const {workflow,model,tool,agent}=detail.review??{},pending=detail.pending_effect
+  const {workflow,model,tool,agent,mcp,mcpConnections,mcpEnabled}=detail.review??{},pending=detail.pending_effect
   if(!workflow||workflow.id!==detail.run.workflow_id||workflow.revision!==detail.run.checkpoint.workflow_revision)return false
   let node:WorkflowNodeDataV2|undefined
   try{node=parseWorkflowGraphV2(workflow.graph).nodes.find(item=>item.id===pending.node_id)?.data}catch{return false}
   if(!node)return false
   if(pending.kind==="agent"||pending.agent_context){
     if(!agent||node.agent_binding?.spec_id!==agent.id||node.agent_binding.spec_revision!==agent.revision)return false
-    if(pending.kind==="tool"&&(pending.configuration.tool_binding?
+    if(agent.spec.mcp_tools?.length&&(!mcpEnabled||!readyAgentMcpTools(agent,mcpConnections??[])))return false
+    if(pending.kind==="tool"&&(pending.configuration.mcp_binding?pending.configuration.tool!==undefined||Boolean(pending.configuration.tool_binding)||!declaredAgentMcpTool(agent,pending.configuration.mcp_binding):pending.configuration.tool_binding?
       pending.configuration.tool!==undefined||!declaredAgentHttpTool(agent,pending.configuration.tool_binding):!agent.spec.tools?.includes(String(pending.configuration.tool))))return false
   }
   const binding=(pending.configuration.model_binding??(pending.kind==="agent"?agent?.spec.model_binding:undefined)) as WorkflowNodeDataV2["model_binding"]
@@ -64,10 +73,13 @@ export function workflowApprovalReady(detail:WorkflowRunDetail|null){
     if(!expected||expected.connection_id!==binding.connection_id||expected.connection_revision!==binding.connection_revision||expected.model_id!==binding.model_id)return false
   }
   const http=pending.configuration.tool_binding as WorkflowNodeDataV2["tool_binding"]
+  const mcpRef=pending.configuration.mcp_binding as WorkflowNodeDataV2["mcp_binding"]
+  const expectedMcp=pending.agent_context?declaredAgentMcpTool(agent,mcpRef):node.mcp_binding
+  if(mcpRef&&(!mcpEnabled||!expectedMcp||!readyMcpBinding(mcpRef,mcp)||Object.entries(mcpRef).some(([key,value])=>expectedMcp[key as keyof typeof mcpRef]!==value)))return false
   const expectedHttp=pending.agent_context?declaredAgentHttpTool(agent,http):node.tool_binding
   if(http&&(!tool||tool.id!==http.connection_id||tool.revision!==http.connection_revision||!tool.enabled||
     expectedHttp?.connection_id!==http.connection_id||expectedHttp?.connection_revision!==http.connection_revision))return false
-  if(pending.kind==="tool"&&!pending.agent_context&&!http&&node.tool!==pending.configuration.tool)return false
+  if(pending.kind==="tool"&&!pending.agent_context&&!http&&!mcpRef&&node.tool!==pending.configuration.tool)return false
   return true
 }
 export function workflowStepReview(pending:PgNativeWorkflowV2Pending){

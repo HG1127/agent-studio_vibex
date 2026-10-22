@@ -19,3 +19,14 @@ export async function verifyMcpDiscoveryPrivileges(api:SqlPool,broker:SqlPool):P
     }finally{db.release()}
   }
 }
+export async function verifyMcpExecutionSchema(pool:SqlPool):Promise<void>{
+  const db=await pool.connect()
+  try{
+    await db.query("BEGIN READ ONLY")
+    try{
+      await db.query("SET LOCAL ROLE agentstudio_api")
+      const row=(await db.query<{definition:string}>("SELECT pg_get_functiondef(to_regprocedure('agentstudio.workflow_tool_lease_identity(uuid,uuid,uuid,bigint,text,text,text)')) AS definition")).rows[0]
+      if(typeof row?.definition!=="string"||!row.definition.includes("mcp_binding"))throw Error("mcp_execution_schema_not_ready")
+    }finally{await db.query("ROLLBACK")}
+  }finally{db.release()}
+}

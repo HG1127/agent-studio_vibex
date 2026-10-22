@@ -1,6 +1,7 @@
 // V8 standalone API pilot. Current V7 PocketBase runtime remains authoritative.
 import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeType,type WorkflowNode,type WorkflowEdge,type WorkflowGraph} from "./workflow-graph-v2.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "./agent-http-tools.ts"
+import {parseAgentMcpTools,type AgentMcpTool} from "./mcp-binding.ts"
 export type {WorkflowNodeType,WorkflowNode,WorkflowEdge,WorkflowGraph} from "./workflow-graph-v2.ts"
 export type Identity = { issuer: string; subject: string }
 
@@ -38,6 +39,7 @@ export interface AgentSpecInput {
   done_criteria: string[]
   tools: string[]
   http_tools?:AgentHttpTool[]
+  mcp_tools?:AgentMcpTool[]
   knowledge_base_ids: string[]
   require_approval: true
 }
@@ -90,13 +92,17 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
   let httpTools:AgentHttpTool[]
   try{httpTools=parseAgentHttpTools(data.http_tools)}catch{throw new HttpError(400,"invalid_agent_http_tools")}
   const customNames=new Set(httpTools.map(tool=>tool.name))
+  let mcpTools:AgentMcpTool[]
+  try{mcpTools=parseAgentMcpTools(data.mcp_tools)}catch{throw new HttpError(400,"invalid_agent_mcp_tools")}
+  mcpTools.forEach(tool=>customNames.add(tool.name))
   if(tools.some(t=>!allowedTools.has(t)&&!customNames.has(t)))throw new HttpError(400,"unknown_tool")
   if(httpTools.some(tool=>!tools.includes(tool.name)))throw new HttpError(400,"invalid_agent_http_tools")
+  if(mcpTools.some(tool=>!tools.includes(tool.name)))throw new HttpError(400,"invalid_agent_mcp_tools")
   // Only owner-validated model-connection IDs may enter a spec; never
   // accept passwords, API keys, provider URL overrides or worker tokens.
   const permitted=new Set([
     "goal","task_scope","deliverables","task_plan","done_criteria","tools",
-    "knowledge_base_ids","model_binding","http_tools",
+    "knowledge_base_ids","model_binding","http_tools","mcp_tools",
   ])
   if(Object.keys(data).some(k=>!permitted.has(k)))throw new HttpError(400,"unsafe_agent_spec_field")
   const modelBinding=safeModelBinding(data.model_binding)
@@ -107,6 +113,7 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
     done_criteria:textList(data.done_criteria),
     tools:[...new Set(tools)],
     ...(httpTools.length?{http_tools:httpTools}:{}),
+    ...(mcpTools.length?{mcp_tools:mcpTools}:{}),
     knowledge_base_ids:knowledgeBaseIds(data.knowledge_base_ids,tools),
     ...(modelBinding?{model_binding:modelBinding}:{}),
     require_approval:true,

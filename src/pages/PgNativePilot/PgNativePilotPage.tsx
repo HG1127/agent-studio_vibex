@@ -13,6 +13,7 @@ import PgNativeSchedulesReadonlyPanel from "./PgNativeSchedulesReadonlyPanel"
 import {createPgNativeSessionReadFence} from "@/lib/pgNativeSessionReadFence"
 import PgNativeAgentModelBindingPanel from "./PgNativeAgentModelBindingPanel"
 import PgNativeAgentHttpToolsPanel from "./PgNativeAgentHttpToolsPanel"
+import PgNativeAgentMcpToolsPanel from "./PgNativeAgentMcpToolsPanel"
 import PgNativeRunHistoryReadonlyPanel from "./PgNativeRunHistoryReadonlyPanel"
 import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistoryReadonlyPanel"
 import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
@@ -68,11 +69,13 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [configEditEnabled,setConfigEditEnabled]=useState(false)
   const [modelProbeEnabled,setModelProbeEnabled]=useState(false)
   const [mcpDiscoveryEnabled,setMcpDiscoveryEnabled]=useState(false)
+  const [mcpToolsEnabled,setMcpToolsEnabled]=useState(false)
   const [workflowValidationEnabled,setWorkflowValidationEnabled]=useState(false)
   const [workflowExecutionEnabled,setWorkflowExecutionEnabled]=useState(false)
   const [workflowV2Enabled,setWorkflowV2Enabled]=useState(false)
   const [workflowCanvasOpened,setWorkflowCanvasOpened]=useState(false)
   const [mcpOpened,setMcpOpened]=useState(false)
+  const [agentMcpOpened,setAgentMcpOpened]=useState(false)
   const [workflowRunsOpened,setWorkflowRunsOpened]=useState(false)
   const [workflowRunTarget,setWorkflowRunTarget]=useState<{id:string;revision:number;selection:number}|null>(null)
   const [runSubmissionEnabled,setRunSubmissionEnabled]=useState(false)
@@ -112,11 +115,12 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setModelName("");setModelApiKey("");setModelModels("");setNotice("")
     setWorkflowCanvasOpened(false);setWorkflowRunsOpened(false);setWorkflowRunTarget(null)
     setMcpOpened(false)
+    setAgentMcpOpened(false)
   },[])
   const expireAgentSession=useCallback(()=>{
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
     setAutonomousEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     clearPrivateDrafts()
@@ -141,6 +145,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setConfigEditEnabled(capability?.config_writes_enabled===true)
       setModelProbeEnabled(capability?.model_probe_enabled===true)
       setMcpDiscoveryEnabled(capability?.mcp_discovery_enabled===true&&capability?.config_writes_enabled===true)
+      setMcpToolsEnabled(capability?.mcp_tool_runs_enabled===true&&capability?.config_writes_enabled===true)
       setWorkflowValidationEnabled(capability?.workflow_validation_enabled===true)
       setWorkflowExecutionEnabled(capability?.workflow_execution_enabled===true)
       setWorkflowV2Enabled(capability?.config_writes_enabled===true&&capability.workflow_v2_submission_enabled===true)
@@ -204,7 +209,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     clearPrivateDrafts()
     setAgents([]);setWorkflows([]);setKnowledge([]);setModelConnections([])
     setToolConnections([])
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
     try{
@@ -232,7 +237,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([])
     setToolConnections([])
-    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
+    setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     setBusy(true);setError("")
     try{
@@ -437,7 +442,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
           <nav aria-label="独立 PostgreSQL 功能" className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-3 lg:flex-col lg:gap-1 lg:self-start">
             {title.filter(x=>(x.key!=="employees"||profile.is_admin)&&
               (!productionRoot||x.key!=="employees")).map(item=>
-              <button key={item.key} type="button" onClick={()=>{setSection(item.key);setEditing(null);setDetailTarget(null);if(item.key==="workflows")setWorkflowCanvasOpened(true);if(item.key==="workflowNativeRuns")setWorkflowRunsOpened(true);if(item.key==="toolConnections")setMcpOpened(true)}}
+              <button key={item.key} type="button" onClick={()=>{setSection(item.key);setEditing(null);setDetailTarget(null);if(item.key==="workflows")setWorkflowCanvasOpened(true);if(item.key==="workflowNativeRuns")setWorkflowRunsOpened(true);if(item.key==="toolConnections")setMcpOpened(true);if(item.key==="agents")setAgentMcpOpened(true)}}
                 className={"flex min-w-max items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium lg:w-full "+
                   (section===item.key?"bg-indigo-50 text-indigo-700":"text-slate-600 hover:bg-slate-50")}>
                 <item.icon size={17}/>
@@ -457,6 +462,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             </p>}
             <div hidden={section!=="autonomousAgent"}>
               <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections} tools={toolConnections}
+                mcpEnabled={mcpToolsEnabled}
                 active={section==="autonomousAgent"} enabled={autonomousEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>
             </div>
             {section==="agents"&&<>
@@ -482,6 +488,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               {canEditConfig&&<PgNativeAgentHttpToolsPanel key={profile.id} api={api} agents={agents} connections={toolConnections}
                 enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}
             </>}
+            <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentMcpToolsPanel key={profile.id} api={api} agents={agents}
+              active={section==="agents"} enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}</div>
             <div hidden={section!=="workflows"}>
               {(workflowCanvasOpened||section==="workflows")&&<Suspense fallback={<p role="status">加载工作流画布中…</p>}>
                 <PgNativeWorkflowWorkspace key={profile.id} api={api} workflows={workflows} agents={agents} models={modelConnections} tools={toolConnections} bases={knowledge}

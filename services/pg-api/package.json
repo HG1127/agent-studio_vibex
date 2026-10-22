@@ -96,6 +96,7 @@
     "autonomous-agent-worker:preflight": "node --experimental-strip-types src/autonomous-agent-worker-loop.ts --preflight"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "jose": "^6.1.0",
     "jszip": "3.10.2",
     "mammoth": "1.13.0",

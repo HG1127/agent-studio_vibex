@@ -230,7 +230,7 @@ class Machine{
       }else{
         if(node.type==="model"&&!node.data.model_binding)fail("workflow_model_binding_missing")
         if(node.type==="agent"&&!node.data.agent_binding)fail("workflow_agent_binding_missing")
-        if(node.type==="tool"&&(!node.data.tool&&!node.data.tool_binding||node.data.tool_binding_required))fail("workflow_tool_binding_missing")
+        if(node.type==="tool"&&(!node.data.tool&&!node.data.tool_binding&&!node.data.mcp_binding||node.data.tool_binding_required))fail("workflow_tool_binding_missing")
         const template=node.type==="tool"?(node.data.params_template||"{}"):
           node.type==="agent"?(node.data.prompt||"{{input}}"):node.data.prompt??""
         const rendered=node.type==="model"&&node.data.prompt_format==="literal"?{text:template,missing:[]}:this.template(template,node.id,node.type==="tool")

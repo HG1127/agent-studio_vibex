@@ -30,7 +30,7 @@ import {ToolConnectionRepository} from "./tool-connection-repository.ts"
 import {McpConnectionRepository} from "./mcp-connection-repository.ts"
 import {createMcpDiscovery} from "./mcp-discovery.ts"
 import {createMcpNetwork} from "./mcp-network.ts"
-import {verifyMcpDiscoveryPrivileges} from "./mcp-privileges.ts"
+import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "./mcp-privileges.ts"
 import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
@@ -325,6 +325,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(!brokerPool)reject()
       await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
     }
+    if(capabilities.mcpToolExecutionUat===true)await verifyMcpExecutionSchema(adapter(businessPool))
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -339,6 +340,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
+      allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
       allowWorkflowValidation:capabilities.workflowValidationUat===true,
@@ -386,8 +388,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(adapter(businessPool)),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(adapter(businessPool)),
-      workflowV2RunRepository:new WorkflowV2RunRepository(adapter(businessPool)),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(adapter(businessPool),{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(adapter(businessPool),"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
         ?{workflowValidationRepository:new WorkflowValidationRepository(

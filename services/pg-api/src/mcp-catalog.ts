@@ -3,6 +3,11 @@ export const mcpVersions=["2026-07-28","2025-11-25","2025-06-18","2025-03-26"] a
 export type McpVersion=typeof mcpVersions[number]
 export type McpTool={name:string;description:string;input_schema:Record<string,unknown>;read_only:boolean;destructive:boolean;requires_tasks:boolean}
 export type McpCatalog={version:McpVersion;tools:McpTool[]}
+export function canonicalMcpJson(value:unknown):string{
+  const ordered=(item:unknown):unknown=>Array.isArray(item)?item.map(ordered):item&&typeof item==="object"?
+    Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,value])=>[key,ordered(value)])):item
+  return JSON.stringify(ordered(value))
+}
 export class McpProtocolError extends Error{
   constructor(){super("invalid_mcp_response")}
 }

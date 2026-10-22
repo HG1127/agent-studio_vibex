@@ -1,4 +1,5 @@
 import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
+import {selectMcpExecution} from "./mcp-call.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -12,6 +13,7 @@ export interface NativePg18UatCapabilities {
   /** External GET /models is a separate opt-in, never inherited from configuration writes. */
   modelProbeUat:boolean
   mcpDiscoveryUat?:boolean
+  mcpToolExecutionUat?:boolean
   /** Additional opt-in for inert Start/End-only Workflow validation records. */
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
@@ -44,6 +46,7 @@ export function selectNativePg18UatCapabilities(
   uid=process.getuid?.(),
 ):NativePg18UatCapabilities {
   const autonomousAgentUat=selectAutonomousAgentExecution(env)
+  const mcpToolExecutionUat=selectMcpExecution(env)
   const config=env.AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED
   const employees=env.AGENT_STUDIO_PG18_EMPLOYEE_UAT_ENABLED
   const marker=env.AGENT_STUDIO_PG18_UAT_APPROVAL
@@ -84,14 +87,15 @@ export function selectNativePg18UatCapabilities(
   if(!workflowExecutionUat&&executionMarker!==undefined)refuse()
   if(!workflowV2ExecutionUat&&flowV2Marker!==undefined)refuse()
   if(!configUat&&!employeeUat&&!runUat&&!ingestUat&&!modelProbeUat&&
-     !mcpDiscoveryUat&&!workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
+     !mcpToolExecutionUat&&!mcpDiscoveryUat&&!workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
     if(marker!==undefined)refuse()
     return {...empty}
   }
   if(!listen||!Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !origin.startsWith("https://")||
      marker!==permissionMarker||
-     ((employeeUat||runUat||ingestUat||modelProbeUat||mcpDiscoveryUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
+     ((mcpToolExecutionUat||employeeUat||runUat||ingestUat||modelProbeUat||mcpDiscoveryUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
+     (mcpToolExecutionUat&&!workflowV2ExecutionUat&&!autonomousAgentUat)||
      (mcpDiscoveryUat&&mcpMarker!=="APPROVE_DISPOSABLE_PG18_MCP_DISCOVERY_ONLY")||
      (runUat&&runMarker!==runApprovalMarker)||
      (ingestUat&&ingestMarker!==kbIngestMarker)||
@@ -104,6 +108,7 @@ export function selectNativePg18UatCapabilities(
     employeeProvisioning:employeeUat,runApprovalUat:runUat,
     knowledgeIngestUat:ingestUat,modelProbeUat,
     ...(mcpDiscoveryUat?{mcpDiscoveryUat:true}:{}),
+    ...(mcpToolExecutionUat?{mcpToolExecutionUat:true}:{}),
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),

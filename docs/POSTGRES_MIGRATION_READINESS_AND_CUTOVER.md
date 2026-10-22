@@ -78,3 +78,5 @@ pnpm db:pg-stage-operator --plan \
 2026-10-23 Agent 自定义 HTTP 工具增量：在 b05fcb8 之后接通工作流 Agent 节点及独立多轮 Agent 的自有连接声明、版本冻结、逐步审批和私有 Broker 调用；12 项合成数据专项测试通过。编辑目标、模型和知识库会保留 HTTP 声明，旧单次 Agent 队列拒绝不支持的声明。真实 PG TCP/浏览器新增用例尚未运行；MCP/Smithery、共享/语义知识、调度/协作及运维/UAT 签收仍待完成。候选仅本地，正式切换仍为 NO-GO。
 
 2026-10-23 MCP 连接与发现增量：在 2b29492 之后新增提案迁移 029、Native Cookie 配置接口和员工界面；只读工具发现支持新旧 Streamable HTTP、JSON/SSE、独立授权、加密请求头及所有者隔离。13 项合成数据专项测试通过，详细回归证据见 PG18_MCP_CONNECTIONS_AND_DISCOVERY.md。Agent/Workflow MCP 执行、Smithery 托管流程与其他功能/运维验收仍未完成，新增真实 PG18/浏览器用例尚未运行。候选仅本地，生产切换仍为 NO-GO。
+
+2026-10-23 MCP 执行增量：在 97b0160 之后新增提案迁移 030、三条工作流/Agent MCP 执行路径及员工绑定/审批界面。绑定固定本人连接版本、目录哈希与具体工具；默认关闭独立授权，执行前校验参数并逐步审批，断线或响应不确定时暂停且不重发。17 项合成数据专项测试通过，详见 PG18_MCP_EXECUTION.md。新增托管 PG18/浏览器用例尚未运行，Smithery、其他功能及运维/UAT/恢复回滚签收仍未完成，生产仍为 NO-GO。

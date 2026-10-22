@@ -35,6 +35,7 @@ import {ModelConnectionRepository} from "../../src/model-connection-repository.t
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
 import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
 import {createMcpDiscovery} from "../../src/mcp-discovery.ts"
+import {createMcpToolExecutor} from "../../src/mcp-call.ts"
 import {AgentPrepareWorker} from "../../src/agent-worker.ts"
 import {AgentModelWorker} from "../../src/model-worker.ts"
 import {OwnerBoundModelDispatch} from "../../src/owner-model-dispatch.ts"
@@ -66,7 +67,7 @@ const pool={async connect(){
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous,workflowV2ExecutionUat:workflow}
-const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpDiscoveries:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
+const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpCalls:0,mcpDiscoveries:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
 try{
   await db.exec("CREATE DATABASE agent_studio")
   await db.exec(freshSchemaForTest().sql)
@@ -76,7 +77,7 @@ try{
   await db.exec("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic browser predecessor')")
   await db.exec(load("db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql")
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql"])
+  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
@@ -103,10 +104,14 @@ try{
   const dispatch=modern?{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async()=>{if(!workflow)throw Error("direct_fallback_forbidden");state.generated++;return "Browser synthetic workflow model output"},pool,{
       nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
-      allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0];return JSON.stringify(plan.round===1?
-        {action:"tool",tool:http?.name??"calculate",params:http?{query:"Synthetic owner evidence"}:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
+      allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0],mcp=plan.role.mcp_tools?.[0];return JSON.stringify(plan.round===1?
+        {action:"tool",tool:mcp?.name??http?.name??"calculate",params:mcp||http?{query:"Synthetic owner evidence"}:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
         {action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4",think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined})}})),
-    tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{async http(){state.httpCalls++;return "Browser synthetic HTTP observation 4"}},pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow})),
+    tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{
+      async http(){state.httpCalls++;return "Browser synthetic HTTP observation 4"},
+      mcp:createMcpToolExecutor(async(_material,wire)=>{if(wire.body.method!=="tools/call")throw Error("unexpected_synthetic_mcp_call")
+        state.mcpCalls++;return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{content:[{type:"text",text:"Browser synthetic MCP observation 4"}]}})}}),
+    },pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow})),
   }:verified
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},
     model=createWorkflowV2ModelInternalHandler({...common,dispatch:config.dispatch.model}),tool=createWorkflowV2ToolInternalHandler({...common,dispatch:config.dispatch.tool})
@@ -123,6 +128,7 @@ try{
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowConfigurationWrites:state.configAllowed,allowEmployeeProvisioning:state.configAllowed,
       allowMcpDiscovery:modern&&state.configAllowed,
+      allowMcpToolExecution:modern&&state.configAllowed&&state.allowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:autonomous&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
@@ -132,7 +138,7 @@ try{
         return backend(req,res)
       }})}
     configure()
-    const runs=autonomous?new AutonomousAgentRunRepository(pool):workflow?new WorkflowV2RunRepository(pool):createNativeRunRepository(pool,policy)
+    const runs=autonomous?new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}):workflow?new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}):createNativeRunRepository(pool,policy)
     const submit=runs.submit.bind(runs)
     runs.submit=async(identity,specId,body)=>{
       state.submitHashes.push(createHash("sha256").update(JSON.stringify({specId,...body})).digest("hex"))
@@ -161,7 +167,7 @@ try{
         let output
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
-          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,mcpDiscoveries:state.mcpDiscoveries,
+          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,
             ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n}}

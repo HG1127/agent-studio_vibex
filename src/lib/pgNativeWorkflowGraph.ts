@@ -105,7 +105,7 @@ export function workflowExecutionIssues(graph:WorkflowGraph):string[]{
   for(const node of graph.nodes){
     if(node.type==="model"&&(!node.data.model_binding||!node.data.prompt?.trim()))issues.push(node.data.title+"：请选择模型并填写提示词。")
     if(node.type==="agent"&&!node.data.agent_binding)issues.push(node.data.title+"：请选择本人 Agent 方案。")
-    if(node.type==="tool"&&(!node.data.tool_binding&&!builtinTools.has(node.data.tool??"")||node.data.tool==="summarize"&&!node.data.model_binding))issues.push(node.data.title+"：请补齐工具及模型绑定。")
+    if(node.type==="tool"&&(!node.data.tool_binding&&!node.data.mcp_binding&&!builtinTools.has(node.data.tool??"")||node.data.tool==="summarize"&&!node.data.model_binding))issues.push(node.data.title+"：请补齐工具及模型绑定。")
   }
   return issues
 }

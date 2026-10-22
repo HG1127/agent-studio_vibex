@@ -16,7 +16,7 @@ export default function PgNativeMcpConnectionsPanel({api,enabled,discoveryEnable
   const selected=view.items.find(item=>item.id===view.selected)??null,locked=!active||view.busy||Boolean(view.pending)
   return <section aria-label="MCP 远程连接" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">
     <h2 className="font-semibold">MCP 远程工具连接</h2>
-    <p className="text-sm leading-6 text-slate-600">保存远程服务后，可单独发现工具及参数。工具发现不会执行工具；Agent 中的 MCP 调用尚未开放。</p>
+    <p className="text-sm leading-6 text-slate-600">保存远程服务后，可单独发现工具及参数。工具发现不会执行工具；绑定到 Agent 或工作流后，每次调用仍需环境授权和单独审批。</p>
     {view.error&&<p role="alert" className="text-sm text-rose-800">{view.error}</p>}
     {view.notice&&<p role="status" className="text-sm text-emerald-800">{view.notice}</p>}
     {!enabled&&<p className="text-sm text-amber-900">当前环境未开放 MCP 配置保存。</p>}

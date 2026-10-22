@@ -3,9 +3,10 @@ import {createHash} from "node:crypto"
 import {HttpError,isUuid,safeAgentSpec,type AgentSpecInput} from "./contracts.ts"
 import type {WorkflowEffectRequest} from "./workflow-v2-machine.ts"
 import {workflowKnownEffectCodes} from "./workflow-v2-effect-failure.ts"
+import {parseAgentMcpSnapshots,type McpAgentSnapshot} from "./mcp-binding.ts"
 export type WorkflowAgentResult={step_key:string;input_sha256:string;output:string;outcome?:"failed"|"rejected";code?:string}
 export type WorkflowAgentState={format:"workflow_agent_v2";parent_step_key:string;parent_input_sha256:string;
-  spec_id:string;spec_revision:number;spec:AgentSpecInput;snapshot_sha256:string;results:WorkflowAgentResult[]}
+  spec_id:string;spec_revision:number;spec:AgentSpecInput;mcp_tool_definitions?:McpAgentSnapshot[];snapshot_sha256:string;results:WorkflowAgentResult[]}
 export type WorkflowAgentView={status:"waiting"|"succeeded"|"failed"|"rejected";round:number;pending:WorkflowEffectRequest|null;output:string;error_code:string}
 function canonical(value:unknown):unknown{
   if(Array.isArray(value))return value.map(canonical)
@@ -26,21 +27,26 @@ export function workflowAgentSpec(raw:unknown):AgentSpecInput{
   const {require_approval:_,...input}=item
   return safeAgentSpec(input)
 }
-export function createWorkflowAgentState(parent:WorkflowEffectRequest,raw:unknown):WorkflowAgentState{
+export function createWorkflowAgentState(parent:WorkflowEffectRequest,raw:unknown,definitions?:McpAgentSnapshot[]):WorkflowAgentState{
   if(parent.kind!=="agent"||!parent.configuration.agent_binding)invalid()
   const spec=workflowAgentSpec(raw),ref=parent.configuration.agent_binding
   if(!parent.configuration.model_binding&&!spec.model_binding)throw new HttpError(409,"workflow_agent_model_binding_missing")
-  const snapshot={spec_id:ref.spec_id,spec_revision:ref.spec_revision,spec}
+  let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,definitions)}catch{invalid()}
+  const snapshot={spec_id:ref.spec_id,spec_revision:ref.spec_revision,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{})}
   return {format:"workflow_agent_v2",parent_step_key:parent.step_key,parent_input_sha256:parent.input_sha256,
     ...snapshot,snapshot_sha256:sha(snapshot),results:[]}
 }
 function checked(raw:unknown,parent:WorkflowEffectRequest):WorkflowAgentState{
   const value=object(raw),names=["format","parent_step_key","parent_input_sha256","spec_id","spec_revision","spec","snapshot_sha256","results"]
+  if(Object.hasOwn(value,"mcp_tool_definitions"))names.push("mcp_tool_definitions")
   if(Object.keys(value).length!==names.length||names.some(key=>!Object.hasOwn(value,key))||value.format!=="workflow_agent_v2"||
      parent.kind!=="agent"||!parent.configuration.agent_binding||value.parent_step_key!==parent.step_key||value.parent_input_sha256!==parent.input_sha256||
      !isUuid(value.spec_id)||value.spec_id!==parent.configuration.agent_binding.spec_id||value.spec_revision!==parent.configuration.agent_binding.spec_revision||
      !Array.isArray(value.results)||value.results.length>10||Buffer.byteLength(JSON.stringify(raw),"utf8")>393216)invalid()
-  const spec=workflowAgentSpec(value.spec),snapshot={spec_id:value.spec_id,spec_revision:value.spec_revision as number,spec}
+  const spec=workflowAgentSpec(value.spec)
+  let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,value.mcp_tool_definitions)}catch{invalid()}
+  if(!mcp.length&&Object.hasOwn(value,"mcp_tool_definitions"))invalid()
+  const snapshot={spec_id:value.spec_id,spec_revision:value.spec_revision as number,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{})}
   if(value.snapshot_sha256!==sha(snapshot))invalid()
   const results:WorkflowAgentResult[]=[],seen=new Set<string>()
   for(const rawResult of value.results){
@@ -100,7 +106,10 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
       role:{name:parent.configuration.title,goal:state.spec.goal,task_scope:state.spec.task_scope,
         deliverables:state.spec.deliverables,done_criteria:state.spec.done_criteria,allowed_tools:state.spec.tools,
         ...(state.spec.http_tools?.length?{http_tools:state.spec.http_tools.map(({name,description})=>({name,description,
-          arguments:"JSON object. The owner-configured HTTP template consumes these parameters."}))}:{})},
+          arguments:"JSON object. The owner-configured HTTP template consumes these parameters."}))}:{}),
+        ...(state.mcp_tool_definitions?.length?{mcp_tools:state.mcp_tool_definitions.map(({name,definition})=>({name,description:definition.description,
+          input_schema:definition.input_schema,read_only_hint:definition.read_only,destructive_hint:definition.destructive,
+          annotations_are_untrusted_hints:true}))}:{})},
       task:parent.input,round,max_rounds:max,history})
     if(prompt.length>131072)return terminal("failed",round,"","workflow_agent_context_too_large")
     const model=make(round,"model",prompt,{title:parent.configuration.title,model_binding:{...binding},prompt})
@@ -114,8 +123,9 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
     if(action.action==="answer")return terminal("succeeded",round,action.answer.slice(0,4000))
     if(!state.spec.tools.includes(action.tool))return terminal("failed",round,"","workflow_agent_tool_not_allowed")
     const http=state.spec.http_tools?.find(tool=>tool.name===action.tool)
-    const configuration:WorkflowEffectRequest["configuration"]={title:http?http.name:parent.configuration.title,
-      ...(http?{tool_binding:{connection_id:http.connection_id,connection_revision:http.connection_revision}}:
+    const mcp=state.mcp_tool_definitions?.find(tool=>tool.name===action.tool)
+    const configuration:WorkflowEffectRequest["configuration"]={title:mcp?.name??http?.name??parent.configuration.title,
+      ...(mcp?{mcp_binding:{...mcp.binding}}:http?{tool_binding:{connection_id:http.connection_id,connection_revision:http.connection_revision}}:
         {tool:action.tool as WorkflowEffectRequest["configuration"]["tool"]}),params_template:workflowAgentJson(action.params),
       ...(action.tool==="knowledge_search"?{knowledge_base_ids:[...state.spec.knowledge_base_ids]}:{}),
       ...(action.tool==="summarize"?{model_binding:{...binding}}:{})}

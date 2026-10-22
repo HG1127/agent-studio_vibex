@@ -62,7 +62,7 @@ test("static MCP forms and catalog escape remote metadata, mask headers and keep
     const {default:Panel,McpConnectionForm:Form,McpToolCatalog:Catalog}=await server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeMcpConnectionsPanel.tsx")
     const blocked=renderToStaticMarkup(createElement(Panel,{api:{},enabled:false,discoveryEnabled:false,onExpired:()=>{}}))
     assert.match(blocked,/当前环境未开放 MCP 配置保存/);assert.match(blocked,/<fieldset disabled=""/)
-    assert.match(blocked,/Agent 中的 MCP 调用尚未开放/)
+    assert.match(blocked,/每次调用仍需环境授权和单独审批/)
     const markup=renderToStaticMarkup(createElement(Form,{row,enabled:true,onSave:()=>{}}))
     assert.match(markup,/留空保留原值/);assert.equal(markup.includes(input.headers[0].value),false)
     assert.match(markup,/type="password"/)

@@ -10,6 +10,7 @@ export type WorkflowToolPlan=
   |{kind:"web_fetch";url:string}
   |{kind:"web_search";query:string;limit:number}
   |{kind:"http";args:ToolArguments;binding:NonNullable<WorkflowEffectRequest["configuration"]["tool_binding"]>}
+  |{kind:"mcp";args:ToolArguments;binding:NonNullable<WorkflowEffectRequest["configuration"]["mcp_binding"]>}
 function invalid():never{throw new WorkflowKnownEffectFailure("workflow_tool_input_invalid")}
 function text(value:unknown,max:number,empty=false):string{
   if(typeof value!=="string"||value.length>max||value.includes("\0")||(!empty&&!value.trim()))invalid()
@@ -70,6 +71,10 @@ export function evaluateWorkflowArithmetic(raw:string):number{
 export function prepareWorkflowTool(request:WorkflowEffectRequest):WorkflowToolPlan{
   if(request.kind!=="tool")invalid()
   const config=request.configuration,args=safeWorkflowToolArguments(request.input)
+  if(config.mcp_binding){
+    if(config.tool||config.tool_binding||config.model_binding||config.knowledge_base_ids)invalid()
+    return {kind:"mcp",args,binding:{...config.mcp_binding}}
+  }
   if(config.tool_binding)return {kind:"http",args,binding:{...config.tool_binding}}
   const allowed:Record<string,string[]>={calculate:["expression"],summarize:["text","focus"],knowledge_search:["query"],web_fetch:["url"],web_search:["query","limit"]}
   if(!config.tool||!Object.hasOwn(allowed,config.tool)||Object.keys(args).some(key=>!allowed[config.tool!]!.includes(key)))invalid()

@@ -96,7 +96,16 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
 export class WorkflowV2RunRepository{
   readonly pool:SqlPool
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2"){this.pool=pool;this.root=durableV2Root(mode)}
+  readonly allowMcpExecution:boolean
+  constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2",options:{allowMcpExecution?:boolean}={}){this.pool=pool;this.root=durableV2Root(mode);this.allowMcpExecution=options.allowMcpExecution===true}
+  protected async checkMcpAdmission(db:SqlClient,owner:string,graph:WorkflowGraph){
+    if(this.allowMcpExecution)return
+    if(graph.nodes.some(node=>node.data.mcp_binding))throw new HttpError(409,"mcp_execution_not_enabled")
+    const ids=[...new Set(graph.nodes.flatMap(node=>node.data.agent_binding?[node.data.agent_binding.spec_id]:[]))]
+    if(!ids.length)return
+    const rows=(await db.query<{spec:Record<string,unknown>}>("SELECT spec FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) FOR SHARE",[owner,ids])).rows
+    if(rows.some(row=>Object.hasOwn(row.spec,"mcp_tools")&&(!Array.isArray(row.spec.mcp_tools)||row.spec.mcp_tools.length)))throw new HttpError(409,"mcp_execution_not_enabled")
+  }
   protected async assemble(db:SqlClient,owner:string,row:WorkflowV2RunRow,replayed:boolean){
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
     const view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
@@ -137,6 +146,7 @@ export class WorkflowV2RunRepository{
       if(!flow)throw new HttpError(404,"workflow_not_found")
       if(Number(flow.revision)!==request.expected_revision)throw new HttpError(409,"workflow_revision_changed")
       const graph=safeWorkflowGraph(flow.graph),machine=createWorkflowV2Checkpoint(graph,request.instruction)
+      await this.checkMcpAdmission(db,owner,graph)
       for(const node of graph.nodes){
         if(node.type==="model"&&(!node.data.model_binding||!node.data.prompt?.trim()))throw new HttpError(409,"workflow_node_not_ready")
         if(node.type==="agent"&&!node.data.agent_binding)throw new HttpError(409,"workflow_node_not_ready")
@@ -256,7 +266,7 @@ export class WorkflowV2RunRepository{
       const pending=workflowV2ExecutionRequest(state)
       if(run.status!=="awaiting_approval"||approval.status!=="pending"||!pending||pending.step_key!==item.step_key||pending.input_sha256!==item.input_sha256)
         throw new HttpError(409,"workflow_approval_state_changed")
-      if(item.decision==="approved")await verifyWorkflowV2Snapshot(db,owner,run,state)
+      if(item.decision==="approved"){await this.checkMcpAdmission(db,owner,state.graph);await verifyWorkflowV2Snapshot(db,owner,run,state)}
       else if(pending.agent_context){
         const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
         state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:pending.step_key,input_sha256:pending.input_sha256,

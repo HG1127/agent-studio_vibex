@@ -12,12 +12,14 @@ import PgNativeWorkflowNodePreview from "./PgNativeWorkflowNodePreview"
 import PgNativeWorkflowModelDebugPanel from "./PgNativeWorkflowModelDebugPanel"
 import type {WorkflowDebugDraft} from "@/lib/pgNativeWorkflowDebugSession"
 import PgNativeWorkflowSampleSource from "./PgNativeWorkflowSampleSource"
+import {useMcpConnections} from "./useMcpConnections"
 type Controller=ReturnType<typeof createPgNativeWorkflowEditor>
 type Change={kind:"fresh";name:string}|{kind:"open";id:string}|{kind:"import";name:string;graph:WorkflowGraph}
 export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,tools,bases,active,writeEnabled,executionEnabled,onExpired,onSaved,onRun}:{
   api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];agents:PgNativeAgent[];models:PgNativeModelConnection[];tools:PgNativeToolConnection[];bases:PgNativeKnowledge[];
   active:boolean;writeEnabled:boolean;executionEnabled:boolean;onExpired:()=>void;onSaved:()=>Promise<void>;onRun:(id:string,revision:number)=>void
 }){
+  const mcp=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyWorkflowEditor),[name,setName]=useState("")
   const [nodeId,setNodeId]=useState(""),[edgeId,setEdgeId]=useState("")
   const [formDirty,setFormDirty]=useState(false),[error,setError]=useState("")
@@ -154,7 +156,10 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
           }} onEdge={id=>{if(formDirty){setError("请先应用或撤销当前节点配置。");return}setEdgeId(id);setNodeId("")}}
           onConnect={connection=>{if(connection.source&&connection.target)alter(current=>connectPgWorkflowNodes(current,connection.source,connection.target,connection.sourceHandle==="body"?undefined:connection.sourceHandle??undefined))}}
           onGesture={begin=>{if(begin)editor.current?.beginGesture();else editor.current?.endGesture()}}/>
-        {selected?<div className="space-y-4"><PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases}
+        {selected?<div className="space-y-4">
+          <button type="button" className={workflowSecondary} disabled={!active||mcp.loading} onClick={()=>void mcp.load()}>读取本人 MCP 工具供工作流选择</button>
+          {mcp.error&&<p role="alert" className="text-sm text-rose-800">{mcp.error}</p>}
+          <PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases} mcps={mcp.connections}
           enabled={editable} onDirty={setFormDirty} onApply={data=>{
             if(!editable)return "当前环境未开放配置编辑。"
             const current=editor.current?.snapshot().draft;if(!current)return "草稿已关闭。"

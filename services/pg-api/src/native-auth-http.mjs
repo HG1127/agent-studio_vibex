@@ -119,7 +119,7 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
     allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,
@@ -193,6 +193,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           config_writes_enabled:allowConfigurationWrites===true,
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
           ...(allowConfigurationWrites===true&&allowMcpDiscovery===true?{mcp_discovery_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowMcpToolExecution===true?{mcp_tool_runs_enabled:true}:{}),
           workflow_validation_enabled:allowConfigurationWrites===true&&allowWorkflowValidation===true,
           workflow_execution_enabled:allowConfigurationWrites===true&&allowWorkflowExecution===true,
           ...(allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true?{autonomous_agent_submission_enabled:true}:{}),

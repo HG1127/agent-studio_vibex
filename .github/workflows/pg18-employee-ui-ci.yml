@@ -16,6 +16,7 @@ on:
       - 'codex/pg18-workflow-output-samples-20261023'
       - 'codex/pg18-agent-http-tools-20261023'
       - 'codex/pg18-mcp-discovery-20261023'
+      - 'codex/pg18-mcp-execution-20261023'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +51,7 @@ jobs:
           pnpm exec tsc -p tsconfig.app.json --noEmit
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-autonomous-session.test.mjs tests/pg-native-autonomous-render.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
+          pnpm test:pg18:mcp-execution
           pnpm test:pg18:mcp-discovery
           pnpm test:pg18:agent-http-tools
           pnpm test:pg18:workflow-outputs

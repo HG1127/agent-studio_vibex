@@ -2,6 +2,7 @@ import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
   type AgentSpecInput } from "./contracts.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import {parseAgentHttpTools} from "./agent-http-tools.ts"
+import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -144,6 +145,7 @@ export class AgentSpecRepository {
       await verifyKnowledgeSelection(db,actor,spec)
       await verifyModelBinding(db,actor,spec)
       await verifyAgentHttpTools(db,actor,spec)
+      await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
       const result=await db.query<SpecRow>(
         "INSERT INTO agentstudio.agent_specs "+
         "(owner_user_id,name,spec,requires_approval) "+
@@ -164,6 +166,7 @@ export class AgentSpecRepository {
       await verifyKnowledgeSelection(db,actor,spec)
       await verifyModelBinding(db,actor,spec)
       await verifyAgentHttpTools(db,actor,spec)
+      await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
       const result=await db.query<SpecRow>(
         "UPDATE agentstudio.agent_specs "+
         "SET name=$3::text,spec=$4::jsonb,requires_approval=true,"+

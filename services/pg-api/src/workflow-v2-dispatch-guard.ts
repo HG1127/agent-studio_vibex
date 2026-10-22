@@ -58,15 +58,16 @@ export async function reserveWorkflowEffectDispatch(db:SqlClient,owner:string,r:
       "workflow-"+kind+":"+r.claim.run_id+":"+r.step_key])
   if(reserved.rows.length!==1)throw new HttpError(409,"workflow_"+kind+"_already_dispatched")
 }
-export async function finishWorkflowEffectDispatch(pool:SqlPool,identity:Identity,r:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,failed:boolean){
+export async function finishWorkflowEffectDispatch(pool:SqlPool,identity:Identity,r:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,failed:boolean,confirmedToolFailure=false){
+  const outcome=failed?"unknown":confirmedToolFailure&&kind==="tool"?"failed":"succeeded"
   try{await withActor(pool,identity,async(db,owner)=>{
     const result=await db.query("UPDATE agentstudio.external_effects SET status=$4::text,updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' "+
       "AND arguments_sha256=$5::text RETURNING step_key",
-      [r.claim.run_id,owner,"wf2_"+kind+":"+r.step_key,failed?"unknown":"succeeded",r.input_sha256])
+      [r.claim.run_id,owner,"wf2_"+kind+":"+r.step_key,outcome,r.input_sha256])
     if(result.rows.length!==1)throw Error("workflow_effect_commit_unknown")
     await auditWorkflowV2(db,owner,r.claim.run_id,"workflow.v2_"+kind+"_dispatch",{step_key:r.step_key,
-      input_sha256:r.input_sha256,outcome:failed?"unknown":"succeeded"})
+      input_sha256:r.input_sha256,outcome})
   })}catch{throw new HttpError(503,"workflow_"+kind+"_outcome_unknown")}
 }
 export class WorkflowV2EffectLeaseIdentity{

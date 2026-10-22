@@ -26,6 +26,9 @@ import {createWorkflowV2ToolInternalHandler} from "./workflow-v2-tool-handler.ts
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "./workflow-v2-tool-dispatch.ts"
 import {createWorkflowToolNetwork} from "./workflow-v2-tool-network.ts"
 import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
+import {createMcpToolExecutor,selectMcpExecution} from "./mcp-call.ts"
+import {createMcpNetwork} from "./mcp-network.ts"
+import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "./mcp-privileges.ts"
 
 const origin="https://127.0.0.1:7453"
 const directory=boundCredentialDirectory("dispatch")
@@ -50,6 +53,8 @@ export function boundDispatchServerConfig(
   catch{refuse()}
   const workflowModelEnabled=selectWorkflowV2ModelExecution(env)
   const workflowToolsEnabled=selectWorkflowV2ToolExecution(env)
+  const mcpEnabled=selectMcpExecution(env)
+  if(mcpEnabled&&!workflowToolsEnabled)refuse()
   const autonomousEnabled=selectAutonomousAgentExecution(env)
   const autonomousFingerprint=env.AGENT_STUDIO_PG_AUTONOMOUS_AGENT_CLIENT_FINGERPRINT
   const workflowAgentsEnabled=selectWorkflowAgentExecution(env)
@@ -66,7 +71,7 @@ export function boundDispatchServerConfig(
   }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
   return {target,origin,directory,port:7453 as const,
-    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint}
+    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} )}
 }
 export function assertBoundDispatchTlsMaterial(
   ca:Buffer,cert:Buffer,key:Buffer,now=Date.now(),
@@ -143,6 +148,7 @@ export async function startBoundDispatchServer(
     if(cfg.autonomousEnabled)for(const effect of ["autonomous_model","autonomous_tool"] as const)
       for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
         await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
+    if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(adapter(api),adapter(broker));await verifyMcpExecutionSchema(adapter(api))}
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -169,6 +175,7 @@ export async function startBoundDispatchServer(
         tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
             new WorkflowV2ToolDispatch(adapter(api),encryptionKey,{...createWorkflowToolNetwork(),
+              ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
               summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
                 allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous}))}):undefined,
       }
