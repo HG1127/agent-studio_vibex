@@ -66,6 +66,33 @@ test("embedded Postgres proves native-auth Worker cannot see private data during
       "SELECT value_ciphertext FROM agentstudio.tool_connection_headers LIMIT 1"),
       /permission denied/i,"worker cannot read encrypted tool headers through API role")
     await pg.exec("RESET ROLE")
+    await pg.exec("SET SESSION AUTHORIZATION postgres")
+    // A NOINHERIT shadow role can be entered explicitly even before MCP is
+    // installed. Do not let that bypass the existing model-key boundary.
+    await pg.exec("CREATE ROLE model_shadow_reader NOLOGIN NOINHERIT; GRANT SELECT(api_key_ciphertext) ON agentstudio.model_connections TO model_shadow_reader; GRANT model_shadow_reader TO agentstudio_stage_worker")
+    await pg.exec("SET SESSION AUTHORIZATION agentstudio_stage_worker")
+    await assert.rejects(verifyPgWorkerRoleBoundary(pool,target),/unsafe_pg_worker_role_boundary/)
+    await pg.exec("RESET ROLE; SET SESSION AUTHORIZATION postgres; REVOKE model_shadow_reader FROM agentstudio_stage_worker")
+    await pg.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic predecessor') ON CONFLICT DO NOTHING")
+    for(const migration of ["024_bound_dispatch_identity","025_workflow_model_identity","026_workflow_tool_identity","027_workflow_agent_identity","028_autonomous_agent_identity","029_mcp_connections","030_mcp_tool_identity","031_smithery_managed"])
+      await pg.exec(readFileSync(path.join(root,"db/postgres/migrations/pg_v9_"+migration+".sql"),"utf8").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+    const check=async()=>{
+      await pg.exec("SET SESSION AUTHORIZATION agentstudio_stage_worker")
+      try{await verifyPgWorkerRoleBoundary(pool,target)}finally{await pg.exec("RESET ROLE; SET SESSION AUTHORIZATION postgres")}
+    }
+    await check()
+    for(const [grant,revoke] of [
+      ["SELECT(api_key_nonce) ON agentstudio.smithery_credentials TO agentstudio_api","SELECT(api_key_nonce) ON agentstudio.smithery_credentials FROM agentstudio_api"],
+      ["SELECT(value_tag) ON agentstudio.mcp_connection_headers TO agentstudio_stage_worker","SELECT(value_tag) ON agentstudio.mcp_connection_headers FROM agentstudio_stage_worker"],
+      ["SELECT(namespace) ON agentstudio.smithery_connections TO agentstudio_worker","SELECT(namespace) ON agentstudio.smithery_connections FROM agentstudio_worker"],
+    ]){
+      await pg.exec("GRANT "+grant);await assert.rejects(check(),/unsafe_pg_worker_role_boundary/)
+      await pg.exec("REVOKE "+revoke);await check()
+    }
+    await pg.exec("CREATE ROLE optional_shadow_reader NOLOGIN NOINHERIT; GRANT SELECT ON agentstudio.smithery_credentials TO optional_shadow_reader; GRANT optional_shadow_reader TO agentstudio_stage_worker")
+    await assert.rejects(check(),/unsafe_pg_worker_role_boundary/)
+    await pg.exec("REVOKE optional_shadow_reader FROM agentstudio_stage_worker");await check()
+    assert.ok(SQL.every(s=>!/^\s*(?:INSERT|UPDATE|DELETE|CREATE|DROP|TRUNCATE|ALTER)\b/i.test(s)))
   }finally{await pg.close()}
 })
 

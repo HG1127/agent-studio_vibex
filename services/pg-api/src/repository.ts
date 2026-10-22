@@ -3,6 +3,7 @@ import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import {parseAgentHttpTools} from "./agent-http-tools.ts"
 import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -206,7 +207,7 @@ export async function verifyDatabaseRole(pool:SqlPool):Promise<void> {
     const role=roles.rows[0]
     if(!role || role.admin || role.bypass || role.username==="agentstudio_admin")
       throw new Error("unsafe_database_role")
-    await client.query("BEGIN")
+    await client.query("BEGIN READ ONLY")
     try {
       await client.query("SET LOCAL ROLE agentstudio_api")
       const roleResult=await client.query<{name:string}>(
@@ -214,6 +215,7 @@ export async function verifyDatabaseRole(pool:SqlPool):Promise<void> {
       )
       if(roleResult.rows[0]?.name!=="agentstudio_api")
         throw new Error("database_api_role_unavailable")
+      await verifyOptionalCredentialBoundary(client,"api")
     } finally {await client.query("ROLLBACK")}
   } finally {client.release()}
 }

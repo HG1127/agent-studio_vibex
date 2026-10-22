@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState,type FormEvent} from "react"
 import {PgNativePilotError,type PgNativeAgent,type AgentMcpTool,type PgNativeMcpConnection,type createPgNativePilotApi} from "@/lib/pgNativePilotApi"
-import {mcpChoices,readyMcpBinding} from "@/lib/pgNativeMcpConnection"
+import {mcpChoices,readyMcpBinding,appendAgentMcpChoice} from "@/lib/pgNativeMcpConnection"
 import {useMcpConnections} from "./useMcpConnections"
 const button="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium disabled:opacity-50"
 export default function PgNativeAgentMcpToolsPanel({api,agents,active,enabled,onSaved,onExpired}:{api:ReturnType<typeof createPgNativePilotApi>;
@@ -51,7 +51,7 @@ export function AgentMcpForm({api,role,connections,enabled,onBusy,onSaved,onExpi
         const current=!selected||selected.connection_revision===choice.binding.connection_revision&&selected.catalog_sha256===choice.binding.catalog_sha256
         return <div key={choice.binding.connection_id+":"+choice.binding.tool_name} className="space-y-2 rounded-xl border border-slate-100 p-3">
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={Boolean(selected)} disabled={!selected&&(selection.length>=10||remaining+selection.length>=20)}
-            onChange={event=>setSelection(previous=>event.target.checked?[...previous,{name:choice.alias,...choice.binding}]:previous.filter(tool=>tool!==selected))}/><span className="break-words">{choice.title}</span></label>
+            onChange={event=>setSelection(previous=>event.target.checked?appendAgentMcpChoice(previous,choice):previous.filter(tool=>tool.name!==selected?.name))}/><span className="break-words">{choice.title}</span></label>
           <p className="whitespace-pre-wrap break-words text-xs text-slate-600">{choice.description}</p>
           {selected&&!current&&<button type="button" className={button} onClick={()=>setSelection(previous=>previous.map(tool=>tool===selected?{name:tool.name,...choice.binding}:tool))}>采用当前 MCP 工具目录与版本</button>}
         </div>

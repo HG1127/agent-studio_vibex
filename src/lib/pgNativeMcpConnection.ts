@@ -46,3 +46,12 @@ export function mcpChoices(connections:PgNativeMcpConnection[]){
     binding:{connection_id:connection.id,connection_revision:connection.revision,tool_name:tool.name,catalog_sha256:connection.catalog_sha256!},
   }])??[]:[])
 }
+export function appendAgentMcpChoice(current:AgentMcpTool[],choice:Pick<ReturnType<typeof mcpChoices>[number],"alias"|"binding">):AgentMcpTool[]{
+  const selected=parseAgentMcpTools(current)
+  if(selected.some(tool=>tool.connection_id===choice.binding.connection_id&&tool.tool_name===choice.binding.tool_name))return selected
+  const names=new Set(selected.map(tool=>tool.name));let name=choice.alias,index=2
+  // Existing aliases belong to the saved Agent. A changed catalog position
+  // must not rename them or allocate the same alias to a newly selected tool.
+  while(names.has(name))name=choice.alias+"_"+index++
+  return parseAgentMcpTools([...selected,{name,...choice.binding}])
+}

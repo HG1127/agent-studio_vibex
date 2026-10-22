@@ -18,6 +18,7 @@ on:
       - 'codex/pg18-mcp-discovery-20261023'
       - 'codex/pg18-mcp-execution-20261023'
       - 'codex/pg18-smithery-managed-20261023'
+      - 'codex/pg18-credential-boundary-20261023'
   workflow_dispatch:
 
 permissions:
@@ -52,6 +53,7 @@ jobs:
           pnpm exec tsc -p tsconfig.app.json --noEmit
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-autonomous-session.test.mjs tests/pg-native-autonomous-render.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
+          pnpm test:pg18:credential-boundary
           pnpm test:pg18:smithery
           pnpm test:pg18:mcp-execution
           pnpm test:pg18:mcp-discovery
@@ -60,6 +62,15 @@ jobs:
           pnpm test:pg18:workflow-authoring
           pnpm test:pg18:workflow-canvas
           pnpm build:pg18:trial
+      - name: Readonly review package dependency closure
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 tests/pg18-worker-review-bundle.test.mjs tests/pg18-nonroot-worker-preflight-bundle.test.mjs tests/pg18-native-worker-readonly.test.mjs
+          python3 -m unittest discover -s tests -p 'test_baota_pg18_*worker*preflight*.py'
+          node ops/build-pg18-native-api-preflight-bundle.mjs --output-dir "$RUNNER_TEMP/pg18-native-api-review"
       - name: Install isolated Chromium on the disposable runner
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual browser / Cookie / SQL / private mTLS, synthetic model only

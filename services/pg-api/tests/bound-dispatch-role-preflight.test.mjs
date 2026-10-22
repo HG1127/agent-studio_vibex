@@ -43,6 +43,24 @@ test("private Broker preflight validates actual isolated role grants and rejects
       finally{await pg.exec("RESET ROLE; SET SESSION AUTHORIZATION postgres")}
     }
     for(const kind of Object.keys(login))await check(kind)
+    // No capability flags are enabled here. Installed optional schemas must
+    // still participate in the general private-service startup boundary.
+    for(const migration of ["025_workflow_model_identity","026_workflow_tool_identity","027_workflow_agent_identity","028_autonomous_agent_identity","029_mcp_connections","030_mcp_tool_identity","031_smithery_managed"])
+      await pg.exec(sql("migrations/pg_v9_"+migration+".sql"))
+    for(const kind of Object.keys(login))await check(kind)
+    for(const [grant,revoke,kind] of [
+      ["SELECT(value_nonce) ON agentstudio.mcp_connection_headers TO agentstudio_api","SELECT(value_nonce) ON agentstudio.mcp_connection_headers FROM agentstudio_api","api"],
+      ["SELECT(api_key_tag) ON agentstudio.smithery_credentials TO agentstudio_stage_login","SELECT(api_key_tag) ON agentstudio.smithery_credentials FROM agentstudio_stage_login","api"],
+      ["SELECT(namespace) ON agentstudio.smithery_connections TO agentstudio_bound_dispatch","SELECT(namespace) ON agentstudio.smithery_connections FROM agentstudio_bound_dispatch","identity"],
+      ["UPDATE(key_tail) ON agentstudio.smithery_credentials TO agentstudio_model_broker","UPDATE(key_tail) ON agentstudio.smithery_credentials FROM agentstudio_model_broker","broker"],
+    ]){
+      await pg.exec("GRANT "+grant);await assert.rejects(check(kind),/unsafe_bound_dispatch_database_role/)
+      await pg.exec("REVOKE "+revoke);await check(kind)
+    }
+    await pg.exec("ALTER TABLE agentstudio.smithery_connections NO FORCE ROW LEVEL SECURITY")
+    await assert.rejects(check("api"),/unsafe_bound_dispatch_database_role/)
+    await pg.exec("ALTER TABLE agentstudio.smithery_connections FORCE ROW LEVEL SECURITY")
+    await check("api")
     await pg.exec("GRANT pg_read_server_files TO agentstudio_bound_dispatch_login")
     await assert.rejects(check("identity"),/unsafe_bound_dispatch_database_role/)
     await pg.exec("REVOKE pg_read_server_files FROM agentstudio_bound_dispatch_login")

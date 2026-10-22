@@ -34,6 +34,7 @@ import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "./mcp-privi
 import {SmitheryRepository} from "./smithery-repository.ts"
 import {createSmitheryNetwork} from "./smithery-network.ts"
 import {verifySmitheryPrivileges} from "./smithery-privileges.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
@@ -320,6 +321,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
           if(!role||role.role!=="agentstudio_model_broker"||
              role.api!==false||role.worker!==false||
              role.keyReadable!==true||role.writeAllowed!==false)reject()
+          await verifyOptionalCredentialBoundary({
+            async query<Row>(sql:string,params:unknown[]=[]){const value=await db.query(sql,params);return {rows:value.rows as Row[]}},
+            release(){/* The enclosing transaction owns this connection. */},
+          },"broker")
         }finally{await db.query("ROLLBACK")}
       }finally{db.release()}
     }

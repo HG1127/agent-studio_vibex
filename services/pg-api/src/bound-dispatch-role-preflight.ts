@@ -1,6 +1,7 @@
 // Read-only checks for each independent login used by the private Broker.
 import type {SqlPool} from "./contracts.ts"
 import {verifyPgRuntimeTarget,type PgRuntimeTarget} from "./pg-runtime-target.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 export type BoundDispatchRole="api"|"identity"|"broker"
 const groups={api:"agentstudio_api",identity:"agentstudio_bound_dispatch",broker:"agentstudio_model_broker"}
 const logins={api:"agentstudio_stage_login",identity:"agentstudio_bound_dispatch_login",broker:"agentstudio_model_broker_login"}
@@ -87,6 +88,7 @@ export async function verifyBoundDispatchPrivileges(
        p.modelSecret!==(kind==="broker")||p.toolSecret!==(kind==="broker")||
        p.runBody!==(kind==="api")||p.modelWrite!==(kind==="api")||
        p.resolveLease!==(kind==="identity"))refuse()
+    await verifyOptionalCredentialBoundary(db,kind)
   }catch{refuse()}
   finally{
     let rollbackFailed=false

@@ -67,7 +67,8 @@
     "test:pg18:agent-http-tools": "node --experimental-strip-types --test --test-concurrency=2 services/pg-api/tests/agent-http-tools.test.mjs tests/pg-native-agent-http-tools.test.mjs",
     "test:pg18:mcp-discovery": "node --experimental-strip-types --test --test-concurrency=2 services/pg-api/tests/mcp-discovery.test.mjs services/pg-api/tests/mcp-connection.test.mjs tests/pg-native-mcp.test.mjs",
     "test:pg18:mcp-execution": "node --experimental-strip-types --test --test-concurrency=2 services/pg-api/tests/mcp-call.test.mjs services/pg-api/tests/mcp-execution.test.mjs tests/pg-native-mcp-execution.test.mjs",
-    "test:pg18:smithery": "node --experimental-strip-types --test --test-concurrency=2 services/pg-api/tests/smithery-protocol.test.mjs services/pg-api/tests/smithery-repository.test.mjs services/pg-api/tests/smithery-http.test.mjs tests/pg-native-smithery.test.mjs"
+    "test:pg18:smithery": "node --experimental-strip-types --test --test-concurrency=2 services/pg-api/tests/smithery-protocol.test.mjs services/pg-api/tests/smithery-repository.test.mjs services/pg-api/tests/smithery-http.test.mjs tests/pg-native-smithery.test.mjs",
+    "test:pg18:credential-boundary": "node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/bound-dispatch-role-preflight.test.mjs services/pg-api/tests/worker-role-readonly-preflight.test.mjs tests/pg-native-mcp-execution.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

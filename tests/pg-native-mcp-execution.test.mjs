@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {createPgNativePilotApi} from "../src/lib/pgNativePilotApi.ts"
-import {readyMcpBinding,readyAgentMcpTools,mcpChoices} from "../src/lib/pgNativeMcpConnection.ts"
+import {readyMcpBinding,readyAgentMcpTools,mcpChoices,appendAgentMcpChoice} from "../src/lib/pgNativeMcpConnection.ts"
 import {autonomousApprovalReady,autonomousReview} from "../src/lib/pgNativeAutonomousAgentSession.ts"
 import {workflowApprovalReady} from "../src/lib/pgNativeWorkflowRunSession.ts"
 import {parseWorkflowGraphV2} from "../services/pg-api/src/workflow-graph-v2.ts"
@@ -65,6 +65,20 @@ test("direct and Agent MCP approvals pin grant, catalog hash, owner metadata and
   assert.equal(workflowApprovalReady(agentDetail),true)
   assert.equal(workflowApprovalReady({...agentDetail,review:{...agentDetail.review,mcpConnections:[]}}),false)
   assert.match(autonomousReview(pending).text,/lookup/);assert.equal(autonomousReview(pending).charged,false)
+})
+test("an Agent can retain a saved MCP alias and add another tool after the server reorders its catalog",async()=>{
+  const original=mcpChoices([connection])[0],updated={...connection,revision:3,catalog_sha256:"c".repeat(64),catalog:{...connection.catalog,tools:[
+    {...connection.catalog.tools[0],name:"second"},connection.catalog.tools[0]]}}
+  const choices=mcpChoices([updated]),kept={name:original.alias,...choices.find(choice=>choice.binding.tool_name==="lookup").binding}
+  assert.equal(choices[0].alias,kept.name)
+  const selected=appendAgentMcpChoice([kept],choices[0])
+  assert.equal(selected[0].name,kept.name);assert.equal(new Set(selected.map(tool=>tool.name)).size,2)
+  assert.deepEqual(appendAgentMcpChoice(selected,choices[0]),selected)
+  const current={...role,spec:{...role.spec,tools:["calculate",http.name,kept.name],mcp_tools:[kept]}},calls=[]
+  const api=createPgNativePilotApi(async(url,options)=>{calls.push({url,options});return Response.json({item:options.method==="GET"?current:{...current,revision:4,spec:JSON.parse(options.body).spec}})},"")
+  const saved=await api.updateAgentMcpTools(agentId,3,selected)
+  assert.deepEqual(saved.spec.mcp_tools,selected);assert.deepEqual(saved.spec.http_tools,[http]);assert.equal(saved.spec.tools.includes(kept.name),true)
+  assert.equal(saved.spec.tools.includes(selected[1].name),true);assert.equal(calls.filter(call=>call.options.method==="PATCH").length,1)
 })
 
 test("MCP workflow transfer removes employee bindings; same-owner local copy retains the frozen reference",()=>{

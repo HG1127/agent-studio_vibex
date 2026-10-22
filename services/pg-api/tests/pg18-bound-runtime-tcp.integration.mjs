@@ -40,6 +40,7 @@ import {createMcpToolExecutor} from "../src/mcp-call.ts"
 import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "../src/mcp-privileges.ts"
 import {SmitheryRepository} from "../src/smithery-repository.ts"
 import {verifySmitheryPrivileges} from "../src/smithery-privileges.ts"
+import {verifyOptionalCredentialBoundary} from "../src/optional-credential-boundary.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
@@ -203,6 +204,20 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
     const workerPool=adapter(byLogin.agentstudio_stage_worker)
+    const inspectWorkerOptional=async()=>{
+      const db=await workerPool.connect()
+      try{await db.query("BEGIN READ ONLY");try{
+        await db.query("SET LOCAL ROLE agentstudio_api");await verifyOptionalCredentialBoundary(db,"worker")
+      }finally{await db.query("ROLLBACK")}}finally{db.release()}
+    }
+    await inspectWorkerOptional()
+    await admin.query("GRANT SELECT(value_tag) ON agentstudio.mcp_connection_headers TO agentstudio_stage_worker")
+    await assert.rejects(inspectWorkerOptional(),/unsafe_optional_credential_boundary/)
+    await admin.query("REVOKE SELECT(value_tag) ON agentstudio.mcp_connection_headers FROM agentstudio_stage_worker")
+    await admin.query("GRANT SELECT(api_key_nonce) ON agentstudio.smithery_credentials TO agentstudio_api")
+    await assert.rejects(inspectWorkerOptional(),/unsafe_optional_credential_boundary/)
+    await admin.query("REVOKE SELECT(api_key_nonce) ON agentstudio.smithery_credentials FROM agentstudio_api")
+    await inspectWorkerOptional()
     for(const [kind,pool] of [["api",apiPool],["identity",identityPool],["broker",brokerPool]])
       {await verifyBoundDispatchPrivileges(pool,kind);await verifyWorkflowModelIdentityPrivileges(pool,kind);await verifyWorkflowEffectIdentityPrivileges(pool,kind,"tool")}
     for(const [kind,pool] of [["api",apiPool],["identity",identityPool],["broker",brokerPool]])
