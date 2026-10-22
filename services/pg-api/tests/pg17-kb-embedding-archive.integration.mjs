@@ -409,7 +409,20 @@ test('PG17 TCP: W17 inert embedding archive, atomic SQL rollback, retry, RLS and
     await assert.rejects(admin.query('TRUNCATE '+archives.map(t=>'agentstudio.'+t).join(',')),
       e=>e.code==='P0001'&&e.message==='immutable_embedding_archive')
     await zero(admin,unused)
-    for(const table of ['model_connections','agent_studio_kb_embedding_queue'])
+    const modelConfig=(await admin.query(
+      "SELECT count(*)::int AS n FROM agentstudio.model_connections")).rows[0]
+    assert.equal(modelConfig.n,0,"historical imports must never activate PG model configuration")
+    const configRls=(await admin.query(
+      "SELECT relrowsecurity,relforcerowsecurity FROM pg_class "+
+      "WHERE oid='agentstudio.model_connections'::regclass")).rows[0]
+    assert.deepEqual(configRls,{relrowsecurity:true,relforcerowsecurity:true})
+    const secretAcl=(await admin.query(
+      "SELECT has_column_privilege('agentstudio_api',"+
+      "'agentstudio.model_connections','api_key_ciphertext','SELECT') AS api,"+
+      "has_column_privilege('agentstudio_worker',"+
+      "'agentstudio.model_connections','api_key_ciphertext','SELECT') AS worker")).rows[0]
+    assert.deepEqual(secretAcl,{api:false,worker:false})
+    for(const table of ['agent_studio_kb_embedding_queue'])
       assert.equal((await admin.query('SELECT to_regclass($1) AS t',['agentstudio.'+table])).rows[0].t,null)
     assert.equal(await fingerprint(admin),first)
     f.verify();different.verify()

@@ -18,16 +18,16 @@ test("real PostgreSQL engine executes V8 empty staging schema with pgvector",asy
   try {
     await pg.exec(sql)
     const tables=await pg.query("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='agentstudio'")
-    assert.equal(tables.rows[0].n,20)
+    assert.equal(tables.rows[0].n,23)
     const vectorExt=await pg.query("SELECT extname FROM pg_extension WHERE extname='vector'")
     assert.equal(vectorExt.rows[0].extname,"vector")
     const policies=await pg.query("SELECT count(*)::int AS n FROM pg_policies WHERE schemaname='agentstudio'")
-    assert.equal(policies.rows[0].n,22)
+    assert.equal(policies.rows[0].n,27)
     const ownerRls=await pg.query(
       "SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "+
       "WHERE n.nspname='agentstudio' AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity",
     )
-    assert.equal(ownerRls.rows[0].n,19)
+    assert.equal(ownerRls.rows[0].n,22)
 
     // Real RLS with two synthetic employees, using a verified issuer/sub pair
     // mapped inside PostgreSQL. The in-memory engine has no TCP listener.
