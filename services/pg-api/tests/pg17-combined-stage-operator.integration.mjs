@@ -748,7 +748,9 @@ test('PG17 TCP: W20 unified identity + Agent + combined KB + W9, NO-GO',async()=
     }
     checkpoint='inert_runtime_and_unchanged_source'
     await zero(admin,unused)
-    for(const table of ['model_connections','agent_studio_kb_embedding_queue','agent_studio_kb_embedding_settings'])
+    // Fresh schemas contain connection tables; legacy imports must leave them empty.
+    await zero(admin,['model_connections','tool_connections','tool_connection_headers'])
+    for(const table of ['agent_studio_kb_embedding_queue','agent_studio_kb_embedding_settings'])
       assert.equal((await admin.query('SELECT to_regclass($1) AS t',['agentstudio.'+table])).rows[0].t,null)
     assert.equal(await fingerprint(admin),first)
     f.verify();different.verify()

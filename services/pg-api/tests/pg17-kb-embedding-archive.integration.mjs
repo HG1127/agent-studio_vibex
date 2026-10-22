@@ -409,7 +409,9 @@ test('PG17 TCP: W17 inert embedding archive, atomic SQL rollback, retry, RLS and
     await assert.rejects(admin.query('TRUNCATE '+archives.map(t=>'agentstudio.'+t).join(',')),
       e=>e.code==='P0001'&&e.message==='immutable_embedding_archive')
     await zero(admin,unused)
-    for(const table of ['model_connections','agent_studio_kb_embedding_queue'])
+    // Archived embedding settings do not become live provider configuration.
+    await zero(admin,['model_connections','tool_connections','tool_connection_headers'])
+    for(const table of ['agent_studio_kb_embedding_queue'])
       assert.equal((await admin.query('SELECT to_regclass($1) AS t',['agentstudio.'+table])).rows[0].t,null)
     assert.equal(await fingerprint(admin),first)
     f.verify();different.verify()

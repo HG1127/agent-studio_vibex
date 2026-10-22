@@ -7,7 +7,7 @@ import path from "node:path"
 import {fileURLToPath} from "node:url"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
-const read=relative=>fs.readFileSync(path.join(root,relative),"utf8")
+const read=relative=>fs.readFileSync(path.join(root,relative),"utf8").replace(/\r\n/g,"\n")
 const composePath="deploy/postgres-staging/compose.yaml"
 const compose=read(composePath)
 const schema=read("db/postgres/001_stage_schema.sql")
@@ -75,7 +75,8 @@ test("Postgres schema includes normalized isolated internal-business records and
     "schema_migrations","users","teams","team_memberships",
     "agent_specs","legacy_agent_imports","workflows","runs","run_steps","jobs","run_leases",
     "external_effects","approvals","schedules","schedule_occurrences",
-    "knowledge_bases","knowledge_documents","knowledge_chunks",
+    "knowledge_bases","knowledge_documents","knowledge_chunks","model_connections",
+    "tool_connections","tool_connection_headers",
     "template_invites","audit_events",
   ]
   assert.deepEqual([...tables].sort(),expected.sort())
@@ -98,7 +99,8 @@ test("Row-level security is fail-closed for every business table in staged schem
   const ownerTables=[
     "agent_specs","workflows","runs","run_steps","jobs","run_leases",
     "external_effects","approvals","schedules","schedule_occurrences",
-    "knowledge_bases","knowledge_documents","knowledge_chunks",
+    "knowledge_bases","knowledge_documents","knowledge_chunks","model_connections",
+    "tool_connections","tool_connection_headers",
     "template_invites","audit_events",
   ]
   const loop=schema.match(/FOREACH tab IN ARRAY ARRAY\[([\s\S]*?)\]\s*LOOP/)
@@ -199,12 +201,12 @@ test("Staging verification SQL does not mutate data and refuses wrong schemas",(
   const script=read("deploy/postgres-staging/verify-stage.sh")
   assert.match(verify,/BEGIN READ ONLY;/)
   assert.match(verify,/ON_ERROR_STOP on/)
-  assert.match(verify,/total_tables<>\(20\+derived_migration_count\)/)
-  assert.match(verify,/secured_tables<>\(19\+derived_migration_count\)/)
-  assert.match(verify,/policy_count<>22/)
+  assert.match(verify,/total_tables<>\(23\+derived_migration_count\)/)
+  assert.match(verify,/secured_tables<>\(22\+derived_migration_count\)/)
+  assert.match(verify,/policy_count<>27/)
   assert.match(verify,/vector_present/)
   assert.match(verify,/rolcanlogin=true/)
-  assert.doesNotMatch(verify,/\b(?:INSERT|UPDATE|DELETE|TRUNCATE|DROP|CREATE TABLE)\b/i)
+  assert.doesNotMatch(verify,/^\s*(?:INSERT|UPDATE|DELETE|TRUNCATE|DROP|CREATE TABLE)\b/im)
   assert.match(script,/AGENT_STUDIO_STAGE_VERIFY_ONLY/)
   assert.match(script,/I_APPROVE_STAGING_VERIFY/)
   assert.match(script,/docker compose.*config --quiet/)

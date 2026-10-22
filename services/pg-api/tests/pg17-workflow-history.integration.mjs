@@ -443,7 +443,9 @@ test('PG17 TCP: W23 Workflow history atomic archive, resume, replay, RLS, NO-GO'
       'DELETE FROM agentstudio.legacy_workflow_history','TRUNCATE agentstudio.legacy_workflow_history'])
       await assert.rejects(admin.query(sql),e=>e.code==='P0001'&&e.message==='legacy_workflow_history_immutable')
     await zero(admin,unused)
-    for(const table of ['model_connections','agent_studio_kb_embedding_queue'])
+    // Importing historical events must never provision live provider credentials.
+    await zero(admin,['model_connections','tool_connections','tool_connection_headers'])
+    for(const table of ['agent_studio_kb_embedding_queue'])
       assert.equal((await admin.query('SELECT to_regclass($1) AS t',['agentstudio.'+table])).rows[0].t,null)
     assert.deepEqual((await admin.query('SELECT status FROM agentstudio.users ORDER BY external_subject')).rows,
       [{status:'disabled'},{status:'active'}])

@@ -607,7 +607,9 @@ test('PG17 TCP: W25 Agent events parent/child archive, rollback, FK, RLS, NO-GO'
       'DELETE FROM agentstudio.'+table,'TRUNCATE agentstudio.'+table])
       await assert.rejects(admin.query(sql),e=>archiveMutationBlocked(e,table,sql))
     await zero(admin,unused)
-    for(const table of ['model_connections','agent_studio_kb_embedding_queue'])
+    // Importing historical events must never provision live provider credentials.
+    await zero(admin,['model_connections','tool_connections','tool_connection_headers'])
+    for(const table of ['agent_studio_kb_embedding_queue'])
       assert.equal((await admin.query('SELECT to_regclass($1) AS t',['agentstudio.'+table])).rows[0].t,null)
     assert.deepEqual((await admin.query('SELECT status FROM agentstudio.users ORDER BY external_subject')).rows,
       [{status:'disabled'},{status:'disabled'}])

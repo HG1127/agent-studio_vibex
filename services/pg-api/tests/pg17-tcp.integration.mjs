@@ -165,13 +165,13 @@ test("PostgreSQL 17 TCP: signed HTTP, true multi-worker locking, RLS, model fenc
     const tables=await admin.query(
       "SELECT count(*)::integer AS n FROM pg_tables "+
       "WHERE schemaname='agentstudio'")
-    assert.equal(tables.rows[0].n,37)
+    assert.equal(tables.rows[0].n,40)
     const safeguarded=await admin.query(
       "SELECT count(*)::integer AS n FROM pg_class AS c "+
       "JOIN pg_namespace AS n ON n.oid=c.relnamespace "+
       "WHERE n.nspname='agentstudio' AND c.relkind='r' "+
       "AND c.relrowsecurity AND c.relforcerowsecurity")
-    assert.equal(safeguarded.rows[0].n,36)
+    assert.equal(safeguarded.rows[0].n,39)
 
     const {apiPassword,workerPassword}=await safeRoleBootstrap(
       admin,connection.password)
