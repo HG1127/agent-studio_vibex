@@ -1,5 +1,6 @@
 import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
   type AgentSpecInput } from "./contracts.ts"
+import {exactProviderEndpoint} from "./model-connection-probe.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -62,6 +63,55 @@ function toSpecRow(row:SpecRow):SpecRow {
 }
 
 
+// Resolve *all* selected KB IDs inside the same verified owner transaction.
+// A non-existent, unshared or another employee\'s KB cannot enter the spec.
+async function verifyKnowledgeSelection(db:SqlClient,actor:string,
+  spec:AgentSpecInput):Promise<void>{
+  const ids=spec.knowledge_base_ids??[]
+  if(!Array.isArray(ids)||ids.length>3||
+     ids.some(id=>!isUuid(id))||new Set(ids).size!==ids.length||
+     (ids.length>0&&!spec.tools.includes("knowledge_search")))
+    throw new HttpError(400,"invalid_agent_knowledge_scope")
+  if(!ids.length)return
+  const rows=await db.query<{id:string}>(
+    "SELECT id FROM agentstudio.knowledge_bases "+
+    "WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) "+
+    "AND visibility='private'",[actor,ids])
+  if(rows.rows.length!==ids.length ||
+     rows.rows.some(row=>!ids.includes(row.id)))
+    throw new HttpError(404,"knowledge_base_not_found")
+}
+
+// Bind an Agent to a model through an owner-scoped PostgreSQL SELECT.
+// Only a reference and revision are saved in the Agent spec: never a key,
+// encryption envelope, arbitrary URL or browser-controlled user ID.
+async function verifyModelBinding(db:SqlClient,actor:string,
+  spec:AgentSpecInput):Promise<void>{
+  const binding=spec.model_binding
+  if(!binding)return
+  const result=await db.query<{
+    revision:string|number;enabled:boolean;status:string
+    models:string[]|string;provider:"openai"|"anthropic"|"gemini"
+    base_url:string
+  }>("SELECT revision,enabled,status,models,provider,base_url "+
+    "FROM agentstudio.model_connections WHERE id=$1::uuid "+
+    "AND owner_user_id=$2::uuid",[binding.connection_id,actor])
+  const row=result.rows[0]
+  if(!row)throw new HttpError(404,"model_connection_not_found")
+  if(Number(row.revision)!==binding.connection_revision)
+    throw new HttpError(409,"model_connection_revision_changed")
+  if(!row.enabled||row.status!=="ok")
+    throw new HttpError(409,"model_connection_not_ready")
+  let models:unknown=row.models
+  if(typeof models==="string"){
+    try{models=JSON.parse(models)}catch{models=[]}
+  }
+  if(!Array.isArray(models)||!models.includes(binding.model_id))
+    throw new HttpError(409,"model_not_in_connection")
+  try{exactProviderEndpoint(row)}
+  catch{throw new HttpError(409,"model_provider_not_allowlisted")}
+}
+
 export class AgentSpecRepository {
   readonly pool:SqlPool
   constructor(pool:SqlPool) {this.pool=pool}
@@ -90,6 +140,8 @@ export class AgentSpecRepository {
   }
   create(identity:Identity,name:string,spec:AgentSpecInput):Promise<SpecRow> {
     return withActor(this.pool,identity,async (db,actor)=>{
+      await verifyKnowledgeSelection(db,actor,spec)
+      await verifyModelBinding(db,actor,spec)
       const result=await db.query<SpecRow>(
         "INSERT INTO agentstudio.agent_specs "+
         "(owner_user_id,name,spec,requires_approval) "+
@@ -107,6 +159,8 @@ export class AgentSpecRepository {
     if(!Number.isSafeInteger(revision) || revision<1)
       throw new HttpError(400,"invalid_revision")
     return withActor(this.pool,identity,async (db,actor)=>{
+      await verifyKnowledgeSelection(db,actor,spec)
+      await verifyModelBinding(db,actor,spec)
       const result=await db.query<SpecRow>(
         "UPDATE agentstudio.agent_specs "+
         "SET name=$3::text,spec=$4::jsonb,requires_approval=true,"+

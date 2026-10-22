@@ -51,3 +51,13 @@ jobs:
           AGENT_STUDIO_PG18_CI_ADMIN_USER: "agentstudio_admin"
           AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
         run: node --experimental-strip-types --test services/pg-api/tests/pg18-tcp.integration.mjs
+      - name: Genuine loopback mTLS certificate handshake (synthetic only)
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: "agentstudio_pg18_ci"
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: "agentstudio_admin"
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: pnpm --dir services/pg-api run test:pg18:mtls:ci

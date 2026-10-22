@@ -7,6 +7,9 @@ import {fileURLToPath} from "node:url"
 import {isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
 import type {ModelInput,ModelProvider} from "./model-provider.ts"
 import type {LeasedPrepareJob} from "./agent-worker.ts"
+import {gatherAgentKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
+import {boundModelFingerprint,type BoundModelClaim,type BoundModelDispatchResult}
+  from "./owner-model-dispatch.ts"
 
 const sql=(name:string)=>readFileSync(
   fileURLToPath(new URL("../../../db/postgres/"+name,import.meta.url)),"utf8")
@@ -14,6 +17,7 @@ const claimSql=sql("006_claim_agent_model.sql")
 const finishSql=sql("003_finish_job.sql")
 const hash=(input:unknown)=>createHash("sha256")
   .update(JSON.stringify(input)).digest("hex")
+type BoundDispatchGateway=(claim:BoundModelClaim,input:ModelInput)=>Promise<BoundModelDispatchResult>
 type ModelTickStatus="idle"|"succeeded"|"stale"|"quarantined"|"blocked"|"failed"
 export type ModelTick={status:ModelTickStatus;run_id?:string}
 interface LeasedModelJob extends LeasedPrepareJob {
@@ -61,12 +65,17 @@ export class AgentModelWorker {
   readonly pool:SqlPool
   readonly workerId:string
   readonly provider:ModelProvider
-  constructor(pool:SqlPool,workerId:string,provider:ModelProvider){
+  readonly boundModelDispatch?:BoundDispatchGateway
+  constructor(pool:SqlPool,workerId:string,provider:ModelProvider,
+    options:{boundModelDispatch?:BoundDispatchGateway;boundExecutionApproved?:boolean}={}){
     if(!/^[a-zA-Z0-9_-]{1,120}$/.test(workerId))
       throw Error("invalid_worker_id")
+    if((!!options.boundModelDispatch)!==(options.boundExecutionApproved===true))
+      throw Error("bound_model_execution_disabled")
     this.pool=pool
     this.workerId=workerId
     this.provider=provider
+    this.boundModelDispatch=options.boundModelDispatch
   }
   async claim(seconds=180):Promise<LeasedModelJob|null>{
     if(!Number.isInteger(seconds)||seconds<60||seconds>300)
@@ -86,7 +95,7 @@ export class AgentModelWorker {
   // Returns only pre-approved owner-scoped input; NO network call in the
   // transaction. Started effect + running state commit atomically.
   async begin(job:LeasedModelJob):
-    Promise<{status:"ready";input:ModelInput}|{status:"stale"|"blocked"}>{
+    Promise<{status:"ready";input:ModelInput;boundModel?:true}|{status:"stale"|"blocked"}>{
     if(!leaseValid(job,this.workerId))return {status:"stale"}
     return tx(this.pool,async db=>{
       await db.query("SET LOCAL ROLE agentstudio_worker")
@@ -119,14 +128,21 @@ export class AgentModelWorker {
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
         [run.agent_spec_id,current.owner_user_id])
       const spec=specs.rows[0]
-      if(!spec||Number(spec.revision)!==version){
-        const checkpoint={...run.checkpoint,stage:"spec_revision_changed"}
+      // No broker transport is registered in model-worker-loop.ts. The
+      // original fixed-provider Worker MUST still refuse employee bindings.
+      const selectedBinding=!!spec?.spec&&
+        Object.hasOwn(spec.spec,"model_binding")
+      if(!spec||Number(spec.revision)!==version||
+         (selectedBinding&&!this.boundModelDispatch)){
+        const reason=selectedBinding&&!this.boundModelDispatch?
+          "model_binding_runtime_not_enabled":"spec_revision_changed"
+        const checkpoint={...run.checkpoint,stage:reason}
         const paused=await db.query<{id:string}>(
           "UPDATE agentstudio.runs SET status='paused',checkpoint=$3::jsonb,"+
-          "last_error_code='spec_revision_changed',"+
+          "last_error_code=$4::text,"+
           "updated_at=clock_timestamp() WHERE id=$1::uuid "+
           "AND owner_user_id=$2::uuid AND status='queued' RETURNING id",
-          [current.run_id,current.owner_user_id,JSON.stringify(checkpoint)])
+          [current.run_id,current.owner_user_id,JSON.stringify(checkpoint),reason])
         if(paused.rows.length!==1)throw Error("model_run_state_race")
         await db.query("SET LOCAL ROLE agentstudio_worker")
         const done=await db.query<{id:string}>(finishSql,[
@@ -136,21 +152,46 @@ export class AgentModelWorker {
         return {status:"blocked"}
       }
       const data=spec.spec
+      const binding=selectedBinding?data.model_binding as Record<string,unknown>:null
+      if(selectedBinding&&(!binding||typeof binding!=="object"||
+        Array.isArray(binding)||Object.keys(binding).length!==3||
+        !isUuid(binding.connection_id)||
+        !Number.isSafeInteger(binding.connection_revision)||
+        (binding.connection_revision as number)<1||
+        typeof binding.model_id!=="string"||
+        !/^[A-Za-z0-9._:/-]{1,120}$/.test(binding.model_id)))
+        throw Error("invalid_bound_model_execution_binding")
+      const bases=data.knowledge_base_ids===undefined?[]:data.knowledge_base_ids
+      const evidence=await gatherAgentKnowledgeEvidence(db,current.owner_user_id,
+        bases,data.tools,run.instruction)
       const input:ModelInput={
         goal:typeof data.goal==="string"?data.goal:"",
         instruction:run.instruction,
         taskScope:typeof data.task_scope==="string"?data.task_scope:"",
         deliverables:Array.isArray(data.deliverables)?data.deliverables as string[]:[],
         doneCriteria:Array.isArray(data.done_criteria)?data.done_criteria as string[]:[],
+        ...(Array.isArray(bases)&&bases.length?{
+          knowledgeEvidence:evidence.map(({citation,snippet})=>({citation,snippet}))
+        }:{}),
       }
       if(!input.goal||input.goal.length>2000||input.instruction.length>1200)
         throw Error("model_input_invalid")
-      const fingerprint=hash({input,model_phase:"v8_2"})
+      const fingerprint=selectedBinding?
+        boundModelFingerprint(input,binding):hash({input,model_phase:"v8_2"})
+      const knowledgeAudit=Array.isArray(bases)&&bases.length?{
+        knowledge_mode:"literal_keyword",
+        citations:evidence.map(hit=>hit.citation),
+        sources:evidence.map(hit=>({base_id:hit.baseId,
+          document_id:hit.documentId,chunk_index:hit.chunkIndex,
+          citation:hit.citation})),
+        knowledge_input_sha256:hash(evidence)
+      }:{}
       const step=await db.query<{id:string}>(
         "INSERT INTO agentstudio.run_steps(owner_user_id,run_id,step_key,"+
         "status,metadata) VALUES($1::uuid,$2::uuid,'model','running',"+
-        "'{\"category\":\"approved_text_generation\"}'::jsonb) RETURNING id",
-        [current.owner_user_id,current.run_id])
+        "$3::jsonb) RETURNING id",
+        [current.owner_user_id,current.run_id,
+          JSON.stringify({category:"approved_text_generation",...knowledgeAudit})])
       if(step.rows.length!==1)throw Error("model_step_exists")
       const effect=await db.query<{run_id:string}>(
         "INSERT INTO agentstudio.external_effects "+
@@ -168,7 +209,8 @@ export class AgentModelWorker {
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status='queued' "+
         "RETURNING id",[current.run_id,current.owner_user_id])
       if(updated.rows.length!==1)throw Error("model_run_state_race")
-      return {status:"ready",input}
+      return {status:"ready",input,
+        ...(selectedBinding?{boundModel:true as const}:{})}
     })
   }
   async succeed(job:LeasedModelJob,result:string):Promise<ModelTick>{
@@ -188,7 +230,7 @@ export class AgentModelWorker {
       if(effect.rows.length!==1)throw Error("model_effect_not_started")
       const step=await db.query<{id:string}>(
         "UPDATE agentstudio.run_steps SET status='succeeded',"+
-        "metadata=$3::jsonb,updated_at=clock_timestamp() "+
+        "metadata=metadata || $3::jsonb,updated_at=clock_timestamp() "+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid "+
         "AND step_key='model' AND status='running' RETURNING id",
         [current.run_id,current.owner_user_id,
@@ -382,7 +424,14 @@ export class AgentModelWorker {
       if(stage.status!=="ready")
         return {status:stage.status,run_id:job.run_id}
       started=true
-      const output=await this.provider.generate(stage.input)
+      // Only an explicitly injected, independently authenticated API/Broker
+      // adapter may handle a selected model. The Worker never sees API keys.
+      const output=stage.boundModel?
+        (await this.boundModelDispatch!({
+          run_id:job.run_id,job_id:job.id,lease_token:job.lease_token,
+          lease_version:Number(job.lease_version),lease_owner:this.workerId,
+        },stage.input)).text:
+        await this.provider.generate(stage.input)
       return await this.succeed(job,output)
     }catch{
       // Do not log raw prompts, provider payloads, token, output, or errors.

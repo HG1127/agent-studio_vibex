@@ -77,6 +77,84 @@ CREATE TABLE agentstudio.workflows (
 );
 CREATE INDEX ix_workflows_owner ON agentstudio.workflows(owner_user_id,updated_at DESC);
 
+-- Provider credentials are authenticated-encrypted by the API with a key
+-- delivered independently from PostgreSQL credentials. No plaintext key is
+-- persisted or returned to a browser. This table is owner-only and not granted
+-- to the Worker; external provider calls remain disabled until egress review.
+CREATE TABLE agentstudio.model_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL REFERENCES agentstudio.users(id),
+  name text NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+  provider text NOT NULL CHECK(provider IN ('openai','anthropic','gemini')),
+  base_url text NOT NULL CHECK(length(base_url) BETWEEN 8 AND 2048),
+  api_key_ciphertext bytea NOT NULL CHECK(octet_length(api_key_ciphertext) BETWEEN 1 AND 4096),
+  api_key_nonce bytea NOT NULL CHECK(octet_length(api_key_nonce)=12),
+  api_key_tag bytea NOT NULL CHECK(octet_length(api_key_tag)=16),
+  api_key_tail text NOT NULL CHECK(length(api_key_tail) BETWEEN 1 AND 4),
+  enabled boolean NOT NULL DEFAULT true,
+  status text NOT NULL DEFAULT 'untested'
+    CHECK(status IN ('untested','ok','error')),
+  last_latency_ms integer NOT NULL DEFAULT 0
+    CHECK(last_latency_ms BETWEEN 0 AND 600000),
+  last_checked_at timestamptz,
+  models jsonb NOT NULL DEFAULT '[]'::jsonb
+    CHECK(jsonb_typeof(models)='array' AND jsonb_array_length(models)<=300),
+  last_error text NOT NULL DEFAULT '' CHECK(length(last_error)<=1000),
+  revision bigint NOT NULL DEFAULT 1 CHECK(revision>0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(id,owner_user_id)
+);
+CREATE INDEX ix_model_connections_owner
+  ON agentstudio.model_connections(owner_user_id,updated_at DESC);
+-- Tool endpoints are configuration only in the current PG18 candidate:
+-- no test-call, proxy, or Worker execution route is enabled. Header values
+-- live in a separate encrypted child table so the ordinary API can list key
+-- names and preserve blank fields without SELECT on any credential ciphertext.
+CREATE TABLE agentstudio.tool_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL REFERENCES agentstudio.users(id),
+  name text NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+  description text NOT NULL CHECK(length(description) BETWEEN 1 AND 500),
+  url text NOT NULL CHECK(length(url) BETWEEN 8 AND 1000),
+  method text NOT NULL CHECK(method IN ('GET','POST')),
+  body_template text NOT NULL DEFAULT '' CHECK(length(body_template)<=20000),
+  timeout_s integer NOT NULL DEFAULT 15 CHECK(timeout_s BETWEEN 1 AND 60),
+  enabled boolean NOT NULL DEFAULT true,
+  status text NOT NULL DEFAULT 'untested'
+    CHECK(status IN ('untested','ok','error')),
+  last_latency_ms integer NOT NULL DEFAULT 0
+    CHECK(last_latency_ms BETWEEN 0 AND 600000),
+  last_checked_at timestamptz,
+  last_error text NOT NULL DEFAULT '' CHECK(length(last_error)<=1000),
+  revision bigint NOT NULL DEFAULT 1 CHECK(revision>0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(id,owner_user_id)
+);
+CREATE INDEX ix_tool_connections_owner
+  ON agentstudio.tool_connections(owner_user_id,updated_at DESC);
+
+CREATE TABLE agentstudio.tool_connection_headers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL REFERENCES agentstudio.users(id),
+  tool_connection_id uuid NOT NULL,
+  header_name text NOT NULL
+    CHECK(length(header_name) BETWEEN 1 AND 80
+      AND header_name !~ '[[:space:][:cntrl:]]'),
+  value_ciphertext bytea NOT NULL
+    CHECK(octet_length(value_ciphertext) BETWEEN 8 AND 4096),
+  value_nonce bytea NOT NULL CHECK(octet_length(value_nonce)=12),
+  value_tag bytea NOT NULL CHECK(octet_length(value_tag)=16),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(tool_connection_id,header_name),
+  FOREIGN KEY(tool_connection_id,owner_user_id)
+    REFERENCES agentstudio.tool_connections(id,owner_user_id) ON DELETE CASCADE
+);
+CREATE INDEX ix_tool_connection_headers_owner
+  ON agentstudio.tool_connection_headers(owner_user_id,tool_connection_id);
+
 -- Approved, staging-only migration provenance and legacy-to-UUID crosswalk.
 -- No API/Worker roles may read or write it; normal application runs are NOT
 -- given implicit access to previous PocketBase record IDs.
@@ -149,7 +227,7 @@ CREATE TABLE agentstudio.jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_user_id uuid NOT NULL REFERENCES agentstudio.users(id),
   run_id uuid,
-  kind text NOT NULL CHECK(kind IN ('run_tick','schedule_dispatch','knowledge_ingest')),
+  kind text NOT NULL CONSTRAINT ck_jobs_kind CHECK(kind IN ('run_tick','schedule_dispatch','knowledge_ingest','workflow_tick')),
   dedupe_key text NOT NULL CHECK(length(dedupe_key) BETWEEN 1 AND 200),
   status text NOT NULL DEFAULT 'queued'
     CHECK(status IN ('queued','leased','succeeded','failed','cancelled')),
@@ -241,7 +319,11 @@ CREATE TABLE agentstudio.schedules (
   CHECK (
     (kind='agent' AND agent_spec_id IS NOT NULL AND workflow_id IS NULL)
     OR (kind='workflow' AND workflow_id IS NOT NULL AND agent_spec_id IS NULL)
-  )
+  ),
+  -- The first PostgreSQL scheduler draft capability must NEVER make work due.
+  CONSTRAINT ck_schedule_draft_inert CHECK(
+    recurrence->>'config_format' IS DISTINCT FROM 'pg_schedule_draft_v1'
+    OR (enabled=false AND next_at IS NULL))
 );
 CREATE INDEX ix_schedules_due ON agentstudio.schedules(next_at)
   WHERE enabled=true;
@@ -398,9 +480,17 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agentstudio_worker') THEN
     CREATE ROLE agentstudio_worker NOLOGIN NOINHERIT;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles
+                 WHERE rolname='agentstudio_model_broker') THEN
+    -- No login and no membership for Worker/API. An independently
+    -- authenticated credential broker must receive explicit membership.
+    CREATE ROLE agentstudio_model_broker NOLOGIN NOINHERIT
+      NOSUPERUSER NOBYPASSRLS;
+  END IF;
 END
 $roles$;
 GRANT USAGE ON SCHEMA agentstudio TO agentstudio_api,agentstudio_worker;
+GRANT USAGE ON SCHEMA agentstudio TO agentstudio_model_broker;
 GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA agentstudio TO agentstudio_api;
 -- Migration ledger and team membership grants are controlled by the migrator.
 REVOKE ALL ON agentstudio.legacy_agent_imports FROM agentstudio_api,agentstudio_worker;
@@ -440,6 +530,7 @@ LANGUAGE SQL STABLE AS $actor$
 $actor$;
 REVOKE ALL ON FUNCTION agentstudio.actor_id() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION agentstudio.actor_id() TO agentstudio_api;
+GRANT EXECUTE ON FUNCTION agentstudio.actor_id() TO agentstudio_model_broker;
 
 -- Resolve an independently VERIFIED issuer/sub pair to an active, provisioned
 -- employee. SECURITY DEFINER can inspect users before actor_id is set; it
@@ -459,6 +550,31 @@ $identity$;
 REVOKE ALL ON FUNCTION agentstudio.identity_user_id(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION agentstudio.identity_user_id(text,text)
   TO agentstudio_api;
+
+GRANT EXECUTE ON FUNCTION agentstudio.identity_user_id(text,text)
+  TO agentstudio_model_broker;
+
+-- Worker can become API role for existing run processing; remove the API
+-- role's SELECT over secret envelope columns. Ordinary API may INSERT and
+-- UPDATE encrypted blobs but cannot SELECT/export them. A separate model
+-- broker role is the ONLY app role allowed to decrypt per-owner credentials.
+REVOKE SELECT ON agentstudio.model_connections FROM agentstudio_api;
+GRANT SELECT (id,owner_user_id,name,provider,base_url,api_key_tail,
+  enabled,status,last_latency_ms,last_checked_at,models,last_error,
+  revision,created_at,updated_at)
+  ON agentstudio.model_connections TO agentstudio_api;
+GRANT SELECT (id,owner_user_id,provider,base_url,enabled,status,models,
+  revision,last_checked_at,api_key_ciphertext,api_key_nonce,api_key_tag)
+  ON agentstudio.model_connections TO agentstudio_model_broker;
+-- API may inspect key names and perform encrypted upserts, but cannot read
+-- stored header values. The separate Broker role is read-only for secret access.
+REVOKE SELECT ON agentstudio.tool_connection_headers FROM agentstudio_api;
+GRANT INSERT,UPDATE,DELETE ON agentstudio.tool_connection_headers TO agentstudio_api;
+GRANT SELECT (id,owner_user_id,tool_connection_id,header_name,created_at,updated_at)
+  ON agentstudio.tool_connection_headers TO agentstudio_api;
+GRANT SELECT (id,owner_user_id,tool_connection_id,header_name,
+  value_ciphertext,value_nonce,value_tag,created_at,updated_at)
+  ON agentstudio.tool_connection_headers TO agentstudio_model_broker;
 
 -- The real API service MUST validate JWT signatures/issuer/audience/JWKS before
 -- invoking identity_user_id, and use a NON-SUPERUSER database login permitted
@@ -489,6 +605,7 @@ BEGIN
     'agent_specs','workflows','runs','run_steps','jobs','run_leases',
     'external_effects','approvals','schedules','schedule_occurrences',
     'knowledge_bases','knowledge_documents','knowledge_chunks',
+    'model_connections','tool_connections','tool_connection_headers',
     'template_invites','audit_events'
   ]
   LOOP
@@ -503,6 +620,14 @@ BEGIN
   END LOOP;
 END
 $policies$;
+-- Owner only, SELECT-only, separate service role; the credential Broker
+-- can never UPDATE, INSERT or DELETE connection data or audit history.
+CREATE POLICY broker_model_credentials ON agentstudio.model_connections
+  FOR SELECT TO agentstudio_model_broker
+  USING (owner_user_id=agentstudio.actor_id());
+CREATE POLICY broker_tool_connection_headers ON agentstudio.tool_connection_headers
+  FOR SELECT TO agentstudio_model_broker
+  USING (owner_user_id=agentstudio.actor_id());
 CREATE POLICY worker_job_queue ON agentstudio.jobs
   TO agentstudio_worker USING (true) WITH CHECK (true);
 -- Dedicated worker policies are required for safe lease scope. The effect

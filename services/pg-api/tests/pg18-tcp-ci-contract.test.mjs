@@ -25,7 +25,7 @@ const safe={
 test("pure PG18 CI schema loader checks the versioned baseline without operator credential tooling",()=>{
   const result=loadPg18CiBaseline()
   assert.match(result.sha256,/^[a-f0-9]{64}$/)
-  assert.equal((result.sql.match(/\bCREATE TABLE agentstudio\./g)||[]).length,20)
+  assert.equal((result.sql.match(/\bCREATE TABLE agentstudio\./g)||[]).length,23)
   assert.match(result.sql,/FORCE ROW LEVEL SECURITY/)
   assert.match(result.sql,/worker_effect_safety_read/)
   assert.doesNotMatch(result.sql,/\\set ON_ERROR_STOP on|^BEGIN;$|^COMMIT;$/m)
@@ -75,6 +75,31 @@ test("real PG18 TCP integration exits before any socket on an ordinary checkout"
     /ECONNREFUSED|password authentication failed|database system is starting up/)
 })
 
+test("genuine mTLS integration refuses any local checkout before openssl or sockets",()=>{
+  const cli=path.join(root,"services/pg-api/tests/pg18-mtls-ci.integration.mjs")
+  const run=spawnSync(process.execPath,[
+    "--experimental-strip-types","--test",cli
+  ],{cwd:root,encoding:"utf8",timeout:20000,
+    env:{PATH:process.env.PATH??"",HOME:process.env.HOME??"",
+      GITHUB_ACTIONS:"false",CI:"false",
+      DATABASE_URL:"postgres://127.0.0.1:5333/agent_studio"}
+  })
+  assert.notEqual(run.status,0)
+  assert.match(run.stdout+run.stderr,/refuse_non_ephemeral_pg18_ci/)
+  assert.doesNotMatch(run.stdout+run.stderr,
+    /ECONNREFUSED|password authentication failed|database system is starting up/)
+  const code=readFileSync(cli,"utf8")
+  assert.match(code,/requireEphemeralPg18Ci\(process\.env\)/)
+  assert.ok(code.indexOf("requireEphemeralPg18Ci(process.env)")<
+    code.indexOf("const temp=mkdtempSync"))
+  assert.match(code,/requestCert:true,rejectUnauthorized:true/)
+  assert.match(code,/new X509Certificate/)
+  assert.match(code,/createIsolatedBoundModelInternalHandler/)
+  assert.match(code,/hostname:"127\.0\.0\.1"/)
+  assert.doesNotMatch(code,/from\s+["'].*(?:pocketbase|model-provider)/)
+  assert.doesNotMatch(code,/DATABASE_URL\s*=|systemctl|DROP DATABASE|--serve/)
+})
+
 test("PG18 ephemeral lifecycle test has no external model/provider imports or production actions",()=>{
   const src=readFileSync(path.join(root,
     "services/pg-api/tests/pg18-tcp.integration.mjs"),"utf8")
@@ -88,9 +113,32 @@ test("PG18 ephemeral lifecycle test has no external model/provider imports or pr
   assert.match(src,/execFileAsync\(process\.execPath/)
   assert.match(src,/const childEnvKeys=\[/)
   assert.match(src,/agentstudio\.external_effects/)
+  assert.match(src,/pg_v9_024_bound_dispatch_identity\.sql/)
+  assert.match(src,/pg_v9_023_workflow_safe_worker\.sql/)
+  assert.match(src,/new BoundLeaseIdentityRepository\(adapter\(boundIdentityPool\)\)/)
+  assert.match(src,/agentstudio_bound_dispatch_ci_login/)
+  assert.match(src,/has_function_privilege/)
+  assert.match(src,/SQLSTATE 42501/)
   assert.doesNotMatch(src,/from\s+["'].*(?:pocketbase|model-provider)/)
   assert.doesNotMatch(src,/fetch\(|https\.request\(|http\.request\(|--serve|systemctl/)
   assert.doesNotMatch(src,/DROP DATABASE|DROP SCHEMA|TRUNCATE TABLE|DATABASE_URL\s*=/)
+})
+test("new V9.024 lease identity migration remains private, replayable and role-fenced",()=>{
+  const sql=readFileSync(path.join(root,
+    "db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql"),"utf8")
+  assert.match(sql,/pg_v9_023/)
+  assert.match(sql,/CREATE ROLE agentstudio_bound_dispatch NOLOGIN NOINHERIT/)
+  assert.match(sql,/SECURITY DEFINER/)
+  assert.match(sql,/REVOKE ALL ON FUNCTION agentstudio\.bound_model_lease_identity/)
+  assert.match(sql,/FROM PUBLIC/)
+  assert.match(sql,/agentstudio_api,agentstudio_worker,agentstudio_model_broker/)
+  assert.match(sql,/FROM agentstudio\.jobs AS j/)
+  assert.match(sql,/j\.lease_until>clock_timestamp\(\)/)
+  assert.match(sql,/a\.status='approved'/)
+  assert.match(sql,/u\.status='active'/)
+  assert.match(sql,/ON CONFLICT\(version\) DO NOTHING/)
+  assert.doesNotMatch(sql,/CREATE ROLE[^;]*\bLOGIN\b/i)
+  assert.doesNotMatch(sql,/DROP DATABASE|DROP SCHEMA|TRUNCATE TABLE/)
 })
 test("separate OS-process Prepare claim fails closed in ordinary local environment",()=>{
   const child=path.join(root,
@@ -129,6 +177,7 @@ test("CI image and test credentials are pinned to a disposable PG18-only service
   assert.match(block,/127\.0\.0\.1:5432:5432/)
   assert.match(block,/AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"/)
   assert.match(block,/run: node --experimental-strip-types --test services\/pg-api\/tests\/pg18-tcp\.integration\.mjs/)
+  assert.match(block,/run: pnpm --dir services\/pg-api run test:pg18:mtls:ci/)
   assert.match(pipeline,/migration\/pg18-tcp-ci-\*/)
   assert.match(pipeline,/^permissions:\s*\n\s+contents: read/m)
   assert.match(block,/synthetic-agentstudio-pg18-ci-/)

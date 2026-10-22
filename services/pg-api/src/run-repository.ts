@@ -3,6 +3,8 @@
 import {HttpError,isUuid,type Identity,type SqlPool}
   from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import {exactProviderEndpoint} from "./model-connection-probe.ts"
+import type {ModelProvider} from "./model-connection-repository.ts"
 
 export type RunStatus =
   "queued"|"running"|"awaiting_approval"|"paused"|
@@ -59,7 +61,13 @@ const runByIdempotencyKeySql=
   "AND j.dedupe_key=$2::text LIMIT 1"
 export class RunRepository {
   readonly pool:SqlPool
-  constructor(pool:SqlPool){this.pool=pool}
+  readonly allowBoundModelRuns:boolean
+  // Synthetic, explicit opt-in only; Native/production entrypoints construct
+  // this repository without options, so model-binding runs remain disabled.
+  constructor(pool:SqlPool,options:{allowBoundModelRuns?:boolean}={}){
+    this.pool=pool
+    this.allowBoundModelRuns=options.allowBoundModelRuns===true
+  }
 
   list(identity:Identity,limit=30):Promise<RunRow[]> {
     const bounded=Math.max(1,Math.min(50,Math.trunc(limit)))
@@ -181,12 +189,51 @@ export class RunRepository {
             throw new HttpError(409,"idempotency_key_conflict")
           return {run:normalized(existing),replayed:true}
         }
-        const specs=await db.query<{id:string;revision:string|number}>(
-          "SELECT id,revision FROM agentstudio.agent_specs "+
+        const specs=await db.query<{
+          id:string;revision:string|number;spec:Record<string,unknown>
+        }>(
+          "SELECT id,revision,spec FROM agentstudio.agent_specs "+
           "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
           [specId,actor])
         const spec=specs.rows[0]
         if(!spec)throw new HttpError(404,"spec_not_found")
+        // Default remains denied. The isolated integration fixture may admit
+        // a bound run only when a separately reviewed broker/Worker is wired.
+        // Recheck the CURRENT owner's provider metadata under a shared row
+        // lock; no credential columns or external transport are accessible.
+        if(spec.spec&&Object.hasOwn(spec.spec,"model_binding")){
+          if(!this.allowBoundModelRuns)
+            throw new HttpError(409,"model_binding_runtime_not_enabled")
+          const binding=spec.spec.model_binding as Record<string,unknown>|null
+          if(!binding||typeof binding!=="object"||Array.isArray(binding)||
+             Object.keys(binding).length!==3||!isUuid(binding.connection_id)||
+             !Number.isSafeInteger(binding.connection_revision)||
+             (binding.connection_revision as number)<1||
+             typeof binding.model_id!=="string"||
+             !/^[A-Za-z0-9._:/-]{1,120}$/.test(binding.model_id))
+            throw new HttpError(409,"invalid_saved_model_binding")
+          const connections=await db.query<{
+            provider:ModelProvider;base_url:string;enabled:boolean;status:string
+            models:string[]|string;revision:number|string
+          }>("SELECT provider,base_url,enabled,status,models,revision "+
+            "FROM agentstudio.model_connections WHERE id=$1::uuid "+
+            "AND owner_user_id=$2::uuid FOR SHARE",[binding.connection_id,actor])
+          const model=connections.rows[0]
+          if(!model)throw new HttpError(404,"model_connection_not_found")
+          if(Number(model.revision)!==binding.connection_revision)
+            throw new HttpError(409,"model_connection_revision_changed")
+          if(model.enabled!==true||model.status!=="ok")
+            throw new HttpError(409,"model_connection_not_ready")
+          let models:unknown=model.models
+          if(typeof models==="string"){
+            try{models=JSON.parse(models)}catch{models=[]}
+          }
+          if(!Array.isArray(models)||models.some(v=>typeof v!=="string")||
+             !models.includes(binding.model_id))
+            throw new HttpError(409,"model_not_in_connection")
+          try{exactProviderEndpoint(model)}
+          catch{throw new HttpError(409,"model_provider_not_allowlisted")}
+        }
         const version=Number(spec.revision)
         if(!Number.isSafeInteger(version)||version<1)
           throw new Error("invalid_spec_revision")

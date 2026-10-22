@@ -23,13 +23,18 @@ export class HttpError extends Error {
 }
 
 export interface AgentSpecInput {
+  model_binding?:{
+    connection_id:string
+    connection_revision:number
+    model_id:string
+  }
   goal: string
   task_scope: string
   deliverables: string[]
   task_plan: string[]
   done_criteria: string[]
   tools: string[]
-  knowledge_base_ids: []
+  knowledge_base_ids: string[]
   require_approval: true
 }
 
@@ -46,6 +51,32 @@ function textList(value:unknown):string[] {
   if(!Array.isArray(value) || value.length>20)throw new HttpError(400,"invalid_agent_spec")
   return value.map(v=>field(v,300))
 }
+function knowledgeBaseIds(value:unknown,tools:readonly string[]):string[]{
+  if(value===undefined)return []
+  if(!Array.isArray(value)||value.length>3||
+     value.some(x=>!isUuid(x))||new Set(value).size!==value.length||
+     (value.length>0&&!tools.includes("knowledge_search")))
+    throw new HttpError(400,"invalid_agent_knowledge_scope")
+  return [...value]
+}
+function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
+  if(raw===undefined||raw===null)return undefined
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))
+    throw new HttpError(400,"invalid_agent_model_binding")
+  const item=raw as Record<string,unknown>
+  if(Object.keys(item).length!==3||
+     !["connection_id","connection_revision","model_id"]
+        .every(k=>Object.hasOwn(item,k))||
+     !isUuid(item.connection_id)||
+     !Number.isSafeInteger(item.connection_revision)||
+     (item.connection_revision as number)<1||
+     typeof item.model_id!=="string"||
+     !/^[A-Za-z0-9._:/-]{1,120}$/.test(item.model_id))
+    throw new HttpError(400,"invalid_agent_model_binding")
+  return {connection_id:item.connection_id,
+    connection_revision:item.connection_revision as number,
+    model_id:item.model_id}
+}
 export function safeAgentSpec(raw:unknown):AgentSpecInput {
   if(!raw || typeof raw!=="object" || Array.isArray(raw))throw new HttpError(400,"invalid_agent_spec")
   const data=raw as Record<string,unknown>
@@ -53,19 +84,22 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
   if(!goal)throw new HttpError(400,"invalid_agent_spec")
   const tools=textList(data.tools)
   if(tools.some(t=>!allowedTools.has(t)))throw new HttpError(400,"unknown_tool")
-  // Never accept arbitrary credentials or third-party connection IDs in the
-  // first pilot slice; the future authenticated repository must manage those.
+  // Only owner-validated model-connection IDs may enter a spec; never
+  // accept passwords, API keys, provider URL overrides or worker tokens.
   const permitted=new Set([
     "goal","task_scope","deliverables","task_plan","done_criteria","tools",
+    "knowledge_base_ids","model_binding",
   ])
   if(Object.keys(data).some(k=>!permitted.has(k)))throw new HttpError(400,"unsafe_agent_spec_field")
+  const modelBinding=safeModelBinding(data.model_binding)
   return {
     goal, task_scope:data.task_scope===undefined?"":field(data.task_scope,2000),
     deliverables:textList(data.deliverables),
     task_plan:textList(data.task_plan),
     done_criteria:textList(data.done_criteria),
     tools:[...new Set(tools)],
-    knowledge_base_ids:[],
+    knowledge_base_ids:knowledgeBaseIds(data.knowledge_base_ids,tools),
+    ...(modelBinding?{model_binding:modelBinding}:{}),
     require_approval:true,
   }
 }
