@@ -12,6 +12,7 @@ import PgNativeConfigDetail,{type DetailKind} from "./PgNativeConfigDetail"
 import PgNativeSchedulesReadonlyPanel from "./PgNativeSchedulesReadonlyPanel"
 import {createPgNativeSessionReadFence} from "@/lib/pgNativeSessionReadFence"
 import PgNativeAgentModelBindingPanel from "./PgNativeAgentModelBindingPanel"
+import PgNativeAgentHttpToolsPanel from "./PgNativeAgentHttpToolsPanel"
 import PgNativeRunHistoryReadonlyPanel from "./PgNativeRunHistoryReadonlyPanel"
 import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistoryReadonlyPanel"
 import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
@@ -450,7 +451,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               当前环境未授权提交模型任务。已有记录可在运行历史中查看。
             </p>}
             <div hidden={section!=="autonomousAgent"}>
-              <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections}
+              <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections} tools={toolConnections}
                 active={section==="autonomousAgent"} enabled={autonomousEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>
             </div>
             {section==="agents"&&<>
@@ -473,6 +474,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               {canEditConfig&&<PgNativeAgentModelBindingPanel
                 key={profile.id} api={api} agents={agents}
                 connections={modelConnections} onUpdated={refresh} runtimeSubmissionEnabled={canRunOwnerModel}/>}
+              {canEditConfig&&<PgNativeAgentHttpToolsPanel key={profile.id} api={api} agents={agents} connections={toolConnections}
+                enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}
             </>}
             <div hidden={section!=="workflows"}>
               {(workflowCanvasOpened||section==="workflows")&&<Suspense fallback={<p role="status">加载工作流画布中…</p>}>

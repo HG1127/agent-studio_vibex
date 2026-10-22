@@ -1,13 +1,14 @@
 import {useEffect,useRef,useState,type FormEvent} from "react"
 import {Loader2,Play,RefreshCcw} from "lucide-react"
-import type {createPgNativePilotApi,PgNativeAgent,PgNativeModelConnection} from "@/lib/pgNativePilotApi"
+import type {createPgNativePilotApi,PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection} from "@/lib/pgNativePilotApi"
+import {readyAgentHttpTools} from "@/lib/pgNativeAgentHttpTools"
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomousModel} from "@/lib/pgNativeAutonomousAgentSession"
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,active,enabled,onExpired}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],active,enabled,onExpired}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  active:boolean;enabled:boolean;onExpired:()=>void
+  tools?:PgNativeToolConnection[];active:boolean;enabled:boolean;onExpired:()=>void
 }){
   const [view,setView]=useState(emptyAutonomousView)
   const [agentId,setAgentId]=useState("")
@@ -28,7 +29,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,act
     const timer=setTimeout(()=>{void model.current?.poll()},2000)
     return ()=>clearTimeout(timer)
   },[active,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.detail,view.error])
-  const eligible=agents.filter(agent=>readyAutonomousModel(agent,connections)),chosen=eligible.find(agent=>agent.id===agentId)
+  const eligible=agents.filter(agent=>readyAutonomousModel(agent,connections)&&readyAgentHttpTools(agent,tools)),chosen=eligible.find(agent=>agent.id===agentId)
   const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)
   const submit=async(event:FormEvent)=>{
     event.preventDefault()
@@ -45,7 +46,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,act
       <h2 className="flex items-center gap-2 font-semibold"><Play size={18} aria-hidden="true"/>新建多轮任务</h2>
       <p className="mt-2 text-sm leading-6 text-slate-500">Agent 可根据工具结果继续规划，最多进行五轮模型调用。每个步骤都需要你核对并批准。</p>
       {!enabled&&<p role="status" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">当前环境未开放多轮任务提交和审批。已有记录仍可查看，允许取消的任务可取消。</p>}
-      {enabled&&!eligible.length&&<p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">请先为 Agent 绑定已测试、已启用的本人模型连接。</p>}
+      {enabled&&!eligible.length&&<p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">请先为 Agent 绑定已测试、已启用的本人模型连接，并核对 HTTP 工具连接及其版本。</p>}
       <form onSubmit={submit} className="mt-4 space-y-3">
         <fieldset disabled={!enabled||locked} className="space-y-3">
           <legend className="sr-only">新建多轮任务字段</legend>
@@ -85,7 +86,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,act
         <span className="shrink-0 text-xs">{autonomousStates[run.status]??"状态未知"}</span>
       </button>)}
     </div>
-    <PgNativeAutonomousAgentDetail key={view.detail?.run.id??"none"} view={view} agents={agents} connections={connections} enabled={active&&enabled}
+    <PgNativeAutonomousAgentDetail key={view.detail?.run.id??"none"} view={view} agents={agents} connections={connections} toolConnections={tools} enabled={active&&enabled}
       onDecision={(value,consent)=>{if(active&&enabled)void model.current?.decide(value,consent)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}
       onCancel={()=>{if(active)void model.current?.cancel()}}/>

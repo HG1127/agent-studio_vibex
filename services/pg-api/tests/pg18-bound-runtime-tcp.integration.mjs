@@ -368,15 +368,26 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(agentFlow.id,requestId);assert.equal(replayedFlow.id,agentFlow.id)
     assert.equal(Number((await admin.query("SELECT count(*) AS n FROM agentstudio.workflows WHERE id=$1",[requestId])).rows[0].n),1)
     await assert.rejects(api.createWorkflowGraph("Conflicting title",agentGraph,requestId),error=>error.status===409)
-    for(const autonomous of [false,true]){
-    let agentCalls=0
+    const httpRole=await new AgentSpecRepository(apiPool).create(owner,"CI HTTP Agent role",safeAgentSpec({goal:"Synthetic HTTP role",tools:["http_lookup"],
+      http_tools:[{name:"http_lookup",description:"Lookup; params: query",connection_id:tool.id,connection_revision:tool.revision}],
+      model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
+    for(const autonomous of [false,true])for(const custom of [false,true]){
+    let agentCalls=0,agentHttpCalls=0
+    const selectedRole=custom?httpRole:role
+    const selectedFlow=custom?await api.createWorkflowGraph("CI HTTP Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
+      {...node,data:{...node.data,agent_binding:{spec_id:httpRole.id,spec_revision:httpRole.revision}}}:node)}):agentFlow
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
       const context=JSON.parse(prompt)
-      if(context.round===1)return '{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}'
+      if(custom){assert.equal(prompt.includes(toolSecret),false);assert.equal(prompt.includes(tool.id),false)}
+      if(context.round===1)return JSON.stringify(custom?{action:"tool",tool:"http_lookup",params:{query:"synthetic owner lookup"}}:{action:"tool",tool:"calculate",params:{expression:"2+2"}})
       assert.match(context.history[0].observation,/4/);return '{"action":"answer","answer":"Synthetic Agent result 4"}'
     }
     const agentModel=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("direct fallback forbidden")},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous,agentExecutor:planning})
-    const agentTool=new WorkflowV2ToolDispatch(apiPool,key,{},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous})
+    const agentTool=new WorkflowV2ToolDispatch(apiPool,key,{async http(material,args){agentHttpCalls++
+      const request=prepareWorkflowToolHttp(material,args)
+      assert.equal(request.headers.authorization,"Bearer "+toolSecret);assert.equal(request.url,tool.url)
+      assert.deepEqual(args,{query:"synthetic owner lookup"});return "Synthetic HTTP observation 4"
+    }},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous})
     const agentDispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),agentModel),
       tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),agentTool)}
     const handlers=raw=>{const config={...raw,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"};const model=createWorkflowV2ModelInternalHandler({...config,dispatch:config.dispatch.model}),
@@ -385,9 +396,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await withDisposableBoundModelTls(agentDispatch,async config=>{
       const adapters=[workflowV2ModelEffectExecutor(config),workflowV2ToolEffectExecutor(config)]
       const executor={supports:req=>adapters.some(adapter=>adapter.supports(req)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}
-      const ui=autonomous?null:createPgNativeWorkflowRunSession(api,{key:()=>"ci-v2-agent-mtls-0001"})
-      if(ui){ui.setActive(true);await ui.refresh();await ui.submit({workflowId:agentFlow.id,revision:1,instruction:"Synthetic Agent input"});assert.equal(ui.snapshot().error,"")}
-      const run=autonomous?await api.submitAutonomousAgentRun(role.id,1,"Synthetic Agent input","ci-native-agent-mtls-0001",3):ui.snapshot().detail
+      const suffix=custom?"-http":""
+      const ui=autonomous?null:createPgNativeWorkflowRunSession(api,{key:()=>"ci-v2-agent-mtls-0001"+suffix})
+      if(ui){ui.setActive(true);await ui.refresh();await ui.submit({workflowId:selectedFlow.id,revision:1,instruction:"Synthetic Agent input"});assert.equal(ui.snapshot().error,"")}
+      const run=autonomous?await api.submitAutonomousAgentRun(selectedRole.id,1,"Synthetic Agent input","ci-native-agent-mtls-0001"+suffix,3):ui.snapshot().detail
       const get=id=>autonomous?api.getAutonomousAgentRun(id):api.getWorkflowV2Run(id)
       for(let i=0;i<20;i++){
         await new WorkflowV2Worker(workerPool,"ci-agent-"+i,{agentExecutionApproved:true,executor,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}).tick()
@@ -401,6 +413,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       }
       const detail=await get(run.run.id)
       assert.equal(detail.run.status,"succeeded");assert.equal(detail.run.result_text,"Synthetic Agent result 4");assert.equal(agentCalls,2)
+      assert.equal(agentHttpCalls,custom?1:0)
       assert.equal(detail.steps.filter(step=>step.metadata.parent_step_key).length,3)
       const ledger=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[run.run.id])).rows
       assert.equal(ledger.length,7);assert.equal(ledger.every(row=>row.status==="succeeded"),true)

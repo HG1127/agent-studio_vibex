@@ -98,7 +98,9 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
       "No remote calls are performed by you; the system separately asks the employee to approve each proposed operation. "+
       "Do not include hidden reasoning. An optional note may briefly describe the action.",
       role:{name:parent.configuration.title,goal:state.spec.goal,task_scope:state.spec.task_scope,
-        deliverables:state.spec.deliverables,done_criteria:state.spec.done_criteria,allowed_tools:state.spec.tools},
+        deliverables:state.spec.deliverables,done_criteria:state.spec.done_criteria,allowed_tools:state.spec.tools,
+        ...(state.spec.http_tools?.length?{http_tools:state.spec.http_tools.map(({name,description})=>({name,description,
+          arguments:"JSON object. The owner-configured HTTP template consumes these parameters."}))}:{})},
       task:parent.input,round,max_rounds:max,history})
     if(prompt.length>131072)return terminal("failed",round,"","workflow_agent_context_too_large")
     const model=make(round,"model",prompt,{title:parent.configuration.title,model_binding:{...binding},prompt})
@@ -111,7 +113,10 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
     if(!action)return terminal("failed",round,"","workflow_agent_decision_invalid")
     if(action.action==="answer")return terminal("succeeded",round,action.answer.slice(0,4000))
     if(!state.spec.tools.includes(action.tool))return terminal("failed",round,"","workflow_agent_tool_not_allowed")
-    const configuration:WorkflowEffectRequest["configuration"]={title:parent.configuration.title,tool:action.tool as WorkflowEffectRequest["configuration"]["tool"],params_template:workflowAgentJson(action.params),
+    const http=state.spec.http_tools?.find(tool=>tool.name===action.tool)
+    const configuration:WorkflowEffectRequest["configuration"]={title:http?http.name:parent.configuration.title,
+      ...(http?{tool_binding:{connection_id:http.connection_id,connection_revision:http.connection_revision}}:
+        {tool:action.tool as WorkflowEffectRequest["configuration"]["tool"]}),params_template:workflowAgentJson(action.params),
       ...(action.tool==="knowledge_search"?{knowledge_base_ids:[...state.spec.knowledge_base_ids]}:{}),
       ...(action.tool==="summarize"?{model_binding:{...binding}}:{})}
     const tool=make(round,"tool",workflowAgentJson(action.params),configuration),observation=take(tool)

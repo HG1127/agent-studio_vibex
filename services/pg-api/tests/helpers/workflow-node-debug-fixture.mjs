@@ -12,10 +12,11 @@ import {AgentSpecRepository} from "../../src/repository.ts"
 import {WorkflowRepository} from "../../src/workflow-repository.ts"
 import {WorkflowV2RunRepository} from "../../src/workflow-v2-run-repository.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
+import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
 import {createHandler} from "../../src/http.ts"
 import {createPgNativePilotApi} from "../../../../src/lib/pgNativePilotApi.ts"
 export const debugKey=Buffer.from("0123456789abcdef".repeat(4),"hex"),debugCredential="synthetic-node-debug-credential-never-send"
-export async function workflowNodeDebugFixture(){
+export async function workflowNodeDebugFixture({toolConnections=false}={}){
   const db=await PGlite.create({extensions:{vector}});let server
   try{
     await db.exec("CREATE DATABASE agent_studio");await db.exec(freshSchemaForTest().sql)
@@ -46,7 +47,8 @@ export async function workflowNodeDebugFixture(){
         res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return}return backend(req,res)}})}
     configure();const runs=new WorkflowV2RunRepository(pool)
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("cookie_required")},authenticateRequest:req=>native.authenticateRequest(req),
-      repository:new AgentSpecRepository(pool),workflowRepository:new WorkflowRepository(pool),workflowV2RunRepository:runs,modelConnectionRepository:models})
+      repository:new AgentSpecRepository(pool),workflowRepository:new WorkflowRepository(pool),workflowV2RunRepository:runs,modelConnectionRepository:models,
+      ...(toolConnections?{toolConnectionRepository:new ToolConnectionRepository(pool,debugKey)}:{})})
     server=createServer((req,res)=>{void native.handler(req,res).catch(()=>res.destroy())});await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
     const base="http://127.0.0.1:"+server.address().port,client=()=>{
       let cookie="";const dropped={submit:false,decision:false},calls=[]

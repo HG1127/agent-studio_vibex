@@ -15,6 +15,7 @@ on:
       - 'codex/pg18-workflow-canvas-20261023'
       - 'codex/pg18-workflow-authoring-20261023'
       - 'codex/pg18-workflow-output-samples-20261023'
+      - 'codex/pg18-agent-http-tools-20261023'
   workflow_dispatch:
 
 permissions:

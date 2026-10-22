@@ -215,6 +215,8 @@ export class RunRepository {
           [specId,actor])
         const spec=specs.rows[0]
         if(!spec)throw new HttpError(404,"spec_not_found")
+        if(Array.isArray(spec.spec?.http_tools)&&spec.spec.http_tools.length)
+          throw new HttpError(409,"agent_http_tools_require_autonomous_runtime")
         // Default remains denied. The isolated integration fixture may admit
         // a bound run only when a separately reviewed broker/Worker is wired.
         // Recheck the CURRENT owner's provider metadata under a shared row

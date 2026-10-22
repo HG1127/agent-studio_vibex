@@ -2,6 +2,7 @@ import {HttpError,type SqlClient} from "./contracts.ts"
 import {verifyWorkflowResourceReferences} from "./workflow-repository.ts"
 import {createWorkflowAgentState,inspectWorkflowAgentState,workflowAgentJson,workflowAgentSpec,type WorkflowAgentState} from "./workflow-v2-agent-machine.ts"
 import type {WorkflowEffectRequest} from "./workflow-v2-machine.ts"
+import {verifyAgentHttpTools} from "./repository.ts"
 async function currentSpec(db:SqlClient,owner:string,parent:WorkflowEffectRequest){
   const ref=parent.configuration.agent_binding
   if(parent.kind!=="agent"||!ref)throw new HttpError(409,"workflow_agent_binding_missing")
@@ -17,6 +18,7 @@ export async function verifyWorkflowAgentResources(db:SqlClient,owner:string,par
   const binding=parent.configuration.model_binding??spec.model_binding
   if(!binding)throw new HttpError(409,"workflow_agent_model_binding_missing")
   await verifyWorkflowResourceReferences(db,owner,{title:parent.configuration.title,model_binding:binding,knowledge_base_ids:spec.knowledge_base_ids})
+  await verifyAgentHttpTools(db,owner,spec)
   return spec
 }
 export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest){

@@ -3,6 +3,7 @@ import {PgNativePilotError,type createPgNativePilotApi,type PgNativeAgent,type P
 import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
 import {autonomousError,autonomousReview} from "./pgNativeAutonomousAgentSession.ts"
 import {parseWorkflowGraphV2,type WorkflowNodeDataV2} from "./pgNativeWorkflowGraph.ts"
+import {declaredAgentHttpTool} from "./pgNativeAgentHttpTools.ts"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export type WorkflowRunDraft={workflowId:string;revision:number;instruction:string}
 export type WorkflowRunDetail=PgNativeWorkflowV2Result&{review?:{workflow?:PgNativeWorkflow;agent?:PgNativeAgent;model?:PgNativeModelConnection;tool?:PgNativeToolConnection;unavailable:boolean}}
@@ -52,7 +53,8 @@ export function workflowApprovalReady(detail:WorkflowRunDetail|null){
   if(!node)return false
   if(pending.kind==="agent"||pending.agent_context){
     if(!agent||node.agent_binding?.spec_id!==agent.id||node.agent_binding.spec_revision!==agent.revision)return false
-    if(pending.kind==="tool"&&!agent.spec.tools?.includes(String(pending.configuration.tool)))return false
+    if(pending.kind==="tool"&&(pending.configuration.tool_binding?
+      pending.configuration.tool!==undefined||!declaredAgentHttpTool(agent,pending.configuration.tool_binding):!agent.spec.tools?.includes(String(pending.configuration.tool))))return false
   }
   const binding=(pending.configuration.model_binding??(pending.kind==="agent"?agent?.spec.model_binding:undefined)) as WorkflowNodeDataV2["model_binding"]
   if(pending.kind==="model"||pending.kind==="agent"||pending.configuration.tool==="summarize"){
@@ -62,8 +64,9 @@ export function workflowApprovalReady(detail:WorkflowRunDetail|null){
     if(!expected||expected.connection_id!==binding.connection_id||expected.connection_revision!==binding.connection_revision||expected.model_id!==binding.model_id)return false
   }
   const http=pending.configuration.tool_binding as WorkflowNodeDataV2["tool_binding"]
+  const expectedHttp=pending.agent_context?declaredAgentHttpTool(agent,http):node.tool_binding
   if(http&&(!tool||tool.id!==http.connection_id||tool.revision!==http.connection_revision||!tool.enabled||
-    node.tool_binding?.connection_id!==http.connection_id||node.tool_binding?.connection_revision!==http.connection_revision))return false
+    expectedHttp?.connection_id!==http.connection_id||expectedHttp?.connection_revision!==http.connection_revision))return false
   if(pending.kind==="tool"&&!pending.agent_context&&!http&&node.tool!==pending.configuration.tool)return false
   return true
 }

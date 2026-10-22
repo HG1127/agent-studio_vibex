@@ -2,6 +2,8 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {parseAgentHttpTools,type AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
+export type {AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
 import {parseWorkflowLatestOutputs,parseWorkflowOutputHistory,validWorkflowOutputCursor} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 export type {WorkflowLatestOutputs,WorkflowOutputHistory,WorkflowOutputHeader,WorkflowLatestNodeOutput,WorkflowHistoricalNodeOutput} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 export type PgNativeConfigCapabilities={
@@ -27,7 +29,7 @@ export type PgNativeAgent={
   id:string;name:string;revision:number
   spec:{goal:string;task_scope:string;deliverables?:string[];
     task_plan?:string[];done_criteria?:string[];tools?:string[];
-    knowledge_base_ids?:string[];model_binding?:PgNativeAgentModelBinding}
+    knowledge_base_ids?:string[];model_binding?:PgNativeAgentModelBinding;http_tools?:AgentHttpTool[]}
 }
 export type PgNativeWorkflow={id:string;name:string;revision:number;
   graph?:{version?:2;description?:string;nodes:unknown[];edges:unknown[]}}
@@ -436,6 +438,7 @@ export function createPgNativePilotApi(
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.http_tools?.length?{http_tools:old.http_tools}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{})}
       return (await patch<{item:PgNativeAgent}>(route,{
         name,spec,expected_revision:revision
@@ -460,6 +463,7 @@ export function createPgNativePilotApi(
       const spec={goal:old.goal,task_scope:old.task_scope??"",
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools,knowledge_base_ids:ids,
+        ...(old.http_tools?.length?{http_tools:old.http_tools}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{})}
       return (await patch<{item:PgNativeAgent}>(route,{
         name:current.name,spec,expected_revision:revision
@@ -487,10 +491,27 @@ export function createPgNativePilotApi(
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.http_tools?.length?{http_tools:old.http_tools}:{}),
         ...(binding?{model_binding:binding}:{})}
       return (await patch<{item:PgNativeAgent}>(route,{
         name:current.name,spec,expected_revision:revision
       })).item
+    },
+    updateAgentHttpTools:async(id:string,expected_revision:number,selection:AgentHttpTool[])=>{
+      const revision=safeRevision(expected_revision),route=recordRoute(routes.agents,id)
+      let httpTools:AgentHttpTool[]
+      try{httpTools=parseAgentHttpTools(selection)}catch{throw new PgNativePilotError(400,"invalid_agent_http_tools")}
+      const current=(await get<{item:PgNativeAgent}>(route)).item
+      if(current.revision!==revision)throw new PgNativePilotError(409,"revision_conflict")
+      const old=current.spec
+      if(!old||typeof old.goal!=="string")throw new PgNativePilotError(409,"unexpected_stored_spec")
+      const oldNames=new Set((old.http_tools??[]).map(tool=>tool.name))
+      const tools=[...new Set([...(old.tools??[]).filter(name=>!oldNames.has(name)),...httpTools.map(tool=>tool.name)])]
+      if(tools.length>20)throw new PgNativePilotError(400,"invalid_agent_http_tools")
+      const spec={goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],
+        task_plan:old.task_plan??[],done_criteria:old.done_criteria??[],tools,knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.model_binding?{model_binding:old.model_binding}:{}),...(httpTools.length?{http_tools:httpTools}:{})}
+      return (await patch<{item:PgNativeAgent}>(route,{name:current.name,spec,expected_revision:revision})).item
     },
     validateWorkflow:async(id:string,expected_revision:number,
       idempotency_key:string)=>{

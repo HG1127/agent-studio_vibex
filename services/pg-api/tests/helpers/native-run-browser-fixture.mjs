@@ -64,7 +64,7 @@ const pool={async connect(){
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous,workflowV2ExecutionUat:workflow}
-const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
+const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
 try{
   await db.exec("CREATE DATABASE agent_studio")
   await db.exec(freshSchemaForTest().sql)
@@ -91,6 +91,8 @@ try{
     await agents.create(profile.identity,name+" Browser Agent",safeAgentSpec({goal:"Synthetic local browser task",task_scope:"Synthetic only",
       deliverables:["A summary"],task_plan:["Prepare summary"],done_criteria:["Disclose synthetic source"],tools:modern?["calculate"]:[],
       model_binding:{connection_id:connection.id,connection_revision:connection.revision,model_id:"gpt-4.1-mini"}}))
+    if(modern)await new ToolConnectionRepository(pool,key).create(profile.identity,{name:name+" synthetic HTTP",description:"Lookup synthetic evidence; params: query",
+      url:"https://tools.example.com/lookup",method:"POST",headers:[],body_template:"{{input}}",timeout_s:5,enabled:true})
   }
   const broker=new OwnerBoundModelDispatch(pool,key,async()=>{
     state.generated++;return "Browser synthetic bound result"
@@ -99,10 +101,10 @@ try{
   const dispatch=modern?{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async()=>{if(!workflow)throw Error("direct_fallback_forbidden");state.generated++;return "Browser synthetic workflow model output"},pool,{
       nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
-      allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;return JSON.stringify(JSON.parse(prompt).round===1?
-        {action:"tool",tool:"calculate",params:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
+      allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0];return JSON.stringify(plan.round===1?
+        {action:"tool",tool:http?.name??"calculate",params:http?{query:"Synthetic owner evidence"}:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
         {action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4",think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined})}})),
-    tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{},pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow})),
+    tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{async http(){state.httpCalls++;return "Browser synthetic HTTP observation 4"}},pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow})),
   }:verified
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},
     model=createWorkflowV2ModelInternalHandler({...common,dispatch:config.dispatch.model}),tool=createWorkflowV2ToolInternalHandler({...common,dispatch:config.dispatch.tool})
@@ -151,7 +153,7 @@ try{
         let output
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
-          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,
+          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n}}
           finally{c.release()}

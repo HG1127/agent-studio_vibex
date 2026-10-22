@@ -1,6 +1,7 @@
 import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
   type AgentSpecInput } from "./contracts.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
+import {parseAgentHttpTools} from "./agent-http-tools.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -142,6 +143,7 @@ export class AgentSpecRepository {
     return withActor(this.pool,identity,async (db,actor)=>{
       await verifyKnowledgeSelection(db,actor,spec)
       await verifyModelBinding(db,actor,spec)
+      await verifyAgentHttpTools(db,actor,spec)
       const result=await db.query<SpecRow>(
         "INSERT INTO agentstudio.agent_specs "+
         "(owner_user_id,name,spec,requires_approval) "+
@@ -161,6 +163,7 @@ export class AgentSpecRepository {
     return withActor(this.pool,identity,async (db,actor)=>{
       await verifyKnowledgeSelection(db,actor,spec)
       await verifyModelBinding(db,actor,spec)
+      await verifyAgentHttpTools(db,actor,spec)
       const result=await db.query<SpecRow>(
         "UPDATE agentstudio.agent_specs "+
         "SET name=$3::text,spec=$4::jsonb,requires_approval=true,"+
@@ -171,6 +174,21 @@ export class AgentSpecRepository {
       )
       return result.rows[0]?toSpecRow(result.rows[0]):null
     })
+  }
+}
+
+export async function verifyAgentHttpTools(db:SqlClient,actor:string,spec:AgentSpecInput):Promise<void>{
+  let tools
+  try{tools=parseAgentHttpTools(spec.http_tools)}catch{throw new HttpError(400,"invalid_agent_http_tools")}
+  if(tools.some(tool=>!spec.tools.includes(tool.name)))throw new HttpError(400,"invalid_agent_http_tools")
+  // Stable lock order, including specs that list the same resources differently.
+  for(const tool of [...tools].sort((a,b)=>a.connection_id.localeCompare(b.connection_id))){
+    const row=(await db.query<{revision:number|string;enabled:boolean}>(
+      "SELECT revision,enabled FROM agentstudio.tool_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",
+      [tool.connection_id,actor])).rows[0]
+    if(!row)throw new HttpError(404,"tool_connection_not_found")
+    if(Number(row.revision)!==tool.connection_revision)throw new HttpError(409,"tool_connection_revision_changed")
+    if(row.enabled!==true)throw new HttpError(409,"tool_connection_not_ready")
   }
 }
 
