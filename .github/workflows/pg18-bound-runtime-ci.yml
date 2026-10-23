@@ -61,6 +61,7 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:pg18:tcp:guard
+          pnpm --dir services/pg-api test:pg18:fresh-runtime
       - name: Real PG18 native approval and private Broker, synthetic provider only
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"

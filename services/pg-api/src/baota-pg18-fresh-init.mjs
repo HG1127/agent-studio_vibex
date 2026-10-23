@@ -10,7 +10,7 @@ const here=fileURLToPath(import.meta.url)
 const root=path.resolve(path.dirname(here),"../../..")
 const target="agent_studio"
 const roles=["agentstudio_api","agentstudio_worker",
-  "agentstudio_stage_login","agentstudio_stage_worker"]
+  "agentstudio_stage_login","agentstudio_stage_worker","agentstudio_model_broker"]
 function fail(code){throw Error(code)}
 function parse(argv){
   if(argv.length===1&&argv[0]==="--plan")return false
@@ -147,11 +147,12 @@ async function verify(db){
   if(credentials.length!==2||credentials.some(x=>x.scram!==true))
     fail("service_role_password_not_scram")
 
-  if(tables!==21||rls!==20||vec!==1||ledger!==3||users!==0||jobs!==0||
-     identities.length!==4||
+  if(tables!==23||rls!==22||vec!==1||ledger!==3||users!==0||jobs!==0||
+     identities.length!==5||
      identities.some(x=>x.rolsuper||x.rolbypassrls)||
      m.get("agentstudio_api")?.rolcanlogin||
      m.get("agentstudio_worker")?.rolcanlogin||
+     m.get("agentstudio_model_broker")?.rolcanlogin||
      m.get("agentstudio_stage_login")?.rolcanlogin!==true||
      m.get("agentstudio_stage_worker")?.rolcanlogin!==true)
     fail("schema_or_role_verification_failed")
@@ -170,6 +171,11 @@ export async function run(argv,env=process.env){
     migration_source:"new_empty_database",old_sqlite_rows_copied:0,
     production_cutover_allowed:false}
   if(!execute)return {...plan,network_used:false}
+  return {...plan,initialized:true,...await initializeFreshPg18Baseline(env,baseline)}
+}
+// Shared transaction for baseline-only and full-runtime initialization. The
+// caller supplies an already captured source snapshot; no service is started.
+export async function initializeFreshPg18Baseline(env,baseline,complete){
   const cfg=config(env)
   const secrets=cfg.files.map((file,index)=>secret(file,index===0))
   if(new Set(secrets.map(x=>x.device+":"+x.inode)).size!==3||
@@ -193,9 +199,10 @@ export async function run(argv,env=process.env){
       await client.query("SELECT set_config('agentstudio.bootstrap_api_password',$1,true)",[secrets[1].value])
       await client.query("SELECT set_config('agentstudio.bootstrap_worker_password',$1,true)",[secrets[2].value])
       await client.query(makeLogins)
-      const result=await verify(client)
+      const verification=await verify(client)
+      const result=complete?await complete(client,verification):{verification}
       await client.query("COMMIT")
-      return {...plan,initialized:true,verification:result}
+      return result
     }catch(error){
       await client.query("ROLLBACK").catch(()=>undefined)
       throw error
@@ -205,6 +212,7 @@ export async function run(argv,env=process.env){
 // Pure SQL pieces are exported for offline embedded PostgreSQL regression.
 export {sourceSql as freshSchemaForTest,makeLogins as loginSqlForTest,
   verify as verifyFreshForTest}
+export {sourceSql as captureFreshPg18Baseline}
 export {readPasswordContent as readPasswordContentForTest}
 export async function main(argv){
   try{process.stdout.write(JSON.stringify(await run(argv))+"\n")}

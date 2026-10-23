@@ -12,6 +12,9 @@ import pg from "pg"
 import {requireEphemeralPg18Ci} from "../src/pg18-ephemeral-ci-guard.mjs"
 import {loadPg18CiBaseline} from "../src/pg18-ci-schema.mjs"
 import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
+import {captureFreshRuntimeSources,freshRuntimeSqlBody,freshRuntimeRoles} from "../src/pg18-fresh-runtime-source.mjs"
+import {installFreshRuntime} from "../src/pg18-fresh-runtime-install.ts"
+import {verifyFreshForTest} from "../src/baota-pg18-fresh-init.mjs"
 import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
@@ -88,8 +91,6 @@ const adapter=pool=>({async connect(){
   return {async query(sql,values=[]){const r=await c.query(sql,values);return {rows:r.rows}},
     release(){c.release()}}
 }})
-const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
-  .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
@@ -202,52 +203,53 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(observed.db,"agentstudio_pg18_ci");assert.equal(observed.login,"agentstudio_admin")
     assert.ok(observed.version>=180000&&observed.version<190000)
     assert.equal(observed.existing,0);assert.equal(observed.roles,1) // only the CI administrator
-    await admin.query(loadPg18CiBaseline().sql)
     const accounts=[
       ["agentstudio_stage_login","agentstudio_api"],
       ["agentstudio_stage_worker","agentstudio_worker,agentstudio_api"],
     ]
     const byLogin={}
-    const installLogin=async([login,roles])=>{
+    const installLogin=async([login,roles],db=admin)=>{
       // All identifiers are literal constants and every password is ASCII
       // hex derived from the disposable Actions password. Never print them.
       const password="synthetic-"+createHash("sha256").update(target.password+":"+login).digest("hex")
-      await admin.query("CREATE ROLE "+login+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS "+
+      await db.query("CREATE ROLE "+login+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS "+
         "NOCREATEROLE NOCREATEDB NOREPLICATION PASSWORD '"+password+"'")
-      await admin.query("GRANT "+roles+" TO "+login)
+      await db.query("GRANT "+roles+" TO "+login)
       const pool=new pg.Pool({...target,user:login,password,max:5})
       pools.push(pool);byLogin[login]=pool
     }
-    for(const account of accounts)await installLogin(account)
-    // Native Auth deliberately accepts ONLY the exact fresh three-entry
-    // ledger. Apply it before later queue/identity migrations, preserving
-    // its production guards rather than translating away that invariant.
-    await admin.query(loadNativeAuthPg18CiSchema().sql)
-    // The fresh schema contains V9 table shapes. This marker is explicitly
-    // synthetic CI setup, never proof of a historical migration on a host.
-    await admin.query("INSERT INTO agentstudio.schema_migrations(version,description) "+
-      "VALUES('pg_v9_022','synthetic CI predecessor')")
-    await admin.query(upgrade("pg_v9_023_workflow_safe_worker.sql"))
-    await admin.query(upgrade("pg_v9_024_bound_dispatch_identity.sql"))
-    await admin.query(upgrade("pg_v9_025_workflow_model_identity.sql"))
-    await admin.query(upgrade("pg_v9_026_workflow_tool_identity.sql"))
-    await admin.query(upgrade("pg_v9_027_workflow_agent_identity.sql"))
-    await admin.query(upgrade("pg_v9_028_autonomous_agent_identity.sql"))
-    await admin.query(upgrade("pg_v9_029_mcp_connections.sql"))
-    await admin.query(upgrade("pg_v9_030_mcp_tool_identity.sql"))
-    await admin.query(upgrade("pg_v9_031_smithery_managed.sql"))
-    await admin.query(upgrade("pg_v9_032_knowledge_access.sql"))
-    await admin.query(upgrade("pg_v9_033_knowledge_content.sql"))
-    await admin.query(upgrade("pg_v9_034_knowledge_runtime.sql"))
-    await admin.query(upgrade("pg_v9_035_knowledge_embedding_state.sql"))
-    await admin.query(upgrade("pg_v9_036_knowledge_embedding_consent.sql"))
-    await admin.query(upgrade("pg_v9_037_knowledge_index_runtime.sql"))
-    await admin.query(upgrade("pg_v9_038_knowledge_query_runtime.sql"))
-    await admin.query(upgrade("pg_v9_039_knowledge_execution_source.sql"))
-    await admin.query(upgrade("pg_v9_040_approved_semantic_tools.sql"))
-    await admin.query(upgrade("pg_v9_041_keyword_observations.sql"))
-    await admin.query(upgrade("pg_v9_042_agent_knowledge_observations.sql"))
-    await admin.query(upgrade("pg_v9_043_workflow_sample_lineage.sql"))
+    const fresh=captureFreshRuntimeSources(),bootstrap=await admin.connect()
+    try{
+      // The same production source sequence runs in one real PG18 transaction.
+      // Only this guarded CI adapter substitutes Native Auth's disposable target.
+      const native=freshRuntimeSqlBody(loadNativeAuthPg18CiSchema().sql)
+      const initialize=async(failAtKeyword=false)=>{
+        await bootstrap.query("BEGIN")
+        try{
+          await bootstrap.query("SET LOCAL password_encryption='scram-sha-256'")
+          await bootstrap.query(loadPg18CiBaseline().sql)
+          for(const account of accounts)await installLogin(account,bootstrap)
+          await verifyFreshForTest(bootstrap)
+          const client={query(sql,args=[]){
+            if(failAtKeyword&&sql===fresh.steps.find(s=>s.version==='pg_v9_041').sql)throw Error('synthetic_fresh_runtime_rollback')
+            return bootstrap.query(sql===fresh.steps[0].sql?native:sql,args)
+          }}
+          const result=await installFreshRuntime(client,fresh)
+          await bootstrap.query("COMMIT");return result
+        }catch(error){await bootstrap.query("ROLLBACK");throw error}
+      }
+      await assert.rejects(initialize(true),/synthetic_fresh_runtime_rollback/)
+      assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN('agentstudio','agentstudio_auth')")).rows[0].n,0)
+      assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
+      const initialized=await initialize()
+      assert.equal(initialized.migration_versions,29);assert.equal(initialized.service_logins_enabled,false)
+      const receipt=(await bootstrap.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_fresh_runtime_001'")).rows[0]
+      assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
+      assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
+    }finally{bootstrap.release()}
+    // Explicit fixture-only activation follows successful initialization. The
+    // operator initializer itself commits with every service login disabled.
+    await admin.query("ALTER ROLE agentstudio_stage_login LOGIN; ALTER ROLE agentstudio_stage_worker LOGIN")
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
