@@ -29,7 +29,7 @@ function validatedPath(rel){
   if(typeof rel!=="string"||!rel.startsWith("services/pg-api/src/")||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
-    refuse("unexpected_dependency")
+    refuse("unexpected_dependency:"+(typeof rel==="string"&&/^[A-Za-z0-9._/-]{1,300}$/.test(rel)?rel:"invalid"))
   return rel
 }
 const visited=new Set()
@@ -75,7 +75,7 @@ function checkFile(file){
      fs.lstatSync(file).isSymbolicLink())refuse("non_regular_source")
   return fs.readFileSync(file)
 }
-function build(output){
+function build(output,includeKnowledgeIndex=false){
   if(typeof output!=="string"||!path.isAbsolute(output)||output.includes("\0"))
     refuse("absolute_output_directory_required")
   const pathNormalized=path.resolve(output)
@@ -86,6 +86,11 @@ function build(output){
     refuse("output_inside_repo")
   fs.mkdirSync(pathNormalized,{recursive:true})
   includeSource("services/pg-api/src/native-server.ts")
+  if(includeKnowledgeIndex){
+    includeSource("services/pg-api/src/knowledge-index-service.ts")
+    included.add("ops/templates/agentstudio-pg18-knowledge-index.service.example")
+    included.add("ops/templates/agentstudio-pg18-knowledge-index-broker.service.example")
+  }
   for(const module of foundExternals){
     if(!(module in thirdParty))refuse("unapproved_runtime_dependency:"+module)
   }
@@ -93,14 +98,17 @@ function build(output){
     if(!(required in thirdParty))refuse("incomplete_package")
   const date=new Date().toISOString().replace(/[-:]/g,"").replace(/\..*/,"")
   const archive=path.join(pathNormalized,
-    "agentstudio_pg18_native_api_preflight_v1_"+date+".tar.gz")
+    (includeKnowledgeIndex?"agentstudio_pg18_native_api_index_preflight_v1_":"agentstudio_pg18_native_api_preflight_v1_")+date+".tar.gz")
   if(fs.existsSync(archive))refuse("archive_already_exists")
   const staging=fs.mkdtempSync(path.join(pathNormalized,
     "native-api-review-staging-"))
   try{
     const files={}
     for(const relativePath of [...included].sort()){
-      if(relativePath==="ops/baota-pg18-native-api-preflight.sh"){
+      if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||includeKnowledgeIndex&&[
+        "ops/templates/agentstudio-pg18-knowledge-index.service.example",
+        "ops/templates/agentstudio-pg18-knowledge-index-broker.service.example",
+      ].includes(relativePath)){
         files[relativePath]=checkFile(path.join(repo,relativePath))
         continue
       }
@@ -119,7 +127,10 @@ function build(output){
     files["README_API_PREFLIGHT.txt"]=Buffer.from([
       "Agent Studio PG18 Native API — OPERATOR READ-ONLY PRE-FLIGHT V1",
       "This package contains source and dependency metadata only.",
-      "It has no passwords, .env, database records, npm lockfile or Worker.",
+      "It has no passwords, .env, database records, npm lockfile or binaries.",
+      ...(includeKnowledgeIndex?["Includes index daemon source and read-only service examples. No service is started.",
+        "Index offline plan: node --experimental-strip-types services/pg-api/src/knowledge-index-service.ts --plan",
+        "SQL032-037 and dedicated NOINHERIT logins must be separately reviewed/provisioned; this package applies no SQL."]:[]),
       "Use a NEW directory /opt/agentstudio-pg18-api-preflight-v1.",
       "Target: PostgreSQL 18 at 127.0.0.1:5333, agent_studio only.",
       "Preserve all existing PocketBase and vcaios services.",
@@ -191,6 +202,15 @@ function build(output){
       if(noArgs.status!==1||
          !noArgs.stderr.includes("NATIVE_SERVER_EXPLICIT_MODE_REQUIRED"))
         refuse("default_start_not_refused")
+      if(includeKnowledgeIndex){
+        for(const args of [[],["--plan"]]){
+          const index=spawnSync(process.execPath,["--experimental-strip-types","services/pg-api/src/knowledge-index-service.ts",...args],
+            {cwd:verify,encoding:"utf8",timeout:18000,env:{...process.env,DATABASE_URL:"postgres://forbidden-prod"}})
+          if(index.status!==0)refuse("isolated_index_plan_failed")
+          const value=JSON.parse(index.stdout.trim())
+          if(["credentials_read","network_used","provider_calls","workers_started","production_cutover_allowed"].some(key=>value[key]!==false))refuse("index_plan_not_safe")
+        }
+      }
     }finally{fs.rmSync(verify,{recursive:true,force:true})}
     return {
       archive,sha256:hash(fs.readFileSync(archive)),
@@ -202,15 +222,16 @@ function build(output){
       offline_plan_verified:true,
       default_start_refused:true,
       contains_secrets:false,
+      ...(includeKnowledgeIndex?{knowledge_index_service_included:true,index_default_plan_only:true}:{}),
     }
   }finally{fs.rmSync(staging,{recursive:true,force:true})}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===
   fileURLToPath(import.meta.url)){
   try{
-    if(process.argv.length!==4||process.argv[2]!=="--output-dir")
+    if(![4,5].includes(process.argv.length)||process.argv[2]!=="--output-dir"||process.argv.length===5&&process.argv[4]!=="--with-knowledge-index")
       refuse("exact_output_arguments_required")
-    process.stdout.write(JSON.stringify(build(process.argv[3]))+"\n")
+    process.stdout.write(JSON.stringify(build(process.argv[3],process.argv.length===5))+"\n")
   }catch(e){
     process.stderr.write("PG18_NATIVE_API_BUNDLE_REFUSED:"+
       (e instanceof Error?e.message:"unknown")+"\n")

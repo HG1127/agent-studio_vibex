@@ -17,6 +17,7 @@ export interface SqlPool {
   readonly knowledgeSharing?:boolean
   readonly knowledgeEmbeddingSettings?:boolean
   readonly knowledgeEmbeddingConsent?:boolean
+  readonly knowledgeIndexRuntime?:boolean
   connect(): Promise<SqlClient>
 }
 

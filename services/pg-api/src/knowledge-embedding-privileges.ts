@@ -1,4 +1,5 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {verifyKnowledgeIndexCredentials} from "./knowledge-index-audit.ts"
 const role="agentstudio_knowledge_embedding"
 const tables=["knowledge_embedding_profiles","knowledge_embedding_vectors","knowledge_embedding_queue","knowledge_embedding_receipts"]
 const functions=[
@@ -14,6 +15,7 @@ const functions=[
 function refuse():never{throw Error("unsafe_knowledge_embedding_privileges")}
 // Runs even with the settings capability off if the helper role exists.
 export async function verifyKnowledgeEmbeddingCredentials(db:SqlClient):Promise<void>{
+  await verifyKnowledgeIndexCredentials(db)
   const state=(await db.query<{safe:boolean;members:number}>("SELECT NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit "+
     "AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication AS safe,"+
     "(SELECT count(*)::integer FROM pg_catalog.pg_auth_members m WHERE m.roleid=r.oid OR m.member=r.oid) AS members "+

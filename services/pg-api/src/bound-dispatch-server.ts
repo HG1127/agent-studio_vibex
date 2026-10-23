@@ -5,7 +5,8 @@ import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 // Separate, private PG18 Broker. Never mount this handler on Native/8090.
 // Import and --plan perform no credential I/O, database access or listening.
 import {createServer} from "node:https"
-import {createPrivateKey,X509Certificate} from "node:crypto"
+import {assertBoundDispatchTlsMaterial} from "./bound-tls-material.ts"
+export {assertBoundDispatchTlsMaterial} from "./bound-tls-material.ts"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 import type {Pool as PgPool} from "pg"
@@ -76,25 +77,6 @@ export function boundDispatchServerConfig(
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
   return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),
     workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} )}
-}
-export function assertBoundDispatchTlsMaterial(
-  ca:Buffer,cert:Buffer,key:Buffer,now=Date.now(),
-):void{
-  try{
-    const certificates=ca.toString("utf8").match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g)
-    if(!certificates?.length)refuse()
-    const authorities=certificates.map(pem=>new X509Certificate(pem))
-    const server=new X509Certificate(cert)
-    for(const item of [...authorities,server]){
-      const from=Date.parse(item.validFrom),to=Date.parse(item.validTo)
-      if(!Number.isFinite(from)||!Number.isFinite(to)||from>now||to<=now)refuse()
-    }
-    if(authorities.some(item=>!item.ca)||server.ca||
-       !server.checkHost("localhost")||!server.checkIP("127.0.0.1")||
-       !server.checkPrivateKey(createPrivateKey(key))||
-       !authorities.some(item=>server.verify(item.publicKey))||
-       !server.keyUsage?.includes("1.3.6.1.5.5.7.3.1"))refuse()
-  }catch{refuse()}
 }
 function password(bytes:Buffer):string{
   const value=bytes.toString("utf8").replace(/[\r\n]+$/g,"")

@@ -3,6 +3,7 @@ import type {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import type {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
 import type {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
 import type {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
+import type {KnowledgeIndexRepository} from "./knowledge-index-repository.ts"
 import {safeSharedKnowledgeText} from "./knowledge-content-repository.ts"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
@@ -39,6 +40,7 @@ export interface AppDependencies {
   knowledgeContentRepository?:KnowledgeContentRepository
   knowledgeEmbeddingRepository?:KnowledgeEmbeddingRepository
   knowledgeEmbeddingConsentRepository?:KnowledgeEmbeddingConsentRepository
+  knowledgeIndexRepository?:KnowledgeIndexRepository
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
   mcpConnectionRepository?:McpConnectionRepository
@@ -133,7 +135,7 @@ export function createHandler(deps:AppDependencies) {
       const mcpRoute=/^\/api\/v2\/mcp-connections(?:\/([0-9a-fA-F-]{36})(?:\/(discover))?)?$/.exec(path)
       const smitheryRoute=/^\/api\/v2\/smithery\/(key|namespaces|catalog|connections)(?:\/([0-9a-fA-F-]{36})(?:\/(refresh|revoke|retry|pause))?)?$/.exec(path)
       const sharedKnowledgeRoute=/^\/api\/v2\/shared-knowledge(?:\/([0-9a-fA-F-]{36})(?:\/(documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.exec(path)
-      const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|consent|consent-receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild))$/.exec(path)
+      const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|consent|consent-receipt|index-authorize|index-receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild|index-status))$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
@@ -165,6 +167,20 @@ export function createHandler(deps:AppDependencies) {
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
       if(embeddingRoute){
+        if(embeddingRoute[1]==="index-authorize"||embeddingRoute[1]==="index-receipt"||embeddingRoute[3]==="index-status"){
+          const repo=deps.knowledgeIndexRepository
+          if(!repo)throw new HttpError(503,"knowledge_index_runtime_disabled")
+          const query=new URL(req.url||"/","http://127.0.0.1").searchParams
+          if(embeddingRoute[1]==="index-receipt"){
+            if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+            if([...query.keys()].length!==1||!isUuid(query.get("request_id")))throw new HttpError(400,"invalid_knowledge_index_identifier")
+            return send(res,200,{item:await repo.receipt(identity,query.get("request_id")!)})
+          }
+          if([...query.keys()].length)throw new HttpError(400,"invalid_knowledge_index_identifier")
+          if(embeddingRoute[3]==="index-status"&&method==="GET")return send(res,200,{item:await repo.status(identity,embeddingRoute[2]!)})
+          if(embeddingRoute[1]==="index-authorize"&&method==="POST")return send(res,200,await repo.authorize(identity,await readBody(req,2048)))
+          throw new HttpError(405,"method_not_allowed")
+        }
         const consentRepo=deps.knowledgeEmbeddingConsentRepository
         const consentKind=embeddingRoute[1]
         if(consentKind==="consent"||consentKind==="consent-receipt"){

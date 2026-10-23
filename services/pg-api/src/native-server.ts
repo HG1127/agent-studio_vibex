@@ -2,6 +2,9 @@
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
 import {verifyKnowledgeEmbeddingConsentSchema} from "./knowledge-embedding-consent-privileges.ts"
+import {scopedKnowledgeIndexPool} from "./knowledge-index-policy.ts"
+import {KnowledgeIndexRepository} from "./knowledge-index-repository.ts"
+import {verifyKnowledgeIndexSchema} from "./knowledge-index-privileges.ts"
 import {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
 import {embeddingEndpointPolicy} from "./knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.ts"
@@ -300,7 +303,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
-  const business=scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true)
+  const business=scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
@@ -352,6 +355,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeSharingUat===true)await verifyKnowledgeRuntimeSchema(business)
     if(capabilities.knowledgeEmbeddingSettingsUat===true)await verifyKnowledgeEmbeddingSchema(business)
     if(capabilities.knowledgeEmbeddingConsentUat===true)await verifyKnowledgeEmbeddingConsentSchema(business)
+    if(capabilities.knowledgeIndexRuntimeUat===true)await verifyKnowledgeIndexSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -370,6 +374,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
       allowKnowledgeEmbeddingSettings:capabilities.knowledgeEmbeddingSettingsUat===true,
       allowKnowledgeEmbeddingConsent:capabilities.knowledgeEmbeddingConsentUat===true,
+      allowKnowledgeIndexRuntime:capabilities.knowledgeIndexRuntimeUat===true,
       allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
@@ -432,6 +437,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       }:{}),
       ...(capabilities.knowledgeEmbeddingSettingsUat===true?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(business,embeddingEndpointPolicy(process.env))}:{}),
       ...(capabilities.knowledgeEmbeddingConsentUat===true?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(business)}:{}),
+      ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true

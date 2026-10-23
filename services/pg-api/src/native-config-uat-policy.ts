@@ -3,6 +3,7 @@ import {selectMcpExecution} from "./mcp-call.ts"
 import {selectSmitheryManagement} from "./smithery-contracts.ts"
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {selectKnowledgeEmbeddingSettings,selectKnowledgeEmbeddingConsent} from "./knowledge-embedding-policy.ts"
+import {selectKnowledgeIndexRuntime} from "./knowledge-index-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -21,6 +22,7 @@ export interface NativePg18UatCapabilities {
   knowledgeSharingUat?:boolean
   knowledgeEmbeddingSettingsUat?:boolean
   knowledgeEmbeddingConsentUat?:boolean
+  knowledgeIndexRuntimeUat?:boolean
   /** Additional opt-in for inert Start/End-only Workflow validation records. */
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
@@ -58,8 +60,10 @@ export function selectNativePg18UatCapabilities(
   const knowledgeSharingUat=selectKnowledgeSharing(env)
   const knowledgeEmbeddingSettingsUat=selectKnowledgeEmbeddingSettings(env)
   const knowledgeEmbeddingConsentUat=selectKnowledgeEmbeddingConsent(env)
+  const knowledgeIndexRuntimeUat=selectKnowledgeIndexRuntime(env)
   if(knowledgeEmbeddingSettingsUat&&!knowledgeSharingUat)refuse()
   if(knowledgeEmbeddingConsentUat&&!knowledgeEmbeddingSettingsUat)refuse()
+  if(knowledgeIndexRuntimeUat&&!knowledgeEmbeddingConsentUat)refuse()
   const config=env.AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED
   const employees=env.AGENT_STUDIO_PG18_EMPLOYEE_UAT_ENABLED
   const marker=env.AGENT_STUDIO_PG18_UAT_APPROVAL
@@ -126,6 +130,7 @@ export function selectNativePg18UatCapabilities(
     ...(knowledgeSharingUat?{knowledgeSharingUat:true}:{}),
     ...(knowledgeEmbeddingSettingsUat?{knowledgeEmbeddingSettingsUat:true}:{}),
     ...(knowledgeEmbeddingConsentUat?{knowledgeEmbeddingConsentUat:true}:{}),
+    ...(knowledgeIndexRuntimeUat?{knowledgeIndexRuntimeUat:true}:{}),
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
@@ -146,6 +151,8 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  if(/^\/api\/v2\/knowledge-embedding\/(?:index-authorize|index-receipt|bases\/[0-9a-fA-F-]{36}\/index-status)$/.test(pathname))
+    return policy.configurationWrites===true&&policy.knowledgeSharingUat===true&&policy.knowledgeEmbeddingSettingsUat===true&&policy.knowledgeEmbeddingConsentUat===true&&policy.knowledgeIndexRuntimeUat===true&&["GET","POST"].includes(method)
   if(/^\/api\/v2\/knowledge-embedding\/(?:consent|consent-receipt)$/.test(pathname))
     return policy.configurationWrites===true&&policy.knowledgeSharingUat===true&&policy.knowledgeEmbeddingSettingsUat===true&&policy.knowledgeEmbeddingConsentUat===true&&["GET","POST"].includes(method)
   if(/^\/api\/v2\/knowledge-embedding\/(?:settings|receipt|bases\/[0-9a-fA-F-]{36}\/(?:status|rebuild))$/.test(pathname))

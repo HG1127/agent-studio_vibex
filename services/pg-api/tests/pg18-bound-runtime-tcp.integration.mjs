@@ -50,6 +50,13 @@ import {KnowledgeEmbeddingRepository} from "../src/knowledge-embedding-repositor
 import {KnowledgeEmbeddingConsentRepository} from "../src/knowledge-embedding-consent-repository.ts"
 import {EMBEDDING_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-embedding-consent-contracts.ts"
 import {verifyKnowledgeEmbeddingConsentSchema} from "../src/knowledge-embedding-consent-privileges.ts"
+import {KnowledgeIndexBroker} from "../src/knowledge-index-broker.ts"
+import {KnowledgeIndexWorker} from "../src/knowledge-index-worker.ts"
+import {createKnowledgeIndexPrivateClient,createKnowledgeIndexPrivateHandler} from "../src/knowledge-index-private-tls.ts"
+import {scopedKnowledgeIndexPool} from "../src/knowledge-index-policy.ts"
+import {verifyKnowledgeIndexSchema,verifyKnowledgeIndexLogin} from "../src/knowledge-index-privileges.ts"
+import {KnowledgeIndexRepository} from "../src/knowledge-index-repository.ts"
+import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "../src/knowledge-embedding-privileges.ts"
 import {verifyKnowledgeRuntimeSchema} from "../src/knowledge-content-privileges.ts"
@@ -73,7 +80,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
@@ -98,6 +105,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowKnowledgeSharing:true,
       allowKnowledgeEmbeddingSettings:true,
       allowKnowledgeEmbeddingConsent:true,
+      allowKnowledgeIndexRuntime:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -116,6 +124,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
       knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
       knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool),
+      knowledgeIndexRepository:new KnowledgeIndexRepository(pool),
       workflowRepository:new WorkflowRepository(pool),
       workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
@@ -218,18 +227,23 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_034_knowledge_runtime.sql"))
     await admin.query(upgrade("pg_v9_035_knowledge_embedding_state.sql"))
     await admin.query(upgrade("pg_v9_036_knowledge_embedding_consent.sql"))
+    await admin.query(upgrade("pg_v9_037_knowledge_index_runtime.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
+      ["agentstudio_knowledge_index_worker_login","agentstudio_knowledge_index_worker"],
+      ["agentstudio_knowledge_index_broker_login","agentstudio_knowledge_index_broker"],
     ])await installLogin(account)
     const authPassword="synthetic-"+createHash("sha256").update(target.password+":auth").digest("hex")
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
-    const apiPool=scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true)
+    const apiPool=scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool)
     await verifyKnowledgeEmbeddingSchema(apiPool)
     await verifyKnowledgeEmbeddingConsentSchema(apiPool)
+    await verifyKnowledgeIndexSchema(apiPool)
+    for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_consents TO agentstudio_stage_login")
     try{await assert.rejects(verifyKnowledgeEmbeddingConsentSchema(apiPool),/unsafe_knowledge_embedding_privileges/)}
     finally{await admin.query("REVOKE SELECT ON agentstudio.knowledge_embedding_consents FROM agentstudio_stage_login")}
@@ -439,6 +453,36 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const embeddingReader=new KnowledgeEmbeddingRepository(apiPool,embeddingEndpointPolicy({}))
     assert.equal((await embeddingReader.settings(reader)).configured,false)
     await assert.rejects(embeddingReader.status(reader,sharedBase.id),error=>error.status===404)
+    // Actual non-superuser index roles and independent mTLS. Provider work is
+    // a sealed in-process synthetic embedding stub; no external API is called.
+    const indexWorkerPool=scopedKnowledgeIndexPool(adapter(byLogin.agentstudio_knowledge_index_worker_login),true)
+    const indexBrokerPool=scopedKnowledgeIndexPool(adapter(byLogin.agentstudio_knowledge_index_broker_login),true)
+    let embeddingCalls=0
+    const indexBroker=new KnowledgeIndexBroker(indexBrokerPool,adapter(byLogin.agentstudio_model_broker_login),key,async material=>{
+      embeddingCalls++;assert.equal(material.api_key,"SyntheticEmbeddingCredentialNeverNetwork012345")
+      assert.equal(material.model_name,"synthetic-embedding");return material.input.map(()=>[1,0])
+    },{approvedForIsolatedUat:true})
+    await withDisposableBoundModelTls(claim=>indexBroker.dispatch(claim),async config=>{
+      const privateIndex=createKnowledgeIndexPrivateClient(config)
+      const worker=new KnowledgeIndexWorker(indexWorkerPool,privateIndex,{approvedForIsolatedUat:true})
+      const current=await api.getKnowledgeEmbeddingConsent()
+      await api.changeKnowledgeEmbeddingConsent({action:"grant",request_id:randomUUID(),expected_revision:current.revision,profile_id:current.profile_id,
+        profile_revision:current.profile_revision,index_enabled:true,query_enabled:false,acknowledgement:EMBEDDING_CHARGE_ACKNOWLEDGEMENT})
+      assert.equal((await worker.tick()).status,"idle");assert.equal(embeddingCalls,0)
+      const approved=await api.getKnowledgeEmbeddingConsent(),authorization={request_id:randomUUID(),profile_id:approved.profile_id,profile_revision:approved.profile_revision,
+        expected_consent_revision:approved.revision,acknowledgement:INDEX_START_ACKNOWLEDGEMENT}
+      const receipt=await api.authorizeKnowledgeIndex(authorization)
+      assert.deepEqual(await api.getKnowledgeIndexAuthorizationReceipt(authorization.request_id),receipt.item)
+      let idle=false
+      for(let round=0;round<32;round++){const result=await worker.tick();if(result.status==="idle"){idle=true;break};assert.equal(result.status,"indexed")}
+      assert.equal(idle,true);assert.ok(embeddingCalls>0);assert.equal((await api.getKnowledgeIndexStatus(sharedBase.id)).ready,true)
+      const workerDb=await byLogin.agentstudio_knowledge_index_worker_login.connect()
+      try{
+        await workerDb.query("BEGIN");await workerDb.query("SET LOCAL ROLE agentstudio_knowledge_index_worker")
+        await assert.rejects(workerDb.query("SELECT api_key_ciphertext FROM agentstudio.model_connections"),error=>error.code==="42501")
+        await workerDb.query("ROLLBACK")
+      }finally{workerDb.release()}
+    },{handlerFactory:createKnowledgeIndexPrivateHandler})
     assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)
     assert.equal((await withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])))[0].access_role,"viewer")
     assert.equal((await withActor(apiPool,reader,(db,id)=>gatherAuthorizedKnowledgeEvidence(db,id,[sharedBase.id],"cedar")))[0].documentId,sharedDoc.item.document_id)

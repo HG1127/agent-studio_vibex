@@ -27,6 +27,7 @@ SOURCES = (
     ROOT/"services/pg-api/src/optional-credential-boundary.ts",
     ROOT/"services/pg-api/src/knowledge-content-privileges.ts",
     ROOT/"services/pg-api/src/knowledge-embedding-privileges.ts",
+    ROOT/"services/pg-api/src/knowledge-index-audit.ts",
     ROOT/"services/pg-api/src/knowledge-sharing-policy.ts",
     PACKAGE,
 )
