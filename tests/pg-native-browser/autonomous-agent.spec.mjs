@@ -76,7 +76,10 @@ test("multi-round employee Agent: exact recovery, per-step consent, mTLS, safe c
     expect((await control("state","GET")).httpCalls).toBe(0)
     await page.getByRole("button",{name:"多轮 Agent",exact:true}).click()
     await page.getByRole("textbox",{name:"多轮任务要求",exact:true}).fill("Run synthetic owner HTTP Tool")
+    {const committed=page.waitForResponse(response=>response.request().method()==="POST"&&/\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/.test(new URL(response.url()).pathname))
     await page.getByRole("button",{name:"提交多轮任务",exact:true}).click()
+    expect([200,201]).toContain((await committed).status())
+    await expect(page.getByText("多轮任务已提交，等待逐步审批。",{exact:true})).toBeVisible()}
     for(const charged of [false,true,false,true]){
       expect((await control("autonomous")).status).toBe("awaiting_approval");await refresh()
       if(!charged&&(await control("state","GET")).generated===3){
@@ -122,7 +125,10 @@ test("multi-round employee Agent: exact recovery, per-step consent, mTLS, safe c
     await page.getByRole("button",{name:"多轮 Agent",exact:true}).click()
     await page.getByRole("button",{name:"读取本人 MCP 连接核对运行权限",exact:true}).click()
     await page.getByRole("textbox",{name:"多轮任务要求",exact:true}).fill("Run synthetic owner MCP Tool")
+    {const committed=page.waitForResponse(response=>response.request().method()==="POST"&&/\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/.test(new URL(response.url()).pathname))
     await page.getByRole("button",{name:"提交多轮任务",exact:true}).click()
+    expect([200,201]).toContain((await committed).status())
+    await expect(page.getByText("多轮任务已提交，等待逐步审批。",{exact:true})).toBeVisible()}
     for(const charged of [false,true,false,true]){
       expect((await control("autonomous")).status).toBe("awaiting_approval");await refresh()
       if(!charged&&(await control("state","GET")).generated===5){
@@ -180,7 +186,10 @@ test("multi-round employee Agent: exact recovery, per-step consent, mTLS, safe c
     await page.getByRole("button",{name:"多轮 Agent",exact:true}).click()
     await page.getByRole("button",{name:"读取本人 MCP 连接核对运行权限",exact:true}).click()
     await page.getByRole("textbox",{name:"多轮任务要求",exact:true}).fill("Cancel unstarted task")
+    {const committed=page.waitForResponse(response=>response.request().method()==="POST"&&/\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/.test(new URL(response.url()).pathname))
     await page.getByRole("button",{name:"提交多轮任务",exact:true}).click()
+    expect([200,201]).toContain((await committed).status())
+    await expect(page.getByText("多轮任务已提交，等待逐步审批。",{exact:true})).toBeVisible()}
     await page.getByRole("button",{name:"取消任务",exact:true}).click();await page.getByRole("button",{name:"确认取消此任务",exact:true}).click()
     await expect(page.getByText("任务已取消。",{exact:true})).toBeVisible()
     let reached;const held=new Promise(resolve=>{reached=resolve}),release=new Promise(resolve=>{releaseRead=resolve});let intercepted=false

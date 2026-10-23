@@ -11,7 +11,7 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
   const env=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))
   Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true"})
   const child=spawn(process.execPath,["--experimental-strip-types",path.join(root,"services/pg-api/tests/helpers/native-run-browser-fixture.mjs")],{cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true})
-  let browser,context,control,timer,output=""
+  let browser,context,control,timer,page,output=""
   const ready=new Promise((resolve,reject)=>{
     timer=setTimeout(()=>reject(Error("synthetic_fixture_start_timeout")),45000)
     const chunk=bytes=>{output=(output+bytes.toString()).slice(-32768)
@@ -27,7 +27,7 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     browser=await chromium.launch({headless:true});context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:"block"})
     const external=[]
     await context.route("**/*",async route=>{if(new URL(route.request().url()).origin!==approved.origin){external.push(route.request().url());await route.abort()}else await route.continue()})
-    const page=await context.newPage();await page.goto(info.url,{waitUntil:"domcontentloaded"})
+    page=await context.newPage();await page.goto(info.url,{waitUntil:"domcontentloaded"})
     await page.getByRole("textbox",{name:"员工邮箱",exact:true}).fill("alice@example.com")
     await page.getByLabel("密码",{exact:true}).fill("SyntheticAlicePassword#2026")
     await page.getByRole("button",{name:"登录独立工作台",exact:true}).click()
@@ -165,6 +165,13 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     await page.getByRole("button",{name:"Workflow 运行与审批",exact:true}).click()
     await expect(page.getByRole("button",{name:"提交工作流任务",exact:true})).toBeDisabled()
     expect(external).toEqual([])
+  }catch(error){
+    if(page&&!page.isClosed()){
+      const selected=page.getByRole("combobox",{name:"选择节点",exact:true})
+      console.error("synthetic_canvas_failure_state",JSON.stringify({selected:await selected.inputValue().catch(()=>null),options:await selected.locator("option").allTextContents().catch(()=>[]),forms:await page.getByRole("form",{name:"Workflow 节点配置",exact:true}).count(),alerts:await page.getByRole("alert").allTextContents().catch(()=>[])}))
+      await page.screenshot({path:testInfo.outputPath("workflow-failure.png"),fullPage:true}).catch(()=>{})
+    }
+    throw error
   }finally{
     clearTimeout(timer);if(context)await context.close();if(browser)await browser.close()
     if(control)await control("stop").catch(()=>{})
