@@ -5,6 +5,8 @@
 
 顺序为：完整空库初始化并校验源回执 → Native Auth 登录及网络规则审查与启用 →
 首位本地管理员 → 下列服务账号逐个检查、保留和启用 → 独立的系统服务与员工验收。
+[分阶段只读核验](PG18_RUNTIME_PREPARATION_POSTCHECK.md)用于明确的准备边界，
+不把部分服务已启用或已开始员工使用的状态误认为首位管理员刚创建完成。
 原认证激活器的空库检查只用于认证启用前，不能在服务启用后重新运行或用于轮换密码。
 
 | 服务参数 | 固定登录账号 | 显式切换的权限组 |
@@ -34,7 +36,8 @@ root 所有、私有权限的仓库外文件提供；服务密码为新生成的
 后两者还需要 `--expected-source-sha256 <审查后 SQL 快照摘要>`。
 
 执行只接受 Linux root、`127.0.0.1:5333/agent_studio`、PostgreSQL 18、pgvector
-0.8.7、实际超级用户 postgres，且不处于恢复模式。必须移除环境中的 DATABASE_URL
+0.8.7、实际超级用户 postgres，且不处于恢复模式。
+与目标不符的服务器侧连接地址或 Unix socket 同样拒绝。必须移除环境中的 DATABASE_URL
 与 PG* 默认连接项，显式设置 `AGENT_STUDIO_PG18_SERVICE_LOGINS_ENABLED=true`，
 以 `AGENT_STUDIO_PG18_SERVICE_ADMIN_PASSWORD_FILE` 指向管理员私有文件。
 写操作还需与操作严格对应的 `AGENT_STUDIO_PG18_SERVICE_LOGIN_WRITE_APPROVED`：

@@ -24,6 +24,7 @@ export function checkedServiceLoginReceipt(version,description,sourceSha){
 }
 export const serviceLoginTargetGuardSql=`DO $service_target$ BEGIN
   IF current_database() <> 'agent_studio' OR current_setting('port')::integer <> 5333 OR session_user <> 'postgres' OR
+    host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR
     current_user <> session_user OR current_setting('server_version_num')::int < 180000 OR current_setting('server_version_num')::int >= 190000 OR
     pg_is_in_recovery() OR NOT (SELECT rolsuper FROM pg_roles WHERE rolname=session_user) OR
     (SELECT extversion FROM pg_extension WHERE extname='vector') IS DISTINCT FROM '0.8.7' THEN

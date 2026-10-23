@@ -2,43 +2,16 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {spawnSync} from "node:child_process"
 import {fileURLToPath} from "node:url"
-import {PGlite} from "@electric-sql/pglite"
-import {vector} from "@electric-sql/pglite-pgvector"
-import {captureFreshRuntimeSources} from "../src/pg18-fresh-runtime-source.mjs"
-import {installFreshRuntime,verifyFreshRuntime} from "../src/pg18-fresh-runtime-install.ts"
-import {loginSqlForTest,verifyFreshForTest} from "../src/baota-pg18-fresh-init.mjs"
+import {preparationFixture as fixture,preparationSnapshot as snapshot,preparationNativePassword as nativePassword} from "./helpers/pg18-preparation-fixture.mjs"
+import {verifyFreshRuntime} from "../src/pg18-fresh-runtime-install.ts"
 import {reviewedNativeSqlForEmbeddedTest} from "./helpers/native-pg18-embedded.mjs"
-import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {serviceLoginKinds,serviceLoginDefinition,serviceLoginReceiptVersion,serviceLoginTargetGuardSql} from "../src/pg18-service-login-policy.mjs"
 import {serviceLoginVerifier,matchesServiceScram,validateServiceLoginPassword} from "../src/pg18-service-login-secrets.mjs"
 import {inspectPreparedServiceLogins,reservePreparedServiceLogin,activatePreparedServiceLogin} from "../src/pg18-service-login-inspector.ts"
 import {parseServiceLoginArguments,runServiceLogin,collectPreparedServiceEvidence} from "../src/pg18-service-login-cli.mjs"
 import {verifyPg18ServiceHbaOrder,verifyNativeHbaOrder} from "../src/native-activation-cli.mjs"
 
-const snapshot=captureFreshRuntimeSources(),nativePassword="a0".repeat(40),passwordFor=k=>String(serviceLoginKinds.indexOf(k)+1).repeat(80)
-async function fixture(){
-  const db=await PGlite.create({extensions:{vector}});await db.exec("CREATE DATABASE agent_studio")
-  const api={async query(sql,values=[]){
-    // Only this PG17 embedded TEST COPY replaces the five exact environment
-    // predicates. The production CLI/helper always executes the original SQL.
-    let copy=sql
-    if(sql===snapshot.steps[0].sql||sql===serviceLoginTargetGuardSql)copy=reviewedNativeSqlForEmbeddedTest(sql)
-    return values.length?db.query(copy,values):(await db.exec(copy)).at(-1)??{rows:[]}
-  }}
-  try{
-    await db.exec("BEGIN; SET LOCAL password_encryption='scram-sha-256'");await db.exec(snapshot.baseline.sql)
-    for(const kind of ["api","worker"])await db.query("SELECT set_config($1,$2,true)",["agentstudio.bootstrap_"+kind+"_password","SyntheticFresh"+kind+"0123456789abcdefghijklmnopqrstuvwxyz"])
-    await db.exec(loginSqlForTest);await verifyFreshForTest(db);await installFreshRuntime(api,snapshot);await db.exec("COMMIT")
-  }catch(error){await db.close();throw error}
-  const transaction=async callback=>{await db.exec("BEGIN");try{const result=await callback(api);await db.exec("COMMIT");return result}catch(error){await db.exec("ROLLBACK");throw error}}
-  const rollback=async callback=>{await db.exec("BEGIN");try{return await callback(api)}finally{await db.exec("ROLLBACK")}}
-  const inspect=()=>rollback(client=>inspectPreparedServiceLogins(client,snapshot))
-  return {db,api,transaction,rollback,inspect,async ready(){
-    await db.exec("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+serviceLoginVerifier(nativePassword)+"'")
-    const store=new NativeAuthRepository({async connect(){return {...api,release(){}}}})
-    await store.provisionInitialAdmin({email:"synthetic-admin@example.test",password:"SyntheticServiceAdmin#2026",display_name:"Synthetic Admin"})
-  },close:()=>db.close()}
-}
+const passwordFor=k=>String(serviceLoginKinds.indexOf(k)+1).repeat(80)
 function rulesFor(login){return [
   {rule_number:1,type:"local",database:["agent_studio"],user_name:[login],auth_method:"reject",error:null},
   {rule_number:2,type:"host",database:["agent_studio"],user_name:[login],auth_method:"scram-sha-256",address:"127.0.0.1",netmask:"255.255.255.255",error:null},
@@ -184,6 +157,9 @@ test("service preflight checks Native and all active HBA guards and refuses live
       await assert.rejects(f.rollback(()=>collectPreparedServiceEvidence(probe(allRules().filter(r=>!r.user_name.includes(missing))),snapshot,"identity")),/hba_not_ready/)
     await assert.rejects(f.rollback(()=>collectPreparedServiceEvidence(probe(allRules(),1),snapshot,"identity")),/connections_present/)
     await assert.rejects(f.db.exec(serviceLoginTargetGuardSql),/service_login_target_not_approved/)
+    // Even after replacing the five embedded target predicates, a connection
+    // without the real server-side IPv4 loopback address must still refuse.
+    await assert.rejects(f.db.exec(reviewedNativeSqlForEmbeddedTest(serviceLoginTargetGuardSql)),/service_login_target_not_approved/)
     assert.equal((await f.inspect()).roles.has("agentstudio_bound_dispatch_login"),false)
   }finally{await f.close()}
 })

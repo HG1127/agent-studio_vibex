@@ -18,6 +18,7 @@ import {verifyFreshForTest} from "../src/baota-pg18-fresh-init.mjs"
 import {collectNativeActivationEvidenceForTest,diagnoseNativeSchema,makeNativeScramVerifier} from "../src/native-activation-cli.mjs"
 import {serviceLoginKinds,serviceLoginDefinition,serviceLoginTargetGuardSql} from "../src/pg18-service-login-policy.mjs"
 import {inspectPreparedServiceLogins,reservePreparedServiceLogin,activatePreparedServiceLogin} from "../src/pg18-service-login-inspector.ts"
+import {inspectRuntimePreparationStage} from "../src/pg18-runtime-postcheck.ts"
 import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
@@ -199,11 +200,12 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
   const key=randomBytes(32)
   let front
   try{
-    const observed=(await admin.query("SELECT current_database() AS db,session_user AS login,"+
+    const observed=(await admin.query("SELECT current_database() AS db,session_user AS login,host(inet_server_addr()) AS server_address,"+
       "current_setting('server_version_num')::int AS version,"+
       "(SELECT count(*)::int FROM pg_namespace WHERE nspname IN ('agentstudio','agentstudio_auth')) AS existing,"+
       "(SELECT count(*)::int FROM pg_roles WHERE rolname LIKE 'agentstudio\\_%' ESCAPE '\\') AS roles")).rows[0]
     assert.equal(observed.db,"agentstudio_pg18_ci");assert.equal(observed.login,"agentstudio_admin")
+    assert.match(observed.server_address,/^\d{1,3}(?:\.\d{1,3}){3}$/);assert.ok(observed.server_address.split(".").every(x=>Number(x)<=255))
     assert.ok(observed.version>=180000&&observed.version<190000)
     assert.equal(observed.existing,0);assert.equal(observed.roles,1) // only the CI administrator
     const accounts=[
@@ -254,20 +256,31 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
     }finally{bootstrap.release()}
+    const checkPreparationStage=async stage=>{
+      const client=await admin.connect()
+      try{await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        try{const report=await inspectRuntimePreparationStage(client,fresh,stage);assert.equal(report.stage_verified,true);assert.equal(report.production_cutover_allowed,false);return report}
+        finally{await client.query("ROLLBACK")}
+      }finally{client.release()}
+    }
+    await checkPreparationStage("initialized")
     // The original production target guard MUST reject this disposable CI DB.
     await assert.rejects(admin.query(serviceLoginTargetGuardSql),/service_login_target_not_approved/)
     const authPassword=passwordFor("agentstudio_native_login")
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+makeNativeScramVerifier(authPassword)+"'")
+    await checkPreparationStage("native-login")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
     const auth=new NativeAuthRepository(adapter(authPool))
     await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
+    await checkPreparationStage("first-admin")
     // Exact CI-only target substitutions, behind requireEphemeralPg18Ci above.
     // PG18/vector/superuser/recovery/schema/role/receipt checks are unchanged.
     let serviceGuard=serviceLoginTargetGuardSql
     for(const [before,after] of [["current_database() <> 'agent_studio'","current_database() <> 'agentstudio_pg18_ci'"],
       ["current_setting('port')::integer <> 5333","current_setting('port')::integer <> 5432"],
-      ["session_user <> 'postgres'","session_user <> 'agentstudio_admin'"]]){
+      ["session_user <> 'postgres'","session_user <> 'agentstudio_admin'"],
+      ["host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'","host(inet_server_addr()) IS DISTINCT FROM '"+observed.server_address+"'"]]){
       assert.equal(serviceGuard.split(before).length,2);serviceGuard=serviceGuard.replace(before,after)
     }
     const operator=await admin.connect()
@@ -295,6 +308,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await operator.query("BEGIN READ ONLY")
       try{assert.equal((await inspectPreparedServiceLogins(prepared,fresh)).receipts.length,6)}finally{await operator.query("ROLLBACK")}
     }finally{operator.release()}
+    assert.equal((await checkPreparationStage("service-logins")).service_activation_receipts,6)
     for(const kind of serviceLoginKinds){const login=serviceLoginDefinition(kind).login,pool=new pg.Pool({...target,user:login,password:passwordFor(login),max:5})
       pools.push(pool);byLogin[login]=pool
       assert.equal((await pool.query("SELECT session_user AS login")).rows[0].login,login)

@@ -9,7 +9,8 @@ type Snapshot=ReturnType<typeof captureFreshRuntimeSources>
 type Role={name:string;login:boolean;safe:boolean;has_password:boolean;scram:boolean}
 function refuse():never{throw Error("unsafe_service_login_catalog")}
 const nativeLogin="agentstudio_native_login"
-export async function inspectPreparedServiceLogins(db:SqlClient,snapshot:Snapshot){
+export async function inspectRuntimeServiceCatalog(db:SqlClient,snapshot:Snapshot,nativeEnabled=true){
+  if(typeof nativeEnabled!=="boolean")refuse()
   const {serviceReceipts}=await verifyRuntimeSchemaReceipt(db,snapshot,true,true)
   const definitions=serviceLoginKinds.map(k=>serviceLogins[k]),accountNames=[nativeLogin,...definitions.map(d=>d.login)]
   const names=[...new Set([...freshRuntimeRoles,...accountNames])]
@@ -20,7 +21,8 @@ export async function inspectPreparedServiceLogins(db:SqlClient,snapshot:Snapsho
   const roles=new Map(rows.map(r=>[r.name,r]))
   if(freshRuntimeRoles.some(name=>!roles.has(name))||rows.some(r=>!r.safe||!accountNames.includes(r.name)&&(r.login||r.has_password)||r.has_password&&!r.scram))refuse()
   const native=roles.get(nativeLogin)
-  if(!native?.login||!native.scram)throw Error("native_auth_activation_required_first")
+  if(nativeEnabled&&(!native?.login||!native.scram))throw Error("native_auth_activation_required_first")
+  if(!nativeEnabled&&(!native||native.login||native.has_password))throw Error("native_auth_login_must_remain_disabled")
   const expected=[nativeLogin+":agentstudio_native_auth"]
   for(const def of definitions)if(roles.has(def.login)&&(["api","worker"].includes(def.kind)||roles.get(def.login)?.login||serviceReceipts.some(r=>r.kind===def.kind)))
     expected.push(...def.groups.map(g=>def.login+":"+g))
@@ -44,9 +46,6 @@ export async function inspectPreparedServiceLogins(db:SqlClient,snapshot:Snapsho
       "has_database_privilege($1,current_database(),'CONNECT') AND NOT has_database_privilege($1,current_database(),'CREATE') AS ok",[def.login])).rows[0]
     if(!direct?.ok)refuse()
   }
-  const admin=(await db.query<{ready:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio_auth.accounts a JOIN agentstudio.users u ON u.id=a.user_id "+
-    "WHERE a.enabled AND a.is_admin AND u.status='active' AND u.external_issuer='urn:agentstudio:local:v1') AS ready")).rows[0]
-  if(!admin?.ready)throw Error("first_native_admin_required")
   for(const role of ["agentstudio_api","agentstudio_worker","agentstudio_bound_dispatch","agentstudio_native_auth"]){
     const denied=(await db.query<{ok:boolean}>("SELECT NOT has_column_privilege($1,'agentstudio.model_connections','api_key_ciphertext','SELECT') AND "+
       "NOT has_column_privilege($1,'agentstudio.model_connections','api_key_nonce','SELECT') AND NOT has_column_privilege($1,'agentstudio.model_connections','api_key_tag','SELECT') AND "+
@@ -57,6 +56,13 @@ export async function inspectPreparedServiceLogins(db:SqlClient,snapshot:Snapsho
   await db.query("SET LOCAL ROLE agentstudio_api")
   try{await verifyKnowledgeHelperCredentials(db)}finally{await db.query("RESET ROLE")}
   return {roles,receipts:serviceReceipts}
+}
+export async function inspectPreparedServiceLogins(db:SqlClient,snapshot:Snapshot){
+  const state=await inspectRuntimeServiceCatalog(db,snapshot)
+  const admin=(await db.query<{ready:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio_auth.accounts a JOIN agentstudio.users u ON u.id=a.user_id "+
+    "WHERE a.enabled AND a.is_admin AND u.status='active' AND u.external_issuer='urn:agentstudio:local:v1') AS ready")).rows[0]
+  if(!admin?.ready)throw Error("first_native_admin_required")
+  return state
 }
 export async function reservePreparedServiceLogin(db:SqlClient,kind:ServiceLoginKind,snapshot:Snapshot){
   await db.query(serviceLoginTargetGuardSql)
