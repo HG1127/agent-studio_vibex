@@ -9,6 +9,7 @@ test("query preflights reject raw data grants, PUBLIC dispatch, missing RLS and 
   try{
     for(const kind of ["api","worker","broker"]){await verifyKnowledgeQuerySchema(f.pool,kind);await verifyKnowledgeIndexSchema(f.pool,kind)}
     const mutations=[
+      ["ALTER ROLE agentstudio_knowledge_query RENAME TO agentstudio_query_missing_fixture","ALTER ROLE agentstudio_query_missing_fixture RENAME TO agentstudio_knowledge_query"],
       ["GRANT SELECT(api_key_ciphertext) ON agentstudio.model_connections TO agentstudio_knowledge_query","REVOKE SELECT(api_key_ciphertext) ON agentstudio.model_connections FROM agentstudio_knowledge_query"],
       ["GRANT SELECT(embedding) ON agentstudio.knowledge_chunks TO agentstudio_knowledge_query","REVOKE SELECT(embedding) ON agentstudio.knowledge_chunks FROM agentstudio_knowledge_query"],
       ["GRANT SELECT ON agentstudio.knowledge_query_jobs TO agentstudio_api","REVOKE SELECT ON agentstudio.knowledge_query_jobs FROM agentstudio_api"],

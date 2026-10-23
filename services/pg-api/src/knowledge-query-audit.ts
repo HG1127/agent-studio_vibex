@@ -14,7 +14,13 @@ function refuse():never{throw Error("unsafe_knowledge_query_privileges")}
 export async function verifyKnowledgeQueryCredentials(db:SqlClient):Promise<void>{
   const role=(await db.query<{safe:boolean}>("SELECT NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication "+
     "AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS safe FROM pg_catalog.pg_roles r WHERE rolname=$1",[helper])).rows[0]
-  if(!role)return;if(!role.safe)refuse()
+  if(!role){
+    // Optional on older schemas, mandatory if any SQL038 footprint remains.
+    const state=(await db.query<{installed:boolean}>("SELECT to_regclass('agentstudio.knowledge_query_jobs') IS NOT NULL OR "+
+      "to_regprocedure('agentstudio.knowledge_query_get(uuid)') IS NOT NULL OR EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_038') AS installed")).rows[0]
+    if(state?.installed!==false)refuse();return
+  }
+  if(!role.safe)refuse()
   const columns=(await db.query<{schema:string;table:string;column:string;read:boolean;insert:boolean;update:boolean;reference:boolean}>("SELECT n.nspname AS schema,c.relname AS table,a.attname AS column,"+
     "has_column_privilege($1,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1,c.oid,a.attnum,'INSERT') AS insert,"+
     "has_column_privilege($1,c.oid,a.attnum,'UPDATE') AS update,has_column_privilege($1,c.oid,a.attnum,'REFERENCES') AS reference "+
