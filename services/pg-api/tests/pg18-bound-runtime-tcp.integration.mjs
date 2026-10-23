@@ -610,7 +610,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         }
         assert.equal(completed,true);assert.equal(modelCalls,2);assert.equal(queryCalls,3)
         const keywordProof=(await admin.query("SELECT * FROM agentstudio.knowledge_keyword_observations WHERE run_id=$1",[keywordRunId])).rows
-        assert.equal(keywordProof.length,1);assert.equal(keywordProof[0].reader_user_id,readerId);assert.equal(keywordProof[0].result_refs.length,1)
+        assert.equal(keywordProof.length,1);assert.equal(keywordProof[0].reader_user_id,share.item.recipient_id);assert.equal(keywordProof[0].result_refs.length,1)
         assert.doesNotMatch(JSON.stringify(keywordProof),/cedar|Synthetic free keyword task|lease_token|ciphertext/)
         assert.equal((await api.getWorkflowV2Run(keywordRunId)).knowledge_outputs_available,true)
       },{handlerFactory:wire=>{
