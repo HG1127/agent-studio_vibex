@@ -17,7 +17,7 @@ export async function verifyKnowledgeQueryCredentials(db:SqlClient):Promise<void
   if(!role){
     // Optional on older schemas, mandatory if any SQL038 footprint remains.
     const state=(await db.query<{installed:boolean}>("SELECT to_regclass('agentstudio.knowledge_query_jobs') IS NOT NULL OR "+
-      "to_regprocedure('agentstudio.knowledge_query_get(uuid)') IS NOT NULL OR EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_038') AS installed")).rows[0]
+      "to_regprocedure('agentstudio.knowledge_query_get(uuid)') IS NOT NULL AS installed")).rows[0]
     if(state?.installed!==false)refuse();return
   }
   if(!role.safe)refuse()
@@ -58,6 +58,6 @@ export async function verifyKnowledgeQuerySchema(pool:SqlPool,kind:"api"|"worker
   const db=await pool.connect();try{await db.query("BEGIN READ ONLY");try{
     await db.query("SET LOCAL ROLE "+(kind==="api"?"agentstudio_api":"agentstudio_knowledge_index_"+kind))
     await verifyKnowledgeQueryCredentials(db)
-    if((await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_038') AS ok")).rows[0]?.ok!==true)refuse()
+    if((await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_038') AND EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='agentstudio_knowledge_query') AS ok")).rows[0]?.ok!==true)refuse()
   }finally{await db.query("ROLLBACK")}}finally{db.release()}
 }
