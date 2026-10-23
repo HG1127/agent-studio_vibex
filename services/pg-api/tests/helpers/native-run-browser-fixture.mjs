@@ -45,6 +45,20 @@ import {AgentModelWorker} from "../../src/model-worker.ts"
 import {OwnerBoundModelDispatch} from "../../src/owner-model-dispatch.ts"
 import {BoundLeaseIdentityRepository,createVerifiedBoundDispatchAdapter} from "../../src/bound-lease-identity.ts"
 import {createBoundModelMutualTlsClient} from "../../src/bound-model-client.ts"
+import {KnowledgeEmbeddingRepository} from "../../src/knowledge-embedding-repository.ts"
+import {KnowledgeEmbeddingConsentRepository} from "../../src/knowledge-embedding-consent-repository.ts"
+import {KnowledgeIndexRepository} from "../../src/knowledge-index-repository.ts"
+import {KnowledgeIndexBroker} from "../../src/knowledge-index-broker.ts"
+import {KnowledgeIndexWorker} from "../../src/knowledge-index-worker.ts"
+import {KnowledgeQueryRepository} from "../../src/knowledge-query-repository.ts"
+import {KnowledgeQueryBroker} from "../../src/knowledge-query-broker.ts"
+import {KnowledgeQueryWorker} from "../../src/knowledge-query-worker.ts"
+import {embeddingEndpointPolicy} from "../../src/knowledge-embedding-policy.ts"
+import {createKnowledgeIndexPrivateClient,createKnowledgeIndexPrivateHandler} from "../../src/knowledge-index-private-tls.ts"
+import {createKnowledgeQueryPrivateClient,createKnowledgeQueryPrivateHandler} from "../../src/knowledge-query-private-tls.ts"
+import {knowledgeIndexRoute} from "../../src/knowledge-index-contracts.ts"
+import {knowledgeQueryRoute} from "../../src/knowledge-query-contracts.ts"
+import assert from "node:assert/strict"
 
 if(process.env.AGENT_STUDIO_PG_BROWSER_FIXTURE!=="SYNTHETIC_LOCAL_ONLY")
   throw Error("synthetic_local_browser_fixture_required")
@@ -53,6 +67,8 @@ if(process.env.AGENT_STUDIO_PG_BROWSER_AUTONOMOUS!==undefined&&!autonomous)throw
 const workflow=process.env.AGENT_STUDIO_PG_BROWSER_WORKFLOW==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_WORKFLOW!==undefined&&!workflow||autonomous&&workflow)throw Error("invalid_synthetic_browser_mode")
 const modern=autonomous||workflow
+const semantic=process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC!==undefined&&!semantic||semantic&&!workflow)throw Error("invalid_synthetic_semantic_browser_mode")
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
 mkdirSync(parent,{recursive:true})
@@ -64,7 +80,7 @@ let queue=Promise.resolve(),server,vite,stop
 const stopped=new Promise(resolve=>{stop=resolve})
 // PGlite has one SQL connection: serialize whole transactions, including
 // simultaneous browser reads, rather than interleaving employee role state.
-const pool={knowledgeSharing:modern,async connect(){
+const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledgeEmbeddingConsent:semantic,knowledgeIndexRuntime:semantic,knowledgeQueryRuntime:semantic,async connect(){
   const before=queue;let release
   queue=new Promise(resolve=>{release=resolve});await before
   return {query:(sql,values=[])=>db.query(sql,values),release}
@@ -72,6 +88,7 @@ const pool={knowledgeSharing:modern,async connect(){
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous,workflowV2ExecutionUat:workflow}
 const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpCalls:0,mcpDiscoveries:0,smitheryWrites:0,drop:false,configDrop:false,contentDrop:false,allowed:true,configAllowed:true}
+Object.assign(state,{semanticAllowed:semantic,semanticDrop:false,queryDrop:false,queryPosts:0,settingsPosts:0,indexEmbeddings:0,queryEmbeddings:0,queryInputs:[],failQuery:false})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -83,6 +100,8 @@ try{
   await db.exec(load("db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql")
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql","pg_v9_034_knowledge_runtime.sql"])
+    await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+  if(semantic)for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
@@ -97,6 +116,7 @@ try{
       base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowserOnlyCredential0123456789",enabled:true,models:["gpt-4.1-mini"]})
     // Fixture setup only: no external probe or credentials are used.
     await db.query("UPDATE agentstudio.model_connections SET status='ok' WHERE id=$1",[connection.id])
+    if(semantic)await models.create(profile.identity,{name:name+" semantic model",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowser"+name+"EmbeddingKey0123456789",enabled:true,models:["synthetic-embedding"]})
     await agents.create(profile.identity,name+" Browser Agent",safeAgentSpec({goal:"Synthetic local browser task",task_scope:"Synthetic only",
       deliverables:["A summary"],task_plan:["Prepare summary"],done_criteria:["Disclose synthetic source"],tools:modern?["calculate"]:[],
       model_binding:{connection_id:connection.id,connection_revision:connection.revision,model_id:"gpt-4.1-mini"}}))
@@ -107,12 +127,23 @@ try{
     state.generated++;return "Browser synthetic bound result"
   })
   const verified=createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(pool),broker)
+  const indexBroker=semantic?new KnowledgeIndexBroker(pool,pool,key,async material=>{
+    assert.equal(material.api_key,"SyntheticBrowserAliceEmbeddingKey0123456789");assert.equal(material.model_name,"synthetic-embedding")
+    state.indexEmbeddings++;return material.input.map(()=>[1,0])
+  },{approvedForIsolatedUat:true}):null
+  const queryBroker=semantic?new KnowledgeQueryBroker(pool,pool,key,async material=>{
+    assert.equal(material.api_key,"SyntheticBrowserBobEmbeddingKey0123456789");assert.equal(material.model_name,"synthetic-embedding");assert.equal(material.input.length,1)
+    state.queryEmbeddings++;state.queryInputs.push(structuredClone(material.input))
+    if(state.failQuery)throw Error("synthetic_query_provider_failure")
+    return [[1,0]]
+  },{approvedForIsolatedUat:true}):null
   const dispatch=modern?{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async()=>{if(!workflow)throw Error("direct_fallback_forbidden");state.generated++;return "Browser synthetic workflow model output"},pool,{
       nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
       allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0],mcp=plan.role.mcp_tools?.[0];return JSON.stringify(plan.round===1?
         {action:"tool",tool:mcp?.name??http?.name??"calculate",params:mcp||http?{query:"Synthetic owner evidence"}:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
         {action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4",think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined})}})),
+    ...(semantic?{index:claim=>indexBroker.dispatch(claim),query:claim=>queryBroker.dispatch(claim)}:{}),
     tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(pool),new WorkflowV2ToolDispatch(pool,key,{
       async http(){state.httpCalls++;return "Browser synthetic HTTP observation 4"},
       mcp:createMcpToolExecutor(async(_material,wire)=>{if(wire.body.method!=="tools/call")throw Error("unexpected_synthetic_mcp_call")
@@ -121,13 +152,16 @@ try{
   }:verified
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},
     model=createWorkflowV2ModelInternalHandler({...common,dispatch:config.dispatch.model}),tool=createWorkflowV2ToolInternalHandler({...common,dispatch:config.dispatch.tool})
-    return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?tool:model)(req,res)}
+    const index=semantic?createKnowledgeIndexPrivateHandler({...config,dispatch:config.dispatch.index}):null,query=semantic?createKnowledgeQueryPrivateHandler({...config,dispatch:config.dispatch.query}):null
+    return (req,res)=>(semantic&&req.url===knowledgeIndexRoute?index:semantic&&req.url===knowledgeQueryRoute?query:req.url==="/__internal/v2/workflow-tool/dispatch"?tool:model)(req,res)}
   await withDisposableBoundModelTls(dispatch,async tls=>{
     const prepare=new AgentPrepareWorker(pool,"browser-synthetic-prepare")
     const model=new AgentModelWorker(pool,"browser-synthetic-model",{async generate(){throw Error("shared_fallback_forbidden")}},
       {boundOnly:true,boundExecutionApproved:true,boundModelDispatch:createBoundModelMutualTlsClient(tls)})
     let workers=0
     const adapters=modern?[workflowV2ModelEffectExecutor(tls),workflowV2ToolEffectExecutor(tls)]:[]
+    const indexWorker=semantic?new KnowledgeIndexWorker(pool,createKnowledgeIndexPrivateClient(tls),{approvedForIsolatedUat:true}):null
+    const queryWorker=semantic?new KnowledgeQueryWorker(pool,createKnowledgeQueryPrivateClient(tls),{approvedForIsolatedUat:true}):null
     const tickAutonomous=()=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,
       executor:{supports:request=>adapters.some(adapter=>adapter.supports(request)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}}).tick()
     let native,backend
@@ -137,10 +171,13 @@ try{
       allowMcpToolExecution:modern&&state.configAllowed&&state.allowed,
       allowSmitheryManagement:modern&&state.configAllowed,
       allowKnowledgeSharing:modern&&state.configAllowed,
+      allowKnowledgeEmbeddingSettings:semantic&&state.semanticAllowed&&state.configAllowed,allowKnowledgeEmbeddingConsent:semantic&&state.semanticAllowed&&state.configAllowed,
+      allowKnowledgeIndexRuntime:semantic&&state.semanticAllowed&&state.configAllowed,allowKnowledgeQueryRuntime:semantic&&state.semanticAllowed&&state.configAllowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:autonomous&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
-          {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
+          {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
+            knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
         return backend(req,res)
@@ -162,6 +199,8 @@ try{
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
       ...(modern?{knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),knowledgeContentRepository:new KnowledgeContentRepository(pool)}:{}),
+      ...(semantic?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool),
+        knowledgeIndexRepository:new KnowledgeIndexRepository(pool),knowledgeQueryRepository:new KnowledgeQueryRepository(pool)}:{}),
       modelConnectionRepository:models,toolConnectionRepository:new ToolConnectionRepository(pool,key),
       ...(modern?{smitheryRepository:new SmitheryRepository(pool,key,pool,async(_credential,wire)=>{
         if(wire.path==="/namespaces")return {status:200,data:{namespaces:["browser-own"]}}
@@ -188,9 +227,17 @@ try{
           try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,smitheryWrites:state.smitheryWrites,
             ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
-            runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n}}
+            runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
+            ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,
+              queryJobs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.knowledge_query_jobs")).rows[0].n}:{} )}}
           finally{c.release()}
         }else if(req.url==="/__fixture/workflow"&&req.method==="POST"&&workflow)output=await tickAutonomous()
+        else if(req.url==="/__fixture/index"&&req.method==="POST"&&semantic)output=await indexWorker.tick()
+        else if(req.url==="/__fixture/query"&&req.method==="POST"&&semantic)output=await queryWorker.tick()
+        else if(req.url==="/__fixture/drop-next-semantic"&&req.method==="POST"&&semantic){state.semanticDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-query"&&req.method==="POST"&&semantic){state.queryDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/fail-query"&&req.method==="POST"&&semantic){state.failQuery=true;output={ok:true}}
+        else if(req.url==="/__fixture/deny-semantic"&&req.method==="POST"&&semantic){state.semanticAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/autonomous"&&req.method==="POST"&&autonomous)output=await tickAutonomous()
         else if(req.url==="/__fixture/prepare"&&req.method==="POST")output=await prepare.tick()
         else if(req.url==="/__fixture/model"&&req.method==="POST")output=await model.tick()
@@ -205,6 +252,12 @@ try{
       }
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
       if(req.method==="POST"&&/^\/api\/v2\/shared-knowledge\/[^/]+\/(?:import|delete|access)$/.test(req.url)&&state.contentDrop){state.contentDrop=false;res.end=()=>{res.destroy();return res}}
+      if(req.method==="POST"&&req.url.startsWith("/api/v2/knowledge-embedding/")){
+        state.settingsPosts++;if(state.semanticDrop){state.semanticDrop=false;res.end=()=>{res.destroy();return res}}
+      }
+      if(req.method==="POST"&&req.url==="/api/v2/knowledge-query/submit"){
+        state.queryPosts++;if(state.queryDrop){state.queryDrop=false;res.end=()=>{res.destroy();return res}}
+      }
       if(req.method==="POST"&&(autonomous?/^\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/:workflow?/^\/api\/v2\/workflows\/[^/]+\/(?:native-runs|model-node-debug)$/:/^\/api\/v2\/agent-specs\/[^/]+\/runs$/).test(req.url)){
         state.submissions++
         if(state.drop){state.drop=false;res.end=()=>{res.destroy();return res}}

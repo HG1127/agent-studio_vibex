@@ -109,7 +109,7 @@ export default function PgNativeKnowledgeSharingPanel({api,bases,active,enabled,
   const choices=[...bases.map(row=>({id:row.id,name:row.name,label:"我的知识库"})),...shared.map(row=>({id:row.id,name:row.name,label:row.owner_name+"共享 · "+(row.access_role==="editor"?"可编辑":"可查看")}))]
   return <section aria-label="知识库共享与文档" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
     <h2 className="font-semibold text-slate-900">知识库共享与文档</h2>
-    <p className="text-sm leading-6 text-slate-600">查看者可以关键词搜索；编辑者可以上传和删除文档。所有者管理员工授权。当前尚未开放共享语义检索和 Agent 绑定。</p>
+    <p className="text-sm leading-6 text-slate-600">查看者可以搜索，编辑者可以上传和删除文档。语义查询还需所有者允许，并使用读者本人已授权的模型；Agent 绑定按当前共享权限校验。</p>
     <div className="flex flex-wrap gap-3">
       <label className="min-w-52 flex-1 text-sm">选择知识库<select className={field} value={base} disabled={locked} onChange={e=>{setBase(e.target.value);selection.current++;setMetadata(null);setDocuments([]);setGrants([]);setHits([]);setError("");setNotice("");setText("");setEmail("");setRecipient(null)}}><option value="">请选择</option>{choices.map(item=><option key={item.id} value={item.id}>{item.name} · {item.label}</option>)}</select></label>
       <button type="button" className={button} disabled={!enabled||mutation.busy} onClick={()=>{void refreshShared();if(base)void read(base)}}>刷新当前权限</button>
@@ -136,7 +136,7 @@ export default function PgNativeKnowledgeSharingPanel({api,bases,active,enabled,
           {recipient?<p className="text-sm">{recipient.revoked?"重新授权":"调整权限"}：{recipient.recipient_name}</p>:
             <label className="block text-sm">新增接收人的员工邮箱<input type="email" required maxLength={180} className={field} value={email} disabled={locked} onChange={e=>setEmail(e.target.value)}/></label>}
           <label className="block text-sm">权限<select className={field} value={role} disabled={locked} onChange={e=>setRole(e.target.value as "viewer"|"editor")}><option value="viewer">查看者</option><option value="editor">编辑者</option></select></label>
-          <label className="flex gap-2 text-sm"><input type="checkbox" checked={semantic} disabled={locked} onChange={e=>setSemantic(e.target.checked)}/>语义检索授权（当前仅关键词检索）</label>
+          <label className="flex gap-2 text-sm"><input type="checkbox" checked={semantic} disabled={locked} onChange={e=>setSemantic(e.target.checked)}/>允许接收人进行语义检索</label>
           <button type="submit" className={button} disabled={locked}>{recipient?"保存此员工授权":"授予新员工权限"}</button>
           {recipient&&<button type="button" className={button} disabled={locked} onClick={()=>{setRecipient(null);setEmail("");setRole("viewer");setSemantic(false)}}>取消调整</button>}
         </form>

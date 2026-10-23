@@ -1,5 +1,7 @@
 # Agent Studio — PocketBase → PostgreSQL 17 迁移就绪与切换门槛（2026-10-16）
 
+2026-10-23 员工语义设置、独立费用授权、明确索引启动与状态、语义/混合查询界面已接入 SQL035–038。默认免费关键词，付费查询逐次确认；丢包保留原请求并核对回执。界面与验收范围见[员工语义操作](PG18_KNOWLEDGE_SEMANTIC_UI.md)，本轮精确候选的最终结果见[迁移草稿 PR](https://github.com/HG1127/agent-studio_vibex/pull/26)。Agent/Workflow 语义执行、调度协作等功能对齐、真实 UAT、长期 Worker、备份恢复及回滚签收仍待完成，正式切换保持 NO-GO。以下保留此前阶段记录。
+
 2026-10-23 SQL038 已实现读者付费查询、共享语义/混合检索和当前权限回执。读者逐次确认费用，提供商仅接收本人查询文本；已分派请求不自动重放。实现和测试范围见 [查询运行时](PG18_KNOWLEDGE_QUERY_RUNTIME.md)，本轮精确候选的最终验收证据见 [迁移草稿 PR](https://github.com/HG1127/agent-studio_vibex/pull/26)。员工索引/查询界面、Agent/Workflow 语义接入、功能对齐、真实 UAT、长期 Worker、备份恢复和回滚签收仍未完成，正式切换保持 NO-GO。以下为此前阶段记录。
 
 **现状：独立 PostgreSQL 17 的合成数据试迁移链路已通过；公司真实数据与正式生产切换仍为 NO-GO。** 绝不能把历史记录已归档、单元测试通过或 Job 绿灯误写成业务功能完成迁移。禁止直接操作公司宝塔、现存 PocketBase、生产 Worker 或已连接的其他公司数据库。

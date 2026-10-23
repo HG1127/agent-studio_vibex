@@ -21,4 +21,4 @@ AGENT_STUDIO_PG18_EMBEDDING_CONSENT_UAT_APPROVED=APPROVE_DISPOSABLE_PG18_EMBEDDI
 
 后续付费执行必须同时满足独立管理员运行许可、本人有效授权、当前配置和连接修订、当前员工身份，以及持久分派防重记录。索引使用知识库所有者凭据，查询使用当前读者自己的凭据；共享访问还须复核当前 ACL 和语义许可。不能根据本模块已存在授权就自动计费。本轮测试全部使用合成数据。
 
-尚需完成：持久索引/查询尝试记录和不明结果处理、私有 Worker/Broker、响应后身份与内容复核、语义/混合检索及回退、员工界面和 Agent/Workflow 接入、实际运行环境验收。正式迁移仍为 NO-GO。
+本文件记录 SQL036 的授权记录边界。后续持久尝试记录、私有 Worker/Broker 和检索见 [SQL037 索引](PG18_KNOWLEDGE_INDEX_RUNTIME.md)及 [SQL038 查询](PG18_KNOWLEDGE_QUERY_RUNTIME.md)，员工操作见[语义设置与查询界面](PG18_KNOWLEDGE_SEMANTIC_UI.md)。Agent/Workflow 语义执行及实际运行环境验收仍待完成，正式迁移保持 NO-GO。

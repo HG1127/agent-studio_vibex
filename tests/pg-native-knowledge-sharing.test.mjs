@@ -56,7 +56,7 @@ test("sharing panel SSR escapes employee-supplied names, performs no reads while
     const {default:Panel,SharedKnowledgeSearchHits}=await vite.ssrLoadModule("/src/pages/PgNativePilot/PgNativeKnowledgeSharingPanel.tsx")
     let reads=0
     const html=renderToStaticMarkup(createElement(Panel,{api:{async listSharedKnowledge(){reads++;return []}},bases:[{id:base,name:"<script>foreign()</script>"}],enabled:false,active:false,onExpired(){}}))
-    assert.equal(reads,0);assert.equal(html.includes("<script>foreign()"),false);assert.ok(html.includes("&lt;script&gt;"));assert.ok(html.includes("选择知识库"));assert.ok(html.includes("disabled"));assert.ok(html.includes("共享语义检索和 Agent 绑定"))
+    assert.equal(reads,0);assert.equal(html.includes("<script>foreign()"),false);assert.ok(html.includes("&lt;script&gt;"));assert.ok(html.includes("选择知识库"));assert.ok(html.includes("disabled"));assert.ok(html.includes("读者本人已授权的模型"))
     const hits=renderToStaticMarkup(createElement(SharedKnowledgeSearchHits,{hits:[{document_id:document,chunk_index:0,citation:"<img src=foreign>",snippet:"<script>foreign()</script>"}]}))
     assert.equal(hits.includes("<img"),false);assert.equal(hits.includes("<script"),false);assert.ok(hits.includes("&lt;script&gt;"))
   }finally{await vite.close()}

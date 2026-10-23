@@ -56,6 +56,7 @@ jobs:
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-autonomous-session.test.mjs tests/pg-native-autonomous-render.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
           pnpm test:pg18:knowledge-runtime
+          pnpm test:pg18:knowledge-semantic-ui
           pnpm test:pg18:shared-knowledge
           pnpm test:pg18:knowledge-access
           pnpm test:pg18:credential-boundary

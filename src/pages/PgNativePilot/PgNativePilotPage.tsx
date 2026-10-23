@@ -21,6 +21,8 @@ import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
 import PgNativeMcpConnectionsPanel from "./PgNativeMcpConnectionsPanel"
 import PgNativeSmitheryPanel from "./PgNativeSmitheryPanel"
 import PgNativeKnowledgeSharingPanel from "./PgNativeKnowledgeSharingPanel"
+import PgNativeKnowledgeEmbeddingPanel,{type KnowledgeSemanticCapabilities} from "./PgNativeKnowledgeEmbeddingPanel"
+import PgNativeKnowledgeQueryPanel from "./PgNativeKnowledgeQueryPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
@@ -76,7 +78,12 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [smitheryEnabled,setSmitheryEnabled]=useState(false)
   const [knowledgeSharingEnabled,setKnowledgeSharingEnabled]=useState(false)
   const [knowledgeSharingOpened,setKnowledgeSharingOpened]=useState(false)
+  const [knowledgeSemantic,setKnowledgeSemantic]=useState<KnowledgeSemanticCapabilities>({settings:false,consent:false,index:false,query:false})
+  const [knowledgeSemanticOpened,setKnowledgeSemanticOpened]=useState(false)
+  const [knowledgeSettingsVersion,setKnowledgeSettingsVersion]=useState(0)
+  const knowledgeSettingsChanged=useCallback(()=>setKnowledgeSettingsVersion(value=>value+1),[])
   useEffect(()=>{if(knowledgeSharingEnabled)setKnowledgeSharingOpened(true)},[knowledgeSharingEnabled])
+  useEffect(()=>{if(knowledgeSemantic.settings)setKnowledgeSemanticOpened(true)},[knowledgeSemantic.settings])
   const [workflowValidationEnabled,setWorkflowValidationEnabled]=useState(false)
   const [workflowExecutionEnabled,setWorkflowExecutionEnabled]=useState(false)
   const [workflowV2Enabled,setWorkflowV2Enabled]=useState(false)
@@ -125,6 +132,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setMcpOpened(false)
     setAgentMcpOpened(false)
     setKnowledgeSharingOpened(false);setKnowledgeSharingEnabled(false)
+    setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
   const expireAgentSession=useCallback(()=>{
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
@@ -161,6 +169,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setMcpToolsEnabled(capability?.mcp_tool_runs_enabled===true&&capability?.config_writes_enabled===true)
       setSmitheryEnabled(capability?.smithery_management_enabled===true&&capability?.config_writes_enabled===true)
       setKnowledgeSharingEnabled(capability?.knowledge_sharing_enabled===true&&capability?.config_writes_enabled===true)
+      const semanticSettings=capability?.config_writes_enabled===true&&capability.knowledge_sharing_enabled===true&&capability.knowledge_embedding_settings_enabled===true
+      const semanticConsent=semanticSettings&&capability?.knowledge_embedding_consent_enabled===true
+      setKnowledgeSemantic({settings:semanticSettings,consent:semanticConsent,index:semanticConsent&&capability?.knowledge_index_runtime_enabled===true,query:semanticConsent&&capability?.knowledge_query_runtime_enabled===true})
       setWorkflowValidationEnabled(capability?.workflow_validation_enabled===true)
       setWorkflowExecutionEnabled(capability?.workflow_execution_enabled===true)
       setWorkflowV2Enabled(capability?.config_writes_enabled===true&&capability.workflow_v2_submission_enabled===true)
@@ -531,7 +542,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 agents={agents} bases={knowledge} onSaved={refresh}/>
             }
             {section==="knowledge"&&<>
-              {canEditConfig&&<CreateCard title="创建知识库" description="已支持本人已索引文本的关键词搜索；Embedding 和语义检索仍需后续联调。">
+              {canEditConfig&&<CreateCard title="创建知识库" description="管理文档、共享权限，并按管理员开放范围使用语义检索。">
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>
                   api.createKnowledge(newName.trim(),newDescription.trim()),"知识库已创建")}}>
                   <input required maxLength={120} className={field} placeholder="知识库名称" value={newName} onChange={e=>setNewName(e.target.value)}/>
@@ -550,6 +561,12 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             </>}
             <div hidden={section!=="knowledge"}>{(knowledgeSharingOpened||knowledgeSharingEnabled)&&<PgNativeKnowledgeSharingPanel key={profile.id} api={api} bases={knowledge}
               active={section==="knowledge"} enabled={knowledgeSharingEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
+            <div hidden={section!=="knowledge"}>{(knowledgeSemanticOpened||knowledgeSemantic.settings)&&<div className="space-y-4">
+              <PgNativeKnowledgeEmbeddingPanel key={profile.id+":embedding"} api={api} models={modelConnections} bases={knowledge} active={section==="knowledge"}
+                enabled={configEditEnabled&&!loading&&!busy} capabilities={knowledgeSemantic} onChanged={knowledgeSettingsChanged} onExpired={expireAgentSession}/>
+              <PgNativeKnowledgeQueryPanel key={profile.id+":query"} api={api} bases={readableKnowledge} active={section==="knowledge"}
+                enabled={configEditEnabled&&!loading&&!busy} queryAllowed={knowledgeSemantic.query} settingsVersion={knowledgeSettingsVersion} onExpired={expireAgentSession}/>
+            </div>}</div>
             {section==="knowledge"&&TextIngestUatPanel&&!productionRoot&&
               <TextIngestUatPanel key={profile.id} api={api} bases={knowledge}/>
             }

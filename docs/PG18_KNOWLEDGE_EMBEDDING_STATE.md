@@ -35,4 +35,4 @@ AGENT_STUDIO_PG18_EMBEDDING_SETTINGS_UAT_APPROVED=APPROVE_DISPOSABLE_PG18_EMBEDD
 
 SQL036 的独立员工授权准备见 [语义执行授权准备](PG18_KNOWLEDGE_EMBEDDING_CONSENT.md)。旧“仅设置”配置不会自动成为付费许可；该增量仍不执行付费索引或查询。
 
-付费分派防重、独立索引 Worker/Broker、响应后的设置/内容/身份复核、读者自己计费的查询向量、当前共享 ACL 与语义许可、混合检索及关键词回退、员工设置/进度界面、Agent/Workflow 引用集成和完整环境验收仍未完成。本设置准备不能替代这些要求。
+本文件仅记录 SQL035 设置准备的边界。后续付费防重、独立 Worker/Broker 和检索见 [SQL037 索引](PG18_KNOWLEDGE_INDEX_RUNTIME.md)及 [SQL038 查询](PG18_KNOWLEDGE_QUERY_RUNTIME.md)，员工设置和进度见[语义操作界面](PG18_KNOWLEDGE_SEMANTIC_UI.md)。Agent/Workflow 语义执行与完整环境验收仍待完成，本设置准备不能替代这些要求。
