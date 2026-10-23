@@ -162,7 +162,7 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     expect(decisionResponse.status()).toBe(200)
     const submittedDecision=decisionResponse.request().postDataJSON()
     expect((await decisionResponse.json()).decision_confirmation).toMatchObject({status:"approved",step_key:submittedDecision.step_key,input_sha256:submittedDecision.input_sha256})
-    await expect(page.getByText("已批准当前步骤。",{exact:true})).toBeVisible()
+    await expect(page.getByRole("region",{name:"单模型节点测试",exact:true}).getByText("已批准当前步骤。",{exact:true})).toBeVisible()
     expect((await control("workflow")).status).toBe("progressed");expect((await control("workflow")).status).toBe("succeeded")
     await page.getByRole("button",{name:"刷新单模型测试",exact:true}).click()
     await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic node debug result")
