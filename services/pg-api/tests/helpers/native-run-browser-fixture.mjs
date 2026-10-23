@@ -190,6 +190,9 @@ try{
       state.submitHashes.push(createHash("sha256").update(JSON.stringify({specId,...body})).digest("hex"))
       return submit(identity,specId,body)
     }
+    if(semantic){const decide=runs.decide.bind(runs);runs.decide=async(identity,id,body)=>{
+      state.decisionHashes.push(createHash("sha256").update(JSON.stringify(body)).digest("hex"));return decide(identity,id,body)
+    }}
     if(workflow){const submitDebug=runs.submitNodeDebug.bind(runs);runs.submitNodeDebug=async(identity,id,body)=>{
       state.submitHashes.push(createHash("sha256").update(JSON.stringify({workflowId:id,...body})).digest("hex"));return submitDebug(identity,id,body)
     }}
@@ -254,7 +257,6 @@ try{
       }
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
       if(semantic&&req.method==="POST"&&/\/decision$/.test(req.url)){
-        const chunks=[];req.on("data",chunk=>chunks.push(chunk));req.once("end",()=>state.decisionHashes.push(createHash("sha256").update(Buffer.concat(chunks)).digest("hex")))
         if(state.decisionDrop){state.decisionDrop=false;res.end=()=>{res.destroy();return res}}
       }
       if(req.method==="POST"&&/^\/api\/v2\/shared-knowledge\/[^/]+\/(?:import|delete|access)$/.test(req.url)&&state.contentDrop){state.contentDrop=false;res.end=()=>{res.destroy();return res}}

@@ -140,6 +140,8 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
       await panel.getByRole("button",{name:"读取本人检索配置",exact:true}).click()
       await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="semantic"]')).toBeEnabled()
       await panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).selectOption("semantic")
+      await expect(panel.locator('form[data-knowledge-mode]')).toHaveAttribute("data-knowledge-mode","semantic")
+      await expect(panel.getByText("已选择语义检索，尚未保存。",{exact:true})).toBeVisible()
       await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("semantic")
       const saved=bob.waitForResponse(response=>response.request().method()==="PATCH"&&response.url().includes("/api/v2/agent-specs/"))
       await panel.getByRole("button",{name:"保存知识库绑定",exact:true}).click();const response=await saved;expect(response.status()).toBe(200)
@@ -173,7 +175,8 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
         feeSteps++;await expect(approve).toBeDisabled();expect((await state()).queryJobs).toBe(beforeTool.queryJobs)
         await fee.check();await expect(approve).toBeEnabled();await control("drop-next-decision")
         await approve.click();await expect(detail.getByRole("button",{name:"确认上次批准",exact:true})).toBeEnabled()
-        await detail.getByRole("button",{name:"确认上次批准",exact:true}).click()
+        const retried=bob.waitForResponse(response=>response.request().method()==="POST"&&response.url().endsWith("/decision"))
+        await detail.getByRole("button",{name:"确认上次批准",exact:true}).click();expect((await retried).status()).toBe(200)
         const hashes=(await state()).decisionHashes;expect(hashes.at(-1)).toBe(hashes.at(-2));pendingQuery=true
       }else await approve.click()
       await expect(bob.getByText("已批准当前步骤。",{exact:true})).toBeVisible()

@@ -56,7 +56,7 @@ export function AgentKnowledgeForm({api,agent,bases,active,enabled,onSaved,onExp
     }catch(cause){if(live.current)handleError(cause)}
     finally{onBusy(false);if(live.current)setBusy(false)}
   }
-  return <form onSubmit={save} className="space-y-3">
+  return <form onSubmit={save} data-knowledge-mode={retrieval?.mode??"keyword"} className="space-y-3">
     <fieldset disabled={locked} className="space-y-2"><legend className="text-sm font-medium">允许检索的知识库（{ids.length}/3）</legend>
       {bases.map(base=><label key={base.id} className="flex items-start gap-2 break-words text-sm"><input type="checkbox" aria-label={base.name} checked={ids.includes(base.id)} disabled={!ids.includes(base.id)&&ids.length>=3}
         onChange={event=>{const next=event.target.checked?[...ids,base.id]:ids.filter(id=>id!==base.id);setIds(next);if(!next.length)setRetrieval(undefined)}}/>{base.name}</label>)}
@@ -65,7 +65,9 @@ export function AgentKnowledgeForm({api,agent,bases,active,enabled,onSaved,onExp
     </fieldset>
     <button type="button" disabled={!active||busy||semantic.loading} onClick={()=>void semantic.load()} className="min-h-10 rounded-xl border border-slate-200 px-4 text-sm">读取本人检索配置</button>
     {semantic.error&&<p role="alert" className="text-sm text-rose-800">{semantic.error}</p>}
-    <PgNativeKnowledgeToolMode binding={retrieval} context={semantic.context} hasBases={ids.length>0} ids={ids} disabled={locked} onChange={setRetrieval}/>
+    <PgNativeKnowledgeToolMode binding={retrieval} context={semantic.context} hasBases={ids.length>0} ids={ids} disabled={locked} onChange={value=>{
+      setRetrieval(value);setError("");setNotice("已选择"+(value?.mode==="semantic"?"语义检索":value?.mode==="hybrid"?"混合检索":"关键词检索")+"，尚未保存。")
+    }}/>
     <div className="flex flex-wrap gap-2"><button type="submit" disabled={locked||Boolean(missing.length)} className="min-h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">保存知识库绑定</button>
       <button type="button" disabled={!active||busy} className="min-h-10 rounded-xl border border-slate-200 px-4 text-sm" onClick={()=>void read()}>读取当前 Agent 配置</button></div>
     {error&&<p role="alert" className="text-sm text-rose-800">{error}</p>}{notice&&<p role="status" className="text-sm text-emerald-800">{notice}</p>}
