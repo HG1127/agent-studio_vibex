@@ -26,7 +26,10 @@ const NEXT_ACTION: Record<RunStateKey, string> = {
 export function RunStatusSummary({ activeRun, isLive, controlBusy, onControl, stateMeta, onOpenTrace, onOpenResults }: Props) {
   if (!activeRun) return null
   const meta = stateMeta[activeRun.status]
-  const canPause = activeRun.status === "running"
+  const pauseRequested = activeRun.checkpoint?.pause_requested === true
+  const cancelRequested = activeRun.checkpoint?.cancel_requested === true
+  const pauseApplying = activeRun.status === "running" && pauseRequested && !cancelRequested
+  const canPause = activeRun.status === "running" && !pauseRequested && !cancelRequested
   const canResume = activeRun.status === "paused" || activeRun.status === "queued"
   const waitingForUser = activeRun.status === "awaiting_approval" || activeRun.status === "awaiting_input"
   const budgetStopped = activeRun.status === "failed" && /budget.*exhaust|预算.*(?:耗尽|用尽|不足)|最大步数上限/i.test(activeRun.error || "")
@@ -42,16 +45,17 @@ export function RunStatusSummary({ activeRun, isLive, controlBusy, onControl, st
         <div className="flex flex-wrap items-center gap-2">
           <span role="status" className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${meta.badge}`}>
             {activeRun.status === "running" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />}
-            {budgetStopped ? "预算用尽 · 未完成" : meta.label}
+            {cancelRequested ? "取消请求中" : pauseApplying ? "暂停请求中" : budgetStopped ? "预算用尽 · 未完成" : meta.label}
           </span>
           <span className="truncate text-xs text-muted-foreground">{activeRun.spec_name}</span>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-foreground">{NEXT_ACTION[activeRun.status]}</p>
+        <p className="mt-2 text-sm leading-relaxed text-foreground">{cancelRequested ? "已收到取消请求。当前步骤会先安全收尾并保存检查点，随后取消；不会启动后续步骤。" : pauseApplying ? "已收到暂停请求。当前步骤会先完成并保存检查点，随后暂停；无需重复点击。" : NEXT_ACTION[activeRun.status]}</p>
+        {waitingForUser && pauseRequested && !cancelRequested && <p role="status" className="mt-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">已记录暂停请求；当前任务正在等待输入或审批。完成当前交互后将先暂停，不会直接执行下一步。</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {canPause && <button type="button" disabled={controlBusy !== ""} onClick={() => onControl("pause")} className={`${actionClass} border-border hover:bg-secondary`}><CirclePause className="h-4 w-4" />{controlBusy === "pause" ? "暂停中…" : "暂停"}</button>}
+        {activeRun.status === "running" && <button type="button" disabled={!canPause || controlBusy !== ""} onClick={() => onControl("pause")} className={`${actionClass} border-border hover:bg-secondary`}><CirclePause className="h-4 w-4" />{pauseApplying ? "等待步骤收尾…" : controlBusy === "pause" ? "暂停中…" : "暂停"}</button>}
         {canResume && <button type="button" disabled={controlBusy !== ""} onClick={() => onControl("resume")} className={`${actionClass} border-primary/30 text-primary hover:bg-primary/5`}><CirclePlay className="h-4 w-4" />{controlBusy === "resume" ? "恢复中…" : "恢复运行"}</button>}
-        {isLive && <button type="button" disabled={controlBusy !== ""} onClick={() => onControl("cancel")} className={`${actionClass} border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive`}><CircleStop className="h-4 w-4" />{controlBusy === "cancel" ? "取消中…" : "取消任务"}</button>}
+        {isLive && <button type="button" disabled={controlBusy !== "" || cancelRequested} onClick={() => onControl("cancel")} className={`${actionClass} border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive`}><CircleStop className="h-4 w-4" />{cancelRequested ? "等待步骤收尾…" : controlBusy === "cancel" ? "取消中…" : "取消任务"}</button>}
       </div>
     </div>
     {roleProgress && <div aria-label="角色阶段进度" className="mt-3 rounded-xl border border-border bg-secondary/25 p-3">

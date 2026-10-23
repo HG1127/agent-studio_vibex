@@ -25,6 +25,7 @@ export function RunCapsule({
   runStateMeta,
 }: RunCapsuleProps) {
   const stateMeta = activeRun ? runStateMeta[activeRun.status] : null
+  const cancelPending = activeRun?.status === "running" && activeRun.checkpoint?.cancel_requested === true
   let dotClass = "bg-border"
   if (activeRun?.status === "running") dotClass = "animate-pulse bg-primary"
   else if (activeRun?.status === "awaiting_approval") dotClass = "animate-pulse bg-primary"
@@ -48,22 +49,23 @@ export function RunCapsule({
         <Play className="h-3.5 w-3.5" />
         运行
       </button>
-      {activeRun?.status === "running" && (
+      {(activeRun?.status === "running" || activeRun?.status === "awaiting_approval") && (
         <button
           type="button"
           onClick={handleCancelRun}
-          disabled={cancelBusy}
+          disabled={cancelBusy || cancelPending}
           className="inline-flex items-center gap-1 rounded-full border border-destructive px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
         >
           <XCircle className="h-3.5 w-3.5" />
-          {cancelBusy ? "取消中…" : "取消"}
+          {cancelPending ? "等待当前节点收尾…" : cancelBusy ? "取消中…" : "取消"}
         </button>
       )}
       {activeRun && stateMeta && (
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${stateMeta.badge}`}>
-          {stateMeta.label}
+          {cancelPending ? "取消请求中" : stateMeta.label}
         </span>
       )}
+      {cancelPending && <span role="status" className="text-xs text-muted-foreground">当前节点先保存结果，再停止后续节点</span>}
       {activeRun && (
         <span className="text-xs text-muted-foreground">
           节点 {activeRun.done_nodes}/{activeRun.total_nodes} · 已用 {elapsedText}

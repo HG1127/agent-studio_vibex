@@ -6,6 +6,7 @@ import {
 } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
 import { CreateComposer } from "@/components/home/CreateComposer"
+import { AgentDesignModelPicker } from "@/components/home/AgentDesignModelPicker"
 import { AgentDraftRecoveryNotice } from "@/components/home/AgentDraftRecoveryNotice"
 import { SpecEditorCard } from "@/components/home/SpecEditorCard"
 import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
@@ -13,6 +14,7 @@ import { useHome } from "@/pages/Home/useHome"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
 import { evaluateAgentJourney } from "@/lib/agentCreateJourney"
+import type { ComplexAgentProof } from "@/lib/complexAgentAcceptance"
 import { agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { agentCapabilityReadiness } from "@/lib/agentCapabilityPlan"
 
@@ -34,7 +36,7 @@ const NEED_EXAMPLES = [
 ]
 
 type ModelState="loading"|"ready"|"unavailable"
-type RecentRun={id:string;spec_id:string;status:string;created:string;instruction:string;result?:string;spec_snapshot?:unknown}
+type RecentRun={id:string;spec_id:string;status:string;created:string;instruction:string;result?:string;spec_snapshot?:unknown} & ComplexAgentProof
 function progressFromQuery(raw:string|null):number{
   const val=Number.parseInt(raw||"1",10)
   return Number.isFinite(val)?Math.max(0,Math.min(4,val-1)):0
@@ -101,13 +103,15 @@ export default function AgentCreateRoute() {
     setRunChecked(false)
     setRunError("")
     try{
-      const res=await fetch(getPocketBaseUrl()+"/api/agent-runs/recent?limit=20",{
+      const res=await fetch(getPocketBaseUrl()+"/api/agent-runs/recent?limit=20&spec_id="+encodeURIComponent(p.savedSpecId),{
         headers:{...vibexAuthHeaders()},
       })
       if(!res.ok)throw new Error("读取试跑记录失败")
       const data=await res.json() as {items?:RecentRun[]}
-      const selected=(data.items||[]).filter(item=>item.spec_id===p.savedSpecId)
-        .sort((a,b)=>Date.parse(b.created)-Date.parse(a.created))
+      // A missing/mixed scope is a server contract failure, not "no runs".
+      if(!Array.isArray(data.items) || data.items.some(item=>item.spec_id!==p.savedSpecId))
+        throw new Error("无法核验当前 Agent 的运行记录范围")
+      const selected=[...data.items].sort((a,b)=>Date.parse(b.created)-Date.parse(a.created))
       const recent=selected[0]||null
       if(recent && recent.status==="succeeded"){
         // /recent intentionally omits result. Fetch owner-scoped detail before
@@ -117,11 +121,12 @@ export default function AgentCreateRoute() {
           headers:{...vibexAuthHeaders()},
         })
         if(!detail.ok)throw new Error("无法核验最近试跑的真实输出")
-        const response=await detail.json() as {run?:{id:string;spec_id:string;status:string;result:string};spec_snapshot?:unknown}
+        const response=await detail.json() as {run?:{id:string;spec_id:string;status:string;result:string;checkpoint?:ComplexAgentProof["checkpoint"]};spec_snapshot?:unknown;events?:ComplexAgentProof["events"]}
         if(request!==runRequest.current)return
         if(response.run?.id!==recent.id || response.run.spec_id!==p.savedSpecId ||
           response.run.status!=="succeeded") throw new Error("试跑详情身份或状态不一致")
-        setRun({...recent,result:response.run.result,spec_snapshot:response.spec_snapshot})
+        setRun({...recent,result:response.run.result,spec_snapshot:response.spec_snapshot,
+          checkpoint:response.run.checkpoint,events:response.events})
       } else {
         if(request!==runRequest.current)return
         setRun(recent)
@@ -273,6 +278,9 @@ export default function AgentCreateRoute() {
       <div className="mt-5 grid min-w-0 flex-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)] 2xl:gap-7 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
         <section id="spec-editor" className="min-w-0 space-y-4 scroll-mt-28">
           {step===0 && <>
+            <AgentDesignModelPicker options={p.designModelOptions} selectedKey={p.designModelKey}
+              status={p.designModelStatus} onSelect={p.setDesignModelKey}
+              onRefresh={()=>void p.refreshDesignModels()} busy={p.isGenerating}/>
             <CreateComposer variant="focus" userInput={p.userInput} onUserInputChange={p.setUserInput}
               onCreate={p.handleCreate} isGenerating={p.isGenerating}/>
             {p.spec && <div role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-4">
@@ -281,6 +289,7 @@ export default function AgentCreateRoute() {
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 模型生成的是初稿，需要你核对目标、执行步骤与完成条件。下一步可以直接修改。
+                {p.lastDesignModelUsed && <>本次规划模型：{p.lastDesignModelUsed}。 </>}
               </p>
               <button type="button" onClick={()=>go(1)}
                 className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
@@ -359,6 +368,17 @@ export default function AgentCreateRoute() {
                   className="mt-2 inline-flex min-h-10 items-center text-sm font-medium text-primary hover:underline">
                   查看原运行{evaluated.trial.state==="waiting"?"，继续审批或补充输入":"与结果"}
                 </Link>}
+                {run?.status==="succeeded" && evaluated.complexAcceptance.applicable && <section
+                  aria-label="复杂 Agent 实际执行证据" className="mt-3 rounded-lg border border-border bg-secondary/20 p-3">
+                  <p className="text-xs font-semibold text-foreground">复杂 Agent 运行证据验收</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    已核验角色 {evaluated.complexAcceptance.stagesVerified}/{evaluated.complexAcceptance.stageTotal}，
+                    必需工具能力 {evaluated.complexAcceptance.requiredVerified}/{evaluated.complexAcceptance.requiredTotal}。
+                    {evaluated.complexAcceptance.verified
+                      ? "执行轨迹满足结构性验收；业务事实和来源真实性仍需人工检查。"
+                      : "仍有执行证据缺口，暂不能进入发布流程。"}
+                  </p>
+                </section>}
                 {evaluated.qualityIssues.map((issue,i)=>
                   <p key={i} role="alert" className="mt-2 text-xs text-destructive">{issue}</p>)}
                 {p.spec?.quality_checks?.length ? <p className="mt-2 text-xs text-muted-foreground">

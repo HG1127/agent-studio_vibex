@@ -104,6 +104,7 @@ export type RunCheckpoint = {
   seq?: number
   done_count?: number
   claim_until?: number
+  cancel_requested?: boolean
   loop_state?: Record<string, LoopRunState>
   exec_count?: number
   harness_stats?: HarnessStats
@@ -1739,7 +1740,7 @@ export function useWorkflowCanvas() {
   }, [runInstruction, doStartRun])
 
   const handleCancelRun = useCallback(async () => {
-    if (!activeRunId || cancelBusy) return
+    if (!activeRunId || cancelBusy || activeRun?.checkpoint?.cancel_requested === true) return
     setCancelBusy(true)
     try {
       const res = await fetch(`${base}/api/workflow-runs/${encodeURIComponent(activeRunId)}/cancel`, {
@@ -1763,7 +1764,7 @@ export function useWorkflowCanvas() {
     } finally {
       setCancelBusy(false)
     }
-  }, [activeRunId, cancelBusy, base, fetchRunDetail, loadRecentRuns, activeWorkflowId])
+  }, [activeRunId, activeRun, cancelBusy, base, fetchRunDetail, loadRecentRuns, activeWorkflowId])
 
   const handleViewRun = useCallback(
     async (runId: string) => {

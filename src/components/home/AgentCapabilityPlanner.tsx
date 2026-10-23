@@ -182,7 +182,7 @@ function CapabilityPlannerWorkspace(p: Props) {
       {rows.map(row => {
         const state = STATES[row.state]
         const execution = row.kind === "browser" || row.kind === "desktop"
-        const connectUrl = agentResourceSetupUrl(execution ? "/execution-connections" : "/tool-connections", p.returnSpecId || "", row.id)
+        const connectUrl = agentResourceSetupUrl(execution ? `/execution-connections?capability=${row.kind}` : "/tool-connections", p.returnSpecId || "", row.id)
         const marketUrl = agentResourceSetupUrl(row.searchTerm ? `/plugin-market?tool=${encodeURIComponent(row.searchTerm)}` : "/plugin-market", p.returnSpecId || "", row.id)
         const httpTestUrl = agentResourceSetupUrl("/tool-connections", p.returnSpecId || "", row.id)
         const marketManageUrl = agentResourceSetupUrl("/plugin-market", p.returnSpecId || "", row.id)

@@ -63,7 +63,7 @@ const CAPABILITIES = [
   },
 ] as const
 
-const norm=(text:string)=>String(text||"").normalize("NFKC").toLocaleLowerCase().replace(/[\s_.:、—\-]+/g,"")
+const norm=(text:string)=>String(text||"").normalize("NFKC").toLocaleLowerCase().replace(/[\s_.:、—-]+/g,"")
 function containsPhrase(content:string,phrase:string):boolean {
   const raw=norm(phrase), text=norm(content)
   if(!raw || !text.includes(raw))return false
@@ -112,6 +112,37 @@ function semanticConnectorMatch(name:string,description:string,requirement:strin
     [/(?:数据图表|图表生成|生成图表)/i,/(?:plot.?chart|chart.?create|create.?chart|图表生成)/i],
   ]
   return pairs.some(([need,available])=>need.test(desired)&&available.test(tool))
+}
+
+/**
+ * Generated structured capabilities are planning requirements, not executable
+ * tool permissions. Legacy unstructured drafts retain visible gap aliases for
+ * migration, but new complex plans never add "PDF parser" or "send email" as
+ * pretend runtime tools merely because the model requested the capability.
+ * Only existing verified read-only bindings may enter the initial tool list.
+ */
+export function generatedAgentToolSelections(spec: AgentSpec, resolution: ToolResolution): string[] {
+  const configured = [...resolution.resolvedTools]
+  if (Array.isArray(spec.capability_requirements) && spec.capability_requirements.length > 0)
+    return configured
+  return [...configured, ...resolution.gaps.map(row=>row.name)
+    .filter(name=>!configured.includes(name))]
+}
+
+/** Generated specifications are proposals, not role-level authorization.
+ * The model may recommend a tool in roles[].tools, but an employee must
+ * explicitly bind it to each role. Keep safe global READ-ONLY candidates,
+ * never pre-grant any role or assume a write can run without approval.
+ */
+export function prepareGeneratedAgentPermissions(spec: AgentSpec, resolution: ToolResolution): AgentSpec {
+  const hasWriteRequirement = (spec.capability_requirements || [])
+    .some(need => need.access === "write")
+  return {
+    ...spec,
+    tools: generatedAgentToolSelections(spec, resolution),
+    ...(Array.isArray(spec.roles) ? { roles: spec.roles.map(role => ({ ...role, tools: [] })) } : {}),
+    require_approval: spec.require_approval === true || hasWriteRequirement,
+  }
 }
 
 /** Choosing an executable connection replaces its unexecutable human-readable alias. */

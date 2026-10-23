@@ -7,6 +7,7 @@ import { McLoginGate } from "@/components/model-connections/McLoginGate"
 import { SiteShell } from "@/components/site/SiteShell"
 import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
 import { McTopBar } from "@/components/model-connections/McTopBar"
+import { ModelBlindBenchmarkPanel } from "@/components/model-connections/ModelBlindBenchmarkPanel"
 import type { useModelConnections } from "./useModelConnections"
 
 const HOW_IT_WORKS = [
@@ -189,6 +190,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
           </section>
         )}
 
+        {p.isLoggedIn && <ModelBlindBenchmarkPanel connections={p.connectionList} />}
         <details className="mb-8 rounded-xl border border-border bg-card p-4">
           <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary">
             需要帮助？查看模型接入指引

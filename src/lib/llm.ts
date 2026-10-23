@@ -17,6 +17,10 @@ export interface LlmCallOptions {
   temperature?: number
   signal?: AbortSignal
   request_id?: string
+  /** Account-owned saved connection; required when the user selects a model. */
+  connection_id?: string
+  /** Fail closed if the selected model disappears; never silently fall back. */
+  strict_model?: boolean
 }
 
 export interface LlmCallResult {
@@ -50,8 +54,11 @@ const POLL_ATTEMPTS = 200
 // 这个分支零开销。
 let legacyLlmRoutes: boolean | null = null
 
-function llmUrl(kind: "chat" | "poll", modelName: string): string {
+function llmUrl(kind: "chat" | "poll", modelName: string, strict = false): string {
   const base = getPocketBaseUrl()
+  // Explicit connection + model bindings require the modern flat routes;
+  // legacy routes cannot prove the requested employee-owned connection.
+  if (strict) return `${base}/api/llm/${kind}`
   return legacyLlmRoutes === true
     ? `${base}/api/llm/${encodeURIComponent(modelName)}/${kind}`
     : `${base}/api/llm/${kind}`
@@ -70,10 +77,10 @@ function buildHeaders(): Record<string, string> {
   return headers
 }
 
-async function pollOnce(modelName: string, requestId: string): Promise<LlmCallResult> {
+async function pollOnce(modelName: string, requestId: string, strict = false): Promise<LlmCallResult> {
   let res: Response
   try {
-    res = await fetch(llmUrl("poll", modelName), {
+    res = await fetch(llmUrl("poll", modelName, strict), {
       method: "POST",
       credentials: "include",
       headers: buildHeaders(),
@@ -107,6 +114,8 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
     page: opts.page || "",
     max_tokens: opts.max_tokens,
     request_id: requestId,
+    ...(opts.connection_id ? {connection_id: opts.connection_id} : {}),
+    ...(opts.strict_model === true ? {strict_model: true} : {}),
   }
   if (opts.temperature !== undefined && opts.temperature !== null && !/gpt-?5/i.test(modelName)) {
     payload.temperature = opts.temperature
@@ -118,13 +127,16 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
 
   let initialFailed = false
   try {
-    let res = await fetch(llmUrl("chat", modelName), {
+    let res = await fetch(llmUrl("chat", modelName, opts.strict_model === true), {
       method: "POST",
       credentials: "include",
       headers: buildHeaders(),
       body: JSON.stringify(payload),
       signal: ctrl.signal,
     })
+    if (res.status === 404 && opts.strict_model === true) {
+      return {ok:false,status:"failed",text:"",error:"strict_model_route_unavailable"}
+    }
     if (res.status === 404 && legacyLlmRoutes === null) {
       // 扁平路由不存在 → 老代际后端, 降级重试按模型路由。
       legacyLlmRoutes = true
@@ -142,8 +154,16 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
       }
     }
     window.clearTimeout(timeoutId)
-    if (res.status === 412) {
+    if (res.status === 401 || res.status === 412) {
       return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
+    }
+    // Invalid/removed employee model bindings are rejected before a provider
+    // request. Polling them for ten minutes cannot help and looks like a hang.
+    if (res.status >= 400 && res.status < 500) {
+      const denied = await res.json().catch(() => ({})) as {error?:unknown}
+      const code = typeof denied.error === "string" && /^[a-z_]{1,60}$/.test(denied.error)
+        ? denied.error : `provider_http_${res.status}`
+      return {ok:false,status:"failed",text:"",error:code}
     }
     if (res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -168,7 +188,7 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
   let notFoundCount = 0
   for (let i = 0; i < POLL_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-    const r = await pollOnce(modelName, requestId)
+    const r = await pollOnce(modelName, requestId, opts.strict_model === true)
     if (r.needsLogin) return r
     if (r.status === "success") return r
     if (r.status === "failed") return r

@@ -83,9 +83,11 @@ export function PublishCard({
               </div>
               <button
                 type="button"
+                disabled={Boolean((row.spec_snapshot?.roles||[]).length>=2 && !row.test_passed)}
+                title={(row.spec_snapshot?.roles||[]).length>=2 && !row.test_passed ? "复杂 Agent 需通过正式执行证据验收后才能发布" : undefined}
                 onClick={() => onRequestPublish(row)}
                 aria-label={`发布版本 v${row.version_no}`}
-                className="shrink-0 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
+                className="shrink-0 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
               >
                 发布
               </button>

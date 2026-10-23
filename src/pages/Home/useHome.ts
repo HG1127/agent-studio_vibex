@@ -10,9 +10,10 @@ import { registerUnsavedWorkCheck } from "@/lib/unsavedNavigation"
 import { useSearchParams } from "react-router-dom"
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
-import { resolveAgentToolRequirements, chooseVerifiedAgentTool } from "@/lib/agentToolMatcher"
-import { normalizeCapabilityRequirements, toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
-import { sanitizeAgentRoles } from "@/lib/agentRoles"
+import { resolveAgentToolRequirements, chooseVerifiedAgentTool, prepareGeneratedAgentPermissions } from "@/lib/agentToolMatcher"
+import { toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
+import { AGENT_DESIGN_SYSTEM_PROMPT, agentDesignTokenBudget, parseAgentDesignResponse } from "@/lib/agentDesignProtocol"
+import { availableAgentDesignModels, chooseAgentDesignModel, type AgentDesignModelOption } from "@/lib/agentDesignModelSelection"
 import {
   BUILTIN_TOOL_OPTIONS,
   TEMPLATE_PRESETS,
@@ -36,32 +37,18 @@ export type SavedSpecRow = {
   updated: string
 }
 
-const MODEL_SHORT = "gemini-3.1-flash-lite-preview"
-
 const LLM_ERROR_TEXT: Record<string, string> = {
   timeout: "AI 生成超时（可能服务器繁忙），请稍后重试",
   not_found: "请求未能到达 AI，请检查网络后重试",
   rh_login_required: "请先登录后再生成",
   insufficient_balance: "账户余额不足，请充值后重试",
   model_connection_required: "没有可用模型连接：请先在「模型连接」页添加并启用一个模型连接",
+  model_not_permitted: "所选模型已不在当前账号的授权列表中，请刷新并重新选择",
+  strict_model_route_unavailable: "当前服务端不支持模型的严格授权绑定，请升级后端或切换到兼容工作台；不会自动使用备用模型。",
+  custom_connection_missing: "模型连接已失效或当前账号无权访问，请刷新模型列表",
 }
 
-const SYSTEM_PROMPT = [
-  "你是「Agent Studio」的助手方案设计器，把用户的一句自然语言需求转成结构化的助手方案。",
-  "只输出一个 JSON 对象，不要 markdown 代码块，不要任何额外文字。JSON 字段如下：",
-  'name：助手名称，不超过 12 个汉字',
-  'goal：一句话说明这个助手帮用户解决什么问题',
-  'task_scope：助手负责的任务范围与明确不负责的事，2-3 句话',
-  'deliverables：字符串数组，助手最终交付的具体产物（2-5 项）',
-  'tools：字符串数组，完成任务所需的通用工具能力名（如「网络搜索」「文档解析」「数据图表」），2-6 项，不写具体产品名',
-  'task_plan：字符串数组，按执行顺序拆解的任务步骤（3-7 步）',
-  'done_criteria：字符串数组，判断任务完成的标准（2-5 条）',
-  'require_plan_review：布尔值；明确要求先由人确认草案、确认后才进入落地计划/下一阶段时为 true，否则为 false',
-  'capability_requirements：数组，每项含 id/title/purpose/kind/access/required/role_ids/search_terms/suggested_tool_ids。解释为什么需要、哪个角色使用。kind 只能为 web_search/web_fetch/knowledge/calculate/text/document/browser/desktop/integration/custom；access 为 read 或 write。search_terms 只写通用能力类别，不写业务主体或机密。',
-  'suggested_tool_ids 只能从用户消息所附实际工具目录中选择，找不到就留空，不得编造工具、授权或在线状态。读工具不能满足写入或网页点击任务。浏览器工具与网页正文抓取是不同能力。',
-  'roles：简单任务用空数组；用户明确要求多角色或任务确有独立交接时，输出 2-5 个顺序角色，每项含 id/name/responsibility/tasks/inputs/deliverables/depends_on/tools/done_criteria。id 英文，depends_on 只能引用已有角色且不能成环。tools 初始留空，待用户按角色绑定真实工具。此系统为单次运行的分阶段角色执行，不是并行独立 Agent。',
-  "所有内容使用简体中文，贴合用户的真实需求，不空泛。",
-].join("\n")
+const SYSTEM_PROMPT = AGENT_DESIGN_SYSTEM_PROMPT
 
 const REVISE_SYSTEM_PROMPT = [
   "你是「Agent Studio」的助手方案修订器。用户会给你一份现有方案 JSON 和一句修改要求。",
@@ -71,34 +58,7 @@ const REVISE_SYSTEM_PROMPT = [
 ].join("\n")
 
 function parseSpecJson(raw: string): { displayName: string; spec: AgentSpec } | null {
-  let text = (raw || "").trim()
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fence) text = fence[1].trim()
-  const start = text.indexOf("{")
-  const end = text.lastIndexOf("}")
-  if (start < 0 || end <= start) return null
-  try {
-    const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>
-    const toStr = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v))
-    const toStrArr = (v: unknown): string[] =>
-      Array.isArray(v) ? v.map((x) => toStr(x)).filter((x) => x.trim() !== "") : []
-    return {
-      displayName: toStr(obj.name).slice(0, 24) || "未命名助手",
-      spec: {
-        goal: toStr(obj.goal),
-        task_scope: toStr(obj.task_scope),
-        deliverables: toStrArr(obj.deliverables),
-        tools: toStrArr(obj.tools),
-        task_plan: toStrArr(obj.task_plan),
-        done_criteria: toStrArr(obj.done_criteria),
-        require_plan_review: obj.require_plan_review === true,
-        ...(Array.isArray(obj.roles) ? {roles: sanitizeAgentRoles(obj.roles)} : {}),
-        ...(Array.isArray(obj.capability_requirements) ? {capability_requirements: normalizeCapabilityRequirements(obj.capability_requirements)} : {}),
-      },
-    }
-  } catch {
-    return null
-  }
+  return parseAgentDesignResponse(raw)
 }
 
 function scrollToSpecEditor() {
@@ -160,6 +120,7 @@ export function useHome() {
     setRevisionError("")
     setRequirementForTools("")
     setToolMatchNotice("")
+    setLastDesignModelUsed("")
   }, [])
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [savedList, setSavedList] = useState<SavedSpecRow[]>([])
@@ -169,6 +130,33 @@ export function useHome() {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [knowledgeBasesError,setKnowledgeBasesError]=useState("")
   const [knowledgeBasesLoading,setKnowledgeBasesLoading]=useState(false)
+  const [designModelOptions,setDesignModelOptions]=useState<AgentDesignModelOption[]>([])
+  const [designModelStatus,setDesignModelStatus]=useState<"loading"|"ready"|"unavailable">("loading")
+  const [designModelKey,setDesignModelKey]=useState("")
+  const [lastDesignModelUsed,setLastDesignModelUsed]=useState("")
+  const designModelLoadRef=useRef(0)
+  const refreshDesignModels=useCallback(async()=>{
+    const seq=++designModelLoadRef.current
+    setDesignModelStatus("loading")
+    try{
+      const response=await fetch(getPocketBaseUrl()+"/api/model-connections",{
+        headers:{...vibexAuthHeaders()},
+      })
+      if(!response.ok)throw Error("model_connections_unavailable")
+      const data=await response.json() as {items?:unknown}
+      if(seq!==designModelLoadRef.current)return
+      setDesignModelOptions(availableAgentDesignModels(data.items))
+      setDesignModelStatus("ready")
+    }catch{
+      if(seq!==designModelLoadRef.current)return
+      setDesignModelOptions([])
+      setDesignModelStatus("unavailable")
+    }
+  },[])
+  useEffect(()=>{
+    void refreshDesignModels()
+    return()=>{designModelLoadRef.current++}
+  },[refreshDesignModels])
 
   const currentDraft: AgentEditorDraft = useMemo(() => ({
     version: 1, ownerId: rhUserId, editedAt: 0,
@@ -391,6 +379,12 @@ export function useHome() {
   const runGenerate = useCallback(async () => {
     const requirement = userInput.trim()
     if (!requirement) return
+    const selectedModel=chooseAgentDesignModel(designModelOptions,designModelKey)
+    if (!selectedModel || designModelStatus!=="ready") {
+      setErrorMsg(designModelStatus==="loading" ? "正在核验模型连接，请完成后再生成" :
+        "请选择当前账号已启用的模型连接，再生成复杂 Agent 方案。")
+      return
+    }
     setIsGenerating(true)
     setErrorMsg("")
     setSavedMsg("")
@@ -399,7 +393,10 @@ export function useHome() {
       { role: "user", content: JSON.stringify({requirement, available_tools: toolCatalogForDesign(connectedTools, connectedMarketTools)}) },
     ]
     const startedRevision = specRevisionRef.current
-    const result = await callLlmWithFallback(MODEL_SHORT, { messages, page: "home", max_tokens: 6500 })
+    const result = await callLlmWithFallback(selectedModel.modelId, {
+      messages, page: "home", max_tokens: agentDesignTokenBudget(requirement),
+      connection_id:selectedModel.connectionId,strict_model:true,
+    })
     setIsGenerating(false)
     if (startedRevision !== specRevisionRef.current) {
       setErrorMsg("生成期间当前方案发生修改，已保留你的编辑。请确认需求后重新生成。")
@@ -415,6 +412,10 @@ export function useHome() {
       setErrorMsg(LLM_ERROR_TEXT[rawCode] || rawCode || "生成失败，请重试")
       return
     }
+    if (result.model && result.model!==selectedModel.modelId) {
+      setErrorMsg("服务端使用的模型与所选模型不一致，已拒绝采用这份方案。")
+      return
+    }
     const parsed = parseSpecJson(result.text || "")
     if (!parsed) {
       setErrorMsg("方案格式异常，请换个说法再试一次")
@@ -422,15 +423,13 @@ export function useHome() {
     }
     const matched = resolveAgentToolRequirements(requirement, parsed.spec, connectedTools, connectedMarketTools)
     invalidateSpecContext()
-    setSpec({...parsed.spec, tools:[
-      ...matched.resolvedTools,
-      ...matched.gaps.map(row=>row.name).filter(name=>!matched.resolvedTools.includes(name)),
-    ]})
+    setSpec(prepareGeneratedAgentPermissions(parsed.spec, matched))
     setRequirementForTools(requirement)
     setToolMatchNotice(matched.safeAutoBindings.length
       ? `已自动匹配 ${matched.safeAutoBindings.length} 项无需新授权的工具；其余所需能力请检查下方连接建议。`
       : "已核对当前账号的工具权限；未连接的能力会引导你去插件市场完成连接。")
     setSpecName(parsed.displayName)
+    setLastDesignModelUsed(`${selectedModel.connectionName} · ${selectedModel.modelId}`)
     // Do not leave a consumed requirement as a permanent second unsaved draft.
     // If the employee typed another requirement during generation, preserve it.
     setUserInput(current => current.trim() === requirement ? "" : current)
@@ -443,7 +442,8 @@ export function useHome() {
     setTemplateKey("")
     setEditingRecordId("")
     scrollToSpecEditor()
-  }, [userInput, markSpecEdited, connectedTools, connectedMarketTools, invalidateSpecContext])
+  }, [userInput, markSpecEdited, connectedTools, connectedMarketTools, invalidateSpecContext,
+    designModelOptions,designModelKey,designModelStatus])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -457,6 +457,11 @@ export function useHome() {
   const runRevise = useCallback(async () => {
     const instruction = reviseInput.trim()
     if (!instruction || !spec) return
+    const selectedModel=chooseAgentDesignModel(designModelOptions,designModelKey)
+    if (!selectedModel || designModelStatus!=="ready") {
+      setRevisionError("请先选择当前账号已授权的模型连接，再生成修改建议。")
+      return
+    }
     setIsRevising(true)
     setErrorMsg("")
     setRevisionError("")
@@ -472,7 +477,10 @@ export function useHome() {
           available_tools:toolCatalogForDesign(connectedTools,connectedMarketTools)}),
       },
     ]
-    const result = await callLlmWithFallback(MODEL_SHORT, { messages, page: "home", max_tokens: 4096 })
+    const result = await callLlmWithFallback(selectedModel.modelId, {
+      messages,page:"home",max_tokens:4096,
+      connection_id:selectedModel.connectionId,strict_model:true,
+    })
     // A response for a closed or different Agent must never affect the new editor.
     if (startedContext !== specContextRef.current) return
     setIsRevising(false)
@@ -490,6 +498,10 @@ export function useHome() {
       setRevisionError(LLM_ERROR_TEXT[rawCode] || rawCode || "修改失败，请重试")
       return
     }
+    if (result.model && result.model!==selectedModel.modelId) {
+      setRevisionError("服务端使用的模型与所选模型不一致，未采用这次修改建议。")
+      return
+    }
     const parsed = parseSpecJson(result.text || "")
     if (!parsed) {
       setRevisionError("修订结果格式异常，请换个说法再试一次")
@@ -505,7 +517,8 @@ export function useHome() {
       knowledge_base_ids:spec.knowledge_base_ids,require_approval:spec.require_approval,
       require_plan_review:spec.require_plan_review,quality_checks:spec.quality_checks,
     }})
-  }, [reviseInput, spec, specName, connectedTools, connectedMarketTools])
+  }, [reviseInput, spec, specName, connectedTools, connectedMarketTools,
+    designModelOptions,designModelKey,designModelStatus])
 
   const handleRevise = useCallback(() => {
     if (!reviseInput.trim() || !spec || isRevising) return
@@ -810,6 +823,12 @@ export function useHome() {
     userInput,
     setUserInput,
     handleCreate,
+    designModelOptions,
+    designModelStatus,
+    designModelKey,
+    setDesignModelKey,
+    refreshDesignModels,
+    lastDesignModelUsed,
     isGenerating,
     spec,
     editorContextKey,

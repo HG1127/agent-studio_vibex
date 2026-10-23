@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useLocation, useSearchParams } from "react-router-dom"
 import { ArrowRight, CircleAlert, Globe2, Loader2, Monitor, Plug, RefreshCw, Wrench } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
 import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
@@ -12,6 +12,8 @@ import {
 } from "@/lib/executionCapabilities"
 
 type Inventory = { http: unknown[]; market: unknown[]; errors: string[]; snapshotKey: string }
+const capabilityFilter = (value: string | null): "all" | ExecutionCapabilityKind =>
+  value === "browser" || value === "desktop" || value === "api" ? value : "all"
 const FILTERS: { value: "all" | ExecutionCapabilityKind; label: string }[] = [
   { value: "all", label: "全部连接" }, { value: "browser", label: "浏览器" },
   { value: "desktop", label: "电脑软件" }, { value: "api", label: "其他 API / MCP" },
@@ -19,9 +21,16 @@ const FILTERS: { value: "all" | ExecutionCapabilityKind; label: string }[] = [
 
 export function ExecutionConnectionsPage() {
   const [params] = useSearchParams()
+  const location = useLocation()
   const requestedKind = params.get("capability")
-  const [filter, setFilter] = useState<"all" | ExecutionCapabilityKind>(() =>
-    requestedKind === "browser" || requestedKind === "desktop" ? requestedKind : "all")
+  // React Router can reuse this screen for a new capability link. Scope any
+  // manually chosen tab to the current navigation, without an effect-driven
+  // state update or an extra render after each route change.
+  const [manualFilter, setManualFilter] = useState<{
+    routeKey: string; value: "all" | ExecutionCapabilityKind
+  } | null>(null)
+  const filter = manualFilter?.routeKey === location.key
+    ? manualFilter.value : capabilityFilter(requestedKind)
   const [refresh, setRefresh] = useState(0)
   const [inventory, setInventory] = useState<Inventory>({ http: [], market: [], errors: [], snapshotKey: "" })
   const employeeId = decodeRhToken()?.sub || ""
@@ -58,6 +67,8 @@ export function ExecutionConnectionsPage() {
     !isLoggedIn || inventoryLoading ? [] : collectExecutionCapabilities(inventory.http, inventory.market),
     [isLoggedIn, inventoryLoading, inventory.http, inventory.market])
   const visible = capabilities.filter(row => filter === "all" || row.kind === filter)
+  const verifiedCount = capabilities.filter(row => row.state === "tested" || row.state === "discovered").length
+  const failedCount = capabilities.filter(row => row.state === "failed").length
   const link = (path: string) => continueAgentResourceSetupUrl(path, params)
 
   return <SiteShell>
@@ -77,6 +88,13 @@ export function ExecutionConnectionsPage() {
       </header>
 
       <ReturnToAgentResources what="浏览器和电脑工具" />
+
+      <p role="status" className="mt-4 text-xs leading-relaxed text-muted-foreground">
+        {!isLoggedIn ? "登录后检查实际连接状态。" : inventoryLoading ? "正在检查当前账号的连接…" :
+          `已登记 ${capabilities.length} 个连接；${verifiedCount} 个有历史测试或工具发现记录` +
+          (failedCount ? `；${failedCount} 个需检查` : "") +
+          (inventory.errors.length ? "；部分清单读取失败" : "") + "。连接记录不代表执行器当前在线。"}
+      </p>
 
       <section aria-label="选择接入方式" className="my-6 grid gap-4 xl:grid-cols-3">
         <article className="rounded-xl border border-border bg-card p-5">
@@ -109,7 +127,13 @@ export function ExecutionConnectionsPage() {
         </article>
       </section>
 
-      <section aria-labelledby="local-executor-heading" className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-5">
+      <details id="local-executor-details" className="group mb-6 rounded-xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold marker:hidden sm:px-5">
+          <span>需要使用本机浏览器与 PDF / Excel 执行器？</span>
+          <span className="text-xs font-normal text-muted-foreground group-open:hidden">展开安全接入步骤 ↓</span>
+          <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">收起 ↑</span>
+        </summary>
+      <section aria-labelledby="local-executor-heading" className="border-t border-border p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-primary">本机受控能力 · 开发试用</p>
@@ -149,6 +173,7 @@ export function ExecutionConnectionsPage() {
           前往 MCP 插件连接 <ArrowRight className="h-4 w-4" />
         </Link>
       </section>
+      </details>
 
       <section aria-labelledby="execution-inventory-heading" className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -159,7 +184,7 @@ export function ExecutionConnectionsPage() {
           <span className="rounded-md bg-secondary px-2.5 py-1 text-xs text-muted-foreground">{capabilities.length} 个连接</span>
         </div>
         <div role="group" aria-label="筛选执行能力" className="my-4 flex flex-wrap gap-2">
-          {FILTERS.map(item => <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)}
+          {FILTERS.map(item => <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => setManualFilter({routeKey:location.key,value:item.value})}
             className={`min-h-9 rounded-lg border px-3 text-xs font-medium transition ${filter === item.value ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-secondary"}`}>
             {item.label} · {item.value === "all" ? capabilities.length : capabilities.filter(row => row.kind === item.value).length}
           </button>)}
@@ -193,7 +218,13 @@ export function ExecutionConnectionsPage() {
         </>}
       </section>
 
-      <section aria-labelledby="execution-templates-heading" className="my-6 rounded-xl border border-border bg-card p-5">
+      <details className="group my-6 rounded-xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold marker:hidden sm:px-5">
+          <span>高级选项：接入你自己的执行器</span>
+          <span className="text-xs font-normal text-muted-foreground group-open:hidden">查看接口模板 ↓</span>
+          <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">收起 ↑</span>
+        </summary>
+      <section aria-labelledby="execution-templates-heading" className="border-t border-border p-5">
         <h2 id="execution-templates-heading" className="flex items-center gap-2 font-semibold"><Wrench className="h-4 w-4 text-primary" />接入你自己的执行器</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">以下模板只预填工具名、用途与参数格式。服务提供者需要实现相应接口，你填入实际地址和凭据后进行真实测试。</p>
         <div className="mt-4 grid gap-4 xl:grid-cols-3">
@@ -211,6 +242,7 @@ export function ExecutionConnectionsPage() {
           <li>返回 Agent 绑定具体工具，试跑时查看执行证据。</li>
         </ol>
       </section>
+      </details>
     </main>
   </SiteShell>
 }

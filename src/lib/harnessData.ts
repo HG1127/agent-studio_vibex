@@ -23,6 +23,7 @@ const labels: Record<string, string> = {
   agent_running: "Agent 运行中", workflow_running: "Workflow 运行中", awaiting_approval: "待审批", needs_review: "待人工核查",
   paused: "已暂停", failed_recent: "样本内失败", scheduled_active: "启用计划", scheduled_pending: "待调度批次",
   scheduled_overdue: "逾期计划（60 秒宽限）", ready_estimate: "估算就绪队列", inflight: "有效运行租约",
+  expired_lease_candidates: "租约过期待诊断", unresolved_writes: "外部写入结果未确认",
   runs: "窗口运行数", succeeded: "成功", failed: "失败", cancelled: "已取消", success_rate: "成功率 %（成功 / 全部运行）",
   avg_steps: "平均步骤", avg_duration_ms: "平均创建至更新时间 ms", est_tokens_total: "估算 Token（非费用）",
   approvals: "审批次数", stuck_loops: "循环卡住", compressions: "压缩次数", truncations: "截断次数",
@@ -34,17 +35,35 @@ const monitorKeys = ["runs", "succeeded", "failed", "cancelled", "success_rate",
 const statsKeys = ["run_count", "agent_run_count", "workflow_run_count", "invocation_count", "success_count", "failed_count", "retried_count", "external_invocation_count"]
 const toMetrics = (values: Record<string, number>): Metric[] => Object.entries(values).map(([key, value]) => ({ label: labels[key] || key, value }))
 
+const workerComponent = z.object({
+  state: z.enum(["healthy", "retrying", "unverified"]),
+  failures: count, retry_at_ms: count,
+})
+const workerComponentValue = (state: string, valid: boolean): string =>
+  !valid || state === "unverified" ? "未核验" :
+    state === "retrying" ? "上次报告暂不可用" : "最近检查正常"
+
 /** Fail closed on missing/malformed fields. An unavailable source is never a zero. */
 export function adaptHarnessData(key: SourceKey, raw: unknown): Snapshot {
   z.object({ ok: z.literal(true) }).parse(raw)
   if (key === "worker") {
     const data = z.object({ enabled: z.boolean(), alive: z.boolean(), last_seen: z.string(), last_step_at: z.string(),
-      queue: metrics(queueKeys).extend({ sampled: z.boolean(), sample_limit_per_kind: count }),
+      components: z.object({ schedules: workerComponent, knowledge: workerComponent }).optional(),
+      components_observed_at_ms: count.nullable().optional(),
+      queue: metrics(queueKeys).extend({ sampled: z.boolean(), sample_limit_per_kind: count,
+        expired_lease_candidates: count.optional(), unresolved_writes: count.optional() }),
     }).parse(raw)
     const { sampled, sample_limit_per_kind, ...queue } = data.queue
-    return { metrics: [{ label: "Worker（共享执行器）", value: !data.enabled ? "未启用" : data.alive ? "心跳在线" : "心跳离线" },
-      { label: "最近心跳", value: data.last_seen || "尚无心跳" }, { label: "最近步骤", value: data.last_step_at || "尚无记录" }, ...toMetrics(queue)],
-      note: `队列按本人最近更新的每类最多 ${sample_limit_per_kind} 条运行统计，${sampled ? "已截断" : "本次未截断"}。租约、人工核查、计划计数由服务端单独查询；就绪数为估算。心跳在线阈值为 180 秒。` }
+    const valid = data.enabled && data.alive && !!data.components_observed_at_ms
+    return { metrics: [
+      { label: "Worker（共享执行器）", value: !data.enabled ? "未启用" : data.alive ? "近期有心跳" : "未收到近期心跳" },
+      { label: "最近心跳", value: data.last_seen || "尚无心跳" },
+      { label: "最近步骤", value: data.last_step_at || "尚无记录" },
+      { label: "定时调度最近报告", value: workerComponentValue(data.components?.schedules.state || "unverified", valid) },
+      { label: "知识索引最近报告", value: workerComponentValue(data.components?.knowledge.state || "unverified", valid) },
+      ...toMetrics(queue),
+    ],
+      note: `队列按本人最近更新的每类最多 ${sample_limit_per_kind} 条运行统计，${sampled ? "已截断" : "本次未截断"}。租约、人工核查、计划计数由服务端单独查询；就绪数为估算。180 秒内有心跳不等于进程实时存活；子系统状态来自最近一个 Worker 的受限报告。` }
   }
   if (key === "monitor") {
     const data = z.object({ totals: metrics(monitorKeys), tools: z.array(toolSchema).max(12) }).parse(raw)

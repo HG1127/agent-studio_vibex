@@ -2,6 +2,8 @@ import type { AgentSpec } from "../pages/Home/presets"
 import { evaluateAgentQualityChecks, normalizeAgentQualityChecks } from "./agentQualityChecks.ts"
 import { agentRoleReadiness } from "./agentRoles.ts"
 import { matchesAgentSpecSnapshot } from "./agentSpecRevision.ts"
+import { evaluateComplexAgentAcceptance, type ComplexAgentAcceptance,
+  type ComplexAgentProof } from "./complexAgentAcceptance.ts"
 
 export type AgentJourneyStatus = {
   planIssues: string[]
@@ -11,6 +13,7 @@ export type AgentJourneyStatus = {
   trial: {state: string; label: string; detail: string; action: "save"|"retry"|"view"|"refresh"}
   canTry: boolean
   canPublish: boolean
+  complexAcceptance: ComplexAgentAcceptance
 }
 export function evaluateAgentJourney(args:{
   spec:AgentSpec|null
@@ -21,7 +24,7 @@ export function evaluateAgentJourney(args:{
   modelState:"loading"|"ready"|"unavailable"
   toolStatusOf:(name:string)=>"ready"|"pending"
   accessibleKnowledgeBaseIds:string[]
-  run?:{spec_id:string;status:string;created:string;result?:string;spec_snapshot?:unknown}|null
+  run?:({spec_id:string;status:string;created:string;result?:string;spec_snapshot?:unknown} & ComplexAgentProof)|null
   capabilityIssues?:string[]
   lastSavedAt?:number
   runState?:"checking"|"ready"|"unavailable"
@@ -79,7 +82,10 @@ export function evaluateAgentJourney(args:{
       }
     }
   }
-  const canPublish=canTry && hasVerifiedRun && checksPassed
+  const complexAcceptance=evaluateComplexAgentAcceptance(spec,hasVerifiedRun?run:null)
+  if(hasVerifiedRun && complexAcceptance.applicable && !complexAcceptance.verified)
+    qualityIssues.push(...complexAcceptance.issues.slice(0,8))
+  const canPublish=canTry && hasVerifiedRun && checksPassed && complexAcceptance.verified
   let trial:AgentJourneyStatus["trial"]
   if(!savedId || dirty){
     trial={state:"unsaved",label:"当前方案尚未保存",detail:"先保存当前修改，再试跑保存后的方案；原运行记录仍保留。",action:"save"}
@@ -105,13 +111,13 @@ export function evaluateAgentJourney(args:{
     trial={state:"stale",label:"旧版本试跑成功，需重新试跑",detail:"目标、角色、能力或其他方案内容已与运行冻结快照不同，请试跑当前保存方案。",action:"retry"}
   }else if(!currentTime){
     trial={state:"unproven",label:"成功运行的版本时间无法核验",detail:"快照内容一致，但无法确认运行发生在本次保存后，请重新试跑。",action:"retry"}
-  }else if(!checksPassed){
-    trial={state:"quality_blocked",label:"当前版本运行成功，质量断言待通过",detail:"查看真实输出和未通过的断言，修正并保存后重新试跑。运行成功不代表内容质量已验证。",action:"view"}
+  }else if(!checksPassed || !complexAcceptance.verified){
+    trial={state:"quality_blocked",label:"运行成功，但复杂 Agent 的执行证据尚未验收",detail:"检查角色交接、必需工具调用、写入审批及结果质量；不能仅凭最终回答判定任务完成。",action:"view"}
   }else if(!canTry){
     trial={state:"blocked",label:"当前版本运行成功，前置检查待完成",detail:"先解决方案与资源检查提示，再继续发布前验收。运行成功不代表内容质量已验证。",action:"view"}
   }else{
     trial={state:"ready",label:"当前版本试跑成功，可进入验收",detail:"已核对完整冻结快照与保存时间；仍须人工核对结果、来源及完成标准。运行成功不代表内容质量已验证。",action:"view"}
   }
   const trialIssues=canPublish?[]:[trial.detail]
-  return {planIssues,resourceIssues,qualityIssues,trialIssues,trial,canTry,canPublish}
+  return {planIssues,resourceIssues,qualityIssues,trialIssues,trial,canTry,canPublish,complexAcceptance}
 }

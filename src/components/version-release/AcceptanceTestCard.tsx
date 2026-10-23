@@ -16,6 +16,7 @@ type AcceptanceTestCardProps = {
   isTestLive: boolean
   testRun: AgentRunRow | null
   testPassed: boolean
+  complexRunProof?: {runId:string;passed:boolean;issues:string[]}|null
   isTestCurrentVersion: boolean
   testMaxSteps: number
   onRunTest: () => void
@@ -34,6 +35,7 @@ export function AcceptanceTestCard({
   isTestLive,
   testRun,
   testPassed,
+  complexRunProof,
   testMaxSteps,  isTestCurrentVersion,
 
   onRunTest,
@@ -137,6 +139,14 @@ export function AcceptanceTestCard({
         </div>
       )}
 
+      {testRun?.status==="succeeded" && complexRunProof?.runId===testRun.id && (
+        <div role="status" className="mt-3 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs">
+          <p className="font-semibold">复杂 Agent 运行证据{complexRunProof.passed?"已核验":"尚未通过"}</p>
+          {!complexRunProof.passed && <p className="mt-1 text-muted-foreground">
+            {complexRunProof.issues.length} 项角色、必需工具、审批或结果证据未满足验收要求。
+            请查看运行记录并补齐缺口后重新测试。</p>}
+        </div>
+      )}
       {testRun && !isTestLive && (
         <div
           className={`mt-4 rounded-xl border-l-4 p-3.5 shadow-sm ${

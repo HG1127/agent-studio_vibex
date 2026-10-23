@@ -129,6 +129,7 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                   isTestLive={p.isTestLive}
                   testRun={p.testRun}
                   testPassed={p.testPassed}
+                  complexRunProof={p.complexRunProof}
                   isTestCurrentVersion={p.isTestCurrentVersion}
                   testMaxSteps={p.testMaxSteps}
                   onRunTest={p.handleRunTest}

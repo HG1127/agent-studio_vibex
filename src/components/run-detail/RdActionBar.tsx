@@ -12,7 +12,11 @@ type RdActionBarProps = {
 
 export function RdActionBar({ run, isLive, controlBusy, onControl, onExport }: RdActionBarProps) {
   const hasSpec = Boolean(run.spec_id)
-  const canPause = run.status === "running"
+  const pauseRequested = run.checkpoint?.pause_requested === true
+  const cancelRequested = run.checkpoint?.cancel_requested === true
+  const pauseApplying = run.status === "running" && pauseRequested && !cancelRequested
+  const pauseWaitingForUser = pauseRequested && !cancelRequested && (run.status === "awaiting_input" || run.status === "awaiting_approval")
+  const canPause = run.status === "running" && !pauseRequested && !cancelRequested
   const canResume = run.status === "paused" || run.status === "queued"
 
   return (
@@ -43,6 +47,10 @@ export function RdActionBar({ run, isLive, controlBusy, onControl, onExport }: R
         </button>
       </div>
 
+      {cancelRequested && <p role="status" className="mt-4 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-foreground">已收到取消请求，当前步骤正在安全收尾；保存检查点后将取消，不会执行后续步骤。</p>}
+      {pauseApplying && <p role="status" className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">已收到暂停请求，当前步骤正在收尾；保存检查点后将暂停。无需重复点击。</p>}
+      {pauseWaitingForUser && <p role="status" className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">已记录暂停请求；当前运行正在等待输入或审批。完成当前交互后将先暂停，不会直接执行下一步。</p>}
+
       {isLive && (
         <div className="mt-4 flex items-center gap-2 border-t border-border pt-4">
           <button
@@ -52,7 +60,7 @@ export function RdActionBar({ run, isLive, controlBusy, onControl, onExport }: R
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-card-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-primary"
           >
             <CirclePause className="h-4 w-4" />
-            {controlBusy === "pause" ? "暂停中…" : "暂停"}
+            {pauseApplying ? "等待步骤收尾…" : controlBusy === "pause" ? "暂停中…" : "暂停"}
           </button>
           <button
             type="button"
@@ -66,11 +74,11 @@ export function RdActionBar({ run, isLive, controlBusy, onControl, onExport }: R
           <button
             type="button"
             onClick={() => onControl("cancel")}
-            disabled={controlBusy !== ""}
+            disabled={controlBusy !== "" || cancelRequested}
             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-destructive/40 bg-background px-3 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-primary"
           >
             <CircleStop className="h-4 w-4" />
-            {controlBusy === "cancel" ? "取消中…" : "取消"}
+            {cancelRequested ? "等待步骤收尾…" : controlBusy === "cancel" ? "取消中…" : "取消"}
           </button>
         </div>
       )}

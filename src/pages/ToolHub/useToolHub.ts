@@ -72,14 +72,33 @@ export type MonitorData = {
   tools: MonitorToolRow[]
 }
 
+export type WorkerComponent = {
+  state: "healthy" | "retrying" | "unverified"
+  failures: number
+  retry_at_ms: number
+}
+
 export type WorkerStatus = {
   enabled: boolean
   alive: boolean
   last_seen: string
   last_step_at: string
   tick_attempts_total: number
+  active_claims?: {
+    kind: "agent" | "workflow"
+    run_id: string
+    holder: string
+    expires_in_ms: number
+    worker_attributed: boolean
+  }[]
+  active_claims_sampled?: boolean
+  instances?: { label: string; last_seen_age_ms: number | null; last_step_at: string; recent: boolean; attempts: number }[]
+  instances_recent?: number
+  instances_sampled?: boolean
   observed_at_ms?: number
   last_seen_age_ms?: number | null
+  components?: { schedules: WorkerComponent; knowledge: WorkerComponent }
+  components_observed_at_ms?: number | null
   queue?: {
     agent_running: number
     workflow_running: number
@@ -93,6 +112,8 @@ export type WorkerStatus = {
     oldest_due_age_ms?: number
     ready_estimate: number
     inflight: number
+    expired_lease_candidates?: number
+    unresolved_writes?: number
     sampled: boolean
     sample_limit_per_kind: number
   }

@@ -3,6 +3,7 @@ import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
 import { AlertCircle, LogIn, PencilLine, Store, X } from "lucide-react"
 import { Link } from "react-router-dom"
 import { CreateComposer } from "@/components/home/CreateComposer"
+import { AgentDesignModelPicker } from "@/components/home/AgentDesignModelPicker"
 import { AgentDraftRecoveryNotice } from "@/components/home/AgentDraftRecoveryNotice"
 import { AgentCatalog } from "@/components/home/AgentCatalog"
 import { SpecEditorCard } from "@/components/home/SpecEditorCard"
@@ -158,11 +159,17 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               适合有经验的员工；也可以使用<Link to="/agent-create" className="ml-1 font-medium text-primary hover:underline">五步创建向导</Link>。
             </p>
-            <div className="mt-4">
+            <div className="mt-4 space-y-3">
+              <AgentDesignModelPicker options={p.designModelOptions} selectedKey={p.designModelKey}
+                status={p.designModelStatus} onSelect={p.setDesignModelKey}
+                onRefresh={()=>void p.refreshDesignModels()} busy={p.isGenerating}/>
               <CreateComposer userInput={p.userInput}
                 onUserInputChange={p.setUserInput}
                 onCreate={p.handleCreate}
                 isGenerating={p.isGenerating}/>
+              {p.lastDesignModelUsed && p.spec && <p role="status" className="text-xs text-muted-foreground">
+                最近一次 Agent 方案由 {p.lastDesignModelUsed} 生成，仍须完成角色与工具核验。
+              </p>}
             </div>
           </details>
           <details id="templates" className="group min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-5">

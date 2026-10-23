@@ -5,6 +5,8 @@ import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studio
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import { tickAgentRun } from "@/lib/agentEngine"
 import { matchesAgentSpecSnapshot } from "@/lib/agentSpecRevision"
+import { agentAcceptanceBudget } from "@/lib/agentAcceptanceBudget"
+import { evaluateComplexAgentAcceptance } from "@/lib/complexAgentAcceptance"
 import type { AgentSpec, SavedSpecRow } from "@/pages/Home/useHome"
 import type { AgentRunRow } from "@/pages/AgentRun/useAgentRun"
 
@@ -40,7 +42,6 @@ export type ConfirmAction = {
   row: SpecVersionRow
 }
 
-const TEST_MAX_STEPS = 8
 const LIVE_STATES = ["queued", "running", "paused", "awaiting_approval", "awaiting_input"]
 const CUSTOM_MODEL_PREFIX = "custom:"
 
@@ -89,6 +90,7 @@ export function useVersionRelease() {
   const [customModels, setCustomModels] = useState<CustomModelOption[]>([])
   const [isStartingTest, setIsStartingTest] = useState(false)
   const [testRun, setTestRun] = useState<AgentRunRow | null>(null)
+  const [complexRunProof,setComplexRunProof]=useState<{runId:string;passed:boolean;issues:string[]}|null>(null)
 
   const [versionNote, setVersionNote] = useState("")
   const [isSavingVersion, setIsSavingVersion] = useState(false)
@@ -109,6 +111,7 @@ export function useVersionRelease() {
   }, [])
 
   const selectedSpec = specList.find((row) => row.id === selectedSpecId) || null
+  const acceptanceBudget=agentAcceptanceBudget(selectedSpec?.spec)
   const publishedVersion = versionList.find((row) => row.status === "published") || null
   const publishRecords = versionList.filter((row) => row.published_at !== "")
   const nextVersionNo = versionList.reduce((maxNo, row) => Math.max(maxNo, row.version_no), 0) + 1
@@ -116,9 +119,37 @@ export function useVersionRelease() {
   const isTestCurrentVersion = Boolean(testRun?.spec_snapshot && selectedSpec &&
     testRun.spec_id===selectedSpec.id &&
     matchesAgentSpecSnapshot(selectedSpec.spec,testRun.spec_snapshot))
-  const testPassed = Boolean(testRun && testRun.status === "succeeded" && isTestCurrentVersion)
+  const isComplexAcceptance=Boolean((selectedSpec?.spec.roles||[]).length>=2)
+  const testPassed = Boolean(testRun && testRun.status === "succeeded" && isTestCurrentVersion &&
+    testRun.config?.source === "acceptance_test" &&
+    (!isComplexAcceptance || (complexRunProof?.runId===testRun.id && complexRunProof.passed)))
   const testFailed = Boolean(testRun && (testRun.status === "failed" || testRun.status === "cancelled"))
   const isCustomTestModel = parseCustomModelValue(testModel) !== null
+
+  useEffect(()=>{
+    const runId=testRun?.status==="succeeded"?testRun.id:""
+    if(!runId || !isComplexAcceptance || !selectedSpec){setComplexRunProof(null);return}
+    let cancelled=false
+    setComplexRunProof(null)
+    void (async()=>{
+      try{
+        const res=await fetch(base+"/api/agent-runs/"+encodeURIComponent(runId)+"/detail",{
+          headers:{...vibexAuthHeaders()},
+        })
+        if(!res.ok)throw new Error("run_detail_unavailable")
+        const detail=await res.json() as {run?:{status:string;result:string;checkpoint?:unknown};events?:unknown}
+        const proof=evaluateComplexAgentAcceptance(selectedSpec.spec,{
+          status:detail.run?.status,result:detail.run?.result,
+          checkpoint:detail.run?.checkpoint as {role_state?:{completed?:unknown;outputs?:unknown}},
+          events:detail.events as import("@/lib/complexAgentAcceptance").ComplexAgentEvent[],
+        })
+        if(!cancelled)setComplexRunProof({runId,passed:proof.verified,issues:proof.issues})
+      }catch{
+        if(!cancelled)setComplexRunProof({runId,passed:false,issues:["无法核验角色与工具的实际执行记录"]})
+      }
+    })()
+    return()=>{cancelled=true}
+  },[base,testRun?.id,testRun?.status,isComplexAcceptance,selectedSpec?.spec])
 
   const loadVersionList = useCallback(
     async (specId: string) => {
@@ -350,7 +381,8 @@ export function useVersionRelease() {
         instruction: testInstruction.trim(),
         model: parsedCustom ? parsedCustom.modelId : testModel,
         config: {
-          max_steps: TEST_MAX_STEPS,
+          max_steps: agentAcceptanceBudget(selectedSpec.spec).maxSteps,
+          max_model_calls: agentAcceptanceBudget(selectedSpec.spec).maxModelCalls,
           stop_condition: "",
           stop_on_complete: true,
           tools: { calculate: true, summarize: true, knowledge_search: true },
@@ -471,6 +503,10 @@ export function useVersionRelease() {
   const requestPublish = useCallback((row: SpecVersionRow) => {
     setErrorMsg("")
     setNoticeMsg("")
+    if ((row.spec_snapshot?.roles||[]).length>=2 && !row.test_passed) {
+      setErrorMsg("复杂 Agent 必须完成角色交接、必需工具和写操作审批的正式验收，不能直接发布未验证版本。")
+      return
+    }
     setConfirmAction({ kind: "publish", row })
   }, [])
 
@@ -580,8 +616,9 @@ export function useVersionRelease() {
     isTestCurrentVersion,
     testPassed,
     testFailed,
+    complexRunProof: isComplexAcceptance ? complexRunProof : null,
     handleRunTest,
-    testMaxSteps: TEST_MAX_STEPS,
+    testMaxSteps: acceptanceBudget.maxSteps,
     versionNote,
     setVersionNote,
     isSavingVersion,
