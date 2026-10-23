@@ -153,7 +153,8 @@ export default function PgNativeRunHistoryReadonlyPanel({api}:{api:Api}){
         <p>Worker 状态：{detail.value.job_status} · 执行范围：{detail.value.execution_mode}</p>
       </div>}
       <p className="mt-4 text-sm font-medium">执行结果</p>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{detail.value.run.result_text||"暂无结果"}</p>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{detail.kind==="agent"&&detail.value.run.knowledge_outputs_available===false?
+        "知识来源或访问权限已经变化，原结果暂不可用。":detail.value.run.result_text||"暂无结果"}</p>
       {!!detail.value.run.last_error_code&&
         <p className="mt-3 text-xs text-amber-800">状态代码：{detail.value.run.last_error_code}</p>}
       {detail.kind==="agent"&&detail.value.approval&&<p className="mt-3 text-xs text-slate-500">

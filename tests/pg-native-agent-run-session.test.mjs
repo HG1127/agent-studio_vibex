@@ -132,3 +132,15 @@ test("mismatched detail or invalid history fails closed and older concurrent rea
   api.listRuns=async()=>[{...run(),status:"malformed"}];await model.refresh()
   assert.equal(model.snapshot().detail,null);assert.deepEqual(model.snapshot().runs,[])
 })
+
+test("unavailable source removes previously loaded text and citations and refuses approval, including a malformed availability response",async()=>{
+  const {model,api,calls}=fixture();await model.setActive(true);await model.select(id)
+  api.listRuns=async()=>[run({knowledge_outputs_available:false})]
+  api.getRun=async()=>({...detail(run({status:"awaiting_approval",knowledge_outputs_available:false}),"pending"),steps:[{step_key:"model",metadata:{citations:["OLD_PRIVATE_SOURCE"]}}]})
+  await model.refresh()
+  assert.equal(model.snapshot().detail.run.result_text,"");assert.equal(model.snapshot().runs[0].result_text,"")
+  assert.deepEqual(model.snapshot().detail.steps[0].metadata,{})
+  await model.decide("approved",true);assert.equal(calls.decide.length,0)
+  api.getRun=async()=>detail(run({knowledge_outputs_available:"true"}));await model.refresh()
+  assert.equal(model.snapshot().detail,null);assert.deepEqual(model.snapshot().runs,[])
+})

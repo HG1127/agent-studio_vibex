@@ -22,22 +22,22 @@ export function agentRunError(error:unknown){
 function checkedRun(run:PgNativeRun,id?:string){
   if(!run||!uuid.test(run.id)||id&&run.id!==id||!uuid.test(run.agent_spec_id)||
     !statuses.has(run.status)||typeof run.instruction!=="string"||typeof run.result_text!=="string"||
+    run.knowledge_outputs_available!==undefined&&typeof run.knowledge_outputs_available!=="boolean"||
     !run.checkpoint||typeof run.checkpoint!=="object"||Array.isArray(run.checkpoint))throw Error("unconfirmed_agent_run")
-  return run
+  return run.knowledge_outputs_available===false?{...run,result_text:""}:run
 }
 function checkedDetail(detail:PgNativeRunDetail,id:string){
-  checkedRun(detail?.run,id)
+  const run=checkedRun(detail?.run,id)
   if(!Array.isArray(detail.steps)||detail.approval!==null&&(!detail.approval||detail.approval.step_key!=="model"||
     !["pending","approved","rejected"].includes(detail.approval.status)))throw Error("unconfirmed_agent_detail")
-  return detail
+  return {...detail,run,steps:run.knowledge_outputs_available===false?detail.steps.map(step=>({...step,metadata:{}})):detail.steps}
 }
 export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}={}){
   let state=emptyAgentRunView(),active=false,closed=false,ticket=0,selected:string|null=null,flight:Promise<void>|null=null
   const submission=createPgNativeRunSubmission(options.key),listeners=new Set<()=>void>()
   const submitApi={submitRun:async(...args:Parameters<Api["submitRun"]>)=>{
     const outcome=await api.submitRun(...args)
-    checkedRun(outcome?.run)
-    return outcome
+    return {...outcome,run:checkedRun(outcome?.run)}
   }}
   const update=(patch:Partial<AgentRunView>)=>{if(!closed){state={...state,...patch};for(const listener of listeners)listener()}}
   const expired=(error:unknown)=>{
@@ -55,11 +55,10 @@ export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}=
       const [runs,detail]=await Promise.all([api.listRuns(),id?api.getRun(id):Promise.resolve(null)])
       if(closed||!active||read!==ticket)return
       if(!Array.isArray(runs))throw Error("unconfirmed_agent_history")
-      for(const run of runs)checkedRun(run)
-      if(detail)checkedDetail(detail,id!)
+      const safeRuns=runs.map(run=>checkedRun(run)),safeDetail=detail?checkedDetail(detail,id!):null
       const decision=state.decision
       const confirmed=decision?.id===detail?.run.id&&["approved","rejected"].includes(detail?.approval?.status??"")
-      update({runs:runs.slice(0,50),detail,...(confirmed?{decision:null,notice:detail!.approval!.status===decision!.value?
+      update({runs:safeRuns.slice(0,50),detail:safeDetail,...(confirmed?{decision:null,notice:detail!.approval!.status===decision!.value?
         "已确认上次审批。":"此步骤已由当前账号的另一操作决定，已更新为最新状态。"}:{})})
     }catch(error){if(!closed&&active&&read===ticket&&!expired(error))update({runs:[],detail:null,error:agentRunError(error)})}
     finally{if(!closed&&read===ticket)update({loading:false})}
@@ -102,7 +101,7 @@ export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}=
     decide(value:"approved"|"rejected",consented=false){
       const detail=state.detail
       if(state.pending||!detail||detail.approval?.status!=="pending"||detail.run.status!=="awaiting_approval"||
-        !["approved","rejected"].includes(value)||value==="approved"&&!consented)return Promise.resolve()
+        !["approved","rejected"].includes(value)||value==="approved"&&(!consented||detail.run.knowledge_outputs_available===false))return Promise.resolve()
       const previous=state.decision
       if(previous&&(previous.id!==detail.run.id||previous.value!==value))return Promise.resolve()
       const request=previous??Object.freeze({id:detail.run.id,value})

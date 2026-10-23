@@ -44,7 +44,7 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
   const chosen=eligible.find(agent=>agent.id===agentId)
   const approvalAgent=agents.find(agent=>agent.id===detail?.run.agent_spec_id)
   const approvalConnection=readyConnection(approvalAgent)
-  const canApprove=Boolean(approvalConnection&&approvalAgent&&
+  const canApprove=Boolean(detail?.run.knowledge_outputs_available!==false&&approvalConnection&&approvalAgent&&
     detail?.run.checkpoint.spec_revision===approvalAgent.revision)
   const submit=async(event:FormEvent)=>{
     event.preventDefault()
@@ -131,7 +131,8 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
               {decision?.value==="rejected"?"确认上次拒绝":"拒绝模型调用"}</button>
           </div>
         </div>}
-        {detail.run.result_text&&<div><h4 className="mb-2 text-sm font-semibold">执行结果</h4>
+        {detail.run.knowledge_outputs_available===false&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">知识来源或访问权限已经变化，原结果暂不可用。请核对来源后新建任务。</p>}
+        {detail.run.knowledge_outputs_available!==false&&detail.run.result_text&&<div><h4 className="mb-2 text-sm font-semibold">执行结果</h4>
           <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 font-sans text-sm leading-6">{detail.run.result_text}</pre></div>}
         <p className="break-all text-xs text-slate-400">任务编号：{detail.run.id}</p>
       </article>}

@@ -10,7 +10,7 @@ import {selectPgRuntimeTarget,verifyPgRuntimeTarget} from "./pg-runtime-target.t
 import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
 import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
-import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "./knowledge-content-privileges.ts"
 
 export type PgWorkerName="prepare"|"model"
 const allowedStages=[
@@ -85,6 +85,7 @@ export async function runPg18NativeWorkerReadonlyPreflight(kind:PgWorkerName):Pr
     await verifyPgRuntimeTarget(adapter,target)
     stage="worker_role_boundary"
     await verifyPgWorkerRoleBoundary(adapter,target)
+    if(kind==="model")await verifyKnowledgeAgentSchema(adapter)
     if(knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     // The additive operator package may reuse an older SHA-pinned general
     // verifier. Audit optional credentials here too so that package cannot

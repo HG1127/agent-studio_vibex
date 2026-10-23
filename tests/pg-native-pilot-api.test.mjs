@@ -6,6 +6,21 @@ import {fileURLToPath} from "node:url"
 import {createPgNativePilotApi,PgNativePilotError}
   from "../src/lib/pgNativePilotApi.ts"
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
+
+test("single-shot API removes unavailable result/citations on every response path and refuses a malformed availability flag",async()=>{
+  const id="11111111-1111-4111-8111-111111111111"
+  let flag=false
+  const api=createPgNativePilotApi(async url=>{
+    const run={id,result_text:"MUST NOT RETAIN",knowledge_outputs_available:flag}
+    const body=String(url).endsWith("/api/v2/runs")?{runs:[run]}:{run,steps:[{step_key:"model",metadata:{citations:["OLD_SOURCE"]}}],approval:"approved",replayed:true}
+    return new Response(JSON.stringify(body),{status:200,headers:{"Content-Type":"application/json"}})
+  })
+  for(const row of [(await api.listRuns())[0],(await api.getRun(id)).run,(await api.submitRun(id,"Task","synthetic-key-0001")).run,(await api.decideModel(id,"approved")).run])
+    assert.equal(row.result_text,"")
+  assert.deepEqual((await api.getRun(id)).steps[0].metadata,{})
+  flag="false"
+  await assert.rejects(api.getRun(id),e=>e.code==="unconfirmed_agent_source_availability")
+})
 test("Native config capability uses same-origin GET and rejects malformed grants",async()=>{
   const calls=[]
   const api=createPgNativePilotApi(async(url,init)=>{

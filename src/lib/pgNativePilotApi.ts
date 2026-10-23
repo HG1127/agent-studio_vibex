@@ -167,6 +167,7 @@ export type PgNativeRun={
   id:string;agent_spec_id:string;owner_user_id:string
   status:PgNativeRunStatus;instruction:string;result_text:string
   checkpoint:Record<string,unknown>;step_count:number
+  knowledge_outputs_available?:boolean
   last_error_code:string;created_at:string;updated_at:string
 }
 export type PgNativeRunStep={
@@ -190,6 +191,11 @@ export class PgNativePilotError extends Error {
     this.status=status
     this.code=code
   }
+}
+function safeSingleRun(run:PgNativeRun):PgNativeRun{
+  if(!run||run.knowledge_outputs_available!==undefined&&typeof run.knowledge_outputs_available!=="boolean")
+    throw new PgNativePilotError(503,"unconfirmed_agent_source_availability")
+  return run.knowledge_outputs_available===false?{...run,result_text:""}:run
 }
 type RootPath=""|"/__pg_native"
 const routes={
@@ -864,15 +870,20 @@ export function createPgNativePilotApi(
     ).item,
     // Run/approval routes are server-side disabled by default. The client
     // never chooses a remote origin and never runs tasks on its own.
-    listRuns:async()=> (await get<{runs:PgNativeRun[]}>(routes.runs)).runs,
-    getRun:(id:string)=>get<PgNativeRunDetail>(runRoute(id)),
-    submitRun:(specId:string,instruction:string,idempotencyKey:string)=>
-      post<PgNativeRunSubmission>(runSubmissionRoute(specId),
-        safeRunPayload(instruction,idempotencyKey)),
-    decideModel:(id:string,decision:"approved"|"rejected")=>{
+    listRuns:async()=> (await get<{runs:PgNativeRun[]}>(routes.runs)).runs.map(safeSingleRun),
+    getRun:async(id:string)=>{
+      const result=await get<PgNativeRunDetail>(runRoute(id)),run=safeSingleRun(result.run)
+      return {...result,run,steps:run.knowledge_outputs_available===false?result.steps.map(step=>({...step,metadata:{}})):result.steps}
+    },
+    submitRun:async(specId:string,instruction:string,idempotencyKey:string)=>{
+      const result=await post<PgNativeRunSubmission>(runSubmissionRoute(specId),safeRunPayload(instruction,idempotencyKey))
+      return {...result,run:safeSingleRun(result.run)}
+    },
+    decideModel:async(id:string,decision:"approved"|"rejected")=>{
       if(decision!=="approved"&&decision!=="rejected")
         throw new PgNativePilotError(400,"invalid_pg_native_decision")
-      return post<PgNativeRunDecision>(`${runRoute(id)}/model-approval`,{decision})
+      const result=await post<PgNativeRunDecision>(`${runRoute(id)}/model-approval`,{decision})
+      return {...result,run:safeSingleRun(result.run)}
     },
   }
 }

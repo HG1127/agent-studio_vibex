@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
-import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "./knowledge-content-privileges.ts"
 // Isolated opt-in model execution. NEVER starts alongside production V7 Worker.
 import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
 import {randomUUID} from "node:crypto"
@@ -75,6 +75,7 @@ async function main(preflight=false){
     // Shared read-only role preflight rejects extra privilege and leaked
     // native-auth membership before constructing any model provider.
     await verifyPgWorkerRoleBoundary(adapter,config)
+    if(config.mode==="baota_pg18")await verifyKnowledgeAgentSchema(adapter)
       if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     if(preflight){
       process.stdout.write(JSON.stringify({

@@ -1,8 +1,9 @@
-# Retained free keyword Tool evidence
+# Retained free keyword evidence
 
 This isolated migration increment closes the reproduced stale keyword Tool
 approval/history path for direct Workflow Tools, Workflow Agents and autonomous
-Agents. PocketBase remains the current runtime. Production cutover is **NO-GO**.
+Agents. SQL042 extends the same original-source principle to single-shot Agent
+initial grounding. PocketBase remains the current runtime. Production cutover is **NO-GO**.
 
 ## Source identity and content lifetime
 
@@ -56,6 +57,46 @@ No new operator opt-in, service activation or deployment is performed here.
 
 ## Validation and outstanding scope
 
+SQL042 adds a separate private `knowledge_agent_observations` ledger. The initial
+lookup and a bounded digest of its actual citation/snippet array are recorded
+before constructing the model input. The same transaction seals the evidence to
+the original model effect hash after its durable STARTED marker and running state
+are written. A failure rolls back the ledger and effect together. Empty KB scope
+also receives a record, distinguishing a prepared run from a missing proof.
+
+The original lease hash, job, spec revision and current approval are checked before
+dispatch, after separate credential loading and after the provider response.
+Content, metadata, grant or employee changes stop the call or quarantine its
+already attempted outcome; they never retrieve replacement evidence or replay the
+model. Completed results, lists, step citations and submission/decision replays
+are projected using the original content/corpus/grant versions. A revoked and
+regranted source cannot resurrect the old output.
+
+The new NOLOGIN/NOINHERIT helper has no memberships or raw content, credential,
+authentication or vector grants. Only its evidence ledger is readable/insertable;
+only the initially NULL input hash can be sealed through a private helper. Public
+API/Worker/Broker roles cannot access the ledger or its internal helpers. Catalog
+audits run under restricted principals; migration-stamp checks stay in the API
+startup check. Reviewed Native PG18 startup, Model Worker and private Broker
+preflight require SQL042 even when sharing is disabled. Older isolated migration
+fixtures remain compatible only when the entire new footprint is absent.
+Apply SQL042 after the reviewed SQL041 in the disposable target; do not edit an
+already applied predecessor. Completed records without original proof remain
+unavailable, including historical records with a low step counter.
+
+The single-shot workbench clears cached data while hidden or refreshing and reads
+current server projections before showing results. Invalidated results and step
+citations are also suppressed by the client, including read-only history. Unknown
+availability values fail closed. The employee can review the source and submit a
+new task; the UI never automatically starts a replacement paid request.
+
+The SQL042 synthetic suite covers actual private mTLS, reader-owned billing,
+revoke/regrant, empty hits and empty/private scopes, credential/response changes,
+exact excerpt digests, missing proofs, atomic rollback, six restricted roles,
+privilege/ownership/RLS drift, missing stamps and partial-installation refusal.
+Actual PG18 and browser fixtures load SQL042 and exercise shared single-shot
+results becoming unavailable; their exact-commit outcomes are recorded in PR26.
+
 The local combined keyword/semantic suite passed 17 tests using embedded SQL,
 actual private mTLS and synthetic provider callbacks. It covers three runtimes,
 result/list/history redaction, content and grant changes, zero-hit corpus changes,
@@ -69,8 +110,7 @@ hosted checks to pass; [draft PR 26](https://github.com/HG1127/agent-studio_vibe
 records the current exact-commit evidence. Local checks alone cannot establish
 hosted acceptance or production readiness.
 
-Single-shot Agent initial grounding and public/view lifetime checks, automatic
-historical debug/cross-run sample lineage, remaining functional parity, real
+Automatic historical debug/cross-run sample lineage, remaining functional parity, real
 employee UAT, target network/access, sustained OS Worker operation and actual
 backup/restore/rollback acceptance remain required. This increment does not prove
 those broader migration conditions.

@@ -246,6 +246,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_039_knowledge_execution_source.sql"))
     await admin.query(upgrade("pg_v9_040_approved_semantic_tools.sql"))
     await admin.query(upgrade("pg_v9_041_keyword_observations.sql"))
+    await admin.query(upgrade("pg_v9_042_agent_knowledge_observations.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -521,6 +522,29 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await api.getConfigCapabilities()).knowledge_tool_runtime_enabled,true)
     const readerDraft=await api.createModelConnection({name:"CI reader embedding",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticReaderQueryCredentialNeverNetwork012345",models:["synthetic-embedding","synthetic-chat"],enabled:true})
     const readerModel=await api.testModelConnection(readerDraft.id,readerDraft.revision)
+    // SQL042: actual initial shared grounding through restricted Native API,
+    // Worker and separate credential/identity logins, over private mTLS.
+    const singleDraft=await api.createAgent("CI single-shot shared source","Use original shared evidence")
+    const singleBound=await api.bindAgentModel(singleDraft.id,singleDraft.revision,{connection_id:readerModel.id,connection_revision:readerModel.revision,model_id:"synthetic-chat"})
+    await api.updateAgentKnowledgeBases(singleBound.id,singleBound.revision,[sharedBase.id])
+    const singleShared=await api.submitRun(singleDraft.id,"Search KB: cedar","ci-single-shared-original")
+    assert.equal((await prepare.tick()).status,"prepared");await api.decideModel(singleShared.run.id,"approved")
+    let singleCalls=0
+    const singleBroker=new OwnerBoundModelDispatch(apiPool,key,async(material,input)=>{
+      singleCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345")
+      assert.match(JSON.stringify(input.knowledgeEvidence),/Shared CI cedar evidence/)
+      return "Original single-shot shared result"
+    },brokerPool)
+    await withDisposableBoundModelTls(createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(identityPool),singleBroker),async config=>{
+      const worker=new AgentModelWorker(workerPool,"ci-single-shared",{async generate(){throw Error("shared_fallback_forbidden")}},
+        {boundOnly:true,boundExecutionApproved:true,boundModelDispatch:createBoundModelMutualTlsClient(config)})
+      assert.equal((await worker.tick()).status,"succeeded");assert.equal((await worker.tick()).status,"idle")
+    })
+    assert.equal(singleCalls,1);assert.equal((await api.getRun(singleShared.run.id)).run.knowledge_outputs_available,true)
+    const singleLedger=(await admin.query("SELECT reader_user_id,input_sha256,result_refs FROM agentstudio.knowledge_agent_observations WHERE run_id=$1",[singleShared.run.id])).rows[0]
+    assert.equal(singleLedger.reader_user_id,share.item.recipient_id);assert.equal(singleLedger.result_refs.length,1)
+    assert.match(singleLedger.input_sha256,/^[a-f0-9]{64}$/)
+    await assert.rejects(byLogin.agentstudio_api_login.query("SELECT * FROM agentstudio.knowledge_agent_observations"),e=>e.code==="42501")
     await api.changeKnowledgeEmbeddingSettings({action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:readerModel.id,connection_revision:readerModel.revision,model_name:"synthetic-embedding",base_url:"https://api.openai.com/v1"})
     const readerProfile=await api.getKnowledgeEmbeddingConsent()
     await api.changeKnowledgeEmbeddingConsent({action:"grant",request_id:randomUUID(),expected_revision:0,profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,index_enabled:false,query_enabled:true,acknowledgement:EMBEDDING_CHARGE_ACKNOWLEDGEMENT})
@@ -633,6 +657,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(await bases.get(reader,sharedBase.id),null)
     await assert.rejects(knowledgeAccess.listGrants(reader,sharedBase.id),error=>error.status===404)
     await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:2,request_id:randomUUID()})
+    const singleHidden=await api.getRun(singleShared.run.id)
+    assert.equal(singleHidden.run.knowledge_outputs_available,false);assert.equal(singleHidden.run.result_text,"")
+    assert.ok(singleHidden.steps.every(step=>Object.keys(step.metadata).length===0))
     assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,semanticRunId)).run.result_text,"")
     assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,keywordRunId)).knowledge_outputs_available,false)
     await assert.rejects(new WorkflowV2RunRepository(apiPool).outputHistory(reader,keywordRunId),e=>e.code==="knowledge_observations_unavailable")

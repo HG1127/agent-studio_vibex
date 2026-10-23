@@ -1,5 +1,6 @@
 import type {SqlClient} from "./contracts.ts"
 import {verifyKnowledgeKeywordCredentials} from "./knowledge-keyword-audit.ts"
+import {knowledgeAgentInstalled} from "./knowledge-agent-audit.ts"
 const helper="agentstudio_knowledge_execution"
 const readable:Record<string,readonly string[]>={
   jobs:["id","owner_user_id","run_id","kind","payload","status","lease_token","lease_version","lease_owner","lease_until"],
@@ -13,6 +14,7 @@ function refuse():never{throw Error("unsafe_knowledge_execution_privileges")}
 // API/Worker/Broker logins. Any partial SQL039 footprint fails closed.
 export async function verifyKnowledgeExecutionCredentials(db:SqlClient):Promise<boolean>{
   const keyword=await verifyKnowledgeKeywordCredentials(db)
+  const agent=await knowledgeAgentInstalled(db)
   const footprint=(await db.query<{installed:boolean}>("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=$1) OR "+
     "to_regprocedure('agentstudio.knowledge_query_execution_submit(uuid,uuid[],text,text,integer,uuid,bigint,bigint,text,jsonb)') IS NOT NULL OR "+
     "to_regprocedure('agentstudio.knowledge_query_execution_validate_run(uuid,text)') IS NOT NULL OR "+
@@ -32,7 +34,8 @@ export async function verifyKnowledgeExecutionCredentials(db:SqlClient):Promise<
     tool_connection_headers:["id","tool_connection_id","header_name","updated_at"],
     mcp_connections:["id","owner_user_id","revision","enabled","status","url","catalog"],mcp_connection_headers:["id","mcp_connection_id","header_name","updated_at"],
     knowledge_bases:["id","owner_user_id","visibility","revision"],knowledge_access:["base_id","owner_user_id","recipient_user_id","access_role","semantic_allowed","revoked","revision"],
-  }:readable
+  }:{...readable}
+  if(agent)allowed.runs=[...allowed.runs!,"step_count"]
   const columns=(await db.query<{schema:string;table:string;column:string;read:boolean;write:boolean}>("SELECT n.nspname AS schema,c.relname AS table,a.attname AS column,"+
     "has_column_privilege($1,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1,c.oid,a.attnum,'INSERT,UPDATE,REFERENCES') AS write "+
     "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid "+

@@ -1,6 +1,7 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {verifyKnowledgeEmbeddingCredentials} from "./knowledge-embedding-privileges.ts"
 import {verifyKnowledgeKeywordCredentials} from "./knowledge-keyword-audit.ts"
+import {verifyKnowledgeAgentCredentials} from "./knowledge-agent-audit.ts"
 const helpers=["agentstudio_knowledge_acl","agentstudio_knowledge_content"]
 function refuse():never{throw Error("unsafe_knowledge_content_privileges")}
 // Also called by the ordinary startup inspector when the UI capability is off.
@@ -48,6 +49,19 @@ export async function verifyKnowledgeContentSchema(pool:SqlPool):Promise<void>{
 }
 export async function verifyKnowledgeRuntimeSchema(pool:SqlPool,requireKeywordObservations=false):Promise<void>{
   return verifySchema(pool,true,requireKeywordObservations)
+}
+export async function verifyKnowledgeAgentSchema(pool:SqlPool):Promise<void>{
+  const db=await pool.connect()
+  try{
+    await db.query("BEGIN READ ONLY")
+    try{
+      await db.query("SET LOCAL ROLE agentstudio_api")
+      if(!await verifyKnowledgeAgentCredentials(db)||
+        (await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_042') AS ok")).rows[0]?.ok!==true)
+        throw Error("agent_observation_schema_required")
+      await verifyKnowledgeHelperCredentials(db)
+    }finally{await db.query("ROLLBACK")}
+  }finally{db.release()}
 }
 async function verifySchema(pool:SqlPool,runtime:boolean,requireKeywordObservations=false):Promise<void>{
   const db=await pool.connect()

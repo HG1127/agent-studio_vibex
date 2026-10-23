@@ -1,7 +1,9 @@
 import type {SqlClient} from "./contracts.ts"
+import {verifyKnowledgeAgentCredentials} from "./knowledge-agent-audit.ts"
 const helper="agentstudio_knowledge_keyword",table="knowledge_keyword_observations"
 function refuse():never{throw Error("unsafe_knowledge_keyword_privileges")}
 export async function verifyKnowledgeKeywordCredentials(db:SqlClient):Promise<boolean>{
+  const agent=await verifyKnowledgeAgentCredentials(db)
   const state=(await db.query<{installed:boolean}>("SELECT to_regclass('agentstudio.knowledge_keyword_observations') IS NOT NULL OR "+
     "to_regprocedure('agentstudio.knowledge_keyword_submit(uuid[],text,jsonb)') IS NOT NULL OR "+
     "EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=$1) OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace "+
@@ -34,12 +36,12 @@ export async function verifyKnowledgeKeywordCredentials(db:SqlClient):Promise<bo
   if(!access?.safe)refuse()
   const functions:Array<[string,string,string[]]>=[
     ["knowledge_execution_source_current(uuid,jsonb)","agentstudio_knowledge_execution",[helper,"agentstudio_knowledge_query"]],
-    ["knowledge_keyword_scope(uuid,uuid[])","agentstudio_knowledge_execution",[helper]],
+    ["knowledge_keyword_scope(uuid,uuid[])","agentstudio_knowledge_execution",[helper,...(agent?["agentstudio_knowledge_agent"]:[])]],
     ["knowledge_keyword_source(uuid,jsonb,uuid[])","agentstudio_knowledge_execution",[helper]],
     ["knowledge_keyword_effect_current(uuid,uuid,text,text)","agentstudio_knowledge_execution",[helper]],
-    ["knowledge_keyword_snapshot(uuid[],text)","agentstudio_knowledge_content",[helper]],
-    ["knowledge_keyword_corpus_fence(uuid[])","agentstudio_knowledge_content",[helper]],
-    ["knowledge_keyword_content_current(jsonb)","agentstudio_knowledge_content",[helper]],
+    ["knowledge_keyword_snapshot(uuid[],text)","agentstudio_knowledge_content",[helper,...(agent?["agentstudio_knowledge_agent"]:[])]],
+    ["knowledge_keyword_corpus_fence(uuid[])","agentstudio_knowledge_content",[helper,...(agent?["agentstudio_knowledge_agent"]:[])]],
+    ["knowledge_keyword_content_current(jsonb)","agentstudio_knowledge_content",[helper,...(agent?["agentstudio_knowledge_agent"]:[])]],
     ["knowledge_keyword_observations_current(uuid,uuid,text)",helper,["agentstudio_knowledge_query"]],
     ["knowledge_keyword_submit(uuid[],text,jsonb)",helper,["agentstudio_api"]],
     ["knowledge_keyword_step_current(uuid,text,text)",helper,["agentstudio_api"]],

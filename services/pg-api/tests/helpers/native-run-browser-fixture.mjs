@@ -33,7 +33,9 @@ import {WorkflowSafeRunRepository} from "../../src/workflow-safe-run-repository.
 import {KnowledgeBaseRepository} from "../../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../../src/knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "../../src/knowledge-content-repository.ts"
-import {verifyKnowledgeRuntimeSchema} from "../../src/knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "../../src/knowledge-content-privileges.ts"
+import {createIsolatedBoundModelInternalHandler} from "../../src/bound-model-internal-handler.ts"
+import {boundModelRoute} from "../../src/bound-model-contract.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
 import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
@@ -99,12 +101,13 @@ try{
   await db.exec("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic browser predecessor')")
   await db.exec(load("db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql")
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql","pg_v9_034_knowledge_runtime.sql"])
+  for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql","pg_v9_034_knowledge_runtime.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(semantic)for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql","pg_v9_039_knowledge_execution_source.sql","pg_v9_040_approved_semantic_tools.sql","pg_v9_041_keyword_observations.sql"])
+  for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql","pg_v9_039_knowledge_execution_source.sql","pg_v9_040_approved_semantic_tools.sql","pg_v9_041_keyword_observations.sql","pg_v9_042_agent_knowledge_observations.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
+  await verifyKnowledgeAgentSchema(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
   const admin=await auth.login("alice@example.com","SyntheticAlicePassword#2026")
   await auth.provisionEmployee(admin.token,{email:"bob@example.com",password:"SyntheticBobPassword#2026",display_name:"Browser Bob"})
@@ -123,7 +126,8 @@ try{
     if(modern)await new ToolConnectionRepository(pool,key).create(profile.identity,{name:name+" synthetic HTTP",description:"Lookup synthetic evidence; params: query",
       url:"https://tools.example.com/lookup",method:"POST",headers:[],body_template:"{{input}}",timeout_s:5,enabled:true})
   }
-  const broker=new OwnerBoundModelDispatch(pool,key,async()=>{
+  const broker=new OwnerBoundModelDispatch(pool,key,async(_material,input)=>{
+    if(input.knowledgeEvidence?.length)state.singleEvidence=(state.singleEvidence??0)+1
     state.generated++;return "Browser synthetic bound result"
   })
   const verified=createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(pool),broker)
@@ -152,8 +156,8 @@ try{
   }:verified
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},
     model=createWorkflowV2ModelInternalHandler({...common,dispatch:config.dispatch.model}),tool=createWorkflowV2ToolInternalHandler({...common,dispatch:config.dispatch.tool})
-    const index=semantic?createKnowledgeIndexPrivateHandler({...config,dispatch:config.dispatch.index}):null,query=semantic?createKnowledgeQueryPrivateHandler({...config,dispatch:config.dispatch.query}):null
-    return (req,res)=>(semantic&&req.url===knowledgeIndexRoute?index:semantic&&req.url===knowledgeQueryRoute?query:req.url==="/__internal/v2/workflow-tool/dispatch"?tool:model)(req,res)}
+    const single=createIsolatedBoundModelInternalHandler({...config,dispatch:verified}),index=semantic?createKnowledgeIndexPrivateHandler({...config,dispatch:config.dispatch.index}):null,query=semantic?createKnowledgeQueryPrivateHandler({...config,dispatch:config.dispatch.query}):null
+    return (req,res)=>(req.url===boundModelRoute?single:semantic&&req.url===knowledgeIndexRoute?index:semantic&&req.url===knowledgeQueryRoute?query:req.url==="/__internal/v2/workflow-tool/dispatch"?tool:model)(req,res)}
   await withDisposableBoundModelTls(dispatch,async tls=>{
     const prepare=new AgentPrepareWorker(pool,"browser-synthetic-prepare")
     const model=new AgentModelWorker(pool,"browser-synthetic-model",{async generate(){throw Error("shared_fallback_forbidden")}},
