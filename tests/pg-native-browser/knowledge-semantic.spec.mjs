@@ -140,15 +140,15 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
       // Hold the actual metadata request to prove that selection and saving are
       // blocked until this read completes, rather than racing a disabled option.
       const consentUrl=approved.origin+"/__pg_native/api/v2/knowledge-embedding/consent"
-      let releaseMetadata;const metadataGate=new Promise(resolve=>{releaseMetadata=resolve})
-      const holdMetadata=async route=>{if(route.request().method()==="GET")await metadataGate;await route.continue()}
+      let releaseMetadata,metadataDone;const metadataGate=new Promise(resolve=>{releaseMetadata=resolve}),metadataCompleted=new Promise(resolve=>{metadataDone=resolve})
+      const holdMetadata=async route=>{try{if(route.request().method()==="GET")await metadataGate;await route.continue()}finally{metadataDone()}}
       await bob.route(consentUrl,holdMetadata)
       const reading=bob.waitForRequest(request=>request.method()==="GET"&&request.url()===consentUrl)
       try{
         await panel.getByRole("button",{name:"读取本人检索配置",exact:true}).click();await reading
         await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toBeDisabled()
         await expect(panel.getByRole("button",{name:"保存知识库绑定",exact:true})).toBeDisabled()
-      }finally{releaseMetadata();await bob.unroute(consentUrl,holdMetadata)}
+      }finally{releaseMetadata();await metadataCompleted;await bob.unroute(consentUrl,holdMetadata)}
       await expect.poll(()=>panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="semantic"]').evaluate(option=>option.disabled)).toBe(false)
       await panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).selectOption("semantic")
       await expect(panel.locator('form[data-knowledge-mode]')).toHaveAttribute("data-knowledge-mode","semantic")
@@ -231,7 +231,7 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
     await expect(bob.getByText(/查询回执：/)).toHaveCount(0)
     expect(await bob.evaluate(()=>Object.keys(localStorage))).toEqual([]);expect(external).toEqual([])
   }finally{
-    clearTimeout(timer);if(aliceContext)await aliceContext.close();if(bobContext)await bobContext.close();if(browser)await browser.close()
+    clearTimeout(timer);await Promise.allSettled([aliceContext?.close(),bobContext?.close()]);if(browser)await browser.close().catch(()=>{})
     if(control)await control("stop").catch(()=>{})
     if(child.exitCode===null){const exited=new Promise(resolve=>child.once("exit",resolve)),forced=setTimeout(()=>child.kill("SIGTERM"),5000);await exited;clearTimeout(forced)}
   }
