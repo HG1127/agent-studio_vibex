@@ -248,7 +248,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     try{await assert.rejects(verifyKnowledgeEmbeddingConsentSchema(apiPool),/unsafe_knowledge_embedding_privileges/)}
     finally{await admin.query("REVOKE SELECT ON agentstudio.knowledge_embedding_consents FROM agentstudio_stage_login")}
     await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_vectors TO agentstudio_stage_login")
-    try{await assert.rejects(verifyKnowledgeEmbeddingSchema(apiPool),/unsafe_knowledge_embedding_privileges/)}
+    // The installed index audit denies raw-vector grants before older metadata checks.
+    try{await assert.rejects(verifyKnowledgeEmbeddingSchema(apiPool),/unsafe_knowledge_index_privileges/)}
     finally{await admin.query("REVOKE SELECT ON agentstudio.knowledge_embedding_vectors FROM agentstudio_stage_login")}
     await verifyKnowledgeEmbeddingSchema(apiPool)
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
