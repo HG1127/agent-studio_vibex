@@ -1,5 +1,6 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {verifyKnowledgeEmbeddingCredentials} from "./knowledge-embedding-privileges.ts"
+import {verifyKnowledgeKeywordCredentials} from "./knowledge-keyword-audit.ts"
 const helpers=["agentstudio_knowledge_acl","agentstudio_knowledge_content"]
 function refuse():never{throw Error("unsafe_knowledge_content_privileges")}
 // Also called by the ordinary startup inspector when the UI capability is off.
@@ -45,15 +46,16 @@ const runtimeFunctions=[
 export async function verifyKnowledgeContentSchema(pool:SqlPool):Promise<void>{
   return verifySchema(pool,false)
 }
-export async function verifyKnowledgeRuntimeSchema(pool:SqlPool):Promise<void>{
-  return verifySchema(pool,true)
+export async function verifyKnowledgeRuntimeSchema(pool:SqlPool,requireKeywordObservations=false):Promise<void>{
+  return verifySchema(pool,true,requireKeywordObservations)
 }
-async function verifySchema(pool:SqlPool,runtime:boolean):Promise<void>{
+async function verifySchema(pool:SqlPool,runtime:boolean,requireKeywordObservations=false):Promise<void>{
   const db=await pool.connect()
   try{
     await db.query("BEGIN READ ONLY")
     try{
       await db.query("SET LOCAL ROLE agentstudio_api")
+      if(requireKeywordObservations&&!await verifyKnowledgeKeywordCredentials(db))throw Error("keyword_observation_schema_required")
       const roles=(await db.query<{name:string;safe:boolean;members:number}>("SELECT rolname AS name,(NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls "+
         "AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication) AS safe,"+
         "(SELECT count(*)::integer FROM pg_catalog.pg_auth_members m WHERE m.roleid=r.oid) AS members "+

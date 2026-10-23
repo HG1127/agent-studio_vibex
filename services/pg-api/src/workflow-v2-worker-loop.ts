@@ -58,7 +58,7 @@ export function runV2WorkerCli(autonomous=false){
     let stop=false;process.once("SIGTERM",()=>{stop=true});process.once("SIGINT",()=>{stop=true})
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
-      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter)
+      if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
       if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
       const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,
         origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),

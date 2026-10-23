@@ -70,6 +70,10 @@ export class WorkflowV2ModelDispatch{
         timer=setTimeout(()=>{controller.abort();reject(Error("workflow_model_timeout"))},25000)
       })])}finally{if(timer)clearTimeout(timer)}
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_model_output")
+      await withActor(this.pool,identity,async(db,owner)=>{
+        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous)
+        if(pending.input!==selected.prompt)changed()
+      })
       failed=false
     }catch{ /* A committed reservation is never retried, including decryption failure. */ }
     await finishWorkflowEffectDispatch(this.pool,identity,request,"model",failed)

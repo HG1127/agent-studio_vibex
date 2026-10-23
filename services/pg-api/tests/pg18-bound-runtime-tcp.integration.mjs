@@ -245,6 +245,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_038_knowledge_query_runtime.sql"))
     await admin.query(upgrade("pg_v9_039_knowledge_execution_source.sql"))
     await admin.query(upgrade("pg_v9_040_approved_semantic_tools.sql"))
+    await admin.query(upgrade("pg_v9_041_keyword_observations.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -256,12 +257,20 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
     const apiPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true),true)
-    await verifyKnowledgeRuntimeSchema(apiPool)
+    await verifyKnowledgeRuntimeSchema(apiPool,true)
     await verifyKnowledgeEmbeddingSchema(apiPool)
     await verifyKnowledgeEmbeddingConsentSchema(apiPool)
     await verifyKnowledgeIndexSchema(apiPool)
     await verifyKnowledgeQuerySchema(apiPool)
     await verifyKnowledgeToolSchema(apiPool)
+    for(const mutation of [
+      ["GRANT SELECT ON agentstudio.knowledge_keyword_observations TO agentstudio_stage_login","REVOKE SELECT ON agentstudio.knowledge_keyword_observations FROM agentstudio_stage_login"],
+      ["GRANT EXECUTE ON FUNCTION agentstudio.knowledge_keyword_snapshot(uuid[],text) TO agentstudio_api","REVOKE EXECUTE ON FUNCTION agentstudio.knowledge_keyword_snapshot(uuid[],text) FROM agentstudio_api"],
+    ]){
+      await admin.query(mutation[0])
+      try{await assert.rejects(verifyKnowledgeToolSchema(apiPool),/unsafe_knowledge_keyword_privileges/)}finally{await admin.query(mutation[1])}
+    }
+    for(const pool of Object.values(byLogin))await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_keyword_observations LIMIT 1"),e=>e.code==="42501")
     for(const kind of ["worker","broker"])await verifyKnowledgeQuerySchema(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_consents TO agentstudio_stage_login")
@@ -523,7 +532,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const queryBroker=new KnowledgeQueryBroker(queryBrokerPool,brokerPool,key,async material=>{
       queryCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.deepEqual(material.input,[queryRequest.query]);return [[1,0]]
     },{approvedForIsolatedUat:true})
-    let semanticRunId
+    let semanticRunId,keywordRunId
     await withDisposableBoundModelTls(claim=>queryBroker.dispatch(claim),async config=>{
       const worker=new KnowledgeQueryWorker(queryWorkerPool,createKnowledgeQueryPrivateClient(config),{approvedForIsolatedUat:true})
       assert.equal((await worker.tick()).status,"retrieved");assert.equal((await worker.tick()).status,"idle")
@@ -584,6 +593,26 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
           else assert.ok(!["paused","failed","cancelled"].includes(view.run.status))
         }
         assert.equal(completed,true);assert.equal(modelCalls,1);assert.equal(queryCalls,3)
+        const keywordFlow=await api.createWorkflowGraph("Actual free keyword Tool",{version:2,nodes:[
+          {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+          {id:"search",type:"tool",data:{title:"Search",tool:"knowledge_search",knowledge_base_ids:[sharedBase.id],params_template:'{"query":"cedar"}'},position:{x:100,y:0}},
+          {id:"model",type:"model",data:{title:"Answer",model_binding:{connection_id:readerModel.id,connection_revision:readerModel.revision,model_id:"synthetic-chat"},prompt:"Use approved evidence: {{Search.output}}"},position:{x:200,y:0}},
+          {id:"end",type:"end",data:{title:"End",output_template:"{{Answer.output}}"},position:{x:300,y:0}}],edges:[{id:"a",source:"start",target:"search"},{id:"b",source:"search",target:"model"},{id:"c",source:"model",target:"end"}]})
+        const keywordRun=await api.submitWorkflowV2Run(keywordFlow.id,keywordFlow.revision,"Synthetic free keyword task","ci-real-keyword-"+keywordFlow.id)
+        keywordRunId=keywordRun.run.id;completed=false
+        for(let i=0;i<20;i++){
+          await runtimeWorker.tick();const view=await api.getWorkflowV2Run(keywordRunId)
+          if(view.run.status==="awaiting_approval"){
+            const p=view.pending_effect;assert.equal(p.configuration.knowledge_retrieval,undefined)
+            await api.decideWorkflowV2Node(keywordRunId,"approved",p.step_key,p.input_sha256)
+          }else if(view.run.status==="succeeded"){completed=true;break}
+          else assert.ok(!["paused","failed","cancelled"].includes(view.run.status))
+        }
+        assert.equal(completed,true);assert.equal(modelCalls,2);assert.equal(queryCalls,3)
+        const keywordProof=(await admin.query("SELECT * FROM agentstudio.knowledge_keyword_observations WHERE run_id=$1",[keywordRunId])).rows
+        assert.equal(keywordProof.length,1);assert.equal(keywordProof[0].reader_user_id,readerId);assert.equal(keywordProof[0].result_refs.length,1)
+        assert.doesNotMatch(JSON.stringify(keywordProof),/cedar|Synthetic free keyword task|lease_token|ciphertext/)
+        assert.equal((await api.getWorkflowV2Run(keywordRunId)).knowledge_outputs_available,true)
       },{handlerFactory:wire=>{
         const m=createWorkflowV2ModelInternalHandler({...wire,dispatch:dispatch.model}),t=createWorkflowV2ToolInternalHandler({...wire,dispatch:dispatch.tool})
         return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?t:m)(req,res)
@@ -605,6 +634,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await assert.rejects(knowledgeAccess.listGrants(reader,sharedBase.id),error=>error.status===404)
     await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:2,request_id:randomUUID()})
     assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,semanticRunId)).run.result_text,"")
+    assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,keywordRunId)).knowledge_outputs_available,false)
+    await assert.rejects(new WorkflowV2RunRepository(apiPool).outputHistory(reader,keywordRunId),e=>e.code==="knowledge_observations_unavailable")
     await assert.rejects(new KnowledgeQueryRepository(apiPool).get(reader,queryRequest.request_id),error=>error.status===404)
     assert.equal((await knowledgeAccess.listShared(reader)).length,0)
     await assert.rejects(knowledgeContent.search(reader,sharedBase.id,"cedar"),error=>error.status===404)
@@ -753,18 +784,21 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     const mcpRole=await new AgentSpecRepository(apiPool).create(owner,"CI MCP Agent role",safeAgentSpec({goal:"Synthetic MCP role",tools:["mcp_lookup"],
       mcp_tools:[{name:"mcp_lookup",...managedBinding}],model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
-    for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp"]){
-    const custom=selection==="http",useMcp=selection==="mcp"
+    const keywordRole=await new AgentSpecRepository(apiPool).create(owner,"CI keyword Agent role",safeAgentSpec({goal:"Synthetic keyword role",tools:["knowledge_search"],knowledge_base_ids:[sharedBase.id],
+      model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
+    for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp","keyword"]){
+    const custom=selection==="http",useMcp=selection==="mcp",keyword=selection==="keyword"
     let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0
-    const selectedRole=useMcp?mcpRole:custom?httpRole:role
-    const selectedFlow=custom||useMcp?await api.createWorkflowGraph("CI "+selection+" Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
+    const selectedRole=keyword?keywordRole:useMcp?mcpRole:custom?httpRole:role
+    const selectedFlow=selection!=="builtin"?await api.createWorkflowGraph("CI "+selection+" Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
       {...node,data:{...node.data,agent_binding:{spec_id:selectedRole.id,spec_revision:selectedRole.revision}}}:node)}):agentFlow
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
       const context=JSON.parse(prompt)
       if(custom){assert.equal(prompt.includes(toolSecret),false);assert.equal(prompt.includes(tool.id),false)}
       if(useMcp)for(const privateValue of [discovered.id,mcpInput.url,"SyntheticMcpHeaderNeverSent012345",managed.id,managedMetadata.url,smitherySecret])assert.equal(prompt.includes(privateValue),false)
+      if(keyword&&context.round===1)return '{"action":"tool","tool":"knowledge_search","params":{"query":"cedar"}}'
       if(context.round===1)return JSON.stringify(custom||useMcp?{action:"tool",tool:useMcp?"mcp_lookup":"http_lookup",params:{query:"synthetic owner lookup"}}:{action:"tool",tool:"calculate",params:{expression:"2+2"}})
-      assert.match(context.history[0].observation,/4/);return '{"action":"answer","answer":"Synthetic Agent result 4"}'
+      assert.match(context.history[0].observation,keyword?/cedar/:/4/);return '{"action":"answer","answer":"Synthetic Agent result 4"}'
     }
     const agentModel=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("direct fallback forbidden")},brokerPool,{allowAgentExecution:!autonomous,allowAutonomousExecution:autonomous,agentExecutor:planning})
     const agentTool=new WorkflowV2ToolDispatch(apiPool,key,{async http(material,args){agentHttpCalls++
@@ -782,7 +816,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await withDisposableBoundModelTls(agentDispatch,async config=>{
       const adapters=[workflowV2ModelEffectExecutor(config),workflowV2ToolEffectExecutor(config)]
       const executor={supports:req=>adapters.some(adapter=>adapter.supports(req)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}
-      const suffix=useMcp?"-mcp":custom?"-http":""
+      const suffix=selection==="builtin"?"":"-"+selection
       const ui=autonomous?null:createPgNativeWorkflowRunSession(api,{key:()=>"ci-v2-agent-mtls-0001"+suffix})
       if(ui){ui.setActive(true);await ui.refresh();await ui.submit({workflowId:selectedFlow.id,revision:1,instruction:"Synthetic Agent input"});assert.equal(ui.snapshot().error,"")}
       const run=autonomous?await api.submitAutonomousAgentRun(selectedRole.id,1,"Synthetic Agent input","ci-native-agent-mtls-0001"+suffix,3):ui.snapshot().detail
@@ -804,6 +838,12 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal(detail.steps.filter(step=>step.metadata.parent_step_key).length,3)
       const ledger=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1",[run.run.id])).rows
       assert.equal(ledger.length,7);assert.equal(ledger.every(row=>row.status==="succeeded"),true)
+      if(keyword){
+        const proof=(await admin.query("SELECT result_refs,execution_source FROM agentstudio.knowledge_keyword_observations WHERE run_id=$1",[run.run.id])).rows
+        assert.equal(proof.length,1);assert.equal(proof[0].result_refs.length,1);assert.ok(proof[0].execution_source.parent_step_key)
+        assert.equal(proof[0].execution_source.execution_mode,autonomous?"agent_native_v2":"workflow_native_v2")
+        assert.equal(detail.knowledge_outputs_available,true)
+      }
       ui?.dispose()
     },{handlerFactory:handlers})
     }

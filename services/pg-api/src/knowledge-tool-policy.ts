@@ -19,7 +19,7 @@ export async function verifyKnowledgeToolSchema(pool:SqlPool,kind:"api"|"worker"
   await verifyKnowledgeQuerySchema(pool,kind)
   const db=await pool.connect();try{await db.query("BEGIN READ ONLY");try{
     await db.query("SET LOCAL ROLE "+(kind==="api"?"agentstudio_api":"agentstudio_knowledge_index_"+kind))
-    const state=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_040') AND "+
+    const state=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_041') AND "+
       "to_regprocedure('agentstudio.knowledge_query_execution_validate_run(uuid,text)') IS NOT NULL AS ok")).rows[0]
     if(state?.ok!==true)throw Error("unsafe_knowledge_tool_schema")
   }finally{await db.query("ROLLBACK")}}finally{db.release()}

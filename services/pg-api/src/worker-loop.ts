@@ -77,7 +77,7 @@ async function main(preflight=false){
   try{
     await verifyPgRuntimeTarget(adapter,config)
     await verifyPgWorkerRoleBoundary(adapter,config)
-      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter)
+      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     if(preflight){
       process.stdout.write(JSON.stringify({
         mode:"preflight",worker:"prepare",target:config.database,

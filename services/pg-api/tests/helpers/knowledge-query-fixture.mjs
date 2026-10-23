@@ -19,6 +19,7 @@ export async function knowledgeQueryFixture({executionSource=false,semanticTools
     await f.db.exec(f.sql("migrations/pg_v9_038_knowledge_query_runtime.sql"))
     if(executionSource||semanticTools)await f.db.exec(f.sql("migrations/pg_v9_039_knowledge_execution_source.sql"))
     if(semanticTools)await f.db.exec(f.sql("migrations/pg_v9_040_approved_semantic_tools.sql"))
+    if(semanticTools)await f.db.exec(f.sql("migrations/pg_v9_041_keyword_observations.sql"))
     const pool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(f.pool,true),semanticTools),queries=new KnowledgeQueryRepository(pool,{executionSourceApproved:executionSource||semanticTools,allowAgentExecution:true,allowAutonomousExecution:true}),base=f.resources.alice.kb.id
     await f.settings.change(bob,{action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:f.resources.bob.model.id,
       connection_revision:f.resources.bob.model.revision,model_name:"synthetic",base_url:"https://api.openai.com/v1"})

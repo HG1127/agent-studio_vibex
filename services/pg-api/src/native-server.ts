@@ -356,7 +356,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       await verifyMcpDiscoveryPrivileges(business,adapter(brokerPool))
       await verifySmitheryPrivileges(business,adapter(brokerPool))
     }
-    if(capabilities.knowledgeSharingUat===true)await verifyKnowledgeRuntimeSchema(business)
+    if(capabilities.knowledgeSharingUat===true||capabilities.workflowV2ExecutionUat===true||capabilities.autonomousAgentUat===true)await verifyKnowledgeRuntimeSchema(business,true)
     if(capabilities.knowledgeEmbeddingSettingsUat===true)await verifyKnowledgeEmbeddingSchema(business)
     if(capabilities.knowledgeEmbeddingConsentUat===true)await verifyKnowledgeEmbeddingConsentSchema(business)
     if(capabilities.knowledgeIndexRuntimeUat===true)await verifyKnowledgeIndexSchema(business)

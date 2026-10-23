@@ -85,7 +85,7 @@ export async function runPg18NativeWorkerReadonlyPreflight(kind:PgWorkerName):Pr
     await verifyPgRuntimeTarget(adapter,target)
     stage="worker_role_boundary"
     await verifyPgWorkerRoleBoundary(adapter,target)
-    if(knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter)
+    if(knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     // The additive operator package may reuse an older SHA-pinned general
     // verifier. Audit optional credentials here too so that package cannot
     // silently omit this boundary while preserving the old reviewed files.

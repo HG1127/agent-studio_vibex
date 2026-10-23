@@ -95,10 +95,12 @@ Run result text, list previews, pending prompts, citation metadata and explicit
 Workflow output/history reads are redacted/refused when semantic provenance is
 unavailable. Role, routine, alias, trigger and metadata-column audits apply even
 when this capability is off. The pre-semantic submission alias has no API grant.
-These durable checks cover the new semantic Tool path. Equivalent retained
-content/version evidence for existing free keyword Tool observations and
-automatic historical debug/cross-run sample provenance still need completion;
-do not infer that this change completes all knowledge privacy/parity work.
+These durable checks cover the new semantic Tool path. The
+[SQL041 keyword candidate](PG18_KEYWORD_OBSERVATIONS.md) extends retained
+content/version proof to free Workflow/Agent/autonomous keyword Tools; its local
+validation and hosted acceptance requirements are documented there. Single-shot grounding and automatic
+historical debug/cross-run sample provenance still need completion; do not infer
+that these increments complete all knowledge privacy/parity work.
 
 ## Independent operator approval (all remain off by default)
 

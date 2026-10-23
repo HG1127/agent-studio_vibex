@@ -5,7 +5,7 @@ import {withActor} from "./repository.ts"
 import {withModelBrokerActor} from "./model-broker-actor.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
-import {gatherAuthorizedKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
+import {gatherWorkflowKeywordEvidence,requireCurrentKeywordStep} from "./knowledge-keyword-execution.ts"
 import {KnowledgeQueryRepository} from "./knowledge-query-repository.ts"
 import {executeKnowledgeTool} from "./knowledge-tool-execution.ts"
 import {sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
@@ -64,14 +64,12 @@ export class WorkflowV2ToolDispatch{
     const request=safeWorkflowV2ToolRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
       const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous),plan=prepareWorkflowTool(pending)
-      let output:string|undefined,connection:ToolRow|undefined,model:Pick<ModelRow,"provider"|"base_url">|undefined,mcp:Awaited<ReturnType<typeof resolveMcpBinding>>|undefined
+      let output:string|undefined,connection:ToolRow|undefined,model:Pick<ModelRow,"provider"|"base_url">|undefined,mcp:Awaited<ReturnType<typeof resolveMcpBinding>>|undefined,keywordRecorded=false
       let headerRefs:HeaderRef[]=[]
       if(plan.kind==="calculate")output=plan.output
       else if(plan.kind==="knowledge_search"){
         if(plan.retrieval){if(!this.knowledgeQueries)throw new WorkflowKnownEffectFailure("workflow_tool_adapter_unavailable")}
-        else if(plan.ids.length){const hits=await gatherAuthorizedKnowledgeEvidence(db,owner,plan.ids,plan.query)
-          output=searchOutput(await sharedKnowledgeScopeEnabled(db)?"authorized_keyword":"owner_private_keyword",hits)}
-        else output=await workflowContext(db,owner,request.claim.run_id,plan.query)
+        else if(!plan.ids.length)output=await workflowContext(db,owner,request.claim.run_id,plan.query)
       }else{
         const operation=plan.kind==="mcp"?this.executor.mcp:plan.kind==="http"?this.executor.http:plan.kind==="summarize"?this.executor.summarize:
           plan.kind==="web_fetch"?this.executor.webFetch:this.executor.webSearch
@@ -104,7 +102,11 @@ export class WorkflowV2ToolDispatch{
         }catch{throw new WorkflowKnownEffectFailure("workflow_tool_input_invalid")}
       }
       await reserveWorkflowEffectDispatch(db,owner,request,"tool")
-      return {plan,output,connection,model,headerRefs,mcp,owner}
+      if(plan.kind==="knowledge_search"&&!plan.retrieval&&plan.ids.length){
+        const evidence=await gatherWorkflowKeywordEvidence(db,owner,plan.ids,plan.query,request)
+        output=searchOutput(await sharedKnowledgeScopeEnabled(db)?"authorized_keyword":"owner_private_keyword",evidence.hits);keywordRecorded=evidence.recorded
+      }
+      return {plan,output,connection,model,headerRefs,mcp,owner,keywordRecorded}
     })
     // Every error from here is potentially ambiguous. Only pre-reservation
     // parsing/configuration failures may be reported as deterministic failures.
@@ -187,6 +189,12 @@ export class WorkflowV2ToolDispatch{
       text=await Promise.race([execute(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{
         controller.abort();reject(Error("workflow_tool_timeout"))},25000)})])
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_tool_result")
+      // No result based on an expired earlier observation may publish, even
+      // when the effect completed while the source was being revoked/edited.
+      await withActor(this.pool,identity,async(db,owner)=>{
+        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous)
+        if(selected.keywordRecorded)await requireCurrentKeywordStep(db,request)
+      })
       failed=false
     }catch{ /* Never retry a committed private dispatch. */ }finally{if(timer)clearTimeout(timer)}
     await finishWorkflowEffectDispatch(this.pool,identity,request,"tool",failed,confirmedToolFailure&&!failed)

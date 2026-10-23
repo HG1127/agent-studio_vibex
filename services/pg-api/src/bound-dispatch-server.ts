@@ -140,7 +140,7 @@ export async function startBoundDispatchServer(
       for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
         await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
     if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(business,adapter(broker));await verifyMcpExecutionSchema(business)}
-    if(cfg.knowledgeSharingEnabled)await verifyKnowledgeRuntimeSchema(business)
+    if(cfg.knowledgeSharingEnabled||cfg.workflowModelEnabled||cfg.workflowToolsEnabled)await verifyKnowledgeRuntimeSchema(business,true)
     if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
     if(mode==="preflight"){
       await endPools()

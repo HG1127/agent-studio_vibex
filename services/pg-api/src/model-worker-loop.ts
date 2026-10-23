@@ -75,7 +75,7 @@ async function main(preflight=false){
     // Shared read-only role preflight rejects extra privilege and leaked
     // native-auth membership before constructing any model provider.
     await verifyPgWorkerRoleBoundary(adapter,config)
-      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter)
+      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     if(preflight){
       process.stdout.write(JSON.stringify({
         mode:"preflight",worker:"model",target:config.database,

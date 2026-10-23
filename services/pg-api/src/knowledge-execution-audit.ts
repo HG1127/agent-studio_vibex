@@ -1,4 +1,5 @@
 import type {SqlClient} from "./contracts.ts"
+import {verifyKnowledgeKeywordCredentials} from "./knowledge-keyword-audit.ts"
 const helper="agentstudio_knowledge_execution"
 const readable:Record<string,readonly string[]>={
   jobs:["id","owner_user_id","run_id","kind","payload","status","lease_token","lease_version","lease_owner","lease_until"],
@@ -11,6 +12,7 @@ function refuse():never{throw Error("unsafe_knowledge_execution_privileges")}
 // Catalog-only optional discovery works on old schemas and on the restricted
 // API/Worker/Broker logins. Any partial SQL039 footprint fails closed.
 export async function verifyKnowledgeExecutionCredentials(db:SqlClient):Promise<boolean>{
+  const keyword=await verifyKnowledgeKeywordCredentials(db)
   const footprint=(await db.query<{installed:boolean}>("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=$1) OR "+
     "to_regprocedure('agentstudio.knowledge_query_execution_submit(uuid,uuid[],text,text,integer,uuid,bigint,bigint,text,jsonb)') IS NOT NULL OR "+
     "to_regprocedure('agentstudio.knowledge_query_execution_validate_run(uuid,text)') IS NOT NULL OR "+
@@ -59,11 +61,12 @@ export async function verifyKnowledgeExecutionCredentials(db:SqlClient):Promise<
     ["knowledge_query_execution_observations_current(uuid,uuid,text)","agentstudio_knowledge_query",null],
   )
   for(const [signature,owner,grantee] of functions){
+    const grantees=[...(grantee?[grantee]:[]),...(keyword&&signature==="knowledge_execution_source_current(uuid,jsonb)"?["agentstudio_knowledge_keyword"]:[])]
     const x=(await db.query<{safe:boolean}>("SELECT p.prosecdef AND p.proowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2) "+
       "AND p.proconfig=ARRAY['search_path=pg_catalog']::text[] AND ($3::text IS NULL OR has_function_privilege($3,p.oid,'EXECUTE')) AND "+
       "NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.privilege_type='EXECUTE' "+
       "AND a.grantee NOT IN(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=ANY($4::text[]))) AS safe FROM pg_catalog.pg_proc p WHERE p.oid=to_regprocedure($1)",
-      ["agentstudio."+signature,owner,grantee,[owner,...(grantee?[grantee]:[])]])).rows[0]
+      ["agentstudio."+signature,owner,grantee,[owner,...grantees]])).rows[0]
     if(!x?.safe)refuse()
   }
   const index=(await db.query<{safe:boolean}>("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=to_regclass('agentstudio.knowledge_query_jobs') "+
