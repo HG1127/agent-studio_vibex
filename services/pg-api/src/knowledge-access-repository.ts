@@ -1,26 +1,17 @@
-// Inert sharing foundation: no HTTP/UI activation or shared content retrieval.
+// Owner-scoped sharing metadata; Native HTTP activation has its own capability.
 import {createHash} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlPool,type SqlClient} from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import type {KnowledgeGrant,KnowledgeAccessReceipt,SharedKnowledgeMetadata} from "./knowledge-sharing-contracts.ts"
+export type {KnowledgeGrant,KnowledgeAccessReceipt,SharedKnowledgeMetadata} from "./knowledge-sharing-contracts.ts"
 
 export type KnowledgeRecipientResolver=(identity:Identity,email:string)=>Promise<{id:string;display_name:string}|null>
 type Role="viewer"|"editor"
 type Choice={request_id:string;expected_revision:number}&(
   {action:"grant";recipient_email:string;role:Role;semantic_allowed:boolean}|
+  {action:"grant_existing";recipient_id:string;role:Role;semantic_allowed:boolean}|
   {action:"revoke";recipient_id:string}|
   {action:"semantic";recipient_id:string;enabled:boolean})
-export interface KnowledgeGrant {
-  recipient_user_id:string;recipient_name:string;recipient_active:boolean
-  access_role:Role;semantic_allowed:boolean;revoked:boolean;revision:number
-}
-export interface KnowledgeAccessReceipt {
-  request_id:string;base_id:string;recipient_id:string;role:Role
-  semantic_allowed:boolean;revoked:boolean;revision:number
-}
-export interface SharedKnowledgeMetadata {
-  id:string;owner_user_id:string;owner_name:string;name:string;description:string
-  access_role:Role;semantic_allowed:boolean;access_revision:number;base_revision:number
-}
 function positive(raw:unknown):number {
   const value=Number(raw)
   if(!Number.isSafeInteger(value)||value<1)throw Error("invalid_knowledge_access_revision")
@@ -29,7 +20,7 @@ function positive(raw:unknown):number {
 function parse(raw:unknown):Choice {
   if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_knowledge_access_change")
   const b=raw as Record<string,unknown>,common=["request_id","expected_revision","action"]
-  const specific=b.action==="grant"?["recipient_email","role","semantic_allowed"]:
+  const specific=b.action==="grant"?["recipient_email","role","semantic_allowed"]:b.action==="grant_existing"?["recipient_id","role","semantic_allowed"]:
     b.action==="revoke"?["recipient_id"]:b.action==="semantic"?["recipient_id","enabled"]:[]
   if(!specific.length||Object.keys(b).some(k=>![...common,...specific].includes(k))||
     !isUuid(b.request_id)||!Number.isSafeInteger(b.expected_revision)||(b.expected_revision as number)<0||
@@ -45,6 +36,10 @@ function parse(raw:unknown):Choice {
   }
   if(!isUuid(b.recipient_id)||prefix.expected_revision<1||
     (b.action==="semantic"&&typeof b.enabled!=="boolean"))throw new HttpError(400,"invalid_knowledge_recipient")
+  if(b.action==="grant_existing"){
+    if((b.role!=="viewer"&&b.role!=="editor")||typeof b.semantic_allowed!=="boolean")throw new HttpError(400,"invalid_knowledge_recipient")
+    return {...prefix,action:"grant_existing",recipient_id:b.recipient_id.toLowerCase(),role:b.role,semantic_allowed:b.semantic_allowed}
+  }
   return b.action==="revoke"?{...prefix,action:"revoke",recipient_id:b.recipient_id.toLowerCase()}:
     {...prefix,action:"semantic",recipient_id:b.recipient_id.toLowerCase(),enabled:b.enabled as boolean}
 }
@@ -114,14 +109,14 @@ export class KnowledgeAccessRepository {
         const active=(await db.query<{active:boolean}>("SELECT agentstudio.knowledge_share_recipient_active($1::uuid,$2::uuid) AS active",[baseId,target])).rows[0]?.active
         if(active!==true)throw new HttpError(404,"knowledge_recipient_not_found")
       }
-      if(input.action==="grant"){
+      if(input.action==="grant"||input.action==="grant_existing"){
         const count=(await db.query<{total:number}>("SELECT count(*)::int AS total FROM agentstudio.knowledge_access WHERE base_id=$1::uuid AND NOT revoked",[baseId])).rows[0]?.total
         if(!Number.isSafeInteger(count)||Number(count)<0)throw Error("invalid_knowledge_share_count")
         if((!current||current.revoked)&&Number(count)>=50)throw new HttpError(429,"knowledge_share_limit")
       }else if(!current||current.revoked)throw new HttpError(404,"knowledge_recipient_not_found")
       const result:KnowledgeAccessReceipt={request_id:input.request_id,base_id:baseId.toLowerCase(),recipient_id:target,
-        role:input.action==="grant"?input.role:current!.access_role,
-        semantic_allowed:input.action==="grant"?input.semantic_allowed:input.action==="semantic"?input.enabled:false,
+        role:input.action==="grant"||input.action==="grant_existing"?input.role:current!.access_role,
+        semantic_allowed:input.action==="grant"||input.action==="grant_existing"?input.semantic_allowed:input.action==="semantic"?input.enabled:false,
         revoked:input.action==="revoke",revision:input.expected_revision+1}
       await db.query("INSERT INTO agentstudio.knowledge_access (base_id,owner_user_id,recipient_user_id,access_role,semantic_allowed,revoked,revision) "+
         "VALUES($1::uuid,$2::uuid,$3::uuid,$4::text,$5::boolean,$6::boolean,$7::bigint) "+

@@ -86,3 +86,5 @@ pnpm db:pg-stage-operator --plan \
 2026-10-23 凭据边界加固：在 434502a 之后，通用 API/私有派发/Worker 预检会独立于功能开关审计已安装的 MCP、Smithery 表，发现列权限、额外角色与强制 RLS 漂移；修复 MCP 目录重排后的别名冲突，并补齐离线审阅包依赖与实际导入解析。专项及打包验证见 PG18_OPTIONAL_CREDENTIAL_BOUNDARY.md。没有上传或连接真实数据库，完整功能、真实 PG18/UAT、运维及恢复回滚签收仍待完成，生产仍为 NO-GO。
 
 2026-10-23 知识共享权限基础：在 af5561f 后新增提案迁移 032、按员工的查看/编辑权限、独立语义许可、版本冲突保护、审计与重试回执，以及独立认证池中的精确接收人查询。本增量未启用共享 API/界面，文档与向量仍保持私有；共享检索、Agent/Workflow 接入、语义索引和其余功能/UAT/运维签收仍待完成。验证见 PG18_KNOWLEDGE_ACCESS_FOUNDATION.md，正式切换仍为 NO-GO。
+
+2026-10-23 员工共享知识库内容增量：在 63c9c3f 后新增提案迁移 033、独立默认关闭授权、查看/编辑/撤销与恢复、有限关键词检索、TXT/Markdown/CSV/TSV/JSON/HTML 与隔离 PDF/DOCX 入库、按文档哈希删除及断线回执恢复。纯文本容量补到 16 万字符；元数据角色与内容角色分离且不能读取凭据、向量或存储路径。专项与回归见 PG18_SHARED_KNOWLEDGE_EMPLOYEE_UI.md。共享 Agent/Workflow/语义、其余功能及真实 PG18/浏览器/UAT/运维/恢复回滚签收仍未完成，生产仍为 NO-GO。

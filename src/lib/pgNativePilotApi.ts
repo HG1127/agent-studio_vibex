@@ -13,12 +13,14 @@ export type {PgNativeMcpInput,PgNativeMcpConnection} from "./pgNativeMcpConnecti
 export type {AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
 import {parseWorkflowLatestOutputs,parseWorkflowOutputHistory,validWorkflowOutputCursor} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 export type {WorkflowLatestOutputs,WorkflowOutputHistory,WorkflowOutputHeader,WorkflowLatestNodeOutput,WorkflowHistoricalNodeOutput} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
+import type {KnowledgeAccessReceipt,KnowledgeGrant,SharedKnowledgeMetadata,KnowledgeContentMetadata,KnowledgeContentReceipt,KnowledgeDocumentRow,KnowledgeSearchHit} from "./pgNativeKnowledgeSharing.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   model_probe_enabled:boolean
   mcp_discovery_enabled?:boolean
   mcp_tool_runs_enabled?:boolean
   smithery_management_enabled?:boolean
+  knowledge_sharing_enabled?:boolean
   run_submission_enabled?:boolean
   bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
@@ -204,6 +206,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/workflow-v2-runs/${string
   | `/api/v2/tool-connections/${string}`
   | `/api/v2/mcp-connections/${string}`
   | `/api/v2/smithery/${string}`
+  | `/api/v2/shared-knowledge${string}`
   | `/api/v2/workflows/${string}/validate`
   | `/api/v2/workflow-validations/${string}`
   | `/api/v2/workflows/${string}/runs`
@@ -248,7 +251,7 @@ async function request<T>(
 const safeId=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 function recordRoute(route:Route,id:string):Route {
   if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_pg_native_id")
-  if(route!==routes.agents&&route!==routes.workflows&&route!==routes.bases&&route!==routes.workflowV2Runs&&route!==routes.autonomousAgentRuns)
+  if(route!==routes.agents&&route!==routes.workflows&&route!==routes.bases&&route!==routes.workflowV2Runs&&route!==routes.autonomousAgentRuns&&route!=="/api/v2/shared-knowledge")
     throw new PgNativePilotError(400,"invalid_pg_native_resource")
   return (route+"/"+id) as Route
 }
@@ -382,6 +385,8 @@ export function createPgNativePilotApi(
           (value.mcp_tool_runs_enabled===true&&value.config_writes_enabled!==true)||
           (value.smithery_management_enabled!==undefined&&typeof value.smithery_management_enabled!=="boolean")||
           (value.smithery_management_enabled===true&&value.config_writes_enabled!==true)||
+          (value.knowledge_sharing_enabled!==undefined&&typeof value.knowledge_sharing_enabled!=="boolean")||
+          (value.knowledge_sharing_enabled===true&&value.config_writes_enabled!==true)||
           (value.workflow_validation_enabled!==undefined&&
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&
@@ -724,6 +729,22 @@ export function createPgNativePilotApi(
       return (await patch<{item:PgNativeWorkflow}>(route,{
         name,graph:current.graph,expected_revision:revision
       })).item
+    },
+    listSharedKnowledge:async()=>(await get<{items:SharedKnowledgeMetadata[]}>("/api/v2/shared-knowledge")).items,
+    getSharedKnowledge:async(id:string)=>(await get<{item:KnowledgeContentMetadata}>(recordRoute("/api/v2/shared-knowledge",id))).item,
+    listSharedKnowledgeDocuments:async(id:string)=>(await get<{items:KnowledgeDocumentRow[]}>((recordRoute("/api/v2/shared-knowledge",id)+"/documents") as Route)).items,
+    listKnowledgeGrants:async(id:string)=>(await get<{items:KnowledgeGrant[]}>((recordRoute("/api/v2/shared-knowledge",id)+"/access") as Route)).items,
+    changeKnowledgeAccess:(id:string,input:Record<string,unknown>)=>post<{item:KnowledgeAccessReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/access") as Route,input),
+    searchSharedKnowledge:async(id:string,query:string)=>(await post<{items:KnowledgeSearchHit[]}>((recordRoute("/api/v2/shared-knowledge",id)+"/search") as Route,safeKeywordQuery(query,8))).items,
+    importSharedKnowledge:(id:string,input:Record<string,unknown>)=>post<{item:KnowledgeContentReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/import") as Route,input),
+    deleteSharedKnowledge:(id:string,input:Record<string,unknown>)=>post<{item:KnowledgeContentReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/delete") as Route,input),
+    getKnowledgeContentReceipt:async(id:string,requestId:string)=>{
+      recordRoute(routes.bases,requestId)
+      return (await get<{item:KnowledgeContentReceipt|null}>((recordRoute("/api/v2/shared-knowledge",id)+"/content-receipt?request_id="+requestId) as Route)).item
+    },
+    getKnowledgeAccessReceipt:async(id:string,requestId:string)=>{
+      recordRoute(routes.bases,requestId)
+      return (await get<{item:KnowledgeAccessReceipt|null}>((recordRoute("/api/v2/shared-knowledge",id)+"/access-receipt?request_id="+requestId) as Route)).item
     },
     listKnowledge:async()=>(
       await get<{items:PgNativeKnowledge[]}>(routes.bases)).items,

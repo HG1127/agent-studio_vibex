@@ -1,0 +1,78 @@
+import {test,expect,chromium} from "@playwright/test"
+import {spawn} from "node:child_process"
+import {fileURLToPath} from "node:url"
+import path from "node:path"
+import {requireNativeBrowserCi} from "./ci-guard.mjs"
+test("employee knowledge: lost response recovery across navigation, viewer/editor changes and current revocation",async({},testInfo)=>{
+  const approved=requireNativeBrowserCi() // FIRST: no files, child, socket or browser before the guard.
+  const root=path.resolve(fileURLToPath(new URL("../../",import.meta.url)))
+  const env=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))
+  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true"})
+  const child=spawn(process.execPath,["--experimental-strip-types",path.join(root,"services/pg-api/tests/helpers/native-run-browser-fixture.mjs")],{cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true})
+  let browser,context,control,timer,output=""
+  const ready=new Promise((resolve,reject)=>{
+    timer=setTimeout(()=>reject(Error("synthetic_fixture_start_timeout")),45000)
+    const chunk=bytes=>{output=(output+bytes.toString()).slice(-32768);for(const line of output.split(/\r?\n/))if(line.startsWith('{"synthetic_only":true,'))try{resolve(JSON.parse(line))}catch{}}
+    child.stdout.on("data",chunk);child.stderr.on("data",chunk);child.once("error",reject);child.once("exit",code=>reject(Error("fixture_exit_"+code)))
+  })
+  try{
+    const info=await ready;clearTimeout(timer)
+    expect(info.synthetic_only).toBe(true);expect(new URL(info.url).origin).toBe(approved.origin)
+    control=async(name,method="POST")=>{const response=await fetch("http://127.0.0.1:"+info.apiPort+"/__fixture/"+name,{method,headers:{"X-AgentStudio-Synthetic-Fixture":"1"},signal:AbortSignal.timeout(15000)});expect(response.status).toBe(200);return response.json()}
+    browser=await chromium.launch({headless:true});context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:"block"})
+    const external=[]
+    await context.route("**/*",async route=>{if(new URL(route.request().url()).origin!==approved.origin){external.push(route.request().url());await route.abort()}else await route.continue()})
+    const page=await context.newPage();await page.goto(info.url,{waitUntil:"domcontentloaded"})
+    const login=async who=>{
+      await page.getByRole("textbox",{name:"员工邮箱",exact:true}).fill(who+"@example.com")
+      await page.getByLabel("密码",{exact:true}).fill(who==="alice"?"SyntheticAlicePassword#2026":"SyntheticBobPassword#2026")
+      await page.getByRole("button",{name:"登录独立工作台",exact:true}).click()
+      await page.getByRole("button",{name:/^知识库 \d+$/}).click()
+    }
+    const panel=()=>page.getByRole("region",{name:"知识库共享与文档",exact:true})
+    const choose=async label=>{await panel().getByRole("combobox",{name:/选择知识库/}).selectOption({label})}
+    const own="Browser shared KB · 我的知识库",shared="Browser shared KB · Browser Alice共享 · 可查看"
+    await login("alice")
+    await page.getByPlaceholder("知识库名称").fill("Browser shared KB")
+    await page.getByRole("button",{name:"创建知识库",exact:true}).click();await choose(own)
+    await control("drop-next-knowledge")
+    await panel().getByLabel("文本文件名",{exact:true}).fill("recovered.txt")
+    await panel().getByLabel("文本内容",{exact:true}).fill("Browser cedar evidence <script>foreign()</script>")
+    await panel().getByRole("button",{name:"保存文本并建立关键词索引",exact:true}).click()
+    await expect(panel().getByText(/操作结果待确认/)).toBeVisible()
+    await page.getByRole("button",{name:/^Workflow \d+$/}).click()
+    await page.getByRole("button",{name:/^知识库 \d+$/}).click()
+    await expect(panel().getByText(/操作结果待确认/)).toBeVisible()
+    await panel().getByRole("button",{name:"核对回执",exact:true}).click()
+    await expect(panel().getByRole("list",{name:"知识库文档",exact:true}).getByText("recovered.txt",{exact:true})).toHaveCount(1)
+    await panel().getByLabel("新增接收人的员工邮箱",{exact:true}).fill("bob@example.com")
+    await panel().getByRole("button",{name:"授予新员工权限",exact:true}).click()
+    await expect(panel().getByRole("list",{name:"已有共享授权",exact:true})).toContainText("Browser Bob")
+    await page.getByRole("button",{name:"退出",exact:true}).click();await login("bob");await choose(shared)
+    await expect(panel().getByRole("button",{name:"上传所选文件",exact:true})).toHaveCount(0)
+    await panel().getByLabel("关键词",{exact:true}).fill("cedar");await panel().getByRole("button",{name:"检索",exact:true}).click()
+    await expect(panel().getByRole("list",{name:"关键词检索结果",exact:true})).toContainText("<script>foreign()</script>")
+    await expect(page.locator("script").filter({hasText:"foreign()"})).toHaveCount(0)
+    await page.getByRole("button",{name:"退出",exact:true}).click();await login("alice");await choose(own)
+    await panel().getByRole("button",{name:"调整权限",exact:true}).click()
+    await panel().getByRole("combobox",{name:/^权限/}).selectOption("editor")
+    await panel().getByRole("button",{name:"保存此员工授权",exact:true}).click()
+    await expect(panel().getByRole("list",{name:"已有共享授权",exact:true})).toContainText("编辑者")
+    await page.getByRole("button",{name:"退出",exact:true}).click();await login("bob");await choose("Browser shared KB · Browser Alice共享 · 可编辑")
+    await panel().getByLabel("文本文件名",{exact:true}).fill("editor.txt");await panel().getByLabel("文本内容",{exact:true}).fill("Editor cedar evidence")
+    await panel().getByRole("button",{name:"保存文本并建立关键词索引",exact:true}).click()
+    const row=panel().getByRole("list",{name:"知识库文档",exact:true}).getByRole("listitem").filter({hasText:"editor.txt"})
+    await row.getByRole("button",{name:"删除",exact:true}).click();await row.getByRole("button",{name:"确认删除文档",exact:true}).click();await expect(row).toHaveCount(0)
+    await page.getByRole("button",{name:"退出",exact:true}).click();await login("alice");await choose(own)
+    await panel().getByRole("button",{name:"撤销共享",exact:true}).click()
+    await expect(panel().getByRole("list",{name:"已有共享授权",exact:true})).toContainText("已撤销")
+    await page.getByRole("button",{name:"退出",exact:true}).click();await login("bob")
+    await expect(panel().getByRole("combobox",{name:/选择知识库/}).locator("option").filter({hasText:"Browser shared KB"})).toHaveCount(0)
+    await page.screenshot({path:testInfo.outputPath("knowledge-revoked-bob.png"),fullPage:true})
+    expect((await control("state","GET")).generated).toBe(0);expect(external).toEqual([])
+  }finally{
+    clearTimeout(timer);if(context)await context.close();if(browser)await browser.close()
+    if(control)await control("stop").catch(()=>{})
+    if(child.exitCode===null){const exited=new Promise(resolve=>child.once("exit",resolve)),forced=setTimeout(()=>child.kill("SIGTERM"),5000);await exited;clearTimeout(forced)}
+  }
+})

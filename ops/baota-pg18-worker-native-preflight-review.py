@@ -25,6 +25,7 @@ SOURCES = (
     ROOT/"services/pg-api/src/pg18-prepare-readonly-preflight.ts",
     ROOT/"services/pg-api/src/pg18-model-readonly-preflight.ts",
     ROOT/"services/pg-api/src/optional-credential-boundary.ts",
+    ROOT/"services/pg-api/src/knowledge-content-privileges.ts",
     PACKAGE,
 )
 NAME_MAP = {

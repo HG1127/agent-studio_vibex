@@ -19,6 +19,7 @@ import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistor
 import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
 import PgNativeMcpConnectionsPanel from "./PgNativeMcpConnectionsPanel"
 import PgNativeSmitheryPanel from "./PgNativeSmitheryPanel"
+import PgNativeKnowledgeSharingPanel from "./PgNativeKnowledgeSharingPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
@@ -72,6 +73,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [mcpDiscoveryEnabled,setMcpDiscoveryEnabled]=useState(false)
   const [mcpToolsEnabled,setMcpToolsEnabled]=useState(false)
   const [smitheryEnabled,setSmitheryEnabled]=useState(false)
+  const [knowledgeSharingEnabled,setKnowledgeSharingEnabled]=useState(false)
+  const [knowledgeSharingOpened,setKnowledgeSharingOpened]=useState(false)
+  useEffect(()=>{if(knowledgeSharingEnabled)setKnowledgeSharingOpened(true)},[knowledgeSharingEnabled])
   const [workflowValidationEnabled,setWorkflowValidationEnabled]=useState(false)
   const [workflowExecutionEnabled,setWorkflowExecutionEnabled]=useState(false)
   const [workflowV2Enabled,setWorkflowV2Enabled]=useState(false)
@@ -118,6 +122,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setWorkflowCanvasOpened(false);setWorkflowRunsOpened(false);setWorkflowRunTarget(null)
     setMcpOpened(false)
     setAgentMcpOpened(false)
+    setKnowledgeSharingOpened(false);setKnowledgeSharingEnabled(false)
   },[])
   const expireAgentSession=useCallback(()=>{
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
@@ -149,6 +154,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setMcpDiscoveryEnabled(capability?.mcp_discovery_enabled===true&&capability?.config_writes_enabled===true)
       setMcpToolsEnabled(capability?.mcp_tool_runs_enabled===true&&capability?.config_writes_enabled===true)
       setSmitheryEnabled(capability?.smithery_management_enabled===true&&capability?.config_writes_enabled===true)
+      setKnowledgeSharingEnabled(capability?.knowledge_sharing_enabled===true&&capability?.config_writes_enabled===true)
       setWorkflowValidationEnabled(capability?.workflow_validation_enabled===true)
       setWorkflowExecutionEnabled(capability?.workflow_execution_enabled===true)
       setWorkflowV2Enabled(capability?.config_writes_enabled===true&&capability.workflow_v2_submission_enabled===true)
@@ -534,6 +540,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                   name:item.name,detail:item.description
                 }):undefined}/>
             </>}
+            <div hidden={section!=="knowledge"}>{(knowledgeSharingOpened||knowledgeSharingEnabled)&&<PgNativeKnowledgeSharingPanel key={profile.id} api={api} bases={knowledge}
+              active={section==="knowledge"} enabled={knowledgeSharingEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
             {section==="knowledge"&&TextIngestUatPanel&&!productionRoot&&
               <TextIngestUatPanel key={profile.id} api={api} bases={knowledge}/>
             }

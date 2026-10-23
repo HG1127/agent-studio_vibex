@@ -31,6 +31,9 @@ import {AgentSpecRepository} from "../../src/repository.ts"
 import {WorkflowRepository} from "../../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../../src/workflow-safe-run-repository.ts"
 import {KnowledgeBaseRepository} from "../../src/knowledge-repository.ts"
+import {KnowledgeAccessRepository} from "../../src/knowledge-access-repository.ts"
+import {KnowledgeContentRepository} from "../../src/knowledge-content-repository.ts"
+import {verifyKnowledgeContentSchema} from "../../src/knowledge-content-privileges.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
 import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
@@ -68,7 +71,7 @@ const pool={async connect(){
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous,workflowV2ExecutionUat:workflow}
-const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpCalls:0,mcpDiscoveries:0,smitheryWrites:0,drop:false,configDrop:false,allowed:true,configAllowed:true}
+const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpCalls:0,mcpDiscoveries:0,smitheryWrites:0,drop:false,configDrop:false,contentDrop:false,allowed:true,configAllowed:true}
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -79,9 +82,10 @@ try{
   await db.exec("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic browser predecessor')")
   await db.exec(load("db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql")
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql"])
+  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
+  if(modern)await verifyKnowledgeContentSchema(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
   const admin=await auth.login("alice@example.com","SyntheticAlicePassword#2026")
   await auth.provisionEmployee(admin.token,{email:"bob@example.com",password:"SyntheticBobPassword#2026",display_name:"Browser Bob"})
@@ -132,10 +136,11 @@ try{
       allowMcpDiscovery:modern&&state.configAllowed,
       allowMcpToolExecution:modern&&state.configAllowed&&state.allowed,
       allowSmitheryManagement:modern&&state.configAllowed,
+      allowKnowledgeSharing:modern&&state.configAllowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:autonomous&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
-          {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
+          {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
         return backend(req,res)
@@ -156,6 +161,7 @@ try{
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
+      ...(modern?{knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),knowledgeContentRepository:new KnowledgeContentRepository(pool)}:{}),
       modelConnectionRepository:models,toolConnectionRepository:new ToolConnectionRepository(pool,key),
       ...(modern?{smitheryRepository:new SmitheryRepository(pool,key,pool,async(_credential,wire)=>{
         if(wire.path==="/namespaces")return {status:200,data:{namespaces:["browser-own"]}}
@@ -189,6 +195,7 @@ try{
         else if(req.url==="/__fixture/prepare"&&req.method==="POST")output=await prepare.tick()
         else if(req.url==="/__fixture/model"&&req.method==="POST")output=await model.tick()
         else if(req.url==="/__fixture/drop-next-config"&&req.method==="POST"){state.configDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-knowledge"&&req.method==="POST"){state.contentDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-config"&&req.method==="POST"){state.configAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/drop-next"&&req.method==="POST"){state.drop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-runs"&&req.method==="POST"){state.allowed=false;configure();output={ok:true}}
@@ -197,6 +204,7 @@ try{
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(output));return
       }
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
+      if(req.method==="POST"&&/^\/api\/v2\/shared-knowledge\/[^/]+\/(?:import|delete|access)$/.test(req.url)&&state.contentDrop){state.contentDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&(autonomous?/^\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/:workflow?/^\/api\/v2\/workflows\/[^/]+\/(?:native-runs|model-node-debug)$/:/^\/api\/v2\/agent-specs\/[^/]+\/runs$/).test(req.url)){
         state.submissions++
         if(state.drop){state.drop=false;res.end=()=>{res.destroy();return res}}

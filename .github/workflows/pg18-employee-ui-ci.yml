@@ -20,6 +20,7 @@ on:
       - 'codex/pg18-smithery-managed-20261023'
       - 'codex/pg18-credential-boundary-20261023'
       - 'codex/pg18-knowledge-access-foundation-20261023'
+      - 'codex/pg18-shared-knowledge-ui-20261023'
   workflow_dispatch:
 
 permissions:
@@ -33,7 +34,7 @@ jobs:
   native-employee-browser:
     name: Native employee UI / synthetic SQL / private mTLS / browser
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
       - name: Checkout reviewed source
         uses: actions/checkout@v4
@@ -54,6 +55,7 @@ jobs:
           pnpm exec tsc -p tsconfig.app.json --noEmit
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-autonomous-session.test.mjs tests/pg-native-autonomous-render.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
+          pnpm test:pg18:shared-knowledge
           pnpm test:pg18:knowledge-access
           pnpm test:pg18:credential-boundary
           pnpm test:pg18:smithery

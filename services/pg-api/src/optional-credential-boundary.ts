@@ -1,4 +1,5 @@
 import type {SqlClient} from "./contracts.ts"
+import {verifyKnowledgeHelperCredentials} from "./knowledge-content-privileges.ts"
 type Kind="api"|"identity"|"broker"|"worker"
 const memberships:Record<Kind,string[]>={api:["agentstudio_api"],identity:["agentstudio_bound_dispatch"],broker:["agentstudio_model_broker"],worker:["agentstudio_api","agentstudio_worker"]}
 const tables=["mcp_connections","mcp_connection_headers","smithery_credentials","smithery_connections"]
@@ -10,6 +11,7 @@ function refuse():never{throw Error("unsafe_optional_credential_boundary")}
 // predicates are queried; no employee rows or credential values are selected.
 export async function verifyOptionalCredentialBoundary(db:SqlClient,kind:Kind):Promise<void>{
   if(!Object.hasOwn(memberships,kind))refuse()
+  await verifyKnowledgeHelperCredentials(db)
   const relations=(await db.query<{id:number;name:string;kind:string;enabled:boolean;forced:boolean}>(
     "SELECT c.oid AS id,c.relname AS name,c.relkind AS kind,c.relrowsecurity AS enabled,c.relforcerowsecurity AS forced "+
     "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "+

@@ -1,6 +1,7 @@
 import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
 import {selectMcpExecution} from "./mcp-call.ts"
 import {selectSmitheryManagement} from "./smithery-contracts.ts"
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -16,6 +17,7 @@ export interface NativePg18UatCapabilities {
   mcpDiscoveryUat?:boolean
   mcpToolExecutionUat?:boolean
   smitheryManagementUat?:boolean
+  knowledgeSharingUat?:boolean
   /** Additional opt-in for inert Start/End-only Workflow validation records. */
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
@@ -50,6 +52,7 @@ export function selectNativePg18UatCapabilities(
   const autonomousAgentUat=selectAutonomousAgentExecution(env)
   const mcpToolExecutionUat=selectMcpExecution(env)
   const smitheryManagementUat=selectSmitheryManagement(env)
+  const knowledgeSharingUat=selectKnowledgeSharing(env)
   const config=env.AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED
   const employees=env.AGENT_STUDIO_PG18_EMPLOYEE_UAT_ENABLED
   const marker=env.AGENT_STUDIO_PG18_UAT_APPROVAL
@@ -90,14 +93,14 @@ export function selectNativePg18UatCapabilities(
   if(!workflowExecutionUat&&executionMarker!==undefined)refuse()
   if(!workflowV2ExecutionUat&&flowV2Marker!==undefined)refuse()
   if(!configUat&&!employeeUat&&!runUat&&!ingestUat&&!modelProbeUat&&
-     !smitheryManagementUat&&!mcpToolExecutionUat&&!mcpDiscoveryUat&&!workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
+     !knowledgeSharingUat&&!smitheryManagementUat&&!mcpToolExecutionUat&&!mcpDiscoveryUat&&!workflowValidationUat&&!workflowExecutionUat&&!workflowV2ExecutionUat&&!boundModelExecutionUat&&!autonomousAgentUat){
     if(marker!==undefined)refuse()
     return {...empty}
   }
   if(!listen||!Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !origin.startsWith("https://")||
      marker!==permissionMarker||
-     ((smitheryManagementUat||mcpToolExecutionUat||employeeUat||runUat||ingestUat||modelProbeUat||mcpDiscoveryUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
+     ((knowledgeSharingUat||smitheryManagementUat||mcpToolExecutionUat||employeeUat||runUat||ingestUat||modelProbeUat||mcpDiscoveryUat||workflowValidationUat||workflowExecutionUat||workflowV2ExecutionUat||boundModelExecutionUat||autonomousAgentUat)&&!configUat)||
      (mcpToolExecutionUat&&!workflowV2ExecutionUat&&!autonomousAgentUat)||
      (mcpDiscoveryUat&&mcpMarker!=="APPROVE_DISPOSABLE_PG18_MCP_DISCOVERY_ONLY")||
      (runUat&&runMarker!==runApprovalMarker)||
@@ -113,6 +116,7 @@ export function selectNativePg18UatCapabilities(
     ...(mcpDiscoveryUat?{mcpDiscoveryUat:true}:{}),
     ...(mcpToolExecutionUat?{mcpToolExecutionUat:true}:{}),
     ...(smitheryManagementUat?{smitheryManagementUat:true}:{}),
+    ...(knowledgeSharingUat?{knowledgeSharingUat:true}:{}),
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
@@ -133,6 +137,8 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  if(/^\/api\/v2\/shared-knowledge(?:\/[0-9a-fA-F-]{36}(?:\/(?:documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.test(pathname))
+    return policy.configurationWrites===true&&policy.knowledgeSharingUat===true&&["GET","POST"].includes(method)
   if(/^\/api\/v2\/smithery\/(?:key|namespaces|catalog|connections)(?:\/[0-9a-fA-F-]{36}(?:\/(?:refresh|revoke|retry|pause))?)?$/.test(pathname))
     return policy.configurationWrites===true&&policy.smitheryManagementUat===true&&["GET","POST","DELETE"].includes(method)
   if(method==="POST"&&policy.configurationWrites===true&&policy.mcpDiscoveryUat===true&&

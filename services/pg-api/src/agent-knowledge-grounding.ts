@@ -30,7 +30,7 @@ function validEvidence(row:{
   document_id:unknown;filename:unknown;chunk_index:unknown;snippet:unknown
 }):row is {document_id:string;filename:string;chunk_index:number;snippet:string}{
   return isUuid(row.document_id)&&typeof row.filename==="string"&&
-    row.filename.length>=1&&row.filename.length<=120&&
+    row.filename.length>=1&&row.filename.length<=180&&
     !/[\r\n\u0000-\u001f\u007f]/u.test(row.filename)&&
     Number.isSafeInteger(Number(row.chunk_index))&&Number(row.chunk_index)>=0&&
     typeof row.snippet==="string"&&row.snippet.length>0&&

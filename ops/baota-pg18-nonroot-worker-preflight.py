@@ -35,6 +35,7 @@ SOURCES = (
     "services/pg-api/src/worker-activation-guard.ts",
     "services/pg-api/src/worker-role-preflight.ts",
     "services/pg-api/src/optional-credential-boundary.ts",
+    "services/pg-api/src/knowledge-content-privileges.ts",
     "services/pg-api/src/worker-credential-policy.ts",
     "services/pg-api/src/pg18-native-worker-readonly.ts",
     "services/pg-api/src/pg-runtime-target.ts",

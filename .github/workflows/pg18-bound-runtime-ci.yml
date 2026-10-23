@@ -21,6 +21,7 @@ on:
       - 'codex/pg18-smithery-managed-20261023'
       - 'codex/pg18-credential-boundary-20261023'
       - 'codex/pg18-knowledge-access-foundation-20261023'
+      - 'codex/pg18-shared-knowledge-ui-20261023'
   workflow_dispatch:
 
 permissions:

@@ -1,4 +1,7 @@
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
+import type {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
+import type {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
+import {safeSharedKnowledgeText} from "./knowledge-content-repository.ts"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
 import { RunRepository } from "./run-repository.ts"
@@ -30,6 +33,8 @@ export interface AppDependencies {
   autonomousAgentRunRepository?:AutonomousAgentRunRepository
   workflowV2RunRepository?: WorkflowV2RunRepository
   knowledgeRepository?: KnowledgeBaseRepository
+  knowledgeAccessRepository?:KnowledgeAccessRepository
+  knowledgeContentRepository?:KnowledgeContentRepository
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
   mcpConnectionRepository?:McpConnectionRepository
@@ -123,10 +128,11 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/tool-connections\/[0-9a-fA-F-]{36}$/.test(path)
       const mcpRoute=/^\/api\/v2\/mcp-connections(?:\/([0-9a-fA-F-]{36})(?:\/(discover))?)?$/.exec(path)
       const smitheryRoute=/^\/api\/v2\/smithery\/(key|namespaces|catalog|connections)(?:\/([0-9a-fA-F-]{36})(?:\/(refresh|revoke|retry|pause))?)?$/.exec(path)
+      const sharedKnowledgeRoute=/^\/api\/v2\/shared-knowledge(?:\/([0-9a-fA-F-]{36})(?:\/(documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -153,6 +159,50 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(sharedKnowledgeRoute){
+        const access=deps.knowledgeAccessRepository,content=deps.knowledgeContentRepository
+        if(!access||!content)throw new HttpError(503,"knowledge_sharing_disabled")
+        const id=sharedKnowledgeRoute[1],action=sharedKnowledgeRoute[2]
+        const query=new URL(req.url||"/","http://127.0.0.1").searchParams
+        if(action==="content-receipt"||action==="access-receipt"){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          if([...query.keys()].length!==1||!isUuid(query.get("request_id")))throw new HttpError(400,"invalid_knowledge_access_request")
+          const item=action==="content-receipt"?await content.receipt(identity,id!,query.get("request_id")!):await access.receipt(identity,id!,query.get("request_id")!)
+          return send(res,200,{item})
+        }
+        if([...query.keys()].length)throw new HttpError(400,"invalid_knowledge_query")
+        if(!id){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          return send(res,200,{items:await access.listShared(identity)})
+        }
+        if(method==="GET"){
+          if(!action)return send(res,200,{item:await content.get(identity,id)})
+          if(action==="documents")return send(res,200,{items:await content.documents(identity,id)})
+          if(action==="access")return send(res,200,{items:await access.listGrants(identity,id)})
+          throw new HttpError(405,"method_not_allowed")
+        }
+        if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+        if(action==="access")return send(res,200,await access.change(identity,id,await readBody(req,2048)))
+        if(action==="search"){
+          const body=await readBody(req,2048);allowBodyFields(body,["query","limit"])
+          return send(res,200,{items:await content.search(identity,id,body.query as string,body.limit===undefined?8:body.limit as number),mode:"literal_keyword"})
+        }
+        if(action==="import"){
+          const metadata=await content.get(identity,id)
+          if(metadata.access_role==="viewer")throw new HttpError(403,"knowledge_editor_required")
+          const body=await readBody(req,1100000);allowBodyFields(body,["request_id","filename","text","content_base64"])
+          if(!isUuid(body.request_id)||Object.hasOwn(body,"text")===Object.hasOwn(body,"content_base64"))throw new HttpError(400,"invalid_document_request")
+          const parsed=Object.hasOwn(body,"text")?safeSharedKnowledgeText({filename:body.filename,text:body.text}):
+            await parseDocumentIsolated({filename:body.filename,content_base64:body.content_base64},12000,"employee")
+          const result=await content.importParsed(identity,id,body.request_id,parsed)
+          return send(res,result.replayed?200:201,result)
+        }
+        if(action==="delete"){
+          const body=await readBody(req,1024);allowBodyFields(body,["request_id","document_id","sha256"])
+          return send(res,200,await content.delete(identity,id,body.request_id as string,body.document_id as string,body.sha256 as string))
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
       if(smitheryRoute){
         const repo=deps.smitheryRepository
         if(!repo)throw new HttpError(503,"smithery_management_disabled")

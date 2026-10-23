@@ -22,6 +22,9 @@ import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
 import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
 import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {KnowledgeBaseRepository} from "./knowledge-repository.ts"
+import {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
+import {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
+import {verifyKnowledgeContentSchema} from "./knowledge-content-privileges.ts"
 import {createHandler} from "./http.ts"
 import {NativeAuthRepository} from "./native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "./native-auth-http.mjs"
@@ -339,6 +342,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
       await verifySmitheryPrivileges(adapter(businessPool),adapter(brokerPool))
     }
+    if(capabilities.knowledgeSharingUat===true)await verifyKnowledgeContentSchema(adapter(businessPool))
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -354,6 +358,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowModelProbe:capabilities.modelProbeUat,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
+      allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
       allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
@@ -410,6 +415,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
         ?{workflowValidationRepository:new WorkflowValidationRepository(
           adapter(businessPool))}:{}),
       knowledgeRepository:new KnowledgeBaseRepository(adapter(businessPool)),
+      ...(capabilities.knowledgeSharingUat===true?{
+        knowledgeAccessRepository:new KnowledgeAccessRepository(adapter(businessPool),(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
+        knowledgeContentRepository:new KnowledgeContentRepository(adapter(businessPool)),
+      }:{}),
       scheduleInventory:new ScheduleInventoryRepository(adapter(businessPool)),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true

@@ -45,6 +45,8 @@ import {safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../src/knowledge-access-repository.ts"
+import {KnowledgeContentRepository} from "../src/knowledge-content-repository.ts"
+import {verifyKnowledgeContentSchema} from "../src/knowledge-content-privileges.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
 import {OwnerBoundModelDispatch} from "../src/owner-model-dispatch.ts"
@@ -61,7 +63,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
@@ -83,6 +85,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
+      allowKnowledgeSharing:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -97,6 +100,8 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
+      knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
+      knowledgeContentRepository:new KnowledgeContentRepository(pool),
       workflowRepository:new WorkflowRepository(pool),
       workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
@@ -195,6 +200,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_030_mcp_tool_identity.sql"))
     await admin.query(upgrade("pg_v9_031_smithery_managed.sql"))
     await admin.query(upgrade("pg_v9_032_knowledge_access.sql"))
+    await admin.query(upgrade("pg_v9_033_knowledge_content.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -204,6 +210,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
     const apiPool=adapter(byLogin.agentstudio_stage_login)
+    await verifyKnowledgeContentSchema(apiPool)
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
     const workerPool=adapter(byLogin.agentstudio_stage_worker)
@@ -341,10 +348,16 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const share=await knowledgeAccess.change(owner,sharedBase.id,shareRequest)
     assert.equal((await knowledgeAccess.change(owner,sharedBase.id,shareRequest)).replayed,true)
     assert.equal((await knowledgeAccess.listShared(reader))[0].id,sharedBase.id)
+    const knowledgeContent=new KnowledgeContentRepository(apiPool),contentRequest=randomUUID()
+    const sharedDoc=await knowledgeContent.importParsed(owner,sharedBase.id,contentRequest,{filename:"ci-shared.md",mime_type:"text/markdown",text:"Shared CI cedar evidence"})
+    assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)
+    assert.equal((await knowledgeContent.importParsed(owner,sharedBase.id,contentRequest,{filename:"ci-shared.md",mime_type:"text/markdown",text:"Shared CI cedar evidence"})).replayed,true)
+    await assert.rejects(knowledgeContent.importParsed(reader,sharedBase.id,randomUUID(),{filename:"blocked.md",mime_type:"text/markdown",text:"Viewer cannot write"}),error=>error.status===403)
     assert.equal(await bases.get(reader,sharedBase.id),null)
     await assert.rejects(knowledgeAccess.listGrants(reader,sharedBase.id),error=>error.status===404)
     await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:1,request_id:randomUUID()})
     assert.equal((await knowledgeAccess.listShared(reader)).length,0)
+    await assert.rejects(knowledgeContent.search(reader,sharedBase.id,"cedar"),error=>error.status===404)
     await assert.rejects(new WorkflowSafeRunRepository(apiPool).submit(owner,workflow.id,{
       expected_revision:2,idempotency_key:"v2-execution-stays-closed"}),e=>e.code==="workflow_execution_node_not_supported")
     assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n,0)
