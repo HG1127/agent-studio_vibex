@@ -14,7 +14,7 @@ class Pg18NativeBundleTests(unittest.TestCase):
     def test_bundle_only_has_shared_readonly_and_two_safe_cli_wrappers(self):
         with tempfile.TemporaryDirectory(prefix="pg18-native-workers-") as d:
             data=mod.build(d)
-            self.assertEqual(data["files"],9)
+            self.assertEqual(data["files"],10)
             self.assertTrue(data["manifest_verified"])
             self.assertTrue(data["two_readonly_wrappers"])
             self.assertFalse(data["previous_sources_overwritten"])
@@ -31,7 +31,7 @@ class Pg18NativeBundleTests(unittest.TestCase):
                 self.assertTrue(all((item.external_attr>>16)&0o777 == 0o644
                                     for item in z.infolist()))
                 lines=z.read(mod.MANIFEST).decode("ascii").splitlines()
-                self.assertEqual(len(lines),8)
+                self.assertEqual(len(lines),9)
                 for line in lines:
                     checksum,name=line.split("  ")
                     self.assertEqual(checksum,hashlib.sha256(z.read(name)).hexdigest())

@@ -46,8 +46,11 @@ import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../src/knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "../src/knowledge-content-repository.ts"
+import {KnowledgeEmbeddingRepository} from "../src/knowledge-embedding-repository.ts"
+import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
+import {verifyKnowledgeEmbeddingSchema} from "../src/knowledge-embedding-privileges.ts"
 import {verifyKnowledgeRuntimeSchema} from "../src/knowledge-content-privileges.ts"
-import {scopedKnowledgePool} from "../src/knowledge-scope-policy.ts"
+import {scopedKnowledgePool,scopedEmbeddingSettingsPool} from "../src/knowledge-scope-policy.ts"
 import {requireKnowledgeScope} from "../src/knowledge-runtime-scope.ts"
 import {withActor} from "../src/repository.ts"
 import {gatherAuthorizedKnowledgeEvidence} from "../src/agent-knowledge-grounding.ts"
@@ -67,7 +70,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
@@ -90,6 +93,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
       allowKnowledgeSharing:true,
+      allowKnowledgeEmbeddingSettings:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -106,6 +110,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
+      knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
       workflowRepository:new WorkflowRepository(pool),
       workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
@@ -206,6 +211,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_032_knowledge_access.sql"))
     await admin.query(upgrade("pg_v9_033_knowledge_content.sql"))
     await admin.query(upgrade("pg_v9_034_knowledge_runtime.sql"))
+    await admin.query(upgrade("pg_v9_035_knowledge_embedding_state.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -214,8 +220,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
-    const apiPool=scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true)
+    const apiPool=scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool)
+    await verifyKnowledgeEmbeddingSchema(apiPool)
+    await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_vectors TO agentstudio_stage_login")
+    try{await assert.rejects(verifyKnowledgeEmbeddingSchema(apiPool),/unsafe_knowledge_embedding_privileges/)}
+    finally{await admin.query("REVOKE SELECT ON agentstudio.knowledge_embedding_vectors FROM agentstudio_stage_login")}
+    await verifyKnowledgeEmbeddingSchema(apiPool)
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
     const workerPool=scopedKnowledgePool(adapter(byLogin.agentstudio_stage_worker),true)
@@ -355,6 +366,56 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await knowledgeAccess.listShared(reader))[0].id,sharedBase.id)
     const knowledgeContent=new KnowledgeContentRepository(apiPool),contentRequest=randomUUID()
     const sharedDoc=await knowledgeContent.importParsed(owner,sharedBase.id,contentRequest,{filename:"ci-shared.md",mime_type:"text/markdown",text:"Shared CI cedar evidence"})
+    // Real PG18 profile/queue preparation only; no embedding provider call.
+    assert.equal((await api.getConfigCapabilities()).knowledge_embedding_settings_enabled,true)
+    const embeddingModel=await api.createModelConnection({name:"CI embedding metadata",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticEmbeddingCredentialNeverNetwork012345",models:["synthetic-embedding"],enabled:true})
+    const embeddingRequest={action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:embeddingModel.id,connection_revision:embeddingModel.revision,model_name:"synthetic-embedding",base_url:"https://api.openai.com/v1"}
+    const embeddingConfigured=await api.changeKnowledgeEmbeddingSettings(embeddingRequest)
+    assert.equal(embeddingConfigured.item.revision,1)
+    assert.equal((await api.changeKnowledgeEmbeddingSettings(embeddingRequest)).replayed,true)
+    assert.deepEqual(await api.getKnowledgeEmbeddingReceipt(embeddingRequest.request_id),embeddingConfigured.item)
+    assert.equal((await api.getKnowledgeEmbeddingStatus(sharedBase.id)).queued,true)
+    assert.equal((await api.getKnowledgeEmbeddingStatus(sharedBase.id)).pending,1)
+    // Prove configure and ingest actually wait on the same owner fence. This
+    // must not pass merely because a serial fixture happens to see the new row.
+    const concurrentBase=await bases.create(owner,"CI embedding epoch race","Synthetic only")
+    const ownerId=await withActor(apiPool,owner,async(_db,id)=>id),fence=await admin.connect()
+    const waitForOwnerLock=async needle=>{
+      const until=Date.now()+4000
+      while(Date.now()<until){
+        const state=(await admin.query("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND wait_event='advisory' AND strpos(query,$1)>0) AS blocked",[needle])).rows[0]
+        if(state.blocked)return
+        await new Promise(done=>setTimeout(done,20))
+      }
+      throw Error("expected_owner_advisory_wait_"+needle)
+    }
+    let fenceOpen=false,changing,indexed
+    try{
+      await fence.query("BEGIN");fenceOpen=true
+      await fence.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,6635))",[ownerId])
+      changing=withActor(apiPool,owner,async db=>{
+        await db.query("SET LOCAL lock_timeout='10s'");await db.query("SET LOCAL statement_timeout='12s'")
+        return db.query("SELECT agentstudio.knowledge_embedding_change($1,1,'configure',$2,$3,'synthetic-embedding','https://api.openai.com/v2',NULL)",[randomUUID(),embeddingModel.id,embeddingModel.revision])
+      });changing.catch(()=>{})
+      await Promise.race([waitForOwnerLock("knowledge_embedding_change"),changing.then(()=>{throw Error("configuration_did_not_wait_for_owner")})])
+      indexed=withActor(apiPool,owner,async db=>{
+        await db.query("SET LOCAL lock_timeout='10s'");await db.query("SET LOCAL statement_timeout='12s'")
+        return db.query("SELECT agentstudio.knowledge_content_import($1,$2,'concurrent.md','text/markdown','Concurrent epoch evidence')",[concurrentBase.id,randomUUID()])
+      });indexed.catch(()=>{})
+      await Promise.race([waitForOwnerLock("knowledge_content_import"),indexed.then(()=>{throw Error("ingest_did_not_wait_for_owner")})])
+      await fence.query("COMMIT");fenceOpen=false
+      await Promise.all([changing,indexed])
+      const status=await api.getKnowledgeEmbeddingStatus(concurrentBase.id)
+      assert.equal(status.profile_revision,2);assert.equal(status.queued,true);assert.equal(status.pending,1)
+      assert.equal((await admin.query("SELECT profile_revision::int AS revision FROM agentstudio.knowledge_embedding_queue WHERE base_id=$1",[concurrentBase.id])).rows[0].revision,2)
+    }finally{
+      if(fenceOpen)await fence.query("ROLLBACK")
+      fence.release();await Promise.allSettled([changing,indexed].filter(Boolean))
+    }
+    await api.changeKnowledgeEmbeddingSettings({...embeddingRequest,request_id:randomUUID(),expected_revision:2})
+    const embeddingReader=new KnowledgeEmbeddingRepository(apiPool,embeddingEndpointPolicy({}))
+    assert.equal((await embeddingReader.settings(reader)).configured,false)
+    await assert.rejects(embeddingReader.status(reader,sharedBase.id),error=>error.status===404)
     assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)
     assert.equal((await withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])))[0].access_role,"viewer")
     assert.equal((await withActor(apiPool,reader,(db,id)=>gatherAuthorizedKnowledgeEvidence(db,id,[sharedBase.id],"cedar")))[0].documentId,sharedDoc.item.document_id)

@@ -12,6 +12,7 @@ export function createNativeAuthHttpHandler(deps:{
   allowMcpToolExecution?:boolean
   allowSmitheryManagement?:boolean
   allowKnowledgeSharing?:boolean
+  allowKnowledgeEmbeddingSettings?:boolean
   allowRunSubmission?:boolean
   allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean

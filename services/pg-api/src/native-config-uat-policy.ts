@@ -2,6 +2,7 @@ import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
 import {selectMcpExecution} from "./mcp-call.ts"
 import {selectSmitheryManagement} from "./smithery-contracts.ts"
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {selectKnowledgeEmbeddingSettings} from "./knowledge-embedding-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -18,6 +19,7 @@ export interface NativePg18UatCapabilities {
   mcpToolExecutionUat?:boolean
   smitheryManagementUat?:boolean
   knowledgeSharingUat?:boolean
+  knowledgeEmbeddingSettingsUat?:boolean
   /** Additional opt-in for inert Start/End-only Workflow validation records. */
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
@@ -53,6 +55,8 @@ export function selectNativePg18UatCapabilities(
   const mcpToolExecutionUat=selectMcpExecution(env)
   const smitheryManagementUat=selectSmitheryManagement(env)
   const knowledgeSharingUat=selectKnowledgeSharing(env)
+  const knowledgeEmbeddingSettingsUat=selectKnowledgeEmbeddingSettings(env)
+  if(knowledgeEmbeddingSettingsUat&&!knowledgeSharingUat)refuse()
   const config=env.AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED
   const employees=env.AGENT_STUDIO_PG18_EMPLOYEE_UAT_ENABLED
   const marker=env.AGENT_STUDIO_PG18_UAT_APPROVAL
@@ -117,6 +121,7 @@ export function selectNativePg18UatCapabilities(
     ...(mcpToolExecutionUat?{mcpToolExecutionUat:true}:{}),
     ...(smitheryManagementUat?{smitheryManagementUat:true}:{}),
     ...(knowledgeSharingUat?{knowledgeSharingUat:true}:{}),
+    ...(knowledgeEmbeddingSettingsUat?{knowledgeEmbeddingSettingsUat:true}:{}),
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
@@ -137,6 +142,8 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  if(/^\/api\/v2\/knowledge-embedding\/(?:settings|receipt|bases\/[0-9a-fA-F-]{36}\/(?:status|rebuild))$/.test(pathname))
+    return policy.configurationWrites===true&&policy.knowledgeSharingUat===true&&policy.knowledgeEmbeddingSettingsUat===true&&["GET","POST"].includes(method)
   if(/^\/api\/v2\/shared-knowledge(?:\/[0-9a-fA-F-]{36}(?:\/(?:documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.test(pathname))
     return policy.configurationWrites===true&&policy.knowledgeSharingUat===true&&["GET","POST"].includes(method)
   if(/^\/api\/v2\/smithery\/(?:key|namespaces|catalog|connections)(?:\/[0-9a-fA-F-]{36}(?:\/(?:refresh|revoke|retry|pause))?)?$/.test(pathname))

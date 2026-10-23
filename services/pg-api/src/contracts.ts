@@ -15,6 +15,7 @@ export interface SqlClient {
 export interface SqlPool {
   /** Trusted service configuration only; never derived from request fields. */
   readonly knowledgeSharing?:boolean
+  readonly knowledgeEmbeddingSettings?:boolean
   connect(): Promise<SqlClient>
 }
 

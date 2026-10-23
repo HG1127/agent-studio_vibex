@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-import {scopedKnowledgePool} from "./knowledge-scope-policy.ts"
+import {scopedKnowledgePool,scopedEmbeddingSettingsPool} from "./knowledge-scope-policy.ts"
+import {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
+import {embeddingEndpointPolicy} from "./knowledge-embedding-policy.ts"
+import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.ts"
 import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
@@ -295,7 +298,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
-  const business=scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true)
+  const business=scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
@@ -345,6 +348,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       await verifySmitheryPrivileges(business,adapter(brokerPool))
     }
     if(capabilities.knowledgeSharingUat===true)await verifyKnowledgeRuntimeSchema(business)
+    if(capabilities.knowledgeEmbeddingSettingsUat===true)await verifyKnowledgeEmbeddingSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -361,6 +365,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
       allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
+      allowKnowledgeEmbeddingSettings:capabilities.knowledgeEmbeddingSettingsUat===true,
       allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
@@ -421,6 +426,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
         knowledgeAccessRepository:new KnowledgeAccessRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
         knowledgeContentRepository:new KnowledgeContentRepository(business),
       }:{}),
+      ...(capabilities.knowledgeEmbeddingSettingsUat===true?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(business,embeddingEndpointPolicy(process.env))}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true

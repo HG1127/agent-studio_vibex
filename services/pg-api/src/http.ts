@@ -1,6 +1,7 @@
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import type {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
+import type {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
 import {safeSharedKnowledgeText} from "./knowledge-content-repository.ts"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
@@ -35,6 +36,7 @@ export interface AppDependencies {
   knowledgeRepository?: KnowledgeBaseRepository
   knowledgeAccessRepository?:KnowledgeAccessRepository
   knowledgeContentRepository?:KnowledgeContentRepository
+  knowledgeEmbeddingRepository?:KnowledgeEmbeddingRepository
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
   mcpConnectionRepository?:McpConnectionRepository
@@ -129,10 +131,11 @@ export function createHandler(deps:AppDependencies) {
       const mcpRoute=/^\/api\/v2\/mcp-connections(?:\/([0-9a-fA-F-]{36})(?:\/(discover))?)?$/.exec(path)
       const smitheryRoute=/^\/api\/v2\/smithery\/(key|namespaces|catalog|connections)(?:\/([0-9a-fA-F-]{36})(?:\/(refresh|revoke|retry|pause))?)?$/.exec(path)
       const sharedKnowledgeRoute=/^\/api\/v2\/shared-knowledge(?:\/([0-9a-fA-F-]{36})(?:\/(documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.exec(path)
+      const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild))$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -159,6 +162,31 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(embeddingRoute){
+        const repo=deps.knowledgeEmbeddingRepository
+        if(!repo)throw new HttpError(503,"knowledge_embedding_settings_disabled")
+        const query=new URL(req.url||"/","http://127.0.0.1").searchParams
+        const [,kind,base,action]=embeddingRoute
+        if(kind==="receipt"){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          if([...query.keys()].length!==1||!isUuid(query.get("request_id")))throw new HttpError(400,"invalid_embedding_request")
+          return send(res,200,{item:await repo.receipt(identity,query.get("request_id")!)})
+        }
+        if([...query.keys()].length)throw new HttpError(400,"invalid_embedding_request")
+        if(kind==="settings"){
+          if(method==="GET")return send(res,200,{item:await repo.settings(identity)})
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const body=await readBody(req,4096)
+          if(body.action!=="configure"&&body.action!=="disable")throw new HttpError(400,"invalid_embedding_request")
+          return send(res,200,await repo.change(identity,body))
+        }
+        if(method==="GET"&&action==="status")return send(res,200,{item:await repo.status(identity,base!)})
+        if(method==="POST"&&action==="rebuild"){
+          const body=await readBody(req,1024);allowBodyFields(body,["request_id","expected_revision"])
+          return send(res,200,await repo.change(identity,{...body,action:"rebuild",base_id:base}))
+        }
+        throw new HttpError(405,"method_not_allowed")
+      }
       if(sharedKnowledgeRoute){
         const access=deps.knowledgeAccessRepository,content=deps.knowledgeContentRepository
         if(!access||!content)throw new HttpError(503,"knowledge_sharing_disabled")
