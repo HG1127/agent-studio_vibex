@@ -46,7 +46,11 @@ import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../src/knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "../src/knowledge-content-repository.ts"
-import {verifyKnowledgeContentSchema} from "../src/knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema} from "../src/knowledge-content-privileges.ts"
+import {scopedKnowledgePool} from "../src/knowledge-scope-policy.ts"
+import {requireKnowledgeScope} from "../src/knowledge-runtime-scope.ts"
+import {withActor} from "../src/repository.ts"
+import {gatherAuthorizedKnowledgeEvidence} from "../src/agent-knowledge-grounding.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
 import {AgentModelWorker} from "../src/model-worker.ts"
 import {OwnerBoundModelDispatch} from "../src/owner-model-dispatch.ts"
@@ -201,6 +205,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_031_smithery_managed.sql"))
     await admin.query(upgrade("pg_v9_032_knowledge_access.sql"))
     await admin.query(upgrade("pg_v9_033_knowledge_content.sql"))
+    await admin.query(upgrade("pg_v9_034_knowledge_runtime.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -209,11 +214,11 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
-    const apiPool=adapter(byLogin.agentstudio_stage_login)
-    await verifyKnowledgeContentSchema(apiPool)
+    const apiPool=scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true)
+    await verifyKnowledgeRuntimeSchema(apiPool)
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
-    const workerPool=adapter(byLogin.agentstudio_stage_worker)
+    const workerPool=scopedKnowledgePool(adapter(byLogin.agentstudio_stage_worker),true)
     const inspectWorkerOptional=async()=>{
       const db=await workerPool.connect()
       try{await db.query("BEGIN READ ONLY");try{
@@ -337,8 +342,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     const ownerSession=await auth.login("admin@example.com","SyntheticAdminPassword#2026")
     const owner=(await auth.getSessionProfile(ownerSession.token)).identity
-    // Sharing foundation on actual restricted pools; this is not activation
-    // of shared document/vector retrieval or a browser sharing endpoint.
+    // Actual restricted API pools, current grants and bounded keyword evidence.
+    // Only synthetic content is used; no embedding/provider request occurs.
     const readerSession=await auth.login("other@example.com","SyntheticOtherPassword#2026")
     const reader=(await auth.getSessionProfile(readerSession.token)).identity
     const bases=new KnowledgeBaseRepository(apiPool),knowledgeAccess=new KnowledgeAccessRepository(apiPool,
@@ -351,6 +356,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const knowledgeContent=new KnowledgeContentRepository(apiPool),contentRequest=randomUUID()
     const sharedDoc=await knowledgeContent.importParsed(owner,sharedBase.id,contentRequest,{filename:"ci-shared.md",mime_type:"text/markdown",text:"Shared CI cedar evidence"})
     assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)
+    assert.equal((await withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])))[0].access_role,"viewer")
+    assert.equal((await withActor(apiPool,reader,(db,id)=>gatherAuthorizedKnowledgeEvidence(db,id,[sharedBase.id],"cedar")))[0].documentId,sharedDoc.item.document_id)
+    await assert.rejects(withActor(scopedKnowledgePool(apiPool,false),reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])),error=>error.status===404)
     assert.equal((await knowledgeContent.importParsed(owner,sharedBase.id,contentRequest,{filename:"ci-shared.md",mime_type:"text/markdown",text:"Shared CI cedar evidence"})).replayed,true)
     await assert.rejects(knowledgeContent.importParsed(reader,sharedBase.id,randomUUID(),{filename:"blocked.md",mime_type:"text/markdown",text:"Viewer cannot write"}),error=>error.status===403)
     assert.equal(await bases.get(reader,sharedBase.id),null)
@@ -358,6 +366,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:1,request_id:randomUUID()})
     assert.equal((await knowledgeAccess.listShared(reader)).length,0)
     await assert.rejects(knowledgeContent.search(reader,sharedBase.id,"cedar"),error=>error.status===404)
+    await assert.rejects(withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])),error=>error.status===404)
     await assert.rejects(new WorkflowSafeRunRepository(apiPool).submit(owner,workflow.id,{
       expected_revision:2,idempotency_key:"v2-execution-stays-closed"}),e=>e.code==="workflow_execution_node_not_supported")
     assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n,0)

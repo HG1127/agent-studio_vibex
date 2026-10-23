@@ -4,6 +4,7 @@ import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 // adapter pauses the run. Started/unknown effects are never sent again.
 import {readFileSync} from "node:fs"
 import {HttpError,isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
+import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
 import {advanceWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2EffectResult,
   type WorkflowEffectRequest,type WorkflowNodeTransition} from "./workflow-v2-machine.ts"
 import {auditWorkflowV2,checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,
@@ -22,7 +23,7 @@ export interface WorkflowV2EffectExecutor{
 }
 async function tx<T>(pool:SqlPool,fn:(db:SqlClient)=>Promise<T>):Promise<T>{
   const db=await pool.connect();let begun=false
-  try{await db.query("BEGIN");begun=true;const value=await fn(db);await db.query("COMMIT");begun=false;return value}
+  try{await db.query("BEGIN");begun=true;await applyKnowledgeScope(db,pool);const value=await fn(db);await db.query("COMMIT");begun=false;return value}
   catch(error){if(begun)await db.query("ROLLBACK").catch(()=>undefined);throw error}finally{db.release()}
 }
 async function actor(db:SqlClient,owner:string){

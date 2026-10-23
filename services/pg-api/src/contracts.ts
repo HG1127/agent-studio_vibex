@@ -13,6 +13,8 @@ export interface SqlClient {
   release(): void
 }
 export interface SqlPool {
+  /** Trusted service configuration only; never derived from request fields. */
+  readonly knowledgeSharing?:boolean
   connect(): Promise<SqlClient>
 }
 

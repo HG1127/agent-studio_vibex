@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {scopedKnowledgePool} from "./knowledge-scope-policy.ts"
+import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 // Separate, private PG18 Broker. Never mount this handler on Native/8090.
 // Import and --plan perform no credential I/O, database access or listening.
 import {createServer} from "node:https"
@@ -51,6 +54,7 @@ export function boundDispatchServerConfig(
   if(target.mode!=="baota_pg18")refuse()
   try{boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)}
   catch{refuse()}
+  const knowledgeSharingEnabled=selectKnowledgeSharing(env)
   const workflowModelEnabled=selectWorkflowV2ModelExecution(env)
   const workflowToolsEnabled=selectWorkflowV2ToolExecution(env)
   const mcpEnabled=selectMcpExecution(env)
@@ -70,7 +74,7 @@ export function boundDispatchServerConfig(
     if(pin.equals(boundCertificateFingerprint(workflowFingerprint))||pin.equals(boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)))refuse()
   }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
-  return {target,origin,directory,port:7453 as const,
+  return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),
     workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} )}
 }
 export function assertBoundDispatchTlsMaterial(
@@ -127,16 +131,17 @@ export async function startBoundDispatchServer(
   const api=connect("agentstudio_stage_login",apiPassword)
   const identities=connect("agentstudio_bound_dispatch_login",identityPassword)
   const broker=connect("agentstudio_model_broker_login",brokerPassword)
+  const business=scopedKnowledgePool(adapter(api),cfg.knowledgeSharingEnabled===true)
   const pools=[api,identities,broker]
   for(const pool of pools)pool.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
   const endPools=async()=>{await Promise.allSettled(pools.map(pool=>pool.end()))}
   try{
-    await verifyBoundDispatchRole(adapter(api),cfg.target,"api")
+    await verifyBoundDispatchRole(business,cfg.target,"api")
     await verifyBoundDispatchRole(adapter(identities),cfg.target,"identity")
     await verifyBoundDispatchRole(adapter(broker),cfg.target,"broker")
     if(cfg.workflowModelEnabled){
-      await verifyWorkflowModelIdentityPrivileges(adapter(api),"api")
+      await verifyWorkflowModelIdentityPrivileges(business,"api")
       await verifyWorkflowModelIdentityPrivileges(adapter(identities),"identity")
       await verifyWorkflowModelIdentityPrivileges(adapter(broker),"broker")
     }
@@ -148,7 +153,8 @@ export async function startBoundDispatchServer(
     if(cfg.autonomousEnabled)for(const effect of ["autonomous_model","autonomous_tool"] as const)
       for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
         await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
-    if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(adapter(api),adapter(broker));await verifyMcpExecutionSchema(adapter(api))}
+    if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(business,adapter(broker));await verifyMcpExecutionSchema(business)}
+    if(cfg.knowledgeSharingEnabled)await verifyKnowledgeRuntimeSchema(business)
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -157,7 +163,7 @@ export async function startBoundDispatchServer(
         production_cutover_allowed:false}
     }
     const executor=createIsolatedBoundModelExecutor(env,origin,true)
-    const dispatch=new OwnerBoundModelDispatch(adapter(api),encryptionKey,executor,adapter(broker))
+    const dispatch=new OwnerBoundModelDispatch(business,encryptionKey,executor,adapter(broker))
     const handler=createIsolatedBoundModelInternalHandler({
       approvedForIsolatedUat:true,reviewedClientFingerprint256:cfg.workerFingerprint,
       dispatch:createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(adapter(identities)),dispatch),
@@ -169,12 +175,12 @@ export async function startBoundDispatchServer(
       return {
         model:cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
-            new WorkflowV2ModelDispatch(adapter(api),encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
+            new WorkflowV2ModelDispatch(business,encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
               allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,agentExecutor,
               nodeDebugExecutor:autonomous?undefined:createIsolatedWorkflowNodeDebugExecutor(env,origin,true)}))}):undefined,
         tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
-            new WorkflowV2ToolDispatch(adapter(api),encryptionKey,{...createWorkflowToolNetwork(),
+            new WorkflowV2ToolDispatch(business,encryptionKey,{...createWorkflowToolNetwork(),
               ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
               summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
                 allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous}))}):undefined,

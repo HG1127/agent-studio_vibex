@@ -5,6 +5,7 @@ import {HttpError,isUuid,safeName,safeWorkflowGraph,type Identity,type SqlPool,t
 import {withActor} from "./repository.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import {resolveMcpBinding} from "./mcp-binding-resources.ts"
+import {requireKnowledgeScope,storedKnowledgeIds} from "./knowledge-runtime-scope.ts"
 
 export interface WorkflowRow {
   id:string
@@ -47,16 +48,20 @@ export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string
     if(agent||tool){
       const table=agent?"agent_specs":"tool_connections",id=agent?agent.spec_id:tool!.connection_id
       const revision=agent?agent.spec_revision:tool!.connection_revision
-      const row=(await db.query<{revision:number|string}>(
-        "SELECT revision FROM agentstudio."+table+
+      const row=(await db.query<{revision:number|string;spec?:unknown}>(
+        "SELECT revision"+(agent?",spec":"")+" FROM agentstudio."+table+
         " WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,actor])).rows[0]
       if(!row)throw new HttpError(404,"workflow_resource_not_found")
       if(Number(row.revision)!==revision)throw new HttpError(409,"workflow_resource_revision_changed")
+      // Check every bound Agent, including nodes already completed in a stored
+      // graph. A later model/tool may still carry their earlier KB citations.
+      if(agent)await requireKnowledgeScope(db,actor,storedKnowledgeIds(row.spec))
     }
     if(kb?.length){
-      const rows=await db.query<{id:string}>("SELECT id FROM agentstudio.knowledge_bases "+
-        "WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) AND visibility='private' FOR SHARE",[actor,kb])
-      if(rows.rows.length!==kb.length)throw new HttpError(404,"workflow_resource_not_found")
+      try{await requireKnowledgeScope(db,actor,kb)}catch(error){
+        if(error instanceof HttpError&&error.status===404)throw new HttpError(404,"workflow_resource_not_found")
+        throw error
+      }
     }
 }
 async function auditGraphWrite(db:SqlClient,actor:string,row:WorkflowRow,action:string){

@@ -9,6 +9,8 @@ import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
 import {selectPgRuntimeTarget,verifyPgRuntimeTarget} from "./pg-runtime-target.ts"
 import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
 import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 
 export type PgWorkerName="prepare"|"model"
 const allowedStages=[
@@ -33,6 +35,7 @@ export async function runPg18NativeWorkerReadonlyPreflight(kind:PgWorkerName):Pr
   try{
     assertPg18WorkerCredentialBinding(process.env,kind)
     stage="runtime_target_config"
+    const knowledgeSharing=selectKnowledgeSharing(process.env)
     if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true")
       throw Error("pilot_disabled")
     const target=selectPgRuntimeTarget(process.env,"worker")
@@ -82,6 +85,7 @@ export async function runPg18NativeWorkerReadonlyPreflight(kind:PgWorkerName):Pr
     await verifyPgRuntimeTarget(adapter,target)
     stage="worker_role_boundary"
     await verifyPgWorkerRoleBoundary(adapter,target)
+    if(knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter)
     // The additive operator package may reuse an older SHA-pinned general
     // verifier. Audit optional credentials here too so that package cannot
     // silently omit this boundary while preserving the old reviewed files.

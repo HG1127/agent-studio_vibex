@@ -36,7 +36,17 @@ const functions=[
   ["knowledge_content_search(uuid,text,integer)",helpers[1],true],["knowledge_content_receipt(uuid,uuid)",helpers[1],true],
   ["knowledge_content_import(uuid,uuid,text,text,text)",helpers[1],true],["knowledge_content_delete(uuid,uuid,uuid,text)",helpers[1],true],
 ] as const
+const runtimeFunctions=[
+  ["knowledge_runtime_scope(uuid[])",helpers[1],true],
+  ["knowledge_runtime_search(uuid,text)",helpers[1],true],
+] as const
 export async function verifyKnowledgeContentSchema(pool:SqlPool):Promise<void>{
+  return verifySchema(pool,false)
+}
+export async function verifyKnowledgeRuntimeSchema(pool:SqlPool):Promise<void>{
+  return verifySchema(pool,true)
+}
+async function verifySchema(pool:SqlPool,runtime:boolean):Promise<void>{
   const db=await pool.connect()
   try{
     await db.query("BEGIN READ ONLY")
@@ -52,7 +62,7 @@ export async function verifyKnowledgeContentSchema(pool:SqlPool):Promise<void>{
         "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' "+
         "AND c.relname IN ('knowledge_access','knowledge_access_receipts','knowledge_content_receipts','knowledge_bases','knowledge_documents','knowledge_chunks')")).rows
       if(tables.length!==6||tables.some(row=>!row.safe))refuse()
-      for(const [signature,owner,api] of functions){
+      for(const [signature,owner,api] of runtime?[...functions,...runtimeFunctions]:functions){
         const row=(await db.query<{safe:boolean;config:string[];owner:string;api:boolean;others:boolean}>("SELECT p.prosecdef AS safe,p.proconfig AS config,r.rolname AS owner,"+
           "has_function_privilege('agentstudio_api',p.oid,'EXECUTE') AS api,"+
           "(has_function_privilege('agentstudio_worker',p.oid,'EXECUTE') OR has_function_privilege('agentstudio_model_broker',p.oid,'EXECUTE') OR "+

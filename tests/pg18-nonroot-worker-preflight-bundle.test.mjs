@@ -11,7 +11,7 @@ test("PG18 transient nonroot preflight source-only bundle is complete",()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),"pg18-nonroot-bundle-"))
   try{
     const report=buildNonrootPg18PreflightBundle(dir)
-    assert.equal(report.files,13)
+    assert.equal(report.files,14)
     assert.equal(report.manifest_verified,true)
     assert.equal(report.source_only,true)
     assert.equal(report.two_worker_offline_plans_verified,true)
@@ -39,6 +39,7 @@ test("PG18 transient nonroot preflight source-only bundle is complete",()=>{
       "services/pg-api/src/worker-role-preflight.ts",
       "services/pg-api/src/optional-credential-boundary.ts",
       "services/pg-api/src/knowledge-content-privileges.ts",
+      "services/pg-api/src/knowledge-sharing-policy.ts",
       "services/pg-api/src/worker-credential-policy.ts",
       "services/pg-api/src/pg18-native-worker-readonly.ts",
       "services/pg-api/src/pg-runtime-target.ts",

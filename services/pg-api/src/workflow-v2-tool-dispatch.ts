@@ -5,7 +5,8 @@ import {withActor} from "./repository.ts"
 import {withModelBrokerActor} from "./model-broker-actor.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
-import {gatherPrivateKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
+import {gatherAuthorizedKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
+import {sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
 import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {checkedWorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
 import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch,finishWorkflowEffectDispatch,WorkflowV2EffectLeaseIdentity} from "./workflow-v2-dispatch-guard.ts"
@@ -62,8 +63,8 @@ export class WorkflowV2ToolDispatch{
       let headerRefs:HeaderRef[]=[]
       if(plan.kind==="calculate")output=plan.output
       else if(plan.kind==="knowledge_search"){
-        if(plan.ids.length){const hits=await gatherPrivateKnowledgeEvidence(db,owner,plan.ids,plan.query)
-          output=searchOutput("owner_private_keyword",hits)}
+        if(plan.ids.length){const hits=await gatherAuthorizedKnowledgeEvidence(db,owner,plan.ids,plan.query)
+          output=searchOutput(await sharedKnowledgeScopeEnabled(db)?"authorized_keyword":"owner_private_keyword",hits)}
         else output=await workflowContext(db,owner,request.claim.run_id,plan.query)
       }else{
         const operation=plan.kind==="mcp"?this.executor.mcp:plan.kind==="http"?this.executor.http:plan.kind==="summarize"?this.executor.summarize:
@@ -104,6 +105,9 @@ export class WorkflowV2ToolDispatch{
     let text="",failed=true,confirmedToolFailure=false
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
     try{
+      const recheck=()=>withActor(this.pool,identity,async(db,owner)=>{
+        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous)
+      })
       const execute=async()=>{
         const plan=selected.plan
         if(selected.output!==undefined)return selected.output
@@ -119,6 +123,7 @@ export class WorkflowV2ToolDispatch{
               return {key:header.header_name,value:value.value as string}
             })}
           })
+          await recheck()
           const result=await this.executor.mcp!(material,plan.args,controller.signal)
           if(!result||Object.keys(result).length!==2||typeof result.text!=="string"||typeof result.isError!=="boolean")throw Error("invalid_mcp_call_result")
           confirmedToolFailure=result.isError
@@ -149,6 +154,7 @@ export class WorkflowV2ToolDispatch{
             })
             return {...row,headers}
           })
+          await recheck()
           return this.executor.http!(material,plan.args,controller.signal)
         }
         if(plan.kind==="summarize"){
@@ -160,8 +166,10 @@ export class WorkflowV2ToolDispatch{
             return {provider:row.provider,base_url:row.base_url,model_id:plan.binding.model_id,api_key:decryptModelSecret({
               ciphertext:Buffer.from(row.api_key_ciphertext),nonce:Buffer.from(row.api_key_nonce),tag:Buffer.from(row.api_key_tag)},this.key)}
           })
+          await recheck()
           return this.executor.summarize!(material,plan.prompt,controller.signal)
         }
+        await recheck()
         if(plan.kind==="web_fetch")return this.executor.webFetch!(plan.url,controller.signal)
         if(plan.kind==="web_search")return this.executor.webSearch!(plan.query,plan.limit,controller.signal)
         throw Error("workflow_tool_operation_unavailable")

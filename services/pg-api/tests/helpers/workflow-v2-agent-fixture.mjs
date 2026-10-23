@@ -20,15 +20,16 @@ import {withDisposableBoundModelTls} from "./bound-model-loopback-tls.mjs"
 export const issuer="https://synthetic-workflow-agent.invalid",alice={issuer,subject:"alice"},bob={issuer,subject:"bob"}
 const sql=file=>readFileSync(new URL("../../../../db/postgres/"+file,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
-export async function agentFixture({autonomous=false,mcp=false,smithery=false}={}){
+export async function agentFixture({autonomous=false,mcp=false,smithery=false,sharing=false}={}){
   const db=await PGlite.create({extensions:{vector}});await db.exec(sql("001_stage_schema.sql"))
   await db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic predecessor')")
   for(const migration of ["pg_v9_024_bound_dispatch_identity.sql","pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql",...(autonomous||mcp?["pg_v9_028_autonomous_agent_identity.sql"]:[]),...(mcp?["pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql"]:[])])
     await db.exec(sql("migrations/"+migration))
   if(smithery){if(!mcp)throw Error("smithery_requires_mcp_fixture");await db.exec(sql("migrations/pg_v9_031_smithery_managed.sql"))}
+  if(sharing){if(!smithery)throw Error("sharing_requires_full_predecessors");for(const version of ["032_knowledge_access","033_knowledge_content","034_knowledge_runtime"])await db.exec(sql("migrations/pg_v9_"+version+".sql"))}
   const users={};for(const subject of ["alice","bob"])users[subject]=(await db.query("INSERT INTO agentstudio.users(external_issuer,external_subject) VALUES($1,$2) RETURNING id",[issuer,subject])).rows[0].id
   let tail=Promise.resolve(),fault,beforeDispatch
-  const pool={async connect(){const before=tail;let release;tail=new Promise(resolve=>{release=resolve});await before
+  const pool={knowledgeSharing:sharing,async connect(){const before=tail;let release;tail=new Promise(resolve=>{release=resolve});await before
     return {async query(text,values=[]){fault?.(text,values);return db.query(text,values)},release}}}
   const key=Buffer.from("0123456789abcdef".repeat(4),"hex"),models=new ModelConnectionRepository(pool,key),agents=new AgentSpecRepository(pool)
   const bases=new KnowledgeBaseRepository(pool),resources={}
@@ -57,10 +58,10 @@ export async function agentFixture({autonomous=false,mcp=false,smithery=false}={
     const pending=(await runs.get(alice,id)).pending_effect
     return runs.decide(alice,id,{decision,step_key:pending.step_key,input_sha256:pending.input_sha256})
   }
-  async function privateTls(planning,run,{allowAgent=true,toolExecutor={}}={}){
-    const model=new WorkflowV2ModelDispatch(pool,key,async()=>{throw Error("direct model fallback forbidden")},pool,
+  async function privateTls(planning,run,{allowAgent=true,toolExecutor={},businessPool=pool,brokerPool=pool}={}){
+    const model=new WorkflowV2ModelDispatch(businessPool,key,async()=>{throw Error("direct model fallback forbidden")},brokerPool,
       {allowAgentExecution:!autonomous&&allowAgent,allowAutonomousExecution:autonomous&&allowAgent,agentExecutor:planning})
-    const tool=new WorkflowV2ToolDispatch(pool,key,toolExecutor,pool,{allowAgentExecution:!autonomous&&allowAgent,allowAutonomousExecution:autonomous&&allowAgent})
+    const tool=new WorkflowV2ToolDispatch(businessPool,key,toolExecutor,brokerPool,{allowAgentExecution:!autonomous&&allowAgent,allowAutonomousExecution:autonomous&&allowAgent})
     const modelIdentity=new WorkflowV2ModelLeaseIdentity(pool),toolIdentity=new WorkflowV2ToolLeaseIdentity(pool)
     const dispatch={model:verifiedWorkflowV2ModelDispatch(modelIdentity,model),tool:verifiedWorkflowV2ToolDispatch(toolIdentity,tool)}
     const factories=raw=>{

@@ -58,6 +58,12 @@ export class WorkflowV2ModelDispatch{
           api_key:decryptModelSecret({ciphertext:Buffer.from(row.api_key_ciphertext),nonce:Buffer.from(row.api_key_nonce),
             tag:Buffer.from(row.api_key_tag)},this.key)}
       })
+      // Credential loading is a separate transaction. Re-check current grants
+      // and the sealed lease after it, immediately before any paid request.
+      await withActor(this.pool,identity,async(db,owner)=>{
+        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous)
+        if(pending.input!==selected.prompt)changed()
+      })
       const controller=new AbortController()
       let timer:ReturnType<typeof setTimeout>|undefined
       try{text=await Promise.race([(selected.agent?this.agentExecutor!:selected.nodeDebug?this.nodeDebugExecutor!:this.executor)(material,selected.prompt,controller.signal),new Promise<never>((_,reject)=>{

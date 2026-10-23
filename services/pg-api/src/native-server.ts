@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {scopedKnowledgePool} from "./knowledge-scope-policy.ts"
 import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
@@ -24,7 +25,7 @@ import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {KnowledgeBaseRepository} from "./knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
-import {verifyKnowledgeContentSchema} from "./knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 import {createHandler} from "./http.ts"
 import {NativeAuthRepository} from "./native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "./native-auth-http.mjs"
@@ -294,13 +295,14 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
+  const business=scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
   try{
-    await verifyPgRuntimeTarget(adapter(businessPool),cfg.api)
-    await verifyDatabaseRole(adapter(businessPool))
+    await verifyPgRuntimeTarget(business,cfg.api)
+    await verifyDatabaseRole(business)
     await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
       // Read-only, before opening HTTP. The model secret broker must be
@@ -334,15 +336,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
     // A separate, strictly read-only deployment preflight never opens HTTP.
     if(capabilities.mcpDiscoveryUat===true){
       if(!brokerPool)reject()
-      await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
+      await verifyMcpDiscoveryPrivileges(business,adapter(brokerPool))
     }
-    if(capabilities.mcpToolExecutionUat===true)await verifyMcpExecutionSchema(adapter(businessPool))
+    if(capabilities.mcpToolExecutionUat===true)await verifyMcpExecutionSchema(business)
     if(capabilities.smitheryManagementUat===true){
       if(!brokerPool)reject()
-      await verifyMcpDiscoveryPrivileges(adapter(businessPool),adapter(brokerPool))
-      await verifySmitheryPrivileges(adapter(businessPool),adapter(brokerPool))
+      await verifyMcpDiscoveryPrivileges(business,adapter(brokerPool))
+      await verifySmitheryPrivileges(business,adapter(brokerPool))
     }
-    if(capabilities.knowledgeSharingUat===true)await verifyKnowledgeContentSchema(adapter(businessPool))
+    if(capabilities.knowledgeSharingUat===true)await verifyKnowledgeRuntimeSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -386,15 +388,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
-      repository:new AgentSpecRepository(adapter(businessPool)),
+      repository:new AgentSpecRepository(business),
       modelConnectionRepository:new ModelConnectionRepository(
-        adapter(businessPool),modelEncryptionKey,
-        brokerPool?adapter(brokerPool):adapter(businessPool)),
+        business,modelEncryptionKey,
+        brokerPool?adapter(brokerPool):business),
       toolConnectionRepository:new ToolConnectionRepository(
-        adapter(businessPool),modelEncryptionKey),
-      mcpConnectionRepository:new McpConnectionRepository(adapter(businessPool),modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),
+        business,modelEncryptionKey),
+      mcpConnectionRepository:new McpConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),
       ...(capabilities.mcpDiscoveryUat===true?{mcpDiscovery:createMcpDiscovery(createMcpNetwork())}:{}),
-      ...(capabilities.smitheryManagementUat===true?{smitheryRepository:new SmitheryRepository(adapter(businessPool),modelEncryptionKey,adapter(brokerPool!),createSmitheryNetwork())}:{}),
+      ...(capabilities.smitheryManagementUat===true?{smitheryRepository:new SmitheryRepository(business,modelEncryptionKey,adapter(brokerPool!),createSmitheryNetwork())}:{}),
       // Explicit opt-in is required for ANY provider-network egress.
       ...(capabilities.modelProbeUat===true
         ?{modelConnectionProbe:createProviderConnectivityProbe()}:{}),
@@ -403,26 +405,26 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // the SECOND explicit isolated UAT grant is present. Model binding
       // submission additionally requires the independent generation UAT grant.
       // The public API never constructs a provider executor or private Broker.
-      runRepository:createNativeRunRepository(adapter(businessPool),capabilities),
-      workflowRepository:new WorkflowRepository(adapter(businessPool)),
+      runRepository:createNativeRunRepository(business,capabilities),
+      workflowRepository:new WorkflowRepository(business),
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
-      workflowSafeRunRepository:new WorkflowSafeRunRepository(adapter(businessPool)),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(adapter(businessPool),{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(adapter(businessPool),"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
+      workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
         ?{workflowValidationRepository:new WorkflowValidationRepository(
-          adapter(businessPool))}:{}),
-      knowledgeRepository:new KnowledgeBaseRepository(adapter(businessPool)),
+          business)}:{}),
+      knowledgeRepository:new KnowledgeBaseRepository(business),
       ...(capabilities.knowledgeSharingUat===true?{
-        knowledgeAccessRepository:new KnowledgeAccessRepository(adapter(businessPool),(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
-        knowledgeContentRepository:new KnowledgeContentRepository(adapter(businessPool)),
+        knowledgeAccessRepository:new KnowledgeAccessRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
+        knowledgeContentRepository:new KnowledgeContentRepository(business),
       }:{}),
-      scheduleInventory:new ScheduleInventoryRepository(adapter(businessPool)),
+      scheduleInventory:new ScheduleInventoryRepository(business),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
-        ?{scheduleDraftRepository:new ScheduleDraftRepository(adapter(businessPool))}:{})
+        ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
     })
     const localServer=createServer(native.handler)
     server=localServer

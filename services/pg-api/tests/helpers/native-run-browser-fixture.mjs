@@ -33,7 +33,7 @@ import {WorkflowSafeRunRepository} from "../../src/workflow-safe-run-repository.
 import {KnowledgeBaseRepository} from "../../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../../src/knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "../../src/knowledge-content-repository.ts"
-import {verifyKnowledgeContentSchema} from "../../src/knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema} from "../../src/knowledge-content-privileges.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
 import {ToolConnectionRepository} from "../../src/tool-connection-repository.ts"
 import {McpConnectionRepository} from "../../src/mcp-connection-repository.ts"
@@ -64,7 +64,7 @@ let queue=Promise.resolve(),server,vite,stop
 const stopped=new Promise(resolve=>{stop=resolve})
 // PGlite has one SQL connection: serialize whole transactions, including
 // simultaneous browser reads, rather than interleaving employee role state.
-const pool={async connect(){
+const pool={knowledgeSharing:modern,async connect(){
   const before=queue;let release
   queue=new Promise(resolve=>{release=resolve});await before
   return {query:(sql,values=[])=>db.query(sql,values),release}
@@ -82,10 +82,10 @@ try{
   await db.exec("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic browser predecessor')")
   await db.exec(load("db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql")
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql"])
+  if(modern)for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql","pg_v9_034_knowledge_runtime.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
-  if(modern)await verifyKnowledgeContentSchema(pool)
+  if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
   const admin=await auth.login("alice@example.com","SyntheticAlicePassword#2026")
   await auth.provisionEmployee(admin.token,{email:"bob@example.com",password:"SyntheticBobPassword#2026",display_name:"Browser Bob"})

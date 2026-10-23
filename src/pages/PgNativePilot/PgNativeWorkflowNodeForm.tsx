@@ -79,6 +79,8 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
         {data.tool==="knowledge_search"&&<fieldset className="space-y-2"><legend className="text-sm font-medium">检索知识库（最多三个）</legend>
           {bases.map(base=><label className="flex items-start gap-2 text-sm" key={base.id}><input type="checkbox" checked={data.knowledge_base_ids?.includes(base.id)??false}
             disabled={!enabled||!data.knowledge_base_ids?.includes(base.id)&&(data.knowledge_base_ids?.length??0)>=3} onChange={event=>change({knowledge_base_ids:event.target.checked?[...(data.knowledge_base_ids??[]),base.id]:(data.knowledge_base_ids??[]).filter(id=>id!==base.id)})}/>{base.name}</label>)}
+          {(data.knowledge_base_ids??[]).filter(id=>!bases.some(base=>base.id===id)).map(id=><label className="flex items-start gap-2 break-all text-sm text-amber-900" key={id}>
+            <input type="checkbox" checked aria-label={"不可用知识库 "+id} onChange={()=>change({knowledge_base_ids:(data.knowledge_base_ids??[]).filter(value=>value!==id)})}/>不可用知识库 {id}，请移除或重新核对授权。</label>)}
         </fieldset>}
         {text("params_template","工具参数模板（JSON）")}
       </>}

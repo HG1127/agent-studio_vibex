@@ -13,6 +13,7 @@ import PgNativeSchedulesReadonlyPanel from "./PgNativeSchedulesReadonlyPanel"
 import {createPgNativeSessionReadFence} from "@/lib/pgNativeSessionReadFence"
 import PgNativeAgentModelBindingPanel from "./PgNativeAgentModelBindingPanel"
 import PgNativeAgentHttpToolsPanel from "./PgNativeAgentHttpToolsPanel"
+import PgNativeAgentKnowledgePanel from "./PgNativeAgentKnowledgePanel"
 import PgNativeAgentMcpToolsPanel from "./PgNativeAgentMcpToolsPanel"
 import PgNativeRunHistoryReadonlyPanel from "./PgNativeRunHistoryReadonlyPanel"
 import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistoryReadonlyPanel"
@@ -95,6 +96,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [agents,setAgents]=useState<PgNativeAgent[]>([])
   const [workflows,setWorkflows]=useState<PgNativeWorkflow[]>([])
   const [knowledge,setKnowledge]=useState<PgNativeKnowledge[]>([])
+  const [readableKnowledge,setReadableKnowledge]=useState<PgNativeKnowledge[]>([])
   const [employees,setEmployees]=useState<PgNativeEmployee[]>([])
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
   const [toolConnections,setToolConnections]=useState<PgNativeToolConnection[]>([])
@@ -128,13 +130,14 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
     setAutonomousEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
     setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
-    setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
+    setAgents([]);setWorkflows([]);setKnowledge([]);setReadableKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
     clearPrivateDrafts()
     setError("员工登录已失效，请重新登录。")
   },[clearPrivateDrafts])
   const refresh=useCallback(async()=>{
     const ticket=sessionFence.current.beginRead()
+    setReadableKnowledge([])
     setConfigEditEnabled(false);setWorkflowV2Enabled(false)
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
     setLoading(true)
@@ -147,6 +150,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
         api.getConfigCapabilities().catch(()=>null),
       ])
       if(!sessionFence.current.acceptsRead(ticket))return
+      const shared=capability?.knowledge_sharing_enabled===true&&capability.config_writes_enabled===true?await api.listSharedKnowledge():[]
+      if(!sessionFence.current.acceptsRead(ticket))return
+      setReadableKnowledge([...k,...shared.filter(base=>!k.some(own=>own.id===base.id)).map(base=>({id:base.id,name:base.name+" · "+base.owner_name+"共享 · "+(base.access_role==="editor"?"可编辑":"可查看"),description:base.description,revision:base.base_revision}))])
       setAgents(a);setWorkflows(w);setKnowledge(k);setModelConnections(m)
       setToolConnections(t)
       setConfigEditEnabled(capability?.config_writes_enabled===true)
@@ -216,7 +222,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     if(busy)return
     const sessionAtStart=sessionFence.current.invalidate()
     clearPrivateDrafts()
-    setAgents([]);setWorkflows([]);setKnowledge([]);setModelConnections([])
+    setAgents([]);setWorkflows([]);setKnowledge([]);setReadableKnowledge([]);setModelConnections([])
     setToolConnections([])
     setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
@@ -244,7 +250,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     // Hide all private information before the network logout completes.
     setProfile(null);setStatus("checking")
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
-    setAgents([]);setWorkflows([]);setKnowledge([]);setEmployees([]);setModelConnections([])
+    setAgents([]);setWorkflows([]);setKnowledge([]);setReadableKnowledge([]);setEmployees([]);setModelConnections([])
     setToolConnections([])
     setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
@@ -499,9 +505,11 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             </>}
             <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentMcpToolsPanel key={profile.id} api={api} agents={agents}
               active={section==="agents"} enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}</div>
+            <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentKnowledgePanel key={profile.id} api={api} agents={agents} bases={readableKnowledge}
+              active={section==="agents"} enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}</div>
             <div hidden={section!=="workflows"}>
               {(workflowCanvasOpened||section==="workflows")&&<Suspense fallback={<p role="status">加载工作流画布中…</p>}>
-                <PgNativeWorkflowWorkspace key={profile.id} api={api} workflows={workflows} agents={agents} models={modelConnections} tools={toolConnections} bases={knowledge}
+                <PgNativeWorkflowWorkspace key={profile.id} api={api} workflows={workflows} agents={agents} models={modelConnections} tools={toolConnections} bases={readableKnowledge}
                   active={section==="workflows"} writeEnabled={configEditEnabled&&!loading&&!busy} executionEnabled={workflowV2Enabled&&!loading&&!busy}
                   onExpired={expireAgentSession} onSaved={refresh} onRun={(id,revision)=>{
                     setWorkflowRunTarget(previous=>({id,revision,selection:(previous?.selection??0)+1}));setWorkflowRunsOpened(true);setSection("workflowNativeRuns")

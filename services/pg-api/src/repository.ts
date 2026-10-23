@@ -4,6 +4,8 @@ import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import {parseAgentHttpTools} from "./agent-http-tools.ts"
 import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
 import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
+import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
+import {requireKnowledgeScope} from "./knowledge-runtime-scope.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -22,6 +24,7 @@ export async function withActor<T>(
   try {
     await client.query("BEGIN")
     begun=true
+    await applyKnowledgeScope(client,pool)
     await client.query("SET LOCAL ROLE agentstudio_api")
     const result=await client.query<{id:string|null}>(
       "SELECT agentstudio.identity_user_id($1::text,$2::text) AS id",
@@ -76,13 +79,7 @@ async function verifyKnowledgeSelection(db:SqlClient,actor:string,
      (ids.length>0&&!spec.tools.includes("knowledge_search")))
     throw new HttpError(400,"invalid_agent_knowledge_scope")
   if(!ids.length)return
-  const rows=await db.query<{id:string}>(
-    "SELECT id FROM agentstudio.knowledge_bases "+
-    "WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) "+
-    "AND visibility='private'",[actor,ids])
-  if(rows.rows.length!==ids.length ||
-     rows.rows.some(row=>!ids.includes(row.id)))
-    throw new HttpError(404,"knowledge_base_not_found")
+  await requireKnowledgeScope(db,actor,ids)
 }
 
 // Bind an Agent to a model through an owner-scoped PostgreSQL SELECT.

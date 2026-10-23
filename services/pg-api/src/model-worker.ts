@@ -5,6 +5,8 @@ import {createHash} from "node:crypto"
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
+import {applyKnowledgeScope,sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
+import {requireKnowledgeScope} from "./knowledge-runtime-scope.ts"
 import type {ModelInput,ModelProvider} from "./model-provider.ts"
 import type {LeasedPrepareJob} from "./agent-worker.ts"
 import {gatherAgentKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
@@ -29,6 +31,7 @@ async function tx<T>(pool:SqlPool,fn:(db:SqlClient)=>Promise<T>):Promise<T>{
   try{
     await db.query("BEGIN")
     begun=true
+    await applyKnowledgeScope(db,pool)
     const result=await fn(db)
     await db.query("COMMIT")
     begun=false
@@ -169,6 +172,11 @@ export class AgentModelWorker {
         !/^[A-Za-z0-9._:/-]{1,120}$/.test(binding.model_id)))
         throw Error("invalid_bound_model_execution_binding")
       const bases=data.knowledge_base_ids===undefined?[]:data.knowledge_base_ids
+      if(await sharedKnowledgeScopeEnabled(db)){
+        const scope=await requireKnowledgeScope(db,current.owner_user_id,bases as string[])
+        if(scope.some(base=>base.owner_user_id!==current.owner_user_id)&&!selectedBinding)
+          throw Error("shared_knowledge_requires_owner_model_binding")
+      }
       const evidence=await gatherAgentKnowledgeEvidence(db,current.owner_user_id,
         bases,data.tools,run.instruction)
       const input:ModelInput={

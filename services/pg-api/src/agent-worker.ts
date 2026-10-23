@@ -5,6 +5,7 @@
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {isUuid,type SqlPool,type SqlClient} from "./contracts.ts"
+import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
 
 const sql=(name:string)=>readFileSync(
   fileURLToPath(new URL("../../../db/postgres/"+name,import.meta.url)),"utf8")
@@ -47,6 +48,7 @@ async function inTransaction<T>(
   try{
     await db.query("BEGIN")
     started=true
+    await applyKnowledgeScope(db,pool)
     const value=await body(db)
     await db.query("COMMIT")
     started=false

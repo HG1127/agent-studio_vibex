@@ -53,7 +53,8 @@ test("paid UAT capability alone does not register any browser-facing model execu
 test("native API never mounts the private Worker/Broker paid dispatch handler",()=>{
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../../..")
   const api=readFileSync(path.join(root,"services/pg-api/src/native-server.ts"),"utf8")
-  assert.match(api,/createNativeRunRepository\(adapter\(businessPool\),capabilities\)/)
+  assert.match(api,/scopedKnowledgePool\(adapter\(businessPool\),capabilities\.knowledgeSharingUat===true\)/)
+  assert.match(api,/createNativeRunRepository\(business,capabilities\)/)
   for(const source of [api]){
     assert.doesNotMatch(source,/allowBoundModelRuns/)
     assert.doesNotMatch(source,/boundModelDispatch/)

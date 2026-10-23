@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build ONE source-only PG18 Prepare+Model readonly native Worker review ZIP.
 
-Only six audited additive files plus a README and SHA manifest. The
+Only seven audited additive files plus a README and SHA manifest. The
 existing 0440/ACL credential policy remains in the original separately
 audited directory. No existing SHA locked file is modified/replaced.
 No secrets, model providers, actual task engine, or npm packages included.
@@ -21,6 +21,7 @@ FILES=(
     "services/pg-api/src/pg18-model-readonly-preflight.ts",
     "services/pg-api/src/optional-credential-boundary.ts",
     "services/pg-api/src/knowledge-content-privileges.ts",
+    "services/pg-api/src/knowledge-sharing-policy.ts",
 )
 README="README_PG18_NATIVE_WORKER_PREFLIGHT.txt"
 MANIFEST="SHA256SUMS_NATIVE_WORKER_PREFLIGHT"
@@ -34,13 +35,14 @@ prepare_readonly_verified=true, systemd_run_exit_code=0. The old PocketBase
 and PocketBase Worker remain active. This did NOT start the actual PG18
 Prepare/Model Worker task loops or invoke any model provider.
 
-This ZIP adds SIX source files:
+This ZIP adds SEVEN source files:
   ops/baota-pg18-worker-native-preflight-review.py
   services/pg-api/src/pg18-native-worker-readonly.ts
   services/pg-api/src/pg18-prepare-readonly-preflight.ts
   services/pg-api/src/pg18-model-readonly-preflight.ts
   services/pg-api/src/optional-credential-boundary.ts
   services/pg-api/src/knowledge-content-privileges.ts
+  services/pg-api/src/knowledge-sharing-policy.ts
 plus this README and SHA256SUMS_NATIVE_WORKER_PREFLIGHT.
 
 The same pg18-native-worker-readonly.ts is dynamically imported by the

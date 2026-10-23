@@ -2,9 +2,12 @@
 //
 // The Model Worker calls this ONLY after the run and approval have passed
 // owner/lease checks and SET LOCAL ROLE agentstudio_api has been established.
-// It returns bounded plain-text citations from indexed, owner-private chunks.
+// It returns bounded plain-text citations from private or currently granted
+// indexed chunks, according to the trusted transaction capability context.
 // No network, provider, embedding generation, model calls, queue or writes.
 import {isUuid,type SqlClient} from "./contracts.ts"
+import {requireKnowledgeScope} from "./knowledge-runtime-scope.ts"
+import {sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
 
 export interface AgentKnowledgeEvidence {
   baseId:string
@@ -30,11 +33,11 @@ function validEvidence(row:{
   document_id:unknown;filename:unknown;chunk_index:unknown;snippet:unknown
 }):row is {document_id:string;filename:string;chunk_index:number;snippet:string}{
   return isUuid(row.document_id)&&typeof row.filename==="string"&&
-    row.filename.length>=1&&row.filename.length<=180&&
+    Array.from(row.filename).length>=1&&Array.from(row.filename).length<=180&&
     !/[\r\n\u0000-\u001f\u007f]/u.test(row.filename)&&
     Number.isSafeInteger(Number(row.chunk_index))&&Number(row.chunk_index)>=0&&
     typeof row.snippet==="string"&&row.snippet.length>0&&
-    row.snippet.length<=320&&!row.snippet.includes("\u0000")
+    Array.from(row.snippet).length<=320&&!row.snippet.includes("\u0000")
 }
 export async function gatherAgentKnowledgeEvidence(
   db:SqlClient,ownerId:string,ids:unknown,tools:unknown,
@@ -46,7 +49,25 @@ export async function gatherAgentKnowledgeEvidence(
     throw Error("invalid_agent_knowledge_scope")
   if(ids.length===0)return []
   if(!tools.includes("knowledge_search"))throw Error("unapproved_knowledge_tool")
-  return gatherPrivateKnowledgeEvidence(db,ownerId,ids,knowledgeSearchTerm(instruction))
+  return gatherAuthorizedKnowledgeEvidence(db,ownerId,ids,knowledgeSearchTerm(instruction))
+}
+// Shared grants are resolved from the verified transaction actor. Neither a
+// caller-provided owner nor a credential from the base owner is substituted.
+export async function gatherAuthorizedKnowledgeEvidence(db:SqlClient,actor:string,ids:string[],query:string):Promise<AgentKnowledgeEvidence[]>{
+  if(!await sharedKnowledgeScopeEnabled(db))return gatherPrivateKnowledgeEvidence(db,actor,ids,query)
+  if(typeof query!=="string"||!query.trim()||Array.from(query).length>80||/[\u0000-\u001f\u007f]/u.test(query))
+    throw Error("invalid_agent_knowledge_query")
+  await requireKnowledgeScope(db,actor,ids)
+  const evidence:AgentKnowledgeEvidence[]=[]
+  for(const baseId of ids){
+    const rows=(await db.query<{document_id:unknown;filename:unknown;chunk_index:unknown;snippet:unknown}>(
+      "SELECT * FROM agentstudio.knowledge_runtime_search($1::uuid,$2::text)",[baseId,query])).rows
+    for(const row of rows){
+      if(!validEvidence(row))throw Error("untrusted_agent_knowledge_evidence")
+      evidence.push({baseId,documentId:row.document_id,chunkIndex:Number(row.chunk_index),citation:row.filename+"#chunk-"+Number(row.chunk_index),snippet:row.snippet})
+    }
+  }
+  return evidence
 }
 // Literal owner-private lookup for explicit Tool queries. Unlike Agent phrase
 // extraction, a one-character query remains exactly the approved query.
