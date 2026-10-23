@@ -74,7 +74,7 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
     await expect(settings(alice).getByRole("status",{name:"本人语义索引状态",exact:true})).toContainText("已索引 1 / 1")
     expect((await control("index")).status).toBe("idle");expect((await state()).indexEmbeddings).toBe(1)
 
-    bobContext=await context();const bob=await bobContext.newPage();await bob.goto(info.url,{waitUntil:"domcontentloaded"});await login(bob,"bob")
+    bobContext=await context();const bob=await bobContext.newPage();bob.on("console",message=>{if(message.text().startsWith("pg-knowledge-"))console.log("SYNTHETIC_MODE_EVENT",message.text())});await bob.goto(info.url,{waitUntil:"domcontentloaded"});await login(bob,"bob")
     await query(bob).getByRole("checkbox",{name:"Semantic source KB · Browser Alice共享 · 可查看",exact:true}).check()
     await query(bob).getByRole("textbox",{name:"查询内容",exact:true}).fill("cedar")
     await expect(query(bob).getByRole("combobox",{name:"查询方式",exact:true})).toHaveValue("lexical")
