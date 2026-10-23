@@ -192,6 +192,37 @@ try {
   assert.ok(recentB.items.every(row=>row.id!==aRun.run_id&&row.id!==aInputRun.run_id))
   assert.doesNotMatch(JSON.stringify(recentB),/CONFIDENTIAL-A|团队内部 Agent/)
 
+  // A narrowly scoped design-wizard query must apply spec_id inside SQL,
+  // before the global top-20 limit. An older Agent should not appear as
+  // "unrun" merely because 20 other tasks were started later.
+  const targetSpec = await requireStatus("POST","/api/agent_specs","A",{
+    name:"跨任务历史核验",spec:{goal:"验证当前 Agent 的独立运行记录",tools:[]},
+  })
+  const targetRun = await requireStatus("POST","/api/agent-runs/start","A",{
+    spec_id:targetSpec.id,instruction:"OWNER-SCOPED-TARGET-RUN",
+  })
+  for (let i=0;i<20;i++) {
+    await requireStatus("POST","/api/agent-runs/start","A",{
+      spec_id:aSpec.id,instruction:"SCOPED-HISTORY-DISPLACER-"+i,
+    })
+  }
+  const globalPage = await requireStatus("GET","/api/agent-runs/recent?limit=20","A")
+  assert.ok(!globalPage.items.some(item=>item.id===targetRun.run_id),
+    "the target's run must genuinely be older than the global recent page")
+  const targetPage = await requireStatus("GET",
+    "/api/agent-runs/recent?limit=20&spec_id="+targetSpec.id,"A")
+  assert.deepEqual(targetPage.items.map(item=>item.id),[targetRun.run_id])
+  assert.equal(targetPage.items[0].spec_id,targetSpec.id)
+  assert.ok(!targetPage.items.some(item=>item.instruction.startsWith("SCOPED-HISTORY-DISPLACER")))
+  const otherUserPage = await requireStatus("GET",
+    "/api/agent-runs/recent?spec_id="+targetSpec.id+"&rh_user_id=A","B")
+  assert.deepEqual(otherUserPage.items,[],"a foreign owner cannot obtain the target run")
+  const wrongOwnerPage = await requireStatus("GET",
+    "/api/agent-runs/recent?spec_id="+bSpec.id,"A")
+  assert.deepEqual(wrongOwnerPage.items,[])
+  await requireStatus("GET","/api/agent-runs/recent?spec_id=bad'OR'1=1","A",undefined,400)
+
+
   // More than a page of pending tasks: filters and paging must be from SQL,
   // not an in-memory slice of the 20 latest records.
   const pagingDb=new DatabaseSync(path.join(dir,"data.db"),{timeout:5000})

@@ -75,6 +75,11 @@ try {
   assert.equal(unauthorized.status, 401, "Unauthenticated worker call was permitted")
   const wrong = await req("POST", "/api/internal/worker/step", {}, { "X-Agent-Studio-Worker-Token": "wrong-key" })
   assert.equal(wrong.status, 401)
+  const workerIdentityProbe = await req("POST", "/api/internal/worker/step", {
+    worker_instance: "w-" + "a".repeat(24),
+  }, { "X-Agent-Studio-Worker-Token": secret })
+  assert.equal(workerIdentityProbe.status, 200, JSON.stringify(workerIdentityProbe))
+
 
   const graph = {
     nodes: [
@@ -102,6 +107,50 @@ try {
   const idle = await req("POST", "/api/internal/worker/step", {}, { "X-Agent-Studio-Worker-Token": secret })
   assert.equal(idle.status, 200)
   assert.equal(idle.data.idle, true)
+  // A verified Worker can report bounded subsystem health. Untrusted extra
+  // fields (including arbitrary credentials or errors) must never leak into
+  // the authenticated employee status response.
+  const report = await req("POST", "/api/internal/worker/step", {
+    subsystems: {
+      schedules: { state: "retrying", failures: 2, retry_at_ms: Date.now() + 9000,
+        secret: "PRIVATE-NOT-FOR-UI" },
+      knowledge: { state: "healthy", failures: 0, retry_at_ms: 0 },
+      metadata: "PRIVATE-NOT-FOR-UI",
+    },
+  }, { "X-Agent-Studio-Worker-Token": secret })
+  assert.equal(report.status, 200)
+  const healthDetail = await req("GET", "/api/worker/status", undefined,
+    { "X-Rh-User-Id": "worker-test-user" })
+  assert.equal(healthDetail.status, 200)
+  assert.equal(healthDetail.data.components.schedules.state, "retrying")
+  assert.equal(healthDetail.data.components.schedules.failures, 2)
+  assert.equal(healthDetail.data.components.knowledge.state, "healthy")
+  assert.ok(healthDetail.data.components_observed_at_ms > 0)
+  assert.doesNotMatch(JSON.stringify(healthDetail.data), /PRIVATE-NOT-FOR-UI/)
+  const malformedBeat = await req("POST", "/api/internal/worker/heartbeat",
+    { worker_instance: "not-a-valid-instance", credentials: "PRIVATE-NOT-FOR-UI" },
+    { "X-Agent-Studio-Worker-Token": secret })
+  assert.equal(malformedBeat.status, 400)
+  const unauthorizedBeat = await req("POST", "/api/internal/worker/heartbeat",
+    { worker_instance: "w-" + "b".repeat(24) })
+  assert.equal(unauthorizedBeat.status, 401)
+  const instances = ["w-" + "b".repeat(24), "w-" + "c".repeat(24)]
+  for (const instance of instances) {
+    const beat = await req("POST", "/api/internal/worker/heartbeat",
+      { worker_instance: instance, injected_url: "PRIVATE-NOT-FOR-UI" },
+      { "X-Agent-Studio-Worker-Token": secret })
+    assert.equal(beat.status, 200, JSON.stringify(beat))
+  }
+  const multi = await req("GET", "/api/worker/status", undefined,
+    { "X-Rh-User-Id": "worker-test-user" })
+  assert.equal(multi.status, 200)
+  assert.ok(multi.data.instances.length >= 2)
+  assert.ok(multi.data.instances_recent >= 2)
+  assert.ok(multi.data.instances.some(row => row.label === "Worker " + "b".repeat(8)))
+  assert.ok(multi.data.instances.some(row => row.label === "Worker " + "c".repeat(8)))
+  assert.doesNotMatch(JSON.stringify(multi.data), /PRIVATE-NOT-FOR-UI/)
+
+
   // Agent path: a local deterministic OpenAI-compatible service verifies real BYOK + model-driven completion.
   let modelCalls = 0
   fakeProvider = createServer(async (request, response) => {

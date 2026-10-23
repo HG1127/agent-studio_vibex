@@ -29,10 +29,10 @@ const provider=createServer(async (req,res)=>{
   const answer=isWorkflow?"workflow-provider-passed"
     : JSON.stringify({action:"final",thought:"Model provider smoke test",final_answer:"agent-provider-passed"})
   const debugEmpty=kind==="openai" && body.includes("debug-empty-no-retry")
-  const payload=kind==="anthropic"?{content:[{type:"text",text:answer}]}
-    :kind==="gemini"?{candidates:[{content:{parts:[{text:answer}]}}]}
+  const payload=kind==="anthropic"?{content:[{type:"text",text:answer}],usage:{input_tokens:13,output_tokens:21}}
+    :kind==="gemini"?{candidates:[{content:{parts:[{text:answer}]}}],usageMetadata:{promptTokenCount:13,candidatesTokenCount:21}}
     :{choices:[{message:{role:"assistant",content:debugEmpty?"":answer},
-      finish_reason:debugEmpty?"length":"stop"}]}
+      finish_reason:debugEmpty?"length":"stop"}],usage:{prompt_tokens:13,completion_tokens:21}}
   res.writeHead(200,{"Content-Type":"application/json"})
   res.end(JSON.stringify(payload))
 })
@@ -153,6 +153,35 @@ try {
     assert.equal(strictDenied.status,400,JSON.stringify(strictDenied.data))
     assert.equal(strictDenied.data.error,"model_not_permitted")
     assert.equal(calls.length,beforeDenied,"denied debug model must not contact provider")
+    // Agent creation must not silently switch away from the exact model
+    // selected by this employee, even when a different default exists.
+    const homeBefore=calls.length
+    const invalidHome=await api("POST","/api/llm/chat",{
+      connection_id:conn.item.id,model:"removed-model",strict_model:true,
+      page:"home",request_id:"design-denied-"+kind+"-model",max_tokens:1200,
+      messages:[{role:"system",content:"Design a synthetic Agent"},{role:"user",content:"No real data"}],
+    })
+    assert.equal(invalidHome.status,400,JSON.stringify(invalidHome.data))
+    assert.equal(invalidHome.data.error,"model_not_permitted")
+    assert.equal(calls.length,homeBefore,"rejected design binding must cost zero calls")
+    const foreignHome=await api("POST","/api/llm/chat",{
+      connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+      page:"home",request_id:"design-foreign-"+kind+"-model",max_tokens:1200,
+      messages:[{role:"user",content:"Foreign employee must not use this model"}],
+    },"other-user")
+    assert.equal(foreignHome.status,400,JSON.stringify(foreignHome.data))
+    assert.equal(calls.length,homeBefore)
+    const designHome=await expect("POST","/api/llm/chat",{
+      connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+      page:"home",request_id:"design-authorized-"+kind+"-model",max_tokens:1200,
+      messages:[{role:"system",content:"Design synthetic multirole Agent"},
+        {role:"user",content:"Only synthetic information"}],
+    })
+    assert.equal(designHome.status,"success")
+    assert.equal(designHome.model,"mock-"+kind)
+    assert.equal(calls.length,homeBefore+1)
+    assert.equal(calls.at(-1).kind,kind,"design must use the employee-selected provider")
+    const beforeDebugInvalid=calls.length
     const debugBase={
       connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
       page:"workflow_node_debug",request_id:"workflow-debug-invalid-"+kind,
@@ -172,7 +201,7 @@ try {
       assert.equal(rejected.status,400,JSON.stringify(rejected.data))
       assert.equal(rejected.data.error,error)
     }
-    assert.equal(calls.length,beforeDenied,
+    assert.equal(calls.length,beforeDebugInvalid,
       "rejected debug requests must not invoke a provider")
     const debugId="workflow-debug-"+kind
     const debug=await expect("POST","/api/llm/chat",{
@@ -212,6 +241,46 @@ try {
       assert.equal(calls.length,beforeEmpty+1,
         "node debug must never auto-retry with 2048 or 16384 tokens")
     }
+
+    // V28 uses the same employee-owned model connection, never an exported
+    // API key or a second set of Runner environment credentials.
+    const blindBase={
+      connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
+      page:"agent_v28_blind",request_id:"v28-blind-"+kind+"-test",
+      max_tokens:1024,messages:[
+        {role:"system",content:"Agent Studio synthetic blind planning fixture"},
+        {role:"user",content:JSON.stringify({requirement:"Synthetic complex task",available_tools:[]})},
+      ],
+    }
+    const blindBefore=calls.length
+    for(const [invalid,error] of [
+      [{...blindBase,strict_model:false},"blind_binding_required"],
+      [{...blindBase,max_tokens:10240},"blind_output_budget_invalid"],
+      [{...blindBase,messages:[{role:"user",content:"bypass"}]},"blind_request_invalid"],
+      [{...blindBase,model:"removed-model"},"model_not_permitted"],
+    ]){
+      const denied=await api("POST","/api/llm/chat",invalid)
+      assert.equal(denied.status,400,JSON.stringify(denied.data))
+      assert.equal(denied.data.error,error)
+    }
+    assert.equal(calls.length,blindBefore,"invalid blind requests must never reach the model")
+    const foreign=await api("POST","/api/llm/chat",blindBase,"foreign-user")
+    assert.equal(foreign.status,400,"another employee cannot run a blind test on this connection")
+    assert.equal(calls.length,blindBefore)
+    const blind=await expect("POST","/api/llm/chat",blindBase)
+    assert.equal(blind.status,"success")
+    assert.deepEqual(blind.usage,{input_tokens:13,output_tokens:21},
+      "return only verified provider token counts; no API key or account details")
+    assert.equal(calls.length,blindBefore+1,"one explicit blind attempt means exactly one provider request")
+    const blindCall=calls[calls.length-1]
+    if(kind==="openai")assert.equal(blindCall.body.max_tokens,1024)
+    if(kind==="anthropic")assert.equal(blindCall.body.max_tokens,1024)
+    if(kind==="gemini")assert.equal(blindCall.body.generationConfig.maxOutputTokens,1024)
+    const duplicate=await expect("POST","/api/llm/chat",blindBase)
+    assert.equal(duplicate.cached,true)
+    assert.equal(calls.length,blindBefore+1,"a duplicated request ID must never incur an extra charge")
+    assert.doesNotMatch(JSON.stringify(blind),/mock-secret-|api_key|authorization|headers/)
+
     await runAgent(conn.item.id,kind)
     await runWorkflow(conn.item.id,kind)
     const kindCalls=calls.filter(c=>c.kind===kind)

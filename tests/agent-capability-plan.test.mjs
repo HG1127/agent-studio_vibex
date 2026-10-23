@@ -5,7 +5,7 @@ import {
   agentCapabilityRequirements, agentCapabilityReadiness, addAgentCapability, updateAgentCapability,
   removeAgentCapability, restoreAgentCapability, MAX_AGENT_CAPABILITIES,
 } from "../src/lib/agentCapabilityPlan.ts"
-import { resolveAgentToolRequirements } from "../src/lib/agentToolMatcher.ts"
+import { resolveAgentToolRequirements, generatedAgentToolSelections, prepareGeneratedAgentPermissions } from "../src/lib/agentToolMatcher.ts"
 import { sanitizeAgentDraftSpec } from "../src/lib/agentEditorDraft.ts"
 import { safeMarketplaceQuery } from "../src/lib/toolSearchPrivacy.ts"
 
@@ -13,6 +13,66 @@ const need = (patch = {}) => ({ id: "need_1", title: "读取网页", purpose: "�
 const spec = (patch = {}) => ({ goal: "完成指定任务", task_scope: "按当前任务范围工作", deliverables: ["可核验的结果"], tools: [], task_plan: [], done_criteria: ["交付满足任务要求"], capability_requirements: [], ...patch })
 const market = (patch = {}) => ({ id: "mkt__browser00000001__browser_read", name: "browser_read", label: "浏览器 · 读取页面", description: "Read the current browser page", connectionTitle: "Browser", readOnly: true, destructive: false, ...patch })
 const role = (id, tools = []) => ({ id, name: id, responsibility: "负责所分配任务", tasks: ["完成任务"], inputs: [], deliverables: ["输出"], depends_on: [], tools, done_criteria: ["核验输出"] })
+
+test("complex generated capability gaps are planning needs, never fake executable global grants", () => {
+  const proposed = spec({ tools: ["PDF提取", "邮件发送"],
+    roles: [role("researcher"), role("sender")],
+    capability_requirements: [
+      need({ title: "PDF提取", kind: "document", role_ids: ["researcher"] }),
+      need({ id: "send", title: "发送邮件", kind: "integration", access: "write", role_ids: ["sender"] }),
+    ],
+  })
+  const resolved = resolveAgentToolRequirements("读取PDF并在人工批准后发送邮件", proposed)
+  assert.ok(resolved.gaps.some(gap => gap.name === "邮件发送"))
+  const selections = generatedAgentToolSelections(proposed,resolved)
+  assert.ok(!selections.includes("邮件发送"), "textual write placeholder must never enter executable tools")
+  assert.ok(!selections.includes("PDF提取"), "unresolved parsing placeholder must remain in capability plan")
+  const roleGrant = proposed.roles.map(role => role.tools)
+  assert.deepEqual(roleGrant, [[], []], "generation cannot implicitly grant tools")
+  const legacy = { ...proposed, capability_requirements: undefined }
+  assert.ok(generatedAgentToolSelections(legacy, resolved).includes("邮件发送"),
+    "legacy unstructured drafts preserve their visible unmatched tool gap")
+})
+
+test("model-authored role tools never grant permissions, including when a connection already exists", () => {
+  const browser = market()
+  const sender = market({ id: "mkt__mail000000000001__send_email",
+    name:"send_email", description:"Send an email", readOnly:false, destructive:true })
+  const proposed = spec({
+    tools:[browser.id,sender.id],
+    roles:[role("researcher",[browser.id]),role("sender",[sender.id])],
+    capability_requirements:[
+      need({id:"browser",title:"浏览器读取",kind:"browser",role_ids:["researcher"],suggested_tool_ids:[browser.id]}),
+      need({id:"send",title:"发送邮件",kind:"integration",access:"write",role_ids:["sender"],suggested_tool_ids:[sender.id]}),
+    ],
+  })
+  const matched = resolveAgentToolRequirements("读取网页并在审批后发送邮件", proposed, [], [browser,sender])
+  const ready = prepareGeneratedAgentPermissions(proposed,matched)
+  assert.ok(ready.tools.includes(browser.id),"verified read-only tool may be recommended globally")
+  assert.ok(!ready.tools.includes(sender.id),"model cannot grant a write tool globally")
+  assert.deepEqual(ready.roles.map(r=>r.tools),[[],[]],
+    "model role.tools must be discarded until an employee explicitly binds the tool")
+  assert.equal(ready.require_approval,true,"new write-capable Agent must require approval")
+  assert.deepEqual(proposed.roles.map(r=>r.tools),[[browser.id],[sender.id]],
+    "sanitization must not mutate the original generated proposal")
+})
+test("different generated Agent complexities all start with least-privilege role tools", () => {
+  for (const roleCount of [2,3,5,8]) {
+    const roles=Array.from({length:roleCount},(_,i)=>
+      role("stage_"+(i+1),["web_search","invented_write_permission"]))
+    const proposed=spec({
+      tools:["web_search","invented_write_permission"],roles,
+      capability_requirements:[need({title:"外部系统更新",kind:"integration",access:"write",role_ids:[roles.at(-1).id]})],
+    })
+    const result=prepareGeneratedAgentPermissions(proposed,
+      resolveAgentToolRequirements("分阶段调研并经批准后更新外部系统",proposed))
+    assert.ok(result.tools.includes("web_search"))
+    assert.ok(!result.tools.includes("invented_write_permission"))
+    assert.ok(result.roles.every(r=>r.tools.length===0))
+    assert.equal(result.require_approval,true)
+    assert.equal(result.roles.length,roleCount)
+  }
+})
 
 test("structured capability requirements remain bounded, typed and free of raw search terms", () => {
   const rows = normalizeCapabilityRequirements([

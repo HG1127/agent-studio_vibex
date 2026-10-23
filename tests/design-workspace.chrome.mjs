@@ -16,6 +16,7 @@ import { createServer } from "node:http"
 import { spawn } from "node:child_process"
 import { pathToFileURL } from "node:url"
 import { spawnHeadlessPocketBase, stopHeadlessPocketBase } from "./helpers/headless-pocketbase.mjs"
+import { complexCreationCases, complexFixturePlan } from "./helpers/complex-design-cases.mjs"
 
 const root = process.cwd()
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -81,6 +82,8 @@ test("design workspace: real login, editable capabilities, role grants, resource
   const email = `design-${randomBytes(6).toString("hex")}@example.test`
   const password = "Fixture-" + randomBytes(20).toString("hex") + "!"
   let pb, frontend, fixture, browser, page, token = "", pbLogs = "", viteLogs = "", selectedToolId = ""
+  let designConnectionId = ""
+  const observedDesignBindings = []
   let failNextMcpCall = ""
   let designCalls = 0, revisionCalls = 0, approvalModelCalls = 0, inputModelCalls = 0, mcpCalls = 0
   const complexToolCalls = { browser_page_inspect: 0, document_extract: 0, spreadsheet_analyze: 0, send_email: 0 }
@@ -156,8 +159,46 @@ test("design workspace: real login, editable capabilities, role grants, resource
         let content = "Local UI fixture response; no external intelligence evaluation."
         if (system.includes("助手方案设计器")) {
           designCalls++
-          content = JSON.stringify({ name: "设计工作台验收助手", goal: "规划浏览器资料读取与电脑软件表格整理，交付可核验报告", task_scope: "只设计和核验授权步骤，不自行扩大工具权限", deliverables: ["研究报告", "来源记录"], tools: ["calculate"], task_plan: ["读取批准的页面", "用电脑软件整理表格", "核验报告"], done_criteria: ["报告包含核心结论和来源"], roles: [], require_plan_review: false,
-            capability_requirements: capabilityRequirements })
+          const variant = complexCreationCases.find(sample=>user.includes(sample.marker))
+          if(variant){
+            content=JSON.stringify(complexFixturePlan(variant))
+          } else if (user.includes("V27_COMPLEX_AGENT_CREATE")) {
+            const roles = [
+              { id:"researcher", name:"网页研究", depends_on:[], task:"读取授权网页", output:"来源与网页结论" },
+              { id:"documenter", name:"PDF核查", depends_on:["researcher"], task:"提取PDF页码和附注", output:"PDF页码证据" },
+              { id:"analyst", name:"表格分析", depends_on:["documenter"], task:"计算Excel数据", output:"单元格核算" },
+              { id:"reviewer", name:"交叉审核", depends_on:["analyst"], task:"核对三个来源一致性", output:"风险与冲突清单" },
+              { id:"sender", name:"审批交付", depends_on:["reviewer"], task:"获得批准后交付报告", output:"审批交付记录" },
+            ].map(role => ({ id:role.id,name:role.name,responsibility:role.task,
+              tasks:[role.task],inputs:["已授权资产","上个角色的持久化成果"],
+              deliverables:[role.output],depends_on:role.depends_on,
+              // Malicious/mistaken planning output must never grant these tools.
+              tools:role.id==="researcher"?[complexToolIds.browser_page_inspect]:
+                role.id==="sender"?[complexToolIds.send_email]:[],
+              done_criteria:["保存依据、结果与未完成事项"] }))
+            const need = (id,title,purpose,kind,access,roleId,toolId) => ({
+              id,title,purpose,kind,access,required:true,role_ids:[roleId],
+              search_terms:[kind],suggested_tool_ids:[toolId],
+            })
+            content=JSON.stringify({
+              name:"五角色投研创建验收",goal:"网页、PDF与Excel交叉核验，人工批准后交付完整报告",
+              task_scope:"只使用已授权来源；读取与写入权限按角色隔离；不调用真实邮件或外部系统",
+              deliverables:["网页证据索引","PDF页码","Excel单元格核算","风险审核","审批后交付记录"],
+              tools:["网页读取","PDF提取","电子表格分析","邮件发送"],
+              task_plan:["读取网页","提取PDF","核算Excel","独立交叉审核","批准后交付"],
+              done_criteria:["每阶段保存成果","三种来源交叉核验","写入前必须获人工批准"],
+              roles,require_plan_review:false,require_approval:true,
+              capability_requirements:[
+                need("web", "浏览器读取", "读取授权发行人网页", "browser", "read", "researcher", complexToolIds.browser_page_inspect),
+                need("pdf", "提取PDF页码", "提取文档来源和PDF附注", "document", "read", "documenter", complexToolIds.document_extract),
+                need("sheet", "Excel核算", "提取单元格并计算指标", "document", "read", "analyst", complexToolIds.spreadsheet_analyze),
+                need("delivery", "发送审批后邮件", "写入前获得用户批准", "integration", "write", "sender", complexToolIds.send_email),
+              ],
+            })
+          } else {
+            content = JSON.stringify({ name: "设计工作台验收助手", goal: "规划浏览器资料读取与电脑软件表格整理，交付可核验报告", task_scope: "只设计和核验授权步骤，不自行扩大工具权限", deliverables: ["研究报告", "来源记录"], tools: ["calculate"], task_plan: ["读取批准的页面", "用电脑软件整理表格", "核验报告"], done_criteria: ["报告包含核心结论和来源"], roles: [], require_plan_review: false,
+              capability_requirements: capabilityRequirements })
+          }
         } else if (system.includes("助手方案修订器")) {
           revisionCalls++
           const request = JSON.parse(user)
@@ -210,7 +251,8 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal(bootstrap.status, 201)
     const login = await fetch(apiOrigin + "/api/collections/studio_users/auth-with-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity: email, password }) })
     assert.equal(login.status, 200); token = (await login.json()).token
-    await api("POST", "/api/model-connections", { name: "Local design UI fixture", provider: "openai", base_url: fixtureOrigin + "/v1", api_key: "local-fixture-only", models: ["design-ui-fixture-model"] })
+    const designConnection = await api("POST", "/api/model-connections", { name: "Local design UI fixture", provider: "openai", base_url: fixtureOrigin + "/v1", api_key: "local-fixture-only", models: ["design-ui-fixture-model"] })
+    designConnectionId = designConnection.item.id
     frontend = spawn(process.execPath, [vite, "--config", "vibex-local/vite.local.config.ts", "--host", "127.0.0.1", "--port", String(uiPort), "--strictPort"], { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AGENT_STUDIO_PB_ORIGIN: apiOrigin, VITE_AGENT_STUDIO_PG_PILOT_UI_ENABLED: "false" } })
     for (const stream of [frontend.stdout, frontend.stderr]) stream.on("data", chunk => { viteLogs = (viteLogs + chunk).slice(-5000) })
     await ready(webOrigin + "/login", frontend, () => viteLogs)
@@ -221,6 +263,13 @@ test("design workspace: real login, editable capabilities, role grants, resource
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text().slice(0, 1200)) })
     page.on("request", request => {
       if (new URL(request.url()).pathname.endsWith("/api/market/smithery/v2/catalog")) smitheryCatalogRequests++
+      if (new URL(request.url()).pathname.endsWith("/api/llm/chat") && request.method()==="POST") {
+        try {
+          const payload=request.postDataJSON()
+          if (payload.page==="home") observedDesignBindings.push({model:payload.model,connection_id:payload.connection_id,
+            strict_model:payload.strict_model})
+        }catch{}
+      }
     })
     page.on("response", response => {
       const pathname = new URL(response.url()).pathname
@@ -236,8 +285,42 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await page.getByRole("button", { name: "登录", exact: true }).click()
     await page.waitForURL("**/agent-create")
     results.push("employee UI login without injected credentials or browser auth state")
+    // V28 owner-bound live-model benchmark must reuse an existing
+    // "My connections" record, never ask for a second API key, and never
+    // call any model before an employee explicitly opts in. All calls in this
+    // test route to the isolated local fixture, not to a billable provider.
+    await page.goto(webOrigin + "/model-connections")
+    const blindPanel = page.getByRole("region", { name: "V28 真实模型盲测", exact: true })
+    await visible(blindPanel)
+    // Native <option> is attached to the accessible combobox but is not
+    // considered visible until the system select dropdown opens.
+    await blindPanel.getByRole("option", { name: "Local design UI fixture" }).waitFor({state:"attached"})
+    assert.equal(await blindPanel.getByRole("option", { name: "Local design UI fixture" }).count(),1)
+    assert.equal(await blindPanel.getByRole("combobox", { name: "盲测模型", exact: true }).inputValue(),
+      "design-ui-fixture-model")
+    const startBlind = blindPanel.getByRole("button", { name: "先试测 2 个任务", exact: true })
+    assert.equal(await startBlind.isDisabled(), true, "no cost-bearing request without user consent")
+    const beforeBlindDesignCalls = designCalls
+    await blindPanel.getByRole("checkbox").first().check()
+    await startBlind.click()
+    await visible(blindPanel.getByText(/模型响应未提供完整的 Token 计量/))
+    assert.equal(designCalls, beforeBlindDesignCalls + 1,
+      "a single employee-authorized fixture call is allowed; missing metering must stop batch")
+    await visible(blindPanel.getByText(/用量未报告，已停止/))
+    results.push("V28 existing owner-scoped model connection is selectable with no second API key; paid calls require explicit opt-in; unmetered provider responses stop safely")
 
+
+    // A second, unrelated saved model makes the selection genuinely ambiguous.
+    // The wizard must not silently choose a local fixture (or a billable
+    // MiniMax account) until the employee picks an exact connection and model.
+    const alternativeModel=await api("POST","/api/model-connections",{
+      name:"Secondary synthetic model",provider:"openai",base_url:fixtureOrigin+"/v1",
+      api_key:"secondary-local-fixture-only",models:["secondary-ui-fixture-model"],
+    })
     await page.goto(webOrigin + "/execution-connections")
+    const pilotDetails = page.locator("#local-executor-details")
+    assert.equal(await pilotDetails.getAttribute("open"), null, "advanced pilot setup should not crowd the initial page")
+    await pilotDetails.locator("summary").click()
     const pilotInfo = page.getByRole("region", { name: "真实浏览器与 PDF / Excel 执行器" })
     await visible(pilotInfo.getByText("node ops/local-executor.mjs", { exact: true }))
     await visible(pilotInfo.getByText(/默认关闭/))
@@ -245,9 +328,27 @@ test("design workspace: real login, editable capabilities, role grants, resource
     results.push("execution connections UI explains the real opt-in local Chromium/PDF/XLSX MCP bridge without claiming a live desktop connection")
     await page.goto(webOrigin + "/agent-create")
 
+    const designModelPicker=page.getByRole("combobox", {name:"Agent 规划模型",exact:true})
+    await visible(designModelPicker)
+    await designModelPicker.getByRole("option",{name:"Secondary synthetic model · secondary-ui-fixture-model"}).waitFor({state:"attached"})
+    assert.equal(await designModelPicker.inputValue(),"",
+      "two account-owned models require an explicit choice rather than silently selecting the first")
+    const beforeUnselectedRequest=observedDesignBindings.length
     await page.locator("#agent-requirement").fill("DESIGN_WORKSPACE_CREATE 创建一个需要浏览器读取资料、电脑软件整理表格并核验报告的助手。")
     await page.getByRole("button", { name: "生成 Agent 方案", exact: true }).click()
+    await visible(page.getByText(/请选择当前账号已启用的模型连接/))
+    assert.equal(observedDesignBindings.length,beforeUnselectedRequest,
+      "an ambiguous selection must not invoke any model or incur charges")
+    await designModelPicker.selectOption(JSON.stringify([designConnectionId,"design-ui-fixture-model"]))
+    await page.getByRole("button", { name: "生成 Agent 方案", exact: true }).click()
+    await visible(page.getByText(/本次规划模型：Local design UI fixture · design-ui-fixture-model/))
     await page.getByRole("button", { name: "进入方案编辑", exact: true }).click()
+    assert.equal(observedDesignBindings.at(-1)?.connection_id,designConnectionId)
+    assert.equal(observedDesignBindings.at(-1)?.model,"design-ui-fixture-model")
+    assert.equal(observedDesignBindings.at(-1)?.strict_model,true)
+    results.push("Agent creation calls exactly the displayed employee-owned model, with strict binding and no implicit fallback")
+    await api("DELETE","/api/model-connections/"+alternativeModel.item.id)
+    results.push("two enabled models block AI creation until explicit employee selection; other connections are never silently used")
     const initialModules = page.getByRole("tablist", { name: "Agent 方案设计模块" })
     await initialModules.getByRole("tab", { name: "工具与资料", exact: true }).click()
     const initialHarness = page.getByRole("region", { name: "Harness 能力规划", exact: true })
@@ -370,6 +471,8 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await visible(executionPage.getByRole("heading", { name: "浏览器与电脑工具", exact: true }))
     assert.equal(new URL(executionPage.url()).searchParams.get("returnSpec"), saved.id)
     assert.equal(new URL(executionPage.url()).searchParams.get("returnCapability"), "browser_need")
+    assert.equal(new URL(executionPage.url()).searchParams.get("capability"), "browser", "the requested task type must focus the inventory")
+    assert.equal(await executionPage.getByRole("button", { name: /^浏览器 ·/ }).getAttribute("aria-pressed"), "true")
     const savedReturnBanner = executionPage.getByRole("region", { name: "继续配置 Agent", exact: true })
     await visible(savedReturnBanner.getByText("此入口不包含原标签中未保存的修改", { exact: true }))
     await visible(executionPage.getByText("还没有这类连接", { exact: true }))
@@ -693,6 +796,194 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal((await api("GET", "/api/agent_runs/" + inputRunId)).status, "succeeded", "Editing a plan must not rewrite its earlier successful run")
     await screenshot("saved-revision-needs-retest")
     results.push("after a real successful run, saving a changed goal marks the prior run as stale, gives an explicit retry action, and blocks publishing without contradictory success messaging")
+
+    // V27: from a new complex natural-language request -> model-generated
+    // five-stage design -> persisted role/capability contract. The fixture
+    // supplies schema-compatible planning output, NOT evaluated model IQ.
+    const beforeComplexGenerationCalls = mcpCalls
+    await page.goto(webOrigin + "/agent-create")
+    await page.locator("#agent-requirement").fill(
+      "V27_COMPLEX_AGENT_CREATE 请创建五个角色：网页调研、PDF核查、Excel核算、独立审核、批准后邮件交付。" +
+      " 必须核验来源和页码，权限仅授予负责角色，不能擅自连接或发送真实邮件。")
+    await page.getByRole("button", { name:"生成 Agent 方案", exact:true }).click()
+    await visible(page.getByText(/已生成可编辑方案：五角色投研创建验收/))
+    await page.getByRole("button", { name:"进入方案编辑", exact:true }).click()
+    await page.getByRole("tab", { name:/^角色与任务/ }).click()
+    const generatedRoles = page.getByRole("region", { name:"角色与任务分工", exact:true })
+    for (const name of ["网页研究","PDF核查","表格分析","交叉审核","审批交付"])
+      await visible(generatedRoles.getByRole("button", { name: new RegExp("^\\d+ " + name + "$") }))
+    const generatedHarness = page.getByRole("region", { name:"Harness 能力规划", exact:true })
+    await page.getByRole("tab", { name:"工具与资料", exact:true }).click()
+    for (const label of ["浏览器读取","提取PDF页码","Excel核算","发送审批后邮件"])
+      await visible(generatedHarness.getByRole("article", { name:"能力需求："+label, exact:true }))
+    const saveGenerated = page.waitForResponse(response =>
+      new URL(response.url()).pathname.endsWith("/api/agent_specs") && response.request().method()==="POST")
+    await page.getByRole("button", { name:"保存到我的助手", exact:true }).click()
+    const generatedSpec = await (await saveGenerated).json()
+    assert.equal(generatedSpec.spec.roles.length,5,
+      "a multi-role plan must survive the real owner-scoped save API")
+    assert.equal(generatedSpec.spec.capability_requirements.length,4)
+    assert.deepEqual(generatedSpec.spec.roles.map(role=>role.id),
+      ["researcher","documenter","analyst","reviewer","sender"])
+    assert.ok(generatedSpec.spec.roles.every(role=>role.tools.length===0),
+      "a model design proposal must NOT auto-grant external tools to its roles")
+    assert.ok(!generatedSpec.spec.tools.includes(complexToolIds.send_email),
+      "write email may only be granted through explicit employee authorization")
+    assert.equal(mcpCalls,beforeComplexGenerationCalls,
+      "generating and saving a plan must never invoke a capability")
+    const draftSaved = await api("GET", "/api/agent_specs/"+generatedSpec.id)
+    assert.deepEqual(draftSaved.spec.capability_requirements,
+      generatedSpec.spec.capability_requirements)
+    await screenshot("v27-complex-plan-generated-and-saved")
+    results.push("V27 natural-language complex plan -> 5 distinct role dependencies and 4 typed requirements -> persisted server contract; no automatic write/role authorization and no tool invocation")
+    // V27 end-to-end: explicitly bind the REAL saved candidate tools on the
+    // generated plan through the visible Harness picker; this is a user action,
+    // not something the planning model may do on behalf of the employee.
+    const roleToolMap = [
+      ["浏览器读取","browser_page_inspect","researcher"],
+      ["提取PDF页码","document_extract","documenter"],
+      ["Excel核算","spreadsheet_analyze","analyst"],
+      ["发送审批后邮件","send_email","sender"],
+    ]
+    for (const [title,action] of roleToolMap) {
+      const card=generatedHarness.getByRole("article",{name:"能力需求："+title,exact:true})
+      const choice=card.getByRole("button",{name:new RegExp(action+".*选用并分配")})
+      if(await choice.count()===0){
+        const picker=card.locator("summary").filter({hasText:/^选用已有连接/})
+        if(await picker.count())await picker.click()
+      }
+      await visible(choice)
+      assert.equal(await choice.isDisabled(),false,title+" should have a real compatible tool candidate")
+      await choice.click()
+      await visible(card.getByText("已选用",{exact:true}))
+    }
+    const generatedPatch = page.waitForResponse(response=>
+      new URL(response.url()).pathname.endsWith("/api/agent_specs/"+generatedSpec.id)
+      && response.request().method()==="PATCH")
+    await page.getByRole("button",{name:"保存到我的助手",exact:true}).click()
+    assert.equal((await generatedPatch).status(),200)
+    const executableGenerated=await api("GET","/api/agent_specs/"+generatedSpec.id)
+    for(const [,action,roleId] of roleToolMap){
+      const concrete=complexToolIds[action]
+      assert.ok(executableGenerated.spec.tools.includes(concrete),
+        "generated Agent must bind a real verified tool ID: "+action)
+      assert.ok(executableGenerated.spec.roles.find(role=>role.id===roleId).tools.includes(concrete),
+        "only the responsible role may receive the selected tool: "+roleId)
+      for(const other of executableGenerated.spec.roles.filter(role=>role.id!==roleId))
+        assert.ok(!other.tools.includes(concrete),
+          "binding cannot leak a tool to unrelated roles: "+other.id)
+    }
+    assert.ok(!executableGenerated.spec.tools.includes("邮件发送"),
+      "model-generated write aliases must not become executable tools")
+    assert.equal(mcpCalls,beforeComplexGenerationCalls,
+      "manual matching and saving may not execute external tools")
+    results.push("V27 generated complex Agent -> manual mapping of four actual tested MCP tools -> correct persisted least-privilege role grants")
+
+    // Reuse the exact GENERATED spec for the next full five-role execution,
+    // rather than testing another manually handcrafted Agent.
+    for(const roleId of Object.keys(complexRoleTurns))complexRoleTurns[roleId]=0
+    await page.goto(webOrigin+"/agent-run?spec="+encodeURIComponent(generatedSpec.id))
+    await page.waitForFunction(id=>
+      document.querySelector("#spec-select")?.value===id &&
+      Boolean(document.querySelector("#model-select")?.value),generatedSpec.id)
+    await page.locator("#agent-task-instruction").fill(
+      "COMPLEX_AGENT_ACCEPTANCE V27_FROM_AUTOGENERATED_DRAFT 核验网页、PDF 和 XLSX 三类证据，" +
+      " 经独立审核后、仅在每次人工批准后执行本地邮件交付。")
+    const runReadiness=page.getByRole("region",{name:"新任务启动检查",exact:true})
+    if(await runReadiness.count()){
+      const message=await runReadiness.innerText()
+      assert.ok(!/(?:请连接工具|缺少必需能力|尚未测试|请选择负责角色)/.test(message),
+        "generated Agent must be ready after explicit exact-role mapping: "+message)
+    }
+    assert.equal(await page.getByRole("button",{name:"运行",exact:true}).isDisabled(),false,
+      "generated Agent should run without requiring hand-authored JSON")
+    const beforeGeneratedRun={...complexToolCalls}
+    const generatedRunResponse=page.waitForResponse(response=>
+      new URL(response.url()).pathname.endsWith("/api/agent-runs/start") &&
+      response.request().method()==="POST")
+    await page.getByRole("button",{name:"运行",exact:true}).click()
+    const generatedRunId=(await (await generatedRunResponse).json()).run_id
+    assert.ok(generatedRunId)
+    const approveGenerated=page.getByRole("button",{name:"批准并继续执行",exact:true})
+    for(const [roleId,action] of [
+      ["researcher","browser_page_inspect"],
+      ["documenter","document_extract"],
+      ["analyst","spreadsheet_analyze"],
+      ["sender","send_email"],
+    ]){
+      await visible(approveGenerated)
+      const waiting=await api("GET","/api/agent_runs/"+generatedRunId)
+      assert.equal(waiting.status,"awaiting_approval",
+        "newly generated Agent requires explicit per-call approval: "+action)
+      assert.equal(waiting.checkpoint.role_state.active_role_id,roleId)
+      assert.equal(complexToolCalls[action]-beforeGeneratedRun[action],0,
+        "never execute a tool before this approval")
+      await approveGenerated.click()
+      if(roleId!=="sender")await visible(approveGenerated)
+      else await visible(page.getByRole("heading",{name:"运行成果",exact:true}))
+      assert.equal(complexToolCalls[action]-beforeGeneratedRun[action],1)
+    }
+    const generatedFinal=await api("GET","/api/agent_runs/"+generatedRunId)
+    assert.equal(generatedFinal.status,"succeeded")
+    assert.deepEqual(generatedFinal.checkpoint.role_state.completed,
+      ["researcher","documenter","analyst","reviewer","sender"])
+    const generatedDetail=await api("GET","/api/agent-runs/"+generatedRunId+"/detail")
+    assert.equal(generatedDetail.events.filter(event=>
+      event.content?.role_phase==="completed").length,5)
+    assert.equal(generatedDetail.events.filter(event=>
+      event.event_type==="tool_result").length,4)
+    assert.equal(generatedDetail.events.filter(event=>
+      event.event_type==="approval").length,4)
+    assert.ok(generatedFinal.result.includes("metric 90"))
+    await page.goto(webOrigin+"/agent-create?spec="+generatedSpec.id+"&step=4")
+    await visible(page.getByRole("region",{name:"复杂 Agent 实际执行证据"}))
+    await visible(page.getByText(/已核验角色 5\/5/))
+    await visible(page.getByText(/必需工具能力 4\/4/))
+    await visible(page.getByText("当前保存方案与成功运行快照一致，可以继续发布前验收。",{exact:true}))
+    await screenshot("v27-generated-agent-real-run-and-evidence-accepted")
+    results.push("V27 GENERATED natural-language spec -> explicit least-privilege tool binding -> five-role runtime -> four approvals -> all source/PDF/sheet/tool and role traces -> wizard evidence-backed publish gate accepted")
+
+
+    // Broad V27 planning matrix: demonstrate that the SAME generation/parser
+    // and owner-scoped persistence path handles different business domains,
+    // 2/3/8 sequential roles and optional versus privileged capabilities.
+    // The deterministic fixture provides expected plans; this measures
+    // engineering correctness, NOT open-ended LLM autonomy.
+    for(const sample of complexCreationCases){
+      const beforeCalls=mcpCalls
+      await page.goto(webOrigin+"/agent-create")
+      await page.locator("#agent-requirement").fill(sample.marker+" "+sample.requirement)
+      await page.getByRole("button",{name:"生成 Agent 方案",exact:true}).click()
+      await visible(page.getByText(new RegExp("已生成可编辑方案："+sample.name)))
+      await page.getByRole("button",{name:"进入方案编辑",exact:true}).click()
+      await page.getByRole("tab",{name:"工具与资料",exact:true}).click()
+      const createVariant=page.waitForResponse(response=>
+        new URL(response.url()).pathname.endsWith("/api/agent_specs") &&
+        response.request().method()==="POST")
+      await page.getByRole("button",{name:"保存到我的助手",exact:true}).click()
+      const created=await (await createVariant).json()
+      assert.ok(created.id)
+      const stored=await api("GET","/api/agent_specs/"+created.id)
+      assert.equal(stored.spec.roles.length,sample.stages.length,
+        "generated workflow loses stages: "+sample.marker)
+      assert.equal(stored.spec.capability_requirements.length,sample.capabilities.length)
+      assert.deepEqual(stored.spec.roles.map(role=>role.id),sample.stages.map(([id])=>id))
+      for(const [i,role] of stored.spec.roles.entries()){
+        assert.deepEqual(role.depends_on,i?[sample.stages[i-1][0]]:[])
+        assert.deepEqual(role.tools,[],
+          "a model-proposed tool must not be automatically granted to role "+role.id)
+      }
+      assert.equal(stored.spec.require_approval,
+        sample.capabilities.some(row=>row[3]==="write"),
+        "only tasks with external writes should default to human approval")
+      assert.equal(mcpCalls,beforeCalls,
+        "generating and saving a proposed Agent must never invoke a tool")
+      assert.ok(!stored.spec.tools.includes("send_email"),
+        "unapproved send_email cannot be auto-granted")
+      results.push("V27 variant "+sample.stages.length+" roles / "+sample.capabilities.length+
+        " capabilities "+sample.marker+": generated, saved, role DAG correct, no implicit grants")
+    }
+
     assert.ok(designCalls >= 1 && revisionCalls >= 2 && approvalModelCalls >= 2 && inputModelCalls >= 2)
     assert.deepEqual(errors, [], "No unhandled browser exceptions")
     const runtimeConsoleErrors = consoleErrors.filter(message =>

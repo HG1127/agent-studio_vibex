@@ -24,7 +24,7 @@ function appHarness() {
     "CREATE TABLE agent_studio_run_leases (" +
       "kind TEXT NOT NULL,run_id TEXT NOT NULL,lease_token TEXT NOT NULL," +
       "acquired_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL,attempts INTEGER NOT NULL," +
-      "PRIMARY KEY(kind,run_id));"
+      "owner_instance TEXT NOT NULL DEFAULT '',PRIMARY KEY(kind,run_id));"
   )
   for (const [kind, runId] of [["agent", AGENT], ["workflow", WORKFLOW]]) {
     db.prepare("INSERT INTO " + kind + "_runs VALUES(?,?,?,?)").run(runId, OWNER, "running", '{"seq":0}')
@@ -203,6 +203,29 @@ test("shared Agent/Workflow CAS lease excludes concurrent owner and fences takeo
     }
   } finally { db.close() }
 })
+test("verified Worker instance attribution is atomically replaced only by the fenced lease winner", () => {
+  const { app, db } = appHarness()
+  const workerA = "w-" + "a".repeat(24)
+  const workerB = "w-" + "b".repeat(24)
+  try {
+    const now = Date.now()
+    assert.equal(guard.claim(app, "agent", AGENT, OWNER, A, now, 600000, workerA), true)
+    assert.equal(db.prepare("SELECT owner_instance FROM agent_studio_run_leases WHERE kind='agent'").get().owner_instance, workerA)
+    assert.equal(guard.claim(app, "agent", AGENT, OWNER, B, now + 1, 600000, workerB), false)
+    assert.equal(db.prepare("SELECT owner_instance FROM agent_studio_run_leases WHERE kind='agent'").get().owner_instance, workerA,
+      "losing contender must not change the recorded owner")
+    db.prepare("UPDATE agent_studio_run_leases SET expires_ms=? WHERE kind='agent'").run(Date.now() - 1)
+    assert.equal(guard.claim(app, "agent", AGENT, OWNER, B, Date.now(), 600000, workerB), true)
+    assert.equal(db.prepare("SELECT owner_instance FROM agent_studio_run_leases WHERE kind='agent'").get().owner_instance, workerB)
+    assert.equal(guard.renew(app, "agent", AGENT, OWNER, A, 30000), false)
+    assert.equal(guard.renew(app, "agent", AGENT, OWNER, B, 30000), true)
+    assert.equal(db.prepare("SELECT owner_instance FROM agent_studio_run_leases WHERE kind='agent'").get().owner_instance, workerB)
+    assert.throws(() => guard.claim(app, "workflow", WORKFLOW, OWNER, A, Date.now(), 600000, "attacker-instance"),
+      /execution_lease_invalid_instance/)
+    assert.equal(guard.release(app, "agent", AGENT, OWNER, B), true)
+  } finally { db.close() }
+})
+
 test("same lease cannot mutate cancelled or foreign-owned run", () => {
   const { app, db } = appHarness()
   try {
@@ -221,6 +244,37 @@ test("same lease cannot mutate cancelled or foreign-owned run", () => {
       /execution_run_not_running/)
   } finally { db.close() }
 })
+test("fenced status mutation can cancel an awaiting step but never overwrite a terminal or stale run", () => {
+  const { app, db } = appHarness()
+  try {
+    assert.equal(guard.claim(app, "agent", AGENT, OWNER, A, Date.now()), true)
+    db.prepare("UPDATE agent_runs SET status='awaiting_input',checkpoint=? WHERE id=?")
+      .run(JSON.stringify({ cancel_requested: true, pending_input: { question: "confirm" }, seq: 3 }), AGENT)
+    assert.throws(() => guard.mutateStatuses(app, "agent", AGENT, OWNER, B,
+      ["running", "awaiting_input", "awaiting_approval"], () => {}),
+    /execution_lease_lost/)
+    guard.mutateStatuses(app, "agent", AGENT, OWNER, A,
+      ["running", "awaiting_input", "awaiting_approval"], (tx, rec) => {
+        const cp = JSON.parse(rec.get("checkpoint"))
+        cp.cancel_requested = false
+        cp.pending_input = null
+        rec.set("checkpoint", cp)
+        rec.set("status", "cancelled")
+        tx.save(rec)
+      })
+    const cancelled = db.prepare("SELECT status,checkpoint FROM agent_runs WHERE id=?").get(AGENT)
+    assert.equal(cancelled.status, "cancelled")
+    assert.equal(JSON.parse(cancelled.checkpoint).cancel_requested, false)
+    assert.equal(JSON.parse(cancelled.checkpoint).pending_input, null)
+    assert.throws(() => guard.mutateStatuses(app, "agent", AGENT, OWNER, A,
+      ["running", "awaiting_input", "awaiting_approval"], (tx, rec) => {
+        rec.set("status", "succeeded")
+        tx.save(rec)
+      }), /execution_run_state_changed/)
+    assert.equal(db.prepare("SELECT status FROM agent_runs WHERE id=?").get(AGENT).status, "cancelled")
+  } finally { db.close() }
+})
+
 test("failed guarded mutation rolls back checkpoint without consuming ownership", () => {
   const { app, db } = appHarness()
   try {
@@ -238,6 +292,81 @@ test("failed guarded mutation rolls back checkpoint without consuming ownership"
     })
     assert.equal(JSON.parse(db.prepare("SELECT checkpoint FROM workflow_runs WHERE id=?")
       .get(WORKFLOW).checkpoint).seq, 1)
+  } finally { db.close() }
+})
+
+test("outbound lease renewal is token-fenced, bounded, and fails closed on expired deadline or takeover", () => {
+  const { app, db } = appHarness()
+  try {
+    const now = Date.now()
+    assert.equal(guard.claim(app, "agent", AGENT, OWNER, A, now, 2000), true)
+    assert.equal(guard.renewForDispatch(app, "agent", AGENT, OWNER, A,
+      { ttlMs: 600000, maxCallMs: 120000 }), true)
+    const extended = db.prepare(
+      "SELECT expires_ms,lease_token FROM agent_studio_run_leases WHERE kind='agent'").get()
+    assert.ok(extended.expires_ms > now + 120000)
+    assert.equal(extended.lease_token, A)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, OWNER, A,
+      { ttlMs: 600000, maxCallMs: 590000 }), /execution_dispatch_invalid_window/)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, OWNER, B,
+      { ttlMs: 600000 }), /execution_lease_lost/)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, "another-tenant", A,
+      { ttlMs: 600000 }), /execution_lease_lost/)
+    db.prepare("UPDATE agent_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify({ execution_deadline_ms: Date.now() - 1 }), AGENT)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, OWNER, A),
+      /run_runtime_deadline_exceeded/)
+    assert.equal(db.prepare("SELECT expires_ms FROM agent_studio_run_leases WHERE kind='agent'").get().expires_ms,
+      extended.expires_ms, "a failed deadline check must roll back any lease extension")
+    db.prepare("UPDATE agent_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify({ seq: 0 }), AGENT)
+    db.prepare("UPDATE agent_studio_run_leases SET expires_ms=? WHERE kind='agent'")
+      .run(Date.now() - 1)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, OWNER, A),
+      /execution_lease_lost/)
+    assert.equal(guard.claim(app, "agent", AGENT, OWNER, B, Date.now()), true)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, OWNER, A),
+      /execution_lease_lost/)
+    assert.equal(guard.renewForDispatch(app, "agent", AGENT, OWNER, B), true)
+    db.prepare("UPDATE agent_runs SET status='cancelled' WHERE id=?").run(AGENT)
+    assert.throws(() => guard.renewForDispatch(app, "agent", AGENT, OWNER, B),
+      /execution_lease_lost/)
+  } finally { db.close() }
+})
+
+test("an accepted cancel/pause prevents renewing the next outbound attempt even with a live token", () => {
+  const { app, db } = appHarness()
+  try {
+    for (const [kind, id] of [["agent", AGENT], ["workflow", WORKFLOW]]) {
+      const token = kind === "agent" ? A : B
+      assert.equal(guard.claim(app, kind, id, OWNER, token, Date.now()), true)
+      const leaseBefore = db.prepare(
+        "SELECT expires_ms FROM agent_studio_run_leases WHERE kind=? AND run_id=?"
+      ).get(kind, id).expires_ms
+      const checkpoint = { cancel_requested: true, pause_requested: false }
+      db.prepare("UPDATE " + kind + "_runs SET checkpoint=? WHERE id=?")
+        .run(JSON.stringify(checkpoint), id)
+      assert.throws(() => guard.renewForDispatch(app, kind, id, OWNER, token),
+        /execution_stop_requested/)
+      assert.equal(db.prepare(
+        "SELECT expires_ms FROM agent_studio_run_leases WHERE kind=? AND run_id=?"
+      ).get(kind, id).expires_ms, leaseBefore,
+      "rejected retry must not extend the lease")
+      checkpoint.cancel_requested = false
+      checkpoint.pause_requested = true
+      db.prepare("UPDATE " + kind + "_runs SET checkpoint=? WHERE id=?")
+        .run(JSON.stringify(checkpoint), id)
+      if (kind === "agent") {
+        assert.throws(() => guard.renewForDispatch(app, kind, id, OWNER, token),
+          /execution_stop_requested/)
+      } else {
+        assert.equal(guard.renewForDispatch(app, kind, id, OWNER, token), true,
+          "Workflow does not implement pause; an unrelated legacy flag must not block it")
+      }
+      db.prepare("UPDATE " + kind + "_runs SET checkpoint=? WHERE id=?")
+        .run(JSON.stringify({ cancel_requested: false, pause_requested: false }), id)
+      assert.equal(guard.renewForDispatch(app, kind, id, OWNER, token), true)
+    }
   } finally { db.close() }
 })
 

@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto"
 import { createServer } from "node:http"
 import ExcelJS from "exceljs"
 import { createLocalExecutor } from "../ops/local-executor.mjs"
+import { evaluateComplexAgentAcceptance } from "../src/lib/complexAgentAcceptance.ts"
 import { spawnHeadlessPocketBase, stopHeadlessPocketBase } from "./helpers/headless-pocketbase.mjs"
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
@@ -252,6 +253,16 @@ test("Actual Agent Studio owner-approved five-stage execution uses local Chromiu
       ["researcher","documenter","analyst","reviewer","exporter"])
     assert.match(completed.result,/reviewed-report\.xlsx/)
     const detail=await api("GET","/api/agent-runs/"+runId+"/detail")
+    const acceptance=evaluateComplexAgentAcceptance(spec.spec,{
+      status:detail.run.status,result:detail.run.result,
+      checkpoint:detail.run.checkpoint,events:detail.events,
+    })
+    assert.equal(acceptance.applicable,true)
+    assert.equal(acceptance.verified,true,
+      "Actual Chromium/PDF/XLSX/approval evidence must satisfy the complex Agent gate: "+JSON.stringify(acceptance.issues))
+    assert.equal(acceptance.stagesVerified,5)
+    assert.equal(acceptance.requiredVerified,4)
+
     const events=detail.events
     assert.equal(events.filter(x=>x.content?.role_phase==="completed").length,5)
     const content=JSON.stringify(events)

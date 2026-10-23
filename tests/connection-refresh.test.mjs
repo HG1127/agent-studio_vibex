@@ -4,12 +4,17 @@ import { readFileSync } from "node:fs"
 import ts from "typescript"
 import { toolConnectionStatus } from "../src/pages/Home/presets.ts"
 import { getVerifiedMarketTools } from "../src/lib/marketToolSelection.ts"
-import { resolveAgentToolRequirements } from "../src/lib/agentToolMatcher.ts"
+import { resolveAgentToolRequirements, prepareGeneratedAgentPermissions } from "../src/lib/agentToolMatcher.ts"
+import { agentDesignTokenBudget } from "../src/lib/agentDesignProtocol.ts"
+import { chooseAgentDesignModel } from "../src/lib/agentDesignModelSelection.ts"
 import { evaluateAgentJourney } from "../src/lib/agentCreateJourney.ts"
 import { agentCapabilityReadiness, toolCatalogForDesign } from "../src/lib/agentCapabilityPlan.ts"
 
 const home = "src/pages/Home/useHome.ts"
 const quick = "src/components/site/SavedAgentQuickEditor.tsx"
+const DESIGN_MODEL={key:JSON.stringify(["model-owner","fixture"]),connectionId:"model-owner",connectionName:"测试模型连接",modelId:"fixture"}
+const designModelScope={designModelOptions:[DESIGN_MODEL],designModelKey:DESIGN_MODEL.key,
+  designModelStatus:"ready",chooseAgentDesignModel,setLastDesignModelUsed:()=>{}}
 
 // Exercise the actual asynchronous handlers with controlled transport/state.
 // Their code is extracted through the TypeScript parser, never reimplemented.
@@ -140,7 +145,8 @@ for (const file of [home, quick]) {
 function editorHarness() {
   const state = { spec: null, specDirty: false, proposal: { basis: 0 }, requirement: "原 Agent 的联网搜索要求", notice: "",
     editingId: "", savedId: "", serverUpdated: "", name: "", editorContextKey: 0, saveConflict: false, error: "", revisionError: "", savedMsg: "",
-    isSaving: false, isRevising: false, needsRhLogin: false, lastSavedAt: 0, userInput: "", clearedDrafts: 0, listLoads: 0 }
+    isSaving: false, isRevising: false, needsRhLogin: false, lastSavedAt: 0, userInput: "", clearedDrafts: 0, listLoads: 0,
+    lastDesignModelUsed: "" }
   const scope = {
     specRevisionRef: { current: 0 }, specContextRef: { current: 0 }, returnSpecRef: { current: "oldagent0000001" },
     setRevisionProposal: set(state, "proposal"), setRequirementForTools: set(state, "requirement"),
@@ -149,6 +155,7 @@ function editorHarness() {
     setEditingRecordId: set(state, "editingId"), setErrorMsg: set(state, "error"), setRevisionError: set(state, "revisionError"), setEditorContextKey: set(state, "editorContextKey"), setSavedSpecId: set(state, "savedId"),
     setLastSavedAt: set(state, "lastSavedAt"), setServerUpdated: set(state, "serverUpdated"), setSaveConflict: set(state, "saveConflict"),
     setSavedMsg: set(state, "savedMsg"), setIsSaving: set(state, "isSaving"), setIsRevising: set(state, "isRevising"), setNeedsRhLogin: set(state, "needsRhLogin"), scrollToSpecEditor: () => {},
+    setLastDesignModelUsed: set(state, "lastDesignModelUsed"),
     specDirty: false, userInput: "", window: { confirm: () => true },
   }
   scope.invalidateSpecContext = callback(home, "invalidateSpecContext", scope)
@@ -177,7 +184,7 @@ test("opening another saved Agent invalidates a pending AI revision before it ca
   const h = editorHarness(), pending = deferred()
   const source = { goal: "旧任务", task_scope: "旧范围", tools: [], task_plan: [], deliverables: [], done_criteria: [] }
   const target = { ...source, goal: "新任务" }
-  const revise = callback(home, "runRevise", { ...h.scope, reviseInput: "完善完成标准", spec: source, specName: "旧 Agent",
+  const revise = callback(home, "runRevise", { ...h.scope,...designModelScope, reviseInput: "完善完成标准", spec: source, specName: "旧 Agent",
     connectedTools: [], connectedMarketTools: [], requirementForTools: "", toolCatalogForDesign,
     MODEL_SHORT: "fixture", REVISE_SYSTEM_PROMPT: "fixture", LLM_ERROR_TEXT: {},
     callLlmWithFallback: () => pending.promise, parseSpecJson: () => ({ displayName: "旧 Agent 改进版", spec: source }) })
@@ -278,9 +285,14 @@ test("editing the same Agent during save still advances its server version and k
 
 test("a newly generated Agent is not rebound by the previous Agent's pending save", async () => {
   const h = saveHarness(), saving = h.save(false)
-  const generate = callback(home, "runGenerate", { ...h.scope, userInput: "创建新摘要助手", connectedTools: [], connectedMarketTools: [],
+  const generate = callback(home, "runGenerate", { ...h.scope,...designModelScope, userInput: "创建新摘要助手", connectedTools: [], connectedMarketTools: [],
     setIsGenerating: () => {}, MODEL_SHORT: "fixture", SYSTEM_PROMPT: "fixture", LLM_ERROR_TEXT: {}, toolCatalogForDesign,
-    callLlmWithFallback: async () => ({ ok: true, status: "success", text: "{}" }), resolveAgentToolRequirements,
+    callLlmWithFallback: async (model,opts) => {
+      assert.equal(model,"fixture")
+      assert.equal(opts.connection_id,"model-owner")
+      assert.equal(opts.strict_model,true)
+      return { ok: true, status: "success", model:"fixture", text: "{}" }
+    }, resolveAgentToolRequirements, prepareGeneratedAgentPermissions, agentDesignTokenBudget,
     parseSpecJson: () => ({ displayName: agentB.name, spec: agentB.spec }) })
   await generate()
   h.pending[0].resolve(savedResponse(agentA))

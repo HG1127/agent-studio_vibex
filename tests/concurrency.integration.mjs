@@ -23,11 +23,14 @@ const env = {
   AGENT_STUDIO_WORKER_INTERNAL_URL: base,
   AGENT_STUDIO_ALLOW_ANON: "false",
 }
-let succeededCalls = 0, ambiguousCalls = 0, fencedCalls = 0, cancelledCalls = 0, approvedPosts = 0, getReads = 0, providerReady = false, logs = ""
+let succeededCalls = 0, ambiguousCalls = 0, fencedCalls = 0, cancelledCalls = 0, approvedPosts = 0, getReads = 0, interruptedGetReads = 0, successfulRetryReads = 0, providerReady = false, logs = ""
 let signalFencedRequest = null
 const fencedRequestReceived = new Promise(resolve => { signalFencedRequest = resolve })
 let signalCancelledRequest = null
 const cancelledRequestReceived = new Promise(resolve => { signalCancelledRequest = resolve })
+let releaseDisconnectedGet = null
+const disconnectedGetRelease = new Promise(resolve => { releaseDisconnectedGet = resolve })
+
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const provider = createServer(async (req, res) => {
   for await (const _part of req) { /* drain request to simulate accepted write */ }
@@ -35,6 +38,25 @@ const provider = createServer(async (req, res) => {
     approvedPosts++
     res.writeHead(200, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ approved: true }))
+    return
+  }
+  if (req.url === "/get-retry-success") {
+    successfulRetryReads++
+    res.writeHead(successfulRetryReads === 1 ? 503 : 200,
+      { "Content-Type": "application/json" })
+    res.end(JSON.stringify(successfulRetryReads === 1
+      ? { error: "one_time_transient" } : { read: true }))
+    return
+  }
+  if (req.url === "/get-disconnect") {
+    interruptedGetReads++
+    // Hold the first HTTP GET until the cancellation is durably accepted.
+    // Return a retryable 503 instead of dropping TCP: Go's underlying HTTP
+    // transport may transparently replay an interrupted idempotent GET before
+    // the application-level retry fence has a chance to run.
+    await Promise.race([disconnectedGetRelease, delay(10000)])
+    res.writeHead(503, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ error: "simulated_retryable_network_503" }))
     return
   }
   if (req.url === "/get") {
@@ -256,9 +278,9 @@ try {
   assert.equal(fencedCalls, 1,
     "Taking over the lease must reuse the prior successful write, never issue a second POST")
 
-  // Cancelling a task while the remote service is still responding must be
-  // terminal: neither a successful remote response nor the fallback handler
-  // can mark the same Workflow as succeeded/failed after cancellation.
+  // Cancelling an in-flight Workflow POST must preserve the external write
+  // result and checkpoint before changing status. A late worker may not
+  // overwrite cancellation, nor may the POST be dispatched a second time.
   await addTool("CancelledWrite", "/cancelled")
   const cancelledRun = await workflowFor("CancelledWrite")
   const tickBeforeCancel = tick(cancelledRun.runId)
@@ -268,17 +290,49 @@ try {
   ])
   const manualCancel = await api("POST", "/api/workflow-runs/" + cancelledRun.runId + "/cancel", {})
   assert.equal(manualCancel.status, 200, JSON.stringify(manualCancel))
-  assert.equal(manualCancel.result.status, "cancelled")
+  assert.equal(manualCancel.result.status, "running",
+    "in-flight cancellation must allow the current node to safely finish")
+  assert.equal(manualCancel.result.cancel_requested, true)
   const cancelledTick = await tickBeforeCancel
   assert.equal(cancelledTick.status, 200)
   const finalCancelled = await detail(cancelledRun.runId)
   assert.equal(finalCancelled.status, "cancelled",
-    "Explicit cancellation must win against a delayed HTTP write result")
-  assert.equal(cancelledTick.result.stepped, false,
-    "A cancelled in-flight Tick cannot report a durable completed step")
+    "Requested cancellation must win after the in-flight node checkpoint commits")
+  assert.equal(finalCancelled.checkpoint.cancel_requested, false)
+  assert.equal(finalCancelled.checkpoint.statuses.tl, "done",
+    "A completed external write must be preserved, not discarded")
+  assert.match(finalCancelled.checkpoint.outputs.tl, /accepted-before-cancel/)
+  db = new DatabaseSync(path.join(dataDir, "data.db"), { readOnly: true })
+  try {
+    const receipt = db.prepare(
+      "SELECT status FROM agent_studio_side_effects WHERE kind='workflow' AND run_id=?"
+    ).get(cancelledRun.runId)
+    assert.equal(receipt.status, "succeeded",
+      "The write receipt must survive cancellation for audit and safe replay")
+  } finally { db.close() }
   await tick(cancelledRun.runId)
   assert.equal((await detail(cancelledRun.runId)).status, "cancelled")
   assert.equal(cancelledCalls, 1, "Cancelled writes must never auto-replay")
+
+  // A cancellation accepted by an old worker also survives a crash: after
+  // its lease expires the replacement worker must stop before any new node.
+  const abandoned = await workflowFor("CancelledWrite")
+  db = new DatabaseSync(path.join(dataDir, "data.db"), { timeout: 5000 })
+  try {
+    const row = db.prepare("SELECT checkpoint FROM workflow_runs WHERE id=?")
+      .get(abandoned.runId)
+    const checkpoint = JSON.parse(row.checkpoint)
+    checkpoint.cancel_requested = true
+    db.prepare("UPDATE workflow_runs SET checkpoint=? WHERE id=?")
+      .run(JSON.stringify(checkpoint), abandoned.runId)
+  } finally { db.close() }
+  const recoveredCancellation = await tick(abandoned.runId)
+  assert.equal(recoveredCancellation.status, 200)
+  assert.equal(recoveredCancellation.result.status, "cancelled")
+  assert.equal(recoveredCancellation.result.stepped, false)
+  assert.equal((await detail(abandoned.runId)).status, "cancelled")
+  assert.equal(cancelledCalls, 1,
+    "A recovered cancellation must not execute the queued write")
 
   // A high-risk approval is bound to the exact rendered parameters. When a
   // run snapshot changes after approval (e.g. a stale operator/controller),
@@ -319,6 +373,24 @@ try {
   assert.equal(safeCompletion.status, "succeeded", JSON.stringify(safeCompletion))
   assert.equal(approvedPosts, 1, "Newly approved call must execute exactly once")
 
+
+  // Cancelling an approval-gated Workflow must clear the pending grant, and a
+  // delayed approval from another tab cannot resurrect an external write.
+  const cancelledApprovalRun = await workflowFor("ApprovalBoundWrite", true)
+  const waitingApproval = await tick(cancelledApprovalRun.runId)
+  assert.equal(waitingApproval.result.status, "awaiting_approval")
+  const postsBeforeApprovalCancel = approvedPosts
+  const cancelPendingApproval = await api("POST",
+    "/api/workflow-runs/" + cancelledApprovalRun.runId + "/cancel", {})
+  assert.equal(cancelPendingApproval.status, 200, JSON.stringify(cancelPendingApproval))
+  assert.equal(cancelPendingApproval.result.status, "cancelled")
+  assert.equal((await detail(cancelledApprovalRun.runId)).checkpoint.pending_approval, null)
+  const staleApproval = await api("POST",
+    "/api/workflow-runs/" + cancelledApprovalRun.runId + "/approve", { decision: "approve" })
+  assert.equal(staleApproval.status, 409)
+  assert.equal(approvedPosts, postsBeforeApprovalCancel,
+    "Cancelling a pending Workflow approval must not send a write")
+
   // Safe registered GET tools should not trigger a needless write approval.
   await addTool("ApprovalReadOnly", "/get", "GET")
   const readOnlyRun = await workflowFor("ApprovalReadOnly", true)
@@ -328,6 +400,46 @@ try {
   const readOnlyEnd = await finishAfterTool(readOnlyRun.runId)
   assert.equal(readOnlyEnd.status, "succeeded")
   assert.equal(getReads, 1)
+
+
+  // Cancellation accepted during a read-only GET must suppress the
+  // application-level retry of a 503 error. The run should end cancelled,
+  // rather than falsely fail or issue a second HTTP GET.
+  await addTool("CancelledReadRetry", "/get-disconnect", "GET")
+  const getCancelRun = await workflowFor("CancelledReadRetry")
+  const getCancelBase = interruptedGetReads
+  const inFlightGet = tick(getCancelRun.runId)
+  for (let k = 0; k < 200 && interruptedGetReads === getCancelBase; k++) await delay(10)
+  assert.equal(interruptedGetReads, getCancelBase + 1,
+    "fixture must receive first read before cancellation")
+  const requestGetCancel = await api("POST",
+    "/api/workflow-runs/" + getCancelRun.runId + "/cancel", {})
+  assert.equal(requestGetCancel.status, 200, JSON.stringify(requestGetCancel))
+  assert.equal(requestGetCancel.result.status, "running")
+  assert.equal(requestGetCancel.result.cancel_requested, true)
+  const acceptedStopState = await detail(getCancelRun.runId)
+  assert.equal(acceptedStopState.checkpoint.cancel_requested, true,
+    "cancellation must be durable before the first GET is released")
+  releaseDisconnectedGet()
+  const cancelledGet = await inFlightGet
+  assert.equal(cancelledGet.status, 200, JSON.stringify(cancelledGet))
+  assert.equal(cancelledGet.result.status, "cancelled")
+  assert.equal(cancelledGet.result.stepped, false)
+  assert.equal((await detail(getCancelRun.runId)).status, "cancelled")
+  assert.equal(interruptedGetReads, getCancelBase + 1,
+    "no second GET is allowed once cancellation was accepted")
+
+
+  // Control run: read-only requests are still allowed one application-level
+  // retry if no user stop was accepted and the current lease remains valid.
+  await addTool("SafeRetryRead", "/get-retry-success", "GET")
+  const permittedRetry = await workflowFor("SafeRetryRead")
+  const permittedRetryStep = await tick(permittedRetry.runId)
+  assert.equal(permittedRetryStep.status, 200, JSON.stringify(permittedRetryStep))
+  const completedRetry = await finishAfterTool(permittedRetry.runId)
+  assert.equal(completedRetry.status, "succeeded", JSON.stringify(completedRetry))
+  assert.equal(successfulRetryReads, 2,
+    "one transient HTTP 503 should be retried exactly once when no stop is pending")
 
   // Scheduler fairness: another worker already holds a live lease on the older run.
   // This replica must skip it and advance the second run rather than spin on busy.

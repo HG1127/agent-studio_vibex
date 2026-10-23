@@ -270,6 +270,45 @@ try {
   const complexDetail = await ok("GET", "/api/agent-runs/" + complexRunId + "/detail")
   assert.equal(complexDetail.events.filter(event => event.content?.role_phase === "completed").length, 5)
   assert.equal(complexDetail.events.filter(event => event.event_type === "tool_call" && event.content?.role_id === "dd_reviewer").length, 0)
+
+  // V27 release gate: an ordinary successful test run is not automatically a
+  // formal acceptance run. Complex Agents require a fresh acceptance-mode
+  // execution whose actual checkpoint, tool results and approval are complete.
+  const informalVersion=await ok("POST","/api/spec-versions",{
+    spec_id:complexSpec.id,test_run_id:complexRunId,note:"Success but not acceptance_test",
+  })
+  assert.equal(informalVersion.item.test_passed,false)
+  const refusedInformal=await api("POST",
+    "/api/spec-versions/"+informalVersion.item.id+"/publish",{})
+  assert.equal(refusedInformal.status,409)
+  assert.equal(refusedInformal.data.error,"complex_agent_acceptance_required")
+  for(const roleId of Object.keys(complexCounts))complexCounts[roleId]=0
+  const formalRunId=(await ok("POST","/api/agent-runs/start",{
+    spec_id:complexSpec.id,instruction:"COMPLEX_DUE_DILIGENCE_FIXTURE",model:"roles-fixture",
+    config:{source:"acceptance_test",max_steps:21,max_model_calls:30,tools:{calculate:true},
+      require_approval:true,custom_model:{connection_id:model.item.id,model_id:"roles-fixture"}},
+  })).run_id
+  let formalStatus=""
+  for(let i=0;i<22;i++){
+    const current=await ok("GET","/api/agent_runs/"+formalRunId)
+    formalStatus=current.status
+    if(formalStatus==="succeeded"||formalStatus==="failed")break
+    if(formalStatus==="awaiting_approval"){
+      await ok("POST","/api/agent-runs/"+formalRunId+"/approve",{decision:"approve"})
+    } else if(formalStatus==="running"){
+      await ok("POST","/api/llm/agent-engine/"+formalRunId+"/tick",{})
+    } else throw Error("Unexpected formal acceptance run status: "+formalStatus)
+  }
+  assert.equal(formalStatus,"succeeded",
+    "formal acceptance must reach a verified five-stage terminal result")
+  const formalVersion=await ok("POST","/api/spec-versions",{
+    spec_id:complexSpec.id,test_run_id:formalRunId,note:"Complete role/tool/approval acceptance",
+  })
+  assert.equal(formalVersion.item.test_passed,true,
+    "server must prove all role, tool and approval evidence before marking test_passed")
+  const formalPublish=await ok("POST","/api/spec-versions/"+formalVersion.item.id+"/publish",{})
+  assert.equal(formalPublish.status,"published")
+  assert.equal(formalPublish.id,formalVersion.item.id)
   console.log("Role stages integration: baseline authorization/restart tests + five-role due diligence Agent, source/PDF/sheet evidence handoff, restarted mid-run, review gate, quality output and approved local-only delivery: PASS")
 } catch (error) {
   console.error(logs.slice(-4000))

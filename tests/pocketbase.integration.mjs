@@ -82,6 +82,33 @@ try {
   } finally { db.close() }
   const version = await expected("POST", "/api/spec-versions", "B", { spec_id: b.id, note: "smoke" }, 200)
   await expected("POST", "/api/spec-versions/" + encodeURIComponent(version.item.id) + "/publish", "B", {}, 200)
+  // The old single-Agent "publish with warning" behavior stays backwards
+  // compatible. A new multi-role Agent must never publish an untested or
+  // evidence-free version through the API, regardless of front-end routing.
+  const complexSpec = await expected("POST","/api/agent_specs","B",{
+    name:"Evidence gate smoke",
+    spec:{
+      goal:"Two-stage evidence test",task_scope:"Only isolated test",
+      tools:[],task_plan:["Research","Review"],deliverables:["Verified report"],done_criteria:["Evidence"],
+      roles:[
+        {id:"researcher",name:"Research",responsibility:"Evidence",tasks:["Read"],inputs:[],
+          deliverables:["Sources"],done_criteria:["Provenance"],depends_on:[],tools:[]},
+        {id:"reviewer",name:"Review",responsibility:"Audit",tasks:["Check"],inputs:[],
+          deliverables:["Review"],done_criteria:["Validated"],depends_on:["researcher"],tools:[]},
+      ],
+    },
+  },200)
+  const unverifiedVersion=await expected("POST","/api/spec-versions","B",
+    {spec_id:complexSpec.id,note:"No real complex run"},200)
+  assert.equal(unverifiedVersion.item.test_passed,false)
+  const rejectedPublish=await expected("POST",
+    "/api/spec-versions/"+encodeURIComponent(unverifiedVersion.item.id)+"/publish","B",{},409)
+  assert.equal(rejectedPublish.error,"complex_agent_acceptance_required")
+  const versionAfterReject=await expected("GET","/api/spec-versions?spec_id="+encodeURIComponent(complexSpec.id),
+    "B",undefined,200)
+  assert.equal(versionAfterReject.items[0].status,"draft",
+    "a rejected complex publish cannot become published")
+
   const token = await expected("POST", "/api/integrate/keys", "B", { agent_id: b.id, name: "Smoke API" }, 200)
   assert.ok(/^rhk_[A-Za-z0-9]+$/.test(token.token))
   assert.ok(token.token.length >= 40)

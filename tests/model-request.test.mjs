@@ -19,6 +19,21 @@ const examples = [
   {role:"tool",content:"旧工具"},
 ]
 
+test("model HTTP timeout is finite and capped to the fenced synchronous dispatch window", () => {
+  assert.equal(buildRequest("openai", { timeout: 999999 }).timeout, 240)
+  assert.equal(buildRequest("anthropic", { timeout: 240 }).timeout, 240)
+  assert.equal(buildRequest("gemini", { timeout: 240.99 }).timeout, 240)
+  assert.equal(buildRequest("openai", { timeout: 239 }).timeout, 239)
+  assert.equal(buildRequest("openai", { timeout: 0 }).timeout, 120)
+  assert.equal(buildRequest("openai", { timeout: -5 }).timeout, 120)
+  assert.equal(buildRequest("openai", { timeout: Infinity }).timeout, 120)
+  assert.equal(buildRequest("openai", { timeout: NaN }).timeout, 120)
+  assert.equal(buildRequest("openai", { timeout: 0.25 }).timeout, 1)
+  assert.equal(buildRequest("openai", { timeout: 1e100 }).timeout, 240)
+  assert.equal(buildRequest("openai", { timeout: 999999 }).timeout <= 240, true,
+    "No provider adapter may dispatch an HTTP request beyond the lease safety window")
+})
+
 test("OpenAI request preserves exact existing REST shape and user messages", () => {
   const out = roundtrip(buildRequest("openai",{
     baseUrl:"https://api.test/v1///",apiKey:"secret-test",model:"gpt-x",

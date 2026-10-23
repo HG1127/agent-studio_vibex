@@ -37,6 +37,7 @@ function route(file, path, app) {
     routerAdd(method, url, handler) { routes.set(method + " " + url, handler) },
     onBootstrap() {}, $app: app, $os: { getenv: () => "" },
     DynamicModel: function (value) { Object.assign(this, value) },
+    arrayOf() { return [] },
   }, { timeout: 1000 })
   return routes.get("GET " + path)
 }
@@ -110,7 +111,10 @@ test("worker status distinguishes absent heartbeat from failed queue/SQL/heartbe
       return []
     }, db: () => ({ newQuery: () => ({ bind(params) {
       assert.equal(params.uid, "verified-owner")
-      return { one() { if (fail === "sql") throw Error("sql_failed") } }
+      return {
+        one() { if (fail === "sql") throw Error("sql_failed") },
+        all() { if (fail === "sql") throw Error("sql_failed") },
+      }
     } }) }) }
     const handler = route("pocketbase/pb_hooks/background_worker.pb.js", "/api/worker/status", app)
     const result = handler(event())
@@ -118,6 +122,33 @@ test("worker status distinguishes absent heartbeat from failed queue/SQL/heartbe
     if (!fail) assert.equal(adaptHarnessData("worker", result.data).metrics[0].value, "未启用")
   }
 })
+test("Harness Worker metrics distinguish last reported component failures from live process health", () => {
+  const queue = Object.fromEntries([
+    "agent_running", "workflow_running", "awaiting_approval", "needs_review",
+    "paused", "failed_recent", "scheduled_active", "scheduled_pending",
+    "scheduled_overdue", "ready_estimate", "inflight",
+  ].map(key => [key, 0]))
+  const base = {
+    ok: true, enabled: true, alive: true, last_seen: "2026-10-22",
+    last_step_at: "", components_observed_at_ms: 1792657000000,
+    components: {
+      schedules: { state: "retrying", failures: 2, retry_at_ms: 1792657005000 },
+      knowledge: { state: "healthy", failures: 0, retry_at_ms: 0 },
+    },
+    queue: { ...queue, sampled: false, sample_limit_per_kind: 100 },
+  }
+  const healthy = adaptHarnessData("worker", base)
+  assert.equal(healthy.metrics.find(m => m.label === "Worker（共享执行器）").value, "近期有心跳")
+  assert.equal(healthy.metrics.find(m => m.label === "定时调度最近报告").value, "上次报告暂不可用")
+  assert.equal(healthy.metrics.find(m => m.label === "知识索引最近报告").value, "最近检查正常")
+  const stale = adaptHarnessData("worker", { ...base, alive: false })
+  assert.equal(stale.metrics.find(m => m.label === "定时调度最近报告").value, "未核验")
+  assert.equal(stale.metrics.find(m => m.label === "知识索引最近报告").value, "未核验")
+  assert.throws(() => adaptHarnessData("worker", {
+    ...base, components: { ...base.components, schedules: { state: "leak-secret", failures: 1, retry_at_ms: 0 } },
+  }))
+})
+
 test("recent Agent and Workflow APIs remain owner-scoped, bounded, and fail on query errors", () => {
   for (const kind of ["agent", "workflow"]) {
     let recentCalls = 0, pendingCalls = 0, sqlCounts = 0
