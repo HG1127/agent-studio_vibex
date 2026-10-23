@@ -1,4 +1,5 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {verifyKnowledgeExecutionCredentials} from "./knowledge-execution-audit.ts"
 const helper="agentstudio_knowledge_query",table="knowledge_query_jobs"
 const functions:[string,"api"|"worker"|"broker"|null][]=[
   ["knowledge_query_enabled()",null],["knowledge_query_scope(uuid,uuid[],boolean)",null],["knowledge_query_reader_current(uuid,uuid,bigint,bigint)",null],
@@ -12,6 +13,7 @@ const readable:Record<string,true|string[]>={users:["id","external_issuer","exte
   knowledge_embedding_consents:true,knowledge_embedding_vectors:true,knowledge_query_jobs:true}
 function refuse():never{throw Error("unsafe_knowledge_query_privileges")}
 export async function verifyKnowledgeQueryCredentials(db:SqlClient):Promise<void>{
+  await verifyKnowledgeExecutionCredentials(db)
   const role=(await db.query<{safe:boolean}>("SELECT NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication "+
     "AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS safe FROM pg_catalog.pg_roles r WHERE rolname=$1",[helper])).rows[0]
   if(!role){

@@ -63,6 +63,8 @@ import {scopedKnowledgeQueryPool} from "../src/knowledge-query-policy.ts"
 import {verifyKnowledgeQuerySchema} from "../src/knowledge-query-audit.ts"
 import {QUERY_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-query-contracts.ts"
 import {createKnowledgeQueryPrivateClient,createKnowledgeQueryPrivateHandler} from "../src/knowledge-query-private-tls.ts"
+import {workflowKnowledgeQueryId} from "../src/knowledge-execution-source.ts"
+import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch} from "../src/workflow-v2-dispatch-guard.ts"
 import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "../src/knowledge-embedding-privileges.ts"
@@ -238,6 +240,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_036_knowledge_embedding_consent.sql"))
     await admin.query(upgrade("pg_v9_037_knowledge_index_runtime.sql"))
     await admin.query(upgrade("pg_v9_038_knowledge_query_runtime.sql"))
+    await admin.query(upgrade("pg_v9_039_knowledge_execution_source.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -518,6 +521,36 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await worker.tick()).status,"retrieved");assert.equal((await worker.tick()).status,"idle")
       assert.equal((await api.getKnowledgeQueryReceipt(queryRequest.request_id)).result.items[0].document_id,sharedDoc.item.document_id)
       assert.equal((await api.submitKnowledgeQuery(queryRequest)).replayed,true);assert.equal(queryCalls,1)
+      // SQL039 stays unwired to product Tool dispatch. Exercise its foundation
+      // through real PG18 restricted logins, an employee-approved run/lease and
+      // the existing private mTLS Query Worker/Broker with synthetic vectors.
+      for(const revoke of [false,true]){
+        const flow=await api.createWorkflowGraph("Synthetic query source",{version:2,nodes:[
+          {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+          {id:"search",type:"tool",data:{title:"Search",tool:"knowledge_search",knowledge_base_ids:[sharedBase.id],params_template:'{"query":"different wording"}'},position:{x:100,y:0}},
+          {id:"end",type:"end",data:{title:"End"},position:{x:200,y:0}}],edges:[{id:"a",source:"start",target:"search"},{id:"b",source:"search",target:"end"}]})
+        const queued=await api.submitWorkflowV2Run(flow.id,flow.revision,"Synthetic source only","ci-source-"+flow.id)
+        let enter,release
+        const ready=new Promise(resolve=>{enter=resolve}),result=new Promise(resolve=>{release=resolve})
+        const sourceWorker=new WorkflowV2Worker(workerPool,"ci-query-source",{executor:{supports:()=>true,execute(request,lease){enter({request,lease});return result}}})
+        await sourceWorker.tick();const pending=(await api.getWorkflowV2Run(queued.run.id)).pending_effect
+        await api.decideWorkflowV2Node(queued.run.id,"approved",pending.step_key,pending.input_sha256)
+        const running=sourceWorker.tick()
+        try{
+          const {request,lease}=await ready,wire={claim:{run_id:lease.run_id,job_id:lease.job_id,lease_token:lease.lease_token,lease_version:lease.lease_version,lease_owner:lease.worker_id},step_key:request.step_key,input_sha256:request.input_sha256}
+          const readerId=await withActor(apiPool,reader,async(db,id)=>{
+            await verifyWorkflowEffectLease(db,id,wire,"tool");await reserveWorkflowEffectDispatch(db,id,wire,"tool");return id
+          })
+          const q={...queryRequest,limit:6,request_id:workflowKnowledgeQueryId(readerId,queued.run.id,wire.step_key)},queries=new KnowledgeQueryRepository(apiPool,{executionSourceApproved:true})
+          assert.equal((await queries.submitExecution(reader,q,wire)).item.status,"prepared")
+          if(revoke)await admin.query("UPDATE agentstudio.approvals SET status='rejected' WHERE run_id=$1 AND step_key=$2",[queued.run.id,wire.step_key])
+          assert.equal((await worker.tick()).status,revoke?"idle":"retrieved")
+          const receipt=await queries.get(reader,q.request_id)
+          assert.equal(receipt.status,revoke?"rejected":"succeeded")
+          if(!revoke){assert.equal((await queries.submitExecution(reader,q,wire)).replayed,true);assert.equal(receipt.result.retrieval,"semantic")}
+          assert.equal((await worker.tick()).status,"idle");assert.equal(queryCalls,2)
+        }finally{release("Synthetic held source result");await running;await sourceWorker.tick()}
+      }
     },{handlerFactory:createKnowledgeQueryPrivateHandler})
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)

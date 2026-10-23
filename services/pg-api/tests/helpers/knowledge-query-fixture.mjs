@@ -8,12 +8,13 @@ import {KnowledgeQueryWorker} from "../../src/knowledge-query-worker.ts"
 import {QUERY_CHARGE_ACKNOWLEDGEMENT} from "../../src/knowledge-query-contracts.ts"
 import {KnowledgeAccessRepository} from "../../src/knowledge-access-repository.ts"
 import {EMBEDDING_CHARGE_ACKNOWLEDGEMENT} from "../../src/knowledge-embedding-consent-contracts.ts"
-export async function knowledgeQueryFixture(){
+export async function knowledgeQueryFixture({executionSource=false}={}){
   const f=await knowledgeIndexFixture()
   try{
     await f.grant();await f.authorize();await f.worker().tick()
     await f.db.exec(f.sql("migrations/pg_v9_038_knowledge_query_runtime.sql"))
-    const pool=scopedKnowledgeQueryPool(f.pool,true),queries=new KnowledgeQueryRepository(pool),base=f.resources.alice.kb.id
+    if(executionSource)await f.db.exec(f.sql("migrations/pg_v9_039_knowledge_execution_source.sql"))
+    const pool=scopedKnowledgeQueryPool(f.pool,true),queries=new KnowledgeQueryRepository(pool,{executionSourceApproved:executionSource,allowAgentExecution:executionSource,allowAutonomousExecution:executionSource}),base=f.resources.alice.kb.id
     await f.settings.change(bob,{action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:f.resources.bob.model.id,
       connection_revision:f.resources.bob.model.revision,model_name:"synthetic",base_url:"https://api.openai.com/v1"})
     const p=await f.consents.get(bob)

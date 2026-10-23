@@ -96,7 +96,7 @@
     "autonomous-agent-worker:preflight": "node --experimental-strip-types src/autonomous-agent-worker-loop.ts --preflight",
     "test:knowledge-embedding-state": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-embedding-state.test.mjs tests/knowledge-embedding-consent.test.mjs tests/knowledge-embedding-http.test.mjs",
     "test:knowledge-index": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-index-runtime.test.mjs tests/knowledge-index-transport.test.mjs tests/knowledge-index-private-flow.test.mjs tests/knowledge-index-privileges.test.mjs tests/knowledge-index-service.test.mjs tests/knowledge-embedding-http.test.mjs",
-    "test:knowledge-query": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-query-runtime.test.mjs tests/knowledge-query-lifecycle.test.mjs tests/knowledge-query-policy.test.mjs tests/knowledge-query-privileges.test.mjs tests/knowledge-query-private-flow.test.mjs tests/knowledge-embedding-http.test.mjs tests/knowledge-index-service.test.mjs"
+    "test:knowledge-query": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-execution-source.test.mjs tests/knowledge-query-runtime.test.mjs tests/knowledge-query-lifecycle.test.mjs tests/knowledge-query-policy.test.mjs tests/knowledge-query-privileges.test.mjs tests/knowledge-query-private-flow.test.mjs tests/knowledge-embedding-http.test.mjs tests/knowledge-index-service.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
