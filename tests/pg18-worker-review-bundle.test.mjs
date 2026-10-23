@@ -11,7 +11,7 @@ test("worker review tarball is source-only and both extracted workers refuse imp
   const folder=fs.mkdtempSync(path.join(os.tmpdir(),"pg18-worker-review-test-"))
   try{
     const result=workerReviewBundle(folder)
-    assert.equal(result.archived_files,21)
+    assert.equal(result.archived_files,22)
     assert.equal(result.manifest_verified,true)
     assert.equal(result.extracted_offline_plans_verified,2)
     assert.equal(result.node_modules_included,false)
@@ -31,6 +31,7 @@ test("worker review tarball is source-only and both extracted workers refuse imp
     assert.ok(names.some(n=>n.endsWith("/knowledge-index-audit.ts")))
     assert.ok(names.some(n=>n.endsWith("/knowledge-query-audit.ts")))
     assert.ok(names.some(n=>n.endsWith("/knowledge-execution-audit.ts")))
+    assert.ok(names.some(n=>n.endsWith("/knowledge-keyword-audit.ts")))
     assert.ok(names.some(n=>n.endsWith("/agentstudio-pg18-prepare.service.example")))
     assert.ok(names.some(n=>n.endsWith("/SHA256SUMS")))
     assert.ok(names.some(n=>n.endsWith("/README_REVIEW_FIRST.txt")))

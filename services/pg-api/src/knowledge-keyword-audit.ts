@@ -59,8 +59,7 @@ export async function verifyKnowledgeKeywordCredentials(db:SqlClient):Promise<bo
     "AND (SELECT count(*)=1 AND bool_and(polroles=ARRAY[(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)]::oid[] AND polcmd='*' AND polpermissive AND pg_get_expr(polqual,polrelid)='true' AND pg_get_expr(polwithcheck,polrelid)='true') "+
     "FROM pg_catalog.pg_policy WHERE polrelid=to_regclass('agentstudio.knowledge_keyword_observations')) AND "+
     "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid=to_regclass('agentstudio.knowledge_keyword_observations') AND NOT tgisinternal) AND "+
-    "(SELECT count(*)=3 FROM pg_catalog.pg_proc WHERE proowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)) AND "+
-    "EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_041') AS safe",[helper])).rows[0]
+    "(SELECT count(*)=3 FROM pg_catalog.pg_proc WHERE proowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)) AS safe",[helper])).rows[0]
   if(!fences?.safe)refuse()
   return true
 }

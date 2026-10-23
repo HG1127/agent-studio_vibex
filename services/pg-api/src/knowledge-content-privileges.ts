@@ -55,7 +55,8 @@ async function verifySchema(pool:SqlPool,runtime:boolean,requireKeywordObservati
     await db.query("BEGIN READ ONLY")
     try{
       await db.query("SET LOCAL ROLE agentstudio_api")
-      if(requireKeywordObservations&&!await verifyKnowledgeKeywordCredentials(db))throw Error("keyword_observation_schema_required")
+      if(requireKeywordObservations&&(!await verifyKnowledgeKeywordCredentials(db)||
+        (await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_041') AS ok")).rows[0]?.ok!==true))throw Error("keyword_observation_schema_required")
       const roles=(await db.query<{name:string;safe:boolean;members:number}>("SELECT rolname AS name,(NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls "+
         "AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication) AS safe,"+
         "(SELECT count(*)::integer FROM pg_catalog.pg_auth_members m WHERE m.roleid=r.oid) AS members "+

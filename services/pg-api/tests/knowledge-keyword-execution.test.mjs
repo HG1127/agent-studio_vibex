@@ -197,6 +197,10 @@ test("keyword schema preflight rejects privilege leaks, assumable roles, public 
   const f=await knowledgeKeywordFixture()
   try{
     assert.equal(await verifyKnowledgeKeywordCredentials(f.db),true)
+    for(const role of ["agentstudio_api","agentstudio_bound_dispatch","agentstudio_model_broker","agentstudio_worker","agentstudio_knowledge_index_worker","agentstudio_knowledge_index_broker"]){
+      await f.db.exec("BEGIN READ ONLY")
+      try{await f.db.exec("SET LOCAL ROLE "+role);assert.equal(await verifyKnowledgeKeywordCredentials(f.db),true)}finally{await f.db.exec("ROLLBACK")}
+    }
     await f.db.exec("BEGIN")
     try{
       await f.db.exec("CREATE ROLE agentstudio_admin NOLOGIN SUPERUSER; ALTER TABLE agentstudio.knowledge_keyword_observations OWNER TO agentstudio_admin")
@@ -217,6 +221,12 @@ test("keyword schema preflight rejects privilege leaks, assumable roles, public 
       await f.db.exec("BEGIN")
       try{await f.db.exec(mutation);await assert.rejects(verifyKnowledgeKeywordCredentials(f.db),/unsafe_knowledge_keyword_privileges/)}finally{await f.db.exec("ROLLBACK")}
     }
+    const marker=(await f.db.query("SELECT version,description FROM agentstudio.schema_migrations WHERE version='pg_v9_041'")).rows[0]
+    await f.db.query("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_041'")
+    try{
+      assert.equal(await verifyKnowledgeKeywordCredentials(f.db),true)
+      await assert.rejects(verifyKnowledgeRuntimeSchema(f.pool,true),/keyword_observation_schema_required/)
+    }finally{await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES($1,$2)",[marker.version,marker.description])}
     assert.equal(await verifyKnowledgeExecutionCredentials(f.db),true)
   }finally{await f.close()}
 })
