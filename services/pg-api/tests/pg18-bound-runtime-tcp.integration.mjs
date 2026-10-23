@@ -70,7 +70,7 @@ import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch} from "../src/wo
 import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "../src/knowledge-embedding-privileges.ts"
-import {verifyKnowledgeRuntimeSchema} from "../src/knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "../src/knowledge-content-privileges.ts"
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "../src/knowledge-scope-policy.ts"
 import {requireKnowledgeScope} from "../src/knowledge-runtime-scope.ts"
 import {withActor} from "../src/repository.ts"
@@ -259,6 +259,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     pools.push(authPool)
     const apiPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool,true)
+    await verifyKnowledgeAgentSchema(apiPool)
     await verifyKnowledgeEmbeddingSchema(apiPool)
     await verifyKnowledgeEmbeddingConsentSchema(apiPool)
     await verifyKnowledgeIndexSchema(apiPool)
@@ -271,7 +272,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await admin.query(mutation[0])
       try{await assert.rejects(verifyKnowledgeToolSchema(apiPool),/unsafe_knowledge_keyword_privileges/)}finally{await admin.query(mutation[1])}
     }
-    for(const pool of Object.values(byLogin))await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_keyword_observations LIMIT 1"),e=>e.code==="42501")
+    for(const pool of Object.values(byLogin)){
+      await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_keyword_observations LIMIT 1"),e=>e.code==="42501")
+      await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_agent_observations LIMIT 1"),e=>e.code==="42501")
+    }
     for(const kind of ["worker","broker"])await verifyKnowledgeQuerySchema(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_consents TO agentstudio_stage_login")
@@ -544,7 +548,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const singleLedger=(await admin.query("SELECT reader_user_id,input_sha256,result_refs FROM agentstudio.knowledge_agent_observations WHERE run_id=$1",[singleShared.run.id])).rows[0]
     assert.equal(singleLedger.reader_user_id,share.item.recipient_id);assert.equal(singleLedger.result_refs.length,1)
     assert.match(singleLedger.input_sha256,/^[a-f0-9]{64}$/)
-    await assert.rejects(byLogin.agentstudio_api_login.query("SELECT * FROM agentstudio.knowledge_agent_observations"),e=>e.code==="42501")
+    await assert.rejects(byLogin.agentstudio_stage_login.query("SELECT * FROM agentstudio.knowledge_agent_observations"),e=>e.code==="42501")
     await api.changeKnowledgeEmbeddingSettings({action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:readerModel.id,connection_revision:readerModel.revision,model_name:"synthetic-embedding",base_url:"https://api.openai.com/v1"})
     const readerProfile=await api.getKnowledgeEmbeddingConsent()
     await api.changeKnowledgeEmbeddingConsent({action:"grant",request_id:randomUUID(),expected_revision:0,profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,index_enabled:false,query_enabled:true,acknowledgement:EMBEDDING_CHARGE_ACKNOWLEDGEMENT})

@@ -232,7 +232,7 @@ try{
         let output
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
-          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,smitheryWrites:state.smitheryWrites,
+          try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,singleEvidence:state.singleEvidence??0,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,smitheryWrites:state.smitheryWrites,
             ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
