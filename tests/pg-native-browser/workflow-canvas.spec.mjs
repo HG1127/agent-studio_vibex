@@ -156,7 +156,13 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     const debugReview=page.getByRole("region",{name:"Workflow 当前步骤审批",exact:true})
     await expect(debugReview).toContainText("Synthetic isolated node task / 样本项")
     await page.getByRole("checkbox",{name:"我已核对本次模型调用，确认可能产生费用。",exact:true}).check()
+    const committedDebugDecision=page.waitForResponse(response=>response.request().method()==="POST"&&/\/api\/v2\/workflow-v2-runs\/[^/]+\/decision$/.test(new URL(response.url()).pathname))
     await page.getByRole("button",{name:"批准工作流当前步骤",exact:true}).click()
+    const decisionResponse=await committedDebugDecision
+    expect(decisionResponse.status()).toBe(200)
+    const submittedDecision=decisionResponse.request().postDataJSON()
+    expect((await decisionResponse.json()).decision_confirmation).toMatchObject({status:"approved",step_key:submittedDecision.step_key,input_sha256:submittedDecision.input_sha256})
+    await expect(page.getByText("已批准当前步骤。",{exact:true})).toBeVisible()
     expect((await control("workflow")).status).toBe("progressed");expect((await control("workflow")).status).toBe("succeeded")
     await page.getByRole("button",{name:"刷新单模型测试",exact:true}).click()
     await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic node debug result")
