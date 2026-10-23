@@ -1,7 +1,7 @@
 // agent_runs_api.pb.js — 运行详情页（run-detail）归属校验数据通路
 // 表结构由 MCP 装的 agent_runs.pb.js / run_events.pb.js 提供；本文件是运行详情页唯一数据通路：
 //   GET /api/agent-runs/{id}/detail   单次运行完整档案（归属校验，非本人/不存在一律 404）
-//   GET /api/agent-runs/recent?limit=N 最近运行 + 独立查询的本人全部待办总数及最近待办（limit 1..20）
+//   GET /api/agent-runs/recent?limit=N[&spec_id=ID] 最近运行（可限本人指定 Agent）+ 本人全部待办统计（limit 1..20）
 // 安全约束：运行详情与事件必须通过身份归属校验，历史方案必须读取 run.spec_snapshot。
 // 禁止从当前 agent_specs 替代已删除或缺失的历史快照；旧记录缺失应明确返回 null。
 // Goja 铁律：全部 var、helper 就地定义、每个回调 self-contained、json 字段 getString 优先、
@@ -173,8 +173,15 @@ routerAdd("GET", "/api/agent-runs/recent", function (e) {
     var limit = Number(query.limit || 5)
     if (!limit || limit < 1) limit = 5
     if (limit > 20) limit = 20
-
-    var rows = $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid}", "-created", limit, 0, { uid: uid })
+    // Scope before LIMIT: filtering a global recent page would hide an Agent's
+    // valid run after other Agents have produced more than 20 newer runs.
+    var specId = String(query.spec_id || "").trim()
+    if (specId && !/^[A-Za-z0-9]{15}$/.test(specId)) {
+      return e.json(400, { error: "invalid_spec_id", message: "Agent 标识格式无效" })
+    }
+    var rows = specId
+      ? $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid} && spec_id = {:sid}", "-created", limit, 0, { uid: uid, sid: specId })
+      : $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid}", "-created", limit, 0, { uid: uid })
     var items = []
     for (var i = 0; i < rows.length; i++) {
       var rec = rows[i]

@@ -424,6 +424,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             cp.failure_diagnostic = null
           }
           cp.claim_until = 0
+          // Terminal results take precedence over queued cooperative stop requests.
+          cp.pause_requested = false
+          cp.cancel_requested = false
           cp.seq = Number(seq) || 0
           ownedRun.set("checkpoint", cp)
           ownedRun.set("current_step", Number(stepIndex) || 0)
@@ -530,7 +533,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         customCfg = modelRepo.getDefault($app, String(stepRun.get("rh_user_id") || ""))
       }
       var callCustomLlmBase = function (messages, maxTokens, timeoutSec) {
-        var cTimeout = Number(timeoutSec) > 0 ? Number(timeoutSec) : 120
+        var modelRequest = require(__hooks + "/modules/model_request.js")
+        var cTimeout = modelRequest.normalizeTimeoutSeconds(timeoutSec, 120)
         var resolved = modelRepo.lookup(
           $app, String(stepRun.get("rh_user_id") || ""),
           String((customCfg && customCfg.connection_id) || ""),
@@ -551,7 +555,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         var cModel = String(customCfg.model_id || "")
         var cRes = null
         try {
-          cRes = $http.send(require(__hooks + "/modules/model_request.js").buildRequest(cProv, {
+          cRes = $http.send(modelRequest.buildRequest(cProv, {
             baseUrl: cBase, apiKey: cKey, model: cModel, messages: messages,
             maxTokens: maxTokens, timeout: cTimeout,
           }))
@@ -605,13 +609,15 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         var admitted = budgetService.allowModelCall(harnessStats, modelCallLimit.max_model_calls)
         if (!admitted.ok) return { ok: false, error: admitted.error, detail: "本次运行的模型调用预算已用尽" }
 
-        // Renew an unexpired owned lease before potentially slow provider I/O.
-        // This is a per-operation extension, not a long-running heartbeat.
+        // Bound the outbound provider call to the CURRENT owned token and
+        // active run status, in the same transaction as this renewal.
+        // Never use the Worker process heartbeat as execution authorization.
         try {
-          if (!executionGuard.renew($app, "agent", runId, uid, leaseToken))
-            return { ok: false, error: "execution_lease_lost" }
-        } catch (_) {
-          return { ok: false, error: "execution_lease_lost" }
+          executionGuard.renewForDispatch($app, "agent", runId, uid, leaseToken,
+            { maxCallMs: require(__hooks + "/modules/model_request.js").MAX_TIMEOUT_SECONDS * 1000 })
+        } catch (dispatchErr) {
+          return { ok: false,
+            error: String((dispatchErr && dispatchErr.code) || "execution_lease_lost") }
         }
         // Reserve the next LLM attempt DURABLY before outbound billing.
         // The atomic per-run lease prevents ordinary competing ticks, but
@@ -644,6 +650,25 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
 
       var rawSteps = cp.steps || []
+      // A stop may arrive while the paid model request is outstanding. The
+      // original checkpoint snapshot is stale by then; validate the current
+      // checkpoint while holding the same fenced worker lease before acting
+      // on a model decision or dispatching any tool.
+      var stopAtActionBoundary = function () {
+        var pending = false
+        executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (_tx, currentRun) {
+          var fresh = loadJson(currentRun, "checkpoint")
+          pending = fresh.cancel_requested === true || fresh.pause_requested === true
+        })
+        if (pending) {
+          seq++
+          addEvent(runId, stepIndex, seq, "status", {
+            message: "运行控制请求已收到；忽略尚未执行的模型决策，禁止开始新的工具调用",
+          })
+        }
+        return pending
+      }
+
       var steps = []
       for (var s = 0; s < rawSteps.length; s++) steps.push(rawSteps[s])
       var evidenceService = require(__hooks + "/modules/harness_evidence.js")
@@ -1035,6 +1060,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         4096
       )
 
+      // A cancellation/pause accepted during model I/O must win over the
+      // returned tool decision. Never dispatch that tool after the stop.
+      if (stopAtActionBoundary()) return
       if (!llm.ok) {
         seq++
         if (llm.error === "model_call_budget_exhausted") {
@@ -1103,20 +1131,23 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           message: kind === "plan_review" ? "已生成阶段草案，等待人工批准或提出修改意见" : "等待用户补充信息",
           question: askQuestion, kind: kind, step_index: stepIndex,
         })
-        var inputRun = $app.findRecordById("agent_runs", runId)
-        var inputCp = loadJson(inputRun, "checkpoint")
-        inputCp.pending_input = {
-          step_index: stepIndex, question: askQuestion, kind: kind,
-          draft: String(draft || "").slice(0, 12000),
-        }
-        inputCp.claim_until = 0
-        inputCp.seq = seq
-        inputCp.harness_stats = harnessStats
-        inputCp.call_sig_recent = sigRecent
-        inputRun.set("checkpoint", inputCp)
-        inputRun.set("current_step", stepIndex)
-        inputRun.set("status", "awaiting_input")
-        $app.save(inputRun)
+        // Fence the waiting-state transition too: a concurrent cancel request
+        // must merge into this checkpoint instead of being overwritten by a stale read.
+        executionGuard.mutate($app, "agent", runId, uid, leaseToken, function (tx, inputRun) {
+          var inputCp = loadJson(inputRun, "checkpoint")
+          inputCp.pending_input = {
+            step_index: stepIndex, question: askQuestion, kind: kind,
+            draft: String(draft || "").slice(0, 12000),
+          }
+          inputCp.claim_until = 0
+          inputCp.seq = seq
+          inputCp.harness_stats = harnessStats
+          inputCp.call_sig_recent = sigRecent
+          inputRun.set("checkpoint", inputCp)
+          inputRun.set("current_step", stepIndex)
+          inputRun.set("status", "awaiting_input")
+          tx.save(inputRun)
+        })
       }
 
       if (String(decision.action) === "ask_user") {
@@ -1402,6 +1433,11 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
 
       // 统一分派器：单次真实调用；超时/网络级失败可标记 retryable 由外层自动重试 1 次（模型调用不重试）
       var execToolOnce = function () {
+      // Revalidate *every* tool attempt, including a read-only retry. A
+      // stolen/expired lease cannot initiate another external request.
+      // Even long chained steps remain safe at each individual boundary.
+      executionGuard.renewForDispatch($app, "agent", runId, uid, leaseToken,
+        { maxCallMs: require(__hooks + "/modules/model_request.js").MAX_TIMEOUT_SECONDS * 1000 })
       var output = ""
       var toolErr = ""
       var retryable = false
@@ -1674,6 +1710,10 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       return { output: output, toolErr: toolErr, retryable: retryable }
       }
 
+      // Close the model→tool planning window, including a resumed approved
+      // call. The user's stop request must be checked against the live DB
+      // immediately before the side-effect journal or tool dispatch.
+      if (stopAtActionBoundary()) return
       // Durable write-intent journal. Never automatically replay an unknown POST/MCP outcome.
       // A single Agent step may perform at most one external write.
       var effectNeeded = toolPolicy.write
@@ -1683,8 +1723,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       var effectCachedOutput = ""
       var effectUnknown = ""
       if (effectNeeded) {
-        if (!executionGuard.renew($app, "agent", runId, uid, leaseToken))
-          throw new Error("execution_lease_lost")
+        executionGuard.renewForDispatch($app, "agent", runId, uid, leaseToken,
+          { maxCallMs: require(__hooks + "/modules/model_request.js").MAX_TIMEOUT_SECONDS * 1000 })
         effectKey = "as-" + $security.sha256("agent:" + runId + ":" + stepIndex)
         var effectArgsHash = $security.sha256(invInputStr)
         try {
@@ -1823,6 +1863,9 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     try {
       admission = runLifecycle.enter($app, executionGuard, {
         kind: "agent", runId: id, owner: uid, token: leaseToken,
+        workerInstance: require(__hooks + "/modules/harness_worker_identity.js").resolve(
+          h, String($os.getenv("AGENT_STUDIO_WORKER_TOKEN") || ""),
+          $os.getenv("AGENT_STUDIO_BACKGROUND_WORKER") === "true"),
         loadCheckpoint: function (r) { return loadJson(r, "checkpoint") },
         classifyFailure: function (reason) {
           return require(__hooks + "/modules/harness_failure_triage.js")
@@ -1842,41 +1885,153 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         { message: "run_runtime_deadline_exceeded：本次任务运行总时限已达到" })
       return e.json(200, runLifecycle.response(id, "failed", { deadlineExceeded: true }))
     }
+    // Recover a cancellation request persisted by a prior worker before starting
+    // any new model/tool step. Re-read the checkpoint under the active lease fence.
+    if (admission.checkpoint && admission.checkpoint.cancel_requested === true) {
+      var cancelAppliedBeforeStep = false
+      executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, cancelRun) {
+        var cancelCp = loadJson(cancelRun, "checkpoint")
+        if (cancelCp.cancel_requested === true) {
+          cancelCp.cancel_requested = false
+          cancelCp.pause_requested = false
+          cancelCp.pending_input = null
+          cancelCp.pending_approval = null
+          cancelCp.approval_decision = ""
+          cancelCp.claim_until = 0
+          cancelRun.set("checkpoint", cancelCp)
+          cancelRun.set("status", "cancelled")
+          cancelRun.set("error", "用户手动取消")
+          tx.save(cancelRun)
+          cancelAppliedBeforeStep = true
+        }
+      })
+      if (cancelAppliedBeforeStep) {
+        addEvent(id, Number(admission.checkpoint.done_steps || 0), 0, "status",
+          { message: "取消请求已生效，任务已停止；未启动新的执行步骤" })
+        return e.json(200, { ok: true, run_id: id, status: "cancelled", stepped: false, cancel_requested: false })
+      }
+    }
+    // Apply a pause requested during the previous tick only after that tick
+    // released its execution lease and committed the completed step.
+    if (admission.checkpoint && admission.checkpoint.pause_requested === true) {
+      var pauseApplied = false
+      try {
+        executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, pauseRun) {
+          var pauseCp = loadJson(pauseRun, "checkpoint")
+          if (pauseCp.pause_requested === true) {
+            pauseCp.pause_requested = false
+            pauseCp.claim_until = 0
+            pauseRun.set("checkpoint", pauseCp)
+            pauseRun.set("status", "paused")
+            tx.save(pauseRun)
+            pauseApplied = true
+          }
+        })
+      } catch (pauseErr) {
+        var latestPauseRun = null
+        try { latestPauseRun = $app.findRecordById("agent_runs", id) } catch (_) {}
+        if (latestPauseRun && String(latestPauseRun.get("status") || "") !== "running") {
+          return e.json(200, { ok: true, run_id: id, status: String(latestPauseRun.get("status")), stepped: false })
+        }
+        throw pauseErr
+      }
+      if (pauseApplied) {
+        addEvent(id, Number(admission.checkpoint.done_steps || 0), 0, "status",
+          { message: "当前步骤已完成并保存检查点，暂停请求已生效；恢复后从下一步继续" })
+        return e.json(200, { ok: true, run_id: id, status: "paused", stepped: false, pause_requested: false })
+      }
+    }
     var stepFailed = false
+    var stepStoppedBeforeRetry = false
     try {
       executeStep(id)
     } catch (err) {
-      stepFailed = true
       var diagnostic = String((err && (err.code || err.message)) || "execution_step_failed")
+      if (diagnostic === "execution_stop_requested") {
+        // A previously accepted cancel/pause interrupts the NEXT attempt,
+        // not an external HTTP request already in flight. Preserve the
+        // checkpoint stop flag so cooperative cancellation (below) or the
+        // next tick's pause boundary can apply it without falsely failing.
+        stepStoppedBeforeRetry = true
+        try {
+          addEvent(id, 0, 0, "status", {
+            message: "执行期间收到停止请求，已阻止新的模型/工具重试",
+          })
+        } catch (_) {}
+      } else {
+        stepFailed = true
+        try {
+          $app.logger().error("agent tick step error", "err", diagnostic.slice(0, 140))
+        } catch (_) {}
+        // Do not silently return a successful Tick after an uncommitted step.
+        // A stolen lease / cancelled run must not be overwritten by this worker.
+        try {
+          executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, r2) {
+            var cp2 = loadJson(r2, "checkpoint")
+            cp2.claim_until = 0
+            cp2.pause_requested = false
+            cp2.cancel_requested = false
+            cp2.seq = Number(cp2.seq || 0) + 1
+            cp2.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
+              .diagnose(diagnostic, { kind: "agent", stage: "worker",
+                stepRef: String(r2.get("current_step") || 0), seq: cp2.seq })
+            r2.set("checkpoint", cp2)
+            r2.set("status", "failed")
+            r2.set("error", "execution_step_failed: see sanitized worker diagnostics")
+            tx.save(r2)
+          })
+        } catch (_) { /* stale worker cannot replace the current owner */ }
+      }
+    }
+    // A cancellation requested while a step was in flight is applied only after
+    // that step has persisted its result. Waiting states are safe stop boundaries:
+    // ask_user/approval have already returned without executing another tool.
+    var cancelAppliedAfterStep = false
+    if (!stepFailed) {
       try {
-        $app.logger().error("agent tick step error", "err", diagnostic.slice(0, 140))
-      } catch (_) {}
-      // Do not silently return a successful Tick after an uncommitted step.
-      // A stolen lease / cancelled run must not be overwritten by this worker.
-      try {
-        executionGuard.mutate($app, "agent", id, uid, leaseToken, function (tx, r2) {
-          var cp2 = loadJson(r2, "checkpoint")
-          cp2.claim_until = 0
-          cp2.seq = Number(cp2.seq || 0) + 1
-          cp2.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
-            .diagnose(diagnostic, { kind: "agent", stage: "worker",
-              stepRef: String(r2.get("current_step") || 0), seq: cp2.seq })
-          r2.set("checkpoint", cp2)
-          r2.set("status", "failed")
-          r2.set("error", "execution_step_failed: see sanitized worker diagnostics")
-          tx.save(r2)
-        })
-      } catch (_) { /* stale worker cannot replace the current owner */ }
+        executionGuard.mutateStatuses($app, "agent", id, uid, leaseToken,
+          ["running", "awaiting_input", "awaiting_approval"], function (tx, cancelRun) {
+            var cancelCp = loadJson(cancelRun, "checkpoint")
+            if (cancelCp.cancel_requested === true) {
+              cancelCp.cancel_requested = false
+              cancelCp.pause_requested = false
+              cancelCp.pending_input = null
+              cancelCp.pending_approval = null
+              cancelCp.approval_decision = ""
+              cancelCp.claim_until = 0
+              cancelRun.set("checkpoint", cancelCp)
+              cancelRun.set("status", "cancelled")
+              cancelRun.set("error", "用户手动取消")
+              tx.save(cancelRun)
+              cancelAppliedAfterStep = true
+            }
+          })
+      } catch (cancelBoundaryErr) {
+        var latestCancelRun = null
+        try { latestCancelRun = $app.findRecordById("agent_runs", id) } catch (_) {}
+        var latestCancelStatus = String(latestCancelRun && latestCancelRun.get("status") || "")
+        // Terminal results or a route-committed cancellation win over stale work.
+        if (["succeeded", "failed", "cancelled", "paused", "queued"].indexOf(latestCancelStatus) < 0 &&
+            latestCancelStatus !== "awaiting_input" && latestCancelStatus !== "awaiting_approval") {
+          throw cancelBoundaryErr
+        }
+      }
+      if (cancelAppliedAfterStep) {
+        addEvent(id, Number(admission.checkpoint.done_steps || 0), 0, "status",
+          { message: "当前步骤已安全收尾并保存检查点，取消请求已生效；后续步骤未执行" })
+      }
     }
     var after = null
     try {
       after = $app.findRecordById("agent_runs", id)
     } catch (_) {}
+    var afterCheckpoint = after ? loadJson(after, "checkpoint") : {}
     return e.json(200, {
       ok: true,
       run_id: id,
       status: after ? String(after.get("status")) : "running",
-      stepped: !stepFailed,
+      stepped: !stepFailed && !stepStoppedBeforeRetry,
+      cancel_requested: afterCheckpoint.cancel_requested === true,
       error: stepFailed ? "execution_step_failed" : undefined,
     })
     } finally {
@@ -2331,40 +2486,83 @@ routerAdd("POST", "/api/agent-runs/{id}/pause", function (e) {
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
     var id = String(e.request.pathValue("id") || "")
-    var run = null
-    try {
-      run = $app.findRecordById("agent_runs", id)
-    } catch (_) {}
-    if (!run) return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
-    if (String(run.get("rh_user_id") || "") !== uid) return e.json(404, { error: "run_not_found" })
-    var st = String(run.get("status"))
-    if (st !== "running") return e.json(409, { error: "bad_state", message: "当前状态（" + st + "）不能暂停" })
-    var cp = {}
-    var cpStr = ""
-    try {
-      cpStr = run.getString("checkpoint")
-    } catch (_) {
-      cpStr = ""
+    var outcome = { httpStatus: 200, runStatus: "", pauseRequested: false, step: 0, message: "" }
+    // Serialize pause against execution-lease admission. If a tick is already
+    // in flight, request a cooperative pause instead of invalidating its lease.
+    $app.runInTransaction(function (tx) {
+      var run = null
+      try { run = tx.findRecordById("agent_runs", id) } catch (_) {}
+      if (!run) {
+        outcome.httpStatus = 404
+        outcome.error = "run_not_found"
+        outcome.message = "运行记录不存在"
+        return
+      }
+      if (String(run.get("rh_user_id") || "") !== uid) {
+        outcome.httpStatus = 404
+        outcome.error = "run_not_found"
+        outcome.message = "运行记录不存在"
+        return
+      }
+      var st = String(run.get("status") || "")
+      if (st !== "running") {
+        outcome.httpStatus = 409
+        outcome.error = "bad_state"
+        outcome.message = "当前状态（" + st + "）不能暂停"
+        return
+      }
+      var cp = {}
+      var cpStr = ""
+      try { cpStr = run.getString("checkpoint") } catch (_) {}
+      if (cpStr) {
+        try {
+          var parsed = JSON.parse(cpStr)
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) cp = parsed
+        } catch (_) {}
+      }
+      if (cp.cancel_requested === true) {
+        outcome.httpStatus = 409
+        outcome.error = "cancel_pending"
+        outcome.message = "任务正在取消，不能再请求暂停"
+        return
+      }
+      var activeLease = new DynamicModel({ total: 0 })
+      tx.db().newQuery(
+        "SELECT COUNT(*) AS total FROM agent_studio_run_leases " +
+        "WHERE kind='agent' AND run_id={:rid} AND expires_ms > {:now}"
+      ).bind({ rid: id, now: new Date().getTime() }).one(activeLease)
+      outcome.step = Number(run.get("current_step")) || 0
+      if (Number(activeLease.total || 0) > 0) {
+        cp.pause_requested = true
+        run.set("checkpoint", cp)
+        outcome.runStatus = "running"
+        outcome.pauseRequested = true
+        outcome.message = "已收到暂停请求，当前步骤正在收尾；完成后将暂停"
+      } else {
+        cp.pause_requested = false
+        cp.claim_until = 0
+        run.set("checkpoint", cp)
+        run.set("status", "paused")
+        outcome.runStatus = "paused"
+        outcome.pauseRequested = false
+        outcome.message = "已暂停，当前没有正在执行的步骤"
+      }
+      tx.save(run)
+    })
+    if (outcome.httpStatus !== 200) {
+      return e.json(outcome.httpStatus, { error: outcome.error, message: outcome.message })
     }
-    if (cpStr) {
-      try {
-        var cpParsed = JSON.parse(cpStr)
-        if (cpParsed && typeof cpParsed === "object" && !Array.isArray(cpParsed)) cp = cpParsed
-      } catch (_) {}
-    }
-    cp.claim_until = 0
-    run.set("status", "paused")
-    run.set("checkpoint", cp)
-    $app.save(run)
     var evCol = $app.findCollectionByNameOrId("run_events")
     var ev = new Record(evCol)
     ev.set("run_id", id)
-    ev.set("step_index", Number(run.get("current_step")) || 0)
+    ev.set("step_index", outcome.step)
     ev.set("seq", 0)
     ev.set("event_type", "status")
-    ev.set("content", { message: "已暂停，引擎将在当前步骤收尾后停住" })
+    ev.set("content", { message: outcome.message })
     $app.save(ev)
-    return e.json(200, { ok: true, run_id: id, status: "paused" })
+    return e.json(200, {
+      ok: true, run_id: id, status: outcome.runStatus, pause_requested: outcome.pauseRequested,
+    })
   } catch (err) {
     var msg = String((err && err.message) || err)
     try {
@@ -2430,43 +2628,82 @@ routerAdd("POST", "/api/agent-runs/{id}/cancel", function (e) {
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
     var id = String(e.request.pathValue("id") || "")
-    var run = null
-    try {
-      run = $app.findRecordById("agent_runs", id)
-    } catch (_) {}
-    if (!run) return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
-    if (String(run.get("rh_user_id") || "") !== uid) return e.json(404, { error: "run_not_found" })
-    var st = String(run.get("status"))
-    if (st === "succeeded" || st === "failed" || st === "cancelled") {
-      return e.json(409, { error: "bad_state", message: "运行已结束（" + st + "），无需取消" })
+    var outcome = { httpStatus: 200, runStatus: "", cancelRequested: false, step: 0, message: "" }
+    $app.runInTransaction(function (tx) {
+      var run = null
+      try { run = tx.findRecordById("agent_runs", id) } catch (_) {}
+      if (!run) {
+        outcome.httpStatus = 404
+        outcome.error = "run_not_found"
+        outcome.message = "运行记录不存在"
+        return
+      }
+      if (String(run.get("rh_user_id") || "") !== uid) {
+        outcome.httpStatus = 404
+        outcome.error = "run_not_found"
+        outcome.message = "运行记录不存在"
+        return
+      }
+      var st = String(run.get("status") || "")
+      if (st === "succeeded" || st === "failed" || st === "cancelled") {
+        outcome.httpStatus = 409
+        outcome.error = "bad_state"
+        outcome.message = "运行已结束（" + st + "），无需取消"
+        return
+      }
+      var cp = {}
+      var cpStr = ""
+      try { cpStr = run.getString("checkpoint") } catch (_) {}
+      if (cpStr) {
+        try {
+          var parsed = JSON.parse(cpStr)
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) cp = parsed
+        } catch (_) {}
+      }
+      var activeLease = new DynamicModel({ total: 0 })
+      tx.db().newQuery(
+        "SELECT COUNT(*) AS total FROM agent_studio_run_leases " +
+        "WHERE kind='agent' AND run_id={:rid} AND expires_ms > {:now}"
+      ).bind({ rid: id, now: new Date().getTime() }).one(activeLease)
+      outcome.step = Number(run.get("current_step")) || 0
+      // A running step owns the right to finish and persist its current result.
+      // Waiting/paused/queued states have no in-flight side effect to protect.
+      if (st === "running" && Number(activeLease.total || 0) > 0) {
+        cp.cancel_requested = true
+        run.set("checkpoint", cp)
+        outcome.runStatus = "running"
+        outcome.cancelRequested = true
+        outcome.message = "已收到取消请求，当前步骤将先安全收尾；完成后停止后续执行"
+      } else {
+        cp.cancel_requested = false
+        cp.pause_requested = false
+        cp.pending_input = null
+        cp.pending_approval = null
+        cp.approval_decision = ""
+        cp.claim_until = 0
+        run.set("checkpoint", cp)
+        run.set("status", "cancelled")
+        run.set("error", "用户手动取消")
+        outcome.runStatus = "cancelled"
+        outcome.cancelRequested = false
+        outcome.message = "已取消，后续步骤不会执行"
+      }
+      tx.save(run)
+    })
+    if (outcome.httpStatus !== 200) {
+      return e.json(outcome.httpStatus, { error: outcome.error, message: outcome.message })
     }
-    run.set("status", "cancelled")
-    run.set("error", "用户手动取消")
-    var cp = {}
-    var cpStr = ""
-    try {
-      cpStr = run.getString("checkpoint")
-    } catch (_) {
-      cpStr = ""
-    }
-    if (cpStr) {
-      try {
-        var cpParsed = JSON.parse(cpStr)
-        if (cpParsed && typeof cpParsed === "object" && !Array.isArray(cpParsed)) cp = cpParsed
-      } catch (_) {}
-    }
-    cp.claim_until = 0
-    run.set("checkpoint", cp)
-    $app.save(run)
     var evCol = $app.findCollectionByNameOrId("run_events")
     var ev = new Record(evCol)
     ev.set("run_id", id)
-    ev.set("step_index", Number(run.get("current_step")) || 0)
+    ev.set("step_index", outcome.step)
     ev.set("seq", 0)
     ev.set("event_type", "status")
-    ev.set("content", { message: "已取消，运行终止" })
+    ev.set("content", { message: outcome.message })
     $app.save(ev)
-    return e.json(200, { ok: true, run_id: id, status: "cancelled" })
+    return e.json(200, {
+      ok: true, run_id: id, status: outcome.runStatus, cancel_requested: outcome.cancelRequested,
+    })
   } catch (err) {
     var msg = String((err && err.message) || err)
     try {

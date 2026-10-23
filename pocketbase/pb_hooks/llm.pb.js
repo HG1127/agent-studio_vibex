@@ -203,7 +203,24 @@ routerAdd("POST", "/api/llm/chat", function (e) {
       content = String(((choices[0] && choices[0].message) || {}).content || "")
     }
     if (!content) return { ok: false, error: "llm_empty_content", detail: "" }
-    return { ok: true, content: content }
+    // Return only bounded token counts, never the raw provider response,
+    // request headers, API key or billing account details.
+    var rawUsage = prov === "anthropic" ? (data && data.usage) :
+      prov === "gemini" ? (data && data.usageMetadata) : (data && data.usage)
+    var inUsage = prov === "anthropic" ? rawUsage && rawUsage.input_tokens :
+      prov === "gemini" ? rawUsage && rawUsage.promptTokenCount :
+      rawUsage && rawUsage.prompt_tokens
+    var outUsage = prov === "anthropic" ? rawUsage && rawUsage.output_tokens :
+      prov === "gemini" ? rawUsage && rawUsage.candidatesTokenCount :
+      rawUsage && rawUsage.completion_tokens
+    var safeCount = function (value) {
+      if (value === null || value === undefined || value === "") return null
+      var parsed = Number(value)
+      return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 10000000 ? parsed : null
+    }
+    return { ok: true, content: content, usage: {
+      input_tokens: safeCount(inUsage), output_tokens: safeCount(outUsage),
+    } }
   }
   function ensureLlmJobsColl() {
     try { return $app.findCollectionByNameOrId("llm_jobs") } catch (_) {}
@@ -253,6 +270,29 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     // bypassed, so enforce scope and budgets on the server as well.
     // Other Agent/Workflow model calls preserve their existing contracts.
     var isNodeDebug = String(body.page || "") === "workflow_node_debug"
+    var isBlindBenchmark = String(body.page || "") === "agent_v28_blind"
+    if (isBlindBenchmark) {
+      var selectedConnection = String(body.connection_id || "").trim()
+      var selectedModel = String(body.model || "").trim()
+      var maximum = Number(body.max_tokens)
+      var blindMessages = body.messages
+      if (!selectedConnection || !selectedModel || body.strict_model !== true)
+        return e.json(400, { error: "blind_binding_required" })
+      if (!Number.isSafeInteger(maximum) || maximum < 256 || maximum > 9500)
+        return e.json(400, { error: "blind_output_budget_invalid" })
+      if (!Array.isArray(blindMessages) || blindMessages.length !== 2 ||
+          !blindMessages[0] || blindMessages[0].role !== "system" ||
+          !blindMessages[1] || blindMessages[1].role !== "user" ||
+          typeof blindMessages[0].content !== "string" ||
+          typeof blindMessages[1].content !== "string" ||
+          blindMessages[0].content.length > 8000 ||
+          blindMessages[1].content.length > 8000 ||
+          !blindMessages[0].content || !blindMessages[1].content ||
+          !/^[a-zA-Z0-9-]{12,120}$/.test(String(body.request_id || "")))
+        return e.json(400, { error: "blind_request_invalid" })
+      // An explicit employee action still initiates each cost-bearing call.
+      // This route never accepts tools and never invokes any action endpoint.
+    }
     if (isNodeDebug) {
       var selectedConnection = String(body.connection_id || "").trim()
       var selectedModel = String(body.model || "").trim()
@@ -318,7 +358,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
 
     // Previously claimed debugs must not trigger duplicate provider charges.
     // The client queries /api/llm/poll using the original request ID.
-    if (isNodeDebug && jobState.existing &&
+    if ((isNodeDebug || isBlindBenchmark) && jobState.existing &&
         (existingStatus === "running" || existingStatus === "pending")) {
       return e.json(200, { ok: false, status: existingStatus,
         text: "", error: "", model: jobRec.getString("model_name") })
@@ -329,7 +369,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
 
     var maxTokens = Number(body.max_tokens || 8192)
     if (!maxTokens || maxTokens < 16) maxTokens = 8192
-    var ret = callConn(conn, modelName, messages, maxTokens, 120, isNodeDebug)
+    var ret = callConn(conn, modelName, messages, maxTokens, 120, isNodeDebug || isBlindBenchmark)
     if (!ret || ret.ok !== true) {
       var em = String((ret && ret.error) || "llm_failed") + (ret && ret.detail ? ": " + ret.detail : "")
       jobRec.set("status", "failed")
@@ -347,7 +387,8 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     jobRec.set("result_text", text.substring(0, 80000))
     $app.save(jobRec)
 
-    return e.json(200, { ok: true, status: "success", model: modelName, text: text, usage: null })
+    return e.json(200, { ok: true, status: "success", model: modelName, text: text,
+      usage: isBlindBenchmark ? (ret.usage || null) : null })
   } catch (err) {
     var msg = String(err && err.message || err)
     if (jobRec) {

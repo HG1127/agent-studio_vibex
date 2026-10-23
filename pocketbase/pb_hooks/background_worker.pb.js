@@ -8,7 +8,17 @@ onBootstrap(function (e) {
   try {
     var coll = null
     try { coll = $app.findCollectionByNameOrId("agent_worker_health") } catch (_) {}
-    if (coll) return
+    if (coll) {
+      // Existing standalone installations also need the bounded health field.
+      // Do not recreate the collection or discard previous heartbeat history.
+      var hasComponents = false
+      try { hasComponents = !!coll.fields.getByName("components_json") } catch (_) {}
+      if (!hasComponents) {
+        coll.fields.add(new Field({ name: "components_json", type: "text", max: 1024 }))
+        $app.save(coll)
+      }
+      return
+    }
     coll = new Collection({
       type: "base",
       name: "agent_worker_health",
@@ -18,11 +28,49 @@ onBootstrap(function (e) {
         { name: "last_seen", type: "text", max: 40 },
         { name: "last_step_at", type: "text", max: 40 },
         { name: "tick_attempts_total", type: "number" },
+        { name: "components_json", type: "text", max: 1024 },
       ],
     })
     $app.save(coll)
   } catch (err) {
     try { $app.logger().error("worker health schema", "err", String((err && err.message) || err)) } catch (_) {}
+  }
+})
+
+// Worker process IDs are random per launch and deliberately contain no host info.
+// Keep route callbacks self-contained: PocketBase loads each handler separately.
+routerAdd("POST", "/api/internal/worker/heartbeat", function (e) {
+  try {
+    var expected = String($os.getenv("AGENT_STUDIO_WORKER_TOKEN") || "")
+    var headers = (e.requestInfo() || {}).headers || {}
+    var supplied = String(headers["x_agent_studio_worker_token"] ||
+      headers["X-Agent-Studio-Worker-Token"] || headers["x-agent-studio-worker-token"] || "")
+    if ($os.getenv("AGENT_STUDIO_BACKGROUND_WORKER") !== "true" || expected.length < 32)
+      return e.json(503, { error: "worker_disabled" })
+    var difference = expected.length ^ supplied.length
+    for (var i = 0; i < expected.length; i++)
+      difference |= expected.charCodeAt(i) ^ (i < supplied.length ? supplied.charCodeAt(i) : 0)
+    if (difference !== 0) return e.json(401, { error: "unauthorized_worker" })
+    var body = (e.requestInfo() || {}).body || {}
+    var name = String(body.worker_instance || "main")
+    if (name !== "main" && !/^w-[a-f0-9]{24}$/.test(name))
+      return e.json(400, { error: "invalid_worker_instance" })
+    var now = new Date().toISOString()
+    // Heartbeat intentionally does not know or renew any run's lease. Thus
+    // an alive process cannot extend a crashed/stolen execution owner's token.
+    $app.runInTransaction(function (tx) {
+      var records = tx.findRecordsByFilter("agent_worker_health",
+        "worker_name = {:name}", "", 1, 0, { name: name })
+      var record = records.length ? records[0] :
+        new Record(tx.findCollectionByNameOrId("agent_worker_health"))
+      if (!records.length) record.set("worker_name", name)
+      record.set("last_seen", now)
+      tx.save(record)
+    })
+    return e.json(200, { ok: true })
+  } catch (error) {
+    try { $app.logger().error("worker heartbeat error", "err", String(error)) } catch (_) {}
+    return e.json(500, { error: "worker_heartbeat_failed" })
   }
 })
 
@@ -46,22 +94,65 @@ routerAdd("POST", "/api/internal/worker/step", function (e) {
       return e.json(503, { error: "worker_internal_url_invalid" })
     }
     var now = new Date().getTime()
+    var workerBody = (e.requestInfo() || {}).body || {}
+    var workerName = String(workerBody.worker_instance || "main")
+    if (workerName !== "main" && !/^w-[a-f0-9]{24}$/.test(workerName))
+      return e.json(400, { error: "invalid_worker_instance" })
     // Throttled heartbeat: one database update per approximately 12s while idle.
     var health = null
     try {
-      health = $app.findFirstRecordByFilter("agent_worker_health", "worker_name = 'main'")
+      health = $app.findFirstRecordByFilter("agent_worker_health",
+        "worker_name = {:name}", { name: workerName })
     } catch (_) {}
     if (!health) {
       try {
         var healthCol = $app.findCollectionByNameOrId("agent_worker_health")
         health = new Record(healthCol)
-        health.set("worker_name", "main")
+        health.set("worker_name", workerName)
       } catch (_) { health = null }
     }
     if (health) {
       var lastText = String(health.getString("last_seen") || "")
       var lastMs = lastText ? new Date(lastText).getTime() : 0
-      if (!lastMs || now - lastMs >= 12000) {
+      var heartbeatDue = !lastMs || now - lastMs >= 12000
+      var reported = null
+      try { reported = (e.requestInfo() || {}).body.subsystems } catch (_) {}
+      var componentChanged = false
+      if (reported && typeof reported === "object" && !Array.isArray(reported)) {
+        var safeComponents = {}
+        var labels = ["schedules", "knowledge"]
+        for (var hk = 0; hk < labels.length; hk++) {
+          var name = labels[hk]
+          var raw = reported[name] || {}
+          var state = String(raw.state || "")
+          if (state !== "healthy" && state !== "retrying" && state !== "unverified")
+            state = "unverified"
+          var failures = Number(raw.failures || 0)
+          if (!Number.isSafeInteger(failures) || failures < 0) failures = 0
+          var retryAt = Number(raw.retry_at_ms || 0)
+          if (!Number.isSafeInteger(retryAt) || retryAt < now - 120000 ||
+              retryAt > now + 120000) retryAt = 0
+          safeComponents[name] = {
+            state: state, failures: Math.min(failures, 999),
+            retry_at_ms: retryAt,
+          }
+        }
+        // Persist only after sanitizing; never copy caller-provided URLs,
+        // exception messages, user details or arbitrary extra properties.
+        var encoded = JSON.stringify(safeComponents)
+        var prior = ""
+        try {
+          var priorValue = JSON.parse(String(health.getString("components_json") || "{}"))
+          if (priorValue && priorValue.components) prior = JSON.stringify(priorValue.components)
+        } catch (_) {}
+        if (encoded !== prior || heartbeatDue) {
+          health.set("components_json", JSON.stringify({
+            components: safeComponents, reported_at_ms: now,
+          }))
+          componentChanged = true
+        }
+      }
+      if (heartbeatDue || componentChanged) {
         health.set("last_seen", new Date(now).toISOString())
         try { $app.save(health) } catch (_) {}
       }
@@ -102,9 +193,12 @@ routerAdd("POST", "/api/internal/worker/step", function (e) {
         url: tickUrl,
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Rh-User-Id": selected.owner,
-          "X-Agent-Studio-Worker-Token": expected },
+          "X-Agent-Studio-Worker-Token": expected,
+          "X-Agent-Studio-Worker-Instance": workerName },
         body: "{}",
-        timeout: 120,
+        // The inner model HTTP timeout is capped at 240s. Keep this proxy
+        // longer so a slow-but-valid tick can return before the lease expires.
+        timeout: 300,
       })
     } catch (err) {
       var message = String((err && err.message) || err)
@@ -127,9 +221,19 @@ routerAdd("POST", "/api/internal/worker/step", function (e) {
     var moved = tickResult && tickResult.stepped === true
     var busy = tickResult && tickResult.busy === true
     if (health) {
-      if (moved) health.set("last_step_at", new Date().toISOString())
-      health.set("tick_attempts_total", Number(health.get("tick_attempts_total") || 0) + 1)
-      try { $app.save(health) } catch (_) {}
+      // Reload under the write transaction: an independent heartbeat may
+      // have touched this instance while the long model/tool tick was waiting.
+      try {
+        $app.runInTransaction(function (tx) {
+          var fresh = tx.findRecordById("agent_worker_health", health.id)
+          if (moved) fresh.set("last_step_at", new Date().toISOString())
+          fresh.set("tick_attempts_total",
+            Number(fresh.get("tick_attempts_total") || 0) + 1)
+          tx.save(fresh)
+        })
+      } catch (healthError) {
+        try { $app.logger().error("worker step health update", "err", String(healthError)) } catch (_) {}
+      }
     }
     var latest = null
     try { latest = $app.findRecordById(selected.source.collection, selected.id) } catch (_) {}
@@ -148,13 +252,69 @@ routerAdd("GET", "/api/worker/status", function (e) {
     var uid = String(headers["x_rh_user_id"] || headers["X-Rh-User-Id"] || headers["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required" })
     var enabled = $os.getenv("AGENT_STUDIO_BACKGROUND_WORKER") === "true" && String($os.getenv("AGENT_STUDIO_WORKER_TOKEN") || "").length >= 32
-    var healthRows = $app.findRecordsByFilter("agent_worker_health", "worker_name = 'main'", "", 1, 0)
+    // Bounded inventory of independent Worker processes. An instance name is
+    // a random process ID; it is not a hostname, username, access token or a
+    // claim that this instance owns a particular task lease.
+    var healthRows = $app.findRecordsByFilter(
+      "agent_worker_health", "", "-last_seen", 33, 0)
+    var instanceSampled = healthRows.length > 12
+    var instances = []
+    var observedNow = new Date().getTime()
+    var lastStepAt = ""
+    var tickAttempts = 0
+    for (var hi = 0; hi < healthRows.length; hi++) {
+      var entry = healthRows[hi]
+      var name = String(entry.getString("worker_name") || "")
+      var seen = String(entry.getString("last_seen") || "")
+      var seenMs = seen ? new Date(seen).getTime() : 0
+      var ageMs = Number.isFinite(seenMs) && seenMs > 0 && seenMs <= observedNow
+        ? Math.max(0, observedNow - seenMs) : null
+      var recent = enabled && ageMs !== null && ageMs < 180000
+      var stepAt = String(entry.getString("last_step_at") || "")
+      if (stepAt > lastStepAt) lastStepAt = stepAt
+      tickAttempts += Math.max(0, Number(entry.get("tick_attempts_total") || 0) || 0)
+      if (hi < 12) instances.push({
+        label: name === "main" ? "旧版 Worker" :
+          (/^w-[a-f0-9]{24}$/.test(name) ? "Worker " + name.slice(-8) : "未知实例"),
+        last_seen_age_ms: ageMs, last_step_at: stepAt,
+        recent: recent,
+        attempts: Math.max(0, Number(entry.get("tick_attempts_total") || 0) || 0),
+      })
+    }
     var health = healthRows.length ? healthRows[0] : null
     var lastSeen = health ? String(health.getString("last_seen") || "") : ""
-    var lastStepAt = health ? String(health.getString("last_step_at") || "") : ""
     var lastMs = lastSeen ? new Date(lastSeen).getTime() : 0
-    // A single model step may run for up to 120s; avoid false offline alarms during a long Tick.
-    var alive = enabled && lastMs > 0 && new Date().getTime() - lastMs < 180000
+    // This is heartbeat recency, NOT proof that a live lease belongs to that Worker.
+    var alive = enabled && Number.isFinite(lastMs) && lastMs > 0 &&
+      lastMs <= observedNow && observedNow - lastMs < 180000
+    // A single last reporter cannot prove every Worker process is alive.
+    // Component health is an allow-listed last-observed report, not current
+    // machine telemetry; omit or mark stale evidence instead of inferring OK.
+    var components = {
+      schedules: { state: "unverified", failures: 0, retry_at_ms: 0 },
+      knowledge: { state: "unverified", failures: 0, retry_at_ms: 0 },
+    }
+    var componentReportedAt = 0
+    try {
+      var summary = JSON.parse(String(health && health.getString("components_json") || "{}"))
+      var observed = Number(summary.reported_at_ms || 0)
+      if (Number.isSafeInteger(observed) && observed <= new Date().getTime() &&
+          new Date().getTime() - observed < 180000) {
+        componentReportedAt = observed
+        for (var cs = 0; cs < 2; cs++) {
+          var label = cs === 0 ? "schedules" : "knowledge"
+          var report = (summary.components || {})[label] || {}
+          var reportedState = String(report.state || "unverified")
+          if (reportedState !== "healthy" && reportedState !== "retrying" &&
+              reportedState !== "unverified") reportedState = "unverified"
+          components[label] = {
+            state: reportedState,
+            failures: Math.min(999, Math.max(0, Number(report.failures || 0) || 0)),
+            retry_at_ms: Number(report.retry_at_ms || 0) || 0,
+          }
+        }
+      }
+    } catch (_) {}
     // User-scoped queue summary: bounded recent sample, no other user's IDs or credentials.
     var nowMs = new Date().getTime()
     var queue = {
@@ -163,6 +323,7 @@ routerAdd("GET", "/api/worker/status", function (e) {
       scheduled_active: 0, scheduled_pending: 0, scheduled_overdue: 0,
       oldest_due_age_ms: 0,
       paused: 0, failed_recent: 0, ready_estimate: 0, inflight: 0,
+      expired_lease_candidates: 0, unresolved_writes: 0,
       sampled: false, sample_limit_per_kind: 100,
     }
     var collections = [
@@ -197,6 +358,62 @@ routerAdd("GET", "/api/worker/status", function (e) {
         "OR (kind = 'workflow' AND run_id IN (SELECT id FROM workflow_runs WHERE rh_user_id = {:uid})))"
       ).bind({ now: nowMs, uid: uid }).one(inflightRow)
       queue.inflight = Number(inflightRow.total || 0)
+    } catch (err) { throw err }
+    // Lease expiry is a takeover *candidate*, never proof that a write can be
+    // replayed. Worker tick still checks the durable write-intent journal.
+    try {
+      var expired = new DynamicModel({ total: 0 })
+      $app.db().newQuery(
+        "SELECT COUNT(*) AS total FROM agent_studio_run_leases l " +
+        "WHERE l.expires_ms > 0 AND l.expires_ms <= {:now} AND " +
+        "((l.kind='agent' AND EXISTS (SELECT 1 FROM agent_runs a " +
+          "WHERE a.id=l.run_id AND a.rh_user_id={:uid} AND a.status='running')) " +
+        "OR (l.kind='workflow' AND EXISTS (SELECT 1 FROM workflow_runs w " +
+          "WHERE w.id=l.run_id AND w.rh_user_id={:uid} AND w.status='running')))"
+      ).bind({ now: nowMs, uid: uid }).one(expired)
+      queue.expired_lease_candidates = Number(expired.total || 0)
+    } catch (err) { throw err }
+    try {
+      var uncertain = new DynamicModel({ total: 0 })
+      $app.db().newQuery(
+        "SELECT COUNT(*) AS total FROM agent_studio_side_effects " +
+        "WHERE status IN ('started','unknown') AND " +
+        "((kind='agent' AND run_id IN (SELECT id FROM agent_runs WHERE rh_user_id={:uid})) " +
+        "OR (kind='workflow' AND run_id IN (SELECT id FROM workflow_runs WHERE rh_user_id={:uid})))"
+      ).bind({ uid: uid }).one(uncertain)
+      queue.unresolved_writes = Number(uncertain.total || 0)
+    } catch (err) { throw err }
+    // Owner-scoped active claims are derived from the authoritative CAS table.
+    // Lease token and secrets are NEVER included; an expired lease or a
+    // heartbeat alone is not evidence of current execution ownership.
+    var activeClaims = []
+    var activeClaimsSampled = false
+    try {
+      var claims = arrayOf(new DynamicModel({
+        kind: "", run_id: "", owner_instance: "", expires_ms: 0,
+      }))
+      $app.db().newQuery(
+        "SELECT l.kind,l.run_id,l.owner_instance,l.expires_ms FROM agent_studio_run_leases l " +
+        "WHERE l.expires_ms > {:now} AND " +
+        "((l.kind='agent' AND EXISTS(SELECT 1 FROM agent_runs a WHERE a.id=l.run_id " +
+          "AND a.rh_user_id={:uid} AND a.status='running')) OR " +
+        "(l.kind='workflow' AND EXISTS(SELECT 1 FROM workflow_runs w WHERE w.id=l.run_id " +
+          "AND w.rh_user_id={:uid} AND w.status='running'))) " +
+        "ORDER BY l.expires_ms ASC LIMIT 21"
+      ).bind({ uid: uid, now: nowMs }).all(claims)
+      activeClaimsSampled = claims.length > 20
+      for (var ai = 0; ai < claims.length && ai < 20; ai++) {
+        var claim = claims[ai]
+        var claimant = String(claim.owner_instance || "")
+        activeClaims.push({
+          kind: String(claim.kind || ""),
+          run_id: String(claim.run_id || ""),
+          holder: claimant === "main" ? "旧 Worker" :
+            /^w-[a-f0-9]{24}$/.test(claimant) ? "Worker " + claimant.slice(-8) : "未归属 Worker",
+          expires_in_ms: Math.max(0, Number(claim.expires_ms || 0) - nowMs),
+          worker_attributed: claimant === "main" || /^w-[a-f0-9]{24}$/.test(claimant),
+        })
+      }
     } catch (err) { throw err }
     // Count owner-scoped writes that need manual confirmation, including stale intent
     // records from a crashed process. No arguments, secrets, or other tenants leak.
@@ -240,9 +457,16 @@ routerAdd("GET", "/api/worker/status", function (e) {
       alive: alive,
       last_seen: lastSeen,
       last_step_at: lastStepAt,
-      tick_attempts_total: health ? Number(health.get("tick_attempts_total") || 0) : 0,
+      tick_attempts_total: tickAttempts,
+      instances: instances,
+      instances_sampled: instanceSampled,
+      instances_recent: instances.filter(function (v) { return v.recent }).length,
+      active_claims: activeClaims,
+      active_claims_sampled: activeClaimsSampled,
       observed_at_ms: nowMs,
       last_seen_age_ms: lastMs > 0 ? Math.max(0, nowMs - lastMs) : null,
+      components: components,
+      components_observed_at_ms: componentReportedAt || null,
       queue: queue,
     })
   } catch (err) {

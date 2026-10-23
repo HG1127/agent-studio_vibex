@@ -184,6 +184,37 @@ routerAdd("POST", "/api/spec-versions", function (e) {
         var isAcceptance = String(runConfig.source || "") === "acceptance_test"
         testPassed = String(runRec.getString("status") || "") === "succeeded" &&
           snapshotMatches && isAcceptance
+        // A complex Agent needs server-observed role handoffs, tool results,
+        // matching approval events and configured assertions. A plausible
+        // model final answer and status=succeeded alone must never certify it.
+        if (testPassed && Array.isArray(specObj.roles) && specObj.roles.length >= 2) {
+          try {
+            var checkpoint = JSON.parse(runRec.getString("checkpoint") || "{}")
+            var eventRows = $app.findRecordsByFilter(
+              "run_events", "run_id = {:runId}",
+              "step_index,seq,created", 500, 0, { runId: testRunId })
+            var proofEvents = []
+            for (var evIndex = 0; evIndex < eventRows.length; evIndex++) {
+              var eventRec = eventRows[evIndex]
+              var content = {}
+              try { content = JSON.parse(eventRec.getString("content") || "{}") } catch (_) {}
+              proofEvents.push({
+                event_type: String(eventRec.getString("event_type") || ""),
+                step_index: Number(eventRec.getInt("step_index") || 0),
+                content: content,
+              })
+            }
+            var proof = require(__hooks + "/modules/harness_complex_release.js").verify(
+              specObj, { status: String(runRec.getString("status") || ""),
+                result: String(runRec.getString("result") || ""),
+                checkpoint: checkpoint }, proofEvents)
+            testPassed = proof.applicable === true && proof.passed === true
+          } catch (_) {
+            // An unavailable or malformed audit is missing evidence, not a pass.
+            testPassed = false
+          }
+        }
+
       }
     }
 
@@ -330,6 +361,18 @@ routerAdd("POST", "/api/spec-versions/{id}/publish", function (e) {
       })
     }
 
+    // Existing single-Agent drafts keep legacy publish policy. For complex
+    // multi-stage Agents an unverified execution MUST NOT become "published"
+    // through this direct API or through a second browser tab.
+    var versionSnapshot = {}
+    try { versionSnapshot = JSON.parse(verRec.getString("spec_snapshot") || "{}") } catch (_) {}
+    if (Array.isArray(versionSnapshot.roles) && versionSnapshot.roles.length >= 2 &&
+        verRec.getBool("test_passed") !== true) {
+      return e.json(409, {
+        error: "complex_agent_acceptance_required",
+        message: "复杂 Agent 缺少经过服务端核验的角色交接、工具执行、审批或质量证据，请完成正式验收试跑。",
+      })
+    }
     var specId = String(verRec.get("spec_id") || "")
     // 同 spec 下原 published 一律归档
     var archivedIds = []

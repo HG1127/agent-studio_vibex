@@ -58,7 +58,7 @@ function enter(app, guard, options) {
   if (!Number.isSafeInteger(now) || now <= 0 ||
       !Number.isSafeInteger(ttl) || ttl < 1000 || ttl > DEFAULT_TTL_MS)
     throw new Error("invalid_run_lifecycle_clock")
-  var acquired = guard.claim(app, kind, id, owner, token, now, ttl)
+  var acquired = guard.claim(app, kind, id, owner, token, now, ttl, String(p.workerInstance || ""))
   if (!acquired) return { acquired: false, busy: true }
   try {
     var snapshot = null
@@ -72,6 +72,10 @@ function enter(app, guard, options) {
         throw new Error("invalid_run_deadline_checkpoint")
       deadlineExceeded = deadline > 0 && now >= deadline
       snapshot.claim_until = deadlineExceeded ? 0 : now + ttl
+      if (deadlineExceeded) {
+        snapshot.pause_requested = false
+        snapshot.cancel_requested = false
+      }
       record.set("checkpoint", snapshot)
       if (deadlineExceeded) {
         // Preserve prior steps/evidence, stop new model or tool operations.

@@ -2,6 +2,20 @@
 
 // Pure Goja-compatible request builder shared by Agent/Workflow.
 // Server owns tenant authorization, key decryption, timeouts and HTTP transport.
+// A single synchronous provider call must stay below the fenced dispatch
+// lease window (240s call cap + 30s margin inside the 600s lease).
+// Goja's synchronous $http.send cannot run a JS timer to renew a lease while
+// blocked; reject the idea of an unbounded timeout by clamping it here.
+var MAX_TIMEOUT_SECONDS = 240
+function normalizeTimeoutSeconds(value, fallback) {
+  var n = Number(value)
+  var f = Number(fallback)
+  if (!isFinite(f) || f <= 0) f = 120
+  if (!isFinite(n) || n <= 0) n = f
+  if (n < 1) n = 1
+  if (n > MAX_TIMEOUT_SECONDS) n = MAX_TIMEOUT_SECONDS
+  return Math.floor(n)
+}
 // Do not log or persist this return value: it includes the live provider secret.
 function buildRequest(provider, opts) {
   var p = provider === "anthropic" || provider === "gemini" ? provider : "openai"
@@ -9,7 +23,7 @@ function buildRequest(provider, opts) {
   var key = String(opts.apiKey || "")
   var model = String(opts.model || "")
   var messages = Array.isArray(opts.messages) ? opts.messages : []
-  var timeout = Number(opts.timeout)
+  var timeout = normalizeTimeoutSeconds(opts.timeout, 120)
   var maxTokens = opts.maxTokens
   if (p === "anthropic") {
     var system = ""
@@ -62,4 +76,8 @@ function buildRequest(provider, opts) {
     timeout: timeout,
   }
 }
-module.exports = { buildRequest: buildRequest }
+module.exports = {
+  buildRequest: buildRequest,
+  normalizeTimeoutSeconds: normalizeTimeoutSeconds,
+  MAX_TIMEOUT_SECONDS: MAX_TIMEOUT_SECONDS,
+}

@@ -2,6 +2,8 @@
 // Standalone worker for Agent Studio VibeX. No third-party dependencies.
 // Designed to run under systemd, Docker restart policies or Windows Task Scheduler.
 import { setTimeout as sleep } from "node:timers/promises"
+import { randomBytes } from "node:crypto"
+import { resolveWorkerRequestTimeout } from "./config.mjs"
 import { nextScheduleTime } from "../src/lib/scheduleTime.js"
 
 const args = new Set(process.argv.slice(2))
@@ -14,7 +16,10 @@ const ms = (name, fallback, minimum, maximum) => {
   return Number.isFinite(n) && n >= minimum && n <= maximum ? Math.floor(n) : fallback
 }
 const interval = ms("AGENT_STUDIO_WORKER_INTERVAL_MS", 3000, 500, 120000)
-const timeout = ms("AGENT_STUDIO_WORKER_REQUEST_TIMEOUT_MS", 145000, 5000, 240000)
+const timeout = resolveWorkerRequestTimeout(process.env.AGENT_STUDIO_WORKER_REQUEST_TIMEOUT_MS)
+const heartbeatEvery = ms("AGENT_STUDIO_WORKER_HEARTBEAT_INTERVAL_MS", 30000, 1000, 60000)
+// Ephemeral per-process identity; never contains hostname, username or secrets.
+const instanceId = "w-" + randomBytes(12).toString("hex")
 if (!/^https?:\/\//.test(endpoint)) throw new Error("AGENT_STUDIO_WORKER_URL must be an http(s) URL")
 const parsedEndpoint = new URL(endpoint)
 if (parsedEndpoint.username || parsedEndpoint.password || parsedEndpoint.search || parsedEndpoint.hash) {
@@ -37,14 +42,16 @@ function log(level, message, context = {}) {
 process.on("SIGINT", () => { active = false })
 process.on("SIGTERM", () => { active = false })
 
-async function advance() {
+async function advance(componentSnapshot) {
   const response = await fetch(endpoint + "/api/internal/worker/step", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Agent-Studio-Worker-Token": token,
     },
-    body: "{}",
+    // Only bounded health enum/count values are transmitted. Do not send raw
+    // endpoint URLs, exception details, user IDs, or credentials in health data.
+    body: JSON.stringify({ worker_instance: instanceId, subsystems: componentSnapshot }),
     signal: AbortSignal.timeout(timeout),
   })
   let payload = {}
@@ -153,33 +160,118 @@ async function advanceKnowledgeIndex() {
   return payload
 }
 
-log("info", "worker_started", { endpoint, interval_ms: interval, once })
+// Schedules and semantic indexing are independent queues. A transient failure
+// in either must not prevent ready Agent/Workflow tasks from advancing.
+// Retry windows are per-subsystem so one broken endpoint does not flood logs
+// or impose its backoff on otherwise healthy queues.
+const subservices = {
+  schedules: { failures: 0, nextAttemptAt: 0, seenSuccess: false },
+  knowledge: { failures: 0, nextAttemptAt: 0, seenSuccess: false },
+}
+function componentSnapshot() {
+  const snapshot = {}
+  for (const name of ["schedules", "knowledge"]) {
+    const state = subservices[name]
+    snapshot[name] = {
+      state: state.failures > 0 ? "retrying" : state.seenSuccess ? "healthy" : "unverified",
+      failures: Math.min(state.failures, 999),
+      retry_at_ms: state.nextAttemptAt > 0 ? state.nextAttemptAt : 0,
+    }
+  }
+  return snapshot
+}
+async function optionalService(name, operation, fallback) {
+  const state = subservices[name]
+  if (Date.now() < state.nextAttemptAt) return { ...fallback, deferred: true }
+  try {
+    const result = await operation()
+    if (result.failed) {
+      // A successful HTTP request may explicitly signal a retryable indexing
+      // failure; apply the same bounded cooldown as an HTTP/network error.
+      const error = new Error(String(result.error || name + "_retryable_failure"))
+      throw error
+    }
+    state.failures = 0
+    state.nextAttemptAt = 0
+    state.seenSuccess = true
+    return result
+  } catch (error) {
+    // Credentials and disabled execution are not ordinary transient faults.
+    // Preserve the existing fail-closed behavior for these conditions.
+    if (error.fatal) throw error
+    state.failures++
+    const retryInMs = Math.min(60000,
+      Math.max(5000, interval) * 2 ** Math.min(4, state.failures - 1))
+    state.nextAttemptAt = Date.now() + retryInMs
+    log("error", name + "_temporarily_unavailable", {
+      detail: String(error.message || error).slice(0, 220),
+      failures: state.failures, retry_in_ms: retryInMs,
+    })
+    return { ...fallback, deferred: true }
+  }
+}
+
+// A Worker may be awaiting a slow HTTP tick. A separate bounded heartbeat
+// reports process liveness during that wait; it never extends a task lease.
+// Only the fenced executor may renew the execution lease.
+let heartbeatBusy = false
+async function heartbeat() {
+  if (!active || heartbeatBusy) return
+  heartbeatBusy = true
+  try {
+    const response = await fetch(endpoint + "/api/internal/worker/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Agent-Studio-Worker-Token": token },
+      body: JSON.stringify({ worker_instance: instanceId }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (response.status === 401 || response.status === 403 ||
+        (response.status === 503 && (await response.json().catch(() => ({}))).error === "worker_disabled")) {
+      active = false
+      process.exitCode = 1
+      log("error", "worker_heartbeat_authorization_failed")
+    } else if (!response.ok && response.status !== 404) {
+      log("error", "worker_heartbeat_unreachable", { status: response.status })
+    }
+  } catch {
+    log("error", "worker_heartbeat_network_unavailable")
+  } finally {
+    heartbeatBusy = false
+  }
+}
+const heartbeatTimer = once ? null : setInterval(() => { void heartbeat() }, heartbeatEvery)
+log("info", "worker_started", { endpoint, interval_ms: interval, once, worker: instanceId.slice(-8) })
 while (active) {
   try {
-    // Prioritize overdue schedules and interactive Agent/Workflow advancement
-    // before spending time on background Embedding requests.
-    const scheduleResult = await dispatchScheduledTask()
-    const result = await advance()
-    const indexResult = await advanceKnowledgeIndex()
-    if(indexResult.indexed_batch>0) log("info","knowledge_index_advanced",{
-      indexed_batch:indexResult.indexed_batch,pending_chunks:indexResult.pending_chunks,
+    // Schedule failures are isolated; an unavailable scheduler must not
+    // leave unrelated user-triggered Agents stuck in the pending queue.
+    const scheduleResult = await optionalService(
+      "schedules", dispatchScheduledTask, { scheduled: false })
+    const result = await advance(componentSnapshot())
+    const indexResult = await optionalService(
+      "knowledge", advanceKnowledgeIndex, { idle: true })
+    if (indexResult.indexed_batch > 0) log("info", "knowledge_index_advanced", {
+      indexed_batch: indexResult.indexed_batch, pending_chunks: indexResult.pending_chunks,
     })
-    if(indexResult.failed) log("error","knowledge_index_retry_scheduled",{error:indexResult.error})
     failures = 0
     if (result.stepped) {
       executed++
-      log("info", "run_advanced", { kind: result.kind, run_id: result.run_id, status: result.status })
+      log("info", "run_advanced", { kind: result.kind, run_id: result.run_id, status: result.status, worker: instanceId.slice(-8) })
     } else if (once) log("info", "idle")
     if (once) break
-    // Steps run serially; only poll again after the previous request returns.
-    await sleep(result.idle && !scheduleResult.scheduled && indexResult.idle ? interval : Math.max(100, Math.min(500, interval)))
+    // Work is still serialized, but each optional subsystem has an independent
+    // retry window; no extra delay is imposed on successful Agent steps.
+    await sleep(result.idle && !scheduleResult.scheduled && indexResult.idle
+      ? interval : Math.max(100, Math.min(500, interval)))
   } catch (error) {
     failures++
     log("error", "step_failed", { detail: String(error.message || error).slice(0, 300), failures })
     if (once || error.fatal) { process.exitCode = 1; break }
-    // Exponential backoff limits CPU and request storms during outages.
+    // This global backoff applies only to an unavailable core Worker or
+    // an intentional fatal condition, never to optional subsystem failures.
     const backoff = Math.min(60000, interval * 2 ** Math.min(5, failures))
     await sleep(backoff)
   }
 }
-log("info", "worker_stopped", { executed, failures })
+if (heartbeatTimer) clearInterval(heartbeatTimer)
+log("info", "worker_stopped", { executed, failures, worker: instanceId.slice(-8) })

@@ -120,6 +120,27 @@ function applyExecutionMigrations(app) {
         ).execute()
       },
     },
+    {
+      id: "execution_0004_worker_lease_attribution",
+      description: "Attribute CAS leases to verified Worker instances without rewriting old leases",
+      apply: function (tx) {
+        var existing = new DynamicModel({ total: 0 })
+        tx.db().newQuery(
+          "SELECT COUNT(*) AS total FROM pragma_table_info('agent_studio_run_leases') " +
+          "WHERE name='owner_instance'"
+        ).one(existing)
+        if (Number(existing.total || 0) === 0) {
+          tx.db().newQuery(
+            "ALTER TABLE agent_studio_run_leases " +
+            "ADD COLUMN owner_instance TEXT NOT NULL DEFAULT ''"
+          ).execute()
+        }
+        tx.db().newQuery(
+          "CREATE INDEX IF NOT EXISTS idx_as_leases_worker " +
+          "ON agent_studio_run_leases(owner_instance,expires_ms)"
+        ).execute()
+      },
+    },
   ])
 }
 

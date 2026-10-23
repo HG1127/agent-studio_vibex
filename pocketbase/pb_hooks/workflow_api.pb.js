@@ -760,36 +760,74 @@ routerAdd("POST", "/api/workflow-runs/{id}/cancel", function (e) {
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
     var id = String(e.request.pathValue("id") || "")
-    var run = null
-    try { run = $app.findRecordById("workflow_runs", id) } catch (_) {}
-    if (!run || String(run.get("rh_user_id") || "") !== uid) {
-      return e.json(404, { error: "not_found", message: "运行记录不存在" })
+    var outcome = { code: 200, status: "", pending: false, seq: 0, message: "" }
+    // A cancel request is serialized against worker admission and checkpoint
+    // saves; never revoke a lease that still owns an in-flight remote action.
+    $app.runInTransaction(function (tx) {
+      var run = null
+      try { run = tx.findRecordById("workflow_runs", id) } catch (_) {}
+      if (!run || String(run.get("rh_user_id") || "") !== uid) {
+        outcome.code = 404
+        outcome.message = "运行记录不存在"
+        return
+      }
+      var st = String(run.get("status") || "")
+      if (st !== "running" && st !== "awaiting_approval") {
+        outcome.code = 409
+        outcome.message = "当前状态（" + st + "）不支持取消"
+        return
+      }
+      var cp = {}
+      var cpStr = ""
+      try { cpStr = run.getString("checkpoint") } catch (_) {}
+      if (cpStr) {
+        try {
+          var parsed = JSON.parse(cpStr)
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) cp = parsed
+        } catch (_) {}
+      }
+      var activeLease = new DynamicModel({ total: 0 })
+      tx.db().newQuery(
+        "SELECT COUNT(*) AS total FROM agent_studio_run_leases " +
+        "WHERE kind='workflow' AND run_id={:rid} AND expires_ms > {:now}"
+      ).bind({ rid: id, now: new Date().getTime() }).one(activeLease)
+      outcome.seq = Number(cp.seq || 0) + 1
+      if (st === "running" && Number(activeLease.total || 0) > 0) {
+        cp.cancel_requested = true
+        outcome.status = "running"
+        outcome.pending = true
+        outcome.message = "取消请求已接收；当前节点会先完成并保存结果，再停止后续节点"
+      } else {
+        cp.cancel_requested = false
+        cp.claim_until = 0
+        cp.pending_approval = null
+        cp.approved_node = ""
+        cp.approved_input_hash = ""
+        cp.reject_node = ""
+        run.set("status", "cancelled")
+        run.set("error", "用户手动取消")
+        outcome.status = "cancelled"
+        outcome.message = "任务已取消；已完成节点的结果保留"
+      }
+      run.set("checkpoint", cp)
+      tx.save(run)
+    })
+    if (outcome.code !== 200) {
+      return e.json(outcome.code, {
+        error: outcome.code === 404 ? "not_found" : "bad_state", message: outcome.message,
+      })
     }
-    var st = String(run.get("status"))
-    if (st !== "running") return e.json(409, { error: "bad_state", message: "运行已结束（" + st + "），无需取消" })
-    var cp = {}
-    var cpStr = ""
-    try { cpStr = run.getString("checkpoint") } catch (_) { cpStr = "" }
-    if (cpStr) {
-      try {
-        var cpParsed = JSON.parse(cpStr)
-        if (cpParsed && typeof cpParsed === "object") cp = cpParsed
-      } catch (_) {}
-    }
-    cp.claim_until = 0
-    run.set("status", "cancelled")
-    run.set("error", "用户手动取消")
-    run.set("checkpoint", cp)
-    $app.save(run)
     var evCol = $app.findCollectionByNameOrId("workflow_events")
     var ev = new Record(evCol)
     ev.set("run_id", id)
     ev.set("node_id", "")
-    ev.set("seq", Number(cp.seq || 0) + 1)
+    ev.set("seq", outcome.seq)
     ev.set("event_type", "status")
-    ev.set("content", { message: "已取消，运行终止；已执行节点的结果保留" })
+    ev.set("content", { message: outcome.message })
     $app.save(ev)
-    return e.json(200, { ok: true, run_id: id, status: "cancelled" })
+    return e.json(200, {
+      ok: true, run_id: id, status: outcome.status, cancel_requested: outcome.pending,
+    })
   } catch (err) {
     var msg = String((err && err.message) || err)
     try { $app.logger().error("workflow run cancel error", "err", msg) } catch (_) {}
@@ -1056,6 +1094,9 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
     try {
       admission = runLifecycle.enter($app, executionGuard, {
         kind: "workflow", runId: id, owner: uid, token: leaseToken,
+        workerInstance: require(__hooks + "/modules/harness_worker_identity.js").resolve(
+          h, String($os.getenv("AGENT_STUDIO_WORKER_TOKEN") || ""),
+          $os.getenv("AGENT_STUDIO_BACKGROUND_WORKER") === "true"),
         loadCheckpoint: function (r) { return loadJson(r, "checkpoint") },
         classifyFailure: function (reason) {
           return require(__hooks + "/modules/harness_failure_triage.js")
@@ -1074,6 +1115,32 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       addEvent(id, "", Number(admission.checkpoint.seq || 0) + 1, "status",
         { message: "run_runtime_deadline_exceeded：本次任务运行总时限已达到" })
       return e.json(200, runLifecycle.response(id, "failed", { deadlineExceeded: true }))
+    }
+    // Recover an accepted cancellation after a previous worker stopped. Never
+    // start a new graph node just because the old execution lease expired.
+    if (admission.checkpoint && admission.checkpoint.cancel_requested === true) {
+      var earlyCancel = false
+      executionGuard.mutate($app, "workflow", id, uid, leaseToken, function (tx, pendingRun) {
+        var pendingCp = loadJson(pendingRun, "checkpoint")
+        if (pendingCp.cancel_requested === true) {
+          pendingCp.cancel_requested = false
+          pendingCp.pending_approval = null
+          pendingCp.approved_node = ""
+          pendingCp.approved_input_hash = ""
+          pendingCp.reject_node = ""
+          pendingCp.claim_until = 0
+          pendingRun.set("checkpoint", pendingCp)
+          pendingRun.set("status", "cancelled")
+          pendingRun.set("error", "用户手动取消")
+          tx.save(pendingRun)
+          earlyCancel = true
+        }
+      })
+      if (earlyCancel) {
+        addEvent(id, "", Number(admission.checkpoint.seq || 0) + 1, "status",
+          { message: "取消请求已生效，未启动新的工作流节点" })
+        return e.json(200, { ok: true, run_id: id, status: "cancelled", stepped: false })
+      }
     }
 
     try {
@@ -1211,9 +1278,15 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
         var modelGate = require(__hooks + "/modules/harness_step_executor.js")
           .prepareModelStep(cp, runLifecycle.withinDeadline, new Date().getTime())
         if (!modelGate.ok) return modelGate
-        // Keep the authoritative lease current before an external model call.
-        if (!executionGuard.renew($app, "workflow", runId, uid, leaseToken))
-          return { ok: false, error: "execution_lease_lost" }
+        // Renew only the active token/owner in the same transaction as a
+        // fresh run-state check before each paid model request.
+        try {
+          executionGuard.renewForDispatch($app, "workflow", runId, uid, leaseToken,
+            { maxCallMs: require(__hooks + "/modules/model_request.js").MAX_TIMEOUT_SECONDS * 1000 })
+        } catch (dispatchErr) {
+          return { ok: false,
+            error: String((dispatchErr && dispatchErr.code) || "execution_lease_lost") }
+        }
         // harness_stats：每次模型节点 LLM 调用按发送/返回字符累加
         var pCharsW = 0
         for (var pwi = 0; pwi < messages.length; pwi++) {
@@ -1463,8 +1536,14 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       }
 
       var saveCp = function (extraStatus) {
+        var savedStatus = "running"
         try {
           executionGuard.mutate($app, "workflow", runId, uid, leaseToken, function (tx, r2) {
+            // Re-read control flags under the lease fence; this node's in-memory
+            // checkpoint predates any cancellation accepted during outbound I/O.
+            var liveCp = loadJson(r2, "checkpoint")
+            var cancelling = liveCp.cancel_requested === true
+            var explicitFailure = extraStatus && String(extraStatus.status || "") === "failed"
             var doneCount = 0
             for (var sk in statuses) {
               if (statuses[sk] === "done") doneCount++
@@ -1483,6 +1562,7 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             cp.approved_input_hash = approvedInputHash
             cp.reject_node = rejectNode
             cp.pending_approval = pendingApproval
+            cp.cancel_requested = false
             if (extraStatus && String(extraStatus.status || "") === "failed") {
               cp.failure_diagnostic = require(__hooks + "/modules/harness_failure_triage.js")
                 .diagnose(extraStatus.error || "execution_step_failed", {
@@ -1492,9 +1572,17 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             } else if (extraStatus && String(extraStatus.status || "") === "succeeded") {
               cp.failure_diagnostic = null
             }
-            r2.set("checkpoint", cp)
             r2.set("done_nodes", doneCount)
-            if (extraStatus) {
+            if (cancelling && !explicitFailure) {
+              // Save the completed node output, then honor cancellation. No
+              // pending approval or next node can resurrect this run.
+              cp.pending_approval = null
+              cp.approved_node = ""
+              cp.approved_input_hash = ""
+              cp.reject_node = ""
+              r2.set("status", "cancelled")
+              r2.set("error", "用户手动取消")
+            } else if (extraStatus) {
               r2.set("status", String(extraStatus.status || ""))
               if (extraStatus.result !== undefined) r2.set("result", String(extraStatus.result))
               if (extraStatus.error !== undefined) {
@@ -1502,12 +1590,15 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
                   .excerpt(extraStatus.error, 300))
               }
             }
+            r2.set("checkpoint", cp)
             tx.save(r2)
+            savedStatus = String(r2.get("status") || "running")
           })
         } catch (err) {
           logErr("saveCp", err)
           throw err // Lost checkpoints must not masquerade as successful nodes.
         }
+        return savedStatus
       }
 
       // 入边/出边
@@ -1776,9 +1867,9 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
             approvedNode = ""
             approvedInputHash = ""
             queue.unshift(nextId)
-            saveCp({ status: "awaiting_approval" })
+            var approvalState = saveCp({ status: "awaiting_approval" })
             return e.json(200, { ok: true, run_id: id,
-              status: "awaiting_approval", stepped: false, node_id: nextId })
+              status: approvalState, stepped: false, node_id: nextId })
           }
         }
         }
@@ -2133,10 +2224,26 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           if (!stepExecutorNode.approvalMatches(verifiedApprovalDigestWf, actualHashWf))
             nodeErr = "tool_approval_changed：执行目标与已批准内容不一致"
         }
+        // A cancellation can arrive while this node is resolving the tool
+        // connection or approval. Recheck the live flag under the worker
+        // lease before reserving/sending any external side effect.
+        if (!nodeErr) {
+          var cancelBeforeToolWf = false
+          executionGuard.mutate($app, "workflow", runId, uid, leaseToken, function (_tx, toolRun) {
+            cancelBeforeToolWf = loadJson(toolRun, "checkpoint").cancel_requested === true
+          })
+          if (cancelBeforeToolWf) {
+            var stoppedBeforeTool = saveCp(null)
+            return e.json(200, {
+              ok: true, run_id: id, status: stoppedBeforeTool,
+              stepped: false, node_id: nextId, cancel_requested: false,
+            })
+          }
+        }
         var effectStepKeyWf = String(nextId) + ":" + String(execCount)
-        if (!nodeErr && effectNeededWf &&
-            !executionGuard.renew($app, "workflow", runId, uid, leaseToken))
-          throw new Error("execution_lease_lost")
+        if (!nodeErr && effectNeededWf)
+          executionGuard.renewForDispatch($app, "workflow", runId, uid, leaseToken,
+            { maxCallMs: require(__hooks + "/modules/model_request.js").MAX_TIMEOUT_SECONDS * 1000 })
         if (!nodeErr && effectNeededWf) {
           effectKeyWf = "as-" + $security.sha256("workflow:" + runId + ":" + effectStepKeyWf)
           var effectArgsHashWf = $security.sha256(paramsStr)
@@ -2179,6 +2286,10 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
           return false
         }
         var runToolAttempt = function () {
+          // A read-only retry must not outlive the winning lease. Every
+          // attempt is re-fenced just before dispatching the tool.
+          executionGuard.renewForDispatch($app, "workflow", runId, uid, leaseToken,
+            { maxCallMs: require(__hooks + "/modules/model_request.js").MAX_TIMEOUT_SECONDS * 1000 })
           var aOut = ""
           var aErr = ""
           var aErrDetail = ""
@@ -2589,10 +2700,44 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
         else tryReady(t3)
       }
       if (backLoopId) advanceLoopRound(backLoopId, outputs[nextId])
-      saveCp(null)
-      return e.json(200, { ok: true, run_id: id, status: "running", stepped: true, node_id: nextId })
+      var completedNodeStatus = saveCp(null)
+      return e.json(200, { ok: true, run_id: id, status: completedNodeStatus, stepped: true, node_id: nextId })
     } catch (stepErr) {
       var stepMsg = String((stepErr && stepErr.message) || stepErr)
+      if (stepMsg === "execution_stop_requested") {
+        // A cancellation can arrive while the first read-only tool attempt
+        // is waiting on a network response. Do not send its retry, falsely
+        // mark the node failed, or resurrect it with a stale checkpoint.
+        var stopCommitted = false
+        try {
+          executionGuard.mutate($app, "workflow", id, uid, leaseToken, function (tx, stoppedRun) {
+            var stoppedCp = loadJson(stoppedRun, "checkpoint")
+            if (stoppedCp.cancel_requested !== true)
+              throw new Error("execution_stop_flag_missing")
+            stoppedCp.cancel_requested = false
+            stoppedCp.pending_approval = null
+            stoppedCp.approved_node = ""
+            stoppedCp.approved_input_hash = ""
+            stoppedCp.reject_node = ""
+            stoppedCp.claim_until = 0
+            stoppedRun.set("checkpoint", stoppedCp)
+            stoppedRun.set("status", "cancelled")
+            stoppedRun.set("error", "用户手动取消")
+            tx.save(stoppedRun)
+            stopCommitted = true
+          })
+        } catch (_) { /* a stolen/terminal lease is not writable by this worker */ }
+        var observedStatus = "running"
+        try {
+          var observedRun = $app.findRecordById("workflow_runs", id)
+          observedStatus = String(observedRun.get("status") || "running")
+        } catch (_) {}
+        if (stopCommitted) {
+          try { addEvent(id, "", 0, "status", { message: "取消请求已生效，未发出后续网络重试" }) } catch (_) {}
+        }
+        return e.json(200, { ok: true, run_id: id, status: observedStatus,
+          stepped: false, busy: !stopCommitted })
+      }
       var ownershipLost = runLifecycle.ownershipLost(stepErr)
       logErr("tick step", stepErr)
       try {
