@@ -1,4 +1,6 @@
-import {useState} from "react"
+import {useEffect,useState} from "react"
+import {usesPaidKnowledge} from "@/lib/pgNativeKnowledgeTool"
+import PgNativeKnowledgeToolCharge from "./PgNativeKnowledgeToolCharge"
 import {ShieldCheck} from "lucide-react"
 import type {PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
 import {autonomousApprovalReady,autonomousReview,readyAutonomousModel,type AutonomousView} from "@/lib/pgNativeAutonomousAgentSession"
@@ -8,16 +10,20 @@ export const autonomousSecondary="inline-flex min-h-10 items-center justify-cent
 const tools:Record<string,string>={calculate:"计算",summarize:"摘要",knowledge_search:"知识库检索",web_fetch:"读取网页",web_search:"网页搜索"}
 export default function PgNativeAutonomousAgentDetail({view,agents,connections,toolConnections=[],mcpConnections=[],mcpEnabled=false,enabled,onDecision,onRetry,onCancel}:{
   view:AutonomousView;agents:PgNativeAgent[];connections:PgNativeModelConnection[];toolConnections?:PgNativeToolConnection[];mcpConnections?:PgNativeMcpConnection[];mcpEnabled?:boolean;enabled:boolean;
-  onDecision:(value:"approved"|"rejected",consent:boolean)=>void;onRetry:()=>void;onCancel:()=>void
+  onDecision:(value:"approved"|"rejected",consent:boolean,knowledgeConsent?:boolean)=>void;onRetry:()=>void;onCancel:()=>void
 }){
   const [consent,setConsent]=useState("")
+  const [feeConsent,setFeeConsent]=useState("")
   const [cancelFor,setCancelFor]=useState("")
   const detail=view.detail,pending=detail?.pending_effect,mutation=view.pendingMutation
+  const feeScope=detail?.run.id+":"+pending?.step_key+":"+pending?.input_sha256+":"+JSON.stringify(detail?.knowledge??null)
+  useEffect(()=>{setFeeConsent("");setConsent("")},[feeScope,enabled])
   if(!detail)return null
   const current=pending?detail.run.id+":"+pending.step_key+":"+pending.input_sha256:""
   const approvedReady=autonomousApprovalReady(detail,agents,connections,toolConnections,mcpConnections,mcpEnabled)
   const role=agents.find(a=>a.id===detail.run.agent_spec_id),model=readyAutonomousModel(role,connections)
-  const review=pending?autonomousReview(pending):null
+  const review=pending?autonomousReview(pending,detail.knowledge):null
+  const paid=usesPaidKnowledge(pending)
   const http=pending?.configuration.tool_binding as {connection_id?:string}|undefined
   const connection=http?toolConnections.find(tool=>tool.id===http.connection_id):undefined
   const mcp=pending?.configuration.mcp_binding as {connection_id?:string}|undefined
@@ -34,6 +40,7 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
     </p>}
     {mutation&&<div role="status" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
       <p>上次{mutation.kind==="cancel"?"取消":mutation.decision==="approved"?"批准":"拒绝"}结果尚未确认。请刷新状态，或确认原来的同一步操作。</p>
+      {mutation.kind==="decision"&&mutation.knowledge_query_charge&&<p>原请求已包含本次语义查询的费用确认；再次确认会核对原步骤，不会扩大授权范围。</p>}
       <button type="button" className={autonomousSecondary} disabled={view.busy||view.loading||mutation.kind==="decision"&&!enabled} onClick={onRetry}>
         确认上次{mutation.kind==="cancel"?"取消":mutation.decision==="approved"?"批准":"拒绝"}
       </button>
@@ -58,10 +65,11 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
       <label className="flex items-start gap-2 text-sm leading-6">
         <input type="checkbox" className="mt-1.5" disabled={locked||!enabled||!approvedReady} checked={consent===current}
           onChange={event=>setConsent(event.target.checked?current:"")}/>
-        {review.charged?"我已核对本次模型调用，确认可能产生费用。":"我已核对当前步骤及其数据范围，允许本次操作。"}
+        {review.charged&&!paid?"我已核对本次模型调用，确认可能产生费用。":"我已核对当前步骤及其数据范围，允许本次操作。"}
       </label>
+      {paid&&<PgNativeKnowledgeToolCharge checked={feeConsent===feeScope} disabled={locked||!enabled||!approvedReady} onChange={value=>setFeeConsent(value?feeScope:"")}/>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={autonomousButton} disabled={locked||!enabled||!approvedReady||consent!==current} onClick={()=>onDecision("approved",consent===current)}>批准当前步骤</button>
+        <button type="button" className={autonomousButton} disabled={locked||!enabled||!approvedReady||consent!==current||paid&&feeConsent!==feeScope} onClick={()=>onDecision("approved",consent===current,paid&&feeConsent===feeScope)}>批准当前步骤</button>
         <button type="button" className={autonomousSecondary} disabled={locked||!enabled} onClick={()=>onDecision("rejected",false)}>拒绝当前步骤</button>
       </div>
     </section>}

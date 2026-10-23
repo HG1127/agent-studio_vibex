@@ -189,6 +189,20 @@ test("Native capabilities are authenticated and never browser-controlled",async(
     assert.equal((await request(base,"/api/native-auth/capabilities",{cookie})).status,401)
   }finally{await new Promise(resolve=>server.close(resolve))}
 })
+test("semantic Tool capability requires its independent flag and every metadata/query prerequisite",async()=>{
+  const complete={allowConfigurationWrites:true,allowKnowledgeSharing:true,allowKnowledgeEmbeddingSettings:true,allowKnowledgeEmbeddingConsent:true,allowKnowledgeQueryRuntime:true,allowKnowledgeToolExecution:true}
+  for(const missing of [null,...Object.keys(complete)]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,businessHandler:(_req,res)=>{res.writeHead(404);res.end()},...complete,...(missing?{[missing]:false}:{})})
+    const {server,base}=await listen(native.handler)
+    try{
+      assert.equal((await request(base,"/api/native-auth/capabilities")).status,401)
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const cookie=login.setCookie.split(";")[0],response=await request(base,"/api/native-auth/capabilities",{cookie,spoofUser:"forged-admin"})
+      assert.equal(response.status,200);assert.equal(response.data.knowledge_tool_runtime_enabled===true,missing===null)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
 test("Native capabilities default to read-only even after login",async()=>{
   const native=createNativeAuthHttpHandler({
     auth:authStub(),allowedOrigin:origin,

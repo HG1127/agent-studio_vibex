@@ -94,7 +94,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
       </button>)}
     </div>
     <PgNativeAutonomousAgentDetail key={view.detail?.run.id??"none"} view={view} agents={agents} connections={connections} toolConnections={tools} mcpConnections={mcps.connections} mcpEnabled={mcpEnabled} enabled={active&&enabled}
-      onDecision={(value,consent)=>{if(active&&enabled)void model.current?.decide(value,consent)}}
+      onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}
       onCancel={()=>{if(active)void model.current?.cancel()}}/>
   </section>

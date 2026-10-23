@@ -61,7 +61,7 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,t
       </button>)}
     </div>
     <PgNativeWorkflowRunDetail key={view.detail?.run.id??"none"} view={view} active={active} enabled={active&&enabled} api={api} onExpired={onExpired}
-      onDecision={(value,consent)=>{if(active&&enabled)void model.current?.decide(value,consent)}}
+      onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}
       onCancel={()=>{if(active)void model.current?.cancel()}}/>
   </section>

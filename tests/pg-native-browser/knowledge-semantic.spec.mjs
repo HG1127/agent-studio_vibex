@@ -4,11 +4,11 @@ import {fileURLToPath} from "node:url"
 import path from "node:path"
 import {requireNativeBrowserCi} from "./ci-guard.mjs"
 
-test("employee semantic UI: exact receipts, owner indexing, reader billing, free defaults and revocation",async({},testInfo)=>{
+for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${runtime}): exact receipts, approved Tool billing and revocation`,async({},testInfo)=>{
   const approved=requireNativeBrowserCi()
   const root=path.resolve(fileURLToPath(new URL("../../",import.meta.url)))
   const env=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"].filter(name=>process.env[name]!==undefined).map(name=>[name,process.env[name]]))
-  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true",AGENT_STUDIO_PG_BROWSER_SEMANTIC:"true"})
+  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",[runtime==="workflow"?"AGENT_STUDIO_PG_BROWSER_WORKFLOW":"AGENT_STUDIO_PG_BROWSER_AUTONOMOUS"]:"true",AGENT_STUDIO_PG_BROWSER_SEMANTIC:"true"})
   const child=spawn(process.execPath,["--experimental-strip-types",path.join(root,"services/pg-api/tests/helpers/native-run-browser-fixture.mjs")],{cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true})
   let browser,aliceContext,bobContext,control,timer,output=""
   const ready=new Promise((resolve,reject)=>{
@@ -104,7 +104,85 @@ test("employee semantic UI: exact receipts, owner indexing, reader billing, free
     let current=await state();expect(current.queryEmbeddings).toBe(1);expect(current.queryInputs).toEqual([["unrelated wording"]])
     await query(bob).getByRole("button",{name:"核对查询回执",exact:true}).click();expect((await state()).queryEmbeddings).toBe(1)
 
+    // Configure the new Tool through actual employee forms. Saving is metadata
+    // only; the paid effect still requires a fresh, step-specific fee intent.
+    const beforeTool=await state(),sharedName="Semantic source KB · Browser Alice共享 · 可查看"
+    if(runtime==="workflow"){
+      await bob.getByRole("button",{name:/^Workflow \d+$/}).click()
+      await bob.getByRole("textbox",{name:"新工作流名称",exact:true}).fill("Bob approved semantic workflow")
+      await bob.getByRole("button",{name:"新建画布草稿",exact:true}).click()
+      const edge=label=>bob.getByRole("combobox",{name:"选择连线",exact:true}).selectOption({label}),node=label=>bob.getByRole("combobox",{name:"选择节点",exact:true}).selectOption({label})
+      const apply=()=>bob.getByRole("button",{name:"应用节点配置",exact:true}).click()
+      await edge("开始 → 结束");await bob.getByRole("button",{name:"添加工具",exact:true}).click();await node("工具")
+      await bob.getByRole("combobox",{name:"工具",exact:true}).selectOption("knowledge_search")
+      await bob.getByRole("checkbox",{name:sharedName,exact:true}).check()
+      await expect(bob.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("keyword")
+      await bob.getByRole("button",{name:"读取本人检索配置",exact:true}).click()
+      await expect(bob.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="hybrid"]')).toBeEnabled()
+      await bob.getByRole("combobox",{name:"知识库检索方式",exact:true}).selectOption("hybrid")
+      await bob.getByRole("textbox",{name:"工具参数模板（JSON）",exact:true}).fill('{"query":"tool wording"}');await apply()
+      await edge("工具 → 结束");await bob.getByRole("button",{name:"添加模型",exact:true}).click();await node("模型")
+      await bob.getByRole("combobox",{name:"绑定模型",exact:true}).selectOption({label:"Bob synthetic model · gpt-4.1-mini"})
+      await bob.getByRole("textbox",{name:"模型提示词",exact:true}).fill("Use {{工具.output}}");await apply()
+      await node("结束");await bob.getByRole("textbox",{name:"结果模板",exact:true}).fill("{{模型.output}}");await apply()
+      await bob.getByRole("button",{name:"保存工作流",exact:true}).click()
+      await expect(bob.getByRole("button",{name:"运行已保存工作流",exact:true})).toBeEnabled()
+      expect((await state()).queryEmbeddings).toBe(beforeTool.queryEmbeddings)
+      await bob.getByRole("button",{name:"运行已保存工作流",exact:true}).click()
+      await bob.getByRole("textbox",{name:"工作流运行要求",exact:true}).fill("Private task must never enter embedding request")
+      await bob.getByRole("button",{name:"提交工作流任务",exact:true}).click()
+    }else{
+      await bob.getByRole("button",{name:/^Agent 配置/}).click()
+      const panel=bob.getByRole("region",{name:"Agent 知识库绑定",exact:true})
+      await panel.getByRole("combobox",{name:"知识库绑定 Agent",exact:true}).selectOption({label:"Bob Browser Agent"})
+      await panel.getByRole("checkbox",{name:sharedName,exact:true}).check()
+      await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("keyword")
+      await panel.getByRole("button",{name:"读取本人检索配置",exact:true}).click()
+      await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="semantic"]')).toBeEnabled()
+      await panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).selectOption("semantic")
+      const saved=bob.waitForResponse(response=>response.request().method()==="PATCH"&&response.url().includes("/api/v2/agent-specs/"))
+      await panel.getByRole("button",{name:"保存知识库绑定",exact:true}).click();expect((await saved).status()).toBe(200)
+      await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("unavailable")
+      await panel.getByRole("button",{name:"读取本人检索配置",exact:true}).click();await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("semantic")
+      expect((await state()).queryEmbeddings).toBe(beforeTool.queryEmbeddings)
+      await bob.getByRole("button",{name:"多轮 Agent",exact:true}).click()
+      await bob.getByRole("combobox",{name:"多轮 Agent 角色",exact:true}).selectOption({label:"Bob Browser Agent · gpt-4.1-mini"})
+      await bob.getByRole("textbox",{name:"多轮任务要求",exact:true}).fill("Private task must never enter embedding request")
+      await bob.getByRole("button",{name:"提交多轮任务",exact:true}).click()
+    }
+    const refreshRun=()=>bob.getByRole("button",{name:runtime==="workflow"?"刷新工作流任务":"刷新多轮任务",exact:true}).click()
+    const region=()=>bob.getByRole("article",{name:runtime==="workflow"?"Workflow 运行详情":"多轮任务详情",exact:true})
+    let pendingQuery=false,succeeded=false,feeSteps=0
+    for(let i=0;i<22;i++){
+      let tick
+      if(pendingQuery){
+        const running=control(runtime)
+        await expect.poll(async()=>(await state()).queryJobs).toBe(beforeTool.queryJobs+1)
+        expect((await control("query")).status).toBe("retrieved");tick=await running;pendingQuery=false
+      }else tick=await control(runtime)
+      if(tick.status==="succeeded"){succeeded=true;break}
+      if(tick.status!=="awaiting_approval")continue
+      await refreshRun();const detail=region(),approve=detail.getByRole("button",{name:runtime==="workflow"?"批准工作流当前步骤":"批准当前步骤",exact:true})
+      await expect(approve).toBeDisabled()
+      const fee=detail.getByRole("checkbox",{name:"我确认本次语义查询可能产生费用，使用我自己的检索配置，仅批准当前步骤。",exact:true})
+      await detail.getByRole("checkbox",{name:/^我已核对/}).check()
+      if(await fee.count()){
+        feeSteps++;await expect(approve).toBeDisabled();expect((await state()).queryJobs).toBe(beforeTool.queryJobs)
+        await fee.check();await expect(approve).toBeEnabled();await control("drop-next-decision")
+        await approve.click();await expect(detail.getByRole("button",{name:"确认上次批准",exact:true})).toBeEnabled()
+        await detail.getByRole("button",{name:"确认上次批准",exact:true}).click()
+        const hashes=(await state()).decisionHashes;expect(hashes.at(-1)).toBe(hashes.at(-2));pendingQuery=true
+      }else await approve.click()
+      await expect(bob.getByText("已批准当前步骤。",{exact:true})).toBeVisible()
+    }
+    expect(succeeded).toBe(true);expect(feeSteps).toBe(1);await refreshRun()
+    const taskResult=region().getByRole("region",{name:runtime==="workflow"?"Workflow 执行结果":"多轮执行结果",exact:true})
+    await expect(taskResult).toContainText(runtime==="workflow"?"Browser synthetic workflow model output":"Browser synthetic semantic Agent answer")
+    const toolResult=await state();expect(toolResult.queryEmbeddings).toBe(2);expect(toolResult.queryInputs).toEqual([["unrelated wording"],["tool wording"]]);expect(toolResult.semanticModelPrompts).toBe(1)
+    await bob.screenshot({path:testInfo.outputPath("approved-semantic-tool.png"),fullPage:true})
     await sharing(alice).getByRole("button",{name:"撤销语义许可",exact:true}).click()
+    await refreshRun();await expect(taskResult).toHaveCount(0)
+    await bob.getByRole("button",{name:/^知识库 \d+$/}).click()
     await expect(sharing(alice).getByRole("button",{name:"允许语义检索",exact:true})).toBeVisible()
     await query(bob).getByRole("button",{name:"核对查询回执",exact:true}).click()
     await expect(query(bob).getByRole("list",{name:"语义查询结果",exact:true})).toHaveCount(0)
@@ -117,7 +195,7 @@ test("employee semantic UI: exact receipts, owner indexing, reader billing, free
     await query(bob).getByRole("textbox",{name:"查询内容",exact:true}).fill("cedar")
     await query(bob).getByRole("button",{name:"提交新查询",exact:true}).click()
     await expect(query(bob).getByText(/未逐次确认费用，本次使用关键词检索/)).toBeVisible()
-    expect((await state()).queryEmbeddings).toBe(1)
+    expect((await state()).queryEmbeddings).toBe(2)
     await control("fail-query")
     await query(bob).getByRole("checkbox",{name:"同意仅为本次查询支付本人模型的提供商费用",exact:true}).check()
     await query(bob).getByRole("button",{name:"提交新查询",exact:true}).click()
@@ -126,11 +204,11 @@ test("employee semantic UI: exact receipts, owner indexing, reader billing, free
     await query(bob).getByRole("button",{name:"核对查询回执",exact:true}).click()
     await expect(query(bob).getByText(/向量服务未能返回可用结果/)).toBeVisible()
     await expect(query(bob).getByText(/本次查询可能已产生提供商费用/)).toBeVisible()
-    current=await state();expect(current.queryEmbeddings).toBe(2);expect(current.queryInputs).toEqual([["unrelated wording"],["cedar"]])
+    current=await state();expect(current.queryEmbeddings).toBe(3);expect(current.queryInputs).toEqual([["unrelated wording"],["tool wording"],["cedar"]])
     await control("deny-semantic");await bob.getByRole("button",{name:"刷新",exact:true}).click()
     await expect(query(bob).getByText(/管理员尚未开放语义查询/)).toBeVisible()
     await expect(query(bob).getByRole("list",{name:"语义查询结果",exact:true})).toHaveCount(0)
-    expect((await state()).queryEmbeddings).toBe(2);expect((await state()).generated).toBe(0)
+    expect((await state()).queryEmbeddings).toBe(3);expect((await state()).generated).toBe(runtime==="workflow"?1:2)
     await bob.screenshot({path:testInfo.outputPath("knowledge-semantic-revoked.png"),fullPage:true})
     await bob.getByRole("button",{name:"退出",exact:true}).click();await login(bob,"alice")
     await expect(bob.getByText(/查询回执：/)).toHaveCount(0)

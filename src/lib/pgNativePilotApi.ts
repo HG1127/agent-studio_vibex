@@ -34,6 +34,7 @@ export type PgNativeConfigCapabilities={
   knowledge_embedding_consent_enabled?:boolean
   knowledge_index_runtime_enabled?:boolean
   knowledge_query_runtime_enabled?:boolean
+  knowledge_tool_runtime_enabled?:boolean
   run_submission_enabled?:boolean
   bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
@@ -410,6 +411,8 @@ export function createPgNativePilotApi(
           (value.knowledge_index_runtime_enabled===true&&value.knowledge_embedding_consent_enabled!==true)||
           (value.knowledge_query_runtime_enabled!==undefined&&typeof value.knowledge_query_runtime_enabled!=="boolean")||
           (value.knowledge_query_runtime_enabled===true&&value.knowledge_embedding_consent_enabled!==true)||
+          (value.knowledge_tool_runtime_enabled!==undefined&&typeof value.knowledge_tool_runtime_enabled!=="boolean")||
+          (value.knowledge_tool_runtime_enabled===true&&value.knowledge_query_runtime_enabled!==true)||
           (value.workflow_validation_enabled!==undefined&&
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&

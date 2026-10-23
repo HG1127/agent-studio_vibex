@@ -382,6 +382,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowKnowledgeEmbeddingConsent:capabilities.knowledgeEmbeddingConsentUat===true,
       allowKnowledgeIndexRuntime:capabilities.knowledgeIndexRuntimeUat===true,
       allowKnowledgeQueryRuntime:capabilities.knowledgeQueryRuntimeUat===true,
+      allowKnowledgeToolExecution:capabilities.knowledgeToolExecutionUat===true,
       allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,

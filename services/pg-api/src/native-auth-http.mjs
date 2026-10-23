@@ -119,7 +119,7 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
     allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,
@@ -200,6 +200,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true?{knowledge_embedding_consent_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeIndexRuntime===true?{knowledge_index_runtime_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeQueryRuntime===true?{knowledge_query_runtime_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeQueryRuntime===true&&allowKnowledgeToolExecution===true?{knowledge_tool_runtime_enabled:true}:{}),
           workflow_validation_enabled:allowConfigurationWrites===true&&allowWorkflowValidation===true,
           workflow_execution_enabled:allowConfigurationWrites===true&&allowWorkflowExecution===true,
           ...(allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true?{autonomous_agent_submission_enabled:true}:{}),

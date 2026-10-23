@@ -2,13 +2,15 @@ import {useState} from "react"
 import type {PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
 import {mcpChoices} from "@/lib/pgNativeMcpConnection"
 import {type WorkflowNode,type WorkflowNodeDataV2} from "@/lib/pgNativeWorkflowGraph"
+import {knowledgeBindingCurrent,knowledgeToolScopeCurrent,type KnowledgeToolContext} from "@/lib/pgNativeKnowledgeTool"
+import PgNativeKnowledgeToolMode from "./PgNativeKnowledgeToolMode"
 const field="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 export const workflowButton="min-h-10 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 export const workflowSecondary="min-h-10 rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const defaults:Record<string,string>={calculate:'{"expression":"1+1"}',summarize:'{"text":"{{input}}"}',knowledge_search:'{"query":"{{input}}"}',web_search:'{"query":"{{input}}"}',web_fetch:'{"url":"https://example.com"}'}
-export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools,bases,mcps=[],enabled,onApply,onDirty}:{
+export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools,bases,mcps=[],knowledgeContext=null,enabled,onApply,onDirty}:{
   node:WorkflowNode;nodes:WorkflowNode[];agents:PgNativeAgent[];models:PgNativeModelConnection[];tools:PgNativeToolConnection[];bases:PgNativeKnowledge[];
-  mcps?:PgNativeMcpConnection[];enabled:boolean;onApply:(data:WorkflowNodeDataV2)=>string|undefined;onDirty:(dirty:boolean)=>void
+  mcps?:PgNativeMcpConnection[];knowledgeContext?:KnowledgeToolContext|null;enabled:boolean;onApply:(data:WorkflowNodeDataV2)=>string|undefined;onDirty:(dirty:boolean)=>void
 }){
   const [data,setData]=useState(()=>structuredClone(node.data))
   const [dirty,setDirty]=useState(false),[error,setError]=useState("")
@@ -42,6 +44,7 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
   const variableTarget=node.type==="tool"?"params_template":node.type==="end"?"output_template":node.type==="loop"?"list_source":target
   return <form aria-label="Workflow 节点配置" className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4" onSubmit={event=>{
     event.preventDefault();if(!enabled)return
+    if(data.knowledge_retrieval&&(!knowledgeBindingCurrent(data.knowledge_retrieval,knowledgeContext)||!knowledgeToolScopeCurrent(data.knowledge_base_ids??[],knowledgeContext))){setError("请读取并重新核对语义检索配置，或改用关键词检索。");return}
     const result=onApply(data);if(result){setError(result);return}setDirty(false);onDirty(false);setError("")
   }}>
     <h3 className="font-semibold">节点配置</h3>
@@ -63,10 +66,10 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
       {node.type==="tool"&&<>
         <label className="block text-sm font-medium">工具<select aria-label="工具" className={field} value={toolValue} onChange={event=>{
           const value=event.target.value
-          if(value.startsWith("mcp:"))change({mcp_binding:JSON.parse(value.slice(4)),params_template:data.params_template??"{}"},["tool","tool_binding","model_binding","knowledge_base_ids","tool_binding_required"])
-          else if(value.startsWith("http:"))change({tool_binding:JSON.parse(value.slice(5)),params_template:data.params_template??"{}"},["tool","mcp_binding","model_binding","knowledge_base_ids","tool_binding_required"])
-          else if(value)change({tool:value as WorkflowNodeDataV2["tool"],params_template:defaults[value]},["tool_binding","mcp_binding","model_binding","knowledge_base_ids","tool_binding_required"])
-          else change({tool_binding_required:true},["tool","tool_binding","mcp_binding","model_binding","knowledge_base_ids"])
+          if(value.startsWith("mcp:"))change({mcp_binding:JSON.parse(value.slice(4)),params_template:data.params_template??"{}"},["tool","tool_binding","model_binding","knowledge_base_ids","knowledge_retrieval","tool_binding_required"])
+          else if(value.startsWith("http:"))change({tool_binding:JSON.parse(value.slice(5)),params_template:data.params_template??"{}"},["tool","mcp_binding","model_binding","knowledge_base_ids","knowledge_retrieval","tool_binding_required"])
+          else if(value)change({tool:value as WorkflowNodeDataV2["tool"],params_template:defaults[value]},["tool_binding","mcp_binding","model_binding","knowledge_base_ids","knowledge_retrieval","tool_binding_required"])
+          else change({tool_binding_required:true},["tool","tool_binding","mcp_binding","model_binding","knowledge_base_ids","knowledge_retrieval"])
         }}>
           <option value="">请选择工具后再运行</option>
           <option value="calculate">计算</option><option value="summarize">摘要</option><option value="knowledge_search">知识库检索</option><option value="web_fetch">读取网页</option><option value="web_search">网页搜索</option>
@@ -78,9 +81,11 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
         {data.tool==="summarize"&&modelSelect()}
         {data.tool==="knowledge_search"&&<fieldset className="space-y-2"><legend className="text-sm font-medium">检索知识库（最多三个）</legend>
           {bases.map(base=><label className="flex items-start gap-2 text-sm" key={base.id}><input type="checkbox" checked={data.knowledge_base_ids?.includes(base.id)??false}
-            disabled={!enabled||!data.knowledge_base_ids?.includes(base.id)&&(data.knowledge_base_ids?.length??0)>=3} onChange={event=>change({knowledge_base_ids:event.target.checked?[...(data.knowledge_base_ids??[]),base.id]:(data.knowledge_base_ids??[]).filter(id=>id!==base.id)})}/>{base.name}</label>)}
+            disabled={!enabled||!data.knowledge_base_ids?.includes(base.id)&&(data.knowledge_base_ids?.length??0)>=3} onChange={event=>{const ids=event.target.checked?[...(data.knowledge_base_ids??[]),base.id]:(data.knowledge_base_ids??[]).filter(id=>id!==base.id);change({knowledge_base_ids:ids},ids.length?[]:["knowledge_retrieval"])}}/>{base.name}</label>)}
           {(data.knowledge_base_ids??[]).filter(id=>!bases.some(base=>base.id===id)).map(id=><label className="flex items-start gap-2 break-all text-sm text-amber-900" key={id}>
-            <input type="checkbox" checked aria-label={"不可用知识库 "+id} onChange={()=>change({knowledge_base_ids:(data.knowledge_base_ids??[]).filter(value=>value!==id)})}/>不可用知识库 {id}，请移除或重新核对授权。</label>)}
+            <input type="checkbox" checked aria-label={"不可用知识库 "+id} onChange={()=>{const ids=(data.knowledge_base_ids??[]).filter(value=>value!==id);change({knowledge_base_ids:ids},ids.length?[]:["knowledge_retrieval"])}}/>不可用知识库 {id}，请移除或重新核对授权。</label>)}
+          <PgNativeKnowledgeToolMode binding={data.knowledge_retrieval} context={knowledgeContext} hasBases={Boolean(data.knowledge_base_ids?.length)} ids={data.knowledge_base_ids} disabled={!enabled}
+            onChange={binding=>binding?change({knowledge_retrieval:binding}):change({},["knowledge_retrieval"])}/>
         </fieldset>}
         {text("params_template","工具参数模板（JSON）")}
       </>}

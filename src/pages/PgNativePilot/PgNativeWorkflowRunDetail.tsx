@@ -4,15 +4,21 @@ import {workflowApprovalReady,workflowStepReview,type WorkflowRunView} from "@/l
 import {workflowButton,workflowSecondary} from "./PgNativeWorkflowNodeForm"
 import {autonomousStates} from "./PgNativeAutonomousAgentDetail"
 import PgNativeWorkflowRunOutputs from "./PgNativeWorkflowRunOutputs"
+import {usesPaidKnowledge} from "@/lib/pgNativeKnowledgeTool"
+import PgNativeKnowledgeToolCharge from "./PgNativeKnowledgeToolCharge"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecision,onRetry,onCancel,api,onExpired}:{
-  view:Pick<WorkflowRunView,"detail"|"busy"|"loading"|"pendingMutation">&{pendingSubmit:object|null};enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
+  view:Pick<WorkflowRunView,"detail"|"busy"|"loading"|"pendingMutation">&{pendingSubmit:object|null};enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean,knowledgeConsent?:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
 }){
   const [consent,setConsent]=useState(""),[cancelFor,setCancelFor]=useState("")
+  const [feeConsent,setFeeConsent]=useState("")
   const detail=view.detail,pending=detail?.pending_effect,mutation=view.pendingMutation
+  const feeScope=detail?.run.id+":"+pending?.step_key+":"+pending?.input_sha256+":"+JSON.stringify(detail?.review?.knowledge??null)
+  useEffect(()=>{setFeeConsent("");setConsent("")},[feeScope,active,enabled])
   if(!detail)return null
-  const step=pending?detail.run.id+":"+pending.step_key+":"+pending.input_sha256:"",review=pending?workflowStepReview(pending):null
+  const step=pending?detail.run.id+":"+pending.step_key+":"+pending.input_sha256:"",review=pending?workflowStepReview(pending,detail.review?.knowledge):null
   const ready=workflowApprovalReady(detail),locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)
+  const paid=usesPaidKnowledge(pending)
   const loops=Array.isArray(detail.run.checkpoint.loop_progress)?detail.run.checkpoint.loop_progress as Array<{id:string;round:number;total:number}>:[]
   return <article aria-label="Workflow 运行详情" className="space-y-4 rounded-2xl border border-indigo-200 bg-white p-5">
     <h3 className="font-semibold">{detail.run.checkpoint.node_debug?"单模型节点测试":"工作流任务"} · {autonomousStates[detail.run.status]??"状态未知"}</h3>
@@ -23,6 +29,7 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
     {detail.run.status==="failed"&&<p role="status" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">工作流未能完成，请核对配置和步骤记录。</p>}
     {mutation&&<div role="status" className="space-y-3 rounded-xl bg-amber-50 p-4 text-sm">
       <p>上次{mutation.kind==="cancel"?"取消":mutation.decision==="approved"?"批准":"拒绝"}结果尚未确认。可以刷新状态，或确认原来的同一步操作。</p>
+      {mutation.kind==="decision"&&mutation.knowledge_query_charge&&<p>原请求已包含本次语义查询的费用确认；再次确认会核对原步骤，不会扩大授权范围。</p>}
       <button type="button" className={workflowSecondary} disabled={!active||view.busy||view.loading||mutation.kind==="decision"&&!enabled} onClick={onRetry}>
         确认上次{mutation.kind==="cancel"?"取消":mutation.decision==="approved"?"批准":"拒绝"}
       </button>
@@ -39,8 +46,9 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
       {!ready&&<p className="text-sm leading-6 text-amber-900">工作流或绑定资源的版本暂时不可用，请刷新核对；仍可拒绝当前步骤。</p>}
       {!enabled&&<p className="text-sm text-amber-900">当前环境未开放工作流审批，可继续查看记录。</p>}
       <label className="flex items-start gap-2 text-sm leading-6"><input type="checkbox" className="mt-1.5" checked={consent===step} disabled={!enabled||!ready||locked}
-        onChange={event=>setConsent(event.target.checked?step:"")}/>{review.charged?"我已核对本次模型调用，确认可能产生费用。":"我已核对本次操作及其数据发送范围，允许执行。"}</label>
-      <div className="flex flex-wrap gap-2"><button type="button" className={workflowButton} disabled={!enabled||!ready||locked||consent!==step} onClick={()=>onDecision("approved",consent===step)}>批准工作流当前步骤</button>
+        onChange={event=>setConsent(event.target.checked?step:"")}/>{review.charged&&!paid?"我已核对本次模型调用，确认可能产生费用。":"我已核对本次操作及其数据发送范围，允许执行。"}</label>
+      {paid&&<PgNativeKnowledgeToolCharge checked={feeConsent===feeScope} disabled={!enabled||!ready||locked} onChange={value=>setFeeConsent(value?feeScope:"")}/>}
+      <div className="flex flex-wrap gap-2"><button type="button" className={workflowButton} disabled={!enabled||!ready||locked||consent!==step||paid&&feeConsent!==feeScope} onClick={()=>onDecision("approved",consent===step,paid&&feeConsent===feeScope)}>批准工作流当前步骤</button>
         <button type="button" className={workflowSecondary} disabled={!enabled||locked} onClick={()=>onDecision("rejected",false)}>拒绝工作流当前步骤</button></div>
     </section>}
     {!!loops.length&&<div className="space-y-1 text-sm text-slate-600" aria-label="循环进度">{loops.map((loop,index)=><p key={loop.id}>循环 {index+1}：第 {Number(loop.round)||0} / {Number(loop.total)||0} 轮</p>)}</div>}

@@ -118,6 +118,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowKnowledgeEmbeddingConsent:true,
       allowKnowledgeIndexRuntime:true,
       allowKnowledgeQueryRuntime:true,
+      allowKnowledgeToolExecution:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -508,6 +509,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await knowledgeAccess.change(owner,sharedBase.id,{action:"semantic",recipient_id:share.item.recipient_id,enabled:true,expected_revision:1,request_id:randomUUID()})
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     assert.equal((await api.getConfigCapabilities()).knowledge_query_runtime_enabled,true)
+    assert.equal((await api.getConfigCapabilities()).knowledge_tool_runtime_enabled,true)
     const readerDraft=await api.createModelConnection({name:"CI reader embedding",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticReaderQueryCredentialNeverNetwork012345",models:["synthetic-embedding","synthetic-chat"],enabled:true})
     const readerModel=await api.testModelConnection(readerDraft.id,readerDraft.revision)
     await api.changeKnowledgeEmbeddingSettings({action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:readerModel.id,connection_revision:readerModel.revision,model_name:"synthetic-embedding",base_url:"https://api.openai.com/v1"})

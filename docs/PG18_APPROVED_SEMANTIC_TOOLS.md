@@ -1,10 +1,44 @@
-# Approved semantic tools — isolated backend runtime
+# Approved semantic tools — isolated runtime and employee controls
 
 This is a PG18 migration candidate, not production activation. PocketBase is
 still the current runtime. SQL040 adds actual semantic/hybrid execution to the
-approved Workflow Tool, Workflow Agent and autonomous Agent paths. Employee
-configuration/review controls for this new Tool capability still need completion
-and browser acceptance before it can be considered ready for employee UAT.
+approved Workflow Tool, Workflow Agent and autonomous Agent paths. The isolated
+employee forms also support frozen retrieval modes and per-step charge review.
+Hosted acceptance must correspond to the final source revision; this does not
+replace real employee UAT or the remaining cutover gates.
+
+## Employee configuration and review
+
+Agent KB binding and Workflow knowledge Tool forms default to keyword retrieval.
+An explicit metadata read checks the independently enabled Tool capability and
+the current employee's query profile/consent and currently readable KB metadata.
+Semantic choices require at least one currently permitted semantic source; hybrid
+can also include currently readable keyword-only sources. Both choices freeze
+the exact profile UUID, profile revision and consent revision. Existing bindings
+never silently upgrade; a stale/unavailable binding must be explicitly replaced
+or cleared by choosing keyword mode. Removing every KB or changing the Tool clears
+the binding. Saving and reading metadata do not submit queries or call a provider.
+
+The server remains authoritative for current KB grants and index compatibility;
+changed or unavailable resources can stop a step before provider dispatch. The
+approval view shows the frozen query, retrieval mode and current KB names. Both Workflow
+and standalone Agent views require a separate unchecked semantic-query fee
+checkbox in addition to ordinary operation review. Model calls retain separate
+approval. Neither form accepts a payer, credential or provider override.
+
+The fee acknowledgement is part of the immutable pending decision intent,
+together with its run, step, hash and decision. A lost response permits only an
+explicit exact retry or current-state read; it cannot turn a later step into the
+original charge intent. Refusal and ordinary Tool/model decisions carry no
+semantic fee acknowledgement. Missing capability, stale profile/consent or scope
+metadata blocks a fresh paid approval. The backend independently verifies all
+of these boundaries.
+
+Hidden/replaced durable task views discard retained prompts/results and ignore late
+reads. Background read failures clear cached detail and list previews. A late
+mutation can confirm its original intent while hidden but cannot repopulate its
+retained result. Fee checkboxes reset when the step, review context or visible
+approval capability changes. Logout/session replacement disposes the controller.
 
 ## Execution and cost boundaries
 
@@ -57,9 +91,9 @@ Run result text, list previews, pending prompts, citation metadata and explicit
 Workflow output/history reads are redacted/refused when semantic provenance is
 unavailable. Role, routine, alias, trigger and metadata-column audits apply even
 when this capability is off. The pre-semantic submission alias has no API grant.
-These new durable checks cover the new semantic Tool path. Equivalent retained
-content/version evidence for existing free keyword Tool observations, frontend
-cache/review handling and historical debug-sample provenance still need review;
+These durable checks cover the new semantic Tool path. Equivalent retained
+content/version evidence for existing free keyword Tool observations and
+automatic historical debug/cross-run sample provenance still need completion;
 do not infer that this change completes all knowledge privacy/parity work.
 
 ## Independent operator approval (all remain off by default)

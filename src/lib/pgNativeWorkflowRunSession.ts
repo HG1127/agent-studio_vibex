@@ -5,9 +5,10 @@ import {autonomousError,autonomousReview} from "./pgNativeAutonomousAgentSession
 import {parseWorkflowGraphV2,type WorkflowNodeDataV2} from "./pgNativeWorkflowGraph.ts"
 import {declaredAgentHttpTool} from "./pgNativeAgentHttpTools.ts"
 import {declaredAgentMcpTool,readyAgentMcpTools,readyMcpBinding} from "./pgNativeMcpConnection.ts"
+import {optionalKnowledgeToolContext,knowledgeBindingCurrent,knowledgePendingMatches,knowledgeToolScopeCurrent,usesPaidKnowledge,type KnowledgeToolContext} from "./pgNativeKnowledgeTool.ts"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export type WorkflowRunDraft={workflowId:string;revision:number;instruction:string}
-export type WorkflowRunDetail=PgNativeWorkflowV2Result&{review?:{workflow?:PgNativeWorkflow;agent?:PgNativeAgent;model?:PgNativeModelConnection;tool?:PgNativeToolConnection;mcp?:PgNativeMcpConnection;mcpConnections?:PgNativeMcpConnection[];mcpEnabled?:boolean;unavailable:boolean}}
+export type WorkflowRunDetail=PgNativeWorkflowV2Result&{review?:{workflow?:PgNativeWorkflow;agent?:PgNativeAgent;model?:PgNativeModelConnection;tool?:PgNativeToolConnection;mcp?:PgNativeMcpConnection;mcpConnections?:PgNativeMcpConnection[];mcpEnabled?:boolean;knowledge?:KnowledgeToolContext;unavailable:boolean}}
 export type WorkflowRunView=DurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowRunDraft>
 export const emptyWorkflowRunView=emptyDurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowRunDraft>()
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
@@ -35,7 +36,10 @@ export async function loadWorkflowRunReview(api:Api,id:string):Promise<WorkflowR
     const mcpIds=[...new Set(agent?.spec.mcp_tools?.map(tool=>tool.connection_id)??[])]
     const [capability,metadata]=needsMcp?await Promise.all([optional(api.getConfigCapabilities()),Promise.all(mcpIds.map(id=>id===mcp?.id?Promise.resolve(mcp):optional(api.getMcpConnection(id))))]):[undefined,[]]
     const mcps=metadata.filter((row):row is PgNativeMcpConnection=>Boolean(row)),mcpEnabled=capability?.mcp_tool_runs_enabled===true
+    const needsKnowledge=Boolean(pending.configuration.knowledge_retrieval||agent?.spec.knowledge_retrieval||workflow?.graph?.nodes.some(node=>Boolean((node as {data?:WorkflowNodeDataV2}).data?.knowledge_retrieval)))
+    const knowledge=needsKnowledge?await optionalKnowledgeToolContext(api):undefined
     return {...detail,review:{workflow,agent,model,tool,...(needsMcp?{mcp,mcpConnections:mcps,mcpEnabled}:{}),
+      ...(needsKnowledge?{knowledge}:{}),
       unavailable:!workflow||Boolean((ref||pending.kind==="agent")&&!model)||Boolean(toolRef&&!tool)||Boolean((agentRef||pending.agent_context)&&!agent)||needsMcp&&(!mcpEnabled||Boolean(mcpRef&&!mcp)||mcps.length!==mcpIds.length)}}
   }
 export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=>void;key?:()=>string}={}){
@@ -44,6 +48,7 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
     get:id=>loadWorkflowRunReview(api,id),list:()=>api.listWorkflowV2Runs(),submit:body=>api.submitWorkflowV2Run(body.workflowId,body.revision,body.instruction,body.key),
     decide:(...args)=>api.decideWorkflowV2Node(...args),cancel:id=>api.cancelWorkflowV2Run(id),
   },{...options,describe:autonomousError,submittedNotice:"工作流任务已提交，外部操作将逐步请求审批。",
+    canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||workflowApprovalReady(detail),
     freezeDraft(draft){const instruction=draft.instruction.trim()
       if(!uuid.test(draft.workflowId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>1200||instruction.includes("\0"))throw Error("invalid_workflow_run_draft")
       return {workflowId:draft.workflowId.toLowerCase(),revision:draft.revision,instruction}
@@ -54,13 +59,16 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
 }
 export function workflowApprovalReady(detail:WorkflowRunDetail|null){
   if(!detail||detail.run.status!=="awaiting_approval"||!detail.pending_effect||detail.pending_effect.missing.length||detail.review?.unavailable)return false
-  const {workflow,model,tool,agent,mcp,mcpConnections,mcpEnabled}=detail.review??{},pending=detail.pending_effect
+  const {workflow,model,tool,agent,mcp,mcpConnections,mcpEnabled,knowledge}=detail.review??{},pending=detail.pending_effect
   if(!workflow||workflow.id!==detail.run.workflow_id||workflow.revision!==detail.run.checkpoint.workflow_revision)return false
   let node:WorkflowNodeDataV2|undefined
-  try{node=parseWorkflowGraphV2(workflow.graph).nodes.find(item=>item.id===pending.node_id)?.data}catch{return false}
+  try{const graph=parseWorkflowGraphV2(workflow.graph);node=graph.nodes.find(item=>item.id===pending.node_id)?.data
+    if(graph.nodes.some(item=>item.data.knowledge_retrieval&&(!knowledgeBindingCurrent(item.data.knowledge_retrieval,knowledge)||!knowledgeToolScopeCurrent(item.data.knowledge_base_ids??[],knowledge))))return false
+  }catch{return false}
   if(!node)return false
   if(pending.kind==="agent"||pending.agent_context){
     if(!agent||node.agent_binding?.spec_id!==agent.id||node.agent_binding.spec_revision!==agent.revision)return false
+    if(agent.spec.knowledge_retrieval&&(!knowledgeBindingCurrent(agent.spec.knowledge_retrieval,knowledge)||!knowledgeToolScopeCurrent(agent.spec.knowledge_base_ids??[],knowledge)))return false
     if(agent.spec.mcp_tools?.length&&(!mcpEnabled||!readyAgentMcpTools(agent,mcpConnections??[])))return false
     if(pending.kind==="tool"&&(pending.configuration.mcp_binding?pending.configuration.tool!==undefined||Boolean(pending.configuration.tool_binding)||!declaredAgentMcpTool(agent,pending.configuration.mcp_binding):pending.configuration.tool_binding?
       pending.configuration.tool!==undefined||!declaredAgentHttpTool(agent,pending.configuration.tool_binding):!agent.spec.tools?.includes(String(pending.configuration.tool))))return false
@@ -80,12 +88,14 @@ export function workflowApprovalReady(detail:WorkflowRunDetail|null){
   if(http&&(!tool||tool.id!==http.connection_id||tool.revision!==http.connection_revision||!tool.enabled||
     expectedHttp?.connection_id!==http.connection_id||expectedHttp?.connection_revision!==http.connection_revision))return false
   if(pending.kind==="tool"&&!pending.agent_context&&!http&&!mcpRef&&node.tool!==pending.configuration.tool)return false
+  if(pending.kind==="tool"&&pending.configuration.tool==="knowledge_search"&&!knowledgePendingMatches(pending,pending.agent_context?agent?.spec.knowledge_retrieval:node.knowledge_retrieval,
+    (pending.agent_context?agent?.spec.knowledge_base_ids:node.knowledge_base_ids)??[]))return false
   return true
 }
-export function workflowStepReview(pending:PgNativeWorkflowV2Pending){
+export function workflowStepReview(pending:PgNativeWorkflowV2Pending,knowledge?:KnowledgeToolContext){
   if(pending.kind==="model"&&!pending.agent_context)return {title:"模型调用",text:pending.input,charged:true}
   if(pending.kind==="tool"&&pending.configuration.tool_binding){let parameters:unknown=pending.input;try{parameters=JSON.parse(pending.input)}catch{}
     return {title:"HTTP 工具操作",text:JSON.stringify(parameters,null,2),charged:false}
   }
-  return autonomousReview(pending)
+  return autonomousReview(pending,knowledge)
 }
