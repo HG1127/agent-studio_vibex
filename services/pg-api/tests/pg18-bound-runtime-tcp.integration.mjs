@@ -264,6 +264,15 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       }finally{client.release()}
     }
     await checkPreparationStage("initialized")
+    // The version ledger is deliberately outside RLS. Unexpected flags must
+    // fail even for a superuser inspector that can still see every version.
+    for(const [change,restore] of [
+      ["ALTER TABLE agentstudio.schema_migrations ENABLE ROW LEVEL SECURITY","ALTER TABLE agentstudio.schema_migrations DISABLE ROW LEVEL SECURITY"],
+      ["ALTER TABLE agentstudio.schema_migrations FORCE ROW LEVEL SECURITY","ALTER TABLE agentstudio.schema_migrations NO FORCE ROW LEVEL SECURITY"],
+    ]){
+      await admin.query(change)
+      try{await assert.rejects(checkPreparationStage("initialized"),/fresh_runtime_verification_failed/)}finally{await admin.query(restore)}
+    }
     // The original production target guard MUST reject this disposable CI DB.
     await assert.rejects(admin.query(serviceLoginTargetGuardSql),/service_login_target_not_approved/)
     const authPassword=passwordFor("agentstudio_native_login")

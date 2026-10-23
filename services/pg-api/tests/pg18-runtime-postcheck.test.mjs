@@ -96,12 +96,14 @@ test("first-admin postcheck detects extra data, account/session state, RLS, role
       ["ALTER ROLE agentstudio_stage_worker INHERIT","ALTER ROLE agentstudio_stage_worker NOINHERIT"],
       ["GRANT pg_read_all_data TO agentstudio_stage_login","REVOKE pg_read_all_data FROM agentstudio_stage_login"],
       ["ALTER TABLE agentstudio.workflow_sample_lineage NO FORCE ROW LEVEL SECURITY","ALTER TABLE agentstudio.workflow_sample_lineage FORCE ROW LEVEL SECURITY"],
+      ["ALTER TABLE agentstudio.schema_migrations ENABLE ROW LEVEL SECURITY","ALTER TABLE agentstudio.schema_migrations DISABLE ROW LEVEL SECURITY"],
+      ["ALTER TABLE agentstudio.schema_migrations FORCE ROW LEVEL SECURITY","ALTER TABLE agentstudio.schema_migrations NO FORCE ROW LEVEL SECURITY"],
       ["UPDATE agentstudio_auth.accounts SET failed_attempts=1","UPDATE agentstudio_auth.accounts SET failed_attempts=0"],
       ["UPDATE agentstudio_auth.accounts SET enabled=false","UPDATE agentstudio_auth.accounts SET enabled=true"],
       ["UPDATE agentstudio_auth.accounts SET locked_until=now()","UPDATE agentstudio_auth.accounts SET locked_until=NULL"],
       ["INSERT INTO agentstudio.users(id,external_issuer,external_subject,display_name) VALUES('"+extra+"','synthetic','second-user','Synthetic extra')","DELETE FROM agentstudio.users WHERE id='"+extra+"'"],
       ["INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result) SELECT id,id,'synthetic','test','none','succeeded' FROM agentstudio.users","DELETE FROM agentstudio.audit_events WHERE action='synthetic'"],
-    ]){await f.api.query(before);try{await assert.rejects(probe.check("first-admin"),/unsafe_|stage_not_verified|verification_failed/)}finally{await f.api.query(after)}}
+    ]){await f.api.query(before);try{await assert.rejects(probe.check("first-admin"),/unsafe_|stage_not_verified|verification_failed/,before)}finally{await f.api.query(after)}}
     await f.db.exec("UPDATE agentstudio.schema_migrations SET description='{}' WHERE version='pg18_fresh_runtime_001'")
     try{await assert.rejects(probe.check("first-admin"),/verification_failed/)}finally{await f.db.query("UPDATE agentstudio.schema_migrations SET description=$1 WHERE version='pg18_fresh_runtime_001'",[receipt])}
     await f.store.login("synthetic-admin@example.test","SyntheticServiceAdmin#2026")

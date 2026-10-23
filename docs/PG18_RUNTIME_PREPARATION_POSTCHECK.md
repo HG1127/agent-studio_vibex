@@ -39,6 +39,8 @@ node services/pg-api/src/pg18-runtime-postcheck-cli.mjs --plan --stage initializ
 均回滚并归还连接；核验器会拒绝普通读写事务或较弱隔离级别。
 所有阶段共享精确 SQL 来源回执、表/RLS 清单、角色属性和成员选项、直接对象授权与
 现有知识辅助权限检查。只按表数量相等、存在一个管理员或有一条启用回执不足以通过。
+版本账本按源定义保持无 RLS，其余 45 张表全部启用并 FORCE RLS；账本意外启用或
+强制 RLS 也会被拒绝，避免版本读取被阻断后仍误报准备状态正常。
 
 除 initialized 外，要求认证账号的首条适用 socket/TCP HBA 规则通过现有严格检查。
 service-logins 还验证全部六类服务账号。所有阶段均拒绝任何已知运行态角色仍有连接。

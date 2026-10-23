@@ -15,7 +15,8 @@ export async function verifyRuntimeSchemaReceipt(db:SqlClient,snapshot:Snapshot,
   if(JSON.stringify(versions)!==JSON.stringify(expected))refuse()
   const tables=(await db.query<{schema:string;name:string;enabled:boolean;forced:boolean}>("SELECT n.nspname AS schema,c.relname AS name,c.relrowsecurity AS enabled,c.relforcerowsecurity AS forced "+
     "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','p') ORDER BY n.nspname,c.relname")).rows
-  if(JSON.stringify(tables.map(t=>t.schema+"."+t.name))!==JSON.stringify(snapshot.tables)||tables.some(t=>t.name!=="schema_migrations"&&(!t.enabled||!t.forced)))refuse()
+  if(JSON.stringify(tables.map(t=>t.schema+"."+t.name))!==JSON.stringify(snapshot.tables)||
+    tables.some(t=>t.name==="schema_migrations"?(t.enabled||t.forced):(!t.enabled||!t.forced)))refuse()
   if(receipt&&records.find(r=>r.version===freshRuntimeReceipt)?.description!==freshRuntimeReceiptBody(snapshot))refuse()
   return {tables,serviceReceipts}
 }
