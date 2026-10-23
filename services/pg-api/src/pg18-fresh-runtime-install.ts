@@ -2,15 +2,25 @@
 import type {SqlClient} from "./contracts.ts"
 import {captureFreshRuntimeSources,freshRuntimeReceipt,freshRuntimeRoles} from "./pg18-fresh-runtime-source.mjs"
 import {verifyKnowledgeHelperCredentials} from "./knowledge-content-privileges.ts"
+import {checkedServiceLoginReceipt} from "./pg18-service-login-policy.mjs"
 type Snapshot=ReturnType<typeof captureFreshRuntimeSources>
 function refuse():never{throw Error("fresh_runtime_verification_failed")}
-export async function verifyFreshRuntime(db:SqlClient,snapshot:Snapshot,receipt=false){
+export async function verifyRuntimeSchemaReceipt(db:SqlClient,snapshot:Snapshot,receipt=true,allowServiceReceipts=false){
   const expected=[...snapshot.versions,...(receipt?[freshRuntimeReceipt]:[])].sort()
-  const versions=(await db.query<{version:string}>("SELECT version FROM agentstudio.schema_migrations ORDER BY version")).rows.map(r=>r.version)
+  const records=(await db.query<{version:string;description:string}>("SELECT version,description FROM agentstudio.schema_migrations ORDER BY version")).rows
+  const serviceReceipts=allowServiceReceipts?records.filter(r=>r.version.startsWith("pg18_service_login_")).map(r=>checkedServiceLoginReceipt(r.version,r.description,snapshot.source_sha256)):[]
+  if(serviceReceipts.length)expected.push(...records.filter(r=>r.version.startsWith("pg18_service_login_")).map(r=>r.version))
+  expected.sort()
+  const versions=records.map(r=>r.version)
   if(JSON.stringify(versions)!==JSON.stringify(expected))refuse()
   const tables=(await db.query<{schema:string;name:string;enabled:boolean;forced:boolean}>("SELECT n.nspname AS schema,c.relname AS name,c.relrowsecurity AS enabled,c.relforcerowsecurity AS forced "+
     "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','p') ORDER BY n.nspname,c.relname")).rows
   if(JSON.stringify(tables.map(t=>t.schema+"."+t.name))!==JSON.stringify(snapshot.tables)||tables.some(t=>t.name!=="schema_migrations"&&(!t.enabled||!t.forced)))refuse()
+  if(receipt&&records.find(r=>r.version===freshRuntimeReceipt)?.description!==freshRuntimeReceiptBody(snapshot))refuse()
+  return {tables,serviceReceipts}
+}
+export async function verifyFreshRuntime(db:SqlClient,snapshot:Snapshot,receipt=false){
+  const {tables}=await verifyRuntimeSchemaReceipt(db,snapshot,receipt)
   for(const table of tables){if(table.name==="schema_migrations")continue
     const name='"'+table.schema+'"."'+table.name+'"'
     if((await db.query<{ok:boolean}>("SELECT NOT EXISTS(SELECT 1 FROM "+name+") AS ok")).rows[0]?.ok!==true)refuse()
@@ -30,9 +40,6 @@ export async function verifyFreshRuntime(db:SqlClient,snapshot:Snapshot,receipt=
   }
   await db.query("SET LOCAL ROLE agentstudio_api")
   try{await verifyKnowledgeHelperCredentials(db)}finally{await db.query("RESET ROLE")}
-  if(receipt){const row=(await db.query<{description:string}>("SELECT description FROM agentstudio.schema_migrations WHERE version=$1",[freshRuntimeReceipt])).rows[0]
-    if(row?.description!==freshRuntimeReceiptBody(snapshot))refuse()
-  }
   return {tables:tables.length,forced_rls_tables:tables.length-1,empty_business_tables:tables.length-1,migration_versions:snapshot.versions.length,
     roles:roles.length,service_logins_enabled:false,knowledge_privileges_verified:true,production_cutover_allowed:false}
 }

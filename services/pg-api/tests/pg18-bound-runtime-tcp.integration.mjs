@@ -15,7 +15,9 @@ import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
 import {captureFreshRuntimeSources,freshRuntimeSqlBody,freshRuntimeRoles} from "../src/pg18-fresh-runtime-source.mjs"
 import {installFreshRuntime} from "../src/pg18-fresh-runtime-install.ts"
 import {verifyFreshForTest} from "../src/baota-pg18-fresh-init.mjs"
-import {collectNativeActivationEvidenceForTest,diagnoseNativeSchema} from "../src/native-activation-cli.mjs"
+import {collectNativeActivationEvidenceForTest,diagnoseNativeSchema,makeNativeScramVerifier} from "../src/native-activation-cli.mjs"
+import {serviceLoginKinds,serviceLoginDefinition,serviceLoginTargetGuardSql} from "../src/pg18-service-login-policy.mjs"
+import {inspectPreparedServiceLogins,reservePreparedServiceLogin,activatePreparedServiceLogin} from "../src/pg18-service-login-inspector.ts"
 import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
@@ -209,15 +211,14 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       ["agentstudio_stage_worker","agentstudio_worker,agentstudio_api"],
     ]
     const byLogin={}
+    const passwordFor=login=>createHash("sha512").update(target.password+":"+login).digest("hex").slice(0,80)
     const installLogin=async([login,roles],db=admin)=>{
       // All identifiers are literal constants and every password is ASCII
       // hex derived from the disposable Actions password. Never print them.
-      const password="synthetic-"+createHash("sha256").update(target.password+":"+login).digest("hex")
+      const password=passwordFor(login)
       await db.query("CREATE ROLE "+login+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS "+
-        "NOCREATEROLE NOCREATEDB NOREPLICATION PASSWORD '"+password+"'")
+        "NOCREATEROLE NOCREATEDB NOREPLICATION PASSWORD '"+makeNativeScramVerifier(password)+"'")
       await db.query("GRANT "+roles+" TO "+login)
-      const pool=new pg.Pool({...target,user:login,password,max:5})
-      pools.push(pool);byLogin[login]=pool
     }
     const fresh=captureFreshRuntimeSources(),bootstrap=await admin.connect()
     try{
@@ -253,19 +254,51 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
     }finally{bootstrap.release()}
-    // Explicit fixture-only activation follows successful initialization. The
-    // operator initializer itself commits with every service login disabled.
-    await admin.query("ALTER ROLE agentstudio_stage_login LOGIN; ALTER ROLE agentstudio_stage_worker LOGIN")
-    for(const account of [
-      ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
-      ["agentstudio_model_broker_login","agentstudio_model_broker"],
-      ["agentstudio_knowledge_index_worker_login","agentstudio_knowledge_index_worker"],
-      ["agentstudio_knowledge_index_broker_login","agentstudio_knowledge_index_broker"],
-    ])await installLogin(account)
-    const authPassword="synthetic-"+createHash("sha256").update(target.password+":auth").digest("hex")
-    await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
+    // The original production target guard MUST reject this disposable CI DB.
+    await assert.rejects(admin.query(serviceLoginTargetGuardSql),/service_login_target_not_approved/)
+    const authPassword=passwordFor("agentstudio_native_login")
+    await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+makeNativeScramVerifier(authPassword)+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
+    const auth=new NativeAuthRepository(adapter(authPool))
+    await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
+    // Exact CI-only target substitutions, behind requireEphemeralPg18Ci above.
+    // PG18/vector/superuser/recovery/schema/role/receipt checks are unchanged.
+    let serviceGuard=serviceLoginTargetGuardSql
+    for(const [before,after] of [["current_database() <> 'agent_studio'","current_database() <> 'agentstudio_pg18_ci'"],
+      ["current_setting('port')::integer <> 5333","current_setting('port')::integer <> 5432"],
+      ["session_user <> 'postgres'","session_user <> 'agentstudio_admin'"]]){
+      assert.equal(serviceGuard.split(before).length,2);serviceGuard=serviceGuard.replace(before,after)
+    }
+    const operator=await admin.connect()
+    try{
+      const prepared={query(sql,args=[]){
+        if(sql===serviceLoginTargetGuardSql)return operator.query(serviceGuard,args)
+        for(const kind of serviceLoginKinds){const login=serviceLoginDefinition(kind).login
+          if(sql==="GRANT CONNECT ON DATABASE agent_studio TO "+login)return operator.query("GRANT CONNECT ON DATABASE agentstudio_pg18_ci TO "+login,args)
+        }
+        return operator.query(sql,args)
+      }}
+      const prepare=async(kind,failBeforeReceipt=false)=>{
+        await operator.query("BEGIN")
+        try{
+          await operator.query("SELECT pg_advisory_xact_lock(61824,20261024)")
+          await reservePreparedServiceLogin(prepared,kind,fresh)
+          const injected={query(sql,args=[]){if(failBeforeReceipt&&sql.startsWith("INSERT INTO agentstudio.schema_migrations"))throw Error("synthetic_service_activation_rollback");return prepared.query(sql,args)}}
+          const result=await activatePreparedServiceLogin(injected,kind,fresh,passwordFor(serviceLoginDefinition(kind).login))
+          await operator.query("COMMIT");return result
+        }catch(error){await operator.query("ROLLBACK");throw error}
+      }
+      await assert.rejects(prepare("identity",true),/synthetic_service_activation_rollback/)
+      assert.equal((await operator.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname='agentstudio_bound_dispatch_login'")).rows[0].n,0)
+      for(const kind of serviceLoginKinds){const result=await prepare(kind);assert.equal(result.activated,true);assert.equal(result.services_started,false)}
+      await operator.query("BEGIN READ ONLY")
+      try{assert.equal((await inspectPreparedServiceLogins(prepared,fresh)).receipts.length,6)}finally{await operator.query("ROLLBACK")}
+    }finally{operator.release()}
+    for(const kind of serviceLoginKinds){const login=serviceLoginDefinition(kind).login,pool=new pg.Pool({...target,user:login,password:passwordFor(login),max:5})
+      pools.push(pool);byLogin[login]=pool
+      assert.equal((await pool.query("SELECT session_user AS login")).rows[0].login,login)
+    }
     const apiPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool,true)
     await verifyKnowledgeAgentSchema(apiPool)
@@ -331,11 +364,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await assert.rejects(verifyBoundDispatchPrivileges(apiPool,"api"),/unsafe_bound_dispatch_database_role/)
     await admin.query("REVOKE SELECT(api_key_ciphertext) ON agentstudio.model_connections FROM agentstudio_api")
     await verifyBoundDispatchPrivileges(apiPool,"api")
-    const auth=new NativeAuthRepository(adapter(authPool))
     await verifyMcpDiscoveryPrivileges(apiPool,brokerPool)
     await verifyMcpExecutionSchema(apiPool)
     await verifySmitheryPrivileges(apiPool,brokerPool)
-    await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
     front=await startNativeHttps(auth,apiPool,key,brokerPool)
     const api=front.api
     await api.login("admin@example.com","SyntheticAdminPassword#2026")

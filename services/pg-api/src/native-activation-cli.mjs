@@ -81,12 +81,14 @@ const activatePassword=password=>{
 const isSpecific=(array,value)=>Array.isArray(array)&&array.includes(value)
 function maybeMatchesDb(values){
   return isSpecific(values,database)||isSpecific(values,"all")||
-    isSpecific(values,"samerole")||isSpecific(values,"samegroup")
-}
-function maybeMatchesUser(values){
-  return isSpecific(values,login)||isSpecific(values,"all")||
+    isSpecific(values,"samerole")||isSpecific(values,"samegroup")||
     (Array.isArray(values)&&values.some(x=>typeof x==="string"&&
-      (x.startsWith("+")||x.startsWith("@"))))
+      (x.startsWith("/")||x.startsWith("@"))))
+}
+function maybeMatchesUser(values,expectedLogin){
+  return isSpecific(values,expectedLogin)||isSpecific(values,"all")||
+    (Array.isArray(values)&&values.some(x=>typeof x==="string"&&
+      (x.startsWith("+")||x.startsWith("@")||x.startsWith("/"))))
 }
 function ipv4Int(value){
   if(typeof value!=="string")return null
@@ -109,16 +111,19 @@ function couldMatchLoopback(rule){
   const loop=ipv4Int(host)
   return ((address&mask)>>>0)===((loop&mask)>>>0)
 }
-export function verifyNativeHbaOrder(rows){
-  if(!Array.isArray(rows)||rows.some(x=>x.error!==null&&
-     x.error!==undefined))return {tcp:false,local:false}
+export function verifyPg18ServiceHbaOrder(rows,expectedLogin){
+  if(![login,"agentstudio_stage_login","agentstudio_stage_worker","agentstudio_bound_dispatch_login","agentstudio_model_broker_login","agentstudio_knowledge_index_worker_login","agentstudio_knowledge_index_broker_login"].includes(expectedLogin))return {tcp:false,local:false}
+  if(!Array.isArray(rows)||rows.some(x=>!x||x.error!=null||
+     !Number.isSafeInteger(Number(x.rule_number))||Number(x.rule_number)<1||
+     !["local","host","hostssl","hostnossl","hostgssenc","hostnogssenc"].includes(x.type))||
+     new Set(rows.map(x=>Number(x.rule_number))).size!==rows.length)return {tcp:false,local:false}
   const ordered=[...rows].sort((a,b)=>Number(a.rule_number)-Number(b.rule_number))
-  const applies=r=>maybeMatchesDb(r.database)&&maybeMatchesUser(r.user_name)
+  const applies=r=>maybeMatchesDb(r.database)&&maybeMatchesUser(r.user_name,expectedLogin)
   const local=ordered.find(r=>r.type==="local"&&applies(r))
-  const tcp=ordered.find(r=>["host","hostnossl"].includes(r.type)&&
+  const tcp=ordered.find(r=>["host","hostnossl","hostnogssenc"].includes(r.type)&&
     applies(r)&&couldMatchLoopback(r))
   const exact=r=>isSpecific(r?.database,database)&&
-    isSpecific(r?.user_name,login)&&
+    isSpecific(r?.user_name,expectedLogin)&&
     !r.database.includes("all")&&!r.user_name.includes("all")
   return {
     local:!!local&&exact(local)&&
@@ -128,6 +133,8 @@ export function verifyNativeHbaOrder(rows){
       (tcp.netmask==="255.255.255.255"||tcp.netmask==="32"),
   }
 }
+export const verifyNativeHbaOrder=rows=>verifyPg18ServiceHbaOrder(rows,login)
+export {outsideRepo as readPg18OperatorSecret}
 
 export function diagnoseNativeSchema(rows){
   const errors=[]
