@@ -3,7 +3,7 @@
 import {PgNativePilotError} from "./pgNativePilotApi.ts"
 import {usesPaidKnowledge} from "./pgNativeKnowledgeTool.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
-export type DurableDetail={execution_mode:string;replayed:boolean;run:{id:string;status:string;instruction:string;result_text:string};
+export type DurableDetail={execution_mode:string;replayed:boolean;knowledge_outputs_available?:boolean;run:{id:string;status:string;instruction:string;result_text:string};
   approvals:Array<{step_key:string;status:string}>;steps:unknown[];pending_effect:{step_key:string;input_sha256:string;kind?:string;configuration?:Record<string,unknown>}|null;
   decision_confirmation?:{run_id:string;step_key:string;input_sha256:string;status:string}}
 export type DurableSummary={id:string;status:string;instruction_preview:string;result_preview:string}
@@ -20,7 +20,7 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
   submittedNotice:string;describe:(error:unknown)=>string;key?:()=>string;onExpired?:()=>void;canApprove?:(detail:TResult)=>boolean}){
   const checked=(value:TResult,id?:string)=>{
     if(!value||!uuid.test(value.run?.id??"")||id&&value.run.id!==id||!Array.isArray(value.approvals)||!Array.isArray(value.steps)||
-       typeof value.replayed!=="boolean"||!options.acceptDetail(value))throw Error("unconfirmed_durable_response")
+       typeof value.replayed!=="boolean"||value.knowledge_outputs_available!==undefined&&typeof value.knowledge_outputs_available!=="boolean"||!options.acceptDetail(value))throw Error("unconfirmed_durable_response")
     return value
   }
   let state:DurableRunView<TResult,TSummary,TDraft>=emptyDurableRunView(),closed=false,active=false,ticket=0,selected:string|null=null
@@ -94,6 +94,7 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
     decide(decision:"approved"|"rejected",consented=false,knowledgeConsented=false){
       const detail=state.detail,pending=detail?.pending_effect
       if(state.pendingSubmit||!detail||detail.run.status!=="awaiting_approval"||!pending||!["approved","rejected"].includes(decision)||decision==="approved"&&!consented)return Promise.resolve()
+      if(decision==="approved"&&detail.knowledge_outputs_available===false)return Promise.resolve()
       if(decision==="approved"&&options.canApprove&&!options.canApprove(detail))return Promise.resolve()
       const paid=decision==="approved"&&usesPaidKnowledge(pending)
       if(paid&&!knowledgeConsented)return Promise.resolve()

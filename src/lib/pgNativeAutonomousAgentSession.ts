@@ -39,6 +39,7 @@ export function readyAutonomousModel(agent:PgNativeAgent|undefined,connections:P
 }
 export function autonomousApprovalReady(detail:AutonomousDetail|null,agents:PgNativeAgent[],connections:PgNativeModelConnection[],tools:PgNativeToolConnection[]=[],mcps:PgNativeMcpConnection[]=[],mcpEnabled=false){
   const agent=agents.find(a=>a.id===detail?.run.agent_spec_id),model=readyAutonomousModel(agent,connections),pending=detail?.pending_effect
+  if(detail?.knowledge_outputs_available===false)return false
   if(!agent||!model||!readyAgentHttpTools(agent,tools)||!readyAgentMcpTools(agent,mcps)||agent.spec.mcp_tools?.length&&!mcpEnabled||detail?.run.status!=="awaiting_approval"||detail.run.checkpoint.spec_revision!==agent.revision||!pending)return false
   if(agent.spec.knowledge_retrieval&&(!knowledgeBindingCurrent(agent.spec.knowledge_retrieval,detail.knowledge)||!knowledgeToolScopeCurrent(agent.spec.knowledge_base_ids??[],detail.knowledge)))return false
   const binding=pending.configuration.model_binding as Record<string,unknown>|undefined

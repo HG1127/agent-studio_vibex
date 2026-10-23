@@ -58,7 +58,7 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
   })
 }
 export function workflowApprovalReady(detail:WorkflowRunDetail|null){
-  if(!detail||detail.run.status!=="awaiting_approval"||!detail.pending_effect||detail.pending_effect.missing.length||detail.review?.unavailable)return false
+  if(!detail||detail.knowledge_outputs_available===false||detail.run.status!=="awaiting_approval"||!detail.pending_effect||detail.pending_effect.missing.length||detail.review?.unavailable)return false
   const {workflow,model,tool,agent,mcp,mcpConnections,mcpEnabled,knowledge}=detail.review??{},pending=detail.pending_effect
   if(!workflow||workflow.id!==detail.run.workflow_id||workflow.revision!==detail.run.checkpoint.workflow_revision)return false
   let node:WorkflowNodeDataV2|undefined

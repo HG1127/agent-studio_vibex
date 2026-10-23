@@ -39,6 +39,10 @@ reads. Background read failures clear cached detail and list previews. A late
 mutation can confirm its original intent while hidden but cannot repopulate its
 retained result. Fee checkboxes reset when the step, review context or visible
 approval capability changes. Logout/session replacement disposes the controller.
+The authenticated run view also carries an output-availability Boolean. When
+source evidence becomes unavailable, the UI removes the cached node-output
+controller even if the run timestamp did not change. Progress and output regions
+use distinct React keys so old progress DOM cannot accumulate across updates.
 
 ## Execution and cost boundaries
 

@@ -84,7 +84,8 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
         </li>
       })}</ol>
     </section>
-    {detail.run.result_text&&<section aria-label="多轮执行结果"><h4 className="mb-2 text-sm font-semibold">执行结果</h4>
+    {detail.knowledge_outputs_available===false&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">知识库来源暂不可用，已隐藏相关输出。请核对授权和配置。</p>}
+    {detail.knowledge_outputs_available!==false&&detail.run.result_text&&<section aria-label="多轮执行结果"><h4 className="mb-2 text-sm font-semibold">执行结果</h4>
       <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 font-sans text-sm leading-6">{detail.run.result_text}</pre>
     </section>}
     {!["succeeded","failed","cancelled"].includes(detail.run.status)&&<div className="space-y-2">

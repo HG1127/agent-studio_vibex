@@ -82,6 +82,7 @@ export type PgNativeWorkflowV2Pending={step_key:string;node_id:string;kind:"mode
   input:string;input_sha256:string;configuration:Record<string,unknown>;missing:string[];
   agent_context?:{parent_step_key:string;round:number;phase:"model"|"tool"}}
 export type PgNativeWorkflowV2Result={
+  knowledge_outputs_available?:boolean
   run:{id:string;workflow_id:string;kind:"workflow";status:string;instruction:string;result_text:string;
     step_count:number;checkpoint:Record<string,unknown>;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null}
   steps:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>

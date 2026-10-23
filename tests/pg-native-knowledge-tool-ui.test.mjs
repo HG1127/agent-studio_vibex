@@ -83,6 +83,10 @@ test("background failures and hidden late writes cannot leave retained prompts/r
   for(const kind of ["workflow","agent"]){
     const f=fixture(kind),s=f.session;s.setActive(true);await turn();await s.select(runId)
     f.record={...f.record,run:{...f.record.run,result_text:"Retained private evidence"}};await s.refresh();assert.match(s.snapshot().detail.run.result_text,/Retained/)
+    f.record={...f.record,knowledge_outputs_available:false,run:{...f.record.run,result_text:""}};await s.refresh();await s.decide("approved",true,true)
+    assert.equal(f.calls.length,0);assert.equal(s.snapshot().detail.knowledge_outputs_available,false)
+    f.record={...f.record,knowledge_outputs_available:"invalid"};await s.refresh();assert.equal(s.snapshot().detail,null)
+    f.record={...f.record,knowledge_outputs_available:true};await s.refresh()
     const route=kind==="workflow"?"getWorkflowV2Run":"getAutonomousAgentRun",old=f.api[route]
     f.api[route]=async()=>{throw new PgNativePilotError(409,"knowledge_observations_unavailable")};await s.poll()
     assert.equal(s.snapshot().detail,null);assert.deepEqual(s.snapshot().runs,[])

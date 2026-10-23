@@ -131,7 +131,7 @@ export class WorkflowV2RunRepository{
       steps:steps.rows.map(step=>{const metadata=safeRunStepMetadata(step.metadata);if(!observationsCurrent)delete metadata.citations;return {...step,metadata}}),
       steps_truncated:Number(row.step_count)>steps.rows.length,approvals:approvals.rows.slice(0,200).reverse(),approvals_truncated:approvals.rows.length>200,
       pending_effect:!observationsCurrent||["cancelled","failed","succeeded"].includes(row.status)?null:pending,
-      replayed,execution_mode:this.root.mode}
+      replayed,execution_mode:this.root.mode,knowledge_outputs_available:observationsCurrent}
   }
   async submit(identity:Identity,id:string,raw:unknown){
     if(this.root.mode!=="workflow_native_v2")throw Error("use_autonomous_agent_submission")

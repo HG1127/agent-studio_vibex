@@ -195,10 +195,17 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
     expect(succeeded).toBe(true);expect(feeSteps).toBe(1);await refreshRun()
     const taskResult=region().getByRole("region",{name:runtime==="workflow"?"Workflow 执行结果":"多轮执行结果",exact:true})
     await expect(taskResult).toContainText(runtime==="workflow"?"Browser synthetic workflow model output":"Browser synthetic semantic Agent answer")
+    if(runtime==="workflow"){
+      const progress=region().getByRole("region",{name:"Workflow 步骤进度",exact:true});await expect(progress).toHaveCount(1);await expect(progress.getByRole("listitem")).toHaveCount(4)
+      const outputs=region().getByRole("region",{name:"已保存节点输出",exact:true});await outputs.getByRole("button",{name:"读取节点输出",exact:true}).click()
+      await expect(outputs.getByRole("list",{name:"最近节点输出",exact:true})).toContainText("BROWSER_SEMANTIC_SOURCE")
+    }
     const toolResult=await state();expect(toolResult.queryEmbeddings).toBe(2);expect(toolResult.queryInputs).toEqual([["unrelated wording"],["tool wording"]]);expect(toolResult.semanticModelPrompts).toBe(1)
     await bob.screenshot({path:testInfo.outputPath("approved-semantic-tool.png"),fullPage:true})
     await sharing(alice).getByRole("button",{name:"撤销语义许可",exact:true}).click()
     await refreshRun();await expect(taskResult).toHaveCount(0)
+    await expect(region().getByText("知识库来源暂不可用，已隐藏相关输出。请核对授权和配置。",{exact:true})).toBeVisible()
+    if(runtime==="workflow"){await expect(region().getByRole("region",{name:"Workflow 步骤进度",exact:true})).toHaveCount(1);await expect(region().getByRole("region",{name:"已保存节点输出",exact:true})).toHaveCount(0);await expect(region()).not.toContainText("BROWSER_SEMANTIC_SOURCE")}
     await bob.getByRole("button",{name:/^知识库 \d+$/}).click()
     await expect(sharing(alice).getByRole("button",{name:"允许语义检索",exact:true})).toBeVisible()
     await query(bob).getByRole("button",{name:"核对查询回执",exact:true}).click()

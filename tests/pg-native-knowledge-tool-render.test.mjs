@@ -27,6 +27,9 @@ test("knowledge Tool controls are inert on render, escape evidence and show a se
       assert.match(html,/我确认本次语义查询可能产生费用/);assert.match(html,/我自己的检索配置，仅批准当前步骤/)
       assert.equal((html.match(/type="checkbox"/g)??[]).length,2);assert.doesNotMatch(html,/checked=""|<script>|本次模型调用/)
       assert.match(html,/&lt;script&gt;foreign/)
+      const revoked={...view,detail:{...detail,knowledge_outputs_available:false,run:{...detail.run,result_text:"PRIVATE_REVOKED_OUTPUT"}}}
+      const hidden=renderToStaticMarkup(createElement(Component,{view:revoked,enabled:true,onDecision:noop,onRetry:noop,onCancel:noop,...props}))
+      assert.doesNotMatch(hidden,/PRIVATE_REVOKED_OUTPUT|读取节点输出/);assert.match(hidden,/知识库来源暂不可用/)
     }
     assert.equal(reads,0)
   }finally{await vite.close()}
