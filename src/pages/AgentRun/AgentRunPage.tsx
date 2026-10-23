@@ -141,6 +141,8 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 onRetry={p.retryOptimizationRecovery}
               />}
               <RunLauncher
+                localDeviceId={p.localDeviceId}
+                onLocalDeviceChange={p.setLocalDeviceId}
                 instruction={p.instruction}
                 onInstructionChange={p.setInstruction}
                 onRun={p.handleRun}

@@ -1,0 +1,2 @@
+# Optional Windows desktop adapter; tested with Python 3.14.
+windows-mcp==0.8.8

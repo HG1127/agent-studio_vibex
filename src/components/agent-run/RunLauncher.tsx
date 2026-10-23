@@ -1,5 +1,6 @@
 import { AlertCircle, Play, Sparkles } from "lucide-react"
 import { Link } from "react-router-dom"
+import { LocalDeviceSelector } from './LocalDeviceSelector'
 
 type RunLauncherProps = {
   instruction: string
@@ -10,6 +11,8 @@ type RunLauncherProps = {
   priceHint: string
   hasSpec: boolean
   disabledReason?: string
+  localDeviceId?: string
+  onLocalDeviceChange?: (id: string) => void
 }
 
 export function RunLauncher({
@@ -21,6 +24,8 @@ export function RunLauncher({
   priceHint,
   hasSpec,
   disabledReason,
+  localDeviceId,
+  onLocalDeviceChange,
 }: RunLauncherProps) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-md">
@@ -51,6 +56,7 @@ export function RunLauncher({
         placeholder="给助手下达一个具体任务，例如：帮我算一下 (36+64)*12 的结果，并统计这段指令的字数，最后给出一份简短总结"
         className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed text-card-foreground transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       />
+      {onLocalDeviceChange && <LocalDeviceSelector value={localDeviceId || ''} onChange={onLocalDeviceChange} />}
       {disabledReason && !isStarting && <div role="status"
         className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
         <AlertCircle className="h-4 w-4 shrink-0"/>

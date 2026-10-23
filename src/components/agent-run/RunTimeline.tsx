@@ -1,3 +1,4 @@
+import { LocalJobObservation } from './LocalJobObservation'
 import { useEffect, useRef } from "react"
 import {
   AlertCircle,
@@ -124,6 +125,8 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
                   <p className="mt-1.5 whitespace-pre-wrap break-all text-sm leading-relaxed text-card-foreground">
                     {contentText(event.content, "output")}
                   </p>
+                  {event.content.tool === 'local_computer' && typeof event.content.job_id === 'string' &&
+                    <LocalJobObservation key={event.content.job_id} jobId={event.content.job_id} />}
                 </li>
               )
             }

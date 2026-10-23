@@ -1,0 +1,19 @@
+{
+  "server": "http://127.0.0.1:7000",
+  "credentialsFile": ".local-device-credentials.json",
+  "roots": [{ "name": "work", "path": "D:\\AgentStudioWork" }],
+  "browser": {
+    "enabled": true,
+    "headless": false,
+    "images": false,
+    "channel": "msedge",
+    "allowedOrigins": ["https://example.com"]
+  },
+  "desktop": {
+    "enabled": false,
+    "python": "D:\\AgentStudioTools\\windows-mcp\\Scripts\\python.exe",
+    "region": [0, 0, 1000, 700]
+  },
+  "apps": {},
+  "mcpServers": {}
+}

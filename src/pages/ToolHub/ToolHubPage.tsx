@@ -1,3 +1,4 @@
+import { LocalDevicesPanel } from '@/components/tool-hub/LocalDevicesPanel'
 import { AlertCircle, Info, X } from "lucide-react"
 import { BuiltinToolCards } from "@/components/tool-hub/BuiltinToolCards"
 import { DebugConsole } from "@/components/tool-hub/DebugConsole"
@@ -88,6 +89,7 @@ export function ToolHubPage(p: ReturnType<typeof useToolHub>) {
       <main className="w-full min-w-0 px-3 pb-12 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="tool-hub">
         {p.isLoggedIn ? (
           <div className="space-y-5">
+            <LocalDevicesPanel />
             <WorkerStatusPanel status={p.workerStatus} onRefresh={p.refreshWorkerStatus} />
           <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[2fr_3fr]">
             <div className="flex flex-col gap-5">

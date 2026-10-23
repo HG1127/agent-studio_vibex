@@ -237,6 +237,7 @@ export function useAgentRun() {
   const [stopCondition, setStopCondition] = useState("")
   const [stopOnComplete, setStopOnComplete] = useState(true)
   const [instruction, setInstruction] = useState("")
+  const [localDeviceId, setLocalDeviceId] = useState("")
 
   const [isStarting, setIsStarting] = useState(false)
   const [activeRun, setActiveRun] = useState<AgentRunRow | null>(null)
@@ -725,6 +726,7 @@ export function useAgentRun() {
         instruction: instruction.trim(),
         model: parsedCustom ? parsedCustom.modelId : model,
         config: {
+          local_device_id: localDeviceId,
           max_steps: maxSteps,
           max_model_calls: maxModelCalls,
           ...(maxRuntimeMinutes ? { max_runtime_minutes: maxRuntimeMinutes } : {}),
@@ -785,6 +787,7 @@ export function useAgentRun() {
   }, [
     selectedSpec,
     instruction,
+    localDeviceId,
     base,
     model,
     enabledTools,
@@ -1428,6 +1431,8 @@ export function useAgentRun() {
     setStopOnComplete,
     instruction,
     setInstruction,
+    localDeviceId,
+    setLocalDeviceId,
     isStarting,
     handleRun,
     activeRun,

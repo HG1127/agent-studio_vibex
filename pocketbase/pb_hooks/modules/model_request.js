@@ -1,5 +1,21 @@
 "use strict"
 
+// Internal multimodal messages use the OpenAI content-block shape. Never
+// fetch remote images here: local observations contain bounded raster data.
+function blocks(content, provider) {
+  if (!Array.isArray(content)) return provider === "gemini" ? [{ text: String(content || "") }] : String(content || "")
+  return content.map(function(block) {
+    if (block && block.type === "text") return provider === "gemini" ? { text: String(block.text || "") } : { type: "text", text: String(block.text || "") }
+    var url = block && block.type === "image_url" && block.image_url && block.image_url.url
+    if (typeof url !== "string" || url.length > 1398130) throw Error("invalid_model_image")
+    var match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/]+={0,2})$/.exec(url)
+    if (!match) throw Error("invalid_model_image")
+    if (provider === "anthropic") return { type: "image", source: { type: "base64", media_type: match[1], data: match[2] } }
+    if (provider === "gemini") return { inline_data: { mime_type: match[1], data: match[2] } }
+    return { type: "image_url", image_url: { url: url } }
+  })
+}
+
 // Pure Goja-compatible request builder shared by Agent/Workflow.
 // Server owns tenant authorization, key decryption, timeouts and HTTP transport.
 // A single synchronous provider call must stay below the fenced dispatch
@@ -35,7 +51,7 @@ function buildRequest(provider, opts) {
       if (role === "system") {
         system = system ? system + "\n\n" + text : text
       } else {
-        adapted.push({ role: role === "assistant" ? "assistant" : "user", content: text })
+        adapted.push({ role: role === "assistant" ? "assistant" : "user", content: blocks(item.content, p) })
       }
     }
     if (!adapted.length) adapted.push({ role: "user", content: "请继续。" })
@@ -57,7 +73,7 @@ function buildRequest(provider, opts) {
       if (msgRole === "system") {
         instruction = instruction ? instruction + "\n\n" + msgText : msgText
       } else {
-        contents.push({ role: msgRole === "assistant" ? "model" : "user", parts: [{ text: msgText }] })
+        contents.push({ role: msgRole === "assistant" ? "model" : "user", parts: blocks(msg.content, p) })
       }
     }
     if (!contents.length) contents.push({ role: "user", parts: [{ text: "请继续。" }] })
@@ -69,10 +85,14 @@ function buildRequest(provider, opts) {
       body: JSON.stringify(data), timeout: timeout,
     }
   }
+  var openaiBody = { model: model, messages: messages.map(function(m) { return Object.assign({}, m, { content: blocks(m.content, p) }) }), max_tokens: maxTokens || 4096, stream: false }
+  // MiniMax M3.1 defaults to max reasoning. Local interactive observations
+  // expire quickly; the caller can explicitly choose its supported low tier.
+  if (model === "MiniMax-M3.1-Flash" && opts.reasoningEffort === "low") openaiBody.reasoning_effort = "low"
   return {
     url: base + "/chat/completions", method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
-    body: JSON.stringify({ model: model, messages: messages, max_tokens: maxTokens || 4096, stream: false }),
+    body: JSON.stringify(openaiBody),
     timeout: timeout,
   }
 }

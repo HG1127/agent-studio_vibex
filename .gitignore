@@ -94,3 +94,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Per-device credentials and operator-local configuration
+**/.local-device-credentials.json
+local-executor/*.local.json
