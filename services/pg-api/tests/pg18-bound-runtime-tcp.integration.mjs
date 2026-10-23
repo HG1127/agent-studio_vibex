@@ -15,6 +15,7 @@ import {loadNativeAuthPg18CiSchema} from "../src/pg18-native-auth-ci-schema.mjs"
 import {captureFreshRuntimeSources,freshRuntimeSqlBody,freshRuntimeRoles} from "../src/pg18-fresh-runtime-source.mjs"
 import {installFreshRuntime} from "../src/pg18-fresh-runtime-install.ts"
 import {verifyFreshForTest} from "../src/baota-pg18-fresh-init.mjs"
+import {collectNativeActivationEvidenceForTest,diagnoseNativeSchema} from "../src/native-activation-cli.mjs"
 import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "../src/bound-dispatch-role-preflight.ts"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
@@ -235,6 +236,11 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
             return bootstrap.query(sql===fresh.steps[0].sql?native:sql,args)
           }}
           const result=await installFreshRuntime(client,fresh)
+          const activation=await collectNativeActivationEvidenceForTest(client)
+          assert.deepEqual(activation.fresh_runtime,{verified:true})
+          const activationReport=diagnoseNativeSchema(activation)
+          assert.equal(activationReport.ready,false);assert.ok(activationReport.blockers.includes("unexpected_pg18_target"))
+          assert.equal(activationReport.blockers.includes("baseline_tables_or_rls_missing"),false)
           await bootstrap.query("COMMIT");return result
         }catch(error){await bootstrap.query("ROLLBACK");throw error}
       }

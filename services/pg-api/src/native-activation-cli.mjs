@@ -7,6 +7,8 @@ import {readFileSync,realpathSync,lstatSync,statSync} from "node:fs"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 import {createHash,createHmac,pbkdf2Sync,randomBytes} from "node:crypto"
+import {captureFreshRuntimeSources,freshRuntimeReceipt} from "./pg18-fresh-runtime-source.mjs"
+import {verifyFreshRuntime} from "./pg18-fresh-runtime-install.ts"
 
 const database="agent_studio",host="127.0.0.1",port=5333
 const group="agentstudio_native_auth",login="agentstudio_native_login"
@@ -136,7 +138,12 @@ export function diagnoseNativeSchema(rows){
      Number(state.version)<180000||Number(state.version)>=190000||
      state.session_user!=="postgres"||state.superuser!==true)
     errors.push("unexpected_pg18_target")
-  if(Number(rows?.base_tables)!==23||Number(rows?.base_force_rls)!==22)
+  let expectedTables=23,expectedRls=22
+  if(rows?.fresh_runtime){
+    if(rows.fresh_runtime.verified!==true)errors.push("fresh_runtime_schema_not_verified")
+    else{const snapshot=captureFreshRuntimeSources();expectedTables=snapshot.tables.filter(t=>t.startsWith("agentstudio.")).length;expectedRls=expectedTables-1}
+  }
+  if(Number(rows?.base_tables)!==expectedTables||Number(rows?.base_force_rls)!==expectedRls)
     errors.push("baseline_tables_or_rls_missing")
   if(rows?.vector!=="0.8.7")errors.push("vector_version_mismatch")
   if(rows?.ledger!==true)errors.push("native_auth_migration_not_applied")
@@ -176,6 +183,11 @@ async function collectEvidence(db){
     ?(await db.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations "+
       "WHERE version='pg18_native_auth_001') AS applied")).rows[0].applied
     :false
+  let freshRuntime
+  if(base.ledger_table&&(await db.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version=$1) AS applied",[freshRuntimeReceipt])).rows[0]?.applied){
+    try{await verifyFreshRuntime(db,captureFreshRuntimeSources(),true);freshRuntime={verified:true}}
+    catch{freshRuntime={verified:false}}
+  }
   const auth=(await db.query(
     "SELECT (SELECT count(*)::integer FROM pg_tables "+
     "WHERE schemaname='agentstudio_auth') AS tables,"+
@@ -208,6 +220,7 @@ async function collectEvidence(db){
   const hba=verifyNativeHbaOrder(rules)
   return {
     state,base_tables:base.tables,base_force_rls:base.force_rls,
+    ...(freshRuntime?{fresh_runtime:freshRuntime}:{}),
     vector:base.vector,ledger,auth_tables:auth.tables,
     auth_force_rls:auth.rls,membership:roles.member,
     business_can_auth:roles.api_member,worker_can_auth:roles.worker_member,
@@ -256,7 +269,9 @@ export async function runNativeActivation(argv,env=process.env){
   try{
     const client=await pool.connect()
     try{
-      const rows=await collectEvidence(client)
+      await client.query("BEGIN READ ONLY")
+      let rows
+      try{rows=await collectEvidence(client)}finally{await client.query("ROLLBACK")}
       const report=diagnoseNativeSchema(rows)
       if(cfg.mode==="preflight"){
         return {mode:cfg.mode,...report,target:database,auth_login:login,

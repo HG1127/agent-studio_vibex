@@ -28,7 +28,7 @@ export function collectRuntimeInitReviewSources(){
     }
     if(rel.endsWith(".mjs")){const declaration=rel.slice(0,-4)+".d.mts";if(fs.existsSync(path.join(root,declaration)))files.add(declaration)}
   }
-  visit(entry)
+  for(const module of [entry,"services/pg-api/src/native-activation-cli.mjs","services/pg-api/src/native-first-admin-cli.mjs"])visit(module)
   return {files:[...files].sort(),snapshot}
 }
 export function buildRuntimeInitReview(output){
@@ -51,7 +51,7 @@ export function buildRuntimeInitReview(output){
       const dest=path.join(stage,rel);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,bytes)
     }
     fs.writeFileSync(path.join(stage,"INITIALIZATION_PLAN.json"),JSON.stringify(planned,null,2)+"\n")
-    fs.writeFileSync(path.join(stage,"README_REVIEW_ONLY.txt"),"Source review only. Production remains NO-GO. No credentials or database data.\nVerify SHA256SUMS, then run:\nnode "+entry+" --plan\nRead docs/PG18_FRESH_RUNTIME_INITIALIZATION.md before proposing any target action.\nThe package installs nothing, enables no login and starts no service.\n")
+    fs.writeFileSync(path.join(stage,"README_REVIEW_ONLY.txt"),"Source review only. Production remains NO-GO. No credentials or database data.\nVerify SHA256SUMS, then run offline plans:\nnode "+entry+" --plan\nnode services/pg-api/src/native-activation-cli.mjs --plan\nnode services/pg-api/src/native-first-admin-cli.mjs --plan\nRead docs/PG18_FRESH_RUNTIME_INITIALIZATION.md before proposing any target action.\nThe package installs nothing, enables no login and starts no service.\n")
     const packed=[...files,"INITIALIZATION_PLAN.json","README_REVIEW_ONLY.txt"].sort()
     const manifest=packed.map(rel=>sha(fs.readFileSync(path.join(stage,rel)))+"  "+rel).join("\n")+"\n"
     fs.writeFileSync(path.join(stage,"SHA256SUMS"),manifest)
@@ -68,11 +68,15 @@ export function buildRuntimeInitReview(output){
       const env={PATH:process.env.PATH??"",SystemRoot:process.env.SystemRoot??"",DATABASE_URL:"never_connect",AGENT_STUDIO_BAOTA_PG_ADMIN_PASSWORD_FILE:"/never-read-secret"}
       const plan=JSON.parse(run(process.execPath,["--import",preload,entry,"--plan"],{cwd:check,env}))
       if(JSON.stringify(plan)!==JSON.stringify(planned)||plan.network_used!==false||plan.service_logins_enabled!==false||plan.production_cutover_allowed!==false)refuse("extracted_plan")
+      for(const cli of ["services/pg-api/src/native-activation-cli.mjs","services/pg-api/src/native-first-admin-cli.mjs"]){
+        const next=JSON.parse(run(process.execPath,["--import",preload,cli,"--plan"],{cwd:check,env}))
+        if(next.network_used!==false||next.production_cutover_allowed!==false)refuse("additional_offline_plan")
+      }
       const rejected=spawnSync(process.execPath,["--import",preload,entry,"--execute","--confirm-empty-database","agent_studio","--expected-source-sha256",snapshot.source_sha256],{cwd:check,env,encoding:"utf8",timeout:15000,windowsHide:true})
       if(rejected.status===0||!rejected.stderr.includes("runtime_init_not_approved")||/never_connect|never-read-secret|review_must_be_offline/.test(rejected.stdout+rejected.stderr))refuse("default_execution_not_refused")
     }finally{removeOwnDirectory(output,check)}
     return {archive,sha256:sha(fs.readFileSync(archive)),source_sha256:snapshot.source_sha256,source_files:files.length,packed_files:packed.length+1,
-      manifest_verified:true,offline_plan_verified:true,default_execution_refused:true,contains_credentials:false,network_used:false,production_cutover_allowed:false}
+      manifest_verified:true,offline_plan_verified:true,offline_plans_verified:3,default_execution_refused:true,contains_credentials:false,network_used:false,production_cutover_allowed:false}
   }finally{removeOwnDirectory(output,stage)}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

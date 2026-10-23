@@ -10,6 +10,7 @@ import {runRuntimeInit} from "../src/baota-pg18-runtime-init.mjs"
 import {installFreshRuntime,verifyFreshRuntime} from "../src/pg18-fresh-runtime-install.ts"
 import {loginSqlForTest,verifyFreshForTest} from "../src/baota-pg18-fresh-init.mjs"
 import {reviewedNativeSqlForEmbeddedTest} from "./helpers/native-pg18-embedded.mjs"
+import {collectNativeActivationEvidenceForTest,diagnoseNativeSchema} from "../src/native-activation-cli.mjs"
 const snapshot=captureFreshRuntimeSources()
 async function fixture(){
   const db=await PGlite.create({extensions:{vector}});await db.exec("CREATE DATABASE agent_studio")
@@ -92,6 +93,31 @@ test("SQL body extraction retains every internal guard and refuses unknown metac
   for(const guard of ["current_database() <> 'agent_studio'","session_user <> 'postgres'","current_setting('port')::integer <> 5333","current_setting('server_version_num')::int < 180000"])
     assert.ok(body.includes(guard))
   for(const wrong of [original+"\nCOMMIT;",original.replace("COMMIT;",""),"\\include other.sql\n"+original])assert.throws(()=>freshRuntimeSqlBody(wrong),/fresh_runtime_sql_format_changed/)
+})
+
+test("Native activation recognizes the exact empty full runtime receipt without relaxing target, HBA, role or source guards",async()=>{
+  const f=await fixture()
+  const state={database:"agent_studio",session_user:"postgres",server_address:"127.0.0.1",port:5333,version:180000,superuser:true}
+  const rules=[{rule_number:1,type:"local",database:["agent_studio"],user_name:["agentstudio_native_login"],auth_method:"reject",address:null,netmask:null,error:null},
+    {rule_number:2,type:"host",database:["agent_studio"],user_name:["agentstudio_native_login"],auth_method:"scram-sha-256",address:"127.0.0.1",netmask:"255.255.255.255",error:null}]
+  const probe={query(sql,args=[]){if(sql.includes("host(inet_server_addr())"))return Promise.resolve({rows:[state]})
+    if(sql.includes("FROM pg_hba_file_rules"))return Promise.resolve({rows:rules});return f.api.query(sql,args)}}
+  try{
+    await f.baseline();await installFreshRuntime(f.api,snapshot);await f.db.exec("COMMIT")
+    await f.db.exec("BEGIN READ ONLY")
+    let evidence
+    try{evidence=await collectNativeActivationEvidenceForTest(probe)}finally{await f.db.exec("ROLLBACK")}
+    assert.deepEqual(evidence.fresh_runtime,{verified:true});assert.equal(evidence.base_tables,44);assert.equal(evidence.base_force_rls,43)
+    assert.equal(diagnoseNativeSchema(evidence).ready,true)
+    for(const change of [{fresh_runtime:{verified:false}},{fresh_runtime:undefined},{base_tables:45},{base_force_rls:42},{state:{...state,port:5432}},{hba_rule:false},{local_rule_safe:false},{activated:true},{business_can_auth:true}])
+      assert.equal(diagnoseNativeSchema({...evidence,...change}).ready,false)
+    for(const sql of ["UPDATE agentstudio.schema_migrations SET description='{}' WHERE version='pg18_fresh_runtime_001'",
+      "ALTER ROLE agentstudio_stage_worker LOGIN","CREATE TABLE agentstudio.unreviewed(id integer)"]){
+      await f.db.exec("BEGIN");try{await f.db.exec(sql);const invalid=await collectNativeActivationEvidenceForTest(probe)
+        assert.deepEqual(invalid.fresh_runtime,{verified:false});assert.equal(diagnoseNativeSchema(invalid).ready,false)
+      }finally{await f.db.exec("ROLLBACK")}
+    }
+  }finally{await f.close()}
 })
 
 test("offline runtime CLI cannot connect or read poisoned password paths and default execution refuses without any target contact",()=>{

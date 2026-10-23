@@ -72,7 +72,7 @@
     "test:workflow": "node --experimental-strip-types --test tests/workflow-engine.test.mjs",
     "test:prepare": "node --experimental-strip-types --test tests/agent-prepare-engine.test.mjs",
     "test:pg18:agent-lifecycle:isolated": "node --experimental-strip-types --test --test-concurrency=1 tests/pg18-isolated-role-lifecycle.test.mjs tests/pg18-run-idempotency-race.test.mjs tests/agent-prepare-engine.test.mjs tests/model-execution-engine.test.mjs tests/agent-knowledge-grounding.test.mjs",
-    "test:pg18:fresh-runtime": "node --experimental-strip-types --test --test-concurrency=1 tests/baota-pg18-fresh-init.test.mjs tests/baota-pg18-fresh-schema.test.mjs tests/pg18-fresh-runtime.test.mjs ../../tests/pg18-runtime-init-review-bundle.test.mjs",
+    "test:pg18:fresh-runtime": "node --experimental-strip-types --test --test-concurrency=1 tests/baota-pg18-fresh-init.test.mjs tests/baota-pg18-fresh-schema.test.mjs tests/pg18-fresh-runtime.test.mjs tests/native-activation-cli.test.mjs ../../tests/pg18-runtime-init-review-bundle.test.mjs",
     "test:pg18:knowledge-grounding": "node --experimental-strip-types --test tests/agent-knowledge-grounding.test.mjs",
     "test:model-execution": "node --experimental-strip-types --test tests/model-execution-engine.test.mjs",
     "test:model-upgrade": "node --experimental-strip-types --test tests/model-upgrade.test.mjs",
