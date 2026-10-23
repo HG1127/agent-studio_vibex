@@ -161,10 +161,8 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
         {selected?<div className="space-y-4">
           <button type="button" className={workflowSecondary} disabled={!active||mcp.loading} onClick={()=>void mcp.load()}>读取本人 MCP 工具供工作流选择</button>
           {mcp.error&&<p role="alert" className="text-sm text-rose-800">{mcp.error}</p>}
-          {selected.data.tool==="knowledge_search"&&<><button type="button" className={workflowSecondary} disabled={!active||knowledgeTool.loading} onClick={()=>void knowledgeTool.load()}>读取本人检索配置</button>
-            {knowledgeTool.error&&<p role="alert" className="text-sm text-rose-800">{knowledgeTool.error}</p>}</>}
           <PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases} mcps={mcp.connections}
-          knowledgeContext={knowledgeTool.context}
+          knowledgeContext={knowledgeTool.context} onReadKnowledge={()=>void knowledgeTool.load()} knowledgeReading={knowledgeTool.loading} knowledgeError={knowledgeTool.error}
           enabled={editable} onDirty={setFormDirty} onApply={data=>{
             if(!editable)return "当前环境未开放配置编辑。"
             const current=editor.current?.snapshot().draft;if(!current)return "草稿已关闭。"
