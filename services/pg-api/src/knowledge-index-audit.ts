@@ -1,4 +1,5 @@
 import type {SqlClient} from "./contracts.ts"
+import {verifyKnowledgeQueryCredentials} from "./knowledge-query-audit.ts"
 export const knowledgeIndexRole="agentstudio_knowledge_index"
 export const knowledgeIndexTables=["knowledge_index_activations","knowledge_index_activation_receipts","knowledge_index_attempts","knowledge_index_attempt_chunks"]
 const helper=knowledgeIndexRole,worker=helper+"_worker",broker=helper+"_broker",tables=knowledgeIndexTables
@@ -15,6 +16,7 @@ const columns:Record<string,{read?:Permission;insert?:Permission;update?:Permiss
 function refuse():never{throw Error("unsafe_knowledge_index_privileges")}
 const allowed=(value:Permission|undefined,column:string)=>value===true||Array.isArray(value)&&value.includes(column)
 export async function verifyKnowledgeIndexCredentials(db:SqlClient):Promise<void>{
+  await verifyKnowledgeQueryCredentials(db)
   const roles=(await db.query<{name:string;safe:boolean;login:boolean;parent:number;members:number}>("SELECT r.rolname AS name,r.rolcanlogin AS login,"+
     "NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolinherit AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication AS safe,"+
     "(SELECT count(*)::integer FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid) AS parent,"+

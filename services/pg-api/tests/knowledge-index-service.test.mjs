@@ -30,3 +30,15 @@ test("index service serve needs independent runtime approval, exact Linux/non-ro
   }
   assert.throws(()=>readBoundRuntimeCredential("knowledge-index","model-encryption.secret",{},1001))
 })
+
+test("query-only service requires its own dispatch and sharing approvals independently of index execution",()=>{
+  const query={...env,AGENT_STUDIO_PG18_KNOWLEDGE_QUERY_UAT_ENABLED:"true",AGENT_STUDIO_PG18_KNOWLEDGE_QUERY_UAT_APPROVED:"APPROVE_DISPOSABLE_PG18_READER_EMBEDDING_QUERY_UAT",
+    AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED:"true",AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED:"APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY"}
+  for(const kind of ["worker","broker"]){
+    const ready={...query,CREDENTIALS_DIRECTORY:boundCredentialDirectory(kind==="worker"?"knowledge-index":"knowledge-index-broker")}
+    const selected=knowledgeIndexServiceConfig(ready,kind,"serve","linux",1001)
+    assert.equal(selected.queryApproved,true);assert.equal(selected.approved,false)
+    for(const patch of [{AGENT_STUDIO_PG18_KNOWLEDGE_QUERY_UAT_APPROVED:"wrong"},{AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED:undefined,AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED:undefined}])
+      assert.throws(()=>knowledgeIndexServiceConfig({...ready,...patch},kind,"serve","linux",1001))
+  }
+})

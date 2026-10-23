@@ -16,6 +16,11 @@ import {KnowledgeIndexWorker} from "../src/knowledge-index-worker.ts"
 import {KnowledgeIndexBroker} from "../src/knowledge-index-broker.ts"
 import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {scopedKnowledgeIndexPool} from "../src/knowledge-index-policy.ts"
+import {scopedKnowledgeQueryPool} from "../src/knowledge-query-policy.ts"
+import {KnowledgeQueryRepository} from "../src/knowledge-query-repository.ts"
+import {KnowledgeQueryBroker} from "../src/knowledge-query-broker.ts"
+import {KnowledgeQueryWorker} from "../src/knowledge-query-worker.ts"
+import {QUERY_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-query-contracts.ts"
 import {EMBEDDING_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-embedding-consent-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "../src/knowledge-scope-policy.ts"
@@ -30,7 +35,7 @@ import {permitNativePg18BusinessUatRequest,selectNativePg18UatCapabilities} from
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
 const origin="https://embedding.example.test",password="Synthetic-Embedding-Settings#2026"
 const sql=name=>readFileSync(new URL("../../../db/postgres/"+name,import.meta.url),"utf8").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
-async function fixture({consent=false,index=false}={}){
+async function fixture({consent=false,index=false,query=false}={}){
   const db=await PGlite.create({extensions:{vector}})
   await db.exec("CREATE DATABASE agent_studio");await db.exec(freshSchemaForTest().sql)
   await prepareNativeAuthPgliteRoles(db);await db.exec(reviewedNativeSqlForEmbeddedTest(sql("010_pg18_native_auth_proposed.sql")))
@@ -38,22 +43,23 @@ async function fixture({consent=false,index=false}={}){
   for(const name of ["024_bound_dispatch_identity","025_workflow_model_identity","026_workflow_tool_identity","027_workflow_agent_identity","028_autonomous_agent_identity","029_mcp_connections","030_mcp_tool_identity","031_smithery_managed","032_knowledge_access","033_knowledge_content","034_knowledge_runtime","035_knowledge_embedding_state"])
     await db.exec(sql("migrations/pg_v9_"+name+".sql"))
   if(consent)await db.exec(sql("migrations/pg_v9_036_knowledge_embedding_consent.sql"))
-  if(index)await db.exec(sql("migrations/pg_v9_037_knowledge_index_runtime.sql"))
+  if(index||query)await db.exec(sql("migrations/pg_v9_037_knowledge_index_runtime.sql"))
+  if(query)await db.exec(sql("migrations/pg_v9_038_knowledge_query_runtime.sql"))
   let tail=Promise.resolve()
   const raw={async connect(){const before=tail;let release;tail=new Promise(done=>release=done);await before;return {query:(text,args=[])=>db.query(text,args),release}}}
-  const pool=scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(raw,true),true),consent),index)
+  const pool=scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(raw,true),true),consent),index),query)
   const auth=new NativeAuthRepository(pool),owner=await auth.provisionInitialAdmin({email:"owner@example.test",password,display_name:"Owner"})
   const token=await auth.login("owner@example.test",password),reader=await auth.provisionEmployee(token.token,{email:"reader@example.test",password,display_name:"Reader"})
-  const embedding=new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),models=new ModelConnectionRepository(pool,Buffer.alloc(32,35)),policy={configurationWrites:true,employeeProvisioning:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:consent,knowledgeIndexRuntimeUat:index}
+  const embedding=new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),models=new ModelConnectionRepository(pool,Buffer.alloc(32,35)),policy={configurationWrites:true,employeeProvisioning:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:consent,knowledgeIndexRuntimeUat:index,knowledgeQueryRuntimeUat:query}
   await verifyKnowledgeEmbeddingSchema(pool)
   let backend
-  const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:true,allowKnowledgeSharing:true,allowKnowledgeEmbeddingSettings:true,allowKnowledgeEmbeddingConsent:consent,allowKnowledgeIndexRuntime:index,businessHandler:(req,res)=>{
+  const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:true,allowKnowledgeSharing:true,allowKnowledgeEmbeddingSettings:true,allowKnowledgeEmbeddingConsent:consent,allowKnowledgeIndexRuntime:index,allowKnowledgeQueryRuntime:query,businessHandler:(req,res)=>{
     if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,policy)){res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"native_readonly"}));return}
     return backend(req,res)
   }})
   backend=createHandler({allowedOrigin:origin,repository:new AgentSpecRepository(pool),modelConnectionRepository:models,
     knowledgeRepository:new KnowledgeBaseRepository(pool),knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),knowledgeContentRepository:new KnowledgeContentRepository(pool),
-    knowledgeEmbeddingRepository:embedding,...(consent?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool)}:{}),...(index?{knowledgeIndexRepository:new KnowledgeIndexRepository(pool)}:{}),authenticateRequest:native.authenticateRequest,verifyToken:async()=>{throw Error("Bearer forbidden")}})
+    knowledgeEmbeddingRepository:embedding,...(consent?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool)}:{}),...(index?{knowledgeIndexRepository:new KnowledgeIndexRepository(pool)}:{}),...(query?{knowledgeQueryRepository:new KnowledgeQueryRepository(pool)}:{}),authenticateRequest:native.authenticateRequest,verifyToken:async()=>{throw Error("Bearer forbidden")}})
   const server=createServer(native.handler);await new Promise(done=>server.listen(0,"127.0.0.1",done));const address="http://127.0.0.1:"+server.address().port
   const client=()=>{let cookie="";const calls=[],state={dropNext:false};const transport=async(url,options={})=>{
     calls.push({url,options});const headers=new Headers(options.headers);headers.set("Origin",origin);if(cookie)headers.set("Cookie",cookie)
@@ -200,6 +206,43 @@ test("native Cookie index start is explicit and recoverable, GET never bills, an
     assert.equal(calls,1)
     f.policy.knowledgeIndexRuntimeUat=false
     await assert.rejects(owner.api.getKnowledgeIndexStatus(base.id),error=>error.status===405)
+  }finally{await f.close()}
+})
+
+test("native Cookie queries recover lost replies without automatic charging and enforce current scope, CSRF and closed requests",async()=>{
+  const f=await fixture({consent:true,index:true,query:true});let calls=0
+  try{
+    const owner=f.client(),reader=f.client();await owner.api.login("owner@example.test",password);await reader.api.login("reader@example.test",password)
+    assert.equal((await reader.api.getConfigCapabilities()).knowledge_query_runtime_enabled,true)
+    const base=await owner.api.createKnowledge("Query API","Synthetic only")
+    await owner.api.importSharedKnowledge(base.id,{request_id:randomUUID(),filename:"query.txt",text:"synthetic shared evidence"})
+    let ownerProfile
+    for(const [client,indexEnabled] of [[owner,true],[reader,false]]){
+      const model=await client.api.createModelConnection({name:"Query model",provider:"openai",base_url:"https://api.openai.com/v1",api_key:indexEnabled?"synthetic-owner-http-index-key":"synthetic-reader-http-query-key",models:["synthetic"],enabled:true})
+      await client.api.changeKnowledgeEmbeddingSettings({action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:model.id,connection_revision:model.revision,model_name:"synthetic",base_url:"https://api.openai.com/v1"})
+      const p=await client.api.getKnowledgeEmbeddingConsent();if(indexEnabled)ownerProfile=p
+      await client.api.changeKnowledgeEmbeddingConsent({action:"grant",request_id:randomUUID(),expected_revision:0,profile_id:p.profile_id,profile_revision:p.profile_revision,index_enabled:indexEnabled,query_enabled:!indexEnabled,acknowledgement:EMBEDDING_CHARGE_ACKNOWLEDGEMENT})
+    }
+    await owner.api.authorizeKnowledgeIndex({request_id:randomUUID(),expected_consent_revision:1,profile_id:ownerProfile.profile_id,profile_revision:ownerProfile.profile_revision,acknowledgement:INDEX_START_ACKNOWLEDGEMENT})
+    const indexBroker=new KnowledgeIndexBroker(f.pool,f.pool,Buffer.alloc(32,35),async material=>material.input.map(()=>[1,0]),{approvedForIsolatedUat:true})
+    await new KnowledgeIndexWorker(f.pool,x=>indexBroker.dispatch(x),{approvedForIsolatedUat:true}).tick()
+    await owner.api.changeKnowledgeAccess(base.id,{action:"grant",recipient_email:"reader@example.test",role:"viewer",semantic_allowed:true,expected_revision:0,request_id:randomUUID()})
+    const p=await reader.api.getKnowledgeEmbeddingConsent(),request={request_id:randomUUID(),base_ids:[base.id],query:"different wording",mode:"semantic",profile_id:p.profile_id,profile_revision:p.profile_revision,consent_revision:p.revision,acknowledgement:QUERY_CHARGE_ACKNOWLEDGEMENT}
+    await assert.rejects(reader.api.submitKnowledgeQuery({...request,owner_user_id:f.owner.id}),error=>error.status===400)
+    const noCsrf=await reader.transport("/api/v2/knowledge-query/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(request)})
+    assert.equal(noCsrf.status,403)
+    reader.state.dropNext=true;reader.state.dropPath="/knowledge-query/submit"
+    await assert.rejects(reader.api.submitKnowledgeQuery(request),error=>error.code==="pg_native_connection_unavailable")
+    assert.equal(calls,0);assert.equal((await reader.api.getKnowledgeQueryReceipt(request.request_id)).status,"prepared")
+    const broker=new KnowledgeQueryBroker(f.pool,f.pool,Buffer.alloc(32,35),async material=>{calls++;assert.equal(material.api_key,"synthetic-reader-http-query-key");assert.deepEqual(material.input,[request.query]);return [[1,0]]},{approvedForIsolatedUat:true})
+    assert.equal((await new KnowledgeQueryWorker(f.pool,x=>broker.dispatch(x),{approvedForIsolatedUat:true}).tick()).status,"retrieved")
+    assert.equal((await reader.api.getKnowledgeQueryReceipt(request.request_id)).result.items.length,1)
+    assert.equal((await reader.api.submitKnowledgeQuery(request)).replayed,true);assert.equal(calls,1)
+    assert.equal(await owner.api.getKnowledgeQueryReceipt(request.request_id),null)
+    const extra=await reader.transport("/api/v2/knowledge-query/receipt?request_id="+request.request_id+"&request_id="+randomUUID())
+    assert.equal(extra.status,400)
+    f.policy.knowledgeQueryRuntimeUat=false
+    await assert.rejects(reader.api.getKnowledgeQueryReceipt(request.request_id),error=>error.status===405)
   }finally{await f.close()}
 })
 

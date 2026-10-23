@@ -15,6 +15,7 @@ export function createNativeAuthHttpHandler(deps:{
   allowKnowledgeEmbeddingSettings?:boolean
   allowKnowledgeEmbeddingConsent?:boolean
   allowKnowledgeIndexRuntime?:boolean
+  allowKnowledgeQueryRuntime?:boolean
   allowRunSubmission?:boolean
   allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean

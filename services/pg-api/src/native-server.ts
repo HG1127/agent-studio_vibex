@@ -5,6 +5,9 @@ import {verifyKnowledgeEmbeddingConsentSchema} from "./knowledge-embedding-conse
 import {scopedKnowledgeIndexPool} from "./knowledge-index-policy.ts"
 import {KnowledgeIndexRepository} from "./knowledge-index-repository.ts"
 import {verifyKnowledgeIndexSchema} from "./knowledge-index-privileges.ts"
+import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
+import {KnowledgeQueryRepository} from "./knowledge-query-repository.ts"
+import {verifyKnowledgeQuerySchema} from "./knowledge-query-audit.ts"
 import {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
 import {embeddingEndpointPolicy} from "./knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.ts"
@@ -303,7 +306,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
-  const business=scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true)
+  const business=scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true),capabilities.knowledgeQueryRuntimeUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
@@ -356,6 +359,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeEmbeddingSettingsUat===true)await verifyKnowledgeEmbeddingSchema(business)
     if(capabilities.knowledgeEmbeddingConsentUat===true)await verifyKnowledgeEmbeddingConsentSchema(business)
     if(capabilities.knowledgeIndexRuntimeUat===true)await verifyKnowledgeIndexSchema(business)
+    if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -375,6 +379,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowKnowledgeEmbeddingSettings:capabilities.knowledgeEmbeddingSettingsUat===true,
       allowKnowledgeEmbeddingConsent:capabilities.knowledgeEmbeddingConsentUat===true,
       allowKnowledgeIndexRuntime:capabilities.knowledgeIndexRuntimeUat===true,
+      allowKnowledgeQueryRuntime:capabilities.knowledgeQueryRuntimeUat===true,
       allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
       allowRunSubmission:capabilities.runApprovalUat,
       allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
@@ -438,6 +443,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.knowledgeEmbeddingSettingsUat===true?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(business,embeddingEndpointPolicy(process.env))}:{}),
       ...(capabilities.knowledgeEmbeddingConsentUat===true?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(business)}:{}),
       ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
+      ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true

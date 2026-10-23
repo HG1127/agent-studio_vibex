@@ -56,6 +56,13 @@ import {createKnowledgeIndexPrivateClient,createKnowledgeIndexPrivateHandler} fr
 import {scopedKnowledgeIndexPool} from "../src/knowledge-index-policy.ts"
 import {verifyKnowledgeIndexSchema,verifyKnowledgeIndexLogin} from "../src/knowledge-index-privileges.ts"
 import {KnowledgeIndexRepository} from "../src/knowledge-index-repository.ts"
+import {KnowledgeQueryRepository} from "../src/knowledge-query-repository.ts"
+import {KnowledgeQueryWorker} from "../src/knowledge-query-worker.ts"
+import {KnowledgeQueryBroker} from "../src/knowledge-query-broker.ts"
+import {scopedKnowledgeQueryPool} from "../src/knowledge-query-policy.ts"
+import {verifyKnowledgeQuerySchema} from "../src/knowledge-query-audit.ts"
+import {QUERY_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-query-contracts.ts"
+import {createKnowledgeQueryPrivateClient,createKnowledgeQueryPrivateHandler} from "../src/knowledge-query-private-tls.ts"
 import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "../src/knowledge-embedding-privileges.ts"
@@ -80,7 +87,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
@@ -106,6 +113,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowKnowledgeEmbeddingSettings:true,
       allowKnowledgeEmbeddingConsent:true,
       allowKnowledgeIndexRuntime:true,
+      allowKnowledgeQueryRuntime:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
       businessHandler:(req,res)=>{
@@ -125,6 +133,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
       knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool),
       knowledgeIndexRepository:new KnowledgeIndexRepository(pool),
+      knowledgeQueryRepository:new KnowledgeQueryRepository(pool),
       workflowRepository:new WorkflowRepository(pool),
       workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
@@ -228,6 +237,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_035_knowledge_embedding_state.sql"))
     await admin.query(upgrade("pg_v9_036_knowledge_embedding_consent.sql"))
     await admin.query(upgrade("pg_v9_037_knowledge_index_runtime.sql"))
+    await admin.query(upgrade("pg_v9_038_knowledge_query_runtime.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -238,11 +248,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
-    const apiPool=scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true)
+    const apiPool=scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool)
     await verifyKnowledgeEmbeddingSchema(apiPool)
     await verifyKnowledgeEmbeddingConsentSchema(apiPool)
     await verifyKnowledgeIndexSchema(apiPool)
+    await verifyKnowledgeQuerySchema(apiPool)
+    for(const kind of ["worker","broker"])await verifyKnowledgeQuerySchema(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_consents TO agentstudio_stage_login")
     try{await assert.rejects(verifyKnowledgeEmbeddingConsentSchema(apiPool),/unsafe_knowledge_embedding_privileges/)}
@@ -484,6 +496,30 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         await workerDb.query("ROLLBACK")
       }finally{workerDb.release()}
     },{handlerFactory:createKnowledgeIndexPrivateHandler})
+    // Reuse owner-cached embeddings. Only the reader query and reader key
+    // reach the sealed synthetic provider through actual restricted SQL roles.
+    await knowledgeAccess.change(owner,sharedBase.id,{action:"semantic",recipient_id:share.item.recipient_id,enabled:true,expected_revision:1,request_id:randomUUID()})
+    await api.login("other@example.com","SyntheticOtherPassword#2026")
+    assert.equal((await api.getConfigCapabilities()).knowledge_query_runtime_enabled,true)
+    const readerModel=await api.createModelConnection({name:"CI reader embedding",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticReaderQueryCredentialNeverNetwork012345",models:["synthetic-embedding"],enabled:true})
+    await api.changeKnowledgeEmbeddingSettings({action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:readerModel.id,connection_revision:readerModel.revision,model_name:"synthetic-embedding",base_url:"https://api.openai.com/v1"})
+    const readerProfile=await api.getKnowledgeEmbeddingConsent()
+    await api.changeKnowledgeEmbeddingConsent({action:"grant",request_id:randomUUID(),expected_revision:0,profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,index_enabled:false,query_enabled:true,acknowledgement:EMBEDDING_CHARGE_ACKNOWLEDGEMENT})
+    const queryRequest={request_id:randomUUID(),base_ids:[sharedBase.id],query:"different wording",mode:"semantic",profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,consent_revision:1,acknowledgement:QUERY_CHARGE_ACKNOWLEDGEMENT}
+    assert.equal((await api.submitKnowledgeQuery(queryRequest)).item.status,"prepared")
+    const queryWorkerPool=scopedKnowledgeQueryPool(scopedKnowledgePool(adapter(byLogin.agentstudio_knowledge_index_worker_login),true),true)
+    const queryBrokerPool=scopedKnowledgeQueryPool(scopedKnowledgePool(adapter(byLogin.agentstudio_knowledge_index_broker_login),true),true)
+    let queryCalls=0
+    const queryBroker=new KnowledgeQueryBroker(queryBrokerPool,brokerPool,key,async material=>{
+      queryCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.deepEqual(material.input,[queryRequest.query]);return [[1,0]]
+    },{approvedForIsolatedUat:true})
+    await withDisposableBoundModelTls(claim=>queryBroker.dispatch(claim),async config=>{
+      const worker=new KnowledgeQueryWorker(queryWorkerPool,createKnowledgeQueryPrivateClient(config),{approvedForIsolatedUat:true})
+      assert.equal((await worker.tick()).status,"retrieved");assert.equal((await worker.tick()).status,"idle")
+      assert.equal((await api.getKnowledgeQueryReceipt(queryRequest.request_id)).result.items[0].document_id,sharedDoc.item.document_id)
+      assert.equal((await api.submitKnowledgeQuery(queryRequest)).replayed,true);assert.equal(queryCalls,1)
+    },{handlerFactory:createKnowledgeQueryPrivateHandler})
+    await api.login("admin@example.com","SyntheticAdminPassword#2026")
     assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)
     assert.equal((await withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])))[0].access_role,"viewer")
     assert.equal((await withActor(apiPool,reader,(db,id)=>gatherAuthorizedKnowledgeEvidence(db,id,[sharedBase.id],"cedar")))[0].documentId,sharedDoc.item.document_id)
@@ -492,7 +528,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await assert.rejects(knowledgeContent.importParsed(reader,sharedBase.id,randomUUID(),{filename:"blocked.md",mime_type:"text/markdown",text:"Viewer cannot write"}),error=>error.status===403)
     assert.equal(await bases.get(reader,sharedBase.id),null)
     await assert.rejects(knowledgeAccess.listGrants(reader,sharedBase.id),error=>error.status===404)
-    await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:1,request_id:randomUUID()})
+    await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:2,request_id:randomUUID()})
+    await assert.rejects(new KnowledgeQueryRepository(apiPool).get(reader,queryRequest.request_id),error=>error.status===404)
     assert.equal((await knowledgeAccess.listShared(reader)).length,0)
     await assert.rejects(knowledgeContent.search(reader,sharedBase.id,"cedar"),error=>error.status===404)
     await assert.rejects(withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])),error=>error.status===404)

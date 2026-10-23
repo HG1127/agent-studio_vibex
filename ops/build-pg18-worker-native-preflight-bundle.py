@@ -23,6 +23,7 @@ FILES=(
     "services/pg-api/src/knowledge-content-privileges.ts",
     "services/pg-api/src/knowledge-embedding-privileges.ts",
     "services/pg-api/src/knowledge-index-audit.ts",
+    "services/pg-api/src/knowledge-query-audit.ts",
     "services/pg-api/src/knowledge-sharing-policy.ts",
 )
 README="README_PG18_NATIVE_WORKER_PREFLIGHT.txt"
@@ -37,7 +38,7 @@ prepare_readonly_verified=true, systemd_run_exit_code=0. The old PocketBase
 and PocketBase Worker remain active. This did NOT start the actual PG18
 Prepare/Model Worker task loops or invoke any model provider.
 
-This ZIP adds NINE source files:
+This ZIP adds TEN source files:
   ops/baota-pg18-worker-native-preflight-review.py
   services/pg-api/src/pg18-native-worker-readonly.ts
   services/pg-api/src/pg18-prepare-readonly-preflight.ts
@@ -46,6 +47,7 @@ This ZIP adds NINE source files:
   services/pg-api/src/knowledge-content-privileges.ts
   services/pg-api/src/knowledge-embedding-privileges.ts
   services/pg-api/src/knowledge-index-audit.ts
+  services/pg-api/src/knowledge-query-audit.ts
   services/pg-api/src/knowledge-sharing-policy.ts
 plus this README and SHA256SUMS_NATIVE_WORKER_PREFLIGHT.
 
