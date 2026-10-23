@@ -27,7 +27,7 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     browser=await chromium.launch({headless:true});context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:"block"})
     const external=[]
     await context.route("**/*",async route=>{if(new URL(route.request().url()).origin!==approved.origin){external.push(route.request().url());await route.abort()}else await route.continue()})
-    page=await context.newPage();await page.goto(info.url,{waitUntil:"domcontentloaded"})
+    page=await context.newPage();page.on("pageerror",error=>console.error("synthetic_canvas_page_error",error.stack??error.message));await page.goto(info.url,{waitUntil:"domcontentloaded"})
     await page.getByRole("textbox",{name:"员工邮箱",exact:true}).fill("alice@example.com")
     await page.getByLabel("密码",{exact:true}).fill("SyntheticAlicePassword#2026")
     await page.getByRole("button",{name:"登录独立工作台",exact:true}).click()
