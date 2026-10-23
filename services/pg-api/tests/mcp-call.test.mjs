@@ -1,8 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import {EventEmitter} from "node:events"
 import {selectNativePg18UatCapabilities} from "../src/native-config-uat-policy.ts"
 import {createMcpToolExecutor,mcpToolCallHeaders,selectMcpExecution} from "../src/mcp-call.ts"
-import {validateMcpArguments} from "../src/mcp-validation.ts"
+import {validateMcpArguments,createMcpArgumentValidator} from "../src/mcp-validation.ts"
 import {parseMcpBinding,parseAgentMcpTools} from "../src/mcp-binding.ts"
 const definition={name:"lookup",description:"Synthetic",input_schema:{type:"object",properties:{query:{type:"string"},nested:{type:"object",properties:{region:{type:"string","x-mcp-header":"Region"}}}},required:["query"],additionalProperties:false},read_only:true,destructive:false,requires_tasks:false}
 const material={url:"https://mcp.example.com/server",headers:[{key:"authorization",value:"Bearer synthetic-mcp-secret-123456"}],version:"2026-07-28",definition}
@@ -53,6 +54,30 @@ test("JSON Schema validation is isolated, supports local refs/composition and ne
     assert.equal(await validateMcpArguments({...definition,input_schema:schema},{query:"X"}),false)
   const started=Date.now(),dangerous={...definition,input_schema:{type:"object",properties:{query:{type:"string",pattern:"^(a+)+$"}}}}
   assert.equal(await validateMcpArguments(dangerous,{query:"a".repeat(48)+"!"}),false);assert.ok(Date.now()-started<6000)
+})
+
+test("validator startup has a separate bound while schema evaluation keeps its original deadline",async(t)=>{
+  t.mock.timers.enable({apis:["setTimeout"]})
+  let worker,terminated=0,completed=false
+  const validate=createMcpArgumentValidator(()=>{worker=new EventEmitter();worker.terminate=async()=>{terminated++;return 0};return worker})
+  const result=validate(definition,{query:"safe"}).then(value=>{completed=true;return value})
+  t.mock.timers.tick(3500);await new Promise(done=>setImmediate(done));assert.equal(completed,false)
+  worker.emit("message",{type:"ready"})
+  t.mock.timers.tick(1499);await new Promise(done=>setImmediate(done));assert.equal(completed,false)
+  t.mock.timers.tick(1);assert.equal(await result,false);assert.equal(terminated,1)
+  const startup=validate(definition,{query:"safe"});t.mock.timers.tick(4000);assert.equal(await startup,false);assert.equal(terminated,2)
+})
+
+test("transient validator startup failures are not cached as invalid schemas; results require readiness",async()=>{
+  let calls=0
+  const validate=createMcpArgumentValidator(()=>{
+    const worker=new EventEmitter();worker.terminate=async()=>0
+    queueMicrotask(()=>{calls++;if(calls===1)worker.emit("exit",1);else{worker.emit("message",{type:"ready"});worker.emit("message",{type:"result",valid:true})}})
+    return worker
+  })
+  assert.equal(await validate(definition),false);assert.equal(await validate(definition),true);assert.equal(await validate(definition),true);assert.equal(calls,2)
+  const unready=createMcpArgumentValidator(()=>{const worker=new EventEmitter();worker.terminate=async()=>0;queueMicrotask(()=>worker.emit("message",{type:"result",valid:true}));return worker})
+  assert.equal(await unready(definition),false)
 })
 test("MCP bindings are closed pinned references and runtime activation is independent/default-off",()=>{
   const binding={connection_id:"11111111-1111-4111-8111-111111111111",connection_revision:2,tool_name:"lookup",catalog_sha256:"a".repeat(64)}

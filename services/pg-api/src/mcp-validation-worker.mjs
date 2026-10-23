@@ -3,6 +3,7 @@ import {parentPort,workerData} from "node:worker_threads"
 import Ajv2020 from "ajv/dist/2020.js"
 import Ajv2019 from "ajv/dist/2019.js"
 import Ajv07 from "ajv"
+parentPort.postMessage({type:"ready"})
 try{
   const {schema,args}=workerData
   const rejectAsync=value=>{if(value&&typeof value==="object")for(const [key,item] of Object.entries(value)){if(key==="$async")throw Error("async_schema_not_supported");rejectAsync(item)}}
@@ -15,5 +16,5 @@ try{
   const ajv=new Constructor({strict:false,allErrors:false,validateFormats:false,ownProperties:true,
     coerceTypes:false,useDefaults:false,removeAdditional:false,logger:false,addUsedSchema:false,loopRequired:20,loopEnum:20})
   const validate=ajv.compile(schema)
-  parentPort.postMessage({valid:args===undefined||Boolean(validate(args))})
-}catch{parentPort.postMessage({valid:false})}
+  parentPort.postMessage({type:"result",valid:args===undefined||Boolean(validate(args))})
+}catch{parentPort.postMessage({type:"result",valid:false})}
