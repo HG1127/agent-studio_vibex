@@ -566,9 +566,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await knowledgeAccess.listShared(reader)).length,0)
     await assert.rejects(knowledgeContent.search(reader,sharedBase.id,"cedar"),error=>error.status===404)
     await assert.rejects(withActor(apiPool,reader,(db,id)=>requireKnowledgeScope(db,id,[sharedBase.id])),error=>error.status===404)
+    const jobsBeforeUnsupported=(await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n
     await assert.rejects(new WorkflowSafeRunRepository(apiPool).submit(owner,workflow.id,{
       expected_revision:2,idempotency_key:"v2-execution-stays-closed"}),e=>e.code==="workflow_execution_node_not_supported")
-    assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n,0)
+    assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.jobs WHERE kind='workflow_tick'")).rows[0].n,jobsBeforeUnsupported)
     const configAudit=(await admin.query("SELECT action,metadata FROM agentstudio.audit_events "+
       "WHERE target_kind='workflow' AND target_id=$1 ORDER BY occurred_at",[workflow.id])).rows
     assert.deepEqual(configAudit.map(row=>row.action),["workflow.config_create","workflow.config_update"])
