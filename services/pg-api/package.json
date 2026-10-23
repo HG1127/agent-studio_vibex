@@ -94,7 +94,7 @@
     "test:autonomous-agent": "node --experimental-strip-types --test --test-concurrency=1 tests/autonomous-agent-runtime.test.mjs tests/autonomous-agent-http.test.mjs tests/autonomous-agent-worker-loop.test.mjs",
     "autonomous-agent-worker:plan": "node --experimental-strip-types src/autonomous-agent-worker-loop.ts --plan",
     "autonomous-agent-worker:preflight": "node --experimental-strip-types src/autonomous-agent-worker-loop.ts --preflight",
-    "test:knowledge-embedding-state": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-embedding-state.test.mjs tests/knowledge-embedding-http.test.mjs"
+    "test:knowledge-embedding-state": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-embedding-state.test.mjs tests/knowledge-embedding-consent.test.mjs tests/knowledge-embedding-http.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",

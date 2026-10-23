@@ -15,6 +15,8 @@ import {parseWorkflowLatestOutputs,parseWorkflowOutputHistory,validWorkflowOutpu
 export type {WorkflowLatestOutputs,WorkflowOutputHistory,WorkflowOutputHeader,WorkflowLatestNodeOutput,WorkflowHistoricalNodeOutput} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 import type {KnowledgeAccessReceipt,KnowledgeGrant,SharedKnowledgeMetadata,KnowledgeContentMetadata,KnowledgeContentReceipt,KnowledgeDocumentRow,KnowledgeSearchHit} from "./pgNativeKnowledgeSharing.ts"
 import type {KnowledgeEmbeddingSettings,KnowledgeEmbeddingStatus,KnowledgeEmbeddingReceipt,KnowledgeEmbeddingChange} from "../../services/pg-api/src/knowledge-embedding-contracts.ts"
+import type {KnowledgeEmbeddingConsent,KnowledgeEmbeddingConsentChange,KnowledgeEmbeddingConsentReceipt} from "../../services/pg-api/src/knowledge-embedding-consent-contracts.ts"
+export type {KnowledgeEmbeddingConsent,KnowledgeEmbeddingConsentChange,KnowledgeEmbeddingConsentReceipt} from "../../services/pg-api/src/knowledge-embedding-consent-contracts.ts"
 export type {KnowledgeEmbeddingSettings,KnowledgeEmbeddingStatus,KnowledgeEmbeddingReceipt,KnowledgeEmbeddingChange} from "../../services/pg-api/src/knowledge-embedding-contracts.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
@@ -24,6 +26,7 @@ export type PgNativeConfigCapabilities={
   smithery_management_enabled?:boolean
   knowledge_sharing_enabled?:boolean
   knowledge_embedding_settings_enabled?:boolean
+  knowledge_embedding_consent_enabled?:boolean
   run_submission_enabled?:boolean
   bound_model_runs_enabled?:boolean
   workflow_validation_enabled?:boolean
@@ -393,6 +396,8 @@ export function createPgNativePilotApi(
           (value.knowledge_sharing_enabled===true&&value.config_writes_enabled!==true)||
           (value.knowledge_embedding_settings_enabled!==undefined&&typeof value.knowledge_embedding_settings_enabled!=="boolean")||
           (value.knowledge_embedding_settings_enabled===true&&(value.config_writes_enabled!==true||value.knowledge_sharing_enabled!==true))||
+          (value.knowledge_embedding_consent_enabled!==undefined&&typeof value.knowledge_embedding_consent_enabled!=="boolean")||
+          (value.knowledge_embedding_consent_enabled===true&&value.knowledge_embedding_settings_enabled!==true)||
           (value.workflow_validation_enabled!==undefined&&
             typeof value.workflow_validation_enabled!=="boolean")||
           (value.workflow_execution_enabled!==undefined&&
@@ -737,6 +742,12 @@ export function createPgNativePilotApi(
       })).item
     },
     getKnowledgeEmbeddingSettings:async()=>(await get<{item:KnowledgeEmbeddingSettings}>("/api/v2/knowledge-embedding/settings")).item,
+    getKnowledgeEmbeddingConsent:async()=>(await get<{item:KnowledgeEmbeddingConsent}>("/api/v2/knowledge-embedding/consent")).item,
+    changeKnowledgeEmbeddingConsent:(input:KnowledgeEmbeddingConsentChange)=>post<{item:KnowledgeEmbeddingConsentReceipt;replayed:boolean}>("/api/v2/knowledge-embedding/consent",{...input}),
+    getKnowledgeEmbeddingConsentReceipt:async(requestId:string)=>{
+      recordRoute(routes.bases,requestId)
+      return (await get<{item:KnowledgeEmbeddingConsentReceipt|null}>(`/api/v2/knowledge-embedding/consent-receipt?request_id=${requestId}`)).item
+    },
     changeKnowledgeEmbeddingSettings:(input:Exclude<KnowledgeEmbeddingChange,{action:"rebuild"}>)=>post<{item:KnowledgeEmbeddingReceipt;replayed:boolean}>("/api/v2/knowledge-embedding/settings",{...input}),
     getKnowledgeEmbeddingStatus:async(id:string)=>{
       recordRoute(routes.bases,id)

@@ -22,19 +22,21 @@ export async function verifyKnowledgeEmbeddingCredentials(db:SqlClient):Promise<
   if(!state.safe||state.members!==0)refuse()
   const sensitive=(await db.query<{id:number;schema:string;name:string}>("SELECT c.oid AS id,n.nspname AS schema,c.relname AS name "+
     "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE "+
-    "(n.nspname='agentstudio' AND c.relname IN ('model_connections','tool_connection_headers','mcp_connection_headers','smithery_credentials')) "+
+    "(n.nspname='agentstudio' AND c.relname IN ('model_connections','knowledge_chunks','tool_connection_headers','mcp_connection_headers','smithery_credentials')) "+
     "OR (n.nspname='agentstudio_auth' AND c.relname IN ('accounts','sessions'))")).rows
   for(const table of sensitive){
     const grants=(await db.query<{name:string;read:boolean;write:boolean}>("SELECT attname AS name,has_column_privilege($1,attrelid,attnum,'SELECT') AS read,"+
       "has_column_privilege($1,attrelid,attnum,'INSERT,UPDATE,REFERENCES') AS write FROM pg_catalog.pg_attribute "+
       "WHERE attrelid=$2::oid AND attnum>0 AND NOT attisdropped",[role,table.id])).rows
     const model=table.schema==="agentstudio"&&table.name==="model_connections"
-    const allowed=["id","owner_user_id","provider","base_url","enabled","models","revision"]
-    if(grants.some(column=>column.write||(column.read&&(!model||!allowed.includes(column.name)))))refuse()
+    const chunks=table.schema==="agentstudio"&&table.name==="knowledge_chunks"
+    const allowed=model?["id","owner_user_id","provider","base_url","enabled","models","revision"]:
+      chunks?["id","owner_user_id","document_id","chunk_index","text_content"]:[]
+    if(grants.some(column=>column.write||(column.read&&!allowed.includes(column.name))))refuse()
     if((await db.query<{write:boolean}>("SELECT has_table_privilege($1,$2::oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS write",[role,table.id])).rows[0]?.write!==false)refuse()
   }
   const data=(await db.query<{id:number}>("SELECT c.oid AS id FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "+
-    "WHERE n.nspname='agentstudio' AND c.relname=ANY($1::text[])",[tables])).rows
+    "WHERE n.nspname='agentstudio' AND c.relname=ANY($1::text[])",[[...tables,"knowledge_embedding_consents","knowledge_embedding_consent_receipts"]])).rows
   // Include member logins, whose direct grants would survive SET ROLE NONE.
   // Production's separate role preflight rejects superuser/bypass logins.
   const principals=(await db.query<{name:string}>("SELECT r.rolname AS name FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND EXISTS("+

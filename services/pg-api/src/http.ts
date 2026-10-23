@@ -2,6 +2,7 @@ import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-reposito
 import type {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import type {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
 import type {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
+import type {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
 import {safeSharedKnowledgeText} from "./knowledge-content-repository.ts"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { AgentSpecRepository } from "./repository.ts"
@@ -37,6 +38,7 @@ export interface AppDependencies {
   knowledgeAccessRepository?:KnowledgeAccessRepository
   knowledgeContentRepository?:KnowledgeContentRepository
   knowledgeEmbeddingRepository?:KnowledgeEmbeddingRepository
+  knowledgeEmbeddingConsentRepository?:KnowledgeEmbeddingConsentRepository
   modelConnectionRepository?: ModelConnectionRepository
   toolConnectionRepository?: ToolConnectionRepository
   mcpConnectionRepository?:McpConnectionRepository
@@ -131,7 +133,7 @@ export function createHandler(deps:AppDependencies) {
       const mcpRoute=/^\/api\/v2\/mcp-connections(?:\/([0-9a-fA-F-]{36})(?:\/(discover))?)?$/.exec(path)
       const smitheryRoute=/^\/api\/v2\/smithery\/(key|namespaces|catalog|connections)(?:\/([0-9a-fA-F-]{36})(?:\/(refresh|revoke|retry|pause))?)?$/.exec(path)
       const sharedKnowledgeRoute=/^\/api\/v2\/shared-knowledge(?:\/([0-9a-fA-F-]{36})(?:\/(documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.exec(path)
-      const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild))$/.exec(path)
+      const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|consent|consent-receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild))$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
@@ -163,6 +165,21 @@ export function createHandler(deps:AppDependencies) {
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
       if(embeddingRoute){
+        const consentRepo=deps.knowledgeEmbeddingConsentRepository
+        const consentKind=embeddingRoute[1]
+        if(consentKind==="consent"||consentKind==="consent-receipt"){
+          if(!consentRepo)throw new HttpError(503,"knowledge_embedding_consent_disabled")
+          const query=new URL(req.url||"/","http://127.0.0.1").searchParams
+          if(consentKind==="consent-receipt"){
+            if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+            if([...query.keys()].length!==1||!isUuid(query.get("request_id")))throw new HttpError(400,"invalid_embedding_consent_request")
+            return send(res,200,{item:await consentRepo.receipt(identity,query.get("request_id")!)})
+          }
+          if([...query.keys()].length)throw new HttpError(400,"invalid_embedding_consent_request")
+          if(method==="GET")return send(res,200,{item:await consentRepo.get(identity)})
+          if(method==="POST")return send(res,200,await consentRepo.change(identity,await readBody(req,2048)))
+          throw new HttpError(405,"method_not_allowed")
+        }
         const repo=deps.knowledgeEmbeddingRepository
         if(!repo)throw new HttpError(503,"knowledge_embedding_settings_disabled")
         const query=new URL(req.url||"/","http://127.0.0.1").searchParams

@@ -7,10 +7,16 @@ export function scopedKnowledgePool(pool:SqlPool,enabled:boolean):SqlPool{
 export async function applyKnowledgeScope(db:SqlClient,pool:SqlPool):Promise<void>{
   await db.query("SELECT set_config('agentstudio.knowledge_sharing_enabled',$1::text,true)",[pool.knowledgeSharing===true?"true":"false"])
   await db.query("SELECT set_config('agentstudio.knowledge_embedding_settings_enabled',$1::text,true)",[pool.knowledgeEmbeddingSettings===true?"true":"false"])
+  await db.query("SELECT set_config('agentstudio.knowledge_embedding_consent_enabled',$1::text,true)",[pool.knowledgeEmbeddingConsent===true?"true":"false"])
 }
 export function scopedEmbeddingSettingsPool(pool:SqlPool,enabled:boolean):SqlPool{
   if(!pool||typeof pool.connect!=="function"||typeof enabled!=="boolean")throw Error("invalid_knowledge_pool_policy")
   return Object.freeze({knowledgeSharing:pool.knowledgeSharing===true,knowledgeEmbeddingSettings:enabled,connect:()=>pool.connect()})
+}
+export function scopedEmbeddingConsentPool(pool:SqlPool,enabled:boolean):SqlPool{
+  if(!pool||typeof pool.connect!=="function"||typeof enabled!=="boolean")throw Error("invalid_knowledge_pool_policy")
+  return Object.freeze({knowledgeSharing:pool.knowledgeSharing===true,knowledgeEmbeddingSettings:pool.knowledgeEmbeddingSettings===true,
+    knowledgeEmbeddingConsent:enabled,connect:()=>pool.connect()})
 }
 // Mutating knowledge paths take this before any base/document/profile row
 // lock. No transaction or lock is retained across a provider request.

@@ -7,6 +7,12 @@ export function selectKnowledgeEmbeddingSettings(env:NodeJS.ProcessEnv):boolean{
   if(enabled!=="true"||approval!=="APPROVE_DISPOSABLE_PG18_EMBEDDING_SETTINGS_ONLY")throw Error("unsafe_knowledge_embedding_settings_config")
   return true
 }
+export function selectKnowledgeEmbeddingConsent(env:NodeJS.ProcessEnv):boolean{
+  const enabled=env.AGENT_STUDIO_PG18_EMBEDDING_CONSENT_UAT_ENABLED,approval=env.AGENT_STUDIO_PG18_EMBEDDING_CONSENT_UAT_APPROVED
+  if(enabled===undefined&&approval===undefined)return false
+  if(enabled!=="true"||approval!=="APPROVE_DISPOSABLE_PG18_EMBEDDING_CONSENT_NO_DISPATCH")throw Error("unsafe_knowledge_embedding_consent_config")
+  return true
+}
 export interface EmbeddingEndpointPolicy {readonly allowedHosts:readonly string[];readonly loopbackPorts:readonly number[]}
 function hostName(value:string):boolean{
   return value.length<=253&&value.includes(".")&&!value.includes("..")&&isIP(value)===0&&

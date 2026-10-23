@@ -13,6 +13,7 @@ export function createNativeAuthHttpHandler(deps:{
   allowSmitheryManagement?:boolean
   allowKnowledgeSharing?:boolean
   allowKnowledgeEmbeddingSettings?:boolean
+  allowKnowledgeEmbeddingConsent?:boolean
   allowRunSubmission?:boolean
   allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean
