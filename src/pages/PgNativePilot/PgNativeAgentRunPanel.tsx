@@ -1,11 +1,10 @@
-import {useCallback,useEffect,useRef,useState,type FormEvent} from "react"
+import {useEffect,useRef,useState,type FormEvent} from "react"
 import {Clock3,Loader2,Play,RefreshCcw,ShieldCheck} from "lucide-react"
-import {PgNativePilotError,type PgNativeAgent,type PgNativeModelConnection,
-  type PgNativeRun,type PgNativeRunDetail,createPgNativePilotApi} from "@/lib/pgNativePilotApi"
-import {createPgNativeRunSubmission,type PendingRun} from "@/lib/pgNativeRunSubmission"
+import {type PgNativeAgent,type PgNativeModelConnection,createPgNativePilotApi} from "@/lib/pgNativePilotApi"
+import {createPgNativeAgentRunSession,emptyAgentRunView} from "@/lib/pgNativeAgentRunSession"
 
 type Api=ReturnType<typeof createPgNativePilotApi>
-type Decision={id:string;value:"approved"|"rejected"}
+type Controller=ReturnType<typeof createPgNativeAgentRunSession>
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 const secondary="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -13,37 +12,28 @@ const states:Record<string,string>={queued:"排队中",running:"处理中",await
   paused:"已暂停",succeeded:"已完成",failed:"失败",cancelled:"已取消"}
 const providerBases={openai:"https://api.openai.com/v1",anthropic:"https://api.anthropic.com/v1",
   gemini:"https://generativelanguage.googleapis.com/v1beta"}
-function describe(error:unknown){
-  if(error instanceof PgNativePilotError){
-    if(error.status===401)return "登录已失效，请重新登录。"
-    if(error.status===403||error.status===405)return "当前账号或环境未授权此操作。"
-    if(error.status===404)return "此记录不存在，或不属于当前员工。"
-    if(error.status===409)return "任务状态或模型配置已经变化，请刷新核对。"
-    if(error.status===429)return "操作过于频繁，请稍后再试。"
-  }
-  return "请求结果暂未确认，请刷新状态或确认上次操作。"
-}
-
 /** Kept mounted across workspace tabs; logout/account change destroys its key. */
 export default function PgNativeAgentRunPanel({api,agents,connections,active,enabled}:{
   api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[];active:boolean;enabled:boolean
 }){
-  const [runs,setRuns]=useState<PgNativeRun[]>([])
-  const [detail,setDetail]=useState<PgNativeRunDetail|null>(null)
+  const [snapshot,setSnapshot]=useState<{api:Api;view:ReturnType<Controller["snapshot"]>}>({api,view:emptyAgentRunView()})
+  // A changed API/session cannot render the previous employee's snapshot,
+  // including the render before the effect recreates its controller.
+  const view=snapshot.api===api?snapshot.view:emptyAgentRunView()
+  const {runs,detail,pending,decision,loading,busy,error,notice}=view
   const [agentId,setAgentId]=useState("")
   const [instruction,setInstruction]=useState("")
-  const [pending,setPending]=useState<PendingRun|null>(null)
-  const [decision,setDecision]=useState<Decision|null>(null)
   const [costAccepted,setCostAccepted]=useState(false)
-  const [loading,setLoading]=useState(false)
-  const [busy,setBusy]=useState(false)
-  const [error,setError]=useState("")
-  const [notice,setNotice]=useState("")
-  const alive=useRef(false),visible=useRef(active),mutation=useRef(false),reads=useRef(0),view=useRef(0)
-  const selected=useRef<string|null>(null)
-  const submission=useRef<ReturnType<typeof createPgNativeRunSubmission>|null>(null)
-  const deciding=useRef<Decision|null>(null)
-  visible.current=active
+  const model=useRef<Controller|null>(null)
+  useEffect(()=>{
+    // StrictMode cleanup/setup must recreate the disposed lifetime.
+    const controller=createPgNativeAgentRunSession(api)
+    model.current=controller;setSnapshot({api,view:controller.snapshot()})
+    setAgentId("");setInstruction("");setCostAccepted(false)
+    const unsubscribe=controller.subscribe(()=>setSnapshot({api,view:controller.snapshot()}))
+    return ()=>{unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
+  },[api])
+  useEffect(()=>{setCostAccepted(false);void model.current?.setActive(active)},[active,api])
   const readyConnection=(agent:PgNativeAgent|undefined)=>{
     const binding=agent?.spec.model_binding
     return binding?connections.find(c=>c.id===binding.connection_id&&c.enabled&&c.status==="ok"&&
@@ -56,69 +46,22 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
   const approvalConnection=readyConnection(approvalAgent)
   const canApprove=Boolean(approvalConnection&&approvalAgent&&
     detail?.run.checkpoint.spec_revision===approvalAgent.revision)
-  const load=useCallback(async(id:string|null)=>{
-    const ticket=++reads.current
-    setLoading(true);setError("")
-    try{
-      const [items,item]=await Promise.all([api.listRuns(),id?api.getRun(id):Promise.resolve(null)])
-      if(!alive.current||!visible.current||ticket!==reads.current)return
-      setRuns(items.slice(0,50));setDetail(item)
-      if(item&&deciding.current?.id===item.run.id&&
-         item.approval?.status===deciding.current.value){
-        deciding.current=null;setDecision(null)
-      }
-    }catch(err){
-      if(alive.current&&visible.current&&ticket===reads.current){
-        setRuns([]);setDetail(null);setError(describe(err))
-      }
-    }finally{if(alive.current&&ticket===reads.current)setLoading(false)}
-  },[api])
-  useEffect(()=>{
-    alive.current=true
-    mutation.current=false;deciding.current=null;setBusy(false);setPending(null);setDecision(null)
-    return ()=>{alive.current=false;++view.current;++reads.current;submission.current?.dispose();submission.current=null}
-  },[api])
-  useEffect(()=>{
-    if(active)void load(selected.current)
-    else{++reads.current;setLoading(false)}
-  },[active,load])
   const submit=async(event:FormEvent)=>{
     event.preventDefault()
-    if(!active||!enabled||mutation.current||deciding.current||(!pending&&!chosen))return
-    mutation.current=true;setBusy(true);setError("");setNotice("")
-    const epoch=view.current
-    const guard=submission.current??=createPgNativeRunSubmission()
-    const operation=guard.submit(api,{agentId,instruction})
-    setPending(guard.pending())
-    try{
-      const outcome=await operation
-      if(!alive.current||epoch!==view.current)return
-      selected.current=outcome.run.id
-      setPending(null);setInstruction("");setCostAccepted(false)
-      setDetail({run:outcome.run,steps:[],approval:null})
-      setNotice(outcome.replayed?"已确认上次提交，未创建重复任务。":"任务已提交，模型步骤需要另行审批。")
-      if(visible.current)await load(outcome.run.id)
-    }catch(err){if(alive.current&&epoch===view.current){setPending(guard.pending());setError(describe(err))}}
-    finally{if(epoch===view.current){mutation.current=false;if(alive.current)setBusy(false)}}
+    if(!active||!enabled||busy||decision||!pending&&!chosen)return
+    const controller=model.current
+    if(!controller)return
+    await controller.submit({agentId,instruction})
+    if(model.current===controller&&!controller.snapshot().pending&&controller.snapshot().notice){
+      setInstruction("");setCostAccepted(false)
+    }
   }
   const decide=async(value:"approved"|"rejected")=>{
-    if(!active||!enabled||mutation.current||!detail||pending||
-       detail.approval?.status!=="pending"||detail.run.status!=="awaiting_approval"||
-       (value==="approved"&&(!canApprove||!costAccepted)))return
-    const previous=deciding.current
-    if(previous&&(previous.id!==detail.run.id||previous.value!==value))return
-    const request=previous??{id:detail.run.id,value}
-    deciding.current=request;setDecision(request)
-    mutation.current=true;setBusy(true);setError("");setNotice("")
-    const epoch=view.current
-    try{
-      await api.decideModel(request.id,request.value)
-      if(!alive.current||epoch!==view.current)return
-      deciding.current=null;setDecision(null);setCostAccepted(false)
-      setNotice(value==="approved"?"已批准模型步骤，后台处理可能产生费用。":"已拒绝模型步骤。")
-      if(visible.current)await load(request.id)
-    }catch(err){if(alive.current&&epoch===view.current)setError(describe(err))}
-    finally{if(epoch===view.current){mutation.current=false;if(alive.current)setBusy(false)}}
+    if(!active||!enabled||busy||pending||value==="approved"&&(!canApprove||!costAccepted))return
+    const controller=model.current
+    if(!controller)return
+    await controller.decide(value,costAccepted)
+    if(model.current===controller&&!controller.snapshot().decision)setCostAccepted(false)
   }
   return <section aria-label="运行 Agent" className="space-y-5">
     {error&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
@@ -152,19 +95,19 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-semibold">我的任务</h2>
         <button type="button" className={secondary} disabled={!active||busy||loading}
-          onClick={()=>void load(selected.current)}><RefreshCcw size={15}/>刷新任务</button>
+          onClick={()=>{setCostAccepted(false);void model.current?.refresh()}}><RefreshCcw size={15}/>刷新任务</button>
       </div>
       {loading&&<p role="status" className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin"/>读取任务中…</p>}
       {!loading&&!runs.length&&<p className="py-5 text-sm text-slate-500">暂无任务</p>}
-      <div className="space-y-2">{runs.map(run=><button key={run.id} type="button"
-        disabled={busy||Boolean(decision)} aria-pressed={detail?.run.id===run.id}
-        onClick={()=>{selected.current=run.id;setCostAccepted(false);void load(run.id)}}
+      <div className="space-y-2">{(active?runs:[]).map(run=><button key={run.id} type="button"
+        disabled={!active||busy||loading||Boolean(decision)} aria-pressed={detail?.run.id===run.id}
+        onClick={()=>{setCostAccepted(false);void model.current?.select(run.id)}}
         className={"flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left text-sm disabled:opacity-50 "+
           (detail?.run.id===run.id?"border-indigo-300 bg-indigo-50":"border-slate-100 hover:bg-slate-50")}>
         <span className="flex min-w-0 items-center gap-2"><Clock3 size={15} className="shrink-0"/><span className="truncate">{run.instruction||"任务"}</span></span>
         <span className="shrink-0 text-xs font-medium">{states[run.status]??"状态未知"}</span>
       </button>)}</div>
-      {detail&&<article className="mt-5 space-y-4 rounded-xl border border-indigo-100 p-4" aria-label="任务详情">
+      {active&&detail&&<article className="mt-5 space-y-4 rounded-xl border border-indigo-100 p-4" aria-label="任务详情">
         <h3 className="font-semibold">任务详情 · {states[detail.run.status]??"状态未知"}</h3>
         <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{detail.run.instruction}</p>
         {detail.run.status==="queued"&&<p className="text-sm text-slate-500">已进入队列，等待后台处理。可刷新查看最新状态。</p>}

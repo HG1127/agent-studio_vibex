@@ -71,7 +71,24 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       expect((await control("state","GET")).runs).toBe(1)
       await page.getByRole("button",{name:"知识库 0",exact:true}).click()
       await page.getByRole("button",{name:"运行 Agent",exact:true}).click()
-      await page.getByRole("button",{name:"确认上次提交",exact:true}).click()
+      // Commit the recovery POST, then deliver its old response only after
+      // navigation. Hidden workspaces must retain the request, not its data.
+      let postReached,postRelease,postDone
+      const reached=new Promise(resolve=>{postReached=resolve}),gate=new Promise(resolve=>{postRelease=resolve}),done=new Promise(resolve=>{postDone=resolve})
+      const postUrl="**/__pg_native/api/v2/agent-specs/*/runs"
+      const holdPost=async route=>{
+        if(route.request().method()!=="POST"){await route.continue();return}
+        try{const response=await route.fetch();postReached();await gate;await route.fulfill({response})}finally{postDone()}
+      }
+      await page.route(postUrl,holdPost)
+      try{
+        await page.getByRole("button",{name:"确认上次提交",exact:true}).click();await reached
+        await page.getByRole("button",{name:"知识库 0",exact:true}).click()
+        postRelease();await done
+        await expect(page.getByRole("button",{name:"确认上次提交",exact:true})).toHaveCount(0)
+        await expect(page.locator('section[aria-label="运行 Agent"] article[aria-label="任务详情"]')).toHaveCount(0)
+        await page.getByRole("button",{name:"运行 Agent",exact:true}).click()
+      }finally{postRelease();await page.unroute(postUrl,holdPost)}
       await expect(page.getByText("已确认上次提交，未创建重复任务。",{exact:true})).toBeVisible()
       const recovered=await control("state","GET")
       expect(recovered.runs).toBe(1);expect(recovered.submissions).toBe(2)
@@ -100,6 +117,25 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
       await page.screenshot({path:testInfo.outputPath("employee-run-mobile.png"),fullPage:true})
       await page.setViewportSize({width:1280,height:900})
+    })
+    await test.step("returning to the Agent tab cannot display its old result before a fresh read",async()=>{
+      await page.getByRole("button",{name:"知识库 0",exact:true}).click()
+      await expect(page.getByText("Browser synthetic bound result",{exact:true})).toHaveCount(0)
+      let reached,release,done
+      const readReached=new Promise(resolve=>{reached=resolve}),gate=new Promise(resolve=>{release=resolve}),completed=new Promise(resolve=>{done=resolve})
+      const detailUrl="**/__pg_native/api/v2/runs/*"
+      const holdDetail=async route=>{
+        if(route.request().method()!=="GET"){await route.continue();return}
+        try{const response=await route.fetch();reached();await gate;await route.fulfill({response})}finally{done()}
+      }
+      await page.route(detailUrl,holdDetail)
+      try{
+        await page.getByRole("button",{name:"运行 Agent",exact:true}).click();await readReached
+        await expect(page.getByText("Browser synthetic bound result",{exact:true})).toHaveCount(0)
+        release();await completed
+        await expect(page.getByText("Browser synthetic bound result",{exact:true})).toBeVisible()
+        expect((await control("state","GET")).generated).toBe(1)
+      }finally{release();await page.unroute(detailUrl,holdDetail)}
     })
     await test.step("a delayed Alice detail response cannot rehydrate Bob's workspace",async()=>{
       const readReached=new Promise(resolve=>{heldRead=resolve})
