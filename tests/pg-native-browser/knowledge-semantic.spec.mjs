@@ -74,7 +74,7 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
     await expect(settings(alice).getByRole("status",{name:"本人语义索引状态",exact:true})).toContainText("已索引 1 / 1")
     expect((await control("index")).status).toBe("idle");expect((await state()).indexEmbeddings).toBe(1)
 
-    bobContext=await context();const bob=await bobContext.newPage();bob.on("console",message=>{if(message.text().startsWith("pg-knowledge-"))console.log("SYNTHETIC_MODE_EVENT",message.text())});await bob.goto(info.url,{waitUntil:"domcontentloaded"});await login(bob,"bob")
+    bobContext=await context();const bob=await bobContext.newPage();await bob.goto(info.url,{waitUntil:"domcontentloaded"});await login(bob,"bob")
     await query(bob).getByRole("checkbox",{name:"Semantic source KB · Browser Alice共享 · 可查看",exact:true}).check()
     await query(bob).getByRole("textbox",{name:"查询内容",exact:true}).fill("cedar")
     await expect(query(bob).getByRole("combobox",{name:"查询方式",exact:true})).toHaveValue("lexical")
@@ -118,7 +118,7 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
       await bob.getByRole("checkbox",{name:sharedName,exact:true}).check()
       await expect(bob.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("keyword")
       await bob.getByRole("button",{name:"读取本人检索配置",exact:true}).click()
-      await expect(bob.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="hybrid"]')).toBeEnabled()
+      await expect.poll(()=>bob.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="hybrid"]').evaluate(option=>option.disabled)).toBe(false)
       await bob.getByRole("combobox",{name:"知识库检索方式",exact:true}).selectOption("hybrid")
       await bob.getByRole("textbox",{name:"工具参数模板（JSON）",exact:true}).fill('{"query":"tool wording"}');await apply()
       await edge("工具 → 结束");await bob.getByRole("button",{name:"添加模型",exact:true}).click();await node("模型")
@@ -137,8 +137,19 @@ for(const runtime of ["workflow","autonomous"])test(`employee semantic UI (${run
       await panel.getByRole("combobox",{name:"知识库绑定 Agent",exact:true}).selectOption({label:"Bob Browser Agent"})
       await panel.getByRole("checkbox",{name:sharedName,exact:true}).check()
       await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toHaveValue("keyword")
-      await panel.getByRole("button",{name:"读取本人检索配置",exact:true}).click()
-      await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="semantic"]')).toBeEnabled()
+      // Hold the actual metadata request to prove that selection and saving are
+      // blocked until this read completes, rather than racing a disabled option.
+      const consentUrl=approved.origin+"/__pg_native/api/v2/knowledge-embedding/consent"
+      let releaseMetadata;const metadataGate=new Promise(resolve=>{releaseMetadata=resolve})
+      const holdMetadata=async route=>{if(route.request().method()==="GET")await metadataGate;await route.continue()}
+      await bob.route(consentUrl,holdMetadata)
+      const reading=bob.waitForRequest(request=>request.method()==="GET"&&request.url()===consentUrl)
+      try{
+        await panel.getByRole("button",{name:"读取本人检索配置",exact:true}).click();await reading
+        await expect(panel.getByRole("combobox",{name:"知识库检索方式",exact:true})).toBeDisabled()
+        await expect(panel.getByRole("button",{name:"保存知识库绑定",exact:true})).toBeDisabled()
+      }finally{releaseMetadata();await bob.unroute(consentUrl,holdMetadata)}
+      await expect.poll(()=>panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).locator('option[value="semantic"]').evaluate(option=>option.disabled)).toBe(false)
       await panel.getByRole("combobox",{name:"知识库检索方式",exact:true}).selectOption("semantic")
       await expect(panel.locator('form[data-knowledge-mode]')).toHaveAttribute("data-knowledge-mode","semantic")
       await expect(panel.getByText("已选择语义检索，尚未保存。",{exact:true})).toBeVisible()

@@ -11,7 +11,6 @@ export default function PgNativeKnowledgeToolMode({binding,context,hasBases,ids=
         const value=event.currentTarget.value;setError("")
         if(value==="keyword")onChange(undefined)
         else{const next=currentKnowledgeBinding(value as "semantic"|"hybrid",context)
-          if(import.meta.env.DEV)console.debug("pg-knowledge-mode-event",JSON.stringify({value,next:next?.mode,hasBases,configured,ready}))
           if(next&&hasBases)onChange(next);else setError("检索配置或知识库选择已变化，请重新读取后选择。")}
       }}>
       <option value="keyword">关键词检索（不调用向量模型）</option>

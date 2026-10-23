@@ -27,7 +27,7 @@ export function AgentKnowledgeForm({api,agent,bases,active,enabled,onSaved,onExp
   const [busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("")
   const live=useRef(false)
   useEffect(()=>{live.current=true;return()=>{live.current=false}},[])
-  const missing=ids.filter(id=>!bases.some(base=>base.id===id)),locked=!active||!enabled||busy||uncertain
+  const missing=ids.filter(id=>!bases.some(base=>base.id===id)),locked=!active||!enabled||busy||uncertain||semantic.loading
   const handleError=(cause:unknown)=>{
     if(cause instanceof PgNativePilotError&&cause.status===401){onExpired();return}
     const known=cause instanceof PgNativePilotError&&[400,403,404,405,409,429].includes(cause.status)
@@ -66,7 +66,6 @@ export function AgentKnowledgeForm({api,agent,bases,active,enabled,onSaved,onExp
     <button type="button" disabled={!active||busy||semantic.loading} onClick={()=>void semantic.load()} className="min-h-10 rounded-xl border border-slate-200 px-4 text-sm">读取本人检索配置</button>
     {semantic.error&&<p role="alert" className="text-sm text-rose-800">{semantic.error}</p>}
     <PgNativeKnowledgeToolMode binding={retrieval} context={semantic.context} hasBases={ids.length>0} ids={ids} disabled={locked} onChange={value=>{
-      if(import.meta.env.DEV)console.debug("pg-knowledge-binding-change",value?.mode??"keyword")
       setRetrieval(value);setError("");setNotice("已选择"+(value?.mode==="semantic"?"语义检索":value?.mode==="hybrid"?"混合检索":"关键词检索")+"，尚未保存。")
     }}/>
     <div className="flex flex-wrap gap-2"><button type="submit" disabled={locked||Boolean(missing.length)} className="min-h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">保存知识库绑定</button>
