@@ -22,7 +22,7 @@ export function createPgNativeWorkflowOutputSession(api:Api,runId:string,workflo
   function latest():Promise<void>{
     if(closed||!active)return Promise.resolve()
     if(latestFlight?.epoch===epoch)return latestFlight.promise
-    const ticket=++epoch;update({busy:true,historyBusy:false,error:"",history:[],historyLoaded:false,total:0,nextAfter:null})
+    const ticket=++epoch;update({...emptyWorkflowOutputView,busy:true})
     const promise=Promise.resolve().then(async()=>{
       try{const result=parseWorkflowLatestOutputs(await api.getWorkflowV2Outputs(runId),runId)
         if(!accepts(ticket))return;if(result.run.workflow_id!==workflowId)throw Error("wrong_output_workflow")
@@ -52,7 +52,7 @@ export function createPgNativeWorkflowOutputSession(api:Api,runId:string,workflo
     });historyFlight={epoch:ticket,promise};return promise
   }
   return {snapshot:()=>state,subscribe(listener:()=>void){listeners.add(listener);return ()=>{listeners.delete(listener)}},
-    setActive(value:boolean){if(closed||active===value)return;active=value;++epoch;update({busy:false,historyBusy:false})},
+    setActive(value:boolean){if(closed||active===value)return;active=value;++epoch;update({...emptyWorkflowOutputView})},
     latest,history,dispose(){closed=true;active=false;++epoch;state={...emptyWorkflowOutputView};listeners.clear()},
   }
 }

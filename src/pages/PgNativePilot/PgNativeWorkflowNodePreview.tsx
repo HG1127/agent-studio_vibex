@@ -4,7 +4,7 @@ import type {WorkflowGraph,WorkflowNode} from "@/lib/pgNativeWorkflowGraph"
 import type {WorkflowDebugDraft} from "@/lib/pgNativeWorkflowDebugSession"
 import {previewWorkflowV2Node,workflowPreviewDependencies,workflowPreviewLoops,workflowPreviewError,safeWorkflowPreviewSamples,type WorkflowPreviewSamples} from "../../../services/pg-api/src/workflow-v2-preview"
 import {workflowSecondary} from "./PgNativeWorkflowNodeForm"
-import {historicalWorkflowSamples} from "@/lib/pgNativeWorkflowOutputSamples"
+import {historicalWorkflowSamples,workflowSampleProvenance} from "@/lib/pgNativeWorkflowOutputSamples"
 const field="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
 export default function PgNativeWorkflowNodePreview({node,graph,workflowId,revision,canDebug,onPrepare,history=null}:{node:WorkflowNode;graph:WorkflowGraph;workflowId:string;revision:number;canDebug:boolean;onPrepare:(draft:WorkflowDebugDraft)=>void;history?:WorkflowLatestOutputs|null}){
   const [input,setInput]=useState(""),[outputs,setOutputs]=useState<Record<string,string>>({}),[item,setItem]=useState("样本项"),[index,setIndex]=useState(1),[source,setSource]=useState(""),[notice,setNotice]=useState("")
@@ -14,7 +14,7 @@ export default function PgNativeWorkflowNodePreview({node,graph,workflowId,revis
   const usingHistory=Boolean(historical.data&&sourceConsent===historical.data.context)
   const merged={...(usingHistory?historical.data?.outputs:{}),...outputs},effectiveOutputs=Object.fromEntries(dependencies.filter(ref=>Object.hasOwn(merged,ref.id)).map(ref=>[ref.id,merged[ref.id]]))
   const currentSource=incoming.some(edge=>edge.source===source)?source:""
-  const samples:WorkflowPreviewSamples={input:input||(usingHistory?historical.data?.input??"":""),outputs:effectiveOutputs,...(loops.length?{loop:{item,index}}:{}),...(currentSource?{source_node_id:currentSource}:{})}
+  const samples:WorkflowPreviewSamples={input:input||(usingHistory?historical.data?.input??"":""),outputs:effectiveOutputs,provenance:workflowSampleProvenance(usingHistory?historical.data:null,input,outputs),...(loops.length?{loop:{item,index}}:{}),...(currentSource?{source_node_id:currentSource}:{})}
   let result:ReturnType<typeof previewWorkflowV2Node>|undefined,error=""
   try{result=previewWorkflowV2Node(graph,node.id,samples)}catch(cause){error=workflowPreviewError(cause)}
   const ready=Boolean(node.type==="model"&&node.data.model_binding&&canDebug&&workflowId&&revision&&result&&!result.missing.length&&result.input.trim()&&result.input.length<=8000)

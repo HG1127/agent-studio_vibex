@@ -1,6 +1,13 @@
 import type {WorkflowGraph} from "./pgNativeWorkflowGraph.ts"
 import {parseWorkflowLatestOutputs} from "../../services/pg-api/src/workflow-v2-output-contract.ts"
 import {workflowPreviewDependencies} from "../../services/pg-api/src/workflow-v2-preview.ts"
+import type {WorkflowSampleProvenance} from "../../services/pg-api/src/workflow-sample-provenance.ts"
+export function workflowSampleProvenance(source:ReturnType<typeof historicalWorkflowSamples>|null,input:string,overrides:Record<string,string>):WorkflowSampleProvenance{
+  const nodes=source?Object.keys(source.outputs).filter(id=>!Object.hasOwn(overrides,id)).sort():[],automaticInput=Boolean(source&&!input)
+  if(!source||!automaticInput&&!nodes.length)return {kind:"manual"}
+  const run=source.source.run
+  return {kind:"history",run_id:run.run_id,workflow_id:run.workflow_id,workflow_revision:run.workflow_revision,output_version:run.output_version,input:automaticInput,nodes}
+}
 export function historicalWorkflowSamples(raw:unknown,workflowId:string,revision:number,graph:WorkflowGraph,nodeId:string){
   const source=parseWorkflowLatestOutputs(raw)
   if(source.run.workflow_id!==workflowId)throw Error("output_source_workflow_changed")

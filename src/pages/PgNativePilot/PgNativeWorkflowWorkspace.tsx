@@ -28,6 +28,12 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
   const [changing,setChanging]=useState<Change|null>(null)
   const [selectedIds,setSelectedIds]=useState<string[]>([]),[clipboardCount,setClipboardCount]=useState(0),[debugDraft,setDebugDraft]=useState<WorkflowDebugDraft|null>(null)
   const [runSamples,setRunSamples]=useState<WorkflowLatestOutputs|null>(null)
+  useEffect(()=>{if(!active){setRunSamples(null);setDebugDraft(null)}},[active])
+  const receiveSamples=useCallback((source:WorkflowLatestOutputs|null)=>{
+    setRunSamples(source)
+    setDebugDraft(current=>current?.samples.provenance?.kind==="history"&&
+      (!source||source.run.run_id!==current.samples.provenance.run_id||source.run.output_version!==current.samples.provenance.output_version)?null:current)
+  },[])
   const clipboard=useRef<PgWorkflowFragment|null>(null),importRead=useRef(0),ui=useRef({active,writeEnabled,formDirty})
   ui.current={active,writeEnabled,formDirty}
   const editor=useRef<Controller|null>(null)
@@ -142,7 +148,7 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
         onCopy={copySelection} onPaste={()=>paste()} onDuplicate={()=>paste(selectedPgWorkflowFragment(graph,selection))} onDelete={deleteSelection}
         onSelectAll={()=>{setSelectedIds(graph.nodes.map(node=>node.id));setNodeId("");setEdgeId("")}} onClear={()=>{setSelectedIds([]);setNodeId("");setEdgeId("")}}
         onAlign={mode=>alter(current=>alignPgWorkflowNodes(current,selection,mode))} onTemplate={kind=>{const preset=pgWorkflowTemplate(kind);void change({kind:"import",...preset})}} onError={setError}/>
-      {draft.id&&<PgNativeWorkflowSampleSource key={draft.id} api={api} workflowId={draft.id} active={active} onExpired={onExpired} onSnapshot={setRunSamples}/>}
+      {draft.id&&<PgNativeWorkflowSampleSource key={draft.id} api={api} workflowId={draft.id} active={active} onExpired={onExpired} onSnapshot={receiveSamples}/>}
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3" aria-label="添加工作流节点">
         {(Object.keys(workflowNodeNames) as WorkflowNodeType[]).map(type=><button key={type} type="button" className={workflowSecondary} disabled={!editable||formDirty||type==="start"}
           onClick={()=>alter(current=>addPgWorkflowNode(current,type,edge?.id))}>添加{workflowNodeNames[type]}</button>)}
@@ -189,6 +195,6 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
       {selected&&selected.type!=="start"&&<button type="button" className={workflowSecondary} disabled={!editable||formDirty} onClick={()=>{alter(current=>removePgWorkflowNode(current,selected.id));setNodeId("")}}>删除所选节点</button>}
       {!issues.length&&!!runIssues.length&&<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">结构可以保存；运行前还需补齐：{runIssues.join("；")}</p>}
     </>}
-    <PgNativeWorkflowModelDebugPanel api={api} draft={debugDraft} active={active} enabled={executionEnabled} onExpired={onExpired}/>
+      <PgNativeWorkflowModelDebugPanel api={api} draft={debugDraft} active={active} enabled={executionEnabled} onExpired={onExpired} source={runSamples}/>
   </section>
 }

@@ -37,7 +37,7 @@ import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {KnowledgeBaseRepository} from "./knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
-import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "./knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 import {createHandler} from "./http.ts"
 import {NativeAuthRepository} from "./native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "./native-auth-http.mjs"
@@ -357,6 +357,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       await verifySmitheryPrivileges(business,adapter(brokerPool))
     }
     await verifyKnowledgeAgentSchema(business)
+    await verifyWorkflowSampleLineageSchema(business)
     if(capabilities.knowledgeSharingUat===true||capabilities.workflowV2ExecutionUat===true||capabilities.autonomousAgentUat===true)await verifyKnowledgeRuntimeSchema(business,true)
     if(capabilities.knowledgeEmbeddingSettingsUat===true)await verifyKnowledgeEmbeddingSchema(business)
     if(capabilities.knowledgeEmbeddingConsentUat===true)await verifyKnowledgeEmbeddingConsentSchema(business)

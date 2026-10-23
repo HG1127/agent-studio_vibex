@@ -70,7 +70,7 @@ import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch} from "../src/wo
 import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "../src/knowledge-embedding-privileges.ts"
-import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "../src/knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "../src/knowledge-content-privileges.ts"
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "../src/knowledge-scope-policy.ts"
 import {requireKnowledgeScope} from "../src/knowledge-runtime-scope.ts"
 import {withActor} from "../src/repository.ts"
@@ -247,6 +247,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_040_approved_semantic_tools.sql"))
     await admin.query(upgrade("pg_v9_041_keyword_observations.sql"))
     await admin.query(upgrade("pg_v9_042_agent_knowledge_observations.sql"))
+    await admin.query(upgrade("pg_v9_043_workflow_sample_lineage.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -260,6 +261,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const apiPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool,true)
     await verifyKnowledgeAgentSchema(apiPool)
+    await verifyWorkflowSampleLineageSchema(apiPool)
     await verifyKnowledgeEmbeddingSchema(apiPool)
     await verifyKnowledgeEmbeddingConsentSchema(apiPool)
     await verifyKnowledgeIndexSchema(apiPool)
@@ -275,6 +277,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     for(const pool of Object.values(byLogin)){
       await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_keyword_observations LIMIT 1"),e=>e.code==="42501")
       await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_agent_observations LIMIT 1"),e=>e.code==="42501")
+      await assert.rejects(pool.query("SELECT run_id FROM agentstudio.workflow_sample_lineage LIMIT 1"),e=>e.code==="42501")
     }
     for(const kind of ["worker","broker"])await verifyKnowledgeQuerySchema(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
@@ -560,7 +563,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const queryBroker=new KnowledgeQueryBroker(queryBrokerPool,brokerPool,key,async material=>{
       queryCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.deepEqual(material.input,[queryRequest.query]);return [[1,0]]
     },{approvedForIsolatedUat:true})
-    let semanticRunId,keywordRunId
+    let semanticRunId,keywordRunId,lineageRunId
     await withDisposableBoundModelTls(claim=>queryBroker.dispatch(claim),async config=>{
       const worker=new KnowledgeQueryWorker(queryWorkerPool,createKnowledgeQueryPrivateClient(config),{approvedForIsolatedUat:true})
       assert.equal((await worker.tick()).status,"retrieved");assert.equal((await worker.tick()).status,"idle")
@@ -600,10 +603,12 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         {id:"model",type:"model",data:{title:"Answer",model_binding:{connection_id:readerModel.id,connection_revision:readerModel.revision,model_id:"synthetic-chat"},prompt:"Use approved evidence: {{Search.output}}"},position:{x:200,y:0}},
         {id:"end",type:"end",data:{title:"End",output_template:"{{Answer.output}}"},position:{x:300,y:0}}],edges:[{id:"a",source:"start",target:"search"},{id:"b",source:"search",target:"model"},{id:"c",source:"model",target:"end"}]})
       const queued=await api.submitWorkflowV2Run(flow.id,flow.revision,"Private task must not reach embedding provider","ci-real-semantic-"+flow.id)
-      semanticRunId=queued.run.id;let modelCalls=0
+      semanticRunId=queued.run.id;let modelCalls=0,lineageCalls=0
       const model=new WorkflowV2ModelDispatch(apiPool,key,async(material,prompt)=>{
         modelCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.match(prompt,/cedar/);return "approved-semantic-result"
-      },brokerPool)
+      },brokerPool,{nodeDebugExecutor:async(material,prompt)=>{
+        lineageCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.match(prompt,/cedar/);return "Synthetic inherited PG18 output"
+      }})
       const tool=new WorkflowV2ToolDispatch(apiPool,key,{},brokerPool,{allowKnowledgeExecution:true})
       const dispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),model),tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),tool)}
       const controller=new AbortController(),loop=(async()=>{while(!controller.signal.aborted){await worker.tick(controller.signal);await new Promise(resolve=>setTimeout(resolve,20))}})()
@@ -641,6 +646,20 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         assert.equal(keywordProof.length,1);assert.equal(keywordProof[0].reader_user_id,share.item.recipient_id);assert.equal(keywordProof[0].result_refs.length,1)
         assert.doesNotMatch(JSON.stringify(keywordProof),/cedar|Synthetic free keyword task|lease_token|ciphertext/)
         assert.equal((await api.getWorkflowV2Run(keywordRunId)).knowledge_outputs_available,true)
+        const original=await api.getWorkflowV2Outputs(keywordRunId)
+        const inherited=await api.submitWorkflowNodeDebug(keywordFlow.id,{node_id:"model",expected_revision:keywordFlow.revision,idempotency_key:"ci-historical-node-debug",
+          samples:{input:original.run.instruction,outputs:{search:original.nodes.find(n=>n.node_id==="search").output_text},provenance:{kind:"history",run_id:keywordRunId,
+            workflow_id:keywordFlow.id,workflow_revision:original.run.workflow_revision,output_version:original.run.output_version,input:true,nodes:["search"]}}})
+        lineageRunId=inherited.run.id
+        for(let i=0;i<6;i++){
+          await runtimeWorker.tick();const view=await api.getWorkflowV2Run(lineageRunId)
+          if(view.run.status==="awaiting_approval"){const p=view.pending_effect;await api.decideWorkflowV2Node(lineageRunId,"approved",p.step_key,p.input_sha256)}
+          else if(view.run.status==="succeeded")break
+        }
+        assert.equal((await api.getWorkflowV2Run(lineageRunId)).run.result_text,"Synthetic inherited PG18 output");assert.equal(lineageCalls,1)
+        const lineage=(await admin.query("SELECT * FROM agentstudio.workflow_sample_lineage WHERE run_id=$1",[lineageRunId])).rows[0]
+        assert.equal(lineage.reader_user_id,share.item.recipient_id);assert.equal(lineage.source_run_id,keywordRunId)
+        assert.doesNotMatch(JSON.stringify(lineage),/cedar|Synthetic free keyword task|Synthetic inherited PG18 output|lease_token|ciphertext/)
       },{handlerFactory:wire=>{
         const m=createWorkflowV2ModelInternalHandler({...wire,dispatch:dispatch.model}),t=createWorkflowV2ToolInternalHandler({...wire,dispatch:dispatch.tool})
         return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?t:m)(req,res)
@@ -665,6 +684,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const singleHidden=await api.getRun(singleShared.run.id)
     assert.equal(singleHidden.run.knowledge_outputs_available,false);assert.equal(singleHidden.run.result_text,"")
     assert.ok(singleHidden.steps.every(step=>Object.keys(step.metadata).length===0))
+    const lineageHidden=await api.getWorkflowV2Run(lineageRunId)
+    assert.equal(lineageHidden.knowledge_outputs_available,false);assert.equal(lineageHidden.run.instruction,"");assert.equal(lineageHidden.run.result_text,"");assert.equal(lineageHidden.pending_effect,null)
+    await assert.rejects(api.getWorkflowV2Outputs(lineageRunId),e=>e.status===409)
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,semanticRunId)).run.result_text,"")
     assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,keywordRunId)).knowledge_outputs_available,false)
@@ -725,7 +747,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.deepEqual((await admin.query("SELECT status FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY step_key",[uncertain.run.id])).rows,
         [{status:"unknown"},{status:"unknown"}])
       const debug=createPgNativeWorkflowDebugSession(api,{key:()=>"pg18-native-node-debug-0001"})
-      try{debug.setActive(true);await debug.refresh();await debug.submit({workflowId:workflow.id,revision:2,nodeId:"model",samples:{input:"Synthetic {{literal}} node test",outputs:{}}})
+      try{debug.setActive(true);await debug.refresh();await debug.submit({workflowId:workflow.id,revision:2,nodeId:"model",samples:{input:"Synthetic {{literal}} node test",outputs:{},provenance:{kind:"manual"}}})
         assert.equal(debug.snapshot().error,"");const runId=debug.snapshot().detail.run.id
         const nodeWorker=new WorkflowV2Worker(workerPool,"ci-node-debug",{executor:workflowV2ModelEffectExecutor(config)})
         assert.equal((await nodeWorker.tick()).status,"awaiting_approval");await debug.refresh()

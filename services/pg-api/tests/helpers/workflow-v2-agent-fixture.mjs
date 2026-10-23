@@ -58,9 +58,9 @@ export async function agentFixture({autonomous=false,mcp=false,smithery=false,sh
     const pending=(await runs.get(alice,id)).pending_effect
     return runs.decide(alice,id,{decision,step_key:pending.step_key,input_sha256:pending.input_sha256})
   }
-  async function privateTls(planning,run,{allowAgent=true,toolExecutor={},businessPool=pool,brokerPool=pool,workerPool=pool,autonomousExecution=autonomous,allowKnowledge=false,directModel=async()=>{throw Error("direct model fallback forbidden")}}={}){
+  async function privateTls(planning,run,{allowAgent=true,toolExecutor={},businessPool=pool,brokerPool=pool,workerPool=pool,autonomousExecution=autonomous,allowKnowledge=false,nodeDebugExecutor,directModel=async()=>{throw Error("direct model fallback forbidden")}}={}){
     const model=new WorkflowV2ModelDispatch(businessPool,key,directModel,brokerPool,
-      {allowAgentExecution:!autonomousExecution&&allowAgent,allowAutonomousExecution:autonomousExecution&&allowAgent,agentExecutor:planning})
+      {allowAgentExecution:!autonomousExecution&&allowAgent,allowAutonomousExecution:autonomousExecution&&allowAgent,agentExecutor:planning,nodeDebugExecutor})
     const tool=new WorkflowV2ToolDispatch(businessPool,key,toolExecutor,brokerPool,{allowAgentExecution:!autonomousExecution&&allowAgent,allowAutonomousExecution:autonomousExecution&&allowAgent,allowKnowledgeExecution:allowKnowledge})
     const modelIdentity=new WorkflowV2ModelLeaseIdentity(pool),toolIdentity=new WorkflowV2ToolLeaseIdentity(pool)
     const dispatch={model:verifiedWorkflowV2ModelDispatch(modelIdentity,model),tool:verifiedWorkflowV2ToolDispatch(toolIdentity,tool)}

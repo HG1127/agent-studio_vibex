@@ -2,7 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {createPgNativePilotApi,PgNativePilotError} from "../src/lib/pgNativePilotApi.ts"
 import {createPgNativeWorkflowOutputSession} from "../src/lib/pgNativeWorkflowOutputSession.ts"
-import {historicalWorkflowSamples} from "../src/lib/pgNativeWorkflowOutputSamples.ts"
+import {historicalWorkflowSamples,workflowSampleProvenance} from "../src/lib/pgNativeWorkflowOutputSamples.ts"
 import {parseWorkflowLatestOutputs,parseWorkflowOutputHistory} from "../services/pg-api/src/workflow-v2-output-contract.ts"
 const run="11111111-1111-4111-8111-111111111111",flow="22222222-2222-4222-8222-222222222222",other="33333333-3333-4333-8333-333333333333"
 const header=()=>({run_id:run,workflow_id:flow,workflow_revision:1,graph_sha256:"a".repeat(64),output_version:"b".repeat(64),status:"succeeded",instruction:"Historical task",updated_at:"2026-10-23T00:00:00.000Z",max_output_chars:4000})
@@ -71,4 +71,28 @@ test("public output DTO refuses arbitrary metadata, invalid loop paths, long out
   assert.throws(()=>parseWorkflowOutputHistory({...history(),items:[{...history().items[0],node_id:"different"}]}))
   assert.throws(()=>parseWorkflowOutputHistory({...history(),next_after:"wf2_00003_model"}))
   assert.throws(()=>parseWorkflowLatestOutputs({...source,run:{...header(),run_id:other}},run))
+})
+
+test("automatic provenance tracks only inherited fields and manual overrides remove source dependencies",()=>{
+  const source=historicalWorkflowSamples(latest(),flow,1,graph(),"model")
+  const origin=workflowSampleProvenance(source,"",{})
+  assert.deepEqual(origin,{kind:"history",run_id:run,workflow_id:flow,workflow_revision:1,output_version:"b".repeat(64),input:true,nodes:["tool"]})
+  assert.deepEqual(workflowSampleProvenance(source,"Manual instruction",{tool:"Manual output"}),{kind:"manual"})
+  assert.deepEqual(workflowSampleProvenance(source,"Manual instruction",{}),{...origin,input:false})
+  assert.deepEqual(workflowSampleProvenance(source,"",{tool:""}),{...origin,nodes:[]})
+  assert.deepEqual(workflowSampleProvenance(null,"",{}),{kind:"manual"})
+})
+
+test("hidden and refreshing output views clear every cached sample before a fresh response and reject late responses",async()=>{
+  let pending=null
+  const api={getWorkflowV2Outputs:async()=>pending?pending.promise:latest(),getWorkflowV2OutputHistory:async()=>history()}
+  const session=createPgNativeWorkflowOutputSession(api,run,flow,()=>{});session.setActive(true);await session.latest();await session.history()
+  assert.ok(session.snapshot().latest);assert.ok(session.snapshot().history.length)
+  pending=defer();const read=session.latest()
+  assert.equal(session.snapshot().latest,null);assert.deepEqual(session.snapshot().history,[])
+  session.setActive(false);pending.resolve(latest());await read
+  assert.equal(session.snapshot().latest,null);assert.deepEqual(session.snapshot().history,[])
+  session.setActive(true);assert.equal(session.snapshot().latest,null)
+  pending=null;await session.latest();assert.ok(session.snapshot().latest)
+  session.setActive(false);assert.equal(session.snapshot().latest,null);session.dispose()
 })

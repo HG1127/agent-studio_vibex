@@ -1,12 +1,13 @@
 // Pure simulation and server-side model-test input preparation. No I/O or hashes.
 import {parseWorkflowNodeDataV2,type WorkflowGraph} from "./workflow-graph-v2.ts"
 import {renderWorkflowTemplate,workflowCondition,workflowLoopItems,WorkflowValueError} from "./workflow-v2-values.ts"
-export type WorkflowPreviewSamples={input:string;outputs:Record<string,string>;loop?:{item:string;index:number};source_node_id?:string}
+import {safeWorkflowSampleProvenance,type WorkflowSampleProvenance} from "./workflow-sample-provenance.ts"
+export type WorkflowPreviewSamples={input:string;outputs:Record<string,string>;loop?:{item:string;index:number};source_node_id?:string;provenance?:WorkflowSampleProvenance}
 function invalid():never{throw new WorkflowValueError("invalid_workflow_preview_samples")}
 const object=(value:unknown):Record<string,unknown>=>{if(!value||typeof value!=="object"||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))invalid();return value as Record<string,unknown>}
 export function safeWorkflowPreviewSamples(raw:unknown,graph:WorkflowGraph|undefined,nodeId:string):WorkflowPreviewSamples{
   const value=object(raw)
-  if(Object.keys(value).some(key=>!["input","outputs","loop","source_node_id"].includes(key))||typeof value.input!=="string"||value.input.length>1200||value.input.includes("\0"))invalid()
+  if(Object.keys(value).some(key=>!["input","outputs","loop","source_node_id","provenance"].includes(key))||typeof value.input!=="string"||value.input.length>1200||value.input.includes("\0"))invalid()
   const outputs=object(value.outputs),safe:Record<string,string>=Object.create(null),ids=graph?new Set(graph.nodes.filter(node=>node.type!=="start"&&node.id!==nodeId).map(node=>node.id)):undefined
   if(Object.keys(outputs).length>40)invalid()
   for(const [id,text] of Object.entries(outputs)){if(!/^[A-Za-z0-9_-]{1,80}$/.test(id)||id===nodeId||ids&&!ids.has(id)||typeof text!=="string"||text.length>4000||text.includes("\0"))invalid();safe[id]=text}
@@ -17,6 +18,10 @@ export function safeWorkflowPreviewSamples(raw:unknown,graph:WorkflowGraph|undef
   }
   if(Object.hasOwn(value,"source_node_id")&&(typeof value.source_node_id!=="string"||!/^[A-Za-z0-9_-]{1,80}$/.test(value.source_node_id)||graph&&!graph.edges.some(edge=>edge.target===nodeId&&edge.source===value.source_node_id)))invalid()
   const result:WorkflowPreviewSamples={input:value.input,outputs:safe,...(loop?{loop}:{}),...(value.source_node_id?{source_node_id:value.source_node_id as string}:{})}
+  if(Object.hasOwn(value,"provenance")){
+    try{result.provenance=safeWorkflowSampleProvenance(value.provenance)}catch{invalid()}
+    if(result.provenance.kind==="history"&&result.provenance.nodes.some(id=>!Object.hasOwn(safe,id)))invalid()
+  }
   if(new TextEncoder().encode(JSON.stringify(result)).length>65536)invalid()
   return result
 }

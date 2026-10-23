@@ -33,7 +33,7 @@ import {WorkflowSafeRunRepository} from "../../src/workflow-safe-run-repository.
 import {KnowledgeBaseRepository} from "../../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../../src/knowledge-access-repository.ts"
 import {KnowledgeContentRepository} from "../../src/knowledge-content-repository.ts"
-import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "../../src/knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "../../src/knowledge-content-privileges.ts"
 import {createIsolatedBoundModelInternalHandler} from "../../src/bound-model-internal-handler.ts"
 import {boundModelRoute} from "../../src/bound-model-contract.ts"
 import {ModelConnectionRepository} from "../../src/model-connection-repository.ts"
@@ -103,11 +103,12 @@ try{
     .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   for(const migration of ["pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql","pg_v9_028_autonomous_agent_identity.sql","pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql","pg_v9_031_smithery_managed.sql","pg_v9_032_knowledge_access.sql","pg_v9_033_knowledge_content.sql","pg_v9_034_knowledge_runtime.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql","pg_v9_039_knowledge_execution_source.sql","pg_v9_040_approved_semantic_tools.sql","pg_v9_041_keyword_observations.sql","pg_v9_042_agent_knowledge_observations.sql"])
+  for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql","pg_v9_039_knowledge_execution_source.sql","pg_v9_040_approved_semantic_tools.sql","pg_v9_041_keyword_observations.sql","pg_v9_042_agent_knowledge_observations.sql","pg_v9_043_workflow_sample_lineage.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
+  await verifyWorkflowSampleLineageSchema(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
   const admin=await auth.login("alice@example.com","SyntheticAlicePassword#2026")
   await auth.provisionEmployee(admin.token,{email:"bob@example.com",password:"SyntheticBobPassword#2026",display_name:"Browser Bob"})
@@ -240,6 +241,11 @@ try{
               queryJobs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.knowledge_query_jobs")).rows[0].n}:{} )}}
           finally{c.release()}
         }else if(req.url==="/__fixture/workflow"&&req.method==="POST"&&workflow)output=await tickAutonomous()
+        else if(req.url==="/__fixture/invalidate-sample-source"&&req.method==="POST"&&workflow){
+          const changed=await db.query("UPDATE agentstudio.runs SET instruction='Synthetic source revision changed' WHERE id IN "+
+            "(SELECT source_run_id FROM agentstudio.workflow_sample_lineage WHERE source_run_id IS NOT NULL) RETURNING id")
+          output={changed:changed.rows.length}
+        }
         else if(req.url==="/__fixture/index"&&req.method==="POST"&&semantic)output=await indexWorker.tick()
         else if(req.url==="/__fixture/query"&&req.method==="POST"&&semantic)output=await queryWorker.tick()
         else if(req.url==="/__fixture/drop-next-semantic"&&req.method==="POST"&&semantic){state.semanticDrop=true;output={ok:true}}

@@ -110,7 +110,9 @@ hosted checks to pass; [draft PR 26](https://github.com/HG1127/agent-studio_vibe
 records the current exact-commit evidence. Local checks alone cannot establish
 hosted acceptance or production readiness.
 
-Automatic historical debug/cross-run sample lineage, remaining functional parity, real
+Historical debug/cross-run sample lineage is implemented in the subsequent
+[SQL043 increment](PG18_WORKFLOW_SAMPLE_LINEAGE.md), with separate exact-commit
+acceptance. Remaining functional parity, real
 employee UAT, target network/access, sustained OS Worker operation and actual
 backup/restore/rollback acceptance remain required. This increment does not prove
 those broader migration conditions.

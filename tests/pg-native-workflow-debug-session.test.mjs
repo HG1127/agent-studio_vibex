@@ -38,3 +38,11 @@ test("sample fingerprints are stable across JSON key order and differ when any f
   assert.equal(await workflowDebugFingerprint(first),await workflowDebugFingerprint(second))
   assert.notEqual(await workflowDebugFingerprint(first),await workflowDebugFingerprint({...second,samples:{...second.samples,input:"different"}}))
 })
+
+test("a replay with unavailable historical samples confirms the original fingerprint while keeping its instruction redacted",async()=>{
+  const f=fixture(),original=draft(),expected=await workflowDebugFingerprint(original)
+  f.detail={...f.detail,knowledge_outputs_available:false,replayed:true,run:{...f.detail.run,instruction:"",checkpoint:{...f.detail.run.checkpoint,node_debug:{node_id:"model",request_sha256:expected}}}}
+  const session=createPgNativeWorkflowDebugSession(f.api,{key:()=>"synthetic-debug-replay"});session.setActive(true);await session.refresh();await session.submit(original)
+  assert.equal(session.snapshot().pendingSubmit,null);assert.equal(session.snapshot().detail.run.instruction,"");assert.equal(session.snapshot().detail.knowledge_outputs_available,false)
+  session.dispose()
+})

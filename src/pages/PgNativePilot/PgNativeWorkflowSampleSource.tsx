@@ -9,9 +9,9 @@ export default function PgNativeWorkflowSampleSource({api,workflowId,active,onEx
   snapshot.current=onSnapshot
   useEffect(()=>{mounted.current=true;++reads.current;setRuns([]);setSelected("");setBusy(false);setError("");snapshot.current(null)
     return ()=>{mounted.current=false;++reads.current}},[api,workflowId])
-  useEffect(()=>{++reads.current;if(!active)setBusy(false)},[active])
+  useEffect(()=>{++reads.current;if(!active){setBusy(false);setRuns([]);setSelected("");snapshot.current(null)}},[active])
   const load=async()=>{
-    if(!active||busy)return;const ticket=++reads.current;setBusy(true);setError("")
+    if(!active||busy)return;const ticket=++reads.current;setBusy(true);setError("");setRuns([]);setSelected("");onSnapshot(null)
     try{const rows=await api.listWorkflowV2Runs(workflowId)
       if(!mounted.current||!visible.current||ticket!==reads.current)return
       if(!Array.isArray(rows))throw Error("invalid_output_source_history")

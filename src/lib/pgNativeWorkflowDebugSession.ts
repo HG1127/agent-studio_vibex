@@ -30,6 +30,7 @@ export function createPgNativeWorkflowDebugSession(api:ReturnType<typeof createP
         ...(typeof draft.nodeTitle==="string"?{nodeTitle:draft.nodeTitle.slice(0,120)}:{}),...(typeof draft.workflowName==="string"?{workflowName:draft.workflowName.slice(0,120)}:{})}
     },
     acceptDetail:result=>result.execution_mode==="workflow_native_v2"&&result.run.kind==="workflow"&&uuid.test(result.run.workflow_id)&&typeof debugNode(result)==="string",
-    acceptSubmit:(result,body)=>result.run.workflow_id===body.workflowId&&result.run.checkpoint.workflow_revision===body.revision&&result.run.instruction===body.samples.input&&debugNode(result)===body.nodeId,
+    acceptSubmit:(result,body)=>result.run.workflow_id===body.workflowId&&result.run.checkpoint.workflow_revision===body.revision&&
+      (result.run.instruction===body.samples.input||result.knowledge_outputs_available===false&&result.run.instruction==="")&&debugNode(result)===body.nodeId,
   })
 }

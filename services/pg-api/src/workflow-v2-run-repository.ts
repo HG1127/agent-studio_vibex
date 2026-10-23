@@ -15,6 +15,7 @@ import {createHash} from "node:crypto"
 import {safeWorkflowNodeDebugRequest,workflowNodeDebugGraph,workflowNodeDebugFingerprintData,type WorkflowNodeDebug} from "./workflow-v2-node-debug.ts"
 import {workflowV2OutputProjection} from "./workflow-v2-output-projection.ts"
 import {validWorkflowOutputCursor} from "./workflow-v2-output-contract.ts"
+import {prepareWorkflowSampleLineage,registerWorkflowSampleLineage} from "./workflow-sample-lineage.ts"
 export type WorkflowV2StoredState={
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
   graph:WorkflowGraph;machine:WorkflowV2Checkpoint
@@ -123,7 +124,7 @@ export class WorkflowV2RunRepository{
       "SELECT step_key,status FROM agentstudio.approvals WHERE run_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY requested_at DESC LIMIT 201",[row.id,owner])
     // Do not send graph snapshots, replay journals or private node bodies with
     // run history. The current pending request is shown only for explicit review.
-    return {run:{...row,result_text:observationsCurrent?row.result_text:"",step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
+    return {run:{...row,result_text:observationsCurrent?row.result_text:"",instruction:!observationsCurrent&&state.node_debug?"":row.instruction,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
       [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps}:{}),
       ...(state.node_debug?{node_debug:{node_id:state.node_debug.node_id,request_sha256:createHash("sha256").update(workflowNodeDebugFingerprintData(row.workflow_id!,state.workflow_revision!,state.node_debug)).digest("hex")}}:{}),
       graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,
@@ -191,10 +192,12 @@ export class WorkflowV2RunRepository{
       if(Number(flow.revision)!==request.expected_revision)throw new HttpError(409,"workflow_revision_changed")
       let graph:WorkflowGraph
       try{graph=workflowNodeDebugGraph(flow.graph,node_debug)}catch{throw new HttpError(400,"workflow_node_debug_input_not_ready")}
+      const sourceSeal=await prepareWorkflowSampleLineage(db,owner,id,request.node_id,safeWorkflowGraph(flow.graph),request.samples)
       await verifyWorkflowGraphResources(db,owner,graph)
       const machine=createWorkflowV2Checkpoint(graph,request.samples.input),checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",workflow_revision:request.expected_revision,graph,machine,node_debug}
       const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs (owner_user_id,kind,workflow_id,status,instruction,checkpoint) "+
         "VALUES($1::uuid,'workflow',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,[owner,id,request.samples.input,JSON.stringify(checkpoint)])).rows[0]!
+      await registerWorkflowSampleLineage(db,run.id,sourceSeal)
       await db.query("INSERT INTO agentstudio.jobs(owner_user_id,run_id,kind,dedupe_key,payload,max_attempts) VALUES($1::uuid,$2::uuid,'workflow_tick',$3::text,$4::jsonb,30)",
         [owner,run.id,key,JSON.stringify({phase:"workflow_native_v2",workflow_id:id,workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})])
       await auditWorkflowV2(db,owner,run.id,"workflow.v2_node_debug_submit",{node_id:request.node_id,workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})
@@ -217,7 +220,7 @@ export class WorkflowV2RunRepository{
       "step_count,last_error_code,created_at,updated_at,finished_at,checkpoint->>'stage' AS stage "+(this.root.kind==="workflow"?",checkpoint->'node_debug'->>'node_id' AS debug_node_id ":"")+
       "FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND kind='"+this.root.kind+"' "+
       "AND checkpoint->>'execution_mode'='"+this.root.mode+"'"+(workflowId!==undefined?" AND workflow_id=$3::uuid":"")+" ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit,...(workflowId!==undefined?[workflowId]:[])])).rows
-      for(const row of rows)if(!await currentKnowledgeObservations(db,row.id))row.result_preview=""
+      for(const row of rows)if(!await currentKnowledgeObservations(db,row.id)){row.result_preview="";if(row.debug_node_id)row.instruction_preview=""}
       return rows
     })
   }

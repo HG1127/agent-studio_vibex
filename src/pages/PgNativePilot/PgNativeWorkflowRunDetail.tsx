@@ -52,7 +52,8 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
         <button type="button" className={workflowSecondary} disabled={!enabled||locked} onClick={()=>onDecision("rejected",false)}>拒绝工作流当前步骤</button></div>
     </section>}
     {!!loops.length&&<div className="space-y-1 text-sm text-slate-600" aria-label="循环进度">{loops.map((loop,index)=><p key={loop.id}>循环 {index+1}：第 {Number(loop.round)||0} / {Number(loop.total)||0} 轮</p>)}</div>}
-    {detail.knowledge_outputs_available===false&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">知识库来源暂不可用，已隐藏相关输出。请核对授权和配置。</p>}
+    {detail.knowledge_outputs_available===false&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{detail.run.checkpoint.node_debug?
+      "运行来源或访问权限已经变化，已隐藏相关输入和输出。请重新读取来源后准备任务。":"知识库来源暂不可用，已隐藏相关输出。请核对授权和配置。"}</p>}
     <WorkflowSteps key={"steps:"+detail.run.id+":"+detail.run.updated_at+":"+(detail.knowledge_outputs_available!==false)} api={api} runId={detail.run.id} initial={detail.steps} total={detail.run.step_count} active={active} onExpired={onExpired}/>
     {detail.knowledge_outputs_available!==false&&detail.run.result_text&&<section aria-label="Workflow 执行结果"><h4 className="mb-2 text-sm font-semibold">执行结果</h4>
       <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 font-sans text-sm leading-6">{detail.run.result_text}</pre></section>}

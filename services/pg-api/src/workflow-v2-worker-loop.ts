@@ -1,5 +1,5 @@
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
-import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 import {scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
 import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
@@ -58,6 +58,7 @@ export function runV2WorkerCli(autonomous=false){
     let stop=false;process.once("SIGTERM",()=>{stop=true});process.once("SIGINT",()=>{stop=true})
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
+      await verifyWorkflowSampleLineageSchema(adapter)
       if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
       if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
       const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,

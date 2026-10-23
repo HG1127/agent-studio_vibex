@@ -1,4 +1,5 @@
 import type {SqlClient} from "./contracts.ts"
+import {verifyKnowledgeLineageCredentials} from "./knowledge-lineage-audit.ts"
 const helper="agentstudio_knowledge_agent",table="knowledge_agent_observations"
 function refuse():never{throw Error("unsafe_knowledge_agent_privileges")}
 // Catalog only: identity and credential principals cannot read migration rows.
@@ -10,6 +11,7 @@ export async function knowledgeAgentInstalled(db:SqlClient):Promise<boolean>{
   return row.installed
 }
 export async function verifyKnowledgeAgentCredentials(db:SqlClient):Promise<boolean>{
+  await verifyKnowledgeLineageCredentials(db)
   if(!await knowledgeAgentInstalled(db))return false
   const role=(await db.query<{safe:boolean}>("SELECT NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication "+
     "AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS safe FROM pg_catalog.pg_roles r WHERE rolname=$1",[helper])).rows[0]

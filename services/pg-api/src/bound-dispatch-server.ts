@@ -3,7 +3,7 @@ import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {scopedKnowledgePool,scopedEmbeddingConsentPool,scopedEmbeddingSettingsPool} from "./knowledge-scope-policy.ts"
 import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
 import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
-import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema} from "./knowledge-content-privileges.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 // Separate, private PG18 Broker. Never mount this handler on Native/8090.
 // Import and --plan perform no credential I/O, database access or listening.
 import {createServer} from "node:https"
@@ -141,6 +141,7 @@ export async function startBoundDispatchServer(
         await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
     if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(business,adapter(broker));await verifyMcpExecutionSchema(business)}
     await verifyKnowledgeAgentSchema(business)
+    await verifyWorkflowSampleLineageSchema(business)
     if(cfg.knowledgeSharingEnabled||cfg.workflowModelEnabled||cfg.workflowToolsEnabled)await verifyKnowledgeRuntimeSchema(business,true)
     if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
     if(mode==="preflight"){
