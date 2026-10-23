@@ -10,6 +10,7 @@ import {exactProviderEndpoint,resolveSafeProviderAddress,
   type ProviderResolver} from "./model-connection-probe.ts"
 import type {ModelProvider as ProviderKind} from "./model-connection-repository.ts"
 import type {ModelInput} from "./model-provider.ts"
+import {safeModelKnowledgeEvidence} from "./knowledge-evidence.ts"
 import {selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
 import {selectWorkflowV2ToolExecution} from "./workflow-v2-tool-contract.ts"
 import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
@@ -41,18 +42,8 @@ function validateInput(input:ModelInput):string {
      [...input.deliverables,...input.doneCriteria].some(item=>
        typeof item!=="string"||item.length>300||item.includes("\u0000")))
     throw Error("invalid_bound_model_input")
-  const evidence=input.knowledgeEvidence
-  if(evidence!==undefined){
-    if(!Array.isArray(evidence)||evidence.length>6||
-       evidence.some(hit=>!hit||typeof hit.citation!=="string"||
-         typeof hit.snippet!=="string"||
-         hit.citation.length<1||hit.citation.length>160||
-         hit.snippet.length<1||hit.snippet.length>320||
-         /[\u0000-\u001f\u007f]/.test(hit.citation)||
-         hit.snippet.includes("\u0000"))||
-       JSON.stringify(evidence).length>3300)
-      throw Error("invalid_bound_model_evidence")
-  }
+  let evidence:ReturnType<typeof safeModelKnowledgeEvidence>
+  try{evidence=safeModelKnowledgeEvidence(input.knowledgeEvidence)}catch{throw Error("invalid_bound_model_evidence")}
   const text=[
     "Goal: "+input.goal,
     "Scope: "+input.taskScope,

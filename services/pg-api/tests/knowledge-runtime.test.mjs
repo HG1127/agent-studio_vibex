@@ -11,6 +11,9 @@ import {scopedKnowledgePool,sharedKnowledgeScopeEnabled} from "../src/knowledge-
 import {requireKnowledgeScope} from "../src/knowledge-runtime-scope.ts"
 import {gatherAuthorizedKnowledgeEvidence,gatherPrivateKnowledgeEvidence} from "../src/agent-knowledge-grounding.ts"
 import {verifyKnowledgeRuntimeSchema} from "../src/knowledge-content-privileges.ts"
+import {preparedSelectedModelRequest} from "../src/model-connection-executor.ts"
+import {safeBoundModelRequest} from "../src/bound-model-contract.ts"
+import {safeRunStepMetadata} from "../src/run-step-metadata.ts"
 async function fixture(){
   const f=await agentFixture({mcp:true,smithery:true,sharing:true})
   const access=new KnowledgeAccessRepository(f.pool,async()=>({id:f.users.alice,display_name:"Alice"}))
@@ -75,6 +78,18 @@ test("300-codepoint emoji evidence and 180-codepoint filenames work for both the
       const hits=await withActor(pool,identity,(db,id)=>reader(db,id,[f.base],"cedar"))
       assert.equal(hits.length,1);assert.equal(hits[0].citation,filename+"#chunk-0")
       assert.equal(Array.from(hits[0].snippet).length,300);assert.ok(hits[0].snippet.length>320)
+      const transport=safeBoundModelRequest({claim:{run_id:randomUUID(),job_id:randomUUID(),lease_token:randomUUID(),lease_version:1,lease_owner:"synthetic-worker"},input:{goal:"Cite knowledge",instruction:"cedar",taskScope:"Shared grant only",deliverables:[],doneCriteria:[],knowledgeEvidence:hits.map(({citation,snippet})=>({citation,snippet}))}})
+      assert.deepEqual(safeRunStepMetadata({citations:hits.map(hit=>hit.citation)}).citations,[filename+"#chunk-0"])
+      // Check SQL -> private RPC -> provider assembly and public audit metadata.
+      for(const material of [
+        {provider:"openai",base_url:"https://api.openai.com/v1",model_id:"synthetic"},
+        {provider:"anthropic",base_url:"https://api.anthropic.com/v1",model_id:"synthetic"},
+        {provider:"gemini",base_url:"https://generativelanguage.googleapis.com/v1beta",model_id:"synthetic"},
+      ]){
+        const request=preparedSelectedModelRequest({...material,api_key:"synthetic-reader-key"},transport.input)
+        const body=JSON.parse(request.body.toString("utf8")),content=body.messages?.at(-1)?.content??body.contents?.[0]?.parts?.[0]?.text
+        assert.ok(content.includes(hits[0].citation));assert.ok(content.includes(hits[0].snippet));assert.ok(request.body.length<=16384)
+      }
     }
     await f.db.query("UPDATE agentstudio.users SET status='disabled' WHERE id=$1",[f.users.bob])
     await assert.rejects(withActor(f.pool,alice,(db,id)=>requireKnowledgeScope(db,id,[f.base])),e=>e.status===404)

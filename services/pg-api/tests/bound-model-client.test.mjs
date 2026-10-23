@@ -2,7 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {EventEmitter} from "node:events"
 import {createBoundModelMutualTlsClient} from "../src/bound-model-client.ts"
-import {safeBoundModelResult} from "../src/bound-model-contract.ts"
+import {safeBoundModelRequest,safeBoundModelResult} from "../src/bound-model-contract.ts"
 
 const pin="CD".repeat(32)
 const config=()=>({approvedForIsolatedUat:true,origin:"https://127.0.0.1:7453",
@@ -84,6 +84,27 @@ test("forged identity, unknown fields and oversized bodies fail before a socket 
     deliverables:Array(20).fill("d".repeat(300)),doneCriteria:Array(20).fill("c".repeat(300))}),
     /bound_dispatch_request_too_large/)
   assert.equal(events.length,0)
+})
+
+test("private RPC preserves six full Unicode citations and enforces its original total byte limit",async()=>{
+  const knowledgeEvidence=Array.from({length:6},(_,index)=>({citation:"😀".repeat(176)+".txt#chunk-"+index,snippet:"😀".repeat(300)}))
+  const events=[],send=createBoundModelMutualTlsClient(config(),fake({events}))
+  const request={...input,knowledgeEvidence}
+  assert.deepEqual(await send(claim,request),result)
+  const bytes=events.find(event=>event.body).body
+  assert.ok(bytes.length<=16384)
+  assert.deepEqual(safeBoundModelRequest(JSON.parse(bytes.toString("utf8"))).input,request)
+  for(const evidence of [
+    [{citation:"x".repeat(201),snippet:"safe"}],
+    [{citation:"safe",snippet:"😀".repeat(321)}],
+    [{citation:"safe",snippet:"bad\u007fcontent"}],
+    [{citation:"safe\nrole",snippet:"safe"}],
+    [{citation:"\ud800",snippet:"safe"}],
+    [{citation:"safe",snippet:"safe",secret:"refuse"}],
+  ])await assert.rejects(send(claim,{...input,knowledgeEvidence:evidence}),/invalid_internal_bound_dispatch_request/)
+  // Individually valid fields can still exceed the unchanged whole-body cap.
+  await assert.rejects(send(claim,{...request,goal:"😀".repeat(1000),taskScope:"😀".repeat(1000)}),/bound_dispatch_request_too_large/)
+  assert.equal(events.filter(event=>event.options).length,1)
 })
 test("ambiguous errors, redirects, truncation and unsafe responses fail once without replay or leakage",async()=>{
   for(const variation of [

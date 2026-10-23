@@ -1,6 +1,7 @@
 // Explicitly gated, model-only staging adapter. No arbitrary HTTP URLs,
 // tools, plugins, browsers, or customer-supplied API credentials.
 import {readFileSync,statSync} from "node:fs"
+import {safeModelKnowledgeEvidence} from "./knowledge-evidence.ts"
 
 export interface ModelInput {
   goal:string
@@ -49,16 +50,7 @@ export function createStagingOpenAIProvider(
       // Defense in depth: only a small RLS-selected set of citations may
       // enter a Model request. Direct callers cannot inject large/unsafe
       // strings or replace the trusted server-side search policy.
-      const evidence=input.knowledgeEvidence
-      if(evidence!==undefined&&(
-        !Array.isArray(evidence)||evidence.length>6||
-        evidence.some(hit=>!hit||typeof hit.citation!=="string"||
-          typeof hit.snippet!=="string"||hit.citation.length<1||
-          hit.citation.length>160||hit.snippet.length<1||
-          hit.snippet.length>320||/[\u0000-\u001f\u007f]/u.test(hit.citation)||
-          hit.snippet.includes("\u0000"))||
-        JSON.stringify(evidence).length>3300))
-        throw Error("invalid_model_knowledge_evidence")
+      const evidence=safeModelKnowledgeEvidence(input.knowledgeEvidence)
       const content=[
         "Goal: "+input.goal,
         "Scope: "+input.taskScope,

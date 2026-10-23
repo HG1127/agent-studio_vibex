@@ -2,6 +2,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {EventEmitter} from "node:events"
+import {safeModelKnowledgeEvidence} from "../src/knowledge-evidence.ts"
 import {
   createIsolatedBoundModelExecutor,preparedSelectedModelRequest,
   selectBoundGenerationUat,
@@ -122,6 +123,35 @@ test("OpenAI/Anthropic/Gemini generation requests have canonical hosts and no cr
     ...input,knowledgeEvidence:Array(7).fill(input.knowledgeEvidence[0]),
   }),/invalid_bound_model_evidence/)
 })
+test("every model transport accepts six complete Unicode citations within its unchanged request byte cap",()=>{
+  const filename="😀".repeat(176)+".txt",snippet="😀".repeat(300)
+  const evidence=Array.from({length:6},(_,index)=>({citation:filename+"#chunk-"+index,snippet}))
+  assert.deepEqual(safeModelKnowledgeEvidence(evidence),evidence)
+  for(const material of Object.values(materials)){
+    const request=preparedSelectedModelRequest(material,{...input,knowledgeEvidence:evidence})
+    assert.ok(request.body.byteLength<=16384)
+    const body=JSON.parse(request.body.toString("utf8"))
+    const content=body.messages?.at(-1)?.content??body.contents?.[0]?.parts?.[0]?.text
+    assert.equal(typeof content,"string")
+    for(const item of evidence){assert.ok(content.includes(item.citation));assert.ok(content.includes(item.snippet))}
+  }
+  for(const bad of [
+    [{citation:"x".repeat(201),snippet:"safe"}],
+    [{citation:"safe",snippet:"😀".repeat(321)}],
+    [{citation:"safe\nrole",snippet:"safe"}],
+    [{citation:"safe",snippet:"bad\0content"}],
+    [{citation:"safe",snippet:"bad\u007fcontent"}],
+    [{citation:"\ud800",snippet:"safe"}],
+    [{citation:"safe",snippet:"\udfff"}],
+    [{citation:"safe",snippet:"safe",secret:"must not enter prompt"}],
+    [Object.assign(Object.create({citation:"inherited",snippet:"inherited"}),{unexpected:1,extra:2})],
+    Array(7).fill(evidence[0]),
+  ]){
+    assert.throws(()=>safeModelKnowledgeEvidence(bad),/invalid_model_knowledge_evidence/)
+    assert.throws(()=>preparedSelectedModelRequest(materials.openai,{...input,knowledgeEvidence:bad}),/invalid_bound_model_evidence/)
+  }
+})
+
 test("synthetic HTTPS request pins validated DNS, validates TLS, and parses provider-specific outputs",async()=>{
   const output={
     openai:'{"choices":[{"message":{"content":"Synthetic OpenAI answer"}}]}',

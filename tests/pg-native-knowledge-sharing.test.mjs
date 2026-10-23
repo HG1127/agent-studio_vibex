@@ -12,11 +12,14 @@ import {createKnowledgeMutationSession} from "../src/lib/pgNativeKnowledgeSharin
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),".."),base=randomUUID(),request=randomUUID(),document=randomUUID(),hash="a".repeat(64)
 const receipt={request_id:request,action:"import",document_id:document,filename:"notes.txt",sha256:hash,chunk_count:1}
 const deferred=()=>{let resolve;const promise=new Promise(done=>resolve=done);return {promise,resolve}}
-test("sharing client sends same-origin Cookie operations and query text only in POST bodies; malformed IDs cannot become routes",async()=>{
+test("sharing client sends same-origin Cookie operations and query text only in POST bodies; malformed IDs cannot become routes",async(t)=>{
+  const deadlines=[],originalTimeout=AbortSignal.timeout
+  t.mock.method(AbortSignal,"timeout",milliseconds=>{deadlines.push(milliseconds);return originalTimeout.call(AbortSignal,milliseconds)})
   const calls=[],api=createPgNativePilotApi(async(url,options)=>{calls.push({url,options});return Response.json({items:[],item:receipt})},"")
   await api.listSharedKnowledge();await api.searchSharedKnowledge(base,"private cedar")
   await api.importSharedKnowledge(base,{request_id:request,filename:"notes.txt",text:"private content"})
   await api.getKnowledgeContentReceipt(base,request)
+  assert.deepEqual(deadlines,[12000,12000,20000,12000],"only document import leaves room for the server's 12s parser deadline and response; receipt GET keeps its original bound")
   for(const call of calls){assert.equal(call.options.credentials,"same-origin");assert.equal(call.options.redirect,"error");assert.equal(new Headers(call.options.headers).has("Authorization"),false);assert.equal(call.url.includes("private cedar"),false)}
   await assert.rejects(api.getSharedKnowledge("https://foreign.example/"),error=>error.status===400)
   await assert.rejects(api.getKnowledgeContentReceipt(base,"../../escape"),error=>error.status===400)

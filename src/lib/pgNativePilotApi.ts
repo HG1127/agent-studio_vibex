@@ -736,7 +736,9 @@ export function createPgNativePilotApi(
     listKnowledgeGrants:async(id:string)=>(await get<{items:KnowledgeGrant[]}>((recordRoute("/api/v2/shared-knowledge",id)+"/access") as Route)).items,
     changeKnowledgeAccess:(id:string,input:Record<string,unknown>)=>post<{item:KnowledgeAccessReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/access") as Route,input),
     searchSharedKnowledge:async(id:string,query:string)=>(await post<{items:KnowledgeSearchHit[]}>((recordRoute("/api/v2/shared-knowledge",id)+"/search") as Route,safeKeywordQuery(query,8))).items,
-    importSharedKnowledge:(id:string,input:Record<string,unknown>)=>post<{item:KnowledgeContentReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/import") as Route,input),
+    // The parser alone may use 12s; leave time for authentication, SQL and its
+    // bounded response. A lost reply still requires explicit receipt recovery.
+    importSharedKnowledge:(id:string,input:Record<string,unknown>)=>request<{item:KnowledgeContentReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/import") as Route,"POST",input,transport,rootPath,20000),
     deleteSharedKnowledge:(id:string,input:Record<string,unknown>)=>post<{item:KnowledgeContentReceipt;replayed:boolean}>((recordRoute("/api/v2/shared-knowledge",id)+"/delete") as Route,input),
     getKnowledgeContentReceipt:async(id:string,requestId:string)=>{
       recordRoute(routes.bases,requestId)
