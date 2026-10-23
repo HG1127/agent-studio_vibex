@@ -25,6 +25,7 @@ import {KnowledgeQueryWorker} from "./knowledge-query-worker.ts"
 import {createKnowledgeQueryPrivateClient,createKnowledgeQueryPrivateHandler} from "./knowledge-query-private-tls.ts"
 import {verifyKnowledgeQuerySchema} from "./knowledge-query-audit.ts"
 import {knowledgeQueryRoute} from "./knowledge-query-contracts.ts"
+import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {scopedKnowledgePool} from "./knowledge-scope-policy.ts"
 export function knowledgeIndexOfflinePlan(){return {mode:"plan",services:["knowledge-index","knowledge-index-broker"],broker_bind:"127.0.0.1",broker_port:7455,
@@ -38,12 +39,13 @@ export function knowledgeIndexServiceConfig(env:NodeJS.ProcessEnv,kind:"worker"|
   const target=selectPgRuntimeTarget(env,"api",platform)
   if(target.mode!=="baota_pg18")refuse()
   const approved=selectKnowledgeIndexRuntime(env),queryApproved=selectKnowledgeQueryRuntime(env)
+  const knowledgeToolsApproved=selectKnowledgeToolRuntime(env)
   const sharingEnabled=selectKnowledgeSharing(env)
   if(queryApproved&&!sharingEnabled)refuse()
   if(mode==="serve"&&!approved&&!queryApproved)refuse()
   const fingerprint=kind==="worker"?env.AGENT_STUDIO_PG_KNOWLEDGE_INDEX_SERVER_FINGERPRINT:env.AGENT_STUDIO_PG_KNOWLEDGE_INDEX_CLIENT_FINGERPRINT
   try{boundCertificateFingerprint(fingerprint)}catch{refuse()}
-  return {kind,mode,service,directory,target,approved,queryApproved,sharingEnabled,fingerprint:fingerprint!,origin:"https://127.0.0.1:7455",port:7455} as const
+  return {kind,mode,service,directory,target,approved,queryApproved,sharingEnabled,...(knowledgeToolsApproved?{knowledgeToolsApproved:true}:{}),fingerprint:fingerprint!,origin:"https://127.0.0.1:7455",port:7455} as const
 }
 export function assertKnowledgeIndexWorkerTls(ca:Buffer,cert:Buffer,key:Buffer,now=Date.now()):void{
   try{
@@ -71,6 +73,7 @@ export async function startKnowledgeIndexService(env=process.env,kind:"worker"|"
     const sqlSecret=read(kind==="worker"?"worker.secret":"index.secret"),business=adapter(pool(user,sqlSecret))
     await verifyPgRuntimeTarget(business,{...cfg.target,user});await verifyKnowledgeIndexLogin(business,kind)
     if(cfg.queryApproved)await verifyKnowledgeQuerySchema(business,kind)
+    if(cfg.knowledgeToolsApproved)await verifyKnowledgeToolSchema(business,kind)
     const ca=read("dispatch-ca.pem"),cert=read(kind==="worker"?"dispatch-worker.pem":"dispatch-server.pem"),tlsKey=read(kind==="worker"?"dispatch-worker.key":"dispatch-server.key")
     let secretPool:SqlPool|undefined
     if(kind==="broker"){
@@ -88,7 +91,7 @@ export async function startKnowledgeIndexService(env=process.env,kind:"worker"|"
       createKnowledgeIndexPrivateClient({approvedForIsolatedUat:true,origin:cfg.origin,reviewedServerFingerprint256:cfg.fingerprint,ca,cert,key:tlsKey})
     }
     if(mode==="preflight")return {mode,kind,roles_verified:true,credentials_read:true,network_used:true,provider_calls:false,workers_started:false,production_cutover_allowed:false}
-    const runtime=scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedKnowledgePool(business,cfg.sharingEnabled),cfg.approved),cfg.queryApproved)
+    const runtime=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedKnowledgePool(business,cfg.sharingEnabled),cfg.approved),cfg.queryApproved),cfg.knowledgeToolsApproved===true)
     process.once("SIGTERM",stop);process.once("SIGINT",stop)
     if(kind==="worker"){
       const config={approvedForIsolatedUat:true,origin:cfg.origin,reviewedServerFingerprint256:cfg.fingerprint,ca,cert,key:tlsKey}

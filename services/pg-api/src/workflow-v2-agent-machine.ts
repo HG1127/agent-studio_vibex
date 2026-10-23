@@ -128,6 +128,7 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
       ...(mcp?{mcp_binding:{...mcp.binding}}:http?{tool_binding:{connection_id:http.connection_id,connection_revision:http.connection_revision}}:
         {tool:action.tool as WorkflowEffectRequest["configuration"]["tool"]}),params_template:workflowAgentJson(action.params),
       ...(action.tool==="knowledge_search"?{knowledge_base_ids:[...state.spec.knowledge_base_ids]}:{}),
+      ...(action.tool==="knowledge_search"&&state.spec.knowledge_retrieval?{knowledge_retrieval:{...state.spec.knowledge_retrieval}}:{}),
       ...(action.tool==="summarize"?{model_binding:{...binding}}:{})}
     const tool=make(round,"tool",workflowAgentJson(action.params),configuration),observation=take(tool)
     if(!observation)return {status:"waiting",round,pending:tool,output:"",error_code:""}

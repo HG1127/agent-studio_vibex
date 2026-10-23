@@ -36,6 +36,8 @@ export class KnowledgeQueryRepository {
         const pending=await verifyWorkflowEffectLease(db,actor,verifiedSource,"tool",this.allowAgent,this.allowAutonomous),plan=prepareWorkflowTool(pending)
         if(plan.kind!=="knowledge_search"||plan.query!==x.query||x.limit>6||JSON.stringify([...plan.ids].map(id=>id.toLowerCase()).sort())!==JSON.stringify(x.base_ids))
           throw new HttpError(409,"knowledge_execution_request_changed")
+        if(plan.retrieval&&(x.mode!==plan.retrieval.mode||x.profile_id!==plan.retrieval.profile_id||x.profile_revision!==plan.retrieval.profile_revision||x.consent_revision!==plan.retrieval.consent_revision))
+          throw new HttpError(409,"knowledge_execution_request_changed")
       })
   }
   get(identity:Identity,request:string){if(!isUuid(request))throw new HttpError(400,"invalid_knowledge_query_identifier")

@@ -1,5 +1,8 @@
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
+import {scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
+import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
+import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
 import {fileURLToPath} from "node:url"
 import path from "node:path"
 import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
@@ -27,6 +30,8 @@ export function runV2WorkerCli(autonomous=false){
   async function main(mode:"serve"|"preflight"){
     const modelEnabled=selectWorkflowV2ModelExecution(process.env)
     const toolsEnabled=selectWorkflowV2ToolExecution(process.env)
+    const knowledgeToolsEnabled=selectKnowledgeToolRuntime(process.env)
+    if(knowledgeToolsEnabled&&!toolsEnabled)throw Error("workflow_knowledge_tool_adapter_disabled")
     const agentsEnabled=autonomous?selectAutonomousAgentExecution(process.env):selectWorkflowAgentExecution(process.env)
     if(agentsEnabled&&(!modelEnabled||!toolsEnabled))throw Error("workflow_v2_agents_not_approved")
     if(autonomous&&!agentsEnabled)throw Error("autonomous_agent_not_approved")
@@ -47,12 +52,14 @@ export function runV2WorkerCli(autonomous=false){
     const {Pool}=await import("pg")
     const pool=new Pool({host:target.host,port:target.port,user:target.user,database:target.database,password,max:2,
       connectionTimeoutMillis:4000,statement_timeout:8000,idleTimeoutMillis:10000})
-    const adapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),async connect(){const db=await pool.connect();return {
+    const rawAdapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),async connect(){const db=await pool.connect();return {
       async query<Row>(sql:string,values:unknown[]=[]){return {rows:(await db.query(sql,values)).rows as Row[]}},release(){db.release()}}}}
+    const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
     let stop=false;process.once("SIGTERM",()=>{stop=true});process.once("SIGINT",()=>{stop=true})
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
       if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter)
+      if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
       const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,
         origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),
         ca:readBoundRuntimeCredential(kind,"dispatch-ca.pem",process.env),

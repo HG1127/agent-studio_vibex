@@ -3,6 +3,7 @@
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
+import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT,parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
 import {parsePgMcpConnection,type PgNativeMcpInput,type PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
 import {parsePgSmitheryKey,parsePgSmitheryConnection,parsePgSmitheryCatalog} from "./pgNativeSmithery.ts"
 import {parseSmitherySelection,smitheryApiKey,type SmitherySelection} from "../../services/pg-api/src/smithery-contracts.ts"
@@ -53,7 +54,7 @@ export type PgNativeAgent={
   id:string;name:string;revision:number
   spec:{goal:string;task_scope:string;deliverables?:string[];
     task_plan?:string[];done_criteria?:string[];tools?:string[];
-    knowledge_base_ids?:string[];model_binding?:PgNativeAgentModelBinding;http_tools?:AgentHttpTool[];mcp_tools?:AgentMcpTool[]}
+    knowledge_base_ids?:string[];knowledge_retrieval?:KnowledgeRetrievalBinding;model_binding?:PgNativeAgentModelBinding;http_tools?:AgentHttpTool[];mcp_tools?:AgentMcpTool[]}
 }
 export type PgNativeWorkflow={id:string;name:string;revision:number;
   graph?:{version?:2;description?:string;nodes:unknown[];edges:unknown[]}}
@@ -547,6 +548,7 @@ export function createPgNativePilotApi(
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
         ...(old.http_tools?.length?{http_tools:old.http_tools}:{}),
         ...(old.mcp_tools?.length?{mcp_tools:old.mcp_tools}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{})}
@@ -556,7 +558,7 @@ export function createPgNativePilotApi(
     },
     // Explicit development UAT only. Server verifies all KB IDs belong to
     // this employee and the config-write capability before saving.
-    updateAgentKnowledgeBases:async(id:string,expected_revision:number,ids:string[])=>{
+    updateAgentKnowledgeBases:async(id:string,expected_revision:number,ids:string[],retrieval?:KnowledgeRetrievalBinding|null)=>{
       const revision=safeRevision(expected_revision)
       if(!Array.isArray(ids)||ids.length>3||ids.some(x=>!safeId.test(x))||
          new Set(ids).size!==ids.length)
@@ -570,9 +572,15 @@ export function createPgNativePilotApi(
         throw new PgNativePilotError(409,"unexpected_stored_spec")
       const tools=[...new Set([...(old.tools??[]),
         ...(ids.length?["knowledge_search"]:[])])]
+      let selected:KnowledgeRetrievalBinding|undefined
+      try{
+        if(retrieval&&ids.length===0)throw Error()
+        selected=ids.length?parseKnowledgeRetrievalBinding(retrieval===undefined?old.knowledge_retrieval:retrieval===null?undefined:retrieval):undefined
+      }catch{throw new PgNativePilotError(400,"invalid_pg_native_knowledge_retrieval")}
       const spec={goal:old.goal,task_scope:old.task_scope??"",
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools,knowledge_base_ids:ids,
+        ...(selected?{knowledge_retrieval:selected}:{}),
         ...(old.http_tools?.length?{http_tools:old.http_tools}:{}),
         ...(old.mcp_tools?.length?{mcp_tools:old.mcp_tools}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{})}
@@ -602,6 +610,7 @@ export function createPgNativePilotApi(
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
         ...(old.http_tools?.length?{http_tools:old.http_tools}:{}),
         ...(old.mcp_tools?.length?{mcp_tools:old.mcp_tools}:{}),
         ...(binding?{model_binding:binding}:{})}
@@ -622,6 +631,7 @@ export function createPgNativePilotApi(
       if(tools.length>20)throw new PgNativePilotError(400,"invalid_agent_http_tools")
       const spec={goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],
         task_plan:old.task_plan??[],done_criteria:old.done_criteria??[],tools,knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{}),...(old.mcp_tools?.length?{mcp_tools:old.mcp_tools}:{}),...(httpTools.length?{http_tools:httpTools}:{})}
       return (await patch<{item:PgNativeAgent}>(route,{name:current.name,spec,expected_revision:revision})).item
     },
@@ -638,6 +648,7 @@ export function createPgNativePilotApi(
       if(tools.length>20)throw new PgNativePilotError(400,"invalid_agent_mcp_tools")
       const spec={goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools,knowledge_base_ids:old.knowledge_base_ids??[],
+        ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{}),...(old.http_tools?.length?{http_tools:old.http_tools}:{}),...(mcpTools.length?{mcp_tools:mcpTools}:{})}
       return (await patch<{item:PgNativeAgent}>(route,{name:current.name,spec,expected_revision:revision})).item
     },
@@ -689,10 +700,10 @@ export function createPgNativePilotApi(
       try{const page=parseWorkflowOutputHistory(payload,id.toLowerCase());if(page.items.length>limit||page.items.some(item=>item.step_key<=after))throw Error();return page}
       catch{throw new PgNativePilotError(503,"invalid_workflow_output_response")}
     },
-    decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
+    decideWorkflowV2Node:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string,knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
-         !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
-      return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/decision") as Route,{decision,step_key,input_sha256})
+         !/^[a-f0-9]{64}$/.test(input_sha256)||knowledge_query_charge!==undefined&&(decision!=="approved"||knowledge_query_charge!==KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
+      return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/decision") as Route,{decision,step_key,input_sha256,...(knowledge_query_charge?{knowledge_query_charge}:{})})
     },
     cancelWorkflowV2Run:async(id:string)=>post<PgNativeWorkflowV2Result>((recordRoute(routes.workflowV2Runs,id)+"/cancel") as Route,{}),
     getWorkflowV2Steps:async(id:string,after="",limit=100)=>{
@@ -710,10 +721,10 @@ export function createPgNativePilotApi(
     },
     getAutonomousAgentRun:async(id:string)=>get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id)),
     listAutonomousAgentRuns:async()=> (await get<{items:PgNativeAutonomousAgentSummary[]}>(routes.autonomousAgentRuns)).items,
-    decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string)=>{
+    decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string,knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
-         !/^[a-f0-9]{64}$/.test(input_sha256))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
-      return post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+"/decision") as Route,{decision,step_key,input_sha256})
+         !/^[a-f0-9]{64}$/.test(input_sha256)||knowledge_query_charge!==undefined&&(decision!=="approved"||knowledge_query_charge!==KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
+      return post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+"/decision") as Route,{decision,step_key,input_sha256,...(knowledge_query_charge?{knowledge_query_charge}:{})})
     },
     cancelAutonomousAgentRun:async(id:string)=>post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+"/cancel") as Route,{}),
     getAutonomousAgentSteps:async(id:string,after="",limit=100)=>{

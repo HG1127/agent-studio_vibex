@@ -18,7 +18,7 @@ export async function verifyWorkflowAgentResources(db:SqlClient,owner:string,par
   if(state){inspectWorkflowAgentState(state,parent);if(workflowAgentJson(spec)!==workflowAgentJson(state.spec))throw new HttpError(409,"workflow_agent_snapshot_changed")}
   const binding=parent.configuration.model_binding??spec.model_binding
   if(!binding)throw new HttpError(409,"workflow_agent_model_binding_missing")
-  await verifyWorkflowResourceReferences(db,owner,{title:parent.configuration.title,model_binding:binding,knowledge_base_ids:spec.knowledge_base_ids})
+  await verifyWorkflowResourceReferences(db,owner,{title:parent.configuration.title,model_binding:binding,knowledge_base_ids:spec.knowledge_base_ids,...(spec.knowledge_retrieval?{knowledge_retrieval:spec.knowledge_retrieval}:{})})
   await verifyAgentHttpTools(db,owner,spec)
   const definitions=await resolveAgentMcpTools(db,owner,spec.mcp_tools,!state)
   if(state&&workflowAgentJson(definitions)!==workflowAgentJson(state.mcp_tool_definitions??[]))throw new HttpError(409,"workflow_agent_snapshot_changed")

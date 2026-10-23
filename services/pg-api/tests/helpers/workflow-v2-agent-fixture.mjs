@@ -58,14 +58,14 @@ export async function agentFixture({autonomous=false,mcp=false,smithery=false,sh
     const pending=(await runs.get(alice,id)).pending_effect
     return runs.decide(alice,id,{decision,step_key:pending.step_key,input_sha256:pending.input_sha256})
   }
-  async function privateTls(planning,run,{allowAgent=true,toolExecutor={},businessPool=pool,brokerPool=pool}={}){
-    const model=new WorkflowV2ModelDispatch(businessPool,key,async()=>{throw Error("direct model fallback forbidden")},brokerPool,
-      {allowAgentExecution:!autonomous&&allowAgent,allowAutonomousExecution:autonomous&&allowAgent,agentExecutor:planning})
-    const tool=new WorkflowV2ToolDispatch(businessPool,key,toolExecutor,brokerPool,{allowAgentExecution:!autonomous&&allowAgent,allowAutonomousExecution:autonomous&&allowAgent})
+  async function privateTls(planning,run,{allowAgent=true,toolExecutor={},businessPool=pool,brokerPool=pool,workerPool=pool,autonomousExecution=autonomous,allowKnowledge=false,directModel=async()=>{throw Error("direct model fallback forbidden")}}={}){
+    const model=new WorkflowV2ModelDispatch(businessPool,key,directModel,brokerPool,
+      {allowAgentExecution:!autonomousExecution&&allowAgent,allowAutonomousExecution:autonomousExecution&&allowAgent,agentExecutor:planning})
+    const tool=new WorkflowV2ToolDispatch(businessPool,key,toolExecutor,brokerPool,{allowAgentExecution:!autonomousExecution&&allowAgent,allowAutonomousExecution:autonomousExecution&&allowAgent,allowKnowledgeExecution:allowKnowledge})
     const modelIdentity=new WorkflowV2ModelLeaseIdentity(pool),toolIdentity=new WorkflowV2ToolLeaseIdentity(pool)
     const dispatch={model:verifiedWorkflowV2ModelDispatch(modelIdentity,model),tool:verifiedWorkflowV2ToolDispatch(toolIdentity,tool)}
     const factories=raw=>{
-      const config={...raw,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}
+      const config={...raw,executionMode:autonomousExecution?"agent_native_v2":"workflow_native_v2"}
       const m=createWorkflowV2ModelInternalHandler({...config,dispatch:async request=>{await beforeDispatch?.(request,"model");return dispatch.model(request)}})
       const t=createWorkflowV2ToolInternalHandler({...config,dispatch:async request=>{await beforeDispatch?.(request,"tool");return dispatch.tool(request)}})
       return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?t:m)(req,res)
@@ -74,7 +74,7 @@ export async function agentFixture({autonomous=false,mcp=false,smithery=false,sh
       let workers=0
       const makeWorker=(options={})=>{
         const adapters=[workflowV2ModelEffectExecutor(config),workflowV2ToolEffectExecutor(config)]
-        return new WorkflowV2Worker(pool,"synthetic-agent-"+(++workers),{executionMode:autonomous?"agent_native_v2":"workflow_native_v2",agentExecutionApproved:true,executor:{supports:req=>adapters.some(adapter=>adapter.supports(req)),
+        return new WorkflowV2Worker(workerPool,"synthetic-agent-"+(++workers),{executionMode:autonomousExecution?"agent_native_v2":"workflow_native_v2",agentExecutionApproved:true,executor:{supports:req=>adapters.some(adapter=>adapter.supports(req)),
           execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}},...options})
       }
       return run(makeWorker,{model,tool,modelIdentity,toolIdentity,config})

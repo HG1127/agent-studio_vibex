@@ -2,6 +2,7 @@
 import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeType,type WorkflowNode,type WorkflowEdge,type WorkflowGraph} from "./workflow-graph-v2.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "./agent-http-tools.ts"
 import {parseAgentMcpTools,type AgentMcpTool} from "./mcp-binding.ts"
+import {parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "./knowledge-retrieval-binding.ts"
 export type {WorkflowNodeType,WorkflowNode,WorkflowEdge,WorkflowGraph} from "./workflow-graph-v2.ts"
 export type Identity = { issuer: string; subject: string }
 
@@ -19,6 +20,7 @@ export interface SqlPool {
   readonly knowledgeEmbeddingConsent?:boolean
   readonly knowledgeIndexRuntime?:boolean
   readonly knowledgeQueryRuntime?:boolean
+  readonly knowledgeToolRuntime?:boolean
   connect(): Promise<SqlClient>
 }
 
@@ -47,6 +49,7 @@ export interface AgentSpecInput {
   http_tools?:AgentHttpTool[]
   mcp_tools?:AgentMcpTool[]
   knowledge_base_ids: string[]
+  knowledge_retrieval?:KnowledgeRetrievalBinding
   require_approval: true
 }
 
@@ -108,10 +111,14 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
   // accept passwords, API keys, provider URL overrides or worker tokens.
   const permitted=new Set([
     "goal","task_scope","deliverables","task_plan","done_criteria","tools",
-    "knowledge_base_ids","model_binding","http_tools","mcp_tools",
+    "knowledge_base_ids","knowledge_retrieval","model_binding","http_tools","mcp_tools",
   ])
   if(Object.keys(data).some(k=>!permitted.has(k)))throw new HttpError(400,"unsafe_agent_spec_field")
   const modelBinding=safeModelBinding(data.model_binding)
+  let retrieval:KnowledgeRetrievalBinding|undefined
+  try{retrieval=parseKnowledgeRetrievalBinding(data.knowledge_retrieval)}catch{throw new HttpError(400,"invalid_agent_knowledge_retrieval")}
+  if(retrieval&&(!Array.isArray(data.knowledge_base_ids)||!data.knowledge_base_ids.length||!tools.includes("knowledge_search")||
+    [...httpTools,...mcpTools].some(tool=>tool.name==="knowledge_search")))throw new HttpError(400,"invalid_agent_knowledge_retrieval")
   return {
     goal, task_scope:data.task_scope===undefined?"":field(data.task_scope,2000),
     deliverables:textList(data.deliverables),
@@ -121,6 +128,7 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
     ...(httpTools.length?{http_tools:httpTools}:{}),
     ...(mcpTools.length?{mcp_tools:mcpTools}:{}),
     knowledge_base_ids:knowledgeBaseIds(data.knowledge_base_ids,tools),
+    ...(retrieval?{knowledge_retrieval:retrieval}:{}),
     ...(modelBinding?{model_binding:modelBinding}:{}),
     require_approval:true,
   }

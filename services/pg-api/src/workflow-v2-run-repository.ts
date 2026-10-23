@@ -3,6 +3,8 @@ import {workflowAgentJson} from "./workflow-v2-agent-machine.ts"
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 import {HttpError,isUuid,safeWorkflowGraph,type Identity,type SqlClient,type SqlPool,type WorkflowGraph} from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "./knowledge-retrieval-binding.ts"
+import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
 import {verifyWorkflowGraphResources} from "./workflow-repository.ts"
 import {createWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2EffectResult,
   type WorkflowV2Checkpoint,type WorkflowEffectRequest} from "./workflow-v2-machine.ts"
@@ -97,19 +99,23 @@ export class WorkflowV2RunRepository{
   readonly pool:SqlPool
   readonly root:ReturnType<typeof durableV2Root>
   readonly allowMcpExecution:boolean
-  constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2",options:{allowMcpExecution?:boolean}={}){this.pool=pool;this.root=durableV2Root(mode);this.allowMcpExecution=options.allowMcpExecution===true}
+  readonly allowKnowledgeExecution:boolean
+  constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2",options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){this.pool=pool;this.root=durableV2Root(mode);this.allowMcpExecution=options.allowMcpExecution===true;this.allowKnowledgeExecution=options.allowKnowledgeExecution===true}
   protected async checkMcpAdmission(db:SqlClient,owner:string,graph:WorkflowGraph){
-    if(this.allowMcpExecution)return
-    if(graph.nodes.some(node=>node.data.mcp_binding))throw new HttpError(409,"mcp_execution_not_enabled")
+    if(this.allowMcpExecution&&this.allowKnowledgeExecution)return
+    if(!this.allowMcpExecution&&graph.nodes.some(node=>node.data.mcp_binding))throw new HttpError(409,"mcp_execution_not_enabled")
+    if(!this.allowKnowledgeExecution&&graph.nodes.some(node=>node.data.knowledge_retrieval))throw new HttpError(409,"knowledge_execution_not_enabled")
     const ids=[...new Set(graph.nodes.flatMap(node=>node.data.agent_binding?[node.data.agent_binding.spec_id]:[]))]
     if(!ids.length)return
     const rows=(await db.query<{spec:Record<string,unknown>}>("SELECT spec FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) FOR SHARE",[owner,ids])).rows
-    if(rows.some(row=>Object.hasOwn(row.spec,"mcp_tools")&&(!Array.isArray(row.spec.mcp_tools)||row.spec.mcp_tools.length)))throw new HttpError(409,"mcp_execution_not_enabled")
+    if(!this.allowMcpExecution&&rows.some(row=>Object.hasOwn(row.spec,"mcp_tools")&&(!Array.isArray(row.spec.mcp_tools)||row.spec.mcp_tools.length)))throw new HttpError(409,"mcp_execution_not_enabled")
+    if(!this.allowKnowledgeExecution&&rows.some(row=>row.spec.knowledge_retrieval!==undefined))throw new HttpError(409,"knowledge_execution_not_enabled")
   }
   protected async assemble(db:SqlClient,owner:string,row:WorkflowV2RunRow,replayed:boolean){
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
     const view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
     const pending=workflowV2ExecutionRequest(state)
+    const observationsCurrent=await currentKnowledgeObservations(db,row.id,pending?.step_key)
     const steps=await db.query<{step_key:string;status:string;metadata:unknown}>(
       "SELECT step_key,status,metadata FROM agentstudio.run_steps WHERE run_id=$1::uuid "+
       "AND owner_user_id=$2::uuid ORDER BY step_key LIMIT 200",[row.id,owner])
@@ -117,14 +123,14 @@ export class WorkflowV2RunRepository{
       "SELECT step_key,status FROM agentstudio.approvals WHERE run_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY requested_at DESC LIMIT 201",[row.id,owner])
     // Do not send graph snapshots, replay journals or private node bodies with
     // run history. The current pending request is shown only for explicit review.
-    return {run:{...row,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
+    return {run:{...row,result_text:observationsCurrent?row.result_text:"",step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
       [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps}:{}),
       ...(state.node_debug?{node_debug:{node_id:state.node_debug.node_id,request_sha256:createHash("sha256").update(workflowNodeDebugFingerprintData(row.workflow_id!,state.workflow_revision!,state.node_debug)).digest("hex")}}:{}),
       graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,
       executions:view.executions,loop_progress:view.loops}},
-      steps:steps.rows.map(step=>({...step,metadata:safeRunStepMetadata(step.metadata)})),
+      steps:steps.rows.map(step=>{const metadata=safeRunStepMetadata(step.metadata);if(!observationsCurrent)delete metadata.citations;return {...step,metadata}}),
       steps_truncated:Number(row.step_count)>steps.rows.length,approvals:approvals.rows.slice(0,200).reverse(),approvals_truncated:approvals.rows.length>200,
-      pending_effect:["cancelled","failed","succeeded"].includes(row.status)?null:pending,
+      pending_effect:!observationsCurrent||["cancelled","failed","succeeded"].includes(row.status)?null:pending,
       replayed,execution_mode:this.root.mode}
   }
   async submit(identity:Identity,id:string,raw:unknown){
@@ -206,11 +212,14 @@ export class WorkflowV2RunRepository{
   async list(identity:Identity,limit=30,workflowId?:string){
     if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,"invalid_workflow_run_limit")
     if(workflowId!==undefined&&(this.root.kind!=="workflow"||!isUuid(workflowId)))throw new HttpError(400,"invalid_workflow_history_scope")
-    return withActor(this.pool,identity,async(db,owner)=>(await db.query(
+    return withActor(this.pool,identity,async(db,owner)=>{const rows=(await db.query<{id:string;result_preview:string}&Record<string,unknown>>(
       "SELECT id,"+this.root.id+",status,left(instruction,180) AS instruction_preview,left(result_text,240) AS result_preview,"+
       "step_count,last_error_code,created_at,updated_at,finished_at,checkpoint->>'stage' AS stage "+(this.root.kind==="workflow"?",checkpoint->'node_debug'->>'node_id' AS debug_node_id ":"")+
       "FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND kind='"+this.root.kind+"' "+
-      "AND checkpoint->>'execution_mode'='"+this.root.mode+"'"+(workflowId!==undefined?" AND workflow_id=$3::uuid":"")+" ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit,...(workflowId!==undefined?[workflowId]:[])])).rows)
+      "AND checkpoint->>'execution_mode'='"+this.root.mode+"'"+(workflowId!==undefined?" AND workflow_id=$3::uuid":"")+" ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit,...(workflowId!==undefined?[workflowId]:[])])).rows
+      for(const row of rows)if(!await currentKnowledgeObservations(db,row.id))row.result_preview=""
+      return rows
+    })
   }
   async steps(identity:Identity,id:string,after="",limit=100){
     if(!isUuid(id)||!Number.isSafeInteger(limit)||limit<1||limit>200||
@@ -221,7 +230,8 @@ export class WorkflowV2RunRepository{
       if(!run.rows.length)throw new HttpError(404,"workflow_run_not_found")
       const rows=(await db.query<{step_key:string;status:string;metadata:unknown}>("SELECT step_key,status,metadata FROM agentstudio.run_steps "+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key>$3::text ORDER BY step_key LIMIT $4::int",[id,owner,after,limit+1])).rows
-      const items=rows.slice(0,limit).map(item=>({...item,metadata:safeRunStepMetadata(item.metadata)}))
+      const observationsCurrent=await currentKnowledgeObservations(db,id)
+      const items=rows.slice(0,limit).map(item=>{const metadata=safeRunStepMetadata(item.metadata);if(!observationsCurrent)delete metadata.citations;return {...item,metadata}})
       return {items,next_after:rows.length>limit?items.at(-1)!.step_key:null}
     })
   }
@@ -233,8 +243,9 @@ export class WorkflowV2RunRepository{
       if(!row)throw new HttpError(404,"workflow_run_not_found")
       if(!isUuid(row.workflow_id)||row.agent_spec_id)throw new HttpError(409,"invalid_v2_root")
       const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
-      // Historical reads use the sealed owner snapshot, not current resource
-      // readiness. They never expose arbitrary step JSON or Agent child state.
+      if(!await currentKnowledgeObservations(db,row.id,workflowV2ExecutionRequest(state)?.step_key))throw new HttpError(409,"knowledge_observations_unavailable")
+      // Historical structure uses the sealed snapshot; cached semantic text
+      // additionally requires current receipt/content/ACL authorization.
       return workflowV2OutputProjection(state.graph,state.machine,{run_id:row.id,workflow_id:row.workflow_id,workflow_revision:state.workflow_revision!,
         status:row.status,instruction:row.instruction,updated_at:row.updated_at,...(state.node_debug?{node_debug_id:state.node_debug.node_id}:{})})
     })
@@ -247,7 +258,8 @@ export class WorkflowV2RunRepository{
   async decide(identity:Identity,id:string,raw:unknown){
     if(!isUuid(id)||!raw||typeof raw!=="object"||Array.isArray(raw))invalid()
     const item=raw as Record<string,unknown>
-    if(Object.keys(item).length!==3||!["decision","step_key","input_sha256"].every(k=>Object.hasOwn(item,k))||
+    if(Object.keys(item).some(k=>!["decision","step_key","input_sha256","knowledge_query_charge"].includes(k))||!["decision","step_key","input_sha256"].every(k=>Object.hasOwn(item,k))||
+       item.knowledge_query_charge!==undefined&&item.knowledge_query_charge!==KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT||
        typeof item.decision!=="string"||!["approved","rejected"].includes(item.decision)||typeof item.step_key!=="string"||
        !/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(item.step_key)||
        typeof item.input_sha256!=="string"||!/^[a-f0-9]{64}$/.test(item.input_sha256))invalid()
@@ -258,15 +270,24 @@ export class WorkflowV2RunRepository{
       const run=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='"+this.root.kind+"' FOR UPDATE",[id,owner])).rows[0]!
       const state=checkedWorkflowV2StoredState(run.checkpoint,run.instruction)
-      const approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
+      const approval=(await db.query<{status:string;reason_code:string;knowledge_charge:boolean|null}>("SELECT a.status,a.reason_code,(to_jsonb(a)->>'knowledge_query_charge_acknowledged')::boolean AS knowledge_charge FROM agentstudio.approvals a "+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[id,owner,item.step_key])).rows[0]
       if(!approval||approval.reason_code!=="wf2:"+item.input_sha256)throw new HttpError(409,"workflow_approval_input_changed")
       const decision_confirmation={run_id:id,step_key:item.step_key as string,input_sha256:item.input_sha256 as string,status:item.decision as "approved"|"rejected"}
-      if(approval.status===item.decision)return {...(await this.assemble(db,owner,run,true)),decision_confirmation}
+      if(approval.status===item.decision){
+        if((approval.knowledge_charge===true)!==(item.knowledge_query_charge===KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT))throw new HttpError(409,"knowledge_query_charge_confirmation_changed")
+        return {...(await this.assemble(db,owner,run,true)),decision_confirmation}
+      }
       const pending=workflowV2ExecutionRequest(state)
       if(run.status!=="awaiting_approval"||approval.status!=="pending"||!pending||pending.step_key!==item.step_key||pending.input_sha256!==item.input_sha256)
         throw new HttpError(409,"workflow_approval_state_changed")
-      if(item.decision==="approved"){await this.checkMcpAdmission(db,owner,state.graph);await verifyWorkflowV2Snapshot(db,owner,run,state)}
+      const paid=pending.kind==="tool"&&pending.configuration.knowledge_retrieval!==undefined&&item.decision==="approved"
+      if(paid&&item.knowledge_query_charge!==KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)throw new HttpError(409,"knowledge_query_charge_confirmation_required")
+      if(!paid&&item.knowledge_query_charge!==undefined)invalid()
+      if(item.decision==="approved"){
+        await this.checkMcpAdmission(db,owner,state.graph);await verifyWorkflowV2Snapshot(db,owner,run,state)
+        if(!await currentKnowledgeObservations(db,id,pending.step_key))throw new HttpError(409,"knowledge_observations_unavailable")
+      }
       else if(pending.agent_context){
         const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
         state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:pending.step_key,input_sha256:pending.input_sha256,
@@ -274,7 +295,7 @@ export class WorkflowV2RunRepository{
         await db.query("UPDATE agentstudio.run_steps SET status='skipped',updated_at=clock_timestamp() WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text",[id,owner,pending.step_key])
       }else state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:pending.step_key,
         input_sha256:pending.input_sha256,output:"员工已拒绝该节点操作",outcome:"rejected"})
-      await db.query("UPDATE agentstudio.approvals SET status=$4::text,decided_by=$2::uuid,decided_at=clock_timestamp() "+
+      await db.query("UPDATE agentstudio.approvals SET status=$4::text,decided_by=$2::uuid,decided_at=clock_timestamp() "+(paid?",knowledge_query_charge_acknowledged=true ":"")+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='pending'",[id,owner,item.step_key,item.decision])
       state.stage=this.root.stage+"queued"
       const updated=(await db.query<WorkflowV2RunRow>("UPDATE agentstudio.runs SET status='queued',checkpoint=$3::jsonb,updated_at=clock_timestamp() "+

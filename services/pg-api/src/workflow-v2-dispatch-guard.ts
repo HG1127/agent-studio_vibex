@@ -7,6 +7,7 @@ import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,auditWorkflowV2,
   workflowV2RunColumns,workflowV2ExecutionRequest,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
 import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {safeWorkflowV2ModelRequest,type WorkflowV2ModelRequest} from "./workflow-v2-model-contract.ts"
+import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
 export type WorkflowDispatchKind="model"|"tool"
 const functions={model:"workflow_model_lease_identity",tool:"workflow_tool_lease_identity"} as const
 function changed(kind:WorkflowDispatchKind):never{throw new HttpError(409,"workflow_"+kind+"_state_changed")}
@@ -41,13 +42,18 @@ export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,reques
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[c.run_id,owner,parent.step_key])).rows[0]
     if(approval?.status!=="approved"||approval.reason_code!=="wf2:"+parent.input_sha256)changed(kind)
   }
-  const approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
+  const approval=(await db.query<{status:string;reason_code:string;knowledge_charge:boolean|null}>("SELECT a.status,a.reason_code,(to_jsonb(a)->>'knowledge_query_charge_acknowledged')::boolean AS knowledge_charge FROM agentstudio.approvals a "+
     "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[c.run_id,owner,request.step_key])).rows[0]
   const effect=(await db.query<{status:string;arguments_sha256:string;tool_name:string}>(
     "SELECT status,arguments_sha256,tool_name FROM agentstudio.external_effects "+
     "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[c.run_id,owner,request.step_key])).rows[0]
   if(approval?.status!=="approved"||approval.reason_code!=="wf2:"+request.input_sha256||
      effect?.status!=="started"||effect.arguments_sha256!==request.input_sha256||effect.tool_name!=="workflow:"+kind)changed(kind)
+  if(kind==="tool"&&pending.configuration.knowledge_retrieval&&approval.knowledge_charge!==true)changed(kind)
+  // Completed semantic observations can enter later model/HTTP/MCP inputs or
+  // Agent summaries. Check their current private receipts before any new effect;
+  // do not replace the already approved input with newly fetched text.
+  if(!await currentKnowledgeObservations(db,c.run_id,request.step_key))changed(kind)
   return {...pending,node_debug:Boolean(state.node_debug)}
 }
 export async function reserveWorkflowEffectDispatch(db:SqlClient,owner:string,r:WorkflowV2ModelRequest,kind:WorkflowDispatchKind){

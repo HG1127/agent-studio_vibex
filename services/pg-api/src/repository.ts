@@ -6,6 +6,7 @@ import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
 import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
 import {requireKnowledgeScope} from "./knowledge-runtime-scope.ts"
+import {verifyKnowledgeRetrievalBinding} from "./knowledge-retrieval-policy.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -73,6 +74,7 @@ function toSpecRow(row:SpecRow):SpecRow {
 // A non-existent, unshared or another employee\'s KB cannot enter the spec.
 async function verifyKnowledgeSelection(db:SqlClient,actor:string,
   spec:AgentSpecInput):Promise<void>{
+  await verifyKnowledgeRetrievalBinding(db,spec.knowledge_retrieval)
   const ids=spec.knowledge_base_ids??[]
   if(!Array.isArray(ids)||ids.length>3||
      ids.some(id=>!isUuid(id))||new Set(ids).size!==ids.length||

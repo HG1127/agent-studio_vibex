@@ -6,7 +6,7 @@ export type ToolArguments=Record<string,unknown>
 export type WorkflowToolPlan=
   |{kind:"calculate";expression:string;output:string}
   |{kind:"summarize";prompt:string;binding:NonNullable<WorkflowEffectRequest["configuration"]["model_binding"]>}
-  |{kind:"knowledge_search";query:string;ids:string[]}
+  |{kind:"knowledge_search";query:string;ids:string[];retrieval?:NonNullable<WorkflowEffectRequest["configuration"]["knowledge_retrieval"]>}
   |{kind:"web_fetch";url:string}
   |{kind:"web_search";query:string;limit:number}
   |{kind:"http";args:ToolArguments;binding:NonNullable<WorkflowEffectRequest["configuration"]["tool_binding"]>}
@@ -72,7 +72,7 @@ export function prepareWorkflowTool(request:WorkflowEffectRequest):WorkflowToolP
   if(request.kind!=="tool")invalid()
   const config=request.configuration,args=safeWorkflowToolArguments(request.input)
   if(config.mcp_binding){
-    if(config.tool||config.tool_binding||config.model_binding||config.knowledge_base_ids)invalid()
+    if(config.tool||config.tool_binding||config.model_binding||config.knowledge_base_ids||config.knowledge_retrieval)invalid()
     return {kind:"mcp",args,binding:{...config.mcp_binding}}
   }
   if(config.tool_binding)return {kind:"http",args,binding:{...config.tool_binding}}
@@ -88,7 +88,8 @@ export function prepareWorkflowTool(request:WorkflowEffectRequest):WorkflowToolP
     return {kind:"summarize",binding:{...config.model_binding},prompt:"请整理并总结以下文本"+(focus?"（关注重点："+focus+"）":"")+
       "，直接输出整理后的要点，不要寒暄：\n\n"+content}
   }
-  if(config.tool==="knowledge_search")return {kind:"knowledge_search",query:text(args.query,80).trim(),ids:[...(config.knowledge_base_ids??[])]}
+  if(config.tool==="knowledge_search")return {kind:"knowledge_search",query:text(args.query,config.knowledge_retrieval?300:80).trim(),ids:[...(config.knowledge_base_ids??[])],
+    ...(config.knowledge_retrieval?{retrieval:{...config.knowledge_retrieval}}:{})}
   if(config.tool==="web_fetch")return {kind:"web_fetch",url:safeToolDestination(text(args.url,2000),["http:","https:"]).toString()}
   const limit=args.limit===undefined?5:args.limit
   if(!Number.isSafeInteger(limit)||(limit as number)<1||(limit as number)>10)invalid()

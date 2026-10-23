@@ -5,6 +5,7 @@ import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {selectKnowledgeEmbeddingSettings,selectKnowledgeEmbeddingConsent} from "./knowledge-embedding-policy.ts"
 import {selectKnowledgeIndexRuntime} from "./knowledge-index-policy.ts"
 import {selectKnowledgeQueryRuntime} from "./knowledge-query-policy.ts"
+import {selectKnowledgeToolRuntime} from "./knowledge-tool-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -25,6 +26,7 @@ export interface NativePg18UatCapabilities {
   knowledgeEmbeddingConsentUat?:boolean
   knowledgeIndexRuntimeUat?:boolean
   knowledgeQueryRuntimeUat?:boolean
+  knowledgeToolExecutionUat?:boolean
   /** Additional opt-in for inert Start/End-only Workflow validation records. */
   workflowValidationUat?:boolean
   /** Separately approved queue + safe Start/End Workflow Worker UAT. */
@@ -64,6 +66,7 @@ export function selectNativePg18UatCapabilities(
   const knowledgeEmbeddingConsentUat=selectKnowledgeEmbeddingConsent(env)
   const knowledgeIndexRuntimeUat=selectKnowledgeIndexRuntime(env)
   const knowledgeQueryRuntimeUat=selectKnowledgeQueryRuntime(env)
+  const knowledgeToolExecutionUat=selectKnowledgeToolRuntime(env)
   if(knowledgeEmbeddingSettingsUat&&!knowledgeSharingUat)refuse()
   if(knowledgeEmbeddingConsentUat&&!knowledgeEmbeddingSettingsUat)refuse()
   if(knowledgeIndexRuntimeUat&&!knowledgeEmbeddingConsentUat)refuse()
@@ -136,6 +139,7 @@ export function selectNativePg18UatCapabilities(
     ...(knowledgeEmbeddingConsentUat?{knowledgeEmbeddingConsentUat:true}:{}),
     ...(knowledgeIndexRuntimeUat?{knowledgeIndexRuntimeUat:true}:{}),
     ...(knowledgeQueryRuntimeUat?{knowledgeQueryRuntimeUat:true}:{}),
+    ...(knowledgeToolExecutionUat?{knowledgeToolExecutionUat:true}:{}),
     ...(workflowValidationUat?{workflowValidationUat:true}:{}),
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),

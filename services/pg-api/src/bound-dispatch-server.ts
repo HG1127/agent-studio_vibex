@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
-import {scopedKnowledgePool} from "./knowledge-scope-policy.ts"
+import {scopedKnowledgePool,scopedEmbeddingConsentPool,scopedEmbeddingSettingsPool} from "./knowledge-scope-policy.ts"
+import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
+import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
 import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 // Separate, private PG18 Broker. Never mount this handler on Native/8090.
 // Import and --plan perform no credential I/O, database access or listening.
@@ -58,6 +60,8 @@ export function boundDispatchServerConfig(
   const knowledgeSharingEnabled=selectKnowledgeSharing(env)
   const workflowModelEnabled=selectWorkflowV2ModelExecution(env)
   const workflowToolsEnabled=selectWorkflowV2ToolExecution(env)
+  const knowledgeToolsEnabled=selectKnowledgeToolRuntime(env)
+  if(knowledgeToolsEnabled&&!workflowToolsEnabled)refuse()
   const mcpEnabled=selectMcpExecution(env)
   if(mcpEnabled&&!workflowToolsEnabled)refuse()
   const autonomousEnabled=selectAutonomousAgentExecution(env)
@@ -75,7 +79,7 @@ export function boundDispatchServerConfig(
     if(pin.equals(boundCertificateFingerprint(workflowFingerprint))||pin.equals(boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)))refuse()
   }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
-  return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),
+  return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),...(knowledgeToolsEnabled?{knowledgeToolsEnabled:true}:{}),
     workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} )}
 }
 function password(bytes:Buffer):string{
@@ -113,7 +117,7 @@ export async function startBoundDispatchServer(
   const api=connect("agentstudio_stage_login",apiPassword)
   const identities=connect("agentstudio_bound_dispatch_login",identityPassword)
   const broker=connect("agentstudio_model_broker_login",brokerPassword)
-  const business=scopedKnowledgePool(adapter(api),cfg.knowledgeSharingEnabled===true)
+  const business=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(api),cfg.knowledgeSharingEnabled===true),cfg.knowledgeToolsEnabled===true),cfg.knowledgeToolsEnabled===true),cfg.knowledgeToolsEnabled===true),cfg.knowledgeToolsEnabled===true)
   const pools=[api,identities,broker]
   for(const pool of pools)pool.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
@@ -137,6 +141,7 @@ export async function startBoundDispatchServer(
         await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
     if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(business,adapter(broker));await verifyMcpExecutionSchema(business)}
     if(cfg.knowledgeSharingEnabled)await verifyKnowledgeRuntimeSchema(business)
+    if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -165,7 +170,7 @@ export async function startBoundDispatchServer(
             new WorkflowV2ToolDispatch(business,encryptionKey,{...createWorkflowToolNetwork(),
               ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
               summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
-                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous}))}):undefined,
+                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true}))}):undefined,
       }
     }
     const workflowHandlers=cfg.workflowModelEnabled||cfg.workflowToolsEnabled?makeV2Handlers(cfg.workflowFingerprint!,false):undefined

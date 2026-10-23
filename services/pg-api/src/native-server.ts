@@ -8,6 +8,7 @@ import {verifyKnowledgeIndexSchema} from "./knowledge-index-privileges.ts"
 import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
 import {KnowledgeQueryRepository} from "./knowledge-query-repository.ts"
 import {verifyKnowledgeQuerySchema} from "./knowledge-query-audit.ts"
+import {scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
 import {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
 import {embeddingEndpointPolicy} from "./knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.ts"
@@ -306,7 +307,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
-  const business=scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true),capabilities.knowledgeQueryRuntimeUat===true)
+  const business=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true),capabilities.knowledgeQueryRuntimeUat===true),capabilities.knowledgeToolExecutionUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
@@ -360,6 +361,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeEmbeddingConsentUat===true)await verifyKnowledgeEmbeddingConsentSchema(business)
     if(capabilities.knowledgeIndexRuntimeUat===true)await verifyKnowledgeIndexSchema(business)
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
+    if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -429,8 +431,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true}),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true}),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
         ?{workflowValidationRepository:new WorkflowValidationRepository(

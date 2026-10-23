@@ -226,6 +226,8 @@ export class RunRepository {
           throw new HttpError(409,"agent_http_tools_require_autonomous_runtime")
         if(Array.isArray(spec.spec?.mcp_tools)&&spec.spec.mcp_tools.length)
           throw new HttpError(409,"agent_mcp_tools_require_autonomous_runtime")
+        if(spec.spec?.knowledge_retrieval!==undefined)
+          throw new HttpError(409,"agent_semantic_tools_require_autonomous_runtime")
         // Default remains denied. The isolated integration fixture may admit
         // a bound run only when a separately reviewed broker/Worker is wired.
         // Recheck the CURRENT owner's provider metadata under a shared row

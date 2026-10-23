@@ -6,6 +6,8 @@ import {withModelBrokerActor} from "./model-broker-actor.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import {gatherAuthorizedKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
+import {KnowledgeQueryRepository} from "./knowledge-query-repository.ts"
+import {executeKnowledgeTool} from "./knowledge-tool-execution.ts"
 import {sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
 import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {checkedWorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
@@ -50,10 +52,13 @@ async function workflowContext(db:SqlClient,owner:string,id:string,query:string)
 export class WorkflowV2ToolDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer;readonly executor:WorkflowToolExecutor
   readonly allowAutonomous:boolean;readonly allowAgent:boolean
-  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean}={}){
+  readonly knowledgeQueries:KnowledgeQueryRepository|null
+  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowKnowledgeExecution?:boolean}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||!executor||!brokerPool)throw Error("workflow_tool_dispatch_dependencies_required")
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
     this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true
+    if(options.allowKnowledgeExecution===true&&(pool.knowledgeToolRuntime!==true||pool.knowledgeQueryRuntime!==true))throw Error("workflow_knowledge_tool_disabled")
+    this.knowledgeQueries=options.allowKnowledgeExecution===true?new KnowledgeQueryRepository(pool,{executionSourceApproved:true,allowAgentExecution:this.allowAgent,allowAutonomousExecution:this.allowAutonomous}):null
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ToolRequest(raw)
@@ -63,7 +68,8 @@ export class WorkflowV2ToolDispatch{
       let headerRefs:HeaderRef[]=[]
       if(plan.kind==="calculate")output=plan.output
       else if(plan.kind==="knowledge_search"){
-        if(plan.ids.length){const hits=await gatherAuthorizedKnowledgeEvidence(db,owner,plan.ids,plan.query)
+        if(plan.retrieval){if(!this.knowledgeQueries)throw new WorkflowKnownEffectFailure("workflow_tool_adapter_unavailable")}
+        else if(plan.ids.length){const hits=await gatherAuthorizedKnowledgeEvidence(db,owner,plan.ids,plan.query)
           output=searchOutput(await sharedKnowledgeScopeEnabled(db)?"authorized_keyword":"owner_private_keyword",hits)}
         else output=await workflowContext(db,owner,request.claim.run_id,plan.query)
       }else{
@@ -98,7 +104,7 @@ export class WorkflowV2ToolDispatch{
         }catch{throw new WorkflowKnownEffectFailure("workflow_tool_input_invalid")}
       }
       await reserveWorkflowEffectDispatch(db,owner,request,"tool")
-      return {plan,output,connection,model,headerRefs,mcp}
+      return {plan,output,connection,model,headerRefs,mcp,owner}
     })
     // Every error from here is potentially ambiguous. Only pre-reservation
     // parsing/configuration failures may be reported as deterministic failures.
@@ -111,6 +117,10 @@ export class WorkflowV2ToolDispatch{
       const execute=async()=>{
         const plan=selected.plan
         if(selected.output!==undefined)return selected.output
+        if(plan.kind==="knowledge_search"&&plan.retrieval){
+          await recheck()
+          return executeKnowledgeTool(this.knowledgeQueries!,identity,selected.owner,request,{...plan,retrieval:plan.retrieval},controller.signal)
+        }
         if(plan.kind==="mcp"){
           const current=await withActor(this.pool,identity,async(db,owner)=>resolveMcpBinding(db,owner,plan.binding))
           if(current.row.url!==selected.mcp!.row.url)changed()

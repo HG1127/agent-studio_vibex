@@ -2,6 +2,7 @@
 // bounded, data-only contract; accepting a graph never authorizes execution.
 // Browser-safe canonical contract. Do not import SQL, auth, Node or runtime code.
 import {parseMcpBinding,type McpBinding} from "./mcp-binding.ts"
+import {parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "./knowledge-retrieval-binding.ts"
 export type WorkflowNodeType="start"|"end"|"model"|"tool"|"agent"|"condition"|"loop"
 export interface WorkflowNode{id:string;type:WorkflowNodeType;data:WorkflowNodeDataV2;position:{x:number;y:number}}
 export interface WorkflowEdge{id:string;source:string;target:string;sourceHandle?:"true"|"false"|"done"}
@@ -21,6 +22,7 @@ export interface WorkflowNodeDataV2 {
   tool_binding_required?:true
   params_template?:string
   knowledge_base_ids?:string[]
+  knowledge_retrieval?:KnowledgeRetrievalBinding
   ref_title?:string
   op?:"contains"|"not_contains"|"gt"|"lt"|"eq"
   value?:string
@@ -36,7 +38,7 @@ const fields:Record<WorkflowNodeType,string[]>={
   start:["title","input_hint"],
   model:["title","model_binding","prompt","prompt_format"],
   agent:["title","agent_binding","prompt","max_steps","model_binding"],
-  tool:["title","tool","tool_binding","mcp_binding","tool_binding_required","params_template","knowledge_base_ids","model_binding"],
+  tool:["title","tool","tool_binding","mcp_binding","tool_binding_required","params_template","knowledge_base_ids","knowledge_retrieval","model_binding"],
   condition:["title","ref_title","op","value"],
   loop:["title","mode","count","list_source","delimiter","stop_keyword","max_iterations"],
   end:["title","output_template"],
@@ -95,6 +97,7 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
     else if(key==="agent_binding")output[key]=reference(value,"agent")
     else if(key==="tool_binding")output[key]=reference(value,"tool")
     else if(key==="mcp_binding"){try{output[key]=parseMcpBinding(value)}catch{invalid()}}
+    else if(key==="knowledge_retrieval"){try{output[key]=parseKnowledgeRetrievalBinding(value);if(!output[key])invalid()}catch{invalid()}}
     else if(key==="tool")output[key]=enumValue(value,["calculate","summarize","knowledge_search","web_fetch","web_search"])
     else if(key==="prompt_format")output[key]=enumValue(value,["literal"])
     else if(key==="tool_binding_required"){if(value!==true)invalid();output[key]=true}
@@ -114,6 +117,7 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
     if(output.tool_binding_required){if(output.tool||output.tool_binding||output.mcp_binding||output.knowledge_base_ids||output.model_binding)invalid()}
     else if([output.tool,output.tool_binding,output.mcp_binding].filter(Boolean).length!==1)invalid()
     if(output.knowledge_base_ids&&output.tool!=="knowledge_search")invalid()
+    if(output.knowledge_retrieval&&(output.tool!=="knowledge_search"||!Array.isArray(output.knowledge_base_ids)||!output.knowledge_base_ids.length))invalid()
     if(output.model_binding&&output.tool!=="summarize")invalid()
   }
   if(type==="loop"&&(!output.mode||(output.mode==="count"&&!output.count)||

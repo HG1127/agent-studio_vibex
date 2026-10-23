@@ -8,6 +8,7 @@ export async function withKnowledgeQueryRole<T>(pool:SqlPool,kind:"worker"|"brok
     await db.query("SELECT set_config('agentstudio.knowledge_index_runtime_enabled','false',true)")
     await db.query("SELECT set_config('agentstudio.knowledge_sharing_enabled',$1::text,true)",[pool.knowledgeSharing===true?"true":"false"])
     await db.query("SELECT set_config('agentstudio.knowledge_query_runtime_enabled','true',true)")
+    await db.query("SELECT set_config('agentstudio.knowledge_tool_runtime_enabled',$1::text,true)",[pool.knowledgeToolRuntime===true?"true":"false"])
     const result=await body(db);await db.query("COMMIT");active=false;return result
   }catch(error){if(active)await db.query("ROLLBACK").catch(()=>undefined);throw error}finally{db.release()}
 }

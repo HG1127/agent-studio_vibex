@@ -64,6 +64,8 @@ import {verifyKnowledgeQuerySchema} from "../src/knowledge-query-audit.ts"
 import {QUERY_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-query-contracts.ts"
 import {createKnowledgeQueryPrivateClient,createKnowledgeQueryPrivateHandler} from "../src/knowledge-query-private-tls.ts"
 import {workflowKnowledgeQueryId} from "../src/knowledge-execution-source.ts"
+import {scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "../src/knowledge-tool-policy.ts"
+import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../src/knowledge-retrieval-binding.ts"
 import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch} from "../src/workflow-v2-dispatch-guard.ts"
 import {INDEX_START_ACKNOWLEDGEMENT} from "../src/knowledge-index-contracts.ts"
 import {embeddingEndpointPolicy} from "../src/knowledge-embedding-policy.ts"
@@ -89,7 +91,7 @@ const adapter=pool=>({async connect(){
 const upgrade=name=>readFileSync(new URL("../../../db/postgres/migrations/"+name,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
@@ -137,7 +139,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       knowledgeIndexRepository:new KnowledgeIndexRepository(pool),
       knowledgeQueryRepository:new KnowledgeQueryRepository(pool),
       workflowRepository:new WorkflowRepository(pool),
-      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
       mcpConnectionRepository:new McpConnectionRepository(pool,key,brokerPool),
@@ -241,6 +243,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query(upgrade("pg_v9_037_knowledge_index_runtime.sql"))
     await admin.query(upgrade("pg_v9_038_knowledge_query_runtime.sql"))
     await admin.query(upgrade("pg_v9_039_knowledge_execution_source.sql"))
+    await admin.query(upgrade("pg_v9_040_approved_semantic_tools.sql"))
     for(const account of [
       ["agentstudio_bound_dispatch_login","agentstudio_bound_dispatch"],
       ["agentstudio_model_broker_login","agentstudio_model_broker"],
@@ -251,12 +254,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+authPassword+"'")
     const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
-    const apiPool=scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true)
+    const apiPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool)
     await verifyKnowledgeEmbeddingSchema(apiPool)
     await verifyKnowledgeEmbeddingConsentSchema(apiPool)
     await verifyKnowledgeIndexSchema(apiPool)
     await verifyKnowledgeQuerySchema(apiPool)
+    await verifyKnowledgeToolSchema(apiPool)
     for(const kind of ["worker","broker"])await verifyKnowledgeQuerySchema(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     await admin.query("GRANT SELECT ON agentstudio.knowledge_embedding_consents TO agentstudio_stage_login")
@@ -269,7 +273,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await verifyKnowledgeEmbeddingSchema(apiPool)
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
-    const workerPool=scopedKnowledgePool(adapter(byLogin.agentstudio_stage_worker),true)
+    const workerPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_worker),true),true),true),true),true)
     const inspectWorkerOptional=async()=>{
       const db=await workerPool.connect()
       try{await db.query("BEGIN READ ONLY");try{
@@ -504,37 +508,36 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await knowledgeAccess.change(owner,sharedBase.id,{action:"semantic",recipient_id:share.item.recipient_id,enabled:true,expected_revision:1,request_id:randomUUID()})
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     assert.equal((await api.getConfigCapabilities()).knowledge_query_runtime_enabled,true)
-    const readerModel=await api.createModelConnection({name:"CI reader embedding",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticReaderQueryCredentialNeverNetwork012345",models:["synthetic-embedding"],enabled:true})
+    const readerModel=await api.createModelConnection({name:"CI reader embedding",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticReaderQueryCredentialNeverNetwork012345",models:["synthetic-embedding","synthetic-chat"],enabled:true})
     await api.changeKnowledgeEmbeddingSettings({action:"configure",request_id:randomUUID(),expected_revision:0,connection_id:readerModel.id,connection_revision:readerModel.revision,model_name:"synthetic-embedding",base_url:"https://api.openai.com/v1"})
     const readerProfile=await api.getKnowledgeEmbeddingConsent()
     await api.changeKnowledgeEmbeddingConsent({action:"grant",request_id:randomUUID(),expected_revision:0,profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,index_enabled:false,query_enabled:true,acknowledgement:EMBEDDING_CHARGE_ACKNOWLEDGEMENT})
     const queryRequest={request_id:randomUUID(),base_ids:[sharedBase.id],query:"different wording",mode:"semantic",profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,consent_revision:1,acknowledgement:QUERY_CHARGE_ACKNOWLEDGEMENT}
     assert.equal((await api.submitKnowledgeQuery(queryRequest)).item.status,"prepared")
-    const queryWorkerPool=scopedKnowledgeQueryPool(scopedKnowledgePool(adapter(byLogin.agentstudio_knowledge_index_worker_login),true),true)
-    const queryBrokerPool=scopedKnowledgeQueryPool(scopedKnowledgePool(adapter(byLogin.agentstudio_knowledge_index_broker_login),true),true)
+    const queryWorkerPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgePool(adapter(byLogin.agentstudio_knowledge_index_worker_login),true),true),true)
+    const queryBrokerPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgePool(adapter(byLogin.agentstudio_knowledge_index_broker_login),true),true),true)
     let queryCalls=0
     const queryBroker=new KnowledgeQueryBroker(queryBrokerPool,brokerPool,key,async material=>{
       queryCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.deepEqual(material.input,[queryRequest.query]);return [[1,0]]
     },{approvedForIsolatedUat:true})
+    let semanticRunId
     await withDisposableBoundModelTls(claim=>queryBroker.dispatch(claim),async config=>{
       const worker=new KnowledgeQueryWorker(queryWorkerPool,createKnowledgeQueryPrivateClient(config),{approvedForIsolatedUat:true})
       assert.equal((await worker.tick()).status,"retrieved");assert.equal((await worker.tick()).status,"idle")
       assert.equal((await api.getKnowledgeQueryReceipt(queryRequest.request_id)).result.items[0].document_id,sharedDoc.item.document_id)
       assert.equal((await api.submitKnowledgeQuery(queryRequest)).replayed,true);assert.equal(queryCalls,1)
-      // SQL039 stays unwired to product Tool dispatch. Exercise its foundation
-      // through real PG18 restricted logins, an employee-approved run/lease and
-      // the existing private mTLS Query Worker/Broker with synthetic vectors.
+      // Exercise the source fence independently before the actual Tool below.
       for(const revoke of [false,true]){
         const flow=await api.createWorkflowGraph("Synthetic query source",{version:2,nodes:[
           {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
-          {id:"search",type:"tool",data:{title:"Search",tool:"knowledge_search",knowledge_base_ids:[sharedBase.id],params_template:'{"query":"different wording"}'},position:{x:100,y:0}},
+          {id:"search",type:"tool",data:{title:"Search",tool:"knowledge_search",knowledge_base_ids:[sharedBase.id],knowledge_retrieval:{mode:"semantic",profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,consent_revision:1},params_template:'{"query":"different wording"}'},position:{x:100,y:0}},
           {id:"end",type:"end",data:{title:"End"},position:{x:200,y:0}}],edges:[{id:"a",source:"start",target:"search"},{id:"b",source:"search",target:"end"}]})
         const queued=await api.submitWorkflowV2Run(flow.id,flow.revision,"Synthetic source only","ci-source-"+flow.id)
         let enter,release
         const ready=new Promise(resolve=>{enter=resolve}),result=new Promise(resolve=>{release=resolve})
         const sourceWorker=new WorkflowV2Worker(workerPool,"ci-query-source",{executor:{supports:()=>true,execute(request,lease){enter({request,lease});return result}}})
         await sourceWorker.tick();const pending=(await api.getWorkflowV2Run(queued.run.id)).pending_effect
-        await api.decideWorkflowV2Node(queued.run.id,"approved",pending.step_key,pending.input_sha256)
+        await api.decideWorkflowV2Node(queued.run.id,"approved",pending.step_key,pending.input_sha256,KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)
         const running=sourceWorker.tick()
         try{
           const {request,lease}=await ready,wire={claim:{run_id:lease.run_id,job_id:lease.job_id,lease_token:lease.lease_token,lease_version:lease.lease_version,lease_owner:lease.worker_id},step_key:request.step_key,input_sha256:request.input_sha256}
@@ -551,6 +554,42 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
           assert.equal((await worker.tick()).status,"idle");assert.equal(queryCalls,2)
         }finally{release("Synthetic held source result");await running;await sourceWorker.tick()}
       }
+      const flow=await api.createWorkflowGraph("Actual approved semantic Tool",{version:2,nodes:[
+        {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+        {id:"search",type:"tool",data:{title:"Search",tool:"knowledge_search",knowledge_base_ids:[sharedBase.id],knowledge_retrieval:{mode:"semantic",profile_id:readerProfile.profile_id,profile_revision:readerProfile.profile_revision,consent_revision:1},params_template:'{"query":"different wording"}'},position:{x:100,y:0}},
+        {id:"model",type:"model",data:{title:"Answer",model_binding:{connection_id:readerModel.id,connection_revision:readerModel.revision,model_id:"synthetic-chat"},prompt:"Use approved evidence: {{Search.output}}"},position:{x:200,y:0}},
+        {id:"end",type:"end",data:{title:"End",output_template:"{{Answer.output}}"},position:{x:300,y:0}}],edges:[{id:"a",source:"start",target:"search"},{id:"b",source:"search",target:"model"},{id:"c",source:"model",target:"end"}]})
+      const queued=await api.submitWorkflowV2Run(flow.id,flow.revision,"Private task must not reach embedding provider","ci-real-semantic-"+flow.id)
+      semanticRunId=queued.run.id;let modelCalls=0
+      const model=new WorkflowV2ModelDispatch(apiPool,key,async(material,prompt)=>{
+        modelCalls++;assert.equal(material.api_key,"SyntheticReaderQueryCredentialNeverNetwork012345");assert.match(prompt,/cedar/);return "approved-semantic-result"
+      },brokerPool)
+      const tool=new WorkflowV2ToolDispatch(apiPool,key,{},brokerPool,{allowKnowledgeExecution:true})
+      const dispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),model),tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),tool)}
+      const controller=new AbortController(),loop=(async()=>{while(!controller.signal.aborted){await worker.tick(controller.signal);await new Promise(resolve=>setTimeout(resolve,20))}})()
+      try{await withDisposableBoundModelTls(dispatch,async wire=>{
+        const adapters=[workflowV2ModelEffectExecutor(wire),workflowV2ToolEffectExecutor(wire)],runtimeWorker=new WorkflowV2Worker(workerPool,"ci-real-semantic",{executor:{supports:r=>adapters.some(a=>a.supports(r)),execute(r,lease){return adapters.find(a=>a.supports(r)).execute(r,lease)}}})
+        let completed=false
+        for(let i=0;i<20;i++){
+          await runtimeWorker.tick();const view=await api.getWorkflowV2Run(semanticRunId)
+          if(view.run.status==="awaiting_approval"){
+            const p=view.pending_effect,paid=p.kind==="tool"&&p.configuration.knowledge_retrieval
+            if(paid)await assert.rejects(api.decideWorkflowV2Node(semanticRunId,"approved",p.step_key,p.input_sha256),e=>e.status===409)
+            else assert.match(p.input,/cedar/)
+            await api.decideWorkflowV2Node(semanticRunId,"approved",p.step_key,p.input_sha256,paid?KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT:undefined)
+          }else if(view.run.status==="succeeded"){completed=true;break}
+          else assert.ok(!["paused","failed","cancelled"].includes(view.run.status))
+        }
+        assert.equal(completed,true);assert.equal(modelCalls,1);assert.equal(queryCalls,3)
+      },{handlerFactory:wire=>{
+        const m=createWorkflowV2ModelInternalHandler({...wire,dispatch:dispatch.model}),t=createWorkflowV2ToolInternalHandler({...wire,dispatch:dispatch.tool})
+        return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?t:m)(req,res)
+      }})}finally{controller.abort();await loop}
+      await admin.query("UPDATE agentstudio.knowledge_query_jobs SET expires_at=now()-interval '1 second' WHERE source_run_id=$1",[semanticRunId])
+      assert.equal((await worker.tick()).status,"idle")
+      const evidence=(await admin.query("SELECT query_text,result_refs,execution_evidence FROM agentstudio.knowledge_query_jobs WHERE source_run_id=$1",[semanticRunId])).rows[0]
+      assert.equal(evidence.query_text,null);assert.equal(evidence.result_refs,null);assert.ok(evidence.execution_evidence)
+      assert.equal((await api.getWorkflowV2Run(semanticRunId)).run.result_text,"approved-semantic-result")
     },{handlerFactory:createKnowledgeQueryPrivateHandler})
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     assert.equal((await knowledgeContent.search(reader,sharedBase.id,"cedar"))[0].document_id,sharedDoc.item.document_id)
@@ -562,6 +601,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(await bases.get(reader,sharedBase.id),null)
     await assert.rejects(knowledgeAccess.listGrants(reader,sharedBase.id),error=>error.status===404)
     await knowledgeAccess.change(owner,sharedBase.id,{action:"revoke",recipient_id:share.item.recipient_id,expected_revision:2,request_id:randomUUID()})
+    assert.equal((await new WorkflowV2RunRepository(apiPool).get(reader,semanticRunId)).run.result_text,"")
     await assert.rejects(new KnowledgeQueryRepository(apiPool).get(reader,queryRequest.request_id),error=>error.status===404)
     assert.equal((await knowledgeAccess.listShared(reader)).length,0)
     await assert.rejects(knowledgeContent.search(reader,sharedBase.id,"cedar"),error=>error.status===404)

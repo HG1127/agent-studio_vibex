@@ -6,6 +6,7 @@ import {withActor} from "./repository.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import {resolveMcpBinding} from "./mcp-binding-resources.ts"
 import {requireKnowledgeScope,storedKnowledgeIds} from "./knowledge-runtime-scope.ts"
+import {verifyKnowledgeRetrievalBinding} from "./knowledge-retrieval-policy.ts"
 
 export interface WorkflowRow {
   id:string
@@ -31,6 +32,7 @@ export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,gra
   for(const node of graph.nodes)await verifyWorkflowResourceReferences(db,actor,node.data)
 }
 export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string,data:WorkflowGraph["nodes"][number]["data"]){
+    await verifyKnowledgeRetrievalBinding(db,data.knowledge_retrieval)
     const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=data
     if(data.mcp_binding)await resolveMcpBinding(db,actor,data.mcp_binding,true)
     if(model){

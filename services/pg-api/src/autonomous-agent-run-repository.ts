@@ -7,7 +7,7 @@ import {createWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import type {SqlPool} from "./contracts.ts"
 export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
-  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean}={}){super(pool,"agent_native_v2",options)}
+  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){super(pool,"agent_native_v2",options)}
   override async submit(identity:Identity,id:string,raw:unknown){
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_spec_id")
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
