@@ -2,11 +2,13 @@
 // tools, plugins, browsers, or customer-supplied API credentials.
 import {readFileSync,statSync} from "node:fs"
 import {safeModelKnowledgeEvidence} from "./knowledge-evidence.ts"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 
 export interface ModelInput {
   goal:string
   instruction:string
   taskScope:string
+  taskPlan?:string[]
   deliverables:string[]
   doneCriteria:string[]
   knowledgeEvidence?:{citation:string;snippet:string}[]
@@ -40,12 +42,13 @@ export function createStagingOpenAIProvider(
     throw Error("unsafe_model_secret")
   return {
     async generate(input:ModelInput):Promise<string> {
-      if(!input.goal.trim()||input.goal.length>2000 ||
+      if(!input.goal.trim()||input.goal.length>roleLimits.goal ||
          input.instruction.length>2000 ||
-         input.taskScope.length>2000 ||
-         input.deliverables.length>20||input.doneCriteria.length>20 ||
+         input.taskScope.length>roleLimits.task_scope ||
+         input.deliverables.length>roleLimits.list_items||input.doneCriteria.length>roleLimits.list_items ||
+         input.taskPlan!==undefined&&(!Array.isArray(input.taskPlan)||input.taskPlan.length>roleLimits.list_items)||
          [...input.deliverables,...input.doneCriteria]
-           .some(x=>typeof x!=="string"||x.length>300))
+           .concat(input.taskPlan??[]).some(x=>typeof x!=="string"||x.length>roleLimits.list_item||x.includes("\0")))
         throw Error("invalid_model_input")
       // Defense in depth: only a small RLS-selected set of citations may
       // enter a Model request. Direct callers cannot inject large/unsafe
@@ -56,6 +59,7 @@ export function createStagingOpenAIProvider(
         "Scope: "+input.taskScope,
         "Instruction: "+input.instruction,
         "Deliverables:\n"+input.deliverables.join("\n"),
+        ...(input.taskPlan?.length?["Task plan:\n"+input.taskPlan.join("\n")]:[]),
         "Acceptance criteria:\n"+input.doneCriteria.join("\n"),
         ...(evidence!==undefined?[
           "Owner-scoped knowledge search (LITERAL keyword only). "+

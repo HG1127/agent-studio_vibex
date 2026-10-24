@@ -104,7 +104,7 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
       "No remote calls are performed by you; the system separately asks the employee to approve each proposed operation. "+
       "Do not include hidden reasoning. An optional note may briefly describe the action.",
       role:{name:parent.configuration.title,goal:state.spec.goal,task_scope:state.spec.task_scope,
-        deliverables:state.spec.deliverables,done_criteria:state.spec.done_criteria,allowed_tools:state.spec.tools,
+        deliverables:state.spec.deliverables,task_plan:state.spec.task_plan,done_criteria:state.spec.done_criteria,allowed_tools:state.spec.tools,
         ...(state.spec.http_tools?.length?{http_tools:state.spec.http_tools.map(({name,description})=>({name,description,
           arguments:"JSON object. The owner-configured HTTP template consumes these parameters."}))}:{}),
         ...(state.mcp_tool_definitions?.length?{mcp_tools:state.mcp_tool_definitions.map(({name,definition})=>({name,description:definition.description,

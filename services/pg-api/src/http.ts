@@ -1,4 +1,5 @@
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
+import type {AgentCollaborationRepository} from "./agent-collaboration-repository.ts"
 import type {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import type {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
 import type {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
@@ -29,6 +30,7 @@ import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Ide
 
 export interface AppDependencies {
   repository: AgentSpecRepository
+  agentCollaborationRepository?:AgentCollaborationRepository
   runRepository?: RunRepository
   scheduleInventory?: ScheduleInventoryRepository
   scheduleDraftRepository?: ScheduleDraftRepository
@@ -141,10 +143,11 @@ export function createHandler(deps:AppDependencies) {
       const sharedKnowledgeRoute=/^\/api\/v2\/shared-knowledge(?:\/([0-9a-fA-F-]{36})(?:\/(documents|search|import|delete|access|content-receipt|access-receipt))?)?$/.exec(path)
       const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|consent|consent-receipt|index-authorize|index-receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild|index-status))$/.exec(path)
       const queryRoute=/^\/api\/v2\/knowledge-query\/(submit|receipt)$/.exec(path)
+      const collaborationRoute=/^\/api\/v2\/agent-collaboration(?:\/([0-9a-fA-F-]{36})(?:\/(revisions|change|revoke|reject|confirm))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -171,6 +174,20 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(collaborationRoute){
+        const repo=deps.agentCollaborationRepository
+        if(!repo)throw new HttpError(503,"agent_collaboration_not_installed")
+        if(new URL(req.url||"/","http://127.0.0.1").search)throw new HttpError(400,"invalid_agent_collaboration_query")
+        const id=collaborationRoute[1],action=collaborationRoute[2]
+        if(method==="GET"&&!id)return send(res,200,{items:await repo.list(identity)})
+        if(!id)throw new HttpError(405,"method_not_allowed")
+        if(method==="GET"&&!action)return send(res,200,{item:await repo.detail(identity,id)})
+        if(method==="GET"&&action==="revisions")return send(res,200,{items:await repo.revisions(identity,id)})
+        if(method!=="POST"||!action||action==="revisions")throw new HttpError(405,"method_not_allowed")
+        const body=await readBody(req,131072)
+        if(action==="revoke"&&body.action!=="revoke"||action==="reject"&&(body.action!=="review"||body.decision!=="reject"))throw new HttpError(400,"invalid_agent_collaboration_stop")
+        return send(res,200,{item:action==="confirm"?await repo.confirm(identity,id,body):await repo.change(identity,id,body)})
+      }
       if(queryRoute){
         const repo=deps.knowledgeQueryRepository
         if(!repo)throw new HttpError(503,"knowledge_query_runtime_disabled")
@@ -853,13 +870,13 @@ export function createHandler(deps:AppDependencies) {
         return send(res,200,{items})
       }
       if(method==="POST" && !suffix){
-        const body=await readBody(req)
+        const body=await readBody(req,262144)
         allowBodyFields(body,["name","spec"])
         const item=await deps.repository.create(identity,safeName(body.name),safeAgentSpec(body.spec))
         return send(res,201,{item})
       }
       if(method==="PATCH" && suffix){
-        const body=await readBody(req)
+        const body=await readBody(req,262144)
         allowBodyFields(body,["name","spec","expected_revision"])
         const revision=body.expected_revision
         if(!Number.isSafeInteger(revision) || (revision as number)<1)

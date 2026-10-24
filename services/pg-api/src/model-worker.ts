@@ -3,6 +3,7 @@
 // outcome is quarantined and NEVER automatically billed again.
 import {createHash} from "node:crypto"
 import {readFileSync} from "node:fs"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 import {fileURLToPath} from "node:url"
 import {isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
 import {applyKnowledgeScope,sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
@@ -185,11 +186,14 @@ export class AgentModelWorker {
         taskScope:typeof data.task_scope==="string"?data.task_scope:"",
         deliverables:Array.isArray(data.deliverables)?data.deliverables as string[]:[],
         doneCriteria:Array.isArray(data.done_criteria)?data.done_criteria as string[]:[],
+        ...(Array.isArray(data.task_plan)&&data.task_plan.length?{taskPlan:data.task_plan as string[]}:{}),
         ...(Array.isArray(bases)&&bases.length?{
           knowledgeEvidence:evidence.map(({citation,snippet})=>({citation,snippet}))
         }:{}),
       }
-      if(!input.goal||input.goal.length>2000||input.instruction.length>2000)
+      if(!input.goal||input.goal.length>roleLimits.goal||input.instruction.length>2000||input.taskScope.length>roleLimits.task_scope||
+        input.deliverables.length>roleLimits.list_items||input.doneCriteria.length>roleLimits.list_items||(input.taskPlan?.length??0)>roleLimits.list_items||
+        [...input.deliverables,...input.doneCriteria,...(input.taskPlan??[])].some(item=>typeof item!=="string"||item.length>roleLimits.list_item||item.includes("\0")))
         throw Error("model_input_invalid")
       const fingerprint=selectedBinding?
         boundModelFingerprint(input,binding):hash({input,model_phase:"v8_2"})

@@ -24,7 +24,7 @@ export function collectRuntimeInitReviewSources(){
     const text=fs.readFileSync(file,"utf8")
     for(const regex of [/\bfrom\s+["'](\.[^"']+)["']/g,/\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)/g])for(const match of text.matchAll(regex)){
       const dep=path.posix.normalize(path.posix.join(path.posix.dirname(rel),match[1]))
-      if(!dep.startsWith("services/pg-api/src/")||dep.includes("..")||!/\.(ts|mjs|mts)$/.test(dep))refuse("outside_dependency")
+      if((!dep.startsWith("services/pg-api/src/")&&dep!=="shared/agent-role-limits.mjs")||dep.includes("..")||!/\.(ts|mjs|mts)$/.test(dep))refuse("outside_dependency")
       visit(dep)
     }
     if(rel.endsWith(".mjs")){const declaration=rel.slice(0,-4)+".d.mts";if(fs.existsSync(path.join(root,declaration)))files.add(declaration)}

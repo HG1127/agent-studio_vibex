@@ -122,7 +122,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
     allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
-    allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,
+    allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,
     allowEmployeeProvisioning=true,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
@@ -191,6 +191,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         return respond(res,200,{
           mode:"native_pg18",
           config_writes_enabled:allowConfigurationWrites===true,
+          ...(allowAgentCollaboration===true?{agent_collaboration_available:true}:{}),
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
           ...(allowConfigurationWrites===true&&allowMcpDiscovery===true?{mcp_discovery_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowMcpToolExecution===true?{mcp_tool_runs_enabled:true}:{}),

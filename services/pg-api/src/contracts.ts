@@ -3,6 +3,7 @@ import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeType,type W
 import {parseAgentHttpTools,type AgentHttpTool} from "./agent-http-tools.ts"
 import {parseAgentMcpTools,type AgentMcpTool} from "./mcp-binding.ts"
 import {parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "./knowledge-retrieval-binding.ts"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 export type {WorkflowNodeType,WorkflowNode,WorkflowEdge,WorkflowGraph} from "./workflow-graph-v2.ts"
 export type Identity = { issuer: string; subject: string }
 
@@ -58,13 +59,13 @@ const allowedTools=new Set([
 ])
 
 function field(value:unknown,max:number): string {
-  if(typeof value!=="string" || value.length>max) throw new HttpError(400,"invalid_agent_spec")
+  if(typeof value!=="string" || value.length>max||value.includes("\0")) throw new HttpError(400,"invalid_agent_spec")
   return value.trim()
 }
-function textList(value:unknown):string[] {
+function textList(value:unknown,maxItems=20,maxItem=300):string[] {
   if(value===undefined)return []
-  if(!Array.isArray(value) || value.length>20)throw new HttpError(400,"invalid_agent_spec")
-  return value.map(v=>field(v,300))
+  if(!Array.isArray(value) || value.length>maxItems)throw new HttpError(400,"invalid_agent_spec")
+  return value.map(v=>field(v,maxItem))
 }
 function knowledgeBaseIds(value:unknown,tools:readonly string[]):string[]{
   if(value===undefined)return []
@@ -95,7 +96,7 @@ export function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
 export function safeAgentSpec(raw:unknown):AgentSpecInput {
   if(!raw || typeof raw!=="object" || Array.isArray(raw))throw new HttpError(400,"invalid_agent_spec")
   const data=raw as Record<string,unknown>
-  const goal=field(data.goal,2000)
+  const goal=field(data.goal,roleLimits.goal)
   if(!goal)throw new HttpError(400,"invalid_agent_spec")
   const tools=textList(data.tools)
   let httpTools:AgentHttpTool[]
@@ -120,10 +121,10 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
   if(retrieval&&(!Array.isArray(data.knowledge_base_ids)||!data.knowledge_base_ids.length||!tools.includes("knowledge_search")||
     [...httpTools,...mcpTools].some(tool=>tool.name==="knowledge_search")))throw new HttpError(400,"invalid_agent_knowledge_retrieval")
   return {
-    goal, task_scope:data.task_scope===undefined?"":field(data.task_scope,2000),
-    deliverables:textList(data.deliverables),
-    task_plan:textList(data.task_plan),
-    done_criteria:textList(data.done_criteria),
+    goal, task_scope:data.task_scope===undefined?"":field(data.task_scope,roleLimits.task_scope),
+    deliverables:textList(data.deliverables,roleLimits.list_items,roleLimits.list_item),
+    task_plan:textList(data.task_plan,roleLimits.list_items,roleLimits.list_item),
+    done_criteria:textList(data.done_criteria,roleLimits.list_items,roleLimits.list_item),
     tools:[...new Set(tools)],
     ...(httpTools.length?{http_tools:httpTools}:{}),
     ...(mcpTools.length?{mcp_tools:mcpTools}:{}),

@@ -31,6 +31,8 @@ import {createNativeRunRepository} from "./native-run-repository.ts"
 import {ScheduleInventoryRepository} from "./schedule-inventory-repository.ts"
 import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
 import {ScheduleRuntimeRepository} from "./schedule-runtime-repository.ts"
+import {AgentCollaborationRepository} from "./agent-collaboration-repository.ts"
+import {inspectAgentCollaborationSchema} from "./agent-collaboration-audit.ts"
 import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import {WorkflowRepository} from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
@@ -367,6 +369,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
+    const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -396,6 +399,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAutonomousAgentSubmission:capabilities.autonomousAgentUat===true,
       allowWorkflowV2Submission:capabilities.workflowV2ExecutionUat===true,
       allowScheduleRuntime:capabilities.scheduleRuntimeUat===true,
+      allowAgentCollaboration:collaborationAvailable,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
@@ -417,6 +421,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
+      ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
       modelConnectionRepository:new ModelConnectionRepository(
         business,modelEncryptionKey,
         brokerPool?adapter(brokerPool):business),

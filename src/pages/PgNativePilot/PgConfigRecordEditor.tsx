@@ -41,7 +41,7 @@ export default function PgConfigRecordEditor({
       {wantsDetail&&<label className="block space-y-1 text-sm font-medium">
         {target.kind==="agents"?"Agent 目标":"知识库简介"}
         <textarea required={target.kind==="agents"}
-          maxLength={target.kind==="agents"?2000:1000} rows={3}
+          maxLength={target.kind==="agents"?3000:1000} rows={3}
           className={field} value={detail}
           onChange={event=>setDetail(event.target.value)}/>
       </label>}

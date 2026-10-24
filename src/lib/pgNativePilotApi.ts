@@ -2,6 +2,9 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {agentDescriptiveLimits} from "../../shared/agent-role-limits.mjs"
+import {collaborationChoice,collaborationDetail,collaborationRevisions,collaborationSummaries,collaborationResult,type PgNativeAgentCollaborationChoice} from "./pgNativeAgentCollaboration.ts"
+export type {PgNativeAgentSafeText,PgNativeAgentCollaborationChoice,PgNativeAgentCollaborationDetail,PgNativeAgentCollaborationSummary,PgNativeAgentCollaborationRevision,PgNativeAgentCollaborationProposal} from "./pgNativeAgentCollaboration.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT,parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
 import {parsePgMcpConnection,type PgNativeMcpInput,type PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
@@ -42,6 +45,7 @@ export type PgNativeConfigCapabilities={
   workflow_v2_submission_enabled?:boolean
   autonomous_agent_submission_enabled?:boolean
   schedule_execution_enabled?:boolean
+  agent_collaboration_available?:boolean
 }
 export type PgNativeStaff={
   id:string;email:string;display_name:string;is_admin:boolean
@@ -220,11 +224,12 @@ const routes={
   workflowV2Runs:"/api/v2/workflow-v2-runs",
   autonomousAgentRuns:"/api/v2/agent-autonomous-runs",
   schedules:"/api/v2/schedules",
+  collaboration:"/api/v2/agent-collaboration",
   modelConnections:"/api/v2/model-connections",
   toolConnections:"/api/v2/tool-connections",
   mcpConnections:"/api/v2/mcp-connections",
 } as const
-type Route=typeof routes[keyof typeof routes]|`/api/v2/workflow-v2-runs/${string}`|
+type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
   `/api/v2/runs/${string}`|`/api/v2/agent-specs/${string}/runs`|
   `/api/v2/knowledge-bases/${string}/documents`|
   `/api/v2/knowledge-bases/${string}/search`|
@@ -369,9 +374,23 @@ function safeRevision(revision:number):number{
     throw new PgNativePilotError(400,"invalid_revision")
   return revision
 }
+function safeAgentGoal(goal:string):string{
+  if(typeof goal!=="string"||!goal.trim()||goal.length>agentDescriptiveLimits.goal||goal.includes("\0"))throw new PgNativePilotError(400,"invalid_pg_native_agent_goal")
+  return goal.trim()
+}
 function simpleAgentSpec(goal:string){
-  return {goal,task_scope:"",deliverables:[],task_plan:[],
+  return {goal:safeAgentGoal(goal),task_scope:"",deliverables:[],task_plan:[],
     done_criteria:[],tools:[]}
+}
+function collaborationRoute(id:string,action?:"revisions"|"change"|"revoke"|"reject"|"confirm"):Route{
+  if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_pg_native_agent_id")
+  return `/api/v2/agent-collaboration/${id}${action?"/"+action:""}` as Route
+}
+function collaborationPayload(raw:PgNativeAgentCollaborationChoice):PgNativeAgentCollaborationChoice{
+  try{return collaborationChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_pg_native_agent_collaboration_change")}
+}
+function collaborationResponse<T>(decode:()=>T):T{
+  try{return decode()}catch{throw new PgNativePilotError(503,"invalid_pg_native_agent_collaboration_response")}
 }
 function simpleWorkflowGraph(){
   return {nodes:[
@@ -438,6 +457,7 @@ export function createPgNativePilotApi(
             typeof value.workflow_v2_submission_enabled!=="boolean")||
           (value.workflow_v2_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.schedule_execution_enabled!==undefined&&typeof value.schedule_execution_enabled!=="boolean")||
+          (value.agent_collaboration_available!==undefined&&typeof value.agent_collaboration_available!=="boolean")||
           (value.schedule_execution_enabled===true&&(value.config_writes_enabled!==true||value.workflow_v2_submission_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
           (value.run_submission_enabled!==undefined&&
             typeof value.run_submission_enabled!=="boolean")||
@@ -545,6 +565,27 @@ export function createPgNativePilotApi(
     deleteMcpConnection:(id:string,expected_revision:number)=>request<{ok:true}>(mcpRoute(id),"DELETE",{expected_revision:safeRevision(expected_revision)},transport,rootPath),
     discoverMcpConnection:async(id:string,expected_revision:number)=>mcpItem((await request<{item:unknown}>(`${mcpRoute(id)}/discover`,"POST",
       {expected_revision:safeRevision(expected_revision)},transport,rootPath,25000)).item),
+    listAgentCollaboration:async()=>{
+      const value=await get<{items:unknown}>(routes.collaboration)
+      return collaborationResponse(()=>collaborationSummaries(value.items))
+    },
+    getAgentCollaboration:async(id:string)=>{
+      const value=await get<{item:unknown}>(collaborationRoute(id))
+      return collaborationResponse(()=>collaborationDetail(value.item,id))
+    },
+    getAgentCollaborationRevisions:async(id:string)=>{
+      const value=await get<{items:unknown}>(collaborationRoute(id,"revisions"))
+      return collaborationResponse(()=>collaborationRevisions(value.items))
+    },
+    changeAgentCollaboration:async(id:string,raw:PgNativeAgentCollaborationChoice)=>{
+      const choice=collaborationPayload(raw),action=choice.action==="revoke"?"revoke":choice.action==="review"&&choice.decision==="reject"?"reject":"change"
+      const value=await post<{item:unknown}>(collaborationRoute(id,action),choice as unknown as Record<string,unknown>)
+      return collaborationResponse(()=>collaborationResult(value.item,id,choice))
+    },
+    confirmAgentCollaboration:async(id:string,raw:PgNativeAgentCollaborationChoice)=>{
+      const choice=collaborationPayload(raw),value=await post<{item:unknown}>(collaborationRoute(id,"confirm"),choice as unknown as Record<string,unknown>)
+      return collaborationResponse(()=>collaborationResult(value.item,id,choice))
+    },
     listAgents:async()=> (await get<{items:PgNativeAgent[]}>(routes.agents)).items,
     createAgent:async(name:string,goal:string)=>(
       await post<{item:PgNativeAgent}>(routes.agents,{name,spec:{
@@ -554,6 +595,7 @@ export function createPgNativePilotApi(
     getAgent:async(id:string)=>
       (await get<{item:PgNativeAgent}>(recordRoute(routes.agents,id))).item,
     updateAgent:async(id:string,expected_revision:number,name:string,goal:string)=>{
+      const checkedGoal=safeAgentGoal(goal)
       const revision=safeRevision(expected_revision)
       const route=recordRoute(routes.agents,id)
       const current=(await get<{item:PgNativeAgent}>(route)).item
@@ -564,7 +606,7 @@ export function createPgNativePilotApi(
       const old=current.spec
       if(!old||typeof old.goal!=="string")
         throw new PgNativePilotError(409,"unexpected_stored_spec")
-      const spec={goal,task_scope:old.task_scope??"",
+      const spec={goal:checkedGoal,task_scope:old.task_scope??"",
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],

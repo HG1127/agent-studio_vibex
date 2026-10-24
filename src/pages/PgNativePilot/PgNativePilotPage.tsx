@@ -26,6 +26,7 @@ import PgNativeKnowledgeQueryPanel from "./PgNativeKnowledgeQueryPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
+import PgNativeAgentCollaborationPanel from "./PgNativeAgentCollaborationPanel"
 const PgNativeWorkflowWorkspace=lazy(()=>import("./PgNativeWorkflowWorkspace"))
 const PgNativeWorkflowRunPanel=lazy(()=>import("./PgNativeWorkflowRunPanel"))
 
@@ -45,7 +46,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="agents"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="agents"|"collaboration"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -96,6 +97,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [boundModelRunsEnabled,setBoundModelRunsEnabled]=useState(false)
   const [autonomousEnabled,setAutonomousEnabled]=useState(false)
   const [scheduleEnabled,setScheduleEnabled]=useState(false)
+  const [collaborationAvailable,setCollaborationAvailable]=useState(false)
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState("")
   const [notice,setNotice]=useState("")
@@ -133,6 +135,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setMcpOpened(false)
     setAgentMcpOpened(false)
     setKnowledgeSharingOpened(false);setKnowledgeSharingEnabled(false)
+    setCollaborationAvailable(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
   const expireAgentSession=useCallback(()=>{
@@ -180,6 +183,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setBoundModelRunsEnabled(capability?.bound_model_runs_enabled===true)
       setAutonomousEnabled(capability?.config_writes_enabled===true&&capability.autonomous_agent_submission_enabled===true)
       setScheduleEnabled(capability?.config_writes_enabled===true&&capability.schedule_execution_enabled===true)
+      setCollaborationAvailable(capability?.agent_collaboration_available===true)
       setError("")
     }catch(err){
       if(!sessionFence.current.acceptsRead(ticket))return
@@ -372,6 +376,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   }
   const canRunOwnerModel=runSubmissionEnabled&&boundModelRunsEnabled
   const title=[{key:"agents" as const,label:"Agent 配置",icon:Bot,count:agents.length},
+    ...(collaborationAvailable?[{key:"collaboration" as const,label:"Agent 协作",icon:Users,count:null}]:[]),
     ...(canRunOwnerModel?[{key:"runAgent" as const,label:"运行 Agent",icon:Bot,count:null}]:[]),
     {key:"workflows" as const,label:"Workflow",icon:Workflow,count:workflows.length},
     {key:"knowledge" as const,label:"知识库",icon:BookOpen,count:knowledge.length},
@@ -479,6 +484,10 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               </button>)}
           </nav>
           <section className="min-w-0 space-y-5">
+            {collaborationAvailable&&<div hidden={section!=="collaboration"}>
+              <PgNativeAgentCollaborationPanel key={profile.id} api={api} active={section==="collaboration"}
+                canWrite={configEditEnabled&&!loading&&!busy} onUpdated={refresh} onExpired={expireAgentSession}/>
+            </div>}
             {/* Preserve an uncertain request while changing tabs; the employee
                 session key below destroys it immediately on logout/switch. */}
             <div hidden={section!=="runAgent"||!canRunOwnerModel}>
@@ -498,7 +507,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>
                   api.createAgent(newName.trim(),newGoal.trim()),"Agent 配置已保存")}}>
                   <input required maxLength={120} className={field} placeholder="Agent 名称" value={newName} onChange={e=>setNewName(e.target.value)}/>
-                  <textarea required maxLength={2000} rows={3} className={field} placeholder="Agent 的具体目标" value={newGoal} onChange={e=>setNewGoal(e.target.value)}/>
+                  <textarea required maxLength={3000} rows={3} className={field} placeholder="Agent 的具体目标" value={newGoal} onChange={e=>setNewGoal(e.target.value)}/>
                   <button className={button} disabled={busy} type="submit"><Plus size={16}/>保存 Agent</button>
                 </form>
               </CreateCard>}

@@ -4,12 +4,28 @@ import {agentFixture as fixture,alice,bob} from "./workflow-v2-agent-fixture.mjs
 import {verifyWorkflowEffectIdentityPrivileges} from "../../src/bound-dispatch-role-preflight.ts"
 import {createWorkflowV2ModelMutualTlsClient} from "../../src/workflow-v2-model-client.ts"
 import {withActor} from "../../src/repository.ts"
+import {safeAgentSpec} from "../../src/contracts.ts"
 const tool=expression=>JSON.stringify({action:"tool",tool:"calculate",params:{expression},note:"Calculate the requested expression"})
 const answer=text=>JSON.stringify({action:"answer",answer:text})
 export function registerAgentRuntimeTests(autonomous=false){
 const agentFixture=()=>fixture({autonomous})
 const test=(name,fn)=>baseTest((autonomous?"Autonomous: ":"Workflow: ")+name,fn)
 const longNode=autonomous?"agent":"a".repeat(80)
+if(autonomous)test("full descriptive role limits survive SQL snapshot and private model planning without increasing tool or prompt budgets",async()=>{
+  const f=await agentFixture();let calls=0
+  try{
+    const before=f.resources.alice.spec,goal="目".repeat(2998)+"🚀",scope="域".repeat(4000),items=Array.from({length:30},(_,i)=>String(i).padStart(2,"0")+"项".repeat(498))
+    const {require_approval:_,...base}=before.spec
+    const spec=safeAgentSpec({...base,goal,task_scope:scope,deliverables:items,task_plan:items,done_criteria:items})
+    const role=await f.agents.update(alice,before.id,before.name,spec,before.revision)
+    const queued=await f.make({spec:role,maxSteps:1})
+    await f.privateTls(async(_material,prompt)=>{calls++;const parsed=JSON.parse(prompt)
+      assert.equal(parsed.role.goal,goal);assert.equal(parsed.role.task_scope,scope)
+      for(const field of ["deliverables","task_plan","done_criteria"])assert.deepEqual(parsed.role[field],items)
+      assert.ok(prompt.length<131072);return answer("Full role description retained")
+    },async makeWorker=>{const done=await f.drive(makeWorker,queued.run.id);assert.equal(done.run.status,"succeeded",done.run.last_error_code);assert.equal(done.run.result_text,"Full role description retained");assert.equal(calls,1)})
+  }finally{await f.close()}
+})
 if(autonomous)test("trusted schedule model selection reaches the private Broker without opening public model override input",async()=>{
   const f=await agentFixture();let calls=0
   try{

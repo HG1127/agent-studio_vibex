@@ -165,6 +165,15 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  const collaboration=new RegExp("^/api/v2/agent-collaboration(?:/"+uuid+"(?:/(revisions|change|revoke|reject|confirm))?)?$").exec(pathname)
+  if(collaboration){
+    const action=collaboration[1]
+    if(method==="GET")return !action||action==="revisions"
+    // Stops are separately constrained by their exact body action. Confirm
+    // only reads the actor's immutable receipt and can never apply a choice.
+    if(method==="POST"&&["revoke","reject","confirm"].includes(action??""))return true
+    return method==="POST"&&action==="change"&&policy.configurationWrites===true
+  }
   if(/^\/api\/v2\/knowledge-query\/(?:submit|receipt)$/.test(pathname))
     return policy.configurationWrites===true&&policy.knowledgeSharingUat===true&&policy.knowledgeEmbeddingSettingsUat===true&&policy.knowledgeEmbeddingConsentUat===true&&policy.knowledgeQueryRuntimeUat===true&&["GET","POST"].includes(method)
   if(/^\/api\/v2\/knowledge-embedding\/(?:index-authorize|index-receipt|bases\/[0-9a-fA-F-]{36}\/index-status)$/.test(pathname))
