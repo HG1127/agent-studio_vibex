@@ -997,6 +997,15 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         target_id:autonomous?selectedRole.id:selectedFlow.id,time_zone:"Asia/Shanghai",rule:{kind:"interval",interval_minutes:15}})
       const activationBody={expected_revision:scheduled.revision,expected_target_revision:1,instruction:"Synthetic scheduled Agent input",max_steps:autonomous?3:1,anchor_at:new Date().toISOString(),
         expires_at:null,max_occurrences:2,max_auto_effects:50,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()}
+      if(!autonomous&&selection==="builtin"){
+        const legacy=await api.createScheduleDraft({name:"Legacy quarantine",kind:"workflow",target_id:selectedFlow.id,time_zone:"UTC",rule:{kind:"interval",interval_minutes:15}})
+        await admin.query("UPDATE agentstudio.schedules SET recurrence=jsonb_set(recurrence,'{config_format}','\"legacy_schedule_import_v1\"'::jsonb) WHERE id=$1",[legacy.id])
+        await assert.rejects(api.activateSchedule(legacy.id,{...activationBody,expected_revision:legacy.revision,request_id:randomUUID()}),e=>e.status===409)
+        await assert.rejects(api.updateScheduleDraft(legacy.id,legacy.revision,{name:"Do not convert legacy",kind:"workflow",target_id:selectedFlow.id,time_zone:"UTC",rule:{kind:"daily",local_time:"09:00"}}),e=>e.status===409)
+        await assert.rejects(api.deleteScheduleDraft(legacy.id,legacy.revision),e=>e.status===409)
+        assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_authorities WHERE schedule_id=$1",[legacy.id])).rows[0].n,0)
+        await api.pauseSchedule(legacy.id,legacy.revision)
+      }
       const grant=await api.activateSchedule(scheduled.id,activationBody);assert.equal((await api.activateSchedule(scheduled.id,activationBody)).replayed,true)
       const races=await Promise.allSettled([api.runScheduleNow(scheduled.id,grant.revision),api.runScheduleNow(scheduled.id,grant.revision)])
       assert.equal(races.filter(r=>r.status==="fulfilled").length,1);assert.equal(races.filter(r=>r.status==="rejected"&&r.reason.status===409).length,1)

@@ -10,7 +10,15 @@ const format="pg_schedule_execution_v2"
 const integer=(v:unknown,min:number,max:number)=>Number.isSafeInteger(v)&&Number(v)>=min&&Number(v)<=max
 function invalid():never{throw new HttpError(400,"invalid_schedule_activation")}
 function instant(v:unknown):string{if(typeof v!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v)||!Number.isFinite(Date.parse(v))||new Date(v).toISOString()!==v)invalid();return v}
+export function assertNativeScheduleConfiguration(row:Pick<ExecutionSchedule,"recurrence">):void{
+  const value=row.recurrence
+  if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).length!==3||
+    !["config_format","execution_supported","rule"].every(key=>Object.hasOwn(value,key))||
+    !(value.config_format==="pg_schedule_draft_v1"&&value.execution_supported===false||value.config_format===format&&value.execution_supported===true))
+    throw new HttpError(409,"schedule_requires_native_draft")
+}
 export function executionRule(row:Pick<ExecutionSchedule,"name"|"kind"|"agent_spec_id"|"workflow_id"|"time_zone"|"recurrence">):ScheduleDraftRule{
+  assertNativeScheduleConfiguration(row)
   return safeScheduleDraftInput({name:row.name,kind:row.kind,target_id:row.agent_spec_id??row.workflow_id,time_zone:row.time_zone,rule:row.recurrence.rule}).rule
 }
 export function recurrenceNext(rule:ScheduleDraftRule,zone:string,anchor:string,after:number,skip:number|null=null):number|null{

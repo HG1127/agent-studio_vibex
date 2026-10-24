@@ -165,7 +165,7 @@ test("scheduler is explicitly disabled by default and recurrence math preserves 
   const anchor="2026-01-01T00:00:00.000Z",rule={kind:"daily",local_time:"02:30"}
   assert.equal(new Date(recurrenceNext(rule,"America/New_York",anchor,Date.parse("2026-03-08T06:00:00Z"))).toISOString(),"2026-03-09T06:30:00.000Z")
   assert.equal(new Date(recurrenceNext({kind:"daily",local_time:"01:30"},"America/New_York",anchor,Date.parse("2026-11-01T05:31:00Z"),Date.parse("2026-11-01T05:30:00Z"))).toISOString(),"2026-11-02T06:30:00.000Z")
-  const id="11111111-1111-4111-8111-111111111111",row={name:"Once",kind:"workflow",workflow_id:id,agent_spec_id:null,time_zone:"UTC",recurrence:{rule:{kind:"once",start_date:"2026-01-01",local_time:"12:00"}}}
+  const id="11111111-1111-4111-8111-111111111111",row={name:"Once",kind:"workflow",workflow_id:id,agent_spec_id:null,time_zone:"UTC",recurrence:{config_format:"pg_schedule_draft_v1",execution_supported:false,rule:{kind:"once",start_date:"2026-01-01",local_time:"12:00"}}}
   const body={expected_revision:1,expected_target_revision:1,instruction:"Synthetic",max_steps:1,anchor_at:anchor,expires_at:null,max_occurrences:1,max_auto_effects:5,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:id}
   assert.throws(()=>parseScheduleActivation(body,row,Date.parse("2026-01-02T00:00:00Z")),e=>e.code==="schedule_has_no_future_occurrence")
   assert.equal(parseScheduleActivation(body,row,Date.parse("2026-01-02T00:00:00Z"),true).next,null)
@@ -271,5 +271,24 @@ test("lost launch COMMIT acknowledgement recovers the existing occurrence/run/jo
     assert.equal((await f.dispatcher.tick()).status,"idle")
     const counts=(await f.db.query("SELECT (SELECT count(*) FROM agentstudio.runs)::int AS runs,(SELECT count(*) FROM agentstudio.jobs)::int AS jobs,(SELECT count(*) FROM agentstudio.schedule_execution_origins)::int AS origins")).rows[0]
     assert.deepEqual(counts,{runs:1,jobs:1,origins:1});assert.equal((await f.runs.get(f.identity,queued.run_id)).run.status,"queued")
+  }finally{await f.close()}
+})
+test("legacy imported schedules with plausible rules remain read-only and cannot acquire native execution authority",async()=>{
+  const f=await scheduleFixture()
+  try{
+    const a=await activated(f,{effect:false})
+    const draft=await f.drafts.create(f.identity,{name:"Legacy quarantine",kind:"workflow",target_id:a.flow.id,time_zone:"UTC",rule:{kind:"interval",interval_minutes:15}})
+    await f.db.query("UPDATE agentstudio.schedules SET recurrence=jsonb_set(recurrence,'{config_format}','\"legacy_schedule_import_v1\"'::jsonb) WHERE id=$1",[draft.id])
+    const body={...a.body,expected_revision:draft.revision,request_id:randomUUID()}
+    await assert.rejects(f.schedules.activate(f.identity,draft.id,body),e=>e.code==="schedule_requires_native_draft")
+    await assert.rejects(f.schedules.edit(f.identity,draft.id,draft.revision,{name:"Bypass quarantine",kind:"workflow",target_id:a.flow.id,time_zone:"UTC",rule:{kind:"daily",local_time:"09:00"}}),e=>e.code==="schedule_requires_native_draft")
+    await assert.rejects(f.schedules.control(f.identity,draft.id,draft.revision,"delete"),e=>e.code==="schedule_requires_native_draft")
+    await f.rollback(async db=>{
+      await db.query("SET LOCAL ROLE agentstudio_api");await db.query("SELECT set_config('agentstudio.actor_id',$1,true)",[f.admin.id])
+      await assert.rejects(db.query("SELECT agentstudio.schedule_activate($1::uuid,$2::bigint,$3::jsonb,clock_timestamp()+interval '15 minutes',agentstudio.schedule_resource_fingerprint($1::uuid),$4::uuid)",
+        [draft.id,draft.revision,JSON.stringify((await f.db.query("SELECT execution FROM agentstudio.schedules WHERE id=$1",[a.draft.id])).rows[0].execution),randomUUID()]),/schedule_requires_native_draft/)
+    })
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_authorities WHERE schedule_id=$1",[draft.id])).rows[0].n,0)
+    assert.equal(await f.schedules.control(f.identity,draft.id,draft.revision,"pause"),true)
   }finally{await f.close()}
 })

@@ -2,10 +2,10 @@ import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./cont
 import {withActor} from "./repository.ts"
 import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
-import {parseScheduleActivation,type ExecutionSchedule} from "./schedule-runtime-contract.ts"
+import {assertNativeScheduleConfiguration,parseScheduleActivation,type ExecutionSchedule} from "./schedule-runtime-contract.ts"
 import {safeScheduleDraftInput} from "./schedule-draft-repository.ts"
 const publicErrors=new Set(["schedule_owner_unavailable","schedule_not_found","invalid_schedule_execution","schedule_activation_conflict","schedule_activation_changed_or_invalid",
-  "invalid_schedule_authority_limits","schedule_authority_unavailable","schedule_disabled_or_changed","schedule_already_queued","schedule_failed_start_not_retryable","invalid_schedule_control"])
+  "invalid_schedule_authority_limits","schedule_authority_unavailable","schedule_disabled_or_changed","schedule_already_queued","schedule_failed_start_not_retryable","invalid_schedule_control","schedule_requires_native_draft"])
 async function withScheduleActor<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
   try{return await withActor(pool,identity,body)}catch(error){
     if(error&&typeof error==="object"&&"code" in error&&error.code==="P0001"&&"message" in error&&publicErrors.has(String(error.message))){
@@ -75,6 +75,9 @@ export class ScheduleRuntimeRepository{
     const input=safeScheduleDraftInput(raw)
     return withScheduleActor(this.pool,identity,async(db,owner)=>{
       await requireScheduleRuntime(db)
+      const schedule=(await db.query<ExecutionSchedule>("SELECT "+scheduleRuntimeColumns+" FROM agentstudio.schedules WHERE id=$1::uuid AND owner_user_id=$2::uuid AND deleted_at IS NULL FOR UPDATE",[id,owner])).rows[0]
+      if(!schedule||Number(schedule.revision)!==revision)return null
+      assertNativeScheduleConfiguration(schedule)
       const target=(await db.query("SELECT id FROM agentstudio."+(input.kind==="agent"?"agent_specs":"workflows")+" WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[input.target_id,owner])).rows[0]
       if(!target)throw new HttpError(404,"schedule_target_not_found")
       const paused=(await db.query<{ok:boolean}>("SELECT agentstudio.schedule_control($1::uuid,$2::bigint,'pause') AS ok",[id,revision])).rows[0]?.ok

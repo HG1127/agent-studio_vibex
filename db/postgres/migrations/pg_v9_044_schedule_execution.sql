@@ -156,6 +156,10 @@ BEGIN
   IF NOT agentstudio.schedule_native_active(owner) THEN RAISE EXCEPTION 'schedule_owner_unavailable'; END IF;
   SELECT * INTO s FROM agentstudio.schedules WHERE id=p_schedule AND owner_user_id=owner AND deleted_at IS NULL FOR UPDATE;
   IF s.id IS NULL THEN RAISE EXCEPTION 'schedule_not_found'; END IF;
+  IF jsonb_typeof(s.recurrence) IS DISTINCT FROM 'object' OR NOT s.recurrence ?& ARRAY['config_format','execution_supported','rule'] OR
+    (SELECT count(*) FROM jsonb_object_keys(s.recurrence))<>3 OR jsonb_typeof(s.recurrence->'rule') IS DISTINCT FROM 'object' OR
+    NOT coalesce((s.recurrence->>'config_format'='pg_schedule_draft_v1' AND s.recurrence->'execution_supported'='false'::jsonb) OR
+      (s.recurrence->>'config_format'='pg_schedule_execution_v2' AND s.recurrence->'execution_supported'='true'::jsonb),false) THEN RAISE EXCEPTION 'schedule_requires_native_draft'; END IF;
   IF jsonb_typeof(p_execution) IS DISTINCT FROM 'object' OR NOT p_execution ?& ARRAY['instruction','target_revision','max_steps','anchor_at','expires_at','max_occurrences','max_auto_effects','allow_paid_knowledge','background_ack','knowledge_charge_ack'] OR
     (SELECT count(*) FROM jsonb_object_keys(p_execution))<>10 OR jsonb_typeof(p_execution->'instruction') IS DISTINCT FROM 'string' OR
     jsonb_typeof(p_execution->'allow_paid_knowledge') IS DISTINCT FROM 'boolean' OR coalesce(p_execution->>'background_ack','')<>'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1' OR
@@ -373,9 +377,13 @@ BEGIN
 END $fn$;
 CREATE FUNCTION agentstudio.schedule_control(p_schedule uuid,p_revision bigint,p_action text) RETURNS boolean
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-DECLARE owner uuid=agentstudio.actor_id(); sid uuid;
+DECLARE owner uuid=agentstudio.actor_id(); sid uuid; current_schedule agentstudio.schedules%ROWTYPE;
 BEGIN
   IF p_action NOT IN('pause','delete') OR NOT agentstudio.schedule_native_active(owner) THEN RAISE EXCEPTION 'invalid_schedule_control'; END IF;
+  SELECT * INTO current_schedule FROM agentstudio.schedules WHERE id=p_schedule AND owner_user_id=owner AND revision=p_revision AND deleted_at IS NULL FOR UPDATE;
+  IF current_schedule.id IS NULL THEN RETURN false; END IF;
+  IF p_action='delete' AND NOT coalesce((current_schedule.recurrence->>'config_format'='pg_schedule_draft_v1' AND current_schedule.recurrence->'execution_supported'='false'::jsonb) OR
+    (current_schedule.recurrence->>'config_format'='pg_schedule_execution_v2' AND current_schedule.recurrence->'execution_supported'='true'::jsonb),false) THEN RAISE EXCEPTION 'schedule_requires_native_draft'; END IF;
   UPDATE agentstudio.schedules SET enabled=false,revision=revision+1,deleted_at=CASE WHEN p_action='delete' THEN clock_timestamp() ELSE deleted_at END,updated_at=clock_timestamp()
     WHERE id=p_schedule AND owner_user_id=owner AND revision=p_revision AND deleted_at IS NULL RETURNING id INTO sid;
   IF sid IS NULL THEN RETURN false; END IF;
