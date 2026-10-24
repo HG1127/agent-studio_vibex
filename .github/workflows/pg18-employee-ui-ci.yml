@@ -93,3 +93,40 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 7
+
+  native-collaboration-browser:
+    name: Native collaboration / focused synthetic browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Fail-closed browser guard
+        run: node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Collaboration actor isolation / response recovery / safe restore
+        env:
+          AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
+        run: pnpm test:pg18:employee-ui:ci collaboration.spec.mjs
+      - name: Retain synthetic collaboration screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-collaboration-ui-synthetic
+          path: .tmp/pg-migration-completion/ci-browser-results/**/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
