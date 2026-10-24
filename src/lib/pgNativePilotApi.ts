@@ -165,10 +165,10 @@ export type PgNativeScheduleOccurrence={
 }
 export type PgNativeScheduleActivation={expected_revision:number;expected_target_revision:number;instruction:string;max_steps:number;anchor_at:string;
   expires_at:string|null;max_occurrences:number|null;max_auto_effects:number;background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1";
-  knowledge_charge_ack:"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1"|null;request_id:string}
+  knowledge_charge_ack:"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1"|null;request_id:string;model_binding?:PgNativeAgentModelBinding|null}
 export type PgNativeScheduleExecution={schedule_id:string;revision:number;enabled:boolean;next_at:string|null;authority_id:string|null;source_current:boolean;
   used_occurrences:number;max_occurrences:number|null;expires_at:string|null;max_auto_effects:number|null;allow_paid_knowledge:boolean|null;
-  execution:Partial<{instruction:string;max_steps:number;anchor_at:string;expires_at:string|null;max_occurrences:number|null;max_auto_effects:number;allow_paid_knowledge:boolean}>}
+  execution:Partial<{instruction:string;max_steps:number;anchor_at:string;expires_at:string|null;max_occurrences:number|null;max_auto_effects:number;allow_paid_knowledge:boolean;model_binding:PgNativeAgentModelBinding|null}>}
 export type PgNativeRunStatus="queued"|"running"|"awaiting_approval"|"paused"|
   "succeeded"|"failed"|"cancelled"
 export type PgNativeRun={

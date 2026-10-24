@@ -7,6 +7,16 @@ import {safeRunRequest} from "../services/pg-api/src/run-repository.ts"
 import {safeWorkflowV2Request} from "../services/pg-api/src/workflow-v2-run-repository.ts"
 const id="11111111-1111-4111-8111-111111111111",authority="22222222-2222-4222-8222-222222222222"
 const body={expected_revision:1,expected_target_revision:2,instruction:"Synthetic background work",max_steps:1,anchor_at:"2026-10-24T00:00:00.000Z",expires_at:null,max_occurrences:null,max_auto_effects:10,background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1",knowledge_charge_ack:null,request_id:authority}
+test("per-schedule model choice is a closed owner connection reference and stays outside Workflow activation",()=>{
+  const now=Date.now(),row={id,name:"Selected model",kind:"agent",agent_spec_id:authority,workflow_id:null,time_zone:"UTC",revision:1,deleted_at:null,execution:{},
+    recurrence:{config_format:"pg_schedule_draft_v1",execution_supported:false,rule:{kind:"interval",interval_minutes:15}}}
+  const binding={connection_id:"ABCDEFAB-1234-4234-8234-ABCDEFABCDEF",connection_revision:2,model_id:"synthetic"},request={...body,anchor_at:new Date(now).toISOString(),model_binding:binding}
+  assert.deepEqual(parseScheduleActivation(request,row,now).execution.model_binding,{...binding,connection_id:binding.connection_id.toLowerCase()})
+  assert.equal(parseScheduleActivation({...request,model_binding:null},row,now).execution.model_binding,null)
+  for(const invalid of [{...binding,owner_user_id:id},{...binding,api_key:"forbidden"},{...binding,connection_revision:0},{...binding,connection_revision:Number.MAX_SAFE_INTEGER+1},{...binding,model_id:"invalid model"},[]])
+    assert.throws(()=>parseScheduleActivation({...request,model_binding:invalid},row,now),e=>e.code==="invalid_schedule_activation")
+  assert.throws(()=>parseScheduleActivation(request,{...row,kind:"workflow",workflow_id:authority,agent_spec_id:null},now),e=>e.code==="invalid_schedule_activation")
+})
 test("schedule activation retry retains the exact owner consent request and uses same-origin Cookie/CSRF transport",async()=>{
   const requests=[];let lost=true
   const api=createPgNativePilotApi(async(route,init)=>{requests.push({route,init});if(lost){lost=false;throw Error("synthetic_lost_response")}

@@ -933,12 +933,12 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp","keyword"]){
     const custom=selection==="http",useMcp=selection==="mcp",keyword=selection==="keyword"
-    let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0,thirtyRounds=false
+    let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0,thirtyRounds=false,selectedScheduleSecret=null
     const fullTask="迁".repeat(1998)+"🚀"
     const selectedRole=keyword?keywordRole:useMcp?mcpRole:custom?httpRole:role
     const selectedFlow=selection!=="builtin"?await api.createWorkflowGraph("CI "+selection+" Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
       {...node,data:{...node.data,agent_binding:{spec_id:selectedRole.id,spec_revision:selectedRole.revision}}}:node)}):agentFlow
-    const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
+    const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,selectedScheduleSecret??secret)
       const context=JSON.parse(prompt)
       if(thirtyRounds){
         assert.equal(context.max_rounds,30);assert.equal(context.task,fullTask)
@@ -1002,6 +1002,15 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         target_id:autonomous?selectedRole.id:selectedFlow.id,time_zone:"Asia/Shanghai",rule:{kind:"interval",interval_minutes:15}})
       const activationBody={expected_revision:scheduled.revision,expected_target_revision:1,instruction:"Synthetic scheduled Agent input",max_steps:autonomous?3:1,anchor_at:new Date().toISOString(),
         expires_at:null,max_occurrences:2,max_auto_effects:50,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()}
+      let selectedScheduleModel
+      if(autonomous&&selection==="builtin"){
+        selectedScheduleSecret="SyntheticPg18OwnScheduleBKey"
+        const draftB=await api.createModelConnection({name:"Schedule model B",provider:"openai",base_url:"https://api.openai.com/v1",api_key:selectedScheduleSecret,models:["gpt-4.1-mini"],enabled:true})
+        selectedScheduleModel=await api.testModelConnection(draftB.id,draftB.revision)
+        activationBody.model_binding={connection_id:selectedScheduleModel.id,connection_revision:selectedScheduleModel.revision,model_id:"gpt-4.1-mini"}
+        await assert.rejects(api.activateSchedule(scheduled.id,{...activationBody,model_binding:{...activationBody.model_binding,connection_revision:selectedScheduleModel.revision+1}}),e=>e.status===409)
+        await assert.rejects(api.activateSchedule(scheduled.id,{...activationBody,model_binding:{...activationBody.model_binding,connection_id:randomUUID()}}),e=>e.status===404)
+      }
       if(!autonomous&&selection==="builtin"){
         activationBody.anchor_at=new Date(Date.now()+2*86400000).toISOString();activationBody.max_occurrences=3
       }
@@ -1015,6 +1024,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         await api.pauseSchedule(legacy.id,legacy.revision)
       }
       const grant=await api.activateSchedule(scheduled.id,activationBody);assert.equal((await api.activateSchedule(scheduled.id,activationBody)).replayed,true)
+      if(selectedScheduleModel){await admin.query("UPDATE agentstudio.model_connections SET enabled=false WHERE id=$1",[ready.id]);assert.equal((await api.getScheduleExecution(scheduled.id)).source_current,true)}
       if(!autonomous&&selection==="builtin"){
         assert.equal((await api.getScheduleExecution(scheduled.id)).execution.anchor_at,activationBody.anchor_at)
         assert.equal((await new ScheduleRuntimeWorker(workerPool,"schedule-future").tick()).status,"idle")
@@ -1063,6 +1073,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const scheduledDone=await get(queue.run_id);assert.equal(scheduledDone.run.status,"succeeded");assert.equal(agentCalls,2);assert.equal(manualApprovals,custom||useMcp?1:0)
       assert.equal((await api.listScheduleOccurrences(scheduled.id)).find(row=>row.run_id===queue.run_id).status,"succeeded")
       assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_origins WHERE run_id=$1",[queue.run_id])).rows[0].n,1)
+      if(selectedScheduleModel){
+        await admin.query("UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1",[selectedScheduleModel.id])
+        assert.equal((await api.getScheduleExecution(scheduled.id)).source_current,false)
+        assert.equal((await api.activateSchedule(scheduled.id,activationBody)).replayed,true)
+        assert.equal((await api.getScheduleExecution(scheduled.id)).source_current,false)
+        await admin.query("UPDATE agentstudio.model_connections SET enabled=true WHERE id=$1",[ready.id]);selectedScheduleSecret=null
+      }
       await api.pauseSchedule(scheduled.id,grant.revision)
       assert.equal((await get(queue.run_id)).run.result_text,"Synthetic Agent result 4")
       if(selection==="builtin"){

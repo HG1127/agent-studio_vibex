@@ -3,12 +3,29 @@ import assert from "node:assert/strict"
 import {agentFixture as fixture,alice,bob} from "./workflow-v2-agent-fixture.mjs"
 import {verifyWorkflowEffectIdentityPrivileges} from "../../src/bound-dispatch-role-preflight.ts"
 import {createWorkflowV2ModelMutualTlsClient} from "../../src/workflow-v2-model-client.ts"
+import {withActor} from "../../src/repository.ts"
 const tool=expression=>JSON.stringify({action:"tool",tool:"calculate",params:{expression},note:"Calculate the requested expression"})
 const answer=text=>JSON.stringify({action:"answer",answer:text})
 export function registerAgentRuntimeTests(autonomous=false){
 const agentFixture=()=>fixture({autonomous})
 const test=(name,fn)=>baseTest((autonomous?"Autonomous: ":"Workflow: ")+name,fn)
 const longNode=autonomous?"agent":"a".repeat(80)
+if(autonomous)test("trusted schedule model selection reaches the private Broker without opening public model override input",async()=>{
+  const f=await agentFixture();let calls=0
+  try{
+    const saved=await f.models.create(alice,{name:"Own schedule model B",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticSelectedScheduleBKey",models:["synthetic-b"],enabled:true})
+    const b=await f.models.testConnection(alice,saved.id,saved.revision,async()=>({status:"ok",latency_ms:1,error_code:""}))
+    const binding={connection_id:b.id,connection_revision:b.revision,model_id:"synthetic-b"}
+    const raw={expected_revision:f.resources.alice.spec.revision,max_steps:1,idempotency_key:"trusted-schedule-selection",instruction:"Synthetic selected model task"}
+    await assert.rejects(f.runs.submit(alice,f.resources.alice.spec.id,{...raw,model_binding:binding}),e=>e.status===400)
+    await assert.rejects(withActor(f.pool,alice,(db,owner)=>f.runs.admitOwned(db,owner,f.resources.alice.spec.id,raw,undefined,f.resources.bob.binding)),e=>e.status===404)
+    const queued=await withActor(f.pool,alice,(db,owner)=>f.runs.admitOwned(db,owner,f.resources.alice.spec.id,raw,undefined,binding))
+    await f.db.query("UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1",[f.resources.alice.model.id])
+    await f.privateTls(async(material)=>{calls++;assert.equal(material.api_key,"SyntheticSelectedScheduleBKey");assert.equal(material.model_id,"synthetic-b");return answer("Selected model B result")},async makeWorker=>{
+      const done=await f.drive(makeWorker,queued.run.id);assert.equal(done.run.status,"succeeded",done.run.last_error_code);assert.equal(done.run.result_text,"Selected model B result");assert.equal(calls,1)
+    })
+  }finally{await f.close()}
+})
 test("thirty owner-selected rounds survive every Worker replacement over private mTLS and retain late-round fencing",async()=>{
   const f=await agentFixture();let calls=0,decisions=0,lateFence=false
   const instruction="迁".repeat(1998)+"🚀"

@@ -47,7 +47,7 @@ function normalize(row:ScheduleSummary):ScheduleSummary{
   const {recurrence:stored,...publicFields}=row
   let publicRule:Record<string,unknown>|undefined
   if((stored?.config_format==="pg_schedule_draft_v1"&&stored.execution_supported===false&&row.enabled===false&&row.next_at===null)||
-     (stored?.config_format==="pg_schedule_execution_v2"&&stored.execution_supported===true)){
+     (["pg_schedule_execution_v2","pg_schedule_execution_v3"].includes(String(stored?.config_format))&&stored?.execution_supported===true)){
     try{
       const target=row.kind==="agent"?row.agent_spec_id:row.workflow_id
       const checked=safeScheduleDraftInput({

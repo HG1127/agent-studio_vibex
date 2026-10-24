@@ -87,9 +87,28 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT EXISTS(SELECT 1 FROM agentstudio.users u JOIN agentstudio_auth.accounts a ON a.user_id=u.id
     WHERE u.id=p_owner AND u.status='active' AND u.external_issuer='urn:agentstudio:local:v1' AND a.enabled)
 $fn$;
-CREATE FUNCTION agentstudio.schedule_resource_material(p_schedule uuid) RETURNS jsonb
+CREATE FUNCTION agentstudio.schedule_effective_model_binding(p_schedule uuid,p_override jsonb) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-DECLARE s agentstudio.schedules%ROWTYPE; target jsonb; children jsonb; material jsonb; refs jsonb;
+DECLARE s agentstudio.schedules%ROWTYPE; binding jsonb;
+BEGIN
+  SELECT * INTO s FROM agentstudio.schedules WHERE id=p_schedule AND deleted_at IS NULL;
+  IF s.id IS NULL OR s.kind<>'agent' THEN RETURN NULL; END IF;
+  binding=coalesce(p_override,s.execution->'model_binding','null'::jsonb);
+  IF binding='null'::jsonb THEN
+    SELECT spec->'model_binding' INTO binding FROM agentstudio.agent_specs WHERE id=s.agent_spec_id AND owner_user_id=s.owner_user_id;
+  END IF;
+  IF jsonb_typeof(binding) IS DISTINCT FROM 'object' OR NOT binding ?& ARRAY['connection_id','connection_revision','model_id'] OR
+    (SELECT count(*) FROM jsonb_object_keys(binding))<>3 OR jsonb_typeof(binding->'connection_id') IS DISTINCT FROM 'string' OR
+    jsonb_typeof(binding->'connection_revision') IS DISTINCT FROM 'number' OR jsonb_typeof(binding->'model_id') IS DISTINCT FROM 'string' OR
+    coalesce(binding->>'connection_id','')!~*'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' OR
+    coalesce(binding->>'connection_revision','')!~'^[1-9][0-9]{0,15}$' OR
+    coalesce(binding->>'model_id','')!~'^[A-Za-z0-9._:/-]{1,120}$' THEN RETURN NULL; END IF;
+  IF (binding->>'connection_revision')::numeric>9007199254740991 THEN RETURN NULL; END IF;
+  RETURN jsonb_set(binding,'{connection_id}',to_jsonb(lower(binding->>'connection_id')));
+END $fn$;
+CREATE FUNCTION agentstudio.schedule_resource_material_for_binding(p_schedule uuid,p_override jsonb) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE s agentstudio.schedules%ROWTYPE; target jsonb; children jsonb; material jsonb; refs jsonb; binding jsonb; selected jsonb; scan jsonb;
 BEGIN
   SELECT * INTO s FROM agentstudio.schedules WHERE id=p_schedule;
   IF s.id IS NULL OR s.deleted_at IS NOT NULL THEN RETURN NULL; END IF;
@@ -99,13 +118,23 @@ BEGIN
   SELECT coalesce(jsonb_agg(jsonb_build_object('id',id,'revision',revision,'spec',spec) ORDER BY id),'[]'::jsonb) INTO children
     FROM agentstudio.agent_specs WHERE owner_user_id=s.owner_user_id AND id::text IN
     (SELECT jsonb_array_elements_text(jsonb_path_query_array(target,'$.**.agent_binding.spec_id')));
-  material=jsonb_build_object('target',target,'agents',children);
-  refs=jsonb_path_query_array(material,'$.**.connection_id');
+  selected=coalesce(p_override,s.execution->'model_binding','null'::jsonb);
+  IF s.kind='workflow' AND selected<>'null'::jsonb THEN RETURN NULL; END IF;
+  binding=agentstudio.schedule_effective_model_binding(s.id,p_override);
+  IF s.kind='agent' AND binding IS NULL THEN RETURN NULL; END IF;
+  material=jsonb_build_object('target',target,'agents',children,'model_override',selected);
+  scan=material;
+  IF s.kind='agent' THEN scan=jsonb_set(scan,'{target,spec,model_binding}',binding); END IF;
+  refs=jsonb_path_query_array(scan,'$.**.connection_id');
   RETURN material||jsonb_build_object(
-    'models',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,revision,enabled,status,provider,base_url,models) ORDER BY id),'[]'::jsonb) FROM agentstudio.model_connections WHERE owner_user_id=s.owner_user_id AND id::text IN(SELECT jsonb_array_elements_text(refs))),
-    'tools',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,revision,enabled,status,url,method,body_template,timeout_s) ORDER BY id),'[]'::jsonb) FROM agentstudio.tool_connections WHERE owner_user_id=s.owner_user_id AND id::text IN(SELECT jsonb_array_elements_text(refs))),
-    'mcp',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,revision,enabled,status,url,catalog) ORDER BY id),'[]'::jsonb) FROM agentstudio.mcp_connections WHERE owner_user_id=s.owner_user_id AND id::text IN(SELECT jsonb_array_elements_text(refs))));
+    'models',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,revision,enabled,status,provider,base_url,models) ORDER BY id),'[]'::jsonb) FROM agentstudio.model_connections WHERE owner_user_id=s.owner_user_id AND id::text IN(SELECT lower(jsonb_array_elements_text(refs)))),
+    'tools',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,revision,enabled,status,url,method,body_template,timeout_s) ORDER BY id),'[]'::jsonb) FROM agentstudio.tool_connections WHERE owner_user_id=s.owner_user_id AND id::text IN(SELECT lower(jsonb_array_elements_text(refs)))),
+    'mcp',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,revision,enabled,status,url,catalog) ORDER BY id),'[]'::jsonb) FROM agentstudio.mcp_connections WHERE owner_user_id=s.owner_user_id AND id::text IN(SELECT lower(jsonb_array_elements_text(refs)))));
 END $fn$;
+CREATE FUNCTION agentstudio.schedule_resource_material(p_schedule uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT agentstudio.schedule_resource_material_for_binding(p_schedule,NULL)
+$fn$;
 CREATE FUNCTION agentstudio.schedule_resource_sha(p_schedule uuid) RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT CASE WHEN agentstudio.schedule_resource_material(p_schedule) IS NOT NULL THEN encode(sha256(convert_to(agentstudio.schedule_resource_material(p_schedule)::text,'UTF8')),'hex') END
@@ -118,7 +147,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
 $fn$;
 CREATE FUNCTION agentstudio.schedule_authority_current(p_authority uuid) RETURNS boolean
 LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-  SELECT coalesce((SELECT a.schedule_revision=s.revision AND s.deleted_at IS NULL AND s.recurrence->>'config_format'='pg_schedule_execution_v2'
+  SELECT coalesce((SELECT a.schedule_revision=s.revision AND s.deleted_at IS NULL AND s.recurrence->>'config_format' IN('pg_schedule_execution_v2','pg_schedule_execution_v3')
     AND (a.expires_at IS NULL OR a.expires_at>clock_timestamp()) AND agentstudio.schedule_native_active(a.owner_user_id)
     AND a.source_sha256=agentstudio.schedule_material_sha(s.id) FROM agentstudio.schedule_execution_authorities a JOIN agentstudio.schedules s ON s.id=a.schedule_id AND s.owner_user_id=a.owner_user_id WHERE a.id=p_authority),false)
 $fn$;
@@ -150,9 +179,14 @@ CREATE FUNCTION agentstudio.schedule_resource_fingerprint(p_schedule uuid) RETUR
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT agentstudio.schedule_resource_sha(id) FROM agentstudio.schedules WHERE id=p_schedule AND owner_user_id=agentstudio.actor_id() AND deleted_at IS NULL
 $fn$;
+CREATE FUNCTION agentstudio.schedule_resource_fingerprint(p_schedule uuid,p_override jsonb) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT encode(sha256(convert_to(agentstudio.schedule_resource_material_for_binding(id,p_override)::text,'UTF8')),'hex')
+  FROM agentstudio.schedules WHERE id=p_schedule AND owner_user_id=agentstudio.actor_id() AND deleted_at IS NULL
+$fn$;
 CREATE FUNCTION agentstudio.schedule_activate(p_schedule uuid,p_revision bigint,p_execution jsonb,p_next timestamptz,p_resource_sha text,p_request uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-DECLARE s agentstudio.schedules%ROWTYPE; owner uuid=agentstudio.actor_id(); a agentstudio.schedule_execution_authorities%ROWTYPE; aid uuid=gen_random_uuid(); exp timestamptz; cap integer;
+DECLARE s agentstudio.schedules%ROWTYPE; owner uuid=agentstudio.actor_id(); a agentstudio.schedule_execution_authorities%ROWTYPE; aid uuid=gen_random_uuid(); exp timestamptz; cap integer; binding jsonb; resources jsonb;
 BEGIN
   IF NOT agentstudio.schedule_native_active(owner) THEN RAISE EXCEPTION 'schedule_owner_unavailable'; END IF;
   SELECT * INTO s FROM agentstudio.schedules WHERE id=p_schedule AND owner_user_id=owner AND deleted_at IS NULL FOR UPDATE;
@@ -160,9 +194,10 @@ BEGIN
   IF jsonb_typeof(s.recurrence) IS DISTINCT FROM 'object' OR NOT s.recurrence ?& ARRAY['config_format','execution_supported','rule'] OR
     (SELECT count(*) FROM jsonb_object_keys(s.recurrence))<>3 OR jsonb_typeof(s.recurrence->'rule') IS DISTINCT FROM 'object' OR
     NOT coalesce((s.recurrence->>'config_format'='pg_schedule_draft_v1' AND s.recurrence->'execution_supported'='false'::jsonb) OR
-      (s.recurrence->>'config_format'='pg_schedule_execution_v2' AND s.recurrence->'execution_supported'='true'::jsonb),false) THEN RAISE EXCEPTION 'schedule_requires_native_draft'; END IF;
-  IF jsonb_typeof(p_execution) IS DISTINCT FROM 'object' OR NOT p_execution ?& ARRAY['instruction','target_revision','max_steps','anchor_at','expires_at','max_occurrences','max_auto_effects','allow_paid_knowledge','background_ack','knowledge_charge_ack'] OR
-    (SELECT count(*) FROM jsonb_object_keys(p_execution))<>10 OR jsonb_typeof(p_execution->'instruction') IS DISTINCT FROM 'string' OR
+      (s.recurrence->>'config_format' IN('pg_schedule_execution_v2','pg_schedule_execution_v3') AND s.recurrence->'execution_supported'='true'::jsonb),false) THEN RAISE EXCEPTION 'schedule_requires_native_draft'; END IF;
+  IF jsonb_typeof(p_execution) IS DISTINCT FROM 'object' OR NOT p_execution ?& ARRAY['instruction','target_revision','max_steps','anchor_at','expires_at','max_occurrences','max_auto_effects','allow_paid_knowledge','background_ack','knowledge_charge_ack','model_binding'] OR
+    (SELECT count(*) FROM jsonb_object_keys(p_execution))<>11 OR jsonb_typeof(p_execution->'instruction') IS DISTINCT FROM 'string' OR
+    jsonb_typeof(p_execution->'model_binding') NOT IN('null','object') OR (s.kind='workflow' AND p_execution->'model_binding'<>'null'::jsonb) OR
     jsonb_typeof(p_execution->'allow_paid_knowledge') IS DISTINCT FROM 'boolean' OR coalesce(p_execution->>'background_ack','')<>'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1' OR
     coalesce(p_execution->>'target_revision','')!~'^[1-9][0-9]{0,15}$' OR coalesce(p_execution->>'max_steps','')!~'^([1-9]|[12][0-9]|30)$' OR
     coalesce(p_execution->>'max_auto_effects','')!~'^[1-9][0-9]{0,4}$' OR jsonb_typeof(p_execution->'anchor_at') IS DISTINCT FROM 'string' OR
@@ -177,17 +212,22 @@ BEGIN
     IF a.schedule_id<>p_schedule OR p_revision<>a.schedule_revision-1 OR s.revision<>a.schedule_revision OR s.execution<>p_execution THEN RAISE EXCEPTION 'schedule_activation_conflict'; END IF;
     RETURN jsonb_build_object('id',s.id,'revision',s.revision,'authority_id',a.id,'replayed',true);
   END IF;
+  binding=agentstudio.schedule_effective_model_binding(s.id,p_execution->'model_binding');
+  resources=agentstudio.schedule_resource_material_for_binding(s.id,p_execution->'model_binding');
+  IF s.kind='agent' AND (binding IS NULL OR NOT EXISTS(SELECT 1 FROM agentstudio.model_connections m WHERE m.id=(binding->>'connection_id')::uuid AND m.owner_user_id=owner
+    AND m.enabled AND m.status='ok' AND m.revision=(binding->>'connection_revision')::bigint AND m.models ? (binding->>'model_id'))) THEN RAISE EXCEPTION 'schedule_model_unavailable'; END IF;
+  IF p_execution->'model_binding'<>'null'::jsonb AND p_execution->'model_binding' IS DISTINCT FROM binding THEN RAISE EXCEPTION 'invalid_schedule_model_binding'; END IF;
   IF s.revision<>p_revision OR p_next IS NULL OR p_next<clock_timestamp()-interval '90 seconds' OR p_next>clock_timestamp()+interval '367 days' OR
     jsonb_typeof(p_execution)<>'object' OR p_execution->>'background_ack'<>'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1' OR
     length(p_execution->>'instruction') NOT BETWEEN 1 AND 2000 OR (p_execution->>'max_auto_effects')::integer NOT BETWEEN 1 AND 10000 OR
     (p_execution->>'max_steps')::integer NOT BETWEEN 1 AND 30 OR (p_execution->>'target_revision')::bigint<1 OR
     p_execution->>'allow_paid_knowledge' NOT IN('true','false') OR
     (p_execution->>'allow_paid_knowledge'='true' AND p_execution->>'knowledge_charge_ack' IS DISTINCT FROM 'AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1') OR
-    p_resource_sha IS DISTINCT FROM agentstudio.schedule_resource_sha(s.id) OR
-    (agentstudio.schedule_resource_material(s.id)->'target'->>'revision')::bigint<>(p_execution->>'target_revision')::bigint THEN RAISE EXCEPTION 'schedule_activation_changed_or_invalid'; END IF;
+    resources IS NULL OR p_resource_sha IS DISTINCT FROM encode(sha256(convert_to(resources::text,'UTF8')),'hex') OR
+    (resources->'target'->>'revision')::bigint<>(p_execution->>'target_revision')::bigint THEN RAISE EXCEPTION 'schedule_activation_changed_or_invalid'; END IF;
   exp=(p_execution->>'expires_at')::timestamptz; cap=(p_execution->>'max_occurrences')::integer;
   IF exp IS NOT NULL AND (exp<=p_next OR exp>clock_timestamp()+interval '366 days') OR cap IS NOT NULL AND cap NOT BETWEEN 1 AND 1000000 THEN RAISE EXCEPTION 'invalid_schedule_authority_limits'; END IF;
-  UPDATE agentstudio.schedules SET execution=p_execution,recurrence=jsonb_set(jsonb_set(recurrence,'{config_format}','"pg_schedule_execution_v2"'),'{execution_supported}','true'),enabled=true,next_at=p_next,
+  UPDATE agentstudio.schedules SET execution=p_execution,recurrence=jsonb_set(jsonb_set(recurrence,'{config_format}','"pg_schedule_execution_v3"'),'{execution_supported}','true'),enabled=true,next_at=p_next,
     revision=revision+1,updated_at=clock_timestamp() WHERE id=s.id RETURNING * INTO s;
   UPDATE agentstudio.schedule_occurrences SET status='cancelled_schedule',lease_token=NULL,lease_until=NULL,lease_owner=NULL,updated_at=clock_timestamp() WHERE schedule_id=s.id AND status IN('pending','retryable','launching');
   INSERT INTO agentstudio.schedule_execution_authorities(id,owner_user_id,schedule_id,schedule_revision,request_id,source_sha256,max_occurrences,max_auto_effects,expires_at,allow_paid_knowledge)
@@ -248,7 +288,7 @@ BEGIN
   SELECT * INTO o FROM agentstudio.schedule_occurrences WHERE
     (attempts<4 AND status IN('pending','retryable') AND coalesce(next_retry_at,'-infinity')<=clock_timestamp() OR status='launching' AND lease_until<clock_timestamp()) ORDER BY created_at,id LIMIT 1;
   IF o.id IS NOT NULL THEN SELECT * INTO s FROM agentstudio.schedules WHERE id=o.schedule_id;
-  ELSE SELECT * INTO s FROM agentstudio.schedules WHERE enabled AND deleted_at IS NULL AND recurrence->>'config_format'='pg_schedule_execution_v2'
+  ELSE SELECT * INTO s FROM agentstudio.schedules WHERE enabled AND deleted_at IS NULL AND recurrence->>'config_format' IN('pg_schedule_execution_v2','pg_schedule_execution_v3')
     AND next_at<=clock_timestamp() ORDER BY next_at,id LIMIT 1; END IF;
   IF s.id IS NULL THEN RETURN NULL; END IF;
   RETURN jsonb_build_object('id',s.id,'revision',s.revision,'rule',s.recurrence->'rule','time_zone',s.time_zone,'anchor_at',s.execution->'anchor_at',
@@ -409,7 +449,7 @@ BEGIN
   SELECT * INTO current_schedule FROM agentstudio.schedules WHERE id=p_schedule AND owner_user_id=owner AND revision=p_revision AND deleted_at IS NULL FOR UPDATE;
   IF current_schedule.id IS NULL THEN RETURN false; END IF;
   IF p_action='delete' AND NOT coalesce((current_schedule.recurrence->>'config_format'='pg_schedule_draft_v1' AND current_schedule.recurrence->'execution_supported'='false'::jsonb) OR
-    (current_schedule.recurrence->>'config_format'='pg_schedule_execution_v2' AND current_schedule.recurrence->'execution_supported'='true'::jsonb),false) THEN RAISE EXCEPTION 'schedule_requires_native_draft'; END IF;
+    (current_schedule.recurrence->>'config_format' IN('pg_schedule_execution_v2','pg_schedule_execution_v3') AND current_schedule.recurrence->'execution_supported'='true'::jsonb),false) THEN RAISE EXCEPTION 'schedule_requires_native_draft'; END IF;
   UPDATE agentstudio.schedules SET enabled=false,revision=revision+1,deleted_at=CASE WHEN p_action='delete' THEN clock_timestamp() ELSE deleted_at END,updated_at=clock_timestamp()
     WHERE id=p_schedule AND owner_user_id=owner AND revision=p_revision AND deleted_at IS NULL RETURNING id INTO sid;
   IF sid IS NULL THEN RETURN false; END IF;
@@ -439,6 +479,8 @@ DO $functions$ DECLARE signature text; BEGIN
   FOREACH signature IN ARRAY ARRAY[
     'agentstudio.schedule_native_active(uuid)',
     'agentstudio.schedule_resource_material(uuid)',
+    'agentstudio.schedule_resource_material_for_binding(uuid,jsonb)',
+    'agentstudio.schedule_effective_model_binding(uuid,jsonb)',
     'agentstudio.schedule_resource_sha(uuid)',
     'agentstudio.schedule_material_sha(uuid)',
     'agentstudio.schedule_authority_current(uuid)',
@@ -447,6 +489,7 @@ DO $functions$ DECLARE signature text; BEGIN
     'agentstudio.schedule_validate_run(uuid)',
     'agentstudio.schedule_automatic_candidate(uuid)',
     'agentstudio.schedule_resource_fingerprint(uuid)',
+    'agentstudio.schedule_resource_fingerprint(uuid,jsonb)',
     'agentstudio.schedule_activate(uuid,bigint,jsonb,timestamptz,text,uuid)',
     'agentstudio.schedule_make_occurrence(uuid,timestamptz,boolean)',
     'agentstudio.schedule_run_now(uuid,bigint)',
@@ -467,7 +510,7 @@ DO $functions$ DECLARE signature text; BEGIN
   END LOOP;
 END $functions$;
 GRANT EXECUTE ON FUNCTION agentstudio.schedule_run_current(uuid,uuid) TO agentstudio_knowledge_query;
-GRANT EXECUTE ON FUNCTION agentstudio.schedule_validate_run(uuid),agentstudio.schedule_automatic_candidate(uuid),agentstudio.schedule_resource_fingerprint(uuid),
+GRANT EXECUTE ON FUNCTION agentstudio.schedule_validate_run(uuid),agentstudio.schedule_automatic_candidate(uuid),agentstudio.schedule_resource_fingerprint(uuid),agentstudio.schedule_resource_fingerprint(uuid,jsonb),
   agentstudio.schedule_activate(uuid,bigint,jsonb,timestamptz,text,uuid),agentstudio.schedule_control(uuid,bigint,text) TO agentstudio_api;
 GRANT EXECUTE ON FUNCTION agentstudio.schedule_execution_status(uuid),agentstudio.schedule_run_now(uuid,bigint),agentstudio.schedule_retry_start(uuid,bigint,uuid) TO agentstudio_api;
 GRANT EXECUTE ON FUNCTION agentstudio.schedule_peek(),agentstudio.schedule_reserve(uuid,bigint,timestamptz,timestamptz,text),

@@ -693,7 +693,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             </>}
             {section==="schedules"&&
               <PgNativeSchedulesReadonlyPanel key={profile.id} api={api}
-                agents={agents} workflows={workflows} canEdit={canEditConfig} canExecute={scheduleEnabled}/>
+                agents={agents} workflows={workflows} connections={modelConnections} canEdit={canEditConfig} canExecute={scheduleEnabled}/>
             }
             {section==="runs"&&
               <PgNativeRunHistoryReadonlyPanel key={profile.id} api={api}/>

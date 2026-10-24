@@ -1,5 +1,5 @@
 // Native autonomous Agent admission, with no synthetic Workflow database row.
-import {HttpError,isUuid,type Identity} from "./contracts.ts"
+import {HttpError,isUuid,type Identity,type AgentSpecInput} from "./contracts.ts"
 import {withActor,assertOwnedAdmissionContext} from "./repository.ts"
 import {WorkflowV2RunRepository,safeWorkflowV2Request,workflowV2RunColumns,auditWorkflowV2,
   verifyWorkflowV2Snapshot,type WorkflowV2StoredState,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
@@ -11,12 +11,12 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
   override async submit(identity:Identity,id:string,raw:unknown){
     return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))
   }
-  override async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown):Promise<WorkflowV2StoredState>{
+  override async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown,modelBinding?:AgentSpecInput["model_binding"]):Promise<WorkflowV2StoredState>{
     if(!isUuid(id)||!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
     const {max_steps,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
     if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>30)throw new HttpError(400,"invalid_agent_max_steps")
     await assertOwnedAdmissionContext(db,owner)
-    const graph=autonomousAgentGraph(id,request.expected_revision,Number(max_steps)),machine=createWorkflowV2Checkpoint(graph,request.instruction)
+    const graph=autonomousAgentGraph(id,request.expected_revision,Number(max_steps),modelBinding),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const checkpoint:WorkflowV2StoredState={stage:"agent_v2_queued",execution_mode:"agent_native_v2",spec_revision:request.expected_revision,graph,machine}
     const spec=(await db.query("SELECT id FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
     if(!spec)throw new HttpError(404,"agent_spec_not_found")
@@ -25,12 +25,12 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     await verifyWorkflowV2Snapshot(db,owner,{kind:"agent",agent_spec_id:id,workflow_id:null} as WorkflowV2RunRow,checkpoint)
     return checkpoint
   }
-  override async admitOwned(db:SqlClient,owner:string,id:string,raw:unknown,plannedRunId?:string){
+  override async admitOwned(db:SqlClient,owner:string,id:string,raw:unknown,plannedRunId?:string,modelBinding?:AgentSpecInput["model_binding"]){
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_spec_id")
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
     const {max_steps,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
     if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>30)throw new HttpError(400,"invalid_agent_max_steps")
-    const graph=autonomousAgentGraph(id,request.expected_revision,Number(max_steps)),machine=createWorkflowV2Checkpoint(graph,request.instruction)
+    const graph=autonomousAgentGraph(id,request.expected_revision,Number(max_steps),modelBinding),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const key=this.root.dedupe+request.idempotency_key
     await assertOwnedAdmissionContext(db,owner,plannedRunId)
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":"+key])
@@ -44,7 +44,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
          prior.checkpoint.machine.graph_sha256!==machine.graph_sha256)throw new HttpError(409,"idempotency_key_conflict")
       return this.assemble(db,owner,prior,true)
     }
-    const checkpoint=await this.prepareOwned(db,owner,id,raw)
+    const checkpoint=await this.prepareOwned(db,owner,id,raw,modelBinding)
     const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs(id,owner_user_id,kind,agent_spec_id,status,instruction,checkpoint) "+
       "VALUES(coalesce($5::uuid,gen_random_uuid()),$1::uuid,'agent',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,
       [owner,id,request.instruction,JSON.stringify(checkpoint),plannedRunId??null])).rows[0]!

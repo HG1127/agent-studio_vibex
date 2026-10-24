@@ -128,6 +128,8 @@ try{
       base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowserOnlyCredential0123456789",enabled:true,models:["gpt-4.1-mini"]})
     // Fixture setup only: no external probe or credentials are used.
     await db.query("UPDATE agentstudio.model_connections SET status='ok' WHERE id=$1",[connection.id])
+    if(scheduling){const selected=await models.create(profile.identity,{name:name+" schedule model B",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowser"+name+"ScheduleBKey",enabled:true,models:["synthetic-schedule-b"]})
+      await db.query("UPDATE agentstudio.model_connections SET status='ok' WHERE id=$1",[selected.id])}
     if(semantic)await models.create(profile.identity,{name:name+" semantic model",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowser"+name+"EmbeddingKey0123456789",enabled:true,models:["synthetic-embedding"]})
     await agents.create(profile.identity,name+" Browser Agent",safeAgentSpec({goal:"Synthetic local browser task",task_scope:"Synthetic only",
       deliverables:["A summary"],task_plan:["Prepare summary"],done_criteria:["Disclose synthetic source"],tools:modern?["calculate"]:[],
@@ -153,7 +155,7 @@ try{
   const dispatch=modern?{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async(_material,prompt)=>{if(!workflow)throw Error("direct_fallback_forbidden");if(prompt.includes("BROWSER_SEMANTIC_SOURCE"))state.semanticModelPrompts++;state.generated++;return "Browser synthetic workflow model output"},pool,{
       nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
-      allowAutonomousExecution:autonomous,allowAgentExecution:workflow,async agentExecutor(_material,prompt){state.generated++;const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0],mcp=plan.role.mcp_tools?.[0];if(plan.role.allowed_tools?.includes("knowledge_search")){if(plan.round>1){assert.match(prompt,/BROWSER_SEMANTIC_SOURCE/);state.semanticModelPrompts++}return JSON.stringify(plan.round===1?{action:"tool",tool:"knowledge_search",params:{query:"tool wording"}}:{action:"answer",answer:"Browser synthetic semantic Agent answer"})}return JSON.stringify(plan.round===1?
+      allowAutonomousExecution:autonomous||scheduling,allowAgentExecution:workflow,async agentExecutor(material,prompt){state.generated++;if(scheduling){assert.equal(material.api_key,"SyntheticBrowserAliceScheduleBKey");assert.equal(material.model_id,"synthetic-schedule-b");state.scheduleModelCalls=(state.scheduleModelCalls??0)+1}const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0],mcp=plan.role.mcp_tools?.[0];if(plan.role.allowed_tools?.includes("knowledge_search")){if(plan.round>1){assert.match(prompt,/BROWSER_SEMANTIC_SOURCE/);state.semanticModelPrompts++}return JSON.stringify(plan.round===1?{action:"tool",tool:"knowledge_search",params:{query:"tool wording"}}:{action:"answer",answer:"Browser synthetic semantic Agent answer"})}return JSON.stringify(plan.round===1?
         {action:"tool",tool:mcp?.name??http?.name??"calculate",params:mcp||http?{query:"Synthetic owner evidence"}:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
         {action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4",think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined})}})),
     ...(semantic?{index:claim=>indexBroker.dispatch(claim),query:claim=>queryBroker.dispatch(claim)}:{}),
@@ -161,12 +163,15 @@ try{
       async http(){state.httpCalls++;return "Browser synthetic HTTP observation 4"},
       mcp:createMcpToolExecutor(async(_material,wire)=>{if(wire.body.method!=="tools/call")throw Error("unexpected_synthetic_mcp_call")
         state.mcpCalls++;return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{content:[{type:"text",text:"Browser synthetic MCP observation 4"}]}})}}),
-    },pool,{allowAutonomousExecution:autonomous,allowAgentExecution:workflow,allowKnowledgeExecution:semantic})),
+    },pool,{allowAutonomousExecution:autonomous||scheduling,allowAgentExecution:workflow,allowKnowledgeExecution:semantic})),
   }:verified
+  let scheduledAgentMode=false
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},
     model=createWorkflowV2ModelInternalHandler({...common,dispatch:config.dispatch.model}),tool=createWorkflowV2ToolInternalHandler({...common,dispatch:config.dispatch.tool})
+    const scheduleModel=scheduling?createWorkflowV2ModelInternalHandler({...config,executionMode:"agent_native_v2",dispatch:config.dispatch.model}):null,
+      scheduleTool=scheduling?createWorkflowV2ToolInternalHandler({...config,executionMode:"agent_native_v2",dispatch:config.dispatch.tool}):null
     const single=createIsolatedBoundModelInternalHandler({...config,dispatch:verified}),index=semantic?createKnowledgeIndexPrivateHandler({...config,dispatch:config.dispatch.index}):null,query=semantic?createKnowledgeQueryPrivateHandler({...config,dispatch:config.dispatch.query}):null
-    return (req,res)=>(req.url===boundModelRoute?single:semantic&&req.url===knowledgeIndexRoute?index:semantic&&req.url===knowledgeQueryRoute?query:req.url==="/__internal/v2/workflow-tool/dispatch"?tool:model)(req,res)}
+    return (req,res)=>(req.url===boundModelRoute?single:semantic&&req.url===knowledgeIndexRoute?index:semantic&&req.url===knowledgeQueryRoute?query:req.url==="/__internal/v2/workflow-tool/dispatch"?(scheduledAgentMode?scheduleTool:tool):(scheduledAgentMode?scheduleModel:model))(req,res)}
   await withDisposableBoundModelTls(dispatch,async tls=>{
     const prepare=new AgentPrepareWorker(pool,"browser-synthetic-prepare")
     const model=new AgentModelWorker(pool,"browser-synthetic-model",{async generate(){throw Error("shared_fallback_forbidden")}},
@@ -175,7 +180,7 @@ try{
     const adapters=modern?[workflowV2ModelEffectExecutor(tls),workflowV2ToolEffectExecutor(tls)]:[]
     const indexWorker=semantic?new KnowledgeIndexWorker(pool,createKnowledgeIndexPrivateClient(tls),{approvedForIsolatedUat:true}):null
     const queryWorker=semantic?new KnowledgeQueryWorker(pool,createKnowledgeQueryPrivateClient(tls),{approvedForIsolatedUat:true}):null
-    const tickAutonomous=()=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,scheduleExecutionApproved:scheduling,
+    const tickAutonomous=(scheduledAgent=false)=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow&&!scheduledAgent?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,scheduleExecutionApproved:scheduling,
       executor:{supports:request=>adapters.some(adapter=>adapter.supports(request)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}}).tick()
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
@@ -245,7 +250,7 @@ try{
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
           try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,singleEvidence:state.singleEvidence??0,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,smitheryWrites:state.smitheryWrites,
-            ...(scheduling?{scheduleHashes:state.scheduleHashes}:{}),
+            ...(scheduling?{scheduleHashes:state.scheduleHashes,scheduleModelCalls:state.scheduleModelCalls??0}:{}),
             ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -254,6 +259,7 @@ try{
           finally{c.release()}
         }else if(req.url==="/__fixture/workflow"&&req.method==="POST"&&workflow)output=await tickAutonomous()
         else if(req.url==="/__fixture/schedule"&&req.method==="POST"&&scheduling&&state.allowed)output=await new ScheduleRuntimeWorker(pool,"browser-schedule").tick()
+        else if(req.url==="/__fixture/schedule-agent"&&req.method==="POST"&&scheduling&&state.allowed){scheduledAgentMode=true;try{output=await tickAutonomous(true)}finally{scheduledAgentMode=false}}
         else if(req.url==="/__fixture/invalidate-sample-source"&&req.method==="POST"&&workflow){
           const changed=await db.query("UPDATE agentstudio.runs SET instruction='Synthetic source revision changed' WHERE id IN "+
             "(SELECT source_run_id FROM agentstudio.workflow_sample_lineage WHERE source_run_id IS NOT NULL) RETURNING id")

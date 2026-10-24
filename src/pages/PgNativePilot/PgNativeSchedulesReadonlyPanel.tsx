@@ -3,7 +3,7 @@ import {CalendarClock,Clock3,Loader2,RefreshCw,ShieldCheck,Plus,Trash2} from "lu
 import PgNativeScheduleExecutionControls from "./PgNativeScheduleExecutionControls"
 import {createPgNativePilotApi,PgNativePilotError,
   type PgNativeSchedule,type PgNativeScheduleOccurrence,
-  type PgNativeAgent,type PgNativeWorkflow,
+  type PgNativeAgent,type PgNativeWorkflow,type PgNativeModelConnection,
   type PgNativeScheduleDraftRule,type PgNativeScheduleDraftInput} from "@/lib/pgNativePilotApi"
 
 type NativeApi=ReturnType<typeof createPgNativePilotApi>
@@ -22,8 +22,8 @@ function safeError(error:unknown):string{
 }
 
 /** Inert schedule-draft config and read-only occurrence inventory; NO scheduler. */
-export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,canEdit,canExecute=false}:{
-  api:NativeApi;agents:PgNativeAgent[];workflows:PgNativeWorkflow[];canEdit:boolean;canExecute?:boolean
+export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,canEdit,canExecute=false,connections=[]}:{
+  api:NativeApi;agents:PgNativeAgent[];workflows:PgNativeWorkflow[];canEdit:boolean;canExecute?:boolean;connections?:PgNativeModelConnection[]
 }){
   const [items,setItems]=useState<PgNativeSchedule[]>([])
   const [selected,setSelected]=useState<string|null>(null)
@@ -278,7 +278,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
             下次计划时间：{formatDate(item.next_at)}
           </p>
           </button>
-          {canEdit&&(item.recurrence?.config_format==="pg_schedule_draft_v1"||canExecute&&item.recurrence?.config_format==="pg_schedule_execution_v2")&&
+          {canEdit&&(item.recurrence?.config_format==="pg_schedule_draft_v1"||canExecute&&["pg_schedule_execution_v2","pg_schedule_execution_v3"].includes(String(item.recurrence?.config_format)))&&
           <div className="flex justify-end gap-2">
             <button type="button" disabled={saving} onClick={()=>editDraft(item)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700">
@@ -289,9 +289,10 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
               <Trash2 size={13}/>删除计划
             </button>
           </div>}
-          {(canExecute||item.recurrence?.config_format==="pg_schedule_execution_v2")&&selected===item.id&&item.recurrence&&["pg_schedule_draft_v1","pg_schedule_execution_v2"].includes(String(item.recurrence.config_format))&&
+          {(canExecute||["pg_schedule_execution_v2","pg_schedule_execution_v3"].includes(String(item.recurrence?.config_format)))&&selected===item.id&&item.recurrence&&["pg_schedule_draft_v1","pg_schedule_execution_v2","pg_schedule_execution_v3"].includes(String(item.recurrence.config_format))&&
             <PgNativeScheduleExecutionControls api={api} item={item} occurrences={occurrences} canActivate={canExecute}
               targetRevision={item.kind==="agent"?agents.find(a=>a.id===item.agent_spec_id)?.revision:workflows.find(w=>w.id===item.workflow_id)?.revision}
+              connections={connections} targetModelBinding={agents.find(a=>a.id===item.agent_spec_id)?.spec.model_binding}
               onChanged={async()=>{await getItems();await inspect(item.id)}}/>}
         </div>)}
       </div>

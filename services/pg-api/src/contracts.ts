@@ -74,7 +74,7 @@ function knowledgeBaseIds(value:unknown,tools:readonly string[]):string[]{
     throw new HttpError(400,"invalid_agent_knowledge_scope")
   return [...value]
 }
-function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
+export function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
   if(raw===undefined||raw===null)return undefined
   if(!raw||typeof raw!=="object"||Array.isArray(raw))
     throw new HttpError(400,"invalid_agent_model_binding")

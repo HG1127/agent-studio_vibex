@@ -89,7 +89,7 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     if(root.kind!=="workflow"||workflowAgentJson(workflowNodeDebugGraph(current!.graph,state.node_debug))!==workflowAgentJson(state.graph))throw Error()
   }catch{throw new HttpError(409,"workflow_node_debug_state_changed")}
   if(root.kind==="agent"){
-    const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0)
+    const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0,state.graph.nodes[1]?.data.model_binding)
     if(workflowAgentJson(graph)!==workflowAgentJson(state.graph))throw new HttpError(409,"invalid_v2_root")
     const agent=graph.nodes[1]!
     await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]})

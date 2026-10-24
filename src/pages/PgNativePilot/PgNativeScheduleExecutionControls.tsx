@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState,type FormEvent} from "react"
-import {PgNativePilotError,type createPgNativePilotApi,type PgNativeSchedule,type PgNativeScheduleActivation,type PgNativeScheduleExecution,type PgNativeScheduleOccurrence} from "@/lib/pgNativePilotApi"
+import {PgNativePilotError,type createPgNativePilotApi,type PgNativeSchedule,type PgNativeScheduleActivation,type PgNativeScheduleExecution,type PgNativeScheduleOccurrence,type PgNativeModelConnection,type PgNativeAgentModelBinding} from "@/lib/pgNativePilotApi"
 import {scheduleActivationLocalStart,scheduleActivationWindow} from "@/lib/pgNativeScheduleTime"
 type Api=ReturnType<typeof createPgNativePilotApi>
 const inputClass="w-full rounded-lg border border-slate-200 px-3 py-2"
@@ -12,8 +12,8 @@ function message(error:unknown){
   }
   return "未收到操作确认。启用操作可用同一请求重试；请先刷新检查当前状态。"
 }
-export default function PgNativeScheduleExecutionControls({api,item,targetRevision,occurrences,onChanged,canActivate=true}:{
-  api:Api;item:PgNativeSchedule;targetRevision:number|undefined;occurrences:PgNativeScheduleOccurrence[];onChanged:()=>Promise<void>;canActivate?:boolean
+export default function PgNativeScheduleExecutionControls({api,item,targetRevision,occurrences,onChanged,canActivate=true,connections=[],targetModelBinding}:{
+  api:Api;item:PgNativeSchedule;targetRevision:number|undefined;occurrences:PgNativeScheduleOccurrence[];onChanged:()=>Promise<void>;canActivate?:boolean;connections?:PgNativeModelConnection[];targetModelBinding?:PgNativeAgentModelBinding
 }){
   const [state,setState]=useState<PgNativeScheduleExecution|null>(null),[loading,setLoading]=useState(true)
   const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false)
@@ -21,14 +21,15 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
   const [unlimited,setUnlimited]=useState(false),[occurrenceCap,setOccurrenceCap]=useState(10),[days,setDays]=useState(7)
   const [background,setBackground]=useState(false),[knowledge,setKnowledge]=useState(false)
   const [uncertain,setUncertain]=useState(false)
+  const [modelBinding,setModelBinding]=useState<PgNativeAgentModelBinding|null>(null)
   const [deferred,setDeferred]=useState(false),[startDate,setStartDate]=useState(""),[startTime,setStartTime]=useState("09:00")
   const pending=useRef<PgNativeScheduleActivation|null>(null),generation=useRef(0)
   useEffect(()=>{let live=true;setLoading(true);setState(null);setError("");setBusy(false);pending.current=null;setUncertain(false);setBackground(false);setKnowledge(false)
-    setDeferred(false);setStartDate("");setStartTime("09:00")
+    setDeferred(false);setStartDate("");setStartTime("09:00");setModelBinding(null)
     const ticket=++generation.current
     void api.getScheduleExecution(item.id).then(value=>{
       if(!live||ticket!==generation.current)return
-      setState(value);setInstruction(value.execution.instruction??"");setMaxSteps(value.execution.max_steps??3);setMaxAuto(value.execution.max_auto_effects??50)
+      setState(value);setInstruction(value.execution.instruction??"");setMaxSteps(value.execution.max_steps??3);setMaxAuto(value.execution.max_auto_effects??50);setModelBinding(value.execution.model_binding??null)
       const start=scheduleActivationLocalStart(value.execution.anchor_at,item.time_zone,Date.now())
       if(start){setDeferred(true);setStartDate(start.date);setStartTime(start.time)}
       setUnlimited(Boolean(value.authority_id)&&value.max_occurrences===null&&value.expires_at===null);setOccurrenceCap(value.max_occurrences??10)
@@ -36,6 +37,10 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
     }).catch(e=>{if(live&&ticket===generation.current)setError(message(e))}).finally(()=>{if(live&&ticket===generation.current)setLoading(false)})
     return ()=>{live=false;generation.current++}
   },[api,item.id,item.revision,item.time_zone,targetRevision,canActivate,occurrences])
+  const effectiveModel=modelBinding??targetModelBinding
+  const modelReady=item.kind!=="agent"||Boolean(effectiveModel&&connections.some(c=>c.id===effectiveModel.connection_id&&c.revision===effectiveModel.connection_revision&&c.enabled&&c.status==="ok"&&c.models.includes(effectiveModel.model_id)))
+  const modelKey=(binding:PgNativeAgentModelBinding)=>JSON.stringify([binding.connection_id,binding.connection_revision,binding.model_id])
+  const modelOptions=connections.filter(c=>c.enabled&&c.status==="ok").flatMap(c=>c.models.map(model=>({binding:{connection_id:c.id,connection_revision:c.revision,model_id:model},label:c.name+" · "+model+"（版本 "+c.revision+"）"})))
   const perform=async(action:()=>Promise<unknown>,text:string)=>{
     if(busy)return;const ticket=generation.current;setBusy(true);setError("");setNotice("")
     try{await action();if(ticket!==generation.current)return;setNotice(text);await onChanged()}
@@ -43,13 +48,13 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
     finally{if(ticket===generation.current)setBusy(false)}
   }
   const activate=async(event:FormEvent)=>{
-    event.preventDefault();if(busy||!targetRevision||!background||!canActivate)return
+    event.preventDefault();if(busy||!targetRevision||!background||!canActivate||!pending.current&&!modelReady)return
     let body=pending.current
     if(!body)try{
       const window=scheduleActivationWindow({start:deferred?{date:startDate,time:startTime}:null,timeZone:item.time_zone,now:Date.now(),unlimited,days})
       body={expected_revision:item.revision,expected_target_revision:targetRevision,instruction,max_steps:item.kind==="agent"?maxSteps:1,
         ...window,max_occurrences:unlimited?null:occurrenceCap,max_auto_effects:maxAuto,background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1",
-        knowledge_charge_ack:knowledge?"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1":null,request_id:crypto.randomUUID()}
+        knowledge_charge_ack:knowledge?"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1":null,request_id:crypto.randomUUID(),model_binding:item.kind==="agent"?modelBinding:null}
     }catch(e){
       const code=e instanceof Error?e.message:""
       setError(code==="schedule_start_in_past"?"首次生效时间必须晚于当前时间。":code==="schedule_expiry_before_start"?"首次生效时间超出授权有效期，请延长有效期或选择持续执行。":
@@ -80,6 +85,16 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
     {canActivate&&<details open={!item.enabled}><summary className="cursor-pointer text-sm font-semibold">{item.enabled?"重新授予后台权限":"启用后台计划"}</summary>
       <form onSubmit={e=>void activate(e)} className="mt-3 space-y-3">
         <fieldset disabled={busy||uncertain} className="space-y-3 disabled:opacity-60">
+          {item.kind==="agent"&&<label className="block text-xs">本计划使用的模型
+            <select className={inputClass} value={modelBinding?modelKey(modelBinding):"inherit"} onChange={e=>{
+              setModelBinding(modelOptions.find(o=>modelKey(o.binding)===e.target.value)?.binding??null);setBackground(false);setKnowledge(false)
+            }}>
+              <option value="inherit">使用 Agent 当前绑定的模型</option>
+              {modelBinding&&!modelOptions.some(o=>modelKey(o.binding)===modelKey(modelBinding))&&<option value={modelKey(modelBinding)}>原选择已不可用，请重新选择</option>}
+              {modelOptions.map(o=><option key={modelKey(o.binding)} value={modelKey(o.binding)}>{o.label}</option>)}
+            </select>
+            <span className="mt-1 block text-slate-600">独立选择仅作用于本计划，连接版本变化后需重新选择并授权。</span>
+          </label>}
           <label className="block text-xs">每次运行的任务说明<textarea required maxLength={2000} rows={3} className={inputClass} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label>
           {(item.recurrence?.rule as {kind?:string}|undefined)?.kind!=="once"&&<>
             <label className="flex gap-2 text-xs"><input type="checkbox" checked={deferred} onChange={e=>setDeferred(e.target.checked)}/>从指定时间生效（按计划时区 {item.time_zone}）</label>
@@ -100,7 +115,8 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
           <label className="flex gap-2 text-xs"><input type="checkbox" required checked={background} onChange={e=>setBackground(e.target.checked)}/>我授权当前目标和连接版本在上述范围内自动调用模型及读取工具，可能产生费用。MCP 与外部写操作仍须逐步审批；编辑目标或连接后需重新授权。</label>
         </fieldset>
         {!targetRevision&&<p className="text-xs text-rose-700">目标配置不可用，请刷新目标列表。</p>}
-        <button type="submit" disabled={busy||!background||!targetRevision} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50">{busy?"处理中…":uncertain?"用原请求重试启用":"确认授权并启用"}</button>
+        {!modelReady&&<p className="text-xs text-rose-700">模型连接不可用、版本已变化或尚未测试，请选择本人可用模型并重新确认授权。</p>}
+        <button type="submit" disabled={busy||!background||!targetRevision||!uncertain&&!modelReady} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50">{busy?"处理中…":uncertain?"用原请求重试启用":"确认授权并启用"}</button>
         {uncertain&&<button type="button" disabled={busy} className="ml-2 text-xs underline" onClick={()=>void onChanged()}>刷新确认当前状态</button>}
       </form>
     </details>}

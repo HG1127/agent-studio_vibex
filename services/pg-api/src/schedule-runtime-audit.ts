@@ -17,6 +17,7 @@ const updateColumns:Record<string,string[]|true>={schedules:true,schedule_occurr
 const api="agentstudio_api",worker="agentstudio_worker"
 export const scheduleFunctions:Array<[string,string[]]>=[
   ["schedule_native_active(uuid)",[]],["schedule_resource_material(uuid)",[]],["schedule_resource_sha(uuid)",[]],["schedule_material_sha(uuid)",[]],
+  ["schedule_resource_material_for_binding(uuid,jsonb)",[]],["schedule_effective_model_binding(uuid,jsonb)",[]],["schedule_resource_fingerprint(uuid,jsonb)",[api]],
   ["schedule_authority_current(uuid)",[]],["schedule_run_sha(uuid)",[]],["schedule_run_current(uuid,uuid)",["agentstudio_knowledge_query"]],
   ["schedule_validate_run(uuid)",[api]],["schedule_automatic_candidate(uuid)",[api]],["schedule_resource_fingerprint(uuid)",[api]],
   ["schedule_activate(uuid,bigint,jsonb,timestamp with time zone,text,uuid)",[api]],

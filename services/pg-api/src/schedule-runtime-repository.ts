@@ -5,7 +5,7 @@ import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts
 import {assertNativeScheduleConfiguration,parseScheduleActivation,type ExecutionSchedule} from "./schedule-runtime-contract.ts"
 import {safeScheduleDraftInput} from "./schedule-draft-repository.ts"
 const publicErrors=new Set(["schedule_owner_unavailable","schedule_not_found","invalid_schedule_execution","schedule_activation_conflict","schedule_activation_changed_or_invalid",
-  "invalid_schedule_authority_limits","schedule_authority_unavailable","schedule_disabled_or_changed","schedule_already_queued","schedule_failed_start_not_retryable","invalid_schedule_control","schedule_requires_native_draft"])
+  "invalid_schedule_authority_limits","schedule_authority_unavailable","schedule_disabled_or_changed","schedule_already_queued","schedule_failed_start_not_retryable","invalid_schedule_control","schedule_requires_native_draft","schedule_model_unavailable","invalid_schedule_model_binding"])
 async function withScheduleActor<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
   try{return await withActor(pool,identity,body)}catch(error){
     if(error&&typeof error==="object"&&"code" in error&&error.code==="P0001"&&"message" in error&&publicErrors.has(String(error.message))){
@@ -42,11 +42,11 @@ export class ScheduleRuntimeRepository{
       if(!row)throw new HttpError(404,"schedule_not_found")
       const possibleReplay=raw!==null&&typeof raw==="object"&&Number((raw as Record<string,unknown>).expected_revision)+1===Number(row.revision)
       const item=parseScheduleActivation(raw,normalizeExecutionSchedule(row),Date.now(),possibleReplay)
-      const fingerprint=(await db.query<{sha:string|null}>("SELECT agentstudio.schedule_resource_fingerprint($1::uuid) AS sha",[id])).rows[0]?.sha
+      const fingerprint=(await db.query<{sha:string|null}>("SELECT agentstudio.schedule_resource_fingerprint($1::uuid,$2::jsonb) AS sha",[id,JSON.stringify(item.execution.model_binding)])).rows[0]?.sha
       if(!fingerprint)throw new HttpError(409,"schedule_target_unavailable")
       const request={expected_revision:item.execution.target_revision,idempotency_key:"schedule_preview_"+item.request_id,instruction:item.execution.instruction}
       if(!possibleReplay){
-        if(row.kind==="agent")await this.agents.prepareOwned(db,owner,row.agent_spec_id!,{...request,max_steps:item.execution.max_steps})
+        if(row.kind==="agent")await this.agents.prepareOwned(db,owner,row.agent_spec_id!,{...request,max_steps:item.execution.max_steps},item.execution.model_binding??undefined)
         else await this.flows.prepareOwned(db,owner,row.workflow_id!,request)
       }
       const result=(await db.query<{state:Record<string,unknown>}>("SELECT agentstudio.schedule_activate($1::uuid,$2::bigint,$3::jsonb,$4::timestamptz,$5::text,$6::uuid) AS state",

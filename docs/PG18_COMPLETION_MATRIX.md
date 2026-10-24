@@ -16,15 +16,16 @@
 | 模型、工具、MCP | 本人连接、探测、配置版本、受限私有 Broker、双向 TLS、MCP 发现与执行、Smithery 管理 | [MCP 执行](PG18_MCP_EXECUTION.md)、[HTTP 工具](PG18_AGENT_HTTP_TOOLS.md)。写操作逐项审批；未知付费结果禁止自动重发。 |
 | 团队知识与语义检索 | 所有者 / 编辑者 / 读者权限、文档与索引、独立费用授权、关键词及语义 / 混合查询、Agent / Workflow 原始证据关联 | [知识运行时](PG18_SHARED_KNOWLEDGE_RUNTIME.md)、[语义界面](PG18_KNOWLEDGE_SEMANTIC_UI.md)、[知识工具](PG18_APPROVED_SEMANTIC_TOOLS.md)。撤销、内容变化、读者原始证据与费用回执的检查仍生效。 |
 | Workflow | 原生画布、节点与循环、版本验证、持久运行 / 逐步审批、节点测试、节点输出、明确选择的历史样本复用 | [画布](PG18_WORKFLOW_NATIVE_CANVAS.md)、[节点测试](PG18_WORKFLOW_AUTHORING_AND_NODE_DEBUG.md)、[样本来源](PG18_WORKFLOW_SAMPLE_LINEAGE.md)。正式流程 UAT 和长期运行仍待执行。 |
-| Agent | 本人角色、模型及工具绑定、多轮运行、运行明细、审批、取消、重启与未知结果隔离 | [自主 Agent](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。30 轮扩展已完成精确候选验收；2000 字符任务的本地完整链路已验证，新的精确候选仍须通过真实 PG18 / 浏览器。 |
-| 定时任务 | 独立授权、Agent / Workflow 后台运行、时区重复规则、触发去重、原子入队、失败启动重试、暂停与来源撤销、费用及效果边界 | [定时任务](PG18_NATIVE_SCHEDULE_RUNTIME.md)。默认关闭。旧导入计划仍隔离；并发保护、历史终态同步与未来生效界面正在后续候选中验证，不能以旧提交的 CI 代替。 |
+| Agent | 本人角色、模型及工具绑定、多轮运行、运行明细、审批、取消、重启与未知结果隔离 | [自主 Agent](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。1–30 轮和完整 2000 字符任务已通过精确提交的本地、真实 PG18 与浏览器隔离验收。 |
+| 定时任务 | 独立授权、Agent / Workflow 后台运行、时区重复规则、触发去重、原子入队、失败启动重试、暂停与来源撤销、费用及效果边界 | [定时任务](PG18_NATIVE_SCHEDULE_RUNTIME.md)。默认关闭。旧导入计划仍隔离；并发保护、历史终态同步与未来生效界面均已通过基线隔离验收。独立模型选择的新候选仍须重新验收。 |
 | 新库准备 | 真实 SQL 顺序、源文件指纹、初始化回执、六类独立服务登录准备、分阶段只读检查和审查包 | [新库初始化](PG18_FRESH_RUNTIME_INITIALIZATION.md)、[迁移后检查](PG18_RUNTIME_PREPARATION_POSTCHECK.md)。没有在真实目标执行初始化、启用登录或启动服务。 |
 
-已确认的隔离基线为提交 `b4e227dbc39455f1ea18236f8cf5e135430bb0f8`：
-[质量检查](https://github.com/HG1127/agent-studio_vibex/actions/runs/40055961758)、
-[PR 质量检查](https://github.com/HG1127/agent-studio_vibex/actions/runs/40055965818)、
-[真实 PG18](https://github.com/HG1127/agent-studio_vibex/actions/runs/40055961738)、
-[员工浏览器](https://github.com/HG1127/agent-studio_vibex/actions/runs/40055961739)均通过。
+已确认的隔离基线为提交 `1bde7f10a0cac20841e605092563300f4bbc8b1b`：
+[质量检查](https://github.com/HG1127/agent-studio_vibex/actions/runs/40059460581)、
+[PR 质量检查](https://github.com/HG1127/agent-studio_vibex/actions/runs/40059463726)、
+[真实 PG18](https://github.com/HG1127/agent-studio_vibex/actions/runs/40059460531)、
+[员工浏览器](https://github.com/HG1127/agent-studio_vibex/actions/runs/40059460530)均通过。
+该提交本地 `pnpm check` 通过 576 项测试及类型 / 构建，PocketBase 隔离回归 19/19 通过（两 Worker，76.5 秒）；两组质量 CI 各 41/41，浏览器 7/7。
 这只证明该精确提交的合成隔离验收，不代表真实员工或生产环境通过。
 后续候选和最新验证结果集中在[迁移草稿 PR](https://github.com/HG1127/agent-studio_vibex/pull/26)。
 
@@ -32,7 +33,7 @@
 
 | 范围 | PocketBase 参照 | 剩余工作 |
 | --- | --- | --- |
-| 定时任务独立模型 | `pocketbase/pb_hooks/scheduled_tasks.pb.js`、`tests/schedules.integration.mjs`、`src/pages/ScheduledTasks/ScheduleEditor.tsx` | 按计划选择独立模型 / 连接仍待补齐，原生当前继承 Agent 角色绑定。1–30 轮已验收；2000 字符任务的新候选继续验证完整传递及总体请求预算。 |
+| 定时任务独立模型 | `pocketbase/pb_hooks/scheduled_tasks.pb.js`、`tests/schedules.integration.mjs`、`src/pages/ScheduledTasks/ScheduleEditor.tsx` | 新候选已实现继承角色或独立选择本人已测试的模型，并固定连接版本；本地 SQL 与私有 mTLS 验证所选凭据、跨所有者拒绝、未使用的默认模型变化及所选模型撤销。尚须新精确提交的真实 PG18、浏览器与完整回归。 |
 | Agent 协作 | `pocketbase/pb_hooks/agent_collaboration.pb.js`、`tests/agent-collaboration.integration.mjs` | 原生活跃授予 / 撤销、读者 / 编辑者安全投影、仅安全文本的提案、所有者审核与发布；完整受保护配置指纹、并发冲突及停用员工边界。还须对齐安全角色字段的长度 / 列表上限，不能把任务说明扩展视为角色字段也已对齐。历史导入不等于此功能。 |
 | 版本历史与恢复 | `pocketbase/pb_hooks/agent_collab_versions.pb.js`、`pocketbase/pb_hooks/modules/agent_collab_history.js` | 所有者直接编辑与提案接受均记录安全字段版本；所有者明确确认后恢复，仅恢复安全字段；防止过期提案及恢复后再次出现相同内容而复用旧授权。 |
 | 版本与发布 | `src/pages/VersionRelease`、`pocketbase/pb_hooks/spec_versions_api.pb.js` | 核对方案 / 配置快照、草稿版本、恢复、发布 / 归档、草稿删除及发布后绑定。它与仅恢复协作安全文本的版本记录是两项不同能力。 |

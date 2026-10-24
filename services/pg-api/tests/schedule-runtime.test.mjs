@@ -22,6 +22,38 @@ import {createServer} from "node:http"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {AutonomousAgentRunRepository} from "../src/autonomous-agent-run-repository.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
+test("schedule model overrides retain owner/version scope, ignore unused default model drift and fence the selected model",async()=>{
+  const f=await scheduleFixture()
+  try{
+    const connections=new ModelConnectionRepository(f.pool,Buffer.from("0123456789abcdef".repeat(4),"hex"))
+    const model=async name=>{const saved=await connections.create(f.identity,{name,provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticScheduleOnlyModelCredential",models:["synthetic"],enabled:true})
+      return connections.testConnection(f.identity,saved.id,saved.revision,async()=>({status:"ok",latency_ms:1,error_code:""}))}
+    const a=await model("Role default A"),b=await model("Schedule selected B")
+    const binding=m=>({connection_id:m.id,connection_revision:m.revision,model_id:"synthetic"})
+    const agents=new AgentSpecRepository(f.pool)
+    for(const inherited of [true,false]){
+      const spec=await agents.create(f.identity,"Role "+inherited,safeAgentSpec({goal:"Synthetic",task_scope:"Test only",deliverables:["Answer"],done_criteria:["Done"],tools:[],...(inherited?{model_binding:binding(a)}:{})}))
+      const draft=await f.drafts.create(f.identity,{name:"Override "+inherited,kind:"agent",target_id:spec.id,time_zone:"UTC",rule:{kind:"interval",interval_minutes:15}})
+      const body={expected_revision:draft.revision,expected_target_revision:spec.revision,instruction:"Synthetic override",max_steps:1,anchor_at:new Date().toISOString(),expires_at:null,max_occurrences:null,max_auto_effects:5,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID(),model_binding:binding(b)}
+      await assert.rejects(f.schedules.activate(f.identity,draft.id,{...body,model_binding:{...binding(b),connection_revision:b.revision+1}}))
+      await assert.rejects(f.schedules.activate(f.identity,draft.id,{...body,model_binding:{...binding(b),connection_id:randomUUID()}}))
+      await assert.rejects(f.schedules.activate(f.identity,draft.id,{...body,model_binding:{...binding(b),api_key:"not allowed"}}))
+      const grant=await f.schedules.activate(f.identity,draft.id,body)
+      assert.deepEqual((await f.schedules.describe(f.identity,draft.id)).execution.model_binding,binding(b))
+      await f.db.query("UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1",[a.id])
+      assert.equal((await f.schedules.describe(f.identity,draft.id)).source_current,true)
+      const queued=await f.schedules.runNow(f.identity,draft.id,Number(grant.revision));assert.equal((await f.dispatcher.tick()).run_id,queued.run_id)
+      const stored=(await f.db.query("SELECT checkpoint FROM agentstudio.runs WHERE id=$1",[queued.run_id])).rows[0].checkpoint
+      assert.deepEqual(stored.graph.nodes[1].data.model_binding,binding(b))
+      await f.db.query("UPDATE agentstudio.runs SET status='succeeded' WHERE id=$1",[queued.run_id])
+    }
+    await f.db.query("UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1",[b.id])
+    await f.db.query("UPDATE agentstudio.schedule_occurrences SET scheduled_for=scheduled_for-interval '2 minutes'")
+    const rows=(await f.db.query("SELECT id,revision FROM agentstudio.schedules")).rows
+    for(const row of rows){assert.equal((await f.schedules.describe(f.identity,row.id)).source_current,false)
+      await assert.rejects(f.schedules.runNow(f.identity,row.id,Number(row.revision)),/schedule_authority_unavailable/)}
+  }finally{await f.close()}
+})
 export async function scheduleFixture(){
   const f=await preparationFixture()
   try{const admin=await f.ready()
@@ -198,6 +230,8 @@ test("private grant, RLS, role and helper-surface drift are refused even when ru
       "ALTER TABLE agentstudio.runs DISABLE TRIGGER native_schedule_run_status",
       "DROP TRIGGER native_schedule_run_status ON agentstudio.runs",
       "GRANT EXECUTE ON FUNCTION agentstudio.schedule_sync_run_status() TO agentstudio_worker",
+      "GRANT EXECUTE ON FUNCTION agentstudio.schedule_effective_model_binding(uuid,jsonb) TO agentstudio_api",
+      "GRANT EXECUTE ON FUNCTION agentstudio.schedule_resource_material_for_binding(uuid,jsonb) TO agentstudio_worker",
       "CREATE FUNCTION agentstudio.schedule_unreviewed() RETURNS boolean LANGUAGE sql AS 'SELECT true'"]){
       await f.rollback(async db=>{await db.query(sql);await db.query("SET LOCAL ROLE agentstudio_api");await assert.rejects(verifyScheduleCredentials(db),/unsafe_native_schedule_privileges/)})
     }

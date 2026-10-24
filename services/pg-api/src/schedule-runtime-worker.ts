@@ -50,7 +50,7 @@ export class ScheduleRuntimeWorker{
       const result=await withActorClient(db,this.pool,ctx.identity,async(client,owner)=>{
         if(owner!==ctx.owner_user_id)throw Error("schedule_owner_changed")
         const raw={expected_revision:ctx.execution.target_revision,idempotency_key:"schedule_"+ctx.occurrence_id,instruction:ctx.execution.instruction}
-        return ctx.kind==="agent"?this.agents.admitOwned(client,owner,ctx.target_id,{...raw,max_steps:ctx.execution.max_steps},ctx.planned_run_id):this.flows.admitOwned(client,owner,ctx.target_id,raw,ctx.planned_run_id)
+        return ctx.kind==="agent"?this.agents.admitOwned(client,owner,ctx.target_id,{...raw,max_steps:ctx.execution.max_steps},ctx.planned_run_id,ctx.execution.model_binding??undefined):this.flows.admitOwned(client,owner,ctx.target_id,raw,ctx.planned_run_id)
       })
       await db.query("SET LOCAL ROLE agentstudio_worker")
       const registered=(await db.query<{ok:boolean}>("SELECT agentstudio.schedule_register_origin($1::uuid,$2::uuid,$3::bigint,$4::text,$5::uuid) AS ok",[claim.occurrence_id,claim.lease_token,claim.lease_version,this.workerId,result.run.id])).rows[0]?.ok
