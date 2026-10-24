@@ -207,7 +207,11 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
   // FIRST effectful operation: exact GitHub-only target attestation. No pool,
   // certificate generation, listener or model executor exists before it.
   const target=requireEphemeralPg18Ci(process.env)
-  const admin=new pg.Pool(target),pools=[]
+  const boundedTarget={...target,connectionTimeoutMillis:15000,statement_timeout:15000,query_timeout:20000}
+  const admin=new pg.Pool(boundedTarget),pools=[]
+  let phase="fresh-init"
+  const mark=value=>{phase=value;process.stderr.write("PG18_SYNTHETIC_STAGE "+value+"\n")}
+  mark(phase)
   const key=randomBytes(32)
   let front
   try{
@@ -267,6 +271,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
     }finally{bootstrap.release()}
+    mark("service-login-preparation")
     const checkPreparationStage=async stage=>{
       const client=await admin.connect()
       try{await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
@@ -289,7 +294,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const authPassword=passwordFor("agentstudio_native_login")
     await admin.query("ALTER ROLE agentstudio_native_login LOGIN PASSWORD '"+makeNativeScramVerifier(authPassword)+"'")
     await checkPreparationStage("native-login")
-    const authPool=new pg.Pool({...target,user:"agentstudio_native_login",password:authPassword})
+    const authPool=new pg.Pool({...boundedTarget,user:"agentstudio_native_login",password:authPassword})
     pools.push(authPool)
     const auth=new NativeAuthRepository(adapter(authPool))
     await auth.provisionInitialAdmin({email:"admin@example.com",password:"SyntheticAdminPassword#2026",display_name:"CI Admin"})
@@ -329,12 +334,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       try{assert.equal((await inspectPreparedServiceLogins(prepared,fresh)).receipts.length,6)}finally{await operator.query("ROLLBACK")}
     }finally{operator.release()}
     assert.equal((await checkPreparationStage("service-logins")).service_activation_receipts,6)
-    for(const kind of serviceLoginKinds){const login=serviceLoginDefinition(kind).login,pool=new pg.Pool({...target,user:login,password:passwordFor(login),max:5})
+    for(const kind of serviceLoginKinds){const login=serviceLoginDefinition(kind).login,pool=new pg.Pool({...boundedTarget,user:login,password:passwordFor(login),max:5})
       pools.push(pool);byLogin[login]=pool
       assert.equal((await pool.query("SELECT session_user AS login")).rows[0].login,login)
     }
     const apiPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_login),true),true),true),true),true),true)
     await verifyKnowledgeRuntimeSchema(apiPool,true)
+    mark("restricted-login-audits")
     await verifyKnowledgeAgentSchema(apiPool)
     await verifyWorkflowSampleLineageSchema(apiPool)
     await verifyKnowledgeEmbeddingSchema(apiPool)
@@ -407,6 +413,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await verifyMcpExecutionSchema(apiPool)
     await verifySmitheryPrivileges(apiPool,brokerPool)
     front=await startNativeHttps(auth,apiPool,key,brokerPool)
+    mark("native-https-configuration")
     const api=front.api
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     const capabilities=await api.getConfigCapabilities()
@@ -493,6 +500,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await assert.rejects(api.createWorkflowGraph("foreign resource",graph),e=>e.status===404)
     await api.login("admin@example.com","SyntheticAdminPassword#2026")
     const ownerSession=await auth.login("admin@example.com","SyntheticAdminPassword#2026")
+    mark("knowledge-owner-and-original-source-fences")
     const owner=(await auth.getSessionProfile(ownerSession.token)).identity
     // Actual restricted API pools, current grants and bounded keyword evidence.
     // Only synthetic content is used; no embedding/provider request occurs.
@@ -804,6 +812,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     // Actual restricted PG18 identities and V2 mTLS transport, with only the
     // final provider function replaced by a local synthetic response/failure.
     let v2Calls=0,nodeDebugCalls=0
+    mark("workflow-private-model-and-tool-transports")
     const v2Broker=new WorkflowV2ModelDispatch(apiPool,key,async(material,prompt)=>{
       assert.equal(material.api_key,secret);v2Calls++
       if(prompt==="Synthetic unknown result")throw Error("synthetic_response_lost")
@@ -938,6 +947,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const keywordRole=await new AgentSpecRepository(apiPool).create(owner,"CI keyword Agent role",safeAgentSpec({goal:"Synthetic keyword role",tools:["knowledge_search"],knowledge_base_ids:[sharedBase.id],
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp","keyword"]){
+    mark((autonomous?"autonomous":"workflow")+"-agent-"+selection)
     const custom=selection==="http",useMcp=selection==="mcp",keyword=selection==="keyword"
     let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0,thirtyRounds=false,selectedScheduleSecret=null
     const fullTask="迁".repeat(1998)+"🚀"
@@ -1121,6 +1131,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const toRevoke=await api.getSmitheryConnection(managed.id),revoked=await api.operateSmithery(managed.id,toRevoke.revision,"revoke")
     assert.equal(revoked.state,"revoked");assert.equal((await api.removeSmitheryKey(2,randomUUID())).has_key,false)
     const descriptive={goal:"目".repeat(2998)+"🚀",task_scope:"域".repeat(4000),deliverables:Array(30).fill("交".repeat(500)),task_plan:Array(30).fill("计".repeat(500)),done_criteria:Array(30).fill("成".repeat(500))}
+    mark("full-descriptive-role-private-tls")
     const fullConnection=await api.createModelConnection({name:"Full role SQL transport",provider:"openai",base_url:"https://api.openai.com/v1",api_key:secret,models:["gpt-4.1-mini"],enabled:true})
     const fullReady=await api.testModelConnection(fullConnection.id,fullConnection.revision)
     const fullRole=await new AgentSpecRepository(apiPool).create(owner,"Full descriptive role",safeAgentSpec({...descriptive,
@@ -1145,6 +1156,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     // Genuine SQL roles + HTTPS Cookie/CSRF: collaboration grants safe text,
     // never owner execution authority or private model/knowledge bindings.
     const collaboration=await api.createAgent("Genuine PG18 collaborative role","Original owner goal")
+    mark("collaboration-safe-review-and-restoration")
     const grantChoice={action:"grant",request_id:randomUUID(),recipient_email:"other@example.com",role:"editor",expected_access_revision:0}
     const access=await api.changeAgentCollaboration(collaboration.id,grantChoice)
     assert.equal(access.revision,1)
@@ -1173,6 +1185,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await api.changeAgentCollaboration(collaboration.id,grantChoice)).replayed,true)
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     await assert.rejects(api.getAgentCollaboration(collaboration.id),e=>e.status===404)
+    mark("completed")
+  }catch(error){
+    process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
+    throw error
   }finally{
     if(front)await front.close()
     await Promise.all(pools.map(pool=>pool.end()));await admin.end();key.fill(0)
