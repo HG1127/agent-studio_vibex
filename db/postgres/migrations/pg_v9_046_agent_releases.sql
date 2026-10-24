@@ -86,6 +86,8 @@ CREATE POLICY release_users ON agentstudio.users TO agentstudio_releases USING(t
 CREATE POLICY release_accounts ON agentstudio_auth.accounts TO agentstudio_releases USING(true);
 GRANT INSERT(spec_id,owner_user_id) ON agentstudio.agent_release_heads TO agentstudio_releases;
 GRANT UPDATE(next_version_no,updated_at) ON agentstudio.agent_release_heads TO agentstudio_releases;
+GRANT UPDATE(active_version_id,revision) ON agentstudio.agent_release_heads TO agentstudio_releases;
+GRANT UPDATE(status,revision,updated_at,published_at) ON agentstudio.agent_release_versions TO agentstudio_releases;
 GRANT INSERT(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note) ON agentstudio.agent_release_versions TO agentstudio_releases;
 GRANT INSERT(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result) ON agentstudio.agent_release_receipts TO agentstudio_releases;
 GRANT INSERT(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) ON agentstudio.audit_events TO agentstudio_releases;
@@ -188,15 +190,65 @@ BEGIN
     VALUES(actor,actor,'agent.release.snapshot','agent_spec',p_spec::text,'succeeded',jsonb_build_object('version_id',version_id,'version_no',h.next_version_no,'spec_revision',s.revision,'source_sha256',s.sha,'test_passed',false));
   RETURN result;
 END $fn$;
+CREATE FUNCTION agentstudio.agent_release_publish(p_spec uuid,p_version uuid,p_spec_revision bigint,p_source_sha text,p_version_sha text,p_version_revision bigint,
+  p_release_revision bigint,p_confirm boolean,p_ack_untested boolean,p_request uuid,p_request_sha text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE actor uuid=agentstudio.actor_id(); s record; h record; v record; current_id uuid; previous agentstudio.agent_release_receipts%ROWTYPE; input_sha text; result jsonb; already boolean;
+BEGIN
+  IF actor IS NULL OR NOT agentstudio.release_native_active(actor) THEN RAISE EXCEPTION 'agent_release_actor_unavailable'; END IF;
+  IF p_spec IS NULL OR p_version IS NULL OR p_spec_revision IS NULL OR p_spec_revision<1 OR p_spec_revision>=9007199254740991 OR p_source_sha IS NULL OR p_source_sha!~'^[a-f0-9]{64}$' OR
+    p_version_sha IS NULL OR p_version_sha!~'^[a-f0-9]{64}$' OR p_version_revision IS NULL OR p_version_revision<1 OR p_version_revision>=9007199254740991 OR
+    p_release_revision IS NULL OR p_release_revision<1 OR p_release_revision>=9007199254740991 OR p_confirm IS DISTINCT FROM true OR p_ack_untested IS NULL OR
+    p_request IS NULL OR p_request_sha IS NULL OR p_request_sha!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'invalid_agent_release_publish'; END IF;
+  input_sha=encode(sha256(convert_to(jsonb_build_object('action','publish','spec',p_spec,'version',p_version,'spec_revision',p_spec_revision,'source_sha256',p_source_sha,
+    'version_sha256',p_version_sha,'version_revision',p_version_revision,'release_revision',p_release_revision,'confirm',p_confirm,'acknowledge_untested',p_ack_untested,'request_sha256',p_request_sha)::text,'UTF8')),'hex');
+  PERFORM pg_advisory_xact_lock(hashtextextended(actor::text||':'||p_request::text,46));
+  SELECT * INTO previous FROM agentstudio.agent_release_receipts WHERE actor_user_id=actor AND request_id=p_request;
+  IF previous.request_id IS NOT NULL THEN
+    IF previous.spec_id<>p_spec OR previous.action<>'publish' OR previous.input_sha256<>input_sha THEN RAISE EXCEPTION 'agent_release_request_conflict'; END IF;
+    RETURN previous.result||jsonb_build_object('replayed',true);
+  END IF;
+  SELECT id,revision,agentstudio.release_source_seal(id,owner_user_id,name,revision,spec) AS sha INTO s FROM agentstudio.agent_specs WHERE id=p_spec AND owner_user_id=actor;
+  IF s.id IS NULL THEN RAISE EXCEPTION 'agent_release_not_found'; END IF;
+  IF s.revision<>p_spec_revision OR s.sha IS DISTINCT FROM p_source_sha THEN RAISE EXCEPTION 'agent_release_source_changed'; END IF;
+  SELECT * INTO h FROM agentstudio.agent_release_heads WHERE spec_id=p_spec AND owner_user_id=actor FOR UPDATE;
+  IF h.spec_id IS NULL OR h.revision<>p_release_revision THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
+  SELECT * INTO v FROM agentstudio.agent_release_versions WHERE id=p_version AND spec_id=p_spec AND owner_user_id=actor AND status<>'deleted' FOR UPDATE;
+  IF v.id IS NULL THEN RAISE EXCEPTION 'agent_release_version_not_found'; END IF;
+  IF v.revision<>p_version_revision OR agentstudio.release_version_sha(v.id) IS DISTINCT FROM p_version_sha THEN RAISE EXCEPTION 'agent_release_version_changed'; END IF;
+  IF NOT v.test_passed AND NOT p_ack_untested THEN RAISE EXCEPTION 'agent_release_untested_ack_required'; END IF;
+  SELECT id INTO current_id FROM agentstudio.agent_release_versions WHERE spec_id=p_spec AND owner_user_id=actor AND status='published' FOR UPDATE;
+  IF h.active_version_id IS DISTINCT FROM current_id THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
+  already=v.status='published';
+  IF NOT already THEN
+    IF current_id IS NOT NULL THEN
+      UPDATE agentstudio.agent_release_versions SET status='archived',revision=revision+1,updated_at=clock_timestamp() WHERE id=current_id AND owner_user_id=actor;
+    END IF;
+    UPDATE agentstudio.agent_release_versions SET status='published',revision=revision+1,published_at=clock_timestamp(),updated_at=clock_timestamp()
+      WHERE id=p_version AND owner_user_id=actor RETURNING revision INTO v.revision;
+    UPDATE agentstudio.agent_release_heads SET active_version_id=p_version,revision=revision+1,updated_at=clock_timestamp()
+      WHERE spec_id=p_spec AND owner_user_id=actor RETURNING revision INTO h.revision;
+  END IF;
+  result=jsonb_build_object('spec_id',p_spec,'request_id',p_request,'version_id',p_version,'version_no',v.version_no,'version_revision',v.revision,
+    'version_sha256',p_version_sha,'release_revision',h.revision,'source_sha256',s.sha,'status','published','already_published',already,'replayed',false);
+  INSERT INTO agentstudio.agent_release_receipts(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result)
+    VALUES(actor,p_request,p_spec,'publish',p_request_sha,input_sha,result);
+  INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata)
+    VALUES(actor,actor,CASE WHEN already THEN 'agent.release.publish_confirmed' ELSE 'agent.release.publish' END,'agent_spec',p_spec::text,'succeeded',
+      jsonb_build_object('version_id',p_version,'previous_version_id',current_id,'release_revision',h.revision,'version_sha256',p_version_sha,'test_passed_at_save',v.test_passed,'acknowledge_untested',p_ack_untested));
+  RETURN result;
+END $fn$;
 DO $functions$ DECLARE signature text; BEGIN
   FOREACH signature IN ARRAY ARRAY['release_utf16_length(text)','release_native_active(uuid)','release_source_seal(uuid,uuid,text,bigint,jsonb)','release_source_sha(uuid)','release_version_sha(uuid)',
     'release_version_immutable()','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)',
-    'agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)'] LOOP
+    'agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)',
+    'agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text)'] LOOP
     EXECUTE 'ALTER FUNCTION agentstudio.'||signature||' OWNER TO agentstudio_releases';
     EXECUTE 'REVOKE ALL ON FUNCTION agentstudio.'||signature||' FROM PUBLIC,agentstudio_api,agentstudio_worker,agentstudio_model_broker,agentstudio_bound_dispatch,agentstudio_native_auth';
   END LOOP;
 END $functions$;
 GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.agent_release_detail(uuid,uuid),agentstudio.agent_release_receipt(uuid,uuid),
-  agentstudio.agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text) TO agentstudio_api;
+  agentstudio.agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text),
+  agentstudio.agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text) TO agentstudio_api;
 -- Intentionally no pg_v9_046 receipt or HTTP/initialization entry in this draft.
 COMMIT;
