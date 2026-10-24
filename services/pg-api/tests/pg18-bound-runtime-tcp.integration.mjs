@@ -179,11 +179,16 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       const body=init.body?Buffer.from(init.body):null
       const req=request({hostname:"127.0.0.1",servername:"localhost",port,
         path:route.replace(/^\/__pg_native(?=\/|$)/,""),method:init.method??"GET",
-        ca,rejectUnauthorized:true,agent:false,timeout:10000,
+        ca,rejectUnauthorized:true,agent:false,timeout:10000,signal:AbortSignal.timeout(20000),
         headers:{...init.headers,...(body?{"content-length":String(body.length)}:{}),
           ...(cookie?{Cookie:cookie}:{}),...(init.method&&init.method!=="GET"?{Origin:origin}:{})}},res=>{
         const chunks=[];let bytes=0
-        res.on("data",chunk=>{bytes+=chunk.length;if(bytes>262144)res.destroy();else chunks.push(chunk)})
+        // Pending review can contain both the full bounded role snapshot and
+        // its model prompt. Overflow and incomplete streams must reject,
+        // otherwise destroying the response silently leaves this test waiting.
+        res.on("data",chunk=>{bytes+=chunk.length;if(bytes>1048576){reject(Error("ci_https_response_limit"));res.destroy()}else chunks.push(chunk)})
+        res.once("aborted",()=>reject(Error("ci_https_response_aborted")))
+        res.once("close",()=>{if(!res.complete)reject(Error("ci_https_response_incomplete"))})
         res.on("error",reject)
         res.on("end",()=>{
           const saved=res.headers["set-cookie"]?.[0]
@@ -1134,8 +1139,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     mark("full-descriptive-role-private-tls")
     const fullConnection=await api.createModelConnection({name:"Full role SQL transport",provider:"openai",base_url:"https://api.openai.com/v1",api_key:secret,models:["gpt-4.1-mini"],enabled:true})
     const fullReady=await api.testModelConnection(fullConnection.id,fullConnection.revision)
+    mark("full-role-connection-ready")
     const fullRole=await new AgentSpecRepository(apiPool).create(owner,"Full descriptive role",safeAgentSpec({...descriptive,
       model_binding:{connection_id:fullReady.id,connection_revision:fullReady.revision,model_id:"gpt-4.1-mini"}}))
+    mark("full-role-created")
     let fullRoleCalls=0
     const fullDispatch=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("direct fallback forbidden")},brokerPool,{allowAutonomousExecution:true,
       agentExecutor:async(material,prompt)=>{fullRoleCalls++;assert.equal(material.api_key,secret);const parsed=JSON.parse(prompt)
@@ -1144,8 +1151,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),fullDispatch),async raw=>{
       const executor=workflowV2ModelEffectExecutor({...raw,executionMode:"agent_native_v2"})
       const queued=await api.submitAutonomousAgentRun(fullRole.id,fullRole.revision,"Retain the complete role","ci-full-role-limits",1)
+      mark("full-role-queued")
       for(let i=0;i<16;i++){
         await new WorkflowV2Worker(workerPool,"ci-full-role-"+i,{agentExecutionApproved:true,executor,executionMode:"agent_native_v2"}).tick()
+        mark("full-role-tick-"+i)
         const detail=await api.getAutonomousAgentRun(queued.run.id)
         if(detail.run.status==="succeeded")break
         assert.equal(["failed","paused","cancelled"].includes(detail.run.status),false,detail.run.last_error_code)
