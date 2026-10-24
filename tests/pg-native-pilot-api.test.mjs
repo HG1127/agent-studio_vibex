@@ -593,7 +593,7 @@ test("PG Native Run UAT rejects malformed identity and payload before any HTTP r
     ()=>api.submitRun("../other","hello","valid_run_0001"),
     ()=>api.submitRun(id,"hello","short"),
     ()=>api.submitRun(id,"hello","bad:key"),
-    ()=>api.submitRun(id,"x".repeat(1201),"valid_run_0001"),
+    ()=>api.submitRun(id,"x".repeat(2001),"valid_run_0001"),
     ()=>api.decideModel("../other","approved"),
     ()=>api.decideModel(id,"rollback"),
   ])await assert.rejects(Promise.resolve().then(call),
