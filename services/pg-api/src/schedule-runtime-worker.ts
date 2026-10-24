@@ -6,6 +6,7 @@ import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts
 import {recurrenceNext,type ScheduleExecution} from "./schedule-runtime-contract.ts"
 import {safeScheduleDraftInput} from "./schedule-draft-repository.ts"
 type Claim={occurrence_id:string;lease_token:string;lease_version:number|string;worker_id:string}
+type Skipped={skipped:true;occurrence_id:string;reason:"previous_run_incomplete"}
 type Launch={occurrence_id:string;owner_user_id:string;identity:Identity;kind:"agent"|"workflow";target_id:string;execution:ScheduleExecution;planned_run_id:string;authority_id:string}
 async function transaction<T>(pool:SqlPool,body:(db:SqlClient)=>Promise<T>){const db=await pool.connect();let active=false
   try{await db.query("BEGIN");active=true;await applyKnowledgeScope(db,pool);await db.query("SET LOCAL ROLE agentstudio_worker")
@@ -28,8 +29,12 @@ export class ScheduleRuntimeWorker{
       next=rule.kind==="once"?null:recurrenceNext(rule,String(peek.time_zone),String(peek.anchor_at),now,due)
     }catch(error){const reason=error instanceof Error&&/^[a-z0-9_]{1,80}$/.test(error.message)?error.message:"invalid_schedule_rule"
       await transaction(this.pool,db=>db.query("SELECT agentstudio.schedule_quarantine($1::uuid,$2::bigint,$3::timestamptz,$4::text)",[id,revision,new Date(due).toISOString(),reason]));return {status:"invalid_schedule",schedule_id:id}}
-    const claim=await transaction(this.pool,async db=>(await db.query<{claim:Claim|null}>("SELECT agentstudio.schedule_reserve($1::uuid,$2::bigint,$3::timestamptz,$4::timestamptz,$5::text) AS claim",[id,revision,new Date(due).toISOString(),next===null?null:new Date(next).toISOString(),this.workerId])).rows[0]?.claim)
+    const claim=await transaction(this.pool,async db=>(await db.query<{claim:Claim|Skipped|null}>("SELECT agentstudio.schedule_reserve($1::uuid,$2::bigint,$3::timestamptz,$4::timestamptz,$5::text) AS claim",[id,revision,new Date(due).toISOString(),next===null?null:new Date(next).toISOString(),this.workerId])).rows[0]?.claim)
     if(!claim)return {status:"stale",schedule_id:id}
+    if("skipped" in claim){
+      if(claim.skipped!==true||!isUuid(claim.occurrence_id)||claim.reason!=="previous_run_incomplete")throw Error("invalid_schedule_skip")
+      return {status:"skipped_overlap",schedule_id:id,occurrence_id:claim.occurrence_id}
+    }
     try{return await this.launch(claim)}catch(error){
       const reason=error instanceof HttpError?error.code:error instanceof Error&&/^[a-z0-9_]{1,80}$/.test(error.message)?error.message:"schedule_launch_unavailable"
       const result=await transaction(this.pool,async db=>(await db.query<{status:string}>("SELECT agentstudio.schedule_launch_failed($1::uuid,$2::uuid,$3::bigint,$4::text,$5::text) AS status",[claim.occurrence_id,claim.lease_token,claim.lease_version,this.workerId,reason])).rows[0]?.status)

@@ -25,6 +25,7 @@ export const scheduleFunctions:Array<[string,string[]]>=[
   ["schedule_launch_context(uuid,uuid,bigint,text)",[worker]],["schedule_register_origin(uuid,uuid,bigint,text,uuid)",[worker]],
   ["schedule_launch_failed(uuid,uuid,bigint,text,text)",[worker]],["schedule_quarantine(uuid,bigint,timestamp with time zone,text)",[worker]],
   ["schedule_effect_authorize(uuid,text,text,text,boolean)",[worker]],["schedule_control(uuid,bigint,text)",[api]],["schedule_execution_status(uuid)",[api]],
+  ["schedule_sync_run_status()",[]],
 ]
 const refuse=():never=>{throw Error("unsafe_native_schedule_privileges")}
 export async function scheduleRuntimeInstalled(db:SqlClient):Promise<boolean>{
@@ -75,6 +76,12 @@ export async function verifyScheduleCredentials(db:SqlClient):Promise<boolean>{
     "NOT has_any_column_privilege('agentstudio_api','agentstudio.schedule_occurrences','INSERT,UPDATE,REFERENCES') AND "+
     "NOT EXISTS(SELECT 1 FROM unnest(ARRAY['lease_token','lease_owner','lease_version','lease_until']) c WHERE has_column_privilege('agentstudio_api','agentstudio.schedule_occurrences',c,'SELECT')) AS ok",[role,scheduleFunctions.length])).rows[0]
   if(!surface?.ok)refuse()
+  const trigger=(await db.query<{ok:boolean}>("SELECT count(*)=1 AND bool_and(t.tgrelid='agentstudio.runs'::regclass AND t.tgname='native_schedule_run_status' AND "+
+    "t.tgfoid='agentstudio.schedule_sync_run_status()'::regprocedure AND t.tgtype=17 AND t.tgenabled='O' AND NOT t.tgisinternal AND "+
+    "t.tgconstraint=0 AND NOT t.tgdeferrable AND NOT t.tginitdeferred AND t.tgqual IS NULL AND t.tgnargs=0 AND octet_length(t.tgargs)=0 AND "+
+    "t.tgattr::text=(SELECT a.attnum::text FROM pg_catalog.pg_attribute a WHERE a.attrelid='agentstudio.runs'::regclass AND a.attname='status' AND NOT a.attisdropped)) AS ok "+
+    "FROM pg_catalog.pg_trigger t WHERE t.tgname='native_schedule_run_status' OR t.tgfoid='agentstudio.schedule_sync_run_status()'::regprocedure")).rows[0]
+  if(!trigger?.ok)refuse()
   return true
 }
 export async function verifyScheduleRuntimeSchema(pool:SqlPool){const db=await pool.connect()

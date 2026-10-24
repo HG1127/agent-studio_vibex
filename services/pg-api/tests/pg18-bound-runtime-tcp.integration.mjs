@@ -1012,6 +1012,13 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const queue=races.find(r=>r.status==="fulfilled").value
       const launches=await Promise.all([new ScheduleRuntimeWorker(workerPool,"schedule-race-a",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick(),new ScheduleRuntimeWorker(workerPool,"schedule-race-b",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick()])
       assert.equal(launches.filter(r=>r.status==="started").length,1);assert.equal(launches.find(r=>r.status==="started").run_id,queue.run_id)
+      if(!autonomous&&selection==="builtin"){
+        await admin.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-interval '1 second' WHERE id=$1",[scheduled.id])
+        assert.equal((await new ScheduleRuntimeWorker(workerPool,"schedule-overlap").tick()).status,"skipped_overlap")
+        const history=await api.listScheduleOccurrences(scheduled.id)
+        assert.equal(history.some(row=>row.status==="skipped_overlap"&&row.error_code==="previous_run_incomplete"&&row.run_id===null),true)
+        assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_origins x JOIN agentstudio.schedule_occurrences o ON o.id=x.occurrence_id WHERE o.schedule_id=$1",[scheduled.id])).rows[0].n,1)
+      }
       let manualApprovals=0
       for(let i=0;i<25;i++){
         await new WorkflowV2Worker(workerPool,"ci-scheduled-"+i,{agentExecutionApproved:true,scheduleExecutionApproved:true,executor,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}).tick()
@@ -1024,6 +1031,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         }else assert.equal(["failed","paused","cancelled"].includes(view.run.status),false)
       }
       const scheduledDone=await get(queue.run_id);assert.equal(scheduledDone.run.status,"succeeded");assert.equal(agentCalls,2);assert.equal(manualApprovals,custom||useMcp?1:0)
+      assert.equal((await api.listScheduleOccurrences(scheduled.id)).find(row=>row.run_id===queue.run_id).status,"succeeded")
       assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_origins WHERE run_id=$1",[queue.run_id])).rows[0].n,1)
       await api.pauseSchedule(scheduled.id,grant.revision)
       assert.equal((await get(queue.run_id)).run.result_text,"Synthetic Agent result 4")

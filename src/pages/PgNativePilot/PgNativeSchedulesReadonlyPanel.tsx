@@ -306,7 +306,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
         <ol className="mt-3 space-y-2">
           {occurrences.map(o=><li key={o.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm">
             <span className="text-slate-600">{formatDate(o.scheduled_for)}</span>
-            <span className="text-xs font-medium text-slate-700">{({pending:"待启动",launching:"正在启动",retryable:"等待重试启动",failed_start:"启动失败",started:"已启动",succeeded:"已完成",failed:"执行失败",skipped:"已跳过",cancelled_schedule:"计划已取消",invalid_schedule:"计划参数异常"} as Record<string,string>)[o.status]??o.status}{o.run_status?" · "+({queued:"排队中",running:"运行中",awaiting_approval:"等待逐步审批",paused:"运行已暂停",succeeded:"运行完成",failed:"运行失败",cancelled:"运行已取消"} as Record<string,string>)[o.run_status]:""}</span>
+            <span className="text-xs font-medium text-slate-700">{({pending:"待启动",launching:"正在启动",retryable:"等待重试启动",failed_start:"启动失败",started:"已启动",succeeded:"已完成",failed:"执行失败",skipped:"已跳过",skipped_overlap:"上一轮未结束，已跳过",cancelled_run:"运行已取消",cancelled_schedule:"计划已取消",invalid_schedule:"计划参数异常"} as Record<string,string>)[o.status]??o.status}{o.run_status?" · "+({queued:"排队中",running:"运行中",awaiting_approval:"等待逐步审批",paused:"运行已暂停",succeeded:"运行完成",failed:"运行失败",cancelled:"运行已取消"} as Record<string,string>)[o.run_status]:""}</span>
           </li>)}
         </ol>
       </div>}

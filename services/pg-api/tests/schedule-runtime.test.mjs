@@ -192,6 +192,9 @@ test("private grant, RLS, role and helper-surface drift are refused even when ru
     for(const sql of ["ALTER ROLE agentstudio_scheduler LOGIN","GRANT SELECT ON agentstudio.schedule_execution_origins TO agentstudio_worker",
       "GRANT SELECT(lease_token) ON agentstudio.schedule_occurrences TO agentstudio_api","ALTER TABLE agentstudio.schedule_execution_authorities NO FORCE ROW LEVEL SECURITY",
       "GRANT SELECT(password_record) ON agentstudio_auth.accounts TO agentstudio_scheduler",
+      "ALTER TABLE agentstudio.runs DISABLE TRIGGER native_schedule_run_status",
+      "DROP TRIGGER native_schedule_run_status ON agentstudio.runs",
+      "GRANT EXECUTE ON FUNCTION agentstudio.schedule_sync_run_status() TO agentstudio_worker",
       "CREATE FUNCTION agentstudio.schedule_unreviewed() RETURNS boolean LANGUAGE sql AS 'SELECT true'"]){
       await f.rollback(async db=>{await db.query(sql);await db.query("SET LOCAL ROLE agentstudio_api");await assert.rejects(verifyScheduleCredentials(db),/unsafe_native_schedule_privileges/)})
     }
@@ -290,5 +293,45 @@ test("legacy imported schedules with plausible rules remain read-only and cannot
     })
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_authorities WHERE schedule_id=$1",[draft.id])).rows[0].n,0)
     assert.equal(await f.schedules.control(f.identity,draft.id,draft.revision,"pause"),true)
+  }finally{await f.close()}
+})
+test("an unfinished occurrence blocks overlapping launches and terminal run status is reflected in schedule history",async()=>{
+  const f=await scheduleFixture()
+  try{
+    const a=await activated(f,{effect:false});const first=await f.schedules.runNow(f.identity,a.draft.id,Number(a.activation.revision))
+    assert.equal((await f.dispatcher.tick()).run_id,first.run_id)
+    for(const [index,status] of ["queued","running","awaiting_approval","paused"].entries()){
+      await f.db.query("UPDATE agentstudio.runs SET status=$2 WHERE id=$1",[first.run_id,status])
+      await f.db.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-($2*interval '1 second') WHERE id=$1",[a.draft.id,index+1])
+      assert.equal((await f.dispatcher.tick()).status,"skipped_overlap")
+    }
+    await f.db.query("UPDATE agentstudio.runs SET status='queued' WHERE id=$1",[first.run_id])
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,1)
+    const before=await new ScheduleInventoryRepository(f.pool).occurrences(f.identity,a.draft.id)
+    assert.equal(before.some(row=>row.status==="skipped_overlap"&&row.error_code==="previous_run_incomplete"&&row.run_id===null),true)
+    assert.equal((await complete(f,first.run_id,scheduledWorker(f.pool,"finish-overlap"))).view.run.status,"succeeded")
+    const after=await new ScheduleInventoryRepository(f.pool).occurrences(f.identity,a.draft.id)
+    assert.equal(after.find(row=>row.run_id===first.run_id).status,"succeeded")
+    await f.db.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-interval '2 seconds' WHERE id=$1",[a.draft.id])
+    assert.equal((await f.dispatcher.tick()).status,"started")
+  }finally{await f.close()}
+})
+test("a live launch reservation blocks another occurrence before a run exists, and cancellation releases the slot",async()=>{
+  const f=await scheduleFixture()
+  try{
+    const a=await activated(f,{effect:false}),queued=await f.schedules.runNow(f.identity,a.draft.id,Number(a.activation.revision))
+    const due=(await f.db.query("SELECT scheduled_for FROM agentstudio.schedule_occurrences WHERE id=$1",[queued.occurrence_id])).rows[0].scheduled_for
+    const claim=(await f.db.query("SELECT agentstudio.schedule_reserve($1,$2,$3,NULL,'schedule-test') AS claim",[a.draft.id,Number(a.activation.revision),due])).rows[0].claim
+    assert.equal(claim.occurrence_id,queued.occurrence_id)
+    await f.db.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-interval '1 second' WHERE id=$1",[a.draft.id])
+    assert.equal((await f.dispatcher.tick()).status,"skipped_overlap")
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,0)
+    assert.equal((await f.dispatcher.launch(claim)).run_id,queued.run_id)
+    await f.db.query("UPDATE agentstudio.runs SET status='cancelled' WHERE id=$1",[queued.run_id])
+    assert.equal((await new ScheduleInventoryRepository(f.pool).occurrences(f.identity,a.draft.id)).find(row=>row.run_id===queued.run_id).status,"cancelled_run")
+    await f.db.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-interval '2 seconds' WHERE id=$1",[a.draft.id])
+    assert.equal((await f.dispatcher.tick()).status,"started")
+    await f.db.query("UPDATE agentstudio.runs SET status='failed' WHERE id<>$1",[queued.run_id])
+    assert.equal((await new ScheduleInventoryRepository(f.pool).occurrences(f.identity,a.draft.id)).some(row=>row.status==="failed"),true)
   }finally{await f.close()}
 })

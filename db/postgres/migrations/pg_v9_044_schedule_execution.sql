@@ -15,7 +15,7 @@ ALTER TABLE agentstudio.schedules ADD COLUMN execution jsonb NOT NULL DEFAULT '{
 ALTER TABLE agentstudio.schedules ADD COLUMN deleted_at timestamptz;
 ALTER TABLE agentstudio.schedule_occurrences DROP CONSTRAINT schedule_occurrences_status_check;
 ALTER TABLE agentstudio.schedule_occurrences ADD CONSTRAINT ck_schedule_occurrence_state CHECK(status IN
-  ('pending','launching','retryable','failed_start','started','succeeded','failed','skipped','cancelled_schedule','invalid_schedule'));
+  ('pending','launching','retryable','failed_start','started','succeeded','failed','skipped','skipped_overlap','cancelled_run','cancelled_schedule','invalid_schedule'));
 ALTER TABLE agentstudio.schedule_occurrences ADD COLUMN schedule_revision bigint;
 ALTER TABLE agentstudio.schedule_occurrences ADD COLUMN planned_run_id uuid;
 ALTER TABLE agentstudio.schedule_occurrences ADD COLUMN manual boolean NOT NULL DEFAULT false;
@@ -28,6 +28,7 @@ ALTER TABLE agentstudio.schedule_occurrences ADD COLUMN next_retry_at timestampt
 ALTER TABLE agentstudio.schedule_occurrences ADD COLUMN error_code text NOT NULL DEFAULT '' CHECK(length(error_code)<=80);
 ALTER TABLE agentstudio.schedule_occurrences ADD COLUMN updated_at timestamptz NOT NULL DEFAULT clock_timestamp();
 CREATE UNIQUE INDEX ux_native_schedule_planned_run ON agentstudio.schedule_occurrences(planned_run_id) WHERE planned_run_id IS NOT NULL;
+CREATE INDEX ix_native_schedule_incomplete ON agentstudio.schedule_occurrences(schedule_id,status) WHERE status IN('launching','started');
 REVOKE ALL ON agentstudio.schedule_occurrences FROM agentstudio_api;
 GRANT SELECT(id,owner_user_id,schedule_id,scheduled_for,run_id,status,created_at,schedule_revision,planned_run_id,manual,attempts,next_retry_at,error_code,updated_at)
   ON agentstudio.schedule_occurrences TO agentstudio_api;
@@ -292,6 +293,18 @@ BEGIN
     UPDATE agentstudio.schedules SET next_at=p_next,enabled=p_next IS NOT NULL,updated_at=clock_timestamp() WHERE id=s.id;
   END IF;
   IF o.schedule_revision<>s.revision OR o.attempts>=4 OR NOT(o.status IN('pending','retryable') AND coalesce(o.next_retry_at,'-infinity')<=clock_timestamp() OR o.status='launching' AND o.lease_until<clock_timestamp()) THEN RETURN NULL; END IF;
+  -- The schedule row lock also serializes reservations before any run exists.
+  -- Paused or approval-pending work retains its slot until it is terminal.
+  IF EXISTS(SELECT 1 FROM agentstudio.schedule_occurrences prior
+    LEFT JOIN agentstudio.runs r ON r.id=prior.run_id AND r.owner_user_id=prior.owner_user_id
+    WHERE prior.schedule_id=s.id AND prior.id<>o.id AND prior.status IN('launching','started') AND
+      (prior.status='launching' AND prior.lease_until>clock_timestamp() OR r.status IN('queued','running','awaiting_approval','paused'))) THEN
+    UPDATE agentstudio.schedule_occurrences SET status='skipped_overlap',error_code='previous_run_incomplete',
+      lease_owner=NULL,lease_token=NULL,lease_until=NULL,next_retry_at=NULL,updated_at=clock_timestamp() WHERE id=o.id;
+    INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata)
+      VALUES(s.owner_user_id,s.owner_user_id,'schedule.skipped_overlap','schedule',s.id::text,'denied',jsonb_build_object('occurrence_id',o.id,'reason','previous_run_incomplete'));
+    RETURN jsonb_build_object('skipped',true,'occurrence_id',o.id,'reason','previous_run_incomplete');
+  END IF;
   UPDATE agentstudio.schedule_occurrences SET status='launching',attempts=attempts+1,lease_owner=p_worker,lease_token=gen_random_uuid(),lease_version=lease_version+1,
     lease_until=clock_timestamp()+interval '60 seconds',updated_at=clock_timestamp() WHERE id=o.id RETURNING * INTO o;
   RETURN jsonb_build_object('occurrence_id',o.id,'lease_token',o.lease_token,'lease_version',o.lease_version,'worker_id',p_worker);
@@ -329,6 +342,19 @@ BEGIN
     VALUES(r.owner_user_id,r.owner_user_id,r.id,'schedule.dispatched','schedule',o.schedule_id::text,'succeeded',jsonb_build_object('occurrence_id',o.id,'schedule_revision',o.schedule_revision));
   RETURN true;
 END $fn$;
+CREATE FUNCTION agentstudio.schedule_sync_run_status() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status IN('succeeded','failed','cancelled') THEN
+    UPDATE agentstudio.schedule_occurrences o SET
+      status=CASE WHEN NEW.status='cancelled' THEN 'cancelled_run' ELSE NEW.status END,updated_at=clock_timestamp()
+      FROM agentstudio.schedule_execution_origins x WHERE x.run_id=NEW.id AND x.owner_user_id=NEW.owner_user_id
+        AND o.id=x.occurrence_id AND o.run_id=NEW.id AND o.owner_user_id=NEW.owner_user_id AND o.status='started';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER native_schedule_run_status AFTER UPDATE OF status ON agentstudio.runs
+  FOR EACH ROW EXECUTE FUNCTION agentstudio.schedule_sync_run_status();
 CREATE FUNCTION agentstudio.schedule_launch_failed(p_occurrence uuid,p_token uuid,p_version bigint,p_worker text,p_error text) RETURNS text
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
 DECLARE o agentstudio.schedule_occurrences%ROWTYPE; result text;
@@ -433,7 +459,8 @@ DO $functions$ DECLARE signature text; BEGIN
     'agentstudio.schedule_quarantine(uuid,bigint,timestamptz,text)',
     'agentstudio.schedule_effect_authorize(uuid,text,text,text,boolean)',
     'agentstudio.schedule_control(uuid,bigint,text)',
-    'agentstudio.schedule_execution_status(uuid)'
+    'agentstudio.schedule_execution_status(uuid)',
+    'agentstudio.schedule_sync_run_status()'
   ] LOOP
     EXECUTE 'ALTER FUNCTION '||signature||' OWNER TO agentstudio_scheduler';
     EXECUTE 'REVOKE ALL ON FUNCTION '||signature||' FROM PUBLIC';

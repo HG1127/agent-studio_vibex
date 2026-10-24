@@ -159,7 +159,7 @@ export type PgNativeScheduleDraftInput={
 }
 export type PgNativeScheduleOccurrence={
   id:string;schedule_id:string;scheduled_for:string
-  status:"pending"|"launching"|"retryable"|"failed_start"|"started"|"succeeded"|"failed"|"skipped"|"cancelled_schedule"|"invalid_schedule"
+  status:"pending"|"launching"|"retryable"|"failed_start"|"started"|"succeeded"|"failed"|"skipped"|"skipped_overlap"|"cancelled_run"|"cancelled_schedule"|"invalid_schedule"
   run_id:string|null;created_at:string
   schedule_revision?:number|string|null;attempts?:number;error_code?:string;run_status?:string|null
 }
