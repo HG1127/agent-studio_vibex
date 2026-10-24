@@ -55,7 +55,7 @@ export function collaborationResult(v:unknown,target:string,choice:AgentCollabor
   if(revision(p.revision)!==next)invalid();result.revision=revision(p.revision);result.source_sha256=hash(p.source_sha256)
   if(choice.action==="review"){
     if(id(p.proposal_id)!==choice.proposal_id||p.status!==(choice.decision==="accept"?"accepted":"rejected"))invalid()
-    result.proposal_id=id(p.proposal_id);result.status=p.status
+    result.proposal_id=id(p.proposal_id);result.status=choice.decision==="accept"?"accepted":"rejected"
   }else if(choice.action==="restore"){
     if(id(p.source_revision_id)!==choice.revision_id)invalid();result.source_revision_id=id(p.source_revision_id)
   }
