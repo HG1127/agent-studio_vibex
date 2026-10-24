@@ -7,9 +7,15 @@ const privateColumns:Record<string,string[]>={
   agent_release_receipts:["actor_user_id","request_id","spec_id","action","request_sha256","input_sha256","result","created_at"],
 }
 const reads={...privateColumns,agent_specs:["id","owner_user_id","name","spec","revision"],users:["id","status","external_issuer","external_subject"],"auth.accounts":["user_id","enabled"]}
+const inserts:Record<string,string[]>={agent_release_heads:["spec_id","owner_user_id"],
+  agent_release_versions:["id","owner_user_id","spec_id","version_no","spec_revision","source_sha256","name_snapshot","spec_snapshot","note"],
+  agent_release_receipts:["actor_user_id","request_id","spec_id","action","request_sha256","input_sha256","result"],
+  audit_events:["owner_user_id","actor_user_id","action","target_kind","target_id","result","metadata"]}
+const updates:Record<string,string[]>={agent_release_heads:["next_version_no","updated_at"]}
 export const agentReleaseFunctions:Array<[string,string[]]>=[
-  ["release_utf16_length(text)",[]],["release_native_active(uuid)",[]],["release_source_sha(uuid)",[]],["release_version_sha(uuid)",[]],["release_version_immutable()",[]],
+  ["release_utf16_length(text)",[]],["release_native_active(uuid)",[]],["release_source_seal(uuid,uuid,text,bigint,jsonb)",[]],["release_source_sha(uuid)",[]],["release_version_sha(uuid)",[]],["release_version_immutable()",[]],
   ["agent_release_workspace(uuid)",[api]],["agent_release_detail(uuid,uuid)",[api]],["agent_release_receipt(uuid,uuid)",[api]],
+  ["agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)",[api]],
 ]
 function refuse():never{throw Error("unsafe_agent_release_privileges")}
 export async function agentReleasesInstalled(db:SqlClient):Promise<boolean>{
@@ -30,8 +36,8 @@ export async function verifyAgentReleaseCredentials(db:SqlClient):Promise<boolea
     "has_column_privilege($1,c.oid,a.attnum,'UPDATE') AS update,has_column_privilege($1,c.oid,a.attnum,'REFERENCES') AS reference FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "+
     "JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[role])).rows
   for(const column of columns){const key=column.schema==="agentstudio_auth"?"auth."+column.table:column.table
-    if(column.read!==((reads as Record<string,string[]>)[key]?.includes(column.column)??false)||column.insert||column.update||column.reference)refuse()}
-  for(const [key,names] of Object.entries(reads))for(const name of names)
+    if(column.read!==((reads as Record<string,string[]>)[key]?.includes(column.column)??false)||column.insert!==(inserts[key]?.includes(column.column)??false)||column.update!==(updates[key]?.includes(column.column)??false)||column.reference)refuse()}
+  for(const map of [reads,inserts,updates])for(const [key,names] of Object.entries(map))for(const name of names)
     if(!columns.some(c=>(c.schema==="agentstudio_auth"?"auth."+c.table:c.table)===key&&c.column===name))refuse()
   const noWrites=(await db.query<{ok:boolean}>("SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') "+
     "AND c.relkind IN('r','p','v','m','f') AND (has_table_privilege($1,c.oid,'DELETE,TRUNCATE,TRIGGER') OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) a "+

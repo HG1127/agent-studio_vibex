@@ -18,7 +18,7 @@ test("draft full-version foundation is private, owner-only, immutable and never 
     await assert.rejects(inspectAgentReleaseSchema(f.pool),/agent_release_runtime_incomplete/)
     for(const drift of ["ALTER ROLE agentstudio_releases LOGIN","GRANT agentstudio_releases TO agentstudio_api",
       "GRANT SELECT ON agentstudio.agent_release_versions TO agentstudio_api","GRANT SELECT(password_record) ON agentstudio_auth.accounts TO agentstudio_releases",
-      "GRANT UPDATE(revision) ON agentstudio.agent_release_heads TO agentstudio_releases","GRANT EXECUTE ON FUNCTION agentstudio.release_source_sha(uuid) TO agentstudio_api",
+      "GRANT UPDATE(owner_user_id) ON agentstudio.agent_release_heads TO agentstudio_releases","GRANT EXECUTE ON FUNCTION agentstudio.release_source_sha(uuid) TO agentstudio_api",
       "ALTER TABLE agentstudio.agent_release_versions NO FORCE ROW LEVEL SECURITY","ALTER TABLE agentstudio.agent_release_versions DISABLE TRIGGER native_agent_release_immutable",
       "DROP TRIGGER native_agent_release_immutable ON agentstudio.agent_release_versions","DROP INDEX agentstudio.ux_agent_release_published",
       "CREATE FUNCTION agentstudio.agent_release_unreviewed() RETURNS boolean LANGUAGE sql AS 'SELECT true'",
@@ -59,6 +59,32 @@ test("draft full-version foundation is private, owner-only, immutable and never 
     assert.equal((await f.db.query("SELECT NOT rolcanlogin AND NOT rolinherit AND NOT rolbypassrls AND NOT rolsuper AND NOT EXISTS(SELECT 1 FROM pg_auth_members WHERE roleid=r.oid OR member=r.oid) AS safe FROM pg_roles r WHERE rolname='agentstudio_releases'")).rows[0].safe,true)
     assert.equal((await f.db.query("SELECT has_column_privilege('agentstudio_releases','agentstudio_auth.accounts','password_record','SELECT') AS leaked")).rows[0].leaked,false)
     await assert.rejects(withActor(f.pool,f.alice,db=>db.query("SELECT agentstudio.release_source_sha($1)",[role.id])),e=>e.code==="42501")
+    const request=randomUUID(),snapshotSource=await workspace(f.alice)
+    const save=(who=f.alice,note="Owner snapshot",requestId=request,source=snapshotSource,testRun=null)=>withActor(f.pool,who,async db=>(await db.query(
+      "SELECT agentstudio.agent_release_snapshot($1,$2,$3,$4,$5,$6,$7) AS item",[role.id,source.spec_revision,source.source_sha256,note,testRun,requestId,"b".repeat(64)])).rows[0].item)
+    await assert.rejects(save(f.bob),/agent_release_not_found/)
+    await assert.rejects(save(f.alice,"Owner snapshot",randomUUID(),{...snapshotSource,source_sha256:"f".repeat(64)}),/agent_release_source_changed/)
+    await assert.rejects(save(f.alice,"Owner snapshot",randomUUID(),snapshotSource,randomUUID()),/agent_release_acceptance_not_ready/)
+    const saved=await save();assert.equal(saved.version_no,2);assert.equal(saved.status,"draft");assert.equal(saved.test_passed,false)
+    assert.equal(saved.replayed,false);assert.equal((await save()).replayed,true);assert.equal((await save()).version_id,saved.version_id)
+    await assert.rejects(save(f.alice,"Changed request using same UUID"),/agent_release_request_conflict/)
+    assert.equal((await workspace(f.alice)).next_version_no,3);assert.equal((await workspace(f.alice)).versions.length,2)
+    await withActor(f.pool,f.alice,db=>db.query("UPDATE agentstudio.agent_specs SET spec=jsonb_set(spec,'{goal}','\"Changed working draft\"'::jsonb),revision=revision+1,updated_at=clock_timestamp() WHERE id=$1",[role.id]))
+    assert.equal((await save()).replayed,true);assert.equal((await save()).version_id,saved.version_id)
+    await assert.rejects(save(f.alice,"Owner snapshot",randomUUID()),/agent_release_source_changed/)
+    const faultSource=await workspace(f.alice),faultRequest=randomUUID()
+    await f.db.query("ALTER TABLE agentstudio.agent_release_receipts ADD CONSTRAINT synthetic_release_receipt_fault CHECK(false) NOT VALID")
+    try{
+      await assert.rejects(save(f.alice,"Atomic snapshot",faultRequest,faultSource),/synthetic_release_receipt_fault/)
+      const after=await workspace(f.alice);assert.equal(after.next_version_no,3);assert.equal(after.versions.length,2)
+      assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.agent_release_receipts WHERE request_id=$1",[faultRequest])).rows[0].n,0)
+    }finally{await f.db.query("ALTER TABLE agentstudio.agent_release_receipts DROP CONSTRAINT synthetic_release_receipt_fault")}
+    const recovered=await save(f.alice,"Atomic snapshot",faultRequest,faultSource);assert.equal(recovered.version_no,3)
+    assert.equal((await save(f.alice,"Atomic snapshot",faultRequest,faultSource)).version_id,recovered.version_id)
+    assert.equal((await workspace(f.alice)).versions.length,3)
+    assert.deepEqual((await withActor(f.pool,f.alice,async db=>(await db.query("SELECT agentstudio.agent_release_detail($1,$2) AS item",[role.id,saved.version_id])).rows[0].item)).spec_snapshot,snapshot)
+    const events=(await f.db.query("SELECT metadata FROM agentstudio.audit_events WHERE action='agent.release.snapshot' AND owner_user_id=$1",[f.owner.id])).rows
+    assert.equal(events.length,2);assert.equal(JSON.stringify(events).includes(connection),false)
     await f.db.query("UPDATE agentstudio_auth.accounts SET enabled=false WHERE user_id=$1",[f.owner.id]);assert.equal(await workspace(f.alice),null)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")).rows[0].n,0)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,0)

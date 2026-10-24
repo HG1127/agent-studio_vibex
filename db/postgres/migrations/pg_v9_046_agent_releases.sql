@@ -84,15 +84,24 @@ GRANT SELECT(user_id,enabled) ON agentstudio_auth.accounts TO agentstudio_releas
 CREATE POLICY release_specs ON agentstudio.agent_specs TO agentstudio_releases USING(true);
 CREATE POLICY release_users ON agentstudio.users TO agentstudio_releases USING(true);
 CREATE POLICY release_accounts ON agentstudio_auth.accounts TO agentstudio_releases USING(true);
+GRANT INSERT(spec_id,owner_user_id) ON agentstudio.agent_release_heads TO agentstudio_releases;
+GRANT UPDATE(next_version_no,updated_at) ON agentstudio.agent_release_heads TO agentstudio_releases;
+GRANT INSERT(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note) ON agentstudio.agent_release_versions TO agentstudio_releases;
+GRANT INSERT(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result) ON agentstudio.agent_release_receipts TO agentstudio_releases;
+GRANT INSERT(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) ON agentstudio.audit_events TO agentstudio_releases;
+CREATE POLICY release_audit ON agentstudio.audit_events FOR INSERT TO agentstudio_releases WITH CHECK(true);
 CREATE FUNCTION agentstudio.release_native_active(p_user uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT EXISTS(SELECT 1 FROM agentstudio.users u JOIN agentstudio_auth.accounts a ON a.user_id=u.id
     WHERE u.id=p_user AND u.status='active' AND u.external_issuer='urn:agentstudio:local:v1' AND a.enabled)
 $fn$;
+CREATE FUNCTION agentstudio.release_source_seal(p_id uuid,p_owner uuid,p_name text,p_revision bigint,p_spec jsonb) RETURNS text
+LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT encode(sha256(convert_to(jsonb_build_object('id',p_id,'owner',p_owner,'name',p_name,'revision',p_revision,'spec',p_spec)::text,'UTF8')),'hex')
+$fn$;
 CREATE FUNCTION agentstudio.release_source_sha(p_spec uuid) RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-  SELECT encode(sha256(convert_to(jsonb_build_object('id',id,'owner',owner_user_id,'name',name,'revision',revision,'spec',spec)::text,'UTF8')),'hex')
-  FROM agentstudio.agent_specs WHERE id=p_spec
+  SELECT agentstudio.release_source_seal(id,owner_user_id,name,revision,spec) FROM agentstudio.agent_specs WHERE id=p_spec
 $fn$;
 CREATE FUNCTION agentstudio.release_version_sha(p_version uuid) RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
@@ -141,13 +150,53 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT jsonb_build_object('request_sha256',request_sha256,'result',result||jsonb_build_object('replayed',true)) FROM agentstudio.agent_release_receipts
   WHERE actor_user_id=agentstudio.actor_id() AND request_id=p_request AND spec_id=p_spec AND agentstudio.release_native_active(actor_user_id)
 $fn$;
+CREATE FUNCTION agentstudio.agent_release_snapshot(p_spec uuid,p_revision bigint,p_source_sha text,p_note text,p_test_run uuid,p_request uuid,p_request_sha text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE actor uuid=agentstudio.actor_id(); s record; h record; previous agentstudio.agent_release_receipts%ROWTYPE; input_sha text; version_id uuid; result jsonb;
+BEGIN
+  IF actor IS NULL OR NOT agentstudio.release_native_active(actor) THEN RAISE EXCEPTION 'agent_release_actor_unavailable'; END IF;
+  IF p_spec IS NULL OR p_revision IS NULL OR p_revision<1 OR p_revision>=9007199254740991 OR p_source_sha IS NULL OR p_source_sha!~'^[a-f0-9]{64}$' OR
+    p_note IS NULL OR agentstudio.release_utf16_length(p_note)>500 OR p_request IS NULL OR p_request_sha IS NULL OR p_request_sha!~'^[a-f0-9]{64}$' THEN
+    RAISE EXCEPTION 'invalid_agent_release_snapshot'; END IF;
+  input_sha=encode(sha256(convert_to(jsonb_build_object('action','snapshot','spec',p_spec,'revision',p_revision,'source_sha256',p_source_sha,'note',p_note,'test_run_id',p_test_run,'request_sha256',p_request_sha)::text,'UTF8')),'hex');
+  PERFORM pg_advisory_xact_lock(hashtextextended(actor::text||':'||p_request::text,46));
+  SELECT * INTO previous FROM agentstudio.agent_release_receipts WHERE actor_user_id=actor AND request_id=p_request;
+  IF previous.request_id IS NOT NULL THEN
+    IF previous.spec_id<>p_spec OR previous.action<>'snapshot' OR previous.input_sha256<>input_sha THEN RAISE EXCEPTION 'agent_release_request_conflict'; END IF;
+    RETURN previous.result||jsonb_build_object('replayed',true);
+  END IF;
+  -- Freeze payload and seal from ONE MVCC tuple. Snapshotting does not mutate
+  -- the live role and must not gain UPDATE merely to take a source row lock.
+  SELECT id,owner_user_id,name,spec,revision,agentstudio.release_source_seal(id,owner_user_id,name,revision,spec) AS sha INTO s
+    FROM agentstudio.agent_specs WHERE id=p_spec AND owner_user_id=actor;
+  IF s.id IS NULL THEN RAISE EXCEPTION 'agent_release_not_found'; END IF;
+  IF s.revision<>p_revision OR s.sha IS DISTINCT FROM p_source_sha THEN RAISE EXCEPTION 'agent_release_source_changed'; END IF;
+  IF p_test_run IS NOT NULL THEN RAISE EXCEPTION 'agent_release_acceptance_not_ready'; END IF;
+  INSERT INTO agentstudio.agent_release_heads(spec_id,owner_user_id) VALUES(p_spec,actor) ON CONFLICT(spec_id) DO NOTHING;
+  SELECT * INTO h FROM agentstudio.agent_release_heads WHERE spec_id=p_spec AND owner_user_id=actor FOR UPDATE;
+  IF h.spec_id IS NULL THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
+  IF h.next_version_no>=9007199254740991 THEN RAISE EXCEPTION 'agent_release_counter_exhausted'; END IF;
+  version_id=gen_random_uuid();
+  INSERT INTO agentstudio.agent_release_versions(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note)
+    VALUES(version_id,actor,p_spec,h.next_version_no,s.revision,s.sha,s.name,s.spec,p_note);
+  UPDATE agentstudio.agent_release_heads SET next_version_no=next_version_no+1,updated_at=clock_timestamp() WHERE spec_id=p_spec AND owner_user_id=actor;
+  result=jsonb_build_object('spec_id',p_spec,'request_id',p_request,'version_id',version_id,'version_no',h.next_version_no,'version_revision',1,
+    'version_sha256',agentstudio.release_version_sha(version_id),'release_revision',h.revision,'source_sha256',s.sha,'status','draft','test_passed',false,'replayed',false);
+  INSERT INTO agentstudio.agent_release_receipts(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result)
+    VALUES(actor,p_request,p_spec,'snapshot',p_request_sha,input_sha,result);
+  INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata)
+    VALUES(actor,actor,'agent.release.snapshot','agent_spec',p_spec::text,'succeeded',jsonb_build_object('version_id',version_id,'version_no',h.next_version_no,'spec_revision',s.revision,'source_sha256',s.sha,'test_passed',false));
+  RETURN result;
+END $fn$;
 DO $functions$ DECLARE signature text; BEGIN
-  FOREACH signature IN ARRAY ARRAY['release_utf16_length(text)','release_native_active(uuid)','release_source_sha(uuid)','release_version_sha(uuid)',
-    'release_version_immutable()','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)'] LOOP
+  FOREACH signature IN ARRAY ARRAY['release_utf16_length(text)','release_native_active(uuid)','release_source_seal(uuid,uuid,text,bigint,jsonb)','release_source_sha(uuid)','release_version_sha(uuid)',
+    'release_version_immutable()','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)',
+    'agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)'] LOOP
     EXECUTE 'ALTER FUNCTION agentstudio.'||signature||' OWNER TO agentstudio_releases';
     EXECUTE 'REVOKE ALL ON FUNCTION agentstudio.'||signature||' FROM PUBLIC,agentstudio_api,agentstudio_worker,agentstudio_model_broker,agentstudio_bound_dispatch,agentstudio_native_auth';
   END LOOP;
 END $functions$;
-GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.agent_release_detail(uuid,uuid),agentstudio.agent_release_receipt(uuid,uuid) TO agentstudio_api;
--- Intentionally no pg_v9_046 receipt or mutation grant in this draft.
+GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.agent_release_detail(uuid,uuid),agentstudio.agent_release_receipt(uuid,uuid),
+  agentstudio.agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text) TO agentstudio_api;
+-- Intentionally no pg_v9_046 receipt or HTTP/initialization entry in this draft.
 COMMIT;
