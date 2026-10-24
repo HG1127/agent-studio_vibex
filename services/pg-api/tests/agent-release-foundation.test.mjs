@@ -7,12 +7,24 @@ import {freshRuntimeSqlBody} from "../src/pg18-fresh-runtime-source.mjs"
 import {AgentSpecRepository,withActor} from "../src/repository.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {parseAgentReleaseStoredSpec} from "../src/agent-release-contract.ts"
+import {verifyAgentReleaseCredentials,inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 
 test("draft full-version foundation is private, owner-only, immutable and never certifies itself as an installed046",async()=>{
   const f=await agentCollaborationFixture()
   try{
     const sql=readFileSync(new URL("../../../db/postgres/migrations/pg_v9_046_agent_releases.sql",import.meta.url),"utf8")
     await f.db.exec(freshRuntimeSqlBody(sql))
+    assert.equal(await verifyAgentReleaseCredentials(f.api),true)
+    await assert.rejects(inspectAgentReleaseSchema(f.pool),/agent_release_runtime_incomplete/)
+    for(const drift of ["ALTER ROLE agentstudio_releases LOGIN","GRANT agentstudio_releases TO agentstudio_api",
+      "GRANT SELECT ON agentstudio.agent_release_versions TO agentstudio_api","GRANT SELECT(password_record) ON agentstudio_auth.accounts TO agentstudio_releases",
+      "GRANT UPDATE(revision) ON agentstudio.agent_release_heads TO agentstudio_releases","GRANT EXECUTE ON FUNCTION agentstudio.release_source_sha(uuid) TO agentstudio_api",
+      "ALTER TABLE agentstudio.agent_release_versions NO FORCE ROW LEVEL SECURITY","ALTER TABLE agentstudio.agent_release_versions DISABLE TRIGGER native_agent_release_immutable",
+      "DROP TRIGGER native_agent_release_immutable ON agentstudio.agent_release_versions","DROP INDEX agentstudio.ux_agent_release_published",
+      "CREATE FUNCTION agentstudio.agent_release_unreviewed() RETURNS boolean LANGUAGE sql AS 'SELECT true'",
+      "CREATE VIEW agentstudio.agent_release_unreviewed AS SELECT 1 AS n"]){
+      await f.rollback(async db=>{await db.query(drift);await assert.rejects(verifyAgentReleaseCredentials(db),/unsafe_agent_release_privileges/)})
+    }
     const role=await new AgentSpecRepository(f.pool).create(f.alice,"Owned release role",safeAgentSpec({goal:"Immutable owner goal"}))
     const workspace=who=>withActor(f.pool,who,async db=>(await db.query("SELECT agentstudio.agent_release_workspace($1) AS item",[role.id])).rows[0].item)
     assert.equal(await workspace(f.bob),null)
