@@ -22,6 +22,14 @@ const pgPilotProxy = {
   rewrite: (url: string) => url.replace(/^\/__pg(?=\/|$)/, ''),
 }
 
+// Local dev only: isolated PG18 Native auth Cookie sessions. No PocketBase
+// tokens or origin overrides, no remote IP target, never a production proxy.
+const pgNativePilotProxy = {
+  target: 'http://127.0.0.1:7403',
+  changeOrigin: true,
+  rewrite: (url: string) => url.replace(/^\/__pg_native(?=\/|$)/, ''),
+}
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -35,6 +43,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/__pb': pbProxy,
+      // Order is a security boundary: '/__pg' is a prefix of '/__pg_native'.
+      // Native cookie sessions MUST NOT be proxied to the OIDC pilot.
+      '/__pg_native': pgNativePilotProxy,
       '/__pg': pgPilotProxy,
     }
   },

@@ -4,6 +4,24 @@ on:
   push:
     branches:
       - 'codex/pg18-native-runtime-20261022'
+      - 'codex/pg18-employee-run-ui-20261022'
+      - 'codex/pg18-workflow-v2-config-20261022'
+      - 'codex/pg18-workflow-v2-runtime-20261022'
+      - 'codex/pg18-workflow-v2-model-20261022'
+      - 'codex/pg18-workflow-v2-tools-20261022'
+      - 'codex/pg18-workflow-v2-agents-20261022'
+      - 'codex/pg18-autonomous-agent-20261023'
+      - 'codex/pg18-autonomous-agent-ui-20261023'
+      - 'codex/pg18-workflow-canvas-20261023'
+      - 'codex/pg18-workflow-authoring-20261023'
+      - 'codex/pg18-workflow-output-samples-20261023'
+      - 'codex/pg18-agent-http-tools-20261023'
+      - 'codex/pg18-mcp-discovery-20261023'
+      - 'codex/pg18-mcp-execution-20261023'
+      - 'codex/pg18-smithery-managed-20261023'
+      - 'codex/pg18-credential-boundary-20261023'
+      - 'codex/pg18-knowledge-access-foundation-20261023'
+      - 'codex/pg18-shared-knowledge-ui-20261023'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +61,7 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:pg18:tcp:guard
+          pnpm --dir services/pg-api test:pg18:fresh-runtime
       - name: Real PG18 native approval and private Broker, synthetic provider only
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"

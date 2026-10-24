@@ -1,3 +1,5 @@
+-- BASELINE-ONLY: 001 baseline before Native Auth.
+-- Full019..043 runtime uses pg18-runtime-postcheck-cli.mjs with an explicit stage.
 -- BaoTa PostgreSQL 18 Native Auth deployment PRE-FLIGHT ONLY.
 -- Safe to run on agent_studio: SELECT-only; never alters vcaios, users or PG roles.
 \set ON_ERROR_STOP on
@@ -35,10 +37,10 @@ SELECT
     AND current_setting('server_version_num')::integer <190000
     AND current_setting('port')::integer=5333
     AND NOT pg_is_in_recovery()
-    AND (SELECT count(*) FROM pg_tables WHERE schemaname='agentstudio')=20
+    AND (SELECT count(*) FROM pg_tables WHERE schemaname='agentstudio')=23
     AND (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
          WHERE n.nspname='agentstudio' AND c.relkind='r'
-           AND c.relrowsecurity AND c.relforcerowsecurity)=19
+           AND c.relrowsecurity AND c.relforcerowsecurity)=22
     AND (SELECT extversion FROM pg_extension WHERE extname='vector')='0.8.7'
     AND (SELECT count(*) FROM pg_tables WHERE schemaname='agentstudio_auth')=0
     AND (SELECT count(*) FROM pg_roles WHERE rolname IN

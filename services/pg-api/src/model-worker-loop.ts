@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 // Isolated opt-in model execution. NEVER starts alongside production V7 Worker.
 import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
 import {randomUUID} from "node:crypto"
@@ -55,7 +57,7 @@ async function main(preflight=false){
     user:config.user,database:config.database,password:config.password,
     max:2,connectionTimeoutMillis:4000,
     statement_timeout:8000,idleTimeoutMillis:10000})
-  const adapter:SqlPool={async connect():Promise<SqlClient>{
+  const adapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),async connect():Promise<SqlClient>{
     const db=await pool.connect()
     return {
       async query<Row>(sql:string,params:unknown[]=[]){
@@ -73,6 +75,8 @@ async function main(preflight=false){
     // Shared read-only role preflight rejects extra privilege and leaked
     // native-auth membership before constructing any model provider.
     await verifyPgWorkerRoleBoundary(adapter,config)
+    if(config.mode==="baota_pg18"){await verifyKnowledgeAgentSchema(adapter);await verifyWorkflowSampleLineageSchema(adapter)}
+      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     if(preflight){
       process.stdout.write(JSON.stringify({
         mode:"preflight",worker:"model",target:config.database,

@@ -1,3 +1,5 @@
+-- BASELINE-ONLY: 001 plus010 first-admin state.
+-- Full019..043 runtime uses pg18-runtime-postcheck-cli.mjs with an explicit stage.
 -- BaoTa PG18 one-time employee administrator POST-CHECK, read only.
 -- Does not reveal email, password hash, or session details.
 \set ON_ERROR_STOP on

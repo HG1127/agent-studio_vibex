@@ -38,5 +38,16 @@ test("actual embedded PG17 correctly refuses to approve the PG18 deployment base
     const after=(await db.query("SELECT count(*)::int AS n FROM pg_tables "+
       "WHERE schemaname='agentstudio'")).rows[0].n
     assert.equal(after,previous)
+    // Only the embedded test copy replaces target/version/vector predicates.
+    // Current baseline counts remain real and must reject RLS loss.
+    const reviewed=runnable.replace("current_database()='agent_studio'","TRUE")
+      .replace("current_setting('server_version_num')::integer >=180000","TRUE")
+      .replace("current_setting('server_version_num')::integer <190000","TRUE")
+      .replace("current_setting('port')::integer=5333","TRUE")
+      .replace("(SELECT extversion FROM pg_extension WHERE extname='vector')='0.8.7'","TRUE")
+    const inspect=async()=> (await db.exec(reviewed)).flatMap(r=>r.rows??[]).find(r=>Object.hasOwn(r,"deployment_preflight"))?.deployment_preflight
+    assert.equal(previous,23);assert.equal(await inspect(),"READY_FOR_NATIVE_AUTH_SCHEMA_REVIEW")
+    await db.exec("ALTER TABLE agentstudio.users NO FORCE ROW LEVEL SECURITY")
+    assert.equal(await inspect(),"NO_GO_CHECK_BASELINE_DETAILS")
   }finally{await db.close()}
 })

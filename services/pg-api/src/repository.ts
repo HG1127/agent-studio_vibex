@@ -1,6 +1,12 @@
 import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
   type AgentSpecInput } from "./contracts.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
+import {parseAgentHttpTools} from "./agent-http-tools.ts"
+import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
+import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
+import {requireKnowledgeScope} from "./knowledge-runtime-scope.ts"
+import {verifyKnowledgeRetrievalBinding} from "./knowledge-retrieval-policy.ts"
 
 /**
  * Every employee query is in one transaction:
@@ -8,6 +14,24 @@ import {exactProviderEndpoint} from "./model-connection-probe.ts"
  * SET LOCAL never persists across reused pooled connections.
  * The database login must be NONSUPERUSER / NOBYPASSRLS and allowed SET ROLE.
  */
+// Reuse the caller's transaction for compound admissions such as a schedule
+// occurrence + run + queue + audit. This function never commits or rolls back.
+export async function withActorClient<T>(client:SqlClient,pool:SqlPool,identity:Identity,
+  body:(client:SqlClient,actor:string)=>Promise<T>):Promise<T>{
+  if(!identity?.issuer||!identity.subject)throw new HttpError(401,"invalid_identity")
+  await applyKnowledgeScope(client,pool)
+  await client.query("SET LOCAL ROLE agentstudio_api")
+  const actor=(await client.query<{id:string|null}>("SELECT agentstudio.identity_user_id($1::text,$2::text) AS id",[identity.issuer,identity.subject])).rows[0]?.id
+  if(!isUuid(actor))throw new HttpError(403,"employee_not_provisioned")
+  await client.query("SELECT set_config('agentstudio.actor_id',$1::text,true)",[actor])
+  return await body(client,actor)
+}
+export async function assertOwnedAdmissionContext(db:SqlClient,owner:string,plannedRunId?:string):Promise<void>{
+  if(!isUuid(owner)||plannedRunId!==undefined&&!isUuid(plannedRunId))throw new HttpError(400,"invalid_owned_admission")
+  const context=(await db.query<{ok:boolean}>("SELECT current_user='agentstudio_api' AND agentstudio.actor_id()=$1::uuid AS ok",[owner])).rows[0]
+  if(context?.ok!==true)throw new HttpError(403,"owned_admission_context_required")
+}
+
 export async function withActor<T>(
   pool: SqlPool, identity: Identity,
   body: (client: SqlClient, actor: string)=>Promise<T>,
@@ -19,18 +43,7 @@ export async function withActor<T>(
   try {
     await client.query("BEGIN")
     begun=true
-    await client.query("SET LOCAL ROLE agentstudio_api")
-    const result=await client.query<{id:string|null}>(
-      "SELECT agentstudio.identity_user_id($1::text,$2::text) AS id",
-      [identity.issuer,identity.subject],
-    )
-    const actor=result.rows[0]?.id
-    if(!isUuid(actor))throw new HttpError(403,"employee_not_provisioned")
-    await client.query(
-      "SELECT set_config('agentstudio.actor_id',$1::text,true)",
-      [actor],
-    )
-    const value=await body(client,actor)
+    const value=await withActorClient(client,pool,identity,body)
     await client.query("COMMIT")
     begun=false
     return value
@@ -67,19 +80,14 @@ function toSpecRow(row:SpecRow):SpecRow {
 // A non-existent, unshared or another employee\'s KB cannot enter the spec.
 async function verifyKnowledgeSelection(db:SqlClient,actor:string,
   spec:AgentSpecInput):Promise<void>{
+  await verifyKnowledgeRetrievalBinding(db,spec.knowledge_retrieval)
   const ids=spec.knowledge_base_ids??[]
   if(!Array.isArray(ids)||ids.length>3||
      ids.some(id=>!isUuid(id))||new Set(ids).size!==ids.length||
      (ids.length>0&&!spec.tools.includes("knowledge_search")))
     throw new HttpError(400,"invalid_agent_knowledge_scope")
   if(!ids.length)return
-  const rows=await db.query<{id:string}>(
-    "SELECT id FROM agentstudio.knowledge_bases "+
-    "WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) "+
-    "AND visibility='private'",[actor,ids])
-  if(rows.rows.length!==ids.length ||
-     rows.rows.some(row=>!ids.includes(row.id)))
-    throw new HttpError(404,"knowledge_base_not_found")
+  await requireKnowledgeScope(db,actor,ids)
 }
 
 // Bind an Agent to a model through an owner-scoped PostgreSQL SELECT.
@@ -142,6 +150,8 @@ export class AgentSpecRepository {
     return withActor(this.pool,identity,async (db,actor)=>{
       await verifyKnowledgeSelection(db,actor,spec)
       await verifyModelBinding(db,actor,spec)
+      await verifyAgentHttpTools(db,actor,spec)
+      await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
       const result=await db.query<SpecRow>(
         "INSERT INTO agentstudio.agent_specs "+
         "(owner_user_id,name,spec,requires_approval) "+
@@ -161,6 +171,8 @@ export class AgentSpecRepository {
     return withActor(this.pool,identity,async (db,actor)=>{
       await verifyKnowledgeSelection(db,actor,spec)
       await verifyModelBinding(db,actor,spec)
+      await verifyAgentHttpTools(db,actor,spec)
+      await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
       const result=await db.query<SpecRow>(
         "UPDATE agentstudio.agent_specs "+
         "SET name=$3::text,spec=$4::jsonb,requires_approval=true,"+
@@ -171,6 +183,21 @@ export class AgentSpecRepository {
       )
       return result.rows[0]?toSpecRow(result.rows[0]):null
     })
+  }
+}
+
+export async function verifyAgentHttpTools(db:SqlClient,actor:string,spec:AgentSpecInput):Promise<void>{
+  let tools
+  try{tools=parseAgentHttpTools(spec.http_tools)}catch{throw new HttpError(400,"invalid_agent_http_tools")}
+  if(tools.some(tool=>!spec.tools.includes(tool.name)))throw new HttpError(400,"invalid_agent_http_tools")
+  // Stable lock order, including specs that list the same resources differently.
+  for(const tool of [...tools].sort((a,b)=>a.connection_id.localeCompare(b.connection_id))){
+    const row=(await db.query<{revision:number|string;enabled:boolean}>(
+      "SELECT revision,enabled FROM agentstudio.tool_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",
+      [tool.connection_id,actor])).rows[0]
+    if(!row)throw new HttpError(404,"tool_connection_not_found")
+    if(Number(row.revision)!==tool.connection_revision)throw new HttpError(409,"tool_connection_revision_changed")
+    if(row.enabled!==true)throw new HttpError(409,"tool_connection_not_ready")
   }
 }
 
@@ -185,7 +212,7 @@ export async function verifyDatabaseRole(pool:SqlPool):Promise<void> {
     const role=roles.rows[0]
     if(!role || role.admin || role.bypass || role.username==="agentstudio_admin")
       throw new Error("unsafe_database_role")
-    await client.query("BEGIN")
+    await client.query("BEGIN READ ONLY")
     try {
       await client.query("SET LOCAL ROLE agentstudio_api")
       const roleResult=await client.query<{name:string}>(
@@ -193,6 +220,7 @@ export async function verifyDatabaseRole(pool:SqlPool):Promise<void> {
       )
       if(roleResult.rows[0]?.name!=="agentstudio_api")
         throw new Error("database_api_role_unavailable")
+      await verifyOptionalCredentialBoundary(client,"api")
     } finally {await client.query("ROLLBACK")}
   } finally {client.release()}
 }

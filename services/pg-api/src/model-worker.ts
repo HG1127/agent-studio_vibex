@@ -3,11 +3,14 @@
 // outcome is quarantined and NEVER automatically billed again.
 import {createHash} from "node:crypto"
 import {readFileSync} from "node:fs"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 import {fileURLToPath} from "node:url"
 import {isUuid,type SqlClient,type SqlPool} from "./contracts.ts"
+import {applyKnowledgeScope,sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
+import {requireKnowledgeScope} from "./knowledge-runtime-scope.ts"
 import type {ModelInput,ModelProvider} from "./model-provider.ts"
 import type {LeasedPrepareJob} from "./agent-worker.ts"
-import {gatherAgentKnowledgeEvidence} from "./agent-knowledge-grounding.ts"
+import {gatherSingleAgentEvidence,sealSingleAgentEvidence,requireCurrentSingleAgentInput} from "./knowledge-agent-execution.ts"
 import {boundModelFingerprint,type BoundModelClaim,type BoundModelDispatchResult}
   from "./owner-model-dispatch.ts"
 
@@ -29,6 +32,7 @@ async function tx<T>(pool:SqlPool,fn:(db:SqlClient)=>Promise<T>):Promise<T>{
   try{
     await db.query("BEGIN")
     begun=true
+    await applyKnowledgeScope(db,pool)
     const result=await fn(db)
     await db.query("COMMIT")
     begun=false
@@ -100,7 +104,7 @@ export class AgentModelWorker {
   // Returns only pre-approved owner-scoped input; NO network call in the
   // transaction. Started effect + running state commit atomically.
   async begin(job:LeasedModelJob):
-    Promise<{status:"ready";input:ModelInput;boundModel?:true}|{status:"stale"|"blocked"}>{
+    Promise<{status:"ready";input:ModelInput;inputSha256:string;boundModel?:true}|{status:"stale"|"blocked"}>{
     if(!leaseValid(job,this.workerId))return {status:"stale"}
     return tx(this.pool,async db=>{
       await db.query("SET LOCAL ROLE agentstudio_worker")
@@ -169,19 +173,27 @@ export class AgentModelWorker {
         !/^[A-Za-z0-9._:/-]{1,120}$/.test(binding.model_id)))
         throw Error("invalid_bound_model_execution_binding")
       const bases=data.knowledge_base_ids===undefined?[]:data.knowledge_base_ids
-      const evidence=await gatherAgentKnowledgeEvidence(db,current.owner_user_id,
-        bases,data.tools,run.instruction)
+      if(await sharedKnowledgeScopeEnabled(db)){
+        const scope=await requireKnowledgeScope(db,current.owner_user_id,bases as string[])
+        if(scope.some(base=>base.owner_user_id!==current.owner_user_id)&&!selectedBinding)
+          throw Error("shared_knowledge_requires_owner_model_binding")
+      }
+      const evidence=await gatherSingleAgentEvidence(db,current.owner_user_id,
+        bases,data.tools,run.instruction,current)
       const input:ModelInput={
         goal:typeof data.goal==="string"?data.goal:"",
         instruction:run.instruction,
         taskScope:typeof data.task_scope==="string"?data.task_scope:"",
         deliverables:Array.isArray(data.deliverables)?data.deliverables as string[]:[],
         doneCriteria:Array.isArray(data.done_criteria)?data.done_criteria as string[]:[],
+        ...(Array.isArray(data.task_plan)&&data.task_plan.length?{taskPlan:data.task_plan as string[]}:{}),
         ...(Array.isArray(bases)&&bases.length?{
           knowledgeEvidence:evidence.map(({citation,snippet})=>({citation,snippet}))
         }:{}),
       }
-      if(!input.goal||input.goal.length>2000||input.instruction.length>1200)
+      if(!input.goal||input.goal.length>roleLimits.goal||input.instruction.length>2000||input.taskScope.length>roleLimits.task_scope||
+        input.deliverables.length>roleLimits.list_items||input.doneCriteria.length>roleLimits.list_items||(input.taskPlan?.length??0)>roleLimits.list_items||
+        [...input.deliverables,...input.doneCriteria,...(input.taskPlan??[])].some(item=>typeof item!=="string"||item.length>roleLimits.list_item||item.includes("\0")))
         throw Error("model_input_invalid")
       const fingerprint=selectedBinding?
         boundModelFingerprint(input,binding):hash({input,model_phase:"v8_2"})
@@ -216,11 +228,12 @@ export class AgentModelWorker {
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status='queued' "+
         "RETURNING id",[current.run_id,current.owner_user_id])
       if(updated.rows.length!==1)throw Error("model_run_state_race")
-      return {status:"ready",input,
+      await sealSingleAgentEvidence(db,current.run_id,fingerprint,input)
+      return {status:"ready",input,inputSha256:fingerprint,
         ...(selectedBinding?{boundModel:true as const}:{})}
     })
   }
-  async succeed(job:LeasedModelJob,result:string):Promise<ModelTick>{
+  async succeed(job:LeasedModelJob,result:string,input?:ModelInput,inputSha256?:string):Promise<ModelTick>{
     if(!leaseValid(job,this.workerId))return {status:"stale"}
     if(!result.trim()||result.length>12000)throw Error("model_output_invalid")
     return tx(this.pool,async db=>{
@@ -228,6 +241,7 @@ export class AgentModelWorker {
       const current=await guard(db,job,this.workerId)
       if(!current)return {status:"stale",run_id:job.run_id}
       await actor(db,current.owner_user_id)
+      await requireCurrentSingleAgentInput(db,current.run_id,inputSha256,input)
       const effect=await db.query<{run_id:string}>(
         "UPDATE agentstudio.external_effects SET status='succeeded',"+
         "updated_at=clock_timestamp() WHERE run_id=$1::uuid "+
@@ -431,6 +445,13 @@ export class AgentModelWorker {
       if(stage.status!=="ready")
         return {status:stage.status,run_id:job.run_id}
       started=true
+      await tx(this.pool,async db=>{
+        await db.query("SET LOCAL ROLE agentstudio_worker")
+        const current=await guard(db,job,this.workerId)
+        if(!current)throw Error("model_lease_lost")
+        await actor(db,current.owner_user_id)
+        await requireCurrentSingleAgentInput(db,current.run_id,stage.inputSha256,stage.input)
+      })
       // Only an explicitly injected, independently authenticated API/Broker
       // adapter may handle a selected model. The Worker never sees API keys.
       const output=stage.boundModel?
@@ -439,7 +460,7 @@ export class AgentModelWorker {
           lease_version:Number(job.lease_version),lease_owner:this.workerId,
         },stage.input)).text:
         await this.provider.generate(stage.input)
-      return await this.succeed(job,output)
+      return await this.succeed(job,output,stage.input,stage.inputSha256)
     }catch{
       // Do not log raw prompts, provider payloads, token, output, or errors.
       return started?this.unknown(job):this.failPreflight(job)

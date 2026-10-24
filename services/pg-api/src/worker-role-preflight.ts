@@ -3,6 +3,7 @@
 // No job leasing, DML, model/tool calls, or application side effects.
 import type {SqlPool} from "./contracts.ts"
 import type {PgRuntimeTarget} from "./pg-runtime-target.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 
 function refuse():never{throw Error("unsafe_pg_worker_role_boundary")}
 
@@ -122,6 +123,9 @@ export async function verifyPgWorkerRoleBoundary(
           "SELECT current_user AS role",
         )
         if(current.rows[0]?.role!==expected)refuse()
+        if(target.mode==="baota_pg18"&&expected==="agentstudio_api"){
+          try{await verifyOptionalCredentialBoundary(connection,"worker")}catch{refuse()}
+        }
       }finally{
         await connection.query("ROLLBACK")
         inTransaction=false

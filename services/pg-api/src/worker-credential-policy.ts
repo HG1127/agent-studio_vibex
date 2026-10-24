@@ -1,7 +1,7 @@
 // Narrow permission policy for PostgreSQL 18 systemd LoadCredential files.
 // Metadata and effective read access only; this module never reads the secret.
 // No general acceptance of group-readable files outside the fixed unit path.
-export type Pg18WorkerKind="prepare"|"model"|"workflow"
+export type Pg18WorkerKind="prepare"|"model"|"workflow"|"agent"
 export type CredentialMetadata={
   isFile():boolean
   isSymbolicLink():boolean
@@ -11,7 +11,7 @@ export type CredentialMetadata={
   size:number
 }
 export function expectedPg18CredentialFile(kind:Pg18WorkerKind):string{
-  if(kind!=="prepare"&&kind!=="model"&&kind!=="workflow")throw Error("unsafe_worker_secret")
+  if(kind!=="prepare"&&kind!=="model"&&kind!=="workflow"&&kind!=="agent")throw Error("unsafe_worker_secret")
   return "/run/credentials/agentstudio-pg18-"+kind+".service/worker.secret"
 }
 export function pg18CredentialMetadataAccepted(input:{
@@ -23,7 +23,7 @@ export function pg18CredentialMetadataAccepted(input:{
   canRead:boolean
 }):boolean{
   const {kind,env,file,stat,uid,canRead}=input
-  if(kind!=="prepare"&&kind!=="model"&&kind!=="workflow"||
+  if(kind!=="prepare"&&kind!=="model"&&kind!=="workflow"&&kind!=="agent"||
      env.AGENT_STUDIO_PG_BAOTA18_ENABLED!=="true"||
      !Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !canRead||!stat.isFile()||stat.isSymbolicLink()||

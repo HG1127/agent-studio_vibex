@@ -50,7 +50,7 @@ function safeOrder(graph:unknown):{order:{id:string;type:"start"|"end"}[];hash:s
   let checked:WorkflowGraph
   try{checked=safeWorkflowGraph(graph)}
   catch{throw new HttpError(409,"workflow_validation_graph_invalid")}
-  if(checked.nodes.some(n=>n.type!=="start"&&n.type!=="end"))
+  if(checked.version!==undefined||checked.nodes.some(n=>n.type!=="start"&&n.type!=="end"))
     throw new HttpError(409,"workflow_validation_node_not_supported")
   // start must be the unique source in the already-validated DAG, and
   // all end nodes are terminal. The stable order is independent of DB rows.

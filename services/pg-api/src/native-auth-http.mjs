@@ -119,8 +119,10 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
+    allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
+    allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,
     allowEmployeeProvisioning=true,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
@@ -189,9 +191,26 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         return respond(res,200,{
           mode:"native_pg18",
           config_writes_enabled:allowConfigurationWrites===true,
+          ...(allowAgentCollaboration===true?{agent_collaboration_available:true}:{}),
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
+          ...(allowConfigurationWrites===true&&allowMcpDiscovery===true?{mcp_discovery_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowMcpToolExecution===true?{mcp_tool_runs_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowSmitheryManagement===true?{smithery_management_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true?{knowledge_sharing_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true?{knowledge_embedding_settings_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true?{knowledge_embedding_consent_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeIndexRuntime===true?{knowledge_index_runtime_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeQueryRuntime===true?{knowledge_query_runtime_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeQueryRuntime===true&&allowKnowledgeToolExecution===true?{knowledge_tool_runtime_enabled:true}:{}),
           workflow_validation_enabled:allowConfigurationWrites===true&&allowWorkflowValidation===true,
           workflow_execution_enabled:allowConfigurationWrites===true&&allowWorkflowExecution===true,
+          ...(allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true?{autonomous_agent_submission_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowWorkflowV2Submission===true
+            ?{workflow_v2_submission_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowWorkflowV2Submission===true&&allowAutonomousAgentSubmission===true&&allowScheduleRuntime===true
+            ?{schedule_execution_enabled:true}:{}),
+          run_submission_enabled:allowConfigurationWrites===true&&allowRunSubmission===true,
+          bound_model_runs_enabled:allowConfigurationWrites===true&&allowRunSubmission===true&&allowBoundRunSubmission===true,
           run_execution_enabled:false,
         })
       }

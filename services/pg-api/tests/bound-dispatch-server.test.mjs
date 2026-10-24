@@ -64,3 +64,37 @@ test("private Broker preview unit cannot become a paid service by installation",
   assert.match(unit,/^DynamicUser=yes/m)
   assert.match(unit,/^IPAddressAllow=127\.0\.0\.0\/8/m)
 })
+
+test("Workflow V2 serving needs its own enable pair and a distinct client certificate pin",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY"}
+  assert.equal(boundDispatchServerConfig(paid,"serve","linux",1001).workflowModelEnabled,false)
+  for(const delta of [flags,{...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:baseline.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT},
+    {AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true"}])
+    assert.throws(()=>boundDispatchServerConfig({...paid,...delta},"serve","linux",1001))
+  const cfg=boundDispatchServerConfig({...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)},"serve","linux",1001)
+  assert.equal(cfg.workflowModelEnabled,true)
+})
+
+test("Tool serving is independently gated and shares only the reviewed Workflow client pin",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY"}
+  assert.equal(boundDispatchServerConfig(paid,"serve","linux",1001).workflowToolsEnabled,false)
+  for(const delta of [flags,{AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true"},
+    {...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:baseline.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT}])
+    assert.throws(()=>boundDispatchServerConfig({...paid,...delta},"serve","linux",1001))
+  const config=boundDispatchServerConfig({...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)},"serve","linux",1001)
+  assert.equal(config.workflowToolsEnabled,true);assert.equal(config.workflowModelEnabled,false)
+})
+
+test("Agent execution requires its own marker plus both independently approved Model and Tool adapters",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_AGENTS_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)}
+  assert.throws(()=>boundDispatchServerConfig({...paid,...flags},"serve","linux",1001))
+  const ready={...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY"}
+  assert.equal(boundDispatchServerConfig(ready,"serve","linux",1001).workflowAgentsEnabled,true)
+  assert.throws(()=>boundDispatchServerConfig({...ready,AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED:undefined},"preflight","linux",1001))
+})

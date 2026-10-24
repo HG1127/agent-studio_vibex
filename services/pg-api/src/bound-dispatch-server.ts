@@ -1,21 +1,40 @@
 #!/usr/bin/env node
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {scopedKnowledgePool,scopedEmbeddingConsentPool,scopedEmbeddingSettingsPool} from "./knowledge-scope-policy.ts"
+import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
+import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 // Separate, private PG18 Broker. Never mount this handler on Native/8090.
 // Import and --plan perform no credential I/O, database access or listening.
 import {createServer} from "node:https"
-import {createPrivateKey,X509Certificate} from "node:crypto"
+import {assertBoundDispatchTlsMaterial} from "./bound-tls-material.ts"
+export {assertBoundDispatchTlsMaterial} from "./bound-tls-material.ts"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 import type {Pool as PgPool} from "pg"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 import {selectPgRuntimeTarget} from "./pg-runtime-target.ts"
+import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
+import {verifyBoundWorkerMutualTlsPeer} from "./bound-worker-mtls.ts"
 import {boundCertificateFingerprint} from "./bound-worker-mtls.ts"
 import {boundCredentialDirectory,readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
-import {verifyBoundDispatchRole} from "./bound-dispatch-role-preflight.ts"
+import {verifyBoundDispatchRole,verifyWorkflowModelIdentityPrivileges,verifyWorkflowEffectIdentityPrivileges} from "./bound-dispatch-role-preflight.ts"
 import {parseModelEncryptionKey} from "./model-connection-crypto.ts"
-import {selectBoundGenerationUat,createIsolatedBoundModelExecutor} from "./model-connection-executor.ts"
+import {selectBoundGenerationUat,createIsolatedBoundModelExecutor,createIsolatedWorkflowModelExecutor,createIsolatedWorkflowNodeDebugExecutor,createIsolatedWorkflowAgentModelExecutor,createIsolatedAutonomousAgentModelExecutor} from "./model-connection-executor.ts"
 import {OwnerBoundModelDispatch} from "./owner-model-dispatch.ts"
 import {BoundLeaseIdentityRepository,createVerifiedBoundDispatchAdapter} from "./bound-lease-identity.ts"
 import {createIsolatedBoundModelInternalHandler} from "./bound-model-internal-handler.ts"
+import {workflowV2ModelRoute,selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
+import {createWorkflowV2ModelInternalHandler} from "./workflow-v2-model-handler.ts"
+import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "./workflow-v2-model-dispatch.ts"
+import {workflowV2ToolRoute,selectWorkflowV2ToolExecution} from "./workflow-v2-tool-contract.ts"
+import {createWorkflowV2ToolInternalHandler} from "./workflow-v2-tool-handler.ts"
+import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "./workflow-v2-tool-dispatch.ts"
+import {createWorkflowToolNetwork} from "./workflow-v2-tool-network.ts"
+import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
+import {createMcpToolExecutor,selectMcpExecution} from "./mcp-call.ts"
+import {createMcpNetwork} from "./mcp-network.ts"
+import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "./mcp-privileges.ts"
 
 const origin="https://127.0.0.1:7453"
 const directory=boundCredentialDirectory("dispatch")
@@ -38,28 +57,30 @@ export function boundDispatchServerConfig(
   if(target.mode!=="baota_pg18")refuse()
   try{boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)}
   catch{refuse()}
-  if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
-  return {target,origin,directory,port:7453 as const,
-    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!}
-}
-export function assertBoundDispatchTlsMaterial(
-  ca:Buffer,cert:Buffer,key:Buffer,now=Date.now(),
-):void{
-  try{
-    const certificates=ca.toString("utf8").match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g)
-    if(!certificates?.length)refuse()
-    const authorities=certificates.map(pem=>new X509Certificate(pem))
-    const server=new X509Certificate(cert)
-    for(const item of [...authorities,server]){
-      const from=Date.parse(item.validFrom),to=Date.parse(item.validTo)
-      if(!Number.isFinite(from)||!Number.isFinite(to)||from>now||to<=now)refuse()
-    }
-    if(authorities.some(item=>!item.ca)||server.ca||
-       !server.checkHost("localhost")||!server.checkIP("127.0.0.1")||
-       !server.checkPrivateKey(createPrivateKey(key))||
-       !authorities.some(item=>server.verify(item.publicKey))||
-       !server.keyUsage?.includes("1.3.6.1.5.5.7.3.1"))refuse()
+  const knowledgeSharingEnabled=selectKnowledgeSharing(env)
+  const workflowModelEnabled=selectWorkflowV2ModelExecution(env)
+  const workflowToolsEnabled=selectWorkflowV2ToolExecution(env)
+  const knowledgeToolsEnabled=selectKnowledgeToolRuntime(env)
+  if(knowledgeToolsEnabled&&!workflowToolsEnabled)refuse()
+  const mcpEnabled=selectMcpExecution(env)
+  if(mcpEnabled&&!workflowToolsEnabled)refuse()
+  const autonomousEnabled=selectAutonomousAgentExecution(env)
+  const autonomousFingerprint=env.AGENT_STUDIO_PG_AUTONOMOUS_AGENT_CLIENT_FINGERPRINT
+  const workflowAgentsEnabled=selectWorkflowAgentExecution(env)
+  if(autonomousEnabled&&(!workflowModelEnabled||!workflowToolsEnabled))refuse()
+  if(workflowAgentsEnabled&&(!workflowModelEnabled||!workflowToolsEnabled))refuse()
+  const workflowFingerprint=env.AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT
+  if(workflowModelEnabled||workflowToolsEnabled)try{
+    const workflowPin=boundCertificateFingerprint(workflowFingerprint)
+    if(workflowPin.equals(boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)))refuse()
   }catch{refuse()}
+  if(autonomousEnabled)try{
+    const pin=boundCertificateFingerprint(autonomousFingerprint)
+    if(pin.equals(boundCertificateFingerprint(workflowFingerprint))||pin.equals(boundCertificateFingerprint(env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT)))refuse()
+  }catch{refuse()}
+  if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
+  return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),...(knowledgeToolsEnabled?{knowledgeToolsEnabled:true}:{}),
+    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} )}
 }
 function password(bytes:Buffer):string{
   const value=bytes.toString("utf8").replace(/[\r\n]+$/g,"")
@@ -96,14 +117,33 @@ export async function startBoundDispatchServer(
   const api=connect("agentstudio_stage_login",apiPassword)
   const identities=connect("agentstudio_bound_dispatch_login",identityPassword)
   const broker=connect("agentstudio_model_broker_login",brokerPassword)
+  const business=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(api),cfg.knowledgeSharingEnabled===true),cfg.knowledgeToolsEnabled===true),cfg.knowledgeToolsEnabled===true),cfg.knowledgeToolsEnabled===true),cfg.knowledgeToolsEnabled===true)
   const pools=[api,identities,broker]
   for(const pool of pools)pool.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
   const endPools=async()=>{await Promise.allSettled(pools.map(pool=>pool.end()))}
   try{
-    await verifyBoundDispatchRole(adapter(api),cfg.target,"api")
+    await verifyBoundDispatchRole(business,cfg.target,"api")
     await verifyBoundDispatchRole(adapter(identities),cfg.target,"identity")
     await verifyBoundDispatchRole(adapter(broker),cfg.target,"broker")
+    if(cfg.workflowModelEnabled){
+      await verifyWorkflowModelIdentityPrivileges(business,"api")
+      await verifyWorkflowModelIdentityPrivileges(adapter(identities),"identity")
+      await verifyWorkflowModelIdentityPrivileges(adapter(broker),"broker")
+    }
+    if(cfg.workflowToolsEnabled)for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
+      await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,"tool")
+    if(cfg.workflowAgentsEnabled)for(const effect of ["agent_model","agent_tool"] as const)
+      for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
+        await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
+    if(cfg.autonomousEnabled)for(const effect of ["autonomous_model","autonomous_tool"] as const)
+      for(const [kind,pool] of [["api",api],["identity",identities],["broker",broker]] as const)
+        await verifyWorkflowEffectIdentityPrivileges(adapter(pool),kind,effect)
+    if(cfg.mcpEnabled){await verifyMcpDiscoveryPrivileges(business,adapter(broker));await verifyMcpExecutionSchema(business)}
+    await verifyKnowledgeAgentSchema(business)
+    await verifyWorkflowSampleLineageSchema(business)
+    if(cfg.knowledgeSharingEnabled||cfg.workflowModelEnabled||cfg.workflowToolsEnabled)await verifyKnowledgeRuntimeSchema(business,true)
+    if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -112,13 +152,38 @@ export async function startBoundDispatchServer(
         production_cutover_allowed:false}
     }
     const executor=createIsolatedBoundModelExecutor(env,origin,true)
-    const dispatch=new OwnerBoundModelDispatch(adapter(api),encryptionKey,executor,adapter(broker))
+    const dispatch=new OwnerBoundModelDispatch(business,encryptionKey,executor,adapter(broker))
     const handler=createIsolatedBoundModelInternalHandler({
       approvedForIsolatedUat:true,reviewedClientFingerprint256:cfg.workerFingerprint,
       dispatch:createVerifiedBoundDispatchAdapter(new BoundLeaseIdentityRepository(adapter(identities)),dispatch),
     })
-    server=createServer({key,cert,ca,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},
-      (req,res)=>{void handler(req,res).catch(()=>res.destroy())})
+    const makeV2Handlers=(pin:string,autonomous:boolean)=>{
+      const executionMode=autonomous?"agent_native_v2" as const:"workflow_native_v2" as const
+      const agentExecutor=autonomous?createIsolatedAutonomousAgentModelExecutor(env,origin,true):
+        cfg.workflowAgentsEnabled?createIsolatedWorkflowAgentModelExecutor(env,origin,true):undefined
+      return {
+        model:cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({approvedForIsolatedUat:true,executionMode,
+          reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
+            new WorkflowV2ModelDispatch(business,encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
+              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,agentExecutor,
+              nodeDebugExecutor:autonomous?undefined:createIsolatedWorkflowNodeDebugExecutor(env,origin,true)}))}):undefined,
+        tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
+          reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
+            new WorkflowV2ToolDispatch(business,encryptionKey,{...createWorkflowToolNetwork(),
+              ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
+              summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
+                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true}))}):undefined,
+      }
+    }
+    const workflowHandlers=cfg.workflowModelEnabled||cfg.workflowToolsEnabled?makeV2Handlers(cfg.workflowFingerprint!,false):undefined
+    const autonomousHandlers=cfg.autonomousEnabled?makeV2Handlers(cfg.autonomousFingerprint!,true):undefined
+    server=createServer({key,cert,ca,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},(req,res)=>{
+      let handlers=workflowHandlers
+      if(autonomousHandlers)try{verifyBoundWorkerMutualTlsPeer(req.socket,cfg.autonomousFingerprint!);handlers=autonomousHandlers}catch{}
+      const selected=req.url===workflowV2ToolRoute&&handlers?.tool?handlers.tool:
+        req.url===workflowV2ModelRoute&&handlers?.model?handlers.model:handler
+      void selected(req,res).catch(()=>res.destroy())
+    })
     server.requestTimeout=60000
     server.headersTimeout=12000
     server.maxRequestsPerSocket=1

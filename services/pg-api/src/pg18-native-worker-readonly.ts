@@ -8,6 +8,9 @@ import {assertPg18WorkerCredentialBinding} from "./worker-activation-guard.ts"
 import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
 import {selectPgRuntimeTarget,verifyPgRuntimeTarget} from "./pg-runtime-target.ts"
 import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 
 export type PgWorkerName="prepare"|"model"
 const allowedStages=[
@@ -32,6 +35,7 @@ export async function runPg18NativeWorkerReadonlyPreflight(kind:PgWorkerName):Pr
   try{
     assertPg18WorkerCredentialBinding(process.env,kind)
     stage="runtime_target_config"
+    const knowledgeSharing=selectKnowledgeSharing(process.env)
     if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true")
       throw Error("pilot_disabled")
     const target=selectPgRuntimeTarget(process.env,"worker")
@@ -81,6 +85,17 @@ export async function runPg18NativeWorkerReadonlyPreflight(kind:PgWorkerName):Pr
     await verifyPgRuntimeTarget(adapter,target)
     stage="worker_role_boundary"
     await verifyPgWorkerRoleBoundary(adapter,target)
+    if(kind==="model"){await verifyKnowledgeAgentSchema(adapter);await verifyWorkflowSampleLineageSchema(adapter)}
+    if(knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
+    // The additive operator package may reuse an older SHA-pinned general
+    // verifier. Audit optional credentials here too so that package cannot
+    // silently omit this boundary while preserving the old reviewed files.
+    const optional=await adapter.connect()
+    try{
+      await optional.query("BEGIN READ ONLY")
+      try{await optional.query("SET LOCAL ROLE agentstudio_api");await verifyOptionalCredentialBoundary(optional,"worker")}
+      finally{await optional.query("ROLLBACK")}
+    }finally{optional.release()}
   }catch{
     failure=stage
   }finally{

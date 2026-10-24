@@ -1,11 +1,14 @@
 // V8 PostgreSQL: authenticated, owner-scoped Agent prepare RUN queue.
 // Creating a run does NOT execute a model, tool, Workflow or external POST.
-import {HttpError,isUuid,type Identity,type SqlPool}
+import {HttpError,isUuid,type Identity,type SqlPool,type SqlClient}
   from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import {requireKnowledgeScope,storedKnowledgeIds} from "./knowledge-runtime-scope.ts"
+import {sharedKnowledgeScopeEnabled} from "./knowledge-scope-policy.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import type {ModelProvider} from "./model-connection-repository.ts"
 import {safeRunStepMetadata} from "./run-step-metadata.ts"
+import {currentSingleAgentOutputs} from "./knowledge-agent-execution.ts"
 
 export type RunStatus =
   "queued"|"running"|"awaiting_approval"|"paused"|
@@ -24,6 +27,7 @@ export interface RunRow {
   created_at:string
   updated_at:string
   finished_at:string|null
+  knowledge_outputs_available?:boolean
 }
 export interface RunSubmission {
   run:RunRow
@@ -42,7 +46,7 @@ export function safeRunRequest(raw:unknown):{
   if(Object.keys(data).some(k=>!["instruction","idempotency_key"].includes(k)))
     throw new HttpError(400,"unsafe_run_field")
   const instruction=data.instruction===undefined?"":data.instruction
-  if(typeof instruction!=="string"||instruction.length>1200 ||
+  if(typeof instruction!=="string"||instruction.length>2000 ||
     instruction.includes("\u0000"))
     throw new HttpError(400,"invalid_run_instruction")
   const key=data.idempotency_key
@@ -55,6 +59,11 @@ const cols=
   "step_count,last_error_code,created_at,updated_at,finished_at"
 function normalized(row:RunRow):RunRow {
   return {...row,step_count:Number(row.step_count)}
+}
+async function projected(db:SqlClient,row:RunRow):Promise<RunRow>{
+  const available=await currentSingleAgentOutputs(db,row.id)
+  return {...normalized(row),...(available===undefined?{}:{knowledge_outputs_available:available}),
+    ...(available===false?{result_text:""}:{})}
 }
 // Identical SQL is used both for the initial idempotency check and for
 // recovering a concurrent unique-key race only AFTER transaction rollback.
@@ -79,9 +88,11 @@ export class RunRepository {
     return withActor(this.pool,identity,async(db,actor)=>{
       const result=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs "+
-        "WHERE kind='agent' AND owner_user_id=$1::uuid "+
+        "WHERE kind='agent' AND coalesce(checkpoint->>'execution_mode','')<>'agent_native_v2' AND owner_user_id=$1::uuid "+
         "ORDER BY created_at DESC,id LIMIT $2::int",[actor,bounded])
-      return result.rows.map(normalized)
+      const rows:RunRow[]=[]
+      for(const row of result.rows)rows.push(await projected(db,row))
+      return rows
     })
   }
   get(identity:Identity,id:string):Promise<RunRow|null> {
@@ -89,9 +100,9 @@ export class RunRepository {
     return withActor(this.pool,identity,async(db,actor)=>{
       const result=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs "+
-        "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='agent'",
+        "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='agent' AND coalesce(checkpoint->>'execution_mode','')<>'agent_native_v2'",
         [id,actor])
-      return result.rows[0]?normalized(result.rows[0]):null
+      return result.rows[0]?projected(db,result.rows[0]):null
     })
   }
   steps(identity:Identity,runId:string):Promise<RunStepRow[]> {
@@ -102,9 +113,10 @@ export class RunRepository {
         "FROM agentstudio.run_steps AS s JOIN agentstudio.runs AS r "+
         "ON r.id=s.run_id AND r.owner_user_id=s.owner_user_id "+
         "WHERE s.run_id=$1::uuid AND s.owner_user_id=$2::uuid "+
-        "AND r.kind='agent' ORDER BY s.created_at,s.step_key LIMIT 40",
+        "AND r.kind='agent' AND coalesce(r.checkpoint->>'execution_mode','')<>'agent_native_v2' ORDER BY s.created_at,s.step_key LIMIT 40",
         [runId,actor])
-      return result.rows.map(step=>({...step,metadata:safeRunStepMetadata(step.metadata)}))
+      const available=await currentSingleAgentOutputs(db,runId)
+      return result.rows.map(step=>({...step,metadata:available===false?{}:safeRunStepMetadata(step.metadata)}))
     })
   }
   approval(identity:Identity,runId:string):Promise<{status:string;step_key:string}|null> {
@@ -115,7 +127,7 @@ export class RunRepository {
         "JOIN agentstudio.runs AS r ON r.id=a.run_id "+
         "AND r.owner_user_id=a.owner_user_id "+
         "WHERE r.id=$1::uuid AND r.owner_user_id=$2::uuid "+
-        "AND a.step_key='model'",[runId,actor])
+        "AND r.kind='agent' AND coalesce(r.checkpoint->>'execution_mode','')<>'agent_native_v2' AND a.step_key='model'",[runId,actor])
       return rows.rows[0]??null
     })
   }
@@ -132,7 +144,7 @@ export class RunRepository {
       // Row lock serializes competing approvals, model job creation, and replay.
       const previous=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs WHERE id=$1::uuid "+
-        "AND owner_user_id=$2::uuid AND kind='agent' FOR UPDATE",
+        "AND owner_user_id=$2::uuid AND kind='agent' AND coalesce(checkpoint->>'execution_mode','')<>'agent_native_v2' FOR UPDATE",
         [runId,actor])
       const run=previous.rows[0]
       if(!run)throw new HttpError(404,"run_not_found")
@@ -144,7 +156,7 @@ export class RunRepository {
       if(!approved)throw new HttpError(409,"approval_not_requested")
       if(approved.status!=="pending"){
         if(approved.status!==decision)throw new HttpError(409,"approval_already_decided")
-        return {run:normalized(run),approval:approved.status,replayed:true}
+        return {run:await projected(db,run),approval:approved.status,replayed:true}
       }
       if(run.status!=="awaiting_approval" ||
          run.checkpoint?.stage!=="awaiting_model_approval")
@@ -190,7 +202,7 @@ export class RunRepository {
         "result,metadata) VALUES($1::uuid,$1::uuid,$2::uuid,"+
         "'agent.model_approval','run',$2::text,'succeeded',$3::jsonb)",
         [actor,runId,JSON.stringify({decision})])
-      return {run:normalized(updated.rows[0]!),approval:decision,replayed:false}
+      return {run:await projected(db,updated.rows[0]!),approval:decision,replayed:false}
     })
   }
   async submit(identity:Identity,specId:string,raw:unknown):Promise<RunSubmission> {
@@ -205,7 +217,7 @@ export class RunRepository {
           if(existing.agent_spec_id!==specId||
             existing.instruction!==request.instruction)
             throw new HttpError(409,"idempotency_key_conflict")
-          return {run:normalized(existing),replayed:true}
+          return {run:await projected(db,existing),replayed:true}
         }
         const specs=await db.query<{
           id:string;revision:string|number;spec:Record<string,unknown>
@@ -215,6 +227,17 @@ export class RunRepository {
           [specId,actor])
         const spec=specs.rows[0]
         if(!spec)throw new HttpError(404,"spec_not_found")
+        if(await sharedKnowledgeScopeEnabled(db)){
+          const scope=await requireKnowledgeScope(db,actor,storedKnowledgeIds(spec.spec))
+          if(scope.some(base=>base.owner_user_id!==actor)&&!spec.spec.model_binding)
+            throw new HttpError(409,"shared_knowledge_requires_owner_model_binding")
+        }
+        if(Array.isArray(spec.spec?.http_tools)&&spec.spec.http_tools.length)
+          throw new HttpError(409,"agent_http_tools_require_autonomous_runtime")
+        if(Array.isArray(spec.spec?.mcp_tools)&&spec.spec.mcp_tools.length)
+          throw new HttpError(409,"agent_mcp_tools_require_autonomous_runtime")
+        if(spec.spec?.knowledge_retrieval!==undefined)
+          throw new HttpError(409,"agent_semantic_tools_require_autonomous_runtime")
         // Default remains denied. The isolated integration fixture may admit
         // a bound run only when a separately reviewed broker/Worker is wired.
         // Recheck the CURRENT owner's provider metadata under a shared row
@@ -275,7 +298,7 @@ export class RunRepository {
             throw new HttpError(409,"idempotency_key_conflict")
           throw error
         }
-        return {run:normalized(run),replayed:false}      })
+        return {run:await projected(db,run),replayed:false}      })
     }catch(error){
       if(!(error instanceof HttpError && error.status===409 &&
            error.code==="idempotency_key_conflict"))throw error
@@ -287,11 +310,11 @@ export class RunRepository {
       const previous=await withActor(this.pool,identity,async(db,actor)=>{
         const rows=await db.query<RunRow>(runByIdempotencyKeySql,
           [actor,request.idempotency_key])
-        return rows.rows[0]??null
+        return rows.rows[0]?projected(db,rows.rows[0]):null
       })
       if(previous && previous.agent_spec_id===specId &&
          previous.instruction===request.instruction)
-        return {run:normalized(previous),replayed:true}
+        return {run:previous,replayed:true}
       throw error
     }
   }

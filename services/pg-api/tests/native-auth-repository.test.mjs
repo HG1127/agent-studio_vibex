@@ -9,6 +9,9 @@ import {freshSchemaForTest} from "../src/baota-pg18-fresh-init.mjs"
 import {reviewedNativeSqlForEmbeddedTest,prepareNativeAuthPgliteRoles} from "./helpers/native-pg18-embedded.mjs"
 import {hashEmployeePassword,NATIVE_LOCAL_ISSUER} from "../src/native-employee-auth.mjs"
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
+import {randomUUID} from "node:crypto"
+import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
+import {KnowledgeAccessRepository} from "../src/knowledge-access-repository.ts"
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../../..")
 const sql=readFileSync(path.join(root,"db/postgres/010_pg18_native_auth_proposed.sql"),"utf8")
@@ -27,6 +30,47 @@ async function harness(){
   }}
   return {db,pool,store:new NativeAuthRepository(pool)}
 }
+
+test("knowledge recipient lookup is exact, native, active and returns only id/name through the separate auth role",async()=>{
+  const {db,store,pool}=await harness()
+  try{
+    const password=await hashEmployeePassword("Synthetic-Recipient-Only#2026"),ids={}
+    for(const who of ["owner","reader"]){
+      ids[who]=randomUUID()
+      await db.query("INSERT INTO agentstudio.users(id,external_issuer,external_subject,display_name) VALUES($1,$2,$3,$3)",[ids[who],NATIVE_LOCAL_ISSUER,who])
+      await db.query("INSERT INTO agentstudio_auth.accounts(user_id,email,password_record) VALUES($1,$2,$3)",[ids[who],who+"@example.test",password])
+    }
+    const identity={issuer:NATIVE_LOCAL_ISSUER,subject:"owner"}
+    // The marker is synthetic predecessor setup for this focused auth fixture;
+    // the hosted suite applies every actual migration through 032.
+    await db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_031','synthetic auth fixture predecessor') ON CONFLICT DO NOTHING")
+    await db.exec(readFileSync(path.join(root,"db/postgres/migrations/pg_v9_032_knowledge_access.sql"),"utf8"))
+    const access=new KnowledgeAccessRepository(pool,(who,email)=>store.resolveKnowledgeRecipient(who,email))
+    const base=await new KnowledgeBaseRepository(pool).create(identity,"Native shared metadata","Synthetic only")
+    await access.change(identity,base.id,{action:"grant",recipient_email:"reader@example.test",role:"viewer",semantic_allowed:false,expected_revision:0,request_id:randomUUID()})
+    const reader={issuer:NATIVE_LOCAL_ISSUER,subject:"reader"}
+    assert.equal((await access.listShared(reader)).length,1)
+    assert.deepEqual(await store.resolveKnowledgeRecipient(identity," Reader@Example.test "),{id:ids.reader,display_name:"reader"})
+    assert.equal(await store.resolveKnowledgeRecipient(identity,"owner@example.test"),null)
+    assert.equal(await store.resolveKnowledgeRecipient(identity,"read@example.test"),null)
+    await assert.rejects(store.resolveKnowledgeRecipient({issuer:"foreign",subject:"owner"},"reader@example.test"),/native_employee_identity_required/)
+    await assert.rejects(store.resolveKnowledgeRecipient({...identity,subject:"missing"},"reader@example.test"),/native_employee_identity_required/)
+    await db.query("UPDATE agentstudio_auth.accounts SET enabled=false WHERE user_id=$1",[ids.reader])
+    assert.equal(await store.resolveKnowledgeRecipient(identity,"reader@example.test"),null)
+    assert.equal((await access.listShared(reader)).length,0)
+    await db.query("UPDATE agentstudio_auth.accounts SET enabled=true WHERE user_id=$1",[ids.reader])
+    await db.query("UPDATE agentstudio.users SET status='disabled' WHERE id=$1",[ids.reader])
+    assert.equal(await store.resolveKnowledgeRecipient(identity,"reader@example.test"),null)
+    await db.query("UPDATE agentstudio_auth.accounts SET enabled=false WHERE user_id=$1",[ids.owner])
+    await assert.rejects(store.resolveKnowledgeRecipient(identity,"reader@example.test"),/native_employee_identity_required/)
+    await db.query("UPDATE agentstudio.users SET status='active' WHERE id=$1",[ids.reader])
+    assert.equal((await access.listShared(reader)).length,0)
+    for(const column of ["email","password_record","failed_attempts","locked_until"])
+      assert.equal((await db.query("SELECT has_column_privilege('agentstudio_knowledge_acl','agentstudio_auth.accounts',$1::text,'SELECT') AS access",[column])).rows[0].access,false)
+    assert.equal((await db.query("SELECT has_table_privilege('agentstudio_knowledge_acl','agentstudio_auth.sessions','SELECT') AS access")).rows[0].access,false)
+    assert.equal((await db.query("SELECT has_schema_privilege('agentstudio_api','agentstudio_auth','USAGE') AS access")).rows[0].access,false)
+  }finally{await db.close()}
+})
 test("native credential login, session identity lookup and logout are isolated",async()=>{
   const {db,store}=await harness()
   const uuid="a882d7da-93e2-455d-b398-f264651e92e7"

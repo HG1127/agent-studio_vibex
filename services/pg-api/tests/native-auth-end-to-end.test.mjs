@@ -62,6 +62,8 @@ async function startFixture(policy=null){
     ...(policy?{allowEmployeeProvisioning:policy.employeeProvisioning}:{}),
     allowConfigurationWrites:policy?.configurationWrites===true,
     allowModelProbe:policy?.modelProbeUat===true,
+    allowRunSubmission:policy?.runApprovalUat===true,
+    allowBoundRunSubmission:policy?.boundModelExecutionUat===true,
     allowWorkflowValidation:policy?.workflowValidationUat===true,
     allowWorkflowExecution:policy?.workflowExecutionUat===true,
     businessHandler:(req,res)=>{
@@ -178,7 +180,8 @@ test("Native config-write discovery follows approved owner policy and never enab
       assert.deepEqual(capabilities,{
         mode:"native_pg18",config_writes_enabled:writeApproved,
         model_probe_enabled:false,workflow_validation_enabled:false,
-        workflow_execution_enabled:false,run_execution_enabled:false
+        workflow_execution_enabled:false,run_execution_enabled:false,
+        run_submission_enabled:false,bound_model_runs_enabled:false
       })
       if(writeApproved){
         const item=await f.api.createAgent("Approved metadata","No execution")
@@ -374,6 +377,10 @@ test("native owner-bound Run admission requires the independent grant and preser
     runApprovalUat:true,boundModelExecutionUat:true,modelProbeUat:true})
   try{
     await f.api.login("admin@example.com","SyntheticAdminStrongPassword#2026")
+    const capabilities=await f.api.getConfigCapabilities()
+    assert.equal(capabilities.run_submission_enabled,true)
+    assert.equal(capabilities.bound_model_runs_enabled,true)
+    assert.equal(capabilities.run_execution_enabled,false)
     const secret="SyntheticBoundAdmissionOnlyCredential012345"
     const connection=await f.api.createModelConnection({name:"Bound Admission Provider",
       provider:"openai",base_url:"https://api.openai.com/v1",api_key:secret,

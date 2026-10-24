@@ -180,7 +180,7 @@ test("Native capabilities are authenticated and never browser-controlled",async(
     assert.deepEqual(capabilities.data,{
       mode:"native_pg18",config_writes_enabled:true,run_execution_enabled:false,
       model_probe_enabled:false,workflow_validation_enabled:false,
-      workflow_execution_enabled:false
+      workflow_execution_enabled:false,run_submission_enabled:false,bound_model_runs_enabled:false
     })
     assert.equal((await request(base,"/api/native-auth/capabilities",{
       cookie,bearer:"forged.jwt.token"})).status,401)
@@ -189,6 +189,20 @@ test("Native capabilities are authenticated and never browser-controlled",async(
     assert.equal((await request(base,"/api/native-auth/capabilities",{cookie})).status,401)
   }finally{await new Promise(resolve=>server.close(resolve))}
 })
+test("semantic Tool capability requires its independent flag and every metadata/query prerequisite",async()=>{
+  const complete={allowConfigurationWrites:true,allowKnowledgeSharing:true,allowKnowledgeEmbeddingSettings:true,allowKnowledgeEmbeddingConsent:true,allowKnowledgeQueryRuntime:true,allowKnowledgeToolExecution:true}
+  for(const missing of [null,...Object.keys(complete)]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,businessHandler:(_req,res)=>{res.writeHead(404);res.end()},...complete,...(missing?{[missing]:false}:{})})
+    const {server,base}=await listen(native.handler)
+    try{
+      assert.equal((await request(base,"/api/native-auth/capabilities")).status,401)
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const cookie=login.setCookie.split(";")[0],response=await request(base,"/api/native-auth/capabilities",{cookie,spoofUser:"forged-admin"})
+      assert.equal(response.status,200);assert.equal(response.data.knowledge_tool_runtime_enabled===true,missing===null)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
 test("Native capabilities default to read-only even after login",async()=>{
   const native=createNativeAuthHttpHandler({
     auth:authStub(),allowedOrigin:origin,
@@ -210,6 +224,28 @@ test("Native capabilities default to read-only even after login",async()=>{
     assert.equal(capabilities.data.run_execution_enabled,false)
   }finally{await new Promise(resolve=>server.close(resolve))}
 })
+test("owner-bound Run discovery requires all server grants and never advertises Worker activation",async()=>{
+  for(const [config,run,bound,submitAllowed,boundAllowed] of [
+    [false,true,true,false,false],[true,false,true,false,false],
+    [true,true,false,true,false],[true,true,true,true,true],
+  ]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,
+      allowConfigurationWrites:config,allowRunSubmission:run,allowBoundRunSubmission:bound,
+      businessHandler:(_req,res)=>{res.writeHead(405);res.end()}})
+    const {server,base}=await listen(native.handler)
+    try{
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,
+        originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const response=await request(base,"/api/native-auth/capabilities",{
+        cookie:login.setCookie.split(";")[0],spoofUser:"forged-admin"})
+      assert.equal(response.status,200)
+      assert.equal(response.data.run_submission_enabled,submitAllowed)
+      assert.equal(response.data.bound_model_runs_enabled,boundAllowed)
+      assert.equal(response.data.run_execution_enabled,false)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
 test("native session cookie parser rejects duplicate and malformed tokens",()=>{
   const token=generateOpaqueSession().token
   assert.equal(nativeSessionToken({headers:{cookie:

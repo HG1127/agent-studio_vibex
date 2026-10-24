@@ -8,7 +8,22 @@ export function createNativeAuthHttpHandler(deps:{
   businessHandler:HttpHandler
   allowConfigurationWrites?:boolean
   allowModelProbe?:boolean
+  allowMcpDiscovery?:boolean
+  allowMcpToolExecution?:boolean
+  allowSmitheryManagement?:boolean
+  allowKnowledgeSharing?:boolean
+  allowKnowledgeEmbeddingSettings?:boolean
+  allowKnowledgeEmbeddingConsent?:boolean
+  allowKnowledgeIndexRuntime?:boolean
+  allowKnowledgeQueryRuntime?:boolean
+  allowKnowledgeToolExecution?:boolean
+  allowRunSubmission?:boolean
+  allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean
   allowWorkflowExecution?:boolean
+  allowAutonomousAgentSubmission?:boolean
+  allowWorkflowV2Submission?:boolean
+  allowScheduleRuntime?:boolean
+  allowAgentCollaboration?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}

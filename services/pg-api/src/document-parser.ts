@@ -33,8 +33,8 @@ export function strictBase64Document(input:unknown):Uint8Array {
     throw new HttpError(400,"invalid_document_base64")
   return new Uint8Array(bytes)
 }
-function safeFilename(raw:unknown):{filename:string;kind:"pdf"|"docx"} {
-  if(typeof raw!=="string" || raw.length<5 || raw.length>120 ||
+function safeFilename(raw:unknown,maxLength=120):{filename:string;kind:"pdf"|"docx"} {
+  if(typeof raw!=="string" || raw.length<5 || raw.length>maxLength ||
      raw.startsWith(".") || raw.trim()!==raw ||
      /[/\\]/.test(raw) || hasControl(raw))
     throw new HttpError(400,"invalid_document_filename")
@@ -42,14 +42,14 @@ function safeFilename(raw:unknown):{filename:string;kind:"pdf"|"docx"} {
   if(!extension)throw new HttpError(400,"unsupported_document_format")
   return {filename:raw,kind:extension}
 }
-function boundedText(raw:string):string {
+function boundedText(raw:string,maxCharacters=MAX_TEXT_CHARACTERS):string {
   const text=raw.replace(/\r\n?/g,"\n").trim()
   if(!text)invalid("no_extractable_text_ocr_required")
-  if(Array.from(text).length>MAX_TEXT_CHARACTERS)
+  if(Array.from(text).length>maxCharacters)
     invalid("extracted_text_too_long")
   return text
 }
-async function extractPdf(bytes:Uint8Array):Promise<string> {
+async function extractPdf(bytes:Uint8Array,maxCharacters:number):Promise<string> {
   if(Buffer.from(bytes.subarray(0,5)).toString("ascii")!=="%PDF-")
     invalid("invalid_pdf_header")
   let task:ReturnType<(typeof import("pdfjs-dist/legacy/build/pdf.mjs"))["getDocument"]>|null=null
@@ -77,12 +77,12 @@ async function extractPdf(bytes:Uint8Array):Promise<string> {
       if(text){
         const block="【PDF 第"+n+"页】\n"+text
         total+=Array.from(block).length
-        if(total>MAX_TEXT_CHARACTERS)invalid("extracted_text_too_long")
+        if(total>maxCharacters)invalid("extracted_text_too_long")
         pages.push(block)
       }
       page.cleanup()
     }
-    return boundedText(pages.join("\n\n"))
+    return boundedText(pages.join("\n\n"),maxCharacters)
   } catch(error) {
     if(error instanceof HttpError)throw error
     const msg=error instanceof Error?error.message:""
@@ -92,7 +92,7 @@ async function extractPdf(bytes:Uint8Array):Promise<string> {
     if(task)await task.destroy().catch(()=>undefined)
   }
 }
-async function extractDocx(bytes:Uint8Array):Promise<string> {
+async function extractDocx(bytes:Uint8Array,maxCharacters:number):Promise<string> {
   if(bytes[0]!==0x50 || bytes[1]!==0x4b ||
      ![3,5,7].includes(bytes[2]??0))
     invalid("invalid_docx_header")
@@ -122,21 +122,23 @@ async function extractDocx(bytes:Uint8Array):Promise<string> {
     }
     const mammoth=await import("mammoth")
     const parsed=await mammoth.extractRawText({buffer:Buffer.from(bytes)})
-    return boundedText(parsed.value||"")
+    return boundedText(parsed.value||"",maxCharacters)
   } catch(error){
     if(error instanceof HttpError)throw error
     invalid("docx_text_extraction_failed")
   }
 }
-export async function parseUploadedDocument(raw:unknown):Promise<ParsedDocument> {
+export async function parseUploadedDocument(raw:unknown,profile:"pilot"|"employee"="pilot"):Promise<ParsedDocument> {
+  if(profile!=="pilot"&&profile!=="employee")throw new HttpError(400,"invalid_parser_profile")
   if(!raw || typeof raw!=="object" || Array.isArray(raw))
     throw new HttpError(400,"invalid_document_request")
   const body=raw as Record<string,unknown>
   if(Object.keys(body).some(key=>!["filename","content_base64"].includes(key)))
     throw new HttpError(400,"unknown_request_field")
-  const {filename,kind}=safeFilename(body.filename)
+  const {filename,kind}=safeFilename(body.filename,profile==="employee"?180:120)
   const bytes=strictBase64Document(body.content_base64)
-  const text=kind==="pdf"?await extractPdf(bytes):await extractDocx(bytes)
+  const maxCharacters=profile==="employee"?160000:MAX_TEXT_CHARACTERS
+  const text=kind==="pdf"?await extractPdf(bytes,maxCharacters):await extractDocx(bytes,maxCharacters)
   return {filename,text,mime_type:kind==="pdf"?"application/pdf":
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 }

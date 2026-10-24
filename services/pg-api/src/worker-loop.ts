@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
+import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 // V8 isolated PostgreSQL preparation Worker. Never starts V7 PocketBase or
 // performs model calls, external tool writes, browser navigation or migration.
 import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
@@ -57,7 +59,7 @@ async function main(preflight=false){
     database:config.database,password:config.password,
     max:2,connectionTimeoutMillis:4000,
     idleTimeoutMillis:10000,statement_timeout:9000})
-  const adapter:SqlPool={
+  const adapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),
     async connect():Promise<SqlClient>{
       const c=await pool.connect()
       return {
@@ -75,6 +77,7 @@ async function main(preflight=false){
   try{
     await verifyPgRuntimeTarget(adapter,config)
     await verifyPgWorkerRoleBoundary(adapter,config)
+      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     if(preflight){
       process.stdout.write(JSON.stringify({
         mode:"preflight",worker:"prepare",target:config.database,

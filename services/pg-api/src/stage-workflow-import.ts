@@ -38,6 +38,11 @@ export function normalizeLegacyWorkflow(raw:Record<string,unknown>,owners:Readon
     (_match,quoted:string|undefined)=>quoted??'')!==JSON.stringify(graph))
     fail('workflow_graph_json_not_lossless')
   try {
+    // Archive imports keep their original non-runnable skeleton contract.
+    // V2 resource references require verified current-owner configuration,
+    // not the legacy export's identity mapping or archive provenance.
+    if(!graph||typeof graph!=="object"||Object.hasOwn(graph,"version"))
+      fail('workflow_graph_not_lossless_skeleton')
     if(contentHash(safeWorkflowGraph(graph))!==contentHash(graph))
       fail('workflow_graph_would_change')
   } catch {fail('workflow_graph_not_lossless_skeleton')}

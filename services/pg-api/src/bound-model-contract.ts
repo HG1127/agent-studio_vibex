@@ -3,6 +3,8 @@
 import {safeBoundModelClaim,type BoundModelClaim,type BoundModelDispatchResult}
   from "./owner-model-dispatch.ts"
 import type {ModelInput} from "./model-provider.ts"
+import {safeModelKnowledgeEvidence} from "./knowledge-evidence.ts"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 
 export const boundModelRoute="/__internal/v1/bound-model/dispatch"
 export const boundModelMaxRequestBytes=16384
@@ -27,19 +29,15 @@ export function safeBoundModelRequest(value:unknown):{claim:BoundModelClaim;inpu
   const input=raw as Record<string,unknown>
   const expected=["goal","instruction","taskScope","deliverables","doneCriteria"]
   if(expected.some(k=>!Object.hasOwn(input,k))||
-     Object.keys(input).some(k=>![...expected,"knowledgeEvidence"].includes(k))||
-     !validText(input.goal,2000,1)||!validText(input.instruction,1200)||
-     !validText(input.taskScope,2000)||
-     !boundedStrings(input.deliverables,20,300)||
-     !boundedStrings(input.doneCriteria,20,300))refuse()
-  const evidence=input.knowledgeEvidence
-  if(evidence!==undefined&&(
-    !Array.isArray(evidence)||evidence.length>6||
-    evidence.some(x=>!x||typeof x!=="object"||Array.isArray(x)||
-      Object.keys(x).length!==2||!Object.hasOwn(x,"citation")||
-      !Object.hasOwn(x,"snippet")||!validText(x.citation,160,1)||
-      !validText(x.snippet,320,1))||JSON.stringify(evidence).length>3300))refuse()
-  return {claim,input:input as unknown as ModelInput}
+     Object.keys(input).some(k=>![...expected,"knowledgeEvidence","taskPlan"].includes(k))||
+     !validText(input.goal,roleLimits.goal,1)||!validText(input.instruction,2000)||
+     !validText(input.taskScope,roleLimits.task_scope)||
+     !boundedStrings(input.deliverables,roleLimits.list_items,roleLimits.list_item)||
+     !boundedStrings(input.doneCriteria,roleLimits.list_items,roleLimits.list_item)||
+     input.taskPlan!==undefined&&!boundedStrings(input.taskPlan,roleLimits.list_items,roleLimits.list_item))refuse()
+  let evidence:ReturnType<typeof safeModelKnowledgeEvidence>
+  try{evidence=safeModelKnowledgeEvidence(input.knowledgeEvidence)}catch{refuse()}
+  return {claim,input:{...input,...(evidence===undefined?{}:{knowledgeEvidence:evidence})} as unknown as ModelInput}
 }
 export function safeBoundModelResult(raw:unknown):BoundModelDispatchResult{
   if(!raw||typeof raw!=="object"||Array.isArray(raw))refuse()
