@@ -47,10 +47,10 @@ test("native scheduling installs genuine 044 after043 with private authority/ori
 const node=(id,type,data={})=>({id,type,position:{x:0,y:0},data:{title:id,...data}})
 const edge=(source,target)=>({id:source+"_"+target,source,target})
 const graph=(effect=true)=>({version:2,nodes:[node("start","start"),...(effect?[node("tool","tool",{tool:"calculate",params_template:'{"expression":"2+2"}'})]:[]),node("end","end",{output_template:effect?"{{tool.output}}":"{{start.output}}"})],edges:effect?[edge("start","tool"),edge("tool","end")]:[edge("start","end")]})
-async function activated(f,{effect=true,rule={kind:"interval",interval_minutes:15},maxAuto=10,maxOccurrences=null,runtimeGraph}={}){
+async function activated(f,{effect=true,rule={kind:"interval",interval_minutes:15},maxAuto=10,maxOccurrences=null,runtimeGraph,anchor=new Date().toISOString()}={}){
   const flow=await f.flows.create(f.identity,"Synthetic schedule",runtimeGraph??graph(effect))
   const draft=await f.drafts.create(f.identity,{name:"Synthetic recurrence",kind:"workflow",target_id:flow.id,time_zone:"UTC",rule})
-  const body={expected_revision:draft.revision,expected_target_revision:flow.revision,instruction:"synthetic scheduled instruction",max_steps:1,anchor_at:new Date().toISOString(),expires_at:null,max_occurrences:maxOccurrences,max_auto_effects:maxAuto,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()}
+  const body={expected_revision:draft.revision,expected_target_revision:flow.revision,instruction:"synthetic scheduled instruction",max_steps:1,anchor_at:anchor,expires_at:null,max_occurrences:maxOccurrences,max_auto_effects:maxAuto,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()}
   return {flow,draft,body,activation:await f.schedules.activate(f.identity,draft.id,body)}
 }
 function scheduledWorker(pool,id,options={}){return new WorkflowV2Worker(pool,id,{...options,scheduleExecutionApproved:true})}
@@ -333,5 +333,19 @@ test("a live launch reservation blocks another occurrence before a run exists, a
     assert.equal((await f.dispatcher.tick()).status,"started")
     await f.db.query("UPDATE agentstudio.runs SET status='failed' WHERE id<>$1",[queued.run_id])
     assert.equal((await new ScheduleInventoryRepository(f.pool).occurrences(f.identity,a.draft.id)).some(row=>row.status==="failed"),true)
+  }finally{await f.close()}
+})
+test("interval, daily and weekly plans retain a future effective anchor without dispatching early",async()=>{
+  const f=await scheduleFixture()
+  try{
+    const anchor=new Date(Date.now()+2*86400000).toISOString()
+    for(const rule of [{kind:"interval",interval_minutes:15},{kind:"daily",local_time:"09:00"},{kind:"weekly",local_time:"09:00",weekday:1}]){
+      const a=await activated(f,{effect:false,rule,anchor}),state=await f.schedules.describe(f.identity,a.draft.id)
+      assert.equal(state.execution.anchor_at,anchor)
+      const row=await new ScheduleInventoryRepository(f.pool).get(f.identity,a.draft.id)
+      assert.equal(new Date(row.next_at).getTime()>=Date.parse(anchor),true)
+    }
+    assert.equal((await f.dispatcher.tick()).status,"idle")
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,0)
   }finally{await f.close()}
 })

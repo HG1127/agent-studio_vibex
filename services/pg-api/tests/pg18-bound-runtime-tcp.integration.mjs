@@ -998,6 +998,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const activationBody={expected_revision:scheduled.revision,expected_target_revision:1,instruction:"Synthetic scheduled Agent input",max_steps:autonomous?3:1,anchor_at:new Date().toISOString(),
         expires_at:null,max_occurrences:2,max_auto_effects:50,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()}
       if(!autonomous&&selection==="builtin"){
+        activationBody.anchor_at=new Date(Date.now()+2*86400000).toISOString();activationBody.max_occurrences=3
+      }
+      if(!autonomous&&selection==="builtin"){
         const legacy=await api.createScheduleDraft({name:"Legacy quarantine",kind:"workflow",target_id:selectedFlow.id,time_zone:"UTC",rule:{kind:"interval",interval_minutes:15}})
         await admin.query("UPDATE agentstudio.schedules SET recurrence=jsonb_set(recurrence,'{config_format}','\"legacy_schedule_import_v1\"'::jsonb) WHERE id=$1",[legacy.id])
         await assert.rejects(api.activateSchedule(legacy.id,{...activationBody,expected_revision:legacy.revision,request_id:randomUUID()}),e=>e.status===409)
@@ -1007,13 +1010,35 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         await api.pauseSchedule(legacy.id,legacy.revision)
       }
       const grant=await api.activateSchedule(scheduled.id,activationBody);assert.equal((await api.activateSchedule(scheduled.id,activationBody)).replayed,true)
+      if(!autonomous&&selection==="builtin"){
+        assert.equal((await api.getScheduleExecution(scheduled.id)).execution.anchor_at,activationBody.anchor_at)
+        assert.equal((await new ScheduleRuntimeWorker(workerPool,"schedule-future").tick()).status,"idle")
+      }
       const races=await Promise.allSettled([api.runScheduleNow(scheduled.id,grant.revision),api.runScheduleNow(scheduled.id,grant.revision)])
       assert.equal(races.filter(r=>r.status==="fulfilled").length,1);assert.equal(races.filter(r=>r.status==="rejected"&&r.reason.status===409).length,1)
       const queue=races.find(r=>r.status==="fulfilled").value
-      const launches=await Promise.all([new ScheduleRuntimeWorker(workerPool,"schedule-race-a",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick(),new ScheduleRuntimeWorker(workerPool,"schedule-race-b",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick()])
+      let launches
+      if(!autonomous&&selection==="builtin"){
+        const db=await workerPool.connect();let claim
+        try{
+          await db.query("BEGIN");await db.query("SET LOCAL ROLE agentstudio_worker")
+          const due=(await admin.query("SELECT scheduled_for FROM agentstudio.schedule_occurrences WHERE id=$1",[queue.occurrence_id])).rows[0].scheduled_for
+          claim=(await db.query("SELECT agentstudio.schedule_reserve($1::uuid,$2::bigint,$3::timestamptz,NULL,'schedule-reserved') AS claim",[scheduled.id,grant.revision,due])).rows[0].claim
+          await db.query("COMMIT")
+        }catch(error){await db.query("ROLLBACK");throw error}finally{db.release()}
+        assert.equal(claim.occurrence_id,queue.occurrence_id)
+        await admin.query("UPDATE agentstudio.schedules SET next_at=date_trunc('milliseconds',clock_timestamp())-interval '2 seconds' WHERE id=$1",[scheduled.id])
+        const contenders=await Promise.all([new ScheduleRuntimeWorker(workerPool,"schedule-before-run-a").tick(),new ScheduleRuntimeWorker(workerPool,"schedule-before-run-b").tick()])
+        assert.equal(contenders.filter(r=>r.status==="skipped_overlap").length,1);assert.equal(contenders.some(r=>r.status==="started"),false)
+        assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.runs WHERE id=$1",[queue.run_id])).rows[0].n,0)
+        const reserved=new ScheduleRuntimeWorker(workerPool,"schedule-reserved",{allowMcpExecution:true,allowKnowledgeExecution:true})
+        launches=await Promise.all([reserved.launch(claim),reserved.launch(claim)])
+      }else launches=await Promise.all([new ScheduleRuntimeWorker(workerPool,"schedule-race-a",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick(),new ScheduleRuntimeWorker(workerPool,"schedule-race-b",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick()])
       assert.equal(launches.filter(r=>r.status==="started").length,1);assert.equal(launches.find(r=>r.status==="started").run_id,queue.run_id)
       if(!autonomous&&selection==="builtin"){
-        await admin.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-interval '1 second' WHERE id=$1",[scheduled.id])
+        // Native recurrence instants are ISO milliseconds; avoid injecting a
+        // sub-millisecond SQL clock value that the JS driver cannot retain.
+        await admin.query("UPDATE agentstudio.schedules SET next_at=date_trunc('milliseconds',clock_timestamp())-interval '1 second' WHERE id=$1",[scheduled.id])
         assert.equal((await new ScheduleRuntimeWorker(workerPool,"schedule-overlap").tick()).status,"skipped_overlap")
         const history=await api.listScheduleOccurrences(scheduled.id)
         assert.equal(history.some(row=>row.status==="skipped_overlap"&&row.error_code==="previous_run_incomplete"&&row.run_id===null),true)
