@@ -1,0 +1,153 @@
+-- DRAFT foundation: not in the fresh source sequence and no046 receipt yet.
+-- Mutation functions, provenance, privilege audit and UI must be completed
+-- before this file can become a reviewed migration. No service is enabled.
+\set ON_ERROR_STOP on
+BEGIN;
+SET LOCAL lock_timeout='5s';
+SET LOCAL statement_timeout='45s';
+DO $preflight$ BEGIN
+  IF NOT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_045') OR
+    EXISTS(SELECT 1 FROM pg_roles WHERE rolname='agentstudio_releases') THEN
+    RAISE EXCEPTION 'agent_releases_require_reviewed_045_and_new_role'; END IF;
+END $preflight$;
+CREATE ROLE agentstudio_releases NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION;
+GRANT USAGE ON SCHEMA agentstudio,agentstudio_auth TO agentstudio_releases;
+GRANT EXECUTE ON FUNCTION agentstudio.actor_id() TO agentstudio_releases;
+CREATE FUNCTION agentstudio.release_utf16_length(p_text text) RETURNS integer
+LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT coalesce(sum(CASE WHEN ascii(c)>65535 THEN 2 ELSE 1 END),0)::integer FROM regexp_split_to_table(p_text,'')c WHERE c<>''
+$fn$;
+CREATE TABLE agentstudio.agent_release_heads(
+  spec_id uuid PRIMARY KEY,owner_user_id uuid NOT NULL,
+  next_version_no bigint NOT NULL DEFAULT 1 CHECK(next_version_no BETWEEN 1 AND 9007199254740991),
+  revision bigint NOT NULL DEFAULT 1 CHECK(revision BETWEEN 1 AND 9007199254740991),
+  active_version_id uuid,updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  FOREIGN KEY(spec_id,owner_user_id) REFERENCES agentstudio.agent_specs(id,owner_user_id)
+);
+CREATE TABLE agentstudio.agent_release_versions(
+  id uuid PRIMARY KEY,owner_user_id uuid NOT NULL,spec_id uuid NOT NULL,
+  version_no bigint NOT NULL CHECK(version_no BETWEEN 1 AND 9007199254740990),
+  spec_revision bigint NOT NULL CHECK(spec_revision BETWEEN 1 AND 9007199254740990),
+  source_sha256 text NOT NULL CHECK(source_sha256~'^[a-f0-9]{64}$'),
+  name_snapshot text NOT NULL CHECK(btrim(name_snapshot)<>'' AND agentstudio.release_utf16_length(name_snapshot)<=120),
+  spec_snapshot jsonb NOT NULL CHECK(octet_length(spec_snapshot::text)<=524288),
+  note text NOT NULL CHECK(agentstudio.release_utf16_length(note)<=500),
+  test_run_id uuid,test_passed boolean NOT NULL DEFAULT false,test_model_binding jsonb,
+  status text NOT NULL DEFAULT 'draft' CHECK(status IN('draft','published','archived','deleted')),
+  revision bigint NOT NULL DEFAULT 1 CHECK(revision BETWEEN 1 AND 9007199254740991),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),published_at timestamptz,deleted_at timestamptz,
+  UNIQUE(id,spec_id,owner_user_id),UNIQUE(spec_id,version_no),
+  FOREIGN KEY(spec_id,owner_user_id) REFERENCES agentstudio.agent_specs(id,owner_user_id),
+  FOREIGN KEY(test_run_id,owner_user_id) REFERENCES agentstudio.runs(id,owner_user_id),
+  CHECK(NOT test_passed OR test_run_id IS NOT NULL),
+  CHECK((status IN('published','archived'))=(published_at IS NOT NULL)),CHECK((status='deleted')=(deleted_at IS NOT NULL)),
+  CHECK(coalesce(jsonb_typeof(spec_snapshot)='object' AND spec_snapshot->'require_approval'='true'::jsonb AND jsonb_typeof(spec_snapshot->'goal')='string' AND
+    spec_snapshot-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria','tools','http_tools','mcp_tools','knowledge_base_ids','knowledge_retrieval','model_binding','require_approval']='{}'::jsonb,false)),
+  CHECK(test_model_binding IS NULL OR coalesce(jsonb_typeof(test_model_binding)='object' AND
+    test_model_binding-ARRAY['connection_id','connection_revision','model_id']='{}'::jsonb AND
+    jsonb_typeof(test_model_binding->'connection_id')='string' AND (test_model_binding->>'connection_id')~*'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' AND
+    jsonb_typeof(test_model_binding->'connection_revision')='number' AND (test_model_binding->>'connection_revision')~'^[1-9][0-9]{0,15}$' AND
+    (test_model_binding->>'connection_revision')::numeric<9007199254740991 AND jsonb_typeof(test_model_binding->'model_id')='string' AND
+    (test_model_binding->>'model_id')~'^[A-Za-z0-9._:/-]{1,120}$',false))
+);
+CREATE UNIQUE INDEX ux_agent_release_published ON agentstudio.agent_release_versions(spec_id) WHERE status='published';
+ALTER TABLE agentstudio.agent_release_heads ADD CONSTRAINT fk_agent_release_active FOREIGN KEY(active_version_id,spec_id,owner_user_id)
+  REFERENCES agentstudio.agent_release_versions(id,spec_id,owner_user_id) DEFERRABLE INITIALLY DEFERRED;
+CREATE TABLE agentstudio.agent_release_acceptance_runs(
+  run_id uuid PRIMARY KEY,owner_user_id uuid NOT NULL,spec_id uuid NOT NULL,request_id uuid NOT NULL,
+  spec_revision bigint NOT NULL CHECK(spec_revision BETWEEN 1 AND 9007199254740990),
+  source_sha256 text NOT NULL CHECK(source_sha256~'^[a-f0-9]{64}$'),
+  instruction_sha256 text NOT NULL CHECK(instruction_sha256~'^[a-f0-9]{64}$'),
+  max_steps integer NOT NULL CHECK(max_steps BETWEEN 1 AND 30),selected_model_binding jsonb NOT NULL CHECK(jsonb_typeof(selected_model_binding)='object'),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),UNIQUE(owner_user_id,request_id),
+  FOREIGN KEY(run_id,owner_user_id) REFERENCES agentstudio.runs(id,owner_user_id),
+  FOREIGN KEY(spec_id,owner_user_id) REFERENCES agentstudio.agent_specs(id,owner_user_id)
+);
+CREATE TABLE agentstudio.agent_release_receipts(
+  actor_user_id uuid NOT NULL REFERENCES agentstudio.users(id),request_id uuid NOT NULL,spec_id uuid NOT NULL,
+  action text NOT NULL CHECK(action IN('snapshot','publish','restore','delete_draft','acceptance')),
+  request_sha256 text NOT NULL CHECK(request_sha256~'^[a-f0-9]{64}$'),input_sha256 text NOT NULL CHECK(input_sha256~'^[a-f0-9]{64}$'),
+  result jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(actor_user_id,request_id)
+);
+DO $tables$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['agent_release_heads','agent_release_versions','agent_release_acceptance_runs','agent_release_receipts'] LOOP
+    EXECUTE 'REVOKE ALL ON agentstudio.'||t||' FROM PUBLIC,agentstudio_api,agentstudio_worker,agentstudio_model_broker,agentstudio_bound_dispatch,agentstudio_native_auth';
+    EXECUTE 'ALTER TABLE agentstudio.'||t||' ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'ALTER TABLE agentstudio.'||t||' FORCE ROW LEVEL SECURITY';
+    EXECUTE 'GRANT SELECT ON agentstudio.'||t||' TO agentstudio_releases';
+    EXECUTE 'CREATE POLICY release_private ON agentstudio.'||t||' TO agentstudio_releases USING(true) WITH CHECK(true)';
+  END LOOP;
+END $tables$;
+GRANT SELECT(id,owner_user_id,name,spec,revision) ON agentstudio.agent_specs TO agentstudio_releases;
+GRANT SELECT(id,status,external_issuer,external_subject) ON agentstudio.users TO agentstudio_releases;
+GRANT SELECT(user_id,enabled) ON agentstudio_auth.accounts TO agentstudio_releases;
+CREATE POLICY release_specs ON agentstudio.agent_specs TO agentstudio_releases USING(true);
+CREATE POLICY release_users ON agentstudio.users TO agentstudio_releases USING(true);
+CREATE POLICY release_accounts ON agentstudio_auth.accounts TO agentstudio_releases USING(true);
+CREATE FUNCTION agentstudio.release_native_active(p_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT EXISTS(SELECT 1 FROM agentstudio.users u JOIN agentstudio_auth.accounts a ON a.user_id=u.id
+    WHERE u.id=p_user AND u.status='active' AND u.external_issuer='urn:agentstudio:local:v1' AND a.enabled)
+$fn$;
+CREATE FUNCTION agentstudio.release_source_sha(p_spec uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT encode(sha256(convert_to(jsonb_build_object('id',id,'owner',owner_user_id,'name',name,'revision',revision,'spec',spec)::text,'UTF8')),'hex')
+  FROM agentstudio.agent_specs WHERE id=p_spec
+$fn$;
+CREATE FUNCTION agentstudio.release_version_sha(p_version uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT encode(sha256(convert_to(jsonb_build_object('id',id,'owner',owner_user_id,'spec_id',spec_id,'version_no',version_no,'spec_revision',spec_revision,
+    'source_sha256',source_sha256,'name',name_snapshot,'spec',spec_snapshot,'note',note,'test_run_id',test_run_id,'test_passed',test_passed,'test_model_binding',test_model_binding,
+    'created_epoch',extract(epoch FROM created_at))::text,'UTF8')),'hex') FROM agentstudio.agent_release_versions WHERE id=p_version
+$fn$;
+CREATE FUNCTION agentstudio.release_version_immutable() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE actor uuid=agentstudio.actor_id(); mutable text[]=ARRAY['status','revision','updated_at','published_at','deleted_at'];
+BEGIN
+  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'agent_release_version_retained'; END IF;
+  IF to_jsonb(NEW)-mutable IS DISTINCT FROM to_jsonb(OLD)-mutable THEN RAISE EXCEPTION 'agent_release_snapshot_immutable'; END IF;
+  IF to_jsonb(NEW)=to_jsonb(OLD) THEN RETURN NEW; END IF;
+  IF actor IS DISTINCT FROM OLD.owner_user_id OR NOT agentstudio.release_native_active(actor) OR NEW.revision<>OLD.revision+1 OR NOT
+    (OLD.status='draft' AND NEW.status IN('published','deleted') OR OLD.status='published' AND NEW.status='archived' OR OLD.status='archived' AND NEW.status='published') THEN
+    RAISE EXCEPTION 'agent_release_unsafe_status_change'; END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER native_agent_release_immutable BEFORE UPDATE OR DELETE ON agentstudio.agent_release_versions FOR EACH ROW EXECUTE FUNCTION agentstudio.release_version_immutable();
+CREATE FUNCTION agentstudio.agent_release_workspace(p_spec uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE actor uuid=agentstudio.actor_id(); s record; h record;
+BEGIN
+  IF actor IS NULL OR NOT agentstudio.release_native_active(actor) THEN RETURN NULL; END IF;
+  SELECT id,name,revision INTO s FROM agentstudio.agent_specs WHERE id=p_spec AND owner_user_id=actor;
+  IF s.id IS NULL THEN RETURN NULL; END IF;
+  SELECT revision,next_version_no,active_version_id INTO h FROM agentstudio.agent_release_heads WHERE spec_id=p_spec AND owner_user_id=actor;
+  RETURN jsonb_build_object('spec_id',s.id,'name',s.name,'spec_revision',s.revision,'source_sha256',agentstudio.release_source_sha(p_spec),
+    'release_revision',coalesce(h.revision,1),'next_version_no',coalesce(h.next_version_no,1),'active_version_id',h.active_version_id,
+    'versions',coalesce((SELECT jsonb_agg(v.value ORDER BY v.version_no DESC) FROM (SELECT version_no,jsonb_build_object('id',id,'version_no',version_no,'spec_revision',spec_revision,
+      'source_sha256',source_sha256,'version_sha256',agentstudio.release_version_sha(id),'name',name_snapshot,'note',note,'test_run_id',test_run_id,'test_passed',test_passed,
+      'status',status,'revision',revision,'created_at',created_at,'published_at',published_at) AS value FROM agentstudio.agent_release_versions
+      WHERE spec_id=p_spec AND owner_user_id=actor AND status<>'deleted' ORDER BY version_no DESC LIMIT 100)v),'[]'::jsonb));
+END $fn$;
+CREATE FUNCTION agentstudio.agent_release_detail(p_spec uuid,p_version uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT jsonb_build_object('id',v.id,'spec_id',v.spec_id,'version_no',v.version_no,'spec_revision',v.spec_revision,'source_sha256',v.source_sha256,
+    'version_sha256',agentstudio.release_version_sha(v.id),'name',v.name_snapshot,'spec_snapshot',v.spec_snapshot,'note',v.note,'test_run_id',v.test_run_id,
+    'test_passed',v.test_passed,'test_model_binding',v.test_model_binding,'status',v.status,'revision',v.revision,'created_at',v.created_at,'published_at',v.published_at)
+  FROM agentstudio.agent_release_versions v JOIN agentstudio.agent_specs s ON s.id=v.spec_id AND s.owner_user_id=v.owner_user_id
+  WHERE v.id=p_version AND v.spec_id=p_spec AND v.owner_user_id=agentstudio.actor_id() AND v.status<>'deleted' AND agentstudio.release_native_active(v.owner_user_id)
+$fn$;
+CREATE FUNCTION agentstudio.agent_release_receipt(p_spec uuid,p_request uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT jsonb_build_object('request_sha256',request_sha256,'result',result||jsonb_build_object('replayed',true)) FROM agentstudio.agent_release_receipts
+  WHERE actor_user_id=agentstudio.actor_id() AND request_id=p_request AND spec_id=p_spec AND agentstudio.release_native_active(actor_user_id)
+$fn$;
+DO $functions$ DECLARE signature text; BEGIN
+  FOREACH signature IN ARRAY ARRAY['release_utf16_length(text)','release_native_active(uuid)','release_source_sha(uuid)','release_version_sha(uuid)',
+    'release_version_immutable()','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)'] LOOP
+    EXECUTE 'ALTER FUNCTION agentstudio.'||signature||' OWNER TO agentstudio_releases';
+    EXECUTE 'REVOKE ALL ON FUNCTION agentstudio.'||signature||' FROM PUBLIC,agentstudio_api,agentstudio_worker,agentstudio_model_broker,agentstudio_bound_dispatch,agentstudio_native_auth';
+  END LOOP;
+END $functions$;
+GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.agent_release_detail(uuid,uuid),agentstudio.agent_release_receipt(uuid,uuid) TO agentstudio_api;
+-- Intentionally no pg_v9_046 receipt or mutation grant in this draft.
+COMMIT;

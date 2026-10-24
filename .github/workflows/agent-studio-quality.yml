@@ -798,3 +798,4 @@ jobs:
           pnpm --dir services/pg-api test:workflow-v2-runtime
           pnpm --dir services/pg-api test:schedule-runtime
           pnpm --dir services/pg-api test:agent-collaboration
+          pnpm --dir services/pg-api test:agent-releases
