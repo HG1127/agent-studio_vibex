@@ -933,12 +933,16 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}}))
     for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp","keyword"]){
     const custom=selection==="http",useMcp=selection==="mcp",keyword=selection==="keyword"
-    let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0
+    let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0,thirtyRounds=false
     const selectedRole=keyword?keywordRole:useMcp?mcpRole:custom?httpRole:role
     const selectedFlow=selection!=="builtin"?await api.createWorkflowGraph("CI "+selection+" Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
       {...node,data:{...node.data,agent_binding:{spec_id:selectedRole.id,spec_revision:selectedRole.revision}}}:node)}):agentFlow
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
       const context=JSON.parse(prompt)
+      if(thirtyRounds){
+        assert.equal(context.max_rounds,30)
+        return context.round===30?'{"action":"answer","answer":"Synthetic thirty-round result"}':'{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}'
+      }
       if(custom){assert.equal(prompt.includes(toolSecret),false);assert.equal(prompt.includes(tool.id),false)}
       if(useMcp)for(const privateValue of [discovered.id,mcpInput.url,"SyntheticMcpHeaderNeverSent012345",managed.id,managedMetadata.url,smitherySecret])assert.equal(prompt.includes(privateValue),false)
       if(keyword&&context.round===1)return '{"action":"tool","tool":"knowledge_search","params":{"query":"cedar"}}'
@@ -1060,6 +1064,30 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_origins WHERE run_id=$1",[queue.run_id])).rows[0].n,1)
       await api.pauseSchedule(scheduled.id,grant.revision)
       assert.equal((await get(queue.run_id)).run.result_text,"Synthetic Agent result 4")
+      if(selection==="builtin"){
+        thirtyRounds=true;agentCalls=0
+        const graph30={...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?{...node,data:{...node.data,max_steps:30}}:node)}
+        const flow30=autonomous?null:await api.createWorkflowGraph("Thirty round PG18 Workflow",graph30)
+        const long=autonomous?await api.submitAutonomousAgentRun(selectedRole.id,1,"Synthetic thirty rounds","ci-thirty-round-native-agent",30):
+          await api.submitWorkflowV2Run(flow30.id,flow30.revision,"Synthetic thirty rounds","ci-thirty-round-workflow-agent")
+        let decisions=0
+        for(let i=0;i<180;i++){
+          await new WorkflowV2Worker(workerPool,"ci-thirty-"+i,{agentExecutionApproved:true,executor,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}).tick()
+          const current=await get(long.run.id)
+          if(current.run.status==="succeeded")break
+          assert.equal(["failed","paused","cancelled"].includes(current.run.status),false)
+          if(current.run.status==="awaiting_approval"){
+            decisions++
+            if(autonomous)await api.decideAutonomousAgentNode(long.run.id,"approved",current.pending_effect.step_key,current.pending_effect.input_sha256)
+            else await api.decideWorkflowV2Node(long.run.id,"approved",current.pending_effect.step_key,current.pending_effect.input_sha256)
+          }
+        }
+        const done30=await get(long.run.id)
+        assert.equal(done30.run.status,"succeeded");assert.equal(done30.run.result_text,"Synthetic thirty-round result")
+        assert.equal(agentCalls,30);assert.equal(decisions,60);assert.equal(done30.steps.some(step=>step.metadata.agent_round===30),true)
+        const paid=(await admin.query("SELECT count(*)::int AS n,bool_and(status='succeeded') AS settled FROM agentstudio.external_effects WHERE run_id=$1",[long.run.id])).rows[0]
+        assert.equal(paid.n,119);assert.equal(paid.settled,true)
+      }
     },{handlerFactory:handlers})
     }
     const rotated=await api.saveSmitheryKey(smitherySecret+"rotated",1,randomUUID())

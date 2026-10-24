@@ -41,7 +41,7 @@ AS $identity$
     AND r.checkpoint->'agent_state'->>'parent_step_key'=in_parent_key
     AND r.checkpoint->'agent_state'->>'snapshot_sha256' ~ '^[a-f0-9]{64}$'
     AND in_parent_key='wf2_00002_agent'
-    AND in_step_key ~ ('^'||in_parent_key||'_a0[1-5]m$') AND in_input_sha256 ~ '^[a-f0-9]{64}$'
+    AND in_step_key ~ ('^'||in_parent_key||'_a(0[1-9]|[12][0-9]|30)m$') AND in_input_sha256 ~ '^[a-f0-9]{64}$'
     AND r.checkpoint->'agent_dispatch'->>'step_key'=in_step_key AND r.checkpoint->'agent_dispatch'->>'kind'='model'
     AND r.checkpoint->'agent_dispatch'->>'input_sha256'=in_input_sha256
     AND r.checkpoint->'agent_dispatch'->>'parent_step_key'=in_parent_key
@@ -96,7 +96,7 @@ AS $identity$
     AND r.checkpoint->'agent_state'->>'parent_step_key'=in_parent_key
     AND r.checkpoint->'agent_state'->>'snapshot_sha256' ~ '^[a-f0-9]{64}$'
     AND in_parent_key='wf2_00002_agent'
-    AND in_step_key ~ ('^'||in_parent_key||'_a0[1-5]t$') AND in_input_sha256 ~ '^[a-f0-9]{64}$'
+    AND in_step_key ~ ('^'||in_parent_key||'_a(0[1-9]|[12][0-9]|30)t$') AND in_input_sha256 ~ '^[a-f0-9]{64}$'
     AND r.checkpoint->'agent_dispatch'->>'step_key'=in_step_key AND r.checkpoint->'agent_dispatch'->>'kind'='tool'
     AND r.checkpoint->'agent_dispatch'->>'input_sha256'=in_input_sha256
     AND r.checkpoint->'agent_dispatch'->>'parent_step_key'=in_parent_key

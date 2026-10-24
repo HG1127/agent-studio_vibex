@@ -17,14 +17,15 @@ import {KnowledgeQueryRepository} from "../src/knowledge-query-repository.ts"
 // Real run preparation, employee decisions, Worker claims and Broker fence.
 // Only the eventual paid provider is synthetic. Hold the tool before dispatch
 // so the query Worker can observe actual originating lease/approval changes.
-async function heldKnowledgeTool(f,{agent=false,autonomous=false}={}){
+async function heldKnowledgeTool(f,{agent=false,autonomous=false,round=1}={}){
   const identity=agent?alice:bob,owner=f.users[agent?"alice":"bob"]
   let runs=f.runs,queued
-  const data=agent?{title:"Role",agent_binding:{spec_id:f.resources.alice.spec.id,spec_revision:f.resources.alice.spec.revision},max_steps:2}:
+  const maxSteps=Math.max(2,round)
+  const data=agent?{title:"Role",agent_binding:{spec_id:f.resources.alice.spec.id,spec_revision:f.resources.alice.spec.revision},max_steps:maxSteps}:
     {title:"Search",tool:"knowledge_search",knowledge_base_ids:[f.base],params_template:'{"query":"different wording"}'}
   if(autonomous){
     runs=new AutonomousAgentRunRepository(f.pool)
-    queued=await runs.submit(identity,f.resources.alice.spec.id,{expected_revision:f.resources.alice.spec.revision,max_steps:2,idempotency_key:randomUUID(),instruction:"synthetic task"})
+    queued=await runs.submit(identity,f.resources.alice.spec.id,{expected_revision:f.resources.alice.spec.revision,max_steps:maxSteps,idempotency_key:randomUUID(),instruction:"synthetic task"})
   }else{
     const flow=await f.flows.create(identity,"Synthetic knowledge source",{version:2,nodes:[
       {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
@@ -39,10 +40,12 @@ async function heldKnowledgeTool(f,{agent=false,autonomous=false}={}){
   const ready=new Promise(resolve=>{enter=resolve}),result=new Promise(resolve=>{release=resolve})
   const worker=new WorkflowV2Worker(f.pool,"synthetic-source-worker",{executionMode:autonomous?"agent_native_v2":"workflow_native_v2",agentExecutionApproved:true,
     executor:{supports:()=>true,execute(request,lease){
-      if(request.kind==="model")return Promise.resolve('{"action":"tool","tool":"knowledge_search","params":{"query":"different wording"}}')
+      if(request.kind==="model")return Promise.resolve(JSON.parse(request.input).round<round?
+        '{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}':'{"action":"tool","tool":"knowledge_search","params":{"query":"different wording"}}')
+      if(request.agent_context?.round<round)return Promise.resolve("4")
       enter({request,lease});return result
     }}})
-  for(let i=0;i<12;i++){
+  for(let i=0;i<12+4*(round-1);i++){
     running=worker.tick()
     const step=await Promise.race([ready.then(value=>({held:value})),running.then(()=>({held:null}))])
     if(step.held){
@@ -64,6 +67,18 @@ async function heldKnowledgeTool(f,{agent=false,autonomous=false}={}){
   }
   throw Error("source tool did not reach an approved dispatch")
 }
+for(const autonomous of [false,true])test("late thirtieth-round knowledge source retains owner, approved lease and paid-query replay fencing: "+(autonomous?"autonomous":"workflow"),async()=>{
+  const f=await knowledgeQueryFixture({executionSource:true});let held
+  try{
+    held=await heldKnowledgeTool(f,{agent:true,autonomous,round:30})
+    assert.equal(held.wire.step_key.endsWith("_a30t"),true)
+    await assert.rejects(f.queries.submitExecution(bob,held.q,held.wire),e=>e.status===409)
+    assert.equal((await f.queries.submitExecution(alice,held.q,held.wire)).item.status,"prepared")
+    assert.equal((await f.queryWorker().tick()).status,"retrieved");assert.equal(f.queryCalls.length,1)
+    assert.equal((await f.queries.submitExecution(alice,held.q,held.wire)).replayed,true)
+    assert.equal((await f.queryWorker().tick()).status,"idle");assert.equal(f.queryCalls.length,1)
+  }finally{if(held)await held.finish();await f.close()}
+})
 
 test("execution queries require a real approved tool; logical-step identity survives Worker replacement without paid replay",async()=>{
   const f=await knowledgeQueryFixture({executionSource:true});let held

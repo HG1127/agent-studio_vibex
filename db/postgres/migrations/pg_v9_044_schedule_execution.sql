@@ -164,7 +164,7 @@ BEGIN
   IF jsonb_typeof(p_execution) IS DISTINCT FROM 'object' OR NOT p_execution ?& ARRAY['instruction','target_revision','max_steps','anchor_at','expires_at','max_occurrences','max_auto_effects','allow_paid_knowledge','background_ack','knowledge_charge_ack'] OR
     (SELECT count(*) FROM jsonb_object_keys(p_execution))<>10 OR jsonb_typeof(p_execution->'instruction') IS DISTINCT FROM 'string' OR
     jsonb_typeof(p_execution->'allow_paid_knowledge') IS DISTINCT FROM 'boolean' OR coalesce(p_execution->>'background_ack','')<>'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1' OR
-    coalesce(p_execution->>'target_revision','')!~'^[1-9][0-9]{0,15}$' OR coalesce(p_execution->>'max_steps','')!~'^[1-5]$' OR
+    coalesce(p_execution->>'target_revision','')!~'^[1-9][0-9]{0,15}$' OR coalesce(p_execution->>'max_steps','')!~'^([1-9]|[12][0-9]|30)$' OR
     coalesce(p_execution->>'max_auto_effects','')!~'^[1-9][0-9]{0,4}$' OR jsonb_typeof(p_execution->'anchor_at') IS DISTINCT FROM 'string' OR
     jsonb_typeof(p_execution->'target_revision') IS DISTINCT FROM 'number' OR jsonb_typeof(p_execution->'max_steps') IS DISTINCT FROM 'number' OR
     jsonb_typeof(p_execution->'max_auto_effects') IS DISTINCT FROM 'number' OR jsonb_typeof(p_execution->'expires_at') NOT IN('null','string') OR
@@ -180,7 +180,7 @@ BEGIN
   IF s.revision<>p_revision OR p_next IS NULL OR p_next<clock_timestamp()-interval '90 seconds' OR p_next>clock_timestamp()+interval '367 days' OR
     jsonb_typeof(p_execution)<>'object' OR p_execution->>'background_ack'<>'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1' OR
     length(p_execution->>'instruction') NOT BETWEEN 1 AND 1200 OR (p_execution->>'max_auto_effects')::integer NOT BETWEEN 1 AND 10000 OR
-    (p_execution->>'max_steps')::integer NOT BETWEEN 1 AND 5 OR (p_execution->>'target_revision')::bigint<1 OR
+    (p_execution->>'max_steps')::integer NOT BETWEEN 1 AND 30 OR (p_execution->>'target_revision')::bigint<1 OR
     p_execution->>'allow_paid_knowledge' NOT IN('true','false') OR
     (p_execution->>'allow_paid_knowledge'='true' AND p_execution->>'knowledge_charge_ack' IS DISTINCT FROM 'AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1') OR
     p_resource_sha IS DISTINCT FROM agentstudio.schedule_resource_sha(s.id) OR

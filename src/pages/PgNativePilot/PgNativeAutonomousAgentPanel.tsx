@@ -48,7 +48,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
     {view.notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{view.notice}</p>}
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="flex items-center gap-2 font-semibold"><Play size={18} aria-hidden="true"/>新建多轮任务</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-500">Agent 可根据工具结果继续规划，最多进行五轮模型调用。每个步骤都需要你核对并批准。</p>
+      <p className="mt-2 text-sm leading-6 text-slate-500">Agent 可根据工具结果继续规划，最多进行 30 轮模型调用。每个步骤都需要你核对并批准。</p>
       <button type="button" className={autonomousSecondary} disabled={!active||locked||mcps.loading} onClick={()=>void mcps.load()}>读取本人 MCP 连接核对运行权限</button>
       {mcps.error&&<p role="alert" className="text-sm text-rose-800">{mcps.error}</p>}
       {!mcpEnabled&&agents.some(agent=>agent.spec.mcp_tools?.length)&&<p className="mt-2 text-sm text-amber-900">当前环境未开放 MCP 调用；已绑定 MCP 的角色暂不能提交或批准新步骤。</p>}
@@ -58,17 +58,17 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
         <fieldset disabled={!enabled||locked} className="space-y-3">
           <legend className="sr-only">新建多轮任务字段</legend>
           <label className="block text-sm font-medium">多轮 Agent 角色
-            <select required aria-label="多轮 Agent 角色" className={field} value={agentId} onChange={event=>setAgentId(event.target.value)}>
+            <select required aria-label="多轮 Agent 角色" className={field} value={view.pendingSubmit?.agentId??agentId} onChange={event=>setAgentId(event.target.value)}>
               <option value="">请选择</option>{eligible.map(agent=><option key={agent.id} value={agent.id}>{agent.name} · {agent.spec.model_binding?.model_id}</option>)}
             </select>
           </label>
           <label className="block text-sm font-medium">多轮任务要求
-            <textarea required aria-label="多轮任务要求" rows={4} maxLength={1200} className={field} value={instruction}
+            <textarea required aria-label="多轮任务要求" rows={4} maxLength={1200} className={field} value={view.pendingSubmit?.instruction??instruction}
               onChange={event=>setInstruction(event.target.value)} placeholder="描述任务、期望结果及需要遵守的边界"/>
           </label>
           <label className="block text-sm font-medium">最多规划轮数
-            <select aria-label="最多规划轮数" className={field} value={maxSteps} onChange={event=>setMaxSteps(Number(event.target.value))}>
-              {[1,2,3,4,5].map(round=><option key={round} value={round}>{round} 轮</option>)}
+            <select aria-label="最多规划轮数" className={field} value={view.pendingSubmit?.maxSteps??maxSteps} onChange={event=>setMaxSteps(Number(event.target.value))}>
+              {Array.from({length:30},(_,index)=>index+1).map(round=><option key={round} value={round}>{round} 轮</option>)}
             </select>
           </label>
         </fieldset>

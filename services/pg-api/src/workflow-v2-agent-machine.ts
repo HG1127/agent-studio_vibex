@@ -42,7 +42,7 @@ function checked(raw:unknown,parent:WorkflowEffectRequest):WorkflowAgentState{
   if(Object.keys(value).length!==names.length||names.some(key=>!Object.hasOwn(value,key))||value.format!=="workflow_agent_v2"||
      parent.kind!=="agent"||!parent.configuration.agent_binding||value.parent_step_key!==parent.step_key||value.parent_input_sha256!==parent.input_sha256||
      !isUuid(value.spec_id)||value.spec_id!==parent.configuration.agent_binding.spec_id||value.spec_revision!==parent.configuration.agent_binding.spec_revision||
-     !Array.isArray(value.results)||value.results.length>10||Buffer.byteLength(JSON.stringify(raw),"utf8")>393216)invalid()
+     !Array.isArray(value.results)||value.results.length>60||Buffer.byteLength(JSON.stringify(raw),"utf8")>4194304)invalid()
   const spec=workflowAgentSpec(value.spec)
   let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,value.mcp_tool_definitions)}catch{invalid()}
   if(!mcp.length&&Object.hasOwn(value,"mcp_tool_definitions"))invalid()
@@ -80,7 +80,7 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
   const state=checked(raw,parent),binding=parent.configuration.model_binding??state.spec.model_binding
   if(!binding)invalid()
   const max=parent.configuration.max_steps??3
-  if(!Number.isSafeInteger(max)||max<1||max>5)invalid()
+  if(!Number.isSafeInteger(max)||max<1||max>30)invalid()
   let consumed=0
   const history:{action:unknown;observation:string}[]=[]
   const terminal=(status:WorkflowAgentView["status"],round:number,output="",error_code=""):WorkflowAgentView=>{

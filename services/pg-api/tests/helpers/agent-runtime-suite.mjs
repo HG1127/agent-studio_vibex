@@ -9,6 +9,31 @@ export function registerAgentRuntimeTests(autonomous=false){
 const agentFixture=()=>fixture({autonomous})
 const test=(name,fn)=>baseTest((autonomous?"Autonomous: ":"Workflow: ")+name,fn)
 const longNode=autonomous?"agent":"a".repeat(80)
+test("thirty owner-selected rounds survive every Worker replacement over private mTLS and retain late-round fencing",async()=>{
+  const f=await agentFixture();let calls=0,decisions=0,lateFence=false
+  try{
+    await assert.rejects(f.make({maxSteps:31}))
+    const queued=await f.make({maxSteps:30})
+    await f.privateTls(async(_material,prompt)=>{
+      calls++;const input=JSON.parse(prompt);assert.equal(input.max_rounds,30)
+      return input.round===30?answer("Thirty round result"):tool("2+2")
+    },async(makeWorker,{modelIdentity})=>{
+      f.setBeforeDispatch(async(request,kind)=>{
+        if(kind!=="model"||!request.step_key.endsWith("_a30m"))return
+        lateFence=true;assert.deepEqual(await modelIdentity.resolve(request),alice)
+        await assert.rejects(modelIdentity.resolve({...request,input_sha256:"f".repeat(64)}))
+      })
+      const done=await f.drive(makeWorker,queued.run.id,()=>{decisions++;return "approved"},180)
+      assert.equal(done.run.status,"succeeded",JSON.stringify({error:done.run.last_error_code,calls,steps:done.steps.map(s=>({key:s.step_key,status:s.status}))}));assert.equal(done.run.result_text,"Thirty round result")
+      assert.equal(calls,30);assert.equal(decisions,60);assert.equal(lateFence,true)
+      assert.equal(done.steps.some(step=>step.metadata.agent_round===30&&step.metadata.agent_phase==="model"),true)
+      assert.equal((await makeWorker().tick()).status,"idle");assert.equal(calls,30)
+      assert.equal(JSON.stringify(done).includes("ROLE_PRIVATE"),false)
+    })
+    const ledger=(await f.db.query("SELECT count(*)::int AS n,bool_and(status='succeeded') AS settled FROM agentstudio.external_effects WHERE run_id=$1",[queued.run.id])).rows[0]
+    assert.equal(ledger.n,119);assert.equal(ledger.settled,true)
+  }finally{await f.close()}
+})
 test("Agent resumes model/tool/model over real mTLS after every new Worker, preserves scope and bounded public history",async()=>{
   const f=await agentFixture();let calls=0,decisions=0
   try{

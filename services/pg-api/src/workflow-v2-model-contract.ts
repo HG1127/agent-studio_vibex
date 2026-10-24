@@ -21,7 +21,7 @@ export function safeWorkflowV2ModelRequest(raw:unknown):WorkflowV2ModelRequest{
      !["claim","step_key","input_sha256"].every(k=>Object.hasOwn(value,k))||
      typeof value.step_key!=="string"||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(value.step_key)||
      parent!==undefined&&(typeof parent!=="string"||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(parent)||
-       !new RegExp("^"+parent+"_a0[1-5][mt]$").test(value.step_key))||
+       !new RegExp("^"+parent+"_a(0[1-9]|[12][0-9]|30)[mt]$").test(value.step_key))||
      typeof value.input_sha256!=="string"||!/^[a-f0-9]{64}$/.test(value.input_sha256))
     throw new HttpError(400,"invalid_workflow_model_request")
   return {claim:{...safeBoundModelClaim(value.claim)},step_key:value.step_key,input_sha256:value.input_sha256,

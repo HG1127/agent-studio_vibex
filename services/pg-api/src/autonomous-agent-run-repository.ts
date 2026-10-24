@@ -14,7 +14,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
   override async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown):Promise<WorkflowV2StoredState>{
     if(!isUuid(id)||!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
     const {max_steps,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
-    if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>5)throw new HttpError(400,"invalid_agent_max_steps")
+    if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>30)throw new HttpError(400,"invalid_agent_max_steps")
     await assertOwnedAdmissionContext(db,owner)
     const graph=autonomousAgentGraph(id,request.expected_revision,Number(max_steps)),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const checkpoint:WorkflowV2StoredState={stage:"agent_v2_queued",execution_mode:"agent_native_v2",spec_revision:request.expected_revision,graph,machine}
@@ -29,7 +29,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_spec_id")
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
     const {max_steps,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
-    if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>5)throw new HttpError(400,"invalid_agent_max_steps")
+    if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>30)throw new HttpError(400,"invalid_agent_max_steps")
     const graph=autonomousAgentGraph(id,request.expected_revision,Number(max_steps)),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const key=this.root.dedupe+request.idempotency_key
     await assertOwnedAdmissionContext(db,owner,plannedRunId)

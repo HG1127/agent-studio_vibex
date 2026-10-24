@@ -3,6 +3,9 @@ import assert from "node:assert/strict"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {createWorkflowAgentState,inspectWorkflowAgentState,recordWorkflowAgentResult,selectWorkflowAgentExecution} from "../src/workflow-v2-agent-machine.ts"
 import {preparedWorkflowAgentModelRequest} from "../src/model-connection-executor.ts"
+import {parseWorkflowNodeDataV2} from "../src/workflow-graph-v2.ts"
+import {safeRunStepMetadata} from "../src/run-step-metadata.ts"
+import {safeWorkflowV2ModelRequest} from "../src/workflow-v2-model-contract.ts"
 const ref={spec_id:"11111111-1111-4111-8111-111111111111",spec_revision:1}
 const binding={connection_id:"22222222-2222-4222-8222-222222222222",connection_revision:2,model_id:"synthetic"}
 const spec=safeAgentSpec({goal:"synthetic goal",task_scope:"Owner only",deliverables:["Answer"],done_criteria:["Evidence"],
@@ -74,4 +77,32 @@ test("Agent generation has its own bounded prompt profile and startup approval",
   assert.match(JSON.parse(prepared.body).messages[0].content,/JSON.*UNTRUSTED/s)
   assert.equal(JSON.parse(prepared.body).messages[1].content.length,60000)
   assert.throws(()=>preparedWorkflowAgentModelRequest({provider:"openai",base_url:"https://api.openai.com/v1",model_id:"synthetic",api_key:"synthetic-key"},"x".repeat(131073)))
+})
+test("thirty explicitly selected rounds replay through the last answer and reject a thirty-first round",()=>{
+  const wire={claim:{job_id:ref.spec_id,run_id:binding.connection_id,lease_token:"33333333-3333-4333-8333-333333333333",lease_version:1,lease_owner:"synthetic"},parent_step_key:parent.step_key,
+    step_key:parent.step_key+"_a30m",input_sha256:"a".repeat(64)}
+  assert.equal(safeWorkflowV2ModelRequest(wire).step_key,wire.step_key)
+  for(const suffix of ["_a00m","_a31m","_a030m","_a3m","_a30x"])assert.throws(()=>safeWorkflowV2ModelRequest({...wire,step_key:parent.step_key+suffix}))
+  assert.equal(parseWorkflowNodeDataV2({title:"Role",agent_binding:ref,max_steps:30},"agent").max_steps,30)
+  assert.throws(()=>parseWorkflowNodeDataV2({title:"Role",agent_binding:ref,max_steps:31},"agent"))
+  const bounded={...parent,configuration:{...parent.configuration,max_steps:30}}
+  let state=createWorkflowAgentState(bounded,spec),modelCalls=0,toolCalls=0
+  for(let round=1;round<=30;round++){
+    let view=inspectWorkflowAgentState(JSON.parse(JSON.stringify(state)),bounded)
+    assert.equal(view.pending.agent_context.round,round);assert.equal(view.pending.kind,"model")
+    const request=view.pending;modelCalls++
+    const output=round===30?'{"action":"answer","answer":"Final answer at round30"}':'{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}'
+    state=recordWorkflowAgentResult(state,bounded,{step_key:request.step_key,input_sha256:request.input_sha256,output})
+    if(round<30){
+      view=inspectWorkflowAgentState(state,bounded);assert.equal(view.pending.kind,"tool");toolCalls++
+      state=recordWorkflowAgentResult(state,bounded,{step_key:view.pending.step_key,input_sha256:view.pending.input_sha256,output:"4"})
+    }
+  }
+  const final=inspectWorkflowAgentState(state,bounded)
+  assert.equal(final.status,"succeeded");assert.equal(final.output,"Final answer at round30");assert.equal(modelCalls,30);assert.equal(toolCalls,29)
+  assert.equal(state.results.at(-1).step_key,"wf2_00002_agent_a30m")
+  assert.deepEqual(safeRunStepMetadata({agent_round:30,agent_phase:"model",private_prompt:"must not escape"}),{agent_round:30,agent_phase:"model"})
+  assert.deepEqual(safeRunStepMetadata({agent_round:31,private_prompt:"must not escape"}),{})
+  const overflow={...parent,configuration:{...parent.configuration,max_steps:31}}
+  assert.throws(()=>inspectWorkflowAgentState(createWorkflowAgentState(overflow,spec),overflow),/invalid_workflow_agent_state/)
 })

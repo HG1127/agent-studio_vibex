@@ -733,7 +733,7 @@ export function createPgNativePilotApi(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
     },
     submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3)=>{
-      if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>5)throw new PgNativePilotError(400,"invalid_agent_max_steps")
+      if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>1200||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       return post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{

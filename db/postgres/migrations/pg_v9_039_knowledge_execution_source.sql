@@ -84,7 +84,7 @@ BEGIN
     IF data->>'tool' IS DISTINCT FROM 'knowledge_search' OR data?'tool_binding' OR data?'mcp_binding' THEN RETURN false; END IF;
   ELSE
     state_spec:=r.checkpoint->'agent_state';
-    IF parent !~ '^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$' OR p_source->>'step_key' !~ ('^'||parent||'_a0[1-5]t$') OR
+    IF parent !~ '^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$' OR p_source->>'step_key' !~ ('^'||parent||'_a(0[1-9]|[12][0-9]|30)t$') OR
       state_spec->>'format' IS DISTINCT FROM 'workflow_agent_v2' OR state_spec->>'parent_step_key' IS DISTINCT FROM parent OR
       coalesce(state_spec->>'snapshot_sha256','') !~ '^[a-f0-9]{64}$' OR r.checkpoint->'agent_dispatch'->>'step_key' IS DISTINCT FROM p_source->>'step_key' OR
       r.checkpoint->'agent_dispatch'->>'input_sha256' IS DISTINCT FROM p_source->>'input_sha256' OR r.checkpoint->'agent_dispatch'->>'kind' IS DISTINCT FROM 'tool' OR

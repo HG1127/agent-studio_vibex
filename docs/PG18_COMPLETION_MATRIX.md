@@ -16,7 +16,7 @@
 | 模型、工具、MCP | 本人连接、探测、配置版本、受限私有 Broker、双向 TLS、MCP 发现与执行、Smithery 管理 | [MCP 执行](PG18_MCP_EXECUTION.md)、[HTTP 工具](PG18_AGENT_HTTP_TOOLS.md)。写操作逐项审批；未知付费结果禁止自动重发。 |
 | 团队知识与语义检索 | 所有者 / 编辑者 / 读者权限、文档与索引、独立费用授权、关键词及语义 / 混合查询、Agent / Workflow 原始证据关联 | [知识运行时](PG18_SHARED_KNOWLEDGE_RUNTIME.md)、[语义界面](PG18_KNOWLEDGE_SEMANTIC_UI.md)、[知识工具](PG18_APPROVED_SEMANTIC_TOOLS.md)。撤销、内容变化、读者原始证据与费用回执的检查仍生效。 |
 | Workflow | 原生画布、节点与循环、版本验证、持久运行 / 逐步审批、节点测试、节点输出、明确选择的历史样本复用 | [画布](PG18_WORKFLOW_NATIVE_CANVAS.md)、[节点测试](PG18_WORKFLOW_AUTHORING_AND_NODE_DEBUG.md)、[样本来源](PG18_WORKFLOW_SAMPLE_LINEAGE.md)。正式流程 UAT 和长期运行仍待执行。 |
-| Agent | 本人角色、模型及工具绑定、多轮运行、运行明细、审批、取消、重启与未知结果隔离 | [自主 Agent](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。现有原生轮数 / 文本上限与 PocketBase 尚有差异，见下表。 |
+| Agent | 本人角色、模型及工具绑定、多轮运行、运行明细、审批、取消、重启与未知结果隔离 | [自主 Agent](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。30 轮扩展已有本地完整链路回归，精确候选的真实 PG18 / 浏览器验收仍须确认；任务文本上限仍待对齐。 |
 | 定时任务 | 独立授权、Agent / Workflow 后台运行、时区重复规则、触发去重、原子入队、失败启动重试、暂停与来源撤销、费用及效果边界 | [定时任务](PG18_NATIVE_SCHEDULE_RUNTIME.md)。默认关闭。旧导入计划仍隔离；并发保护、历史终态同步与未来生效界面正在后续候选中验证，不能以旧提交的 CI 代替。 |
 | 新库准备 | 真实 SQL 顺序、源文件指纹、初始化回执、六类独立服务登录准备、分阶段只读检查和审查包 | [新库初始化](PG18_FRESH_RUNTIME_INITIALIZATION.md)、[迁移后检查](PG18_RUNTIME_PREPARATION_POSTCHECK.md)。没有在真实目标执行初始化、启用登录或启动服务。 |
 
@@ -32,7 +32,7 @@
 
 | 范围 | PocketBase 参照 | 剩余工作 |
 | --- | --- | --- |
-| 定时任务的模型与轮数 | `pocketbase/pb_hooks/scheduled_tasks.pb.js`、`tests/schedules.integration.mjs`、`src/pages/ScheduledTasks/ScheduleEditor.tsx` | 按计划选择独立模型 / 连接；原生当前继承 Agent 角色绑定。原生 Agent 轮数当前 1–5，旧系统支持 1–30；任务文本上限也须沿 API、Worker、私有执行及界面一致对齐。 |
+| 定时任务的模型与文本 | `pocketbase/pb_hooks/scheduled_tasks.pb.js`、`tests/schedules.integration.mjs`、`src/pages/ScheduledTasks/ScheduleEditor.tsx` | 按计划选择独立模型 / 连接仍待补齐，原生当前继承 Agent 角色绑定。1–30 轮扩展须完成精确候选验收；任务文本上限也须沿 API、Worker、私有执行及界面一致对齐。 |
 | Agent 协作 | `pocketbase/pb_hooks/agent_collaboration.pb.js`、`tests/agent-collaboration.integration.mjs` | 原生活跃授予 / 撤销、读者 / 编辑者安全投影、仅安全文本的提案、所有者审核与发布；完整受保护配置指纹、并发冲突及停用员工边界。历史导入不等于此功能。 |
 | 版本历史与恢复 | `pocketbase/pb_hooks/agent_collab_versions.pb.js`、`pocketbase/pb_hooks/modules/agent_collab_history.js` | 所有者直接编辑与提案接受均记录安全字段版本；所有者明确确认后恢复，仅恢复安全字段；防止过期提案及恢复后再次出现相同内容而复用旧授权。 |
 | 版本与发布 | `src/pages/VersionRelease`、`pocketbase/pb_hooks/spec_versions_api.pb.js` | 核对方案 / 配置快照、草稿版本、恢复、发布 / 归档、草稿删除及发布后绑定。它与仅恢复协作安全文本的版本记录是两项不同能力。 |
@@ -41,6 +41,7 @@
 | 反馈驱动的优化关联 | `pocketbase/pb_hooks/agent_optimization_lineage.pb.js`、`pocketbase/pb_hooks/agent_specs.pb.js` | 核对反馈、优化与目标角色之间的受保护关联，补齐原生活跃操作、权限和审计。 |
 | 集成与嵌入调用 | `src/pages/Integrate/useIntegrate.ts`、`pocketbase/pb_hooks/integrate_api.pb.js` | 当前菜单可达，须核对已发布角色、调用钥匙一次展示 / 重发 / 吊销、嵌入配置、调用记录与统计、试调用及公开运行 / 轮询。原生历史表不等于运行能力；新路径继续使用经验证的身份及明确调用授权。 |
 | 工具监控与插件市场 | `src/pages/ToolHub/useToolHub.ts`、`pocketbase/pb_hooks/tool_hub_api.pb.js`、`src/pages/PluginMarket/usePluginMarket.ts` | 核对本人运行 / 工具监控、注册表搜索、描述 / 本地化、连接管理与调用记录。已有 MCP / Smithery 执行链路须与这些实际菜单操作逐项对应。 |
+| 本机设备操作 | `src/components/agent-run/LocalDeviceSelector.tsx`、`src/pages/AgentRun/useAgentRun.ts`、`tests/local-computer.integration.mjs` | 主工作区有设备选择与本机工具调用入口，须核对配对、所有者、审批、任务结果与撤销等操作的可达性及原生等价路径，不能因候选旧回归清单未列出而忽略。 |
 | 完整菜单及运行能力 | 当前员工页面、PocketBase Hook 与 Worker | 持续核对每个实际可达操作；重复页面 / 旧路径只有取得可达性证据后才能标为历史实现，不可默认为可删除。 |
 
 当前 `src/App.tsx` 实际挂载的是 `AgentCollaboration/AgentCollaborationPage.tsx`，

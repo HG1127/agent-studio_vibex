@@ -20,7 +20,7 @@ export function safeRunStepMetadata(raw:unknown):Record<string,unknown>{
   }
   if(value.branch==="true"||value.branch==="false")safe.branch=value.branch
   if(typeof value.parent_step_key==="string"&&/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(value.parent_step_key))safe.parent_step_key=value.parent_step_key
-  if(Number.isSafeInteger(value.agent_round)&&Number(value.agent_round)>=1&&Number(value.agent_round)<=5)safe.agent_round=value.agent_round
+  if(Number.isSafeInteger(value.agent_round)&&Number(value.agent_round)>=1&&Number(value.agent_round)<=30)safe.agent_round=value.agent_round
   if(value.agent_phase==="model"||value.agent_phase==="tool")safe.agent_phase=value.agent_phase
   for(const key of ["round","total"]){
     const v=value[key]

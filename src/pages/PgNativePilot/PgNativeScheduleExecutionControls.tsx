@@ -90,7 +90,7 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
             <p className="text-xs text-slate-600">固定间隔从生效时刻起计算；每日或每周计划取生效后的第一个匹配时刻。秋季夏令时重复时刻采用第一次。</p>
           </>}
           <div className="grid gap-3 sm:grid-cols-2">
-            {item.kind==="agent"&&<label className="text-xs">Agent 最大轮数<input type="number" min={1} max={5} required className={inputClass} value={maxSteps} onChange={e=>setMaxSteps(Number(e.target.value))}/></label>}
+            {item.kind==="agent"&&<label className="text-xs">Agent 最大轮数<input type="number" min={1} max={30} required className={inputClass} value={maxSteps} onChange={e=>setMaxSteps(Number(e.target.value))}/></label>}
             <label className="text-xs">每次运行最多自动授权的步骤数<input type="number" min={1} max={10000} required className={inputClass} value={maxAuto} onChange={e=>setMaxAuto(Number(e.target.value))}/></label>
             {!unlimited&&<><label className="text-xs">最多触发次数<input type="number" min={1} max={1000000} required className={inputClass} value={occurrenceCap} onChange={e=>setOccurrenceCap(Number(e.target.value))}/></label>
               <label className="text-xs">授权有效天数（从本次确认起）<input type="number" min={1} max={365} required className={inputClass} value={days} onChange={e=>setDays(Number(e.target.value))}/></label></>}

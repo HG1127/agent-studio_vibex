@@ -104,7 +104,7 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
     else if(key==="op")output[key]=enumValue(value,["contains","not_contains","gt","lt","eq"])
     else if(key==="mode")output[key]=enumValue(value,["count","list"])
     else if(key==="delimiter")output[key]=enumValue(value,["line","comma","json_array"])
-    else if(key==="max_steps")output[key]=positive(value,5)
+    else if(key==="max_steps")output[key]=positive(value,30)
     else if(key==="max_iterations")output[key]=positive(value,20)
     else if(key==="count")output[key]=positive(value,1000)
     else if(key==="knowledge_base_ids"){

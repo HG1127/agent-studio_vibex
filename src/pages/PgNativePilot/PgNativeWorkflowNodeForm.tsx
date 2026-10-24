@@ -61,7 +61,7 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
           {agentValue&&!agents.some(agent=>JSON.stringify({spec_id:agent.id,spec_revision:agent.revision})===agentValue)&&<option value={agentValue}>已绑定方案版本不可用，请重新选择</option>}
           {agents.map(agent=><option key={agent.id} value={JSON.stringify({spec_id:agent.id,spec_revision:agent.revision})}>{agent.name} · 修订 {agent.revision}</option>)}
         </select></label>
-        {modelSelect(true)}{number("max_steps","Agent 最多规划轮数",5)}{text("prompt","Agent 任务模板")}
+        {modelSelect(true)}{number("max_steps","Agent 最多规划轮数",30)}{text("prompt","Agent 任务模板")}
       </>}
       {node.type==="tool"&&<>
         <label className="block text-sm font-medium">工具<select aria-label="工具" className={field} value={toolValue} onChange={event=>{

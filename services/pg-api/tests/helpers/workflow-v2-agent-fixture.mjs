@@ -80,8 +80,9 @@ export async function agentFixture({autonomous=false,mcp=false,smithery=false,sh
       return run(makeWorker,{model,tool,modelIdentity,toolIdentity,config})
     },{handlerFactory:factories})
   }
-  async function drive(makeWorker,id,choose=()=>"approved"){
-    for(let i=0;i<60;i++){
+  async function drive(makeWorker,id,choose=()=>"approved",maxTicks=60){
+    if(!Number.isInteger(maxTicks)||maxTicks<1||maxTicks>240)throw Error("invalid_synthetic_tick_bound")
+    for(let i=0;i<maxTicks;i++){
       await makeWorker().tick();const detail=await runs.get(alice,id)
       if(detail.run.status==="awaiting_approval")await approve(id,await choose(detail.pending_effect,detail))
       else if(["succeeded","failed","paused","cancelled"].includes(detail.run.status))return detail

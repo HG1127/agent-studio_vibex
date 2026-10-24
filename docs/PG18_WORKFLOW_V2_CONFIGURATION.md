@@ -12,7 +12,7 @@ Legacy archive import explicitly rejects versioned graphs. Its reviewed title-on
 | --- | --- |
 | Start | `input_hint` |
 | Model | `prompt`, `model_binding: {connection_id, connection_revision, model_id}` |
-| Agent | `prompt`, `agent_binding: {spec_id, spec_revision}`, numeric `max_steps` (1–5) |
+| Agent | `prompt`, `agent_binding: {spec_id, spec_revision}`, numeric `max_steps` (1–30) |
 | Tool | One built-in `tool` or `tool_binding: {connection_id, connection_revision}`, `params_template`; `knowledge_base_ids` only for `knowledge_search` |
 | Condition | `ref_title`, `op` (`contains`, `not_contains`, `gt`, `lt`, `eq`), `value` |
 | Loop | `mode`, numeric `count`, `list_source`, `delimiter`, `stop_keyword`, numeric `max_iterations` (1–20) |
