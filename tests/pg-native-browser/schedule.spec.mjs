@@ -52,6 +52,7 @@ test("native schedule: owner grant, exact activation recovery, once-per-minute q
     const recovered=await control("state","GET");expect(recovered.scheduleHashes).toHaveLength(2);expect(recovered.scheduleHashes[0]).toBe(recovered.scheduleHashes[1]);expect(recovered.runs).toBe(0)
     expect(activations).toHaveLength(2);expect(activations[0]).toEqual(activations[1])
     expect(activations[0].anchor_at).toBe(effectiveDate+"T03:20:00.000Z") // Asia/Shanghai plan timezone.
+    await page.getByText("重新授予后台权限",{exact:true}).click()
     await expect(page.getByRole("checkbox",{name:/从指定时间生效/})).toBeChecked()
     await expect(page.getByLabel("首次生效日期",{exact:true})).toHaveValue(effectiveDate)
     await expect(page.getByLabel("首次生效时间",{exact:true})).toHaveValue("11:20")
