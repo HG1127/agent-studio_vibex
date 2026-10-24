@@ -118,6 +118,22 @@ test("draft full-version foundation is private, owner-only, immutable and never 
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.agent_release_versions WHERE spec_id=$1 AND status='published'",[role.id])).rows[0].n,1)
     assert.equal((await workspace(f.alice)).source_sha256,stable.source_sha256)
     assert.equal((await workspace(f.alice)).spec_revision,stable.spec_revision)
+    const deleteSource=await workspace(f.alice),draft=await save(f.alice,"Draft to delete",randomUUID(),deleteSource),deleteRequest=randomUUID()
+    const draftView=(await workspace(f.alice)).versions.find(v=>v.id===draft.version_id)
+    const drop=(who=f.alice,selected=draftView,requestId=deleteRequest,confirm=true)=>withActor(f.pool,who,async db=>(await db.query(
+      "SELECT agentstudio.agent_release_delete_draft($1,$2,$3,$4,$5,$6,$7) AS item",[role.id,selected.id,selected.version_sha256,selected.revision,confirm,requestId,"d".repeat(64)])).rows[0].item)
+    await assert.rejects(drop(f.bob),/agent_release_not_found/)
+    await assert.rejects(drop(f.alice,draftView,randomUUID(),false),/invalid_agent_release_delete/)
+    await assert.rejects(drop(f.alice,(await workspace(f.alice)).versions.find(v=>v.status==='published'),randomUUID()),/agent_release_version_not_draft/)
+    await f.db.query("ALTER TABLE agentstudio.agent_release_receipts ADD CONSTRAINT synthetic_release_delete_fault CHECK(false) NOT VALID")
+    try{
+      await assert.rejects(drop(),/synthetic_release_delete_fault/)
+      assert.equal((await workspace(f.alice)).versions.find(v=>v.id===draft.version_id).status,"draft")
+    }finally{await f.db.query("ALTER TABLE agentstudio.agent_release_receipts DROP CONSTRAINT synthetic_release_delete_fault")}
+    const deleted=await drop();assert.equal(deleted.status,"deleted");assert.equal((await drop()).replayed,true)
+    assert.equal((await workspace(f.alice)).versions.some(v=>v.id===draft.version_id),false)
+    assert.equal((await workspace(f.alice)).next_version_no,5)
+    assert.equal((await save(f.alice,"No deleted version number reuse",randomUUID(),await workspace(f.alice))).version_no,5)
     await f.db.query("UPDATE agentstudio_auth.accounts SET enabled=false WHERE user_id=$1",[f.owner.id]);assert.equal(await workspace(f.alice),null)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")).rows[0].n,0)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,0)

@@ -88,6 +88,7 @@ GRANT INSERT(spec_id,owner_user_id) ON agentstudio.agent_release_heads TO agents
 GRANT UPDATE(next_version_no,updated_at) ON agentstudio.agent_release_heads TO agentstudio_releases;
 GRANT UPDATE(active_version_id,revision) ON agentstudio.agent_release_heads TO agentstudio_releases;
 GRANT UPDATE(status,revision,updated_at,published_at) ON agentstudio.agent_release_versions TO agentstudio_releases;
+GRANT UPDATE(deleted_at) ON agentstudio.agent_release_versions TO agentstudio_releases;
 GRANT INSERT(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note) ON agentstudio.agent_release_versions TO agentstudio_releases;
 GRANT INSERT(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result) ON agentstudio.agent_release_receipts TO agentstudio_releases;
 GRANT INSERT(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) ON agentstudio.audit_events TO agentstudio_releases;
@@ -238,17 +239,52 @@ BEGIN
       jsonb_build_object('version_id',p_version,'previous_version_id',current_id,'release_revision',h.revision,'version_sha256',p_version_sha,'test_passed_at_save',v.test_passed,'acknowledge_untested',p_ack_untested));
   RETURN result;
 END $fn$;
+CREATE FUNCTION agentstudio.agent_release_delete_draft(p_spec uuid,p_version uuid,p_version_sha text,p_version_revision bigint,p_confirm boolean,p_request uuid,p_request_sha text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE actor uuid=agentstudio.actor_id(); h record; v record; previous agentstudio.agent_release_receipts%ROWTYPE; input_sha text; result jsonb;
+BEGIN
+  IF actor IS NULL OR NOT agentstudio.release_native_active(actor) THEN RAISE EXCEPTION 'agent_release_actor_unavailable'; END IF;
+  IF p_spec IS NULL OR p_version IS NULL OR p_version_sha IS NULL OR p_version_sha!~'^[a-f0-9]{64}$' OR p_version_revision IS NULL OR p_version_revision<1 OR
+    p_version_revision>=9007199254740991 OR p_confirm IS DISTINCT FROM true OR p_request IS NULL OR p_request_sha IS NULL OR p_request_sha!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'invalid_agent_release_delete'; END IF;
+  input_sha=encode(sha256(convert_to(jsonb_build_object('action','delete_draft','spec',p_spec,'version',p_version,'version_sha256',p_version_sha,
+    'version_revision',p_version_revision,'confirm',p_confirm,'request_sha256',p_request_sha)::text,'UTF8')),'hex');
+  PERFORM pg_advisory_xact_lock(hashtextextended(actor::text||':'||p_request::text,46));
+  SELECT * INTO previous FROM agentstudio.agent_release_receipts WHERE actor_user_id=actor AND request_id=p_request;
+  IF previous.request_id IS NOT NULL THEN
+    IF previous.spec_id<>p_spec OR previous.action<>'delete_draft' OR previous.input_sha256<>input_sha THEN RAISE EXCEPTION 'agent_release_request_conflict'; END IF;
+    RETURN previous.result||jsonb_build_object('replayed',true);
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM agentstudio.agent_specs WHERE id=p_spec AND owner_user_id=actor) THEN RAISE EXCEPTION 'agent_release_not_found'; END IF;
+  SELECT * INTO h FROM agentstudio.agent_release_heads WHERE spec_id=p_spec AND owner_user_id=actor FOR UPDATE;
+  IF h.spec_id IS NULL THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
+  SELECT * INTO v FROM agentstudio.agent_release_versions WHERE id=p_version AND spec_id=p_spec AND owner_user_id=actor AND status<>'deleted' FOR UPDATE;
+  IF v.id IS NULL THEN RAISE EXCEPTION 'agent_release_version_not_found'; END IF;
+  IF v.revision<>p_version_revision OR agentstudio.release_version_sha(v.id) IS DISTINCT FROM p_version_sha THEN RAISE EXCEPTION 'agent_release_version_changed'; END IF;
+  IF v.status<>'draft' THEN RAISE EXCEPTION 'agent_release_version_not_draft'; END IF;
+  IF h.active_version_id=p_version THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
+  UPDATE agentstudio.agent_release_versions SET status='deleted',revision=revision+1,deleted_at=clock_timestamp(),updated_at=clock_timestamp()
+    WHERE id=p_version AND owner_user_id=actor RETURNING revision INTO v.revision;
+  result=jsonb_build_object('spec_id',p_spec,'request_id',p_request,'version_id',p_version,'version_no',v.version_no,'version_revision',v.revision,
+    'version_sha256',p_version_sha,'release_revision',h.revision,'status','deleted','replayed',false);
+  INSERT INTO agentstudio.agent_release_receipts(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result)
+    VALUES(actor,p_request,p_spec,'delete_draft',p_request_sha,input_sha,result);
+  INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata)
+    VALUES(actor,actor,'agent.release.delete_draft','agent_spec',p_spec::text,'succeeded',jsonb_build_object('version_id',p_version,'version_no',v.version_no,'version_sha256',p_version_sha));
+  RETURN result;
+END $fn$;
 DO $functions$ DECLARE signature text; BEGIN
   FOREACH signature IN ARRAY ARRAY['release_utf16_length(text)','release_native_active(uuid)','release_source_seal(uuid,uuid,text,bigint,jsonb)','release_source_sha(uuid)','release_version_sha(uuid)',
     'release_version_immutable()','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)',
     'agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)',
-    'agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text)'] LOOP
+    'agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text)',
+    'agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text)'] LOOP
     EXECUTE 'ALTER FUNCTION agentstudio.'||signature||' OWNER TO agentstudio_releases';
     EXECUTE 'REVOKE ALL ON FUNCTION agentstudio.'||signature||' FROM PUBLIC,agentstudio_api,agentstudio_worker,agentstudio_model_broker,agentstudio_bound_dispatch,agentstudio_native_auth';
   END LOOP;
 END $functions$;
 GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.agent_release_detail(uuid,uuid),agentstudio.agent_release_receipt(uuid,uuid),
   agentstudio.agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text),
-  agentstudio.agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text) TO agentstudio_api;
+  agentstudio.agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text),
+  agentstudio.agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text) TO agentstudio_api;
 -- Intentionally no pg_v9_046 receipt or HTTP/initialization entry in this draft.
 COMMIT;

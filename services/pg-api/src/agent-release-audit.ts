@@ -11,12 +11,13 @@ const inserts:Record<string,string[]>={agent_release_heads:["spec_id","owner_use
   agent_release_versions:["id","owner_user_id","spec_id","version_no","spec_revision","source_sha256","name_snapshot","spec_snapshot","note"],
   agent_release_receipts:["actor_user_id","request_id","spec_id","action","request_sha256","input_sha256","result"],
   audit_events:["owner_user_id","actor_user_id","action","target_kind","target_id","result","metadata"]}
-const updates:Record<string,string[]>={agent_release_heads:["next_version_no","updated_at","active_version_id","revision"],agent_release_versions:["status","revision","updated_at","published_at"]}
+const updates:Record<string,string[]>={agent_release_heads:["next_version_no","updated_at","active_version_id","revision"],agent_release_versions:["status","revision","updated_at","published_at","deleted_at"]}
 export const agentReleaseFunctions:Array<[string,string[]]>=[
   ["release_utf16_length(text)",[]],["release_native_active(uuid)",[]],["release_source_seal(uuid,uuid,text,bigint,jsonb)",[]],["release_source_sha(uuid)",[]],["release_version_sha(uuid)",[]],["release_version_immutable()",[]],
   ["agent_release_workspace(uuid)",[api]],["agent_release_detail(uuid,uuid)",[api]],["agent_release_receipt(uuid,uuid)",[api]],
   ["agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)",[api]],
   ["agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text)",[api]],
+  ["agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text)",[api]],
 ]
 function refuse():never{throw Error("unsafe_agent_release_privileges")}
 export async function agentReleasesInstalled(db:SqlClient):Promise<boolean>{
