@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'shared/**'
       - 'vibex-local/start-*'
       - 'pocketbase/pb_hooks/**'
       - 'worker/**'
@@ -795,3 +796,4 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:workflow-v2-runtime
+          pnpm --dir services/pg-api test:schedule-runtime

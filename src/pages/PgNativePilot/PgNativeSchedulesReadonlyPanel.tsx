@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react"
 import {CalendarClock,Clock3,Loader2,RefreshCw,ShieldCheck,Plus,Trash2} from "lucide-react"
+import PgNativeScheduleExecutionControls from "./PgNativeScheduleExecutionControls"
 import {createPgNativePilotApi,PgNativePilotError,
   type PgNativeSchedule,type PgNativeScheduleOccurrence,
   type PgNativeAgent,type PgNativeWorkflow,
@@ -21,8 +22,8 @@ function safeError(error:unknown):string{
 }
 
 /** Inert schedule-draft config and read-only occurrence inventory; NO scheduler. */
-export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,canEdit}:{
-  api:NativeApi;agents:PgNativeAgent[];workflows:PgNativeWorkflow[];canEdit:boolean
+export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,canEdit,canExecute=false}:{
+  api:NativeApi;agents:PgNativeAgent[];workflows:PgNativeWorkflow[];canEdit:boolean;canExecute?:boolean
 }){
   const [items,setItems]=useState<PgNativeSchedule[]>([])
   const [selected,setSelected]=useState<string|null>(null)
@@ -82,7 +83,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
     setWeekday(1);setIntervalMinutes(60);setFormOpen(false)
   }
   const editDraft=(item:PgNativeSchedule)=>{
-    if(!canEdit||item.recurrence?.config_format!=="pg_schedule_draft_v1")
+    if(!canEdit||!(item.recurrence?.config_format==="pg_schedule_draft_v1"||canExecute&&item.recurrence?.config_format==="pg_schedule_execution_v2"))
       return
     const rule=item.recurrence.rule as PgNativeScheduleDraftRule|undefined
     if(!rule)return
@@ -113,7 +114,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
       else await api.createScheduleDraft(input)
       resetForm()
       await getItems()
-      setNotice("计划草稿已保存，但调度器仍关闭；不会自动运行任务。")
+      setNotice("计划已保存为停用草稿。原后台授权已撤销，需要重新启用才会继续调度。")
     }catch(err){
       if(err instanceof PgNativePilotError&&err.status===409)
         setError("草稿版本已变化，或该记录是不可修改的旧版隔离计划；请刷新后重试。")
@@ -126,9 +127,9 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
   }
   const deleteDraft=async(item:PgNativeSchedule)=>{
     if(!canEdit||saving||
-       item.recurrence?.config_format!=="pg_schedule_draft_v1")return
+       !(item.recurrence?.config_format==="pg_schedule_draft_v1"||canExecute&&item.recurrence?.config_format==="pg_schedule_execution_v2"))return
     if(typeof window!=="undefined"&&
-       !window.confirm("删除计划草稿“"+item.name+"”？此操作不会运行任务。"))return
+       !window.confirm("删除计划“"+item.name+"”并撤销后台授权？历史运行记录将保留。"))return
     setSaving(true);setError("");setNotice("")
     try{
       await api.deleteScheduleDraft(item.id,item.revision)
@@ -144,11 +145,11 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
   return <div className="space-y-4">
     <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
-        <ShieldCheck size={18}/>计划草稿与历史清单 · 调度器未启动
+        <ShieldCheck size={18}/>{canExecute?"我的后台计划与运行历史":"计划草稿与历史清单 · 执行未开放"}
       </h2>
       <p className="mt-2 text-xs leading-6 text-indigo-800">
         可保存和编辑本人拥有的计划草稿，亦可查看历史执行元数据。
-        所有新草稿均强制停用且无下次执行时间；不支持启动调度、立即运行或调用模型工具。
+        {canExecute?"新计划先保存为停用草稿。选中计划后，可核实任务说明及费用范围，明确授权后启用；后台进程需由管理员单独配置。":"所有新草稿均停用且无下次执行时间，当前环境尚未开放后台执行。"}
       </p>
     </section>
     {error&&<div role="alert" className="rounded-xl border border-rose-100 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
@@ -157,7 +158,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold">定时计划配置草稿</h3>
-          <p className="mt-1 text-xs text-slate-500">配置写入 PostgreSQL，但强制停用。旧版导入的隔离计划只能查看，不可通过草稿表单修改。</p>
+          <p className="mt-1 text-xs text-slate-500">保存或编辑后均停用并撤销旧授权。旧版导入的隔离计划仅供查看。</p>
         </div>
         <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           disabled={saving||(!agents.length&&!workflows.length)}
@@ -277,17 +278,21 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
             下次计划时间：{formatDate(item.next_at)}
           </p>
           </button>
-          {canEdit&&item.recurrence?.config_format==="pg_schedule_draft_v1"&&
+          {canEdit&&(item.recurrence?.config_format==="pg_schedule_draft_v1"||canExecute&&item.recurrence?.config_format==="pg_schedule_execution_v2")&&
           <div className="flex justify-end gap-2">
             <button type="button" disabled={saving} onClick={()=>editDraft(item)}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700">
-              编辑草稿
+              编辑并停用
             </button>
             <button type="button" disabled={saving} onClick={()=>void deleteDraft(item)}
               className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-1.5 text-xs text-rose-700">
-              <Trash2 size={13}/>删除草稿
+              <Trash2 size={13}/>删除计划
             </button>
           </div>}
+          {(canExecute||item.recurrence?.config_format==="pg_schedule_execution_v2")&&selected===item.id&&item.recurrence&&["pg_schedule_draft_v1","pg_schedule_execution_v2"].includes(String(item.recurrence.config_format))&&
+            <PgNativeScheduleExecutionControls api={api} item={item} occurrences={occurrences} canActivate={canExecute}
+              targetRevision={item.kind==="agent"?agents.find(a=>a.id===item.agent_spec_id)?.revision:workflows.find(w=>w.id===item.workflow_id)?.revision}
+              onChanged={async()=>{await getItems();await inspect(item.id)}}/>}
         </div>)}
       </div>
       {selected&&<div className="mt-5 border-t border-slate-100 pt-4">
@@ -301,7 +306,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
         <ol className="mt-3 space-y-2">
           {occurrences.map(o=><li key={o.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm">
             <span className="text-slate-600">{formatDate(o.scheduled_for)}</span>
-            <span className="text-xs font-medium text-slate-700">{o.status}</span>
+            <span className="text-xs font-medium text-slate-700">{({pending:"待启动",launching:"正在启动",retryable:"等待重试启动",failed_start:"启动失败",started:"已启动",succeeded:"已完成",failed:"执行失败",skipped:"已跳过",cancelled_schedule:"计划已取消",invalid_schedule:"计划参数异常"} as Record<string,string>)[o.status]??o.status}{o.run_status?" · "+({queued:"排队中",running:"运行中",awaiting_approval:"等待逐步审批",paused:"运行已暂停",succeeded:"运行完成",failed:"运行失败",cancelled:"运行已取消"} as Record<string,string>)[o.run_status]:""}</span>
           </li>)}
         </ol>
       </div>}

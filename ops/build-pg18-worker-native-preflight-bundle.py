@@ -26,6 +26,10 @@ FILES=(
     "services/pg-api/src/knowledge-query-audit.ts",
     "services/pg-api/src/knowledge-execution-audit.ts",
     "services/pg-api/src/knowledge-sharing-policy.ts",
+    "services/pg-api/src/knowledge-keyword-audit.ts",
+    "services/pg-api/src/knowledge-agent-audit.ts",
+    "services/pg-api/src/knowledge-lineage-audit.ts",
+    "services/pg-api/src/schedule-runtime-audit.ts",
 )
 README="README_PG18_NATIVE_WORKER_PREFLIGHT.txt"
 MANIFEST="SHA256SUMS_NATIVE_WORKER_PREFLIGHT"
@@ -51,6 +55,10 @@ This ZIP adds ELEVEN source files:
   services/pg-api/src/knowledge-query-audit.ts
   services/pg-api/src/knowledge-execution-audit.ts
   services/pg-api/src/knowledge-sharing-policy.ts
+  services/pg-api/src/knowledge-keyword-audit.ts
+  services/pg-api/src/knowledge-agent-audit.ts
+  services/pg-api/src/knowledge-lineage-audit.ts
+  services/pg-api/src/schedule-runtime-audit.ts
 plus this README and SHA256SUMS_NATIVE_WORKER_PREFLIGHT.
 
 The same pg18-native-worker-readonly.ts is dynamically imported by the

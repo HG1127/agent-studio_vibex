@@ -45,7 +45,7 @@ export async function verifyFreshRuntime(db:SqlClient,snapshot:Snapshot,receipt=
     roles:roles.length,service_logins_enabled:false,knowledge_privileges_verified:true,production_cutover_allowed:false}
 }
 export function freshRuntimeReceiptBody(snapshot:Snapshot){return JSON.stringify({format:"pg18_fresh_runtime_v1",source_sha256:snapshot.source_sha256,
-  sources:snapshot.sources,latest_migration:"pg_v9_043",legacy_rows_copied:0,legacy_import_versions_fabricated:false})}
+  sources:snapshot.sources,latest_migration:"pg_v9_044",legacy_rows_copied:0,legacy_import_versions_fabricated:false})}
 export async function installFreshRuntime(db:SqlClient,snapshot:Snapshot){
   // Role changes and all DDL share the baseline's transaction. An initialization
   // failure cannot leave a service login enabled or a partial schema committed.

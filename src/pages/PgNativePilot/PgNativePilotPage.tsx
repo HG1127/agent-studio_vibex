@@ -95,6 +95,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [runSubmissionEnabled,setRunSubmissionEnabled]=useState(false)
   const [boundModelRunsEnabled,setBoundModelRunsEnabled]=useState(false)
   const [autonomousEnabled,setAutonomousEnabled]=useState(false)
+  const [scheduleEnabled,setScheduleEnabled]=useState(false)
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState("")
   const [notice,setNotice]=useState("")
@@ -136,7 +137,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   },[])
   const expireAgentSession=useCallback(()=>{
     sessionFence.current.invalidate();setProfile(null);setStatus("signedout")
-    setAutonomousEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
+    setAutonomousEnabled(false);setScheduleEnabled(false);setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false)
     setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setReadableKnowledge([]);setEmployees([]);setModelConnections([]);setToolConnections([])
     setEditing(null);setModelEditing(null);setModelApiKey("");setDetailTarget(null);setLoading(false)
@@ -147,7 +148,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     const ticket=sessionFence.current.beginRead()
     setReadableKnowledge([])
     setConfigEditEnabled(false);setWorkflowV2Enabled(false)
-    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
+    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false);setScheduleEnabled(false)
     setLoading(true)
     try{
       const [a,w,k,m,t,capability]=await Promise.all([
@@ -178,6 +179,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setRunSubmissionEnabled(capability?.config_writes_enabled===true&&capability.run_submission_enabled===true)
       setBoundModelRunsEnabled(capability?.bound_model_runs_enabled===true)
       setAutonomousEnabled(capability?.config_writes_enabled===true&&capability.autonomous_agent_submission_enabled===true)
+      setScheduleEnabled(capability?.config_writes_enabled===true&&capability.schedule_execution_enabled===true)
       setError("")
     }catch(err){
       if(!sessionFence.current.acceptsRead(ticket))return
@@ -260,7 +262,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     clearPrivateDrafts()
     // Hide all private information before the network logout completes.
     setProfile(null);setStatus("checking")
-    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false)
+    setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false);setScheduleEnabled(false)
     setAgents([]);setWorkflows([]);setKnowledge([]);setReadableKnowledge([]);setEmployees([]);setModelConnections([])
     setToolConnections([])
     setConfigEditEnabled(false);setModelProbeEnabled(false);setMcpDiscoveryEnabled(false);setMcpToolsEnabled(false);setSmitheryEnabled(false);setWorkflowValidationEnabled(false);setWorkflowExecutionEnabled(false);setWorkflowV2Enabled(false)
@@ -691,7 +693,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             </>}
             {section==="schedules"&&
               <PgNativeSchedulesReadonlyPanel key={profile.id} api={api}
-                agents={agents} workflows={workflows} canEdit={canEditConfig}/>
+                agents={agents} workflows={workflows} canEdit={canEditConfig} canExecute={scheduleEnabled}/>
             }
             {section==="runs"&&
               <PgNativeRunHistoryReadonlyPanel key={profile.id} api={api}/>

@@ -20,6 +20,10 @@ import {safeAgentSpec} from "../../src/contracts.ts"
 import {AutonomousAgentRunRepository} from "../../src/autonomous-agent-run-repository.ts"
 import {WorkflowV2RunRepository} from "../../src/workflow-v2-run-repository.ts"
 import {WorkflowV2Worker} from "../../src/workflow-v2-worker.ts"
+import {ScheduleInventoryRepository} from "../../src/schedule-inventory-repository.ts"
+import {ScheduleDraftRepository} from "../../src/schedule-draft-repository.ts"
+import {ScheduleRuntimeRepository} from "../../src/schedule-runtime-repository.ts"
+import {ScheduleRuntimeWorker} from "../../src/schedule-runtime-worker.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../../src/workflow-v2-model-dispatch.ts"
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "../../src/workflow-v2-tool-dispatch.ts"
 import {createWorkflowV2ModelInternalHandler} from "../../src/workflow-v2-model-handler.ts"
@@ -69,6 +73,8 @@ if(process.env.AGENT_STUDIO_PG_BROWSER_AUTONOMOUS!==undefined&&!autonomous)throw
 const workflow=process.env.AGENT_STUDIO_PG_BROWSER_WORKFLOW==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_WORKFLOW!==undefined&&!workflow||autonomous&&workflow)throw Error("invalid_synthetic_browser_mode")
 const modern=autonomous||workflow
+const scheduling=process.env.AGENT_STUDIO_PG_BROWSER_SCHEDULE==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_SCHEDULE!==undefined&&!scheduling||scheduling&&!workflow)throw Error("invalid_synthetic_schedule_browser_mode")
 const semantic=process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC!==undefined&&!semantic||semantic&&!modern)throw Error("invalid_synthetic_semantic_browser_mode")
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
@@ -88,9 +94,10 @@ const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledg
   return {query:(sql,values=[])=>db.query(sql,values),release}
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous,workflowV2ExecutionUat:workflow}
+  boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous||scheduling,workflowV2ExecutionUat:workflow,scheduleRuntimeUat:scheduling}
 const state={submissions:0,submitHashes:[],configHashes:[],configRequests:0,generated:0,httpCalls:0,mcpCalls:0,mcpDiscoveries:0,smitheryWrites:0,drop:false,configDrop:false,contentDrop:false,allowed:true,configAllowed:true}
 Object.assign(state,{semanticAllowed:semantic,semanticDrop:false,queryDrop:false,queryPosts:0,settingsPosts:0,indexEmbeddings:0,queryEmbeddings:0,queryInputs:[],failQuery:false,decisionDrop:false,decisionHashes:[],semanticModelPrompts:0})
+Object.assign(state,{scheduleDrop:false,scheduleHashes:[]})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -106,6 +113,7 @@ try{
   for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql","pg_v9_039_knowledge_execution_source.sql","pg_v9_040_approved_semantic_tools.sql","pg_v9_041_keyword_observations.sql","pg_v9_042_agent_knowledge_observations.sql","pg_v9_043_workflow_sample_lineage.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
+  if(scheduling)await db.exec(load("db/postgres/migrations/pg_v9_044_schedule_execution.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -167,7 +175,7 @@ try{
     const adapters=modern?[workflowV2ModelEffectExecutor(tls),workflowV2ToolEffectExecutor(tls)]:[]
     const indexWorker=semantic?new KnowledgeIndexWorker(pool,createKnowledgeIndexPrivateClient(tls),{approvedForIsolatedUat:true}):null
     const queryWorker=semantic?new KnowledgeQueryWorker(pool,createKnowledgeQueryPrivateClient(tls),{approvedForIsolatedUat:true}):null
-    const tickAutonomous=()=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,
+    const tickAutonomous=()=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,scheduleExecutionApproved:scheduling,
       executor:{supports:request=>adapters.some(adapter=>adapter.supports(request)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}}).tick()
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
@@ -179,11 +187,11 @@ try{
       allowKnowledgeEmbeddingSettings:semantic&&state.semanticAllowed&&state.configAllowed,allowKnowledgeEmbeddingConsent:semantic&&state.semanticAllowed&&state.configAllowed,
       allowKnowledgeIndexRuntime:semantic&&state.semanticAllowed&&state.configAllowed,allowKnowledgeQueryRuntime:semantic&&state.semanticAllowed&&state.configAllowed,
       allowKnowledgeToolExecution:semantic&&state.semanticAllowed&&state.configAllowed,
-      allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:autonomous&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,
+      allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:(autonomous||scheduling)&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,allowScheduleRuntime:scheduling&&state.allowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
           {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
-            knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:autonomous&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed})){
+            knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed})){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
         return backend(req,res)
@@ -203,9 +211,12 @@ try{
     }}
     const flows=new WorkflowRepository(pool),create=flows.createIdempotent.bind(flows)
     flows.createIdempotent=async(identity,requestId,name,graph)=>{state.configHashes.push(createHash("sha256").update(JSON.stringify({requestId,name,graph})).digest("hex"));return create(identity,requestId,name,graph)}
+    const schedules=new ScheduleRuntimeRepository(pool,{enabled:scheduling}),activate=schedules.activate.bind(schedules)
+    schedules.activate=async(identity,id,body)=>{state.scheduleHashes.push(createHash("sha256").update(JSON.stringify(body)).digest("hex"));return activate(identity,id,body)}
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
+      ...(scheduling?{scheduleInventory:new ScheduleInventoryRepository(pool),scheduleDraftRepository:new ScheduleDraftRepository(pool),scheduleRuntimeRepository:schedules}:{}),
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
       ...(modern?{knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),knowledgeContentRepository:new KnowledgeContentRepository(pool)}:{}),
       ...(semantic?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool),
@@ -234,6 +245,7 @@ try{
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
           try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,singleEvidence:state.singleEvidence??0,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,smitheryWrites:state.smitheryWrites,
+            ...(scheduling?{scheduleHashes:state.scheduleHashes}:{}),
             ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -241,6 +253,7 @@ try{
               queryJobs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.knowledge_query_jobs")).rows[0].n}:{} )}}
           finally{c.release()}
         }else if(req.url==="/__fixture/workflow"&&req.method==="POST"&&workflow)output=await tickAutonomous()
+        else if(req.url==="/__fixture/schedule"&&req.method==="POST"&&scheduling&&state.allowed)output=await new ScheduleRuntimeWorker(pool,"browser-schedule").tick()
         else if(req.url==="/__fixture/invalidate-sample-source"&&req.method==="POST"&&workflow){
           const changed=await db.query("UPDATE agentstudio.runs SET instruction='Synthetic source revision changed' WHERE id IN "+
             "(SELECT source_run_id FROM agentstudio.workflow_sample_lineage WHERE source_run_id IS NOT NULL) RETURNING id")
@@ -261,11 +274,13 @@ try{
         else if(req.url==="/__fixture/deny-config"&&req.method==="POST"){state.configAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/drop-next"&&req.method==="POST"){state.drop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-runs"&&req.method==="POST"){state.allowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-schedule"&&req.method==="POST"&&scheduling){state.scheduleDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/stop"&&req.method==="POST"){output={ok:true};stop()}
         else{res.writeHead(404);res.end();return}
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(output));return
       }
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
+      if(req.method==="POST"&&/^\/api\/v2\/schedules\/[0-9a-f-]{36}\/activate$/.test(req.url)&&state.scheduleDrop){state.scheduleDrop=false;res.end=()=>{res.destroy();return res}}
       if(semantic&&req.method==="POST"&&/\/decision$/.test(req.url)){
         if(state.decisionDrop){state.decisionDrop=false;res.end=()=>{res.destroy();return res}}
       }

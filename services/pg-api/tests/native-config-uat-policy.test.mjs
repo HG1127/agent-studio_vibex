@@ -274,6 +274,19 @@ test("PG18 schedule inventory stays readable; only explicit config UAT can write
     ])assert.equal(permitNativePg18BusinessUatRequest(invalid,"GET",policy),false)
   }
 })
+test("scheduled execution requires its own opt-in while owner status and pause remain available after revocation",()=>{
+  const item="/api/v2/schedules/"+uuid
+  for(const policy of [readOnly,configUat,both]){
+    assert.equal(permitNativePg18BusinessUatRequest(item+"/execution","GET",policy),true)
+    assert.equal(permitNativePg18BusinessUatRequest(item+"/pause","POST",policy),true)
+    for(const action of ["activate","run-now","retry-start"])
+      assert.equal(permitNativePg18BusinessUatRequest(item+"/"+action,"POST",policy),false)
+  }
+  const approved={...both,scheduleRuntimeUat:true}
+  for(const action of ["activate","run-now","retry-start"])
+    assert.equal(permitNativePg18BusinessUatRequest(item+"/"+action,"POST",approved),true)
+  assert.throws(()=>selectNativePg18UatCapabilities({...enabled,AGENT_STUDIO_PG18_SCHEDULE_RUNTIME_ENABLED:"true",AGENT_STUDIO_PG18_SCHEDULE_RUNTIME_APPROVED:"APPROVE_DISPOSABLE_PG18_SCHEDULE_RUNTIME_ONLY"},true,https,1100),/unsafe_native_pg18_uat_config/)
+})
 
 test("private indexed KB keyword lookup allows only POST, no unrelated writes",()=>{
   const endpoint="/api/v2/knowledge-bases/"+uuid+"/search"

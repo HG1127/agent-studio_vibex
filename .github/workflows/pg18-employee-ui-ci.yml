@@ -67,6 +67,7 @@ jobs:
           pnpm test:pg18:workflow-outputs
           pnpm test:pg18:workflow-authoring
           pnpm test:pg18:workflow-canvas
+          pnpm test:pg18:schedules
           pnpm build:pg18:trial
       - name: Readonly review package dependency closure
         env:

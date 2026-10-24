@@ -30,6 +30,8 @@ import {verifyDatabaseRole,AgentSpecRepository} from "./repository.ts"
 import {createNativeRunRepository} from "./native-run-repository.ts"
 import {ScheduleInventoryRepository} from "./schedule-inventory-repository.ts"
 import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
+import {ScheduleRuntimeRepository} from "./schedule-runtime-repository.ts"
+import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import {WorkflowRepository} from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
 import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
@@ -364,6 +366,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeIndexRuntimeUat===true)await verifyKnowledgeIndexSchema(business)
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
+    if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -392,6 +395,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowWorkflowExecution:capabilities.workflowExecutionUat===true,
       allowAutonomousAgentSubmission:capabilities.autonomousAgentUat===true,
       allowWorkflowV2Submission:capabilities.workflowV2ExecutionUat===true,
+      allowScheduleRuntime:capabilities.scheduleRuntimeUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
@@ -450,6 +454,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
       ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true}),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
         ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
@@ -475,6 +480,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       workflow_execution_uat_enabled:capabilities.workflowExecutionUat===true,
       autonomous_agent_submission_uat_enabled:capabilities.autonomousAgentUat===true,
       workflow_v2_submission_uat_enabled:capabilities.workflowV2ExecutionUat===true,
+      schedule_execution_uat_enabled:capabilities.scheduleRuntimeUat===true,
       workers_started:false,production_cutover_allowed:false})+"\n")
     let shuttingDown=false
     const shutdown=()=>{

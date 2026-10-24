@@ -44,7 +44,7 @@ root 所有、私有权限的仓库外文件提供；服务密码为新生成的
 `APPROVE_PG18_SERVICE_LOGIN_RESERVE_ONLY` 或 `APPROVE_PG18_SERVICE_LOGIN_ACTIVATE_ONLY`。
 只有启用时读取 `AGENT_STUDIO_PG18_SERVICE_PASSWORD_FILE`。
 
-预检验证完整来源版本、初始化回执、46 张表及 45 张 FORCE RLS、精确角色关系、
+预检验证完整来源版本、初始化回执、49 张表及 48 张 FORCE RLS、精确角色关系、
 禁止的继承/转授权选项、直接对象权限及知识辅助权限。Native 登录必须已经启用，
 至少存在一位启用的本地管理员。目标账号存在连接时拒绝操作。
 

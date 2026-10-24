@@ -26,7 +26,7 @@ const thirdParty={
 }
 function refuse(reason){throw Error("native_preflight_bundle_refused:"+reason)}
 function validatedPath(rel){
-  if(typeof rel!=="string"||!rel.startsWith("services/pg-api/src/")||
+  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&rel!=="shared/schedule-time.mjs")||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
     refuse("unexpected_dependency:"+(typeof rel==="string"&&/^[A-Za-z0-9._/-]{1,300}$/.test(rel)?rel:"invalid"))

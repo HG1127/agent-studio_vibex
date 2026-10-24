@@ -2,9 +2,10 @@ import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import {workflowAgentJson} from "./workflow-v2-agent-machine.ts"
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 import {HttpError,isUuid,safeWorkflowGraph,type Identity,type SqlClient,type SqlPool,type WorkflowGraph} from "./contracts.ts"
-import {withActor} from "./repository.ts"
+import {withActor,assertOwnedAdmissionContext} from "./repository.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "./knowledge-retrieval-binding.ts"
 import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
+import {verifyScheduleRunSource} from "./schedule-effect-policy.ts"
 import {verifyWorkflowGraphResources} from "./workflow-repository.ts"
 import {createWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2EffectResult,
   type WorkflowV2Checkpoint,type WorkflowEffectRequest} from "./workflow-v2-machine.ts"
@@ -78,6 +79,7 @@ export async function auditWorkflowV2(db:SqlClient,owner:string,runId:string,act
     [owner,runId,action,JSON.stringify(metadata)])
 }
 export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState){
+  if(isUuid(run.id))await verifyScheduleRunSource(db,run.id)
   const root=durableV2Root(state.execution_mode)
   if(run.kind!==root.kind||!run[root.id]||run[root.id==="workflow_id"?"agent_spec_id":"workflow_id"])throw new HttpError(409,"invalid_v2_root")
   const current=(await db.query<{revision:number|string;graph?:unknown}>("SELECT revision"+(state.node_debug?",graph":"")+" FROM agentstudio."+root.table+
@@ -135,43 +137,53 @@ export class WorkflowV2RunRepository{
       replayed,execution_mode:this.root.mode,knowledge_outputs_available:observationsCurrent}
   }
   async submit(identity:Identity,id:string,raw:unknown){
+    return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))
+  }
+  async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown):Promise<WorkflowV2StoredState>{
+    if(this.root.mode!=="workflow_native_v2"||!isUuid(id))throw new HttpError(400,"invalid_workflow_id")
+    await assertOwnedAdmissionContext(db,owner)
+    const request=safeWorkflowV2Request(raw)
+    const flow=(await db.query<{revision:number|string;graph:unknown}>("SELECT revision,graph FROM agentstudio.workflows "+
+      "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
+    if(!flow)throw new HttpError(404,"workflow_not_found")
+    if(Number(flow.revision)!==request.expected_revision)throw new HttpError(409,"workflow_revision_changed")
+    const graph=safeWorkflowGraph(flow.graph),machine=createWorkflowV2Checkpoint(graph,request.instruction)
+    await this.checkMcpAdmission(db,owner,graph)
+    for(const node of graph.nodes){
+      if(node.type==="model"&&(!node.data.model_binding||!node.data.prompt?.trim()))throw new HttpError(409,"workflow_node_not_ready")
+      if(node.type==="agent"&&!node.data.agent_binding)throw new HttpError(409,"workflow_node_not_ready")
+      if(node.type==="tool"&&node.data.tool==="summarize"&&!node.data.model_binding)throw new HttpError(409,"workflow_node_not_ready")
+      if(node.type==="agent")await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:node.id,kind:"agent",input:"",input_sha256:"",configuration:node.data,missing:[]})
+    }
+    await verifyWorkflowGraphResources(db,owner,graph)
+    const checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",
+      workflow_revision:request.expected_revision,graph,machine}
+    return checkpoint
+  }
+  async admitOwned(db:SqlClient,owner:string,id:string,raw:unknown,plannedRunId?:string){
     if(this.root.mode!=="workflow_native_v2")throw Error("use_autonomous_agent_submission")
     if(!isUuid(id))throw new HttpError(400,"invalid_workflow_id")
     const request=safeWorkflowV2Request(raw),key="workflow_v2:"+request.idempotency_key
-    return withActor(this.pool,identity,async(db,owner)=>{
-      await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":"+key])
-      const prior=(await db.query<WorkflowV2RunRow>("SELECT r."+workflowV2RunColumns.replaceAll(",",",r.")+" FROM agentstudio.runs r JOIN agentstudio.jobs j "+
-        "ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1::uuid "+
-        "AND j.kind='workflow_tick' AND j.dedupe_key=$2::text AND j.payload->>'phase'='workflow_native_v2'",[owner,key])).rows[0]
-      if(prior){
-        if(prior.workflow_id!==id||prior.instruction!==request.instruction||
-           Number(prior.checkpoint.workflow_revision)!==request.expected_revision)throw new HttpError(409,"idempotency_key_conflict")
-        return this.assemble(db,owner,prior,true)
-      }
-      const flow=(await db.query<{revision:number|string;graph:unknown}>("SELECT revision,graph FROM agentstudio.workflows "+
-        "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
-      if(!flow)throw new HttpError(404,"workflow_not_found")
-      if(Number(flow.revision)!==request.expected_revision)throw new HttpError(409,"workflow_revision_changed")
-      const graph=safeWorkflowGraph(flow.graph),machine=createWorkflowV2Checkpoint(graph,request.instruction)
-      await this.checkMcpAdmission(db,owner,graph)
-      for(const node of graph.nodes){
-        if(node.type==="model"&&(!node.data.model_binding||!node.data.prompt?.trim()))throw new HttpError(409,"workflow_node_not_ready")
-        if(node.type==="agent"&&!node.data.agent_binding)throw new HttpError(409,"workflow_node_not_ready")
-        if(node.type==="tool"&&node.data.tool==="summarize"&&!node.data.model_binding)throw new HttpError(409,"workflow_node_not_ready")
-        if(node.type==="agent")await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:node.id,kind:"agent",input:"",input_sha256:"",configuration:node.data,missing:[]})
-      }
-      await verifyWorkflowGraphResources(db,owner,graph)
-      const checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",
-        workflow_revision:request.expected_revision,graph,machine}
-      const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs "+
-        "(owner_user_id,kind,workflow_id,status,instruction,checkpoint) VALUES($1::uuid,'workflow',$2::uuid,'queued',$3::text,$4::jsonb) "+
-        "RETURNING "+workflowV2RunColumns,[owner,id,request.instruction,JSON.stringify(checkpoint)])).rows[0]!
-      await db.query("INSERT INTO agentstudio.jobs(owner_user_id,run_id,kind,dedupe_key,payload,max_attempts) "+
-        "VALUES($1::uuid,$2::uuid,'workflow_tick',$3::text,$4::jsonb,30)",[owner,run.id,key,
-        JSON.stringify({phase:"workflow_native_v2",workflow_id:id,workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})])
-      await auditWorkflowV2(db,owner,run.id,"workflow.v2_submit",{workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})
-      return this.assemble(db,owner,run,false)
-    })
+    await assertOwnedAdmissionContext(db,owner,plannedRunId)
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":"+key])
+    const prior=(await db.query<WorkflowV2RunRow>("SELECT r."+workflowV2RunColumns.replaceAll(",",",r.")+" FROM agentstudio.runs r JOIN agentstudio.jobs j "+
+      "ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1::uuid "+
+      "AND j.kind='workflow_tick' AND j.dedupe_key=$2::text AND j.payload->>'phase'='workflow_native_v2'",[owner,key])).rows[0]
+    if(prior){
+      if(plannedRunId!==undefined&&prior.id!==plannedRunId)throw new HttpError(409,"idempotency_key_conflict")
+      if(prior.workflow_id!==id||prior.instruction!==request.instruction||
+         Number(prior.checkpoint.workflow_revision)!==request.expected_revision)throw new HttpError(409,"idempotency_key_conflict")
+      return this.assemble(db,owner,prior,true)
+    }
+    const checkpoint=await this.prepareOwned(db,owner,id,raw),machine=checkpoint.machine
+    const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs "+
+      "(id,owner_user_id,kind,workflow_id,status,instruction,checkpoint) VALUES(coalesce($5::uuid,gen_random_uuid()),$1::uuid,'workflow',$2::uuid,'queued',$3::text,$4::jsonb) "+
+      "RETURNING "+workflowV2RunColumns,[owner,id,request.instruction,JSON.stringify(checkpoint),plannedRunId??null])).rows[0]!
+    await db.query("INSERT INTO agentstudio.jobs(owner_user_id,run_id,kind,dedupe_key,payload,max_attempts) "+
+      "VALUES($1::uuid,$2::uuid,'workflow_tick',$3::text,$4::jsonb,30)",[owner,run.id,key,
+      JSON.stringify({phase:"workflow_native_v2",workflow_id:id,workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})])
+    await auditWorkflowV2(db,owner,run.id,"workflow.v2_submit",{workflow_revision:request.expected_revision,graph_sha256:machine.graph_sha256})
+    return this.assemble(db,owner,run,false)
   }
   async submitNodeDebug(identity:Identity,id:string,raw:unknown){
     if(this.root.mode!=="workflow_native_v2"||!isUuid(id))throw new HttpError(400,"invalid_workflow_node_debug_request")

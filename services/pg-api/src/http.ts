@@ -11,6 +11,7 @@ import { AgentSpecRepository } from "./repository.ts"
 import { RunRepository } from "./run-repository.ts"
 import { ScheduleInventoryRepository } from "./schedule-inventory-repository.ts"
 import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
+import type {ScheduleRuntimeRepository} from "./schedule-runtime-repository.ts"
 import { WorkflowRepository } from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
 import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
@@ -31,6 +32,7 @@ export interface AppDependencies {
   runRepository?: RunRepository
   scheduleInventory?: ScheduleInventoryRepository
   scheduleDraftRepository?: ScheduleDraftRepository
+  scheduleRuntimeRepository?:ScheduleRuntimeRepository
   workflowRepository?: WorkflowRepository
   workflowValidationRepository?: WorkflowValidationRepository
   workflowSafeRunRepository?: WorkflowSafeRunRepository
@@ -129,7 +131,7 @@ export function createHandler(deps:AppDependencies) {
       const knowledgeRoute=path==="/api/v2/knowledge-bases" ||
         /^\/api\/v2\/knowledge-bases\/[0-9a-fA-F-]{36}(?:\/(?:documents|search|text-documents|document-files))?$/.test(path)
       const schedulesRoute=path==="/api/v2/schedules" ||
-        /^\/api\/v2\/schedules\/[0-9a-fA-F-]{36}(?:\/occurrences)?$/.test(path)
+        /^\/api\/v2\/schedules\/[0-9a-fA-F-]{36}(?:\/(?:occurrences|execution|activate|pause|run-now|retry-start))?$/.test(path)
       const modelConnectionsRoute=path==="/api/v2/model-connections" ||
         /^\/api\/v2\/model-connections\/[0-9a-fA-F-]{36}(?:\/probe)?$/.test(path)
       const toolConnectionsRoute=path==="/api/v2/tool-connections" ||
@@ -355,6 +357,27 @@ export function createHandler(deps:AppDependencies) {
         throw new HttpError(405,"method_not_allowed")
       }
       if(schedulesRoute){
+        const runtime=deps.scheduleRuntimeRepository
+        const action=/^\/api\/v2\/schedules\/([0-9a-fA-F-]{36})\/(execution|activate|pause|run-now|retry-start)$/.exec(path)
+        if(action){
+          if(!runtime)throw new HttpError(403,"schedule_execution_disabled")
+          const id=action[1]!,verb=action[2]!
+          if(verb==="execution"&&method==="GET"){
+            const state=await runtime.describe(identity,id);if(!state)throw new HttpError(404,"schedule_not_found")
+            return send(res,200,{state})
+          }
+          if(method!=="POST"||verb==="execution")throw new HttpError(405,"method_not_allowed")
+          const body=await readBody(req,8192)
+          if(verb==="activate")return send(res,200,{state:await runtime.activate(identity,id,body)})
+          allowBodyFields(body,verb==="retry-start"?["expected_revision","occurrence_id"]:["expected_revision"])
+          if(!Number.isSafeInteger(body.expected_revision)||Number(body.expected_revision)<1)throw new HttpError(400,"invalid_revision")
+          if(verb==="pause"){
+            if(!await runtime.control(identity,id,Number(body.expected_revision),"pause"))throw new HttpError(409,"schedule_revision_conflict")
+            return send(res,200,{ok:true})
+          }
+          return send(res,200,{state:verb==="run-now"?await runtime.runNow(identity,id,Number(body.expected_revision)):
+            await runtime.retryFailedStart(identity,id,Number(body.expected_revision),String(body.occurrence_id))})
+        }
         const scheduleRepo=deps.scheduleInventory
         if(!scheduleRepo)throw new HttpError(503,"schedule_inventory_disabled")
         const occurrenceRoute=path.endsWith("/occurrences")
@@ -397,7 +420,7 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(revision)||(revision as number)<1)
             throw new HttpError(400,"invalid_revision")
           const {expected_revision:_discard,...input}=body
-          const item=await drafts.update(identity,suffix,input,revision as number)
+          const item=runtime?.enabled?await runtime.edit(identity,suffix,revision as number,input):await drafts.update(identity,suffix,input,revision as number)
           if(!item){
             if(!await scheduleRepo.get(identity,suffix))
               throw new HttpError(404,"schedule_not_found")
@@ -411,7 +434,7 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(body.expected_revision)||
               (body.expected_revision as number)<1)
             throw new HttpError(400,"invalid_revision")
-          if(!await drafts.delete(identity,suffix,body.expected_revision as number)){
+          if(!await (runtime?.enabled?runtime.control(identity,suffix,body.expected_revision as number,"delete"):drafts.delete(identity,suffix,body.expected_revision as number))){
             if(!await scheduleRepo.get(identity,suffix))
               throw new HttpError(404,"schedule_not_found")
             throw new HttpError(409,"schedule_draft_or_revision_conflict")

@@ -14,6 +14,24 @@ import {verifyKnowledgeRetrievalBinding} from "./knowledge-retrieval-policy.ts"
  * SET LOCAL never persists across reused pooled connections.
  * The database login must be NONSUPERUSER / NOBYPASSRLS and allowed SET ROLE.
  */
+// Reuse the caller's transaction for compound admissions such as a schedule
+// occurrence + run + queue + audit. This function never commits or rolls back.
+export async function withActorClient<T>(client:SqlClient,pool:SqlPool,identity:Identity,
+  body:(client:SqlClient,actor:string)=>Promise<T>):Promise<T>{
+  if(!identity?.issuer||!identity.subject)throw new HttpError(401,"invalid_identity")
+  await applyKnowledgeScope(client,pool)
+  await client.query("SET LOCAL ROLE agentstudio_api")
+  const actor=(await client.query<{id:string|null}>("SELECT agentstudio.identity_user_id($1::text,$2::text) AS id",[identity.issuer,identity.subject])).rows[0]?.id
+  if(!isUuid(actor))throw new HttpError(403,"employee_not_provisioned")
+  await client.query("SELECT set_config('agentstudio.actor_id',$1::text,true)",[actor])
+  return await body(client,actor)
+}
+export async function assertOwnedAdmissionContext(db:SqlClient,owner:string,plannedRunId?:string):Promise<void>{
+  if(!isUuid(owner)||plannedRunId!==undefined&&!isUuid(plannedRunId))throw new HttpError(400,"invalid_owned_admission")
+  const context=(await db.query<{ok:boolean}>("SELECT current_user='agentstudio_api' AND agentstudio.actor_id()=$1::uuid AS ok",[owner])).rows[0]
+  if(context?.ok!==true)throw new HttpError(403,"owned_admission_context_required")
+}
+
 export async function withActor<T>(
   pool: SqlPool, identity: Identity,
   body: (client: SqlClient, actor: string)=>Promise<T>,
@@ -25,19 +43,7 @@ export async function withActor<T>(
   try {
     await client.query("BEGIN")
     begun=true
-    await applyKnowledgeScope(client,pool)
-    await client.query("SET LOCAL ROLE agentstudio_api")
-    const result=await client.query<{id:string|null}>(
-      "SELECT agentstudio.identity_user_id($1::text,$2::text) AS id",
-      [identity.issuer,identity.subject],
-    )
-    const actor=result.rows[0]?.id
-    if(!isUuid(actor))throw new HttpError(403,"employee_not_provisioned")
-    await client.query(
-      "SELECT set_config('agentstudio.actor_id',$1::text,true)",
-      [actor],
-    )
-    const value=await body(client,actor)
+    const value=await withActorClient(client,pool,identity,body)
     await client.query("COMMIT")
     begun=false
     return value

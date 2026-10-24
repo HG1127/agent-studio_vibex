@@ -22,6 +22,10 @@ import {workflowV2ModelEffectExecutor} from "./workflow-v2-model-client.ts"
 import {selectWorkflowV2ToolExecution} from "./workflow-v2-tool-contract.ts"
 import {workflowV2ToolEffectExecutor} from "./workflow-v2-tool-client.ts"
 import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
+import {selectScheduleRuntime} from "./schedule-runtime-policy.ts"
+import {selectMcpExecution} from "./mcp-call.ts"
+import {ScheduleRuntimeWorker} from "./schedule-runtime-worker.ts"
+import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import type {SqlPool} from "./contracts.ts"
 export function runV2WorkerCli(autonomous=false){
   const kind=autonomous?"agent":"workflow"
@@ -31,6 +35,8 @@ export function runV2WorkerCli(autonomous=false){
     const modelEnabled=selectWorkflowV2ModelExecution(process.env)
     const toolsEnabled=selectWorkflowV2ToolExecution(process.env)
     const knowledgeToolsEnabled=selectKnowledgeToolRuntime(process.env)
+    const scheduleApproved=selectScheduleRuntime(process.env),scheduleEnabled=!autonomous&&scheduleApproved
+    if(scheduleEnabled&&!selectAutonomousAgentExecution(process.env))throw Error("schedule_autonomous_worker_not_approved")
     if(knowledgeToolsEnabled&&!toolsEnabled)throw Error("workflow_knowledge_tool_adapter_disabled")
     const agentsEnabled=autonomous?selectAutonomousAgentExecution(process.env):selectWorkflowAgentExecution(process.env)
     if(agentsEnabled&&(!modelEnabled||!toolsEnabled))throw Error("workflow_v2_agents_not_approved")
@@ -59,6 +65,7 @@ export function runV2WorkerCli(autonomous=false){
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
       await verifyWorkflowSampleLineageSchema(adapter)
+      if(scheduleApproved)await verifyScheduleRuntimeSchema(adapter)
       if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
       if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
       const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,
@@ -75,13 +82,15 @@ export function runV2WorkerCli(autonomous=false){
       if(mode==="preflight"){
         process.stdout.write(JSON.stringify({mode,worker:autonomous?"autonomous_agent":"workflow_v2",verified_roles:true,db_writes_performed:false,
           worker_started:false,effect_executor_installed:false,model_adapter_config_verified:modelEnabled,tool_adapter_config_verified:toolsEnabled,
-          agent_adapter_config_verified:agentsEnabled,production_cutover_allowed:false})+"\n");return
+          agent_adapter_config_verified:agentsEnabled,schedule_schema_verified:scheduleApproved,scheduler_started:false,production_cutover_allowed:false})+"\n");return
       }
-      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      const scheduler=scheduleEnabled?new ScheduleRuntimeWorker(adapter,"pg-schedule-"+randomUUID().slice(0,8),{allowMcpExecution:selectMcpExecution(process.env),allowKnowledgeExecution:knowledgeToolsEnabled}):undefined
       process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:"ready",effect_executor_installed:adapters.length>0,
-        scheduler_started:false,production_cutover_allowed:false})+"\n")
+        scheduler_started:Boolean(scheduler),production_cutover_allowed:false})+"\n")
       while(!stop){
-        try{const result=await worker.tick()
+        try{if(scheduler){const dispatched=await scheduler.tick();if(dispatched.status!=="idle")process.stdout.write(JSON.stringify({service:"pg-scheduler",state:dispatched.status})+"\n")}
+          const result=await worker.tick()
           if(result.status!=="idle")process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:result.status,run_id:result.run_id})+"\n")
           if(!stop)await sleep(result.status==="idle"?900:100)
         }catch{process.stderr.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",error:"durable_v2_tick_failed"})+"\n");if(!stop)await sleep(1500)}

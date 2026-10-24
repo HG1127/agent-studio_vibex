@@ -6,6 +6,7 @@ import {selectKnowledgeEmbeddingSettings,selectKnowledgeEmbeddingConsent} from "
 import {selectKnowledgeIndexRuntime} from "./knowledge-index-policy.ts"
 import {selectKnowledgeQueryRuntime} from "./knowledge-query-policy.ts"
 import {selectKnowledgeToolRuntime} from "./knowledge-tool-policy.ts"
+import {selectScheduleRuntime} from "./schedule-runtime-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -34,6 +35,7 @@ export interface NativePg18UatCapabilities {
   /** Versioned Workflow queue/approval UAT, independent of Start/End-only. */
   workflowV2ExecutionUat?:boolean
   autonomousAgentUat?:boolean
+  scheduleRuntimeUat?:boolean
   /** Additional independent UAT prerequisite; does not register a paid transport. */
   boundModelExecutionUat?:boolean
 }
@@ -59,6 +61,7 @@ export function selectNativePg18UatCapabilities(
   uid=process.getuid?.(),
 ):NativePg18UatCapabilities {
   const autonomousAgentUat=selectAutonomousAgentExecution(env)
+  const scheduleRuntimeUat=selectScheduleRuntime(env)
   const mcpToolExecutionUat=selectMcpExecution(env)
   const smitheryManagementUat=selectSmitheryManagement(env)
   const knowledgeSharingUat=selectKnowledgeSharing(env)
@@ -102,6 +105,7 @@ export function selectNativePg18UatCapabilities(
   const workflowValidationUat=flow==="true"
   const workflowExecutionUat=execution==="true"
   const workflowV2ExecutionUat=flowV2==="true"
+  if(scheduleRuntimeUat&&(!workflowV2ExecutionUat||!autonomousAgentUat))refuse()
   const boundModelExecutionUat=boundModel==="true"
   if(!boundModelExecutionUat&&boundModelMarker!==undefined)refuse()
   if(!runUat&&runMarker!==undefined)refuse()
@@ -144,6 +148,7 @@ export function selectNativePg18UatCapabilities(
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
     ...(autonomousAgentUat?{autonomousAgentUat:true}:{}),
+    ...(scheduleRuntimeUat?{scheduleRuntimeUat:true}:{}),
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }
 const uuid="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -176,10 +181,15 @@ export function permitNativePg18BusinessUatRequest(
     new RegExp("^/api/v2/mcp-connections/"+uuid+"/discover$").test(pathname))return true
   if(method==="DELETE"&&policy.configurationWrites===true&&
     new RegExp("^/api/v2/mcp-connections/"+uuid+"$").test(pathname))return true
-  // Schedule *configuration* drafts may be saved only with config UAT.
-  // There is NO toggle/enable/run/occurrence mutation or scheduler.
+  // Draft writes need config UAT. Background authority and occurrence actions
+  // require their own explicit scheduling opt-in in addition to owner checks.
   const scheduleId=new RegExp("^/api/v2/schedules/"+uuid+"$")
   const scheduleHistory=new RegExp("^/api/v2/schedules/"+uuid+"/occurrences$")
+  if(method==="POST"&&new RegExp("^/api/v2/schedules/"+uuid+"/pause$").test(pathname))return true
+  if(method==="GET"&&new RegExp("^/api/v2/schedules/"+uuid+"/execution$").test(pathname))return true
+  if(new RegExp("^/api/v2/schedules/"+uuid+"/(?:execution|activate|pause|run-now|retry-start)$").test(pathname))
+    return policy.configurationWrites===true&&policy.scheduleRuntimeUat===true&&
+      ((method==="GET"&&pathname.endsWith("/execution"))||(method==="POST"&&!pathname.endsWith("/execution")))
   if(method==="GET"&&(
     pathname==="/api/v2/schedules" ||
     scheduleId.test(pathname) || scheduleHistory.test(pathname)))return true

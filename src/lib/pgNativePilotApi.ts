@@ -41,6 +41,7 @@ export type PgNativeConfigCapabilities={
   workflow_execution_enabled?:boolean
   workflow_v2_submission_enabled?:boolean
   autonomous_agent_submission_enabled?:boolean
+  schedule_execution_enabled?:boolean
 }
 export type PgNativeStaff={
   id:string;email:string;display_name:string;is_admin:boolean
@@ -158,9 +159,16 @@ export type PgNativeScheduleDraftInput={
 }
 export type PgNativeScheduleOccurrence={
   id:string;schedule_id:string;scheduled_for:string
-  status:"pending"|"started"|"succeeded"|"failed"|"skipped"
+  status:"pending"|"launching"|"retryable"|"failed_start"|"started"|"succeeded"|"failed"|"skipped"|"cancelled_schedule"|"invalid_schedule"
   run_id:string|null;created_at:string
+  schedule_revision?:number|string|null;attempts?:number;error_code?:string;run_status?:string|null
 }
+export type PgNativeScheduleActivation={expected_revision:number;expected_target_revision:number;instruction:string;max_steps:number;anchor_at:string;
+  expires_at:string|null;max_occurrences:number|null;max_auto_effects:number;background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1";
+  knowledge_charge_ack:"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1"|null;request_id:string}
+export type PgNativeScheduleExecution={schedule_id:string;revision:number;enabled:boolean;next_at:string|null;authority_id:string|null;source_current:boolean;
+  used_occurrences:number;max_occurrences:number|null;expires_at:string|null;max_auto_effects:number|null;allow_paid_knowledge:boolean|null;
+  execution:Partial<{instruction:string;max_steps:number;anchor_at:string;expires_at:string|null;max_occurrences:number|null;max_auto_effects:number;allow_paid_knowledge:boolean}>}
 export type PgNativeRunStatus="queued"|"running"|"awaiting_approval"|"paused"|
   "succeeded"|"failed"|"cancelled"
 export type PgNativeRun={
@@ -429,6 +437,8 @@ export function createPgNativePilotApi(
           (value.workflow_v2_submission_enabled!==undefined&&
             typeof value.workflow_v2_submission_enabled!=="boolean")||
           (value.workflow_v2_submission_enabled===true&&value.config_writes_enabled!==true)||
+          (value.schedule_execution_enabled!==undefined&&typeof value.schedule_execution_enabled!=="boolean")||
+          (value.schedule_execution_enabled===true&&(value.config_writes_enabled!==true||value.workflow_v2_submission_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
           (value.run_submission_enabled!==undefined&&
             typeof value.run_submission_enabled!=="boolean")||
           (value.bound_model_runs_enabled!==undefined&&
@@ -854,6 +864,23 @@ export function createPgNativePilotApi(
         "DELETE",{expected_revision:safeRevision(revision)},transport,rootPath),
     listSchedules:async()=>
       (await get<{items:PgNativeSchedule[]}>(routes.schedules)).items,
+    getScheduleExecution:async(id:string)=>{
+      const value=(await get<{state:PgNativeScheduleExecution}>((scheduleDraftRoute(id)+"/execution") as Route)).state
+      if(!value||value.schedule_id!==id||!Number.isSafeInteger(value.revision)||typeof value.enabled!=="boolean"||typeof value.source_current!=="boolean"||
+        !Number.isSafeInteger(value.used_occurrences)||!value.execution||typeof value.execution!=="object")throw new PgNativePilotError(503,"invalid_schedule_execution_response")
+      return value
+    },
+    activateSchedule:async(id:string,body:PgNativeScheduleActivation)=>{
+      const value=(await post<{state:{id:string;revision:number;authority_id:string;replayed:boolean}}>((scheduleDraftRoute(id)+"/activate") as Route,body as unknown as Record<string,unknown>)).state
+      if(!value||value.id!==id||value.revision!==body.expected_revision+1||!safeId.test(value.authority_id)||typeof value.replayed!=="boolean")throw new PgNativePilotError(503,"invalid_schedule_activation_response")
+      return value
+    },
+    pauseSchedule:(id:string,revision:number)=>post<{ok:true}>((scheduleDraftRoute(id)+"/pause") as Route,{expected_revision:safeRevision(revision)}),
+    runScheduleNow:async(id:string,revision:number)=>(await post<{state:{occurrence_id:string;run_id:string;queued:true}}>((scheduleDraftRoute(id)+"/run-now") as Route,{expected_revision:safeRevision(revision)})).state,
+    retryScheduleStart:async(id:string,revision:number,occurrence:string)=>{
+      if(!safeId.test(occurrence))throw new PgNativePilotError(400,"invalid_schedule_occurrence")
+      return (await post<{state:{occurrence_id:string;run_id:string;queued:true}}>((scheduleDraftRoute(id)+"/retry-start") as Route,{expected_revision:safeRevision(revision),occurrence_id:occurrence})).state
+    },
     listScheduleOccurrences:async(id:string)=>
       (await get<{items:PgNativeScheduleOccurrence[]}>(
         scheduleOccurrencesRoute(id))).items,

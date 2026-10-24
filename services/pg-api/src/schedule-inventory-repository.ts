@@ -23,8 +23,12 @@ export interface ScheduleOccurrence {
   id:string
   schedule_id:string
   scheduled_for:string
-  status:"pending"|"started"|"succeeded"|"failed"|"skipped"
+  status:"pending"|"launching"|"retryable"|"failed_start"|"started"|"succeeded"|"failed"|"skipped"|"cancelled_schedule"|"invalid_schedule"
   run_id:string|null
+  schedule_revision?:number|null
+  attempts?:number
+  error_code?:string
+  run_status?:string|null
   created_at:string
 }
 function bounded(limit:number):number{
@@ -42,17 +46,16 @@ function normalize(row:ScheduleSummary):ScheduleSummary{
   // projected. All other stored recurrence blobs are intentionally omitted.
   const {recurrence:stored,...publicFields}=row
   let publicRule:Record<string,unknown>|undefined
-  if(stored?.config_format==="pg_schedule_draft_v1"&&
-     stored.execution_supported===false&&
-     row.enabled===false&&row.next_at===null){
+  if((stored?.config_format==="pg_schedule_draft_v1"&&stored.execution_supported===false&&row.enabled===false&&row.next_at===null)||
+     (stored?.config_format==="pg_schedule_execution_v2"&&stored.execution_supported===true)){
     try{
       const target=row.kind==="agent"?row.agent_spec_id:row.workflow_id
       const checked=safeScheduleDraftInput({
         name:row.name,kind:row.kind,target_id:target,
         time_zone:row.time_zone,rule:stored.rule
       })
-      publicRule={config_format:"pg_schedule_draft_v1",
-        execution_supported:false,rule:checked.rule}
+      publicRule={config_format:stored!.config_format,
+        execution_supported:stored!.execution_supported,rule:checked.rule}
     }catch{ /* Never send malformed or unreviewed stored JSON. */ }
   }
   return {...publicFields,revision,
@@ -67,7 +70,7 @@ export class ScheduleInventoryRepository {
       const result=await db.query<ScheduleSummary>(
         "SELECT id,name,kind,agent_spec_id,workflow_id,time_zone,recurrence,"+
         "next_at,enabled,revision,created_at,updated_at "+
-        "FROM agentstudio.schedules WHERE owner_user_id=$1::uuid "+
+        "FROM agentstudio.schedules s WHERE owner_user_id=$1::uuid AND to_jsonb(s)->>'deleted_at' IS NULL "+
         "ORDER BY updated_at DESC,id LIMIT $2::int",[actor,count])
       return result.rows.map(normalize)
     })
@@ -78,7 +81,7 @@ export class ScheduleInventoryRepository {
       const result=await db.query<ScheduleSummary>(
         "SELECT id,name,kind,agent_spec_id,workflow_id,time_zone,recurrence,"+
         "next_at,enabled,revision,created_at,updated_at "+
-        "FROM agentstudio.schedules WHERE id=$1::uuid AND owner_user_id=$2::uuid",
+        "FROM agentstudio.schedules s WHERE id=$1::uuid AND owner_user_id=$2::uuid AND to_jsonb(s)->>'deleted_at' IS NULL",
         [id,actor])
       return result.rows[0]?normalize(result.rows[0]):null
     })
@@ -93,9 +96,11 @@ export class ScheduleInventoryRepository {
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
         [id,actor])
       if(!existing.rows.length)return null
+      const native=(await db.query<{installed:boolean}>("SELECT to_regprocedure('agentstudio.schedule_execution_status(uuid)') IS NOT NULL AS installed")).rows[0]?.installed===true
       const result=await db.query<ScheduleOccurrence>(
-        "SELECT id,schedule_id,scheduled_for,status,run_id,created_at "+
-        "FROM agentstudio.schedule_occurrences "+
+        "SELECT id,schedule_id,scheduled_for,status,run_id,created_at"+
+        (native?",schedule_revision,attempts,error_code,(SELECT r.status FROM agentstudio.runs r WHERE r.id=o.run_id AND r.owner_user_id=o.owner_user_id) AS run_status ":" ")+
+        "FROM agentstudio.schedule_occurrences o "+
         "WHERE schedule_id=$1::uuid AND owner_user_id=$2::uuid "+
         "ORDER BY scheduled_for DESC,id LIMIT $3::int",[id,actor,count])
       return result.rows

@@ -33,6 +33,12 @@ import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
 import {AutonomousAgentRunRepository} from "../src/autonomous-agent-run-repository.ts"
 import {WorkflowV2RunRepository} from "../src/workflow-v2-run-repository.ts"
 import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
+import {ScheduleInventoryRepository} from "../src/schedule-inventory-repository.ts"
+import {ScheduleDraftRepository} from "../src/schedule-draft-repository.ts"
+import {ScheduleRuntimeRepository} from "../src/schedule-runtime-repository.ts"
+import {ScheduleRuntimeWorker} from "../src/schedule-runtime-worker.ts"
+import {verifyScheduleRuntimeSchema} from "../src/schedule-runtime-audit.ts"
+import {SCHEDULE_BACKGROUND_ACK,SCHEDULE_KNOWLEDGE_ACK} from "../src/schedule-runtime-contract.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../src/workflow-v2-model-dispatch.ts"
 import {workflowV2ModelEffectExecutor} from "../src/workflow-v2-model-client.ts"
 import {createWorkflowV2ModelInternalHandler} from "../src/workflow-v2-model-handler.ts"
@@ -96,7 +102,7 @@ const adapter=pool=>({async connect(){
     release(){c.release()}}
 }})
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
-  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true}
+  boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
 async function startNativeHttps(auth,pool,key,brokerPool){
@@ -125,7 +131,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowKnowledgeQueryRuntime:true,
       allowKnowledgeToolExecution:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
-      allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,
+      allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,allowScheduleRuntime:true,
       businessHandler:(req,res)=>{
         const route=new URL(req.url,"https://localhost").pathname
         if(!permitNativePg18BusinessUatRequest(route,req.method,policy)){
@@ -145,6 +151,8 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       knowledgeIndexRepository:new KnowledgeIndexRepository(pool),
       knowledgeQueryRepository:new KnowledgeQueryRepository(pool),
       workflowRepository:new WorkflowRepository(pool),
+      scheduleInventory:new ScheduleInventoryRepository(pool),scheduleDraftRepository:new ScheduleDraftRepository(pool),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(pool,{enabled:true,allowMcpExecution:true,allowKnowledgeExecution:true}),
       workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
@@ -251,7 +259,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN('agentstudio','agentstudio_auth')")).rows[0].n,0)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
       const initialized=await initialize()
-      assert.equal(initialized.migration_versions,29);assert.equal(initialized.service_logins_enabled,false)
+      assert.equal(initialized.migration_versions,30);assert.equal(initialized.service_logins_enabled,false)
       const receipt=(await bootstrap.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_fresh_runtime_001'")).rows[0]
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
@@ -342,6 +350,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_keyword_observations LIMIT 1"),e=>e.code==="42501")
       await assert.rejects(pool.query("SELECT run_id FROM agentstudio.knowledge_agent_observations LIMIT 1"),e=>e.code==="42501")
       await assert.rejects(pool.query("SELECT run_id FROM agentstudio.workflow_sample_lineage LIMIT 1"),e=>e.code==="42501")
+      for(const table of ["schedule_execution_authorities","schedule_execution_origins","schedule_execution_effect_receipts"])
+        await assert.rejects(pool.query("SELECT owner_user_id FROM agentstudio."+table+" LIMIT 1"),e=>e.code==="42501")
     }
     for(const kind of ["worker","broker"])await verifyKnowledgeQuerySchema(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
     for(const kind of ["worker","broker"])await verifyKnowledgeIndexLogin(adapter(byLogin["agentstudio_knowledge_index_"+kind+"_login"]),kind)
@@ -356,6 +366,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const identityPool=adapter(byLogin.agentstudio_bound_dispatch_login)
     const brokerPool=adapter(byLogin.agentstudio_model_broker_login)
     const workerPool=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(byLogin.agentstudio_stage_worker),true),true),true),true),true)
+    await verifyScheduleRuntimeSchema(apiPool);await verifyScheduleRuntimeSchema(workerPool)
     const inspectWorkerOptional=async()=>{
       const db=await workerPool.connect()
       try{await db.query("BEGIN READ ONLY");try{
@@ -675,7 +686,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const dispatch={model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),model),tool:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(identityPool),tool)}
       const controller=new AbortController(),loop=(async()=>{while(!controller.signal.aborted){await worker.tick(controller.signal);await new Promise(resolve=>setTimeout(resolve,20))}})()
       try{await withDisposableBoundModelTls(dispatch,async wire=>{
-        const adapters=[workflowV2ModelEffectExecutor(wire),workflowV2ToolEffectExecutor(wire)],runtimeWorker=new WorkflowV2Worker(workerPool,"ci-real-semantic",{executor:{supports:r=>adapters.some(a=>a.supports(r)),execute(r,lease){return adapters.find(a=>a.supports(r)).execute(r,lease)}}})
+        const adapters=[workflowV2ModelEffectExecutor(wire),workflowV2ToolEffectExecutor(wire)],runtimeWorker=new WorkflowV2Worker(workerPool,"ci-real-semantic",{scheduleExecutionApproved:true,executor:{supports:r=>adapters.some(a=>a.supports(r)),execute(r,lease){return adapters.find(a=>a.supports(r)).execute(r,lease)}}})
         let completed=false
         for(let i=0;i<20;i++){
           await runtimeWorker.tick();const view=await api.getWorkflowV2Run(semanticRunId)
@@ -722,6 +733,23 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         const lineage=(await admin.query("SELECT * FROM agentstudio.workflow_sample_lineage WHERE run_id=$1",[lineageRunId])).rows[0]
         assert.equal(lineage.reader_user_id,share.item.recipient_id);assert.equal(lineage.source_run_id,keywordRunId)
         assert.doesNotMatch(JSON.stringify(lineage),/cedar|Synthetic free keyword task|Synthetic inherited PG18 output|lease_token|ciphertext/)
+        for(const paid of [false,true]){
+          const schedule=await api.createScheduleDraft({name:"Scheduled semantic "+paid,kind:"workflow",target_id:flow.id,time_zone:"UTC",rule:{kind:"interval",interval_minutes:15}})
+          const grant=await api.activateSchedule(schedule.id,{expected_revision:schedule.revision,expected_target_revision:flow.revision,instruction:"Synthetic standing semantic task",max_steps:1,
+            anchor_at:new Date().toISOString(),expires_at:null,max_occurrences:1,max_auto_effects:10,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:paid?SCHEDULE_KNOWLEDGE_ACK:null,request_id:randomUUID()})
+          const queued=await api.runScheduleNow(schedule.id,grant.revision),priorCalls=queryCalls
+          assert.equal((await new ScheduleRuntimeWorker(workerPool,"ci-scheduled-semantic",{allowKnowledgeExecution:true}).tick()).run_id,queued.run_id)
+          for(let i=0;i<20;i++){
+            await runtimeWorker.tick();const detail=await api.getWorkflowV2Run(queued.run_id)
+            if(detail.run.status==="awaiting_approval"){assert.equal(paid,false);assert.equal(queryCalls,priorCalls);break}
+            if(detail.run.status==="succeeded"){assert.equal(paid,true);break}
+            assert.equal(["failed","paused"].includes(detail.run.status),false)
+          }
+          const detail=await api.getWorkflowV2Run(queued.run_id)
+          assert.equal(detail.run.status,paid?"succeeded":"awaiting_approval");assert.equal(queryCalls,priorCalls+(paid?1:0))
+          if(!paid)await api.cancelWorkflowV2Run(queued.run_id)
+          await api.pauseSchedule(schedule.id,grant.revision)
+        }
       },{handlerFactory:wire=>{
         const m=createWorkflowV2ModelInternalHandler({...wire,dispatch:dispatch.model}),t=createWorkflowV2ToolInternalHandler({...wire,dispatch:dispatch.tool})
         return (req,res)=>(req.url==="/__internal/v2/workflow-tool/dispatch"?t:m)(req,res)
@@ -962,6 +990,34 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         assert.equal(detail.knowledge_outputs_available,true)
       }
       ui?.dispose()
+      // Scheduled runs use genuine owner standing consent, the restricted
+      // Worker login and the SAME private identity/Broker transports.
+      agentCalls=0;agentHttpCalls=0;agentMcpCalls=0
+      const scheduled=await api.createScheduleDraft({name:"Scheduled "+selection+" "+(autonomous?"Agent":"Workflow"),kind:autonomous?"agent":"workflow",
+        target_id:autonomous?selectedRole.id:selectedFlow.id,time_zone:"Asia/Shanghai",rule:{kind:"interval",interval_minutes:15}})
+      const activationBody={expected_revision:scheduled.revision,expected_target_revision:1,instruction:"Synthetic scheduled Agent input",max_steps:autonomous?3:1,anchor_at:new Date().toISOString(),
+        expires_at:null,max_occurrences:2,max_auto_effects:50,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()}
+      const grant=await api.activateSchedule(scheduled.id,activationBody);assert.equal((await api.activateSchedule(scheduled.id,activationBody)).replayed,true)
+      const races=await Promise.allSettled([api.runScheduleNow(scheduled.id,grant.revision),api.runScheduleNow(scheduled.id,grant.revision)])
+      assert.equal(races.filter(r=>r.status==="fulfilled").length,1);assert.equal(races.filter(r=>r.status==="rejected"&&r.reason.status===409).length,1)
+      const queue=races.find(r=>r.status==="fulfilled").value
+      const launches=await Promise.all([new ScheduleRuntimeWorker(workerPool,"schedule-race-a",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick(),new ScheduleRuntimeWorker(workerPool,"schedule-race-b",{allowMcpExecution:true,allowKnowledgeExecution:true}).tick()])
+      assert.equal(launches.filter(r=>r.status==="started").length,1);assert.equal(launches.find(r=>r.status==="started").run_id,queue.run_id)
+      let manualApprovals=0
+      for(let i=0;i<25;i++){
+        await new WorkflowV2Worker(workerPool,"ci-scheduled-"+i,{agentExecutionApproved:true,scheduleExecutionApproved:true,executor,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}).tick()
+        const view=await get(queue.run_id)
+        if(view.run.status==="succeeded")break
+        if(view.run.status==="awaiting_approval"){
+          manualApprovals++;assert.equal(custom||useMcp,true);assert.equal(view.pending_effect.kind,"tool")
+          if(autonomous)await api.decideAutonomousAgentNode(queue.run_id,"approved",view.pending_effect.step_key,view.pending_effect.input_sha256)
+          else await api.decideWorkflowV2Node(queue.run_id,"approved",view.pending_effect.step_key,view.pending_effect.input_sha256)
+        }else assert.equal(["failed","paused","cancelled"].includes(view.run.status),false)
+      }
+      const scheduledDone=await get(queue.run_id);assert.equal(scheduledDone.run.status,"succeeded");assert.equal(agentCalls,2);assert.equal(manualApprovals,custom||useMcp?1:0)
+      assert.equal((await admin.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_origins WHERE run_id=$1",[queue.run_id])).rows[0].n,1)
+      await api.pauseSchedule(scheduled.id,grant.revision)
+      assert.equal((await get(queue.run_id)).run.result_text,"Synthetic Agent result 4")
     },{handlerFactory:handlers})
     }
     const rotated=await api.saveSmitheryKey(smitherySecret+"rotated",1,randomUUID())

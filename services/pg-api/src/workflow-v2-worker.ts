@@ -10,6 +10,7 @@ import {advanceWorkflowV2Checkpoint,inspectWorkflowV2Checkpoint,recordWorkflowV2
 import {auditWorkflowV2,checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,
   workflowV2RunColumns,workflowV2ExecutionRequest,type WorkflowV2RunRow,type WorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
 import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
+import {scheduleAutomaticEffect,scheduleOwnedRunCandidate} from "./schedule-effect-policy.ts"
 import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2-agent-machine.ts"
 import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
@@ -72,11 +73,13 @@ export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
   readonly agentEnabled:boolean
+  readonly scheduleEnabled:boolean
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;executionMode?:DurableV2Mode}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;executionMode?:DurableV2Mode}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
     this.agentEnabled=options.agentExecutionApproved===true
+    this.scheduleEnabled=options.scheduleExecutionApproved===true
     this.root=durableV2Root(options.executionMode??"workflow_native_v2")
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
@@ -130,6 +133,10 @@ export class WorkflowV2Worker{
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
+    if(!this.scheduleEnabled&&await scheduleOwnedRunCandidate(db,job.run_id)){
+      await this.persist(db,job,state,"paused","schedule_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
+      return {tick:{status:"paused",run_id:job.run_id}}
+    }
     const active=(await db.query<{status:string}>("SELECT status FROM agentstudio.users WHERE id=$1::uuid",[job.owner_user_id])).rows[0]
     if(active?.status!=="active")throw new HttpError(409,"workflow_owner_disabled")
     let view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
@@ -164,8 +171,9 @@ export class WorkflowV2Worker{
           }
           pending=agent.pending!
         }
-        const approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
+        let approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
           "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[job.run_id,job.owner_user_id,pending.step_key])).rows[0]
+        if(!approval&&await scheduleAutomaticEffect(db,job.owner_user_id,job.run_id,pending))approval={status:"approved",reason_code:"wf2:"+pending.input_sha256}
         if(!approval){
           await db.query("INSERT INTO agentstudio.approvals(owner_user_id,run_id,step_key,requested_by,reason_code) "+
             "VALUES($1::uuid,$2::uuid,$3::text,$1::uuid,$4::text)",[job.owner_user_id,job.run_id,pending.step_key,"wf2:"+pending.input_sha256])
