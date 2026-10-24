@@ -11,11 +11,12 @@ const test=(name,fn)=>baseTest((autonomous?"Autonomous: ":"Workflow: ")+name,fn)
 const longNode=autonomous?"agent":"a".repeat(80)
 test("thirty owner-selected rounds survive every Worker replacement over private mTLS and retain late-round fencing",async()=>{
   const f=await agentFixture();let calls=0,decisions=0,lateFence=false
+  const instruction="迁".repeat(1998)+"🚀"
   try{
     await assert.rejects(f.make({maxSteps:31}))
-    const queued=await f.make({maxSteps:30})
+    const queued=await f.make({maxSteps:30,input:instruction})
     await f.privateTls(async(_material,prompt)=>{
-      calls++;const input=JSON.parse(prompt);assert.equal(input.max_rounds,30)
+      calls++;const input=JSON.parse(prompt);assert.equal(input.max_rounds,30);assert.equal(input.task,instruction)
       return input.round===30?answer("Thirty round result"):tool("2+2")
     },async(makeWorker,{modelIdentity})=>{
       f.setBeforeDispatch(async(request,kind)=>{
@@ -25,6 +26,7 @@ test("thirty owner-selected rounds survive every Worker replacement over private
       })
       const done=await f.drive(makeWorker,queued.run.id,()=>{decisions++;return "approved"},180)
       assert.equal(done.run.status,"succeeded",JSON.stringify({error:done.run.last_error_code,calls,steps:done.steps.map(s=>({key:s.step_key,status:s.status}))}));assert.equal(done.run.result_text,"Thirty round result")
+      assert.equal(done.run.instruction,instruction)
       assert.equal(calls,30);assert.equal(decisions,60);assert.equal(lateFence,true)
       assert.equal(done.steps.some(step=>step.metadata.agent_round===30&&step.metadata.agent_phase==="model"),true)
       assert.equal((await makeWorker().tick()).status,"idle");assert.equal(calls,30)

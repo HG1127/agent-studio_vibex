@@ -100,18 +100,19 @@ test("background reads do not reload the history list; terminal or opposite deci
 
 test("thirty-round client submission preserves the exact consent after loss and rejects31 before sending",async()=>{
   const f=fake(),calls=[]
-  f.record={...detail(),run:{...detail().run,checkpoint:{spec_revision:2,max_steps:30}}}
+  const instruction="迁".repeat(1998)+"🚀"
+  f.record={...detail(),run:{...detail().run,instruction,checkpoint:{spec_revision:2,max_steps:30}}}
   let lost=true
   f.api.submitAutonomousAgentRun=async(...args)=>{calls.push(args);if(lost){lost=false;throw Error("synthetic_lost_ack")}return f.record}
   const model=createPgNativeAutonomousAgentSession(f.api,{key:()=>"synthetic-thirty-round-key"});model.setActive(true);await turn()
-  await model.submit({...draft,maxSteps:30});assert.equal(model.snapshot().pendingSubmit.maxSteps,30)
+  await model.submit({...draft,instruction,maxSteps:30});assert.equal(model.snapshot().pendingSubmit.maxSteps,30)
   await model.submit({...draft,maxSteps:1,instruction:"Must not replace original"})
   assert.deepEqual(calls[0],calls[1]);assert.equal(calls[1].at(-1),30);assert.equal(model.snapshot().pendingSubmit,null)
   await model.submit({...draft,maxSteps:31});assert.equal(calls.length,2)
   const wire=[]
   const api=createPgNativePilotApi(async(route,init)=>{wire.push({route,init});return new Response(JSON.stringify(f.record),{status:200})})
-  await api.submitAutonomousAgentRun(agent,2,"First task","synthetic-thirty-round-key",30)
-  assert.equal(JSON.parse(wire[0].init.body).max_steps,30);assert.equal(wire[0].init.credentials,"same-origin")
+  await api.submitAutonomousAgentRun(agent,2,instruction,"synthetic-thirty-round-key",30)
+  assert.equal(JSON.parse(wire[0].init.body).max_steps,30);assert.equal(JSON.parse(wire[0].init.body).instruction,instruction);assert.equal(wire[0].init.credentials,"same-origin")
   await assert.rejects(api.submitAutonomousAgentRun(agent,2,"First task","synthetic-thirty-round-key",31),e=>e.code==="invalid_agent_max_steps")
   assert.equal(wire.length,1)
 })

@@ -2,6 +2,9 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {createPgNativePilotApi} from "../src/lib/pgNativePilotApi.ts"
 import {scheduleActivationLocalStart,scheduleActivationWindow} from "../src/lib/pgNativeScheduleTime.ts"
+import {parseScheduleActivation} from "../services/pg-api/src/schedule-runtime-contract.ts"
+import {safeRunRequest} from "../services/pg-api/src/run-repository.ts"
+import {safeWorkflowV2Request} from "../services/pg-api/src/workflow-v2-run-repository.ts"
 const id="11111111-1111-4111-8111-111111111111",authority="22222222-2222-4222-8222-222222222222"
 const body={expected_revision:1,expected_target_revision:2,instruction:"Synthetic background work",max_steps:1,anchor_at:"2026-10-24T00:00:00.000Z",expires_at:null,max_occurrences:null,max_auto_effects:10,background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1",knowledge_charge_ack:null,request_id:authority}
 test("schedule activation retry retains the exact owner consent request and uses same-origin Cookie/CSRF transport",async()=>{
@@ -31,4 +34,19 @@ test("future activation uses the plan timezone, rejects DST gaps and requires au
   assert.equal(window({date:"2026-11-01",time:"01:30"},"America/New_York",{unlimited:true}).anchor_at,"2026-11-01T05:30:00.000Z")
   assert.deepEqual(scheduleActivationLocalStart("2026-03-02T01:00:00.000Z","Asia/Shanghai",Date.parse("2026-03-01T00:00:00Z")),{date:"2026-03-02",time:"09:00"})
   assert.equal(scheduleActivationLocalStart("2026-03-02T01:00:00.000Z","Asia/Shanghai",Date.parse("2026-03-03T00:00:00Z")),null)
+})
+test("Native task boundaries retain all2000 UTF16 units and reject2001 without truncating replay bodies",async()=>{
+  const instruction="迁".repeat(1998)+"🚀",now=Date.now(),request={instruction,idempotency_key:"synthetic-full-task-2000"}
+  assert.equal(instruction.length,2000)
+  assert.equal(safeRunRequest(request).instruction,instruction)
+  assert.equal(safeWorkflowV2Request({...request,expected_revision:1}).instruction,instruction)
+  const row={id,name:"Task boundary",kind:"workflow",workflow_id:authority,agent_spec_id:null,time_zone:"UTC",revision:1,deleted_at:null,execution:{},
+    recurrence:{config_format:"pg_schedule_draft_v1",execution_supported:false,rule:{kind:"interval",interval_minutes:15}}}
+  const activation={...body,instruction,anchor_at:new Date(now).toISOString()}
+  assert.equal(parseScheduleActivation(activation,row,now).execution.instruction,instruction)
+  for(const parse of [v=>safeRunRequest({...request,instruction:v}),v=>safeWorkflowV2Request({...request,expected_revision:1,instruction:v}),v=>parseScheduleActivation({...activation,instruction:v},row,now)]){
+    assert.throws(()=>parse(instruction+"x"));assert.throws(()=>parse("x\0y"))
+  }
+  const requests=[],api=createPgNativePilotApi(async(route,init)=>{requests.push({route,init});return new Response(JSON.stringify({state:{id,revision:2,authority_id:authority,replayed:false}}),{status:200})})
+  await api.activateSchedule(id,activation);assert.equal(JSON.parse(requests[0].init.body).instruction,instruction)
 })

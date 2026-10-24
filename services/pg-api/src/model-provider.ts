@@ -41,7 +41,7 @@ export function createStagingOpenAIProvider(
   return {
     async generate(input:ModelInput):Promise<string> {
       if(!input.goal.trim()||input.goal.length>2000 ||
-         input.instruction.length>1200 ||
+         input.instruction.length>2000 ||
          input.taskScope.length>2000 ||
          input.deliverables.length>20||input.doneCriteria.length>20 ||
          [...input.deliverables,...input.doneCriteria]

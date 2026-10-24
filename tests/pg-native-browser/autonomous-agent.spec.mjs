@@ -41,7 +41,9 @@ test("multi-round employee Agent: exact recovery, per-step consent, mTLS, safe c
     await expect(page.getByRole("combobox",{name:"多轮 Agent 角色",exact:true})).not.toContainText("Bob Browser Agent")
     await page.getByRole("combobox",{name:"多轮 Agent 角色",exact:true}).selectOption({label:"Alice Browser Agent · gpt-4.1-mini"})
     await page.getByRole("combobox",{name:"最多规划轮数",exact:true}).selectOption("30")
-    await page.getByRole("textbox",{name:"多轮任务要求",exact:true}).fill("Alice private autonomous task")
+    const taskPrefix="Alice private autonomous task\n",fullTask=taskPrefix+"迁".repeat(2000-taskPrefix.length-2)+"🚀"
+    await page.getByRole("textbox",{name:"多轮任务要求",exact:true}).fill(fullTask)
+    await expect(page.getByRole("textbox",{name:"多轮任务要求",exact:true})).toHaveValue(fullTask)
     await control("drop-next");await page.getByRole("button",{name:"提交多轮任务",exact:true}).click()
     await expect(page.getByRole("button",{name:"确认上次多轮提交",exact:true})).toBeEnabled()
     await expect(page.getByRole("textbox",{name:"多轮任务要求",exact:true})).toBeDisabled()
@@ -204,6 +206,7 @@ test("multi-round employee Agent: exact recovery, per-step consent, mTLS, safe c
     await expect(page.getByRole("button",{name:"登录独立工作台",exact:true})).toBeVisible();await login("bob");releaseRead();releaseRead=null
     await expect(page.getByRole("combobox",{name:"多轮 Agent 角色",exact:true})).toContainText("Bob Browser Agent")
     await expect(page.getByText("Alice private autonomous task",{exact:true})).toHaveCount(0)
+    await expect(page.getByText(fullTask,{exact:true})).toHaveCount(0)
     await expect(page.getByText("Cancel unstarted task",{exact:true})).toHaveCount(0)
     await expect(page.getByText("Browser synthetic autonomous result 4",{exact:true})).toHaveCount(0)
     await expect(page.getByRole("textbox",{name:"多轮任务要求",exact:true})).toHaveValue("")

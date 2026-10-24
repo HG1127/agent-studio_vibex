@@ -934,13 +934,14 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     for(const autonomous of [false,true])for(const selection of ["builtin","http","mcp","keyword"]){
     const custom=selection==="http",useMcp=selection==="mcp",keyword=selection==="keyword"
     let agentCalls=0,agentHttpCalls=0,agentMcpCalls=0,thirtyRounds=false
+    const fullTask="迁".repeat(1998)+"🚀"
     const selectedRole=keyword?keywordRole:useMcp?mcpRole:custom?httpRole:role
     const selectedFlow=selection!=="builtin"?await api.createWorkflowGraph("CI "+selection+" Agent Workflow",{...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?
       {...node,data:{...node.data,agent_binding:{spec_id:selectedRole.id,spec_revision:selectedRole.revision}}}:node)}):agentFlow
     const planning=async(material,prompt)=>{agentCalls++;assert.equal(material.api_key,secret)
       const context=JSON.parse(prompt)
       if(thirtyRounds){
-        assert.equal(context.max_rounds,30)
+        assert.equal(context.max_rounds,30);assert.equal(context.task,fullTask)
         return context.round===30?'{"action":"answer","answer":"Synthetic thirty-round result"}':'{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}'
       }
       if(custom){assert.equal(prompt.includes(toolSecret),false);assert.equal(prompt.includes(tool.id),false)}
@@ -1068,8 +1069,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         thirtyRounds=true;agentCalls=0
         const graph30={...agentGraph,nodes:agentGraph.nodes.map(node=>node.type==="agent"?{...node,data:{...node.data,max_steps:30}}:node)}
         const flow30=autonomous?null:await api.createWorkflowGraph("Thirty round PG18 Workflow",graph30)
-        const long=autonomous?await api.submitAutonomousAgentRun(selectedRole.id,1,"Synthetic thirty rounds","ci-thirty-round-native-agent",30):
-          await api.submitWorkflowV2Run(flow30.id,flow30.revision,"Synthetic thirty rounds","ci-thirty-round-workflow-agent")
+        const long=autonomous?await api.submitAutonomousAgentRun(selectedRole.id,1,fullTask,"ci-thirty-round-native-agent",30):
+          await api.submitWorkflowV2Run(flow30.id,flow30.revision,fullTask,"ci-thirty-round-workflow-agent")
         let decisions=0
         for(let i=0;i<180;i++){
           await new WorkflowV2Worker(workerPool,"ci-thirty-"+i,{agentExecutionApproved:true,executor,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"}).tick()
@@ -1084,6 +1085,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         }
         const done30=await get(long.run.id)
         assert.equal(done30.run.status,"succeeded");assert.equal(done30.run.result_text,"Synthetic thirty-round result")
+        assert.equal(done30.run.instruction,fullTask)
         assert.equal(agentCalls,30);assert.equal(decisions,60);assert.equal(done30.steps.some(step=>step.metadata.agent_round===30),true)
         const paid=(await admin.query("SELECT count(*)::int AS n,bool_and(status='succeeded') AS settled FROM agentstudio.external_effects WHERE run_id=$1",[long.run.id])).rows[0]
         assert.equal(paid.n,119);assert.equal(paid.settled,true)

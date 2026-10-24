@@ -363,6 +363,7 @@ test("schedule consent accepts30 Agent rounds while retaining the one-round Work
 })
 test("a scheduled thirty-round Agent retains its finite standing-effect budget and requires explicit consent for the last model",async()=>{
   const f=await scheduleFixture();let models=0,tools=0
+  const instruction="迁".repeat(1998)+"🚀"
   try{
     const connections=new ModelConnectionRepository(f.pool,Buffer.from("0123456789abcdef".repeat(4),"hex"))
     const saved=await connections.create(f.identity,{name:"Synthetic30-round model",provider:"openai",base_url:"https://api.openai.com/v1",api_key:"SyntheticThirtyRoundsNeverNetworkCredential",models:["synthetic"],enabled:true})
@@ -370,7 +371,7 @@ test("a scheduled thirty-round Agent retains its finite standing-effect budget a
     const spec=await new AgentSpecRepository(f.pool).create(f.identity,"Synthetic30-round role",safeAgentSpec({goal:"Complete a bounded synthetic task",task_scope:"Test only",deliverables:["Answer"],done_criteria:["Bounded"],tools:["calculate"],knowledge_base_ids:[],
       model_binding:{connection_id:model.id,connection_revision:model.revision,model_id:"synthetic"}}))
     const draft=await f.drafts.create(f.identity,{name:"Synthetic30-round schedule",kind:"agent",target_id:spec.id,time_zone:"UTC",rule:{kind:"interval",interval_minutes:15}})
-    const grant=await f.schedules.activate(f.identity,draft.id,{expected_revision:draft.revision,expected_target_revision:spec.revision,instruction:"Synthetic scheduled30 rounds",max_steps:30,
+    const grant=await f.schedules.activate(f.identity,draft.id,{expected_revision:draft.revision,expected_target_revision:spec.revision,instruction,max_steps:30,
       anchor_at:new Date().toISOString(),expires_at:null,max_occurrences:1,max_auto_effects:59,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()})
     const state=await f.schedules.describe(f.identity,draft.id)
     await f.rollback(async db=>{
@@ -381,7 +382,7 @@ test("a scheduled thirty-round Agent retains its finite standing-effect budget a
     const queued=await f.schedules.runNow(f.identity,draft.id,Number(grant.revision));assert.equal((await f.dispatcher.tick()).run_id,queued.run_id)
     const agents=new AutonomousAgentRunRepository(f.pool)
     const executor={async execute(request){
-      if(request.kind==="model"){models++;const prompt=JSON.parse(request.input);assert.equal(prompt.max_rounds,30)
+      if(request.kind==="model"){models++;const prompt=JSON.parse(request.input);assert.equal(prompt.max_rounds,30);assert.equal(prompt.task,instruction)
         return prompt.round===30?'{"action":"answer","answer":"Scheduled30 round result"}':'{"action":"tool","tool":"calculate","params":{"expression":"2+2"}}'}
       assert.equal(request.kind,"tool");tools++;return "4"
     }}
@@ -396,6 +397,7 @@ test("a scheduled thirty-round Agent retains its finite standing-effect budget a
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schedule_execution_effect_receipts WHERE run_id=$1",[queued.run_id])).rows[0].n,59)
     await agents.decide(f.identity,queued.run_id,{decision:"approved",step_key:view.pending_effect.step_key,input_sha256:view.pending_effect.input_sha256})
     await drive(20);assert.equal(view.run.status,"succeeded");assert.equal(view.run.result_text,"Scheduled30 round result");assert.equal(models,30);assert.equal(tools,29)
+    assert.equal(view.run.instruction,instruction)
     assert.equal(view.steps.some(step=>step.metadata.agent_round===30),true)
     assert.equal((await new ScheduleInventoryRepository(f.pool).occurrences(f.identity,draft.id))[0].status,"succeeded")
   }finally{await f.close()}

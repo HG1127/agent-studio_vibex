@@ -29,7 +29,7 @@ export function safeBoundModelRequest(value:unknown):{claim:BoundModelClaim;inpu
   const expected=["goal","instruction","taskScope","deliverables","doneCriteria"]
   if(expected.some(k=>!Object.hasOwn(input,k))||
      Object.keys(input).some(k=>![...expected,"knowledgeEvidence"].includes(k))||
-     !validText(input.goal,2000,1)||!validText(input.instruction,1200)||
+     !validText(input.goal,2000,1)||!validText(input.instruction,2000)||
      !validText(input.taskScope,2000)||
      !boundedStrings(input.deliverables,20,300)||
      !boundedStrings(input.doneCriteria,20,300))refuse()

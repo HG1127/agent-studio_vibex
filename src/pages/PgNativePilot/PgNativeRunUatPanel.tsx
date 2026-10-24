@@ -119,7 +119,7 @@ export default function PgNativeRunUatPanel({api,agents}:{
           </select>
         </label>
         <label className="block space-y-1.5 text-sm font-medium">测试指令
-          <textarea required maxLength={1200} rows={3} value={instruction}
+          <textarea required maxLength={2000} rows={3} value={instruction}
             onChange={e=>setInstruction(e.target.value)} className={field}
             placeholder="例如：准备一份仅含合成内容的尽调计划，不调用外部模型"/>
         </label>

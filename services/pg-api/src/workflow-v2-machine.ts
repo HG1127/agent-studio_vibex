@@ -47,7 +47,7 @@ function checkpoint(raw:unknown,hash:string):WorkflowV2Checkpoint{
   const value=plain(raw)
   if(Object.keys(value).length!==5||!["format","graph_sha256","instruction","cursor","effects"].every(k=>Object.hasOwn(value,k))||
      value.format!=="workflow_native_v2"||value.graph_sha256!==hash||
-     typeof value.instruction!=="string"||value.instruction.length>1200||value.instruction.includes("\0")||
+     typeof value.instruction!=="string"||value.instruction.length>2000||value.instruction.includes("\0")||
      !Number.isSafeInteger(value.cursor)||(value.cursor as number)<0||(value.cursor as number)>401||
      !Array.isArray(value.effects)||value.effects.length>200)fail("invalid_workflow_checkpoint")
   const effects:WorkflowEffectResult[]=[],seen=new Set<string>()

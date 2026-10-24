@@ -7,7 +7,7 @@ function invalid():never{throw new WorkflowValueError("invalid_workflow_preview_
 const object=(value:unknown):Record<string,unknown>=>{if(!value||typeof value!=="object"||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))invalid();return value as Record<string,unknown>}
 export function safeWorkflowPreviewSamples(raw:unknown,graph:WorkflowGraph|undefined,nodeId:string):WorkflowPreviewSamples{
   const value=object(raw)
-  if(Object.keys(value).some(key=>!["input","outputs","loop","source_node_id","provenance"].includes(key))||typeof value.input!=="string"||value.input.length>1200||value.input.includes("\0"))invalid()
+  if(Object.keys(value).some(key=>!["input","outputs","loop","source_node_id","provenance"].includes(key))||typeof value.input!=="string"||value.input.length>2000||value.input.includes("\0"))invalid()
   const outputs=object(value.outputs),safe:Record<string,string>=Object.create(null),ids=graph?new Set(graph.nodes.filter(node=>node.type!=="start"&&node.id!==nodeId).map(node=>node.id)):undefined
   if(Object.keys(outputs).length>40)invalid()
   for(const [id,text] of Object.entries(outputs)){if(!/^[A-Za-z0-9_-]{1,80}$/.test(id)||id===nodeId||ids&&!ids.has(id)||typeof text!=="string"||text.length>4000||text.includes("\0"))invalid();safe[id]=text}

@@ -189,7 +189,7 @@ export class AgentModelWorker {
           knowledgeEvidence:evidence.map(({citation,snippet})=>({citation,snippet}))
         }:{}),
       }
-      if(!input.goal||input.goal.length>2000||input.instruction.length>1200)
+      if(!input.goal||input.goal.length>2000||input.instruction.length>2000)
         throw Error("model_input_invalid")
       const fingerprint=selectedBinding?
         boundModelFingerprint(input,binding):hash({input,model_phase:"v8_2"})

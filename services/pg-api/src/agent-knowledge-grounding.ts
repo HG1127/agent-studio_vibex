@@ -17,7 +17,7 @@ export interface AgentKnowledgeEvidence {
   snippet:string
 }
 export function knowledgeSearchTerm(instruction:string):string {
-  if(typeof instruction!=="string"||instruction.length>1200||
+  if(typeof instruction!=="string"||instruction.length>2000||
      instruction.includes("\u0000"))
     throw Error("invalid_agent_knowledge_query")
   // Explicit syntax gives the user deterministic control over literal search.

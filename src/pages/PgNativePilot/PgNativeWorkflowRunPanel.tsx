@@ -44,7 +44,7 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,t
       <form onSubmit={submit} className="space-y-3"><fieldset disabled={!enabled||locked} className="space-y-3"><legend className="sr-only">工作流任务要求</legend>
         <label className="block text-sm font-medium">运行工作流<select aria-label="运行工作流" className="mt-1.5 min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" required value={selectedId} onChange={event=>setSelection({token,id:event.target.value})}>
           <option value="">请选择已保存并配置完整的本人工作流</option>{ready.map(flow=><option key={flow.id} value={flow.id}>{flow.name} · 修订 {flow.revision}</option>)}</select></label>
-        <label className="block text-sm font-medium">工作流运行要求<textarea aria-label="工作流运行要求" className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm" rows={4} required maxLength={1200} value={instruction} onChange={event=>setInstruction(event.target.value)}/></label>
+        <label className="block text-sm font-medium">工作流运行要求<textarea aria-label="工作流运行要求" className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm" rows={4} required maxLength={2000} value={instruction} onChange={event=>setInstruction(event.target.value)}/></label>
       </fieldset>
         {view.pendingSubmit&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">上次任务提交尚未确认，工作流、版本和任务要求已保留。</p>}
         <button type="submit" className={workflowButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||!view.pendingSubmit&&(!eligible||!instruction.trim()||targetChanged)}>

@@ -30,7 +30,7 @@ export function parseScheduleActivation(raw:unknown,row:ExecutionSchedule,now=Da
   const keys=["expected_revision","expected_target_revision","instruction","max_steps","anchor_at","expires_at","max_occurrences","max_auto_effects","background_ack","knowledge_charge_ack","request_id"]
   if(!raw||typeof raw!=="object"||Array.isArray(raw))invalid();const v=raw as Record<string,unknown>
   if(Object.keys(v).length!==keys.length||keys.some(k=>!Object.hasOwn(v,k))||!integer(v.expected_revision,1,Number.MAX_SAFE_INTEGER)||!integer(v.expected_target_revision,1,Number.MAX_SAFE_INTEGER)||
-    typeof v.instruction!=="string"||!v.instruction.trim()||v.instruction.length>1200||v.instruction.includes("\0")||!integer(v.max_steps,1,30)||row.kind==="workflow"&&v.max_steps!==1||
+    typeof v.instruction!=="string"||!v.instruction.trim()||v.instruction.length>2000||v.instruction.includes("\0")||!integer(v.max_steps,1,30)||row.kind==="workflow"&&v.max_steps!==1||
     !integer(v.max_auto_effects,1,10000)||v.max_occurrences!==null&&!integer(v.max_occurrences,1,1000000)||v.background_ack!==SCHEDULE_BACKGROUND_ACK||
     v.knowledge_charge_ack!==null&&v.knowledge_charge_ack!==SCHEDULE_KNOWLEDGE_ACK||!isUuid(v.request_id))invalid()
   const anchor=instant(v.anchor_at),expires=v.expires_at===null?null:instant(v.expires_at),rule=executionRule(row)

@@ -15,12 +15,15 @@ import {knowledgeKeywordFixture} from "./helpers/knowledge-keyword-fixture.mjs"
 
 test("single-shot Agent atomically seals actual evidence, calls only its reader model and retains no private text in the ledger",async()=>{
   const f=await knowledgeAgentFixture();let calls=0
+  const prefix="Search KB: OWN_CITATION\n",instruction=prefix+"迁".repeat(2000-prefix.length-2)+"🚀"
   try{
     assert.equal(await verifyKnowledgeExecutionCredentials(f.db),true)
-    const {runs,run}=await f.approved()
+    const {runs,run}=await f.approved({instruction})
+    assert.equal(run.instruction,instruction)
     assert.equal((await runs.get(bob,run.id)).knowledge_outputs_available,true)
     await f.withBound(async(material,input)=>{
       calls++;assert.equal(material.api_key,"synthetic-bob-model-key-never-network")
+      assert.equal(input.instruction,instruction)
       assert.match(JSON.stringify(input.knowledgeEvidence),/OWN_CITATION/)
       return "Synthetic single-shot result"
     },async worker=>{

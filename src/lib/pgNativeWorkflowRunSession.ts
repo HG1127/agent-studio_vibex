@@ -50,7 +50,7 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
   },{...options,describe:autonomousError,submittedNotice:"工作流任务已提交，外部操作将逐步请求审批。",
     canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||workflowApprovalReady(detail),
     freezeDraft(draft){const instruction=draft.instruction.trim()
-      if(!uuid.test(draft.workflowId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>1200||instruction.includes("\0"))throw Error("invalid_workflow_run_draft")
+      if(!uuid.test(draft.workflowId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>2000||instruction.includes("\0"))throw Error("invalid_workflow_run_draft")
       return {workflowId:draft.workflowId.toLowerCase(),revision:draft.revision,instruction}
     },
     acceptDetail:result=>result.execution_mode==="workflow_native_v2"&&result.run.kind==="workflow"&&uuid.test(result.run.workflow_id),

@@ -80,7 +80,7 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
     {canActivate&&<details open={!item.enabled}><summary className="cursor-pointer text-sm font-semibold">{item.enabled?"重新授予后台权限":"启用后台计划"}</summary>
       <form onSubmit={e=>void activate(e)} className="mt-3 space-y-3">
         <fieldset disabled={busy||uncertain} className="space-y-3 disabled:opacity-60">
-          <label className="block text-xs">每次运行的任务说明<textarea required maxLength={1200} rows={3} className={inputClass} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label>
+          <label className="block text-xs">每次运行的任务说明<textarea required maxLength={2000} rows={3} className={inputClass} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label>
           {(item.recurrence?.rule as {kind?:string}|undefined)?.kind!=="once"&&<>
             <label className="flex gap-2 text-xs"><input type="checkbox" checked={deferred} onChange={e=>setDeferred(e.target.checked)}/>从指定时间生效（按计划时区 {item.time_zone}）</label>
             {deferred&&<div className="grid gap-3 sm:grid-cols-2">

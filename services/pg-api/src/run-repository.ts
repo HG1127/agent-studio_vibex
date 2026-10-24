@@ -46,7 +46,7 @@ export function safeRunRequest(raw:unknown):{
   if(Object.keys(data).some(k=>!["instruction","idempotency_key"].includes(k)))
     throw new HttpError(400,"unsafe_run_field")
   const instruction=data.instruction===undefined?"":data.instruction
-  if(typeof instruction!=="string"||instruction.length>1200 ||
+  if(typeof instruction!=="string"||instruction.length>2000 ||
     instruction.includes("\u0000"))
     throw new HttpError(400,"invalid_run_instruction")
   const key=data.idempotency_key

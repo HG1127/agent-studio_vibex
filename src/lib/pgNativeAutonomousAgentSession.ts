@@ -89,7 +89,7 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
       knowledgeToolScopeCurrent((detail.pending_effect?.configuration.knowledge_base_ids??[]) as string[],detail.knowledge),
     freezeDraft(draft){
       const instruction=draft.instruction.trim()
-      if(!uuid.test(draft.agentId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>1200||instruction.includes("\0")||
+      if(!uuid.test(draft.agentId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>2000||instruction.includes("\0")||
          !Number.isSafeInteger(draft.maxSteps)||draft.maxSteps<1||draft.maxSteps>30)throw Error("invalid_autonomous_draft")
       return {agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps}
     },

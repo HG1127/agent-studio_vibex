@@ -28,7 +28,7 @@ export default function PgNativeWorkflowNodePreview({node,graph,workflowId,revis
       <p className="text-xs text-slate-500">勾选后，空任务输入使用历史指令；勾选节点手工覆盖可替换相应输出。更换来源或节点配置会取消历史样本选择。循环项与轮数仍使用下方手工样本。</p>
       {usingHistory&&historical.data.warnings.map(warning=><p key={warning} className="text-amber-800">{warning}</p>)}
     </div>}
-    <label className="mt-3 block text-sm font-medium">模拟任务指令<textarea aria-label="模拟任务指令" className={field} rows={3} maxLength={1200} value={input} placeholder={usingHistory?"留空使用所选历史任务指令":"输入手工任务样本"} onChange={event=>setInput(event.target.value)}/></label>
+    <label className="mt-3 block text-sm font-medium">模拟任务指令<textarea aria-label="模拟任务指令" className={field} rows={3} maxLength={2000} value={input} placeholder={usingHistory?"留空使用所选历史任务指令":"输入手工任务样本"} onChange={event=>setInput(event.target.value)}/></label>
     {!!dependencies.length&&<fieldset className="space-y-3"><legend className="text-sm font-medium">手工节点输出样本</legend>{dependencies.map(ref=><label key={ref.id} className="block text-sm">
       <span className="flex items-start gap-2"><input type="checkbox" checked={Object.hasOwn(outputs,ref.id)} onChange={event=>setOutputs(current=>{const next={...current};if(event.target.checked)next[ref.id]="";else delete next[ref.id];return next})}/>{ref.data.title} · {usingHistory?"手工覆盖":"提供样本"}</span>
       <textarea aria-label={ref.data.title+" 输出样本"} className={field} rows={2} maxLength={4000} disabled={!Object.hasOwn(outputs,ref.id)} value={outputs[ref.id]??(usingHistory?historical.data?.outputs[ref.id]??"":"")} onChange={event=>setOutputs(current=>({...current,[ref.id]:event.target.value}))}/>

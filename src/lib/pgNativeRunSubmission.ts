@@ -22,7 +22,7 @@ export function createPgNativeRunSubmission(
       if(flight)return flight
       if(!pending){
         const instruction=draft.instruction.trim()
-        if(!uuid.test(draft.agentId)||!instruction||instruction.length>1200||instruction.includes("\0"))
+        if(!uuid.test(draft.agentId)||!instruction||instruction.length>2000||instruction.includes("\0"))
           return Promise.reject(new Error("invalid_run_draft"))
         pending=Object.freeze({agentId:draft.agentId,instruction,key:makeKey()})
       }

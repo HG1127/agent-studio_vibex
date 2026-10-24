@@ -35,7 +35,7 @@ function refuse():never{throw Error("bound_model_execution_disabled")}
 function validateInput(input:ModelInput):string {
   if(!input||typeof input.goal!=="string"||!input.goal.trim()||
      input.goal.length>2000||typeof input.instruction!=="string"||
-     input.instruction.length>1200||typeof input.taskScope!=="string"||
+     input.instruction.length>2000||typeof input.taskScope!=="string"||
      input.taskScope.length>2000||
      !Array.isArray(input.deliverables)||input.deliverables.length>20||
      !Array.isArray(input.doneCriteria)||input.doneCriteria.length>20||

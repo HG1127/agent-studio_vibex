@@ -31,7 +31,7 @@ function header(raw:unknown,expectedRunId?:string):WorkflowOutputHeader{
   const run_id=id(value.run_id,uuid)
   if(expectedRunId&&run_id!==expectedRunId||value.max_output_chars!==4000||typeof value.status!=="string"||!["queued","running","awaiting_approval","paused","succeeded","failed","cancelled"].includes(value.status))invalid()
   return {run_id,workflow_id:id(value.workflow_id,uuid),workflow_revision:integer(value.workflow_revision,1,Number.MAX_SAFE_INTEGER),graph_sha256:id(value.graph_sha256,sha),output_version:id(value.output_version,sha),
-    status:value.status as string,instruction:text(value.instruction,1200),updated_at:text(value.updated_at,80,true),max_output_chars:4000,...(Object.hasOwn(value,"node_debug_id")?{node_debug_id:id(value.node_debug_id,nodeId)}:{})}
+    status:value.status as string,instruction:text(value.instruction,2000),updated_at:text(value.updated_at,80,true),max_output_chars:4000,...(Object.hasOwn(value,"node_debug_id")?{node_debug_id:id(value.node_debug_id,nodeId)}:{})}
 }
 function common(value:Record<string,unknown>){
   if(typeof value.node_type!=="string"||!nodeTypes.has(value.node_type))invalid()

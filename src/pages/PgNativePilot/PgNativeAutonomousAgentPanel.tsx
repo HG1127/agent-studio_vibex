@@ -63,7 +63,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
             </select>
           </label>
           <label className="block text-sm font-medium">多轮任务要求
-            <textarea required aria-label="多轮任务要求" rows={4} maxLength={1200} className={field} value={view.pendingSubmit?.instruction??instruction}
+            <textarea required aria-label="多轮任务要求" rows={4} maxLength={2000} className={field} value={view.pendingSubmit?.instruction??instruction}
               onChange={event=>setInstruction(event.target.value)} placeholder="描述任务、期望结果及需要遵守的边界"/>
           </label>
           <label className="block text-sm font-medium">最多规划轮数

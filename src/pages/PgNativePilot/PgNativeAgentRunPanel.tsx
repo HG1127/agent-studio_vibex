@@ -79,7 +79,7 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
             </select>
           </label>
           <label className="block text-sm font-medium">任务要求
-            <textarea required aria-label="任务要求" rows={4} maxLength={1200} className={field+" mt-2"}
+            <textarea required aria-label="任务要求" rows={4} maxLength={2000} className={field+" mt-2"}
               value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder="描述本次任务需要完成的内容"/>
           </label>
         </fieldset>

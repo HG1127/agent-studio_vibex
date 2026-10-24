@@ -35,7 +35,7 @@ export function safeWorkflowV2Request(raw:unknown){
   if(Object.keys(item).length!==3||!["expected_revision","idempotency_key","instruction"].every(k=>Object.hasOwn(item,k))||
      !Number.isSafeInteger(item.expected_revision)||(item.expected_revision as number)<1||
      typeof item.idempotency_key!=="string"||!/^[A-Za-z0-9_-]{8,80}$/.test(item.idempotency_key)||
-     typeof item.instruction!=="string"||!item.instruction.trim()||item.instruction.length>1200||item.instruction.includes("\0"))invalid()
+     typeof item.instruction!=="string"||!item.instruction.trim()||item.instruction.length>2000||item.instruction.includes("\0"))invalid()
   return {expected_revision:item.expected_revision as number,idempotency_key:item.idempotency_key,instruction:item.instruction}
 }
 export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):WorkflowV2StoredState{

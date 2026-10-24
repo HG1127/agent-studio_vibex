@@ -32,6 +32,14 @@ const materials={
   gemini:{provider:"gemini",base_url:"https://generativelanguage.googleapis.com/v1beta",
     model_id:"models/gemini-2.5-flash",api_key:fakeKey},
 }
+test("provider preparation retains all2000 task characters for every supported protocol and rejects2001",()=>{
+  const instruction="迁".repeat(1998)+"🚀"
+  for(const material of Object.values(materials)){
+    const prepared=preparedSelectedModelRequest(material,{...input,instruction})
+    assert.equal(prepared.body.toString("utf8").includes(instruction),true)
+    assert.throws(()=>preparedSelectedModelRequest(material,{...input,instruction:instruction+"x"}),/invalid_bound_model_input/)
+  }
+})
 function resolver(ip="8.8.8.8",v6=[]){
   let looked=0
   return {resolve4:async host=>{looked++;assert.ok(host.endsWith(".com"));return [ip]},

@@ -85,6 +85,16 @@ test("forged identity, unknown fields and oversized bodies fail before a socket 
     /bound_dispatch_request_too_large/)
   assert.equal(events.length,0)
 })
+test("a full2000-character task crosses private RPC unchanged while the16KiB total request cap remains enforced",async()=>{
+  const instruction="迁".repeat(1998)+"🚀",events=[],send=createBoundModelMutualTlsClient(config(),fake({events}))
+  await send(claim,{...input,instruction})
+  const payload=events.find(event=>event.body).body
+  assert.ok(payload.byteLength<=16384)
+  assert.equal(safeBoundModelRequest(JSON.parse(payload.toString("utf8"))).input.instruction,instruction)
+  const before=events.length
+  await assert.rejects(send(claim,{...input,instruction:instruction+"x"}))
+  assert.equal(events.length,before)
+})
 
 test("private RPC preserves six full Unicode citations and enforces its original total byte limit",async()=>{
   const knowledgeEvidence=Array.from({length:6},(_,index)=>({citation:"😀".repeat(176)+".txt#chunk-"+index,snippet:"😀".repeat(300)}))

@@ -358,7 +358,7 @@ function runSubmissionRoute(specId:string):`/api/v2/agent-specs/${string}/runs`{
   return `/api/v2/agent-specs/${specId}/runs`
 }
 function safeRunPayload(instruction:string,key:string){
-  if(typeof instruction!=="string"||instruction.length>1200||
+  if(typeof instruction!=="string"||instruction.length>2000||
      instruction.includes("\u0000")||
      typeof key!=="string"||!/^[a-zA-Z0-9_-]{8,80}$/.test(key))
     throw new PgNativePilotError(400,"invalid_pg_native_run_input")
@@ -694,7 +694,7 @@ export function createPgNativePilotApi(
     listWorkflowRuns:async()=>
       (await get<{runs:PgNativeWorkflowSafeRunResult[]}>(routes.workflowRuns)).runs,
     submitWorkflowV2Run:async(id:string,expected_revision:number,instruction:string,idempotency_key:string)=>{
-      if(typeof instruction!=="string"||!instruction.trim()||instruction.length>1200||instruction.includes("\0")||
+      if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflows,id)+"/native-runs") as Route,{
         expected_revision:safeRevision(expected_revision),instruction,idempotency_key})
@@ -734,7 +734,7 @@ export function createPgNativePilotApi(
     },
     submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3)=>{
       if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
-      if(typeof instruction!=="string"||!instruction.trim()||instruction.length>1200||instruction.includes("\0")||
+      if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       return post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
         expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps})
