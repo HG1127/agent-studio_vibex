@@ -49,11 +49,13 @@ test('human startup audits restricted identity/Broker catalogs without ledger ac
         assert.equal(await verifyAgentHumanInputCredentials(f.db),true)
       }finally{await f.db.exec('ROLLBACK')}
     }
-    await f.db.exec('BEGIN')
-    try{
-      await f.db.exec("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_048'; SET LOCAL ROLE agentstudio_api")
-      await assert.rejects(verifyAgentHumanInputCredentials(f.db),/unsafe_agent_human_input_privileges/)
-    }finally{await f.db.exec('ROLLBACK')}
+    for(const change of ["DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_048'","REVOKE SELECT ON agentstudio.schema_migrations FROM agentstudio_api; REVOKE SELECT(version) ON agentstudio.schema_migrations FROM agentstudio_api"]){
+      await f.db.exec('BEGIN')
+      try{
+        await f.db.exec(change+'; SET LOCAL ROLE agentstudio_api')
+        await assert.rejects(verifyAgentHumanInputCredentials(f.db),/unsafe_agent_human_input_privileges/)
+      }finally{await f.db.exec('ROLLBACK')}
+    }
     assert.equal(await verifyAgentHumanInputCredentials(f.db),true)
   }finally{await f.close()}
 })

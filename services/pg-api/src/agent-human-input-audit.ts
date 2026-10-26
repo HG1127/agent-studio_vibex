@@ -6,8 +6,10 @@ export async function verifyAgentHumanInputCredentials(db:SqlClient):Promise<boo
   const object=(await db.query<{id:number|null}>("SELECT to_regclass($1)::oid AS id",[table])).rows[0]
   if(!object||object.id!==null&&(!Number.isSafeInteger(object.id)||object.id<=0))refuse()
   const id=object.id
-  const canRead=(await db.query<{ok:boolean}>("SELECT has_column_privilege(current_user,'agentstudio.schema_migrations','version','SELECT') AS ok")).rows[0]?.ok
+  const access=(await db.query<{ok:boolean;role:string}>("SELECT current_user AS role,has_column_privilege(current_user,'agentstudio.schema_migrations','version','SELECT') AS ok")).rows[0]
+  const canRead=access?.ok
   if(typeof canRead!=="boolean")refuse()
+  if(!canRead&&!["agentstudio_bound_dispatch","agentstudio_model_broker"].includes(access!.role))refuse()
   let stamped=false
   if(canRead){const value=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_048') AS ok")).rows[0]?.ok
     if(typeof value!=="boolean")refuse();stamped=value}
