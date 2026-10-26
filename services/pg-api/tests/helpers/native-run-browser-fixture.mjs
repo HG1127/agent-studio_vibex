@@ -30,6 +30,7 @@ import {AgentHumanInputRepository} from "../../src/agent-human-input-repository.
 import {inspectAgentHumanInputSchema} from "../../src/agent-human-input-audit.ts"
 import {AgentMemoryRepository} from "../../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials} from "../../src/agent-memory-audit.ts"
+import {inspectAgentMemoryContextSchema} from "../../src/agent-memory-context-audit.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../../src/workflow-v2-model-dispatch.ts"
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "../../src/workflow-v2-tool-dispatch.ts"
 import {createWorkflowV2ModelInternalHandler} from "../../src/workflow-v2-model-handler.ts"
@@ -93,6 +94,8 @@ const human=process.env.AGENT_STUDIO_PG_BROWSER_HUMAN==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_HUMAN!==undefined&&!human||human&&!modern)throw Error("invalid_synthetic_human_browser_mode")
 const memory=process.env.AGENT_STUDIO_PG_BROWSER_MEMORY==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_MEMORY!==undefined&&!memory||memory&&(!human||!autonomous))throw Error("invalid_synthetic_memory_browser_mode")
+const memoryRuntime=process.env.AGENT_STUDIO_PG_BROWSER_MEMORY_RUNTIME==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_MEMORY_RUNTIME!==undefined&&!memoryRuntime||memoryRuntime&&!memory)throw Error("invalid_synthetic_memory_runtime_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -118,6 +121,7 @@ Object.assign(state,{scheduleDrop:false,scheduleHashes:[]})
 Object.assign(state,{collaborationDrop:false,collaborationHashes:[]})
 Object.assign(state,{releaseDrop:false,releaseHashes:[],humanDrop:false,humanHashes:[],humanConfirms:0,humanModelCalls:0})
 Object.assign(state,{memoryDrop:false,memoryHashes:[],memoryConfirms:0})
+Object.assign(state,{memoryPrompts:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -139,6 +143,7 @@ try{
   if(governance||human)await db.exec(load("db/postgres/migrations/pg_v9_047_employee_governance.sql"))
   if(human){await db.exec(load("db/postgres/migrations/pg_v9_048_agent_human_input.sql"));assert.equal(await inspectAgentHumanInputSchema(pool),true)}
   if(memory){await db.exec(load("db/postgres/migrations/pg_v9_049_agent_memory.sql"));assert.equal(await verifyAgentMemoryCredentials(db),true)}
+  if(memoryRuntime){await db.exec(load("db/postgres/migrations/pg_v9_050_agent_memory_context.sql"));assert.equal(await inspectAgentMemoryContextSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -193,7 +198,7 @@ try{
   const dispatch=modern?{
     model:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(pool),new WorkflowV2ModelDispatch(pool,key,async(_material,prompt)=>{if(!workflow)throw Error("direct_fallback_forbidden");if(prompt.includes("BROWSER_SEMANTIC_SOURCE"))state.semanticModelPrompts++;state.generated++;return "Browser synthetic workflow model output"},pool,{
       nodeDebugExecutor:workflow?async()=>{state.generated++;return "Browser synthetic node debug result"}:undefined,
-      allowAutonomousExecution:autonomous||scheduling,allowAgentExecution:workflow,async agentExecutor(material,prompt){state.generated++;if(scheduling||releases){assert.equal(material.api_key,"SyntheticBrowserAliceScheduleBKey");assert.equal(material.model_id,"synthetic-schedule-b");state.scheduleModelCalls=(state.scheduleModelCalls??0)+1}const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0],mcp=plan.role.mcp_tools?.[0];if(human){state.humanModelCalls++;if(!plan.human_input.require_plan_review)return JSON.stringify(plan.round===1?{action:"ask_user",question:"合成报告的截止日是哪天？",note:"PRIVATE_HUMAN_PROVIDER_NOTE"}:{action:"answer",answer:fullHumanDelivery});return JSON.stringify(plan.round===1?{action:"answer",answer:"初稿：按本人截止日整理证据。"}:plan.round===2?{action:"answer",answer:"修订稿：仅包括已核对证据。"}:{action:"answer",answer:fullHumanDelivery})}if(plan.role.allowed_tools?.includes("knowledge_search")){if(plan.round>1){assert.match(prompt,/BROWSER_SEMANTIC_SOURCE/);state.semanticModelPrompts++}return JSON.stringify(plan.round===1?{action:"tool",tool:"knowledge_search",params:{query:"tool wording"}}:{action:"answer",answer:"Browser synthetic semantic Agent answer"})}return JSON.stringify(plan.round===1?
+      allowAutonomousExecution:autonomous||scheduling,allowAgentExecution:workflow,allowMemoryExecution:memoryRuntime,async agentExecutor(material,prompt){state.generated++;if(scheduling||releases){assert.equal(material.api_key,"SyntheticBrowserAliceScheduleBKey");assert.equal(material.model_id,"synthetic-schedule-b");state.scheduleModelCalls=(state.scheduleModelCalls??0)+1}const plan=JSON.parse(prompt),http=plan.role.http_tools?.[0],mcp=plan.role.mcp_tools?.[0];if(memoryRuntime){assert.equal(plan.task,"整理财务报告");assert.deepEqual(plan.memory_context.saved_user_instructions,["【用户指令】财务报告使用中文"]);state.memoryPrompts++;return JSON.stringify({action:"answer",answer:fullHumanDelivery})}if(human){state.humanModelCalls++;if(!plan.human_input.require_plan_review)return JSON.stringify(plan.round===1?{action:"ask_user",question:"合成报告的截止日是哪天？",note:"PRIVATE_HUMAN_PROVIDER_NOTE"}:{action:"answer",answer:fullHumanDelivery});return JSON.stringify(plan.round===1?{action:"answer",answer:"初稿：按本人截止日整理证据。"}:plan.round===2?{action:"answer",answer:"修订稿：仅包括已核对证据。"}:{action:"answer",answer:fullHumanDelivery})}if(plan.role.allowed_tools?.includes("knowledge_search")){if(plan.round>1){assert.match(prompt,/BROWSER_SEMANTIC_SOURCE/);state.semanticModelPrompts++}return JSON.stringify(plan.round===1?{action:"tool",tool:"knowledge_search",params:{query:"tool wording"}}:{action:"answer",answer:"Browser synthetic semantic Agent answer"})}return JSON.stringify(plan.round===1?
         {action:"tool",tool:mcp?.name??http?.name??"calculate",params:mcp||http?{query:"Synthetic owner evidence"}:{expression:"2+2"},think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined}:
         {action:"answer",answer:workflow?"Browser synthetic Workflow result 4":"Browser synthetic autonomous result 4",think:workflow?"BROWSER_PRIVATE_PLAN":undefined,note:workflow?"BROWSER_PRIVATE_NOTE":undefined})}})),
     ...(semantic?{index:claim=>indexBroker.dispatch(claim),query:claim=>queryBroker.dispatch(claim)}:{}),
@@ -201,7 +206,7 @@ try{
       async http(){state.httpCalls++;return "Browser synthetic HTTP observation 4"},
       mcp:createMcpToolExecutor(async(_material,wire)=>{if(wire.body.method!=="tools/call")throw Error("unexpected_synthetic_mcp_call")
         state.mcpCalls++;return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{content:[{type:"text",text:"Browser synthetic MCP observation 4"}]}})}}),
-    },pool,{allowAutonomousExecution:autonomous||scheduling,allowAgentExecution:workflow,allowKnowledgeExecution:semantic})),
+    },pool,{allowAutonomousExecution:autonomous||scheduling,allowAgentExecution:workflow,allowKnowledgeExecution:semantic,allowMemoryExecution:memoryRuntime})),
   }:verified
   let scheduledAgentMode=false
   const handlerFactory=config=>{const common={...config,executionMode:workflow?"workflow_native_v2":"agent_native_v2"},
@@ -218,7 +223,7 @@ try{
     const adapters=modern?[workflowV2ModelEffectExecutor(tls),workflowV2ToolEffectExecutor(tls)]:[]
     const indexWorker=semantic?new KnowledgeIndexWorker(pool,createKnowledgeIndexPrivateClient(tls),{approvedForIsolatedUat:true}):null
     const queryWorker=semantic?new KnowledgeQueryWorker(pool,createKnowledgeQueryPrivateClient(tls),{approvedForIsolatedUat:true}):null
-    const tickAutonomous=(scheduledAgent=false)=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow&&!scheduledAgent?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,scheduleExecutionApproved:scheduling,humanInputApproved:human,
+    const tickAutonomous=(scheduledAgent=false)=>new WorkflowV2Worker(pool,"browser-autonomous-"+(++workers),{executionMode:workflow&&!scheduledAgent?"workflow_native_v2":"agent_native_v2",agentExecutionApproved:true,scheduleExecutionApproved:scheduling,humanInputApproved:human,memoryExecutionApproved:memoryRuntime,
       executor:{supports:request=>adapters.some(adapter=>adapter.supports(request)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}}).tick()
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
@@ -232,7 +237,7 @@ try{
       allowKnowledgeToolExecution:semantic&&state.semanticAllowed&&state.configAllowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:(autonomous||scheduling)&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,allowScheduleRuntime:scheduling&&state.allowed,
       allowAgentCollaboration:collaboration,
-      allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,
+      allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
           {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
@@ -242,7 +247,7 @@ try{
         return backend(req,res)
       }})}
     configure()
-    const runs=autonomous?new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:semantic,allowHumanInput:human}):workflow?new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:semantic,allowHumanInput:human}):createNativeRunRepository(pool,policy)
+    const runs=autonomous?new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:semantic,allowHumanInput:human,allowMemory:memoryRuntime}):workflow?new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:semantic,allowHumanInput:human}):createNativeRunRepository(pool,policy)
     const submit=runs.submit.bind(runs)
     runs.submit=async(identity,specId,body)=>{
       state.submitHashes.push(createHash("sha256").update(JSON.stringify({specId,...body})).digest("hex"))
@@ -314,6 +319,7 @@ try{
             ...(human?{humanHashes:state.humanHashes,humanConfirms:state.humanConfirms,humanModelCalls:state.humanModelCalls,humanReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_human_input_responses")).rows[0].n}:{}),
             ...(memory?{memoryHashes:state.memoryHashes,memoryConfirms:state.memoryConfirms,memoryEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_entries")).rows[0].n,
               memoryReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_receipts")).rows[0].n}:{}),
+            ...(memoryRuntime?{memoryPrompts:state.memoryPrompts,memoryContexts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_run_contexts")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
             ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,decisionHashes:state.decisionHashes,semanticModelPrompts:state.semanticModelPrompts,
