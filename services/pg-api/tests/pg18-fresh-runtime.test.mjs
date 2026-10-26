@@ -107,7 +107,8 @@ test("Native activation recognizes the exact empty full runtime receipt without 
     await f.db.exec("BEGIN READ ONLY")
     let evidence
     try{evidence=await collectNativeActivationEvidenceForTest(probe)}finally{await f.db.exec("ROLLBACK")}
-    assert.deepEqual(evidence.fresh_runtime,{verified:true});assert.equal(evidence.base_tables,51);assert.equal(evidence.base_force_rls,50)
+    // This evidence counts agentstudio only; the two auth tables are separate.
+    assert.deepEqual(evidence.fresh_runtime,{verified:true});assert.equal(evidence.base_tables,55);assert.equal(evidence.base_force_rls,54)
     assert.equal(diagnoseNativeSchema(evidence).ready,true)
     for(const change of [{fresh_runtime:{verified:false}},{fresh_runtime:undefined},{base_tables:45},{base_force_rls:42},{state:{...state,port:5432}},{hba_rule:false},{local_rule_safe:false},{activated:true},{business_can_auth:true}])
       assert.equal(diagnoseNativeSchema({...evidence,...change}).ready,false)
