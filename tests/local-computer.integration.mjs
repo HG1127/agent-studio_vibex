@@ -86,6 +86,11 @@ try {
     browser: { enabled: true, headless: true, images: true, channel: 'msedge', allowedOrigins: [websiteUrl] },
     apps: { test_app: { command: process.execPath, args: [appScript, path.join(work, 'app-started.txt')] } } })
   assert.ok(runtime.tools.some(t => t.name === 'browser.browser_navigate'))
+  for (const tool of runtime.tools.filter(t => t.name.startsWith('browser.'))) {
+    assert.equal(tool.inputSchema.properties?.filename, undefined)
+    assert.ok(!tool.inputSchema.required?.includes('filename'))
+  }
+  await assert.rejects(() => runtime.execute({ tool: 'browser.browser_take_screenshot', arguments: { filename: 'not-allowed.png' } }), /browser_output_path_denied/)
   await api('/poll', { tools: runtime.tools })
   async function submit(tool, args, requestId = randomUUID()) {
     return ok('POST', '/api/local-devices/' + paired.device_id + '/jobs', { tool, arguments: args, confirm: true, request_id: requestId })

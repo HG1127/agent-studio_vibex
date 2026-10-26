@@ -50,7 +50,9 @@ export async function createRuntime(config) {
   const fileSchema = { ...objectSchema({ root: { type: 'string', enum: [...roots.keys()] }, path: string }), required: ['root', 'path'] }
   add('files.list', '列出授权目录中的文件，path 可填 .', fileSchema, async args => {
     const list = await fs.readdir(await resolveFile(args), { withFileTypes: true })
-    return JSON.stringify(list.filter(x => !protectedPart(x.name) && !x.isSymbolicLink()).slice(0, 200).map(x => ({ name: x.name, directory: x.isDirectory() })))
+    const visible = list.filter(x => !protectedPart(x.name) && !x.isSymbolicLink())
+    return JSON.stringify({ root: args.root, path: args.path, truncated: visible.length > 200,
+      entries: visible.slice(0, 200).map(x => ({ name: x.name, directory: x.isDirectory() })) })
   })
   add('files.read', '读取授权目录中的 UTF-8 文本文件（最多 64 KiB）', fileSchema, async args => {
     const file = await fs.open(await resolveFile(args), 'r')
@@ -93,7 +95,16 @@ export async function createRuntime(config) {
     const listed = await client.listTools()
     for (const tool of listed.tools) {
       if (!allow.has(tool.name)) continue
-      add(name + '.' + tool.name, tool.description?.slice(0, 600) || tool.name, tool.inputSchema, async (input, signal) => {
+      const schema = structuredClone(tool.inputSchema)
+      // Do not advertise upstream file-output options that this executor denies.
+      if (name === 'browser') {
+        delete schema.properties?.filename
+        if (schema.required) schema.required = schema.required.filter(key => key !== 'filename')
+      }
+      const description = name === 'browser'
+        ? '截图和快照直接返回；禁止传 filename 或指定输出文件。' + (tool.description?.slice(0, 500) || tool.name)
+        : tool.description?.slice(0, 600) || tool.name
+      add(name + '.' + tool.name, description, schema, async (input, signal) => {
         let callInput = input
         const desktopAction = name === 'desktop' && ['Click', 'Type', 'Scroll'].includes(tool.name)
         if (name === 'desktop') {

@@ -26,7 +26,8 @@ export async function executeClaim(api, runtime, job, signal) {
   try { result = await runtime.execute(job.input, combined) }
   catch (e) {
     ok = false
-    result = ({ desktop_user_control: '电脑当前由用户操作或已被接管，本次任务已停止。请核查实际结果，空闲后重新截图再发起操作。',
+    result = ({ browser_output_path_denied: '浏览器不接受 filename 输出路径参数；请使用工具返回的截图或快照。此调用未执行。',
+      desktop_user_control: '电脑当前由用户操作或已被接管，本次任务已停止。请核查实际结果，空闲后重新截图再发起操作。',
       desktop_observation_expired: '桌面观察已过期，本次操作未执行。请先重新截图。',
       desktop_coordinate_denied: '操作坐标超出本机授权范围，或使用了不允许的元素编号，本次操作未执行。',
       desktop_screenshot_missing: '未获得桌面截图。先核查电脑上的实际结果，不要直接重复操作。' })[e.message]
