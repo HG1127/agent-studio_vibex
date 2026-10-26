@@ -1778,11 +1778,14 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     try{
       await optimizationHttpFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
       const call=async(path,body,lose=false)=>{const response=await optimizationHttpFront.request('/api/v2/agent-optimizations'+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}});const value=await response.json();if(lose&&response.ok)throw Error('synthetic committed genuine optimization HTTP reply lost');return {status:response.status,body:value}}
-      const preview=await call('/preview',optimizationHttpDraft);assert.equal(preview.status,200);assert.equal(preview.body.recorded,false);assert.deepEqual(preview.body.changed_keys,['goal'])
+      const preview=await optimizationHttpFront.api.previewAgentOptimization(optimizationHttpDraft);assert.equal(preview.recorded,false);assert.deepEqual(preview.changed_keys,['goal'])
+      assert.equal((await optimizationHttpFront.api.getConfigCapabilities()).agent_optimization_acceptance_enabled,true)
       assert.equal((await call('?spec_id='+roleForOptimization.id+'&owner_user_id=unknown')).status,400)
       assert.equal((await call('/accept',{...originalHttpOptimization,changed_keys:['goal']})).status,400)
       assert.equal((await call('/accept',{...originalHttpOptimization,paid_optimization_approved:true})).status,400)
-      await assert.rejects(call('/accept',originalHttpOptimization,true),/committed genuine optimization HTTP reply lost/)
+      const losingOptimizationSdk=createPgNativePilotApi(async(route,init)=>{const response=await optimizationHttpFront.request(route,init);if(route.endsWith('/accept')&&response.ok){await response.arrayBuffer();throw Error('synthetic SDK committed optimization reply lost')}return response})
+      await assert.rejects(losingOptimizationSdk.acceptAgentOptimization(originalHttpOptimization),e=>e.status===0)
+      assert.equal((await optimizationHttpFront.api.getAgentOptimizations(roleForOptimization.id)).items.length,2)
       const page=await call('?spec_id='+roleForOptimization.id);assert.equal(page.status,200);assert.equal(page.body.items.length,2);assert.equal(page.body.items.find(i=>i.request_id===originalHttpOptimization.request_id).role_current,true)
       await optimizationHttpFront.api.login('other@example.com','SyntheticOtherPassword#2026');assert.equal((await call('?spec_id='+roleForOptimization.id)).status,404);assert.equal((await call('/confirm',originalHttpOptimization)).status,404)
     }finally{await optimizationHttpFront.close()}
@@ -1790,6 +1793,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     try{
       await optimizationHttpRecovery.api.login('admin@example.com','SyntheticAdminPassword#2026')
       const call=async(path,body)=>{const response=await optimizationHttpRecovery.request('/api/v2/agent-optimizations'+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}});return {status:response.status,body:await response.json()}}
+      const confirmedSdk=await optimizationHttpRecovery.api.confirmAgentOptimization(originalHttpOptimization);assert.equal(confirmedSdk.replayed,true)
+      assert.equal((await optimizationHttpRecovery.api.acceptAgentOptimization(originalHttpOptimization)).after_revision_id,confirmedSdk.after_revision_id)
+      assert.equal((await optimizationHttpRecovery.api.getConfigCapabilities()).agent_optimization_acceptance_enabled,false)
       const confirmed=await call('/confirm',originalHttpOptimization);assert.equal(confirmed.status,200);assert.equal(confirmed.body.replayed,true)
       assert.equal((await call('/accept',originalHttpOptimization)).body.replayed,true)
       assert.equal((await call('/accept',{...originalHttpOptimization,request_id:randomUUID()})).status,403)
@@ -1800,6 +1806,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await new AgentSpecRepository(apiPool).update(memoryIdentity,current.id,current.name,safeAgentSpec({...laterHttpSpec,goal:'Synthetic final unrelated role update'}),current.revision)
       assert.equal((await call('/confirm',originalHttpOptimization)).body.after_revision_id,confirmed.body.after_revision_id)
       const page=await call('?spec_id='+roleForOptimization.id),item=page.body.items.find(i=>i.request_id===originalHttpOptimization.request_id);assert.equal(item.feedback_unchanged,false);assert.equal(item.role_current,false)
+      assert.equal((await optimizationHttpRecovery.api.getAgentOptimizations(roleForOptimization.id)).items.find(i=>i.request_id===originalHttpOptimization.request_id).feedback_unchanged,false)
       assert.doesNotMatch(JSON.stringify(page.body),/syntheticOptimizationSourcePrivate|syntheticOptimizationFeedbackPrivate|Synthetic final unrelated/)
       assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_links')).rows[0].n,2)
       assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],optimizationHttpBefore)

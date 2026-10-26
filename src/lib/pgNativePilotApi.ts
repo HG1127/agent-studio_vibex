@@ -6,6 +6,8 @@ import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistor
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
 import {agentDerivedMemoryChoice,agentDerivedMemoryReceipt,agentDerivedMemoryPreview,agentDerivedMemoryPage,type PgNativeDerivedMemoryChoice} from "./pgNativeAgentDerivedMemory.ts"
 export type {PgNativeDerivedMemoryChoice,PgNativeDerivedMemoryReceipt,PgNativeDerivedMemoryPreview,PgNativeDerivedMemoryItem,PgNativeDerivedMemoryPage} from "./pgNativeAgentDerivedMemory.ts"
+import {optimizationDraft,optimizationChoice,optimizationPreview,optimizationReceipt,optimizationHistory,type PgNativeOptimizationDraft,type PgNativeOptimizationChoice} from "./pgNativeAgentOptimization.ts"
+export type {PgNativeOptimizationDraft,PgNativeOptimizationChoice,PgNativeOptimizationPreview,PgNativeOptimizationReceipt,PgNativeOptimizationHistory} from "./pgNativeAgentOptimization.ts"
 import {agentFeedbackChoice,agentFeedbackReceipt,agentFeedbackStatus,type PgNativeFeedbackChoice} from "./pgNativeAgentFeedback.ts"
 export type {PgNativeFeedbackChoice,PgNativeFeedbackReceipt,PgNativeFeedbackBody,PgNativeFeedbackLessonResult,PgNativeFeedbackLesson,PgNativeFeedbackStatus} from "./pgNativeAgentFeedback.ts"
 import {agentOutcomeConsent,agentOutcomeStatus,agentOutcomeStop,agentOutcomeStopReceipt,type PgNativeOutcomeConsent,type PgNativeOutcomeStop} from "./pgNativeAgentOutcomeMemory.ts"
@@ -64,6 +66,8 @@ export type PgNativeConfigCapabilities={
   agent_memory_runtime_enabled?:boolean
   agent_derived_memory_available?:boolean
   agent_derived_memory_writes_enabled?:boolean
+  agent_optimization_available?:boolean
+  agent_optimization_acceptance_enabled?:boolean
   agent_feedback_available?:boolean
   agent_feedback_submission_enabled?:boolean
   agent_feedback_lesson_storage_enabled?:boolean
@@ -277,6 +281,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/knowledge-query/${string}`
   | `/api/v2/agent-memories${string}`
   | `/api/v2/agent-derived-memories${string}`
+  | `/api/v2/agent-optimizations${string}`
   | `/api/v2/agent-feedback/${string}`
   | `/api/v2/agent-outcome-memories/${string}`
   | `/api/v2/workflows/${string}/validate`
@@ -466,6 +471,11 @@ export function createPgNativePilotApi(
     const result=await post<unknown>(confirmOnly?"/api/v2/agent-memories/confirm":"/api/v2/agent-memories/change",choice)
     try{return await agentMemoryReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_memory_request")}
   }
+  const optimizationChange=async(raw:PgNativeOptimizationChoice,confirmOnly=false)=>{
+    let choice:PgNativeOptimizationChoice;try{choice=optimizationChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_optimization_request")}
+    const result=await post<unknown>(`/api/v2/agent-optimizations/${confirmOnly?"confirm":"accept"}`,choice)
+    try{return await optimizationReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_optimization_request")}
+  }
   const feedbackChange=async(raw:PgNativeFeedbackChoice,confirmOnly=false)=>{
     let choice:PgNativeFeedbackChoice;try{choice=agentFeedbackChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_feedback_request")}
     const result=await post<unknown>(`/api/v2/agent-feedback/${choice.run_id}/${confirmOnly?"confirm":"change"}`,choice)
@@ -506,6 +516,18 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    getAgentOptimizations:async(specId:string)=>{
+      if(!safeId.test(specId))throw new PgNativePilotError(400,"invalid_agent_optimization_spec")
+      const spec=specId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-optimizations?spec_id=${spec}`)
+      try{return optimizationHistory(result,spec)}catch{throw new PgNativePilotError(503,"invalid_agent_optimization_projection")}
+    },
+    previewAgentOptimization:async(raw:PgNativeOptimizationDraft)=>{
+      let draft:PgNativeOptimizationDraft;try{draft=optimizationDraft(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_optimization_request")}
+      const result=await post<unknown>("/api/v2/agent-optimizations/preview",draft)
+      try{return await optimizationPreview(result,draft)}catch{throw new PgNativePilotError(503,"invalid_agent_optimization_preview")}
+    },
+    acceptAgentOptimization:(choice:PgNativeOptimizationChoice)=>optimizationChange(choice),
+    confirmAgentOptimization:(choice:PgNativeOptimizationChoice)=>optimizationChange(choice,true),
     getAgentFeedback:async(runId:string)=>{
       if(!safeId.test(runId))throw new PgNativePilotError(400,"invalid_agent_feedback_run")
       const run=runId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-feedback/${run}`)
@@ -575,6 +597,9 @@ export function createPgNativePilotApi(
           (value.agent_memory_writes_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true))||
           (value.agent_memory_runtime_enabled!==undefined&&typeof value.agent_memory_runtime_enabled!=="boolean")||
           (value.agent_memory_runtime_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
+          (value.agent_optimization_available!==undefined&&typeof value.agent_optimization_available!=="boolean")||
+          (value.agent_optimization_acceptance_enabled!==undefined&&typeof value.agent_optimization_acceptance_enabled!=="boolean")||
+          (value.agent_optimization_acceptance_enabled===true&&(value.agent_optimization_available!==true||value.config_writes_enabled!==true))||
           (value.agent_feedback_available!==undefined&&typeof value.agent_feedback_available!=="boolean")||
           (value.agent_feedback_submission_enabled!==undefined&&typeof value.agent_feedback_submission_enabled!=="boolean")||
           (value.agent_feedback_lesson_storage_enabled!==undefined&&typeof value.agent_feedback_lesson_storage_enabled!=="boolean")||
