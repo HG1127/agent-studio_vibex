@@ -1,7 +1,7 @@
 import {HttpError,type SqlClient,type WorkflowGraph} from "./contracts.ts"
 import {knowledgeLineageInstalled} from "./knowledge-lineage-audit.ts"
 import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
-import {checkedWorkflowV2StoredState,workflowV2RunColumns,workflowV2ExecutionRequest,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
+import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,workflowV2RunColumns,workflowV2ExecutionRequest,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
 import {workflowV2OutputProjection} from "./workflow-v2-output-projection.ts"
 import {workflowPreviewDependencies,type WorkflowPreviewSamples} from "./workflow-v2-preview.ts"
 const changed=():never=>{throw new HttpError(409,"workflow_sample_source_unavailable")}
@@ -18,6 +18,7 @@ export async function prepareWorkflowSampleLineage(db:SqlClient,owner:string,wor
   if(!source||source.workflow_id!==workflow)return changed()
   const state=checkedWorkflowV2StoredState(source.checkpoint,source.instruction)
   if(!await currentKnowledgeObservations(db,source.id,workflowV2ExecutionRequest(state)?.step_key))changed()
+  if(state.human_agent_keys?.length||state.agent_state?.human_protocol)await verifyWorkflowV2Snapshot(db,owner,source,state)
   const projected=workflowV2OutputProjection(state.graph,state.machine,{run_id:source.id,workflow_id:workflow,workflow_revision:state.workflow_revision!,status:source.status,
     instruction:source.instruction,updated_at:source.updated_at,...(state.node_debug?{node_debug_id:state.node_debug.node_id}:{})}).latest()
   if(projected.run.output_version!==origin.output_version||projected.run.workflow_revision!==origin.workflow_revision||origin.input&&samples.input!==projected.run.instruction)changed()

@@ -5,7 +5,7 @@ import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,type AgentHumanR
 import {usesPaidKnowledge} from "./pgNativeKnowledgeTool.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
 export type DurableDetail={execution_mode:string;replayed:boolean;knowledge_outputs_available?:boolean;run:{id:string;status:string;instruction:string;result_text:string};
-  human_input_current?:boolean;human_input?:PgNativeAgentHumanInput|null;
+  human_input_evidence_current?:boolean;human_input_current?:boolean;human_input?:PgNativeAgentHumanInput|null;
   approvals:Array<{step_key:string;status:string}>;steps:unknown[];pending_effect:{step_key:string;input_sha256:string;kind?:string;configuration?:Record<string,unknown>}|null;
   decision_confirmation?:{run_id:string;step_key:string;input_sha256:string;status:string}}
 export type DurableSummary={id:string;status:string;instruction_preview:string;result_preview:string}
@@ -130,7 +130,7 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
         const result=await call(request.runId,request.choice)
         if(closed)return
         agentHumanReceipt(result,request.runId,request.choice,confirmOnly)
-        ++ticket;selected=request.runId;update({pendingHumanResponse:null,notice:confirmOnly?"已核对原回复登记，后续模型和工具仍需单独审批。":"回复已登记，后续模型和工具仍需单独审批。"})
+        ++ticket;selected=request.runId;update({pendingHumanResponse:null,notice:confirmOnly?"已核对原回复登记，后续执行继续受原有权限和费用确认约束。":"回复已登记，后续执行继续受原有权限和费用确认约束。"})
         if(active)await refresh()
       }catch(error){
         if(closed||expired(error))return

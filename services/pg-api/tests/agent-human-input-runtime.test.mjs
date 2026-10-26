@@ -8,6 +8,8 @@ import {verifyAgentHumanInputCredentials} from '../src/agent-human-input-audit.t
 import {safeAgentSpec} from '../src/contracts.ts'
 import {RunRepository} from '../src/run-repository.ts'
 import {withActor} from '../src/repository.ts'
+import {AgentReleaseRepository} from '../src/agent-release-repository.ts'
+import {WorkflowV2RunRepository} from '../src/workflow-v2-run-repository.ts'
 
 async function fixture(){
   const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
@@ -96,6 +98,10 @@ test('Native required plan: revise/approve survive restart, simple generation ca
       const done=await until(f,id,makeWorker,'succeeded');assert.equal(done.run.result_text,'Final after owner plan approval');assert.equal(calls,3)
       const saved=(await f.db.query("SELECT result_reference FROM agentstudio.external_effects WHERE run_id=$1 AND tool_name='workflow:agent'",[id])).rows[0]
       assert.equal(JSON.parse(saved.result_reference).agent_snapshot.human_responses.length,2)
+      const first=await f.responses.history(alice,id,'',1);assert.equal(first.available,true);assert.equal(first.items.length,1);assert.equal(first.items[0].decision,'revise')
+      assert.equal(first.items[0].answer,revise.answer);assert.equal(first.next_after,first.items[0].step_key)
+      const last=await f.responses.history(alice,id,first.next_after,1);assert.equal(last.items[0].decision,'approve');assert.equal(last.next_after,null)
+      await assert.rejects(f.responses.history(f.identities.bob,id),e=>e.status===404)
     })
     const another=await submit(f,role),id2=another.run.id
     let secondCalls=0
@@ -111,5 +117,110 @@ test('Native required plan: revise/approve survive restart, simple generation ca
       assert.equal((await makeWorker({humanInputApproved:true}).tick()).status,'idle')
       assert.equal(secondCalls,1)
     })
+  }finally{await f.close()}
+})
+
+test('dedicated version acceptance needs completed human VM and real immutable receipts; removed, forged or rejected evidence cannot certify or expose completed output',async()=>{
+  const f=await fixture(),{alice}=f.identities
+  try{
+    const {require_approval,...raw}=f.resources.alice.spec.spec
+    const role=await f.agents.create(alice,'Reviewed acceptance role',safeAgentSpec({...raw,require_plan_review:true}))
+    const releases=new AgentReleaseRepository(f.pool,{enabled:true,allowAcceptance:true,allowHumanInput:true})
+    const source=await releases.workspace(alice,role.id)
+    const admission={action:'acceptance',request_id:randomUUID(),expected_spec_revision:role.revision,source_sha256:source.source_sha256,
+      instruction:'Human reviewed synthetic acceptance',max_steps:3,model_binding:null,confirm:true}
+    const admitted=await releases.change(alice,role.id,admission),id=admitted.run_id
+    const save=()=>({action:'snapshot',request_id:randomUUID(),expected_spec_revision:role.revision,source_sha256:source.source_sha256,note:'Verified human acceptance',test_run_id:id})
+    await f.privateTls(async(material,prompt)=>JSON.stringify({action:'answer',answer:JSON.parse(prompt).round===1?'A complete owner plan':'Final with real owner plan approval'}),async makeWorker=>{
+      const pending=await until(f,id,makeWorker,'awaiting_input')
+      assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,false)
+      await assert.rejects(releases.change(alice,role.id,save()),e=>e.code==='agent_release_acceptance_unavailable')
+      await f.responses.change(alice,id,{...request(pending),decision:'approve',answer:''})
+      const done=await until(f,id,makeWorker,'succeeded');assert.equal(done.human_input_evidence_current,true)
+    })
+    assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,true)
+    const version=await releases.change(alice,role.id,save());assert.equal(version.test_passed,true)
+    const ledger=(await f.db.query('SELECT * FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[id])).rows
+    const archived=(await f.db.query("SELECT result_reference FROM agentstudio.external_effects WHERE run_id=$1 AND tool_name='workflow:agent'",[id])).rows[0].result_reference
+    const checkpoint=(await f.db.query('SELECT checkpoint FROM agentstudio.runs WHERE id=$1',[id])).rows[0].checkpoint
+    const drift=[
+      'DELETE FROM agentstudio.agent_human_input_responses WHERE run_id=$1',
+      "UPDATE agentstudio.external_effects SET result_reference=(result_reference::jsonb #- '{agent_snapshot,human_state}')::text WHERE run_id=$1 AND tool_name='workflow:agent'",
+      "UPDATE agentstudio.external_effects SET result_reference=jsonb_set(result_reference::jsonb,'{agent_snapshot,human_state,human_responses,0,answer}','\"Forged owner note\"'::jsonb)::text WHERE run_id=$1 AND tool_name='workflow:agent'",
+      "UPDATE agentstudio.runs SET checkpoint=checkpoint-'human_agent_keys' WHERE id=$1"
+    ]
+    for(const sql of drift){
+      try{
+        await f.db.query(sql,[id])
+        assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,false)
+        const detail=await f.owned.get(alice,id);assert.equal(detail.run.result_text,'');assert.equal(detail.human_input_evidence_current,false)
+        const history=await f.responses.history(alice,id);assert.deepEqual(history.items,[]);assert.equal(history.available,false)
+        await assert.rejects(releases.change(alice,role.id,save()),e=>e.code==='agent_release_acceptance_unavailable')
+      }finally{
+        await f.db.query('DELETE FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[id])
+        await f.db.query('INSERT INTO agentstudio.agent_human_input_responses SELECT * FROM jsonb_populate_recordset(null::agentstudio.agent_human_input_responses,$1::jsonb)',[JSON.stringify(ledger)])
+        await f.db.query("UPDATE agentstudio.external_effects SET result_reference=$2 WHERE run_id=$1 AND tool_name='workflow:agent'",[id,archived])
+        await f.db.query('UPDATE agentstudio.runs SET checkpoint=$2::jsonb WHERE id=$1',[id,JSON.stringify(checkpoint)])
+      }
+    }
+    assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,true)
+    const refused=await releases.change(alice,role.id,{...admission,request_id:randomUUID()})
+    await f.privateTls(async()=>JSON.stringify({action:'answer',answer:'A real draft before a rejected model'}),async makeWorker=>{
+      const pending=await until(f,refused.run_id,makeWorker,'awaiting_input')
+      await f.responses.change(alice,refused.run_id,{...request(pending),decision:'approve',answer:''})
+      await makeWorker({humanInputApproved:true}).tick()
+      const next=await f.owned.get(alice,refused.run_id)
+      await f.owned.decide(alice,refused.run_id,{decision:'rejected',step_key:next.pending_effect.step_key,input_sha256:next.pending_effect.input_sha256})
+      await until(f,refused.run_id,makeWorker,'succeeded')
+    })
+    assert.equal((await releases.acceptanceStatus(alice,role.id,refused.run_id)).test_current,false)
+  }finally{await f.close()}
+})
+
+test('nested Workflow asks the actual owner, cancellation never revives a late reply, and source edits hide stale questions before any resume',async()=>{
+  const f=await fixture(),{alice,bob}=f.identities
+  try{
+    const role=f.resources.alice.spec
+    const graph={version:2,nodes:[{id:'start',type:'start',data:{title:'Start'},position:{x:0,y:0}},
+      {id:'agent',type:'agent',data:{title:'Nested role',agent_binding:{spec_id:role.id,spec_revision:role.revision},max_steps:3,require_plan_review:true},position:{x:100,y:0}},
+      {id:'summary',type:'model',data:{title:'Final summary',model_binding:f.resources.alice.binding,prompt:'{{Nested role.output}}'},position:{x:200,y:0}},
+      {id:'end',type:'end',data:{title:'End',output_template:'{{Final summary.output}}'},position:{x:300,y:0}}],edges:[{id:'a',source:'start',target:'agent'},{id:'b',source:'agent',target:'summary'},{id:'c',source:'summary',target:'end'}]}
+    const flow=await f.flows.create(alice,'Nested human workflow',graph),owned=new WorkflowV2RunRepository(f.pool,'workflow_native_v2',{allowHumanInput:true})
+    const responses=new AgentHumanInputRepository(f.pool,'workflow_native_v2',{allowResponses:true}),nested={...f,owned,responses}
+    const body={expected_revision:flow.revision,idempotency_key:'synthetic-nested-human-'+randomUUID(),instruction:'Nested owner-reviewed task'}
+    const admitted=await owned.submit(alice,flow.id,body),id=admitted.run.id
+    let debugCalls=0
+    await f.privateTls(async(material,prompt)=>JSON.stringify({action:'answer',answer:JSON.parse(prompt).round===1?'Nested plan':'Nested delivery after review'}),async makeWorker=>{
+      const pending=await until(nested,id,makeWorker,'awaiting_input')
+      await assert.rejects(responses.change(bob,id,{...request(pending),decision:'approve',answer:''}),e=>e.status===404)
+      await responses.change(alice,id,{...request(pending),decision:'approve',answer:''})
+      const done=await until(nested,id,makeWorker,'succeeded');assert.equal(done.run.result_text,'Nested delivery after review')
+      assert.equal((await owned.outputs(alice,id)).nodes.find(node=>node.node_id==='agent').output_text,'Nested delivery after review')
+      assert.equal((await responses.history(alice,id)).items[0].node_title,'Nested role')
+      const ledger=(await f.db.query('SELECT * FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[id])).rows
+      try{await f.db.query('DELETE FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[id]);await assert.rejects(owned.outputs(alice,id),e=>e.status===409)}
+      finally{await f.db.query('INSERT INTO agentstudio.agent_human_input_responses SELECT * FROM jsonb_populate_recordset(null::agentstudio.agent_human_input_responses,$1::jsonb)',[JSON.stringify(ledger)])}
+      const output=await owned.outputs(alice,id)
+      const sample={expected_revision:flow.revision,node_id:'summary',idempotency_key:'synthetic-human-lineage-'+randomUUID(),
+        samples:{input:'Manual debug input',outputs:{agent:'Nested delivery after review'},provenance:{kind:'history',run_id:id,workflow_id:flow.id,workflow_revision:flow.revision,output_version:output.run.output_version,input:false,nodes:['agent']}}}
+      const debug=await owned.submitNodeDebug(alice,flow.id,sample)
+      await makeWorker({humanInputApproved:true}).tick()
+      const approval=await owned.get(alice,debug.run.id)
+      await owned.decide(alice,debug.run.id,{decision:'approved',step_key:approval.pending_effect.step_key,input_sha256:approval.pending_effect.input_sha256})
+      let originalReceiptRemoved=false
+      f.setBeforeDispatch(async request=>{if(request.claim.run_id===debug.run.id){await f.db.query('DELETE FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[id]);originalReceiptRemoved=true}})
+      try{assert.equal((await makeWorker({humanInputApproved:true}).tick()).status,'paused');assert.equal(originalReceiptRemoved,true);assert.equal(debugCalls,0)}
+      finally{f.setBeforeDispatch(undefined);if(originalReceiptRemoved)await f.db.query('INSERT INTO agentstudio.agent_human_input_responses SELECT * FROM jsonb_populate_recordset(null::agentstudio.agent_human_input_responses,$1::jsonb)',[JSON.stringify(ledger)])}
+      assert.equal((await makeWorker({humanInputApproved:true}).tick()).status,'idle');assert.equal(debugCalls,0)
+      const cancelled=await owned.submit(alice,flow.id,{...body,idempotency_key:'synthetic-nested-cancel-'+randomUUID()})
+      const waiting=await until(nested,cancelled.run.id,makeWorker,'awaiting_input'),late={...request(waiting),decision:'approve',answer:''}
+      await owned.cancel(alice,cancelled.run.id);await assert.rejects(responses.change(alice,cancelled.run.id,late),e=>e.code==='agent_human_input_changed')
+      const stale=await owned.submit(alice,flow.id,{...body,idempotency_key:'synthetic-nested-stale-'+randomUUID()})
+      const old=await until(nested,stale.run.id,makeWorker,'awaiting_input'),choice={...request(old),decision:'approve',answer:''}
+      await f.db.query('UPDATE agentstudio.agent_specs SET revision=revision+1 WHERE id=$1',[role.id])
+      await assert.rejects(responses.change(alice,stale.run.id,choice),e=>e.status===409)
+      const hidden=await owned.get(alice,stale.run.id);assert.equal(hidden.human_input,null);assert.equal(hidden.human_input_evidence_current,false)
+      assert.equal((await owned.cancel(alice,stale.run.id)).run.status,'cancelled')
+    },{autonomousExecution:false,directModel:async()=> 'Nested delivery after review',nodeDebugExecutor:async()=>{debugCalls++;return 'Historical debug must not execute after lost original human evidence'}})
   }finally{await f.close()}
 })

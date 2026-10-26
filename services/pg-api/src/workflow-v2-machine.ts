@@ -72,6 +72,7 @@ class Machine{
   readonly frames=new Map<string,Frame>();readonly bodies=new Map<string,Set<string>>()
   readonly returns=new Set<string>();readonly requests=new Map<string,string>()
   readonly results:Map<string,WorkflowEffectResult>;readonly signatures=new Map<string,number>()
+  readonly effectRequests=new Map<string,WorkflowEffectRequest>()
   status:WorkflowV2View["status"]="running";error="";result="";executions=0;seq=0
   pending:WorkflowEffectRequest|null=null;events:WorkflowNodeTransition[]=[]
   constructor(graph:WorkflowGraph,cp:WorkflowV2Checkpoint){
@@ -243,6 +244,7 @@ class Machine{
         const payload={step_key:key,node_id:node.id,kind:node.type,input:rendered.text,configuration:node.data}
         const inputHash=sha(JSON.stringify({graph_sha256:this.cp.graph_sha256,...payload}))
         this.pending={...payload,kind:node.type,input_sha256:inputHash,missing:rendered.missing}
+        this.effectRequests.set(key,this.pending)
         this.requests.set(key,inputHash);this.status="waiting"
       }
       if(this.status==="running")this.settle()
@@ -273,6 +275,9 @@ export function createWorkflowV2Checkpoint(rawGraph:unknown,instruction:string):
 }
 export function inspectWorkflowV2Checkpoint(rawGraph:unknown,raw:unknown):WorkflowV2View{
   return restore(rawGraph,raw).machine.view()
+}
+export function inspectWorkflowV2EffectRequests(rawGraph:unknown,raw:unknown):WorkflowEffectRequest[]{
+  return [...restore(rawGraph,raw).machine.effectRequests.values()]
 }
 // Read-only replay of committed outer Workflow transitions. Agent child
 // planner/tool journals are deliberately not inputs to this projection.

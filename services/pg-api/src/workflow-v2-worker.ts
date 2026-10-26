@@ -132,6 +132,7 @@ export class WorkflowV2Worker{
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='"+this.root.kind+"' FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]
     if(!row||!["queued","running"].includes(row.status))return {tick:{status:"stale",run_id:job.run_id}}
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.human_agent_keys?.length&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
@@ -167,7 +168,7 @@ export class WorkflowV2Worker{
                   agent_snapshot:{spec_id:state.agent_state.spec_id,spec_revision:state.agent_state.spec_revision,spec:state.agent_state.spec,
                     snapshot_sha256:state.agent_state.snapshot_sha256,max_steps:pending.configuration.max_steps??3,
                     ...(state.agent_state.human_protocol?{human_protocol:state.agent_state.human_protocol,human_responses:state.agent_state.human_responses??[],
-                      parent_input_sha256:pending.input_sha256}: {})}})])
+                      parent_input_sha256:pending.input_sha256,human_state:state.agent_state}: {})}})])
             delete state.agent_state;delete state.agent_dispatch
             if(failed){
               await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"failed"}])
@@ -211,6 +212,7 @@ export class WorkflowV2Worker{
         if(pending.kind==="agent"){
           if(this.agentEnabled){
             state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled})
+            if(state.agent_state.human_protocol)state.human_agent_keys=[...new Set([...(state.human_agent_keys??[]),pending.step_key])]
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")
             await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_initialized",{step_key:pending.step_key,

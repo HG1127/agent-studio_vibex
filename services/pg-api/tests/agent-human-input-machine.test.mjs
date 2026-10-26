@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {safeAgentSpec} from '../src/contracts.ts'
 import {autonomousAgentGraph} from '../src/autonomous-agent-graph.ts'
 import {createWorkflowV2Checkpoint} from '../src/workflow-v2-machine.ts'
-import {createWorkflowAgentState,inspectWorkflowAgentState,recordWorkflowAgentResult,recordWorkflowAgentHumanResponse} from '../src/workflow-v2-agent-machine.ts'
+import {createWorkflowAgentState,inspectWorkflowAgentState,inspectWorkflowAgentHumanHistory,recordWorkflowAgentResult,recordWorkflowAgentHumanResponse} from '../src/workflow-v2-agent-machine.ts'
 const binding={connection_id:'22222222-2222-4222-8222-222222222222',connection_revision:2,model_id:'synthetic'}
 const spec=safeAgentSpec({goal:'synthetic goal',task_scope:'Owner only',deliverables:['Answer'],done_criteria:['Evidence'],tools:['calculate','knowledge_search','summarize'],knowledge_base_ids:[],model_binding:binding})
 const parent={step_key:'wf2_00002_agent',node_id:'agent',kind:'agent',input:'synthetic task',input_sha256:'a'.repeat(64),configuration:{title:'Role',agent_binding:{spec_id:'11111111-1111-4111-8111-111111111111',spec_revision:1},max_steps:3},missing:[]}
@@ -85,6 +85,9 @@ test('a required plan cannot be completed by model final; revise is not approval
   assert.equal(JSON.parse(view(state).pending.input).human_input.plan_review_confirmed,true)
   state=apply(state,'{"action":"answer","answer":"Final after actual owner approval"}')
   assert.equal(view(state).status,'succeeded');assert.equal(view(state).plan_review_confirmed,true)
+  const history=inspectWorkflowAgentHumanHistory(state,parent)
+  assert.deepEqual(history.map(item=>[item.kind,item.decision,item.draft,item.answer]),[['plan_review','revise','A complete first draft','Use a bounded acceptance checklist'],['plan_review','approve','Revised complete draft','']])
+  assert.equal(Object.hasOwn(history[0],'results'),false)
 })
 
 test('forged future approvals, provider approval flags and protocol downgrade cannot manufacture plan approval or extra budget',()=>{

@@ -216,6 +216,23 @@ export function recordWorkflowAgentHumanResponse(raw:unknown,parent:WorkflowEffe
   const next={...state,human_responses:[...(state.human_responses??[]),response]}
   inspectWorkflowAgentState(next,parent);return next
 }
+export type WorkflowAgentHumanHistory={request_id:string;step_key:string;kind:"clarification"|"plan_review";question:string;draft:string;round:number;decision:WorkflowAgentHumanResponse["decision"];answer:string}
+export function inspectWorkflowAgentHumanHistory(raw:unknown,parent:WorkflowEffectRequest):WorkflowAgentHumanHistory[]{
+  const state=checked(raw,parent);inspectWorkflowAgentState(state,parent)
+  if(!state.human_protocol)return []
+  let replay:WorkflowAgentState={...state,results:[],human_responses:[]},responseIndex=0
+  const history:WorkflowAgentHumanHistory[]=[]
+  for(const result of state.results){
+    replay=recordWorkflowAgentResult(replay,parent,result)
+    const pending=inspectWorkflowAgentState(replay,parent).pending_input,response=state.human_responses?.[responseIndex]
+    if(pending&&response){
+      replay=recordWorkflowAgentHumanResponse(replay,parent,response);responseIndex++
+      history.push({request_id:response.request_id,step_key:pending.step_key,kind:pending.kind,question:pending.question,draft:pending.draft,round:pending.round,decision:response.decision,answer:response.answer})
+    }
+  }
+  if(responseIndex!==(state.human_responses?.length??0))invalid()
+  return history
+}
 export function selectWorkflowAgentExecution(env:NodeJS.ProcessEnv):boolean{
   const enabled=env.AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_ENABLED,approved=env.AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED
   if(enabled===undefined&&approved===undefined)return false

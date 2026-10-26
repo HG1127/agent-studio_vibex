@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createPgNativeAutonomousAgentSession} from '../src/lib/pgNativeAutonomousAgentSession.ts'
 import {createPgNativePilotApi,PgNativePilotError} from '../src/lib/pgNativePilotApi.ts'
-import {agentHumanReceipt,agentHumanProjection} from '../src/lib/pgNativeAgentHumanInput.ts'
+import {agentHumanReceipt,agentHumanProjection,agentHumanHistory} from '../src/lib/pgNativeAgentHumanInput.ts'
 const run='11111111-1111-4111-8111-111111111111',agent='22222222-2222-4222-8222-222222222222',request='33333333-3333-4333-8333-333333333333'
 const pending={pending_step_key:'wf2_00002_agent_a01m_input',pending_sha256:'a'.repeat(64),source_sha256:'b'.repeat(64),kind:'clarification',question:'Which deadline?',draft:'',round:1}
 const detail=()=>({execution_mode:'agent_native_v2',replayed:false,run:{id:run,agent_spec_id:agent,workflow_id:null,kind:'agent',instruction:'Owned task',status:'awaiting_input',result_text:'',checkpoint:{spec_revision:1,max_steps:3}},
@@ -81,4 +81,16 @@ test('editing owner role goal, knowledge, model, HTTP or MCP bindings preserves 
       assert.equal(spec.require_plan_review,value);assert.equal(Object.hasOwn(spec,'require_plan_review'),value!==undefined)
     }
   }
+})
+test('owner human history validates exact run, private content boundaries and page cursors without granting a response or accepting hidden provider journals',async()=>{
+  const item={request_id:request,step_key:pending.pending_step_key,parent_step_key:'wf2_00002_agent',node_id:'agent',node_title:'Owner role',kind:'clarification',question:'Which deadline?',draft:'',round:1,decision:'reply',answer:'Owned deadline'}
+  const page={run_id:run,available:true,items:[item],next_after:item.step_key}
+  assert.equal(agentHumanHistory(page,run,'',1).items[0].answer,'Owned deadline')
+  for(const change of [{run_id:agent},{available:false},{next_after:'wf2_00002_agent_a02m_input'},{items:[item,item]},{items:[{...item,round:2}]},{items:[{...item,decision:'approve'}]},{items:[{...item,private_model_results:[]}]},{items:[{...item,answer:'x'.repeat(1601)}]}])
+    assert.throws(()=>agentHumanHistory({...page,...change},run,'',1))
+  assert.throws(()=>agentHumanHistory(page,run,item.step_key,1))
+  const seen=[];const api=createPgNativePilotApi(async(path,options)=>{seen.push({path,options});return new Response(JSON.stringify(page),{status:200})},'')
+  assert.equal((await api.getAutonomousAgentHumanHistory(run,'',1)).items.length,1)
+  assert.equal(seen[0].options.method,'GET');assert.equal(seen[0].options.body,undefined)
+  await assert.rejects(api.getAutonomousAgentHumanHistory(run,'',21),e=>e.status===400);assert.equal(seen.length,1)
 })

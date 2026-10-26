@@ -128,8 +128,8 @@ export function createHandler(deps:AppDependencies) {
         /^\/api\/v2\/workflow-runs\/[0-9a-fA-F-]{36}$/.test(path)
       const workflowV2Submit=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/native-runs$/.exec(path)
       const workflowNodeDebug=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/model-node-debug$/.exec(path)
-      const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|outputs|output-history|respond|respond-confirm))?)?$/.exec(path)
-      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm))?)?$/.exec(path)
+      const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|outputs|output-history|respond|respond-confirm|human-history))?)?$/.exec(path)
+      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm|human-history))?)?$/.exec(path)
       const autonomousAgentSubmit=/^\/api\/v2\/agent-specs\/([0-9a-fA-F-]{36})\/autonomous-runs$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
@@ -792,6 +792,15 @@ export function createHandler(deps:AppDependencies) {
           return send(res,result.replayed?200:201,{...result,worker_started_by_api:false})
         }
         const id=route![1],action=route![2]
+        if(action==="human-history"){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
+          const human=autonomousAgentRoute?deps.agentHumanInputRepository:deps.workflowHumanInputRepository
+          if(!human)throw new HttpError(503,"agent_human_input_unavailable")
+          const query=new URL(req.url||"/","http://127.0.0.1").searchParams,keys=[...query.keys()]
+          if(keys.length!==new Set(keys).size||keys.some(key=>!["after","limit"].includes(key)))throw new HttpError(400,"invalid_agent_human_history_query")
+          return send(res,200,await human.history(identity,id!,query.get("after")??"",Number(query.get("limit")??10)))
+        }
         if(action==="respond"||action==="respond-confirm"){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
           if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")

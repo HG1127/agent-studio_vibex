@@ -17,6 +17,7 @@ export default function PgNativeAgentHumanInputPanel({detail,pendingResponse,act
     {pendingResponse.choice.answer&&<pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-white p-3 font-sans text-sm">{pendingResponse.choice.answer}</pre>}
     <button type="button" className={secondary} disabled={!active||locked} onClick={onConfirm}>核对上次人工回复</button>
   </section>
+  if(detail?.human_input_evidence_current===false)return <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">人工回复证据或任务来源暂不可核对，已隐藏相关输出。请刷新并核对授权。</p>
   if(detail?.run.status!=="awaiting_input")return null
   if(!pending||detail.human_input_current!==true)return <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">当前问题的来源或授权已变化，请刷新并核对任务配置。</p>
   const plan=pending.kind==="plan_review",ready=active&&enabled&&!locked,confirmed=consent===scope
@@ -25,7 +26,7 @@ export default function PgNativeAgentHumanInputPanel({detail,pendingResponse,act
     <p className="whitespace-pre-wrap break-words text-sm leading-6">{pending.question}</p>
     {plan&&pending.draft&&<div><h4 className="mb-2 text-sm font-semibold">本次方案草案</h4>
       <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 font-sans text-sm leading-6">{pending.draft}</pre></div>}
-    <p className="text-sm leading-6 text-slate-500">回复或批准方案后，后续模型调用和工具操作仍需分别核对费用与执行范围。</p>
+    <p className="text-sm leading-6 text-slate-500">后续模型调用和工具操作仍需有效的费用确认与执行授权。</p>
     {!enabled&&<p role="status" className="text-sm text-amber-900">当前环境未开放人工回复。可继续查看任务或核对已提交的回复。</p>}
     <label className="block text-sm font-medium">{plan?"方案修改意见或批准备注":"回复内容"}
       <textarea aria-label={plan?"方案修改意见或批准备注":"回复内容"} rows={4} maxLength={1600} disabled={!ready}

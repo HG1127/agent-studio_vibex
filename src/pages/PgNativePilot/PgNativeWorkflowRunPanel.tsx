@@ -6,9 +6,10 @@ import {workflowButton,workflowSecondary} from "./PgNativeWorkflowNodeForm"
 import {autonomousStates} from "./PgNativeAutonomousAgentDetail"
 import PgNativeWorkflowRunDetail from "./PgNativeWorkflowRunDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
+import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 type Controller=ReturnType<typeof createPgNativeWorkflowRunSession>
-export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,humanEnabled=false,target,onExpired}:{
-  api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];active:boolean;enabled:boolean;humanEnabled?:boolean;
+export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,humanEnabled=false,humanAvailable=false,target,onExpired}:{
+  api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];active:boolean;enabled:boolean;humanEnabled?:boolean;humanAvailable?:boolean;
   target:{id:string;revision:number;selection?:number}|null;onExpired:()=>void
 }){
   const [view,setView]=useState(emptyWorkflowRunView),[selection,setSelection]=useState<{token:string;id:string}|null>(null),[instruction,setInstruction]=useState("")
@@ -64,6 +65,7 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,h
     <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
       onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
       onConfirm={()=>{if(active)void model.current?.retryHumanResponse()}}/>
+    {humanAvailable&&<PgNativeAgentHumanHistoryPanel api={api} runId={view.detail?.run.id??null} mode="workflow" active={active} onExpired={onExpired}/>}
     <PgNativeWorkflowRunDetail key={view.detail?.run.id??"none"} view={view} active={active} enabled={active&&enabled} api={api} onExpired={onExpired}
       onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}

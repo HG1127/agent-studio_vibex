@@ -175,7 +175,7 @@ export class AgentReleaseRepository{
       if(state.execution_mode!=="agent_native_v2"||Number(acceptance.spec_revision)!==state.spec_revision||
         Number(acceptance.max_steps)!==state.graph.nodes[1]?.data.max_steps||workflowAgentJson(acceptance.model_binding)!==workflowAgentJson(state.graph.nodes[1]?.data.model_binding)||
         createHash("sha256").update(row.instruction).digest("hex")!==acceptance.instruction_sha256||
-        inspectWorkflowV2Checkpoint(state.graph,state.machine).status!=="succeeded")return false
+        inspectWorkflowV2Checkpoint(state.graph,state.machine).status!=="succeeded"||state.machine.effects.some(effect=>effect.outcome==="rejected"))return false
       await verifyWorkflowV2Snapshot(db,actor,row,state)
     }catch(error){if(error instanceof HttpError&&[400,404,409].includes(error.status))return false;throw error}
     const complete=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key='wf2_00002_agent' AND status='succeeded') AND "+

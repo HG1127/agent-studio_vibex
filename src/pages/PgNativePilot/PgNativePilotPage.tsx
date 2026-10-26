@@ -563,7 +563,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             <div hidden={section!=="workflowNativeRuns"}>
               {(workflowRunsOpened||section==="workflowNativeRuns")&&<Suspense fallback={<p role="status">加载工作流任务中…</p>}>
                 <PgNativeWorkflowRunPanel key={profile.id} api={api} workflows={workflows} active={section==="workflowNativeRuns"}
-                  humanEnabled={humanInput.enabled}
+                  humanEnabled={humanInput.enabled} humanAvailable={humanInput.available}
                   enabled={workflowV2Enabled&&!loading&&!busy} target={workflowRunTarget} onExpired={expireAgentSession}/>
               </Suspense>}
             </div>

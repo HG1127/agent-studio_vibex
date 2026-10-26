@@ -66,4 +66,22 @@ export class AgentHumanInputRepository{
       return prior
     })
   }
+  async history(identity:Identity,rawId:string,after="",limit=10){
+    native(identity);const id=runId(rawId)
+    if(!Number.isSafeInteger(limit)||limit<1||limit>20||typeof after!=="string"||after!==""&&!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,140}_input$/.test(after))
+      throw new HttpError(400,"invalid_agent_human_history_query")
+    return withActor(this.pool,identity,async(db,owner)=>{
+      await requireHumanInputSchema(db)
+      const run=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind=$3::text FOR SHARE",[id,owner,this.root.kind])).rows[0]
+      if(!run)throw new HttpError(404,"agent_human_run_not_found")
+      const state=checkedWorkflowV2StoredState(run.checkpoint,run.instruction)
+      if(state.execution_mode!==this.root.mode)throw new HttpError(404,"agent_human_run_not_found")
+      try{
+        if(!await currentKnowledgeObservations(db,id))return {run_id:id,items:[],available:false,next_after:null}
+        const history=await verifyWorkflowV2Snapshot(db,owner,run,state),selected=history.filter(item=>item.step_key>after)
+        const items=selected.slice(0,limit)
+        return {run_id:id,items,available:true,next_after:selected.length>limit?items.at(-1)!.step_key:null}
+      }catch(error){if(error instanceof HttpError&&[400,404,409].includes(error.status))return {run_id:id,items:[],available:false,next_after:null};throw error}
+    })
+  }
 }

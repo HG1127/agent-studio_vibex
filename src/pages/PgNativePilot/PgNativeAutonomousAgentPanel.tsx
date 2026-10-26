@@ -7,6 +7,7 @@ import {useMcpConnections} from "./useMcpConnections"
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomousModel} from "@/lib/pgNativeAutonomousAgentSession"
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
+import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
 export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,active,enabled,onExpired,target}:{
@@ -113,6 +114,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
     <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
       onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
       onConfirm={()=>{if(active)void model.current?.retryHumanResponse()}}/>
+    {humanAvailable&&<PgNativeAgentHumanHistoryPanel api={api} runId={view.detail?.run.id??null} mode="agent" active={active} onExpired={onExpired}/>}
     <PgNativeAutonomousAgentDetail key={view.detail?.run.id??"none"} view={view} agents={agents} connections={connections} toolConnections={tools} mcpConnections={mcps.connections} mcpEnabled={mcpEnabled} enabled={active&&enabled}
       onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}

@@ -2,8 +2,8 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
-import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
-export type {AgentHumanResponse,PgNativeAgentHumanInput,PgNativeAgentHumanReceipt} from "./pgNativeAgentHumanInput.ts"
+import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
+export type {AgentHumanResponse,PgNativeAgentHumanInput,PgNativeAgentHumanReceipt,PgNativeHumanHistory,PgNativeHumanHistoryPage} from "./pgNativeAgentHumanInput.ts"
 import {employeeChange,employeeGovernanceResult,employeeCreation,employeeCreationResult,type EmployeeChange,type EmployeeCreation} from "./pgNativeEmployeeGovernance.ts"
 import {agentDescriptiveLimits} from "../../shared/agent-role-limits.mjs"
 import {collaborationChoice,collaborationDetail,collaborationRevisions,collaborationSummaries,collaborationResult,type PgNativeAgentCollaborationChoice} from "./pgNativeAgentCollaboration.ts"
@@ -99,7 +99,7 @@ export type PgNativeWorkflowV2Pending={step_key:string;node_id:string;kind:"mode
   agent_context?:{parent_step_key:string;round:number;phase:"model"|"tool"}}
 export type PgNativeWorkflowV2Result={
   knowledge_outputs_available?:boolean
-  human_input_current?:boolean;human_input?:PgNativeAgentHumanInput|null
+  human_input_evidence_current?:boolean;human_input_current?:boolean;human_input?:PgNativeAgentHumanInput|null
   run:{id:string;workflow_id:string;kind:"workflow";status:string;instruction:string;result_text:string;
     step_count:number;checkpoint:Record<string,unknown>;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null}
   steps:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>
@@ -443,6 +443,12 @@ export function createPgNativePilotApi(
     let choice:AgentHumanResponse;try{choice=agentHumanChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_human_response")}
     const result=await post<unknown>((route+(confirmOnly?"/respond-confirm":"/respond")) as Route,choice)
     try{return agentHumanReceipt(result,id.toLowerCase(),choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_human_response")}
+  }
+  const humanHistory=async(root:typeof routes.autonomousAgentRuns|typeof routes.workflowV2Runs,id:string,after:string,limit:number)=>{
+    if(!validHumanHistoryQuery(after,limit))throw new PgNativePilotError(400,"invalid_agent_human_history_query")
+    const route=recordRoute(root,id.toLowerCase())
+    const result=await get<unknown>((route+"/human-history?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
+    try{return agentHumanHistory(result,id.toLowerCase(),after,limit)}catch{throw new PgNativePilotError(503,"invalid_agent_human_history")}
   }
   const mcpRoute=(id:string):`/api/v2/mcp-connections/${string}`=>{
     if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_mcp_connection_id")
@@ -818,6 +824,7 @@ export function createPgNativePilotApi(
     getWorkflowV2Run:async(id:string)=>agentHumanProjection(await get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id))),
     respondWorkflowAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.workflowV2Runs,id,choice),
     confirmWorkflowAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.workflowV2Runs,id,choice,true),
+    getWorkflowAgentHumanHistory:async(id:string,after="",limit=10)=>humanHistory(routes.workflowV2Runs,id,after,limit),
     submitWorkflowNodeDebug:async(id:string,raw:WorkflowNodeDebugRequest)=>{
       const route=recordRoute(routes.workflows,id)
       let body:WorkflowNodeDebugRequest;try{body=safeWorkflowNodeDebugRequest(raw)}catch{throw new PgNativePilotError(400,"invalid_workflow_node_debug_request")}
@@ -861,6 +868,7 @@ export function createPgNativePilotApi(
     getAutonomousAgentRun:async(id:string)=>agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id))),
     respondAutonomousAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice),
     confirmAutonomousAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice,true),
+    getAutonomousAgentHumanHistory:async(id:string,after="",limit=10)=>humanHistory(routes.autonomousAgentRuns,id,after,limit),
     listAutonomousAgentRuns:async()=> (await get<{items:PgNativeAutonomousAgentSummary[]}>(routes.autonomousAgentRuns)).items,
     decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string,knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
