@@ -121,6 +121,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [agentMemory,setAgentMemory]=useState({available:false,enabled:false})
   const [derivedMemory,setDerivedMemory]=useState({available:false,enabled:false})
   const [outcomeMemory,setOutcomeMemory]=useState({available:false,enabled:false})
+  const [optimization,setOptimization]=useState({available:false,enabled:false})
   const [feedback,setFeedback]=useState({available:false,enabled:false,lessons:false})
   const [derivedMemoryOpened,setDerivedMemoryOpened]=useState(false)
   useEffect(()=>{if(derivedMemory.available)setDerivedMemoryOpened(true)},[derivedMemory.available])
@@ -158,6 +159,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setAgentMemory({available:false,enabled:false})
     setDerivedMemory({available:false,enabled:false})
     setOutcomeMemory({available:false,enabled:false})
+    setOptimization({available:false,enabled:false})
     setFeedback({available:false,enabled:false,lessons:false})
     setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
@@ -210,6 +212,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setEmployeeGovernance({available:capability?.employee_governance_available===true,enabled:capability?.employee_governance_enabled===true&&capability.config_writes_enabled===true})
       setHumanInput({available:capability?.agent_human_input_available===true,enabled:capability?.agent_human_responses_enabled===true&&capability.config_writes_enabled===true})
       setAgentMemory({available:capability?.agent_memory_available===true,enabled:capability?.agent_memory_writes_enabled===true&&capability.config_writes_enabled===true})
+      setOptimization({available:capability?.agent_optimization_available===true,enabled:capability?.agent_optimization_acceptance_enabled===true&&capability.config_writes_enabled===true})
       setFeedback({available:capability?.agent_feedback_available===true,enabled:capability?.agent_feedback_submission_enabled===true&&capability.config_writes_enabled===true,lessons:capability?.agent_feedback_lesson_storage_enabled===true&&capability.config_writes_enabled===true})
       setOutcomeMemory({available:capability?.agent_outcome_memory_available===true,enabled:capability?.agent_outcome_memory_admission_enabled===true&&capability.config_writes_enabled===true})
       setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
@@ -539,6 +542,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections} tools={toolConnections}
                 humanAvailable={humanInput.available} humanEnabled={humanInput.enabled}
                 outcomeAvailable={outcomeMemory.available} outcomeEnabled={outcomeMemory.enabled&&!loading&&!busy}
+                optimizationAvailable={optimization.available} optimizationEnabled={optimization.enabled&&!loading&&!busy} onRoleChanged={refresh}
                 feedbackAvailable={feedback.available} feedbackEnabled={feedback.enabled&&!loading&&!busy} feedbackLessons={feedback.lessons&&!loading&&!busy}
                 target={autonomousTarget}
                 mcpEnabled={mcpToolsEnabled}

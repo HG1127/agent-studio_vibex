@@ -32,6 +32,8 @@ import {AgentMemoryRepository} from "../../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials} from "../../src/agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema} from "../../src/agent-memory-context-audit.ts"
 import {AgentMemoryDerivedRepository} from "../../src/agent-memory-derived-repository.ts"
+import {AgentOptimizationRepository} from "../../src/agent-optimization-repository.ts"
+import {inspectAgentOptimizationSchema} from "../../src/agent-optimization-audit.ts"
 import {AgentFeedbackRepository} from "../../src/agent-feedback-repository.ts"
 import {inspectAgentFeedbackSchema} from "../../src/agent-feedback-audit.ts"
 import {AgentMemoryOutcomeRepository} from "../../src/agent-memory-outcome-repository.ts"
@@ -112,6 +114,8 @@ const failureSource=process.env.AGENT_STUDIO_PG_BROWSER_FAILURE_SOURCE==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_FAILURE_SOURCE!==undefined&&!failureSource||failureSource&&!outcomeMemory)throw Error("invalid_synthetic_failure_source_browser_mode")
 const feedback=process.env.AGENT_STUDIO_PG_BROWSER_FEEDBACK==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_FEEDBACK!==undefined&&!feedback||feedback&&!failureSource)throw Error("invalid_synthetic_feedback_browser_mode")
+const optimization=process.env.AGENT_STUDIO_PG_BROWSER_OPTIMIZATION==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_OPTIMIZATION!==undefined&&!optimization||optimization&&!feedback)throw Error("invalid_synthetic_optimization_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -147,6 +151,7 @@ Object.assign(state,{memoryPrompts:0,failPreparation:false})
 Object.assign(state,{outcomeAllowed:outcomeMemory,outcomeDrop:false,outcomeCapabilitiesDrop:false,outcomeHashes:[],outcomeConfirms:0})
 Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedCapabilitiesDrop:false,derivedHashes:[],derivedConfirms:0})
 Object.assign(state,{feedbackAllowed:feedback,feedbackDrop:false,feedbackCapabilitiesDrop:false,feedbackHashes:[],feedbackConfirms:0,feedbackFailLesson:false})
+Object.assign(state,{optimizationAllowed:optimization,optimizationDrop:false,optimizationCapabilitiesDrop:false,optimizationHashes:[],optimizationConfirms:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -173,6 +178,7 @@ try{
   if(outcomeMemory){await db.exec(load("db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql"));assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true)}
   if(failureSource){await db.exec(load("db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql"));assert.equal(await inspectAgentMemoryFailureSourceSchema(pool),true)}
   if(feedback){await db.exec(load("db/postgres/migrations/pg_v9_054_agent_feedback.sql"));assert.equal(await inspectAgentFeedbackSchema(pool),true)}
+  if(optimization){await db.exec(load("db/postgres/migrations/pg_v9_055_agent_optimization.sql"));assert.equal(await inspectAgentOptimizationSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -195,6 +201,7 @@ try{
     const createdRole=await agents.create(profile.identity,name+" Browser Agent",safeAgentSpec({goal:"Synthetic local browser task",task_scope:"Synthetic only",
       deliverables:["A summary"],task_plan:["Prepare summary"],done_criteria:["Disclose synthetic source"],tools:modern?["calculate"]:[],
       model_binding:{connection_id:connection.id,connection_revision:connection.revision,model_id:"gpt-4.1-mini"}}))
+    if(optimization&&name==="Alice"){state.optimizationRole=createdRole.id;state.optimizationActor=profile.identity;state.optimizationModel=connection.id}
     if(collaboration&&name==="Alice"){state.collaborationRole=createdRole.id;state.collaborationActor=profile.identity}
     if(releases&&name==="Alice"){state.releaseRole=createdRole.id;state.releaseActor=profile.identity;state.releaseDefaultModel=connection.id}
     if(human&&workflow&&name==="Alice")await new WorkflowRepository(pool).create(profile.identity,"Synthetic owner-reviewed Workflow",{
@@ -265,7 +272,8 @@ try{
       allowKnowledgeIndexRuntime:semantic&&state.semanticAllowed&&state.configAllowed,allowKnowledgeQueryRuntime:semantic&&state.semanticAllowed&&state.configAllowed,
       allowKnowledgeToolExecution:semantic&&state.semanticAllowed&&state.configAllowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:(autonomous||scheduling)&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,allowScheduleRuntime:scheduling&&state.allowed,
-      allowAgentCollaboration:collaboration,
+      allowAgentCollaboration:collaboration||optimization,
+      allowAgentOptimization:optimization,allowAgentOptimizationAcceptance:state.optimizationAllowed&&state.configAllowed,
       allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
       allowAgentFeedback:feedback,allowAgentFeedbackSubmission:state.feedbackAllowed,allowAgentFeedbackLessons:state.feedbackAllowed,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:state.outcomeAllowed,
@@ -319,7 +327,8 @@ try{
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
       ...(scheduling?{scheduleInventory:new ScheduleInventoryRepository(pool),scheduleDraftRepository:new ScheduleDraftRepository(pool),scheduleRuntimeRepository:schedules}:{}),
-      ...(collaboration?{agentCollaborationRepository:collaborations}:{}),
+      ...(collaboration||optimization?{agentCollaborationRepository:collaborations}:{}),
+      ...(optimization?{agentOptimizationRepository:{list:(...args)=>new AgentOptimizationRepository(pool).list(...args),preview:(...args)=>new AgentOptimizationRepository(pool).preview(...args),confirm:(...args)=>new AgentOptimizationRepository(pool).confirm(...args),accept(identity,body){state.optimizationHashes.push(createHash("sha256").update(JSON.stringify(body)).digest("hex"));return new AgentOptimizationRepository(pool,{allowAcceptance:state.optimizationAllowed&&state.configAllowed}).accept(identity,body)}}}:{}),
       ...(releases?{agentReleaseRepository:releaseRepo}:{}),
       ...(human?{agentHumanInputRepository:humanRepository("agent_native_v2"),workflowHumanInputRepository:humanRepository("workflow_native_v2")}:{}),
       ...(memory?{agentMemoryRepository:memoryRepository}:{}),
@@ -367,6 +376,8 @@ try{
             ...(derivedMemory?{derivedHashes:state.derivedHashes,derivedConfirms:state.derivedConfirms,derivedEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_entries")).rows[0].n,derivedReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_receipts")).rows[0].n}:{}),
             ...(outcomeMemory?{outcomeHashes:state.outcomeHashes,outcomeConfirms:state.outcomeConfirms,outcomeConsents:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_outcome_consents")).rows[0].n,outcomeStops:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_outcome_stops")).rows[0].n,outcomeResults:(await c.query("SELECT decision FROM agentstudio.agent_memory_outcome_results ORDER BY created_at")).rows.map(row=>row.decision)}:{}),
             ...(feedback?{feedbackHashes:state.feedbackHashes,feedbackConfirms:state.feedbackConfirms,feedbackBodies:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_feedback_bodies")).rows[0].n,feedbackLessons:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_feedback_lessons")).rows[0].n,feedbackReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_feedback_receipts")).rows[0].n,feedbackResults:(await c.query("SELECT decision FROM agentstudio.agent_feedback_lesson_results ORDER BY created_at")).rows.map(v=>v.decision)}:{}),
+            ...(optimization?{optimizationHashes:state.optimizationHashes,optimizationConfirms:state.optimizationConfirms,optimizationRole:state.optimizationRole,optimizationLinks:(await c.query("SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_links")).rows[0].n,optimizationIntents:(await c.query("SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_intents")).rows[0].n,
+              optimizationCurrent:(await c.query("SELECT name,revision,spec->>'goal' AS goal,spec->>'task_scope' AS scope,spec->'deliverables' AS deliverables,spec->'task_plan' AS plan,spec->'done_criteria' AS criteria,spec->'tools' AS tools,spec->'model_binding'->>'connection_id'=$2::text AS model_preserved FROM agentstudio.agent_specs WHERE id=$1",[state.optimizationRole,state.optimizationModel])).rows[0],optimizationHistory:(await c.query("SELECT b.kind AS before_kind,a.kind AS after_kind,b.spec_revision AS before_revision,a.spec_revision AS after_revision FROM agentstudio.agent_optimization_links l JOIN agentstudio.agent_collaboration_revisions b ON b.id=l.before_revision_id JOIN agentstudio.agent_collaboration_revisions a ON a.id=l.after_revision_id ORDER BY l.created_at")).rows}:{}),
             ...(failureSource?{failureSources:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_failure_sources")).rows[0].n,effects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.external_effects")).rows[0].n,failPreparation:state.failPreparation}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -396,6 +407,11 @@ try{
         else if(req.url==="/__fixture/drop-next-outcome-capabilities"&&req.method==="POST"&&outcomeMemory){state.outcomeCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-feedback"&&req.method==="POST"&&feedback){state.feedbackDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-feedback-capabilities"&&req.method==="POST"&&feedback){state.feedbackCapabilitiesDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-optimization"&&req.method==="POST"&&optimization){state.optimizationDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-optimization-capabilities"&&req.method==="POST"&&optimization){state.optimizationCapabilitiesDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/deny-optimization"&&req.method==="POST"&&optimization){state.optimizationAllowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/allow-optimization"&&req.method==="POST"&&optimization){state.optimizationAllowed=true;configure();output={ok:true}}
+        else if(req.url==="/__fixture/optimization-later-role"&&req.method==="POST"&&optimization){const current=await agents.get(state.optimizationActor,state.optimizationRole),{require_approval:_,...stored}=current.spec;await agents.update(state.optimizationActor,current.id,current.name,safeAgentSpec({...stored,goal:"Synthetic later ordinary owner goal"}),current.revision);output={ok:true}}
         else if(req.url==="/__fixture/deny-feedback"&&req.method==="POST"&&feedback){state.feedbackAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/allow-feedback"&&req.method==="POST"&&feedback){state.feedbackAllowed=true;configure();output={ok:true}}
         else if(req.url==="/__fixture/fail-next-feedback-lesson"&&req.method==="POST"&&feedback){state.feedbackFailLesson=true;output={ok:true}}
@@ -442,6 +458,9 @@ try{
       if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/confirm")state.memoryConfirms++
       if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/change"&&state.derivedDrop){state.derivedDrop=false;res.end=()=>{res.destroy();return res}}
       if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/confirm")state.derivedConfirms++
+      if(optimization&&req.method==="POST"&&req.url==="/api/v2/agent-optimizations/accept"&&state.optimizationDrop){state.optimizationDrop=false;res.end=()=>{res.destroy();return res}}
+      if(optimization&&req.method==="POST"&&req.url==="/api/v2/agent-optimizations/confirm")state.optimizationConfirms++
+      if(optimization&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.optimizationCapabilitiesDrop){state.optimizationCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
       if(feedback&&req.method==="POST"&&/^\/api\/v2\/agent-feedback\/[^/]+\/change$/.test(req.url)&&state.feedbackDrop){state.feedbackDrop=false;res.end=()=>{res.destroy();return res}}
       if(feedback&&req.method==="POST"&&/^\/api\/v2\/agent-feedback\/[^/]+\/confirm$/.test(req.url))state.feedbackConfirms++
       if(feedback&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.feedbackCapabilitiesDrop){state.feedbackCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
