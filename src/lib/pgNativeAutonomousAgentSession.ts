@@ -1,4 +1,4 @@
-import {createPgNativeDurableRunSession} from "./pgNativeDurableRunSession.ts"
+import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
 import {declaredAgentHttpTool,readyAgentHttpTools} from "./pgNativeAgentHttpTools.ts"
 import {declaredAgentMcpTool,readyAgentMcpTools} from "./pgNativeMcpConnection.ts"
 import {optionalKnowledgeToolContext,knowledgeBindingCurrent,knowledgePendingMatches,knowledgeToolScopeCurrent,usesPaidKnowledge,type KnowledgeToolContext} from "./pgNativeKnowledgeTool.ts"
@@ -7,19 +7,16 @@ import type {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/
 import {PgNativePilotError,type PgNativeAutonomousAgentResult,type PgNativeAutonomousAgentSummary,type PgNativeAgent,type PgNativeModelConnection,
   type PgNativeWorkflowV2Pending,type PgNativeToolConnection,type PgNativeMcpConnection,type PgNativeAgentModelBinding} from "./pgNativePilotApi.ts"
 type Api={
-  submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number):Promise<PgNativeAutonomousAgentResult>
+  submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number,requirePlanReview?:boolean):Promise<PgNativeAutonomousAgentResult>
   listAutonomousAgentRuns():Promise<PgNativeAutonomousAgentSummary[]>
   getAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
   decideAutonomousAgentNode(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<PgNativeAutonomousAgentResult>
   cancelAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
-}&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge">>
-export type AutonomousDraft={agentId:string;revision:number;instruction:string;maxSteps:number}
-type Submission=Readonly<AutonomousDraft&{key:string}>
-type Mutation=Readonly<{kind:"decision";id:string;decision:"approved"|"rejected";step:string;hash:string;knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT}|{kind:"cancel";id:string}>
+}&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge"|"respondAutonomousAgent"|"confirmAutonomousAgentResponse">>
+export type AutonomousDraft={agentId:string;revision:number;instruction:string;maxSteps:number;requirePlanReview?:boolean}
 export type AutonomousDetail=PgNativeAutonomousAgentResult&{knowledge?:KnowledgeToolContext}
-export type AutonomousView={runs:PgNativeAutonomousAgentSummary[];detail:AutonomousDetail|null;
-  pendingSubmit:Submission|null;pendingMutation:Mutation|null;busy:boolean;loading:boolean;error:string;notice:string}
-export const emptyAutonomousView:AutonomousView={runs:[],detail:null,pendingSubmit:null,pendingMutation:null,busy:false,loading:false,error:"",notice:""}
+export type AutonomousView=DurableRunView<AutonomousDetail,PgNativeAutonomousAgentSummary,AutonomousDraft>
+export const emptyAutonomousView:AutonomousView=emptyDurableRunView()
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 export function autonomousError(error:unknown){
   if(error instanceof PgNativePilotError){
@@ -86,7 +83,7 @@ export function autonomousReview(pending:PgNativeWorkflowV2Pending,knowledge?:Kn
   return {title:"模型调用",text:typeof input?.task==="string"?input.task:"按当前任务、角色配置和已有工具结果生成下一步操作。",charged:true}
 }
 function parseJson(value:string):unknown{try{return JSON.parse(value)}catch{return value}}
-export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>string;onExpired?:()=>void}={}){
+export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>string;responseKey?:()=>string;onExpired?:()=>void}={}){
   return createPgNativeDurableRunSession<AutonomousDraft,AutonomousDetail,PgNativeAutonomousAgentSummary>({
     list:()=>api.listAutonomousAgentRuns(),get:async id=>{
       const detail=await api.getAutonomousAgentRun(id)
@@ -96,8 +93,10 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
       const knowledge=api.getConfigCapabilities&&api.getKnowledgeEmbeddingConsent&&api.listKnowledge&&api.listSharedKnowledge?await optionalKnowledgeToolContext({getConfigCapabilities:api.getConfigCapabilities,getKnowledgeEmbeddingConsent:api.getKnowledgeEmbeddingConsent,listKnowledge:api.listKnowledge,listSharedKnowledge:api.listSharedKnowledge}):{enabled:false,consent:null}
       return {...detail,knowledge}
     },
-    submit:body=>api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps),
+    submit:body=>body.requirePlanReview===undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps):api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview),
     decide:(...args)=>api.decideAutonomousAgentNode(...args),cancel:id=>api.cancelAutonomousAgentRun(id),
+    ...(api.respondAutonomousAgent?{respond:(id,choice)=>api.respondAutonomousAgent!(id,choice)}:{}),
+    ...(api.confirmAutonomousAgentResponse?{confirmHumanResponse:(id,choice)=>api.confirmAutonomousAgentResponse!(id,choice)}:{}),
   },{...options,describe:autonomousError,submittedNotice:"多轮任务已提交，等待逐步审批。",
     canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||knowledgeBindingCurrent(detail.pending_effect?.configuration.knowledge_retrieval,detail.knowledge)&&
       knowledgeToolScopeCurrent((detail.pending_effect?.configuration.knowledge_base_ids??[]) as string[],detail.knowledge),
@@ -105,10 +104,11 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
       const instruction=draft.instruction.trim()
       if(!uuid.test(draft.agentId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>2000||instruction.includes("\0")||
          !Number.isSafeInteger(draft.maxSteps)||draft.maxSteps<1||draft.maxSteps>30)throw Error("invalid_autonomous_draft")
-      return {agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps}
+      if(draft.requirePlanReview!==undefined&&typeof draft.requirePlanReview!=="boolean")throw Error("invalid_agent_plan_review")
+      return {agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps,...(draft.requirePlanReview!==undefined?{requirePlanReview:draft.requirePlanReview}:{})}
     },
     acceptDetail:result=>result.execution_mode==="agent_native_v2"&&result.run.kind==="agent"&&result.run.workflow_id===null&&uuid.test(result.run.agent_spec_id),
     acceptSubmit:(result,body)=>result.run.agent_spec_id===body.agentId&&result.run.instruction===body.instruction&&
-      result.run.checkpoint.spec_revision===body.revision&&result.run.checkpoint.max_steps===body.maxSteps,
+      result.run.checkpoint.spec_revision===body.revision&&result.run.checkpoint.max_steps===body.maxSteps&&result.run.checkpoint.require_plan_review===body.requirePlanReview,
   })
 }

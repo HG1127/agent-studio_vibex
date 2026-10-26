@@ -2,6 +2,8 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
+export type {AgentHumanResponse,PgNativeAgentHumanInput,PgNativeAgentHumanReceipt} from "./pgNativeAgentHumanInput.ts"
 import {employeeChange,employeeGovernanceResult,employeeCreation,employeeCreationResult,type EmployeeChange,type EmployeeCreation} from "./pgNativeEmployeeGovernance.ts"
 import {agentDescriptiveLimits} from "../../shared/agent-role-limits.mjs"
 import {collaborationChoice,collaborationDetail,collaborationRevisions,collaborationSummaries,collaborationResult,type PgNativeAgentCollaborationChoice} from "./pgNativeAgentCollaboration.ts"
@@ -47,6 +49,8 @@ export type PgNativeConfigCapabilities={
   workflow_execution_enabled?:boolean
   workflow_v2_submission_enabled?:boolean
   autonomous_agent_submission_enabled?:boolean
+  agent_human_input_available?:boolean
+  agent_human_responses_enabled?:boolean
   schedule_execution_enabled?:boolean
   employee_governance_available?:boolean
   employee_governance_enabled?:boolean
@@ -65,7 +69,7 @@ export type PgNativeAgentModelBinding={
 }
 export type PgNativeAgent={
   id:string;name:string;revision:number
-  spec:{goal:string;task_scope:string;deliverables?:string[];
+  spec:{goal:string;task_scope:string;deliverables?:string[];require_plan_review?:boolean;
     task_plan?:string[];done_criteria?:string[];tools?:string[];
     knowledge_base_ids?:string[];knowledge_retrieval?:KnowledgeRetrievalBinding;model_binding?:PgNativeAgentModelBinding;http_tools?:AgentHttpTool[];mcp_tools?:AgentMcpTool[]}
 }
@@ -95,6 +99,7 @@ export type PgNativeWorkflowV2Pending={step_key:string;node_id:string;kind:"mode
   agent_context?:{parent_step_key:string;round:number;phase:"model"|"tool"}}
 export type PgNativeWorkflowV2Result={
   knowledge_outputs_available?:boolean
+  human_input_current?:boolean;human_input?:PgNativeAgentHumanInput|null
   run:{id:string;workflow_id:string;kind:"workflow";status:string;instruction:string;result_text:string;
     step_count:number;checkpoint:Record<string,unknown>;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null}
   steps:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>
@@ -390,6 +395,11 @@ function simpleAgentSpec(goal:string){
   return {goal:safeAgentGoal(goal),task_scope:"",deliverables:[],task_plan:[],
     done_criteria:[],tools:[]}
 }
+function planReviewSetting(spec:PgNativeAgent["spec"]):{require_plan_review?:boolean}{
+  if(!Object.hasOwn(spec,"require_plan_review"))return {}
+  if(typeof spec.require_plan_review!=="boolean")throw new PgNativePilotError(409,"unexpected_stored_spec")
+  return {require_plan_review:spec.require_plan_review}
+}
 function collaborationRoute(id:string,action?:"revisions"|"change"|"revoke"|"reject"|"confirm"):Route{
   if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_pg_native_agent_id")
   return `/api/v2/agent-collaboration/${id}${action?"/"+action:""}` as Route
@@ -428,6 +438,12 @@ export function createPgNativePilotApi(
   const patch=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"PATCH",body,transport,rootPath)
   const del=<T>(route:Route)=>request<T>(route,"DELETE",undefined,transport,rootPath)
+  const humanResponse=async(root:typeof routes.autonomousAgentRuns|typeof routes.workflowV2Runs,id:string,raw:AgentHumanResponse,confirmOnly=false)=>{
+    const route=recordRoute(root,id.toLowerCase())
+    let choice:AgentHumanResponse;try{choice=agentHumanChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_human_response")}
+    const result=await post<unknown>((route+(confirmOnly?"/respond-confirm":"/respond")) as Route,choice)
+    try{return agentHumanReceipt(result,id.toLowerCase(),choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_human_response")}
+  }
   const mcpRoute=(id:string):`/api/v2/mcp-connections/${string}`=>{
     if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_mcp_connection_id")
     return `/api/v2/mcp-connections/${id}`
@@ -471,6 +487,9 @@ export function createPgNativePilotApi(
             typeof value.workflow_execution_enabled!=="boolean")||
           (value.autonomous_agent_submission_enabled!==undefined&&typeof value.autonomous_agent_submission_enabled!=="boolean")||
           (value.autonomous_agent_submission_enabled===true&&value.config_writes_enabled!==true)||
+          (value.agent_human_input_available!==undefined&&typeof value.agent_human_input_available!=="boolean")||
+          (value.agent_human_responses_enabled!==undefined&&typeof value.agent_human_responses_enabled!=="boolean")||
+          (value.agent_human_responses_enabled===true&&(value.agent_human_input_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true&&value.workflow_v2_submission_enabled!==true))||
           (value.workflow_v2_submission_enabled!==undefined&&
             typeof value.workflow_v2_submission_enabled!=="boolean")||
           (value.workflow_v2_submission_enabled===true&&value.config_writes_enabled!==true)||
@@ -661,7 +680,7 @@ export function createPgNativePilotApi(
       const old=current.spec
       if(!old||typeof old.goal!=="string")
         throw new PgNativePilotError(409,"unexpected_stored_spec")
-      const spec={goal:checkedGoal,task_scope:old.task_scope??"",
+      const spec={...planReviewSetting(old),goal:checkedGoal,task_scope:old.task_scope??"",
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],
@@ -694,7 +713,7 @@ export function createPgNativePilotApi(
         if(retrieval&&ids.length===0)throw Error()
         selected=ids.length?parseKnowledgeRetrievalBinding(retrieval===undefined?old.knowledge_retrieval:retrieval===null?undefined:retrieval):undefined
       }catch{throw new PgNativePilotError(400,"invalid_pg_native_knowledge_retrieval")}
-      const spec={goal:old.goal,task_scope:old.task_scope??"",
+      const spec={...planReviewSetting(old),goal:old.goal,task_scope:old.task_scope??"",
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools,knowledge_base_ids:ids,
         ...(selected?{knowledge_retrieval:selected}:{}),
@@ -723,7 +742,7 @@ export function createPgNativePilotApi(
       const old=current.spec
       if(!old||typeof old.goal!=="string")
         throw new PgNativePilotError(409,"unexpected_stored_spec")
-      const spec={goal:old.goal,task_scope:old.task_scope??"",
+      const spec={...planReviewSetting(old),goal:old.goal,task_scope:old.task_scope??"",
         deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools:old.tools??[],
         knowledge_base_ids:old.knowledge_base_ids??[],
@@ -746,7 +765,7 @@ export function createPgNativePilotApi(
       const oldNames=new Set((old.http_tools??[]).map(tool=>tool.name))
       const tools=[...new Set([...(old.tools??[]).filter(name=>!oldNames.has(name)),...httpTools.map(tool=>tool.name)])]
       if(tools.length>20)throw new PgNativePilotError(400,"invalid_agent_http_tools")
-      const spec={goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],
+      const spec={...planReviewSetting(old),goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],
         task_plan:old.task_plan??[],done_criteria:old.done_criteria??[],tools,knowledge_base_ids:old.knowledge_base_ids??[],
         ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{}),...(old.mcp_tools?.length?{mcp_tools:old.mcp_tools}:{}),...(httpTools.length?{http_tools:httpTools}:{})}
@@ -763,7 +782,7 @@ export function createPgNativePilotApi(
       const oldNames=new Set((old.mcp_tools??[]).map(tool=>tool.name))
       const tools=[...new Set([...(old.tools??[]).filter(name=>!oldNames.has(name)),...mcpTools.map(tool=>tool.name)])]
       if(tools.length>20)throw new PgNativePilotError(400,"invalid_agent_mcp_tools")
-      const spec={goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],task_plan:old.task_plan??[],
+      const spec={...planReviewSetting(old),goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],task_plan:old.task_plan??[],
         done_criteria:old.done_criteria??[],tools,knowledge_base_ids:old.knowledge_base_ids??[],
         ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
         ...(old.model_binding?{model_binding:old.model_binding}:{}),...(old.http_tools?.length?{http_tools:old.http_tools}:{}),...(mcpTools.length?{mcp_tools:mcpTools}:{})}
@@ -793,10 +812,12 @@ export function createPgNativePilotApi(
     submitWorkflowV2Run:async(id:string,expected_revision:number,instruction:string,idempotency_key:string)=>{
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
-      return post<PgNativeWorkflowV2Result>((recordRoute(routes.workflows,id)+"/native-runs") as Route,{
-        expected_revision:safeRevision(expected_revision),instruction,idempotency_key})
+      return agentHumanProjection(await post<PgNativeWorkflowV2Result>((recordRoute(routes.workflows,id)+"/native-runs") as Route,{
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key}))
     },
-    getWorkflowV2Run:async(id:string)=>get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id)),
+    getWorkflowV2Run:async(id:string)=>agentHumanProjection(await get<PgNativeWorkflowV2Result>(recordRoute(routes.workflowV2Runs,id))),
+    respondWorkflowAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.workflowV2Runs,id,choice),
+    confirmWorkflowAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.workflowV2Runs,id,choice,true),
     submitWorkflowNodeDebug:async(id:string,raw:WorkflowNodeDebugRequest)=>{
       const route=recordRoute(routes.workflows,id)
       let body:WorkflowNodeDebugRequest;try{body=safeWorkflowNodeDebugRequest(raw)}catch{throw new PgNativePilotError(400,"invalid_workflow_node_debug_request")}
@@ -829,14 +850,17 @@ export function createPgNativePilotApi(
       return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
     },
-    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3)=>{
+    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean)=>{
       if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
-      return post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
-        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps})
+      if(require_plan_review!==undefined&&typeof require_plan_review!=="boolean")throw new PgNativePilotError(400,"invalid_agent_plan_review")
+      return agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{})}))
     },
-    getAutonomousAgentRun:async(id:string)=>get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id)),
+    getAutonomousAgentRun:async(id:string)=>agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id))),
+    respondAutonomousAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice),
+    confirmAutonomousAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice,true),
     listAutonomousAgentRuns:async()=> (await get<{items:PgNativeAutonomousAgentSummary[]}>(routes.autonomousAgentRuns)).items,
     decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string,knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||

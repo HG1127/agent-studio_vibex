@@ -14,7 +14,7 @@ async function transaction<T>(pool:SqlPool,body:(db:SqlClient)=>Promise<T>){cons
   }catch(error){if(active)await db.query("ROLLBACK").catch(()=>{});throw error}finally{db.release()}}
 export class ScheduleRuntimeWorker{
   readonly pool:SqlPool;readonly workerId:string;readonly flows:WorkflowV2RunRepository;readonly agents:AutonomousAgentRunRepository
-  constructor(pool:SqlPool,workerId:string,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){
+  constructor(pool:SqlPool,workerId:string,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_schedule_worker_id")
     this.pool=pool;this.workerId=workerId;this.flows=new WorkflowV2RunRepository(pool,"workflow_native_v2",options);this.agents=new AutonomousAgentRunRepository(pool,options)
   }

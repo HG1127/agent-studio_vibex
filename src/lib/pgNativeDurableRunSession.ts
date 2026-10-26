@@ -1,27 +1,31 @@
 // Shared employee-lifetime recovery for Native Workflow and standalone Agent runs.
 // Fixed adapters select the protocol. No storage, credentials, timers or executors.
 import {PgNativePilotError} from "./pgNativePilotApi.ts"
+import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,type AgentHumanResponse,type PgNativeAgentHumanInput,type PgNativeAgentHumanReceipt} from "./pgNativeAgentHumanInput.ts"
 import {usesPaidKnowledge} from "./pgNativeKnowledgeTool.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
 export type DurableDetail={execution_mode:string;replayed:boolean;knowledge_outputs_available?:boolean;run:{id:string;status:string;instruction:string;result_text:string};
+  human_input_current?:boolean;human_input?:PgNativeAgentHumanInput|null;
   approvals:Array<{step_key:string;status:string}>;steps:unknown[];pending_effect:{step_key:string;input_sha256:string;kind?:string;configuration?:Record<string,unknown>}|null;
   decision_confirmation?:{run_id:string;step_key:string;input_sha256:string;status:string}}
 export type DurableSummary={id:string;status:string;instruction_preview:string;result_preview:string}
 type Mutation=Readonly<{kind:"decision";id:string;decision:"approved"|"rejected";step:string;hash:string;knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT}|{kind:"cancel";id:string}>
-export type DurableRunView<R,S,D>={runs:S[];detail:R|null;pendingSubmit:Readonly<D&{key:string}>|null;pendingMutation:Mutation|null;
+export type PendingHumanResponse=Readonly<{runId:string;choice:Readonly<AgentHumanResponse>}>
+export type DurableRunView<R,S,D>={runs:S[];detail:R|null;pendingSubmit:Readonly<D&{key:string}>|null;pendingMutation:Mutation|null;pendingHumanResponse:PendingHumanResponse|null;
   busy:boolean;loading:boolean;error:string;notice:string}
-export function emptyDurableRunView<R,S,D>():DurableRunView<R,S,D>{return {runs:[],detail:null,pendingSubmit:null,pendingMutation:null,busy:false,loading:false,error:"",notice:""}}
+export function emptyDurableRunView<R,S,D>():DurableRunView<R,S,D>{return {runs:[],detail:null,pendingSubmit:null,pendingMutation:null,pendingHumanResponse:null,busy:false,loading:false,error:"",notice:""}}
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const terminal=new Set(["succeeded","failed","cancelled"]),definite=new Set([400,401,403,404,405,409,413,415,422,429])
 export function createPgNativeDurableRunSession<TDraft extends object,TResult extends DurableDetail,TSummary extends DurableSummary>(api:{
   list():Promise<TSummary[]>;get(id:string):Promise<TResult>;submit(body:Readonly<TDraft&{key:string}>):Promise<TResult>;
-  decide(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<TResult>;cancel(id:string):Promise<TResult>
+  decide(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<TResult>;cancel(id:string):Promise<TResult>;
+  respond?(id:string,choice:AgentHumanResponse):Promise<PgNativeAgentHumanReceipt>;confirmHumanResponse?(id:string,choice:AgentHumanResponse):Promise<PgNativeAgentHumanReceipt>
 },options:{freezeDraft:(draft:TDraft)=>TDraft;acceptSubmit:(result:TResult,body:TDraft)=>boolean;acceptDetail:(result:TResult)=>boolean;
-  submittedNotice:string;describe:(error:unknown)=>string;key?:()=>string;onExpired?:()=>void;canApprove?:(detail:TResult)=>boolean}){
+  submittedNotice:string;describe:(error:unknown)=>string;key?:()=>string;responseKey?:()=>string;onExpired?:()=>void;canApprove?:(detail:TResult)=>boolean}){
   const checked=(value:TResult,id?:string)=>{
     if(!value||!uuid.test(value.run?.id??"")||id&&value.run.id!==id||!Array.isArray(value.approvals)||!Array.isArray(value.steps)||
        typeof value.replayed!=="boolean"||value.knowledge_outputs_available!==undefined&&typeof value.knowledge_outputs_available!=="boolean"||!options.acceptDetail(value))throw Error("unconfirmed_durable_response")
-    return value
+    return agentHumanProjection(value)
   }
   let state:DurableRunView<TResult,TSummary,TDraft>=emptyDurableRunView(),closed=false,active=false,ticket=0,selected:string|null=null
   let uncertain=false,flight:Promise<void>|null=null
@@ -68,10 +72,10 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
     dispose(){closed=true;active=false;++ticket;selected=null;state={...emptyDurableRunView<TResult,TSummary,TDraft>()};listeners.clear()},
     setActive(value:boolean){if(closed)return;active=value;if(value)void refresh();else{++ticket;update({loading:false,detail:null,runs:[]})}},
     refresh,
-    poll(){return selected&&!state.busy&&!state.loading&&!state.pendingSubmit&&!state.pendingMutation?refresh(selected,true):Promise.resolve()},
-    select(id:string){if(!uuid.test(id)||state.busy||state.pendingMutation)return Promise.resolve();return refresh(id)},
+    poll(){return selected&&!state.busy&&!state.loading&&!state.pendingSubmit&&!state.pendingMutation&&!state.pendingHumanResponse?refresh(selected,true):Promise.resolve()},
+    select(id:string){if(!uuid.test(id)||state.busy||state.pendingMutation||state.pendingHumanResponse)return Promise.resolve();return refresh(id)},
     submit(draft:TDraft){
-      if(state.pendingMutation)return Promise.resolve()
+      if(state.pendingMutation||state.pendingHumanResponse)return Promise.resolve()
       return perform(async()=>{
         if(!state.pendingSubmit){
           try{update({pendingSubmit:Object.freeze({...options.freezeDraft(draft),key:options.key?.()??"pg_run_"+crypto.randomUUID().replaceAll("-","")})})}
@@ -93,7 +97,7 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
     },
     decide(decision:"approved"|"rejected",consented=false,knowledgeConsented=false){
       const detail=state.detail,pending=detail?.pending_effect
-      if(state.pendingSubmit||!detail||detail.run.status!=="awaiting_approval"||!pending||!["approved","rejected"].includes(decision)||decision==="approved"&&!consented)return Promise.resolve()
+      if(state.pendingHumanResponse||state.pendingSubmit||!detail||detail.run.status!=="awaiting_approval"||!pending||!["approved","rejected"].includes(decision)||decision==="approved"&&!consented)return Promise.resolve()
       if(decision==="approved"&&detail.knowledge_outputs_available===false)return Promise.resolve()
       if(decision==="approved"&&options.canApprove&&!options.canApprove(detail))return Promise.resolve()
       const paid=decision==="approved"&&usesPaidKnowledge(pending)
@@ -102,8 +106,41 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
         ...(paid?{knowledge_query_charge:KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT}:{})})
       return mutate(request)
     },
-    cancel(){const id=state.detail?.run.id;if(!id||state.pendingSubmit||terminal.has(state.detail!.run.status))return Promise.resolve();return mutate(Object.freeze({kind:"cancel",id}))},
+    cancel(){const id=state.detail?.run.id;if(!id||state.pendingHumanResponse||state.pendingSubmit||terminal.has(state.detail!.run.status))return Promise.resolve();return mutate(Object.freeze({kind:"cancel",id}))},
     retryMutation(){return state.pendingMutation?mutate(state.pendingMutation):Promise.resolve()},
+    respond(decision:AgentHumanResponse["decision"],answer:string,consented=false){
+      const detail=state.detail,pending=detail?.human_input
+      if(!consented||!api.respond||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse||!pending||detail?.run.status!=="awaiting_input"||detail.human_input_current!==true)return Promise.resolve()
+      if(pending.kind==="clarification"?decision!=="reply":decision==="reply")return Promise.resolve()
+      let choice:AgentHumanResponse
+      try{choice=agentHumanChoice({request_id:options.responseKey?.()??crypto.randomUUID(),pending_step_key:pending.pending_step_key,
+        pending_sha256:pending.pending_sha256,source_sha256:pending.source_sha256,decision,answer,confirm:true})}
+      catch{update({error:"请核对当前问题和回复内容，最多1600字。"});return Promise.resolve()}
+      return humanResponse(Object.freeze({runId:detail.run.id,choice:Object.freeze(choice)}),false)
+    },
+    retryHumanResponse(){return state.pendingHumanResponse?humanResponse(state.pendingHumanResponse,true):Promise.resolve()},
+  }
+  function humanResponse(next:PendingHumanResponse,confirmOnly:boolean):Promise<void>{
+    return perform(async()=>{
+      const request=state.pendingHumanResponse??next
+      update({pendingHumanResponse:request})
+      try{
+        const call=confirmOnly?api.confirmHumanResponse:api.respond
+        if(!call)throw Error("agent_human_response_unavailable")
+        const result=await call(request.runId,request.choice)
+        if(closed)return
+        agentHumanReceipt(result,request.runId,request.choice,confirmOnly)
+        ++ticket;selected=request.runId;update({pendingHumanResponse:null,notice:confirmOnly?"已核对原回复登记，后续模型和工具仍需单独审批。":"回复已登记，后续模型和工具仍需单独审批。"})
+        if(active)await refresh()
+      }catch(error){
+        if(closed||expired(error))return
+        if(confirmOnly&&error instanceof PgNativePilotError&&error.status===404&&error.code==="agent_human_response_not_found"){
+          update({pendingHumanResponse:null,notice:"原回复未登记，已刷新当前问题。请重新核对后提交。"});if(active)await refresh();return
+        }
+        if(!confirmOnly&&error instanceof PgNativePilotError&&definite.has(error.status))update({pendingHumanResponse:null})
+        update({error:options.describe(error)})
+      }
+    })
   }
   function mutate(next:Mutation):Promise<void>{
     if(state.pendingMutation&&JSON.stringify(state.pendingMutation)!==JSON.stringify(next))return Promise.resolve()

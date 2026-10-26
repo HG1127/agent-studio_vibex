@@ -16,9 +16,10 @@ test("static employee UI keeps new grants disabled, scopes approval consent and 
     optimizeDeps:{noDiscovery:true,include:[],entries:[]},ssr:{optimizeDeps:{noDiscovery:true,include:[],entries:[]}},
     server:{middlewareMode:true,hmr:false,watch:null}})
   try{
-    const [{default:Panel},{default:Detail}]=await Promise.all([
+    const [{default:Panel},{default:Detail},{default:Human}]=await Promise.all([
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx"),
       server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeAutonomousAgentDetail.tsx"),
+      server.ssrLoadModule("/src/pages/PgNativePilot/PgNativeAgentHumanInputPanel.tsx"),
     ])
     const role={id:agent,revision:2,name:"Synthetic role",spec:{goal:"Own goal",task_scope:"Own scope",tools:["calculate"],
       model_binding:{connection_id:connection,connection_revision:3,model_id:"synthetic"}}}
@@ -45,5 +46,17 @@ test("static employee UI keeps new grants disabled, scopes approval consent and 
     assert.equal(toolHtml.includes("<script>"),false);assert.match(toolHtml,/&lt;script&gt;/)
     const recovery=render(detail,true,{pendingMutation:{kind:"decision",id:run,decision:"approved",step:pending.step_key,hash:pending.input_sha256}})
     assert.match(recovery,/确认上次批准/);assert.equal(recovery.includes("批准当前步骤"),false)
+    const input={pending_step_key:'wf2_00002_agent_a01m_input',pending_sha256:'a'.repeat(64),source_sha256:'b'.repeat(64),kind:'plan_review',question:'Review <script>unsafe</script>',draft:'A complete owner draft',round:1}
+    const humanDetail={...detail,pending_effect:null,run:{...detail.run,status:'awaiting_input'},human_input_current:true,human_input:input}
+    const humanProps={detail:humanDetail,pendingResponse:null,active:true,enabled:true,locked:false,onRespond:()=>{},onConfirm:()=>{}}
+    const human=renderToStaticMarkup(createElement(Human,humanProps))
+    assert.match(human,/A complete owner draft/);assert.match(human,/&lt;script&gt;unsafe&lt;\/script&gt;/);assert.equal(human.includes('<script>'),false)
+    assert.match(human,/<button[^>]*disabled=""[^>]*>批准此方案<\/button>/);assert.match(human,/<button[^>]*disabled=""[^>]*>提交修改意见<\/button>/)
+    assert.match(human,/maxLength="1600"|maxlength="1600"/)
+    const inputOff=renderToStaticMarkup(createElement(Human,{...humanProps,enabled:false}))
+    assert.match(inputOff,/当前环境未开放人工回复/);assert.match(inputOff,/<textarea[^>]*disabled=""/)
+    const pendingResponse={runId:run,choice:{request_id:agent,pending_step_key:input.pending_step_key,pending_sha256:input.pending_sha256,source_sha256:input.source_sha256,decision:'revise',answer:'Original private owner revision',confirm:true}}
+    const recovering=renderToStaticMarkup(createElement(Human,{...humanProps,detail:null,enabled:false,pendingResponse}))
+    assert.match(recovering,/核对上次人工回复/);assert.match(recovering,/Original private owner revision/);assert.equal(recovering.includes('提交修改意见'),false)
   }finally{await server.close()}
 })

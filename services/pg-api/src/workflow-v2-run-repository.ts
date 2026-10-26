@@ -94,7 +94,7 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     if(root.kind!=="workflow"||workflowAgentJson(workflowNodeDebugGraph(current!.graph,state.node_debug))!==workflowAgentJson(state.graph))throw Error()
   }catch{throw new HttpError(409,"workflow_node_debug_state_changed")}
   if(root.kind==="agent"){
-    const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0,state.graph.nodes[1]?.data.model_binding)
+    const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0,state.graph.nodes[1]?.data.model_binding,state.graph.nodes[1]?.data.require_plan_review)
     if(workflowAgentJson(graph)!==workflowAgentJson(state.graph))throw new HttpError(409,"invalid_v2_root")
     const agent=graph.nodes[1]!
     await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]})
@@ -148,6 +148,7 @@ export class WorkflowV2RunRepository{
     // run history. The current pending request is shown only for explicit review.
     return {run:{...row,result_text:observationsCurrent?row.result_text:"",instruction:!observationsCurrent&&state.node_debug?"":row.instruction,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
       [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps,
+        ...(typeof state.graph.nodes[1]!.data.require_plan_review==="boolean"?{require_plan_review:state.graph.nodes[1]!.data.require_plan_review}:{}),
         ...(state.graph.nodes[1]!.data.model_binding?{selected_model_binding:state.graph.nodes[1]!.data.model_binding}:{})}:{}),
       ...(state.node_debug?{node_debug:{node_id:state.node_debug.node_id,request_sha256:createHash("sha256").update(workflowNodeDebugFingerprintData(row.workflow_id!,state.workflow_revision!,state.node_debug)).digest("hex")}}:{}),
       graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,

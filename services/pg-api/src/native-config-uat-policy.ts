@@ -259,9 +259,10 @@ export function permitNativePg18BusinessUatRequest(
   if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||new RegExp(
     "^/api/v2/agent-autonomous-runs/"+uuid+"(?:/steps)?$").test(pathname)))return true
   if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/cancel$").test(pathname))return true
+  if(method==="POST"&&new RegExp("^/api/v2/(?:agent-autonomous-runs|workflow-v2-runs)/"+uuid+"/respond-confirm$").test(pathname))return true
   if(policy.configurationWrites===true&&policy.autonomousAgentUat===true&&method==="POST"&&(
     new RegExp("^/api/v2/agent-specs/"+uuid+"/autonomous-runs$").test(pathname)||
-    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/decision$").test(pathname)))return true
+    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:decision|respond)$").test(pathname)))return true
   // Existing safe Start/End Workflow run history is owner-scoped READ ONLY.
   if(method==="GET"&&(pathname==="/api/v2/workflow-v2-runs"||new RegExp(
     "^/api/v2/workflow-v2-runs/"+uuid+"(?:/(?:steps|outputs|output-history))?$").test(pathname)))return true
@@ -271,7 +272,7 @@ export function permitNativePg18BusinessUatRequest(
   if(policy.configurationWrites===true&&policy.workflowV2ExecutionUat===true&&method==="POST"&&(
     new RegExp("^/api/v2/workflows/"+uuid+"/native-runs$").test(pathname)||
     new RegExp("^/api/v2/workflows/"+uuid+"/model-node-debug$").test(pathname)||
-    new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/decision$").test(pathname)))return true
+    new RegExp("^/api/v2/workflow-v2-runs/"+uuid+"/(?:decision|respond)$").test(pathname)))return true
   // It never queues work and is available without any execution approval.
   if(method==="GET"&&(pathname==="/api/v2/workflow-runs"||new RegExp(
     "^/api/v2/workflow-runs/"+uuid+"$").test(pathname)))return true

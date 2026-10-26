@@ -8,7 +8,7 @@ import {usesPaidKnowledge} from "@/lib/pgNativeKnowledgeTool"
 import PgNativeKnowledgeToolCharge from "./PgNativeKnowledgeToolCharge"
 type Api=ReturnType<typeof createPgNativePilotApi>
 export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecision,onRetry,onCancel,api,onExpired}:{
-  view:Pick<WorkflowRunView,"detail"|"busy"|"loading"|"pendingMutation">&{pendingSubmit:object|null};enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean,knowledgeConsent?:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
+  view:Pick<WorkflowRunView,"detail"|"busy"|"loading"|"pendingMutation"|"pendingHumanResponse">&{pendingSubmit:object|null};enabled:boolean;active:boolean;api:Api;onDecision:(value:"approved"|"rejected",consent:boolean,knowledgeConsent?:boolean)=>void;onRetry:()=>void;onCancel:()=>void;onExpired:()=>void
 }){
   const [consent,setConsent]=useState(""),[cancelFor,setCancelFor]=useState("")
   const [feeConsent,setFeeConsent]=useState("")
@@ -17,7 +17,7 @@ export default function PgNativeWorkflowRunDetail({view,enabled,active,onDecisio
   useEffect(()=>{setFeeConsent("");setConsent("")},[feeScope,active,enabled])
   if(!detail)return null
   const step=pending?detail.run.id+":"+pending.step_key+":"+pending.input_sha256:"",review=pending?workflowStepReview(pending,detail.review?.knowledge):null
-  const ready=workflowApprovalReady(detail),locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)
+  const ready=workflowApprovalReady(detail),locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)||Boolean(view.pendingHumanResponse)
   const paid=usesPaidKnowledge(pending)
   const loops=Array.isArray(detail.run.checkpoint.loop_progress)?detail.run.checkpoint.loop_progress as Array<{id:string;round:number;total:number}>:[]
   return <article aria-label="Workflow 运行详情" className="space-y-4 rounded-2xl border border-indigo-200 bg-white p-5">

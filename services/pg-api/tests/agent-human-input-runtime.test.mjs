@@ -78,6 +78,11 @@ test('Native required plan: revise/approve survive restart, simple generation ca
     const role=await f.agents.create(alice,'Owner reviewed plan',safeAgentSpec({...raw,require_plan_review:true}))
     const body={expected_revision:role.revision,max_steps:3,idempotency_key:'synthetic-human-disabled',instruction:'Owned plan'}
     await assert.rejects(f.runs.submit(alice,role.id,body),e=>e.code==='agent_human_input_runtime_required')
+    for(const require_plan_review of ['true',null,0])await assert.rejects(f.owned.submit(alice,role.id,{...body,require_plan_review}),e=>e.code==='invalid_agent_plan_review')
+    const bypass=await f.runs.submit(alice,role.id,{...body,require_plan_review:false})
+    assert.equal(bypass.run.checkpoint.require_plan_review,false)
+    await assert.rejects(f.owned.submit(alice,role.id,{...body,require_plan_review:true}),e=>e.code==='idempotency_key_conflict')
+    await f.owned.cancel(alice,bypass.run.id)
     await assert.rejects(new RunRepository(f.pool,{allowBoundModelRuns:true}).submit(alice,role.id,{instruction:'No single-call bypass',idempotency_key:'synthetic-human-single-shot'}),e=>e.code==='agent_plan_review_requires_autonomous_runtime')
     const admitted=await submit(f,role),id=admitted.run.id
     await f.privateTls(async()=>{calls++;return JSON.stringify({action:'answer',answer:calls===1?'First draft':calls===2?'Revised draft':'Final after owner plan approval'})},async makeWorker=>{

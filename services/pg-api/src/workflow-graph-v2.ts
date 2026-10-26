@@ -16,6 +16,7 @@ export interface WorkflowNodeDataV2 {
   model_binding?:{connection_id:string;connection_revision:number;model_id:string}
   agent_binding?:{spec_id:string;spec_revision:number}
   max_steps?:number
+  require_plan_review?:boolean
   tool?:"calculate"|"summarize"|"knowledge_search"|"web_fetch"|"web_search"
   tool_binding?:{connection_id:string;connection_revision:number}
   mcp_binding?:McpBinding
@@ -37,7 +38,7 @@ export interface WorkflowNodeDataV2 {
 const fields:Record<WorkflowNodeType,string[]>={
   start:["title","input_hint"],
   model:["title","model_binding","prompt","prompt_format"],
-  agent:["title","agent_binding","prompt","max_steps","model_binding"],
+  agent:["title","agent_binding","prompt","max_steps","model_binding","require_plan_review"],
   tool:["title","tool","tool_binding","mcp_binding","tool_binding_required","params_template","knowledge_base_ids","knowledge_retrieval","model_binding"],
   condition:["title","ref_title","op","value"],
   loop:["title","mode","count","list_source","delimiter","stop_keyword","max_iterations"],
@@ -105,6 +106,7 @@ function nodeData(raw:unknown,type:WorkflowNodeType):WorkflowNodeDataV2{
     else if(key==="mode")output[key]=enumValue(value,["count","list"])
     else if(key==="delimiter")output[key]=enumValue(value,["line","comma","json_array"])
     else if(key==="max_steps")output[key]=positive(value,30)
+    else if(key==="require_plan_review"){if(typeof value!=="boolean")invalid();output[key]=value}
     else if(key==="max_iterations")output[key]=positive(value,20)
     else if(key==="count")output[key]=positive(value,1000)
     else if(key==="knowledge_base_ids"){

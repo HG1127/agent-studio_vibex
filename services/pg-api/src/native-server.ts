@@ -13,6 +13,8 @@ import {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
 import {embeddingEndpointPolicy} from "./knowledge-embedding-policy.ts"
 import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.ts"
 import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
+import {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
+import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
 // Requires separate, non-superuser API and auth-service login accounts.
@@ -376,6 +378,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const employeeGovernanceAvailable=await inspectEmployeeGovernanceSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     const releasesAvailable=await inspectAgentReleaseSchema(business)
+    const humanInputAvailable=await inspectAgentHumanInputSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -408,6 +411,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowScheduleRuntime:capabilities.scheduleRuntimeUat===true,
       allowAgentCollaboration:collaborationAvailable,
       allowAgentReleases:releasesAvailable,
+      allowAgentHumanInput:humanInputAvailable,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
@@ -431,7 +435,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       repository:new AgentSpecRepository(business),
       ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
       ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
-        allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true})}:{}),
+        allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
       modelConnectionRepository:new ModelConnectionRepository(
         business,modelEncryptionKey,
         brokerPool?adapter(brokerPool):business),
@@ -453,8 +457,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true}),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
+        workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
         ?{workflowValidationRepository:new WorkflowValidationRepository(
@@ -469,7 +475,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
       ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
-      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true}),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
         ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})

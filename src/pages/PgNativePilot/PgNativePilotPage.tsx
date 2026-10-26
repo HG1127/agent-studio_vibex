@@ -114,6 +114,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [readableKnowledge,setReadableKnowledge]=useState<PgNativeKnowledge[]>([])
   const [employees,setEmployees]=useState<PgNativeEmployee[]>([])
   const [employeeGovernance,setEmployeeGovernance]=useState({available:false,enabled:false})
+  const [humanInput,setHumanInput]=useState({available:false,enabled:false})
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
   const [toolConnections,setToolConnections]=useState<PgNativeToolConnection[]>([])
   const [modelEditing,setModelEditing]=useState<PgNativeModelConnection|null>(null)
@@ -144,6 +145,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setCollaborationAvailable(false)
     setReleasesAvailable(false);setReleaseAcceptanceEnabled(false);setAutonomousTarget(null)
     setEmployeeGovernance({available:false,enabled:false})
+    setHumanInput({available:false,enabled:false})
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
   const expireAgentSession=useCallback(()=>{
@@ -192,6 +194,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setAutonomousEnabled(capability?.config_writes_enabled===true&&capability.autonomous_agent_submission_enabled===true)
       setScheduleEnabled(capability?.config_writes_enabled===true&&capability.schedule_execution_enabled===true)
       setEmployeeGovernance({available:capability?.employee_governance_available===true,enabled:capability?.employee_governance_enabled===true&&capability.config_writes_enabled===true})
+      setHumanInput({available:capability?.agent_human_input_available===true,enabled:capability?.agent_human_responses_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
       setReleasesAvailable(capability?.agent_releases_available===true)
       setReleaseAcceptanceEnabled(capability?.config_writes_enabled===true&&capability?.agent_release_acceptance_enabled===true)
@@ -516,6 +519,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             </p>}
             <div hidden={section!=="autonomousAgent"}>
               <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections} tools={toolConnections}
+                humanAvailable={humanInput.available} humanEnabled={humanInput.enabled}
                 target={autonomousTarget}
                 mcpEnabled={mcpToolsEnabled}
                 active={section==="autonomousAgent"} enabled={autonomousEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>
@@ -559,6 +563,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             <div hidden={section!=="workflowNativeRuns"}>
               {(workflowRunsOpened||section==="workflowNativeRuns")&&<Suspense fallback={<p role="status">加载工作流任务中…</p>}>
                 <PgNativeWorkflowRunPanel key={profile.id} api={api} workflows={workflows} active={section==="workflowNativeRuns"}
+                  humanEnabled={humanInput.enabled}
                   enabled={workflowV2Enabled&&!loading&&!busy} target={workflowRunTarget} onExpired={expireAgentSession}/>
               </Suspense>}
             </div>

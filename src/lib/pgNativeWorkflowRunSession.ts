@@ -42,11 +42,12 @@ export async function loadWorkflowRunReview(api:Api,id:string):Promise<WorkflowR
       ...(needsKnowledge?{knowledge}:{}),
       unavailable:!workflow||Boolean((ref||pending.kind==="agent")&&!model)||Boolean(toolRef&&!tool)||Boolean((agentRef||pending.agent_context)&&!agent)||needsMcp&&(!mcpEnabled||Boolean(mcpRef&&!mcp)||mcps.length!==mcpIds.length)}}
   }
-export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=>void;key?:()=>string}={}){
+export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=>void;key?:()=>string;responseKey?:()=>string}={}){
 
   return createPgNativeDurableRunSession<WorkflowRunDraft,WorkflowRunDetail,PgNativeWorkflowV2Summary>({
     get:id=>loadWorkflowRunReview(api,id),list:()=>api.listWorkflowV2Runs(),submit:body=>api.submitWorkflowV2Run(body.workflowId,body.revision,body.instruction,body.key),
     decide:(...args)=>api.decideWorkflowV2Node(...args),cancel:id=>api.cancelWorkflowV2Run(id),
+    respond:(id,choice)=>api.respondWorkflowAgent(id,choice),confirmHumanResponse:(id,choice)=>api.confirmWorkflowAgentResponse(id,choice),
   },{...options,describe:autonomousError,submittedNotice:"工作流任务已提交，外部操作将逐步请求审批。",
     canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||workflowApprovalReady(detail),
     freezeDraft(draft){const instruction=draft.instruction.trim()

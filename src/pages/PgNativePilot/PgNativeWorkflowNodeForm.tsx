@@ -62,6 +62,11 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
           {agents.map(agent=><option key={agent.id} value={JSON.stringify({spec_id:agent.id,spec_revision:agent.revision})}>{agent.name} · 修订 {agent.revision}</option>)}
         </select></label>
         {modelSelect(true)}{number("max_steps","Agent 最多规划轮数",30)}{text("prompt","Agent 任务模板")}
+        <label className="block text-sm font-medium">Agent 方案审核<select aria-label="Agent 方案审核" className={field}
+          value={data.require_plan_review===undefined?"inherit":data.require_plan_review?"required":"off"}
+          onChange={event=>event.target.value==="inherit"?change({},["require_plan_review"]):change({require_plan_review:event.target.value==="required"})}>
+          <option value="inherit">沿用角色设置</option><option value="required">需要本人审核方案</option><option value="off">此节点无需方案审核</option>
+        </select></label>
       </>}
       {node.type==="tool"&&<>
         <label className="block text-sm font-medium">工具<select aria-label="工具" className={field} value={toolValue} onChange={event=>{

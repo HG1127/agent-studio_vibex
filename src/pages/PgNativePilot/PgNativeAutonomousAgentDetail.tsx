@@ -4,7 +4,7 @@ import PgNativeKnowledgeToolCharge from "./PgNativeKnowledgeToolCharge"
 import {ShieldCheck} from "lucide-react"
 import type {PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
 import {autonomousApprovalReady,autonomousReview,readyAutonomousRunModel,autonomousModelBinding,type AutonomousView} from "@/lib/pgNativeAutonomousAgentSession"
-export const autonomousStates:Record<string,string>={queued:"排队中",running:"处理中",awaiting_approval:"等待审批",paused:"已暂停",succeeded:"已完成",failed:"失败",cancelled:"已取消",skipped:"已跳过"}
+export const autonomousStates:Record<string,string>={queued:"排队中",running:"处理中",awaiting_approval:"等待审批",awaiting_input:"等待你的回复",paused:"已暂停",succeeded:"已完成",failed:"失败",cancelled:"已取消",skipped:"已跳过"}
 export const autonomousButton="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 export const autonomousSecondary="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const tools:Record<string,string>={calculate:"计算",summarize:"摘要",knowledge_search:"知识库检索",web_fetch:"读取网页",web_search:"网页搜索"}
@@ -28,7 +28,7 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
   const connection=http?toolConnections.find(tool=>tool.id===http.connection_id):undefined
   const mcp=pending?.configuration.mcp_binding as {connection_id?:string}|undefined
   const mcpConnection=mcp?mcpConnections.find(row=>row.id===mcp.connection_id):undefined
-  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)
+  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)||Boolean(view.pendingHumanResponse)
   return <article aria-label="多轮任务详情" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">
     <h3 className="font-semibold">多轮任务 · {autonomousStates[detail.run.status]??"状态未知"}</h3>
     <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{detail.run.instruction}</p>

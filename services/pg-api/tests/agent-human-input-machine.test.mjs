@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {safeAgentSpec} from '../src/contracts.ts'
+import {autonomousAgentGraph} from '../src/autonomous-agent-graph.ts'
+import {createWorkflowV2Checkpoint} from '../src/workflow-v2-machine.ts'
 import {createWorkflowAgentState,inspectWorkflowAgentState,recordWorkflowAgentResult,recordWorkflowAgentHumanResponse} from '../src/workflow-v2-agent-machine.ts'
 const binding={connection_id:'22222222-2222-4222-8222-222222222222',connection_revision:2,model_id:'synthetic'}
 const spec=safeAgentSpec({goal:'synthetic goal',task_scope:'Owner only',deliverables:['Answer'],done_criteria:['Evidence'],tools:['calculate','knowledge_search','summarize'],knowledge_base_ids:[],model_binding:binding})
@@ -13,6 +15,22 @@ const response=(state,decision,answer='',p=parent)=>{
   return {request_id:'33333333-3333-4333-8333-'+String(++nextRequest).padStart(12,'0'),step_key:pending.step_key,input_sha256:pending.input_sha256,decision,answer}
 }
 const create=(extra={},p=parent)=>createWorkflowAgentState(p,{...spec,...extra},undefined,{humanInput:true})
+
+test('owner run plan choice is strict, overrides role default and binds the graph and all subsequent response prompts',()=>{
+  const args=[parent.configuration.agent_binding.spec_id,1,3]
+  const inherited=autonomousAgentGraph(...args),enabled=autonomousAgentGraph(...args,undefined,true),disabled=autonomousAgentGraph(...args,undefined,false)
+  assert.equal(Object.hasOwn(inherited.nodes[1].data,'require_plan_review'),false)
+  const hashes=[inherited,enabled,disabled].map(graph=>createWorkflowV2Checkpoint(graph,'Same owned task').graph_sha256)
+  assert.equal(new Set(hashes).size,3)
+  for(const value of ['true',null,0,{}])assert.throws(()=>autonomousAgentGraph(...args,undefined,value))
+  const off={...parent,configuration:{...parent.configuration,require_plan_review:false}}
+  assert.equal(JSON.parse(view(create({require_plan_review:true},off),off).pending.input).human_input.require_plan_review,false)
+  let state=apply(create({require_plan_review:true},off),'{"action":"answer","answer":"Owner explicitly disabled plan review"}',off)
+  assert.equal(view(state,off).status,'succeeded')
+  const on={...parent,configuration:{...parent.configuration,require_plan_review:true}}
+  state=apply(create({},on),'{"action":"answer","answer":"Owner explicitly requires review"}',on)
+  assert.equal(view(state,on).status,'awaiting_input')
+})
 
 test('unmarked Agent journals retain accepted snapshot and model/tool/model golden hashes exactly',()=>{
   let state=createWorkflowAgentState(parent,spec)

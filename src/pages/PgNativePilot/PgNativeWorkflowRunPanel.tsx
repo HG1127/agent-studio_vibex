@@ -5,9 +5,10 @@ import {editablePgWorkflowGraph,workflowExecutionIssues} from "@/lib/pgNativeWor
 import {workflowButton,workflowSecondary} from "./PgNativeWorkflowNodeForm"
 import {autonomousStates} from "./PgNativeAutonomousAgentDetail"
 import PgNativeWorkflowRunDetail from "./PgNativeWorkflowRunDetail"
+import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
 type Controller=ReturnType<typeof createPgNativeWorkflowRunSession>
-export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,target,onExpired}:{
-  api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];active:boolean;enabled:boolean;
+export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,humanEnabled=false,target,onExpired}:{
+  api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];active:boolean;enabled:boolean;humanEnabled?:boolean;
   target:{id:string;revision:number;selection?:number}|null;onExpired:()=>void
 }){
   const [view,setView]=useState(emptyWorkflowRunView),[selection,setSelection]=useState<{token:string;id:string}|null>(null),[instruction,setInstruction]=useState("")
@@ -19,17 +20,17 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,t
   },[api,onExpired])
   useEffect(()=>{model.current?.setActive(active)},[active,api,onExpired])
   useEffect(()=>{
-    if(!active||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.error||!["queued","running"].includes(view.detail?.run.status??""))return
+    if(!active||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||view.error||!["queued","running"].includes(view.detail?.run.status??""))return
     const timer=setTimeout(()=>{void model.current?.poll()},2000);return ()=>clearTimeout(timer)
-  },[active,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.detail,view.error])
+  },[active,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,view.detail,view.error])
   const token=target?target.id+":"+target.revision+":"+(target.selection??0):""
   const selectedId=selection?.token===token?selection.id:target?.id??"",selected=workflows.find(flow=>flow.id===selectedId)
   const ready=workflows.filter(flow=>{try{return flow.graph?.version===2&&!workflowExecutionIssues(editablePgWorkflowGraph(flow.graph)).length}catch{return false}})
   const eligible=ready.find(flow=>flow.id===selectedId)
   const targetChanged=Boolean(target&&selectedId===target.id&&selected?.revision!==target.revision)
-  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)
+  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)
   const submit=async(event:FormEvent)=>{
-    event.preventDefault();if(!active||!enabled||view.busy||view.pendingMutation||!view.pendingSubmit&&(!eligible||targetChanged))return
+    event.preventDefault();if(!active||!enabled||view.busy||view.pendingMutation||view.pendingHumanResponse||!view.pendingSubmit&&(!eligible||targetChanged))return
     const controller=model.current;if(!controller)return
     await controller.submit({workflowId:selectedId,revision:eligible?.revision??0,instruction})
     if(model.current===controller&&!controller.snapshot().pendingSubmit&&controller.snapshot().notice)setInstruction("")
@@ -47,7 +48,7 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,t
         <label className="block text-sm font-medium">工作流运行要求<textarea aria-label="工作流运行要求" className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm" rows={4} required maxLength={2000} value={instruction} onChange={event=>setInstruction(event.target.value)}/></label>
       </fieldset>
         {view.pendingSubmit&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">上次任务提交尚未确认，工作流、版本和任务要求已保留。</p>}
-        <button type="submit" className={workflowButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||!view.pendingSubmit&&(!eligible||!instruction.trim()||targetChanged)}>
+        <button type="submit" className={workflowButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)||!view.pendingSubmit&&(!eligible||!instruction.trim()||targetChanged)}>
           {view.pendingSubmit?"确认上次工作流提交":"提交工作流任务"}</button>
       </form>
     </div>
@@ -56,10 +57,13 @@ export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,t
       {!view.loading&&!view.runs.length&&<p className="text-sm text-slate-500">暂无完整工作流任务</p>}
       {view.loading&&<p role="status" className="text-sm text-slate-500">读取任务中…</p>}
       {view.runs.map(run=><button type="button" className="flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-left text-sm disabled:opacity-50" key={run.id}
-        disabled={view.busy||view.loading||Boolean(view.pendingMutation)} aria-pressed={view.detail?.run.id===run.id} onClick={()=>void model.current?.select(run.id)}>
+        disabled={view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)} aria-pressed={view.detail?.run.id===run.id} onClick={()=>void model.current?.select(run.id)}>
         <span className="min-w-0 truncate">{run.debug_node_id?"[单模型测试] ":""}{run.instruction_preview||"工作流任务"}</span><span className="shrink-0 text-xs">{autonomousStates[run.status]??"状态未知"}</span>
       </button>)}
     </div>
+    <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
+      onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
+      onConfirm={()=>{if(active)void model.current?.retryHumanResponse()}}/>
     <PgNativeWorkflowRunDetail key={view.detail?.run.id??"none"} view={view} active={active} enabled={active&&enabled} api={api} onExpired={onExpired}
       onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}

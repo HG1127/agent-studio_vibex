@@ -49,7 +49,7 @@ async function receipt(db:SqlClient,spec:string,request:string){
 }
 export class AgentReleaseRepository{
   readonly pool:SqlPool;readonly enabled:boolean;readonly allowAcceptance:boolean;readonly agents:AutonomousAgentRunRepository
-  constructor(pool:SqlPool,options:{enabled?:boolean;allowAcceptance?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){
+  constructor(pool:SqlPool,options:{enabled?:boolean;allowAcceptance?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){
     this.pool=pool;this.enabled=options.enabled===true;this.allowAcceptance=options.allowAcceptance===true;this.agents=new AutonomousAgentRunRepository(pool,options)
   }
   workspace(identity:Identity,rawId:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor)=>{
