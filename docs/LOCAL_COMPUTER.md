@@ -9,6 +9,7 @@
 - 文件工具：列目录、读取 UTF-8 文本、新建文本文件。只允许配置的根目录；拒绝路径穿越、符号链接、硬链接文件、Windows ADS、常见凭据路径和覆盖已有文件。
 - 浏览器：实际使用 Microsoft Playwright MCP，独立浏览器会话，支持导航、读取页面结构、填写、点击、下拉选择和快捷键。操作后回传实际页面结构。不会复用员工日常浏览器的登录资料。
 - 软件：`apps.launch` 只启动本机配置的可执行文件及固定参数。它不代表已经验证该软件内部的业务操作。
+- 办公：显式开启 `office.enabled` 后，可对 XLSX/UTF-8 CSV 按列分组汇总，生成 Excel 汇总表、Word 报告和核对清单，并使用办公流程入口配置后续网页录入。参见 [办公流程说明](LOCAL_OFFICE_WORKFLOW.md)。
 - 额外 MCP：本地管理员可以配置绝对可执行文件路径及工具白名单，用来接入专用软件或 Windows 桌面工具。不会根据模型输出下载或启动任意 MCP。
 
 现在支持 MCP 的文字与截图观察。浏览器可显式启用截图；Windows 桌面通过可选的 Windows-MCP 0.8.8 接入。截图会发送给本次任务所选的模型，因此必须选择支持图片输入的模型。已适配 OpenAI 兼容 Chat Completions、Anthropic Messages、Gemini generateContent 三种协议；不支持图片的模型报错时不会自动降级为盲操作。Word/Excel/ERP 等具体业务流程仍需各自验收。

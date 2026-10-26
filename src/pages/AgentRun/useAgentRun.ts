@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { localApi, type LocalDevice } from "@/lib/localDevices"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import { officeRunHandoff } from '@/lib/localOfficeWorkflow'
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
@@ -220,6 +221,8 @@ export function useAgentRun() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedRunId = searchParams.get("run") || ""
   const requestedSpecId = searchParams.get("spec") || ""
+  const location = useLocation()
+  const officeTask = officeRunHandoff(location.state, requestedSpecId, requestedRunId)
 
   const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
@@ -231,14 +234,14 @@ export function useAgentRun() {
   const [selectedSpecId, setSelectedSpecId] = useState("")
 
   const [model, setModel] = useState("")
-  const [enabledTools, setEnabledTools] = useState<string[]>(BUILTIN_TOOLS.map((t) => t.id))
-  const [maxSteps, setMaxSteps] = useState(10)
+  const [enabledTools, setEnabledTools] = useState<string[]>(() => officeTask ? [] : BUILTIN_TOOLS.map((t) => t.id))
+  const [maxSteps, setMaxSteps] = useState(() => officeTask ? 18 : 10)
   const [maxModelCalls, setMaxModelCalls] = useState(30)
   const [maxRuntimeMinutes, setMaxRuntimeMinutes] = useState(0)
   const [stopCondition, setStopCondition] = useState("")
   const [stopOnComplete, setStopOnComplete] = useState(true)
-  const [instruction, setInstruction] = useState("")
-  const [localDeviceId, setLocalDeviceId] = useState("")
+  const [instruction, setInstruction] = useState(() => officeTask?.instruction || "")
+  const [localDeviceId, setLocalDeviceId] = useState(() => officeTask?.deviceId || "")
   const [readyLocalDevice, setReadyLocalDevice] = useState<LocalDevice | null>(null)
   useEffect(() => {
     setReadyLocalDevice(null)

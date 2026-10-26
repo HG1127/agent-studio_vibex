@@ -11,6 +11,8 @@ import { spawn } from 'node:child_process'
 import { spawnHeadlessPocketBase } from './helpers/headless-pocketbase.mjs'
 import { createRuntime } from '../local-executor/runtime.mjs'
 import { connection, executeClaim } from '../local-executor/connection.mjs'
+import ExcelJS from 'exceljs'
+import JSZip from 'jszip'
 
 const root = process.cwd(), secret = randomBytes(32).toString('hex')
 const data = await fs.mkdtemp(path.join(os.tmpdir(), 'agentstudio-local-computer-'))
@@ -21,7 +23,17 @@ const pause = ms => new Promise(r => setTimeout(r, ms))
 const listen = async server => { server.listen(0, '127.0.0.1'); await once(server, 'listening'); return 'http://127.0.0.1:' + server.address().port }
 const forbidden = createServer((_req, res) => { remoteRequests++; res.end('must not be accessed') })
 const forbiddenUrl = await listen(forbidden)
-const website = createServer((req, res) => {
+let officeSubmission = null
+const website = createServer(async (req, res) => {
+  if (req.url === '/office-submit' && req.method === 'POST') {
+    let body = ''; for await (const chunk of req) body += chunk
+    officeSubmission = Object.fromEntries(new URLSearchParams(body))
+    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end('<p>录入成功，单号 OFFICE-TEST-001</p>'); return
+  }
+  if (req.url === '/office') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.end('<!doctype html><title>办公录入验收</title><form method="POST" action="/office-submit"><label>报告标题<input name="title"></label><label>统计标签<input name="period"></label><label>记录数<input name="count"></label><label>合计<input name="total"></label><button type="submit">确认录入</button></form>'); return
+  }
   if (req.url === '/redirect') { res.writeHead(302, { location: forbiddenUrl }); res.end(); return }
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.end('<!doctype html><html><title>Local computer test</title><body><h1>本地浏览器验证</h1><label>姓名<input aria-label="姓名" id="name"></label><button onclick="document.querySelector(\'#result\').textContent=\'Hello \'+document.querySelector(\'#name\').value">提交</button><p id="result"></p></body></html>')
@@ -82,7 +94,7 @@ try {
   await fs.writeFile(path.join(work, 'input.txt'), '本地文件测试')
   const appScript = path.join(work, 'launch-fixture.mjs')
   await fs.writeFile(appScript, 'import fs from "node:fs";fs.writeFileSync(process.argv[2],"launched")')
-  runtime = await createRuntime({ roots: [{ name: 'work', path: work }],
+  runtime = await createRuntime({ roots: [{ name: 'work', path: work }], office: { enabled: true },
     browser: { enabled: true, headless: true, images: true, channel: 'msedge', allowedOrigins: [websiteUrl] },
     apps: { test_app: { command: process.execPath, args: [appScript, path.join(work, 'app-started.txt')] } } })
   assert.ok(runtime.tools.some(t => t.name === 'browser.browser_navigate'))
@@ -118,6 +130,36 @@ try {
   const link = path.join(work, 'linked.txt'); await fs.link(path.join(work, 'input.txt'), link)
   await assert.rejects(() => runtime.execute({ tool: 'files.read', arguments: { root: 'work', path: 'linked.txt' } }), /linked/)
   passed('real file read/write, approval gate, traversal/secrets/ADS/hardlink/overwrite rejection')
+
+  const csv = '编号,部门,金额\r\nA001,销售,1200.10\r\nA002,运营,800.20\r\nA003,销售,99.90\r\nA004,运营,-50.20\r\nA005,研发,450.00\r\n'
+  await fs.writeFile(path.join(work, 'ledger.csv'), csv)
+  const officeInput = { root: 'work', source_path: 'ledger.csv', group_by: '部门', amount_column: '金额' }
+  const officeSummary = JSON.parse(await perform('office.table_summary', officeInput))
+  assert.equal(officeSummary.total, '2500.00'); assert.equal(officeSummary.row_count, 5)
+  const officeReportInput = { ...officeInput, expected_sha256: officeSummary.source_sha256, output_directory: 'office-report', title: '部门业务汇总报告', period: '样例验收' }
+  assert.equal((await request('POST', '/api/local-devices/' + paired.device_id + '/jobs', { tool: 'office.create_report', arguments: officeReportInput, request_id: randomUUID() })).status, 409)
+  await assert.rejects(() => fs.access(path.join(work, 'office-report')), { code: 'ENOENT' })
+  await perform('office.create_report', officeReportInput)
+  const manifest = JSON.parse(await perform('files.read', { root: 'work', path: 'office-report/summary.json' }))
+  assert.equal(manifest.total, '2500.00'); assert.equal(manifest.source_sha256, officeSummary.source_sha256)
+  const reportBook = new ExcelJS.Workbook(); await reportBook.xlsx.readFile(path.join(work, 'office-report/summary.xlsx'))
+  assert.equal(reportBook.getWorksheet('汇总').getCell('C8').result, 2500)
+  const reportZip = await JSZip.loadAsync(await fs.readFile(path.join(work, 'office-report/report.docx')))
+  assert.match(await reportZip.file('word/document.xml').async('string'), /2500\.00/)
+  passed('approved office aggregation → real XLSX/DOCX bundle → manifest reread with matching source digest and totals')
+  let officeSnapshot = await perform('browser.browser_navigate', { url: websiteUrl + '/office' })
+  for (const [label, value] of [['报告标题', '部门业务汇总报告'], ['统计标签', '样例验收'], ['记录数', String(manifest.row_count)], ['合计', manifest.total]]) {
+    const target = new RegExp('textbox "' + label + '" \\[ref=([^\\]]+)\\]').exec(officeSnapshot)?.[1]
+    assert.ok(target, officeSnapshot)
+    officeSnapshot = await perform('browser.browser_type', { target, text: value })
+  }
+  assert.match(officeSnapshot, /2500\.00/); assert.equal(officeSubmission, null, 'Filling must not submit')
+  const submitTarget = /button "确认录入" \[ref=([^\]]+)\]/.exec(officeSnapshot)?.[1]
+  assert.ok(submitTarget, officeSnapshot)
+  officeSnapshot = await perform('browser.browser_click', { target: submitTarget })
+  assert.match(officeSnapshot, /OFFICE-TEST-001/)
+  assert.deepEqual(officeSubmission, { title: '部门业务汇总报告', period: '样例验收', count: '5', total: '2500.00' })
+  passed('real browser form fill, pre-submit verification, separate approved submission and server receipt')
 
   const requestId = randomUUID(), input = { root: 'work', path: 'input.txt' }
   const onceJob = await submit('files.read', input, requestId)
@@ -258,7 +300,12 @@ try {
   await page.getByLabel('密码', { exact: true }).fill('S3cure-local-test-2026')
   await page.getByRole('button', { name: '登录', exact: true }).click()
   const panel = page.getByRole('region', { name: '我的电脑', exact: true })
-  await expect(panel).toBeVisible({ timeout: 30000 })
+  try { await expect(panel).toBeVisible({ timeout: 30000 }) }
+  catch (e) {
+    console.error('OFFICE_UI_DIAGNOSTIC', JSON.stringify({ url: page.url(), errors: uiErrors, text: (await page.locator('body').innerText()).slice(-3500) }))
+    await page.screenshot({ path: path.join(root, '.tmp/local-office-ui-failed.png'), fullPage: true })
+    throw e
+  }
   await api('/poll', { tools: runtime.tools })
   await panel.getByRole('button', { name: '刷新设备' }).click()
   await panel.getByText('测试一次本地操作', { exact: true }).click()
@@ -281,6 +328,16 @@ try {
   await expect(panel.getByAltText('本地操作返回的截图')).toBeVisible({ timeout: 12000 })
   assert.ok(await panel.getByAltText('本地操作返回的截图').evaluate(img => img.naturalWidth > 0))
   await page.screenshot({ path: path.join(root, '.tmp/local-computer-ui.png'), fullPage: true })
+  await panel.getByText('办公流程：表格汇总 → 文档报告 → 网页录入', { exact: true }).click()
+  await panel.getByLabel('办公电脑').selectOption(paired.device_id)
+  await panel.getByLabel('源表相对路径').fill('ledger.csv')
+  await panel.getByLabel('表单网址（选填）').fill(websiteUrl + '/office')
+  await panel.getByRole('button', { name: '创建办公助手并试跑', exact: true }).click()
+  await expect(page.getByLabel('本次 Agent 运行任务指令')).toHaveValue(/office\.table_summary/)
+  await expect(page.getByLabel('本次可操作的电脑')).toHaveValue(paired.device_id)
+  assert.equal(await page.getByRole('region', { name: '待处理的工具审批', exact: true }).count(), 0)
+  await page.screenshot({ path: path.join(root, '.tmp/local-office-ui.png'), fullPage: true })
+  passed('real React office configuration → saved employee Agent → prefilled instruction/device without automatic execution')
   await page.goto(uiOrigin + '/agent-run?spec=' + spec.id)
   await expect(page.getByLabel('本次可操作的电脑')).toBeVisible({ timeout: 15000 })
   await page.getByLabel('本次可操作的电脑').selectOption(paired.device_id)

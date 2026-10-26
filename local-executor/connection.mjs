@@ -26,7 +26,15 @@ export async function executeClaim(api, runtime, job, signal) {
   try { result = await runtime.execute(job.input, combined) }
   catch (e) {
     ok = false
-    result = ({ browser_output_path_denied: '浏览器不接受 filename 输出路径参数；请使用工具返回的截图或快照。此调用未执行。',
+    result = ({ office_source_changed: '源文件已变化，未创建报告。请重新汇总并核对新的源文件摘要，再单独审批。',
+      office_output_exists: '输出目录已存在，未覆盖文件。请核查已有产物并使用新的输出目录。',
+      office_formula_requires_values: '源表包含公式，未计算缓存值。请由用户确认公式结果并在副本中转为数值后重新执行。',
+      office_columns_not_found: '未找到指定的分组列或金额列，请按源表表头检查列名。',
+      office_invalid_amount: '金额不是指定精度的普通数字。请核对空值、文本、千位分隔符和小数位，未生成报告。',
+      office_sheet_required: '源文件包含多个工作表，请明确指定 sheet 工作表名称。',
+      office_hidden_rows: '源表有隐藏行，统计范围不明确。请在副本中明确保留需要统计的记录。',
+      office_table_limit: '台账超出办公工具的记录、分组或金额范围，请拆分为明确的较小批次。',
+      browser_output_path_denied: '浏览器不接受 filename 输出路径参数；请使用工具返回的截图或快照。此调用未执行。',
       desktop_user_control: '电脑当前由用户操作或已被接管，本次任务已停止。请核查实际结果，空闲后重新截图再发起操作。',
       desktop_observation_expired: '桌面观察已过期，本次操作未执行。请先重新截图。',
       desktop_coordinate_denied: '操作坐标超出本机授权范围，或使用了不允许的元素编号，本次操作未执行。',

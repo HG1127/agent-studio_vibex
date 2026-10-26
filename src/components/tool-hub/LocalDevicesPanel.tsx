@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { deviceTools, localApi, type LocalDevice, type LocalJob } from '@/lib/localDevices'
+import { OfficeWorkflowPanel } from './OfficeWorkflowPanel'
 
 const field = 'rounded-lg border border-border bg-background px-3 py-2 text-sm'
 const button = 'rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50'
@@ -109,6 +110,7 @@ export function LocalDevicesPanel() {
         </div>}
       </div>
     </details>
+    <OfficeWorkflowPanel devices={devices} />
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
   </section>
 }

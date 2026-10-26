@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { mcpResult, desktopResult } from './result.mjs'
+import { registerOffice } from './office.mjs'
 
 const ownDir = path.dirname(fileURLToPath(import.meta.url))
 const objectSchema = properties => ({ type: 'object', properties, additionalProperties: false })
@@ -69,6 +70,7 @@ export async function createRuntime(config) {
       return '已新建文件：' + args.root + '/' + args.path
     })
   const apps = config.apps || {}
+  if (config.office?.enabled === true) registerOffice(add, resolveFile, [...roots.keys()])
   if (Object.keys(apps).length) {
     for (const app of Object.values(apps)) {
       if (!path.isAbsolute(app.command) || !Array.isArray(app.args) || app.args.some(a => typeof a !== 'string')) throw Error('invalid_application')
@@ -176,7 +178,7 @@ export async function createRuntime(config) {
     // Local configuration is trusted administrator input, never model input.
     // Use explicit executable paths and per-server tool allowlists.
     for (const [name, server] of Object.entries(config.mcpServers || {})) {
-      if (!/^[a-z][a-z0-9_-]{0,24}$/.test(name) || ['files', 'apps', 'browser', 'desktop'].includes(name) ||
+      if (!/^[a-z][a-z0-9_-]{0,24}$/.test(name) || ['files', 'apps', 'browser', 'desktop', 'office'].includes(name) ||
           !path.isAbsolute(server.command) || !Array.isArray(server.tools) || !server.tools.length) throw Error('invalid_mcp_config')
       await connectMcp(name, server.command, server.args || [], [...roots.values()][0], new Set(server.tools), {}, server.images === true)
     }

@@ -1,6 +1,7 @@
 {
   "server": "http://127.0.0.1:7000",
   "credentialsFile": ".local-device-credentials.json",
+  "office": { "enabled": false },
   "roots": [{ "name": "work", "path": "D:\\AgentStudioWork" }],
   "browser": {
     "enabled": true,
