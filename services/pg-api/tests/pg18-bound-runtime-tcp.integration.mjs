@@ -42,6 +42,8 @@ import {inspectAgentMemoryDerivedSchema,verifyAgentMemoryDerivedCredentials} fro
 import {AgentMemoryOutcomeRepository} from "../src/agent-memory-outcome-repository.ts"
 import {inspectAgentMemoryOutcomeSchema,verifyAgentMemoryOutcomeCredentials} from "../src/agent-memory-outcome-audit.ts"
 import {inspectAgentMemoryFailureSourceSchema,verifyAgentMemoryFailureSourceCredentials} from "../src/agent-memory-failure-source-audit.ts"
+import {AgentFeedbackRepository} from "../src/agent-feedback-repository.ts"
+import {inspectAgentFeedbackSchema,verifyAgentFeedbackCredentials} from "../src/agent-feedback-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
@@ -1618,6 +1620,37 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await failureApi.changeAgentDerivedMemory({action:'forget',request_id:randomUUID(),spec_id:item.spec_id,memory_id:item.id,expected_content_sha256:item.content_sha256,expected_tools_sha256:item.tools_sha256,confirm:true})
       assert.equal((await failureApi.listAgentDerivedMemories(memoryRole.id)).items.length,0);assert.equal((await failureApi.getAgentOutcomeMemory(id)).result.decision,'stored');assert.equal(calls,0)
     }finally{await failureFront.close()}
+    mark("optional-feedback-054-statement-and-erasure")
+    assert.equal(await inspectAgentFeedbackSchema(apiPool),false)
+    await admin.query(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_054_agent_feedback.sql',import.meta.url),'utf8'))
+    assert.equal(await inspectAgentFeedbackSchema(apiPool),true);assert.equal(await inspectAgentFeedbackSchema(workerPool),true)
+    const feedbackDrift=await admin.connect()
+    try{for(const mutation of ['GRANT UPDATE(comment) ON agentstudio.agent_feedback_bodies TO agentstudio_api','GRANT EXECUTE ON FUNCTION agentstudio.agent_feedback_digest(text[]) TO agentstudio_worker']){
+      await feedbackDrift.query('BEGIN');try{await feedbackDrift.query(mutation);await assert.rejects(verifyAgentFeedbackCredentials(feedbackDrift),/unsafe_agent_feedback_privileges/)}finally{await feedbackDrift.query('ROLLBACK')}
+    }}finally{feedbackDrift.release()}
+    // Repository/schema acceptance only. A feedback HTTP route, SDK and page
+    // are deliberately not claimed by this foundation phase.
+    const feedbackSql=new AgentFeedbackRepository(apiPool,{allowSubmit:true,allowLessonStorage:true}),feedbackClosed=new AgentFeedbackRepository(apiPool)
+    const feedbackId=(await admin.query("SELECT id FROM agentstudio.runs WHERE agent_spec_id=$1::uuid AND instruction=$2 AND status='failed' ORDER BY created_at DESC LIMIT 1",[memoryRole.id,'Synthetic genuine preparation failure token=syntheticEarlyFailurePrivate'])).rows[0].id
+    const feedbackBefore=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+    const feedbackState=await feedbackSql.status(memoryIdentity,feedbackId)
+    const feedbackChoice={action:'submit',request_id:randomUUID(),run_id:feedbackId,spec_id:feedbackState.spec_id,expected_revision:0,expected_source_sha256:feedbackState.source.source_sha256,rating:'down',tags:['核对:😀'],comment:'Synthetic genuine feedback token=syntheticFeedbackCredential',remember_lesson:true,confirm:true}
+    const contenders=await Promise.allSettled([feedbackSql.change(memoryIdentity,feedbackChoice),feedbackSql.change(memoryIdentity,{...feedbackChoice,request_id:randomUUID()})])
+    assert.equal(contenders.filter(v=>v.status==='fulfilled').length,1);assert.equal(contenders.find(v=>v.status==='rejected').reason.code,'agent_feedback_revision_changed')
+    let currentFeedback=await feedbackSql.status(memoryIdentity,feedbackId);assert.equal(currentFeedback.state,'active');assert.equal(currentFeedback.current.body.comment,'Synthetic genuine feedback token=***');assert.equal(currentFeedback.lessons[0].source_current,true);assert.equal(currentFeedback.lessons[0].tools_used,'')
+    const firstFeedback=currentFeedback.current,again={...feedbackChoice,request_id:randomUUID(),expected_revision:1}
+    const corrected=await feedbackSql.change(memoryIdentity,again);assert.equal(corrected.revision,2);assert.equal(corrected.statement_sha256,firstFeedback.statement_sha256);assert.notEqual(corrected.feedback_sha256,firstFeedback.feedback_sha256)
+    currentFeedback=await feedbackSql.status(memoryIdentity,feedbackId);assert.equal(currentFeedback.lessons.length,2);assert.equal(currentFeedback.lessons.find(v=>v.feedback_id===firstFeedback.feedback_id).fact,null)
+    const foreignFeedbackSession=await auth.login('other@example.com','SyntheticOtherPassword#2026'),foreignFeedbackIdentity=await auth.verifySession(foreignFeedbackSession.token);assert.ok(foreignFeedbackIdentity)
+    await assert.rejects(feedbackSql.status(foreignFeedbackIdentity,feedbackId),e=>e.status===404)
+    await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('UPDATE agentstudio.agent_feedback_receipts SET remember_lesson=false')),/permission denied/)
+    await admin.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb WHERE id=$1",[feedbackId])
+    currentFeedback=await feedbackClosed.status(memoryIdentity,feedbackId);assert.equal(currentFeedback.source,null);assert.equal(currentFeedback.current.body.rating,'down');assert.ok(currentFeedback.lessons.every(v=>!v.source_current&&v.fact===null))
+    const eraseFeedback={action:'erase_feedback',request_id:randomUUID(),run_id:feedbackId,spec_id:currentFeedback.spec_id,expected_revision:2,expected_feedback_sha256:currentFeedback.current.feedback_sha256,confirm:true}
+    await feedbackClosed.change(memoryIdentity,eraseFeedback);assert.equal((await feedbackClosed.confirm(memoryIdentity,eraseFeedback)).replayed,true);assert.equal((await feedbackClosed.change(memoryIdentity,again)).replayed,true)
+    currentFeedback=await feedbackClosed.status(memoryIdentity,feedbackId);assert.equal(currentFeedback.state,'erased');assert.equal(currentFeedback.lessons.length,0)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_feedback_bodies')).rows[0].n,0);assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_feedback_lessons')).rows[0].n,0)
+    assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],feedbackBefore)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
