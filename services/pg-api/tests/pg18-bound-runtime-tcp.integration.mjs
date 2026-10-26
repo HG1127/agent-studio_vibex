@@ -1592,10 +1592,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const started=await failureApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,failedTask,'ci-worker-attested-early-failure',1,false,true),id=started.run.id
       let armed=true,calls=0
       const intercepted=Object.create(workerPool)
-      intercepted.connect=async()=>{const db=await workerPool.connect();return {async query(sql,values=[]){
+      Object.defineProperty(intercepted,'connect',{value:async()=>{const db=await workerPool.connect();return {async query(sql,values=[]){
         if(armed&&sql==='SELECT status FROM agentstudio.users WHERE id=$1::uuid'){armed=false;throw new HttpError(409,'synthetic_worker_preparation_failed')}
         return db.query(sql,values)
-      },release(){db.release()}}}
+      },release(){db.release()}}}})
       const failedDispatch=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error('failure_direct_provider_forbidden')},brokerPool,{allowAutonomousExecution:true,agentExecutor:async()=>{calls++;return JSON.stringify({action:'answer',answer:'unexpected synthetic provider result'})}})
       await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),failedDispatch),async raw=>{
         const executor=workflowV2ModelEffectExecutor({...raw,executionMode:'agent_native_v2'})
