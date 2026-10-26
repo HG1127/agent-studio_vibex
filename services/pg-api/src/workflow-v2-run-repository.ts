@@ -109,7 +109,10 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
   await verifyWorkflowGraphResources(db,owner,state.graph)
   if(state.agent_state){const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
     await verifyWorkflowAgentResources(db,owner,parent,state.agent_state)}
-  return verifyAgentHumanResponses(db,run,state)
+  const evidence=await verifyAgentHumanResponses(db,run,state)
+  if(root.kind==="agent"&&run.status==="succeeded"&&state.human_agent_keys?.includes("wf2_00002_agent")&&
+    run.result_text!==evidence.deliveries.wf2_00002_agent?.output)throw new HttpError(409,"agent_human_delivery_unavailable")
+  return evidence
 }
 export class WorkflowV2RunRepository{
   readonly pool:SqlPool

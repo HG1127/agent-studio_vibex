@@ -176,13 +176,16 @@ test('dedicated version acceptance needs completed human VM and real immutable r
     const admission={action:'acceptance',request_id:randomUUID(),expected_spec_revision:role.revision,source_sha256:source.source_sha256,
       instruction:'Human reviewed synthetic acceptance',max_steps:3,model_binding:null,confirm:true}
     const admitted=await releases.change(alice,role.id,admission),id=admitted.run_id
+    const fullDelivery='已核对本人方案的完整成果段落。\n'.repeat(500)
+    assert.ok(fullDelivery.length>4000&&fullDelivery.length<11000)
     const save=()=>({action:'snapshot',request_id:randomUUID(),expected_spec_revision:role.revision,source_sha256:source.source_sha256,note:'Verified human acceptance',test_run_id:id})
-    await f.privateTls(async(material,prompt)=>JSON.stringify({action:'answer',answer:JSON.parse(prompt).round===1?'A complete owner plan':'Final with real owner plan approval'}),async makeWorker=>{
+    await f.privateTls(async(material,prompt)=>JSON.stringify({action:'answer',answer:JSON.parse(prompt).round===1?'A complete owner plan':fullDelivery}),async makeWorker=>{
       const pending=await until(f,id,makeWorker,'awaiting_input')
       assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,false)
       await assert.rejects(releases.change(alice,role.id,save()),e=>e.code==='agent_release_acceptance_unavailable')
       await f.responses.change(alice,id,{...request(pending),decision:'approve',answer:''})
-      const done=await until(f,id,makeWorker,'succeeded');assert.equal(done.human_input_evidence_current,true)
+      const done=await until(f,id,makeWorker,'succeeded');assert.equal(done.human_input_evidence_current,true);assert.equal(done.run.result_text,fullDelivery)
+      assert.equal((await f.db.query('SELECT checkpoint FROM agentstudio.runs WHERE id=$1',[id])).rows[0].checkpoint.machine.effects[0].output.length,4000)
     })
     assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,true)
     const version=await releases.change(alice,role.id,save());assert.equal(version.test_passed,true)
@@ -198,7 +201,8 @@ test('dedicated version acceptance needs completed human VM and real immutable r
       'DELETE FROM agentstudio.agent_human_input_responses WHERE run_id=$1',
       "UPDATE agentstudio.external_effects SET result_reference=(result_reference::jsonb #- '{agent_snapshot,human_state}')::text WHERE run_id=$1 AND tool_name='workflow:agent'",
       "UPDATE agentstudio.external_effects SET result_reference=jsonb_set(result_reference::jsonb,'{agent_snapshot,human_state,human_responses,0,answer}','\"Forged owner note\"'::jsonb)::text WHERE run_id=$1 AND tool_name='workflow:agent'",
-      "UPDATE agentstudio.runs SET checkpoint=checkpoint-'human_agent_keys' WHERE id=$1"
+      "UPDATE agentstudio.runs SET checkpoint=checkpoint-'human_agent_keys' WHERE id=$1",
+      "UPDATE agentstudio.runs SET result_text='Forged final content' WHERE id=$1"
     ]
     for(const sql of drift){
       try{
@@ -212,6 +216,7 @@ test('dedicated version acceptance needs completed human VM and real immutable r
         await f.db.query('INSERT INTO agentstudio.agent_human_input_responses SELECT * FROM jsonb_populate_recordset(null::agentstudio.agent_human_input_responses,$1::jsonb)',[JSON.stringify(ledger)])
         await f.db.query("UPDATE agentstudio.external_effects SET result_reference=$2 WHERE run_id=$1 AND tool_name='workflow:agent'",[id,archived])
         await f.db.query('UPDATE agentstudio.runs SET checkpoint=$2::jsonb WHERE id=$1',[id,JSON.stringify(checkpoint)])
+        await f.db.query('UPDATE agentstudio.runs SET result_text=$2 WHERE id=$1',[id,fullDelivery])
       }
     }
     assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,true)

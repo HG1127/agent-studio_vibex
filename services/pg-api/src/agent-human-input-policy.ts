@@ -28,6 +28,7 @@ export async function requireHumanInputSchema(db:SqlClient):Promise<void>{
   if(state!==true)throw new HttpError(409,"agent_human_input_runtime_required")
 }
 export type AgentHumanHistory=WorkflowAgentHumanHistory&{parent_step_key:string;node_id:string;node_title:string}
+export type AgentHumanEvidence={history:AgentHumanHistory[];deliveries:Record<string,{status:"succeeded"|"rejected";output:string}>}
 export async function agentHumanEvidenceExpected(db:SqlClient,run:Pick<WorkflowV2RunRow,"id"|"owner_user_id">,state:WorkflowV2StoredState):Promise<boolean>{
   if(state.human_agent_keys?.length||state.agent_state?.human_protocol)return true
   if(!isUuid(run.id)||!isUuid(run.owner_user_id))return false
@@ -37,42 +38,45 @@ export async function agentHumanEvidenceExpected(db:SqlClient,run:Pick<WorkflowV
     "EXISTS(SELECT 1 FROM agentstudio.external_effects WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND tool_name='workflow:agent' AND "+
     "result_reference ~ '\"human_protocol\"[[:space:]]*:[[:space:]]*\"agent_human_input_v1\"') AS ok",[run.id,run.owner_user_id])).rows[0]?.ok===true
 }
-export async function verifyAgentHumanResponses(db:SqlClient,run:Pick<WorkflowV2RunRow,"id"|"owner_user_id">,state:WorkflowV2StoredState):Promise<AgentHumanHistory[]>{
+export async function verifyAgentHumanResponses(db:SqlClient,run:Pick<WorkflowV2RunRow,"id"|"owner_user_id">,state:WorkflowV2StoredState):Promise<AgentHumanEvidence>{
   const history:AgentHumanHistory[]=[]
+  const evidence:AgentHumanEvidence={history,deliveries:Object.create(null) as AgentHumanEvidence["deliveries"]}
   const append=(parent:WorkflowEffectRequest,agent:WorkflowAgentState)=>{for(const entry of inspectWorkflowAgentHumanHistory(agent,parent))history.push({...entry,parent_step_key:parent.step_key,node_id:parent.node_id,node_title:parent.configuration.title})}
   const context=agentHumanContext(run,state)
   if(context){await verifyStateResponses(db,run,context,state.agent_state!);append(context.parent,state.agent_state!)}
   if(!state.human_agent_keys){
     if(!context&&await agentHumanEvidenceExpected(db,run,state))throw new HttpError(409,"agent_human_archive_unavailable")
-    return history
+    return evidence
   }
   await requireHumanInputSchema(db)
   const parents=inspectWorkflowV2EffectRequests(state.graph,state.machine).filter(p=>p.kind==="agent")
   const active=context?.parent.step_key
   const keys=state.human_agent_keys.filter(key=>key!==active)
   if(state.human_agent_keys.some(key=>!parents.some(p=>p.step_key===key)))throw new HttpError(409,"agent_human_archive_unavailable")
-  if(!keys.length)return history
+  if(!keys.length)return evidence
   const archived=(await db.query<{step_key:string;arguments_sha256:string;status:string;result_reference:string}>(
     "SELECT step_key,arguments_sha256,status,result_reference FROM agentstudio.external_effects WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND tool_name='workflow:agent' AND step_key=ANY($3::text[]) LIMIT 201",[run.id,run.owner_user_id,keys])).rows
   if(archived.length!==keys.length)throw new HttpError(409,"agent_human_archive_unavailable")
   for(const key of keys){
     const parent=parents.find(p=>p.step_key===key)!,row=archived.find(item=>item.step_key===key)!
-    let saved:{output?:unknown;error_code?:unknown;agent_snapshot?:{human_protocol?:unknown;human_state?:WorkflowAgentState;human_responses?:unknown;parent_input_sha256?:unknown;snapshot_sha256?:unknown;spec_id?:unknown;spec_revision?:unknown;spec?:unknown;max_steps?:unknown}}
+    let saved:{output?:unknown;error_code?:unknown;agent_snapshot?:{human_protocol?:unknown;delivery_protocol?:unknown;human_state?:WorkflowAgentState;human_responses?:unknown;parent_input_sha256?:unknown;snapshot_sha256?:unknown;spec_id?:unknown;spec_revision?:unknown;spec?:unknown;max_steps?:unknown}}
     try{saved=JSON.parse(row.result_reference)}catch{throw new HttpError(409,"agent_human_archive_unavailable")}
     const snapshot=saved?.agent_snapshot,agent=snapshot?.human_state
-    if(!agent||snapshot?.human_protocol!=="agent_human_input_v1"||agent.human_protocol!==snapshot.human_protocol||snapshot.parent_input_sha256!==parent.input_sha256||
+    if(!agent||snapshot?.human_protocol!=="agent_human_input_v1"||agent.human_protocol!==snapshot.human_protocol||agent.delivery_protocol!==snapshot.delivery_protocol||snapshot.parent_input_sha256!==parent.input_sha256||
       row.arguments_sha256!==parent.input_sha256||snapshot.snapshot_sha256!==agent.snapshot_sha256||snapshot.spec_id!==agent.spec_id||snapshot.spec_revision!==agent.spec_revision||
       snapshot.max_steps!==(parent.configuration.max_steps??3)||workflowAgentJson(snapshot.spec)!==workflowAgentJson(agent.spec)||workflowAgentJson(snapshot.human_responses)!==workflowAgentJson(agent.human_responses??[]))
       throw new HttpError(409,"agent_human_archive_unavailable")
     const completed=contextForState(run,state,parent,agent),view=completed.view,effect=state.machine.effects.find(e=>e.step_key===key)
     if(row.status==="failed"?view.status!=="failed"||saved.error_code!==view.error_code||!!effect:
-      row.status!=="succeeded"||!["succeeded","rejected"].includes(view.status)||saved.output!==view.output||!effect||effect.output!==view.output||
+      row.status!=="succeeded"||!["succeeded","rejected"].includes(view.status)||saved.output!==view.output||!effect||effect.output!==view.output.slice(0,4000)||
       (effect.outcome==="rejected")!==(view.status==="rejected"))throw new HttpError(409,"agent_human_archive_unavailable")
     await verifyWorkflowAgentResources(db,run.owner_user_id,parent,agent)
     await verifyStateResponses(db,run,completed,agent)
+    if(view.status==="succeeded"||view.status==="rejected")evidence.deliveries[parent.step_key]={status:view.status,output:view.output}
     append(parent,agent)
   }
-  return history.sort((a,b)=>a.step_key<b.step_key?-1:a.step_key>b.step_key?1:0)
+  history.sort((a,b)=>a.step_key<b.step_key?-1:a.step_key>b.step_key?1:0)
+  return evidence
 }
 async function verifyStateResponses(db:SqlClient,run:Pick<WorkflowV2RunRow,"id"|"owner_user_id">,context:NonNullable<ReturnType<typeof agentHumanContext>>,agent:WorkflowAgentState){
   await requireHumanInputSchema(db)

@@ -45,6 +45,15 @@ test('unmarked Agent journals retain accepted snapshot and model/tool/model gold
   state=apply(state,'{"action":"answer","answer":"4"}')
   assert.equal(view(state).status,'succeeded')
 })
+test('marked Agent final delivery preserves the complete bounded report while legacy journals keep their original4000-character output',()=>{
+  const report='完整成果段落。\n'.repeat(1000)
+  assert.ok(report.length>4000&&report.length<12000)
+  const full=apply(createWorkflowAgentState(parent,spec,undefined,{humanInput:true,fullDelivery:true}),JSON.stringify({action:'answer',answer:report}));assert.equal(view(full).output,report)
+  const legacy=apply(createWorkflowAgentState(parent,spec),JSON.stringify({action:'answer',answer:report}));assert.equal(view(legacy).output,report.slice(0,4000))
+  const oldHuman=apply(create(),JSON.stringify({action:'answer',answer:report}));assert.equal(view(oldHuman).output,report.slice(0,4000))
+  assert.throws(()=>view({...oldHuman,delivery_protocol:'agent_full_delivery_v1'}))
+  const {delivery_protocol,...stripped}=full;assert.throws(()=>view(stripped))
+})
 
 test('clarification holds with no executable effect, survives replay and resumes the next paid model round only after an exact owner response',()=>{
   let state=apply(create(),JSON.stringify({action:'ask_user',question:'Which delivery date?',think:'PRIVATE_REASONING_DO_NOT_COPY'}))

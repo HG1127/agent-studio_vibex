@@ -168,7 +168,8 @@ export class WorkflowV2Worker{
                   agent_snapshot:{spec_id:state.agent_state.spec_id,spec_revision:state.agent_state.spec_revision,spec:state.agent_state.spec,
                     snapshot_sha256:state.agent_state.snapshot_sha256,max_steps:pending.configuration.max_steps??3,
                     ...(state.agent_state.human_protocol?{human_protocol:state.agent_state.human_protocol,human_responses:state.agent_state.human_responses??[],
-                      parent_input_sha256:pending.input_sha256,human_state:state.agent_state}: {})}})])
+                      parent_input_sha256:pending.input_sha256,human_state:state.agent_state,
+                      ...(state.agent_state.delivery_protocol?{delivery_protocol:state.agent_state.delivery_protocol}:{})}: {})}})])
             delete state.agent_state;delete state.agent_dispatch
             if(failed){
               await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"failed"}])
@@ -176,7 +177,7 @@ export class WorkflowV2Worker{
               return {tick:{status:"failed",run_id:job.run_id}}
             }
             state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:pending.step_key,input_sha256:pending.input_sha256,
-              output:agent.output,...(rejected?{outcome:"rejected" as const}:{})})
+              output:agent.output.slice(0,4000),...(rejected?{outcome:"rejected" as const}:{})})
             await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_completed",{step_key:pending.step_key,rounds:agent.round,rejected})
             view=inspectWorkflowV2Checkpoint(state.graph,state.machine);continue
           }
@@ -211,7 +212,7 @@ export class WorkflowV2Worker{
         }
         if(pending.kind==="agent"){
           if(this.agentEnabled){
-            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled})
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled})
             if(state.agent_state.human_protocol)state.human_agent_keys=[...new Set([...(state.human_agent_keys??[]),pending.step_key])]
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")
@@ -251,6 +252,13 @@ export class WorkflowV2Worker{
   })}
   private async persist(db:SqlClient,job:Job,state:WorkflowV2StoredState,status:string,error:string,result=""){
     state.stage=this.root.stage+status
+    if(status==="succeeded"&&this.root.kind==="agent"&&state.human_agent_keys?.includes("wf2_00002_agent")){
+      const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]
+      if(!row)throw new HttpError(409,"agent_human_delivery_unavailable")
+      const evidence=await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state),delivery=evidence.deliveries.wf2_00002_agent
+      if(!delivery)throw new HttpError(409,"agent_human_delivery_unavailable")
+      result=delivery.output
+    }
     await db.query("UPDATE agentstudio.runs SET status=$3::text,checkpoint=$4::jsonb,result_text=$5::text,last_error_code=$6::text,"+
       "step_count=(SELECT count(*)::int FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid),"+
       "updated_at=clock_timestamp(),finished_at=CASE WHEN $3::text IN ('succeeded','failed') THEN clock_timestamp() ELSE NULL END "+

@@ -25,7 +25,7 @@ export async function verifyWorkflowAgentResources(db:SqlClient,owner:string,par
   if(state&&workflowAgentJson(definitions)!==workflowAgentJson(state.mcp_tool_definitions??[]))throw new HttpError(409,"workflow_agent_snapshot_changed")
   return {spec,definitions}
 }
-export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest,options:{humanInput?:boolean}={}){
+export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest,options:{humanInput?:boolean;fullDelivery?:boolean}={}){
   const {spec,definitions}=await verifyWorkflowAgentResources(db,owner,parent)
   if(options.humanInput===true)await requireHumanInputSchema(db)
   return createWorkflowAgentState(parent,spec,definitions,options)

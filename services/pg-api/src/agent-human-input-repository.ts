@@ -78,7 +78,7 @@ export class AgentHumanInputRepository{
       if(state.execution_mode!==this.root.mode)throw new HttpError(404,"agent_human_run_not_found")
       try{
         if(!await currentKnowledgeObservations(db,id))return {run_id:id,items:[],available:false,next_after:null}
-        const history=await verifyWorkflowV2Snapshot(db,owner,run,state),selected=history.filter(item=>item.step_key>after)
+        const evidence=await verifyWorkflowV2Snapshot(db,owner,run,state),selected=evidence.history.filter(item=>item.step_key>after)
         const items=selected.slice(0,limit)
         return {run_id:id,items,available:true,next_after:selected.length>limit?items.at(-1)!.step_key:null}
       }catch(error){if(error instanceof HttpError&&[400,404,409].includes(error.status))return {run_id:id,items:[],available:false,next_after:null};throw error}

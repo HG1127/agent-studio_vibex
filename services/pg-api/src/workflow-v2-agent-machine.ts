@@ -9,7 +9,7 @@ export type WorkflowAgentHumanResponse={request_id:string;step_key:string;input_
 export type WorkflowAgentHumanInput={step_key:string;input_sha256:string;kind:"clarification"|"plan_review";question:string;draft:string;round:number}
 export type WorkflowAgentState={format:"workflow_agent_v2";parent_step_key:string;parent_input_sha256:string;
   spec_id:string;spec_revision:number;spec:AgentSpecInput;mcp_tool_definitions?:McpAgentSnapshot[];snapshot_sha256:string;results:WorkflowAgentResult[];
-  human_protocol?:"agent_human_input_v1";human_responses?:WorkflowAgentHumanResponse[]}
+  human_protocol?:"agent_human_input_v1";human_responses?:WorkflowAgentHumanResponse[];delivery_protocol?:"agent_full_delivery_v1"}
 export type WorkflowAgentView={status:"waiting"|"awaiting_input"|"succeeded"|"failed"|"rejected";round:number;pending:WorkflowEffectRequest|null;output:string;error_code:string;
   pending_input?:WorkflowAgentHumanInput;plan_review_confirmed?:boolean}
 function canonical(value:unknown):unknown{
@@ -45,14 +45,16 @@ function humanResponse(raw:unknown):WorkflowAgentHumanResponse{
     value.answer!==value.answer.trim()||(value.decision!=="approve"&&!value.answer))invalid()
   return {request_id:value.request_id.toLowerCase(),step_key:value.step_key,input_sha256:value.input_sha256,decision:value.decision,answer:value.answer}
 }
-export function createWorkflowAgentState(parent:WorkflowEffectRequest,raw:unknown,definitions?:McpAgentSnapshot[],options:{humanInput?:boolean}={}):WorkflowAgentState{
+export function createWorkflowAgentState(parent:WorkflowEffectRequest,raw:unknown,definitions?:McpAgentSnapshot[],options:{humanInput?:boolean;fullDelivery?:boolean}={}):WorkflowAgentState{
   if(parent.kind!=="agent"||!parent.configuration.agent_binding)invalid()
   const spec=workflowAgentSpec(raw),ref=parent.configuration.agent_binding
   if(requiresPlanReview(parent,spec)&&options.humanInput!==true)throw new HttpError(409,"agent_human_input_runtime_required")
+  if(options.fullDelivery===true&&options.humanInput!==true)invalid()
   if(!parent.configuration.model_binding&&!spec.model_binding)throw new HttpError(409,"workflow_agent_model_binding_missing")
   let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,definitions)}catch{invalid()}
   const snapshot={spec_id:ref.spec_id,spec_revision:ref.spec_revision,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{}),
-    ...(options.humanInput===true?{human_protocol:"agent_human_input_v1" as const}:{})}
+    ...(options.humanInput===true?{human_protocol:"agent_human_input_v1" as const}:{}),
+    ...(options.fullDelivery===true?{delivery_protocol:"agent_full_delivery_v1" as const}:{})}
   return {format:"workflow_agent_v2",parent_step_key:parent.step_key,parent_input_sha256:parent.input_sha256,
     ...snapshot,snapshot_sha256:sha(snapshot),results:[]}
 }
@@ -61,18 +63,21 @@ function checked(raw:unknown,parent:WorkflowEffectRequest):WorkflowAgentState{
   if(Object.hasOwn(value,"mcp_tool_definitions"))names.push("mcp_tool_definitions")
   if(Object.hasOwn(value,"human_protocol"))names.push("human_protocol")
   if(Object.hasOwn(value,"human_responses"))names.push("human_responses")
+  if(Object.hasOwn(value,"delivery_protocol"))names.push("delivery_protocol")
   if(Object.keys(value).length!==names.length||names.some(key=>!Object.hasOwn(value,key))||value.format!=="workflow_agent_v2"||
      parent.kind!=="agent"||!parent.configuration.agent_binding||value.parent_step_key!==parent.step_key||value.parent_input_sha256!==parent.input_sha256||
      !isUuid(value.spec_id)||value.spec_id!==parent.configuration.agent_binding.spec_id||value.spec_revision!==parent.configuration.agent_binding.spec_revision||
      !Array.isArray(value.results)||value.results.length>60||Buffer.byteLength(JSON.stringify(raw),"utf8")>4194304)invalid()
   const spec=workflowAgentSpec(value.spec)
   const human=value.human_protocol==="agent_human_input_v1"
+  const full=value.delivery_protocol==="agent_full_delivery_v1"
   if(Object.hasOwn(value,"human_protocol")&&!human||requiresPlanReview(parent,spec)&&!human||
+    Object.hasOwn(value,"delivery_protocol")&&(!full||!human)||
     Object.hasOwn(value,"human_responses")&&(!human||!Array.isArray(value.human_responses)||value.human_responses.length>30))invalid()
   let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,value.mcp_tool_definitions)}catch{invalid()}
   if(!mcp.length&&Object.hasOwn(value,"mcp_tool_definitions"))invalid()
   const snapshot={spec_id:value.spec_id,spec_revision:value.spec_revision as number,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{}),
-    ...(human?{human_protocol:"agent_human_input_v1" as const}:{})}
+    ...(human?{human_protocol:"agent_human_input_v1" as const}:{}),...(full?{delivery_protocol:"agent_full_delivery_v1" as const}:{})}
   if(value.snapshot_sha256!==sha(snapshot))invalid()
   const results:WorkflowAgentResult[]=[],seen=new Set<string>()
   for(const rawResult of value.results){
@@ -182,7 +187,7 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
         observation:workflowAgentJson({origin:"recorded_owner_response",decision:reply.decision,answer:reply.answer})})
       continue
     }
-    if(action.action==="answer")return terminal("succeeded",round,action.answer.slice(0,4000))
+    if(action.action==="answer")return terminal("succeeded",round,state.delivery_protocol?action.answer:action.answer.slice(0,4000))
     if(!state.spec.tools.includes(action.tool))return terminal("failed",round,"","workflow_agent_tool_not_allowed")
     const http=state.spec.http_tools?.find(tool=>tool.name===action.tool)
     const mcp=state.mcp_tool_definitions?.find(tool=>tool.name===action.tool)

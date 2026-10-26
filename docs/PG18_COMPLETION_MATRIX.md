@@ -46,7 +46,7 @@ PocketBase隔离回归在`ea6723a`通过19/19（两 Worker，79.5秒），之后
 | --- | --- | --- |
 | 委托审批与公司视图 | `src/pages/Manager/ManagerPage.tsx`、`pocketbase/pb_hooks/studio_company.pb.js`、`tests/studio-company.integration.mjs` | 本人明确委托及用途、经理仅看必要元数据、固定待审批操作指纹、一次性决定、撤销 / 来源变化校验、管理员公司汇总。现有本人运行审批不能代替经理委托。`InternalOverviewPage` 使用另一个总览接口，须另行核对。 |
 | Agent人工澄清与方案审核 | `src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` 的 `ask_user` / `/respond` | [人工回复开发记录](PG18_AGENT_HUMAN_INPUT.md)。已有同一运行等待、1600字符回复、批准/修改、持久续跑、本人Cookie与原回执、界面及完成证据核对。13项SQL/mTLS域通过；还须验证定时等待防重叠、角色默认设置、真实PG18与浏览器交互，整合048新库及最终包。模型final不能绕过所需本人方案批准，费用/工具授权仍独立。 |
-| Agent最终交付完整性 | `pocketbase/pb_hooks/agent_engine.pb.js` 的 `finishRun`、原生Agent状态机及Workflow输出 | 已确认旧执行器保留脱敏后的完整成果，当前原生VM最终输出截取4000字符。须在保留旧任务固定指纹、预算与原始证据检查的前提下补齐完整交付及界面/版本验收；不能把草案完整显示视为最终交付等价。 |
+| Agent最终交付完整性 | `pocketbase/pb_hooks/agent_engine.pb.js` 的 `finishRun`、原生Agent状态机及Workflow输出 | 旧执行器保留脱敏后的完整成果。新候选用进入快照的协议标记补齐独立Agent完整成果，并从经核对的私有归档生成公开结果；旧任务固定指纹及4000字符外层Workflow预算保持。9项纯状态机/契约和后端类型通过，长中文SQL/mTLS、版本验收及界面仍待确认；Workflow完整交付另须按旧活跃路径核对。 |
 | Agent跨运行记忆 | `src/components/agent-run/MemoryPanel.tsx`、`src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` | 实际运行页可查看 / 删除本人角色记忆，旧执行器还会注入并在成功后写回。须补齐原生所有者路径、原始来源 / 撤销检查和明确的提炼费用授权；已有知识库或历史导入不能代替运行能力。 |
 | 模板发布与复用 | `pocketbase/pb_hooks/template_market_api.pb.js`、`pocketbase/pb_hooks/internal_templates.pb.js`、`pocketbase/pb_hooks/agent_templates.pb.js` | 逐项核对发布、模板市场、使用、交接及权限。已有画布样本 / 导入导出和基础模板表不能直接作为这些操作的等价证明。 |
 | 反馈驱动的优化关联 | `pocketbase/pb_hooks/agent_optimization_lineage.pb.js`、`pocketbase/pb_hooks/agent_specs.pb.js` | 核对反馈、优化与目标角色之间的受保护关联，补齐原生活跃操作、权限和审计。 |
