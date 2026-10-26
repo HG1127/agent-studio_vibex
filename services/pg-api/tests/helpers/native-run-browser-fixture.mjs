@@ -32,6 +32,8 @@ import {AgentMemoryRepository} from "../../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials} from "../../src/agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema} from "../../src/agent-memory-context-audit.ts"
 import {AgentMemoryDerivedRepository} from "../../src/agent-memory-derived-repository.ts"
+import {AgentFeedbackRepository} from "../../src/agent-feedback-repository.ts"
+import {inspectAgentFeedbackSchema} from "../../src/agent-feedback-audit.ts"
 import {AgentMemoryOutcomeRepository} from "../../src/agent-memory-outcome-repository.ts"
 import {inspectAgentMemoryOutcomeSchema} from "../../src/agent-memory-outcome-audit.ts"
 import {inspectAgentMemoryFailureSourceSchema} from "../../src/agent-memory-failure-source-audit.ts"
@@ -108,6 +110,8 @@ if(process.env.AGENT_STUDIO_PG_BROWSER_DERIVED_MEMORY!==undefined&&!derivedMemor
 if(outcomeMemory&&!derivedMemory)throw Error("outcome_memory_requires_synthetic_derived_storage")
 const failureSource=process.env.AGENT_STUDIO_PG_BROWSER_FAILURE_SOURCE==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_FAILURE_SOURCE!==undefined&&!failureSource||failureSource&&!outcomeMemory)throw Error("invalid_synthetic_failure_source_browser_mode")
+const feedback=process.env.AGENT_STUDIO_PG_BROWSER_FEEDBACK==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_FEEDBACK!==undefined&&!feedback||feedback&&!failureSource)throw Error("invalid_synthetic_feedback_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -127,6 +131,7 @@ const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledg
     if(failureSource&&state.failPreparation&&sql==='SELECT status FROM agentstudio.users WHERE id=$1::uuid'){
       state.failPreparation=false;throw new HttpError(409,'synthetic_worker_preparation_failed')
     }
+    if(feedback&&state.feedbackFailLesson&&sql.startsWith("INSERT INTO agentstudio.agent_feedback_lessons(")){state.feedbackFailLesson=false;throw Error("synthetic_feedback_lesson_storage_fault")}
     return db.query(sql,values)
   },release}
 }}
@@ -141,6 +146,7 @@ Object.assign(state,{memoryDrop:false,memoryHashes:[],memoryConfirms:0})
 Object.assign(state,{memoryPrompts:0,failPreparation:false})
 Object.assign(state,{outcomeAllowed:outcomeMemory,outcomeDrop:false,outcomeCapabilitiesDrop:false,outcomeHashes:[],outcomeConfirms:0})
 Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedCapabilitiesDrop:false,derivedHashes:[],derivedConfirms:0})
+Object.assign(state,{feedbackAllowed:feedback,feedbackDrop:false,feedbackCapabilitiesDrop:false,feedbackHashes:[],feedbackConfirms:0,feedbackFailLesson:false})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -166,6 +172,7 @@ try{
   if(derivedMemory){await db.exec(load("db/postgres/migrations/pg_v9_051_agent_memory_derived.sql"));assert.equal(await inspectAgentMemoryDerivedSchema(pool),true)}
   if(outcomeMemory){await db.exec(load("db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql"));assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true)}
   if(failureSource){await db.exec(load("db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql"));assert.equal(await inspectAgentMemoryFailureSourceSchema(pool),true)}
+  if(feedback){await db.exec(load("db/postgres/migrations/pg_v9_054_agent_feedback.sql"));assert.equal(await inspectAgentFeedbackSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -260,6 +267,7 @@ try{
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:(autonomous||scheduling)&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,allowScheduleRuntime:scheduling&&state.allowed,
       allowAgentCollaboration:collaboration,
       allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
+      allowAgentFeedback:feedback,allowAgentFeedbackSubmission:state.feedbackAllowed,allowAgentFeedbackLessons:state.feedbackAllowed,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:state.outcomeAllowed,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:state.derivedAllowed,
       businessHandler:(req,res)=>{
@@ -302,6 +310,11 @@ try{
     outcomeRepository.stop=async(identity,body,confirmOnly=false)=>{if(!confirmOnly)state.outcomeHashes.push(createHash("sha256").update(JSON.stringify(body)).digest("hex"));return stopOutcome(identity,body,confirmOnly)}
     const derivedRepository=new AgentMemoryDerivedRepository(pool,{allowWrites:derivedMemory}),changeDerived=derivedRepository.change.bind(derivedRepository)
     derivedRepository.change=async(identity,body)=>{state.derivedHashes.push({action:body.action,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return changeDerived(identity,body)}
+    const feedbackRepository={
+      status:(...args)=>new AgentFeedbackRepository(pool).status(...args),
+      confirm:(...args)=>new AgentFeedbackRepository(pool).confirm(...args),
+      change(identity,body){state.feedbackHashes.push({action:body.action,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentFeedbackRepository(pool,{allowSubmit:state.configAllowed&&state.feedbackAllowed,allowLessonStorage:state.configAllowed&&state.feedbackAllowed}).change(identity,body)}
+    }
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
@@ -310,6 +323,7 @@ try{
       ...(releases?{agentReleaseRepository:releaseRepo}:{}),
       ...(human?{agentHumanInputRepository:humanRepository("agent_native_v2"),workflowHumanInputRepository:humanRepository("workflow_native_v2")}:{}),
       ...(memory?{agentMemoryRepository:memoryRepository}:{}),
+      ...(feedback?{agentFeedbackRepository:feedbackRepository}:{}),
       ...(outcomeMemory?{agentOutcomeMemoryRepository:outcomeRepository}:{}),
       ...(derivedMemory?{agentDerivedMemoryRepository:derivedRepository}:{}),
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
@@ -352,6 +366,7 @@ try{
             ...(memoryRuntime?{memoryPrompts:state.memoryPrompts,memoryContexts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_run_contexts")).rows[0].n}:{}),
             ...(derivedMemory?{derivedHashes:state.derivedHashes,derivedConfirms:state.derivedConfirms,derivedEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_entries")).rows[0].n,derivedReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_receipts")).rows[0].n}:{}),
             ...(outcomeMemory?{outcomeHashes:state.outcomeHashes,outcomeConfirms:state.outcomeConfirms,outcomeConsents:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_outcome_consents")).rows[0].n,outcomeStops:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_outcome_stops")).rows[0].n,outcomeResults:(await c.query("SELECT decision FROM agentstudio.agent_memory_outcome_results ORDER BY created_at")).rows.map(row=>row.decision)}:{}),
+            ...(feedback?{feedbackHashes:state.feedbackHashes,feedbackConfirms:state.feedbackConfirms,feedbackBodies:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_feedback_bodies")).rows[0].n,feedbackLessons:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_feedback_lessons")).rows[0].n,feedbackReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_feedback_receipts")).rows[0].n,feedbackResults:(await c.query("SELECT decision FROM agentstudio.agent_feedback_lesson_results ORDER BY created_at")).rows.map(v=>v.decision)}:{}),
             ...(failureSource?{failureSources:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_failure_sources")).rows[0].n,effects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.external_effects")).rows[0].n,failPreparation:state.failPreparation}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -379,6 +394,12 @@ try{
         else if(req.url==="/__fixture/fail-next-preparation"&&req.method==="POST"&&failureSource){state.failPreparation=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-outcome-stop"&&req.method==="POST"&&outcomeMemory){state.outcomeDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-outcome-capabilities"&&req.method==="POST"&&outcomeMemory){state.outcomeCapabilitiesDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-feedback"&&req.method==="POST"&&feedback){state.feedbackDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-feedback-capabilities"&&req.method==="POST"&&feedback){state.feedbackCapabilitiesDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/deny-feedback"&&req.method==="POST"&&feedback){state.feedbackAllowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/allow-feedback"&&req.method==="POST"&&feedback){state.feedbackAllowed=true;configure();output={ok:true}}
+        else if(req.url==="/__fixture/fail-next-feedback-lesson"&&req.method==="POST"&&feedback){state.feedbackFailLesson=true;output={ok:true}}
+        else if(req.url==="/__fixture/prune-feedback-task"&&req.method==="POST"&&feedback){const c=await pool.connect();try{await c.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb WHERE id=(SELECT run_id FROM agentstudio.agent_feedback_receipts WHERE action='submit' ORDER BY created_at DESC LIMIT 1)");output={ok:true}}finally{c.release()}}
         else if(req.url==="/__fixture/deny-outcome-memory"&&req.method==="POST"&&outcomeMemory){state.outcomeAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/allow-outcome-memory"&&req.method==="POST"&&outcomeMemory){state.outcomeAllowed=true;configure();output={ok:true}}
         else if(req.url==="/__fixture/drop-next-human"&&req.method==="POST"&&human){state.humanDrop=true;output={ok:true}}
@@ -421,6 +442,9 @@ try{
       if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/confirm")state.memoryConfirms++
       if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/change"&&state.derivedDrop){state.derivedDrop=false;res.end=()=>{res.destroy();return res}}
       if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/confirm")state.derivedConfirms++
+      if(feedback&&req.method==="POST"&&/^\/api\/v2\/agent-feedback\/[^/]+\/change$/.test(req.url)&&state.feedbackDrop){state.feedbackDrop=false;res.end=()=>{res.destroy();return res}}
+      if(feedback&&req.method==="POST"&&/^\/api\/v2\/agent-feedback\/[^/]+\/confirm$/.test(req.url))state.feedbackConfirms++
+      if(feedback&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.feedbackCapabilitiesDrop){state.feedbackCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
       if(outcomeMemory&&req.method==="POST"&&/^\/api\/v2\/agent-outcome-memories\/[^/]+\/stop$/.test(req.url)&&state.outcomeDrop){state.outcomeDrop=false;res.end=()=>{res.destroy();return res}}
       if(outcomeMemory&&req.method==="POST"&&/^\/api\/v2\/agent-outcome-memories\/[^/]+\/stop-confirm$/.test(req.url))state.outcomeConfirms++
       if(outcomeMemory&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.outcomeCapabilitiesDrop){state.outcomeCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}

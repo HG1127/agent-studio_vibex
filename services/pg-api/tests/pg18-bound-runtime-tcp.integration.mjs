@@ -23,6 +23,7 @@ import {verifyBoundDispatchPrivileges,verifyBoundDispatchRole,verifyWorkflowMode
 import {NativeAuthRepository} from "../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../src/native-auth-http.mjs"
 import {createPgNativePilotApi} from "../../../src/lib/pgNativePilotApi.ts"
+import {createPgNativeFeedbackSession} from "../../../src/lib/pgNativeAgentFeedbackSession.ts"
 import {createPgNativeWorkflowRunSession,workflowApprovalReady} from "../../../src/lib/pgNativeWorkflowRunSession.ts"
 import {createPgNativeWorkflowDebugSession} from "../../../src/lib/pgNativeWorkflowDebugSession.ts"
 import {createHandler} from "../src/http.ts"
@@ -1660,7 +1661,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await feedbackOwned.cancel(memoryIdentity,httpFeedbackRun.run.id)
     const httpFeedbackCounts=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
     const feedbackFront=await startNativeHttps(auth,apiPool,key,brokerPool,{feedback:true,feedbackSubmission:true,feedbackLessons:true})
-    let originalFeedbackChoice,httpFeedbackSpec
+    let originalFeedbackChoice,httpFeedbackSpec,feedbackSession,feedbackTransport=feedbackFront.request,loseFeedbackReply=false
     try{
       await feedbackFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
       const base='/api/v2/agent-feedback/'+httpFeedbackRun.run.id
@@ -1677,21 +1678,40 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       await assert.rejects(call('/change',originalFeedbackChoice,true),/committed feedback reply lost/)
       const receipt=await call('/confirm',originalFeedbackChoice);assert.equal(receipt.status,200);assert.equal(receipt.body.replayed,true);assert.equal(receipt.body.lesson_result.decision,'stored')
       state=(await call('')).body;assert.equal(state.current.body.comment,'Synthetic HTTPS feedback token=***');assert.equal(state.lessons[0].source_current,true);assert.equal(state.lessons[0].tools_used,'')
+      assert.deepEqual(await feedbackFront.api.getAgentFeedback(httpFeedbackRun.run.id),state)
+      assert.equal((await feedbackFront.api.confirmAgentFeedback(originalFeedbackChoice)).request_sha256,receipt.body.request_sha256)
+      assert.equal((await feedbackFront.api.getConfigCapabilities()).agent_feedback_lesson_storage_enabled,true)
       await feedbackFront.api.login('other@example.com','SyntheticOtherPassword#2026');assert.equal((await call('')).status,404);assert.equal((await call('/confirm',originalFeedbackChoice)).status,404)
+      await assert.rejects(feedbackFront.api.getAgentFeedback(httpFeedbackRun.run.id),e=>e.status===404)
+      await feedbackFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      const feedbackClient=createPgNativePilotApi(async(route,init)=>{
+        const response=await feedbackTransport(route,init)
+        if(loseFeedbackReply&&route.endsWith('/change')&&response.ok){loseFeedbackReply=false;await response.arrayBuffer();throw Error('synthetic SDK committed feedback reply lost')}
+        return response
+      })
+      feedbackSession=createPgNativeFeedbackSession(feedbackClient);feedbackSession.setScopes({available:true,submit:true,lessons:true});feedbackSession.setActive(true);await feedbackSession.select(httpFeedbackRun.run.id)
+      loseFeedbackReply=true;await feedbackSession.submit({rating:'down',tags:['修正😀'],comment:'Synthetic SDK correction token=syntheticSdkFeedbackPrivate',remember_lesson:false},true)
+      assert.equal(feedbackSession.snapshot().pending.action,'submit');assert.doesNotMatch(JSON.stringify(feedbackSession.snapshot().pending),/syntheticSdkFeedbackPrivate/)
+      feedbackSession.setActive(false)
+
     }finally{await feedbackFront.close()}
     const feedbackRecoveryFront=await startNativeHttps(auth,apiPool,key,brokerPool,{feedback:true})
     try{
       await feedbackRecoveryFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      feedbackTransport=feedbackRecoveryFront.request;feedbackSession.setScopes({available:true,submit:false,lessons:false});feedbackSession.setActive(true);await feedbackSession.confirm()
+      assert.equal(feedbackSession.snapshot().pending,null);assert.equal(feedbackSession.snapshot().status.revision,2);assert.equal(feedbackSession.snapshot().status.current.body.comment,'Synthetic SDK correction token=***')
+      assert.equal(feedbackSession.snapshot().status.current.lesson_result.decision,'not_requested');assert.ok(feedbackSession.snapshot().status.lessons.every(v=>!v.source_current&&v.fact===null))
+      assert.equal((await feedbackRecoveryFront.api.getConfigCapabilities()).agent_feedback_submission_enabled,false)
       const base='/api/v2/agent-feedback/'+httpFeedbackRun.run.id
       const call=async(path,body)=>{const response=await feedbackRecoveryFront.request(base+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}});return {status:response.status,body:await response.json()}}
       assert.equal((await call('/confirm',originalFeedbackChoice)).body.replayed,true)
       assert.equal((await call('/change',{...originalFeedbackChoice,request_id:randomUUID(),expected_revision:1})).status,403)
-      const state=(await call('')).body,erase={action:'erase_feedback',request_id:randomUUID(),spec_id:httpFeedbackSpec,run_id:httpFeedbackRun.run.id,expected_revision:1,expected_feedback_sha256:state.current.feedback_sha256,confirm:true}
+      const state=(await call('')).body,erase={action:'erase_feedback',request_id:randomUUID(),spec_id:httpFeedbackSpec,run_id:httpFeedbackRun.run.id,expected_revision:state.revision,expected_feedback_sha256:state.current.feedback_sha256,confirm:true}
       await admin.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb WHERE id=$1",[httpFeedbackRun.run.id])
-      assert.equal((await call('/change',erase)).status,200);assert.equal((await call('/confirm',erase)).body.replayed,true)
+      assert.equal((await feedbackRecoveryFront.api.changeAgentFeedback(erase)).recorded,true);assert.equal((await feedbackRecoveryFront.api.confirmAgentFeedback(erase)).replayed,true)
       assert.equal((await call('/change',originalFeedbackChoice)).body.replayed,true);const deleted=(await call('')).body;assert.equal(deleted.state,'erased');assert.equal(deleted.current,null);assert.equal(deleted.lessons.length,0)
       assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],httpFeedbackCounts)
-    }finally{await feedbackRecoveryFront.close()}
+    }finally{feedbackSession?.dispose();await feedbackRecoveryFront.close()}
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")

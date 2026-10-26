@@ -8,12 +8,13 @@ import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomous
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
 import PgNativeAgentOutcomeMemoryPanel from "./PgNativeAgentOutcomeMemoryPanel"
+import PgNativeAgentFeedbackPanel from "./PgNativeAgentFeedbackPanel"
 import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,active,enabled,onExpired,target}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,active,enabled,onExpired,target}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null
+  tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null
 }){
   const mcps=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyAutonomousView)
@@ -121,6 +122,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
         <span className="shrink-0 text-xs">{autonomousStates[run.status]??"状态未知"}</span>
       </button>)}
     </div>
+    <PgNativeAgentFeedbackPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={feedbackAvailable} submitEnabled={feedbackEnabled} lessonEnabled={feedbackLessons} onExpired={onExpired}/>
     <PgNativeAgentOutcomeMemoryPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={outcomeAvailable} onExpired={onExpired}/>
     <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
       onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
