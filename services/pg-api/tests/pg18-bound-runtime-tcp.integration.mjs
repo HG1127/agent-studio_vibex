@@ -36,7 +36,7 @@ import {inspectAgentHumanInputSchema} from "../src/agent-human-input-audit.ts"
 import {AgentMemoryRepository} from "../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials,inspectAgentMemorySchema} from "../src/agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema,verifyAgentMemoryContextCredentials} from "../src/agent-memory-context-audit.ts"
-import {selectAgentMemoryRuntime} from "../src/agent-memory-runtime-policy.ts"
+import {selectAgentMemoryRuntime,selectAgentDerivedMemoryWrites} from "../src/agent-memory-runtime-policy.ts"
 import {AgentMemoryDerivedRepository} from "../src/agent-memory-derived-repository.ts"
 import {inspectAgentMemoryDerivedSchema,verifyAgentMemoryDerivedCredentials} from "../src/agent-memory-derived-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
@@ -117,9 +117,10 @@ const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
-async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false}={}){
+async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false}={}){
   if(memory){assert.equal(await inspectAgentMemorySchema(pool),true);const context=await inspectAgentMemoryContextSchema(pool);if(memoryRuntime)assert.equal(context,true)}
   if(memoryRuntime){assert.equal(memory,true);assert.equal(selectAgentMemoryRuntime({AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY'}),true)}
+  if(derivedMemory){assert.equal(await inspectAgentMemoryDerivedSchema(pool),true);assert.equal(selectAgentDerivedMemoryWrites({AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY'}),true)}
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
   assert.equal(path.dirname(realpathSync(folder)),parent)
@@ -137,6 +138,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,allowAgentHumanInput:true,
       allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
+      allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:derivedMemory,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
       allowKnowledgeSharing:true,
@@ -149,7 +151,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,allowScheduleRuntime:true,allowAgentCollaboration:true,allowAgentReleases:true,
       businessHandler:(req,res)=>{
         const route=new URL(req.url,"https://localhost").pathname
-        if(!permitNativePg18BusinessUatRequest(route,req.method,policy)){
+        if(!permitNativePg18BusinessUatRequest(route,req.method,{...policy,agentDerivedMemoryUat:derivedMemory})){
           res.writeHead(405,{"Content-Type":"application/json"})
           res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
@@ -164,6 +166,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       agentHumanInputRepository:new AgentHumanInputRepository(pool,"agent_native_v2",{allowResponses:true}),
       workflowHumanInputRepository:new AgentHumanInputRepository(pool,"workflow_native_v2",{allowResponses:true}),
       ...(memory?{agentMemoryRepository:new AgentMemoryRepository(pool,{allowWrites:true})}:{}),
+      ...(derivedMemory?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(pool,{allowWrites:true})}:{}),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
       knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
@@ -1445,36 +1448,45 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         "ALTER TABLE agentstudio.agent_memory_derived_receipts DROP CONSTRAINT agent_memory_derived_receipts_source_sha256_check; ALTER TABLE agentstudio.agent_memory_derived_receipts ADD CONSTRAINT agent_memory_derived_receipts_source_sha256_check CHECK(source_sha256 ~ '^[a-f0-9 ]{64}$')"
       ]){await driftClient.query('BEGIN');try{await driftClient.query(mutation);await assert.rejects(verifyAgentMemoryDerivedCredentials(driftClient),/unsafe_agent_memory_derived_privileges/)}finally{await driftClient.query('ROLLBACK')}}}finally{driftClient.release()}
       const derived=new AgentMemoryDerivedRepository(apiPool,{allowWrites:true}),derivedReadonly=new AgentMemoryDerivedRepository(apiPool)
+      mark('optional-memory-051-native-https-owner-cookie-sdk')
+      const derivedFront=await startNativeHttps(auth,apiPool,key,brokerPool,{memory:true,memoryRuntime:true,derivedMemory:true})
+      try{
+      await derivedFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      const derivedApi=derivedFront.captureApi()
+      assert.equal((await derivedApi.getConfigCapabilities()).agent_derived_memory_writes_enabled,true)
+      await derivedFront.api.login('other@example.com','SyntheticOtherPassword#2026')
+      await assert.rejects(derivedFront.api.previewAgentDerivedMemory(memoryRole.id,memoryRun.run.id),e=>e.status===404)
       const derivedBefore=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
-      const preview=await derivedReadonly.preview(memoryIdentity,memoryRole.id,memoryRun.run.id)
+      const preview=await derivedApi.previewAgentDerivedMemory(memoryRole.id,memoryRun.run.id)
       assert.equal(preview.kind,'fact');assert.equal(preview.fact,report.slice(0,500));assert.equal(preview.tools_used,'')
       const shifted=await withActor(apiPool,memoryIdentity,async db=>{await db.query("SET LOCAL TIME ZONE 'Asia/Shanghai'");return db.query('SELECT agentstudio.agent_memory_run_source_sha256($1::uuid) AS hash',[memoryRun.run.id])})
       assert.equal(shifted.rows[0].hash,preview.source_sha256)
       const saveDerived={action:'save_success',request_id:randomUUID(),spec_id:memoryRole.id,source_run_id:memoryRun.run.id,expected_source_sha256:preview.source_sha256,confirm:true}
       await assert.rejects(derivedReadonly.change(memoryIdentity,saveDerived),e=>e.code==='agent_memory_derived_writes_disabled')
       await assert.rejects(derived.preview(reader,memoryRole.id,memoryRun.run.id),e=>e.status===404)
-      const derivedSaved=await derived.change(memoryIdentity,saveDerived)
-      assert.equal(derivedSaved.replayed,false);assert.equal((await derivedReadonly.confirm(memoryIdentity,saveDerived)).replayed,true)
+      const derivedSaved=await derivedApi.changeAgentDerivedMemory(saveDerived)
+      assert.equal(derivedSaved.replayed,false);assert.equal((await derivedApi.confirmAgentDerivedMemory(saveDerived)).replayed,true)
       assert.equal((await derivedReadonly.change(memoryIdentity,saveDerived)).replayed,true)
-      assert.equal((await derived.list(memoryIdentity,memoryRole.id)).items[0].fact,preview.fact)
+      assert.equal((await derivedApi.listAgentDerivedMemories(memoryRole.id)).items[0].fact,preview.fact)
       const current=(await memoryApi.listAgentMemories(memoryRole.id)).items[0]
       assert.equal(current.id,memoryRun.run.id)
       await memoryApi.changeAgentMemory({action:'forget',request_id:randomUUID(),spec_id:memoryRole.id,memory_id:current.id,expected_sha256:current.content_sha256,confirm:true})
       assert.equal((await memoryApi.getAutonomousAgentRun(memoryRun.run.id)).run.result_text,'')
       assert.equal((await memoryApi.getAutonomousAgentHumanHistory(memoryRun.run.id)).available,false)
-      await assert.rejects(derived.preview(memoryIdentity,memoryRole.id,memoryRun.run.id),e=>e.status===409)
-      const hidden=(await derived.list(memoryIdentity,memoryRole.id)).items[0]
+      await assert.rejects(derivedApi.previewAgentDerivedMemory(memoryRole.id,memoryRun.run.id),e=>e.status===409)
+      const hidden=(await derivedApi.listAgentDerivedMemories(memoryRole.id)).items[0]
       assert.equal(hidden.source_current,false);assert.equal(hidden.fact,null);assert.equal(hidden.tools_used,null)
       const forgetDerived={action:'forget',request_id:randomUUID(),spec_id:memoryRole.id,memory_id:derivedSaved.memory_id,expected_content_sha256:derivedSaved.content_sha256,expected_tools_sha256:derivedSaved.tools_sha256,confirm:true}
-      assert.equal((await derived.change(memoryIdentity,forgetDerived)).recorded,true)
-      assert.equal((await derivedReadonly.confirm(memoryIdentity,forgetDerived)).replayed,true)
+      assert.equal((await derivedApi.changeAgentDerivedMemory(forgetDerived)).recorded,true)
+      assert.equal((await derivedApi.confirmAgentDerivedMemory(forgetDerived)).replayed,true)
       assert.equal((await derivedReadonly.change(memoryIdentity,saveDerived)).replayed,true)
-      assert.equal((await derived.list(memoryIdentity,memoryRole.id)).items.length,0)
+      assert.equal((await derivedApi.listAgentDerivedMemories(memoryRole.id)).items.length,0)
       await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('INSERT INTO agentstudio.agent_memory_derived_entries(owner_user_id,id,fact,tools_used,content_sha256,tools_sha256) VALUES(agentstudio.actor_id(),$1::uuid,$2,$3,$4,$5)',[derivedSaved.memory_id,preview.fact,preview.tools_used,preview.content_sha256,preview.tools_sha256])),/agent_memory_derived_entry_receipt_required/)
       const derivedState=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.agent_memory_derived_entries)::integer AS entries,(SELECT count(*) FROM agentstudio.agent_memory_derived_receipts)::integer AS receipts')).rows[0]
       assert.deepEqual(derivedState,{entries:0,receipts:2})
       const derivedAfter=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
       assert.deepEqual(derivedAfter,derivedBefore);assert.equal(memoryCalls,1)
+      }finally{await derivedFront.close()}
       mark('fresh-memory-050-revocation-before-private-dispatch')
       const replay=await memoryApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,memoryTask,memoryKey,1,false)
       assert.equal(replay.replayed,true);assert.equal(replay.run.id,memoryRun.run.id);assert.equal(replay.run.result_text,'')
