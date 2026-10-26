@@ -6,6 +6,7 @@ import {agentHumanContext,humanInputReceipt,humanInputSha,humanResponseEntry,hum
 import {recordWorkflowAgentHumanResponse} from "./workflow-v2-agent-machine.ts"
 import {auditWorkflowV2,checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,workflowV2RunColumns,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
 import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
+import {redactResultText} from "./public-result-text.ts"
 
 function native(identity:Identity){if(identity?.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")}
 function runId(value:string){if(!isUuid(value))throw new HttpError(400,"invalid_run_id");return value.toLowerCase()}
@@ -79,7 +80,7 @@ export class AgentHumanInputRepository{
       try{
         if(!await currentKnowledgeObservations(db,id))return {run_id:id,items:[],available:false,next_after:null}
         const evidence=await verifyWorkflowV2Snapshot(db,owner,run,state),selected=evidence.history.filter(item=>item.step_key>after)
-        const items=selected.slice(0,limit)
+        const items=selected.slice(0,limit).map(item=>({...item,question:redactResultText(item.question),draft:redactResultText(item.draft),answer:redactResultText(item.answer)}))
         return {run_id:id,items,available:true,next_after:selected.length>limit?items.at(-1)!.step_key:null}
       }catch(error){if(error instanceof HttpError&&[400,404,409].includes(error.status))return {run_id:id,items:[],available:false,next_after:null};throw error}
     })

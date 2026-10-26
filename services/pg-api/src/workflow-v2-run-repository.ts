@@ -15,6 +15,7 @@ import {verifyWorkflowAgentResources} from "./workflow-v2-agent-resources.ts"
 import {createHash} from "node:crypto"
 import {safeWorkflowNodeDebugRequest,workflowNodeDebugGraph,workflowNodeDebugFingerprintData,type WorkflowNodeDebug} from "./workflow-v2-node-debug.ts"
 import {workflowV2OutputProjection} from "./workflow-v2-output-projection.ts"
+import {redactResultText} from "./public-result-text.ts"
 import {validWorkflowOutputCursor} from "./workflow-v2-output-contract.ts"
 import {prepareWorkflowSampleLineage,registerWorkflowSampleLineage} from "./workflow-sample-lineage.ts"
 import {agentHumanContext,agentHumanEvidenceExpected,requireHumanInputSchema,verifyAgentHumanResponses} from "./agent-human-input-policy.ts"
@@ -171,7 +172,7 @@ export class WorkflowV2RunRepository{
       "SELECT step_key,status FROM agentstudio.approvals WHERE run_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY requested_at DESC LIMIT 201",[row.id,owner])
     // Do not send graph snapshots, replay journals or private node bodies with
     // run history. The current pending request is shown only for explicit review.
-    return {run:{...row,result_text:observationsCurrent?row.result_text:"",instruction:!observationsCurrent&&state.node_debug?"":row.instruction,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
+    return {run:{...row,result_text:observationsCurrent?redactResultText(row.result_text):"",instruction:!observationsCurrent&&state.node_debug?"":row.instruction,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
       [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps,
         ...(typeof state.graph.nodes[1]!.data.require_plan_review==="boolean"?{require_plan_review:state.graph.nodes[1]!.data.require_plan_review}:{}),
         ...(state.graph.nodes[1]!.data.model_binding?{selected_model_binding:state.graph.nodes[1]!.data.model_binding}:{})}:{}),
@@ -184,7 +185,7 @@ export class WorkflowV2RunRepository{
       replayed,execution_mode:this.root.mode,knowledge_outputs_available:observationsCurrent,
       ...(hasHuman?{human_input_evidence_current:humanEvidence,human_input_current:humanCurrent,human_input:humanCurrent&&human?.pending_input&&row.status==="awaiting_input"?{
         pending_step_key:human.pending_input.step_key,pending_sha256:human.pending_input.pending_sha256,source_sha256:human.source_sha256,
-        kind:human.pending_input.kind,question:human.pending_input.question,draft:human.pending_input.draft,round:human.pending_input.round}:null}:{})}
+        kind:human.pending_input.kind,question:redactResultText(human.pending_input.question),draft:redactResultText(human.pending_input.draft),round:human.pending_input.round}:null}:{})}
   }
   async submit(identity:Identity,id:string,raw:unknown){
     return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))
@@ -278,11 +279,14 @@ export class WorkflowV2RunRepository{
     if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,"invalid_workflow_run_limit")
     if(workflowId!==undefined&&(this.root.kind!=="workflow"||!isUuid(workflowId)))throw new HttpError(400,"invalid_workflow_history_scope")
     return withActor(this.pool,identity,async(db,owner)=>{const rows=(await db.query<{id:string;result_preview:string}&Record<string,unknown>>(
-      "SELECT id,"+this.root.id+",status,left(instruction,180) AS instruction_preview,left(result_text,240) AS result_preview,"+
+      "SELECT id,"+this.root.id+",status,left(instruction,180) AS instruction_preview,result_text AS result_preview,"+
       "step_count,last_error_code,created_at,updated_at,finished_at,checkpoint->>'stage' AS stage "+(this.root.kind==="workflow"?",checkpoint->'node_debug'->>'node_id' AS debug_node_id ":"")+
       "FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND kind='"+this.root.kind+"' "+
       "AND checkpoint->>'execution_mode'='"+this.root.mode+"'"+(workflowId!==undefined?" AND workflow_id=$3::uuid":"")+" ORDER BY created_at DESC,id LIMIT $2::int",[owner,limit,...(workflowId!==undefined?[workflowId]:[])])).rows
+      // Mask the complete bounded result before clipping a preview: clipping
+      // first can leave a short, unrecognizable fragment of a credential.
       for(const row of rows)if(!await currentKnowledgeObservations(db,row.id)){row.result_preview="";if(row.debug_node_id)row.instruction_preview=""}
+      else row.result_preview=redactResultText(row.result_preview).slice(0,240)
       return rows
     })
   }

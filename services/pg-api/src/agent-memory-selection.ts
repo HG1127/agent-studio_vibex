@@ -2,6 +2,7 @@
 // role and original source/knowledge evidence BEFORE supplying memory rows.
 // This module installs no persistence, provider call, route or authority.
 import {HttpError,isUuid} from "./contracts.ts"
+import {redactResultText} from "./public-result-text.ts"
 export type AgentMemoryKind="user"|"fact"|"lesson"
 export type AgentMemoryCandidate={id:string;kind:AgentMemoryKind;fact:string;tools_used:string}
 export type AgentMemoryHint={id:string;kind:AgentMemoryKind;fact_preview:string;hint:string;score:number}
@@ -10,8 +11,7 @@ const invalid=():never=>{throw new HttpError(400,"invalid_agent_memory_input")}
 function bounded(value:unknown,max:number,nonempty=false):value is string{return typeof value==="string"&&value.length<=max&&!value.includes("\0")&&(!nonempty||!!value.trim())}
 export function sanitizeAgentMemoryText(value:string):string{
   if(typeof value!=="string"||value.includes("\0"))invalid()
-  return value.replace(/sk-[A-Za-z0-9_-]{8,}/g,"***").replace(/Bearer\s+\S+/g,"Bearer ***")
-    .replace(/token=\S+/g,"token=***").replace(/api_key=\S+/g,"api_key=***")
+  return redactResultText(value)
 }
 export function explicitAgentMemory(instruction:string,scheduled=false):{task:string;fact:string|null}{
   if(!bounded(instruction,2000,true)||typeof scheduled!=="boolean")invalid()

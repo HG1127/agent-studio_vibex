@@ -14,6 +14,7 @@ import {ScheduleDraftRepository} from '../src/schedule-draft-repository.ts'
 import {ScheduleRuntimeRepository} from '../src/schedule-runtime-repository.ts'
 import {ScheduleRuntimeWorker} from '../src/schedule-runtime-worker.ts'
 import {SCHEDULE_BACKGROUND_ACK} from '../src/schedule-runtime-contract.ts'
+import {redactResultText} from '../src/public-result-text.ts'
 
 async function fixture(){
   const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
@@ -37,6 +38,33 @@ async function until(f,id,makeWorker,status){
   }throw Error('human input synthetic transition bound exceeded')
 }
 async function submit(f,role=f.resources.alice.spec,max=3){return f.owned.submit(f.identities.alice,role.id,{expected_revision:role.revision,max_steps:max,idempotency_key:'synthetic-human-'+randomUUID(),instruction:'Synthetic owner task with a possible clarification.'})}
+
+test('public final delivery, preview and human history mask legacy credential forms without changing private replay or receipts',async()=>{
+  const f=await fixture(),{alice,bob}=f.identities;let calls=0
+  try{
+    const {require_approval,...raw}=f.resources.alice.spec.spec
+    const role=await f.agents.create(alice,'Redacted complete delivery',safeAgentSpec({...raw,require_plan_review:true}))
+    const secrets='sk-SyntheticFinalKey012345 Bearer SyntheticFinalBearer\ntoken=syntheticFinalToken api_key=syntheticFinalApi'
+    const draft='Proposed plan '+secrets,final='x'.repeat(235)+' '+secrets+'\n'+('完整成果保持可读。\n'.repeat(700))
+    assert.ok(final.length>4000&&final.length<20000)
+    const admitted=await submit(f,role),id=admitted.run.id
+    await f.privateTls(async()=>{calls++;return JSON.stringify({action:'answer',answer:calls===1?draft:calls===2?'Updated plan':final})},async makeWorker=>{
+      let pending=await until(f,id,makeWorker,'awaiting_input')
+      assert.equal(pending.human_input.draft,redactResultText(draft));assert.equal(pending.human_input_evidence_current,true)
+      const revise={...request(pending),decision:'revise',answer:'Revise token=syntheticOwnerReply'}
+      await f.responses.change(alice,id,revise)
+      pending=await until(f,id,makeWorker,'awaiting_input')
+      await f.responses.change(alice,id,{...request(pending),decision:'approve',answer:''})
+      const done=await until(f,id,makeWorker,'succeeded');assert.equal(done.run.result_text,redactResultText(final));assert.equal(done.human_input_evidence_current,true);assert.equal(calls,3)
+      const privateState=async()=>(await f.db.query('SELECT result_text,checkpoint,(SELECT jsonb_agg(to_jsonb(e) ORDER BY e.step_key) FROM agentstudio.external_effects e WHERE e.run_id=r.id) AS effects FROM agentstudio.runs r WHERE id=$1',[id])).rows[0]
+      const before=await privateState();assert.equal(before.result_text,final);assert.equal(JSON.stringify(before).includes('syntheticFinalToken'),true)
+      assert.equal((await f.owned.list(alice)).find(row=>row.id===id).result_preview,redactResultText(final).slice(0,240))
+      const history=await f.responses.history(alice,id);assert.equal(history.available,true);assert.equal(history.items[0].draft,redactResultText(draft));assert.equal(history.items[0].answer,'Revise token=***')
+      assert.equal((await f.owned.get(alice,id)).run.result_text,redactResultText(final));assert.equal(await f.owned.get(bob,id),null)
+      assert.deepEqual(await privateState(),before);assert.equal((await makeWorker({humanInputApproved:true}).tick()).status,'idle');assert.equal(calls,3)
+    })
+  }finally{await f.close()}
+})
 
 test('a pre048 API fixture without ledger-column access keeps the optional human capability absent',async()=>{
   const f=await agentFixture({mcp:true,smithery:true,sharing:true})

@@ -7,8 +7,34 @@ import {AgentSpecRepository} from "../src/repository.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
 import {permitNativePg18BusinessUatRequest} from "../src/native-config-uat-policy.ts"
+import {redactResultText} from "../src/public-result-text.ts"
 const node=(id,type,data)=>({id,type,data:{title:id,...data},position:{x:0,y:0}})
 const edge=(source,target,sourceHandle)=>({id:source+"_"+target,source,target,...(sourceHandle?{sourceHandle}:{})})
+
+test("public Workflow final and node output history mask complete text before bounded previews without mutating the replay",async()=>{
+  const f=await workflowNodeDebugFixture()
+  try{
+    const binding=f.graph.nodes.find(node=>node.type==="model").data.model_binding
+    const graph={version:2,nodes:[node('start','start'),node('report','model',{prompt:'Synthetic public report',model_binding:binding}),node('end','end',{output_template:'{{report.output}}'})],edges:[edge('start','report'),edge('report','end')]}
+    const flow=await f.alice.api.createWorkflowGraph('Redacted Workflow output',graph),started=await f.alice.api.submitWorkflowV2Run(flow.id,1,'Synthetic report','redacted-output-original'),id=started.run.id
+    const output='x'.repeat(235)+' sk-SyntheticWorkflowKey012345 Bearer SyntheticWorkflowBearer\ntoken=syntheticWorkflowToken api_key=syntheticWorkflowApi\n'+'交付'.repeat(1800)
+    let calls=0;const worker=()=>new WorkflowV2Worker(f.pool,'synthetic-redacted-output',{executor:{async execute(){calls++;return output}}})
+    for(let i=0;i<16;i++){
+      const detail=await f.alice.api.getWorkflowV2Run(id);if(detail.run.status==='succeeded')break
+      if(detail.run.status==='awaiting_approval')await f.alice.api.decideWorkflowV2Node(id,'approved',detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+      await worker().tick()
+    }
+    const privateRun=async()=>(await f.db.query('SELECT result_text,checkpoint FROM agentstudio.runs WHERE id=$1',[id])).rows[0]
+    const before=await privateRun();assert.equal(before.result_text,output);assert.equal(calls,1)
+    const done=await f.alice.api.getWorkflowV2Run(id);assert.equal(done.run.status,'succeeded');assert.equal(done.run.result_text,redactResultText(output))
+    assert.equal((await f.alice.api.listWorkflowV2Runs(flow.id))[0].result_preview,redactResultText(output).slice(0,240))
+    const latest=await f.alice.api.getWorkflowV2Outputs(id),history=await f.alice.api.getWorkflowV2OutputHistory(id)
+    assert.equal(latest.nodes.find(row=>row.node_id==='report').output_text,redactResultText(output).slice(0,4000))
+    assert.equal(history.items.find(row=>row.node_id==='report').output_text,redactResultText(output).slice(0,4000));assert.equal(latest.run.output_version,history.run.output_version)
+    await assert.rejects(f.bob.api.getWorkflowV2Outputs(id),e=>e.status===404)
+    assert.deepEqual(await privateRun(),before);assert.equal((await worker().tick()).status,'idle');assert.equal(calls,1)
+  }finally{await f.close()}
+})
 
 test("owner outputs replay every loop round, withhold Agent planner/step JSON and remain readable after execution/config revocation",async()=>{
   const f=await workflowNodeDebugFixture();let ordinary=0,planning=0,tool=0,probed=false

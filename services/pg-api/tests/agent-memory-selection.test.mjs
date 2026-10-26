@@ -1,8 +1,18 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {explicitAgentMemory,sanitizeAgentMemoryText,selectAgentMemoryHints} from "../src/agent-memory-selection.ts"
+import {redactResultText} from "../src/public-result-text.ts"
 const id=n=>"11111111-1111-4111-8111-"+String(n).padStart(12,"0")
 const memory=(n,fact,kind="fact",tools_used="")=>({id:id(n),fact,kind,tools_used})
+
+test("legacy result masking covers all four credential forms before clipping and leaves ordinary complete text exact",()=>{
+  const ordinary="完整交付。\n".repeat(1000),raw="sk-SyntheticMaskValue012345 Bearer SyntheticBearerValue\ntoken=syntheticTokenValue api_key=syntheticApiValue\n"+ordinary
+  const expected="*** Bearer ***\ntoken=*** api_key=***\n"+ordinary
+  assert.equal(redactResultText(raw),expected);assert.equal(sanitizeAgentMemoryText(raw),expected)
+  assert.equal(redactResultText(expected),expected);assert.equal(redactResultText(ordinary),ordinary)
+  const boundary="x".repeat(235)+" sk-SyntheticLongBoundaryKey"
+  assert.equal(redactResultText(boundary).slice(0,240),"x".repeat(235)+" ***")
+})
 
 test("explicit remember preserves the bounded remaining task, sanitizes before storage and never writes scheduled directives",()=>{
   assert.deepEqual(explicitAgentMemory("请帮我记住：报告用中文。整理本月报告"),{fact:"报告用中文",task:"整理本月报告"})
