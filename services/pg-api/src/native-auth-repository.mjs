@@ -3,6 +3,8 @@
 // Must run via an isolated non-superuser login that can SET ROLE to
 // agentstudio_native_auth. Business API/Worker roles must NEVER join that group.
 import {randomUUID} from "node:crypto"
+import {NativeEmployeeGovernanceRepository} from "./native-employee-governance.mjs"
+import {inspectEmployeeGovernance} from "./native-employee-governance-audit.mjs"
 import {
   normalizeEmployeeEmail,verifyEmployeePassword,hashEmployeePassword,
   validateEmployeePassword,validateEmployeeDisplayName,
@@ -40,7 +42,12 @@ function asDate(value){
   return Number.isFinite(d.getTime())?d:null
 }
 export class NativeAuthRepository{
-  constructor(pool){this.pool=pool}
+  constructor(pool){this.pool=pool;this.governance=new NativeEmployeeGovernanceRepository(pool,withNativeAuth)}
+  inspectEmployeeGovernance(){return withNativeAuth(this.pool,db=>inspectEmployeeGovernance(db))}
+  changeEmployee(token,choice){return this.governance.change(token,choice)}
+  confirmEmployeeChange(token,choice){return this.governance.confirm(token,choice)}
+  createGovernedEmployee(token,choice){return this.governance.create(token,choice)}
+  changePassword(token,choice){return this.governance.changePassword(token,choice)}
   // Operator-only bootstrap entry point. Never expose as an HTTP route.
   // Exclusive transaction-scoped lock makes parallel first-admin attempts
   // mutually exclusive across server processes and authenticated sessions.
@@ -133,7 +140,7 @@ export class NativeAuthRepository{
     catch{return null}
     return await withNativeAuth(this.pool,async(db)=>{
       const result=await db.query(
-        "SELECT u.id,u.external_subject,u.display_name,a.email,a.is_admin "+
+        "SELECT u.id,u.external_subject,u.display_name,a.email,a.is_admin,(to_jsonb(a)->>'share_enabled')::boolean AS share_enabled "+
         "FROM agentstudio_auth.sessions s "+
         "JOIN agentstudio_auth.accounts a ON a.user_id=s.user_id "+
         "JOIN agentstudio.users u ON u.id=s.user_id "+
@@ -145,7 +152,7 @@ export class NativeAuthRepository{
       return row&&typeof row.external_subject==="string"&&
         row.external_subject.length>0&&row.external_subject.length<=255
         ?{id:row.id,email:row.email,display_name:row.display_name,
-          is_admin:row.is_admin===true,
+          is_admin:row.is_admin===true,share_enabled:row.share_enabled!==false,
           identity:{issuer:NATIVE_LOCAL_ISSUER,subject:row.external_subject}}
         :null
     })
@@ -192,14 +199,14 @@ export class NativeAuthRepository{
         throw Error("admin_session_required")
       const result=await db.query(
         "SELECT u.id,a.email,u.display_name,a.is_admin,a.enabled,u.status,"+
-        "u.created_at FROM agentstudio_auth.accounts a "+
+        "u.created_at,(to_jsonb(a)->>'share_enabled')::boolean AS share_enabled,(to_jsonb(a)->>'governance_revision')::bigint AS governance_revision FROM agentstudio_auth.accounts a "+
         "JOIN agentstudio.users u ON u.id=a.user_id "+
         "WHERE u.external_issuer=$1 ORDER BY u.created_at DESC,u.id "+
         "LIMIT $2::int",[NATIVE_LOCAL_ISSUER,bounded])
       return result.rows.map(row=>({
         id:row.id,email:row.email,display_name:row.display_name,
         is_admin:row.is_admin===true,enabled:row.enabled===true,
-        status:row.status,created_at:row.created_at,
+        status:row.status,created_at:row.created_at,share_enabled:row.share_enabled!==false,revision:Number(row.governance_revision??1),
       }))
     })
   }

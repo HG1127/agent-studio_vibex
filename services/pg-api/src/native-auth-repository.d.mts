@@ -4,6 +4,7 @@ export interface NativeProfile{
   email:string
   display_name:string
   is_admin:boolean
+  share_enabled?:boolean
   identity:Identity
 }
 export interface NativeLoginResult{
@@ -15,6 +16,11 @@ export interface NativeLoginResult{
 }
 export class NativeAuthRepository{
   constructor(pool:SqlPool)
+  inspectEmployeeGovernance():Promise<boolean>
+  changeEmployee(token:string,choice:unknown):Promise<Record<string,unknown>>
+  confirmEmployeeChange(token:string,choice:unknown):Promise<Record<string,unknown>>
+  createGovernedEmployee(token:string,choice:unknown):Promise<Record<string,unknown>>
+  changePassword(token:string,choice:unknown):Promise<{ok:true;reauthenticate:true}>
   /** Operator-only, never HTTP-callable. */
   provisionInitialAdmin(employee:{email:string,password:string,display_name:string}):Promise<Omit<NativeProfile,"identity">>
   login(email:string,password:string):Promise<NativeLoginResult>
@@ -25,7 +31,7 @@ export class NativeAuthRepository{
   revokeSession(token:string):Promise<boolean>
   listEmployees(token:string,limit?:number):Promise<Array<{
     id:string;email:string;display_name:string;is_admin:boolean
-    enabled:boolean;status:"active"|"disabled";created_at:string
+    enabled:boolean;status:"active"|"disabled";created_at:string;share_enabled:boolean;revision:number
   }>>
   provisionEmployee(token:string,employee:{
     email:string,password:string,display_name:string,

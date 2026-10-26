@@ -1,3 +1,4 @@
+import {PgNativeEmployeeSettingsPanel} from "./PgNativeEmployeeSettingsPanel.tsx"
 import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from "react"
 import {Bot,BookOpen,BriefcaseBusiness,CheckCircle2,Database,
   KeyRound,Loader2,LogOut,Plus,RefreshCcw,ShieldCheck,Users,Workflow,
@@ -112,6 +113,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [knowledge,setKnowledge]=useState<PgNativeKnowledge[]>([])
   const [readableKnowledge,setReadableKnowledge]=useState<PgNativeKnowledge[]>([])
   const [employees,setEmployees]=useState<PgNativeEmployee[]>([])
+  const [employeeGovernance,setEmployeeGovernance]=useState({available:false,enabled:false})
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
   const [toolConnections,setToolConnections]=useState<PgNativeToolConnection[]>([])
   const [modelEditing,setModelEditing]=useState<PgNativeModelConnection|null>(null)
@@ -141,6 +143,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setKnowledgeSharingOpened(false);setKnowledgeSharingEnabled(false)
     setCollaborationAvailable(false)
     setReleasesAvailable(false);setReleaseAcceptanceEnabled(false);setAutonomousTarget(null)
+    setEmployeeGovernance({available:false,enabled:false})
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
   const expireAgentSession=useCallback(()=>{
@@ -188,6 +191,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setBoundModelRunsEnabled(capability?.bound_model_runs_enabled===true)
       setAutonomousEnabled(capability?.config_writes_enabled===true&&capability.autonomous_agent_submission_enabled===true)
       setScheduleEnabled(capability?.config_writes_enabled===true&&capability.schedule_execution_enabled===true)
+      setEmployeeGovernance({available:capability?.employee_governance_available===true,enabled:capability?.employee_governance_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
       setReleasesAvailable(capability?.agent_releases_available===true)
       setReleaseAcceptanceEnabled(capability?.config_writes_enabled===true&&capability?.agent_release_acceptance_enabled===true)
@@ -481,8 +485,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
         </section>
         <div className="grid gap-4 lg:grid-cols-[210px_1fr]">
           <nav aria-label="独立 PostgreSQL 功能" className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-3 lg:flex-col lg:gap-1 lg:self-start">
-            {title.filter(x=>(x.key!=="employees"||profile.is_admin)&&
-              (!productionRoot||x.key!=="employees")).map(item=>
+            {title.filter(x=>(x.key!=="employees"||profile.is_admin||employeeGovernance.available)&&
+              (!productionRoot||x.key!=="employees"||employeeGovernance.available)).map(item=>
               <button key={item.key} type="button" onClick={()=>{setSection(item.key);setEditing(null);setDetailTarget(null);if(item.key==="workflows")setWorkflowCanvasOpened(true);if(item.key==="workflowNativeRuns")setWorkflowRunsOpened(true);if(item.key==="toolConnections")setMcpOpened(true);if(item.key==="agents")setAgentMcpOpened(true)}}
                 className={"flex min-w-max items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium lg:w-full "+
                   (section===item.key?"bg-indigo-50 text-indigo-700":"text-slate-600 hover:bg-slate-50")}>
@@ -733,7 +737,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 target={editing} busy={busy}
                 onSave={saveEditing} onCancel={()=>setEditing(null)}/>
             }
-            {section==="employees"&&profile.is_admin&&
+            {employeeGovernance.available&&<PgNativeEmployeeSettingsPanel key={profile.id} api={api} profile={profile} enabled={employeeGovernance.enabled} active={section==="employees"} onExpire={expireAgentSession}/>}
+            {section==="employees"&&profile.is_admin&&!employeeGovernance.available&&
               <CreateCard title="员工账号清单" description="仅管理员可查看；只展示账号元数据，不返回密码哈希、会话令牌或认证凭据。">
                 <div className="space-y-2">
                   {!employees.length&&<p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">暂无员工记录，或正在加载。</p>}
@@ -754,7 +759,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                   <RefreshCcw size={15}/>刷新清单
                 </button>
               </CreateCard>}
-            {section==="employees"&&profile.is_admin&&!productionRoot&&
+            {section==="employees"&&profile.is_admin&&!productionRoot&&!employeeGovernance.available&&
               <CreateCard title="创建员工测试账号" description="仅管理员可操作，员工密码不在页面持久保存。">
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>
                   api.createEmployee(staffEmail.trim(),staffPassword,staffName.trim()),"已创建独立员工账号")}}>

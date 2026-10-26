@@ -2,6 +2,7 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {employeeChange,employeeGovernanceResult,type EmployeeChange} from "./pgNativeEmployeeGovernance.ts"
 import {agentDescriptiveLimits} from "../../shared/agent-role-limits.mjs"
 import {collaborationChoice,collaborationDetail,collaborationRevisions,collaborationSummaries,collaborationResult,type PgNativeAgentCollaborationChoice} from "./pgNativeAgentCollaboration.ts"
 export type {PgNativeAgentSafeText,PgNativeAgentCollaborationChoice,PgNativeAgentCollaborationDetail,PgNativeAgentCollaborationSummary,PgNativeAgentCollaborationRevision,PgNativeAgentCollaborationProposal} from "./pgNativeAgentCollaboration.ts"
@@ -47,15 +48,17 @@ export type PgNativeConfigCapabilities={
   workflow_v2_submission_enabled?:boolean
   autonomous_agent_submission_enabled?:boolean
   schedule_execution_enabled?:boolean
+  employee_governance_available?:boolean
+  employee_governance_enabled?:boolean
   agent_collaboration_available?:boolean
   agent_releases_available?:boolean
   agent_release_acceptance_enabled?:boolean
 }
 export type PgNativeStaff={
-  id:string;email:string;display_name:string;is_admin:boolean
+  id:string;email:string;display_name:string;is_admin:boolean;share_enabled?:boolean
 }
 export type PgNativeEmployee=PgNativeStaff&{
-  enabled:boolean;status:"active"|"disabled";created_at:string
+  enabled:boolean;status:"active"|"disabled";created_at:string;share_enabled:boolean;revision:number
 }
 export type PgNativeAgentModelBinding={
   connection_id:string;connection_revision:number;model_id:string
@@ -220,6 +223,7 @@ const routes={
   logout:"/api/native-auth/logout",
   capabilities:"/api/native-auth/capabilities",
   employees:"/api/native-auth/employees",
+  employeeCreate:"/api/native-auth/employees/create",employeeChange:"/api/native-auth/employees/change",employeeConfirm:"/api/native-auth/employees/confirm",changePassword:"/api/native-auth/change-password",
   agents:"/api/v2/agent-specs",
   workflows:"/api/v2/workflows",
   bases:"/api/v2/knowledge-bases",
@@ -471,6 +475,9 @@ export function createPgNativePilotApi(
             typeof value.workflow_v2_submission_enabled!=="boolean")||
           (value.workflow_v2_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.schedule_execution_enabled!==undefined&&typeof value.schedule_execution_enabled!=="boolean")||
+          (value.employee_governance_available!==undefined&&typeof value.employee_governance_available!=="boolean")||
+          (value.employee_governance_enabled!==undefined&&typeof value.employee_governance_enabled!=="boolean")||
+          (value.employee_governance_enabled===true&&(value.employee_governance_available!==true||value.config_writes_enabled!==true))||
           (value.agent_collaboration_available!==undefined&&typeof value.agent_collaboration_available!=="boolean")||
           (value.agent_releases_available!==undefined&&typeof value.agent_releases_available!=="boolean")||
           (value.agent_release_acceptance_enabled!==undefined&&typeof value.agent_release_acceptance_enabled!=="boolean")||
@@ -498,6 +505,15 @@ export function createPgNativePilotApi(
         throw new PgNativePilotError(400,"invalid_employee_limit")
       return (await get<{items:PgNativeEmployee[];scope:"admin_employee_inventory"}>(
         (routes.employees+"?limit="+String(limit)) as Route)).items
+    },
+    createGovernedEmployee:async(input:{email:string;display_name:string;password:string;is_admin:boolean;share_enabled:boolean})=>
+      (await post<{user:PgNativeStaff}>(routes.employeeCreate,input)).user,
+    changeEmployee:async(input:EmployeeChange)=>employeeGovernanceResult(await post<unknown>(routes.employeeChange,employeeChange(input)),input),
+    confirmEmployeeChange:async(input:EmployeeChange)=>employeeGovernanceResult(await post<unknown>(routes.employeeConfirm,employeeChange(input)),input),
+    changePassword:async(old_password:string,new_password:string)=>{
+      const value=await post<{ok?:boolean;reauthenticate?:boolean}>(routes.changePassword,{old_password,new_password})
+      if(value.ok!==true||value.reauthenticate!==true)throw new PgNativePilotError(503,"invalid_employee_password_response")
+      return value
     },
     listModelConnections:async()=>
       (await get<{items:PgNativeModelConnection[]}>(routes.modelConnections)).items,

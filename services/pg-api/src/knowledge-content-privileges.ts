@@ -1,4 +1,5 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {inspectEmployeeGovernance} from "./native-employee-governance-audit.mjs"
 import {verifyKnowledgeEmbeddingCredentials} from "./knowledge-embedding-privileges.ts"
 import {verifyKnowledgeKeywordCredentials} from "./knowledge-keyword-audit.ts"
 import {verifyKnowledgeAgentCredentials} from "./knowledge-agent-audit.ts"
@@ -11,6 +12,7 @@ function refuse():never{throw Error("unsafe_knowledge_content_privileges")}
 // Also called by the ordinary startup inspector when the UI capability is off.
 // No employee values are read and private schemas need no login USAGE.
 export async function verifyKnowledgeHelperCredentials(db:SqlClient):Promise<void>{
+  await inspectEmployeeGovernance(db)
   await verifyAgentReleaseCredentials(db)
   await verifyAgentCollaborationCredentials(db)
   await verifyScheduleCredentials(db)

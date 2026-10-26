@@ -313,3 +313,31 @@ test("native password attempt limiter has time-bound per-identity and per-IP cap
   clock+=60001
   assert.doesNotThrow(()=>limiter.admit("127.0.0.1","user@example.com"))
 })
+
+test("employee governance authenticates Cookie/CSRF and current admin; write-off confirmation is read-only and self password clears Cookie",async()=>{
+  const auth=authStub(),calls=[]
+  for(const name of ["changeEmployee","confirmEmployeeChange","createGovernedEmployee","changePassword"])
+    auth[name]=async(token,body)=>{calls.push({name,body});return name==="changePassword"?{ok:true,reauthenticate:true}:{request_id:body.request_id}}
+  let writes=true
+  const build=()=>createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:writes,allowEmployeeGovernance:true,businessHandler:()=>{}}).handler
+  const {server,base}=await listen((req,res)=>build()(req,res))
+  const credentials={method:"POST",csrf:true,originHeader:origin}
+  try{
+    const admin=await request(base,"/api/native-auth/login",{...credentials,data:{email:"admin@example.com",password:"correct-password-1234"}})
+    const staff=await request(base,"/api/native-auth/login",{...credentials,data:{email:"staff@example.com",password:"correct-password-1234"}})
+    const cookie=admin.setCookie.split(";")[0],staffCookie=staff.setCookie.split(";")[0],route="/api/native-auth/employees/change"
+    assert.equal((await request(base,route,{...credentials,cookie:staffCookie,data:{}})).status,403)
+    assert.equal((await request(base,route,{method:"POST",cookie,data:{}})).status,403)
+    assert.equal((await request(base,route,{...credentials,cookie,bearer:"fake",data:{}})).status,401)
+    assert.equal(calls.length,0)
+    assert.equal((await request(base,route,{...credentials,cookie,data:{request_id:"synthetic-request"}})).status,200)
+    writes=false
+    assert.equal((await request(base,route,{...credentials,cookie,data:{}})).status,403)
+    assert.equal((await request(base,"/api/native-auth/employees/confirm",{...credentials,cookie,data:{request_id:"synthetic-request"}})).status,200)
+    assert.deepEqual(calls.map(c=>c.name),["changeEmployee","confirmEmployeeChange"])
+    writes=true
+    const password=await request(base,"/api/native-auth/change-password",{...credentials,cookie:staffCookie,data:{old_password:"SyntheticOldPassword#2026",new_password:"SyntheticNewPassword#2026"}})
+    assert.equal(password.status,200);assert.match(password.setCookie,/Max-Age=0/)
+    assert.equal(calls.at(-1).name,"changePassword")
+  }finally{await new Promise(resolve=>server.close(resolve))}
+})

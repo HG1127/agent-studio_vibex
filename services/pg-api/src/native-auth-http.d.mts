@@ -26,5 +26,6 @@ export function createNativeAuthHttpHandler(deps:{
   allowScheduleRuntime?:boolean
   allowAgentCollaboration?:boolean
   allowAgentReleases?:boolean
+  allowEmployeeGovernance?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}

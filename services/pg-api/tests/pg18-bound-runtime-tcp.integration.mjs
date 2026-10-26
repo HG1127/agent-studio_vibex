@@ -125,7 +125,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     const port=server.address().port,origin="https://localhost:"+port
     let backend;const managedRemote=new Map()
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
-      allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,
+      allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
       allowKnowledgeSharing:true,
@@ -274,7 +274,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN('agentstudio','agentstudio_auth')")).rows[0].n,0)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
       const initialized=await initialize()
-      assert.equal(initialized.migration_versions,32);assert.equal(initialized.service_logins_enabled,false)
+      assert.equal(initialized.migration_versions,33);assert.equal(initialized.service_logins_enabled,false)
       const receipt=(await bootstrap.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_fresh_runtime_001'")).rows[0]
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
@@ -1246,6 +1246,24 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await api.changeAgentCollaboration(collaboration.id,grantChoice)).replayed,true)
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     await assert.rejects(api.getAgentCollaboration(collaboration.id),e=>e.status===404)
+    mark("employee-governance-and-password-session-revocation")
+    await api.login("admin@example.com","SyntheticAdminPassword#2026")
+    const governed=await api.createGovernedEmployee({email:"governance@example.test",password:"SyntheticGovernancePassword#2026",display_name:"Synthetic governance employee",is_admin:true,share_enabled:false})
+    const governedLogin=await auth.login("governance@example.test","SyntheticGovernancePassword#2026")
+    const governanceChoice={request_id:randomUUID(),target_id:governed.id,expected_revision:1,is_admin:false,enabled:false,share_enabled:false,confirm:true}
+    assert.equal((await api.changeEmployee(governanceChoice)).revision,2)
+    assert.equal((await api.confirmEmployeeChange(governanceChoice)).replayed,true)
+    assert.equal(await auth.verifySession(governedLogin.token),null)
+    assert.ok((await api.listEmployees()).some(e=>e.id===governed.id&&e.status==="disabled"&&e.revision===2))
+    await assert.rejects(api.changeEmployee({...governanceChoice,request_id:randomUUID()}),e=>e.status===409)
+    await api.changeEmployee({...governanceChoice,request_id:randomUUID(),expected_revision:2,enabled:true})
+    assert.equal(await auth.verifySession(governedLogin.token),null)
+    await api.login("governance@example.test","SyntheticGovernancePassword#2026")
+    await assert.rejects(api.changeEmployee({...governanceChoice,request_id:randomUUID(),expected_revision:3}),e=>e.status===403)
+    await api.changePassword("SyntheticGovernancePassword#2026","ChangedSyntheticGovernancePassword#2026")
+    await assert.rejects(api.me(),e=>e.status===401)
+    await api.login("governance@example.test","ChangedSyntheticGovernancePassword#2026")
+    assert.equal((await api.me()).id,governed.id)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")

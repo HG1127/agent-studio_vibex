@@ -79,6 +79,8 @@ const scheduling=process.env.AGENT_STUDIO_PG_BROWSER_SCHEDULE==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_SCHEDULE!==undefined&&!scheduling||scheduling&&!workflow)throw Error("invalid_synthetic_schedule_browser_mode")
 const collaboration=process.env.AGENT_STUDIO_PG_BROWSER_COLLABORATION==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_COLLABORATION!==undefined&&!collaboration||collaboration&&!scheduling)throw Error("invalid_synthetic_collaboration_browser_mode")
+const governance=process.env.AGENT_STUDIO_PG_BROWSER_GOVERNANCE==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_GOVERNANCE!==undefined&&!governance||governance&&process.env.AGENT_STUDIO_PG_BROWSER_RELEASES!=="true")throw Error("invalid_synthetic_governance_browser_mode")
 const releases=process.env.AGENT_STUDIO_PG_BROWSER_RELEASES==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_RELEASES!==undefined&&!releases||releases&&!autonomous)throw Error("invalid_synthetic_release_browser_mode")
 const semantic=process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC==="true"
@@ -124,6 +126,7 @@ try{
   if(scheduling||releases)await db.exec(load("db/postgres/migrations/pg_v9_044_schedule_execution.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   if(collaboration||releases)await db.exec(load("db/postgres/migrations/pg_v9_045_agent_collaboration.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   if(releases)await db.exec(load("db/postgres/migrations/pg_v9_046_agent_releases.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+  if(governance)await db.exec(load("db/postgres/migrations/pg_v9_047_employee_governance.sql"))
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -198,7 +201,7 @@ try{
       executor:{supports:request=>adapters.some(adapter=>adapter.supports(request)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}}).tick()
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
-      allowConfigurationWrites:state.configAllowed,allowEmployeeProvisioning:state.configAllowed,
+      allowConfigurationWrites:state.configAllowed,allowEmployeeProvisioning:state.configAllowed,allowEmployeeGovernance:governance,
       allowMcpDiscovery:modern&&state.configAllowed,
       allowMcpToolExecution:modern&&state.configAllowed&&state.allowed,
       allowSmitheryManagement:modern&&state.configAllowed,

@@ -259,7 +259,7 @@ async function verifyNativeAuthService(pool:SqlPool){
         "WHERE a.enabled AND a.is_admin "+
         "AND u.status='active' AND "+
         "u.external_issuer='urn:agentstudio:local:v1'")).rows[0]
-      if(Number(approved?.active_admins)!==1)reject()
+      if(!approved||!Number.isSafeInteger(Number(approved.active_admins))||Number(approved.active_admins)<1)reject()
       // A compromised role grant must not expose private Agent records,
       // even to the dedicated password verifier identity.
       await client.query("SAVEPOINT native_preflight_access")
@@ -272,6 +272,7 @@ async function verifyNativeAuthService(pool:SqlPool){
       await client.query("ROLLBACK TO SAVEPOINT native_preflight_access")
       await client.query("RELEASE SAVEPOINT native_preflight_access")
       if(!denied)reject()
+      return Number(approved.active_admins)
     }finally{await client.query("ROLLBACK")}
   }finally{client.release()}
 }
@@ -321,7 +322,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   try{
     await verifyPgRuntimeTarget(business,cfg.api)
     await verifyDatabaseRole(business)
-    await verifyNativeAuthService(adapter(authPool))
+    const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
       // Read-only, before opening HTTP. The model secret broker must be
       // independent of both regular API and Worker login membership.
@@ -371,19 +372,21 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
+    const employeeGovernanceAvailable=await new NativeAuthRepository(adapter(authPool)).inspectEmployeeGovernance()
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     const releasesAvailable=await inspectAgentReleaseSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
       return {mode:"preflight",ready:true,target:"agent_studio",
-        verified_roles:2,verified_active_admins:1,
+        verified_roles:2,verified_active_admins:verifiedActiveAdmins,
         writes_performed:false,port_opened:false,
         workers_started:false,production_cutover_allowed:false}
     }
     const auth=new NativeAuthRepository(adapter(authPool))
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+      allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
