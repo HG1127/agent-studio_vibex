@@ -5,7 +5,7 @@ SET LOCAL statement_timeout='45s';
 SELECT pg_advisory_xact_lock(61824,20261047);
 DO $preflight$
 BEGIN
-  IF session_user<>'postgres' OR pg_is_in_recovery()
+  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=session_user AND rolsuper) OR pg_is_in_recovery()
     OR NOT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_046')
     OR EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_047')
     OR to_regclass('agentstudio_auth.employee_governance_events') IS NOT NULL
