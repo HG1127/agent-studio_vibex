@@ -27,11 +27,11 @@ async function fixture(){
   return {db,api,baseline,async verify(){await db.exec("BEGIN");try{return await verifyFreshRuntime(api,snapshot,true)}finally{await db.exec("ROLLBACK")}},close:()=>db.close()}
 }
 
-test("full fresh plan captures the genuine 019..047 path, source hashes and disabled login result without a fabricated predecessor",async()=>{
+test("full fresh plan captures the genuine 019..048 path, source hashes and disabled login result without a fabricated predecessor",async()=>{
   const plan=await runRuntimeInit(["--plan"],{DATABASE_URL:"DO_NOT_USE",AGENT_STUDIO_BAOTA_PG_ADMIN_PASSWORD_FILE:"/do-not-read"})
-  assert.equal(plan.source_sha256,snapshot.source_sha256);assert.equal(plan.network_used,false);assert.equal(plan.atomic,true);assert.equal(plan.sources.length,31)
+  assert.equal(plan.source_sha256,snapshot.source_sha256);assert.equal(plan.network_used,false);assert.equal(plan.atomic,true);assert.equal(plan.sources.length,32)
   assert.equal(plan.service_logins_enabled,false);assert.equal(plan.production_cutover_allowed,false)
-  assert.equal(plan.migration_versions.length,33);assert.equal(plan.sources[2].version,"pg_v9_019");assert.equal(plan.sources.at(-1).version,"pg_v9_047")
+  assert.equal(plan.migration_versions.length,34);assert.equal(plan.sources[2].version,"pg_v9_019");assert.equal(plan.sources.at(-1).version,"pg_v9_048")
   assert.ok(plan.migration_versions.includes("pg_v9_022"));assert.ok(!plan.migration_versions.includes("pg_v8_002"))
   assert.equal(plan.legacy_import_versions_fabricated,false);assert.doesNotMatch(JSON.stringify(plan),/DO_NOT_USE|do-not-read|CREATE ROLE|password_record/)
   assert.deepEqual(plan,freshRuntimePlan(snapshot))
@@ -45,14 +45,14 @@ test("one new-database transaction installs genuine schemas, empty business tabl
   const f=await fixture()
   try{
     await f.baseline();const result=await installFreshRuntime(f.api,snapshot);await f.db.exec("COMMIT")
-    assert.equal(result.migration_versions,33);assert.equal(result.roles,22);assert.equal(result.service_logins_enabled,false);assert.equal(result.knowledge_privileges_verified,true)
+    assert.equal(result.migration_versions,34);assert.equal(result.roles,22);assert.equal(result.service_logins_enabled,false);assert.equal(result.knowledge_privileges_verified,true)
     assert.equal(result.tables,snapshot.tables.length);assert.equal(result.empty_business_tables,snapshot.tables.length-1)
     assert.deepEqual(await f.verify(),result)
     const versions=(await f.db.query("SELECT version,description FROM agentstudio.schema_migrations ORDER BY version")).rows
-    assert.equal(versions.length,34);assert.ok(versions.some(r=>r.version==="pg_v9_022"&&r.description.startsWith("Inert-only")))
+    assert.equal(versions.length,35);assert.ok(versions.some(r=>r.version==="pg_v9_022"&&r.description.startsWith("Inert-only")))
     assert.equal(versions.some(r=>/synthetic|fake|predecessor/i.test(r.description)),false)
     const receipt=JSON.parse(versions.find(r=>r.version===freshRuntimeReceipt).description)
-    assert.equal(receipt.source_sha256,snapshot.source_sha256);assert.equal(receipt.sources.length,31)
+    assert.equal(receipt.source_sha256,snapshot.source_sha256);assert.equal(receipt.sources.length,32)
     assert.doesNotMatch(JSON.stringify(receipt),/SyntheticFresh|SCRAM|password_file|ciphertext|lease_token/)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[]) AND rolcanlogin",[freshRuntimeRoles])).rows[0].n,0)
     await f.db.exec("BEGIN");try{await assert.rejects(installFreshRuntime(f.api,snapshot),/native_auth_requires_reviewed_pg18_baseline/)}finally{await f.db.exec("ROLLBACK")}
@@ -64,11 +64,11 @@ test("failure deep in the runtime chain rolls back baseline, global roles and re
   const f=await fixture()
   try{
     await f.baseline()
-    const broken={query(sql,args=[]){if(sql===snapshot.steps.find(s=>s.version==="pg_v9_041").sql)throw Error("injected_after_semantic_schema");return f.api.query(sql,args)}}
-    await assert.rejects(installFreshRuntime(broken,snapshot),/injected_after_semantic_schema/);await f.db.exec("ROLLBACK")
+    const broken={async query(sql,args=[]){const result=await f.api.query(sql,args);if(sql===snapshot.steps.find(s=>s.version==="pg_v9_048").sql)throw Error("injected_after_human_input_schema");return result}}
+    await assert.rejects(installFreshRuntime(broken,snapshot),/injected_after_human_input_schema/);await f.db.exec("ROLLBACK")
     assert.equal((await f.db.query("SELECT to_regnamespace('agentstudio') AS schema")).rows[0].schema,null)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
-    await f.baseline();await installFreshRuntime(f.api,snapshot);await f.db.exec("COMMIT");assert.equal((await f.verify()).migration_versions,33)
+    await f.baseline();await installFreshRuntime(f.api,snapshot);await f.db.exec("COMMIT");assert.equal((await f.verify()).migration_versions,34)
   }finally{await f.close()}
 })
 

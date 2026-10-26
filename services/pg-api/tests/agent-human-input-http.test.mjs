@@ -15,7 +15,6 @@ import {createPgNativePilotApi} from '../../../src/lib/pgNativePilotApi.ts'
 test('Native Cookie human replies require exact owner/CSRF/current source; concurrent intent has one winner and confirmation stays read-only after opt-out',async()=>{
   const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});let server,handler,enabled=true,workflowEnabled=false,calls=0
   try{
-    await f.db.exec(f.sql('migrations/pg_v9_048_agent_human_input.sql'))
     const auth=new NativeAuthRepository(f.pool),owned=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true})
     server=createServer((req,res)=>{void handler(req,res)})
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port

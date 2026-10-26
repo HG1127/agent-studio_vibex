@@ -17,7 +17,7 @@ import {SCHEDULE_BACKGROUND_ACK} from '../src/schedule-runtime-contract.ts'
 
 async function fixture(){
   const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
-  try{await f.db.exec(f.sql('migrations/pg_v9_048_agent_human_input.sql'))
+  try{
     try{await verifyAgentHumanInputCredentials(f.db)}catch(error){
       const constraints=(await f.db.query("SELECT conname,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_release_versions'::regclass AND conname IN('agent_release_human_spec_required','agent_release_human_spec_fields','agent_release_plan_review_boolean') ORDER BY conname")).rows
       throw Error('synthetic_human_schema_audit_failed '+JSON.stringify(constraints),{cause:error})

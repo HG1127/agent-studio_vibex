@@ -31,6 +31,8 @@ import {AgentSpecRepository} from "../src/repository.ts"
 import {AgentCollaborationRepository} from "../src/agent-collaboration-repository.ts"
 import {inspectAgentCollaborationSchema} from "../src/agent-collaboration-audit.ts"
 import {AgentReleaseRepository} from "../src/agent-release-repository.ts"
+import {AgentHumanInputRepository} from "../src/agent-human-input-repository.ts"
+import {inspectAgentHumanInputSchema} from "../src/agent-human-input-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
@@ -125,7 +127,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     const port=server.address().port,origin="https://localhost:"+port
     let backend;const managedRemote=new Map()
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
-      allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,
+      allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,allowAgentHumanInput:true,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
       allowKnowledgeSharing:true,
@@ -149,7 +151,9 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
       agentCollaborationRepository:new AgentCollaborationRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:true}),
-      agentReleaseRepository:new AgentReleaseRepository(pool,{enabled:true,allowAcceptance:true,allowMcpExecution:true,allowKnowledgeExecution:true}),
+      agentReleaseRepository:new AgentReleaseRepository(pool,{enabled:true,allowAcceptance:true,allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),
+      agentHumanInputRepository:new AgentHumanInputRepository(pool,"agent_native_v2",{allowResponses:true}),
+      workflowHumanInputRepository:new AgentHumanInputRepository(pool,"workflow_native_v2",{allowResponses:true}),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
       knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
@@ -158,8 +162,8 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       knowledgeQueryRepository:new KnowledgeQueryRepository(pool),
       workflowRepository:new WorkflowRepository(pool),
       scheduleInventory:new ScheduleInventoryRepository(pool),scheduleDraftRepository:new ScheduleDraftRepository(pool),
-      scheduleRuntimeRepository:new ScheduleRuntimeRepository(pool,{enabled:true,allowMcpExecution:true,allowKnowledgeExecution:true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:true}),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(pool,{enabled:true,allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
       mcpConnectionRepository:new McpConnectionRepository(pool,key,brokerPool),
@@ -274,7 +278,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN('agentstudio','agentstudio_auth')")).rows[0].n,0)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
       const initialized=await initialize()
-      assert.equal(initialized.migration_versions,33);assert.equal(initialized.service_logins_enabled,false)
+      assert.equal(initialized.migration_versions,34);assert.equal(initialized.service_logins_enabled,false)
       const receipt=(await bootstrap.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_fresh_runtime_001'")).rows[0]
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
@@ -434,6 +438,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal(capabilities.mcp_tool_runs_enabled,true)
     assert.equal(capabilities.smithery_management_enabled,true)
     assert.equal(capabilities.agent_collaboration_available,true)
+    assert.equal(capabilities.agent_human_input_available,true)
+    assert.equal(capabilities.agent_human_responses_enabled,true)
+    assert.equal(await inspectAgentHumanInputSchema(apiPool),true)
     const mcpInput={name:"CI MCP",description:"Synthetic discovery only",url:"https://mcp.example.com/server",enabled:true,
       headers:[{key:"Authorization",value:"Bearer SyntheticMcpHeaderNeverSent012345"}]}
     const mcpRequest=randomUUID(),mcp=await api.createMcpConnection(mcpInput,mcpRequest)
@@ -1244,6 +1251,51 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await api.getAgentCollaboration(collaboration.id)).safe.goal,"Original owner goal")
     await api.changeAgentCollaboration(collaboration.id,{action:"revoke",request_id:randomUUID(),recipient_id:access.recipient_id,expected_access_revision:access.revision})
     assert.equal((await api.changeAgentCollaboration(collaboration.id,grantChoice)).replayed,true)
+    mark("owner-human-clarification-plan-review-and-complete-delivery")
+    const humanBase=await api.createAgent("Genuine PG18 owner-reviewed Agent","Synthetic human-reviewed report")
+    const humanBound=await api.bindAgentModel(humanBase.id,humanBase.revision,{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"})
+    const humanRole=await api.updateAgentPlanReview(humanBound.id,humanBound.revision,true)
+    const humanRun=await api.submitAutonomousAgentRun(humanRole.id,humanRole.revision,"Clarify, revise, approve and deliver a complete report","ci-human-reviewed-pg18",4)
+    let humanCalls=0
+    const completeReport="已核对本人批准的方案与原始来源，交付完整合成报告。\n".repeat(300)
+    assert.ok(completeReport.length>4000&&completeReport.length<11000)
+    const humanDispatch=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("human_direct_model_fallback_forbidden")},brokerPool,{allowAutonomousExecution:true,agentExecutor:async(material,prompt)=>{
+      assert.equal(material.api_key,secret);const plan=JSON.parse(prompt);humanCalls++
+      return JSON.stringify(plan.round===1?{action:"ask_user",question:"Which synthetic deadline should I use?",note:"PRIVATE_GENUINE_HUMAN_NOTE"}:
+        plan.round===2?{action:"answer",answer:"First owner review draft"}:plan.round===3?{action:"answer",answer:"Revised owner review draft"}:{action:"answer",answer:completeReport})
+    }})
+    await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),humanDispatch),async raw=>{
+      const executor=workflowV2ModelEffectExecutor({...raw,executionMode:"agent_native_v2"})
+      const worker=()=>new WorkflowV2Worker(workerPool,"ci-human-"+randomUUID(),{agentExecutionApproved:true,humanInputApproved:true,executor,executionMode:"agent_native_v2"})
+      const wait=async wanted=>{for(let i=0;i<24;i++){
+        const detail=await api.getAutonomousAgentRun(humanRun.run.id)
+        if(detail.run.status===wanted)return detail
+        assert.equal(["failed","paused","cancelled","succeeded"].includes(detail.run.status),false,detail.run.last_error_code)
+        if(detail.run.status==="awaiting_approval")await api.decideAutonomousAgentNode(humanRun.run.id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+        await worker().tick()
+      }throw Error("genuine_human_transition_limit")}
+      let pending=await wait("awaiting_input");assert.equal(humanCalls,1);assert.equal(pending.human_input.kind,"clarification")
+      assert.equal(JSON.stringify(pending).includes("PRIVATE_GENUINE_HUMAN_NOTE"),false)
+      const choice=(detail,decision,answer)=>({request_id:randomUUID(),pending_step_key:detail.human_input.pending_step_key,pending_sha256:detail.human_input.pending_sha256,source_sha256:detail.human_input.source_sha256,decision,answer,confirm:true})
+      const reply=choice(pending,"reply","Synthetic deadline: 2030-01-31")
+      await api.login("other@example.com","SyntheticOtherPassword#2026")
+      await assert.rejects(api.respondAutonomousAgent(humanRun.run.id,reply),e=>e.status===404)
+      await assert.rejects(api.getAutonomousAgentHumanHistory(humanRun.run.id),e=>e.status===404)
+      await api.login("admin@example.com","SyntheticAdminPassword#2026")
+      assert.equal((await api.respondAutonomousAgent(humanRun.run.id,reply)).recorded,true)
+      assert.equal((await api.confirmAutonomousAgentResponse(humanRun.run.id,reply)).replayed,true)
+      assert.equal((await worker().tick()).status,"awaiting_approval");assert.equal(humanCalls,1)
+      pending=await wait("awaiting_input");assert.equal(pending.human_input.kind,"plan_review");assert.equal(pending.human_input.draft,"First owner review draft")
+      await api.respondAutonomousAgent(humanRun.run.id,choice(pending,"revise","Only include verified synthetic evidence."))
+      pending=await wait("awaiting_input");assert.equal(pending.human_input.draft,"Revised owner review draft")
+      await api.respondAutonomousAgent(humanRun.run.id,choice(pending,"approve",""))
+      const done=await wait("succeeded");assert.equal(done.run.result_text,completeReport);assert.equal(done.human_input_evidence_current,true);assert.equal(humanCalls,4)
+      const history=await api.getAutonomousAgentHumanHistory(humanRun.run.id,"",2)
+      assert.equal(history.items.length,2);assert.ok(history.next_after)
+      assert.deepEqual([...history.items,...(await api.getAutonomousAgentHumanHistory(humanRun.run.id,history.next_after,2)).items].map(item=>item.decision),["reply","revise","approve"])
+      const ledger=(await admin.query("SELECT count(*)::integer AS n FROM agentstudio.agent_human_input_responses WHERE run_id=$1",[humanRun.run.id])).rows[0]
+      assert.equal(ledger.n,3);assert.equal((await worker().tick()).status,"idle");assert.equal(humanCalls,4)
+    },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:"agent_native_v2"})})
     mark("employee-governance-and-password-session-revocation")
     const governed=await api.createGovernedEmployee({email:"governance@example.test",password:"SyntheticGovernancePassword#2026",display_name:"Synthetic governance employee",is_admin:true,share_enabled:false})
     const governedLogin=await auth.login("governance@example.test","SyntheticGovernancePassword#2026")
