@@ -5,3 +5,11 @@ export function selectAgentMemoryRuntime(env:NodeJS.ProcessEnv):boolean{
   if(enabled!=="true"||approval!=="APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY")throw Error("unsafe_agent_memory_runtime_config")
   return true
 }
+// Owner-confirmed derived saves are inert storage operations. This separate
+// switch conveys no automatic writeback, prompt use or paid refinement scope.
+export function selectAgentDerivedMemoryWrites(env:NodeJS.ProcessEnv):boolean{
+  const enabled=env.AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED,approval=env.AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED
+  if(enabled===undefined&&approval===undefined)return false
+  if(enabled!=="true"||approval!=="APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY")throw Error("unsafe_agent_derived_memory_config")
+  return true
+}

@@ -45,6 +45,7 @@ export interface AppDependencies {
   autonomousAgentRunRepository?:AutonomousAgentRunRepository
   agentHumanInputRepository?:AgentHumanInputRepository
   agentMemoryRepository?:AgentMemoryRepository
+  agentDerivedMemoryRepository?:import("./agent-memory-derived-repository.ts").AgentMemoryDerivedRepository
   workflowHumanInputRepository?:AgentHumanInputRepository
   workflowV2RunRepository?: WorkflowV2RunRepository
   knowledgeRepository?: KnowledgeBaseRepository
@@ -152,11 +153,12 @@ export function createHandler(deps:AppDependencies) {
       const queryRoute=/^\/api\/v2\/knowledge-query\/(submit|receipt)$/.exec(path)
       const collaborationRoute=/^\/api\/v2\/agent-collaboration(?:\/([0-9a-fA-F-]{36})(?:\/(revisions|change|revoke|reject|confirm))?)?$/.exec(path)
       const memoryRoute=/^\/api\/v2\/agent-memories(?:\/(change|confirm))?$/.exec(path)
+      const derivedMemoryRoute=/^\/api\/v2\/agent-derived-memories(?:\/(preview|change|confirm))?$/.exec(path)
       const releaseRoute=/^\/api\/v2\/agent-releases\/([0-9a-fA-F-]{36})(?:\/(change|confirm|acceptance|versions)(?:\/([0-9a-fA-F-]{36}))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -183,6 +185,20 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(derivedMemoryRoute){
+        if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
+        const memory=deps.agentDerivedMemoryRepository
+        if(!memory)throw new HttpError(503,"agent_memory_derived_unavailable")
+        const query=new URL(req.url||"/","http://127.0.0.1").searchParams,action=derivedMemoryRoute[1]
+        if((!action||action==="preview")&&method==="GET"){
+          if([...query.keys()].length!==(action?2:1)||!query.has("spec_id")||action&&!query.has("run_id"))throw new HttpError(400,"invalid_agent_memory_derived_query")
+          return send(res,200,await(action?memory.preview(identity,query.get("spec_id")!,query.get("run_id")!):memory.list(identity,query.get("spec_id")!)))
+        }
+        if([...query.keys()].length)throw new HttpError(400,"invalid_agent_memory_derived_query")
+        if(method!=="POST"||action!=="change"&&action!=="confirm")throw new HttpError(405,"method_not_allowed")
+        const body=await readBody(req,8192)
+        return send(res,200,await(action==="change"?memory.change(identity,body):memory.confirm(identity,body)))
+      }
       if(memoryRoute){
         if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
         const memory=deps.agentMemoryRepository

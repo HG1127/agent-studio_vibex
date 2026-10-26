@@ -18,6 +18,19 @@ const configUat={configurationWrites:true,employeeProvisioning:false,
 const both={configurationWrites:true,employeeProvisioning:true,
   runApprovalUat:false,knowledgeIngestUat:false,modelProbeUat:false}
 
+test("derived owner storage needs its own operator marker; reads and original confirmation remain available without write scope",()=>{
+  const derived={AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY'}
+  const valid={...enabled,...derived},selected=selectNativePg18UatCapabilities(valid,true,https,1100)
+  assert.equal(selected.agentDerivedMemoryUat,true);assert.equal(selected.autonomousAgentUat,undefined);assert.equal(selected.boundModelExecutionUat,undefined)
+  for(const env of [derived,{...valid,AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'false'},{...valid,AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:undefined},{...enabled,AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:derived.AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED}])assert.throws(()=>selectNativePg18UatCapabilities(env,true,https,1100))
+  assert.throws(()=>selectNativePg18UatCapabilities(valid,false,https,1100));assert.throws(()=>selectNativePg18UatCapabilities(valid,true,https,0))
+  const base='/api/v2/agent-derived-memories'
+  for(const path of [base,base+'/preview']){assert.equal(permitNativePg18BusinessUatRequest(path,'GET',readOnly),true);assert.equal(permitNativePg18BusinessUatRequest(path,'POST',selected),false)}
+  assert.equal(permitNativePg18BusinessUatRequest(base+'/confirm','POST',readOnly),true)
+  assert.equal(permitNativePg18BusinessUatRequest(base+'/change','POST',configUat),false);assert.equal(permitNativePg18BusinessUatRequest(base+'/change','POST',selected),true)
+  assert.equal(permitNativePg18BusinessUatRequest(base+'/change','GET',selected),false)
+})
+
 test("memory admission needs its independent marker and both Native config and standalone Agent scope",()=>{
   const memory={AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY"}
   const autonomous={AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED:"true",AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED:"APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY"}

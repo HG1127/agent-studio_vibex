@@ -4,6 +4,8 @@
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
+import {agentDerivedMemoryChoice,agentDerivedMemoryReceipt,agentDerivedMemoryPreview,agentDerivedMemoryPage,type PgNativeDerivedMemoryChoice} from "./pgNativeAgentDerivedMemory.ts"
+export type {PgNativeDerivedMemoryChoice,PgNativeDerivedMemoryReceipt,PgNativeDerivedMemoryPreview,PgNativeDerivedMemoryItem,PgNativeDerivedMemoryPage} from "./pgNativeAgentDerivedMemory.ts"
 export type {PgNativeMemoryChoice,PgNativeMemoryReceipt,PgNativeMemoryItem,PgNativeMemoryPage} from "./pgNativeAgentMemory.ts"
 export type {AgentHumanResponse,PgNativeAgentHumanInput,PgNativeAgentHumanReceipt,PgNativeHumanHistory,PgNativeHumanHistoryPage} from "./pgNativeAgentHumanInput.ts"
 import {employeeChange,employeeGovernanceResult,employeeCreation,employeeCreationResult,type EmployeeChange,type EmployeeCreation} from "./pgNativeEmployeeGovernance.ts"
@@ -56,6 +58,8 @@ export type PgNativeConfigCapabilities={
   agent_memory_available?:boolean
   agent_memory_writes_enabled?:boolean
   agent_memory_runtime_enabled?:boolean
+  agent_derived_memory_available?:boolean
+  agent_derived_memory_writes_enabled?:boolean
   schedule_execution_enabled?:boolean
   employee_governance_available?:boolean
   employee_governance_enabled?:boolean
@@ -262,6 +266,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/knowledge-embedding/${string}`
   | `/api/v2/knowledge-query/${string}`
   | `/api/v2/agent-memories${string}`
+  | `/api/v2/agent-derived-memories${string}`
   | `/api/v2/workflows/${string}/validate`
   | `/api/v2/workflow-validations/${string}`
   | `/api/v2/workflows/${string}/runs`
@@ -449,6 +454,11 @@ export function createPgNativePilotApi(
     const result=await post<unknown>(confirmOnly?"/api/v2/agent-memories/confirm":"/api/v2/agent-memories/change",choice)
     try{return await agentMemoryReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_memory_request")}
   }
+  const derivedMemoryChange=async(raw:PgNativeDerivedMemoryChoice,confirmOnly=false)=>{
+    let choice:PgNativeDerivedMemoryChoice;try{choice=agentDerivedMemoryChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_memory_derived_change")}
+    const result=await post<unknown>(confirmOnly?"/api/v2/agent-derived-memories/confirm":"/api/v2/agent-derived-memories/change",choice)
+    try{return agentDerivedMemoryReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_derived_memory_request")}
+  }
   const humanResponse=async(root:typeof routes.autonomousAgentRuns|typeof routes.workflowV2Runs,id:string,raw:AgentHumanResponse,confirmOnly=false)=>{
     const route=recordRoute(root,id.toLowerCase())
     let choice:AgentHumanResponse;try{choice=agentHumanChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_human_response")}
@@ -474,6 +484,18 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    changeAgentDerivedMemory:(choice:PgNativeDerivedMemoryChoice)=>derivedMemoryChange(choice),
+    confirmAgentDerivedMemory:(choice:PgNativeDerivedMemoryChoice)=>derivedMemoryChange(choice,true),
+    previewAgentDerivedMemory:async(specId:string,runId:string)=>{
+      if(!safeId.test(specId)||!safeId.test(runId))throw new PgNativePilotError(400,"invalid_agent_memory_derived_source")
+      const spec=specId.toLowerCase(),run=runId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-derived-memories/preview?spec_id=${spec}&run_id=${run}`)
+      try{return await agentDerivedMemoryPreview(result,spec,run)}catch{throw new PgNativePilotError(503,"invalid_agent_derived_memory_projection")}
+    },
+    listAgentDerivedMemories:async(specId:string)=>{
+      if(!safeId.test(specId))throw new PgNativePilotError(400,"invalid_agent_spec_id")
+      const spec=specId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-derived-memories?spec_id=${spec}`)
+      try{return await agentDerivedMemoryPage(result,spec)}catch{throw new PgNativePilotError(503,"invalid_agent_derived_memory_projection")}
+    },
     changeAgentMemory:(choice:PgNativeMemoryChoice)=>memoryChange(choice),
     confirmAgentMemory:(choice:PgNativeMemoryChoice)=>memoryChange(choice,true),
     listAgentMemories:async(specId:string)=>{
@@ -517,6 +539,9 @@ export function createPgNativePilotApi(
           (value.agent_memory_writes_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true))||
           (value.agent_memory_runtime_enabled!==undefined&&typeof value.agent_memory_runtime_enabled!=="boolean")||
           (value.agent_memory_runtime_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
+          (value.agent_derived_memory_available!==undefined&&typeof value.agent_derived_memory_available!=="boolean")||
+          (value.agent_derived_memory_writes_enabled!==undefined&&typeof value.agent_derived_memory_writes_enabled!=="boolean")||
+          (value.agent_derived_memory_writes_enabled===true&&(value.agent_derived_memory_available!==true||value.config_writes_enabled!==true))||
           (value.agent_human_responses_enabled!==undefined&&typeof value.agent_human_responses_enabled!=="boolean")||
           (value.agent_human_responses_enabled===true&&(value.agent_human_input_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true&&value.workflow_v2_submission_enabled!==true))||
           (value.workflow_v2_submission_enabled!==undefined&&
