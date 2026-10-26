@@ -177,7 +177,7 @@ test("Skill text import, owner review, role-only injection, immutable run and no
     assert.equal(pinned.length,1)
     assert.equal(pinned[0].skills[0].hash,detail.hash)
     assert.ok(pinned[0].skills[0].content.includes("FIRST_PRINCIPLES_TEST_TAG"))
-    assert.deepEqual(snapshot.config.tools,{calculate:false,summarize:false,knowledge_search:false,web_fetch:false,web_search:false})
+    assert.deepEqual(snapshot.config.tools,{calculate:false,summarize:false,knowledge_search:false,web_fetch:false,web_search:false,local_computer:false})
     await ok("POST","/api/llm/agent-engine/"+run.run_id+"/tick",{})
     assert.ok(modelPrompts[0].user.includes("FIRST_PRINCIPLES_TEST_TAG"))
     assert.ok(modelPrompts[0].user.includes("外部低信任方法资料"))
