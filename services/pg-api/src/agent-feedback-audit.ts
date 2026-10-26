@@ -7,9 +7,9 @@ const functions:Record<string,{args:string;returns:string;language:string;volati
   agent_feedback_statement_sha256:{args:"uuid, uuid, text, text, jsonb, text",returns:"text",language:"sql",volatility:"i",strict:true,execute:true,sha:"d2224da3c608389b5d706dc1c6ac6fdba3d1eea7a218f4166f434bac45033a8f"},
   agent_feedback_run_source_sha256:{args:"uuid",returns:"text",language:"sql",volatility:"s",strict:true,execute:true,sha:"630a415ac07f2d3261a70db280d359fce7fd1c8ec1a5d504819861a8aa8e4f92"},
   agent_feedback_receipt_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"e15b57272181a9298024a6910542186ed1df21f1ec6cdb23e98a55ba80c3e7a5"},
-  agent_feedback_body_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"7036bc457136adb72c62cdf5818d58b1cf3a6ce05ad46caba1b579160268da3e"},
+  agent_feedback_body_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"570ddf4087b949f92d5629c1b096fbbb46b546731b1523c274171c37768706c8"},
   agent_feedback_lesson_result_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"4ae7a29c288292df651b2306017bf35627bff96d79971f50a46a9b198b3bb001"},
-  agent_feedback_lesson_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"6c4d9e1d3b615ab90ed3645d9cb205742f4fbc49fc05155849ec7bec8f9d100c"},
+  agent_feedback_lesson_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"dcc5db9cd97ebd8ab65c8e0f8c4376473b572db5dd05f0b0abed98543984e0af"},
 }
 type Foreign={target:string;columns:string[];references:string[]}
 type Table={fields:Record<string,string>;insert:string[];nullable:string[];erase:boolean;pk:string[];foreign:Foreign[];trigger:string;fn:string;triggerType:number}

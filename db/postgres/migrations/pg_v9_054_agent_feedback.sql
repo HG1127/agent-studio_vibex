@@ -142,10 +142,10 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $fn$
 DECLARE original record; latest record; units integer; tag jsonb;
 BEGIN
   IF TG_OP='DELETE' THEN
-    IF NOT EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts original JOIN agentstudio.agent_feedback_receipts later
-      ON later.owner_user_id=original.owner_user_id AND later.run_id=original.run_id AND later.revision>original.revision
-      AND later.action IN('submit','erase_feedback') WHERE original.owner_user_id=OLD.owner_user_id
-      AND original.request_id=OLD.feedback_id AND original.action='submit')
+    IF NOT EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts origin_receipt JOIN agentstudio.agent_feedback_receipts later
+      ON later.owner_user_id=origin_receipt.owner_user_id AND later.run_id=origin_receipt.run_id AND later.revision>origin_receipt.revision
+      AND later.action IN('submit','erase_feedback') WHERE origin_receipt.owner_user_id=OLD.owner_user_id
+      AND origin_receipt.request_id=OLD.feedback_id AND origin_receipt.action='submit')
     THEN RAISE EXCEPTION 'agent_feedback_erase_receipt_required'; END IF;
     RETURN OLD;
   END IF;
@@ -209,10 +209,10 @@ BEGIN
   IF TG_OP='DELETE' THEN
     IF NOT EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts r WHERE r.owner_user_id=OLD.owner_user_id
       AND r.feedback_id=OLD.feedback_id AND r.action='forget_lesson')
-      AND NOT EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts original JOIN agentstudio.agent_feedback_receipts later
-        ON later.owner_user_id=original.owner_user_id AND later.run_id=original.run_id AND later.revision>original.revision
-        AND later.action='erase_feedback' WHERE original.owner_user_id=OLD.owner_user_id
-        AND original.request_id=OLD.feedback_id AND original.action='submit')
+      AND NOT EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts origin_receipt JOIN agentstudio.agent_feedback_receipts later
+        ON later.owner_user_id=origin_receipt.owner_user_id AND later.run_id=origin_receipt.run_id AND later.revision>origin_receipt.revision
+        AND later.action='erase_feedback' WHERE origin_receipt.owner_user_id=OLD.owner_user_id
+        AND origin_receipt.request_id=OLD.feedback_id AND origin_receipt.action='submit')
     THEN RAISE EXCEPTION 'agent_feedback_lesson_erase_required'; END IF;
     RETURN OLD;
   END IF;

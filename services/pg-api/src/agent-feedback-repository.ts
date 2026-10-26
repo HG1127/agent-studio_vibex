@@ -130,7 +130,18 @@ export class AgentFeedbackRepository{
       if(current?.action==="submit"){
         const saved=(await db.query<Body>("SELECT rating,tags,comment FROM agentstudio.agent_feedback_bodies WHERE owner_user_id=$1::uuid AND feedback_id=$2::uuid",[owner,current.feedback_id])).rows[0]
         if(saved){const hash=(await db.query<{hash:string}>("SELECT agentstudio.agent_feedback_statement_sha256($1::uuid,$2::uuid,$3,$4,$5::jsonb,$6) AS hash",[current.spec_id,current.run_id,current.source_sha256,saved.rating,JSON.stringify(saved.tags),saved.comment])).rows[0]?.hash;if(hash===current.statement_sha256)body=saved}
-        if(body&&current.remember_lesson)try{await verifyAgentFeedbackLessonSource(db,owner,task,current.source_sha256);sourceCurrent=true}catch(error){if(!(error instanceof HttpError)||![400,404,409].includes(error.status))throw error}
+        if(body&&current.remember_lesson){
+          // A revoked SQL-protected source can abort its probe transaction.
+          // Restore the read savepoint before returning the owner's statement.
+          await db.query("SAVEPOINT agent_feedback_read_source")
+          try{
+            await verifyAgentFeedbackLessonSource(db,owner,task,current.source_sha256)
+            await db.query("RELEASE SAVEPOINT agent_feedback_read_source");sourceCurrent=true
+          }catch(error){
+            await db.query("ROLLBACK TO SAVEPOINT agent_feedback_read_source");await db.query("RELEASE SAVEPOINT agent_feedback_read_source")
+            if(!(error instanceof HttpError)||![400,404,409].includes(error.status))throw error
+          }
+        }
       }
       const rows=(await db.query<{feedback_id:string;revision:number|string;feedback_sha256:string;source_sha256:string;content_sha256:string;fact:string;created_at:string|Date}>("SELECT l.feedback_id,r.revision,r.feedback_sha256,r.source_sha256,l.content_sha256,l.fact,l.created_at FROM agentstudio.agent_feedback_lessons l JOIN agentstudio.agent_feedback_receipts r ON r.owner_user_id=l.owner_user_id AND r.request_id=l.feedback_id AND r.action='submit' JOIN agentstudio.agent_feedback_lesson_results s ON s.owner_user_id=l.owner_user_id AND s.feedback_id=l.feedback_id AND s.decision='stored' AND s.content_sha256=l.content_sha256 WHERE l.owner_user_id=$1::uuid AND r.run_id=$2::uuid ORDER BY r.revision DESC LIMIT 50",[owner,runId])).rows
       const lessons=[]
