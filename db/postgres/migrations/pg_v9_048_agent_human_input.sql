@@ -9,11 +9,21 @@ DO $preflight$ BEGIN
     OR EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_048')
     OR to_regclass('agentstudio.agent_human_input_responses') IS NOT NULL
     OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.runs'::regclass AND conname='runs_status_check' AND contype='c')
+    OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_release_versions'::regclass AND conname='agent_release_versions_spec_snapshot_check1' AND contype='c' AND convalidated)
   THEN RAISE EXCEPTION 'agent_human_input_requires_reviewed_047'; END IF;
 END $preflight$;
 ALTER TABLE agentstudio.runs DROP CONSTRAINT runs_status_check;
 ALTER TABLE agentstudio.runs ADD CONSTRAINT runs_status_check CHECK(status IN
   ('queued','running','awaiting_approval','awaiting_input','paused','succeeded','failed','cancelled'));
+-- Retain the046 closed snapshot shape and add only an optional strict boolean.
+-- Validate the replacement before removing the original combined constraint.
+ALTER TABLE agentstudio.agent_release_versions ADD CONSTRAINT agent_release_human_spec_required CHECK(coalesce(
+  jsonb_typeof(spec_snapshot)='object' AND spec_snapshot->'require_approval'='true'::jsonb AND jsonb_typeof(spec_snapshot->'goal')='string',false));
+ALTER TABLE agentstudio.agent_release_versions ADD CONSTRAINT agent_release_human_spec_fields CHECK(
+  spec_snapshot-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria','tools','http_tools','mcp_tools','knowledge_base_ids','knowledge_retrieval','model_binding','require_approval','require_plan_review']='{}'::jsonb);
+ALTER TABLE agentstudio.agent_release_versions ADD CONSTRAINT agent_release_plan_review_boolean CHECK(
+  NOT(spec_snapshot?'require_plan_review') OR jsonb_typeof(spec_snapshot->'require_plan_review')='boolean');
+ALTER TABLE agentstudio.agent_release_versions DROP CONSTRAINT agent_release_versions_spec_snapshot_check1;
 CREATE TABLE agentstudio.agent_human_input_responses(
   owner_user_id uuid NOT NULL,
   run_id uuid NOT NULL,

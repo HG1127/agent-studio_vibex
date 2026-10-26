@@ -14,6 +14,10 @@ import {WorkflowV2RunRepository} from '../src/workflow-v2-run-repository.ts'
 async function fixture(){
   const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
   try{await f.db.exec(f.sql('migrations/pg_v9_048_agent_human_input.sql'))
+    try{await verifyAgentHumanInputCredentials(f.db)}catch(error){
+      const constraints=(await f.db.query("SELECT conname,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_release_versions'::regclass AND conname IN('agent_release_human_spec_required','agent_release_human_spec_fields','agent_release_plan_review_boolean') ORDER BY conname")).rows
+      throw Error('synthetic_human_schema_audit_failed '+JSON.stringify(constraints),{cause:error})
+    }
     return {...f,owned:new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true}),responses:new AgentHumanInputRepository(f.pool,'agent_native_v2',{allowResponses:true})}
   }catch(e){await f.close();throw e}
 }
@@ -66,7 +70,9 @@ test('Native human clarification: private mTLS, durable wait, atomic original re
       assert.equal(count,1)
     })
     for(const drift of ['GRANT UPDATE ON agentstudio.agent_human_input_responses TO agentstudio_api','GRANT SELECT ON agentstudio.agent_human_input_responses TO agentstudio_worker',
-      'ALTER TABLE agentstudio.agent_human_input_responses NO FORCE ROW LEVEL SECURITY']){
+      'ALTER TABLE agentstudio.agent_human_input_responses NO FORCE ROW LEVEL SECURITY',
+      'ALTER TABLE agentstudio.agent_release_versions DROP CONSTRAINT agent_release_plan_review_boolean',
+      'ALTER TABLE agentstudio.agent_release_versions DROP CONSTRAINT agent_release_human_spec_fields']){
       await f.db.exec('BEGIN');try{await f.db.exec(drift);await assert.rejects(verifyAgentHumanInputCredentials(f.db),/unsafe_agent_human_input_privileges/)}finally{await f.db.exec('ROLLBACK')}
     }
   }finally{await f.close()}
@@ -140,6 +146,11 @@ test('dedicated version acceptance needs completed human VM and real immutable r
     })
     assert.equal((await releases.acceptanceStatus(alice,role.id,id)).test_current,true)
     const version=await releases.change(alice,role.id,save());assert.equal(version.test_passed,true)
+    const savedVersion=(await f.db.query('SELECT * FROM agentstudio.agent_release_versions WHERE id=$1',[version.version_id])).rows[0]
+    for(const spec of [{...savedVersion.spec_snapshot,require_plan_review:'true'},{...savedVersion.spec_snapshot,require_plan_review:null},{...savedVersion.spec_snapshot,provider_secret:'forbidden_test_field'}]){
+      const invalid={...savedVersion,id:randomUUID(),version_no:Number(savedVersion.version_no)+1,spec_snapshot:spec}
+      await assert.rejects(f.db.query('INSERT INTO agentstudio.agent_release_versions SELECT * FROM jsonb_populate_record(null::agentstudio.agent_release_versions,$1::jsonb)',[JSON.stringify(invalid)]),e=>e.code==='23514')
+    }
     const ledger=(await f.db.query('SELECT * FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[id])).rows
     const archived=(await f.db.query("SELECT result_reference FROM agentstudio.external_effects WHERE run_id=$1 AND tool_name='workflow:agent'",[id])).rows[0].result_reference
     const checkpoint=(await f.db.query('SELECT checkpoint FROM agentstudio.runs WHERE id=$1',[id])).rows[0].checkpoint

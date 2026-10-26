@@ -36,6 +36,15 @@ export async function verifyAgentHumanInputCredentials(db:SqlClient):Promise<boo
     "ARRAY(SELECT a.attname::text FROM unnest(confkey) WITH ORDINALITY k(n,o) JOIN pg_catalog.pg_attribute a ON a.attrelid=confrelid AND a.attnum=k.n ORDER BY k.o)=ARRAY['id','owner_user_id']::text[]) AS ok "+
     "FROM pg_catalog.pg_constraint WHERE conrelid=$1::oid AND contype='f'",[id])).rows[0]?.ok
   if(foreign!==true)refuse()
+  const fields=["goal","task_scope","deliverables","task_plan","done_criteria","tools","http_tools","mcp_tools","knowledge_base_ids","knowledge_retrieval","model_binding","require_approval","require_plan_review"]
+  const expressions:Record<string,string>={
+    agent_release_human_spec_required:"COALESCE(((jsonb_typeof(spec_snapshot)='object'::text)AND((spec_snapshot->'require_approval'::text)='true'::jsonb)AND(jsonb_typeof((spec_snapshot->'goal'::text))='string'::text)),false)",
+    agent_release_human_spec_fields:"((spec_snapshot-ARRAY["+fields.map(name=>"'"+name+"'::text").join(",")+"])='{}'::jsonb)",
+    agent_release_plan_review_boolean:"((NOT(spec_snapshot?'require_plan_review'::text))OR(jsonb_typeof((spec_snapshot->'require_plan_review'::text))='boolean'::text))"
+  }
+  const constraints=(await db.query<{name:string;valid:boolean;expression:string}>("SELECT conname AS name,contype='c' AND convalidated AND NOT connoinherit AS valid,"+
+    "regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_release_versions'::regclass AND conname=ANY($1::text[])",[Object.keys(expressions)])).rows
+  if(constraints.length!==3||constraints.some(c=>c.valid!==true||c.expression!==expressions[c.name]))refuse()
   return true
 }
 export async function inspectAgentHumanInputSchema(pool:SqlPool):Promise<boolean>{
