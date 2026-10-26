@@ -46,6 +46,7 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
     keywords: "资源 模型 知识库 插件 工具", children: [
       {to:"/model-connections",label:"模型连接",icon: Sparkles,keywords:"LLM API"},
       {to:"/knowledge-bases",label:"知识库",icon: BookOpen,keywords:"RAG 语义检索"},
+      {to:"/skills",label:"Skills 能力中心",icon: BookOpen,keywords:"SKILL.md 方法 思维视角 导入 角色绑定"},
       {to:"/tool-connections",label:"工具连接",icon: Wrench},
       {to:"/plugin-market",label:"插件市场",icon: Puzzle},
       {to:"/execution-connections",label:"电脑与浏览器",icon:Monitor,keywords:"执行器 软件 本地 browser desktop MCP"},

@@ -156,9 +156,10 @@ try {
   server = await startServer(port)
   let db = new DatabaseSync(dbFile)
   try {
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"), 14, "All fourteen knowledge/runtime/internal migrations must apply exactly once")
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"), 15, "All fifteen skill/knowledge/runtime/internal migrations must apply exactly once")
     const versions = db.prepare("SELECT id FROM agent_studio_schema_migrations ORDER BY id").all().map(row => row.id)
     assert.deepEqual(versions, [
+      "agent_skills_0001_registry",
       "execution_0001_v6_baseline",
       "execution_0002_monitor_indexes",
       "execution_0003_trace_spans",
@@ -175,6 +176,11 @@ try {
       "schedule_0002_owner_indexes"
     ])
     assert.equal(queryCount(db,"agent_studio_kb_documents"),1)
+    for (const table of ["agent_studio_skills","agent_studio_skill_versions"]) {
+      assert.equal(queryCount(db,"sqlite_master","type = ? AND name = ?",["table",table]),1,
+        "Skill registry migration must create a distinct, existing-data-preserving table")
+    }
+    assert.equal(queryCount(db,"pragma_table_info('agent_studio_skill_versions')","name = ?",["source_url"]),1)
     assert.equal(queryCount(db,"agent_studio_kb_chunks"),1)
     assert.equal(queryCount(db,"agent_studio_schedules"),1)
     assert.equal(queryCount(db,"agent_studio_schedule_occurrences"),1)
@@ -242,12 +248,12 @@ try {
       "DROP INDEX IF EXISTS idx_as_effects_run;" +
       "DROP INDEX IF EXISTS idx_as_effects_status_created;"
     )
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"),8)
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"),9)
   } finally { db.close() }
   server = await startServer(port + 1)
   db = new DatabaseSync(dbFile)
   try {
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"),14,"Journal must upgrade to fourteen migrations")
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"),15,"Journal must upgrade to fifteen migrations")
     assert.equal(queryCount(db,"agent_studio_kb_chunks"),1,"V6 data should survive multiple boots")
     assert.equal(queryCount(db,"agent_studio_schedules"),1,"Old schedule survives multiple boots")
     assert.equal(queryCount(db,"agent_studio_schedule_occurrences"),1,"Old occurrence remains auditable")
@@ -260,7 +266,7 @@ try {
   server = await startServer(port + 2)
   db = new DatabaseSync(dbFile)
   try {
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"),14,"Reboot with all versions must not repeat writes")
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"),15,"Reboot with all versions must not repeat writes")
     assert.equal(queryCount(db,"agent_studio_schedules"),1)
     assert.equal(queryCount(db,"agent_studio_side_effects"),1)
   } finally { db.close() }

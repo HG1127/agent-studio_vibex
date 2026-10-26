@@ -285,6 +285,43 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await page.getByRole("button", { name: "登录", exact: true }).click()
     await page.waitForURL("**/agent-create")
     results.push("employee UI login without injected credentials or browser auth state")
+    // Skill UX: import a reviewed SKILL.md from paste, then bind its pinned
+    // version to exactly one role. Everything stays in synthetic data.
+    const skillText=["---","name: first-principles-analysis",
+      "description: Use to analyze assumptions and hard constraints in investment decisions.","---",
+      "# Method","FIRST_PRINCIPLES_UI_TAG",
+      "Separate assumptions from observed facts, derive cost constraints and seek counterexamples.",
+      "Propose measurable experiments instead of pretending a famous person endorsed the answer."].join("\n")
+    await page.goto(webOrigin+"/skills")
+    await visible(page.getByRole("heading",{name:"Skill 能力中心"}))
+    await page.getByRole("button",{name:"粘贴正文"}).click()
+    await page.getByRole("textbox",{name:"SKILL.md 正文"}).fill(skillText)
+    await page.getByRole("button",{name:"导入并待审核"}).click()
+    await visible(page.getByText(/已导入 first-principles-analysis v1/))
+    await visible(page.getByText(/当前版本尚未审核/))
+    await page.getByRole("checkbox").check()
+    await page.getByRole("button",{name:"审核并启用 v1"}).click()
+    await visible(page.getByText(/已通过当前员工审核/))
+    const skillCatalog=await api("GET","/api/skills")
+    const chosenSkill=skillCatalog.items.find(item=>item.name==="first-principles-analysis")
+    assert.ok(chosenSkill?.approved_version===1&&chosenSkill.approved_hash)
+    // Version UX: importing v2 must not silently replace approved v1,
+    // and the user must be able to inspect both revisions.
+    await page.getByRole("textbox",{name:"SKILL.md 正文"})
+      .fill(skillText.replace("FIRST_PRINCIPLES_UI_TAG","FIRST_PRINCIPLES_UI_V2_UNREVIEWED"))
+    await page.getByRole("button",{name:"导入并待审核"}).click()
+    await visible(page.getByText(/已导入 first-principles-analysis v2/))
+    const skillVersions=page.getByRole("combobox",{name:"查看历史版本"})
+    await visible(skillVersions)
+    assert.equal(await skillVersions.inputValue(),"2")
+    await visible(page.getByText(/当前版本尚未审核/))
+    await skillVersions.selectOption("1")
+    await visible(page.getByText("此版本已经完成审核"))
+    assert.ok((await page.getByLabel("SKILL.md 原文").textContent()).includes("FIRST_PRINCIPLES_UI_TAG"))
+    assert.equal((await api("GET","/api/skills")).items
+      .find(x=>x.id===chosenSkill.id)?.approved_version,1)
+    results.push("Skill version UX: v2 import stays unapproved while v1 remains selectable, reviewed and bindable without implicit upgrade")
+    results.push("Skills Center: imported a real text SKILL.md through the UI, reviewed content and explicitly approved its immutable first version")
     // V28 owner-bound live-model benchmark must reuse an existing
     // "My connections" record, never ask for a second API key, and never
     // call any model before an employee explicitly opts in. All calls in this
@@ -400,6 +437,13 @@ test("design workspace: real login, editable capabilities, role grants, resource
     }
     const calculatorGrant = roleDesigner.getByRole("checkbox", { name: "允许资料研究员（界面验收）调用计算器", exact: true })
     await calculatorGrant.check()
+    const skillSelect=roleDesigner.getByRole("combobox",{name:"为资料研究员（界面验收）选择 Skill"})
+    await skillSelect.getByRole("option",{name:/first-principles-analysis · v1/}).waitFor({state:"attached"})
+    await skillSelect.selectOption(chosenSkill.id)
+    await visible(roleDesigner.getByText("first-principles-analysis · v1"))
+    const skillsLibraryLink=roleDesigner.getByRole("link",{name:"在新标签页管理 Skill"})
+    assert.equal(await skillsLibraryLink.getAttribute("target"),"_blank",
+      "Skill management must not navigate away from an unsaved Agent draft")
     await roleDesigner.getByRole("button", { name: "单助手", exact: true }).click()
     await initialModules.getByRole("tab", { name: "工具与资料", exact: true }).click()
     await initialModules.getByRole("tab", { name: /^角色与任务/ }).click()
@@ -407,10 +451,17 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal(await roleDesigner.getByLabel(/^角色名称/).inputValue(), editedRole.name)
     assert.equal(await roleDesigner.getByLabel(/^职责边界/).inputValue(), editedRole.responsibility)
     assert.equal(await calculatorGrant.isChecked(), true, "Restoring role organization across tabs preserves its explicit grant")
+    await visible(roleDesigner.getByText("first-principles-analysis · v1"))
     const savedResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/api/agent_specs") && response.request().method() === "POST")
     await page.getByRole("button", { name: "保存到我的助手", exact: true }).click()
     let saved = await (await savedResponse).json()
     assert.ok(saved.id); assert.ok(saved.spec.roles?.length >= 2)
+    assert.deepEqual(saved.spec.roles[0].skill_refs,[{
+      id:chosenSkill.id,version:1,hash:chosenSkill.approved_hash
+    }],"the selected role must persist only an approved version/hash reference")
+    assert.equal((saved.spec.roles[1].skill_refs||[]).length,0,
+      "unrelated roles must not inherit an attached Skill")
+    results.push("role UX: bound an approved Skill to one stage, survived single/role switch and persisted exact pinned reference without extra tool grants")
     for (const [key, value] of Object.entries(editedRole)) assert.deepEqual(saved.spec.roles[0][key], value)
     const savedOnServer = await api("GET", "/api/agent_specs/" + saved.id)
     assert.deepEqual(savedOnServer.spec.roles, saved.spec.roles)

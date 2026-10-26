@@ -16,6 +16,18 @@ function shapeErrors(roles) {
     if (typeof role.id !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(role.id)) errors.push(prefix + "角色标识格式不正确")
     if (typeof role.name !== "string" || role.name.length > 100) errors.push(prefix + "名称最长 100 字")
     if (typeof role.responsibility !== "string" || role.responsibility.length > 2000) errors.push(prefix + "职责最长 2000 字")
+    var refs = role.skill_refs || []
+    if (!Array.isArray(refs) || refs.length > 2) {errors.push(prefix+"最多绑定两个 Skill");continue}
+    var seenSkills = {}
+    for (var s = 0; s < refs.length; s++) {
+      var skill = refs[s]
+      if (!isObject(skill) || !/^[A-Za-z0-9]{15}$/.test(String(skill.id||"")) ||
+          !Number.isSafeInteger(skill.version) || skill.version < 1 || skill.version > 100 ||
+          !/^[a-f0-9]{64}$/.test(String(skill.hash||"")) || seenSkills[skill.id]) {
+        errors.push(prefix+"Skill 版本绑定不合法");break
+      }
+      seenSkills[skill.id] = true
+    }
     for (var j = 0; j < LIST_FIELDS.length; j++) {
       var field = LIST_FIELDS[j], values = role[field]
       if (!Array.isArray(values) || values.length > 32) { errors.push(prefix + field + " 必须为不超过 32 项的列表"); continue }

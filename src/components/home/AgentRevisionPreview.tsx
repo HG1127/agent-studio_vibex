@@ -7,7 +7,9 @@ const describeRoles = (spec: AgentSpec) => (spec.roles || []).map(role => {
   return [role.name, `职责：${role.responsibility}`, `任务：${role.tasks.join("；")}`,
     `输入：${role.inputs.join("；") || "用户任务"}`, `交付：${role.deliverables.join("；")}`,
     `接收阶段：${dependencies.join("、") || "起始阶段"}`,
-    `授权工具：${role.tools.join("、") || "未授权工具"}`, `完成标准：${role.done_criteria.join("；")}`].join("\n")
+    `授权工具：${role.tools.join("、") || "未授权工具"}`,
+    `绑定 Skills：${(role.skill_refs || []).map(ref=>`${ref.id} v${ref.version}`).join("、") || "未绑定"}`,
+    `完成标准：${role.done_criteria.join("；")}`].join("\n")
 }).join("\n\n") || "单助手执行"
 const describeCapabilities = (spec: AgentSpec) => (spec.capability_requirements || []).map(need => {
   const roles = need.role_ids.map(id => spec.roles?.find(role => role.id === id)?.name || id)
