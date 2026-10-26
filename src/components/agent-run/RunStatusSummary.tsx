@@ -1,9 +1,11 @@
 import { ArrowRight, Check, CirclePause, CirclePlay, CircleStop, Gauge, UsersRound } from "lucide-react"
-import type { AgentRunRow, RunStateKey } from "@/pages/AgentRun/useAgentRun"
+import type { AgentRunRow, RunEventRow, RunStateKey } from "@/pages/AgentRun/useAgentRun"
+import {latestRunActivity} from "@/lib/runActivitySummary"
 import { projectAgentRoleProgress } from "@/lib/agentRoleProgress"
 
 type Props = {
   activeRun: AgentRunRow | null
+  events: RunEventRow[]
   isLive: boolean
   controlBusy: "" | "pause" | "resume" | "cancel"
   onControl: (action: "pause" | "resume" | "cancel") => void
@@ -23,7 +25,7 @@ const NEXT_ACTION: Record<RunStateKey, string> = {
   cancelled: "任务已取消，已有记录仍可查看。需要重试时重新提交任务。",
 }
 
-export function RunStatusSummary({ activeRun, isLive, controlBusy, onControl, stateMeta, onOpenTrace, onOpenResults }: Props) {
+export function RunStatusSummary({ activeRun, events, isLive, controlBusy, onControl, stateMeta, onOpenTrace, onOpenResults }: Props) {
   if (!activeRun) return null
   const meta = stateMeta[activeRun.status]
   const pauseRequested = activeRun.checkpoint?.pause_requested === true
@@ -36,6 +38,7 @@ export function RunStatusSummary({ activeRun, isLive, controlBusy, onControl, st
   const usedSteps = Math.max(activeRun.current_step, 0)
   const stepLimit = Math.max(activeRun.max_steps, 1)
   const roleProgress = projectAgentRoleProgress(activeRun)
+  const recentActivity=latestRunActivity(events)
   const stopped = activeRun.status === "failed" || activeRun.status === "cancelled"
   const actionClass = "inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
 
@@ -50,6 +53,11 @@ export function RunStatusSummary({ activeRun, isLive, controlBusy, onControl, st
           <span className="truncate text-xs text-muted-foreground">{activeRun.spec_name}</span>
         </div>
         <p className="mt-2 text-sm leading-relaxed text-foreground">{cancelRequested ? "已收到取消请求。当前步骤会先安全收尾并保存检查点，随后取消；不会启动后续步骤。" : pauseApplying ? "已收到暂停请求。当前步骤会先完成并保存检查点，随后暂停；无需重复点击。" : NEXT_ACTION[activeRun.status]}</p>
+        {recentActivity && <p aria-label="最近保存的运行事件" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          最近记录：{recentActivity.stepLabel} · {recentActivity.label}
+          {recentActivity.roleName ? " · " + recentActivity.roleName : ""}
+          <span className="ml-1 text-muted-foreground/75">（来自已保存的事件，不代表执行已完成）</span>
+        </p>}
         {waitingForUser && pauseRequested && !cancelRequested && <p role="status" className="mt-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">已记录暂停请求；当前任务正在等待输入或审批。完成当前交互后将先暂停，不会直接执行下一步。</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">

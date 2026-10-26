@@ -906,6 +906,32 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.deepEqual(Object.fromEntries(Object.keys(complexToolCalls).map(name => [name, complexToolCalls[name] - complexToolBaseline[name]])), { browser_page_inspect: 1, document_extract: 1, spreadsheet_analyze: 1, send_email: 1 })
     assert.equal(complexToolCalls.send_email - emailCallsBeforeComplexRun, 1, "Only one local email fixture write is allowed for this run")
     assert.deepEqual(complexRoleTurns, { researcher: 2, documenter: 2, analyst: 2, reviewer: 1, sender: 2 })
+    // An active timeline is bounded: reading old steps or jumping to the
+    // latest event must not move the enclosing workbench or other tabs.
+    await workspace.getByRole("tab",{name:/^执行过程/}).click()
+    const eventViewport=page.getByRole("region",{name:"运行事件列表"})
+    await visible(eventViewport)
+    const metrics=await eventViewport.evaluate(node=>({
+      scrollHeight:node.scrollHeight,clientHeight:node.clientHeight,
+    }))
+    assert.ok(metrics.scrollHeight>metrics.clientHeight,
+      "long five-role trace must have its own scrollable viewport")
+    await eventViewport.evaluate(node=>{
+      node.scrollTop=0
+      node.dispatchEvent(new Event("scroll",{bubbles:true}))
+    })
+    const jump=page.getByRole("button",{name:"跳到最新"})
+    await visible(jump)
+    const pageYBeforeJump=await page.evaluate(()=>window.scrollY)
+    await jump.evaluate(node=>node.click())
+    await page.waitForFunction(()=>{
+      const node=document.querySelector('[aria-label="运行事件列表"]')
+      return !!node && node.scrollHeight-node.clientHeight-node.scrollTop<=64
+    })
+    assert.ok(Math.abs((await page.evaluate(()=>window.scrollY))-pageYBeforeJump)<=2,
+      "jump-to-latest must scroll only the timeline, never the page")
+    await workspace.getByRole("tab",{name:"成果与反馈",exact:true}).click()
+    results.push("bounded timeline: old-event reading and jump-to-latest never change page scroll position")
     await screenshot("complex-agent-five-stage-completed")
     results.push("complex five-role due diligence Agent: source browser + PDF page extraction + spreadsheet analysis + cross-check reviewer + human-approved local-only email; all stages persisted and each tool executed exactly once")
 

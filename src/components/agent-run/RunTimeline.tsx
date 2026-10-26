@@ -1,7 +1,8 @@
 import { LocalJobObservation } from './LocalJobObservation'
-import { useEffect, useRef } from "react"
+import { useTimelineFollow } from "@/lib/timelineFollow"
 import {
   AlertCircle,
+  ArrowDown,
   Archive,
   Ban,
   BookOpen,
@@ -22,6 +23,8 @@ type RunTimelineProps = {
   events: RunEventRow[]
   isLive: boolean
   hasRun: boolean
+  /** Tab visibility matters because inactive tabs remain mounted. */
+  visible: boolean
 }
 
 function contentText(content: Record<string, unknown>, key: string): string {
@@ -30,12 +33,9 @@ function contentText(content: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : JSON.stringify(value)
 }
 
-export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
-  const bottomRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-  }, [events.length])
+export function RunTimeline({ events, isLive, hasRun, visible }: RunTimelineProps) {
+  const {viewportRef,following,unread,onScroll,jumpToLatest} =
+    useTimelineFollow(events.length,visible)
 
   return (
     <div className="flex min-h-64 flex-col rounded-2xl border border-border bg-card p-5 shadow-md">
@@ -49,6 +49,15 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
         )}
       </div>
 
+      {visible && !following && hasRun && events.length > 0 && <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+        <span className="text-muted-foreground">正在阅读较早记录{unread > 0 ? ` · 新增 ${unread} 条` : ""}</span>
+        <button type="button" onClick={jumpToLatest} className="inline-flex min-h-8 items-center gap-1.5 font-semibold text-primary hover:underline">
+          <ArrowDown className="h-3.5 w-3.5"/>跳到最新
+        </button>
+      </div>}
+      <div ref={viewportRef} onScroll={onScroll} tabIndex={0}
+        role="region" aria-label="运行事件列表"
+        className="mt-3 max-h-[min(62dvh,36rem)] min-h-0 overflow-y-auto overscroll-contain rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
       {!hasRun ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
@@ -67,7 +76,7 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
           </p>
         </div>
       ) : (
-        <ol className="mt-4 flex flex-col gap-3">
+        <ol className="flex flex-col gap-3">
           {events.map((event) => {
             const stepLabel = event.step_index > 0 ? `第 ${event.step_index} 步` : "准备"
             const roleName = typeof event.content.role_name === "string" ? event.content.role_name : ""
@@ -309,7 +318,7 @@ export function RunTimeline({ events, isLive, hasRun }: RunTimelineProps) {
           )}
         </ol>
       )}
-      <div ref={bottomRef} />
+      </div>
     </div>
   )
 }

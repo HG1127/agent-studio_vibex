@@ -168,6 +168,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               />
               <RunStatusSummary
                 activeRun={p.activeRun}
+                events={p.runEvents}
                 isLive={p.isLive}
                 controlBusy={p.controlBusy}
                 onControl={p.handleControl}
@@ -243,7 +244,9 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 </TabsContent>
                 <TabsContent value="process" forceMount className="mt-4 data-[state=inactive]:hidden">
                   <div id="run-execution-trace" className="space-y-4">
-                    <RunTimeline events={p.runEvents} isLive={p.isLive} hasRun={Boolean(p.activeRun)} />
+                    <RunTimeline key={p.activeRun?.id || "no-run"}
+                      events={p.runEvents} isLive={p.isLive} hasRun={Boolean(p.activeRun)}
+                      visible={selectedView === "process"} />
                     <EvidenceLedgerPanel checkpoint={p.activeRun?.checkpoint} />
                   </div>
                 </TabsContent>

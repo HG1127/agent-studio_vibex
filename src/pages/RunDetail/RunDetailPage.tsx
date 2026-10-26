@@ -143,7 +143,7 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
             {showDetail && p.runDetail && (
               <section className="grid items-start gap-6 py-10 lg:grid-cols-[3fr_2fr]">
                 <div className="flex flex-col gap-5">
-                  <RunTimelineBody
+                  <RunTimelineBody key={p.runDetail.id}
                     stepGroups={p.stepGroups}
                     hasRun
                     isLive={p.isLive}
