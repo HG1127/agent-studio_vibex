@@ -143,3 +143,29 @@ test('failure attestation/proof-audit/storage failures preserve the real termina
     }finally{await f.close()}
   }
 })
+
+test('a real employee disable can be attested, while re-enable never revives old automatic consent; a fresh owner may explicitly save',async()=>{
+  const f=await fixture();let calls=0
+  try{
+    const started=await f.owned.submit(f.identities.alice,f.resources.alice.spec.id,body(f)),id=started.run.id
+    await f.privateTls(async()=>{calls++;throw Error('disabled_employee_provider_forbidden')},async make=>{
+      const worker=make({humanInputApproved:true,outcomeMemoryApproved:true}),job=await worker.claim();assert.equal(job.run_id,id)
+      await f.db.query('UPDATE agentstudio_auth.accounts SET enabled=false,governance_revision=governance_revision+1 WHERE user_id=$1',[f.users.alice])
+      await f.db.query("UPDATE agentstudio.users SET status='disabled' WHERE id=$1",[f.users.alice])
+      assert.equal((await worker.execute(job)).status,'failed')
+      assert.equal((await worker.tick()).status,'idle')
+    })
+    const terminal=(await f.db.query('SELECT status,last_error_code FROM agentstudio.runs WHERE id=$1',[id])).rows[0];assert.equal(terminal.status,'failed')
+    const proof=(await f.db.query('SELECT owner_epoch,error_code FROM agentstudio.agent_memory_failure_sources WHERE run_id=$1',[id])).rows[0];assert.equal(proof.error_code,terminal.last_error_code)
+    const original=(await f.db.query('SELECT owner_epoch FROM agentstudio.agent_memory_outcome_consents WHERE run_id=$1',[id])).rows[0];assert.equal(Number(proof.owner_epoch),Number(original.owner_epoch)+1)
+    assert.equal((await counts(f)).entries,0)
+    await assert.rejects(f.derived.preview(f.identities.alice,f.resources.alice.spec.id,id),e=>e.status===403)
+    await f.db.query('UPDATE agentstudio_auth.accounts SET enabled=true,governance_revision=governance_revision+1 WHERE user_id=$1',[f.users.alice])
+    await f.db.query("UPDATE agentstudio.users SET status='active' WHERE id=$1",[f.users.alice])
+    const result=(await f.outcomes.status(f.identities.alice,id)).result;assert.equal(result.decision,'source_unavailable');assert.equal(result.reason_code,'native_epoch_changed')
+    assert.equal((await withActor(f.pool,f.identities.alice,db=>f.outcomes.finishOwned(db,f.users.alice,id))).replayed,true)
+    const preview=await f.derived.preview(f.identities.alice,f.resources.alice.spec.id,id);assert.equal(preview.kind,'lesson');assert.equal(preview.tools_used,'')
+    await f.derived.change(f.identities.alice,{action:'save_failure',request_id:randomUUID(),spec_id:preview.spec_id,source_run_id:id,expected_source_sha256:preview.source_sha256,confirm:true})
+    assert.deepEqual(await counts(f),{proofs:1,entries:1,receipts:1,jobs:1,effects:0});assert.equal(calls,0)
+  }finally{await f.close()}
+})
