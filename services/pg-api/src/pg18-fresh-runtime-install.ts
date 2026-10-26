@@ -2,6 +2,8 @@
 import type {SqlClient} from "./contracts.ts"
 import {captureFreshRuntimeSources,freshRuntimeReceipt,freshRuntimeRoles} from "./pg18-fresh-runtime-source.mjs"
 import {verifyKnowledgeHelperCredentials} from "./knowledge-content-privileges.ts"
+import {verifyAgentMemoryCredentials} from "./agent-memory-audit.ts"
+import {verifyAgentMemoryContextCredentials} from "./agent-memory-context-audit.ts"
 import {checkedServiceLoginReceipt} from "./pg18-service-login-policy.mjs"
 type Snapshot=ReturnType<typeof captureFreshRuntimeSources>
 function refuse():never{throw Error("fresh_runtime_verification_failed")}
@@ -40,12 +42,12 @@ export async function verifyFreshRuntime(db:SqlClient,snapshot:Snapshot,receipt=
     if(!safe?.ok)refuse()
   }
   await db.query("SET LOCAL ROLE agentstudio_api")
-  try{await verifyKnowledgeHelperCredentials(db)}finally{await db.query("RESET ROLE")}
+  try{await verifyKnowledgeHelperCredentials(db);if(!await verifyAgentMemoryCredentials(db)||!await verifyAgentMemoryContextCredentials(db))refuse()}finally{await db.query("RESET ROLE")}
   return {tables:tables.length,forced_rls_tables:tables.length-1,empty_business_tables:tables.length-1,migration_versions:snapshot.versions.length,
-    roles:roles.length,service_logins_enabled:false,knowledge_privileges_verified:true,production_cutover_allowed:false}
+    roles:roles.length,service_logins_enabled:false,knowledge_privileges_verified:true,memory_privileges_verified:true,production_cutover_allowed:false}
 }
 export function freshRuntimeReceiptBody(snapshot:Snapshot){return JSON.stringify({format:"pg18_fresh_runtime_v1",source_sha256:snapshot.source_sha256,
-  sources:snapshot.sources,latest_migration:"pg_v9_048",legacy_rows_copied:0,legacy_import_versions_fabricated:false})}
+  sources:snapshot.sources,latest_migration:"pg_v9_050",legacy_rows_copied:0,legacy_import_versions_fabricated:false})}
 export async function installFreshRuntime(db:SqlClient,snapshot:Snapshot){
   // Role changes and all DDL share the baseline's transaction. An initialization
   // failure cannot leave a service login enabled or a partial schema committed.

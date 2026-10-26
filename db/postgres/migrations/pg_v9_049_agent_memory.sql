@@ -1,4 +1,4 @@
--- PROPOSED optional memory foundation. Not in the fresh-runtime sequence yet.
+-- Owner-authored memory in the reviewed fresh050 source sequence.
 -- Owner-authored instructions only. No extraction, execution or payment grant.
 BEGIN;
 SET LOCAL lock_timeout='5s';

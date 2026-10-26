@@ -1,4 +1,4 @@
--- PROPOSED context receipt only; not part of the default fresh source sequence.
+-- Owner/run context receipts in the reviewed fresh050 source sequence.
 -- A receipt requires the original private context even after a field is stripped.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -32,5 +32,5 @@ GRANT INSERT(owner_user_id,run_id,spec_id,spec_revision,protocol,graph_sha256,co
 CREATE POLICY agent_memory_context_owner_read ON agentstudio.agent_memory_run_contexts FOR SELECT TO agentstudio_api USING(owner_user_id=agentstudio.actor_id());
 CREATE POLICY agent_memory_context_owner_insert ON agentstudio.agent_memory_run_contexts FOR INSERT TO agentstudio_api WITH CHECK(owner_user_id=agentstudio.actor_id());
 INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_050',
-  'Proposed insert-only owner/run memory context receipts; no memory execution, automatic writeback or payment grant');
+  'Insert-only owner/run memory context receipts; no automatic writeback or payment grant');
 COMMIT;

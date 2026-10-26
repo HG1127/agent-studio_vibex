@@ -115,8 +115,8 @@ const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
-async function startNativeHttps(auth,pool,key,brokerPool,{memory=false,memoryRuntime=false}={}){
-  if(memory){assert.equal(await inspectAgentMemorySchema(pool),true);assert.equal(await inspectAgentMemoryContextSchema(pool),memoryRuntime)}
+async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false}={}){
+  if(memory){assert.equal(await inspectAgentMemorySchema(pool),true);const context=await inspectAgentMemoryContextSchema(pool);if(memoryRuntime)assert.equal(context,true)}
   if(memoryRuntime){assert.equal(memory,true);assert.equal(selectAgentMemoryRuntime({AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY'}),true)}
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
@@ -286,7 +286,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN('agentstudio','agentstudio_auth')")).rows[0].n,0)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
       const initialized=await initialize()
-      assert.equal(initialized.migration_versions,34);assert.equal(initialized.service_logins_enabled,false)
+      assert.equal(initialized.migration_versions,36);assert.equal(initialized.service_logins_enabled,false)
+      assert.equal(initialized.tables,62);assert.equal(initialized.forced_rls_tables,61);assert.equal(initialized.memory_privileges_verified,true)
       const receipt=(await bootstrap.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_fresh_runtime_001'")).rows[0]
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
@@ -1361,10 +1362,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     mark("collaboration-revoked-final-isolation")
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     await assert.rejects(api.getAgentCollaboration(collaboration.id),e=>e.status===404)
-    mark("optional-memory-049-native-https-owner-and-erasure")
-    // Only this disposable CI database receives the optional proposed049.
-    // Default fresh sources and all preceding startup evidence remain048.
-    await admin.query(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_049_agent_memory.sql",import.meta.url),"utf8"))
+    mark("fresh-memory-049-native-https-owner-and-erasure")
+    // Fresh050 must have installed both schemas in the original transaction.
+    assert.equal((await admin.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_049') AS ok")).rows[0].ok,true)
     const beforeMemory=(await admin.query("SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects")).rows[0]
     await front.close();front=null
     front=await startNativeHttps(auth,apiPool,key,brokerPool,{memory:true})
@@ -1395,8 +1395,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query("UPDATE agentstudio.agent_memory_receipts SET request_sha256=repeat('a',64)")),/permission denied/)
     const afterMemory=(await admin.query("SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects")).rows[0]
     assert.deepEqual(afterMemory,beforeMemory)
-    mark("optional-memory-050-startup-source-and-private-execution")
-    await admin.query(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_050_agent_memory_context.sql",import.meta.url),"utf8"))
+    mark("fresh-memory-050-startup-source-and-private-execution")
+    assert.equal((await admin.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_050') AS ok")).rows[0].ok,true)
     assert.equal(await inspectAgentMemoryContextSchema(apiPool),true)
     assert.equal(await inspectAgentMemoryContextSchema(workerPool),true)
     await admin.query('BEGIN')
