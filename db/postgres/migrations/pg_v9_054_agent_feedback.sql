@@ -102,7 +102,7 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended(NEW.owner_user_id::text||':'||NEW.run_id::text,540));
   SELECT * INTO current_feedback FROM agentstudio.agent_feedback_receipts
     WHERE owner_user_id=NEW.owner_user_id AND run_id=NEW.run_id AND action<>'forget_lesson'
-    ORDER BY revision DESC LIMIT 1 FOR SHARE;
+    ORDER BY revision DESC LIMIT 1;
   IF FOUND THEN current_revision:=current_feedback.revision; END IF;
   epoch:=agentstudio.agent_memory_outcome_epoch();
   IF epoch IS NULL OR epoch NOT BETWEEN 1 AND 9007199254740990
@@ -120,7 +120,7 @@ BEGIN
     RETURN NEW;
   END IF;
   SELECT * INTO original FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND request_id=NEW.feedback_id AND action='submit' FOR SHARE;
+    AND request_id=NEW.feedback_id AND action='submit';
   IF NOT FOUND OR NEW.feedback_id=NEW.request_id OR NEW.remember_lesson
     OR original.run_id<>NEW.run_id OR original.spec_id<>NEW.spec_id
     OR original.source_sha256<>NEW.source_sha256 OR original.statement_sha256<>NEW.statement_sha256
@@ -150,9 +150,12 @@ BEGIN
     RETURN OLD;
   END IF;
   SELECT * INTO original FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND request_id=NEW.feedback_id AND action='submit' FOR SHARE;
+    AND request_id=NEW.feedback_id AND action='submit';
+  -- Receipts are immutable. Serialize mutable bodies with receipt admission
+  -- without acquiring row locks that require forbidden UPDATE privileges.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.owner_user_id::text||':'||original.run_id::text,540));
   SELECT * INTO latest FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND run_id=original.run_id AND action<>'forget_lesson' ORDER BY revision DESC LIMIT 1 FOR SHARE;
+    AND run_id=original.run_id AND action<>'forget_lesson' ORDER BY revision DESC LIMIT 1;
   IF original.request_id IS NULL OR latest.request_id IS DISTINCT FROM NEW.feedback_id OR NEW.rating NOT IN('up','down')
     OR original.remember_lesson AND NEW.rating<>'down' OR jsonb_typeof(NEW.tags)<>'array' OR jsonb_array_length(NEW.tags)>8
     OR length(NEW.comment)>500 OR octet_length(NEW.comment)>2000
@@ -177,9 +180,12 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $fn$
 DECLARE original record; latest record; rating text;
 BEGIN
   SELECT * INTO original FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND request_id=NEW.feedback_id AND action='submit' FOR SHARE;
+    AND request_id=NEW.feedback_id AND action='submit';
+  -- Receipts are immutable. Serialize mutable bodies with receipt admission
+  -- without acquiring row locks that require forbidden UPDATE privileges.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.owner_user_id::text||':'||original.run_id::text,540));
   SELECT * INTO latest FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND run_id=original.run_id AND action<>'forget_lesson' ORDER BY revision DESC LIMIT 1 FOR SHARE;
+    AND run_id=original.run_id AND action<>'forget_lesson' ORDER BY revision DESC LIMIT 1;
   SELECT b.rating INTO rating FROM agentstudio.agent_feedback_bodies b
     WHERE b.owner_user_id=NEW.owner_user_id AND b.feedback_id=NEW.feedback_id;
   IF original.request_id IS NULL OR latest.request_id IS DISTINCT FROM NEW.feedback_id OR rating IS NULL
@@ -211,9 +217,12 @@ BEGIN
     RETURN OLD;
   END IF;
   SELECT * INTO original FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND request_id=NEW.feedback_id AND action='submit' FOR SHARE;
+    AND request_id=NEW.feedback_id AND action='submit';
+  -- Receipts are immutable. Serialize mutable bodies with receipt admission
+  -- without acquiring row locks that require forbidden UPDATE privileges.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.owner_user_id::text||':'||original.run_id::text,540));
   SELECT * INTO latest FROM agentstudio.agent_feedback_receipts WHERE owner_user_id=NEW.owner_user_id
-    AND run_id=original.run_id AND action<>'forget_lesson' ORDER BY revision DESC LIMIT 1 FOR SHARE;
+    AND run_id=original.run_id AND action<>'forget_lesson' ORDER BY revision DESC LIMIT 1;
   IF original.request_id IS NULL OR latest.request_id IS DISTINCT FROM NEW.feedback_id OR NOT original.remember_lesson
     OR agentstudio.agent_memory_outcome_epoch() IS DISTINCT FROM original.owner_epoch
     OR agentstudio.agent_feedback_run_source_sha256(original.run_id) IS DISTINCT FROM original.source_sha256

@@ -6,10 +6,10 @@ const functions:Record<string,{args:string;returns:string;language:string;volati
   agent_feedback_digest:{args:"text[]",returns:"text",language:"sql",volatility:"i",strict:true,execute:true,sha:"8aec820f04e8d122c050bf49285bef74b5dcaeae40d0833bf5ee2d8ad9fa5aec"},
   agent_feedback_statement_sha256:{args:"uuid, uuid, text, text, jsonb, text",returns:"text",language:"sql",volatility:"i",strict:true,execute:true,sha:"d2224da3c608389b5d706dc1c6ac6fdba3d1eea7a218f4166f434bac45033a8f"},
   agent_feedback_run_source_sha256:{args:"uuid",returns:"text",language:"sql",volatility:"s",strict:true,execute:true,sha:"630a415ac07f2d3261a70db280d359fce7fd1c8ec1a5d504819861a8aa8e4f92"},
-  agent_feedback_receipt_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"9c50dbbf335fd5bd6db9071c036b8269da467357e69a57a94cc81081c2659c1e"},
-  agent_feedback_body_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"563a3dc6006d2c9ba4fd4c2b76e1ee36842ceb370293b5dbb261a04ed6aee8f5"},
-  agent_feedback_lesson_result_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"86bde13670ae53da009e2a2c317a268a5cd48328bb45f4319cc296981525ce4d"},
-  agent_feedback_lesson_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"e45588250bb8988dd4b3d74982b9ab0db8fedc147a32150fdb0dd25737603e54"},
+  agent_feedback_receipt_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"e15b57272181a9298024a6910542186ed1df21f1ec6cdb23e98a55ba80c3e7a5"},
+  agent_feedback_body_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"7036bc457136adb72c62cdf5818d58b1cf3a6ce05ad46caba1b579160268da3e"},
+  agent_feedback_lesson_result_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"4ae7a29c288292df651b2306017bf35627bff96d79971f50a46a9b198b3bb001"},
+  agent_feedback_lesson_guard:{args:"",returns:"trigger",language:"plpgsql",volatility:"v",strict:false,execute:false,sha:"6c4d9e1d3b615ab90ed3645d9cb205742f4fbc49fc05155849ec7bec8f9d100c"},
 }
 type Foreign={target:string;columns:string[];references:string[]}
 type Table={fields:Record<string,string>;insert:string[];nullable:string[];erase:boolean;pk:string[];foreign:Foreign[];trigger:string;fn:string;triggerType:number}
