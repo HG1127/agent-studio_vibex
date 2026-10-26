@@ -316,9 +316,31 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal(await skillAb.getByRole("combobox",{name:"Skill A/B 模型"}).inputValue(),"")
     results.push("reviewed Skills expose a bounded true-model comparison, but the button is disabled until explicit model selection and billed-call consent")
     if(process.env.AGENT_STUDIO_SKILL_AB_UI_SMOKE_ONLY==="1"){
+      // An original 15.5K CJK Skill must stay fully usable in A/B, without
+      // silently shortening or requiring a new model credential.
+      const longPrefix=skillText.replace("name: first-principles-analysis","name: steve-jobs-test")
+      const longSkill=longPrefix+"\n"+"聚焦设计体验和推翻不合理假设".repeat(1400).slice(0,15553-longPrefix.length-1)
+      assert.equal(longSkill.length,15553)
+      await page.getByRole("textbox",{name:"SKILL.md 正文"}).fill(longSkill)
+      await page.getByRole("button",{name:"导入并待审核"}).click()
+      await visible(page.getByText(/已导入 steve-jobs-test v1/))
+      await page.getByRole("region",{name:"Skill 版本审核"}).getByRole("checkbox").check()
+      await page.getByRole("button",{name:"审核并启用 v1"}).click()
+      await visible(page.getByText(/已通过当前员工审核/))
+      await page.getByText("实际效果验证 · Skill / 无 Skill A/B 对照（可选）").click()
+      const fullAb=page.getByRole("region",{name:"Skill 真实模型 A/B 对照"})
+      await visible(fullAb.getByText(/当前 Skill 15,553 字符/))
+      assert.equal(await fullAb.getByRole("alert").count(),0,
+        "A complete 15.5K text Skill must not be falsely blocked by the old 7800-char limit")
+      await fullAb.getByRole("combobox",{name:"Skill A/B 模型"})
+        .selectOption(JSON.stringify([designConnectionId,"design-ui-fixture-model"]))
+      assert.equal(await fullAb.getByRole("button",{name:"运行 2 次受控 A/B 对照"}).isDisabled(),true)
+      await fullAb.getByRole("checkbox").check()
+      assert.equal(await fullAb.getByRole("button",{name:"运行 2 次受控 A/B 对照"}).isEnabled(),true)
       assert.deepEqual(errors,[],"isolated Skill A/B UI must have no browser exceptions")
       console.log("SKILL_AB_UI_SMOKE_PASS",JSON.stringify({
-        employeeLogin:true,approvedSkill:true,realModelCalls:0,
+        employeeLogin:true,approvedSkill:true,fullSkillChars:15553,
+        buttonEnabledAfterConsent:true,realModelCalls:0,
         consentRequired:true,selectionRequired:true,consoleErrors:consoleErrors.length,
       }))
       return
