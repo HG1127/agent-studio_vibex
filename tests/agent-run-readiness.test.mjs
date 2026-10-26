@@ -2,6 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { agentRunReadiness, enabledRunToolConnections } from "../src/lib/agentRunReadiness.ts"
 import { getVerifiedMarketTools } from "../src/lib/marketToolSelection.ts"
+import { localDeviceToolNames } from "../src/lib/localDeviceConnection.ts"
 
 const need = (patch = {}) => ({ id: "browser_need", title: "读取浏览器页面", purpose: "获取页面内容",
   kind: "browser", access: "read", required: true, role_ids: [], search_terms: ["browser"], suggested_tool_ids: [], ...patch })
@@ -15,6 +16,15 @@ const savedBrowserSpec = (patch = {}) => spec({ tools: ["browser_read"], capabil
 const localDevice = (tools, patch = {}) => ({id: 'local-device', revoked: false, seen_ms: Date.now(),
   catalog: JSON.stringify(tools.map(name => ({name}))), ...patch})
 const browserTools = ['browser.browser_navigate', 'browser.browser_snapshot', 'browser.browser_take_screenshot', 'browser.browser_click', 'browser.browser_type']
+
+test('connection display rejects missing, stale, revoked, future and invalid device catalogs', () => {
+  const now = Date.now()
+  assert.deepEqual(localDeviceToolNames(localDevice(browserTools, {seen_ms: now}), now), browserTools)
+  assert.deepEqual(localDeviceToolNames(null, now), [])
+  for (const patch of [{id:''}, {revoked:true}, {seen_ms:now-45001}, {seen_ms:now+5001},
+    {seen_ms:NaN}, {catalog:'{}'}, {catalog:'bad'}, {catalog:'[]'}, {catalog:'[null,{"name":" "},{"name":1}]'}])
+    assert.deepEqual(localDeviceToolNames(localDevice(browserTools, patch), now), [])
+})
 
 test('an explicitly selected live device satisfies browser needs without changing the saved contract', () => {
   const value = spec({capability_requirements: [need({access: 'write'})]})

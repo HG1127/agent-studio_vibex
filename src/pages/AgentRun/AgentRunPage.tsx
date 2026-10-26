@@ -105,6 +105,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               onGenerateWorkflow={p.handleGenerateWorkflow}
               builtinTools={p.builtinTools}
               connectedToolNames={p.connectedToolNames}
+              localDevice={p.readyLocalDevice}
               marketToolCount={p.marketToolCount}
               connectedMarketTools={p.connectedMarketTools}
               runReadiness={p.runReadiness}

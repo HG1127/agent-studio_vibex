@@ -1,13 +1,14 @@
 import type { AgentSpec } from '../pages/Home/presets'
 import type { AgentCapabilityRequirement } from './agentCapabilityPlan'
 
-export type ReadyLocalDevice = { id: string; revoked: boolean; seen_ms: number; catalog: string }
+import { localDeviceToolNames, type ReadyLocalDevice } from './localDeviceConnection.ts'
+export type { ReadyLocalDevice } from './localDeviceConnection.ts'
 
 /** A selected live device can supply a local capability, never grant a role new tools. */
 export function localDeviceSupports(spec: AgentSpec, need: AgentCapabilityRequirement,
   device: ReadyLocalDevice | null | undefined, now = Date.now()): boolean {
-  if (!device?.id || device.revoked || !Number.isFinite(device.seen_ms) ||
-      now - device.seen_ms > 45000 || device.seen_ms > now + 5000) return false
+  const names = new Set(localDeviceToolNames(device, now))
+  if (!names.size) return false
   const roles = spec.roles || []
   if (roles.length) {
     const responsible = need.role_ids.length ? roles.filter(role => need.role_ids.includes(role.id)) : roles
@@ -16,12 +17,6 @@ export function localDeviceSupports(spec: AgentSpec, need: AgentCapabilityRequir
         (need.role_ids.length ? responsible.some(role => !role.tools.includes('local_computer'))
           : !responsible.some(role => role.tools.includes('local_computer')))) return false
   } else if (need.role_ids.length) return false
-  let names: Set<string>
-  try {
-    const catalog: unknown = JSON.parse(device.catalog)
-    if (!Array.isArray(catalog)) return false
-    names = new Set(catalog.flatMap(tool => tool && typeof tool.name === 'string' ? [tool.name] : []))
-  } catch { return false }
   const has = (...tools: string[]) => tools.every(tool => names.has(tool))
   if (need.kind === 'browser') return has('browser.browser_navigate', 'browser.browser_snapshot',
     'browser.browser_take_screenshot') && (need.access === 'read' || has('browser.browser_click', 'browser.browser_type'))

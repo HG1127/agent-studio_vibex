@@ -1456,6 +1456,7 @@ export function useAgentRun() {
     instruction,
     setInstruction,
     localDeviceId,
+    readyLocalDevice: readyLocalDevice?.id === localDeviceId ? readyLocalDevice : null,
     setLocalDeviceId,
     isStarting,
     handleRun,

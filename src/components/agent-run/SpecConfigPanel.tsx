@@ -6,6 +6,7 @@ import type { BuiltinTool, CustomModelOption, SavedSpecRow } from "@/pages/Agent
 import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
 import type { AgentRunReadiness } from "@/lib/agentRunReadiness"
 import { safeMarketplaceQuery } from "@/lib/toolSearchPrivacy"
+import { localDeviceToolNames, type ReadyLocalDevice } from "@/lib/localDeviceConnection"
 
 type SpecConfigPanelProps = {
   specList: SavedSpecRow[]
@@ -22,6 +23,7 @@ type SpecConfigPanelProps = {
   onModelChange: (model: string) => void
   builtinTools: BuiltinTool[]
   connectedToolNames: string[]
+  localDevice?: ReadyLocalDevice | null
   marketToolCount: number
   connectedMarketTools: VerifiedMarketTool[]
   runReadiness: AgentRunReadiness
@@ -64,6 +66,7 @@ export function SpecConfigPanel({
   builtinTools,
   enabledTools,
   connectedToolNames,
+  localDevice,
   marketToolCount,
   toolConnectionsLoading,
   toolConnectionsError,
@@ -90,8 +93,12 @@ export function SpecConfigPanel({
 }: SpecConfigPanelProps) {
   const specTools = selectedSpec?.spec?.tools ?? []
   const selectedMarketCount = specTools.filter(name=>connectedMarketTools.some(tool=>tool.id===name)).length
+  const localConnected = localDeviceToolNames(localDevice).length > 0
+  const toolConnected = (name: string) => name === 'local_computer' ? localConnected :
+    connectedMarketTools.some(tool=>tool.id===name) || connectedToolNames.includes(name)
+  const localLabel = specTools.includes('local_computer') && localConnected ? ' · 本机已连接' : ''
   const disconnected = specTools.filter(name => !builtinTools.some(t=>t.id===name) &&
-    !connectedMarketTools.some(t=>t.id===name) && !connectedToolNames.includes(name)).length
+    !toolConnected(name)).length
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [section, setSection] = useState("resources")
@@ -121,7 +128,7 @@ export function SpecConfigPanel({
               <Cpu className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{isCustomModel ? modelLabel || "已选择模型" : "连接运行模型"}</span>
             </button>
             <button type="button" onClick={() => openSection("resources")} className={`inline-flex items-center gap-1.5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${disconnected > 0 ? "text-amber-700 dark:text-amber-400" : ""}`}>
-              <Wrench className="h-3.5 w-3.5" />{toolConnectionsLoading ? "读取工具连接…" : disconnected > 0 ? `${disconnected} 项待连接` : `内置 ${enabledTools.length} 项 · 插件 ${selectedMarketCount} 项`}
+              <Wrench className="h-3.5 w-3.5" />{toolConnectionsLoading ? "读取工具连接…" : disconnected > 0 ? `${disconnected} 项待连接` : `内置 ${enabledTools.length} 项 · 插件 ${selectedMarketCount} 项${localLabel}`}
             </button>
             <button type="button" onClick={() => openSection("completion")} className="inline-flex items-center gap-1.5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <ListChecks className="h-3.5 w-3.5" />{requirePlanReview ? "阶段方案需确认" : "查看完成标准"}
@@ -250,7 +257,7 @@ export function SpecConfigPanel({
           <Wrench className="h-4 w-4 shrink-0 text-primary"/>
           工具与连接状态
           <span className={`ml-auto text-right text-[11px] font-medium ${disconnected>0?"text-amber-700 dark:text-amber-400":"text-muted-foreground"}`}>
-            {disconnected>0 ? `${disconnected} 项待连接` : `${enabledTools.length} 项内置开启 · ${selectedMarketCount} 项市场工具`}
+            {disconnected>0 ? `${disconnected} 项待连接` : `${enabledTools.length} 项内置开启 · ${selectedMarketCount} 项市场工具${localLabel}`}
           </span>
         </h3>
         {disconnected>0 && <p role="status" className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
@@ -294,10 +301,10 @@ export function SpecConfigPanel({
               className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-muted/40 p-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-muted-foreground">{connectedMarketTools.find(tool=>tool.id===toolName)?.label || toolName}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{connectedMarketTools.some(tool=>tool.id===toolName) ? "此插件工具已验证，试跑时按当前方案显式授权" : connectedToolNames.includes(toolName) ? "当前账号已启用的 HTTP 工具，试跑时按名称授权" : "当前账号未发现匹配的已启用工具"}</p>
+                <p className="truncate text-sm font-medium text-muted-foreground">{toolName === 'local_computer' ? '本机电脑' : connectedMarketTools.find(tool=>tool.id===toolName)?.label || toolName}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{toolName === 'local_computer' ? localConnected ? "已选择在线电脑，每次本地操作仍需批准" : "请在本次运行中选择自己的在线电脑" : connectedMarketTools.some(tool=>tool.id===toolName) ? "此插件工具已验证，试跑时按当前方案显式授权" : connectedToolNames.includes(toolName) ? "当前账号已启用的 HTTP 工具，试跑时按名称授权" : "当前账号未发现匹配的已启用工具"}</p>
               </div>
-              {(connectedToolNames.includes(toolName) || connectedMarketTools.some(tool=>tool.id===toolName)) ? <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">已连接</span> : <div className="flex shrink-0 flex-col items-end gap-1"><span className="text-xs text-muted-foreground">待连接</span><Link to={safeMarketplaceQuery(toolName) ? `/plugin-market?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/plugin-market"} className="rounded-lg border border-primary/30 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">寻找插件</Link><Link to={safeMarketplaceQuery(toolName) ? `/tool-connections?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/tool-connections"} className="text-xs text-primary hover:underline">配置 HTTP 工具</Link></div>}
+              {toolConnected(toolName) ? <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">已连接</span> : <div className="flex shrink-0 flex-col items-end gap-1"><span className="text-xs text-muted-foreground">待连接</span>{toolName === 'local_computer' ? <Link to="/tool-hub" className="rounded-lg border border-primary/30 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">绑定和测试电脑</Link> : <><Link to={safeMarketplaceQuery(toolName) ? `/plugin-market?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/plugin-market"} className="rounded-lg border border-primary/30 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">寻找插件</Link><Link to={safeMarketplaceQuery(toolName) ? `/tool-connections?tool=${encodeURIComponent(safeMarketplaceQuery(toolName))}` : "/tool-connections"} className="text-xs text-primary hover:underline">配置 HTTP 工具</Link></>}</div>}
             </div>
           ))}
           <div className="rounded-xl border border-border bg-secondary/30 p-3 sm:col-span-2">

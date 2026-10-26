@@ -28,6 +28,6 @@
 
 `pnpm check` 包含办公精度和文件回读测试；`pnpm test:e2e:parallel` 包含独立的真实 PocketBase、Playwright MCP、报告文件和网页回执流程。可单独运行 `pnpm test:office-flow`。测试使用独立数据目录和合成数据，不读取公司业务记录。
 
-本机 Word 已以只读方式打开生成报告并导出单页 PDF，检查了中文、表格、金额和分页。真实模型验收结果记录在本次验收报告中；功能测试不能替代具体业务的员工 UAT。
+本机 Word 已以只读方式打开生成报告并导出单页 PDF，检查了中文、表格、金额和分页。真实模型验收结果见[2026-10-26 验收报告](LOCAL_OFFICE_REAL_ACCEPTANCE_20261026.md)；功能测试不能替代具体业务的员工 UAT。
 
 实现采用 [ExcelJS](https://github.com/exceljs/exceljs) 与 [docx](https://docx.js.org/)，均固定于锁文件。本地管理员应使用 `pnpm install --frozen-lockfile` 安装执行器依赖。
