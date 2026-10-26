@@ -9,7 +9,6 @@ export async function verifyAgentHumanInputCredentials(db:SqlClient):Promise<boo
   const access=(await db.query<{ok:boolean;role:string}>("SELECT current_user AS role,has_column_privilege(current_user,'agentstudio.schema_migrations','version','SELECT') AS ok")).rows[0]
   const canRead=access?.ok
   if(typeof canRead!=="boolean")refuse()
-  if(!canRead&&!["agentstudio_bound_dispatch","agentstudio_model_broker"].includes(access!.role))refuse()
   let stamped=false
   if(canRead){const value=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_048') AS ok")).rows[0]?.ok
     if(typeof value!=="boolean")refuse();stamped=value}
@@ -17,6 +16,7 @@ export async function verifyAgentHumanInputCredentials(db:SqlClient):Promise<boo
   // still inspect the complete catalog and cross-role grants below. API and
   // Worker (and the SET ROLE API startup wrapper) must verify the actual stamp.
   if(!id){if(stamped)refuse();return false}
+  if(!canRead&&!["agentstudio_bound_dispatch","agentstudio_model_broker"].includes(access!.role))refuse()
   if(canRead&&!stamped)refuse()
   const state=(await db.query<{ok:boolean}>("SELECT c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity AND (SELECT rolsuper FROM pg_catalog.pg_roles WHERE oid=c.relowner) AND "+
     "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.oid<>c.relowner AND r.rolname NOT IN($2,'pg_read_all_data','pg_write_all_data') AND "+

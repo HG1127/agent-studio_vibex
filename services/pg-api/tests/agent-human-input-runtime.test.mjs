@@ -38,6 +38,14 @@ async function until(f,id,makeWorker,status){
 }
 async function submit(f,role=f.resources.alice.spec,max=3){return f.owned.submit(f.identities.alice,role.id,{expected_revision:role.revision,max_steps:max,idempotency_key:'synthetic-human-'+randomUUID(),instruction:'Synthetic owner task with a possible clarification.'})}
 
+test('a pre048 API fixture without ledger-column access keeps the optional human capability absent',async()=>{
+  const f=await agentFixture({mcp:true,smithery:true,sharing:true})
+  try{
+    await f.db.exec('BEGIN; SET LOCAL ROLE agentstudio_api')
+    try{assert.equal(await verifyAgentHumanInputCredentials(f.db),false)}finally{await f.db.exec('ROLLBACK')}
+  }finally{await f.close()}
+})
+
 test('human startup audits restricted identity/Broker catalogs without ledger access, while API still requires the actual stamp',async()=>{
   const f=await fixture()
   try{

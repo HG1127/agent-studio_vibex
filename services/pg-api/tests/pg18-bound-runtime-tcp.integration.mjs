@@ -181,14 +181,14 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       }),
       modelConnectionProbe:async()=>({status:"ok",latency_ms:1,error_code:""})})
     server.on("request",native.handler)
-    let cookie=""
-    const transport=(route,init={})=>new Promise((resolve,reject)=>{
+    const session={cookie:""}
+    const transportFor=jar=>(route,init={})=>new Promise((resolve,reject)=>{
       const body=init.body?Buffer.from(init.body):null
       const req=request({hostname:"127.0.0.1",servername:"localhost",port,
         path:route.replace(/^\/__pg_native(?=\/|$)/,""),method:init.method??"GET",
         ca,rejectUnauthorized:true,agent:false,timeout:10000,signal:AbortSignal.timeout(20000),
         headers:{...init.headers,...(body?{"content-length":String(body.length)}:{}),
-          ...(cookie?{Cookie:cookie}:{}),...(init.method&&init.method!=="GET"?{Origin:origin}:{})}},res=>{
+          ...(jar.cookie?{Cookie:jar.cookie}:{}),...(init.method&&init.method!=="GET"?{Origin:origin}:{})}},res=>{
         const chunks=[];let bytes=0
         // Pending review can contain both the full bounded role snapshot and
         // its model prompt. Overflow and incomplete streams must reject,
@@ -199,14 +199,14 @@ async function startNativeHttps(auth,pool,key,brokerPool){
         res.on("error",reject)
         res.on("end",()=>{
           const saved=res.headers["set-cookie"]?.[0]
-          if(saved){assert.match(saved,/HttpOnly/i);assert.match(saved,/Secure/i);cookie=saved.split(";")[0]}
+          if(saved){assert.match(saved,/HttpOnly/i);assert.match(saved,/Secure/i);jar.cookie=saved.split(";")[0]}
           resolve(new Response(Buffer.concat(chunks),{status:res.statusCode}))
         })
       })
       req.on("timeout",()=>req.destroy(Error("ci_https_timeout")))
       req.on("error",reject);req.end(body??undefined)
     })
-    return {api:createPgNativePilotApi(transport),async close(){
+    return {api:createPgNativePilotApi(transportFor(session)),captureApi(){return createPgNativePilotApi(transportFor({cookie:session.cookie}))},async close(){
       server.closeAllConnections();await new Promise(resolve=>server.close(resolve))
       rmSync(folder,{recursive:true,force:true})}}
   }catch(error){
@@ -469,6 +469,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const submitted=await api.submitRun(agent.id,instruction,requestKey)
     await api.createEmployee("other@example.com","SyntheticOtherPassword#2026","Other employee")
     await api.login("other@example.com","SyntheticOtherPassword#2026")
+    const foreignSessionApi=front.captureApi()
     await assert.rejects(api.getMcpConnection(mcp.id),error=>error.status===404)
     await assert.rejects(api.getSmitheryConnection(managed.id),error=>error.status===404)
     await assert.rejects(api.getRun(submitted.run.id),e=>e.status===404)
@@ -1279,10 +1280,10 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal(JSON.stringify(pending).includes("PRIVATE_GENUINE_HUMAN_NOTE"),false)
       const choice=(detail,decision,answer)=>({request_id:randomUUID(),pending_step_key:detail.human_input.pending_step_key,pending_sha256:detail.human_input.pending_sha256,source_sha256:detail.human_input.source_sha256,decision,answer,confirm:true})
       const reply=choice(pending,"reply","Synthetic deadline: 2030-01-31")
-      await api.login("other@example.com","SyntheticOtherPassword#2026")
-      await assert.rejects(api.respondAutonomousAgent(humanRun.run.id,reply),e=>e.status===404)
-      await assert.rejects(api.getAutonomousAgentHumanHistory(humanRun.run.id),e=>e.status===404)
-      await api.login("admin@example.com","SyntheticAdminPassword#2026")
+      // Reuse an independently captured, genuinely logged-in foreign Cookie.
+      // Repeated scenario sign-ins must not exhaust the real login limiter.
+      await assert.rejects(foreignSessionApi.respondAutonomousAgent(humanRun.run.id,reply),e=>e.status===404)
+      await assert.rejects(foreignSessionApi.getAutonomousAgentHumanHistory(humanRun.run.id),e=>e.status===404)
       assert.equal((await api.respondAutonomousAgent(humanRun.run.id,reply)).recorded,true)
       assert.equal((await api.confirmAutonomousAgentResponse(humanRun.run.id,reply)).replayed,true)
       assert.equal((await worker().tick()).status,"awaiting_approval");assert.equal(humanCalls,1)

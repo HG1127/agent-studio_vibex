@@ -157,6 +157,11 @@ try{
       model_binding:{connection_id:connection.id,connection_revision:connection.revision,model_id:"gpt-4.1-mini"}}))
     if(collaboration&&name==="Alice"){state.collaborationRole=createdRole.id;state.collaborationActor=profile.identity}
     if(releases&&name==="Alice"){state.releaseRole=createdRole.id;state.releaseActor=profile.identity;state.releaseDefaultModel=connection.id}
+    if(human&&workflow&&name==="Alice")await new WorkflowRepository(pool).create(profile.identity,"Synthetic owner-reviewed Workflow",{
+      version:2,nodes:[{id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+        {id:"agent",type:"agent",data:{title:"OwnedAgent",agent_binding:{spec_id:createdRole.id,spec_revision:createdRole.revision},max_steps:3,require_plan_review:true},position:{x:220,y:0}},
+        {id:"end",type:"end",data:{title:"End"},position:{x:440,y:0}}],
+      edges:[{id:"s-a",source:"start",target:"agent"},{id:"a-e",source:"agent",target:"end"}]})
     if(modern)await new ToolConnectionRepository(pool,key).create(profile.identity,{name:name+" synthetic HTTP",description:"Lookup synthetic evidence; params: query",
       url:"https://tools.example.com/lookup",method:"POST",headers:[],body_template:"{{input}}",timeout_s:5,enabled:true})
   }
