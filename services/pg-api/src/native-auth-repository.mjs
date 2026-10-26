@@ -211,6 +211,10 @@ export class NativeAuthRepository{
     })
   }
   async provisionEmployee(adminSessionToken,{email,password,display_name}){
+    // Keep the compatibility endpoint inside the same private governance audit
+    // once047 is installed. It cannot create an administrator or omit a receipt.
+    if(await this.inspectEmployeeGovernance())return this.createGovernedEmployee(adminSessionToken,
+      {email,password,display_name,is_admin:false,share_enabled:true})
     const normalized=normalizeEmployeeEmail(email)
     validateEmployeePassword(password)
     const display=validateEmployeeDisplayName(display_name)

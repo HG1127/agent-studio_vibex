@@ -28,3 +28,14 @@ test('governance capability needs installed schema and write gate; password succ
   const api=createPgNativePilotApi(async()=>new Response(JSON.stringify({ok:true,reauthenticate:false}),{status:200}))
   await assert.rejects(api.changePassword('SyntheticOldPassword#2026','SyntheticNewPassword#2026'),e=>e.status===503)
 })
+test('employee creation refuses malformed or mismatched profile acknowledgements without exposing the initial password',async()=>{
+  const choice={email:'native@example.test',display_name:'Native employee',password:'SyntheticInitialPassword#2026',is_admin:true,share_enabled:false}
+  const created={id:result.target_id,email:choice.email,display_name:choice.display_name,is_admin:true,share_enabled:false,enabled:true,status:'active',revision:1}
+  for(const change of [{email:'foreign@example.test'},{is_admin:false},{share_enabled:true},{revision:2},{password_record:'never expose'},{id:'invalid'}]){
+    const api=createPgNativePilotApi(async()=>new Response(JSON.stringify({user:{...created,...change}}),{status:201}))
+    await assert.rejects(api.createGovernedEmployee(choice),/invalid_employee_creation_response/)
+  }
+  const requests=[],api=createPgNativePilotApi(async(route,init)=>{requests.push(JSON.parse(init.body));return new Response(JSON.stringify({user:created}),{status:201})})
+  const response=await api.createGovernedEmployee(choice);assert.equal(response.id,created.id);assert.equal('password' in response,false)
+  await assert.rejects(api.createGovernedEmployee({...choice,owner_id:created.id}));assert.equal(requests.length,1)
+})

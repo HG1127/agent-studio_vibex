@@ -18,6 +18,7 @@ test('native governance: admin CAS/receipts, disabled listing, session invalidat
   const f=await agentCollaborationFixture(),store=f.store
   try{
     assert.equal(await inspectEmployeeGovernance(f.api),true)
+    assert.equal((await f.db.query("SELECT count(*)::integer AS n FROM agentstudio_auth.employee_governance_events WHERE action='employee.create' AND actor_user_id=$1::uuid AND target_user_id=$2::uuid",[f.owner.id,f.recipient.id])).rows[0].n,1)
     assert.equal(await inspectEmployeeGovernanceSchema(f.pool),true)
     const receipt=(await f.db.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg_v9_047'")).rows[0]
     await f.db.query("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_047'")
@@ -72,5 +73,7 @@ test('native governance: admin CAS/receipts, disabled listing, session invalidat
       // A denied SQL statement aborts this read-only test transaction.
       assert.match(error.message,/current transaction is aborted/)
     })
+    await f.db.exec('DROP TABLE agentstudio_auth.employee_governance_events; ALTER TABLE agentstudio_auth.accounts DROP COLUMN share_enabled,DROP COLUMN governance_revision')
+    await assert.rejects(inspectEmployeeGovernanceSchema(f.pool),/employee_governance_runtime_incomplete/)
   }finally{await f.close()}
 })
