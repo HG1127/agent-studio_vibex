@@ -1244,10 +1244,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.equal((await api.getAgentCollaboration(collaboration.id)).safe.goal,"Original owner goal")
     await api.changeAgentCollaboration(collaboration.id,{action:"revoke",request_id:randomUUID(),recipient_id:access.recipient_id,expected_access_revision:access.revision})
     assert.equal((await api.changeAgentCollaboration(collaboration.id,grantChoice)).replayed,true)
-    await api.login("other@example.com","SyntheticOtherPassword#2026")
-    await assert.rejects(api.getAgentCollaboration(collaboration.id),e=>e.status===404)
     mark("employee-governance-and-password-session-revocation")
-    await api.login("admin@example.com","SyntheticAdminPassword#2026")
     const governed=await api.createGovernedEmployee({email:"governance@example.test",password:"SyntheticGovernancePassword#2026",display_name:"Synthetic governance employee",is_admin:true,share_enabled:false})
     const governedLogin=await auth.login("governance@example.test","SyntheticGovernancePassword#2026")
     const governanceChoice={request_id:randomUUID(),target_id:governed.id,expected_revision:1,is_admin:false,enabled:false,share_enabled:false,confirm:true}
@@ -1264,6 +1261,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await assert.rejects(api.me(),e=>e.status===401)
     await api.login("governance@example.test","ChangedSyntheticGovernancePassword#2026")
     assert.equal((await api.me()).id,governed.id)
+    mark("collaboration-revoked-final-isolation")
+    await api.login("other@example.com","SyntheticOtherPassword#2026")
+    await assert.rejects(api.getAgentCollaboration(collaboration.id),e=>e.status===404)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
