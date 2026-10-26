@@ -17,12 +17,21 @@ export function LocalDevicesPanel() {
   const inFlight = useRef(false)
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const result = await localApi<{ items: LocalDevice[] }>('/api/local-devices', undefined, signal)
-    setDevices(result.items)
+    if (!signal?.aborted) setDevices(result.items)
   }, [])
   useEffect(() => {
     const controller = new AbortController()
-    void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(String(e.message)) })
-    return () => controller.abort()
+    let running = false
+    const poll = async () => {
+      if (running) return
+      running = true
+      try { await refresh(controller.signal) }
+      catch (e) { if (!controller.signal.aborted) { setDevices([]); setError(e instanceof Error ? e.message : '设备列表读取失败') } }
+      finally { running = false }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 15000)
+    return () => { controller.abort(); window.clearInterval(timer) }
   }, [refresh])
   const jobId = job?.id
   const pending = job?.status === 'queued' || job?.status === 'running'

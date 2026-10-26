@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { localApi, type LocalDevice } from "@/lib/localDevices"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -238,6 +239,25 @@ export function useAgentRun() {
   const [stopOnComplete, setStopOnComplete] = useState(true)
   const [instruction, setInstruction] = useState("")
   const [localDeviceId, setLocalDeviceId] = useState("")
+  const [readyLocalDevice, setReadyLocalDevice] = useState<LocalDevice | null>(null)
+  useEffect(() => {
+    setReadyLocalDevice(null)
+    if (!localDeviceId) return
+    const controller = new AbortController()
+    let busy = false
+    const refresh = async () => {
+      if (busy) return
+      busy = true
+      try {
+        const data = await localApi<{items: LocalDevice[]}>('/api/local-devices', undefined, controller.signal)
+        if (!controller.signal.aborted) setReadyLocalDevice(data.items.find(device => device.id === localDeviceId) || null)
+      } catch { if (!controller.signal.aborted) setReadyLocalDevice(null) }
+      finally { busy = false }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 15000)
+    return () => { controller.abort(); window.clearInterval(timer) }
+  }, [localDeviceId])
 
   const [isStarting, setIsStarting] = useState(false)
   const [activeRun, setActiveRun] = useState<AgentRunRow | null>(null)
@@ -296,7 +316,8 @@ export function useAgentRun() {
     connections: connectedTools,
     marketTools: connectedMarketTools,
     disabledToolIds: BUILTIN_TOOLS.filter(tool => !enabledTools.includes(tool.id)).map(tool => tool.id),
-  }), [selectedSpec?.spec, connectedTools, connectedMarketTools, enabledTools])
+    localDevice: readyLocalDevice?.id === localDeviceId ? readyLocalDevice : null,
+  }), [selectedSpec?.spec, connectedTools, connectedMarketTools, enabledTools, readyLocalDevice, localDeviceId])
   // History review must optimize its own Agent, never whichever Agent is selected in the left sidebar.
   const optimizationSpec = activeRun ? specList.find(row => row.id === activeRun.spec_id) || null : null
   // Only the server can confirm a saved optimization audit still matches

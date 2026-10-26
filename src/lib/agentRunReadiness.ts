@@ -1,7 +1,8 @@
 import type { AgentSpec, ConnectedToolOption } from "../pages/Home/presets"
 import type { VerifiedMarketTool } from "./marketToolSelection"
-import { agentCapabilityReadiness } from "./agentCapabilityPlan.ts"
+import { agentCapabilityReadiness, agentCapabilityRequirements } from "./agentCapabilityPlan.ts"
 import { agentRoleReadiness } from "./agentRoles.ts"
+import { localDeviceSupports, type ReadyLocalDevice } from "./localDeviceReadiness.ts"
 
 export type AgentRunReadiness = {
   ready: boolean
@@ -28,13 +29,17 @@ export function agentRunReadiness(spec: AgentSpec | null, options: {
   connections?: ConnectedToolOption[]
   marketTools?: VerifiedMarketTool[]
   disabledToolIds?: string[]
+  localDevice?: ReadyLocalDevice | null
 } = {}): AgentRunReadiness {
   if (!spec) return { ready: false, roleIssues: [], capabilityIssues: [], issues: [] }
   const roleIssues = agentRoleReadiness(spec)
   const disabled = new Set(options.disabledToolIds || [])
   const executionSpec = disabled.size ? { ...spec, tools: spec.tools.filter(id => !disabled.has(id)) } : spec
   // Invalid role shapes must first be repaired, not passed into capability matching.
-  const capabilityIssues = roleIssues.length ? [] : agentCapabilityReadiness(executionSpec, null,
+  const capabilitySpec = options.localDevice && !disabled.has('local_computer') ? { ...executionSpec,
+    capability_requirements: agentCapabilityRequirements(executionSpec).filter(need =>
+      !localDeviceSupports(executionSpec, need, options.localDevice)) } : executionSpec
+  const capabilityIssues = roleIssues.length ? [] : agentCapabilityReadiness(capabilitySpec, null,
     options.connections || [], options.marketTools || [])
   const issues = [...new Set([...roleIssues, ...capabilityIssues])]
   return { ready: issues.length === 0, roleIssues, capabilityIssues, issues }

@@ -12,6 +12,39 @@ const role = (id, tools = []) => ({ id, name: id, responsibility: "完成分配�
 const http = (patch = {}) => ({ name: "browser_read", description: "Read current browser page", enabled: true,
   method: "GET", status: "ok", ...patch })
 const savedBrowserSpec = (patch = {}) => spec({ tools: ["browser_read"], capability_requirements: [need()], ...patch })
+const localDevice = (tools, patch = {}) => ({id: 'local-device', revoked: false, seen_ms: Date.now(),
+  catalog: JSON.stringify(tools.map(name => ({name}))), ...patch})
+const browserTools = ['browser.browser_navigate', 'browser.browser_snapshot', 'browser.browser_take_screenshot', 'browser.browser_click', 'browser.browser_type']
+
+test('an explicitly selected live device satisfies browser needs without changing the saved contract', () => {
+  const value = spec({capability_requirements: [need({access: 'write'})]})
+  const before = JSON.stringify(value)
+  assert.equal(agentRunReadiness(value).ready, false)
+  assert.equal(agentRunReadiness(value, {localDevice: localDevice(browserTools)}).ready, true)
+  assert.equal(JSON.stringify(value), before)
+  for (const patch of [{revoked:true}, {seen_ms:Date.now()-46000}, {catalog:'{}'}, {catalog:'bad'}])
+    assert.equal(agentRunReadiness(value, {localDevice: localDevice(browserTools,patch)}).ready, false)
+  assert.equal(agentRunReadiness(value, {localDevice:localDevice(browserTools.slice(0,3))}).ready,false)
+  assert.equal(agentRunReadiness(value, {localDevice:localDevice(browserTools),disabledToolIds:['local_computer']}).ready,false)
+})
+
+test('local devices do not satisfy missing network capabilities or grant tools to roles', () => {
+  assert.equal(agentRunReadiness(spec({capability_requirements:[need({kind:'web_search'})]}),{localDevice:localDevice(browserTools)}).ready,false)
+  const value = spec({roles:[role('worker')],capability_requirements:[need({role_ids:['worker']})]})
+  assert.equal(agentRunReadiness(value,{localDevice:localDevice(browserTools)}).ready,false)
+  const granted = {...value,tools:['local_computer'],roles:[role('worker',['local_computer'])]}
+  assert.equal(agentRunReadiness(granted,{localDevice:localDevice(browserTools)}).ready,true)
+})
+
+test('file/application and native desktop requirements require their actual device tools', () => {
+  const fileSpec = spec({capability_requirements:[need({kind:'desktop',title:'本机文件操作与应用启动',purpose:'新建并回读文件，然后启动固定程序',access:'write'})]})
+  const tools = ['files.list','files.read','files.write','apps.launch']
+  assert.equal(agentRunReadiness(fileSpec,{localDevice:localDevice(tools)}).ready,true)
+  assert.equal(agentRunReadiness(fileSpec,{localDevice:localDevice(tools.slice(0,3))}).ready,false)
+  const desktopSpec = spec({capability_requirements:[need({kind:'desktop',title:'桌面截图输入和点击',access:'write'})]})
+  assert.equal(agentRunReadiness(desktopSpec,{localDevice:localDevice(tools)}).ready,false)
+  assert.equal(agentRunReadiness(desktopSpec,{localDevice:localDevice(['desktop.Screenshot','desktop.Click','desktop.Type'])}).ready,true)
+})
 const marketConnection = (patch = {}) => ({ id: "browser00000001", title: "Browser", enabled: true,
   last_probe_status: "ok", tool_count: 1, tools: [{ name: "browser_read", description: "Read current browser page", read_only: true }], ...patch })
 

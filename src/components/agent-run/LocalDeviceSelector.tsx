@@ -8,10 +8,19 @@ export function LocalDeviceSelector({ value, onChange }: { value: string; onChan
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     const controller = new AbortController()
-    void localApi<{ items: LocalDevice[] }>('/api/local-devices', undefined, controller.signal)
-      .then(data => { setDevices(data.items.filter(d => !d.revoked)); setError('') })
-      .catch(() => { if (!controller.signal.aborted) setError('设备列表加载失败，请刷新重试') })
-    return () => controller.abort()
+    let running = false
+    const poll = async () => {
+      if (running) return
+      running = true
+      try {
+        const data = await localApi<{ items: LocalDevice[] }>('/api/local-devices', undefined, controller.signal)
+        if (!controller.signal.aborted) { setDevices(data.items.filter(d => !d.revoked)); setError('') }
+      } catch { if (!controller.signal.aborted) { setDevices([]); setError('设备列表加载失败，请刷新重试') } }
+      finally { running = false }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 15000)
+    return () => { controller.abort(); window.clearInterval(timer) }
   }, [revision])
   return <div className="mt-3 space-y-2 text-sm">
     <label className="flex flex-wrap items-center gap-2">本次可操作的电脑
