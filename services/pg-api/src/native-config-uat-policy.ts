@@ -165,6 +165,15 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  const release=new RegExp("^/api/v2/agent-releases/"+uuid+"(?:/(change|confirm|acceptance|versions)(?:/("+uuid+"))?)?$").exec(pathname)
+  if(release){
+    const action=release[1],selected=release[2]
+    if(method==="GET")return !action||!!selected&&(action==="versions"||action==="acceptance")
+    if(method!=="POST"||selected)return false
+    if(action==="confirm")return true
+    if(action==="acceptance")return policy.configurationWrites===true&&policy.autonomousAgentUat===true
+    return action==="change"&&policy.configurationWrites===true
+  }
   const collaboration=new RegExp("^/api/v2/agent-collaboration(?:/"+uuid+"(?:/(revisions|change|revoke|reject|confirm))?)?$").exec(pathname)
   if(collaboration){
     const action=collaboration[1]

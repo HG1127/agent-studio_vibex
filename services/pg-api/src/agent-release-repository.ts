@@ -48,9 +48,9 @@ async function receipt(db:SqlClient,spec:string,request:string){
   return {request_sha256:value.request_sha256,result:result(value.result,spec,request)}
 }
 export class AgentReleaseRepository{
-  readonly pool:SqlPool;readonly enabled:boolean;readonly agents:AutonomousAgentRunRepository
-  constructor(pool:SqlPool,options:{enabled?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){
-    this.pool=pool;this.enabled=options.enabled===true;this.agents=new AutonomousAgentRunRepository(pool,options)
+  readonly pool:SqlPool;readonly enabled:boolean;readonly allowAcceptance:boolean;readonly agents:AutonomousAgentRunRepository
+  constructor(pool:SqlPool,options:{enabled?:boolean;allowAcceptance?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){
+    this.pool=pool;this.enabled=options.enabled===true;this.allowAcceptance=options.allowAcceptance===true;this.agents=new AutonomousAgentRunRepository(pool,options)
   }
   workspace(identity:Identity,rawId:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor)=>{
     const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item
@@ -123,7 +123,10 @@ export class AgentReleaseRepository{
   }
   private async apply(db:SqlClient,actor:string,target:string,choice:AgentReleaseChoice,fingerprint:string):Promise<ObjectValue>{
     if(choice.action==="restore")return this.restore(db,actor,target,choice,fingerprint)
-    if(choice.action==="acceptance")return this.acceptance(db,actor,target,choice,fingerprint)
+    if(choice.action==="acceptance"){
+      if(!this.allowAcceptance)throw new HttpError(403,"agent_release_acceptance_disabled")
+      return this.acceptance(db,actor,target,choice,fingerprint)
+    }
     let query:string,args:unknown[]
     if(choice.action==="snapshot"){
       if(choice.test_run_id!==null)await this.stageTest(db,actor,target,choice.test_run_id,choice.source_sha256,"snapshot")

@@ -15,7 +15,7 @@ test("dedicated acceptance atomically admits the selected owned model and cannot
     await f.db.exec(freshRuntimeSqlBody(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_046_agent_releases.sql",import.meta.url),"utf8")))
     assert.equal(await verifyAgentReleaseCredentials(f.db),true)
     await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046','SYNTHETIC TEST ONLY; incomplete candidate')")
-    const repo=new AgentReleaseRepository(f.pool,{enabled:true}),disabled=new AgentReleaseRepository(f.pool),role=f.resources.alice.spec
+    const repo=new AgentReleaseRepository(f.pool,{enabled:true,allowAcceptance:true}),disabled=new AgentReleaseRepository(f.pool),metadataOnly=new AgentReleaseRepository(f.pool,{enabled:true}),role=f.resources.alice.spec
     const workspace=()=>repo.workspace(alice,role.id),source=await workspace()
     const save=run=>({action:"snapshot",request_id:randomUUID(),expected_spec_revision:source.spec_revision,source_sha256:source.source_sha256,
       note:"Version with explicit acceptance provenance",test_run_id:run})
@@ -31,6 +31,7 @@ test("dedicated acceptance atomically admits the selected owned model and cannot
     const choice={action:"acceptance",request_id:randomUUID(),expected_spec_revision:source.spec_revision,source_sha256:source.source_sha256,
       instruction:"Use OWN_CITATION in a synthetic acceptance report",max_steps:2,model_binding:binding,confirm:true}
     await assert.rejects(disabled.change(alice,role.id,choice),e=>e.code==="agent_release_writes_disabled")
+    await assert.rejects(metadataOnly.change(alice,role.id,choice),e=>e.code==="agent_release_acceptance_disabled")
     await assert.rejects(repo.change(bob,role.id,choice),e=>e.status===404)
     await assert.rejects(repo.change(alice,role.id,{...choice,request_id:randomUUID(),model_binding:f.resources.bob.binding}),e=>e.status===404)
     await assert.rejects(repo.change(alice,role.id,{...choice,request_id:randomUUID(),source_sha256:"f".repeat(64)}),e=>e.code==="agent_release_source_changed")

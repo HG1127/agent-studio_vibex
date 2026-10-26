@@ -5,6 +5,8 @@ import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../
 import {agentDescriptiveLimits} from "../../shared/agent-role-limits.mjs"
 import {collaborationChoice,collaborationDetail,collaborationRevisions,collaborationSummaries,collaborationResult,type PgNativeAgentCollaborationChoice} from "./pgNativeAgentCollaboration.ts"
 export type {PgNativeAgentSafeText,PgNativeAgentCollaborationChoice,PgNativeAgentCollaborationDetail,PgNativeAgentCollaborationSummary,PgNativeAgentCollaborationRevision,PgNativeAgentCollaborationProposal} from "./pgNativeAgentCollaboration.ts"
+import {agentReleaseChoice,agentReleaseWorkspace,agentReleaseDetail,agentReleaseAcceptanceStatus,agentReleaseResult,type PgNativeAgentReleaseChoice} from "./pgNativeAgentRelease.ts"
+export type {PgNativeAgentReleaseChoice,PgNativeAgentReleaseWorkspace,PgNativeAgentReleaseVersion,PgNativeAgentReleaseDetail,PgNativeAgentReleaseResult,PgNativeAcceptanceSummary,PgNativeAcceptanceStatus} from "./pgNativeAgentRelease.ts"
 import {parseAgentHttpTools,type AgentHttpTool} from "../../services/pg-api/src/agent-http-tools.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT,parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
 import {parsePgMcpConnection,type PgNativeMcpInput,type PgNativeMcpConnection} from "./pgNativeMcpConnection.ts"
@@ -46,6 +48,8 @@ export type PgNativeConfigCapabilities={
   autonomous_agent_submission_enabled?:boolean
   schedule_execution_enabled?:boolean
   agent_collaboration_available?:boolean
+  agent_releases_available?:boolean
+  agent_release_acceptance_enabled?:boolean
 }
 export type PgNativeStaff={
   id:string;email:string;display_name:string;is_admin:boolean
@@ -229,7 +233,7 @@ const routes={
   toolConnections:"/api/v2/tool-connections",
   mcpConnections:"/api/v2/mcp-connections",
 } as const
-type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
+type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
   `/api/v2/runs/${string}`|`/api/v2/agent-specs/${string}/runs`|
   `/api/v2/knowledge-bases/${string}/documents`|
   `/api/v2/knowledge-bases/${string}/search`|
@@ -392,6 +396,16 @@ function collaborationPayload(raw:PgNativeAgentCollaborationChoice):PgNativeAgen
 function collaborationResponse<T>(decode:()=>T):T{
   try{return decode()}catch{throw new PgNativePilotError(503,"invalid_pg_native_agent_collaboration_response")}
 }
+function releaseRoute(id:string,action?:"versions"|"acceptance"|"change"|"confirm",selected?:string):Route{
+  if(!safeId.test(id)||selected!==undefined&&(!safeId.test(selected)||action!=="versions"&&action!=="acceptance"))throw new PgNativePilotError(400,"invalid_pg_native_release_identifier")
+  return `/api/v2/agent-releases/${id.toLowerCase()}${action?"/"+action:""}${selected?"/"+selected.toLowerCase():""}`
+}
+function releasePayload(raw:PgNativeAgentReleaseChoice):PgNativeAgentReleaseChoice{
+  try{return agentReleaseChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_pg_native_agent_release_change")}
+}
+function releaseResponse<T>(decode:()=>T):T{
+  try{return decode()}catch{throw new PgNativePilotError(503,"invalid_pg_native_agent_release_response")}
+}
 function simpleWorkflowGraph(){
   return {nodes:[
     {id:"start",type:"start",data:{title:"开始"},position:{x:0,y:0}},
@@ -458,6 +472,9 @@ export function createPgNativePilotApi(
           (value.workflow_v2_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.schedule_execution_enabled!==undefined&&typeof value.schedule_execution_enabled!=="boolean")||
           (value.agent_collaboration_available!==undefined&&typeof value.agent_collaboration_available!=="boolean")||
+          (value.agent_releases_available!==undefined&&typeof value.agent_releases_available!=="boolean")||
+          (value.agent_release_acceptance_enabled!==undefined&&typeof value.agent_release_acceptance_enabled!=="boolean")||
+          (value.agent_release_acceptance_enabled===true&&(value.agent_releases_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
           (value.schedule_execution_enabled===true&&(value.config_writes_enabled!==true||value.workflow_v2_submission_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
           (value.run_submission_enabled!==undefined&&
             typeof value.run_submission_enabled!=="boolean")||
@@ -565,6 +582,26 @@ export function createPgNativePilotApi(
     deleteMcpConnection:(id:string,expected_revision:number)=>request<{ok:true}>(mcpRoute(id),"DELETE",{expected_revision:safeRevision(expected_revision)},transport,rootPath),
     discoverMcpConnection:async(id:string,expected_revision:number)=>mcpItem((await request<{item:unknown}>(`${mcpRoute(id)}/discover`,"POST",
       {expected_revision:safeRevision(expected_revision)},transport,rootPath,25000)).item),
+    getAgentReleases:async(id:string)=>{
+      const value=await get<{item:unknown}>(releaseRoute(id))
+      return releaseResponse(()=>agentReleaseWorkspace(value.item,id))
+    },
+    getAgentReleaseVersion:async(id:string,version:string)=>{
+      const value=await get<{item:unknown}>(releaseRoute(id,"versions",version))
+      return releaseResponse(()=>agentReleaseDetail(value.item,id,version))
+    },
+    getAgentReleaseAcceptance:async(id:string,run:string)=>{
+      const value=await get<{item:unknown}>(releaseRoute(id,"acceptance",run))
+      return releaseResponse(()=>agentReleaseAcceptanceStatus(value.item,id,run))
+    },
+    changeAgentRelease:async(id:string,raw:PgNativeAgentReleaseChoice)=>{
+      const choice=releasePayload(raw),value=await post<{item:unknown}>(releaseRoute(id,choice.action==="acceptance"?"acceptance":"change"),choice as unknown as Record<string,unknown>)
+      return releaseResponse(()=>agentReleaseResult(value.item,id,choice))
+    },
+    confirmAgentRelease:async(id:string,raw:PgNativeAgentReleaseChoice)=>{
+      const choice=releasePayload(raw),value=await post<{item:unknown}>(releaseRoute(id,"confirm"),choice as unknown as Record<string,unknown>)
+      return releaseResponse(()=>agentReleaseResult(value.item,id,choice))
+    },
     listAgentCollaboration:async()=>{
       const value=await get<{items:unknown}>(routes.collaboration)
       return collaborationResponse(()=>collaborationSummaries(value.items))

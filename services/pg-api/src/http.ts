@@ -1,5 +1,6 @@
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type {AgentCollaborationRepository} from "./agent-collaboration-repository.ts"
+import type {AgentReleaseRepository} from "./agent-release-repository.ts"
 import type {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
 import type {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
 import type {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
@@ -31,6 +32,7 @@ import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Ide
 export interface AppDependencies {
   repository: AgentSpecRepository
   agentCollaborationRepository?:AgentCollaborationRepository
+  agentReleaseRepository?:AgentReleaseRepository
   runRepository?: RunRepository
   scheduleInventory?: ScheduleInventoryRepository
   scheduleDraftRepository?: ScheduleDraftRepository
@@ -144,10 +146,11 @@ export function createHandler(deps:AppDependencies) {
       const embeddingRoute=/^\/api\/v2\/knowledge-embedding\/(settings|receipt|consent|consent-receipt|index-authorize|index-receipt|bases\/([0-9a-fA-F-]{36})\/(status|rebuild|index-status))$/.exec(path)
       const queryRoute=/^\/api\/v2\/knowledge-query\/(submit|receipt)$/.exec(path)
       const collaborationRoute=/^\/api\/v2\/agent-collaboration(?:\/([0-9a-fA-F-]{36})(?:\/(revisions|change|revoke|reject|confirm))?)?$/.exec(path)
+      const releaseRoute=/^\/api\/v2\/agent-releases\/([0-9a-fA-F-]{36})(?:\/(change|confirm|acceptance|versions)(?:\/([0-9a-fA-F-]{36}))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -174,6 +177,19 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(releaseRoute){
+        const repo=deps.agentReleaseRepository
+        if(!repo)throw new HttpError(503,"agent_release_not_installed")
+        if(new URL(req.url||"/","http://127.0.0.1").search)throw new HttpError(400,"invalid_agent_release_query")
+        const id=releaseRoute[1]!,action=releaseRoute[2],selected=releaseRoute[3]
+        if(method==="GET"&&!action)return send(res,200,{item:await repo.workspace(identity,id)})
+        if(method==="GET"&&selected&&action==="versions")return send(res,200,{item:await repo.detail(identity,id,selected)})
+        if(method==="GET"&&selected&&action==="acceptance")return send(res,200,{item:await repo.acceptanceStatus(identity,id,selected)})
+        if(method!=="POST"||selected||!["change","confirm","acceptance"].includes(action??""))throw new HttpError(405,"method_not_allowed")
+        const body=await readBody(req,16384)
+        if(action==="acceptance"&&body.action!=="acceptance"||action==="change"&&body.action==="acceptance")throw new HttpError(400,"invalid_agent_release_action")
+        return send(res,200,{item:action==="confirm"?await repo.confirm(identity,id,body):await repo.change(identity,id,body)})
+      }
       if(collaborationRoute){
         const repo=deps.agentCollaborationRepository
         if(!repo)throw new HttpError(503,"agent_collaboration_not_installed")
