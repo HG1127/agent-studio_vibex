@@ -7,6 +7,8 @@ import { getVerifiedMarketTools } from "../src/lib/marketToolSelection.ts"
 import { resolveAgentToolRequirements, prepareGeneratedAgentPermissions } from "../src/lib/agentToolMatcher.ts"
 import { agentDesignTokenBudget } from "../src/lib/agentDesignProtocol.ts"
 import { chooseAgentDesignModel } from "../src/lib/agentDesignModelSelection.ts"
+import { preserveRoleSkillBindings, sanitizeAgentRoles } from "../src/lib/agentRoles.ts"
+import { normalizeCapabilityRequirements } from "../src/lib/agentCapabilityPlan.ts"
 import { evaluateAgentJourney } from "../src/lib/agentCreateJourney.ts"
 import { agentCapabilityReadiness, toolCatalogForDesign } from "../src/lib/agentCapabilityPlan.ts"
 
@@ -317,6 +319,32 @@ test("deleting the current Agent detaches its draft even if an older save return
   assert.equal(h.state.spec.goal, agentA.spec.goal)
 })
 
+test("AI full editor revision preserves reviewed Skill bindings only for surviving role IDs",async()=>{
+  const h=editorHarness()
+  const ref={id:"skillref0000001",version:1,hash:"a".repeat(64)}
+  const role=(id)=>({id,name:id,responsibility:"审查信息",tasks:["分析资料"],
+    inputs:["输入"],deliverables:["输出"],depends_on:[],tools:[],done_criteria:["能核实"]})
+  const current={goal:"旧投资研究任务",task_scope:"公开资料",tools:[],deliverables:["报告"],
+    task_plan:["分析"],done_criteria:["附证据"],
+    roles:[{...role("researcher"),skill_refs:[ref]},{...role("reviewer"),skill_refs:[]}]}
+  const proposed={...current,goal:"更新后的研究目标",roles:[
+    {...role("researcher"),skill_refs:[{id:"malicious0000001",version:2,hash:"b".repeat(64)}]},
+    role("new_reviewer")
+  ]}
+  const revise=callback(home,"runRevise",{...h.scope,...designModelScope,
+    reviseInput:"完善目标",spec:current,specName:"安全测试",connectedTools:[],connectedMarketTools:[],
+    REVISE_SYSTEM_PROMPT:"fixture",LLM_ERROR_TEXT:{},toolCatalogForDesign,
+    callLlmWithFallback:async()=>({ok:true,status:"success",model:"fixture",text:"{}"}),
+    preserveRoleSkillBindings,parseSpecJson:()=>({displayName:"更新版",spec:proposed})})
+  await revise()
+  assert.equal(h.state.revisionError,"")
+  const revised=h.state.proposal?.spec?.roles||[]
+  assert.deepEqual(revised[0].skill_refs,[ref],"same role must retain its original reviewed Skill reference")
+  assert.equal(Object.hasOwn(revised[1],"skill_refs"),false,"new role must not inherit or forge a Skill")
+  assert.ok(!revised.some(x=>x.id==="reviewer"),"deleted role should not carry its Skill")
+  assert.equal(h.state.proposal?.spec?.goal,"更新后的研究目标")
+})
+
 function quickSaveHarness() {
   const pending = []
   const state = { record: agentA, draft: agentA.spec, name: agentA.name, dirty: true, saving: false,
@@ -346,6 +374,25 @@ async function reopenQuickOnB(h) {
   assert.equal(h.state.editorSessionKey, agentB.id + ":" + h.scope.loadSequence.current,
     "Loading a distinct Agent must assign a fresh editor context from the completed request")
 }
+
+test("quick editor AI revision retains Skill references instead of trusting model-supplied replacements",async()=>{
+  const h=quickSaveHarness()
+  const ref={id:"skillref0000001",version:1,hash:"a".repeat(64)}
+  const role={id:"researcher",name:"研究",responsibility:"分析",tasks:["研究"],inputs:["输入"],
+    deliverables:["报告"],depends_on:[],tools:[],done_criteria:["可靠"],skill_refs:[ref]}
+  const current={...agentA.spec,roles:[role]}
+  const proposal={...current,goal:"模型修改后的目标",roles:[{...role,skill_refs:[]}]}
+  const revise=callback(quick,"revise",{...h.scope,
+    reviseInstruction:"修改研究目标",record:agentA,revising:false,draft:current,
+    name:agentA.name,connectedTools:[],marketTools:[],toolCatalogForDesign,
+    sanitizeAgentRoles,normalizeCapabilityRequirements,preserveRoleSkillBindings,
+    callLlmWithFallback:async()=>({ok:true,status:"success",text:JSON.stringify(proposal)})})
+  await revise()
+  assert.equal(h.state.revisionError,"")
+  assert.equal(h.state.proposal?.spec?.goal,proposal.goal)
+  assert.deepEqual(h.state.proposal?.spec?.roles?.[0].skill_refs,[ref],
+    "quick edit cannot drop an existing reviewed Skill")
+})
 
 test("quick editor: late AI revision cannot change error, spinner or proposal after another Agent opens", async () => {
   for (const outcome of ["success", "failure"]) {

@@ -12,6 +12,7 @@ import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 import { resolveAgentToolRequirements, chooseVerifiedAgentTool, prepareGeneratedAgentPermissions } from "@/lib/agentToolMatcher"
 import { toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
+import { preserveRoleSkillBindings } from "@/lib/agentRoles"
 import { AGENT_DESIGN_SYSTEM_PROMPT, agentDesignTokenBudget, parseAgentDesignResponse } from "@/lib/agentDesignProtocol"
 import { availableAgentDesignModels, chooseAgentDesignModel, type AgentDesignModelOption } from "@/lib/agentDesignModelSelection"
 import {
@@ -53,7 +54,7 @@ const SYSTEM_PROMPT = AGENT_DESIGN_SYSTEM_PROMPT
 const REVISE_SYSTEM_PROMPT = [
   "你是「Agent Studio」的助手方案修订器。用户会给你一份现有方案 JSON 和一句修改要求。",
   "请在现有方案基础上做增量修订：只改与修改要求相关的部分，其余字段保持原样。",
-  "只输出修订后的完整 JSON 对象。保留 roles 与 capability_requirements；要求修改分工时可编辑角色的职责、任务和依赖，工具权限只能保留原授权范围，新增角色 tools 留空。不得擅自扩大已有工具、知识库或审批权限。",
+  "只输出修订后的完整 JSON 对象。保留 roles 与 capability_requirements；要求修改分工时可编辑角色的职责、任务和依赖，工具权限只能保留原授权范围，新增角色 tools 留空。角色已绑定的 skill_refs 只能由员工手动在角色编辑器修改，AI 不得新增、替换或清除，新增角色 skill_refs 留空。不得擅自扩大已有工具、知识库或审批权限。",
   "不要 markdown 代码块，不要任何额外文字。所有内容使用简体中文。",
 ].join("\n")
 
@@ -103,6 +104,7 @@ export function useHome() {
   const [serverUpdated, setServerUpdated] = useState("")
   const [saveConflict, setSaveConflict] = useState(false)
   const [draftRestoreNotice, setDraftRestoreNotice] = useState("")
+  const [lastDesignModelUsed,setLastDesignModelUsed]=useState("")
   const markSpecEdited = useCallback(() => {
     specRevisionRef.current += 1
     setSpecDirty(true)
@@ -133,7 +135,6 @@ export function useHome() {
   const [designModelOptions,setDesignModelOptions]=useState<AgentDesignModelOption[]>([])
   const [designModelStatus,setDesignModelStatus]=useState<"loading"|"ready"|"unavailable">("loading")
   const [designModelKey,setDesignModelKey]=useState("")
-  const [lastDesignModelUsed,setLastDesignModelUsed]=useState("")
   const designModelLoadRef=useRef(0)
   const refreshDesignModels=useCallback(async()=>{
     const seq=++designModelLoadRef.current
@@ -154,8 +155,10 @@ export function useHome() {
     }
   },[])
   useEffect(()=>{
-    void refreshDesignModels()
-    return()=>{designModelLoadRef.current++}
+    let cancelled=false
+    const sequence=designModelLoadRef
+    void Promise.resolve().then(()=>{if(!cancelled)void refreshDesignModels()})
+    return()=>{cancelled=true;sequence.current++}
   },[refreshDesignModels])
 
   const currentDraft: AgentEditorDraft = useMemo(() => ({
@@ -443,7 +446,7 @@ export function useHome() {
     setEditingRecordId("")
     scrollToSpecEditor()
   }, [userInput, markSpecEdited, connectedTools, connectedMarketTools, invalidateSpecContext,
-    designModelOptions,designModelKey,designModelStatus])
+    designModelOptions,designModelKey,designModelStatus,setLastDesignModelUsed])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -508,8 +511,12 @@ export function useHome() {
       return
     }
     const existingRoleMap = new Map((spec.roles || []).map(role=>[role.id,role]))
-    const proposedRoles = parsed.spec.roles?.map(role=>({...role,
-      tools: existingRoleMap.get(role.id)?.tools.filter(tool=>spec.tools.includes(tool)) || []}))
+    // AI may revise role descriptions, but cannot silently change reviewed Skill
+    // bindings. Only the human role editor is allowed to add/remove versions.
+    const proposedRoles = parsed.spec.roles && preserveRoleSkillBindings(
+      parsed.spec.roles.map(role=>({...role,
+        tools: existingRoleMap.get(role.id)?.tools.filter(tool=>spec.tools.includes(tool)) || [],
+      })),spec.roles||[])
     setRevisionProposal({name:parsed.displayName || specName,basis:startedRevision,spec:{
       ...spec,...parsed.spec,tools:[...spec.tools],
       roles: proposedRoles ?? spec.roles,

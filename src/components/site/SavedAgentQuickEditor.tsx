@@ -14,7 +14,7 @@ import { safeAgentSpecId } from "@/lib/toolSearchPrivacy"
 import { resolveAgentToolRequirements } from "@/lib/agentToolMatcher"
 import { callLlmWithFallback } from "@/lib/llm"
 import { normalizeCapabilityRequirements, toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
-import { sanitizeAgentRoles } from "@/lib/agentRoles"
+import { preserveRoleSkillBindings, sanitizeAgentRoles } from "@/lib/agentRoles"
 import { readQuickAgentDraft, saveQuickAgentDraft, clearQuickAgentDraft, type QuickAgentDraft } from "@/lib/quickAgentDraft"
 
 type Props={open:boolean;onClose:()=>void;preferredSpecId?:string}
@@ -405,7 +405,7 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     const result=await callLlmWithFallback("gemini-3.1-flash-lite-preview",{
       page:"home",max_tokens:4096,
       messages:[
-        {role:"system",content:"你是 Agent 方案修改助手。按要求调整 name、goal、task_scope、deliverables、task_plan、done_criteria、roles、capability_requirements。严格返回 JSON，不要 Markdown。保留未要求修改的角色/能力配置；roles为空代表单助手，否则为顺序角色阶段，依赖不能成环，新增角色tools为空。能力建议仅使用附带目录的真实ID，不得假定连接可用。不得扩大 tools、knowledge_base_ids、quality_checks、审批或角色工具权限。"},
+        {role:"system",content:"你是 Agent 方案修改助手。按要求调整 name、goal、task_scope、deliverables、task_plan、done_criteria、roles、capability_requirements。严格返回 JSON，不要 Markdown。保留未要求修改的角色/能力配置；roles为空代表单助手，否则为顺序角色阶段，依赖不能成环，新增角色tools为空；现有角色 skill_refs 只允许人工编辑，AI 不得修改、授予或删除 Skill 绑定。能力建议仅使用附带目录的真实ID，不得假定连接可用。不得扩大 tools、knowledge_base_ids、quality_checks、审批或角色工具权限。"},
         {role:"user",content:JSON.stringify({name,...draft,modification:requestText,
           available_tools:toolCatalogForDesign(connectedTools,marketTools)})},
       ],
@@ -433,8 +433,10 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
           (item[key] as unknown[]).filter((entry):entry is string=>typeof entry==="string")
             .map(entry=>entry.slice(0,1200)).slice(0,40):draft[key as "deliverables"]
       const existingRoles=new Map((draft.roles||[]).map(role=>[role.id,role]))
-      const proposedRoles=Array.isArray(item.roles)?sanitizeAgentRoles(item.roles).map(role=>({...role,
-        tools:existingRoles.get(role.id)?.tools.filter(tool=>draft.tools.includes(tool))||[]})):draft.roles
+      const proposedRoles=Array.isArray(item.roles)?preserveRoleSkillBindings(
+        sanitizeAgentRoles(item.roles).map(role=>({...role,
+          tools:existingRoles.get(role.id)?.tools.filter(tool=>draft.tools.includes(tool))||[],
+        })),draft.roles||[]):draft.roles
       setRevisionProposal({name:typeof item.name==="string"?item.name.slice(0,90):name,basis:currentRev,spec:{
         ...draft,goal:(item.goal as string).slice(0,6000),
         task_scope:(item.task_scope as string).slice(0,6000),

@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import vm from "node:vm"
 import { clearOrphanedCapabilityRoles, createRoleStages, orphanedCapabilityRoles, replaceAgentRoles,
-  restoreAgentRoles, sanitizeAgentRoles, validateAgentRoles } from "../src/lib/agentRoles.ts"
+  restoreAgentRoles, preserveRoleSkillBindings, sanitizeAgentRoles, validateAgentRoles } from "../src/lib/agentRoles.ts"
 import { agentCapabilityReadiness } from "../src/lib/agentCapabilityPlan.ts"
 
 const context = { module: { exports: {} } }
@@ -16,6 +16,23 @@ const role = (id, deps = [], tools = []) => ({ id, name: id, responsibility: "�
   tasks: ["处理输入"], inputs: ["任务"], deliverables: ["阶段成果"], done_criteria: ["涵盖范围"], depends_on: deps, tools })
 const calculationNeed = (role_ids = []) => ({ id: "calculation", title: "数值计算", purpose: "核算数据",
   kind: "calculate", access: "read", required: true, role_ids, search_terms: [], suggested_tool_ids: ["calculate"] })
+
+test("AI revisions preserve only existing reviewed Skill binding shapes",()=>{
+  const oldRef={id:"approved0000001",version:1,hash:"a".repeat(64)}
+  const injected={id:"unapproved00001",version:3,hash:"b".repeat(64)}
+  const original=[{...role("researcher"),skill_refs:[oldRef]},role("reviewer")]
+  const model=[{...role("researcher"),skill_refs:[injected]},
+    {...role("reviewer"),skill_refs:[injected]},
+    {...role("new_role"),skill_refs:[injected]}]
+  const safe=preserveRoleSkillBindings(model,original)
+  assert.deepEqual(safe[0].skill_refs,[oldRef])
+  assert.equal(Object.hasOwn(safe[1],"skill_refs"),false,
+    "originally unbound legacy roles stay without skill_refs")
+  assert.equal(Object.hasOwn(safe[2],"skill_refs"),false,
+    "new roles cannot gain model-supplied Skill bindings")
+  safe[0].skill_refs[0].version=2
+  assert.equal(original[0].skill_refs[0].version,1,"existing bindings are cloned")
+})
 
 test("a single assistant remains backward compatible", () => {
   assert.equal(backend.validatePlan(undefined, []).valid, true)

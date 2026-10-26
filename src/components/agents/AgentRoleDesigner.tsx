@@ -4,6 +4,7 @@ import type { AgentSpec } from "@/pages/Home/presets"
 import { clearOrphanedCapabilityRoles, createRoleStages, MAX_AGENT_ROLES, orphanedCapabilityRoles,
   replaceAgentRoles, restoreAgentRoles, validateAgentRoles, type AgentRole } from "@/lib/agentRoles"
 import { agentToolDisplay, type AgentToolCatalog } from "@/lib/agentToolDisplay"
+import { AgentRoleSkillBinder } from "@/components/agents/AgentRoleSkillBinder"
 
 type Props = AgentToolCatalog & {
   spec: AgentSpec
@@ -139,6 +140,9 @@ export function AgentRoleDesigner({ spec, onChange, onOpenResources, builtinTool
               onClick={() => update({ depends_on: active.depends_on.filter(dep => dep !== id) })}
               className="mt-2 min-h-9 rounded-md border border-amber-300 px-2 text-xs">移除失效依赖：{id}</button>)}
           </fieldset>
+          <AgentRoleSkillBinder roleName={active.name}
+            refs={active.skill_refs||[]} disabled={disabled}
+            onChange={refs=>update({skill_refs:refs})}/>
           <fieldset disabled={disabled} className="mt-4 border-t border-border pt-4">
             <legend className="text-xs font-semibold">这个角色可调用的工具</legend>
             <p className="mt-1 text-xs text-muted-foreground">只能分配已加入当前方案的工具。未勾选工具时，本角色只根据输入和前序交付推理。</p>

@@ -11,6 +11,8 @@ export type AgentRole = {
   depends_on: string[]
   tools: string[]
   done_criteria: string[]
+  /** Immutable, reviewed text Skills; separate from tool permissions. */
+  skill_refs?: {id:string;version:number;hash:string}[]
 }
 export const MAX_AGENT_ROLES = 8
 
@@ -34,6 +36,12 @@ export function validateAgentRoles(roles: AgentRole[] = [], availableTools: stri
       if (!Array.isArray(role[key]) || role[key].length > 32 || role[key].some(value => typeof value !== "string" || value.length > (key === "tools" ? 220 : 1600))) errors.push(`${title}的${key}格式不正确或内容过长`)
     }
     if ((role.name || "").length > 100 || (role.responsibility || "").length > 2000) errors.push(`${title}的名称或职责过长`)
+    const refs = role.skill_refs || []
+    if (!Array.isArray(refs) || refs.length > 2 || refs.some(ref => !ref ||
+      !/^[A-Za-z0-9]{15}$/.test(ref.id) || !Number.isSafeInteger(ref.version) ||
+      ref.version < 1 || ref.version > 100 || !/^[a-f0-9]{64}$/.test(ref.hash)) ||
+      new Set(refs.map(ref => ref.id)).size !== refs.length)
+      errors.push(`${title}的 Skill 绑定无效；请从已审核的 Skills 中重新选择`)
     for (const tool of Array.isArray(role.tools) ? role.tools : []) if (!availableTools.includes(tool)) errors.push(`${title}的工具尚未加入方案：${tool}`)
   }
   if (errors.length) return { valid: false, errors, orderedRoles }
@@ -105,6 +113,20 @@ export function restoreAgentRoles(spec: AgentSpec, previous: AgentSpec): AgentSp
   }
 }
 
+/** AI may revise a role, but only the employee may add or revoke Skill versions.
+ * Preserve shape for legacy roles with no skill_refs; never trust model-supplied refs.
+ */
+export function preserveRoleSkillBindings(proposed: AgentRole[], previous: AgentRole[]): AgentRole[] {
+  const old = new Map(previous.map(role => [role.id, role]))
+  return proposed.map(role => {
+    const next = { ...role }
+    delete next.skill_refs
+    const refs = old.get(role.id)?.skill_refs
+    if (Array.isArray(refs)) next.skill_refs = refs.map(ref => ({ ...ref }))
+    return next
+  })
+}
+
 /** Bounded allowlist for local draft recovery; incomplete edits stay editable. */
 export function sanitizeAgentRoles(value: unknown): AgentRole[] {
   if (!Array.isArray(value)) return []
@@ -113,9 +135,18 @@ export function sanitizeAgentRoles(value: unknown): AgentRole[] {
   return value.slice(0, MAX_AGENT_ROLES).flatMap(item => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return []
     const r = item as Record<string, unknown>
+    const refs = Array.isArray(r.skill_refs) ? r.skill_refs.slice(0, 2).flatMap(ref => {
+      if (!ref || typeof ref !== "object" || Array.isArray(ref)) return []
+      const value = ref as Record<string, unknown>
+      if (typeof value.id !== "string" || !/^[A-Za-z0-9]{15}$/.test(value.id) ||
+          !Number.isSafeInteger(value.version) || Number(value.version) < 1 || Number(value.version) > 100 ||
+          typeof value.hash !== "string" || !/^[0-9a-f]{64}$/.test(value.hash)) return []
+      return [{id:value.id,version:value.version as number,hash:value.hash}]
+    }) : []
     return [{ id: text(r.id, 64), name: text(r.name, 100), responsibility: text(r.responsibility, 2000),
       tasks: list(r.tasks, 1600), inputs: list(r.inputs, 1600), deliverables: list(r.deliverables, 1600),
-      depends_on: list(r.depends_on, 64), tools: list(r.tools, 220), done_criteria: list(r.done_criteria, 1600) }]
+      depends_on: list(r.depends_on, 64), tools: list(r.tools, 220), done_criteria: list(r.done_criteria, 1600),
+      ...(Array.isArray(r.skill_refs) ? {skill_refs: refs} : {}) }]
   })
 }
 
