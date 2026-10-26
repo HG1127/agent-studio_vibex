@@ -27,6 +27,7 @@ import PgNativeKnowledgeQueryPanel from "./PgNativeKnowledgeQueryPanel"
 import PgNativeWorkflowValidationPanel from "./PgNativeWorkflowValidationPanel"
 import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
+import PgNativeAgentPlanReviewPanel from "./PgNativeAgentPlanReviewPanel"
 import PgNativeAgentCollaborationPanel from "./PgNativeAgentCollaborationPanel"
 import PgNativeAgentReleasePanel from "./PgNativeAgentReleasePanel"
 const PgNativeWorkflowWorkspace=lazy(()=>import("./PgNativeWorkflowWorkspace"))
@@ -541,6 +542,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                   kind:"agents",id:item.id,revision:item.revision,
                   name:item.name,detail:item.description
                 }):undefined}/>
+              {humanInput.available&&<PgNativeAgentPlanReviewPanel key={profile.id} api={api} agents={agents} enabled={canEditConfig&&!loading&&!busy} onUpdated={refresh} onExpired={expireAgentSession}/>}
               {canEditConfig&&<PgNativeAgentModelBindingPanel
                 key={profile.id} api={api} agents={agents}
                 connections={modelConnections} onUpdated={refresh} runtimeSubmissionEnabled={canRunOwnerModel}/>}

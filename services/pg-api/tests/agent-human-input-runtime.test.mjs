@@ -10,6 +10,10 @@ import {RunRepository} from '../src/run-repository.ts'
 import {withActor} from '../src/repository.ts'
 import {AgentReleaseRepository} from '../src/agent-release-repository.ts'
 import {WorkflowV2RunRepository} from '../src/workflow-v2-run-repository.ts'
+import {ScheduleDraftRepository} from '../src/schedule-draft-repository.ts'
+import {ScheduleRuntimeRepository} from '../src/schedule-runtime-repository.ts'
+import {ScheduleRuntimeWorker} from '../src/schedule-runtime-worker.ts'
+import {SCHEDULE_BACKGROUND_ACK} from '../src/schedule-runtime-contract.ts'
 
 async function fixture(){
   const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
@@ -74,6 +78,39 @@ test('Native human clarification: private mTLS, durable wait, atomic original re
       'ALTER TABLE agentstudio.agent_release_versions DROP CONSTRAINT agent_release_plan_review_boolean',
       'ALTER TABLE agentstudio.agent_release_versions DROP CONSTRAINT agent_release_human_spec_fields']){
       await f.db.exec('BEGIN');try{await f.db.exec(drift);await assert.rejects(verifyAgentHumanInputCredentials(f.db),/unsafe_agent_human_input_privileges/)}finally{await f.db.exec('ROLLBACK')}
+    }
+  }finally{await f.close()}
+})
+
+test('scheduled Agent holds its overlap slot while awaiting the owner and standing execution consent never manufactures a human plan approval',async()=>{
+  const f=await fixture(),{alice}=f.identities
+  let calls=0
+  try{
+    const {require_approval,...raw}=f.resources.alice.spec.spec
+    const role=await f.agents.create(alice,'Scheduled owner plan',safeAgentSpec({...raw,require_plan_review:true}))
+    const drafts=new ScheduleDraftRepository(f.pool),schedules=new ScheduleRuntimeRepository(f.pool,{enabled:true,allowHumanInput:true}),scheduler=new ScheduleRuntimeWorker(f.pool,'synthetic-human-schedule',{allowHumanInput:true})
+    const draft=await drafts.create(alice,{name:'Scheduled human question',kind:'agent',target_id:role.id,time_zone:'UTC',rule:{kind:'interval',interval_minutes:15}})
+    const activation=await schedules.activate(alice,draft.id,{expected_revision:draft.revision,expected_target_revision:role.revision,instruction:'Scheduled synthetic owner review',max_steps:3,anchor_at:new Date().toISOString(),
+      expires_at:new Date(Date.now()+3600000).toISOString(),max_occurrences:3,max_auto_effects:10,background_ack:SCHEDULE_BACKGROUND_ACK,knowledge_charge_ack:null,request_id:randomUUID()})
+    const first=await schedules.runNow(alice,draft.id,Number(activation.revision))
+    assert.equal((await scheduler.tick()).run_id,first.run_id)
+    await f.privateTls(async(material,prompt)=>{calls++;return JSON.stringify({action:'answer',answer:JSON.parse(prompt).round===1?'Scheduled plan for the actual owner':'Scheduled final after owner approval'})},async makeWorker=>{
+      const scheduled=options=>makeWorker({...options,scheduleExecutionApproved:true})
+      const pending=await until(f,first.run_id,scheduled,'awaiting_input');assert.equal(calls,1)
+      assert.equal((await scheduled({humanInputApproved:true}).tick()).status,'idle')
+      assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[first.run_id])).rows[0].n,0)
+      await f.db.query("UPDATE agentstudio.schedule_occurrences SET scheduled_for=scheduled_for-interval '2 minutes' WHERE run_id=$1",[first.run_id])
+      const overlap=await schedules.runNow(alice,draft.id,Number(activation.revision))
+      const skipped=await scheduler.tick();assert.equal(skipped.status,'skipped_overlap');assert.equal(skipped.occurrence_id,overlap.occurrence_id)
+      assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.runs')).rows[0].n,1);assert.equal(calls,1)
+      await f.responses.change(alice,first.run_id,{...request(pending),decision:'approve',answer:''})
+      const completed=await until(f,first.run_id,scheduled,'succeeded');assert.equal(completed.run.result_text,'Scheduled final after owner approval');assert.equal(calls,2)
+      assert.equal((await f.responses.history(alice,first.run_id)).items[0].decision,'approve')
+    })
+    for(const body of ["BEGIN RETURN NULL; END","BEGIN RETURN jsonb_build_object('skipped',true); END"]){
+      await f.db.exec('BEGIN')
+      try{await f.db.exec("CREATE OR REPLACE FUNCTION agentstudio.schedule_reserve(p_schedule uuid,p_revision bigint,p_due timestamptz,p_next timestamptz,p_worker text) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $drift$"+body+"$drift$");await assert.rejects(verifyAgentHumanInputCredentials(f.db),/unsafe_agent_human_input_privileges/)}
+      finally{await f.db.exec('ROLLBACK')}
     }
   }finally{await f.close()}
 })

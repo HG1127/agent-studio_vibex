@@ -45,6 +45,10 @@ export async function verifyAgentHumanInputCredentials(db:SqlClient):Promise<boo
   const constraints=(await db.query<{name:string;valid:boolean;expression:string}>("SELECT conname AS name,contype='c' AND convalidated AND NOT connoinherit AS valid,"+
     "regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_release_versions'::regclass AND conname=ANY($1::text[])",[Object.keys(expressions)])).rows
   if(constraints.length!==3||constraints.some(c=>c.valid!==true||c.expression!==expressions[c.name]))refuse()
+  const schedule=(await db.query<{ok:boolean}>("SELECT prosecdef AND provolatile='v' AND proowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='agentstudio_scheduler') AND "+
+    "proconfig=ARRAY['search_path=pg_catalog']::text[] AND encode(sha256(convert_to(prosrc,'UTF8')),'hex')=$1::text AS ok FROM pg_catalog.pg_proc "+
+    "WHERE oid=to_regprocedure('agentstudio.schedule_reserve(uuid,bigint,timestamp with time zone,timestamp with time zone,text)')",["7963e0cfd5ee0995456c9594533347e1e26263463fa2a33e12ac4b48484fb950"])).rows[0]?.ok
+  if(schedule!==true)refuse()
   return true
 }
 export async function inspectAgentHumanInputSchema(pool:SqlPool):Promise<boolean>{

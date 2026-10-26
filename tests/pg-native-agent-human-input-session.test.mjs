@@ -94,3 +94,18 @@ test('owner human history validates exact run, private content boundaries and pa
   assert.equal(seen[0].options.method,'GET');assert.equal(seen[0].options.body,undefined)
   await assert.rejects(api.getAutonomousAgentHumanHistory(run,'',21),e=>e.status===400);assert.equal(seen.length,1)
 })
+test('owner role plan settings use the current owned revision, preserve configured resources and require an exact boolean acknowledgement',async()=>{
+  const bodies=[];let savedFlag=true
+  const old={id:agent,name:'Owner role',revision:3,spec:{goal:'Original goal',task_scope:'Original scope',tools:['calculate'],knowledge_base_ids:[run],deliverables:['Report'],model_binding:{connection_id:request,connection_revision:2,model_id:'synthetic'}}}
+  const api=createPgNativePilotApi(async(path,options)=>{
+    if(options.method==='GET')return new Response(JSON.stringify({item:old}),{status:200})
+    const body=JSON.parse(options.body);bodies.push(body)
+    return new Response(JSON.stringify({item:{...old,revision:4,spec:{...body.spec,require_plan_review:savedFlag}}}),{status:200})
+  },'')
+  const result=await api.updateAgentPlanReview(agent,3,true);assert.equal(result.spec.require_plan_review,true)
+  assert.deepEqual(bodies[0].spec.model_binding,old.spec.model_binding);assert.deepEqual(bodies[0].spec.tools,old.spec.tools)
+  assert.deepEqual(bodies[0].spec.knowledge_base_ids,old.spec.knowledge_base_ids);assert.equal(bodies[0].expected_revision,3)
+  await assert.rejects(api.updateAgentPlanReview(agent,2,true),e=>e.status===409)
+  await assert.rejects(api.updateAgentPlanReview(agent,3,'true'),e=>e.status===400);assert.equal(bodies.length,1)
+  savedFlag=false;await assert.rejects(api.updateAgentPlanReview(agent,3,true),e=>e.code==='unconfirmed_agent_plan_review')
+})

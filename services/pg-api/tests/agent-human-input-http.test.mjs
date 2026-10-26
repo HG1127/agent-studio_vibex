@@ -40,7 +40,9 @@ test('Native Cookie human replies require exact owner/CSRF/current source; concu
     const login=async(email,password)=>{const r=await call('/api/native-auth/login',{body:{email,password}});assert.equal(r.status,200);return r.headers.get('set-cookie').split(';')[0]}
     const alice=await login('synthetic-admin@example.test','SyntheticServiceAdmin#2026'),bob=await login('collaborator@example.test','SyntheticCollaborator#2026')
     const client=cookie=>createPgNativePilotApi((path,options)=>fetch(origin+path,{...options,headers:{...options.headers,Origin:origin,Cookie:cookie}}),'')
-    const api=client(alice),foreign=client(bob),role=f.resources.alice.spec
+    const api=client(alice),foreign=client(bob);let role=f.resources.alice.spec
+    role=await api.updateAgentPlanReview(role.id,role.revision,true);assert.equal(role.spec.require_plan_review,true)
+    role=await api.updateAgentPlanReview(role.id,role.revision,false);assert.equal(role.spec.require_plan_review,false)
     assert.equal((await api.getConfigCapabilities()).agent_human_responses_enabled,true)
     const admitted=await api.submitAutonomousAgentRun(role.id,role.revision,'Native owner clarification','synthetic-human-http-'+randomUUID(),3),id=admitted.run.id
     await f.privateTls(async()=>{calls++;return JSON.stringify({action:'ask_user',question:'Owner date <script>untrusted</script>?'})},async makeWorker=>{

@@ -698,6 +698,21 @@ export function createPgNativePilotApi(
         name,spec,expected_revision:revision
       })).item
     },
+    updateAgentPlanReview:async(id:string,expected_revision:number,require_plan_review:boolean)=>{
+      const revision=safeRevision(expected_revision),route=recordRoute(routes.agents,id)
+      if(typeof require_plan_review!=="boolean")throw new PgNativePilotError(400,"invalid_agent_plan_review")
+      const current=(await get<{item:PgNativeAgent}>(route)).item,old=current?.spec
+      if(current?.id!==id.toLowerCase()||current.revision!==revision)throw new PgNativePilotError(409,"revision_conflict")
+      if(!old||typeof old.goal!=="string")throw new PgNativePilotError(409,"unexpected_stored_spec")
+      planReviewSetting(old)
+      const spec={goal:old.goal,task_scope:old.task_scope??"",deliverables:old.deliverables??[],task_plan:old.task_plan??[],done_criteria:old.done_criteria??[],
+        tools:old.tools??[],knowledge_base_ids:old.knowledge_base_ids??[],require_plan_review,
+        ...(old.knowledge_retrieval?{knowledge_retrieval:parseKnowledgeRetrievalBinding(old.knowledge_retrieval)}:{}),
+        ...(old.model_binding?{model_binding:old.model_binding}:{}),...(old.http_tools?.length?{http_tools:old.http_tools}:{}),...(old.mcp_tools?.length?{mcp_tools:old.mcp_tools}:{})}
+      const saved=(await patch<{item:PgNativeAgent}>(route,{name:current.name,spec,expected_revision:revision})).item
+      if(saved?.id!==current.id||saved.revision!==revision+1||saved.spec?.require_plan_review!==require_plan_review)throw new PgNativePilotError(503,"unconfirmed_agent_plan_review")
+      return saved
+    },
     // Explicit development UAT only. Server verifies all KB IDs belong to
     // this employee and the config-write capability before saving.
     updateAgentKnowledgeBases:async(id:string,expected_revision:number,ids:string[],retrieval?:KnowledgeRetrievalBinding|null)=>{
