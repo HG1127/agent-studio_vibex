@@ -16,7 +16,7 @@ import {NativeAuthRepository} from "../../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../../src/native-auth-http.mjs"
 import {permitNativePg18BusinessUatRequest} from "../../src/native-config-uat-policy.ts"
 import {createHandler} from "../../src/http.ts"
-import {safeAgentSpec} from "../../src/contracts.ts"
+import {HttpError,safeAgentSpec} from "../../src/contracts.ts"
 import {AutonomousAgentRunRepository} from "../../src/autonomous-agent-run-repository.ts"
 import {WorkflowV2RunRepository} from "../../src/workflow-v2-run-repository.ts"
 import {WorkflowV2Worker} from "../../src/workflow-v2-worker.ts"
@@ -34,6 +34,7 @@ import {inspectAgentMemoryContextSchema} from "../../src/agent-memory-context-au
 import {AgentMemoryDerivedRepository} from "../../src/agent-memory-derived-repository.ts"
 import {AgentMemoryOutcomeRepository} from "../../src/agent-memory-outcome-repository.ts"
 import {inspectAgentMemoryOutcomeSchema} from "../../src/agent-memory-outcome-audit.ts"
+import {inspectAgentMemoryFailureSourceSchema} from "../../src/agent-memory-failure-source-audit.ts"
 import {inspectAgentMemoryDerivedSchema} from "../../src/agent-memory-derived-audit.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../../src/workflow-v2-model-dispatch.ts"
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "../../src/workflow-v2-tool-dispatch.ts"
@@ -105,6 +106,8 @@ if(process.env.AGENT_STUDIO_PG_BROWSER_OUTCOME_MEMORY!==undefined&&!outcomeMemor
 const derivedMemory=process.env.AGENT_STUDIO_PG_BROWSER_DERIVED_MEMORY==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_DERIVED_MEMORY!==undefined&&!derivedMemory||derivedMemory&&!memoryRuntime&&!outcomeMemory)throw Error("invalid_synthetic_derived_memory_browser_mode")
 if(outcomeMemory&&!derivedMemory)throw Error("outcome_memory_requires_synthetic_derived_storage")
+const failureSource=process.env.AGENT_STUDIO_PG_BROWSER_FAILURE_SOURCE==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_FAILURE_SOURCE!==undefined&&!failureSource||failureSource&&!outcomeMemory)throw Error("invalid_synthetic_failure_source_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -120,7 +123,12 @@ const stopped=new Promise(resolve=>{stop=resolve})
 const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledgeEmbeddingConsent:semantic,knowledgeIndexRuntime:semantic,knowledgeQueryRuntime:semantic,knowledgeToolRuntime:semantic,async connect(){
   const before=queue;let release
   queue=new Promise(resolve=>{release=resolve});await before
-  return {query:(sql,values=[])=>db.query(sql,values),release}
+  return {query:(sql,values=[])=>{
+    if(failureSource&&state.failPreparation&&sql==='SELECT status FROM agentstudio.users WHERE id=$1::uuid'){
+      state.failPreparation=false;throw new HttpError(409,'synthetic_worker_preparation_failed')
+    }
+    return db.query(sql,values)
+  },release}
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
   boundModelExecutionUat:true,modelProbeUat:true,autonomousAgentUat:autonomous||scheduling,workflowV2ExecutionUat:workflow,scheduleRuntimeUat:scheduling}
@@ -130,7 +138,7 @@ Object.assign(state,{scheduleDrop:false,scheduleHashes:[]})
 Object.assign(state,{collaborationDrop:false,collaborationHashes:[]})
 Object.assign(state,{releaseDrop:false,releaseHashes:[],humanDrop:false,humanHashes:[],humanConfirms:0,humanModelCalls:0})
 Object.assign(state,{memoryDrop:false,memoryHashes:[],memoryConfirms:0})
-Object.assign(state,{memoryPrompts:0})
+Object.assign(state,{memoryPrompts:0,failPreparation:false})
 Object.assign(state,{outcomeAllowed:outcomeMemory,outcomeDrop:false,outcomeCapabilitiesDrop:false,outcomeHashes:[],outcomeConfirms:0})
 Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedCapabilitiesDrop:false,derivedHashes:[],derivedConfirms:0})
 const managedRemote=new Map()
@@ -157,6 +165,7 @@ try{
   if(memoryRuntime||outcomeMemory){await db.exec(load("db/postgres/migrations/pg_v9_050_agent_memory_context.sql"));assert.equal(await inspectAgentMemoryContextSchema(pool),true)}
   if(derivedMemory){await db.exec(load("db/postgres/migrations/pg_v9_051_agent_memory_derived.sql"));assert.equal(await inspectAgentMemoryDerivedSchema(pool),true)}
   if(outcomeMemory){await db.exec(load("db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql"));assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true)}
+  if(failureSource){await db.exec(load("db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql"));assert.equal(await inspectAgentMemoryFailureSourceSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -343,6 +352,7 @@ try{
             ...(memoryRuntime?{memoryPrompts:state.memoryPrompts,memoryContexts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_run_contexts")).rows[0].n}:{}),
             ...(derivedMemory?{derivedHashes:state.derivedHashes,derivedConfirms:state.derivedConfirms,derivedEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_entries")).rows[0].n,derivedReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_receipts")).rows[0].n}:{}),
             ...(outcomeMemory?{outcomeHashes:state.outcomeHashes,outcomeConfirms:state.outcomeConfirms,outcomeConsents:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_outcome_consents")).rows[0].n,outcomeStops:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_outcome_stops")).rows[0].n,outcomeResults:(await c.query("SELECT decision FROM agentstudio.agent_memory_outcome_results ORDER BY created_at")).rows.map(row=>row.decision)}:{}),
+            ...(failureSource?{failureSources:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_failure_sources")).rows[0].n,effects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.external_effects")).rows[0].n,failPreparation:state.failPreparation}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
             ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,decisionHashes:state.decisionHashes,semanticModelPrompts:state.semanticModelPrompts,
@@ -366,6 +376,7 @@ try{
         else if(req.url==="/__fixture/autonomous"&&req.method==="POST"&&autonomous)output=await tickAutonomous()
         else if(req.url==="/__fixture/prepare"&&req.method==="POST")output=await prepare.tick()
         else if(req.url==="/__fixture/model"&&req.method==="POST")output=await model.tick()
+        else if(req.url==="/__fixture/fail-next-preparation"&&req.method==="POST"&&failureSource){state.failPreparation=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-outcome-stop"&&req.method==="POST"&&outcomeMemory){state.outcomeDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-outcome-capabilities"&&req.method==="POST"&&outcomeMemory){state.outcomeCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-outcome-memory"&&req.method==="POST"&&outcomeMemory){state.outcomeAllowed=false;configure();output={ok:true}}
