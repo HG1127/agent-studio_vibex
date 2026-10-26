@@ -28,7 +28,15 @@ Feature branch: feat/agent-run-task-workspace-20261026. Presentation only; no di
 - npm unit/TypeScript build via pnpm check.
 - Real isolated Chrome login flow at 1440px: task rail left, center execution, on-demand settings right; 390px layout with collapsed tasks and Escape-close drawer.
 - Real isolated Chrome approval, human input, results tabs, task-switch-no-reexecution, new-draft-without-creating-run, and five-role browser/PDF/sheet/email workflow checks.
-- 28 real isolated PocketBase and Worker integration tests via pnpm test:worktree:e2e.
+- Rebased against main 8fc098d, preserving newly added owner-scoped local-computer and Office features; local-computer UI test now opens the on-demand settings drawer before verifying the existing connected-device and missing-device states.
+- 29/29 real isolated PocketBase, Worker and local-computer integration tests via pnpm test:worktree:e2e (including file/Office/browser and explicit local execution approval).
+
+## Validation notes
+
+- The first 29-case E2E run exposed one test that still expected the old always-visible resources panel. Nine local computer/Office workflow phases succeeded and the last UI visibility assertion failed. The UI-specific test was adapted to open and close the new panel; focused local-computer E2E then passed 1/1 and full isolated regression passed 29/29.
+- After rebasing onto main 8fc098d, the full real Chrome design-workspace run completed 1/1 PASS (temporary SQLite, independent employee login, no real paid model). Browser console errors 0 and HTTP 400 responses 0. It verified task-first desktop layout, mobile drawer, new-task action, run history navigation, user approval, clarification, unchanged Skill/role grants and 5-role browser/PDF/spreadsheet/email workflows.
+- Unknown or unverified device status never grants additional permissions. The user still authorizes external/local side effects.
+- The final integrated pnpm check passed unit tests, TypeScript, Vite production build and 114 production bundle isolation assertions. Tests were not used to mutate the live PocketBase database or LAN Worker.
 
 ## Not claimed
 
