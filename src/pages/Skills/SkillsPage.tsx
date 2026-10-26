@@ -124,7 +124,7 @@ export default function SkillsPage() {
           <section aria-label="导入 Skill" className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-start gap-2">
               <Upload className="mt-0.5 h-5 w-5 text-primary"/>
-              <div><h2 className="font-semibold">导入 Skill</h2><p className="mt-1 text-xs text-muted-foreground">兼容 SKILL.md 标准；只处理文本。GitHub 链接仅支持公开仓库中的 SKILL.md。</p></div>
+              <div><h2 className="font-semibold">导入 Skill</h2><p className="mt-1 text-xs text-muted-foreground">支持公开 GitHub 仓库首页、SKILL.md 文件页或文件夹地址；仓库首页将自动定位根目录 SKILL.md。仅导入文本，不执行脚本。</p></div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="导入方式">
               {([{key:"github",label:"GitHub 链接"},{key:"file",label:"上传 SKILL.md"},{key:"paste",label:"粘贴正文"}] as const).map(v=>
@@ -132,20 +132,22 @@ export default function SkillsPage() {
                   onClick={()=>{setMode(v.key);setSource("")}}
                   className={"min-h-9 rounded-lg px-3 text-xs font-medium "+(mode===v.key?"bg-primary text-primary-foreground":"border border-border hover:bg-secondary")}>{v.label}</button>)}
             </div>
-            {mode==="github"?<label className="mt-3 block text-xs font-semibold">GitHub SKILL.md 链接
+            {mode==="github"?<label className="mt-3 block text-xs font-semibold">GitHub 仓库或 SKILL.md 链接
               <div className="mt-1 flex items-center gap-2 rounded-lg border border-input px-3">
                 <Link2 className="h-4 w-4 text-muted-foreground"/>
                 <input className="h-11 min-w-0 flex-1 bg-transparent text-sm font-normal outline-none" value={source}
-                  onChange={e=>setSource(e.target.value)} placeholder="https://github.com/owner/repo/blob/main/skills/foo/SKILL.md"/>
+                  onChange={e=>setSource(e.target.value)} placeholder="https://github.com/owner/repo"/>
               </div>
             </label>:mode==="file"?<label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border p-4 text-sm">
               <FileUp className="h-5 w-5 text-primary"/>
-              {source?"文件内容已读取，可以导入":"点击选择 SKILL.md 文件（≤16KB）"}
+              {source?"文件内容已读取，可以导入":"点击选择 SKILL.md 文件（按字符数判断，最多约 16,100 字符）"}
               <input aria-label="上传 SKILL.md 文件" type="file" accept=".md,text/markdown" className="sr-only" onChange={async e=>{
                 const file=e.target.files?.[0]
                 if(!file)return
-                if(file.size>16000){setError("文件超过 16KB，仅支持文本型 Skill");return}
-                setSource(await file.text())
+                if(file.size>65536){setError("文件数据超过 64 KiB 的安全读取上限");return}
+                const text=await file.text()
+                if(text.length>16100){setError("Skill 文本超过 16,100 字符，请检查内容长度");return}
+                setError("");setSource(text)
               }}/>
             </label>:<label className="mt-3 block text-xs font-semibold">SKILL.md 原始内容
               <textarea aria-label="SKILL.md 正文" className="mt-1 min-h-32 w-full rounded-lg border border-input bg-background p-3 text-sm font-normal"

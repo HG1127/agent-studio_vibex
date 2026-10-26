@@ -9,6 +9,7 @@ import { PROVIDER_META, normalizeProvider } from "@/pages/ModelConnections/useMo
 import { normalizeAgentQualityChecks, type AgentQualityCheck } from "@/lib/agentQualityChecks"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 import { agentRunReadiness, enabledRunToolConnections } from "@/lib/agentRunReadiness"
+import { collectRoleSkills, verifyRoleSkillBindings } from "@/lib/skillRunPreflight"
 
 export type { AgentSpec, SavedSpecRow }
 
@@ -291,11 +292,48 @@ export function useAgentRun() {
   const selectedSpec = specList.find((row) => row.id === selectedSpecId) || null
   const connectedToolNames = connectedTools.map(tool => tool.name)
   const marketToolCount = connectedMarketTools.length
+  const roleSkillBindings=useMemo(
+    ()=>collectRoleSkills(selectedSpec?.spec.roles),[selectedSpec?.spec.roles])
+  const [skillRefreshRevision,setSkillRefreshRevision]=useState(0)
+  const skillPreflightKey=selectedSpec?.id
+    ? selectedSpec.id+":"+rhUserId+":"+skillRefreshRevision+":"+JSON.stringify(roleSkillBindings) : ""
+  const [skillVerification,setSkillVerification]=useState<{key:string;issues:string[]}>({
+    key:"",issues:[],
+  })
+  useEffect(()=>{
+    if(!selectedSpec?.id||!rhUserId||!roleSkillBindings.length)return
+    const controller=new AbortController()
+    let active=true
+    const timeout=window.setTimeout(()=>controller.abort(),10000)
+    void verifyRoleSkillBindings(roleSkillBindings,async ref=>{
+      const route=base+"/api/skills/detail?id="+encodeURIComponent(ref.id)+
+        "&version="+encodeURIComponent(String(ref.version))
+      const res=await fetch(route,{
+        headers:{...vibexAuthHeaders()},signal:controller.signal,
+      })
+      if(!res.ok)throw Error("skill_version_unavailable")
+      return await res.json()
+    }).then(issues=>{
+      if(active)setSkillVerification({key:skillPreflightKey,issues})
+    }).catch(()=>{
+      if(active)setSkillVerification({key:skillPreflightKey,
+        issues:["Skill 状态核验失败，请刷新页面重试"]})
+    }).finally(()=>window.clearTimeout(timeout))
+    return()=>{
+      active=false;window.clearTimeout(timeout);controller.abort()
+    }
+  },[roleSkillBindings,skillPreflightKey,base,rhUserId,selectedSpec?.id])
+  const skillIssues=useMemo(()=>roleSkillBindings.length
+    ?skillVerification.key===skillPreflightKey
+      ?skillVerification.issues
+      :["正在核验当前角色已绑定的 Skill 版本与权限"]
+    :[],[roleSkillBindings.length,skillVerification,skillPreflightKey])
   const runReadiness = useMemo(() => agentRunReadiness(selectedSpec?.spec || null, {
     connections: connectedTools,
     marketTools: connectedMarketTools,
     disabledToolIds: BUILTIN_TOOLS.filter(tool => !enabledTools.includes(tool.id)).map(tool => tool.id),
-  }), [selectedSpec?.spec, connectedTools, connectedMarketTools, enabledTools])
+    skillIssues,
+  }), [selectedSpec?.spec, connectedTools, connectedMarketTools, enabledTools, skillIssues])
   // History review must optimize its own Agent, never whichever Agent is selected in the left sidebar.
   const optimizationSpec = activeRun ? specList.find(row => row.id === activeRun.spec_id) || null : null
   // Only the server can confirm a saved optimization audit still matches
@@ -1394,6 +1432,7 @@ export function useAgentRun() {
     selectedSpecId,
     selectedSpec,
     handleSelectSpec,    recoverableOptimization,
+    refreshSkillPreflight:()=>setSkillRefreshRevision(n=>n+1),
     recoveryError,
     optimizationLinked:Boolean(acceptedOptimizationLineage&&acceptedOptimizationLineage.specId===selectedSpecId),
     handleRestoreOptimization,

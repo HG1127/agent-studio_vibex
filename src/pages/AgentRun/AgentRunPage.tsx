@@ -111,6 +111,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               toolConnectionsLoading={p.toolConnectionsLoading}
               toolConnectionsError={p.toolConnectionsError}
               onRefreshConnections={p.refreshToolConnections}
+              onRefreshSkillPreflight={p.refreshSkillPreflight}
               enabledTools={p.enabledTools}
               onToggleTool={p.handleToggleTool}
               maxSteps={p.maxSteps}

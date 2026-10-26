@@ -28,6 +28,8 @@ export function agentRunReadiness(spec: AgentSpec | null, options: {
   connections?: ConnectedToolOption[]
   marketTools?: VerifiedMarketTool[]
   disabledToolIds?: string[]
+  /** Latest owner-scoped server Skill checks; pending validation fails closed. */
+  skillIssues?: string[]
 } = {}): AgentRunReadiness {
   if (!spec) return { ready: false, roleIssues: [], capabilityIssues: [], issues: [] }
   const roleIssues = agentRoleReadiness(spec)
@@ -36,6 +38,6 @@ export function agentRunReadiness(spec: AgentSpec | null, options: {
   // Invalid role shapes must first be repaired, not passed into capability matching.
   const capabilityIssues = roleIssues.length ? [] : agentCapabilityReadiness(executionSpec, null,
     options.connections || [], options.marketTools || [])
-  const issues = [...new Set([...roleIssues, ...capabilityIssues])]
+  const issues = [...new Set([...roleIssues, ...capabilityIssues, ...(options.skillIssues||[])])]
   return { ready: issues.length === 0, roleIssues, capabilityIssues, issues }
 }

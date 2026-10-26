@@ -48,6 +48,24 @@ try {
  await expect("GET",endpoint,"D",undefined,403)
  await expect("POST",endpoint,"D",{action:"preview",spec_id:"abcdefghijklmno"},403)
 
+ const sequence=["research","documents","analysis","review","delivery"]
+ const sourceRoles=sequence.map((id,index)=>({
+   id,name:id,responsibility:"执行并交接独立任务："+id,
+   tasks:["执行阶段："+id],inputs:["授权资料"],
+   deliverables:["有来源的阶段成果："+id],
+   depends_on:index?[sequence[index-1]]:[],
+   tools:index===0?["EXTERNAL_PRIVATE_TOOL"]:["calculate"],
+   done_criteria:["完成核验："+id],
+   skill_refs:index===0?[{id:"pvtSkill0000001",version:1,hash:"f".repeat(64)}]:[],
+ }))
+ const sourceNeeds=[
+   {id:"research_need",title:"检索公开资料",purpose:"取得公开证据",
+     kind:"browser",access:"read",required:true,role_ids:["research"],
+     search_terms:["public company"],suggested_tool_ids:["owner_private_tool"]},
+   {id:"delivery_need",title:"审批后交付",purpose:"只允许本人授权",
+     kind:"integration",access:"write",required:true,role_ids:["delivery"],
+     search_terms:["email"],suggested_tool_ids:["owner_private_sender"]},
+ ]
  const source=await expect("POST","/api/agent_specs","A",{
   name:"内部研究助手",
   spec:{
@@ -55,6 +73,9 @@ try {
     task_scope:"覆盖公开信息",
     deliverables:["摘要报告"],tools:["calculate","knowledge_search","EXTERNAL_PRIVATE_TOOL"],
     task_plan:["检索","汇总"],done_criteria:["引用来源"],
+    roles:sourceRoles,capability_requirements:sourceNeeds,
+    quality_checks:[{type:"contains",expected:"来源"}],
+    require_plan_review:false,
     knowledge_base_ids:["123456789012345"],
     require_approval:false,
     custom_model:{connection_id:"PERSONAL_MODEL_SECRET"},
@@ -67,6 +88,16 @@ try {
  assert.equal(preview.preview_spec.require_approval,true)
  assert.deepEqual(preview.preview_spec.tools,["calculate","knowledge_search"])
  assert.deepEqual(preview.preview_spec.knowledge_base_ids,[])
+ assert.equal(preview.preview_spec.roles.length,5)
+ assert.deepEqual(preview.preview_spec.roles.map(r=>r.id),sequence)
+ assert.deepEqual(preview.preview_spec.roles.map(r=>r.tools),[[],[],[],[],[]])
+ assert.ok(preview.preview_spec.roles.every(r=>!Object.hasOwn(r,"skill_refs")))
+ assert.deepEqual(preview.preview_spec.capability_requirements.map(x=>x.role_ids),
+   [["research"],["delivery"]])
+ assert.deepEqual(preview.preview_spec.capability_requirements.map(x=>x.suggested_tool_ids),[[],[]])
+ assert.deepEqual(preview.preview_spec.capability_requirements.map(x=>x.search_terms),[[],[]])
+ assert.deepEqual(preview.preview_spec.quality_checks,[{type:"contains",expected:"来源"}])
+ assert.equal(preview.preview_spec.require_plan_review,true)
  assert.doesNotMatch(JSON.stringify(preview),/PERSONAL_MODEL_SECRET|NEVER_COPY|123456789012345|EXTERNAL_PRIVATE_TOOL/)
  await expect("POST",endpoint,"A",{action:"create",spec_id:source.id},409)
  await expect("POST",endpoint,"A",{action:"create",spec_id:source.id,
@@ -105,7 +136,17 @@ try {
  assert.deepEqual(result.spec.knowledge_base_ids,[])
  assert.deepEqual(result.spec.tools,["calculate","knowledge_search"])
  assert.equal(result.spec.goal,"研究市场机会；共享者需确认没有敏感信息")
- assert.doesNotMatch(JSON.stringify(result),/PERSONAL_MODEL_SECRET|NEVER_COPY|123456789012345|EXTERNAL_PRIVATE_TOOL/)
+ assert.equal(result.spec.roles.length,5)
+ assert.deepEqual(result.spec.roles.map(r=>r.id),sequence)
+ assert.deepEqual(result.spec.roles[4].depends_on,["review"])
+ assert.ok(result.spec.roles.every(r=>r.tools.length===0&&!Object.hasOwn(r,"skill_refs")))
+ assert.deepEqual(result.spec.capability_requirements.map(r=>r.role_ids),
+   [["research"],["delivery"]])
+ assert.ok(result.spec.capability_requirements.every(r=>r.suggested_tool_ids.length===0))
+ assert.ok(result.spec.capability_requirements.every(r=>r.search_terms.length===0))
+ assert.deepEqual(result.spec.quality_checks,[{type:"contains",expected:"来源"}])
+ assert.equal(result.spec.require_plan_review,true)
+ assert.doesNotMatch(JSON.stringify(result),/PERSONAL_MODEL_SECRET|NEVER_COPY|123456789012345|EXTERNAL_PRIVATE_TOOL|pvtSkill0000001|owner_private_tool|owner_private_sender/)
  await expect("GET","/api/agent_specs/"+imported.spec_id,"A",undefined,404)
  await expect("POST",endpoint,"C",{action:"redeem",share_code:created.share_code},404)
  const ownerAfter=await expect("GET",endpoint,"A")
@@ -130,6 +171,8 @@ try {
   assert.ok(!row.token_hash.includes(created.share_code))
   const snapshot=sqlite.prepare("SELECT snapshot_json FROM agent_studio_template_invites WHERE id=?").get(created.id)
   assert.deepEqual(JSON.parse(snapshot.snapshot_json).tools,["calculate","knowledge_search"])
+  assert.equal(JSON.parse(snapshot.snapshot_json).roles.length,5)
+  assert.ok(JSON.parse(snapshot.snapshot_json).roles.every(r=>!r.skill_refs && r.tools.length===0))
   assert.doesNotMatch(snapshot.snapshot_json,/NEVER_COPY|EXTERNAL_PRIVATE_TOOL|PERSONAL_MODEL_SECRET/)
 
   sqlite.prepare("UPDATE agent_studio_template_invites SET expires_ms=? WHERE id=?")

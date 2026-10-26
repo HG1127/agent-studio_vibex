@@ -321,7 +321,13 @@ test("design workspace: real login, editable capabilities, role grants, resource
       const longPrefix=skillText.replace("name: first-principles-analysis","name: steve-jobs-test")
       const longSkill=longPrefix+"\n"+"聚焦设计体验和推翻不合理假设".repeat(1400).slice(0,15553-longPrefix.length-1)
       assert.equal(longSkill.length,15553)
-      await page.getByRole("textbox",{name:"SKILL.md 正文"}).fill(longSkill)
+      const utf8=Buffer.from(longSkill,"utf8")
+      assert.ok(utf8.length>16000,"CJK fixture must exceed old 16KB byte gate")
+      await page.getByRole("button",{name:"上传 SKILL.md"}).click()
+      await page.getByLabel("上传 SKILL.md 文件").setInputFiles({
+        name:"SKILL.md",mimeType:"text/markdown",buffer:utf8,
+      })
+      await visible(page.getByText("文件内容已读取，可以导入"))
       await page.getByRole("button",{name:"导入并待审核"}).click()
       await visible(page.getByText(/已导入 steve-jobs-test v1/))
       await page.getByRole("region",{name:"Skill 版本审核"}).getByRole("checkbox").check()

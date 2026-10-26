@@ -53,6 +53,59 @@ test("GitHub URL import uses only the trusted GitHub API host and retrieves SKIL
   assert.match(text,/name: external-method/)
   assert.deepEqual(requests,["https://api.github.com/repos/example/methods/contents/skills/test/SKILL.md?ref=main"])
 })
+
+test("GitHub repository clone links resolve the true default branch and root SKILL.md",()=>{
+  const fetched=[]
+  const fixture="---\nname: steve-jobs-perspective\ndescription: Product decision method.\n---\n# Principles\nFocus on user experience and clarity."
+  const context={module:{exports:{}},$http:{send:opts=>{
+    fetched.push(opts.url)
+    if(opts.url==="https://api.github.com/repos/alchaincyf/steve-jobs-skill")
+      return {statusCode:200,body:JSON.stringify({default_branch:"master"})}
+    if(opts.url==="https://api.github.com/repos/alchaincyf/steve-jobs-skill/contents/SKILL.md?ref=master")
+      return {statusCode:200,body:fixture}
+    throw Error("unexpected_host_or_path")
+  }}}
+  vm.runInNewContext(source,context,{filename:"github_repo_skill.js",timeout:2000})
+  for (const input of [
+    "https://github.com/alchaincyf/steve-jobs-skill",
+    "https://github.com/alchaincyf/steve-jobs-skill.git",
+  ]){
+    assert.equal(context.module.exports.fromGithub(input),fixture)
+  }
+  assert.deepEqual(fetched,[
+    "https://api.github.com/repos/alchaincyf/steve-jobs-skill",
+    "https://api.github.com/repos/alchaincyf/steve-jobs-skill/contents/SKILL.md?ref=master",
+    "https://api.github.com/repos/alchaincyf/steve-jobs-skill",
+    "https://api.github.com/repos/alchaincyf/steve-jobs-skill/contents/SKILL.md?ref=master",
+  ])
+})
+test("GitHub folder URLs resolve only fixed SKILL.md paths",()=>{
+  const responses=[]
+  const fake={module:{exports:{}},$http:{send:opts=>{
+    responses.push(opts.url)
+    return {statusCode:200,body:"---\nname: nested-method\ndescription: Test a nested skill.\n---\n# Steps\nA series of safe deterministic instructions."}
+  }}}
+  vm.runInNewContext(source,fake,{filename:"nested_skill.js",timeout:2000})
+  const output=fake.module.exports.fromGithub(
+    "https://github.com/example/methods/tree/main/skills/first-principles")
+  assert.match(output,/name: nested-method/)
+  assert.deepEqual(responses,[
+    "https://api.github.com/repos/example/methods/contents/skills/first-principles/SKILL.md?ref=main"])
+})
+test("Repository discovery refuses arbitrary hosts, query tokens and path traversal",()=>{
+  const fake={module:{exports:{}},$http:{send:()=>{throw Error("must_never_fetch")}}}
+  vm.runInNewContext(source,fake,{filename:"repo_security.js",timeout:2000})
+  for(const candidate of [
+    "https://github.com.evil.test/owner/repo",
+    "http://github.com/owner/repo",
+    "https://github.com/owner/repo?token=abc",
+    "https://github.com/owner/repo/tree/main/../private",
+    "https://github.com/owner/repo/tree/main/skills/%2e%2e",
+    "https://github.com/owner/repo/tree/main/../../etc",
+    "https://github.com/owner/repo/evil/path",
+    "https://github.com/owner/repo.git?token=123",
+  ])assert.throws(()=>fake.module.exports.resolveGithubImportUrl(candidate))
+})
 test("Role Skill prompt includes ONLY its own frozen text, with low-trust boundaries",()=>{
   const snapshots=[
     {role_id:"researcher",skills:[{name:"first-principles-analysis",version:1,

@@ -21,6 +21,17 @@ test("legacy single assistants remain runnable without new mandatory semantic ch
   assert.equal(agentRunReadiness(null).ready, false)
 })
 
+test("invalid or unchecked role Skills block a NEW run, but do not mutate its spec",()=>{
+  const configuration=spec({roles:[{...role("researcher"),skill_refs:[
+    {id:"skillabc1234567",version:1,hash:"a".repeat(64)}]}]})
+  assert.equal(agentRunReadiness(configuration,{skillIssues:["正在核验角色 Skill 版本"]}).ready,false)
+  const failed=agentRunReadiness(configuration,{skillIssues:["Skill 已被停用或未审核"]})
+  assert.equal(failed.ready,false)
+  assert.match(failed.issues[0],/停用/)
+  assert.equal(agentRunReadiness(configuration,{skillIssues:[]}).ready,true)
+  assert.equal(configuration.roles[0].skill_refs.length,1)
+})
+
 test("a direct run of a saved spec cannot bypass an explicit required browser gap", () => {
   const result = agentRunReadiness(savedBrowserSpec())
   assert.equal(result.ready, false)
