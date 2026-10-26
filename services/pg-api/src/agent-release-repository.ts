@@ -1,5 +1,5 @@
-// Full configuration versions are owner-only. This repository is not routed
-// or enabled until migration046 and its independent startup audit are ready.
+// Full configuration versions are owner-only. Migration046 and its independent
+// startup audit are required; metadata writes and acceptance default to off.
 import {createHash,randomUUID} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor,verifyAgentSpecResources} from "./repository.ts"

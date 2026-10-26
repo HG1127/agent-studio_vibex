@@ -50,7 +50,7 @@ test("four genuine preparation stages are distinct, metadata-only and verified i
   const f=await preparationFixture(),probe=evidence(f)
   try{
     const initial=await probe.check("initialized")
-    assert.equal(initial.stage_verified,true);assert.equal(initial.tables,53);assert.equal(initial.forced_rls_tables,52);assert.equal(initial.source_versions,31)
+    assert.equal(initial.stage_verified,true);assert.equal(initial.tables,57);assert.equal(initial.forced_rls_tables,56);assert.equal(initial.source_versions,32)
     assert.equal(initial.hba_checked,false);assert.equal(probe.hbaReads,0);assert.equal(initial.native_login_enabled,false)
     await assert.rejects(probe.check("native-login"),/native_auth_activation_required_first/)
     await f.enableNative()

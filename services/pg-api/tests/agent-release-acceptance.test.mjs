@@ -1,9 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import {readFileSync} from "node:fs"
 import {randomUUID} from "node:crypto"
 import {agentFixture} from "./helpers/workflow-v2-agent-fixture.mjs"
-import {freshRuntimeSqlBody} from "../src/pg18-fresh-runtime-source.mjs"
 import {AgentReleaseRepository} from "../src/agent-release-repository.ts"
 import {verifyAgentReleaseCredentials} from "../src/agent-release-audit.ts"
 
@@ -12,9 +10,7 @@ test("dedicated acceptance atomically admits the selected owned model and cannot
   const {alice,bob}=f.identities
   let genericCalls=0,acceptanceCalls=0
   try{
-    await f.db.exec(freshRuntimeSqlBody(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_046_agent_releases.sql",import.meta.url),"utf8")))
     assert.equal(await verifyAgentReleaseCredentials(f.db),true)
-    await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046','SYNTHETIC TEST ONLY; incomplete candidate')")
     const repo=new AgentReleaseRepository(f.pool,{enabled:true,allowAcceptance:true}),disabled=new AgentReleaseRepository(f.pool),metadataOnly=new AgentReleaseRepository(f.pool,{enabled:true}),role=f.resources.alice.spec
     const workspace=()=>repo.workspace(alice,role.id),source=await workspace()
     const save=run=>({action:"snapshot",request_id:randomUUID(),expected_spec_revision:source.spec_revision,source_sha256:source.source_sha256,

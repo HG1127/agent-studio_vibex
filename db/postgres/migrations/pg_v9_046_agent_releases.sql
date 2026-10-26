@@ -1,6 +1,5 @@
--- DRAFT foundation: not in the fresh source sequence and no046 receipt yet.
--- Mutation functions, provenance, privilege audit and UI must be completed
--- before this file can become a reviewed migration. No service is enabled.
+-- Isolated native owner-only complete configuration versions and acceptance.
+-- No legacy import, service activation, provider request or deployment.
 \set ON_ERROR_STOP on
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -420,5 +419,5 @@ GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.
   agentstudio.agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text),
   agentstudio.agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text),
   agentstudio.agent_release_restore_prepare(uuid,uuid,bigint,text,text,bigint,boolean,text,uuid,text),agentstudio.agent_release_restore_finish(uuid,uuid,text) TO agentstudio_api;
--- Intentionally no pg_v9_046 receipt or HTTP/initialization entry in this draft.
+INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046','Native owner-only full configuration versions, current-source acceptance and atomic restoration; no service activation');
 COMMIT;

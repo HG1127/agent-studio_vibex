@@ -1,21 +1,21 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import {readFileSync} from "node:fs"
 import {randomUUID} from "node:crypto"
 import {agentCollaborationFixture} from "./helpers/agent-collaboration-fixture.mjs"
-import {freshRuntimeSqlBody} from "../src/pg18-fresh-runtime-source.mjs"
 import {AgentSpecRepository,withActor} from "../src/repository.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
 import {parseAgentReleaseStoredSpec} from "../src/agent-release-contract.ts"
 import {verifyAgentReleaseCredentials,inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 
-test("draft full-version foundation is private, owner-only, immutable and never certifies itself as an installed046",async()=>{
+test("fresh046 full versions remain private, owner-only and immutable, and startup refuses a missing migration receipt",async()=>{
   const f=await agentCollaborationFixture()
   try{
-    const sql=readFileSync(new URL("../../../db/postgres/migrations/pg_v9_046_agent_releases.sql",import.meta.url),"utf8")
-    await f.db.exec(freshRuntimeSqlBody(sql))
     assert.equal(await verifyAgentReleaseCredentials(f.api),true)
-    await assert.rejects(inspectAgentReleaseSchema(f.pool),/agent_release_runtime_incomplete/)
+    assert.equal(await inspectAgentReleaseSchema(f.pool),true)
+    const receipt=(await f.db.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")).rows[0]
+    await f.db.query("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")
+    try{await assert.rejects(inspectAgentReleaseSchema(f.pool),/agent_release_runtime_incomplete/)}
+    finally{await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046',$1)",[receipt.description])}
     for(const drift of ["ALTER ROLE agentstudio_releases LOGIN","GRANT agentstudio_releases TO agentstudio_api",
       "GRANT SELECT ON agentstudio.agent_release_versions TO agentstudio_api","GRANT SELECT(password_record) ON agentstudio_auth.accounts TO agentstudio_releases",
       "GRANT UPDATE(owner_user_id) ON agentstudio.agent_release_heads TO agentstudio_releases","GRANT EXECUTE ON FUNCTION agentstudio.release_source_sha(uuid) TO agentstudio_api",
@@ -135,7 +135,7 @@ test("draft full-version foundation is private, owner-only, immutable and never 
     assert.equal((await workspace(f.alice)).next_version_no,5)
     assert.equal((await save(f.alice,"No deleted version number reuse",randomUUID(),await workspace(f.alice))).version_no,5)
     await f.db.query("UPDATE agentstudio_auth.accounts SET enabled=false WHERE user_id=$1",[f.owner.id]);assert.equal(await workspace(f.alice),null)
-    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")).rows[0].n,0)
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")).rows[0].n,1)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,0)
   }finally{await f.close()}
 })

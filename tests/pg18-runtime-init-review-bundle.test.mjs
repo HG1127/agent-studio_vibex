@@ -13,6 +13,7 @@ test("full runtime review contains the real migration map and every initializer 
     assert.ok(files.includes("db/postgres/migrations/pg_v9_019_model_connections.sql"));assert.ok(files.includes("db/postgres/migrations/pg_v9_043_workflow_sample_lineage.sql"))
     assert.ok(files.includes("db/postgres/migrations/pg_v9_044_schedule_execution.sql"));assert.ok(files.includes("services/pg-api/src/schedule-runtime-audit.ts"))
     assert.ok(files.includes("db/postgres/migrations/pg_v9_045_agent_collaboration.sql"));assert.ok(files.includes("services/pg-api/src/agent-collaboration-audit.ts"))
+    assert.ok(files.includes("db/postgres/migrations/pg_v9_046_agent_releases.sql"));assert.ok(files.includes("services/pg-api/src/agent-release-audit.ts"))
     assert.ok(files.includes("shared/agent-role-limits.mjs"));assert.ok(files.includes("shared/agent-role-limits.d.mts"))
     assert.ok(files.includes("services/pg-api/src/pg18-fresh-runtime-source.d.mts"));assert.ok(files.includes("services/pg-api/src/knowledge-lineage-audit.ts"))
     assert.ok(files.includes("services/pg-api/src/native-activation-cli.mjs"));assert.ok(files.includes("services/pg-api/src/native-first-admin-cli.mjs"))

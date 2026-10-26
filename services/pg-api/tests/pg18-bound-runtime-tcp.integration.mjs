@@ -30,6 +30,8 @@ import {createNativeRunRepository} from "../src/native-run-repository.ts"
 import {AgentSpecRepository} from "../src/repository.ts"
 import {AgentCollaborationRepository} from "../src/agent-collaboration-repository.ts"
 import {inspectAgentCollaborationSchema} from "../src/agent-collaboration-audit.ts"
+import {AgentReleaseRepository} from "../src/agent-release-repository.ts"
+import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
 import {AutonomousAgentRunRepository} from "../src/autonomous-agent-run-repository.ts"
@@ -133,7 +135,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       allowKnowledgeQueryRuntime:true,
       allowKnowledgeToolExecution:true,
       allowRunSubmission:policy.runApprovalUat,allowBoundRunSubmission:policy.boundModelExecutionUat,
-      allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,allowScheduleRuntime:true,allowAgentCollaboration:true,
+      allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,allowScheduleRuntime:true,allowAgentCollaboration:true,allowAgentReleases:true,
       businessHandler:(req,res)=>{
         const route=new URL(req.url,"https://localhost").pathname
         if(!permitNativePg18BusinessUatRequest(route,req.method,policy)){
@@ -147,6 +149,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(pool),runRepository:createNativeRunRepository(pool,policy),
       agentCollaborationRepository:new AgentCollaborationRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:true}),
+      agentReleaseRepository:new AgentReleaseRepository(pool,{enabled:true,allowAcceptance:true,allowMcpExecution:true,allowKnowledgeExecution:true}),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
       knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
@@ -271,7 +274,7 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_namespace WHERE nspname IN('agentstudio','agentstudio_auth')")).rows[0].n,0)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM pg_roles WHERE rolname=ANY($1::text[])",[freshRuntimeRoles])).rows[0].n,0)
       const initialized=await initialize()
-      assert.equal(initialized.migration_versions,31);assert.equal(initialized.service_logins_enabled,false)
+      assert.equal(initialized.migration_versions,32);assert.equal(initialized.service_logins_enabled,false)
       const receipt=(await bootstrap.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_fresh_runtime_001'")).rows[0]
       assert.equal(JSON.parse(receipt.description).source_sha256,fresh.source_sha256)
       assert.equal((await bootstrap.query("SELECT count(*)::int AS n FROM agentstudio.schema_migrations WHERE description ILIKE '%synthetic%'")).rows[0].n,0)
@@ -383,6 +386,8 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await verifyScheduleRuntimeSchema(apiPool);await verifyScheduleRuntimeSchema(workerPool)
     assert.equal(await inspectAgentCollaborationSchema(apiPool),true)
     assert.equal(await inspectAgentCollaborationSchema(workerPool),true)
+    assert.equal(await inspectAgentReleaseSchema(apiPool),true)
+    assert.equal(await inspectAgentReleaseSchema(workerPool),true)
     const inspectWorkerOptional=async()=>{
       const db=await workerPool.connect()
       try{await db.query("BEGIN READ ONLY");try{
@@ -1162,6 +1167,53 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       }
       assert.equal((await api.getAutonomousAgentRun(queued.run.id)).run.status,"succeeded");assert.equal(fullRoleCalls,1)
     },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:"agent_native_v2"})})
+    mark("complete-configuration-versions-and-acceptance")
+    const releaseSource=await api.getAgentReleases(fullRole.id),releaseSave={action:"snapshot",request_id:randomUUID(),expected_spec_revision:releaseSource.spec_revision,
+      source_sha256:releaseSource.source_sha256,note:"Complete native role over genuine PG18",test_run_id:null}
+    const releaseOne=await api.changeAgentRelease(fullRole.id,releaseSave),releaseDetail=await api.getAgentReleaseVersion(fullRole.id,releaseOne.version_id)
+    assert.deepEqual(releaseDetail.spec_snapshot,fullRole.spec)
+    await withActor(apiPool,owner,db=>db.query("UPDATE agentstudio.agent_specs SET name='Temporary owner configuration',spec=jsonb_set(spec,'{goal}',to_jsonb('Temporary owner wording'::text)),revision=revision+1,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=agentstudio.actor_id()",[fullRole.id]))
+    const restoreSource=await api.getAgentReleases(fullRole.id),restoreChoice={action:"restore",request_id:randomUUID(),expected_spec_revision:restoreSource.spec_revision,
+      source_sha256:restoreSource.source_sha256,version_id:releaseDetail.id,version_sha256:releaseDetail.version_sha256,expected_version_revision:releaseDetail.revision,
+      confirm:true,reason:"Restore the exact complete owner configuration and bindings"}
+    const fullRestored=await api.changeAgentRelease(fullRole.id,restoreChoice)
+    assert.equal(fullRestored.spec_revision,restoreSource.spec_revision+1)
+    assert.deepEqual((await api.getAgent(fullRole.id)).spec,fullRole.spec)
+    assert.equal((await api.changeAgentRelease(fullRole.id,restoreChoice)).spec_revision,fullRestored.spec_revision)
+    const acceptanceSource=await api.getAgentReleases(fullRole.id),acceptanceChoice={action:"acceptance",request_id:randomUUID(),expected_spec_revision:acceptanceSource.spec_revision,
+      source_sha256:acceptanceSource.source_sha256,instruction:"Accept the complete restored native role",max_steps:1,model_binding:null,confirm:true}
+    const acceptedRun=await api.changeAgentRelease(fullRole.id,acceptanceChoice)
+    assert.equal((await api.confirmAgentRelease(fullRole.id,acceptanceChoice)).run_id,acceptedRun.run_id)
+    const beforeAcceptanceCalls=fullRoleCalls
+    await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),fullDispatch),async raw=>{
+      const executor=workflowV2ModelEffectExecutor({...raw,executionMode:"agent_native_v2"})
+      for(let i=0;i<16;i++){
+        await new WorkflowV2Worker(workerPool,"ci-version-acceptance-"+i,{agentExecutionApproved:true,executor,executionMode:"agent_native_v2"}).tick()
+        const detail=await api.getAutonomousAgentRun(acceptedRun.run_id)
+        if(detail.run.status==="succeeded")break
+        assert.equal(["failed","paused","cancelled"].includes(detail.run.status),false,detail.run.last_error_code)
+        if(detail.run.status==="awaiting_approval")await api.decideAutonomousAgentNode(acceptedRun.run_id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+      }
+      assert.equal((await api.getAutonomousAgentRun(acceptedRun.run_id)).run.status,"succeeded")
+    },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:"agent_native_v2"})})
+    assert.equal(fullRoleCalls,beforeAcceptanceCalls+1)
+    assert.equal((await api.getAgentReleaseAcceptance(fullRole.id,acceptedRun.run_id)).test_current,true)
+    const testedVersion=await api.changeAgentRelease(fullRole.id,{action:"snapshot",request_id:randomUUID(),expected_spec_revision:acceptanceSource.spec_revision,
+      source_sha256:acceptanceSource.source_sha256,note:"Genuine native acceptance passed",test_run_id:acceptedRun.run_id})
+    assert.equal(testedVersion.test_passed,true)
+    const testedDetail=await api.getAgentReleaseVersion(fullRole.id,testedVersion.version_id),publishSource=await api.getAgentReleases(fullRole.id)
+    assert.equal(testedDetail.test_current,true)
+    const published=await api.changeAgentRelease(fullRole.id,{action:"publish",request_id:randomUUID(),expected_spec_revision:publishSource.spec_revision,
+      source_sha256:publishSource.source_sha256,version_id:testedDetail.id,version_sha256:testedDetail.version_sha256,expected_version_revision:testedDetail.revision,
+      expected_release_revision:publishSource.release_revision,confirm:true,acknowledge_untested:false})
+    assert.equal(published.status,"published")
+    assert.equal((await api.changeAgentRelease(fullRole.id,{action:"delete_draft",request_id:randomUUID(),version_id:releaseDetail.id,version_sha256:releaseDetail.version_sha256,
+      expected_version_revision:releaseDetail.revision,confirm:true})).status,"deleted")
+    assert.equal((await api.confirmAgentRelease(fullRole.id,releaseSave)).version_id,releaseOne.version_id)
+    await api.login("other@example.com","SyntheticOtherPassword#2026")
+    await assert.rejects(api.getAgentReleases(fullRole.id),e=>e.status===404)
+    await assert.rejects(api.getAgentReleaseVersion(fullRole.id,testedDetail.id),e=>e.status===404)
+    await api.login("admin@example.com","SyntheticAdminPassword#2026")
     // Genuine SQL roles + HTTPS Cookie/CSRF: collaboration grants safe text,
     // never owner execution authority or private model/knowledge bindings.
     const collaboration=await api.createAgent("Genuine PG18 collaborative role","Original owner goal")

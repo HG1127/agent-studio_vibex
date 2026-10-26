@@ -1,9 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import {readFileSync} from "node:fs"
 import {randomUUID} from "node:crypto"
 import {agentCollaborationFixture} from "./helpers/agent-collaboration-fixture.mjs"
-import {freshRuntimeSqlBody} from "../src/pg18-fresh-runtime-source.mjs"
 import {AgentSpecRepository,withActor} from "../src/repository.ts"
 import {AgentReleaseRepository} from "../src/agent-release-repository.ts"
 import {safeAgentSpec} from "../src/contracts.ts"
@@ -13,14 +11,13 @@ import {verifyAgentReleaseCredentials} from "../src/agent-release-audit.ts"
 test("full restoration revalidates owner resources, retains exact snapshots and atomically journals configuration/history/receipts",async()=>{
   const f=await agentCollaborationFixture()
   try{
-    await f.db.exec(freshRuntimeSqlBody(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_046_agent_releases.sql",import.meta.url),"utf8")))
     assert.equal(await verifyAgentReleaseCredentials(f.api),true)
     const repo=new AgentReleaseRepository(f.pool,{enabled:true}),disabled=new AgentReleaseRepository(f.pool),specs=new AgentSpecRepository(f.pool)
     const role=await specs.create(f.alice,"Exact historical name",safeAgentSpec({goal:"Initial owned role"}))
-    await assert.rejects(repo.workspace(f.alice,role.id),e=>e.code==="agent_release_not_installed")
-    // Only this synthetic fixture opts into exercising the unfinished046
-    // repository. The source migration and real initializer have no receipt.
-    await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046','SYNTHETIC TEST ONLY; incomplete candidate, no runtime activation')")
+    const receipt=(await f.db.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")).rows[0]
+    await f.db.query("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_046'")
+    try{await assert.rejects(repo.workspace(f.alice,role.id),e=>e.code==="agent_release_not_installed")}
+    finally{await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046',$1)",[receipt.description])}
     const exact={...safeAgentSpec({goal:"Reviewed goal",tools:["calculate"]}),goal:"  Preserve historical whitespace  ",model_binding:null}
     await withActor(f.pool,f.alice,db=>db.query("UPDATE agentstudio.agent_specs SET spec=$2::jsonb,revision=revision+1 WHERE id=$1",[role.id,JSON.stringify(exact)]))
     const workspace=()=>repo.workspace(f.alice,role.id)

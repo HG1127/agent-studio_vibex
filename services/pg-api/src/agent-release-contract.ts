@@ -1,5 +1,5 @@
 // Owner-only full configuration versions are separate from safe description
-// collaboration. This contract alone installs no schema or execution route.
+// collaboration. All mutation inputs remain closed and contain no snapshot.
 import {HttpError,isUuid,safeAgentSpec,type AgentSpecInput} from "./contracts.ts"
 
 type Request={request_id:string}

@@ -33,6 +33,8 @@ import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
 import {ScheduleRuntimeRepository} from "./schedule-runtime-repository.ts"
 import {AgentCollaborationRepository} from "./agent-collaboration-repository.ts"
 import {inspectAgentCollaborationSchema} from "./agent-collaboration-audit.ts"
+import {AgentReleaseRepository} from "./agent-release-repository.ts"
+import {inspectAgentReleaseSchema} from "./agent-release-audit.ts"
 import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import {WorkflowRepository} from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
@@ -370,6 +372,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
+    const releasesAvailable=await inspectAgentReleaseSchema(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -400,6 +403,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowWorkflowV2Submission:capabilities.workflowV2ExecutionUat===true,
       allowScheduleRuntime:capabilities.scheduleRuntimeUat===true,
       allowAgentCollaboration:collaborationAvailable,
+      allowAgentReleases:releasesAvailable,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
@@ -422,6 +426,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
       ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
+      ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
+        allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true})}:{}),
       modelConnectionRepository:new ModelConnectionRepository(
         business,modelEncryptionKey,
         brokerPool?adapter(brokerPool):business),

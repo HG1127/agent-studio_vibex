@@ -33,7 +33,7 @@
 
 | 范围 | PocketBase 参照 | 剩余工作 |
 | --- | --- | --- |
-| 版本与发布 | `src/pages/VersionRelease`、`pocketbase/pb_hooks/spec_versions_api.pb.js` | 草案046已实现所有者完整配置快照、单调版本号、发布 / 归档、草稿删除和重新校验资源的完整恢复。候选 `1fdd8a4` 的质量 CI 41/41、PG18 运行和浏览器回归已通过；这些通过不代表046已进入运行链路。专用验收来源与当前知识证据校验正在适配，HTTP / SDK / 页面尚未接入，初始化仍截止045。完整版本与仅恢复协作安全文本的历史记录继续作为不同能力。 |
+| 版本与发布 | `src/pages/VersionRelease`、`pocketbase/pb_hooks/spec_versions_api.pb.js` | 所有者完整快照、发布 / 归档、草稿删除、资源重校验后的完整恢复、专用验收、Cookie / SDK 和页面已编写。`e16a3e2` 的隔离 SQL / 私有 TLS 及整体验证已通过；`03f278c` 的员工接口定向回归已通过。正在把046纳入全新初始化与默认关闭时的权限检查，并验证同一提交的实际 PG18、浏览器、回执恢复和审查包，尚未签收。[实现约束](PG18_NATIVE_AGENT_RELEASES.md)。 |
 | 委托审批与公司视图 | `pocketbase/pb_hooks/studio_company.pb.js`、`tests/studio-company.integration.mjs` | 本人明确委托及用途、经理仅看必要元数据、固定待审批操作指纹、一次性决定、撤销 / 来源变化校验、管理员公司汇总。现有本人运行审批不能代替经理委托。 |
 | 模板发布与复用 | `pocketbase/pb_hooks/template_market_api.pb.js`、`pocketbase/pb_hooks/internal_templates.pb.js`、`pocketbase/pb_hooks/agent_templates.pb.js` | 逐项核对发布、模板市场、使用、交接及权限。已有画布样本 / 导入导出和基础模板表不能直接作为这些操作的等价证明。 |
 | 反馈驱动的优化关联 | `pocketbase/pb_hooks/agent_optimization_lineage.pb.js`、`pocketbase/pb_hooks/agent_specs.pb.js` | 核对反馈、优化与目标角色之间的受保护关联，补齐原生活跃操作、权限和审计。 |

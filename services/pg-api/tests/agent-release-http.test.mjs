@@ -1,10 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {createServer} from "node:http"
-import {readFileSync} from "node:fs"
 import {randomUUID} from "node:crypto"
 import {agentCollaborationFixture} from "./helpers/agent-collaboration-fixture.mjs"
-import {freshRuntimeSqlBody} from "../src/pg18-fresh-runtime-source.mjs"
 import {AgentSpecRepository} from "../src/repository.ts"
 import {AgentReleaseRepository} from "../src/agent-release-repository.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
@@ -17,8 +15,6 @@ test("full version Cookie/SDK paths retain owner/CSRF boundaries, independent ac
   const f=await agentCollaborationFixture(),key=Buffer.from("0123456789abcdef".repeat(4),"hex")
   let server,handler,enabled=true,acceptance=false
   try{
-    await f.db.exec(freshRuntimeSqlBody(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_046_agent_releases.sql",import.meta.url),"utf8")))
-    await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_046','SYNTHETIC HTTP TEST ONLY; incomplete candidate')")
     server=createServer((req,res)=>{void handler(req,res)})
     await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
     const origin="http://127.0.0.1:"+server.address().port

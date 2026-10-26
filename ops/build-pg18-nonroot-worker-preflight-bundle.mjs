@@ -26,6 +26,7 @@ const sourcePaths=[
   "services/pg-api/src/knowledge-lineage-audit.ts",
   "services/pg-api/src/schedule-runtime-audit.ts",
   "services/pg-api/src/agent-collaboration-audit.ts",
+  "services/pg-api/src/agent-release-audit.ts",
   "services/pg-api/src/knowledge-sharing-policy.ts",
   "services/pg-api/src/worker-credential-policy.ts",
   "services/pg-api/src/pg18-native-worker-readonly.ts",
