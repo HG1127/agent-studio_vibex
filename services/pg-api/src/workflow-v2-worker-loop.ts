@@ -4,6 +4,7 @@ import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
 import {inspectAgentMemorySchema} from "./agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema} from "./agent-memory-context-audit.ts"
 import {selectAgentMemoryRuntime,selectAgentOutcomeMemoryWrites} from "./agent-memory-runtime-policy.ts"
+import {inspectAgentMemoryFailureSourceSchema} from "./agent-memory-failure-source-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 import {scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
@@ -81,6 +82,7 @@ export function runV2WorkerCli(autonomous=false){
       const memoryAvailable=await inspectAgentMemorySchema(adapter),memoryContextAvailable=await inspectAgentMemoryContextSchema(adapter)
       if(memoryApproved&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
       const outcomeAvailable=await inspectAgentMemoryOutcomeSchema(adapter)
+      await inspectAgentMemoryFailureSourceSchema(adapter)
       if(outcomeApproved&&(!outcomeAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
       const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,
         origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),

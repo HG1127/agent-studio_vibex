@@ -41,6 +41,7 @@ import {AgentMemoryDerivedRepository} from "../src/agent-memory-derived-reposito
 import {inspectAgentMemoryDerivedSchema,verifyAgentMemoryDerivedCredentials} from "../src/agent-memory-derived-audit.ts"
 import {AgentMemoryOutcomeRepository} from "../src/agent-memory-outcome-repository.ts"
 import {inspectAgentMemoryOutcomeSchema,verifyAgentMemoryOutcomeCredentials} from "../src/agent-memory-outcome-audit.ts"
+import {inspectAgentMemoryFailureSourceSchema,verifyAgentMemoryFailureSourceCredentials} from "../src/agent-memory-failure-source-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
@@ -68,7 +69,7 @@ import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "../src/mcp-
 import {SmitheryRepository} from "../src/smithery-repository.ts"
 import {verifySmitheryPrivileges} from "../src/smithery-privileges.ts"
 import {verifyOptionalCredentialBoundary} from "../src/optional-credential-boundary.ts"
-import {safeAgentSpec} from "../src/contracts.ts"
+import {HttpError,safeAgentSpec} from "../src/contracts.ts"
 import {ModelConnectionRepository} from "../src/model-connection-repository.ts"
 import {KnowledgeBaseRepository} from "../src/knowledge-repository.ts"
 import {KnowledgeAccessRepository} from "../src/knowledge-access-repository.ts"
@@ -1572,6 +1573,51 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.agent_memory_outcome_consents)::integer AS consents,(SELECT count(*) FROM agentstudio.agent_memory_outcome_stops)::integer AS stops,(SELECT count(*) FROM agentstudio.agent_memory_outcome_results)::integer AS results,(SELECT count(*) FROM agentstudio.agent_memory_derived_entries)::integer AS entries')).rows[0],{consents:2,stops:1,results:2,entries:0})
       await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('DELETE FROM agentstudio.agent_memory_outcome_results')),/permission denied/)
     }finally{await outcomeFront.close()}
+    mark("optional-memory-053-worker-attested-failure-before-vm")
+    assert.equal(await inspectAgentMemoryFailureSourceSchema(apiPool),false)
+    await admin.query(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql',import.meta.url),'utf8'))
+    assert.equal(await inspectAgentMemoryFailureSourceSchema(apiPool),true);assert.equal(await inspectAgentMemoryFailureSourceSchema(workerPool),true)
+    const failureDrift=await admin.connect()
+    try{for(const mutation of [
+      'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_record_failure_source(uuid,uuid,bigint,text) TO agentstudio_api',
+      'GRANT SELECT ON agentstudio.agent_memory_failure_sources TO agentstudio_worker',
+      'GRANT SELECT ON agentstudio.agent_memory_failure_sources TO agentstudio_api WITH GRANT OPTION',
+      'ALTER FUNCTION agentstudio.agent_memory_record_failure_source(uuid,uuid,bigint,text) SECURITY INVOKER'
+    ]){await failureDrift.query('BEGIN');try{await failureDrift.query(mutation);await assert.rejects(verifyAgentMemoryFailureSourceCredentials(failureDrift),/unsafe_agent_memory_failure_source_privileges/)}finally{await failureDrift.query('ROLLBACK')}}}finally{failureDrift.release()}
+    const failureFront=await startNativeHttps(auth,apiPool,key,brokerPool,{memory:true,derivedMemory:true,outcomeMemory:true})
+    try{
+      await failureFront.api.login('admin@example.com','SyntheticAdminPassword#2026');const failureApi=failureFront.captureApi()
+      await failureFront.api.login('other@example.com','SyntheticOtherPassword#2026')
+      const failedTask='Synthetic genuine preparation failure token=syntheticEarlyFailurePrivate'
+      const started=await failureApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,failedTask,'ci-worker-attested-early-failure',1,false,true),id=started.run.id
+      let armed=true,calls=0
+      const intercepted=Object.create(workerPool)
+      intercepted.connect=async()=>{const db=await workerPool.connect();return {async query(sql,values=[]){
+        if(armed&&sql==='SELECT status FROM agentstudio.users WHERE id=$1::uuid'){armed=false;throw new HttpError(409,'synthetic_worker_preparation_failed')}
+        return db.query(sql,values)
+      },release(){db.release()}}}
+      const failedDispatch=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error('failure_direct_provider_forbidden')},brokerPool,{allowAutonomousExecution:true,agentExecutor:async()=>{calls++;return JSON.stringify({action:'answer',answer:'unexpected synthetic provider result'})}})
+      await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),failedDispatch),async raw=>{
+        const executor=workflowV2ModelEffectExecutor({...raw,executionMode:'agent_native_v2'})
+        const worker=new WorkflowV2Worker(intercepted,'ci-failure-source-'+randomUUID(),{agentExecutionApproved:true,humanInputApproved:true,outcomeMemoryApproved:true,executor,executionMode:'agent_native_v2'})
+        assert.equal((await worker.tick()).status,'failed');assert.equal(armed,false);assert.equal((await worker.tick()).status,'idle')
+      },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:'agent_native_v2'})})
+      assert.equal(calls,0);assert.equal((await failureApi.getAutonomousAgentRun(id)).run.status,'failed')
+      assert.equal((await failureApi.getAgentOutcomeMemory(id)).result.decision,'stored')
+      const proof=(await admin.query('SELECT f.source_sha256,f.worker_sha256,r.checkpoint FROM agentstudio.agent_memory_failure_sources f JOIN agentstudio.runs r ON r.id=f.run_id WHERE f.run_id=$1',[id])).rows[0]
+      assert.match(proof.source_sha256,/^[a-f0-9]{64}$/);assert.match(proof.worker_sha256,/^[a-f0-9]{64}$/);assert.equal(Object.hasOwn(proof.checkpoint,'agent_state'),false)
+      assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.external_effects WHERE run_id=$1',[id])).rows[0].n,0)
+      await assert.rejects(failureFront.api.previewAgentDerivedMemory(memoryRole.id,id),e=>e.status===404)
+      const preview=await failureApi.previewAgentDerivedMemory(memoryRole.id,id);assert.equal(preview.kind,'lesson');assert.equal(preview.tools_used,'');assert.match(preview.fact,/synthetic_worker_preparation_failed/);assert.equal(preview.fact.includes('syntheticEarlyFailurePrivate'),false)
+      const item=(await failureApi.listAgentDerivedMemories(memoryRole.id)).items[0];assert.equal(item.kind,'lesson');assert.equal(item.source_current,true)
+      await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('SELECT agentstudio.agent_memory_record_failure_source($1::uuid,$2::uuid,1,$3::text)',[randomUUID(),randomUUID(),'forged-api-worker'])),/permission denied/)
+      await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('DELETE FROM agentstudio.agent_memory_failure_sources')),/permission denied/)
+      await admin.query("UPDATE agentstudio.runs SET last_error_code='synthetic_terminal_changed' WHERE id=$1",[id])
+      await assert.rejects(failureApi.previewAgentDerivedMemory(memoryRole.id,id),e=>e.status===409)
+      const hidden=(await failureApi.listAgentDerivedMemories(memoryRole.id)).items[0];assert.equal(hidden.source_current,false);assert.equal(hidden.fact,null)
+      await failureApi.changeAgentDerivedMemory({action:'forget',request_id:randomUUID(),spec_id:item.spec_id,memory_id:item.id,expected_content_sha256:item.content_sha256,expected_tools_sha256:item.tools_sha256,confirm:true})
+      assert.equal((await failureApi.listAgentDerivedMemories(memoryRole.id)).items.length,0);assert.equal((await failureApi.getAgentOutcomeMemory(id)).result.decision,'stored');assert.equal(calls,0)
+    }finally{await failureFront.close()}
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")

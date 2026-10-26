@@ -13,6 +13,7 @@ import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
 import {scheduleAutomaticEffect,scheduleOwnedRunCandidate} from "./schedule-effect-policy.ts"
 import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2-agent-machine.ts"
 import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
+import {recordAgentMemoryFailureSource} from "./agent-memory-failure-source.ts"
 import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
@@ -281,7 +282,21 @@ export class WorkflowV2Worker{
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.run_id,job.owner_user_id,status,JSON.stringify(state),result,error])
     if(status==="failed"||status==="succeeded"||status==="paused")await auditWorkflowV2(db,job.owner_user_id,job.run_id,
       "workflow.v2_"+status,{cursor:state.machine.cursor,error_code:error})
+    if(status==="failed")await this.writeFailureSource(db,job)
     if(status==="failed"||status==="succeeded")await this.writeOutcome(db,job)
+  }
+  private async writeFailureSource(db:SqlClient,job:Job){
+    if(this.root.kind!=="agent")return
+    await db.query("SAVEPOINT agent_memory_failure_source")
+    try{
+      const recorded=await recordAgentMemoryFailureSource(db,job,this.workerId)
+      if(recorded===true)await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_failure_source_recorded",{job_id:job.id,lease_version:Number(job.lease_version),protocol:"agent_memory_failure_source_v1"})
+      await db.query("RELEASE SAVEPOINT agent_memory_failure_source")
+    }catch{
+      await db.query("ROLLBACK TO SAVEPOINT agent_memory_failure_source");await db.query("RELEASE SAVEPOINT agent_memory_failure_source")
+      await db.query("SET LOCAL ROLE agentstudio_api")
+      await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_failure_source_unconfirmed",{reason_code:"attestation_unavailable"})
+    }
   }
   private async writeOutcome(db:SqlClient,job:Job){
     if(this.root.kind!=="agent")return
@@ -352,12 +367,23 @@ export class WorkflowV2Worker{
   private async fail(job:Job,error:string):Promise<WorkflowV2Tick>{return tx(this.pool,async db=>{
     const current=await lockLease(db,job,this.workerId);if(!current)return {status:"stale",run_id:job.run_id}
     await actor(db,job.owner_user_id)
+    const unresolved=(await db.query("SELECT 1 FROM agentstudio.external_effects WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status IN('started','unknown') LIMIT 1",[job.run_id,job.owner_user_id])).rows.length>0
+    if(unresolved){await this.pauseUnknown(db,current);await acknowledge(db,current,this.workerId,"failed");return {status:"paused",run_id:job.run_id}}
     await db.query("UPDATE agentstudio.runs SET status='failed',last_error_code=$3::text,finished_at=clock_timestamp(),updated_at=clock_timestamp() "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id,error])
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_failed",{error_code:error})
+    await this.writeFailureSource(db,current)
     await this.writeOutcome(db,current)
     await acknowledge(db,job,this.workerId,"failed");return {status:"failed",run_id:job.run_id}
   })}
+  private async pauseUnknown(db:SqlClient,job:Job){
+    await db.query("UPDATE agentstudio.external_effects SET status='unknown',updated_at=clock_timestamp() "+
+      "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='started'",[job.run_id,job.owner_user_id])
+    await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\""+this.root.stage+"paused\"'::jsonb),"+
+      "last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
+      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id])
+    await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_ambiguous",{})
+  }
   private async reconcileExpired():Promise<WorkflowV2Tick|null>{return tx(this.pool,async db=>{
     await db.query("SET LOCAL ROLE agentstudio_worker")
     const job=(await db.query<Job>("SELECT j.* FROM agentstudio.jobs j WHERE j.kind='"+this.root.job+"' "+
@@ -366,12 +392,7 @@ export class WorkflowV2Worker{
       "AND x.status IN ('started','unknown')) ORDER BY j.lease_until FOR UPDATE OF j SKIP LOCKED LIMIT 1")).rows[0]
     if(!job)return null
     await actor(db,job.owner_user_id)
-    await db.query("UPDATE agentstudio.external_effects SET status='unknown',updated_at=clock_timestamp() "+
-      "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='started'",[job.run_id,job.owner_user_id])
-    await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\""+this.root.stage+"paused\"'::jsonb),"+
-      "last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
-      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id])
-    await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_ambiguous",{})
+    await this.pauseUnknown(db,job)
     await db.query("SET LOCAL ROLE agentstudio_worker")
     await db.query("UPDATE agentstudio.jobs SET status='failed',lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp() "+
       "WHERE id=$1::uuid AND status='leased' AND lease_until<=clock_timestamp()",[job.id])
