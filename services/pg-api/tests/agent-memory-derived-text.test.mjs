@@ -29,3 +29,13 @@ test('failure and negative feedback remain separate lesson sources; cancellation
     ()=>successfulMemoryFallback('x'.repeat(20001),[]),()=>successfulMemoryFallback('good',['bad\nname']),()=>successfulMemoryFallback('good',{})])
     assert.throws(run,e=>e.code==='invalid_agent_memory_derived_text')
 })
+
+test('UTF16 clipping preserves whole characters before persistence or model input and refuses malformed source strings',()=>{
+  assert.equal(successfulMemoryFallback('文'.repeat(499)+'😀end',[]).fact,'文'.repeat(499))
+  assert.deepEqual(memoryRefinementInput('任'.repeat(599)+'😀','果'.repeat(1499)+'😀',[]),{instruction:'任'.repeat(599),result:'果'.repeat(1499),tools_used:''})
+  const used=['a'.repeat(100),'b'.repeat(100),'c'.repeat(97)+'😀']
+  assert.equal(successfulMemoryFallback('good',used).tools_used,'a'.repeat(100)+','+'b'.repeat(100)+','+'c'.repeat(97))
+  const broken=String.fromCharCode(0xd800)
+  for(const run of [()=>successfulMemoryFallback(broken,[]),()=>memoryRefinementInput(broken,'',[]),()=>feedbackMemoryLesson('down','',[broken],''),()=>failedMemoryLesson('failed','',broken)])
+    assert.throws(run,e=>e.code==='invalid_agent_memory_derived_text')
+})
