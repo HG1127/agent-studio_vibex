@@ -82,6 +82,9 @@ test('memory startup stays optional without schema and rejects privilege, RLS, c
     assert.equal(await inspectAgentMemoryContextSchema(f.pool),true)
     for(const drift of ['GRANT UPDATE ON agentstudio.agent_memory_run_contexts TO agentstudio_api','GRANT SELECT ON agentstudio.agent_memory_run_contexts TO agentstudio_worker',
       'ALTER TABLE agentstudio.agent_memory_run_contexts NO FORCE ROW LEVEL SECURITY',"ALTER POLICY agent_memory_context_owner_read ON agentstudio.agent_memory_run_contexts USING(true)",
+      "ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_protocol_check; ALTER TABLE agentstudio.agent_memory_run_contexts ADD CONSTRAINT agent_memory_run_contexts_protocol_check CHECK(protocol='agent_memory_context_v1 ')",
+      "ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_protocol_check; ALTER TABLE agentstudio.agent_memory_run_contexts ADD CONSTRAINT agent_memory_run_contexts_protocol_check CHECK(protocol='agent_memory_context_v1::text')",
+      "ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_graph_sha256_check; ALTER TABLE agentstudio.agent_memory_run_contexts ADD CONSTRAINT agent_memory_run_contexts_graph_sha256_check CHECK(graph_sha256 ~ '^[a-f0-9 ]{64}$')",
       'ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_graph_sha256_check',
       "DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_050'",'DROP TABLE agentstudio.agent_memory_run_contexts']){
       await f.db.exec('BEGIN');try{await f.db.exec(drift);await assert.rejects(verifyAgentMemoryContextCredentials(f.db),/unsafe_agent_memory_context_privileges/)}finally{await f.db.exec('ROLLBACK')}

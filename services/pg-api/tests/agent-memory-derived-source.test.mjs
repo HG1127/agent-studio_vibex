@@ -14,7 +14,7 @@ import {agentMemoryHash} from '../src/agent-memory-contract.ts'
 let catalogRecorded=false
 async function fixture(){const f=await agentMemoryFixture();try{await f.db.exec(f.sql('migrations/pg_v9_051_agent_memory_derived.sql'));
   if(!catalogRecorded){catalogRecorded=true
-    const constraints=(await f.db.query("SELECT conname AS name,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid IN('agentstudio.agent_memory_derived_receipts'::regclass,'agentstudio.agent_memory_derived_entries'::regclass) AND contype='c' ORDER BY conname")).rows
+    const constraints=(await f.db.query("SELECT conname AS name,pg_get_expr(conbin,conrelid) AS expression FROM pg_catalog.pg_constraint WHERE conrelid IN('agentstudio.agent_memory_derived_receipts'::regclass,'agentstudio.agent_memory_derived_entries'::regclass) AND contype='c' ORDER BY conname")).rows
     const functions=(await f.db.query("SELECT proname AS name,encode(sha256(convert_to(prosrc,'UTF8')),'hex') AS source_sha256 FROM pg_catalog.pg_proc WHERE oid IN(to_regprocedure('agentstudio.agent_memory_run_source_sha256(uuid)'),to_regprocedure('agentstudio.agent_memory_derived_receipt_guard()'),to_regprocedure('agentstudio.agent_memory_derived_entry_guard()')) ORDER BY proname")).rows
     process.stdout.write('SYNTHETIC_DERIVED_SCHEMA_CATALOG '+JSON.stringify({constraints,functions})+'\n')
   }

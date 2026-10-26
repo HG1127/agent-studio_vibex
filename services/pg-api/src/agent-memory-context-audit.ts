@@ -3,6 +3,26 @@ import {verifyAgentMemoryCredentials} from "./agent-memory-audit.ts"
 const table="agentstudio.agent_memory_run_contexts",api="agentstudio_api"
 const fields:Record<string,string>={owner_user_id:"uuid",run_id:"uuid",spec_id:"uuid",spec_revision:"bigint",protocol:"text",graph_sha256:"text",context_sha256:"text",created_at:"timestamp with time zone"}
 const refuse=():never=>{throw Error("unsafe_agent_memory_context_privileges")}
+// Normalize PostgreSQL's harmless casts/formatting without changing quoted
+// values: spaces or "::text" inside a literal are part of the constraint.
+function normalizedCheck(value:string):string{
+  let out="",quoted=false
+  for(let i=0;i<value.length;){
+    const c=value[i]!
+    if(quoted){out+=c;i++
+      if(c==="'"){if(value[i]==="'"){out+="'";i++}else quoted=false}
+      continue
+    }
+    const numeric=value.slice(i).match(/^'([0-9]+)'::bigint/)
+    if(numeric){out+=numeric[1];i+=numeric[0].length;continue}
+    if(c==="'"){quoted=true;out+=c;i++;continue}
+    if(/\s/u.test(c)){i++;continue}
+    const cast=value.slice(i).match(/^::(?:text|bigint)\b/)
+    if(cast){i+=cast[0].length;continue}
+    out+=c;i++
+  }
+  return out
+}
 export async function verifyAgentMemoryContextCredentials(db:SqlClient):Promise<boolean>{
   const object=(await db.query<{id:number|null}>("SELECT to_regclass($1)::oid AS id",[table])).rows[0]
   const canRead=(await db.query<{ok:boolean}>("SELECT has_column_privilege(current_user,'agentstudio.schema_migrations','version','SELECT') AS ok")).rows[0]?.ok
@@ -36,12 +56,11 @@ export async function verifyAgentMemoryContextCredentials(db:SqlClient):Promise<
   const expected=[{target:"agentstudio.runs",columns:["run_id","owner_user_id"],references:["id","owner_user_id"]},
     {target:"agentstudio.agent_specs",columns:["spec_id","owner_user_id"],references:["id","owner_user_id"]}]
   if(foreign.length!==2||expected.some(w=>!foreign.some(f=>f.valid&&f.target===w.target&&JSON.stringify(f.columns)===JSON.stringify(w.columns)&&JSON.stringify(f.references)===JSON.stringify(w.references))))return refuse()
-  const checks=(await db.query<{name:string;valid:boolean;expression:string}>("SELECT conname AS name,convalidated AND NOT connoinherit AS valid,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression "+
+  const checks=(await db.query<{name:string;valid:boolean;expression:string}>("SELECT conname AS name,convalidated AND NOT connoinherit AS valid,pg_get_expr(conbin,conrelid) AS expression "+
     "FROM pg_catalog.pg_constraint WHERE conrelid=$1::oid AND contype='c'",[id])).rows
   const expressions:Record<string,string>={agent_memory_run_contexts_spec_revision_check:"((spec_revision>=1)AND(spec_revision<=9007199254740991))",agent_memory_run_contexts_protocol_check:"(protocol='agent_memory_context_v1')",
     agent_memory_run_contexts_graph_sha256_check:"(graph_sha256~'^[a-f0-9]{64}$')",agent_memory_run_contexts_context_sha256_check:"(context_sha256~'^[a-f0-9]{64}$')"}
-  const normalized=(s:string)=>s.replace(/'([0-9]+)'::bigint/g,"$1").replace(/::(?:text|bigint)/g,"")
-  if(checks.length!==4||checks.some(c=>!c.valid||normalized(c.expression)!==expressions[c.name]))return refuse()
+  if(checks.length!==4||checks.some(c=>!c.valid||normalizedCheck(c.expression)!==expressions[c.name]))return refuse()
   return true
 }
 export async function inspectAgentMemoryContextSchema(pool:SqlPool):Promise<boolean>{
