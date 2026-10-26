@@ -34,12 +34,12 @@ test('early failure source: employee lesson and physical erasure before any prov
     await control('fail-next-preparation');expect((await control('autonomous')).status).toBe('failed')
     await page.getByRole('button',{name:'刷新多轮任务',exact:true}).click()
     const outcome=page.getByRole('region',{name:'本次自动保存',exact:true});await expect(outcome.getByText(/^本次任务曾保存经验或教训/)).toBeVisible()
-    const runId=(await outcome.getByText(/^原任务编号：/).textContent()).match(/[0-9a-f-]{36}/)[0]
     let proof=await control('state','GET');expect(proof.failureSources).toBe(1);expect(proof.failPreparation).toBe(false);expect(proof.effects).toBe(0);expect(proof.generated).toBe(0);expect(proof.humanModelCalls).toBe(0);expect(proof.outcomeResults).toEqual(['stored']);expect(proof.derivedEntries).toBe(1)
     await page.getByRole('button',{name:/^Agent 配置/}).click()
     const panel=page.getByRole('region',{name:'任务经验与教训',exact:true});await panel.getByRole('combobox',{name:'来源角色',exact:true}).selectOption({label:'Alice Browser Agent'})
     const item=panel.getByRole('listitem');await expect(item).toHaveCount(1);await expect(item).toContainText('教训');await expect(item).toContainText('synthetic_worker_preparation_failed');await expect(item).not.toContainText('syntheticBrowserFailureSourceCredential')
     const sources=panel.getByRole('combobox',{name:'最近完成的来源任务',exact:true});await expect(sources.locator('option')).toHaveCount(2);await sources.selectOption({index:1});await expect(panel.getByText('待保存的教训',{exact:true})).toBeVisible()
+    const runId=await sources.inputValue();expect(runId).toMatch(/^[0-9a-f-]{36}$/)
     await expect(panel.getByText(/^当时使用的工具：/)).toHaveCount(0);await expect(panel.getByRole('button',{name:'保存这份任务记忆',exact:true})).toBeDisabled()
     await panel.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('native-agent-early-failure-lesson.png')})
     await item.getByRole('button',{name:'忘记这条任务记忆',exact:true}).click();await item.getByRole('button',{name:'确认忘记任务记忆',exact:true}).click();await expect(panel.getByText('暂无任务记忆',{exact:true})).toBeVisible()
