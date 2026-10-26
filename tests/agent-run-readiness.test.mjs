@@ -38,6 +38,14 @@ test('an explicitly selected live device satisfies browser needs without changin
   assert.equal(agentRunReadiness(value, {localDevice:localDevice(browserTools),disabledToolIds:['local_computer']}).ready,false)
 })
 
+test('an online local device cannot bypass owner-scoped role Skill checks', () => {
+  const value = spec({capability_requirements: [need({access: 'write'})]})
+  const options = {localDevice: localDevice(browserTools), skillIssues: ['Skill 版本未审核']}
+  assert.equal(agentRunReadiness(value, options).ready, false)
+  assert.deepEqual(agentRunReadiness(value, options).issues, ['Skill 版本未审核'])
+  assert.equal(agentRunReadiness(value, {...options, skillIssues: []}).ready, true)
+})
+
 test('local devices do not satisfy missing network capabilities or grant tools to roles', () => {
   assert.equal(agentRunReadiness(spec({capability_requirements:[need({kind:'web_search'})]}),{localDevice:localDevice(browserTools)}).ready,false)
   const value = spec({roles:[role('worker')],capability_requirements:[need({role_ids:['worker']})]})
@@ -62,6 +70,17 @@ test("legacy single assistants remain runnable without new mandatory semantic ch
   assert.equal(agentRunReadiness(spec()).ready, true)
   assert.equal(agentRunReadiness(spec({ done_criteria: ["给出优质、准确、有说服力的内容"] })).ready, true)
   assert.equal(agentRunReadiness(null).ready, false)
+})
+
+test("invalid or unchecked role Skills block a NEW run, but do not mutate its spec",()=>{
+  const configuration=spec({roles:[{...role("researcher"),skill_refs:[
+    {id:"skillabc1234567",version:1,hash:"a".repeat(64)}]}]})
+  assert.equal(agentRunReadiness(configuration,{skillIssues:["正在核验角色 Skill 版本"]}).ready,false)
+  const failed=agentRunReadiness(configuration,{skillIssues:["Skill 已被停用或未审核"]})
+  assert.equal(failed.ready,false)
+  assert.match(failed.issues[0],/停用/)
+  assert.equal(agentRunReadiness(configuration,{skillIssues:[]}).ready,true)
+  assert.equal(configuration.roles[0].skill_refs.length,1)
 })
 
 test("a direct run of a saved spec cannot bypass an explicit required browser gap", () => {

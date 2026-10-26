@@ -30,6 +30,7 @@ type SpecConfigPanelProps = {
   toolConnectionsLoading: boolean
   toolConnectionsError: string
   onRefreshConnections: () => void
+  onRefreshSkillPreflight: () => void
   enabledTools: string[]
   onToggleTool: (toolId: string) => void
   maxSteps: number
@@ -73,6 +74,7 @@ export function SpecConfigPanel({
   connectedMarketTools,
   runReadiness,
   onRefreshConnections,
+  onRefreshSkillPreflight,
   onToggleTool,
   maxSteps,
   onMaxStepsChange,
@@ -154,6 +156,14 @@ export function SpecConfigPanel({
         </>}
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-primary">
           <button type="button" onClick={onEditSpec} className="hover:underline">调整角色与能力需求</button>
+          {runReadiness.issues.some(issue=>issue.includes("Skill")) &&
+            <Link to="/skills" target="_blank" rel="noopener noreferrer" className="hover:underline">
+              查看与审核 Skill 版本
+            </Link>}
+          {runReadiness.issues.some(issue=>issue.includes("Skill")) &&
+            <button type="button" onClick={onRefreshSkillPreflight} className="hover:underline">
+              重新核验 Skill
+            </button>}
           {runReadiness.capabilityIssues.length > 0 && <>
             <Link to="/execution-connections" target="_blank" rel="noopener noreferrer" className="hover:underline">配置电脑与浏览器</Link>
             <Link to="/tool-connections" target="_blank" rel="noopener noreferrer" className="hover:underline">管理工具连接</Link>

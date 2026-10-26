@@ -101,7 +101,7 @@ routerAdd("POST", "/api/internal/templates", function(e) {
         ok:true,name:String(previewSource.getString("name")||"未命名 Agent").slice(0,120),
         preview_spec:copiedSpec,
         preview_hash:$security.sha256(JSON.stringify(copiedSpec)),
-        warning:"请人工核对目标、范围和步骤是否包含内部敏感内容。模型连接、知识库和外部工具不会被复制。",
+        warning:"请人工检查全部目标、角色与任务内容是否包含敏感信息。保留角色和能力要求，但不复制个人模型、知识库、Skill 绑定、外部工具与授权，接收人需重新连接并批准。",
       })
     }
     if (action==="create") {
@@ -179,7 +179,12 @@ routerAdd("POST", "/api/internal/templates", function(e) {
         try {safe=JSON.parse(String(invitation.snapshot_json||""))}catch(_){}
         if(!safe || typeof safe!=="object" ||
            safe.require_approval!==true || !Array.isArray(safe.tools) ||
-           !Array.isArray(safe.knowledge_base_ids) || safe.knowledge_base_ids.length!==0) {
+           !Array.isArray(safe.knowledge_base_ids) || safe.knowledge_base_ids.length!==0 ||
+           (Array.isArray(safe.roles) && safe.roles.some(function(role){return (!role || !Array.isArray(role.tools) ||
+             role.tools.length>0 || (Array.isArray(role.skill_refs) && role.skill_refs.length>0))})) ||
+           (Array.isArray(safe.capability_requirements) &&
+             safe.capability_requirements.some(function(need){return (!need ||
+               !Array.isArray(need.suggested_tool_ids) || need.suggested_tool_ids.length>0)}))) {
           throw new Error("share_code_unavailable")
         }
         var update=tx.db().newQuery(

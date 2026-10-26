@@ -230,8 +230,45 @@ function rawGithubUrl(url) {
     throw skillError("skill_source_url_invalid")
   return url
 }
+function resolveGithubImportUrl(url) {
+  if (typeof url !== "string" || url.length > 420 || /[%?#\\\s]/.test(url))
+    throw skillError("skill_source_url_invalid")
+  var repo=/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/?$/.exec(url)
+  if (!repo) {
+    // Accept a Git clone URL (user copied GitHub's green Code button).
+    repo=/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\.git\/?$/.exec(url)
+  }
+  if (repo) {
+    var repository=repo[2].replace(/\.git$/i,"")
+    if (repo[1] === "." || repo[1] === ".." ||
+        !repository || repository === "." || repository === "..")
+      throw skillError("skill_source_url_invalid")
+    var metadata=$http.send({
+      url:"https://api.github.com/repos/"+repo[1]+"/"+repository,
+      method:"GET",timeout:10,
+      headers:{"Accept":"application/vnd.github+json",
+        "User-Agent":"AgentStudio-SkillTextImporter/1",
+        "X-GitHub-Api-Version":"2022-11-28"}
+    })
+    if (!metadata || Number(metadata.statusCode)!==200)
+      throw skillError("skill_github_fetch_failed")
+    var details=null
+    try {details=JSON.parse(typeof metadata.body==="string"
+      ?metadata.body:String(metadata.raw||""))}catch(_){}
+    var branch=String(details&&details.default_branch||"")
+    if (!/^[A-Za-z0-9_.-]{1,120}$/.test(branch) ||
+        branch==="." || branch==="..") throw skillError("skill_source_url_invalid")
+    return rawGithubUrl("https://github.com/"+repo[1]+"/"+repository+
+      "/blob/"+branch+"/SKILL.md")
+  }
+  // A public folder (rather than a single file) with a one-segment branch.
+  var tree=/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/tree\/([A-Za-z0-9_.-]+)\/((?:[A-Za-z0-9_.-]+\/?)+)$/.exec(url)
+  if (tree) return rawGithubUrl("https://github.com/"+tree[1]+"/"+tree[2]+
+    "/blob/"+tree[3]+"/"+tree[4].replace(/\/$/,"")+"/SKILL.md")
+  return rawGithubUrl(url)
+}
 function fromGithub(url) {
-  var raw=rawGithubUrl(url)
+  var raw=resolveGithubImportUrl(url)
   var parts=/^https:\/\/raw\.githubusercontent\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/((?:[A-Za-z0-9_.-]+\/)*SKILL\.md)$/.exec(raw)
   if(!parts) throw skillError("skill_source_url_invalid")
   // GitHub's Contents API is preferable on networks that block raw GitHub.
@@ -275,4 +312,5 @@ function replyError(e,err){
 module.exports = {replyError:replyError,applySchema:applySchema,parseSkill:parseSkill,listSkills:listSkills,
   versionDetail:versionDetail,importSkill:importSkill,approve:approve,setActive:setActive,
   resolveSnapshots:resolveSnapshots,skillsForRole:skillsForRole,roleText:roleText,
-  rawGithubUrl:rawGithubUrl,fromGithub:fromGithub}
+  rawGithubUrl:rawGithubUrl,resolveGithubImportUrl:resolveGithubImportUrl,
+  fromGithub:fromGithub}
