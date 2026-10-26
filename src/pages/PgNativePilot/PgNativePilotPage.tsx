@@ -120,6 +120,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [humanInput,setHumanInput]=useState({available:false,enabled:false})
   const [agentMemory,setAgentMemory]=useState({available:false,enabled:false})
   const [derivedMemory,setDerivedMemory]=useState({available:false,enabled:false})
+  const [derivedMemoryOpened,setDerivedMemoryOpened]=useState(false)
+  useEffect(()=>{if(derivedMemory.available)setDerivedMemoryOpened(true)},[derivedMemory.available])
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
   const [toolConnections,setToolConnections]=useState<PgNativeToolConnection[]>([])
   const [modelEditing,setModelEditing]=useState<PgNativeModelConnection|null>(null)
@@ -153,6 +155,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setHumanInput({available:false,enabled:false})
     setAgentMemory({available:false,enabled:false})
     setDerivedMemory({available:false,enabled:false})
+    setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
   const expireAgentSession=useCallback(()=>{
@@ -558,7 +561,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}
             </>}
             <div hidden={section!=="agents"}>{agentMemory.available&&<PgNativeAgentMemoryPanel key={profile.id+":memory"} api={api} agents={agents} active={section==="agents"} canWrite={agentMemory.enabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
-            <div hidden={section!=="agents"}>{derivedMemory.available&&<PgNativeAgentDerivedMemoryPanel key={profile.id+":derived-memory"} api={api} agents={agents} active={section==="agents"} canWrite={derivedMemory.enabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
+            <div hidden={section!=="agents"}>{(derivedMemoryOpened||derivedMemory.available)&&<PgNativeAgentDerivedMemoryPanel key={profile.id+":derived-memory"} api={api} agents={agents} active={section==="agents"&&derivedMemory.available} canWrite={derivedMemory.enabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
+            {section==="agents"&&derivedMemoryOpened&&!derivedMemory.available&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">任务记忆暂不可用，刷新后可继续核对原请求。</p>}
             <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentMcpToolsPanel key={profile.id} api={api} agents={agents}
               active={section==="agents"} enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}</div>
             <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentKnowledgePanel key={profile.id} api={api} agents={agents} bases={readableKnowledge}

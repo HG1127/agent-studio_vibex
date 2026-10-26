@@ -126,7 +126,7 @@ Object.assign(state,{collaborationDrop:false,collaborationHashes:[]})
 Object.assign(state,{releaseDrop:false,releaseHashes:[],humanDrop:false,humanHashes:[],humanConfirms:0,humanModelCalls:0})
 Object.assign(state,{memoryDrop:false,memoryHashes:[],memoryConfirms:0})
 Object.assign(state,{memoryPrompts:0})
-Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedHashes:[],derivedConfirms:0})
+Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedCapabilitiesDrop:false,derivedHashes:[],derivedConfirms:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -357,6 +357,7 @@ try{
         else if(req.url==="/__fixture/drop-next-human"&&req.method==="POST"&&human){state.humanDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-memory"&&req.method==="POST"&&memory){state.memoryDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-derived-memory"&&req.method==="POST"&&derivedMemory){state.derivedDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-derived-capabilities"&&req.method==="POST"&&derivedMemory){state.derivedCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-derived-memory"&&req.method==="POST"&&derivedMemory){state.derivedAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/allow-derived-memory"&&req.method==="POST"&&derivedMemory){state.derivedAllowed=true;configure();output={ok:true}}
         else if(req.url==="/__fixture/drop-next-config"&&req.method==="POST"){state.configDrop=true;output={ok:true}}
@@ -393,6 +394,7 @@ try{
       if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/confirm")state.memoryConfirms++
       if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/change"&&state.derivedDrop){state.derivedDrop=false;res.end=()=>{res.destroy();return res}}
       if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/confirm")state.derivedConfirms++
+      if(derivedMemory&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.derivedCapabilitiesDrop){state.derivedCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
       if(req.method==="POST"&&/^\/api\/v2\/schedules\/[0-9a-f-]{36}\/activate$/.test(req.url)&&state.scheduleDrop){state.scheduleDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&/^\/api\/v2\/agent-collaboration\/[0-9a-f-]{36}\/change$/.test(req.url)&&state.collaborationDrop){state.collaborationDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&/^\/api\/v2\/agent-releases\/[0-9a-f-]{36}\/(?:change|acceptance)$/.test(req.url)&&state.releaseDrop){state.releaseDrop=false;res.end=()=>{res.destroy();return res}}

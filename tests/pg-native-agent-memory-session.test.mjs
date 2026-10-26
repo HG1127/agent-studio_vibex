@@ -23,6 +23,7 @@ test('derived memory preview is inert; one source intent survives a lost reply a
   await s.previewRun(f.run);assert.equal(s.snapshot().preview.fact,f.preview.fact);await s.save(false);assert.equal(seen.length,0)
   await s.save(true);assert.equal(seen.length,1);assert.equal(seen[0].expected_source_sha256,f.preview.source_sha256);assert.equal(seen[0].source_run_id,f.run)
   assert.equal(JSON.stringify(s.snapshot()).includes('private source report'),false);assert.equal(Object.hasOwn(seen[0],'fact'),false)
+  const original=s.snapshot().pending.request_id;s.setActive(false);assert.equal(s.snapshot().pending,null);s.setActive(true);assert.equal(s.snapshot().pending.request_id,original)
   await s.select(role());await s.save(true);assert.equal(seen.length,1)
   s.setWritable(false);await s.retrySameRequest();assert.equal(seen.length,1);await s.confirm();assert.equal(s.snapshot().pending,null);assert.equal(s.snapshot().items[0].id,f.entry.id)
 })
