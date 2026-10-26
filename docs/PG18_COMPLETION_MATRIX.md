@@ -1,6 +1,6 @@
 # PostgreSQL 迁移前完成清单
 
-更新：2026-10-26。现有 PocketBase 仍是当前运行环境，正式切换 **NO-GO**。
+更新：2026-10-27。现有 PocketBase 仍是当前运行环境，正式切换 **NO-GO**。
 旧数据已由使用者确认为测试数据，可以采用全新初始化；这不免除功能对照、
 员工验收、备份恢复、运行环境及回滚签收。
 
@@ -23,15 +23,15 @@
 | 完整版本与发布 | 所有者完整快照、单调版本号、发布 / 归档、草稿删除、资源重校验后的完整恢复、专用验收及员工页面 | [完整版本](PG18_NATIVE_AGENT_RELEASES.md)。046已纳入全新初始化及默认关闭时的权限检查。实际 PG18 验证完整中文角色的快照、恢复、专用验收与发布；浏览器验证原请求恢复、模型 B 审批、删除预览清理和退出 / 员工切换隔离。历史测试事实与当前有效性分开；旧知识来源不能生成新的通过证明。 |
 | 新库准备 | 真实 SQL 顺序、源文件指纹、初始化回执、六类独立服务登录准备、分阶段只读检查和审查包 | [新库初始化](PG18_FRESH_RUNTIME_INITIALIZATION.md)、[迁移后检查](PG18_RUNTIME_PREPARATION_POSTCHECK.md)。没有在真实目标执行初始化、启用登录或启动服务。 |
 
-最新完整隔离基线为提交`742493a91f1aff02548bec4303aa89c6d1c2f995`：
-[质量43/43](https://github.com/HG1127/agent-studio_vibex/actions/runs/40348568510)、`pnpm check`652项及类型/构建、95项生产资源隔离，
-[真实PG18默认050及可选051](https://github.com/HG1127/agent-studio_vibex/actions/runs/40348568514)与[浏览器4/4](https://github.com/HG1127/agent-studio_vibex/actions/runs/40348568744)均通过，主浏览器14项。
-默认049/050保留本人原子入队、完整交付、来源撤销与原请求恢复。可选051在4b2a676通过真实PG18来源/回执/删除验证，f9c86c3的本人HTTP/SDK通过51项记忆域；新增员工页面仍待本候选CI，不能计为完整派生记忆。自动经验/教训、负反馈和额外付费提炼仍须完成。
+最新完整隔离基线为提交`0631935b931c60645a886351d3fa9e2a071ff0cb`：
+[质量43/43](https://github.com/HG1127/agent-studio_vibex/actions/runs/40355825257)、`pnpm check`659项及类型/构建、95项生产资源隔离，
+[真实PG18默认050及可选051](https://github.com/HG1127/agent-studio_vibex/actions/runs/40355825301)与[浏览器4/4](https://github.com/HG1127/agent-studio_vibex/actions/runs/40355825144)均通过，主浏览器15项。
+默认049/050保留本人原子入队、完整交付、来源撤销与原请求恢复。可选051在4b2a676通过真实PG18来源/回执/删除验证，f9c86c3的本人HTTP/SDK通过51项记忆域；0631935的本人来源记忆页面通过55项域、真实PG18 HTTPS/SDK及浏览器15项；自动写回和派生提示仍未实现。自动经验/教训、负反馈和额外付费提炼仍须完成。
 
 现有独立Agent长中文交付、人工澄清/方案审核与完成证据在`c0a448e`验收；Workflow最终输出20000字符及一次私有调用在`f2e3deb`验收，后续基线均保留相关回归。
-规范PocketBase19项/两Worker在相同运行时输入通过97.6秒；之后候选未修改该运行时或回归输入。
+规范PocketBase19项/两Worker在921decb再次19/19通过，76.5秒；之后0631935未修改该运行时或回归输入。
 默认新库050映射为34个SQL源、36条来源版本加一条初始化回执、62张表、61张FORCE RLS和22个核心角色，完整SQL/实际PG18隔离验收通过；没有真实目标初始化。
-源码审查包已按默认050运行时重建：初始化85个源文件/13项离线计划，API/索引146个源文件，清单和默认拒绝执行通过。随后功能与说明继续更新时必须再次核对或重建，生成归档不上传。
+源码审查包已按0631935/default050运行时重建：初始化85个源文件/13项离线计划，API/索引153个源文件，清单和默认拒绝执行通过。随后功能与说明继续更新时必须再次核对或重建，生成归档不上传。
 上述结果证明精确提交的合成隔离验收，真实员工与目标环境尚未签收。完整候选和后续证据见[迁移草稿PR](https://github.com/HG1127/agent-studio_vibex/pull/26)。
 
 ## 尚须补齐或逐项核实的功能
@@ -41,7 +41,7 @@
 | 委托审批与公司视图 | `src/pages/Manager/ManagerPage.tsx`、`pocketbase/pb_hooks/studio_company.pb.js`、`tests/studio-company.integration.mjs` | 本人明确委托及用途、经理仅看必要元数据、固定待审批操作指纹、一次性决定、撤销 / 来源变化校验、管理员公司汇总。现有本人运行审批不能代替经理委托。`InternalOverviewPage` 使用另一个总览接口，须另行核对。 |
 | Agent人工澄清与方案审核 | `src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` 的 `ask_user` / `/respond` | [人工回复验收](PG18_AGENT_HUMAN_INPUT.md)。048新库、同一运行等待、1600字符回复、批准/修改、本人Cookie和原回执、角色默认/单次覆盖、定时防重叠、完成证据及分页记录已有c0a448e的17项域、真实PG18和主浏览器12/12隔离证据。模型final不能绕过所需本人方案批准，费用/工具授权仍独立；真实员工UAT待签收。 |
 | Agent / Workflow最终交付完整性 | `pocketbase/pb_hooks/agent_engine.pb.js` 的 `finishRun`、`workflow_api.pb.js` 的结束节点 | 独立Agent完整成果已在c0a448e通过长中文SQL/mTLS、版本证据、实际PG18和浏览器检查，旧任务指纹保留。[已验收修复](PG18_WORKFLOW_FINAL_DELIVERY.md)为新任务加入绑定摘要的最终交付协议，结束结果截取至20000，节点4000和付费输入12000保持。完整输出提交f2e3deb已通过质量42/42、根检查623项、95项资源隔离、真实PG18和浏览器4/4（主场景12项）。新增SQL持久结果、旧协议恢复和仅一次私有模型调用均通过；员工UAT仍待签收。 |
-| Agent跨运行记忆 | `src/components/agent-run/MemoryPanel.tsx`、`src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` | [本人手工与独立执行已验收](PG18_AGENT_MEMORY.md)：保存/查看/二次忘记、原回执恢复、原子入队、私有快照/请求摘要、派发前源检查、删除后结果屏蔽和默认049/050已通过235cb52的32项域、根643项、真实PG18及浏览器4/4/主场景14项。成功经验、失败与负反馈教训、独立提炼费用授权、定时/嵌套Workflow记忆范围仍须完成。 |
+| Agent跨运行记忆 | `src/components/agent-run/MemoryPanel.tsx`、`src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` | [本人指令及来源经验/教训](PG18_AGENT_MEMORY.md)已在0631935通过根659项、55项记忆域、真实PG18 HTTPS/SDK及浏览器4/4（主场景15项）。可选051支持本人预览、明确保存、来源失效屏蔽、二次忘记与原请求恢复，仍不进入默认050。自动成功/失败写回、负反馈教训、派生提示协议、独立提炼费用和定时/嵌套范围仍须完成。 |
 | 模板发布与复用 | `pocketbase/pb_hooks/template_market_api.pb.js`、`pocketbase/pb_hooks/internal_templates.pb.js`、`pocketbase/pb_hooks/agent_templates.pb.js` | 逐项核对发布、模板市场、使用、交接及权限。已有画布样本 / 导入导出和基础模板表不能直接作为这些操作的等价证明。 |
 | 反馈驱动的优化关联 | `pocketbase/pb_hooks/agent_optimization_lineage.pb.js`、`pocketbase/pb_hooks/agent_specs.pb.js` | 核对反馈、优化与目标角色之间的受保护关联，补齐原生活跃操作、权限和审计。 |
 | 集成与嵌入调用 | `src/pages/Integrate/useIntegrate.ts`、`pocketbase/pb_hooks/integrate_api.pb.js` | 当前菜单可达，须核对已发布角色、调用钥匙一次展示 / 重发 / 吊销、嵌入配置、调用记录与统计、试调用及公开运行 / 轮询。原生历史表不等于运行能力；新路径继续使用经验证的身份及明确调用授权。 |
@@ -63,8 +63,4 @@
 5. 完成长时间 Worker 运行、重启 / 断线 / 租约与未知结果检查，演练备份恢复、回滚并签收。
 6. 逐项 GO / NO-GO 审核后才决定是否正式切换；草稿 PR、部署模板及本清单本身不授予部署许可。
 
-当前来源记忆细节及每个精确提交证据见[Agent记忆](PG18_AGENT_MEMORY.md)。051仍不进入默认050；页面候选支持本人来源预览/明确保存、失效正文屏蔽、二次忘记、原请求只读恢复和员工切换隔离，新会话与浏览器场景待本轮CI。自动写回、负反馈优化、有界派生提示协议及独立付费提炼尚未完成。公开最终成果遮罩保留私有原文/回放与摘要不变。
-
-规范PocketBase/SQLite回归在921decb再次通过：19/19、两个Worker、76.5秒，所有临时数据库均在D盘专用隔离目录，未接触当前数据。后续真实PG18候选把已验证的可选051本人保存/查看/忘记流程进一步改为独立Native HTTPS Cookie与严格SDK调用，保留本人只读仓库、外来员工拒绝及零额外模型/作业检查；该新增HTTPS场景仍待本候选CI。
-
-来源记忆页面921decb通过55项记忆域。后续恢复修复在临时能力读取失败时保留本人会话组件和冻结原请求，隐藏不可读内容；能力恢复后只读核对原请求，退出仍销毁该会话。新增浏览器故障场景在保存已提交但回复丢失后，令能力接口503、关闭写入、恢复能力并确认原回执，验证不产生替代保存。该浏览器及真实HTTPS候选尚待本轮CI。
+来源记忆当前证据见[Agent记忆](PG18_AGENT_MEMORY.md)。0631935整轮合成隔离验收已通过，包含能力503后恢复原请求；051仍不进入默认050。自动写回、负反馈优化、有界派生提示及独立付费提炼仍待完成。实际员工、目标环境、备份恢复/回滚及长期Worker尚未签收，正式迁移继续NO-GO。
