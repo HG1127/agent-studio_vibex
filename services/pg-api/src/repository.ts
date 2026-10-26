@@ -120,6 +120,15 @@ async function verifyModelBinding(db:SqlClient,actor:string,
   catch{throw new HttpError(409,"model_provider_not_allowlisted")}
 }
 
+// All full-configuration writes, including historical restoration, must
+// re-resolve current resources under the verified owner's transaction.
+export async function verifyAgentSpecResources(db:SqlClient,actor:string,spec:AgentSpecInput):Promise<void>{
+  await verifyKnowledgeSelection(db,actor,spec)
+  await verifyModelBinding(db,actor,spec)
+  await verifyAgentHttpTools(db,actor,spec)
+  await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
+}
+
 export class AgentSpecRepository {
   readonly pool:SqlPool
   constructor(pool:SqlPool) {this.pool=pool}
@@ -148,10 +157,7 @@ export class AgentSpecRepository {
   }
   create(identity:Identity,name:string,spec:AgentSpecInput):Promise<SpecRow> {
     return withActor(this.pool,identity,async (db,actor)=>{
-      await verifyKnowledgeSelection(db,actor,spec)
-      await verifyModelBinding(db,actor,spec)
-      await verifyAgentHttpTools(db,actor,spec)
-      await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
+      await verifyAgentSpecResources(db,actor,spec)
       const result=await db.query<SpecRow>(
         "INSERT INTO agentstudio.agent_specs "+
         "(owner_user_id,name,spec,requires_approval) "+
@@ -169,10 +175,7 @@ export class AgentSpecRepository {
     if(!Number.isSafeInteger(revision) || revision<1)
       throw new HttpError(400,"invalid_revision")
     return withActor(this.pool,identity,async (db,actor)=>{
-      await verifyKnowledgeSelection(db,actor,spec)
-      await verifyModelBinding(db,actor,spec)
-      await verifyAgentHttpTools(db,actor,spec)
-      await resolveAgentMcpTools(db,actor,spec.mcp_tools,true)
+      await verifyAgentSpecResources(db,actor,spec)
       const result=await db.query<SpecRow>(
         "UPDATE agentstudio.agent_specs "+
         "SET name=$3::text,spec=$4::jsonb,requires_approval=true,"+

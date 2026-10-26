@@ -18,6 +18,8 @@ export const agentReleaseFunctions:Array<[string,string[]]>=[
   ["agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)",[api]],
   ["agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text)",[api]],
   ["agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text)",[api]],
+  ["agent_release_restore_prepare(uuid,uuid,bigint,text,text,bigint,boolean,text,uuid,text)",[api]],
+  ["agent_release_restore_finish(uuid,uuid,text)",[api]],
 ]
 function refuse():never{throw Error("unsafe_agent_release_privileges")}
 export async function agentReleasesInstalled(db:SqlClient):Promise<boolean>{
