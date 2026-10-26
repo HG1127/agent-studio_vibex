@@ -1255,23 +1255,24 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     const humanBase=await api.createAgent("Genuine PG18 owner-reviewed Agent","Synthetic human-reviewed report")
     const humanBound=await api.bindAgentModel(humanBase.id,humanBase.revision,{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"})
     const humanRole=await api.updateAgentPlanReview(humanBound.id,humanBound.revision,true)
-    const humanRun=await api.submitAutonomousAgentRun(humanRole.id,humanRole.revision,"Clarify, revise, approve and deliver a complete report","ci-human-reviewed-pg18",4)
+    const humanRun=await api.submitAutonomousAgentRun(humanRole.id,humanRole.revision,"Clarify and deliver a complete report","ci-human-clarification-pg18",2,false)
+    let activeHumanRun=humanRun.run.id
     let humanCalls=0
     const completeReport="已核对本人批准的方案与原始来源，交付完整合成报告。\n".repeat(300)
     assert.ok(completeReport.length>4000&&completeReport.length<11000)
     const humanDispatch=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error("human_direct_model_fallback_forbidden")},brokerPool,{allowAutonomousExecution:true,agentExecutor:async(material,prompt)=>{
       assert.equal(material.api_key,secret);const plan=JSON.parse(prompt);humanCalls++
-      return JSON.stringify(plan.round===1?{action:"ask_user",question:"Which synthetic deadline should I use?",note:"PRIVATE_GENUINE_HUMAN_NOTE"}:
-        plan.round===2?{action:"answer",answer:"First owner review draft"}:plan.round===3?{action:"answer",answer:"Revised owner review draft"}:{action:"answer",answer:completeReport})
+      if(!plan.human_input.require_plan_review)return JSON.stringify(plan.round===1?{action:"ask_user",question:"Which synthetic deadline should I use?",note:"PRIVATE_GENUINE_HUMAN_NOTE"}:{action:"answer",answer:completeReport})
+      return JSON.stringify(plan.round===1?{action:"answer",answer:"First owner review draft"}:plan.round===2?{action:"answer",answer:"Revised owner review draft"}:{action:"answer",answer:completeReport})
     }})
     await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),humanDispatch),async raw=>{
       const executor=workflowV2ModelEffectExecutor({...raw,executionMode:"agent_native_v2"})
       const worker=()=>new WorkflowV2Worker(workerPool,"ci-human-"+randomUUID(),{agentExecutionApproved:true,humanInputApproved:true,executor,executionMode:"agent_native_v2"})
       const wait=async wanted=>{for(let i=0;i<24;i++){
-        const detail=await api.getAutonomousAgentRun(humanRun.run.id)
+        const detail=await api.getAutonomousAgentRun(activeHumanRun)
         if(detail.run.status===wanted)return detail
         assert.equal(["failed","paused","cancelled","succeeded"].includes(detail.run.status),false,detail.run.last_error_code)
-        if(detail.run.status==="awaiting_approval")await api.decideAutonomousAgentNode(humanRun.run.id,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+        if(detail.run.status==="awaiting_approval")await api.decideAutonomousAgentNode(activeHumanRun,"approved",detail.pending_effect.step_key,detail.pending_effect.input_sha256)
         await worker().tick()
       }throw Error("genuine_human_transition_limit")}
       let pending=await wait("awaiting_input");assert.equal(humanCalls,1);assert.equal(pending.human_input.kind,"clarification")
@@ -1285,16 +1286,22 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await api.respondAutonomousAgent(humanRun.run.id,reply)).recorded,true)
       assert.equal((await api.confirmAutonomousAgentResponse(humanRun.run.id,reply)).replayed,true)
       assert.equal((await worker().tick()).status,"awaiting_approval");assert.equal(humanCalls,1)
+      const clarified=await wait("succeeded");assert.equal(clarified.run.result_text,completeReport);assert.equal(humanCalls,2)
+      assert.deepEqual((await api.getAutonomousAgentHumanHistory(humanRun.run.id)).items.map(item=>item.decision),["reply"])
+      // The role still requires a plan by default. This independent run uses
+      // that default; opting out above did not change its persisted setting.
+      const planRun=await api.submitAutonomousAgentRun(humanRole.id,humanRole.revision,"Review, revise and deliver a complete report","ci-human-reviewed-pg18",3)
+      activeHumanRun=planRun.run.id
       pending=await wait("awaiting_input");assert.equal(pending.human_input.kind,"plan_review");assert.equal(pending.human_input.draft,"First owner review draft")
-      await api.respondAutonomousAgent(humanRun.run.id,choice(pending,"revise","Only include verified synthetic evidence."))
+      await api.respondAutonomousAgent(activeHumanRun,choice(pending,"revise","Only include verified synthetic evidence."))
       pending=await wait("awaiting_input");assert.equal(pending.human_input.draft,"Revised owner review draft")
-      await api.respondAutonomousAgent(humanRun.run.id,choice(pending,"approve",""))
-      const done=await wait("succeeded");assert.equal(done.run.result_text,completeReport);assert.equal(done.human_input_evidence_current,true);assert.equal(humanCalls,4)
-      const history=await api.getAutonomousAgentHumanHistory(humanRun.run.id,"",2)
-      assert.equal(history.items.length,2);assert.ok(history.next_after)
-      assert.deepEqual([...history.items,...(await api.getAutonomousAgentHumanHistory(humanRun.run.id,history.next_after,2)).items].map(item=>item.decision),["reply","revise","approve"])
-      const ledger=(await admin.query("SELECT count(*)::integer AS n FROM agentstudio.agent_human_input_responses WHERE run_id=$1",[humanRun.run.id])).rows[0]
-      assert.equal(ledger.n,3);assert.equal((await worker().tick()).status,"idle");assert.equal(humanCalls,4)
+      await api.respondAutonomousAgent(activeHumanRun,choice(pending,"approve",""))
+      const done=await wait("succeeded");assert.equal(done.run.result_text,completeReport);assert.equal(done.human_input_evidence_current,true);assert.equal(humanCalls,5)
+      const history=await api.getAutonomousAgentHumanHistory(activeHumanRun,"",1)
+      assert.equal(history.items.length,1);assert.ok(history.next_after)
+      assert.deepEqual([...history.items,...(await api.getAutonomousAgentHumanHistory(activeHumanRun,history.next_after,1)).items].map(item=>item.decision),["revise","approve"])
+      const ledger=(await admin.query("SELECT count(*)::integer AS n FROM agentstudio.agent_human_input_responses WHERE run_id=ANY($1::uuid[])",[[humanRun.run.id,activeHumanRun]])).rows[0]
+      assert.equal(ledger.n,3);assert.equal((await worker().tick()).status,"idle");assert.equal(humanCalls,5)
     },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:"agent_native_v2"})})
     mark("employee-governance-and-password-session-revocation")
     const governed=await api.createGovernedEmployee({email:"governance@example.test",password:"SyntheticGovernancePassword#2026",display_name:"Synthetic governance employee",is_admin:true,share_enabled:false})
