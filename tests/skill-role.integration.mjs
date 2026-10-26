@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import {randomBytes,createHash} from "node:crypto"
 import {createServer} from "node:http"
+import {skillAbMessages} from "../src/lib/skillAbCompare.ts"
 import {spawnHeadlessPocketBase,stopHeadlessPocketBase} from "./helpers/headless-pocketbase.mjs"
 
 const root=process.cwd()
@@ -41,9 +42,13 @@ test("Skill text import, owner review, role-only injection, immutable run and no
     const answer=active==="researcher"
       ?{action:"role_complete",role_id:"researcher",role_output:user.includes("FIRST_PRINCIPLES_TEST_TAG")?
          "APPLIED_FIRST_PRINCIPLES_AND_FALSIFICATION":"NO_FIRST_PRINCIPLES"}
-      :{action:"final",final_answer:"Independent reviewer checked evidence and marked uncertainty."}
+      :active==="reviewer"?{action:"final",final_answer:"Independent reviewer checked evidence and marked uncertainty."}
+      :null
+    const content=answer?JSON.stringify(answer):(user.includes("FIRST_PRINCIPLES_TEST_TAG")
+      ?"SYNTHETIC_SKILL_AB_METHOD_REFERENCED":"SYNTHETIC_BASELINE_AB_ONLY")
     res.writeHead(200,{"Content-Type":"application/json"})
-    res.end(JSON.stringify({choices:[{message:{role:"assistant",content:JSON.stringify(answer)}}]}))
+    res.end(JSON.stringify({choices:[{message:{role:"assistant",content}}],
+      usage:{prompt_tokens:75,completion_tokens:45}}))
   })
   let pb=null,logs=""
   try{
@@ -198,6 +203,30 @@ test("Skill text import, owner review, role-only injection, immutable run and no
     assert.equal(detailRun.events.filter(x=>x.content?.role_phase==="skill_loaded").length,1)
     assert.equal(detailRun.events.some(x=>JSON.stringify(x).includes("FIRST_PRINCIPLES_TEST_TAG")),false,
       "event evidence must include version/hash, not raw instructions")
+    // Real PocketBase route + local provider simulate the two paid-boundary
+    // calls. This is contract and metering verification, NOT model IQ proof.
+    const abBase={page:"skill_ab_review",connection_id:modelConnection.item.id,
+      model:"mock-skill-role",strict_model:true,max_tokens:900}
+    const baseline=await ok("POST","/api/llm/chat",{
+      ...abBase,request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
+      messages:skillAbMessages("baseline",METHOD)})
+    const withMethod=await ok("POST","/api/llm/chat",{
+      ...abBase,request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
+      messages:skillAbMessages("with_skill",METHOD)})
+    assert.equal(baseline.model,"mock-skill-role")
+    assert.equal(withMethod.model,"mock-skill-role")
+    assert.match(baseline.text,/SYNTHETIC_BASELINE_AB_ONLY/)
+    assert.match(withMethod.text,/SYNTHETIC_SKILL_AB_METHOD_REFERENCED/)
+    assert.ok(Number.isInteger(withMethod.usage?.input_tokens)&&
+      Number.isInteger(withMethod.usage?.output_tokens),"A/B mode must report provider tokens")
+    assert.equal((await request("POST","/api/llm/chat",{
+      ...abBase,strict_model:false,request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
+      messages:skillAbMessages("baseline",METHOD)},token)).status,400,
+      "A/B requests without strict exact model selection must fail")
+    assert.equal((await request("POST","/api/llm/chat",{
+      ...abBase,model:"some-other-model",request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
+      messages:skillAbMessages("baseline",METHOD)},token)).status,400,
+      "A/B requests may not silently switch to a default model")
     console.log(JSON.stringify({status:"SKILL_E2E_PASS",roles:2,skillSnapshots:pinned.length,
       events:detailRun.events.length,modelCalls:modelPrompts.length,foreignSkillLeak:false}))
   }finally{

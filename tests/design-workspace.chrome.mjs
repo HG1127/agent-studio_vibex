@@ -253,7 +253,10 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal(login.status, 200); token = (await login.json()).token
     const designConnection = await api("POST", "/api/model-connections", { name: "Local design UI fixture", provider: "openai", base_url: fixtureOrigin + "/v1", api_key: "local-fixture-only", models: ["design-ui-fixture-model"] })
     designConnectionId = designConnection.item.id
-    frontend = spawn(process.execPath, [vite, "--config", "vibex-local/vite.local.config.ts", "--host", "127.0.0.1", "--port", String(uiPort), "--strictPort"], { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AGENT_STUDIO_PB_ORIGIN: apiOrigin, VITE_AGENT_STUDIO_PG_PILOT_UI_ENABLED: "false" } })
+    // Isolated Skill A/B smoke can reuse the already-verified production bundle;
+    // Vite preview has the same loopback API proxy without dev HMR overhead.
+    const smokePreview=process.env.AGENT_STUDIO_SKILL_AB_UI_SMOKE_ONLY==="1"
+    frontend = spawn(process.execPath, [vite, ...(smokePreview?["preview"]:[]), "--config", "vibex-local/vite.local.config.ts", "--host", "127.0.0.1", "--port", String(uiPort), "--strictPort"], { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AGENT_STUDIO_PB_ORIGIN: apiOrigin, VITE_AGENT_STUDIO_PG_PILOT_UI_ENABLED: "false" } })
     for (const stream of [frontend.stdout, frontend.stderr]) stream.on("data", chunk => { viteLogs = (viteLogs + chunk).slice(-5000) })
     await ready(webOrigin + "/login", frontend, () => viteLogs)
     browser = await chromium.launch({ executablePath: chromeBinary, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] })
@@ -305,6 +308,21 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const skillCatalog=await api("GET","/api/skills")
     const chosenSkill=skillCatalog.items.find(item=>item.name==="first-principles-analysis")
     assert.ok(chosenSkill?.approved_version===1&&chosenSkill.approved_hash)
+    await page.getByText("实际效果验证 · Skill / 无 Skill A/B 对照（可选）").click()
+    const skillAb=page.getByRole("region",{name:"Skill 真实模型 A/B 对照"})
+    await visible(skillAb.getByRole("button",{name:"运行 2 次受控 A/B 对照"}))
+    assert.equal(await skillAb.getByRole("button",{name:"运行 2 次受控 A/B 对照"}).isDisabled(),true,
+      "No billable A/B request is allowed before explicit model selection and consent")
+    assert.equal(await skillAb.getByRole("combobox",{name:"Skill A/B 模型"}).inputValue(),"")
+    results.push("reviewed Skills expose a bounded true-model comparison, but the button is disabled until explicit model selection and billed-call consent")
+    if(process.env.AGENT_STUDIO_SKILL_AB_UI_SMOKE_ONLY==="1"){
+      assert.deepEqual(errors,[],"isolated Skill A/B UI must have no browser exceptions")
+      console.log("SKILL_AB_UI_SMOKE_PASS",JSON.stringify({
+        employeeLogin:true,approvedSkill:true,realModelCalls:0,
+        consentRequired:true,selectionRequired:true,consoleErrors:consoleErrors.length,
+      }))
+      return
+    }
     // Version UX: importing v2 must not silently replace approved v1,
     // and the user must be able to inspect both revisions.
     await page.getByRole("textbox",{name:"SKILL.md 正文"})

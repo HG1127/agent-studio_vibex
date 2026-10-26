@@ -3,6 +3,7 @@ import {BookOpen,ExternalLink,FileUp,Link2,RefreshCw,ShieldAlert,ShieldCheck,Sea
 import {Link} from "react-router-dom"
 import {SiteShell} from "@/components/site/SiteShell"
 import {loadSkillSummaries,skillApi,type SkillDetail,type SkillSummary} from "@/lib/skillLibrary"
+import {SkillABReview} from "@/components/skills/SkillABReview"
 
 type ImportMode="github"|"file"|"paste"
 export default function SkillsPage() {
@@ -190,6 +191,15 @@ export default function SkillsPage() {
               </>}
             </>}
           </section>
+          {selectedDetail?.approved && selectedDetail.active &&
+            <details className="rounded-xl border border-border bg-card" aria-label="Skill 真实模型效果验证">
+              <summary className="cursor-pointer p-4 text-sm font-semibold text-primary">
+                实际效果验证 · Skill / 无 Skill A/B 对照（可选）
+              </summary>
+              <div className="border-t border-border p-3">
+                <SkillABReview key={selectedDetail.id+":"+selectedDetail.version} skill={selectedDetail}/>
+              </div>
+            </details>}
         </div>
       </div>
     </main>

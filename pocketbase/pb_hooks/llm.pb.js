@@ -270,7 +270,10 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     // bypassed, so enforce scope and budgets on the server as well.
     // Other Agent/Workflow model calls preserve their existing contracts.
     var isNodeDebug = String(body.page || "") === "workflow_node_debug"
-    var isBlindBenchmark = String(body.page || "") === "agent_v28_blind"
+    // Skill A/B text comparison shares the strict, bounded, read-only model
+    // contract with V28 blind planning: two explicit messages, no tools.
+    var isBlindBenchmark = String(body.page || "") === "agent_v28_blind" ||
+      String(body.page || "") === "skill_ab_review"
     if (isBlindBenchmark) {
       var selectedConnection = String(body.connection_id || "").trim()
       var selectedModel = String(body.model || "").trim()
