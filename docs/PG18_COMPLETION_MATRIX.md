@@ -12,21 +12,28 @@
 
 | 范围 | 已有原生实现 | 证据与实际限制 |
 | --- | --- | --- |
-| 独立员工身份 | 本地员工登录、Cookie / CSRF、服务端验证员工与所有者、员工开通与目录、独立服务身份 | `services/pg-api/src/native-auth-http.mjs`；真实 PG18 / HTTPS 隔离链路。员工角色、停用、共享开关及自助修改口令仍见下方治理对照；实际员工目录、网络和目标服务器尚未签收。 |
+| 独立员工身份 | 本地员工登录、Cookie / CSRF、服务端验证员工与所有者、员工开通与目录、独立服务身份 | `services/pg-api/src/native-auth-http.mjs`；真实 PG18 / HTTPS 隔离链路。员工角色、停用、内部模板分享资格和自助改密已有原生治理与隔离验收；实际员工目录、网络和目标服务器尚未签收。 |
+| 员工账号治理 | 创建管理员 / 员工、修改角色 / 启用状态 / 内部模板分享资格、本人改密、原请求回执与私有审计 | [账号治理](PG18_NATIVE_EMPLOYEE_GOVERNANCE.md)。047已纳入新库初始化及启动权限 / 回执检查；旧员工创建兼容接口也写同一审计。角色 / 启用状态变化撤销目标旧会话，改密撤销全部本人会话；重新启用不恢复旧会话。模板分享资格不影响私人知识或本人任务，完整模板路径仍见下方待办。 |
 | 模型、工具、MCP | 本人连接、探测、配置版本、受限私有 Broker、双向 TLS、MCP 发现与执行、Smithery 管理 | [MCP 执行](PG18_MCP_EXECUTION.md)、[HTTP 工具](PG18_AGENT_HTTP_TOOLS.md)。写操作逐项审批；未知付费结果禁止自动重发。 |
 | 团队知识与语义检索 | 所有者 / 编辑者 / 读者权限、文档与索引、独立费用授权、关键词及语义 / 混合查询、Agent / Workflow 原始证据关联 | [知识运行时](PG18_SHARED_KNOWLEDGE_RUNTIME.md)、[语义界面](PG18_KNOWLEDGE_SEMANTIC_UI.md)、[知识工具](PG18_APPROVED_SEMANTIC_TOOLS.md)。撤销、内容变化、读者原始证据与费用回执的检查仍生效。 |
 | Workflow | 原生画布、节点与循环、版本验证、持久运行 / 逐步审批、节点测试、节点输出、明确选择的历史样本复用 | [画布](PG18_WORKFLOW_NATIVE_CANVAS.md)、[节点测试](PG18_WORKFLOW_AUTHORING_AND_NODE_DEBUG.md)、[样本来源](PG18_WORKFLOW_SAMPLE_LINEAGE.md)。正式流程 UAT 和长期运行仍待执行。 |
-| Agent | 本人角色、模型及工具绑定、多轮运行、运行明细、审批、取消、重启与未知结果隔离 | [自主 Agent](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。1–30 轮和完整 2000 字符任务已通过精确提交的本地、真实 PG18 与浏览器隔离验收。 |
+| Agent | 本人角色、模型及工具绑定、多轮运行、运行明细、审批、取消、重启与未知结果隔离 | [自主 Agent](PG18_AUTONOMOUS_AGENT_RUNTIME.md)。1–30 轮和完整 2000 字符任务已通过精确提交的本地、真实 PG18 与浏览器隔离验收。人工澄清 / 方案审核和跨运行记忆的活跃操作仍见下方差距。 |
 | 定时任务 | 独立授权、Agent / Workflow 后台运行、独立模型选择、时区重复规则、触发去重、原子入队、失败启动重试、暂停与来源撤销、费用及效果边界 | [定时任务](PG18_NATIVE_SCHEDULE_RUNTIME.md)。默认关闭。旧导入计划仍隔离；独立模型选择、并发保护、历史终态同步与未来生效界面均已通过精确提交的隔离验收。所选连接改版或停用后旧授权失效；未使用的默认连接变化不影响独立选择。 |
 | Agent 描述协作 | 所有者授予 / 撤销、读者 / 编辑者安全投影、提案审核、直接编辑历史及安全描述恢复 | [原生协作](PG18_NATIVE_AGENT_COLLABORATION.md)。共享不授予执行权限；完整角色指纹、授权版本、停用员工、回执恢复和事务故障检查已通过真实 PG18 与浏览器验收。恢复保留当前私有绑定并使旧提案失效；不替代完整配置版本与发布。五项描述容量及任务计划传入模型已对齐，工具与各执行路径总预算保持独立。 |
 | 完整版本与发布 | 所有者完整快照、单调版本号、发布 / 归档、草稿删除、资源重校验后的完整恢复、专用验收及员工页面 | [完整版本](PG18_NATIVE_AGENT_RELEASES.md)。046已纳入全新初始化及默认关闭时的权限检查。实际 PG18 验证完整中文角色的快照、恢复、专用验收与发布；浏览器验证原请求恢复、模型 B 审批、删除预览清理和退出 / 员工切换隔离。历史测试事实与当前有效性分开；旧知识来源不能生成新的通过证明。 |
 | 新库准备 | 真实 SQL 顺序、源文件指纹、初始化回执、六类独立服务登录准备、分阶段只读检查和审查包 | [新库初始化](PG18_FRESH_RUNTIME_INITIALIZATION.md)、[迁移后检查](PG18_RUNTIME_PREPARATION_POSTCHECK.md)。没有在真实目标执行初始化、启用登录或启动服务。 |
 
-已确认的隔离基线为提交 `46901b0ff6f17f99e14112d0e2af69fe235aa881`：
-[质量检查](https://github.com/HG1127/agent-studio_vibex/actions/runs/40256799114)、
-[真实 PG18](https://github.com/HG1127/agent-studio_vibex/actions/runs/40256799124)、
-[员工浏览器](https://github.com/HG1127/agent-studio_vibex/actions/runs/40256799129)均通过。
-该提交的 CI `pnpm check` 通过 601 项测试、类型 / 构建及 95 项生产资源隔离检查；本地 API / 前端类型通过，PocketBase 隔离回归 19/19 通过（两 Worker，78.7 秒）。质量 CI 为 41/41，完整浏览器 9/9（1.9 分钟），协作和完整版本各自的独立场景也通过，完整版本场景用时 14.1 秒。最终页面截图已核对，删除的草稿详情不再残留。13 项 SDK / 运行状态 / 渲染检查和 16 项守卫 / 源码包检查通过。当前初始化源码审查包包含 75 个源文件并验证 13 个离线计划，API / 索引包包含 132 个源文件；均核验清单、默认拒绝启动及无凭据，且运行态源文件未受最后界面修复影响。
+已确认的隔离基线为提交 `040cd251bc211696cd24c0e5a7303ba9a7924c3b`：
+[质量检查](https://github.com/HG1127/agent-studio_vibex/actions/runs/40265942088)、
+[真实 PG18](https://github.com/HG1127/agent-studio_vibex/actions/runs/40265942087)、
+[员工浏览器](https://github.com/HG1127/agent-studio_vibex/actions/runs/40265942086)均通过。
+该提交的质量 CI 为41/41，`pnpm check`通过604项测试、类型 / 构建及95项生产资源隔离检查。
+完整浏览器10/10通过（1.6分钟），账号治理独立场景12.2秒通过，协作与完整版本独立场景也通过。
+实际 PG18验证账号创建 / 角色撤销 / 停用与重新启用、原请求回执、旧会话不复活及本人改密后重新登录。
+最终账号页面截图已核对，敏感输入为空。后端 / 前端类型及48项 SDK / Cookie / CSRF检查本地通过。
+PocketBase隔离回归在`ea6723a`通过19/19（两 Worker，79.5秒），之后的候选改动未涉及该运行时或回归输入。
+全新初始化现为31个 SQL源、33条来源版本及一条初始化回执，58张表、57张 FORCE RLS、22个核心角色。
+当前初始化源码审查包包含79个源文件并验证13个离线计划，API / 索引包包含134个源文件；均验证清单、默认拒绝启动及无凭据。
 这只证明该精确提交的合成隔离验收，不代表真实员工或生产环境通过。
 后续候选和最新验证结果集中在[迁移草稿 PR](https://github.com/HG1127/agent-studio_vibex/pull/26)。
 
@@ -35,7 +42,8 @@
 | 范围 | PocketBase 参照 | 剩余工作 |
 | --- | --- | --- |
 | 委托审批与公司视图 | `src/pages/Manager/ManagerPage.tsx`、`pocketbase/pb_hooks/studio_company.pb.js`、`tests/studio-company.integration.mjs` | 本人明确委托及用途、经理仅看必要元数据、固定待审批操作指纹、一次性决定、撤销 / 来源变化校验、管理员公司汇总。现有本人运行审批不能代替经理委托。`InternalOverviewPage` 使用另一个总览接口，须另行核对。 |
-| 员工账号治理 | `src/pages/Staff/StaffPage.tsx`、`pocketbase/pb_hooks/studio_auth.pb.js` | 逐项对齐创建管理员 / 普通员工、角色修改、停用、共享 Agent 开关、自助修改口令和自身管理员保护。现有原生员工开通 / 目录不能代替这些实际可达操作；账号状态与原授权、会话和 Worker 来源校验也须保持一致。 |
+| Agent人工澄清与方案审核 | `src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` 的 `ask_user` / `/respond` | 补齐同一运行内等待用户输入、1600字符回复、方案草案批准 / 提出修改、持久化续跑和预算语义。显式 `require_plan_review` 不能被模型 final 绕过；现有付费 / 工具步骤审批不等价。原生当前状态和协议没有该路径，仅有未接入的纯输入契约。 |
+| Agent跨运行记忆 | `src/components/agent-run/MemoryPanel.tsx`、`src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` | 实际运行页可查看 / 删除本人角色记忆，旧执行器还会注入并在成功后写回。须补齐原生所有者路径、原始来源 / 撤销检查和明确的提炼费用授权；已有知识库或历史导入不能代替运行能力。 |
 | 模板发布与复用 | `pocketbase/pb_hooks/template_market_api.pb.js`、`pocketbase/pb_hooks/internal_templates.pb.js`、`pocketbase/pb_hooks/agent_templates.pb.js` | 逐项核对发布、模板市场、使用、交接及权限。已有画布样本 / 导入导出和基础模板表不能直接作为这些操作的等价证明。 |
 | 反馈驱动的优化关联 | `pocketbase/pb_hooks/agent_optimization_lineage.pb.js`、`pocketbase/pb_hooks/agent_specs.pb.js` | 核对反馈、优化与目标角色之间的受保护关联，补齐原生活跃操作、权限和审计。 |
 | 集成与嵌入调用 | `src/pages/Integrate/useIntegrate.ts`、`pocketbase/pb_hooks/integrate_api.pb.js` | 当前菜单可达，须核对已发布角色、调用钥匙一次展示 / 重发 / 吊销、嵌入配置、调用记录与统计、试调用及公开运行 / 轮询。原生历史表不等于运行能力；新路径继续使用经验证的身份及明确调用授权。 |
