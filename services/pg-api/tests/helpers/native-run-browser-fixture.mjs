@@ -28,6 +28,8 @@ import {AgentCollaborationRepository} from "../../src/agent-collaboration-reposi
 import {AgentReleaseRepository} from "../../src/agent-release-repository.ts"
 import {AgentHumanInputRepository} from "../../src/agent-human-input-repository.ts"
 import {inspectAgentHumanInputSchema} from "../../src/agent-human-input-audit.ts"
+import {AgentMemoryRepository} from "../../src/agent-memory-repository.ts"
+import {verifyAgentMemoryCredentials} from "../../src/agent-memory-audit.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../../src/workflow-v2-model-dispatch.ts"
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "../../src/workflow-v2-tool-dispatch.ts"
 import {createWorkflowV2ModelInternalHandler} from "../../src/workflow-v2-model-handler.ts"
@@ -89,6 +91,8 @@ const semantic=process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_SEMANTIC!==undefined&&!semantic||semantic&&!modern)throw Error("invalid_synthetic_semantic_browser_mode")
 const human=process.env.AGENT_STUDIO_PG_BROWSER_HUMAN==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_HUMAN!==undefined&&!human||human&&!modern)throw Error("invalid_synthetic_human_browser_mode")
+const memory=process.env.AGENT_STUDIO_PG_BROWSER_MEMORY==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_MEMORY!==undefined&&!memory||memory&&(!human||!autonomous))throw Error("invalid_synthetic_memory_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -113,6 +117,7 @@ Object.assign(state,{semanticAllowed:semantic,semanticDrop:false,queryDrop:false
 Object.assign(state,{scheduleDrop:false,scheduleHashes:[]})
 Object.assign(state,{collaborationDrop:false,collaborationHashes:[]})
 Object.assign(state,{releaseDrop:false,releaseHashes:[],humanDrop:false,humanHashes:[],humanConfirms:0,humanModelCalls:0})
+Object.assign(state,{memoryDrop:false,memoryHashes:[],memoryConfirms:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -133,6 +138,7 @@ try{
   if(releases||human)await db.exec(load("db/postgres/migrations/pg_v9_046_agent_releases.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   if(governance||human)await db.exec(load("db/postgres/migrations/pg_v9_047_employee_governance.sql"))
   if(human){await db.exec(load("db/postgres/migrations/pg_v9_048_agent_human_input.sql"));assert.equal(await inspectAgentHumanInputSchema(pool),true)}
+  if(memory){await db.exec(load("db/postgres/migrations/pg_v9_049_agent_memory.sql"));assert.equal(await verifyAgentMemoryCredentials(db),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -226,7 +232,7 @@ try{
       allowKnowledgeToolExecution:semantic&&state.semanticAllowed&&state.configAllowed,
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:(autonomous||scheduling)&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,allowScheduleRuntime:scheduling&&state.allowed,
       allowAgentCollaboration:collaboration,
-      allowAgentReleases:releases,allowAgentHumanInput:human,
+      allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
           {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
@@ -261,6 +267,8 @@ try{
       repository.change=async(identity,id,body)=>{state.humanHashes.push(createHash("sha256").update(JSON.stringify(body)).digest("hex"));return respond(identity,id,body)}
       return repository
     }
+    const memoryRepository=new AgentMemoryRepository(pool,{allowWrites:memory}),remember=memoryRepository.change.bind(memoryRepository)
+    memoryRepository.change=async(identity,body)=>{state.memoryHashes.push({action:body.action,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return remember(identity,body)}
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
@@ -268,6 +276,7 @@ try{
       ...(collaboration?{agentCollaborationRepository:collaborations}:{}),
       ...(releases?{agentReleaseRepository:releaseRepo}:{}),
       ...(human?{agentHumanInputRepository:humanRepository("agent_native_v2"),workflowHumanInputRepository:humanRepository("workflow_native_v2")}:{}),
+      ...(memory?{agentMemoryRepository:memoryRepository}:{}),
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
       ...(modern?{knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),knowledgeContentRepository:new KnowledgeContentRepository(pool)}:{}),
       ...(semantic?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool),
@@ -303,6 +312,8 @@ try{
               releaseAcceptances:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_release_acceptance_runs")).rows[0].n}:{}),
             ...(modern?{mcpConnections:(await c.query("SELECT count(*)::int AS n FROM agentstudio.mcp_connections")).rows[0].n}:{}),
             ...(human?{humanHashes:state.humanHashes,humanConfirms:state.humanConfirms,humanModelCalls:state.humanModelCalls,humanReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_human_input_responses")).rows[0].n}:{}),
+            ...(memory?{memoryHashes:state.memoryHashes,memoryConfirms:state.memoryConfirms,memoryEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_entries")).rows[0].n,
+              memoryReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_receipts")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
             ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,decisionHashes:state.decisionHashes,semanticModelPrompts:state.semanticModelPrompts,
@@ -327,6 +338,7 @@ try{
         else if(req.url==="/__fixture/prepare"&&req.method==="POST")output=await prepare.tick()
         else if(req.url==="/__fixture/model"&&req.method==="POST")output=await model.tick()
         else if(req.url==="/__fixture/drop-next-human"&&req.method==="POST"&&human){state.humanDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-memory"&&req.method==="POST"&&memory){state.memoryDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-config"&&req.method==="POST"){state.configDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-knowledge"&&req.method==="POST"){state.contentDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-config"&&req.method==="POST"){state.configAllowed=false;configure();output={ok:true}}
@@ -357,6 +369,8 @@ try{
         if(state.humanDrop){state.humanDrop=false;res.end=()=>{res.destroy();return res}}
       }
       if(human&&req.method==="POST"&&req.url.endsWith("/respond-confirm"))state.humanConfirms++
+      if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/change"&&state.memoryDrop){state.memoryDrop=false;res.end=()=>{res.destroy();return res}}
+      if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/confirm")state.memoryConfirms++
       if(req.method==="POST"&&/^\/api\/v2\/schedules\/[0-9a-f-]{36}\/activate$/.test(req.url)&&state.scheduleDrop){state.scheduleDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&/^\/api\/v2\/agent-collaboration\/[0-9a-f-]{36}\/change$/.test(req.url)&&state.collaborationDrop){state.collaborationDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&/^\/api\/v2\/agent-releases\/[0-9a-f-]{36}\/(?:change|acceptance)$/.test(req.url)&&state.releaseDrop){state.releaseDrop=false;res.end=()=>{res.destroy();return res}}
