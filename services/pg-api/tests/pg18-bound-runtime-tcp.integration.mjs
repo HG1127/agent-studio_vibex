@@ -33,6 +33,8 @@ import {inspectAgentCollaborationSchema} from "../src/agent-collaboration-audit.
 import {AgentReleaseRepository} from "../src/agent-release-repository.ts"
 import {AgentHumanInputRepository} from "../src/agent-human-input-repository.ts"
 import {inspectAgentHumanInputSchema} from "../src/agent-human-input-audit.ts"
+import {AgentMemoryRepository} from "../src/agent-memory-repository.ts"
+import {verifyAgentMemoryCredentials} from "../src/agent-memory-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
@@ -111,7 +113,7 @@ const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
-async function startNativeHttps(auth,pool,key,brokerPool){
+async function startNativeHttps(auth,pool,key,brokerPool,{memory=false}={}){
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
   assert.equal(path.dirname(realpathSync(folder)),parent)
@@ -128,6 +130,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
     let backend;const managedRemote=new Map()
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,allowAgentHumanInput:true,
+      allowAgentMemory:memory,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
       allowKnowledgeSharing:true,
@@ -154,6 +157,7 @@ async function startNativeHttps(auth,pool,key,brokerPool){
       agentReleaseRepository:new AgentReleaseRepository(pool,{enabled:true,allowAcceptance:true,allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),
       agentHumanInputRepository:new AgentHumanInputRepository(pool,"agent_native_v2",{allowResponses:true}),
       workflowHumanInputRepository:new AgentHumanInputRepository(pool,"workflow_native_v2",{allowResponses:true}),
+      ...(memory?{agentMemoryRepository:new AgentMemoryRepository(pool,{allowWrites:true})}:{}),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
       knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),
@@ -1353,6 +1357,40 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     mark("collaboration-revoked-final-isolation")
     await api.login("other@example.com","SyntheticOtherPassword#2026")
     await assert.rejects(api.getAgentCollaboration(collaboration.id),e=>e.status===404)
+    mark("optional-memory-049-native-https-owner-and-erasure")
+    // Only this disposable CI database receives the optional proposed049.
+    // Default fresh sources and all preceding startup evidence remain048.
+    await admin.query(readFileSync(new URL("../../../db/postgres/migrations/pg_v9_049_agent_memory.sql",import.meta.url),"utf8"))
+    const beforeMemory=(await admin.query("SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects")).rows[0]
+    await front.close();front=null
+    front=await startNativeHttps(auth,apiPool,key,brokerPool,{memory:true})
+    await front.api.login("admin@example.com","SyntheticAdminPassword#2026")
+    const ownerMemory=front.captureApi(),memoryRole=await ownerMemory.getAgent(humanRole.id)
+    assert.equal((await ownerMemory.getConfigCapabilities()).agent_memory_available,true)
+    assert.equal((await ownerMemory.getConfigCapabilities()).agent_memory_writes_enabled,true)
+    const memorySession=await auth.login("admin@example.com","SyntheticAdminPassword#2026"),memoryIdentity=await auth.verifySession(memorySession.token)
+    assert.ok(memoryIdentity)
+    await withActor(apiPool,memoryIdentity,async db=>{assert.equal(await verifyAgentMemoryCredentials(db),true)})
+    const memoryChoice={action:"remember",request_id:randomUUID(),spec_id:memoryRole.id,expected_revision:memoryRole.revision,fact:"财务".repeat(250),confirm:true}
+    const memorySaved=await ownerMemory.changeAgentMemory(memoryChoice)
+    assert.equal(memorySaved.replayed,false);assert.equal((await ownerMemory.confirmAgentMemory(memoryChoice)).replayed,true)
+    const memoryItems=(await ownerMemory.listAgentMemories(memoryRole.id)).items
+    assert.equal(memoryItems.length,1);assert.equal(memoryItems[0].fact,memoryChoice.fact)
+    await front.api.login("other@example.com","SyntheticOtherPassword#2026")
+    await assert.rejects(front.api.listAgentMemories(memoryRole.id),e=>e.status===404)
+    await assert.rejects(front.api.confirmAgentMemory(memoryChoice),e=>e.status===404)
+    const forgetMemory={action:"forget",request_id:randomUUID(),spec_id:memoryRole.id,memory_id:memorySaved.memory_id,expected_sha256:memorySaved.content_sha256,confirm:true}
+    assert.equal((await ownerMemory.changeAgentMemory(forgetMemory)).recorded,true)
+    assert.equal((await ownerMemory.confirmAgentMemory(forgetMemory)).replayed,true)
+    assert.equal((await ownerMemory.changeAgentMemory(memoryChoice)).replayed,true)
+    assert.equal((await ownerMemory.listAgentMemories(memoryRole.id)).items.length,0)
+    assert.equal((await admin.query("SELECT count(*)::integer AS n FROM agentstudio.agent_memory_entries")).rows[0].n,0)
+    assert.equal((await admin.query("SELECT count(*)::integer AS n FROM agentstudio.agent_memory_receipts")).rows[0].n,2)
+    const memorySql=new AgentMemoryRepository(apiPool)
+    assert.equal((await memorySql.confirm(memoryIdentity,forgetMemory)).replayed,true)
+    await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query("UPDATE agentstudio.agent_memory_receipts SET request_sha256=repeat('a',64)")),/permission denied/)
+    const afterMemory=(await admin.query("SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects")).rows[0]
+    assert.deepEqual(afterMemory,beforeMemory)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
