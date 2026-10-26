@@ -44,7 +44,9 @@ export class AgentMemoryRepository{
         if(Number(role.revision)!==choice.expected_revision)throw new HttpError(409,"agent_revision_changed")
         hash=choice.content_sha256
       }else{
-        const entry=(await db.query<{content_sha256:string}>("SELECT content_sha256 FROM agentstudio.agent_memory_entries WHERE id=$1::uuid AND spec_id=$2::uuid AND owner_user_id=$3::uuid FOR UPDATE",[memory,choice.spec_id,owner])).rows[0]
+        // Contents are insert-only; the transaction memory lock serializes
+        // erasure. Row-locking SELECT would incorrectly require UPDATE grants.
+        const entry=(await db.query<{content_sha256:string}>("SELECT content_sha256 FROM agentstudio.agent_memory_entries WHERE id=$1::uuid AND spec_id=$2::uuid AND owner_user_id=$3::uuid",[memory,choice.spec_id,owner])).rows[0]
         if(!entry)throw new HttpError(404,"agent_memory_not_found")
         if(entry.content_sha256!==choice.expected_sha256)throw new HttpError(409,"agent_memory_content_changed")
         hash=entry.content_sha256
