@@ -1,4 +1,5 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {verifyMemoryRelationAcl} from "./agent-memory-relation-acl.ts"
 const api="agentstudio_api"
 const columns:Record<string,string[]>={
   agent_memory_entries:["owner_user_id","id","spec_id","kind","fact","content_sha256","created_at"],
@@ -27,7 +28,7 @@ export async function verifyAgentMemoryCredentials(db:SqlClient):Promise<boolean
       "WHEN 'a' THEN polname=$5||'_owner_insert' AND polqual IS NULL AND pg_get_expr(polwithcheck,polrelid)='(owner_user_id = agentstudio.actor_id())' "+
       "WHEN 'd' THEN $3::boolean AND polname=$5||'_owner_delete' AND pg_get_expr(polqual,polrelid)='(owner_user_id = agentstudio.actor_id())' AND polwithcheck IS NULL ELSE false END) FROM pg_catalog.pg_policy WHERE polrelid=c.oid) AS ok "+
       "FROM pg_catalog.pg_class c WHERE c.oid=$1::oid",[object.id,api,entries,entries?3:2,entries?"agent_memory_entries":"agent_memory_receipts"])).rows[0]?.ok
-    if(state!==true)refuse()
+    if(state!==true||!await verifyMemoryRelationAcl(db,object.id!,entries))refuse()
     const fields=(await db.query<{name:string;read:boolean;insert:boolean;update:boolean;reference:boolean}>("SELECT attname AS name,has_column_privilege($2,attrelid,attnum,'SELECT') AS read,"+
       "has_column_privilege($2,attrelid,attnum,'INSERT') AS insert,has_column_privilege($2,attrelid,attnum,'UPDATE') AS update,has_column_privilege($2,attrelid,attnum,'REFERENCES') AS reference "+
       "FROM pg_catalog.pg_attribute WHERE attrelid=$1::oid AND attnum>0 AND NOT attisdropped",[object.id,api])).rows

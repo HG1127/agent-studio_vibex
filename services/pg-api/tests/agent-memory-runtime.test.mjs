@@ -57,6 +57,9 @@ test('owned manual memory: atomic receipts, erasure, original recovery, owner is
     assert.equal(audits.length,2);assert.equal(JSON.stringify(audits).includes('report'),false)
     assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.external_effects')).rows[0].n,0)
     for(const drift of ['GRANT UPDATE ON agentstudio.agent_memory_receipts TO agentstudio_api','GRANT SELECT ON agentstudio.agent_memory_entries TO agentstudio_worker',
+      'GRANT SELECT ON agentstudio.agent_memory_receipts TO agentstudio_api WITH GRANT OPTION',
+      'GRANT INSERT(fact) ON agentstudio.agent_memory_entries TO agentstudio_api WITH GRANT OPTION',
+      'GRANT DELETE ON agentstudio.agent_memory_entries TO agentstudio_api WITH GRANT OPTION',
       'ALTER TABLE agentstudio.agent_memory_entries NO FORCE ROW LEVEL SECURITY','DROP TRIGGER agent_memory_entry_receipt ON agentstudio.agent_memory_entries',
       "ALTER POLICY agent_memory_entries_owner_read ON agentstudio.agent_memory_entries USING(true)",
       "GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_entry_guard() TO PUBLIC",

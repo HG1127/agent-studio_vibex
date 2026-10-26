@@ -113,6 +113,9 @@ test('optional051 schema audit rejects data grants, helper authority, erased gua
     const fk=(await f.db.query("SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_memory_derived_receipts'::regclass AND contype='f' AND confrelid='agentstudio.runs'::regclass")).rows[0].conname
     assert.match(fk,/^[a-z0-9_]+$/)
     const changes=['GRANT UPDATE ON agentstudio.agent_memory_derived_entries TO agentstudio_api','GRANT SELECT ON agentstudio.agent_memory_derived_entries TO agentstudio_worker',
+      'GRANT SELECT ON agentstudio.agent_memory_derived_receipts TO agentstudio_api WITH GRANT OPTION',
+      'GRANT INSERT(fact) ON agentstudio.agent_memory_derived_entries TO agentstudio_api WITH GRANT OPTION',
+      'GRANT DELETE ON agentstudio.agent_memory_derived_entries TO agentstudio_api WITH GRANT OPTION',
       'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) TO PUBLIC',
       'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) TO agentstudio_api WITH GRANT OPTION',
       'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_derived_entry_guard() TO agentstudio_api',

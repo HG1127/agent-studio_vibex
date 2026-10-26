@@ -1,4 +1,5 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
+import {verifyMemoryRelationAcl} from "./agent-memory-relation-acl.ts"
 import {verifyAgentMemoryCredentials} from "./agent-memory-audit.ts"
 const table="agentstudio.agent_memory_run_contexts",api="agentstudio_api"
 const fields:Record<string,string>={owner_user_id:"uuid",run_id:"uuid",spec_id:"uuid",spec_revision:"bigint",protocol:"text",graph_sha256:"text",context_sha256:"text",created_at:"timestamp with time zone"}
@@ -41,7 +42,7 @@ export async function verifyAgentMemoryContextCredentials(db:SqlClient):Promise<
     "(SELECT count(*)=2 AND bool_and(polpermissive AND polroles=ARRAY[(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2)]::oid[] AND "+
     "CASE polcmd WHEN 'r' THEN polname='agent_memory_context_owner_read' AND pg_get_expr(polqual,polrelid)='(owner_user_id = agentstudio.actor_id())' AND polwithcheck IS NULL "+
     "WHEN 'a' THEN polname='agent_memory_context_owner_insert' AND polqual IS NULL AND pg_get_expr(polwithcheck,polrelid)='(owner_user_id = agentstudio.actor_id())' ELSE false END) FROM pg_catalog.pg_policy WHERE polrelid=c.oid) AS ok FROM pg_catalog.pg_class c WHERE c.oid=$1::oid",[id,api])).rows[0]?.ok
-  if(state!==true)return refuse()
+  if(state!==true||!await verifyMemoryRelationAcl(db,id,false))return refuse()
   const columns=(await db.query<{name:string;type:string;required:boolean;read:boolean;insert:boolean;update:boolean;reference:boolean}>("SELECT attname AS name,atttypid::regtype::text AS type,attnotnull AS required,"+
     "has_column_privilege($2,attrelid,attnum,'SELECT') AS read,has_column_privilege($2,attrelid,attnum,'INSERT') AS insert,has_column_privilege($2,attrelid,attnum,'UPDATE') AS update,has_column_privilege($2,attrelid,attnum,'REFERENCES') AS reference "+
     "FROM pg_catalog.pg_attribute WHERE attrelid=$1::oid AND attnum>0 AND NOT attisdropped",[id,api])).rows

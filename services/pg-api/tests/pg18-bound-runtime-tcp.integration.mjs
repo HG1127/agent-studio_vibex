@@ -1443,6 +1443,9 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const driftClient=await admin.connect()
       try{for(const mutation of [
         'GRANT SELECT ON agentstudio.agent_memory_derived_entries TO agentstudio_worker',
+        'GRANT SELECT ON agentstudio.agent_memory_derived_receipts TO agentstudio_api WITH GRANT OPTION',
+        'GRANT INSERT(fact) ON agentstudio.agent_memory_derived_entries TO agentstudio_api WITH GRANT OPTION',
+        'GRANT DELETE ON agentstudio.agent_memory_derived_entries TO agentstudio_api WITH GRANT OPTION',
         'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) TO PUBLIC',
         'ALTER FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) SECURITY DEFINER',
         "ALTER TABLE agentstudio.agent_memory_derived_receipts DROP CONSTRAINT agent_memory_derived_receipts_source_sha256_check; ALTER TABLE agentstudio.agent_memory_derived_receipts ADD CONSTRAINT agent_memory_derived_receipts_source_sha256_check CHECK(source_sha256 ~ '^[a-f0-9 ]{64}$')"

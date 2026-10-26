@@ -81,6 +81,8 @@ test('memory startup stays optional without schema and rejects privilege, RLS, c
     await f.db.exec(f.sql('migrations/pg_v9_050_agent_memory_context.sql'))
     assert.equal(await inspectAgentMemoryContextSchema(f.pool),true)
     for(const drift of ['GRANT UPDATE ON agentstudio.agent_memory_run_contexts TO agentstudio_api','GRANT SELECT ON agentstudio.agent_memory_run_contexts TO agentstudio_worker',
+      'GRANT SELECT ON agentstudio.agent_memory_run_contexts TO agentstudio_api WITH GRANT OPTION',
+      'GRANT INSERT(context_sha256) ON agentstudio.agent_memory_run_contexts TO agentstudio_api WITH GRANT OPTION',
       'ALTER TABLE agentstudio.agent_memory_run_contexts NO FORCE ROW LEVEL SECURITY',"ALTER POLICY agent_memory_context_owner_read ON agentstudio.agent_memory_run_contexts USING(true)",
       "ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_protocol_check; ALTER TABLE agentstudio.agent_memory_run_contexts ADD CONSTRAINT agent_memory_run_contexts_protocol_check CHECK(protocol='agent_memory_context_v1 ')",
       "ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_protocol_check; ALTER TABLE agentstudio.agent_memory_run_contexts ADD CONSTRAINT agent_memory_run_contexts_protocol_check CHECK(protocol='agent_memory_context_v1::text')",
