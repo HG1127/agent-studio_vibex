@@ -24,6 +24,7 @@ import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts
 import {inspectAgentMemoryFailureSourceSchema} from "./agent-memory-failure-source-audit.ts"
 import {AgentFeedbackRepository} from "./agent-feedback-repository.ts"
 import {inspectAgentFeedbackSchema} from "./agent-feedback-audit.ts"
+import {inspectAgentOptimizationSchema} from "./agent-optimization-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
@@ -394,6 +395,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const outcomeMemoryAvailable=await inspectAgentMemoryOutcomeSchema(business)
     await inspectAgentMemoryFailureSourceSchema(business)
     const feedbackAvailable=await inspectAgentFeedbackSchema(business)
+    await inspectAgentOptimizationSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")

@@ -863,3 +863,24 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:agent-feedback
+
+  pg18-agent-optimization-foundation:
+    name: Native feedback-linked role acceptance / no provider grant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual owner role transition, immutable lineage and original recovery
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-optimization

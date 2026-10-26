@@ -44,6 +44,8 @@ import {AgentMemoryOutcomeRepository} from "../src/agent-memory-outcome-reposito
 import {inspectAgentMemoryOutcomeSchema,verifyAgentMemoryOutcomeCredentials} from "../src/agent-memory-outcome-audit.ts"
 import {inspectAgentMemoryFailureSourceSchema,verifyAgentMemoryFailureSourceCredentials} from "../src/agent-memory-failure-source-audit.ts"
 import {AgentFeedbackRepository} from "../src/agent-feedback-repository.ts"
+import {AgentOptimizationRepository} from "../src/agent-optimization-repository.ts"
+import {inspectAgentOptimizationSchema,verifyAgentOptimizationCredentials} from "../src/agent-optimization-audit.ts"
 import {inspectAgentFeedbackSchema,verifyAgentFeedbackCredentials} from "../src/agent-feedback-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
@@ -1712,6 +1714,56 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await call('/change',originalFeedbackChoice)).body.replayed,true);const deleted=(await call('')).body;assert.equal(deleted.state,'erased');assert.equal(deleted.current,null);assert.equal(deleted.lessons.length,0)
       assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],httpFeedbackCounts)
     }finally{feedbackSession?.dispose();await feedbackRecoveryFront.close()}
+    mark("optional-optimization-055-actual-role-transition")
+    assert.equal(await inspectAgentOptimizationSchema(apiPool),false)
+    await admin.query(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_055_agent_optimization.sql',import.meta.url),'utf8'))
+    assert.equal(await inspectAgentOptimizationSchema(apiPool),true);assert.equal(await inspectAgentOptimizationSchema(workerPool),true)
+    const optimizationDrift=await admin.connect()
+    try{for(const mutation of ['GRANT INSERT(changed_keys) ON agentstudio.agent_optimization_links TO agentstudio_api','ALTER TABLE agentstudio.agent_specs DISABLE TRIGGER native_agent_optimization_history']){
+      await optimizationDrift.query('BEGIN');try{await optimizationDrift.query(mutation);await assert.rejects(verifyAgentOptimizationCredentials(optimizationDrift),/unsafe_agent_optimization_privileges/)}finally{await optimizationDrift.query('ROLLBACK')}
+    }}finally{optimizationDrift.release()}
+    // Foundation acceptance only. No optimization HTTP, SDK, employee page
+    // or extra provider/evaluation/optimization draft is claimed here.
+    const optimization=new AgentOptimizationRepository(apiPool,{allowAcceptance:true}),optimizationClosed=new AgentOptimizationRepository(apiPool),roleForOptimization=await new AgentSpecRepository(apiPool).get(memoryIdentity,memoryRole.id)
+    const {require_approval:optimizationApproval,...optimizationSpec}=roleForOptimization.spec
+    const optimizationRoleSha=(await withActor(apiPool,memoryIdentity,db=>db.query('SELECT agentstudio.agent_optimization_role_sha(id,owner_user_id,name,revision,spec) AS sha FROM agentstudio.agent_specs WHERE id=$1',[roleForOptimization.id]))).rows[0].sha
+    const optimizationSources=[]
+    for(let i=0;i<2;i++){
+      const queued=await feedbackOwned.submit(memoryIdentity,roleForOptimization.id,{expected_revision:roleForOptimization.revision,max_steps:1,require_plan_review:false,idempotency_key:'ci-native-optimization-source-'+i,instruction:'Synthetic optimization cancelled source '+i+' token=syntheticOptimizationSourcePrivate'})
+      await feedbackOwned.cancel(memoryIdentity,queued.run.id)
+      const state=await feedbackSql.status(memoryIdentity,queued.run.id)
+      const body={action:'submit',request_id:randomUUID(),run_id:queued.run.id,spec_id:state.spec_id,expected_revision:0,expected_source_sha256:state.source.source_sha256,rating:i===0?'up':'down',tags:['核对😀'],comment:'Synthetic genuine employee observation token=syntheticOptimizationFeedbackPrivate',remember_lesson:false,confirm:true}
+      const receipt=await feedbackSql.change(memoryIdentity,body);optimizationSources.push({body,receipt})
+    }
+    const optimizationBefore=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+    const optimizationChoices=optimizationSources.map(({receipt},i)=>({action:'preview',spec_id:roleForOptimization.id,run_id:receipt.run_id,feedback_id:receipt.feedback_id,expected_feedback_sha256:receipt.feedback_sha256,expected_spec_revision:roleForOptimization.revision,expected_spec_sha256:optimizationRoleSha,name:roleForOptimization.name,spec:{...optimizationSpec,goal:'Synthetic genuine explicit role correction '+i+' 😀'}}))
+    const optimizationPreview=await optimizationClosed.preview(memoryIdentity,optimizationChoices[0]);assert.equal(optimizationPreview.recorded,false);assert.deepEqual(optimizationPreview.changed_keys,['goal'])
+    const optimizationBodies=optimizationChoices.map(v=>({...v,action:'accept',request_id:randomUUID(),confirm:true}))
+    await assert.rejects(optimizationClosed.accept(memoryIdentity,optimizationBodies[0]),e=>e.status===403)
+    // Different source-run mutexes must still serialize the same real role.
+    const optimizationRace=await Promise.allSettled(optimizationBodies.map(body=>optimization.accept(memoryIdentity,body)))
+    assert.equal(optimizationRace.filter(r=>r.status==='fulfilled').length,1);assert.equal(optimizationRace.find(r=>r.status==='rejected').reason.status,409)
+    const optimizationWinner=optimizationRace.findIndex(r=>r.status==='fulfilled'),acceptedOptimization=optimizationRace[optimizationWinner].value,originalOptimization=optimizationBodies[optimizationWinner],optimizationSource=optimizationSources[optimizationWinner]
+    assert.equal(acceptedOptimization.after_spec_revision,roleForOptimization.revision+1);assert.equal(acceptedOptimization.before_spec_sha256,optimizationRoleSha)
+    const acceptedHistory=(await admin.query('SELECT id,kind,source_sha256 FROM agentstudio.agent_collaboration_revisions WHERE id IN($1,$2)',[acceptedOptimization.before_revision_id,acceptedOptimization.after_revision_id])).rows
+    assert.equal(acceptedHistory.length,2);assert.equal(acceptedHistory.find(r=>r.id===acceptedOptimization.before_revision_id).kind,'before_edit');assert.equal(acceptedHistory.find(r=>r.id===acceptedOptimization.after_revision_id).kind,'edited');assert.equal(acceptedHistory.find(r=>r.id===acceptedOptimization.after_revision_id).source_sha256,acceptedOptimization.after_spec_sha256)
+    let optimizationPage=await optimizationClosed.list(memoryIdentity,roleForOptimization.id);assert.equal(optimizationPage.items.length,1);assert.equal(optimizationPage.items[0].feedback_unchanged,true);assert.equal(optimizationPage.items[0].role_current,true)
+    const foreignOptimizationSession=await auth.login('other@example.com','SyntheticOtherPassword#2026'),foreignOptimizationIdentity=await auth.verifySession(foreignOptimizationSession.token)
+    await assert.rejects(optimizationClosed.list(foreignOptimizationIdentity,roleForOptimization.id),e=>e.status===404);await assert.rejects(optimizationClosed.confirm(foreignOptimizationIdentity,originalOptimization),e=>e.status===404)
+    await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('INSERT INTO agentstudio.agent_optimization_links(owner_user_id) VALUES(agentstudio.actor_id())')),/permission denied/)
+    await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query("INSERT INTO agentstudio.agent_optimization_intents(transaction_id) VALUES('1')")),/permission denied/)
+    const revisedFeedback=await feedbackSql.change(memoryIdentity,{...optimizationSource.body,request_id:randomUUID(),expected_revision:1});assert.equal(revisedFeedback.statement_sha256,optimizationSource.receipt.statement_sha256);assert.notEqual(revisedFeedback.feedback_sha256,optimizationSource.receipt.feedback_sha256)
+    optimizationPage=await optimizationClosed.list(memoryIdentity,roleForOptimization.id);assert.equal(optimizationPage.items[0].feedback_unchanged,false);assert.equal(optimizationPage.items[0].role_current,true)
+    await admin.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb WHERE id=$1",[originalOptimization.run_id])
+    await feedbackClosed.change(memoryIdentity,{action:'erase_feedback',request_id:randomUUID(),spec_id:roleForOptimization.id,run_id:originalOptimization.run_id,expected_revision:2,expected_feedback_sha256:revisedFeedback.feedback_sha256,confirm:true})
+    const recoveredOptimization=await optimizationClosed.confirm(memoryIdentity,originalOptimization);assert.equal(recoveredOptimization.replayed,true);assert.equal(recoveredOptimization.after_revision_id,acceptedOptimization.after_revision_id)
+    assert.equal((await optimizationClosed.accept(memoryIdentity,originalOptimization)).replayed,true)
+    const currentOptimizationRole=await new AgentSpecRepository(apiPool).get(memoryIdentity,roleForOptimization.id),{require_approval:ordinaryApproval,...ordinarySpec}=currentOptimizationRole.spec
+    await new AgentSpecRepository(apiPool).update(memoryIdentity,roleForOptimization.id,currentOptimizationRole.name,safeAgentSpec({...ordinarySpec,goal:'Synthetic later ordinary owner edit'}),currentOptimizationRole.revision)
+    optimizationPage=await optimizationClosed.list(memoryIdentity,roleForOptimization.id);assert.equal(optimizationPage.items[0].feedback_unchanged,false);assert.equal(optimizationPage.items[0].role_current,false)
+    assert.doesNotMatch(JSON.stringify(optimizationPage),/syntheticOptimizationSourcePrivate|syntheticOptimizationFeedbackPrivate|Synthetic later ordinary/)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_links')).rows[0].n,1)
+    assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],optimizationBefore)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
