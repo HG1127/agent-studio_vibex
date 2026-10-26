@@ -3,7 +3,7 @@ import {usesPaidKnowledge} from "@/lib/pgNativeKnowledgeTool"
 import PgNativeKnowledgeToolCharge from "./PgNativeKnowledgeToolCharge"
 import {ShieldCheck} from "lucide-react"
 import type {PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
-import {autonomousApprovalReady,autonomousReview,readyAutonomousModel,type AutonomousView} from "@/lib/pgNativeAutonomousAgentSession"
+import {autonomousApprovalReady,autonomousReview,readyAutonomousRunModel,autonomousModelBinding,type AutonomousView} from "@/lib/pgNativeAutonomousAgentSession"
 export const autonomousStates:Record<string,string>={queued:"排队中",running:"处理中",awaiting_approval:"等待审批",paused:"已暂停",succeeded:"已完成",failed:"失败",cancelled:"已取消",skipped:"已跳过"}
 export const autonomousButton="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 export const autonomousSecondary="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -21,7 +21,7 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
   if(!detail)return null
   const current=pending?detail.run.id+":"+pending.step_key+":"+pending.input_sha256:""
   const approvedReady=autonomousApprovalReady(detail,agents,connections,toolConnections,mcpConnections,mcpEnabled)
-  const role=agents.find(a=>a.id===detail.run.agent_spec_id),model=readyAutonomousModel(role,connections)
+  const role=agents.find(a=>a.id===detail.run.agent_spec_id),model=readyAutonomousRunModel(detail,role,connections),modelBinding=autonomousModelBinding(detail,role)
   const review=pending?autonomousReview(pending,detail.knowledge):null
   const paid=usesPaidKnowledge(pending)
   const http=pending?.configuration.tool_binding as {connection_id?:string}|undefined
@@ -51,7 +51,7 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
         {pending.kind==="tool"?` · ${tools[String(pending.configuration.tool)]??"工具"}`:""}
       </h4>
       <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-sans text-sm leading-6">{review.text}</pre>
-      {model&&<p className="break-words text-sm">绑定模型：{model.name} · {role?.spec.model_binding?.model_id}</p>}
+      {model&&<p className="break-words text-sm">本次运行模型：{model.name} · {modelBinding?.model_id}</p>}
       {pending.kind==="agent"&&<p className="text-sm leading-6">启动后，每次模型调用和工具操作都会再次请求审批。未批准的步骤不会执行。</p>}
       {pending.kind==="agent"&&approvedReady&&role&&<div className="space-y-1 text-sm leading-6">
         <p className="whitespace-pre-wrap break-words">角色目标：{role.spec.goal}</p>

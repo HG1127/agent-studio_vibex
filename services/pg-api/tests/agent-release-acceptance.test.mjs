@@ -63,6 +63,7 @@ test("dedicated acceptance atomically admits the selected owned model and cannot
     assert.equal(acceptanceCalls,2)
     const status=await repo.acceptanceStatus(alice,role.id,admitted.run_id)
     assert.equal(status.test_current,true);assert.equal(status.execution.knowledge_outputs_available,true)
+    assert.deepEqual(status.execution.run.checkpoint.selected_model_binding,binding)
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM agentstudio.knowledge_keyword_observations WHERE run_id=$1",[admitted.run_id])).rows[0].n,1)
     const snapshotChoice=save(admitted.run_id),saved=await repo.change(alice,role.id,snapshotChoice)
     assert.equal(saved.test_passed,true)

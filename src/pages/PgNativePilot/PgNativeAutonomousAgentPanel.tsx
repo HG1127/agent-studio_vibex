@@ -8,9 +8,9 @@ import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomous
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,active,enabled,onExpired}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,active,enabled,onExpired,target}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  tools?:PgNativeToolConnection[];mcpEnabled?:boolean;active:boolean;enabled:boolean;onExpired:()=>void
+  tools?:PgNativeToolConnection[];mcpEnabled?:boolean;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null
 }){
   const mcps=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyAutonomousView)
@@ -18,14 +18,23 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
   const [instruction,setInstruction]=useState("")
   const [maxSteps,setMaxSteps]=useState(3)
   const model=useRef<Controller|null>(null)
+  const openedTarget=useRef("")
   useEffect(()=>{
     // Recreate on effect setup, including StrictMode's cleanup/setup replay.
     const controller=createPgNativeAutonomousAgentSession(api,{onExpired})
+    openedTarget.current=""
     model.current=controller;setView(controller.snapshot())
     const unsubscribe=controller.subscribe(()=>setView(controller.snapshot()))
     return ()=>{unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
   },[api,onExpired])
   useEffect(()=>{model.current?.setActive(active)},[active,api,onExpired])
+  useEffect(()=>{
+    if(!active||!target||view.busy||view.loading||view.pendingSubmit||view.pendingMutation)return
+    const key=target.id+":"+target.selection
+    if(openedTarget.current===key)return
+    openedTarget.current=key
+    void model.current?.select(target.id)
+  },[active,target?.id,target?.selection,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,api,onExpired])
   useEffect(()=>{
     if(!active||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.error||
        !["queued","running"].includes(view.detail?.run.status??""))return

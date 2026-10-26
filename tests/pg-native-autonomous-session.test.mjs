@@ -10,6 +10,22 @@ const detail=(status="awaiting_approval")=>({execution_mode:"agent_native_v2",re
   run:{id:run,kind:"agent",workflow_id:null,agent_spec_id:agent,instruction:"First task",status,checkpoint:{spec_revision:2,max_steps:3},result_text:"",step_count:0},
   approvals:[{step_key:step,status:"pending"}],steps:[],steps_truncated:false,pending_effect:pending()})
 const summary=()=>({id:run,agent_spec_id:agent,status:"awaiting_approval",instruction_preview:"First task",result_preview:""})
+test("approval uses the server-sealed per-run model for acceptance/schedules while keeping public role overrides closed",()=>{
+  const selected={connection_id:run,connection_revision:4,model_id:"synthetic-b"}
+  const role={id:agent,revision:2,spec:{model_binding:{connection_id:other,connection_revision:2,model_id:"synthetic"},tools:["calculate"]}}
+  const a={id:other,revision:2,provider:"openai",base_url:"https://api.openai.com/v1",enabled:false,status:"ok",models:["synthetic"]}
+  const b={...a,id:run,revision:4,enabled:true,models:["synthetic-b"]}
+  const owned={...detail(),run:{...detail().run,checkpoint:{...detail().run.checkpoint,selected_model_binding:selected}},
+    pending_effect:{...pending(),configuration:{model_binding:selected}}}
+  assert.equal(autonomousApprovalReady(owned,[role],[a,b]),true)
+  const tool={...owned,pending_effect:{...pending(),kind:"tool",configuration:{tool:"calculate"}}}
+  assert.equal(autonomousApprovalReady(tool,[role],[a,b]),true)
+  assert.equal(autonomousApprovalReady({...owned,run:detail().run},[role],[a,b]),false)
+  assert.equal(autonomousApprovalReady(owned,[role],[a]),false)
+  assert.equal(autonomousApprovalReady(owned,[{...role,revision:3}],[a,b]),false)
+  assert.equal(autonomousApprovalReady({...owned,run:{...owned.run,checkpoint:{...owned.run.checkpoint,selected_model_binding:{...selected,api_key:"forbidden"}}}},[role],[a,b]),false)
+  assert.equal(autonomousApprovalReady({...owned,pending_effect:pending()},[role],[a,b]),false)
+})
 function fake(){let record=detail();const calls=[];return {calls,get record(){return record},set record(value){record=value},
   api:{listAutonomousAgentRuns:async()=>[summary()],getAutonomousAgentRun:async()=>record,
     submitAutonomousAgentRun:async(...args)=>{calls.push(["submit",...args]);return record},

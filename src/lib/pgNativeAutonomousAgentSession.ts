@@ -5,7 +5,7 @@ import {optionalKnowledgeToolContext,knowledgeBindingCurrent,knowledgePendingMat
 import type {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
 // One employee-view lifetime. No storage, timers, credentials or provider calls.
 import {PgNativePilotError,type PgNativeAutonomousAgentResult,type PgNativeAutonomousAgentSummary,type PgNativeAgent,type PgNativeModelConnection,
-  type PgNativeWorkflowV2Pending,type PgNativeToolConnection,type PgNativeMcpConnection} from "./pgNativePilotApi.ts"
+  type PgNativeWorkflowV2Pending,type PgNativeToolConnection,type PgNativeMcpConnection,type PgNativeAgentModelBinding} from "./pgNativePilotApi.ts"
 type Api={
   submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number):Promise<PgNativeAutonomousAgentResult>
   listAutonomousAgentRuns():Promise<PgNativeAutonomousAgentSummary[]>
@@ -37,13 +37,27 @@ export function readyAutonomousModel(agent:PgNativeAgent|undefined,connections:P
   return binding?connections.find(c=>c.id===binding.connection_id&&c.enabled&&c.status==="ok"&&c.base_url===bases[c.provider]&&
     c.revision===binding.connection_revision&&Array.isArray(c.models)&&c.models.includes(binding.model_id)):undefined
 }
+export function autonomousModelBinding(detail:AutonomousDetail|null,agent:PgNativeAgent|undefined):PgNativeAgentModelBinding|undefined{
+  const checkpoint=detail?.run.checkpoint
+  if(!checkpoint||!Object.hasOwn(checkpoint,"selected_model_binding"))return agent?.spec.model_binding
+  const raw=checkpoint.selected_model_binding
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))return undefined
+  const binding=raw as Record<string,unknown>
+  if(Object.keys(binding).length!==3||!uuid.test(String(binding.connection_id))||!Number.isSafeInteger(binding.connection_revision)||Number(binding.connection_revision)<1||
+    typeof binding.model_id!=="string"||!/^[A-Za-z0-9._:/-]{1,120}$/.test(binding.model_id))return undefined
+  return {connection_id:String(binding.connection_id).toLowerCase(),connection_revision:Number(binding.connection_revision),model_id:binding.model_id}
+}
+export function readyAutonomousRunModel(detail:AutonomousDetail|null,agent:PgNativeAgent|undefined,connections:PgNativeModelConnection[]){
+  const binding=autonomousModelBinding(detail,agent)
+  return agent&&binding?readyAutonomousModel({...agent,spec:{...agent.spec,model_binding:binding}},connections):undefined
+}
 export function autonomousApprovalReady(detail:AutonomousDetail|null,agents:PgNativeAgent[],connections:PgNativeModelConnection[],tools:PgNativeToolConnection[]=[],mcps:PgNativeMcpConnection[]=[],mcpEnabled=false){
-  const agent=agents.find(a=>a.id===detail?.run.agent_spec_id),model=readyAutonomousModel(agent,connections),pending=detail?.pending_effect
+  const agent=agents.find(a=>a.id===detail?.run.agent_spec_id),model=readyAutonomousRunModel(detail,agent,connections),selected=autonomousModelBinding(detail,agent),pending=detail?.pending_effect
   if(detail?.knowledge_outputs_available===false)return false
   if(!agent||!model||!readyAgentHttpTools(agent,tools)||!readyAgentMcpTools(agent,mcps)||agent.spec.mcp_tools?.length&&!mcpEnabled||detail?.run.status!=="awaiting_approval"||detail.run.checkpoint.spec_revision!==agent.revision||!pending)return false
   if(agent.spec.knowledge_retrieval&&(!knowledgeBindingCurrent(agent.spec.knowledge_retrieval,detail.knowledge)||!knowledgeToolScopeCurrent(agent.spec.knowledge_base_ids??[],detail.knowledge)))return false
   const binding=pending.configuration.model_binding as Record<string,unknown>|undefined
-  if(binding&&(binding.connection_id!==model.id||binding.connection_revision!==model.revision||binding.model_id!==agent.spec.model_binding?.model_id))return false
+  if(binding&&(binding.connection_id!==model.id||binding.connection_revision!==model.revision||binding.model_id!==selected?.model_id))return false
   if(pending.kind==="agent"){
     const ref=pending.configuration.agent_binding as Record<string,unknown>|undefined
     if(ref?.spec_id!==agent.id||ref.spec_revision!==agent.revision||pending.configuration.max_steps!==detail.run.checkpoint.max_steps)return false
