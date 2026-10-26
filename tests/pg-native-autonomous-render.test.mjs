@@ -28,6 +28,10 @@ test("static employee UI keeps new grants disabled, scopes approval consent and 
     const blocked=renderToStaticMarkup(createElement(Panel,{...props,api:{},enabled:false,active:true,onExpired:()=>{}}))
     assert.match(blocked,/当前环境未开放多轮任务提交和审批/);assert.match(blocked,/<fieldset disabled=""/)
     assert.match(blocked,/<select[^>]*aria-label="最多规划轮数"/);assert.match(blocked,/aria-label="多轮任务要求"/)
+    const renderOutcome=(allowed)=>renderToStaticMarkup(createElement(Panel,{...props,api:{},enabled:true,active:true,outcomeAvailable:true,outcomeEnabled:allowed,onExpired:()=>{}}))
+    const outcome=renderOutcome(true),checkbox=outcome.match(/<input[^>]*aria-label="任务结束后保存本次经验或教训"[^>]*>/)?.[0]
+    assert.ok(checkbox);assert.doesNotMatch(checkbox,/checked/);assert.match(outcome,/不额外调用模型/)
+    assert.match(renderOutcome(false),/<input[^>]*aria-label="任务结束后保存本次经验或教训"[^>]*disabled=""/)
     const pending={step_key:"wf2_00002_agent_a01m",input_sha256:"a".repeat(64),kind:"model",input:JSON.stringify({task:"Review own task",think:"PRIVATE_REASONING"}),
       configuration:{model_binding:role.spec.model_binding},missing:[],agent_context:{round:1,phase:"model",parent_step_key:"wf2_00002_agent"}}
     const detail={run:{id:run,kind:"agent",workflow_id:null,agent_spec_id:agent,status:"awaiting_approval",instruction:"Own task",checkpoint:{spec_revision:2,max_steps:3},result_text:""},

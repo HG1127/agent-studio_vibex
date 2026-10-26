@@ -7,12 +7,13 @@ import {useMcpConnections} from "./useMcpConnections"
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomousModel} from "@/lib/pgNativeAutonomousAgentSession"
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
+import PgNativeAgentOutcomeMemoryPanel from "./PgNativeAgentOutcomeMemoryPanel"
 import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,active,enabled,onExpired,target}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,active,enabled,onExpired,target}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null
+  tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null
 }){
   const mcps=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyAutonomousView)
@@ -20,6 +21,8 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
   const [instruction,setInstruction]=useState("")
   const [maxSteps,setMaxSteps]=useState(3)
   const [planReview,setPlanReview]=useState("inherit")
+  const [rememberOutcome,setRememberOutcome]=useState(false)
+  useEffect(()=>{if(!outcomeEnabled)setRememberOutcome(false)},[outcomeEnabled])
   const model=useRef<Controller|null>(null)
   const openedTarget=useRef("")
   useEffect(()=>{
@@ -52,7 +55,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
     if(!active||!enabled||view.busy||view.pendingMutation||view.pendingHumanResponse||!view.pendingSubmit&&!chosen)return
     const controller=model.current
     if(!controller)return
-    await controller.submit({agentId,revision:chosen?.revision??0,instruction,maxSteps,...(humanAvailable&&planReview!=="inherit"?{requirePlanReview:planReview==="required"}:{})})
+    await controller.submit({agentId,revision:chosen?.revision??0,instruction,maxSteps,...(humanAvailable&&planReview!=="inherit"?{requirePlanReview:planReview==="required"}:{}),...(outcomeEnabled&&rememberOutcome?{rememberOutcome:true}:{})})
     if(model.current===controller&&!controller.snapshot().pendingSubmit&&controller.snapshot().notice)setInstruction("")
   }
   return <section aria-label="多轮 Agent" className="space-y-5">
@@ -89,6 +92,13 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
               <option value="required">需要我审核方案</option><option value="off">本次无需方案审核</option>
             </select>
           </label>}
+          {(outcomeAvailable||view.pendingSubmit?.rememberOutcome===true)&&<div className="space-y-2 rounded-xl bg-slate-50 p-3">
+            <label className="flex items-start gap-2 text-sm leading-6"><input type="checkbox" aria-label="任务结束后保存本次经验或教训" className="mt-1.5"
+              disabled={!outcomeEnabled||locked} checked={view.pendingSubmit?view.pendingSubmit.rememberOutcome===true:outcomeEnabled&&rememberOutcome} onChange={event=>setRememberOutcome(event.target.checked)}/>
+              任务结束后保存本次经验或教训，供我查看。
+            </label>
+            <p className="text-xs leading-5 text-slate-500">只保存可核对的本次任务来源，不额外调用模型。任务中可停止后续保存，已有内容可在任务经验与教训中忘记。</p>
+          </div>}
         </fieldset>
         {view.pendingSubmit&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">上次提交结果尚未确认。角色、任务和轮数已保留，确认时会使用原请求。</p>}
         <button type="submit" className={autonomousButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)||!view.pendingSubmit&&(!chosen||!instruction.trim())}>
@@ -111,6 +121,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,too
         <span className="shrink-0 text-xs">{autonomousStates[run.status]??"状态未知"}</span>
       </button>)}
     </div>
+    <PgNativeAgentOutcomeMemoryPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={outcomeAvailable} onExpired={onExpired}/>
     <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
       onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
       onConfirm={()=>{if(active)void model.current?.retryHumanResponse()}}/>
