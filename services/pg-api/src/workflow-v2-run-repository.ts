@@ -18,12 +18,15 @@ import {workflowV2OutputProjection} from "./workflow-v2-output-projection.ts"
 import {validWorkflowOutputCursor} from "./workflow-v2-output-contract.ts"
 import {prepareWorkflowSampleLineage,registerWorkflowSampleLineage} from "./workflow-sample-lineage.ts"
 import {agentHumanContext,agentHumanEvidenceExpected,requireHumanInputSchema,verifyAgentHumanResponses} from "./agent-human-input-policy.ts"
+import {parseAgentMemoryContext,type AgentMemoryContext} from "./agent-memory-context.ts"
+import {verifyCurrentAgentMemoryContext} from "./agent-memory-context-policy.ts"
 export type WorkflowV2StoredState={
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
   graph:WorkflowGraph;machine:WorkflowV2Checkpoint
   node_debug?:WorkflowNodeDebug
   agent_state?:WorkflowAgentState
   human_agent_keys?:string[]
+  memory_context?:AgentMemoryContext
   agent_dispatch?:{step_key:string;input_sha256:string;kind:"model"|"tool";parent_step_key:string}
 }
 export type WorkflowV2RunRow={id:string;owner_user_id:string;workflow_id:string|null;agent_spec_id:string|null;kind:"workflow"|"agent";status:string;
@@ -46,11 +49,16 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
   let root:ReturnType<typeof durableV2Root>
   try{root=durableV2Root(value.execution_mode)}catch{throw new HttpError(409,"invalid_workflow_v2_state")}
   const required=["stage","execution_mode",root.revision,"graph","machine"]
-  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug","human_agent_keys"].includes(key))||
+  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug","human_agent_keys","memory_context"].includes(key))||
      typeof value.stage!=="string"||!new RegExp("^"+root.stage+"[a-z_]{1,60}$").test(value.stage)||
      !Number.isSafeInteger(value[root.revision])||Number(value[root.revision])<1||
      !value.machine||value.machine.instruction!==instruction)throw new HttpError(409,"invalid_workflow_v2_state")
   const graph=safeWorkflowGraph(value.graph)
+  if(Object.hasOwn(value,"memory_context")){
+    const ref=graph.nodes[1]?.data.agent_binding
+    if(root.kind!=="agent"||!ref)throw new HttpError(409,"invalid_workflow_v2_state")
+    value.memory_context=parseAgentMemoryContext(value.memory_context,{owner_user_id:value.memory_context?.owner_user_id as string,spec_id:ref.spec_id,spec_revision:Number(value.spec_revision),instruction})
+  }
   if(Object.hasOwn(value,"human_agent_keys")&&(!Array.isArray(value.human_agent_keys)||!value.human_agent_keys.length||value.human_agent_keys.length>200||
     new Set(value.human_agent_keys).size!==value.human_agent_keys.length||value.human_agent_keys.some(key=>typeof key!=="string"||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,80}$/.test(key))))
     throw new HttpError(409,"invalid_workflow_v2_state")
@@ -65,6 +73,7 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
   if(Object.hasOwn(value,"agent_state")){
     if(!value.agent_state||parent?.kind!=="agent")throw new HttpError(409,"invalid_workflow_v2_state")
     const pending=inspectWorkflowAgentState(value.agent_state,parent).pending
+    if(workflowAgentJson(value.agent_state.memory_context??null)!==workflowAgentJson(value.memory_context??null))throw new HttpError(409,"agent_memory_context_unavailable")
     if(Object.hasOwn(value,"agent_dispatch")){const dispatch=value.agent_dispatch
       if(!dispatch||Object.keys(dispatch).length!==4||!pending||dispatch.step_key!==pending.step_key||dispatch.input_sha256!==pending.input_sha256||
          dispatch.kind!==pending.kind||dispatch.parent_step_key!==parent.step_key)throw new HttpError(409,"invalid_workflow_v2_state")
@@ -105,6 +114,8 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     const required=agent.data.require_plan_review??spec.require_plan_review??false
     if(required&&state.machine.effects.some(effect=>effect.step_key==="wf2_00002_agent"&&!effect.outcome)&&!state.human_agent_keys?.includes("wf2_00002_agent"))
       throw new HttpError(409,"agent_human_archive_unavailable")
+    if(isUuid(run.id))await verifyCurrentAgentMemoryContext(db,{owner_user_id:owner,run_id:run.id,spec_id:run.agent_spec_id!,spec_revision:state.spec_revision!,instruction:run.instruction,
+      graph_sha256:state.machine.graph_sha256,context:state.memory_context})
   }
   await verifyWorkflowGraphResources(db,owner,state.graph)
   if(state.agent_state){const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!

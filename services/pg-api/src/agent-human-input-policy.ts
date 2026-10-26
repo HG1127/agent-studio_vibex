@@ -66,6 +66,7 @@ export async function verifyAgentHumanResponses(db:SqlClient,run:Pick<WorkflowV2
       row.arguments_sha256!==parent.input_sha256||snapshot.snapshot_sha256!==agent.snapshot_sha256||snapshot.spec_id!==agent.spec_id||snapshot.spec_revision!==agent.spec_revision||
       snapshot.max_steps!==(parent.configuration.max_steps??3)||workflowAgentJson(snapshot.spec)!==workflowAgentJson(agent.spec)||workflowAgentJson(snapshot.human_responses)!==workflowAgentJson(agent.human_responses??[]))
       throw new HttpError(409,"agent_human_archive_unavailable")
+    if(workflowAgentJson(agent.memory_context??null)!==workflowAgentJson(state.memory_context??null))throw new HttpError(409,"agent_memory_context_unavailable")
     const completed=contextForState(run,state,parent,agent),view=completed.view,effect=state.machine.effects.find(e=>e.step_key===key)
     if(row.status==="failed"?view.status!=="failed"||saved.error_code!==view.error_code||!!effect:
       row.status!=="succeeded"||!["succeeded","rejected"].includes(view.status)||saved.output!==view.output||!effect||effect.output!==view.output.slice(0,4000)||

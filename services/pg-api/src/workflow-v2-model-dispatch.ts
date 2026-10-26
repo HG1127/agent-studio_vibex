@@ -22,19 +22,21 @@ export class WorkflowV2ModelDispatch{
   readonly executor:(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>
   readonly allowAutonomous:boolean;readonly allowAgent:boolean;readonly agentExecutor?:WorkflowV2ModelDispatch["executor"]
   readonly nodeDebugExecutor?:WorkflowV2ModelDispatch["executor"]
+  readonly allowMemory:boolean
   constructor(pool:SqlPool,key:Buffer,executor:WorkflowV2ModelDispatch["executor"],brokerPool:SqlPool,
-    options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"];nodeDebugExecutor?:WorkflowV2ModelDispatch["executor"]}={}){
+    options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowMemoryExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"];nodeDebugExecutor?:WorkflowV2ModelDispatch["executor"]}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||typeof executor!=="function"||!brokerPool)
       throw Error("workflow_model_dispatch_dependencies_required")
     // Share the service-owned key so shutdown zeroizes this reference as well.
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
     this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true;this.agentExecutor=options.agentExecutor
     this.nodeDebugExecutor=options.nodeDebugExecutor
+    this.allowMemory=options.allowMemoryExecution===true
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ModelRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory)
       if(pending.agent_context&&!this.agentExecutor)throw new HttpError(409,"workflow_agent_executor_unavailable")
       if(pending.node_debug&&!this.nodeDebugExecutor)throw new HttpError(409,"workflow_node_debug_executor_unavailable")
       const binding=pending.configuration.model_binding!
@@ -61,7 +63,7 @@ export class WorkflowV2ModelDispatch{
       // Credential loading is a separate transaction. Re-check current grants
       // and the sealed lease after it, immediately before any paid request.
       await withActor(this.pool,identity,async(db,owner)=>{
-        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous)
+        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory)
         if(pending.input!==selected.prompt)changed()
       })
       const controller=new AbortController()
@@ -71,7 +73,7 @@ export class WorkflowV2ModelDispatch{
       })])}finally{if(timer)clearTimeout(timer)}
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_model_output")
       await withActor(this.pool,identity,async(db,owner)=>{
-        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous)
+        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory)
         if(pending.input!==selected.prompt)changed()
       })
       failed=false

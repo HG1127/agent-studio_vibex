@@ -5,6 +5,7 @@ import type {WorkflowEffectRequest} from "./workflow-v2-machine.ts"
 import {verifyAgentHttpTools} from "./repository.ts"
 import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
 import {requireHumanInputSchema} from "./agent-human-input-policy.ts"
+import type {AgentMemoryContext} from "./agent-memory-context.ts"
 async function currentSpec(db:SqlClient,owner:string,parent:WorkflowEffectRequest){
   const ref=parent.configuration.agent_binding
   if(parent.kind!=="agent"||!ref)throw new HttpError(409,"workflow_agent_binding_missing")
@@ -25,7 +26,7 @@ export async function verifyWorkflowAgentResources(db:SqlClient,owner:string,par
   if(state&&workflowAgentJson(definitions)!==workflowAgentJson(state.mcp_tool_definitions??[]))throw new HttpError(409,"workflow_agent_snapshot_changed")
   return {spec,definitions}
 }
-export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest,options:{humanInput?:boolean;fullDelivery?:boolean}={}){
+export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest,options:{humanInput?:boolean;fullDelivery?:boolean;memoryContext?:AgentMemoryContext}={}){
   const {spec,definitions}=await verifyWorkflowAgentResources(db,owner,parent)
   if(options.humanInput===true)await requireHumanInputSchema(db)
   return createWorkflowAgentState(parent,spec,definitions,options)

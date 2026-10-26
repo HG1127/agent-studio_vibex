@@ -6,6 +6,9 @@ import {WorkflowV2RunRepository,safeWorkflowV2Request,workflowV2RunColumns,audit
 import {createWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import type {SqlPool,SqlClient} from "./contracts.ts"
+import {randomUUID} from "node:crypto"
+import {prepareOwnedAgentMemoryContext,insertAgentMemoryContextReceipt} from "./agent-memory-context-policy.ts"
+import {agentMemoryContextHash} from "./agent-memory-context.ts"
 function autonomousRequest(raw:unknown){
   if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
   const {max_steps,require_plan_review,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
@@ -14,7 +17,8 @@ function autonomousRequest(raw:unknown){
   return {request,max_steps:Number(max_steps),require_plan_review:require_plan_review as boolean|undefined}
 }
 export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
-  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){super(pool,"agent_native_v2",options)}
+  readonly allowMemory:boolean
+  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean}={}){super(pool,"agent_native_v2",options);this.allowMemory=options.allowMemory===true}
   override async submit(identity:Identity,id:string,raw:unknown){
     return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))
   }
@@ -49,13 +53,17 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
       return this.assemble(db,owner,prior,true)
     }
     const checkpoint=await this.prepareOwned(db,owner,id,raw,modelBinding)
+    const nextRunId=plannedRunId??randomUUID(),memoryScope={owner_user_id:owner,spec_id:id,spec_revision:request.expected_revision,instruction:request.instruction}
+    if(this.allowMemory)checkpoint.memory_context=await prepareOwnedAgentMemoryContext(db,this.pool,memoryScope,nextRunId)
     const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs(id,owner_user_id,kind,agent_spec_id,status,instruction,checkpoint) "+
       "VALUES(coalesce($5::uuid,gen_random_uuid()),$1::uuid,'agent',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,
-      [owner,id,request.instruction,JSON.stringify(checkpoint),plannedRunId??null])).rows[0]!
+      [owner,id,request.instruction,JSON.stringify(checkpoint),nextRunId])).rows[0]!
+    if(checkpoint.memory_context)await insertAgentMemoryContextReceipt(db,{...memoryScope,run_id:run.id,graph_sha256:machine.graph_sha256,context:checkpoint.memory_context})
     await db.query("INSERT INTO agentstudio.jobs(owner_user_id,run_id,kind,dedupe_key,payload,max_attempts) "+
       "VALUES($1::uuid,$2::uuid,'run_tick',$3::text,$4::jsonb,30)",[owner,run.id,key,
       JSON.stringify({phase:"agent_native_v2",agent_spec_id:id,spec_revision:request.expected_revision,graph_sha256:machine.graph_sha256})])
-    await auditWorkflowV2(db,owner,run.id,"workflow.v2_submit",{spec_revision:request.expected_revision,graph_sha256:machine.graph_sha256,max_steps})
+    await auditWorkflowV2(db,owner,run.id,"workflow.v2_submit",{spec_revision:request.expected_revision,graph_sha256:machine.graph_sha256,max_steps,
+      ...(checkpoint.memory_context?{memory_context_sha256:agentMemoryContextHash(checkpoint.memory_context,memoryScope),memory_items:checkpoint.memory_context.memories.length}:{})})
     return this.assemble(db,owner,run,false)
   }
 

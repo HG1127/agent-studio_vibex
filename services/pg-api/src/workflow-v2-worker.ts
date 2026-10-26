@@ -75,13 +75,15 @@ export class WorkflowV2Worker{
   readonly agentEnabled:boolean
   readonly scheduleEnabled:boolean
   readonly humanEnabled:boolean
+  readonly memoryEnabled:boolean
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;executionMode?:DurableV2Mode}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;executionMode?:DurableV2Mode}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
     this.agentEnabled=options.agentExecutionApproved===true
     this.scheduleEnabled=options.scheduleExecutionApproved===true
     this.humanEnabled=options.humanInputApproved===true
+    this.memoryEnabled=options.memoryExecutionApproved===true
     this.root=durableV2Root(options.executionMode??"workflow_native_v2")
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
@@ -142,6 +144,10 @@ export class WorkflowV2Worker{
     }
     const active=(await db.query<{status:string}>("SELECT status FROM agentstudio.users WHERE id=$1::uuid",[job.owner_user_id])).rows[0]
     if(active?.status!=="active")throw new HttpError(409,"workflow_owner_disabled")
+    if(state.memory_context&&!this.memoryEnabled){
+      await this.persist(db,job,state,"paused","agent_memory_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
+      return {tick:{status:"paused",run_id:job.run_id}}
+    }
     let view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
     for(let i=0;i<this.batch;i++){
       const resolved=view.pending&&state.machine.effects.some(effect=>effect.step_key===view.pending!.step_key)
@@ -212,7 +218,8 @@ export class WorkflowV2Worker{
         }
         if(pending.kind==="agent"){
           if(this.agentEnabled){
-            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled})
+            if(state.memory_context&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(state.memory_context?{memoryContext:state.memory_context}:{})})
             if(state.agent_state.human_protocol)state.human_agent_keys=[...new Set([...(state.human_agent_keys??[]),pending.step_key])]
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")

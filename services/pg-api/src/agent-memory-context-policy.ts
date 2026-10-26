@@ -58,5 +58,13 @@ export async function verifyCurrentAgentMemoryContext(db:SqlClient,p:Proof):Prom
   const context=parseAgentMemoryContext(p.context,p)
   if(receipt.context_sha256!==agentMemoryContextHash(context,p))return unavailable()
   const ids=[...new Set([...context.memories.map(m=>m.id),...(context.remembered?[context.remembered.id]:[])])]
+  // Same locks as physical erasure, in a fixed order. Source authorization
+  // and forgetting have a transaction order without granting text UPDATE.
+  for(const id of [...ids].sort())await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,490))",[p.owner_user_id+":"+id])
   return verifyAgentMemoryContextRows(context,p,ids.length?await currentRows(db,p,ids):[])
+}
+export async function agentMemoryContextExpected(db:SqlClient,owner:string,runId:string,context:unknown|undefined):Promise<boolean>{
+  if(context!==undefined)return true
+  if(!isUuid(runId)||!await agentMemoryContextInstalled(db))return false
+  return (await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.agent_memory_run_contexts WHERE owner_user_id=$1::uuid AND run_id=$2::uuid) AS ok",[owner,runId])).rows[0]?.ok===true
 }

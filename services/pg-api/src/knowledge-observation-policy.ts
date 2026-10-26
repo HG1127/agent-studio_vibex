@@ -1,6 +1,7 @@
 import {HttpError,type SqlClient} from "./contracts.ts"
 import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,workflowV2RunColumns,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
 import {agentHumanEvidenceExpected} from "./agent-human-input-policy.ts"
+import {agentMemoryContextExpected} from "./agent-memory-context-policy.ts"
 export async function currentKnowledgeObservations(db:SqlClient,run:string,currentStep=""):Promise<boolean>{
   const state=(await db.query<{installed:boolean;human_installed?:boolean}>("SELECT to_regprocedure('agentstudio.knowledge_query_execution_validate_run(uuid,text)') IS NOT NULL AS installed,"+
     "to_regclass('agentstudio.agent_human_input_responses') IS NOT NULL AS human_installed")).rows[0]
@@ -17,7 +18,7 @@ export async function currentKnowledgeObservations(db:SqlClient,run:string,curre
       if(!row)return false
       if(!["workflow_native_v2","agent_native_v2"].includes(row.checkpoint?.execution_mode))return true
       const checkpoint=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
-      if(await agentHumanEvidenceExpected(db,row,checkpoint))await verifyWorkflowV2Snapshot(db,row.owner_user_id,row,checkpoint)
+      if(await agentHumanEvidenceExpected(db,row,checkpoint)||row.kind==="agent"&&await agentMemoryContextExpected(db,row.owner_user_id,row.id,checkpoint.memory_context))await verifyWorkflowV2Snapshot(db,row.owner_user_id,row,checkpoint)
       const origin=checkpoint.node_debug?.samples.provenance
       if(origin?.kind!=="history")return true
       selected=origin.run_id
