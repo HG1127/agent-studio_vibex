@@ -45,6 +45,7 @@ export interface AppDependencies {
   autonomousAgentRunRepository?:AutonomousAgentRunRepository
   agentHumanInputRepository?:AgentHumanInputRepository
   agentMemoryRepository?:AgentMemoryRepository
+  agentFeedbackRepository?:import("./agent-feedback-repository.ts").AgentFeedbackRepository
   agentOutcomeMemoryRepository?:import("./agent-memory-outcome-repository.ts").AgentMemoryOutcomeRepository
   agentDerivedMemoryRepository?:import("./agent-memory-derived-repository.ts").AgentMemoryDerivedRepository
   workflowHumanInputRepository?:AgentHumanInputRepository
@@ -154,13 +155,14 @@ export function createHandler(deps:AppDependencies) {
       const queryRoute=/^\/api\/v2\/knowledge-query\/(submit|receipt)$/.exec(path)
       const collaborationRoute=/^\/api\/v2\/agent-collaboration(?:\/([0-9a-fA-F-]{36})(?:\/(revisions|change|revoke|reject|confirm))?)?$/.exec(path)
       const memoryRoute=/^\/api\/v2\/agent-memories(?:\/(change|confirm))?$/.exec(path)
+      const feedbackRoute=/^\/api\/v2\/agent-feedback\/([0-9a-fA-F-]{36})(?:\/(change|confirm))?$/.exec(path)
       const outcomeMemoryRoute=/^\/api\/v2\/agent-outcome-memories\/([0-9a-fA-F-]{36})(?:\/(stop|stop-confirm))?$/.exec(path)
       const derivedMemoryRoute=/^\/api\/v2\/agent-derived-memories(?:\/(preview|change|confirm))?$/.exec(path)
       const releaseRoute=/^\/api\/v2\/agent-releases\/([0-9a-fA-F-]{36})(?:\/(change|confirm|acceptance|versions)(?:\/([0-9a-fA-F-]{36}))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -187,6 +189,18 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(feedbackRoute){
+        if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
+        const feedback=deps.agentFeedbackRepository
+        if(!feedback)throw new HttpError(503,"agent_feedback_unavailable")
+        if(new URL(req.url||"/","http://127.0.0.1").search)throw new HttpError(400,"invalid_agent_feedback_query")
+        const id=feedbackRoute[1]!.toLowerCase(),action=feedbackRoute[2]
+        if(!action&&method==="GET")return send(res,200,await feedback.status(identity,id))
+        if(!action||method!=="POST")throw new HttpError(405,"method_not_allowed")
+        const body=await readBody(req,8192)
+        if(typeof body.run_id!=="string"||body.run_id.toLowerCase()!==id)throw new HttpError(400,"agent_feedback_run_mismatch")
+        return send(res,200,await(action==="confirm"?feedback.confirm(identity,body):feedback.change(identity,body)))
+      }
       if(outcomeMemoryRoute){
         if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
         const memory=deps.agentOutcomeMemoryRepository

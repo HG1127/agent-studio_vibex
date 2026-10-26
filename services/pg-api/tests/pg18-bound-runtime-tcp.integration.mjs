@@ -122,11 +122,12 @@ const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
-async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false,outcomeMemory=false}={}){
+async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false,outcomeMemory=false,feedback=false,feedbackSubmission=false,feedbackLessons=false}={}){
   if(memory){assert.equal(await inspectAgentMemorySchema(pool),true);const context=await inspectAgentMemoryContextSchema(pool);if(memoryRuntime)assert.equal(context,true)}
   if(memoryRuntime){assert.equal(memory,true);assert.equal(selectAgentMemoryRuntime({AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY'}),true)}
   if(derivedMemory){assert.equal(await inspectAgentMemoryDerivedSchema(pool),true);assert.equal(selectAgentDerivedMemoryWrites({AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY'}),true)}
   if(outcomeMemory){assert.equal(derivedMemory,true);assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true);assert.equal(selectAgentOutcomeMemoryWrites({AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_OUTCOME_MEMORY_ONLY"}),true)}
+  if(feedback)assert.equal(await inspectAgentFeedbackSchema(pool),true)
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
   assert.equal(path.dirname(realpathSync(folder)),parent)
@@ -144,6 +145,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,allowAgentHumanInput:true,
       allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
+      allowAgentFeedback:feedback,allowAgentFeedbackSubmission:feedbackSubmission,allowAgentFeedbackLessons:feedbackLessons,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:outcomeMemory,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:derivedMemory,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
@@ -173,6 +175,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       agentHumanInputRepository:new AgentHumanInputRepository(pool,"agent_native_v2",{allowResponses:true}),
       workflowHumanInputRepository:new AgentHumanInputRepository(pool,"workflow_native_v2",{allowResponses:true}),
       ...(memory?{agentMemoryRepository:new AgentMemoryRepository(pool,{allowWrites:true})}:{}),
+      ...(feedback?{agentFeedbackRepository:new AgentFeedbackRepository(pool,{allowSubmit:feedbackSubmission,allowLessonStorage:feedbackSubmission&&feedbackLessons})}:{}),
       ...(outcomeMemory?{agentOutcomeMemoryRepository:new AgentMemoryOutcomeRepository(pool)}:{}),
       ...(derivedMemory?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(pool,{allowWrites:true})}:{}),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
@@ -227,7 +230,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       req.on("timeout",()=>req.destroy(Error("ci_https_timeout")))
       req.on("error",reject);req.end(body??undefined)
     })
-    return {api:createPgNativePilotApi(transportFor(session)),captureApi(){return createPgNativePilotApi(transportFor({cookie:session.cookie}))},async close(){
+    return {request:transportFor(session),api:createPgNativePilotApi(transportFor(session)),captureApi(){return createPgNativePilotApi(transportFor({cookie:session.cookie}))},async close(){
       server.closeAllConnections();await new Promise(resolve=>server.close(resolve))
       rmSync(folder,{recursive:true,force:true})}}
   }catch(error){
@@ -1651,6 +1654,44 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     currentFeedback=await feedbackClosed.status(memoryIdentity,feedbackId);assert.equal(currentFeedback.state,'erased');assert.equal(currentFeedback.lessons.length,0)
     assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_feedback_bodies')).rows[0].n,0);assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_feedback_lessons')).rows[0].n,0)
     assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],feedbackBefore)
+    mark("optional-feedback-054-native-https-cookie-http")
+    const feedbackRole=await new AgentSpecRepository(apiPool).get(memoryIdentity,memoryRole.id),feedbackOwned=new AutonomousAgentRunRepository(apiPool,{allowHumanInput:true})
+    const httpFeedbackRun=await feedbackOwned.submit(memoryIdentity,feedbackRole.id,{expected_revision:feedbackRole.revision,max_steps:1,require_plan_review:false,idempotency_key:'ci-native-feedback-http-original',instruction:'Synthetic feedback HTTP cancelled task token=syntheticTaskPrivate'})
+    await feedbackOwned.cancel(memoryIdentity,httpFeedbackRun.run.id)
+    const httpFeedbackCounts=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+    const feedbackFront=await startNativeHttps(auth,apiPool,key,brokerPool,{feedback:true,feedbackSubmission:true,feedbackLessons:true})
+    let originalFeedbackChoice,httpFeedbackSpec
+    try{
+      await feedbackFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      const base='/api/v2/agent-feedback/'+httpFeedbackRun.run.id
+      const call=async(path,body,lose=false)=>{
+        const response=await feedbackFront.request(base+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}})
+        const value=await response.json();if(lose&&response.ok)throw Error('synthetic genuine committed feedback reply lost')
+        return {status:response.status,body:value}
+      }
+      let state=(await call('')).body;httpFeedbackSpec=state.spec_id
+      originalFeedbackChoice={action:'submit',request_id:randomUUID(),spec_id:state.spec_id,run_id:state.run_id,expected_revision:0,expected_source_sha256:state.source.source_sha256,rating:'down',tags:['核对😀'],comment:'Synthetic HTTPS feedback token=syntheticHttpFeedbackPrivate',remember_lesson:true,confirm:true}
+      assert.equal((await call('?owner_user_id='+memoryIdentity.subject)).status,400)
+      assert.equal((await call('/change',{...originalFeedbackChoice,run_id:randomUUID()})).status,400)
+      assert.equal((await call('/change',{...originalFeedbackChoice,owner_user_id:memoryIdentity.subject})).status,400)
+      await assert.rejects(call('/change',originalFeedbackChoice,true),/committed feedback reply lost/)
+      const receipt=await call('/confirm',originalFeedbackChoice);assert.equal(receipt.status,200);assert.equal(receipt.body.replayed,true);assert.equal(receipt.body.lesson_result.decision,'stored')
+      state=(await call('')).body;assert.equal(state.current.body.comment,'Synthetic HTTPS feedback token=***');assert.equal(state.lessons[0].source_current,true);assert.equal(state.lessons[0].tools_used,'')
+      await feedbackFront.api.login('other@example.com','SyntheticOtherPassword#2026');assert.equal((await call('')).status,404);assert.equal((await call('/confirm',originalFeedbackChoice)).status,404)
+    }finally{await feedbackFront.close()}
+    const feedbackRecoveryFront=await startNativeHttps(auth,apiPool,key,brokerPool,{feedback:true})
+    try{
+      await feedbackRecoveryFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      const base='/api/v2/agent-feedback/'+httpFeedbackRun.run.id
+      const call=async(path,body)=>{const response=await feedbackRecoveryFront.request(base+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}});return {status:response.status,body:await response.json()}}
+      assert.equal((await call('/confirm',originalFeedbackChoice)).body.replayed,true)
+      assert.equal((await call('/change',{...originalFeedbackChoice,request_id:randomUUID(),expected_revision:1})).status,403)
+      const state=(await call('')).body,erase={action:'erase_feedback',request_id:randomUUID(),spec_id:httpFeedbackSpec,run_id:httpFeedbackRun.run.id,expected_revision:1,expected_feedback_sha256:state.current.feedback_sha256,confirm:true}
+      await admin.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb WHERE id=$1",[httpFeedbackRun.run.id])
+      assert.equal((await call('/change',erase)).status,200);assert.equal((await call('/confirm',erase)).body.replayed,true)
+      assert.equal((await call('/change',originalFeedbackChoice)).body.replayed,true);const deleted=(await call('')).body;assert.equal(deleted.state,'erased');assert.equal(deleted.current,null);assert.equal(deleted.lessons.length,0)
+      assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],httpFeedbackCounts)
+    }finally{await feedbackRecoveryFront.close()}
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")

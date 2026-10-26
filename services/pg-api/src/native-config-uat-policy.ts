@@ -8,6 +8,7 @@ import {selectKnowledgeQueryRuntime} from "./knowledge-query-policy.ts"
 import {selectKnowledgeToolRuntime} from "./knowledge-tool-policy.ts"
 import {selectScheduleRuntime} from "./schedule-runtime-policy.ts"
 import {selectAgentMemoryRuntime,selectAgentDerivedMemoryWrites,selectAgentOutcomeMemoryWrites} from "./agent-memory-runtime-policy.ts"
+import {selectAgentFeedbackScopes} from "./agent-feedback-runtime-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -39,6 +40,8 @@ export interface NativePg18UatCapabilities {
   agentMemoryUat?:boolean
   agentDerivedMemoryUat?:boolean
   agentOutcomeMemoryUat?:boolean
+  agentFeedbackUat?:boolean
+  agentFeedbackLessonsUat?:boolean
   scheduleRuntimeUat?:boolean
   /** Additional independent UAT prerequisite; does not register a paid transport. */
   boundModelExecutionUat?:boolean
@@ -68,6 +71,7 @@ export function selectNativePg18UatCapabilities(
   const agentMemoryUat=selectAgentMemoryRuntime(env)
   const agentDerivedMemoryUat=selectAgentDerivedMemoryWrites(env)
   const agentOutcomeMemoryUat=selectAgentOutcomeMemoryWrites(env)
+  const feedback=selectAgentFeedbackScopes(env)
   const scheduleRuntimeUat=selectScheduleRuntime(env)
   const mcpToolExecutionUat=selectMcpExecution(env)
   const smitheryManagementUat=selectSmitheryManagement(env)
@@ -105,6 +109,7 @@ export function selectNativePg18UatCapabilities(
   const configUat=config==="true"
   if(agentMemoryUat&&(!configUat||!autonomousAgentUat))refuse()
   if(agentDerivedMemoryUat&&!configUat)refuse()
+  if(feedback.submit&&!configUat)refuse()
   if(agentOutcomeMemoryUat&&(!configUat||!autonomousAgentUat||!agentDerivedMemoryUat))refuse()
   const employeeUat=employees==="true"
   const runUat=run==="true"
@@ -161,6 +166,8 @@ export function selectNativePg18UatCapabilities(
     ...(agentMemoryUat?{agentMemoryUat:true}:{}),
     ...(agentDerivedMemoryUat?{agentDerivedMemoryUat:true}:{}),
     ...(agentOutcomeMemoryUat?{agentOutcomeMemoryUat:true}:{}),
+    ...(feedback.submit?{agentFeedbackUat:true}:{}),
+    ...(feedback.lessons?{agentFeedbackLessonsUat:true}:{}),
     ...(scheduleRuntimeUat?{scheduleRuntimeUat:true}:{}),
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }
@@ -178,6 +185,10 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  // The repository gates new submissions. Original recovery and privacy
+  // deletion stay reachable when the operator closes new feedback admission.
+  const feedback=new RegExp("^/api/v2/agent-feedback/"+uuid+"(?:/(change|confirm))?$").exec(pathname)
+  if(feedback)return feedback[1]?method==="POST":method==="GET"
   const outcome=new RegExp("^/api/v2/agent-outcome-memories/"+uuid+"(?:/(stop|stop-confirm))?$").exec(pathname)
   // Privacy stops and immutable original confirmation remain available after
   // admission is disabled. The repository still verifies Cookie owner scope.
