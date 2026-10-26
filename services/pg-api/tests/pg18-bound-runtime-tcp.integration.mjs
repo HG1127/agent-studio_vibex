@@ -1327,8 +1327,11 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const replay=await api.submitWorkflowV2Run(finalFlow.id,finalFlow.revision,"Synthetic complete final output",finalKey);assert.equal(replay.replayed,true);assert.equal(replay.run.result_text,completed.run.result_text);assert.equal(finalCalls,1)
       const saved=(await admin.query("SELECT checkpoint->'machine'->>'output_protocol' AS protocol FROM agentstudio.runs WHERE id=$1",[finalRun.run.id])).rows[0]
       assert.equal(saved.protocol,"workflow_final_delivery_v1")
-      const effects=(await admin.query("SELECT result_reference FROM agentstudio.external_effects WHERE run_id=$1",[finalRun.run.id])).rows
-      assert.equal(effects.length,1);assert.equal(JSON.parse(effects[0].result_reference).output.length,4000)
+      const effects=(await admin.query("SELECT tool_name,status,result_reference FROM agentstudio.external_effects WHERE run_id=$1",[finalRun.run.id])).rows
+      assert.equal(effects.length,2);assert.equal(effects.every(effect=>effect.status==="succeeded"),true)
+      assert.deepEqual(effects.map(effect=>effect.tool_name).sort(),["workflow.model_bound_dispatch","workflow:model"])
+      assert.equal(effects.find(effect=>effect.tool_name==="workflow.model_bound_dispatch").result_reference,null)
+      assert.equal(JSON.parse(effects.find(effect=>effect.tool_name==="workflow:model").result_reference).output.length,4000)
     },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler(raw)})
     mark("employee-governance-and-password-session-revocation")
     const governed=await api.createGovernedEmployee({email:"governance@example.test",password:"SyntheticGovernancePassword#2026",display_name:"Synthetic governance employee",is_admin:true,share_enabled:false})
