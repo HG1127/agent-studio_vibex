@@ -31,8 +31,11 @@ test("Skill text import, owner review, role-only injection, immutable run and no
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),"agentstudio-skills-"))
   const modelPrompts=[]
   const model=createServer(async(req,res)=>{
-    let raw=""
-    for await(const chunk of req)raw+=chunk
+    // Decode UTF-8 after collecting network chunks; decoding each Buffer
+    // individually corrupts multibyte Chinese at TCP chunk boundaries.
+    const wireChunks=[]
+    for await(const chunk of req)wireChunks.push(chunk)
+    const raw=Buffer.concat(wireChunks).toString("utf8")
     const input=JSON.parse(raw||"{}")
     const system=input.messages?.find(x=>x.role==="system")?.content||""
     const user=input.messages?.find(x=>x.role==="user")?.content||""
@@ -204,29 +207,79 @@ test("Skill text import, owner review, role-only injection, immutable run and no
     assert.equal(detailRun.events.some(x=>JSON.stringify(x).includes("FIRST_PRINCIPLES_TEST_TAG")),false,
       "event evidence must include version/hash, not raw instructions")
     // Real PocketBase route + local provider simulate the two paid-boundary
-    // calls. This is contract and metering verification, NOT model IQ proof.
+    // calls. This verifies full long-Skill input and security, NOT model IQ.
+    const longPrefix=METHOD.replace("name: first-principles-analysis","name: steve-jobs-test")
+    const longSkill=longPrefix+"\n"+"战略产品方法与反面证据".repeat(1500).slice(0,15553-longPrefix.length-1)
+    assert.equal(longSkill.length,15553)
+    const longImported=await ok("POST","/api/skills/import",{source:longSkill})
+    const longId=longImported.item.id
+    const longDetail=await ok("GET","/api/skills/detail?id="+longId+"&version=1")
+    assert.equal(longDetail.content,longSkill,
+      "server registry must preserve the full original 15.5K Skill before approval")
+    assert.equal(longDetail.approved,false)
+    const longRef={id:longId,version:1,hash:longDetail.hash}
     const abBase={page:"skill_ab_review",connection_id:modelConnection.item.id,
-      model:"mock-skill-role",strict_model:true,max_tokens:900}
+      model:"mock-skill-role",strict_model:true,max_tokens:900,skill_ref:longRef}
+    const nextId=()=>"skill-ab-test-"+randomBytes(10).toString("hex")
+    const deniedUnapproved=await request("POST","/api/llm/chat",{
+      ...abBase,variant:"with_skill",request_id:nextId()},token)
+    assert.equal(deniedUnapproved.status,400,
+      "no model request with unapproved full Skill text")
+    const modelBefore=modelPrompts.length
+    assert.equal(modelPrompts.length,modelBefore)
+    await ok("POST","/api/skills/approve",{
+      id:longId,version:1,confirm_review:true})
     const baseline=await ok("POST","/api/llm/chat",{
-      ...abBase,request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
-      messages:skillAbMessages("baseline",METHOD)})
+      ...abBase,request_id:nextId(),variant:"baseline"})
     const withMethod=await ok("POST","/api/llm/chat",{
-      ...abBase,request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
-      messages:skillAbMessages("with_skill",METHOD)})
+      ...abBase,request_id:nextId(),variant:"with_skill"})
     assert.equal(baseline.model,"mock-skill-role")
     assert.equal(withMethod.model,"mock-skill-role")
     assert.match(baseline.text,/SYNTHETIC_BASELINE_AB_ONLY/)
     assert.match(withMethod.text,/SYNTHETIC_SKILL_AB_METHOD_REFERENCED/)
     assert.ok(Number.isInteger(withMethod.usage?.input_tokens)&&
       Number.isInteger(withMethod.usage?.output_tokens),"A/B mode must report provider tokens")
-    assert.equal((await request("POST","/api/llm/chat",{
-      ...abBase,strict_model:false,request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
-      messages:skillAbMessages("baseline",METHOD)},token)).status,400,
-      "A/B requests without strict exact model selection must fail")
-    assert.equal((await request("POST","/api/llm/chat",{
-      ...abBase,model:"some-other-model",request_id:"skill-ab-test-"+randomBytes(10).toString("hex"),
-      messages:skillAbMessages("baseline",METHOD)},token)).status,400,
-      "A/B requests may not silently switch to a default model")
+    assert.equal(modelPrompts.length,modelBefore+2,
+      "only two employee-approved model calls should dispatch")
+    const delivered=modelPrompts.at(-1).user
+    const start=delivered.indexOf(longSkill.slice(0,160))
+    let mismatch=0
+    while(mismatch<longSkill.length&&delivered[start+mismatch]===longSkill[mismatch])mismatch++
+    assert.ok(delivered.includes(longSkill),
+      "backend must send complete frozen 15.5K Skill to model, without truncation: "+
+      JSON.stringify({originalChars:longSkill.length,deliveredChars:delivered.length,
+        firstMatchingChars:mismatch,mismatchExpected:longSkill.charCodeAt(mismatch),
+        mismatchDelivered:delivered.charCodeAt(start+mismatch),
+        originalEndsAt:delivered.lastIndexOf(longSkill.slice(-160)),
+        originalStartsAt:start}))
+    assert.equal(modelPrompts.at(-2).user.includes("FIRST_PRINCIPLES_TEST_TAG"),false,
+      "baseline must not include the Skill")
+    const deniedPayloads=[
+      {...abBase,strict_model:false,request_id:nextId(),variant:"baseline"},
+      {...abBase,model:"some-other-model",request_id:nextId(),variant:"baseline"},
+      {...abBase,request_id:nextId(),variant:"with_skill",
+        messages:skillAbMessages("with_skill",longSkill)},
+      {...abBase,request_id:nextId(),variant:"with_skill",tools:[{name:"send_email"}]},
+      {...abBase,request_id:nextId(),variant:"arbitrary",skill_ref:longRef},
+    ]
+    for (const attempted of deniedPayloads) {
+      const beforeCall=modelPrompts.length
+      assert.equal((await request("POST","/api/llm/chat",attempted,token)).status,400)
+      assert.equal(modelPrompts.length,beforeCall,
+        "invalid A/B request must not dispatch to the billable provider")
+    }
+    const alien=await request("POST","/api/llm/chat",{
+      ...abBase,request_id:nextId(),variant:"with_skill"},otherToken)
+    assert.equal(alien.status,400,"employee B cannot use employee A's Skill")
+    const legacyV28=await request("POST","/api/llm/chat",{
+      ...abBase,page:"agent_v28_blind",request_id:nextId(),
+      messages:skillAbMessages("with_skill",longSkill)},token)
+    assert.equal(legacyV28.status,400,
+      "unrelated V28 benchmark must retain its separate 8K message limit")
+    assert.equal(modelPrompts.length,modelBefore+2)
+    console.log("SKILL_FULLTEXT_AB_PASS",JSON.stringify({chars:longSkill.length,
+      sentChars:modelPrompts.at(-1).user.length,modelCalls:2,
+      v28CapUnchanged:true,crossTenantRejected:true}))
     console.log(JSON.stringify({status:"SKILL_E2E_PASS",roles:2,skillSnapshots:pinned.length,
       events:detailRun.events.length,modelCalls:modelPrompts.length,foreignSkillLeak:false}))
   }finally{

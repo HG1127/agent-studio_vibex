@@ -9,12 +9,20 @@ export const SKILL_AB_SCENARIO = [
   "问题：公司是否存在高潜力投资机会？请拆解单位经济、关键制约、商业假设、竞争风险和验证实验。",
   "只能根据上述合成信息推理；不得编造来源、合同、销量或成本证据。",
 ].join("\n")
-export const SKILL_AB_MAX_INSTRUCTION = 7800
+// The service constructs this message from the approved, frozen Skill version;
+// 20K covers our complete 16.1K-char textual Skill import envelope.
+export const SKILL_AB_MAX_INSTRUCTION = 20000
+export const SKILL_AB_MAX_SKILL_CHARS = 16100
 export const SKILL_AB_OUTPUT_MAX_TOKENS = 900
-export const SKILL_AB_TOTAL_TOKEN_STOP = 6000
+// Larger full-text inputs need a higher *reported* consumption threshold;
+// at most two calls are made, and unknown usage stops the comparison.
+export const SKILL_AB_TOTAL_TOKEN_STOP = 40000
 export type SkillAbVariant="with_skill"|"baseline"
 export type SkillAbMessage={role:"system"|"user";content:string}
 export function skillAbMessages(variant:SkillAbVariant,skillText:string):SkillAbMessage[] {
+  if (variant!=="with_skill"&&variant!=="baseline")throw Error("skill_ab_variant_invalid")
+  if (typeof skillText!=="string"||skillText.length>SKILL_AB_MAX_SKILL_CHARS)
+    throw Error("skill_ab_content_invalid")
   const system=[
     "你是审慎的商业与投资分析师。仅用所给的合成数据分析，不进行联网或外部操作。",
     "明确区分可计算事实、没有证据的假设和下一步需要验证的事项。",

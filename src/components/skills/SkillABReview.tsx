@@ -4,7 +4,8 @@ import {getPocketBaseUrl} from "@/lib/pb"
 import {vibexAuthHeaders} from "@/lib/studioAuth"
 import {
   skillAbMessages,SKILL_AB_SCENARIO,SKILL_AB_OUTPUT_MAX_TOKENS,
-  SKILL_AB_TOTAL_TOKEN_STOP,skillAbValidTokenCount,type SkillAbVariant,
+  SKILL_AB_MAX_INSTRUCTION,SKILL_AB_TOTAL_TOKEN_STOP,
+  skillAbValidTokenCount,type SkillAbVariant,
 } from "@/lib/skillAbCompare"
 import type {SkillDetail} from "@/lib/skillLibrary"
 import type {ModelConnectionRow} from "@/pages/ModelConnections/useModelConnections"
@@ -69,7 +70,10 @@ export function SkillABReview({skill}:{skill:SkillDetail}) {
               page:"skill_ab_review",connection_id:model.connection.id,
               model:model.model,strict_model:true,request_id:requestId,
               max_tokens:SKILL_AB_OUTPUT_MAX_TOKENS,
-              messages:skillAbMessages(variant,skill.content),
+              // No user-supplied long prompt: server reconstructs it using
+              // this employee's approved, immutable Skill version.
+              skill_ref:{id:skill.id,version:skill.version,hash:skill.hash},
+              variant,
             }),
           })
           answer=await res.json()
@@ -109,13 +113,18 @@ export function SkillABReview({skill}:{skill:SkillDetail}) {
         </p>
       </div>
     </div>
+    <p className="mt-3 text-xs text-muted-foreground">
+      <strong>全文测试：</strong>当前 Skill {skill.content.length.toLocaleString()} 字符，
+      加入固定任务后总输入约 {(()=>{try{return skillAbMessages("with_skill",skill.content)[1].content.length.toLocaleString()}catch{return "超过限制"}})()} 字符。
+      后端将重新读取并校验已审核版本，不要求删减已有 Skill。
+    </p>
     <div className="mt-3 rounded-lg border border-border bg-secondary/20 p-3">
       <p className="text-xs font-semibold">对照问题（公开合成资料）</p>
       <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{SKILL_AB_SCENARIO}</p>
     </div>
     {tooLong&&<p role="alert" className="mt-3 text-xs text-destructive">
-      此 Skill 全文超过本次受控对照可提交的 7800 字符上限，不截断方法后假称测试了完整版本。
-      请在 Skill 中创建更精炼的文本版本并重新审核。
+      当前 Skill 全文加测试任务超过 {SKILL_AB_MAX_INSTRUCTION.toLocaleString()} 字符的受控输入上限。
+      不会静默截断或冒称完整验证，请使用较短的审核版本。
     </p>}
     <div className="mt-3 grid gap-3 sm:grid-cols-2">
       <label className="text-xs font-medium">本账号已启用的模型

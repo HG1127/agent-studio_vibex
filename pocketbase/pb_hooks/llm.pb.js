@@ -272,12 +272,24 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     var isNodeDebug = String(body.page || "") === "workflow_node_debug"
     // Skill A/B text comparison shares the strict, bounded, read-only model
     // contract with V28 blind planning: two explicit messages, no tools.
-    var isBlindBenchmark = String(body.page || "") === "agent_v28_blind" ||
-      String(body.page || "") === "skill_ab_review"
+    var isSkillAb = String(body.page || "") === "skill_ab_review"
+    var isBlindBenchmark = String(body.page || "") === "agent_v28_blind" || isSkillAb
     if (isBlindBenchmark) {
       var selectedConnection = String(body.connection_id || "").trim()
       var selectedModel = String(body.model || "").trim()
       var maximum = Number(body.max_tokens)
+      if (isSkillAb) {
+        // Construct exact full Skill text and the immutable synthetic problem
+        // server-side, verifying employee owner/approval/hash on every request.
+        // Never accept arbitrary 20K user messages under this comparison page.
+        if (maximum !== 900) return e.json(400,{error:"skill_ab_token_limit"})
+        try {
+          body.messages = require(__hooks + "/modules/skill_ab_prompt.js")
+            .trustedMessages($app,uid,body)
+        } catch (_) {
+          return e.json(400,{error:"skill_ab_source_invalid"})
+        }
+      }
       var blindMessages = body.messages
       if (!selectedConnection || !selectedModel || body.strict_model !== true)
         return e.json(400, { error: "blind_binding_required" })
@@ -289,7 +301,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
           typeof blindMessages[0].content !== "string" ||
           typeof blindMessages[1].content !== "string" ||
           blindMessages[0].content.length > 8000 ||
-          blindMessages[1].content.length > 8000 ||
+          blindMessages[1].content.length > (isSkillAb ? 20000 : 8000) ||
           !blindMessages[0].content || !blindMessages[1].content ||
           !/^[a-zA-Z0-9-]{12,120}$/.test(String(body.request_id || "")))
         return e.json(400, { error: "blind_request_invalid" })
