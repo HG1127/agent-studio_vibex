@@ -132,3 +132,12 @@ test("thirty-round client submission preserves the exact consent after loss and 
   await assert.rejects(api.submitAutonomousAgentRun(agent,2,"First task","synthetic-thirty-round-key",31),e=>e.code==="invalid_agent_max_steps")
   assert.equal(wire.length,1)
 })
+
+test("ambiguous outcome opt-in stays frozen with the original admission key and cannot become an opt-out on retry",async()=>{
+  const f=fake(),model=createPgNativeAutonomousAgentSession(f.api,{key:()=>"synthetic-outcome-frozen"});model.setActive(true);await turn()
+  const calls=[];f.api.submitAutonomousAgentRun=async(...args)=>{calls.push(args);throw new PgNativePilotError(0,"lost")}
+  await model.submit({...draft,rememberOutcome:true});assert.equal(model.snapshot().pendingSubmit.rememberOutcome,true)
+  f.api.submitAutonomousAgentRun=async(...args)=>{calls.push(args);return {...detail(),replayed:true,outcome_memory:{enabled:true}}}
+  await model.submit({...draft,rememberOutcome:false});assert.deepEqual(calls[0],calls[1]);assert.equal(calls[0][6],true);assert.equal(model.snapshot().pendingSubmit,null)
+  model.dispose()
+})

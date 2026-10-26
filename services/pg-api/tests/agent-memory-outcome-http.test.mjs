@@ -42,6 +42,7 @@ test('outcome HTTP verifies Cookie/CSRF and owner, freezes admission replay and 
     const started=await call(submit,{cookie:alice,body:raw});assert.equal(started.status,201);const id=started.body.run.id,base='/api/v2/agent-outcome-memories/'+id
     const state=(await call(base,{cookie:alice})).body;assert.equal(state.enabled,true);assert.equal(state.state,'pending');assert.equal(state.intent_sha256,started.body.outcome_memory.intent_sha256)
     const choice={request_id:randomUUID(),run_id:id,expected_intent_sha256:state.intent_sha256,confirm:true}
+    const controlCounts=async()=>(await f.db.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],beforeStops=await controlCounts()
     assert.equal((await call(base,{extra:{'X-Rh-User-Id':f.users.alice,Authorization:'Bearer synthetic'}})).status,401)
     assert.equal((await call(base,{cookie:bob,extra:{'X-Rh-User-Id':f.users.alice}})).status,404)
     assert.equal((await call(base+'?owner_user_id='+f.users.alice,{cookie:alice})).status,400)
@@ -56,10 +57,12 @@ test('outcome HTTP verifies Cookie/CSRF and owner, freezes admission replay and 
     assert.equal((await call(base+'/stop-confirm',{cookie:bob,body:choice})).status,404)
     const replay=await call(submit,{cookie:alice,body:raw});assert.equal(replay.status,200);assert.equal(replay.body.replayed,true)
     assert.equal((await call(submit,{cookie:alice,body:{...raw,remember_outcome:false}})).status,409)
+    assert.deepEqual(await controlCounts(),beforeStops)
     await f.privateTls(async()=>{calls++;return JSON.stringify({action:'answer',answer:'Synthetic terminal report'})},async make=>{assert.equal((await f.drive(()=>make({humanInputApproved:true,outcomeMemoryApproved:true}),id)).run.status,'succeeded')})
     const final=await call(base,{cookie:alice});assert.equal(final.body.result.decision,'revoked');assert.equal(calls,1)
     const counts=(await f.db.query('SELECT (SELECT count(*) FROM agentstudio.agent_memory_outcome_stops)::integer AS stops,(SELECT count(*) FROM agentstudio.agent_memory_outcome_results)::integer AS results,(SELECT count(*) FROM agentstudio.agent_memory_derived_entries)::integer AS entries,(SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
-    assert.equal(counts.stops,1);assert.equal(counts.results,1);assert.equal(counts.entries,0);assert.equal(counts.jobs,1);assert.equal(counts.effects,1)
+    assert.equal(counts.stops,1);assert.equal(counts.results,1);assert.equal(counts.entries,0);assert.equal(counts.jobs,1);assert.equal(counts.effects,3)
+    assert.deepEqual((await f.db.query('SELECT tool_name FROM agentstudio.external_effects WHERE run_id=$1 ORDER BY tool_name',[id])).rows.map(e=>e.tool_name),['workflow.model_bound_dispatch','workflow:agent','workflow:model'])
     await call('/api/native-auth/logout',{cookie:alice,body:{}});assert.equal((await call(base,{cookie:alice})).status,401)
   }finally{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}await f.close()}
 })

@@ -6,6 +6,8 @@ import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistor
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
 import {agentDerivedMemoryChoice,agentDerivedMemoryReceipt,agentDerivedMemoryPreview,agentDerivedMemoryPage,type PgNativeDerivedMemoryChoice} from "./pgNativeAgentDerivedMemory.ts"
 export type {PgNativeDerivedMemoryChoice,PgNativeDerivedMemoryReceipt,PgNativeDerivedMemoryPreview,PgNativeDerivedMemoryItem,PgNativeDerivedMemoryPage} from "./pgNativeAgentDerivedMemory.ts"
+import {agentOutcomeConsent,agentOutcomeStatus,agentOutcomeStop,agentOutcomeStopReceipt,type PgNativeOutcomeConsent,type PgNativeOutcomeStop} from "./pgNativeAgentOutcomeMemory.ts"
+export type {PgNativeOutcomeConsent,PgNativeOutcomeStop,PgNativeOutcomeStopReceipt,PgNativeOutcomeResult,PgNativeOutcomeStatus} from "./pgNativeAgentOutcomeMemory.ts"
 export type {PgNativeMemoryChoice,PgNativeMemoryReceipt,PgNativeMemoryItem,PgNativeMemoryPage} from "./pgNativeAgentMemory.ts"
 export type {AgentHumanResponse,PgNativeAgentHumanInput,PgNativeAgentHumanReceipt,PgNativeHumanHistory,PgNativeHumanHistoryPage} from "./pgNativeAgentHumanInput.ts"
 import {employeeChange,employeeGovernanceResult,employeeCreation,employeeCreationResult,type EmployeeChange,type EmployeeCreation} from "./pgNativeEmployeeGovernance.ts"
@@ -60,6 +62,8 @@ export type PgNativeConfigCapabilities={
   agent_memory_runtime_enabled?:boolean
   agent_derived_memory_available?:boolean
   agent_derived_memory_writes_enabled?:boolean
+  agent_outcome_memory_available?:boolean
+  agent_outcome_memory_admission_enabled?:boolean
   schedule_execution_enabled?:boolean
   employee_governance_available?:boolean
   employee_governance_enabled?:boolean
@@ -119,6 +123,7 @@ export type PgNativeWorkflowV2Result={
 export type PgNativeWorkflowV2Summary={id:string;workflow_id:string;status:string;instruction_preview:string;result_preview:string;
   step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string;debug_node_id?:string|null}
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
+  outcome_memory?:PgNativeOutcomeConsent
   execution_mode:"agent_native_v2";run:Omit<PgNativeWorkflowV2Result["run"],"kind"|"workflow_id">&{kind:"agent";workflow_id:null;agent_spec_id:string}
 }
 export type PgNativeAutonomousAgentSummary={id:string;agent_spec_id:string;status:string;instruction_preview:string;result_preview:string;
@@ -267,6 +272,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/knowledge-query/${string}`
   | `/api/v2/agent-memories${string}`
   | `/api/v2/agent-derived-memories${string}`
+  | `/api/v2/agent-outcome-memories/${string}`
   | `/api/v2/workflows/${string}/validate`
   | `/api/v2/workflow-validations/${string}`
   | `/api/v2/workflows/${string}/runs`
@@ -454,6 +460,11 @@ export function createPgNativePilotApi(
     const result=await post<unknown>(confirmOnly?"/api/v2/agent-memories/confirm":"/api/v2/agent-memories/change",choice)
     try{return await agentMemoryReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_memory_request")}
   }
+  const outcomeStop=async(raw:PgNativeOutcomeStop,confirmOnly=false)=>{
+    let choice:PgNativeOutcomeStop;try{choice=agentOutcomeStop(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_memory_outcome_stop")}
+    const result=await post<unknown>(`/api/v2/agent-outcome-memories/${choice.run_id}/${confirmOnly?"stop-confirm":"stop"}`,choice)
+    try{return agentOutcomeStopReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_outcome_memory_stop")}
+  }
   const derivedMemoryChange=async(raw:PgNativeDerivedMemoryChoice,confirmOnly=false)=>{
     let choice:PgNativeDerivedMemoryChoice;try{choice=agentDerivedMemoryChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_memory_derived_change")}
     const result=await post<unknown>(confirmOnly?"/api/v2/agent-derived-memories/confirm":"/api/v2/agent-derived-memories/change",choice)
@@ -484,6 +495,13 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    getAgentOutcomeMemory:async(runId:string)=>{
+      if(!safeId.test(runId))throw new PgNativePilotError(400,"invalid_agent_memory_outcome_run")
+      const run=runId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-outcome-memories/${run}`)
+      try{return agentOutcomeStatus(result,run)}catch{throw new PgNativePilotError(503,"invalid_agent_outcome_memory_projection")}
+    },
+    stopAgentOutcomeMemory:(choice:PgNativeOutcomeStop)=>outcomeStop(choice),
+    confirmAgentOutcomeStop:(choice:PgNativeOutcomeStop)=>outcomeStop(choice,true),
     changeAgentDerivedMemory:(choice:PgNativeDerivedMemoryChoice)=>derivedMemoryChange(choice),
     confirmAgentDerivedMemory:(choice:PgNativeDerivedMemoryChoice)=>derivedMemoryChange(choice,true),
     previewAgentDerivedMemory:async(specId:string,runId:string)=>{
@@ -539,6 +557,9 @@ export function createPgNativePilotApi(
           (value.agent_memory_writes_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true))||
           (value.agent_memory_runtime_enabled!==undefined&&typeof value.agent_memory_runtime_enabled!=="boolean")||
           (value.agent_memory_runtime_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
+          (value.agent_outcome_memory_available!==undefined&&typeof value.agent_outcome_memory_available!=="boolean")||
+          (value.agent_outcome_memory_admission_enabled!==undefined&&typeof value.agent_outcome_memory_admission_enabled!=="boolean")||
+          (value.agent_outcome_memory_admission_enabled===true&&(value.agent_outcome_memory_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true||value.agent_derived_memory_writes_enabled!==true))||
           (value.agent_derived_memory_available!==undefined&&typeof value.agent_derived_memory_available!=="boolean")||
           (value.agent_derived_memory_writes_enabled!==undefined&&typeof value.agent_derived_memory_writes_enabled!=="boolean")||
           (value.agent_derived_memory_writes_enabled===true&&(value.agent_derived_memory_available!==true||value.config_writes_enabled!==true))||
@@ -920,13 +941,19 @@ export function createPgNativePilotApi(
       return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
     },
-    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean)=>{
+    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean)=>{
       if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       if(require_plan_review!==undefined&&typeof require_plan_review!=="boolean")throw new PgNativePilotError(400,"invalid_agent_plan_review")
-      return agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
-        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{})}))
+      if(remember_outcome!==undefined&&typeof remember_outcome!=="boolean")throw new PgNativePilotError(400,"invalid_agent_memory_outcome_choice")
+      const result=agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{})}))
+      try{
+        if(remember_outcome===true)result.outcome_memory=agentOutcomeConsent(result.outcome_memory,result.run.id,id.toLowerCase(),expected_revision)
+        else if(Object.hasOwn(result,"outcome_memory"))throw Error("unexpected_outcome_consent")
+      }catch{throw new PgNativePilotError(503,"unconfirmed_agent_outcome_memory_admission")}
+      return result
     },
     getAutonomousAgentRun:async(id:string)=>agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id))),
     respondAutonomousAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice),

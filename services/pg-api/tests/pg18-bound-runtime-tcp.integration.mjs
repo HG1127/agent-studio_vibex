@@ -36,9 +36,11 @@ import {inspectAgentHumanInputSchema} from "../src/agent-human-input-audit.ts"
 import {AgentMemoryRepository} from "../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials,inspectAgentMemorySchema} from "../src/agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema,verifyAgentMemoryContextCredentials} from "../src/agent-memory-context-audit.ts"
-import {selectAgentMemoryRuntime,selectAgentDerivedMemoryWrites} from "../src/agent-memory-runtime-policy.ts"
+import {selectAgentMemoryRuntime,selectAgentDerivedMemoryWrites,selectAgentOutcomeMemoryWrites} from "../src/agent-memory-runtime-policy.ts"
 import {AgentMemoryDerivedRepository} from "../src/agent-memory-derived-repository.ts"
 import {inspectAgentMemoryDerivedSchema,verifyAgentMemoryDerivedCredentials} from "../src/agent-memory-derived-audit.ts"
+import {AgentMemoryOutcomeRepository} from "../src/agent-memory-outcome-repository.ts"
+import {inspectAgentMemoryOutcomeSchema,verifyAgentMemoryOutcomeCredentials} from "../src/agent-memory-outcome-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
@@ -117,10 +119,11 @@ const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
-async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false}={}){
+async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false,outcomeMemory=false}={}){
   if(memory){assert.equal(await inspectAgentMemorySchema(pool),true);const context=await inspectAgentMemoryContextSchema(pool);if(memoryRuntime)assert.equal(context,true)}
   if(memoryRuntime){assert.equal(memory,true);assert.equal(selectAgentMemoryRuntime({AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY'}),true)}
   if(derivedMemory){assert.equal(await inspectAgentMemoryDerivedSchema(pool),true);assert.equal(selectAgentDerivedMemoryWrites({AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY'}),true)}
+  if(outcomeMemory){assert.equal(derivedMemory,true);assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true);assert.equal(selectAgentOutcomeMemoryWrites({AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_OUTCOME_MEMORY_ONLY"}),true)}
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
   assert.equal(path.dirname(realpathSync(folder)),parent)
@@ -138,6 +141,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,allowAgentHumanInput:true,
       allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
+      allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:outcomeMemory,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:derivedMemory,
       allowMcpDiscovery:true,allowMcpToolExecution:true,
       allowSmitheryManagement:true,
@@ -151,7 +155,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       allowWorkflowV2Submission:policy.workflowV2ExecutionUat,allowAutonomousAgentSubmission:policy.autonomousAgentUat,allowScheduleRuntime:true,allowAgentCollaboration:true,allowAgentReleases:true,
       businessHandler:(req,res)=>{
         const route=new URL(req.url,"https://localhost").pathname
-        if(!permitNativePg18BusinessUatRequest(route,req.method,{...policy,agentDerivedMemoryUat:derivedMemory})){
+        if(!permitNativePg18BusinessUatRequest(route,req.method,{...policy,agentDerivedMemoryUat:derivedMemory,agentOutcomeMemoryUat:outcomeMemory})){
           res.writeHead(405,{"Content-Type":"application/json"})
           res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
@@ -166,6 +170,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       agentHumanInputRepository:new AgentHumanInputRepository(pool,"agent_native_v2",{allowResponses:true}),
       workflowHumanInputRepository:new AgentHumanInputRepository(pool,"workflow_native_v2",{allowResponses:true}),
       ...(memory?{agentMemoryRepository:new AgentMemoryRepository(pool,{allowWrites:true})}:{}),
+      ...(outcomeMemory?{agentOutcomeMemoryRepository:new AgentMemoryOutcomeRepository(pool)}:{}),
       ...(derivedMemory?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(pool,{allowWrites:true})}:{}),
       knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
       knowledgeContentRepository:new KnowledgeContentRepository(pool),
@@ -176,7 +181,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       workflowRepository:new WorkflowRepository(pool),
       scheduleInventory:new ScheduleInventoryRepository(pool),scheduleDraftRepository:new ScheduleDraftRepository(pool),
       scheduleRuntimeRepository:new ScheduleRuntimeRepository(pool,{enabled:true,allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true,allowMemory:memoryRuntime}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(pool,"workflow_native_v2",{allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true}),autonomousAgentRunRepository:new AutonomousAgentRunRepository(pool,{allowMcpExecution:true,allowKnowledgeExecution:true,allowHumanInput:true,allowMemory:memoryRuntime,allowOutcomeMemory:outcomeMemory}),
       modelConnectionRepository:new ModelConnectionRepository(pool,key,brokerPool),
       toolConnectionRepository:new ToolConnectionRepository(pool,key),
       mcpConnectionRepository:new McpConnectionRepository(pool,key,brokerPool),
@@ -1504,6 +1509,69 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:'agent_native_v2'})})
     assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_memory_run_contexts')).rows[0].n,2)
     assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_memory_entries')).rows[0].n,0)
+    mark("optional-memory-052-native-owner-consent-private-terminal-and-stop")
+    assert.equal(await inspectAgentMemoryOutcomeSchema(apiPool),false)
+    await admin.query(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql',import.meta.url),'utf8'))
+    assert.equal(await inspectAgentMemoryOutcomeSchema(apiPool),true);assert.equal(await inspectAgentMemoryOutcomeSchema(workerPool),true)
+    const outcomeDrift=await admin.connect()
+    try{for(const mutation of [
+      'GRANT SELECT ON agentstudio.agent_memory_outcome_results TO agentstudio_api WITH GRANT OPTION',
+      'GRANT INSERT(intent_sha256) ON agentstudio.agent_memory_outcome_consents TO agentstudio_api WITH GRANT OPTION',
+      'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_outcome_epoch() TO PUBLIC',
+      'ALTER FUNCTION agentstudio.agent_memory_outcome_epoch() SECURITY INVOKER',
+      'ALTER TABLE agentstudio.agent_memory_outcome_stops NO FORCE ROW LEVEL SECURITY'
+    ]){await outcomeDrift.query('BEGIN');try{await outcomeDrift.query(mutation);await assert.rejects(verifyAgentMemoryOutcomeCredentials(outcomeDrift),/unsafe_agent_memory_outcome_privileges/)}finally{await outcomeDrift.query('ROLLBACK')}}}finally{outcomeDrift.release()}
+    const outcomeFront=await startNativeHttps(auth,apiPool,key,brokerPool,{memory:true,derivedMemory:true,outcomeMemory:true})
+    try{
+      await outcomeFront.api.login('admin@example.com','SyntheticAdminPassword#2026');const outcomeApi=outcomeFront.captureApi()
+      assert.equal((await outcomeApi.getConfigCapabilities()).agent_outcome_memory_admission_enabled,true)
+      await outcomeFront.api.login('other@example.com','SyntheticOtherPassword#2026')
+      let outcomeCalls=0
+      const outcomeReport='Reusable synthetic terminal report token=syntheticOutcomePrivateResult.\n'.repeat(90)
+      const outcomeDispatch=new WorkflowV2ModelDispatch(apiPool,key,async()=>{throw Error('outcome_direct_provider_forbidden')},brokerPool,{allowAutonomousExecution:true,agentExecutor:async(material,prompt)=>{
+        assert.equal(material.api_key,secret);const plan=JSON.parse(prompt);assert.equal(Object.hasOwn(plan,'memory_context'),false);outcomeCalls++
+        return JSON.stringify({action:'answer',answer:outcomeReport})
+      }})
+      await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),outcomeDispatch),async raw=>{
+        const executor=workflowV2ModelEffectExecutor({...raw,executionMode:'agent_native_v2'})
+        const outcomeWorker=()=>new WorkflowV2Worker(workerPool,'ci-outcome-'+randomUUID(),{agentExecutionApproved:true,humanInputApproved:true,outcomeMemoryApproved:true,executor,executionMode:'agent_native_v2'})
+        for(const stopped of [false,true]){
+          const task=stopped?'Synthetic privacy-stopped outcome':'Synthetic owned outcome storage',dedupe='ci-outcome-'+(stopped?'stopped':'stored')
+          const started=await outcomeApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,task,dedupe,1,false,true),id=started.run.id
+          const consent=await outcomeApi.getAgentOutcomeMemory(id);assert.equal(consent.enabled,true);assert.equal(consent.state,'pending');assert.equal(consent.intent_sha256,started.outcome_memory.intent_sha256)
+          await assert.rejects(outcomeFront.api.getAgentOutcomeMemory(id),e=>e.status===404)
+          const beforePrivacy=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+          if(stopped){const choice={request_id:randomUUID(),run_id:id,expected_intent_sha256:consent.intent_sha256,confirm:true}
+            await assert.rejects(outcomeFront.api.stopAgentOutcomeMemory(choice),e=>e.status===404)
+            assert.equal((await outcomeApi.stopAgentOutcomeMemory(choice)).stopped,true);assert.equal((await outcomeApi.confirmAgentOutcomeStop(choice)).replayed,true)
+          }
+          const replay=await outcomeApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,task,dedupe,1,false,true);assert.equal(replay.replayed,true);assert.equal(replay.run.id,id)
+          await assert.rejects(outcomeApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,task,dedupe,1,false,false),e=>e.status===409)
+          assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],beforePrivacy)
+          let terminal=false
+          for(let i=0;i<24;i++){
+            const detail=await outcomeApi.getAutonomousAgentRun(id)
+            if(detail.run.status==='succeeded'){terminal=true;assert.equal(detail.run.result_text,outcomeReport.replaceAll('token=syntheticOutcomePrivateResult.','token=***'));break}
+            assert.equal(['failed','paused','cancelled'].includes(detail.run.status),false,detail.run.last_error_code)
+            if(detail.run.status==='awaiting_approval')await outcomeApi.decideAutonomousAgentNode(id,'approved',detail.pending_effect.step_key,detail.pending_effect.input_sha256)
+            await outcomeWorker().tick()
+          }
+          assert.equal(terminal,true);assert.equal((await outcomeWorker().tick()).status,'idle')
+          const status=await outcomeApi.getAgentOutcomeMemory(id);assert.equal(status.state,'finished');assert.equal(status.result.decision,stopped?'revoked':'stored')
+          const items=(await outcomeApi.listAgentDerivedMemories(memoryRole.id)).items
+          if(stopped)assert.equal(items.length,0)
+          else{
+            assert.equal(items.length,1);assert.equal(items[0].id,consent.memory_id);assert.equal(items[0].source_current,true);assert.equal(items[0].kind,'fact');assert.equal(items[0].fact.includes('syntheticOutcomePrivateResult'),false)
+            await outcomeApi.changeAgentDerivedMemory({action:'forget',request_id:randomUUID(),spec_id:memoryRole.id,memory_id:items[0].id,expected_content_sha256:items[0].content_sha256,expected_tools_sha256:items[0].tools_sha256,confirm:true})
+            assert.equal((await new AgentMemoryOutcomeRepository(apiPool,{allowWriteback:true}).status(memoryIdentity,id)).result.decision,'stored')
+            assert.equal((await outcomeApi.listAgentDerivedMemories(memoryRole.id)).items.length,0)
+          }
+        }
+      },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:'agent_native_v2'})})
+      assert.equal(outcomeCalls,2)
+      assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.agent_memory_outcome_consents)::integer AS consents,(SELECT count(*) FROM agentstudio.agent_memory_outcome_stops)::integer AS stops,(SELECT count(*) FROM agentstudio.agent_memory_outcome_results)::integer AS results,(SELECT count(*) FROM agentstudio.agent_memory_derived_entries)::integer AS entries')).rows[0],{consents:2,stops:1,results:2,entries:0})
+      await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('DELETE FROM agentstudio.agent_memory_outcome_results')),/permission denied/)
+    }finally{await outcomeFront.close()}
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
