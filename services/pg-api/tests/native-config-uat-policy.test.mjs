@@ -392,3 +392,19 @@ test("run WRITES, approvals, document ingestion and unrelated APIs NEVER enabled
   }
   assert.equal(permitNativePg18BusinessUatRequest("/healthz","POST",both),false)
 })
+
+test('outcome admission needs config, standalone execution and owner erasure scopes while status and privacy stops remain read-only-policy accessible',()=>{
+  const auto={AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED:'true',AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED:'APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY'}
+  const derived={AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY'}
+  const outcome={AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_OWNER_OUTCOME_MEMORY_ONLY'}
+  const valid={...enabled,...auto,...derived,...outcome},policy=selectNativePg18UatCapabilities(valid,true,https,1100)
+  assert.equal(policy.agentOutcomeMemoryUat,true)
+  assert.equal(selectNativePg18UatCapabilities({...enabled,...auto,...derived},true,https,1100).agentOutcomeMemoryUat,undefined)
+  for(const env of [outcome,{...enabled,...outcome},{...enabled,...auto,...outcome},{...enabled,...derived,...outcome}])assert.throws(()=>selectNativePg18UatCapabilities(env,true,https,1100))
+  assert.throws(()=>selectNativePg18UatCapabilities(valid,false,https,1100));assert.throws(()=>selectNativePg18UatCapabilities(valid,true,https,0))
+  const base='/api/v2/agent-outcome-memories/'+uuid
+  assert.equal(permitNativePg18BusinessUatRequest(base,'GET',readOnly),true)
+  assert.equal(permitNativePg18BusinessUatRequest(base,'POST',policy),false)
+  for(const path of ['/stop','/stop-confirm']){assert.equal(permitNativePg18BusinessUatRequest(base+path,'POST',readOnly),true);assert.equal(permitNativePg18BusinessUatRequest(base+path,'GET',policy),false)}
+  assert.equal(permitNativePg18BusinessUatRequest(base+'/change','POST',policy),false)
+})

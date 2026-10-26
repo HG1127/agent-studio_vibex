@@ -21,6 +21,11 @@ test("autonomous CLI defaults closed; offline plan and shared import perform no 
     const result=run(args);assert.notEqual(result.status,0);assert.equal(result.stdout,"")
     assert.doesNotMatch(result.stderr,/ECONNREFUSED|password authentication|ENOENT/)
   }
+  const outcome={AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_OUTCOME_MEMORY_ONLY"}
+  const withoutExecution=run(["--preflight"],outcome)
+  assert.notEqual(withoutExecution.status,0);assert.match(withoutExecution.stderr,/unsafe_agent_outcome_memory_worker_scope/)
+  const malformed=run(["--preflight"],{...outcome,AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_APPROVED:"wrong"})
+  assert.notEqual(malformed.status,0);assert.match(malformed.stderr,/unsafe_agent_outcome_memory_config/)
   const shared=new URL("../src/workflow-v2-worker-loop.ts",import.meta.url).href
   const imported=spawnSync(process.execPath,["--experimental-strip-types","--input-type=module","-e","await import("+JSON.stringify(shared)+")"],{
     env:clean,encoding:"utf8",timeout:5000,windowsHide:true})

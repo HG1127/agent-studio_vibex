@@ -3,7 +3,8 @@ import {verifyKnowledgeRuntimeSchema,verifyWorkflowSampleLineageSchema} from "./
 import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
 import {inspectAgentMemorySchema} from "./agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema} from "./agent-memory-context-audit.ts"
-import {selectAgentMemoryRuntime} from "./agent-memory-runtime-policy.ts"
+import {selectAgentMemoryRuntime,selectAgentOutcomeMemoryWrites} from "./agent-memory-runtime-policy.ts"
+import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 import {scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
 import {selectKnowledgeToolRuntime,scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
@@ -44,6 +45,8 @@ export function runV2WorkerCli(autonomous=false){
     if(knowledgeToolsEnabled&&!toolsEnabled)throw Error("workflow_knowledge_tool_adapter_disabled")
     const agentsEnabled=autonomous?selectAutonomousAgentExecution(process.env):selectWorkflowAgentExecution(process.env)
     const memoryApproved=selectAgentMemoryRuntime(process.env)
+    const outcomeApproved=selectAgentOutcomeMemoryWrites(process.env)
+    if(outcomeApproved&&(!autonomous||!agentsEnabled))throw Error("unsafe_agent_outcome_memory_worker_scope")
     if(memoryApproved&&!selectAutonomousAgentExecution(process.env))throw Error("autonomous_agent_not_approved")
     if(agentsEnabled&&(!modelEnabled||!toolsEnabled))throw Error("workflow_v2_agents_not_approved")
     if(autonomous&&!agentsEnabled)throw Error("autonomous_agent_not_approved")
@@ -77,6 +80,8 @@ export function runV2WorkerCli(autonomous=false){
       const humanInputAvailable=await inspectAgentHumanInputSchema(adapter)
       const memoryAvailable=await inspectAgentMemorySchema(adapter),memoryContextAvailable=await inspectAgentMemoryContextSchema(adapter)
       if(memoryApproved&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
+      const outcomeAvailable=await inspectAgentMemoryOutcomeSchema(adapter)
+      if(outcomeApproved&&(!outcomeAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
       const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,
         origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),
         ca:readBoundRuntimeCredential(kind,"dispatch-ca.pem",process.env),
@@ -92,9 +97,10 @@ export function runV2WorkerCli(autonomous=false){
         process.stdout.write(JSON.stringify({mode,worker:autonomous?"autonomous_agent":"workflow_v2",verified_roles:true,db_writes_performed:false,
           worker_started:false,effect_executor_installed:false,model_adapter_config_verified:modelEnabled,tool_adapter_config_verified:toolsEnabled,
           agent_adapter_config_verified:agentsEnabled,schedule_schema_verified:scheduleApproved,scheduler_started:false,
-          ...(memoryApproved?{memory_schema_verified:true,memory_execution_enabled:autonomous}:{}),production_cutover_allowed:false})+"\n");return
+          ...(memoryApproved?{memory_schema_verified:true,memory_execution_enabled:autonomous}:{}),
+          ...(outcomeApproved?{outcome_memory_schema_verified:true,outcome_memory_execution_enabled:autonomous}:{}),production_cutover_allowed:false})+"\n");return
       }
-      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       const scheduler=scheduleEnabled?new ScheduleRuntimeWorker(adapter,"pg-schedule-"+randomUUID().slice(0,8),{allowMcpExecution:selectMcpExecution(process.env),allowKnowledgeExecution:knowledgeToolsEnabled,allowHumanInput:humanInputAvailable}):undefined
       process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:"ready",effect_executor_installed:adapters.length>0,
         scheduler_started:Boolean(scheduler),production_cutover_allowed:false})+"\n")

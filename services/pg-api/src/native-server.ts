@@ -20,6 +20,8 @@ import {inspectAgentMemorySchema} from "./agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema} from "./agent-memory-context-audit.ts"
 import {AgentMemoryDerivedRepository} from "./agent-memory-derived-repository.ts"
 import {inspectAgentMemoryDerivedSchema} from "./agent-memory-derived-audit.ts"
+import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
+import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
 // Requires separate, non-superuser API and auth-service login accounts.
@@ -386,8 +388,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const humanInputAvailable=await inspectAgentHumanInputSchema(business)
     const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
     const derivedMemoryAvailable=await inspectAgentMemoryDerivedSchema(business)
+    const outcomeMemoryAvailable=await inspectAgentMemoryOutcomeSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
+    if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -422,6 +426,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentReleases:releasesAvailable,
       allowAgentHumanInput:humanInputAvailable,
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
+      allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
       allowAgentDerivedMemory:derivedMemoryAvailable,allowAgentDerivedMemoryWrites:capabilities.agentDerivedMemoryUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
@@ -445,6 +450,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
       ...(memoryAvailable?{agentMemoryRepository:new AgentMemoryRepository(business,{allowWrites:capabilities.configurationWrites===true})}:{}),
+      ...(outcomeMemoryAvailable?{agentOutcomeMemoryRepository:new AgentMemoryOutcomeRepository(business)}:{}),
       ...(derivedMemoryAvailable?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(business,{allowWrites:capabilities.configurationWrites===true&&capabilities.agentDerivedMemoryUat===true})}:{}),
       ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
       ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
@@ -470,7 +476,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true}),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true}),
       workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
