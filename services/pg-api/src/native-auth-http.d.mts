@@ -36,6 +36,8 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentFeedback?:boolean
   allowAgentFeedbackSubmission?:boolean
   allowAgentFeedbackLessons?:boolean
+  allowAgentOptimization?:boolean
+  allowAgentOptimizationAcceptance?:boolean
   allowEmployeeGovernance?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}

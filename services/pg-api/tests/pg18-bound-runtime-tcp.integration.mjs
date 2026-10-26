@@ -125,12 +125,13 @@ const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:
   boundModelExecutionUat:true,modelProbeUat:true,mcpDiscoveryUat:true,mcpToolExecutionUat:true,smitheryManagementUat:true,knowledgeSharingUat:true,knowledgeEmbeddingSettingsUat:true,knowledgeEmbeddingConsentUat:true,knowledgeIndexRuntimeUat:true,knowledgeQueryRuntimeUat:true,knowledgeToolExecutionUat:true,workflowV2ExecutionUat:true,autonomousAgentUat:true,scheduleRuntimeUat:true}
 const smitherySecret="SyntheticSmitheryPg18CredentialNeverNetwork012345"
 
-async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false,outcomeMemory=false,feedback=false,feedbackSubmission=false,feedbackLessons=false}={}){
+async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRuntime=false,derivedMemory=false,outcomeMemory=false,feedback=false,feedbackSubmission=false,feedbackLessons=false,optimization=false,optimizationAcceptance=false}={}){
   if(memory){assert.equal(await inspectAgentMemorySchema(pool),true);const context=await inspectAgentMemoryContextSchema(pool);if(memoryRuntime)assert.equal(context,true)}
   if(memoryRuntime){assert.equal(memory,true);assert.equal(selectAgentMemoryRuntime({AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY'}),true)}
   if(derivedMemory){assert.equal(await inspectAgentMemoryDerivedSchema(pool),true);assert.equal(selectAgentDerivedMemoryWrites({AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_ENABLED:'true',AGENT_STUDIO_PG_AGENT_DERIVED_MEMORY_APPROVED:'APPROVE_DISPOSABLE_PG18_SOURCE_BOUND_MEMORY_ONLY'}),true)}
   if(outcomeMemory){assert.equal(derivedMemory,true);assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true);assert.equal(selectAgentOutcomeMemoryWrites({AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_OUTCOME_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_OUTCOME_MEMORY_ONLY"}),true)}
   if(feedback)assert.equal(await inspectAgentFeedbackSchema(pool),true)
+  if(optimization)assert.equal(await inspectAgentOptimizationSchema(pool),true)
   const parent=realpathSync(tmpdir())
   const folder=mkdtempSync(path.join(parent,"pg18-bound-native-ci-"))
   assert.equal(path.dirname(realpathSync(folder)),parent)
@@ -148,6 +149,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowEmployeeProvisioning:true,allowConfigurationWrites:true,allowModelProbe:true,allowEmployeeGovernance:true,allowAgentHumanInput:true,
       allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
+      allowAgentOptimization:optimization,allowAgentOptimizationAcceptance:optimizationAcceptance,
       allowAgentFeedback:feedback,allowAgentFeedbackSubmission:feedbackSubmission,allowAgentFeedbackLessons:feedbackLessons,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:outcomeMemory,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:derivedMemory,
@@ -178,6 +180,7 @@ async function startNativeHttps(auth,pool,key,brokerPool,{memory=true,memoryRunt
       agentHumanInputRepository:new AgentHumanInputRepository(pool,"agent_native_v2",{allowResponses:true}),
       workflowHumanInputRepository:new AgentHumanInputRepository(pool,"workflow_native_v2",{allowResponses:true}),
       ...(memory?{agentMemoryRepository:new AgentMemoryRepository(pool,{allowWrites:true})}:{}),
+      ...(optimization?{agentOptimizationRepository:new AgentOptimizationRepository(pool,{allowAcceptance:optimizationAcceptance})}:{}),
       ...(feedback?{agentFeedbackRepository:new AgentFeedbackRepository(pool,{allowSubmit:feedbackSubmission,allowLessonStorage:feedbackSubmission&&feedbackLessons})}:{}),
       ...(outcomeMemory?{agentOutcomeMemoryRepository:new AgentMemoryOutcomeRepository(pool)}:{}),
       ...(derivedMemory?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(pool,{allowWrites:true})}:{}),
@@ -1764,6 +1767,43 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     assert.doesNotMatch(JSON.stringify(optimizationPage),/syntheticOptimizationSourcePrivate|syntheticOptimizationFeedbackPrivate|Synthetic later ordinary/)
     assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_links')).rows[0].n,1)
     assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],optimizationBefore)
+    mark("optional-optimization-055-native-https-cookie-http")
+    const optimizationHttpRole=await new AgentSpecRepository(apiPool).get(memoryIdentity,roleForOptimization.id),{require_approval:optimizationHttpApproval,...optimizationHttpSpec}=optimizationHttpRole.spec
+    const remainingOptimizationSource=optimizationSources[optimizationWinner===0?1:0]
+    const optimizationHttpSha=(await withActor(apiPool,memoryIdentity,db=>db.query('SELECT agentstudio.agent_optimization_role_sha(id,owner_user_id,name,revision,spec) AS sha FROM agentstudio.agent_specs WHERE id=$1',[roleForOptimization.id]))).rows[0].sha
+    const optimizationHttpDraft={action:'preview',spec_id:roleForOptimization.id,run_id:remainingOptimizationSource.receipt.run_id,feedback_id:remainingOptimizationSource.receipt.feedback_id,expected_feedback_sha256:remainingOptimizationSource.receipt.feedback_sha256,expected_spec_revision:optimizationHttpRole.revision,expected_spec_sha256:optimizationHttpSha,name:optimizationHttpRole.name,spec:{...optimizationHttpSpec,goal:'Synthetic genuine HTTPS role correction 😀'}}
+    const originalHttpOptimization={...optimizationHttpDraft,action:'accept',request_id:randomUUID(),confirm:true}
+    const optimizationHttpBefore=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+    const optimizationHttpFront=await startNativeHttps(auth,apiPool,key,brokerPool,{optimization:true,optimizationAcceptance:true})
+    try{
+      await optimizationHttpFront.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      const call=async(path,body,lose=false)=>{const response=await optimizationHttpFront.request('/api/v2/agent-optimizations'+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}});const value=await response.json();if(lose&&response.ok)throw Error('synthetic committed genuine optimization HTTP reply lost');return {status:response.status,body:value}}
+      const preview=await call('/preview',optimizationHttpDraft);assert.equal(preview.status,200);assert.equal(preview.body.recorded,false);assert.deepEqual(preview.body.changed_keys,['goal'])
+      assert.equal((await call('?spec_id='+roleForOptimization.id+'&owner_user_id=unknown')).status,400)
+      assert.equal((await call('/accept',{...originalHttpOptimization,changed_keys:['goal']})).status,400)
+      assert.equal((await call('/accept',{...originalHttpOptimization,paid_optimization_approved:true})).status,400)
+      await assert.rejects(call('/accept',originalHttpOptimization,true),/committed genuine optimization HTTP reply lost/)
+      const page=await call('?spec_id='+roleForOptimization.id);assert.equal(page.status,200);assert.equal(page.body.items.length,2);assert.equal(page.body.items.find(i=>i.request_id===originalHttpOptimization.request_id).role_current,true)
+      await optimizationHttpFront.api.login('other@example.com','SyntheticOtherPassword#2026');assert.equal((await call('?spec_id='+roleForOptimization.id)).status,404);assert.equal((await call('/confirm',originalHttpOptimization)).status,404)
+    }finally{await optimizationHttpFront.close()}
+    const optimizationHttpRecovery=await startNativeHttps(auth,apiPool,key,brokerPool,{optimization:true})
+    try{
+      await optimizationHttpRecovery.api.login('admin@example.com','SyntheticAdminPassword#2026')
+      const call=async(path,body)=>{const response=await optimizationHttpRecovery.request('/api/v2/agent-optimizations'+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}});return {status:response.status,body:await response.json()}}
+      const confirmed=await call('/confirm',originalHttpOptimization);assert.equal(confirmed.status,200);assert.equal(confirmed.body.replayed,true)
+      assert.equal((await call('/accept',originalHttpOptimization)).body.replayed,true)
+      assert.equal((await call('/accept',{...originalHttpOptimization,request_id:randomUUID()})).status,403)
+      assert.equal((await call('/accept',{...originalHttpOptimization,spec:{...originalHttpOptimization.spec,goal:'Changed unknown original'}})).status,409)
+      await admin.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb WHERE id=$1",[originalHttpOptimization.run_id])
+      await feedbackClosed.change(memoryIdentity,{action:'erase_feedback',request_id:randomUUID(),spec_id:roleForOptimization.id,run_id:originalHttpOptimization.run_id,expected_revision:1,expected_feedback_sha256:remainingOptimizationSource.receipt.feedback_sha256,confirm:true})
+      const current=await new AgentSpecRepository(apiPool).get(memoryIdentity,roleForOptimization.id),{require_approval:laterHttpApproval,...laterHttpSpec}=current.spec
+      await new AgentSpecRepository(apiPool).update(memoryIdentity,current.id,current.name,safeAgentSpec({...laterHttpSpec,goal:'Synthetic final unrelated role update'}),current.revision)
+      assert.equal((await call('/confirm',originalHttpOptimization)).body.after_revision_id,confirmed.body.after_revision_id)
+      const page=await call('?spec_id='+roleForOptimization.id),item=page.body.items.find(i=>i.request_id===originalHttpOptimization.request_id);assert.equal(item.feedback_unchanged,false);assert.equal(item.role_current,false)
+      assert.doesNotMatch(JSON.stringify(page.body),/syntheticOptimizationSourcePrivate|syntheticOptimizationFeedbackPrivate|Synthetic final unrelated/)
+      assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_links')).rows[0].n,2)
+      assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],optimizationHttpBefore)
+    }finally{await optimizationHttpRecovery.close()}
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")

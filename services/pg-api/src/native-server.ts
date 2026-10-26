@@ -24,6 +24,7 @@ import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts
 import {inspectAgentMemoryFailureSourceSchema} from "./agent-memory-failure-source-audit.ts"
 import {AgentFeedbackRepository} from "./agent-feedback-repository.ts"
 import {inspectAgentFeedbackSchema} from "./agent-feedback-audit.ts"
+import {AgentOptimizationRepository} from "./agent-optimization-repository.ts"
 import {inspectAgentOptimizationSchema} from "./agent-optimization-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
@@ -395,11 +396,12 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const outcomeMemoryAvailable=await inspectAgentMemoryOutcomeSchema(business)
     await inspectAgentMemoryFailureSourceSchema(business)
     const feedbackAvailable=await inspectAgentFeedbackSchema(business)
-    await inspectAgentOptimizationSchema(business)
+    const optimizationAvailable=await inspectAgentOptimizationSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
     if(capabilities.agentFeedbackUat===true&&!feedbackAvailable)throw Error("agent_feedback_schema_required")
+    if(capabilities.agentOptimizationUat===true&&!optimizationAvailable)throw Error("agent_optimization_schema_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -434,6 +436,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentReleases:releasesAvailable,
       allowAgentHumanInput:humanInputAvailable,
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
+      allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
       allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
       allowAgentDerivedMemory:derivedMemoryAvailable,allowAgentDerivedMemoryWrites:capabilities.agentDerivedMemoryUat===true,
@@ -459,6 +462,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
       ...(memoryAvailable?{agentMemoryRepository:new AgentMemoryRepository(business,{allowWrites:capabilities.configurationWrites===true})}:{}),
+      ...(optimizationAvailable?{agentOptimizationRepository:new AgentOptimizationRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true})}:{}),
       ...(feedbackAvailable?{agentFeedbackRepository:new AgentFeedbackRepository(business,{allowSubmit:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true,allowLessonStorage:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true&&capabilities.agentFeedbackLessonsUat===true})}:{}),
       ...(outcomeMemoryAvailable?{agentOutcomeMemoryRepository:new AgentMemoryOutcomeRepository(business)}:{}),
       ...(derivedMemoryAvailable?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(business,{allowWrites:capabilities.configurationWrites===true&&capabilities.agentDerivedMemoryUat===true})}:{}),
