@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
 import {agentCollaborationFixture} from './helpers/agent-collaboration-fixture.mjs'
-import {inspectEmployeeGovernance} from '../src/native-employee-governance-audit.mjs'
+import {inspectEmployeeGovernance,inspectEmployeeGovernanceSchema} from '../src/native-employee-governance-audit.mjs'
 import {employeeChangeChoice} from '../src/native-employee-governance.mjs'
 import {withActor,AgentSpecRepository} from '../src/repository.ts'
 import {safeAgentSpec} from '../src/contracts.ts'
@@ -18,6 +18,11 @@ test('native governance: admin CAS/receipts, disabled listing, session invalidat
   const f=await agentCollaborationFixture(),store=f.store
   try{
     assert.equal(await inspectEmployeeGovernance(f.api),true)
+    assert.equal(await inspectEmployeeGovernanceSchema(f.pool),true)
+    const receipt=(await f.db.query("SELECT description FROM agentstudio.schema_migrations WHERE version='pg_v9_047'")).rows[0]
+    await f.db.query("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_047'")
+    try{await assert.rejects(inspectEmployeeGovernanceSchema(f.pool),/employee_governance_runtime_incomplete/)}
+    finally{await f.db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_047',$1)",[receipt.description])}
     const created=await store.createGovernedEmployee(f.session.token,{email:'manager@example.test',password:'SyntheticManagerPassword#2026',display_name:'Second manager',is_admin:true,share_enabled:false})
     assert.equal(created.is_admin,true);assert.equal(created.share_enabled,false);assert.equal(created.revision,1)
     const manager=await store.login('manager@example.test','SyntheticManagerPassword#2026')

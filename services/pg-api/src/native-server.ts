@@ -46,6 +46,7 @@ import {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
 import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 import {createHandler} from "./http.ts"
 import {NativeAuthRepository} from "./native-auth-repository.mjs"
+import {inspectEmployeeGovernanceSchema} from "./native-employee-governance-audit.mjs"
 import {createNativeAuthHttpHandler} from "./native-auth-http.mjs"
 import {ModelConnectionRepository} from "./model-connection-repository.ts"
 import {ToolConnectionRepository} from "./tool-connection-repository.ts"
@@ -372,7 +373,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
-    const employeeGovernanceAvailable=await new NativeAuthRepository(adapter(authPool)).inspectEmployeeGovernance()
+    const employeeGovernanceAvailable=await inspectEmployeeGovernanceSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     const releasesAvailable=await inspectAgentReleaseSchema(business)
     if(!listen){

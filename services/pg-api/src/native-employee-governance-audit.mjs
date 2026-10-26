@@ -32,3 +32,13 @@ export async function inspectEmployeeGovernance(db){
   }
   return true
 }
+export async function inspectEmployeeGovernanceSchema(pool){
+  const db=await pool.connect()
+  try{
+    await db.query('BEGIN READ ONLY');await db.query('SET LOCAL ROLE agentstudio_api')
+    if(!await inspectEmployeeGovernance(db))return false
+    if((await db.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_047') AS ok")).rows[0]?.ok!==true)
+      throw Error('employee_governance_runtime_incomplete')
+    return true
+  }finally{await db.query('ROLLBACK').catch(()=>{});db.release()}
+}

@@ -145,16 +145,16 @@ export function diagnoseNativeSchema(rows){
      Number(state.version)<180000||Number(state.version)>=190000||
      state.session_user!=="postgres"||state.superuser!==true)
     errors.push("unexpected_pg18_target")
-  let expectedTables=23,expectedRls=22
+  let expectedTables=23,expectedRls=22,expectedAuthTables=2
   if(rows?.fresh_runtime){
     if(rows.fresh_runtime.verified!==true)errors.push("fresh_runtime_schema_not_verified")
-    else{const snapshot=captureFreshRuntimeSources();expectedTables=snapshot.tables.filter(t=>t.startsWith("agentstudio.")).length;expectedRls=expectedTables-1}
+    else{const snapshot=captureFreshRuntimeSources();expectedTables=snapshot.tables.filter(t=>t.startsWith("agentstudio.")).length;expectedRls=expectedTables-1;expectedAuthTables=snapshot.tables.filter(t=>t.startsWith("agentstudio_auth.")).length}
   }
   if(Number(rows?.base_tables)!==expectedTables||Number(rows?.base_force_rls)!==expectedRls)
     errors.push("baseline_tables_or_rls_missing")
   if(rows?.vector!=="0.8.7")errors.push("vector_version_mismatch")
   if(rows?.ledger!==true)errors.push("native_auth_migration_not_applied")
-  if(Number(rows?.auth_tables)!==2||Number(rows?.auth_force_rls)!==2)
+  if(Number(rows?.auth_tables)!==expectedAuthTables||Number(rows?.auth_force_rls)!==expectedAuthTables)
     errors.push("native_auth_tables_or_rls_missing")
   if(rows?.membership!==true||rows?.business_can_auth!==false||
      rows?.worker_can_auth!==false||
