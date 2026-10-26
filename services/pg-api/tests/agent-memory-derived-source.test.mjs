@@ -11,12 +11,19 @@ import {loadAgentMemoryDerivedSource} from '../src/agent-memory-derived-source.t
 import {parseAgentMemoryDerivedChange} from '../src/agent-memory-derived-contract.ts'
 import {successfulMemoryFallback,failedMemoryLesson} from '../src/agent-memory-derived-text.ts'
 import {agentMemoryHash} from '../src/agent-memory-contract.ts'
-async function fixture(){const f=await agentMemoryFixture();try{await f.db.exec(f.sql('migrations/pg_v9_051_agent_memory_derived.sql'));return f}catch(error){await f.close();throw error}}
+let catalogRecorded=false
+async function fixture(){const f=await agentMemoryFixture();try{await f.db.exec(f.sql('migrations/pg_v9_051_agent_memory_derived.sql'));
+  if(!catalogRecorded){catalogRecorded=true
+    const constraints=(await f.db.query("SELECT conname AS name,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid IN('agentstudio.agent_memory_derived_receipts'::regclass,'agentstudio.agent_memory_derived_entries'::regclass) AND contype='c' ORDER BY conname")).rows
+    const functions=(await f.db.query("SELECT proname AS name,encode(sha256(convert_to(prosrc,'UTF8')),'hex') AS source_sha256 FROM pg_catalog.pg_proc WHERE oid IN(to_regprocedure('agentstudio.agent_memory_run_source_sha256(uuid)'),to_regprocedure('agentstudio.agent_memory_derived_receipt_guard()'),to_regprocedure('agentstudio.agent_memory_derived_entry_guard()')) ORDER BY proname")).rows
+    process.stdout.write('SYNTHETIC_DERIVED_SCHEMA_CATALOG '+JSON.stringify({constraints,functions})+'\n')
+  }
+  return f}catch(error){await f.close();throw error}}
 async function runSource(f,{failed=false,memory=false}={}){
   const spec=f.resources.alice.spec,repo=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true,allowMemory:memory})
   const admitted=await repo.submit(f.identities.alice,spec.id,{expected_revision:spec.revision,max_steps:3,idempotency_key:'synthetic-derived-'+randomUUID(),instruction:memory?'记住：财务报告使用中文。整理财务报告':'整理财务报告'})
   const report=('可复用的合成财务报告 token=syntheticDerivedCredential\n').repeat(120);let calls=0
-  await f.privateTls(async()=>{calls++;return failed?'not a valid synthetic decision':JSON.stringify(calls===1?{action:'tool',tool:'calculate',params:{expression:'2+2'}}:{action:'answer',answer:report})},async make=>{
+  await f.privateTls(async()=>{calls++;return JSON.stringify(failed?{action:'tool',tool:'synthetic_forbidden_tool',params:{}}:calls===1?{action:'tool',tool:'calculate',params:{expression:'2+2'}}:{action:'answer',answer:report})},async make=>{
     const done=await f.drive(()=>make({humanInputApproved:true,memoryExecutionApproved:memory}),admitted.run.id)
     assert.equal(done.run.status,failed?'failed':'succeeded')
   },{allowMemory:memory})
