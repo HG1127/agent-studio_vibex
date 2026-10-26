@@ -799,3 +799,25 @@ jobs:
           pnpm --dir services/pg-api test:schedule-runtime
           pnpm --dir services/pg-api test:agent-collaboration
           pnpm --dir services/pg-api test:agent-releases
+
+  pg18-human-input-domain:
+    name: Native owner clarification and plan-review domain
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout isolated migration candidate
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Types and real embedded SQL with private synthetic mTLS
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-human-input

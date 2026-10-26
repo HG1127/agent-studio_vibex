@@ -227,6 +227,7 @@ export class RunRepository {
           [specId,actor])
         const spec=specs.rows[0]
         if(!spec)throw new HttpError(404,"spec_not_found")
+        if(spec.spec.require_plan_review===true)throw new HttpError(409,"agent_plan_review_requires_autonomous_runtime")
         if(await sharedKnowledgeScopeEnabled(db)){
           const scope=await requireKnowledgeScope(db,actor,storedKnowledgeIds(spec.spec))
           if(scope.some(base=>base.owner_user_id!==actor)&&!spec.spec.model_binding)

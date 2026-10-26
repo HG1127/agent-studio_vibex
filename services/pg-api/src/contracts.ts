@@ -36,6 +36,7 @@ export class HttpError extends Error {
 }
 
 export interface AgentSpecInput {
+  require_plan_review?:boolean
   model_binding?:{
     connection_id:string
     connection_revision:number
@@ -112,9 +113,10 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
   // accept passwords, API keys, provider URL overrides or worker tokens.
   const permitted=new Set([
     "goal","task_scope","deliverables","task_plan","done_criteria","tools",
-    "knowledge_base_ids","knowledge_retrieval","model_binding","http_tools","mcp_tools",
+    "knowledge_base_ids","knowledge_retrieval","model_binding","http_tools","mcp_tools","require_plan_review",
   ])
   if(Object.keys(data).some(k=>!permitted.has(k)))throw new HttpError(400,"unsafe_agent_spec_field")
+  if(Object.hasOwn(data,"require_plan_review")&&typeof data.require_plan_review!=="boolean")throw new HttpError(400,"invalid_agent_plan_review")
   const modelBinding=safeModelBinding(data.model_binding)
   let retrieval:KnowledgeRetrievalBinding|undefined
   try{retrieval=parseKnowledgeRetrievalBinding(data.knowledge_retrieval)}catch{throw new HttpError(400,"invalid_agent_knowledge_retrieval")}
@@ -132,6 +134,7 @@ export function safeAgentSpec(raw:unknown):AgentSpecInput {
     ...(retrieval?{knowledge_retrieval:retrieval}:{}),
     ...(modelBinding?{model_binding:modelBinding}:{}),
     require_approval:true,
+    ...(Object.hasOwn(data,"require_plan_review")?{require_plan_review:data.require_plan_review as boolean}:{}),
   }
 }
 export function safeName(raw:unknown):string {

@@ -26,6 +26,7 @@ const sourceFiles=[
   "services/pg-api/src/agent-collaboration-audit.ts",
   "services/pg-api/src/agent-release-audit.ts",
   "services/pg-api/src/native-employee-governance-audit.mjs",
+  "services/pg-api/src/agent-human-input-audit.ts",
   "services/pg-api/src/knowledge-sharing-policy.ts",
   "services/pg-api/src/worker-credential-policy.ts",
   "services/pg-api/src/pg18-native-worker-readonly.ts",

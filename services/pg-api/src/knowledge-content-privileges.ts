@@ -7,11 +7,13 @@ import {verifyKnowledgeLineageCredentials} from "./knowledge-lineage-audit.ts"
 import {verifyScheduleCredentials} from "./schedule-runtime-audit.ts"
 import {verifyAgentCollaborationCredentials} from "./agent-collaboration-audit.ts"
 import {verifyAgentReleaseCredentials} from "./agent-release-audit.ts"
+import {verifyAgentHumanInputCredentials} from "./agent-human-input-audit.ts"
 const helpers=["agentstudio_knowledge_acl","agentstudio_knowledge_content"]
 function refuse():never{throw Error("unsafe_knowledge_content_privileges")}
 // Also called by the ordinary startup inspector when the UI capability is off.
 // No employee values are read and private schemas need no login USAGE.
 export async function verifyKnowledgeHelperCredentials(db:SqlClient):Promise<void>{
+  await verifyAgentHumanInputCredentials(db)
   await inspectEmployeeGovernance(db)
   await verifyAgentReleaseCredentials(db)
   await verifyAgentCollaborationCredentials(db)

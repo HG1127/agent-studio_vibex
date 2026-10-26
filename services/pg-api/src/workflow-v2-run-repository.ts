@@ -17,6 +17,7 @@ import {safeWorkflowNodeDebugRequest,workflowNodeDebugGraph,workflowNodeDebugFin
 import {workflowV2OutputProjection} from "./workflow-v2-output-projection.ts"
 import {validWorkflowOutputCursor} from "./workflow-v2-output-contract.ts"
 import {prepareWorkflowSampleLineage,registerWorkflowSampleLineage} from "./workflow-sample-lineage.ts"
+import {agentHumanContext,requireHumanInputSchema,verifyAgentHumanResponses} from "./agent-human-input-policy.ts"
 export type WorkflowV2StoredState={
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
   graph:WorkflowGraph;machine:WorkflowV2Checkpoint
@@ -69,7 +70,11 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
 }
 export function workflowV2ExecutionRequest(state:WorkflowV2StoredState):WorkflowEffectRequest|null{
   const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending
-  return parent?.kind==="agent"&&state.agent_state?inspectWorkflowAgentState(state.agent_state,parent).pending??parent:parent
+  if(parent?.kind==="agent"&&state.agent_state){
+    const view=inspectWorkflowAgentState(state.agent_state,parent)
+    return view.status==="awaiting_input"?null:view.pending??parent
+  }
+  return parent
 }
 export async function auditWorkflowV2(db:SqlClient,owner:string,runId:string,action:string,metadata:Record<string,unknown>){
   await db.query("INSERT INTO agentstudio.audit_events "+
@@ -97,14 +102,26 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
   await verifyWorkflowGraphResources(db,owner,state.graph)
   if(state.agent_state){const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
     await verifyWorkflowAgentResources(db,owner,parent,state.agent_state)}
+  await verifyAgentHumanResponses(db,run,state)
 }
 export class WorkflowV2RunRepository{
   readonly pool:SqlPool
   readonly root:ReturnType<typeof durableV2Root>
   readonly allowMcpExecution:boolean
   readonly allowKnowledgeExecution:boolean
-  constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2",options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){this.pool=pool;this.root=durableV2Root(mode);this.allowMcpExecution=options.allowMcpExecution===true;this.allowKnowledgeExecution=options.allowKnowledgeExecution===true}
+  readonly allowHumanInput:boolean
+  constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2",options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){this.pool=pool;this.root=durableV2Root(mode);this.allowMcpExecution=options.allowMcpExecution===true;this.allowKnowledgeExecution=options.allowKnowledgeExecution===true;this.allowHumanInput=options.allowHumanInput===true}
   protected async checkMcpAdmission(db:SqlClient,owner:string,graph:WorkflowGraph){
+    const agents=graph.nodes.filter(node=>node.data.agent_binding)
+    if(agents.length){
+      if(this.allowHumanInput)await requireHumanInputSchema(db)
+      else{
+        const rows=(await db.query<{id:string;spec:Record<string,unknown>}>("SELECT id,spec FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) FOR SHARE",[owner,[...new Set(agents.map(node=>node.data.agent_binding!.spec_id))]])).rows
+        for(const node of agents){const override:unknown=Object.getOwnPropertyDescriptor(node.data,"require_plan_review")?.value
+          if(override===true||override===undefined&&rows.find(row=>row.id===node.data.agent_binding!.spec_id)?.spec.require_plan_review===true)
+            throw new HttpError(409,"agent_human_input_runtime_required")}
+      }
+    }
     if(this.allowMcpExecution&&this.allowKnowledgeExecution)return
     if(!this.allowMcpExecution&&graph.nodes.some(node=>node.data.mcp_binding))throw new HttpError(409,"mcp_execution_not_enabled")
     if(!this.allowKnowledgeExecution&&graph.nodes.some(node=>node.data.knowledge_retrieval))throw new HttpError(409,"knowledge_execution_not_enabled")
@@ -119,6 +136,9 @@ export class WorkflowV2RunRepository{
     const view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
     const pending=workflowV2ExecutionRequest(state)
     const observationsCurrent=await currentKnowledgeObservations(db,row.id,pending?.step_key)
+    const human=agentHumanContext(row,state)
+    let humanCurrent=false
+    if(human?.pending_input&&observationsCurrent)try{await verifyWorkflowV2Snapshot(db,owner,row,state);humanCurrent=true}catch(error){if(!(error instanceof HttpError))throw error}
     const steps=await db.query<{step_key:string;status:string;metadata:unknown}>(
       "SELECT step_key,status,metadata FROM agentstudio.run_steps WHERE run_id=$1::uuid "+
       "AND owner_user_id=$2::uuid ORDER BY step_key LIMIT 200",[row.id,owner])
@@ -135,7 +155,10 @@ export class WorkflowV2RunRepository{
       steps:steps.rows.map(step=>{const metadata=safeRunStepMetadata(step.metadata);if(!observationsCurrent)delete metadata.citations;return {...step,metadata}}),
       steps_truncated:Number(row.step_count)>steps.rows.length,approvals:approvals.rows.slice(0,200).reverse(),approvals_truncated:approvals.rows.length>200,
       pending_effect:!observationsCurrent||["cancelled","failed","succeeded"].includes(row.status)?null:pending,
-      replayed,execution_mode:this.root.mode,knowledge_outputs_available:observationsCurrent}
+      replayed,execution_mode:this.root.mode,knowledge_outputs_available:observationsCurrent,
+      ...(human?{human_input_current:humanCurrent,human_input:humanCurrent&&human.pending_input&&row.status==="awaiting_input"?{
+        pending_step_key:human.pending_input.step_key,pending_sha256:human.pending_input.pending_sha256,source_sha256:human.source_sha256,
+        kind:human.pending_input.kind,question:human.pending_input.question,draft:human.pending_input.draft,round:human.pending_input.round}:null}:{})}
   }
   async submit(identity:Identity,id:string,raw:unknown){
     return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))

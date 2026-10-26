@@ -17,7 +17,7 @@ const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.
 const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:DurableV2Mode;workflow_id?:string;agent_spec_id?:string;workflow_revision?:number;spec_revision?:number;graph_sha256:string};
   lease_owner:string;lease_token:string;lease_version:string|number;lease_until:Date|string;attempts:number;max_attempts:number}
-export type WorkflowV2Tick={status:"idle"|"progressed"|"awaiting_approval"|"succeeded"|"failed"|"paused"|"stale";run_id?:string}
+export type WorkflowV2Tick={status:"idle"|"progressed"|"awaiting_approval"|"awaiting_input"|"succeeded"|"failed"|"paused"|"stale";run_id?:string}
 export interface WorkflowV2EffectExecutor{
   supports?(request:WorkflowEffectRequest):boolean
   execute(request:WorkflowEffectRequest,lease:{job_id:string;run_id:string;lease_token:string;lease_version:number;worker_id:string;signal:AbortSignal;execution_mode?:DurableV2Mode}):Promise<string>
@@ -74,12 +74,14 @@ export class WorkflowV2Worker{
   readonly timeoutMs:number;readonly batch:number
   readonly agentEnabled:boolean
   readonly scheduleEnabled:boolean
+  readonly humanEnabled:boolean
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;executionMode?:DurableV2Mode}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;executionMode?:DurableV2Mode}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
     this.agentEnabled=options.agentExecutionApproved===true
     this.scheduleEnabled=options.scheduleExecutionApproved===true
+    this.humanEnabled=options.humanInputApproved===true
     this.root=durableV2Root(options.executionMode??"workflow_native_v2")
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
@@ -150,6 +152,12 @@ export class WorkflowV2Worker{
           if(parentApproval?.status!=="approved"||parentApproval.reason_code!=="wf2:"+pending.input_sha256)throw new HttpError(409,"workflow_agent_parent_approval_changed")
           if(!this.agentEnabled){await this.persist(db,job,state,"paused","workflow_agent_execution_disabled");await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}}
           const agent=inspectWorkflowAgentState(state.agent_state,pending)
+          if(state.agent_state.human_protocol&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
+          if(agent.status==="awaiting_input"){
+            await this.persist(db,job,state,"awaiting_input","")
+            await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_input_requested",{step_key:agent.pending_input!.step_key,input_sha256:agent.pending_input!.input_sha256,kind:agent.pending_input!.kind})
+            await acknowledge(db,job,this.workerId,"queued");return {tick:{status:"awaiting_input",run_id:job.run_id}}
+          }
           if(agent.status!=="waiting"){
             const failed=agent.status==="failed",rejected=agent.status==="rejected"
             await db.query("INSERT INTO agentstudio.external_effects(run_id,owner_user_id,step_key,tool_name,arguments_sha256,idempotency_key,status,result_reference) "+
@@ -157,7 +165,9 @@ export class WorkflowV2Worker{
               [job.run_id,job.owner_user_id,pending.step_key,pending.input_sha256,"workflow-agent:"+job.run_id+":"+pending.step_key,
                 failed?"failed":"succeeded",JSON.stringify({...(failed?{error_code:agent.error_code}:{output:agent.output}),
                   agent_snapshot:{spec_id:state.agent_state.spec_id,spec_revision:state.agent_state.spec_revision,spec:state.agent_state.spec,
-                    snapshot_sha256:state.agent_state.snapshot_sha256,max_steps:pending.configuration.max_steps??3}})])
+                    snapshot_sha256:state.agent_state.snapshot_sha256,max_steps:pending.configuration.max_steps??3,
+                    ...(state.agent_state.human_protocol?{human_protocol:state.agent_state.human_protocol,human_responses:state.agent_state.human_responses??[],
+                      parent_input_sha256:pending.input_sha256}: {})}})])
             delete state.agent_state;delete state.agent_dispatch
             if(failed){
               await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"failed"}])
@@ -200,7 +210,7 @@ export class WorkflowV2Worker{
         }
         if(pending.kind==="agent"){
           if(this.agentEnabled){
-            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending)
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled})
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")
             await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_initialized",{step_key:pending.step_key,
