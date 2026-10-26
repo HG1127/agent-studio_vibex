@@ -37,3 +37,10 @@ test('memory transport uses same-origin Cookie and CSRF, performs one write, and
   assert.deepEqual(seen.map(r=>r.path),['/__pg_native/api/v2/agent-memories/change','/__pg_native/api/v2/agent-memories/confirm'])
   await assert.rejects(api.changeAgentMemory({...c,owner_user_id:randomUUID()}),e=>e.status===400);assert.equal(seen.length,2)
 })
+test('memory runtime capability cannot claim execution without current config, owned memory and standalone admission scope',async()=>{
+  const base={mode:'native_pg18',config_writes_enabled:true,model_probe_enabled:false,run_execution_enabled:false,autonomous_agent_submission_enabled:true,agent_memory_available:true,agent_memory_writes_enabled:true,agent_memory_runtime_enabled:true}
+  const api=value=>createPgNativePilotApi(async()=>Response.json(value))
+  assert.equal((await api(base).getConfigCapabilities()).agent_memory_runtime_enabled,true)
+  for(const changed of [{...base,agent_memory_available:false},{...base,autonomous_agent_submission_enabled:false},{...base,config_writes_enabled:false},{...base,agent_memory_runtime_enabled:'true'}])
+    await assert.rejects(api(changed).getConfigCapabilities(),e=>e.status===503&&e.code==='invalid_native_capabilities')
+})

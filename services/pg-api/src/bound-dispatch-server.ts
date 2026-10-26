@@ -15,6 +15,10 @@ import type {Pool as PgPool} from "pg"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 import {selectPgRuntimeTarget} from "./pg-runtime-target.ts"
 import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
+import {selectAgentMemoryRuntime} from "./agent-memory-runtime-policy.ts"
+import {inspectAgentMemorySchema} from "./agent-memory-audit.ts"
+import {inspectAgentMemoryContextSchema} from "./agent-memory-context-audit.ts"
+import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
 import {verifyBoundWorkerMutualTlsPeer} from "./bound-worker-mtls.ts"
 import {boundCertificateFingerprint} from "./bound-worker-mtls.ts"
 import {boundCredentialDirectory,readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
@@ -65,6 +69,8 @@ export function boundDispatchServerConfig(
   const mcpEnabled=selectMcpExecution(env)
   if(mcpEnabled&&!workflowToolsEnabled)refuse()
   const autonomousEnabled=selectAutonomousAgentExecution(env)
+  const memoryEnabled=selectAgentMemoryRuntime(env)
+  if(memoryEnabled&&!autonomousEnabled)refuse()
   const autonomousFingerprint=env.AGENT_STUDIO_PG_AUTONOMOUS_AGENT_CLIENT_FINGERPRINT
   const workflowAgentsEnabled=selectWorkflowAgentExecution(env)
   if(autonomousEnabled&&(!workflowModelEnabled||!workflowToolsEnabled))refuse()
@@ -80,7 +86,7 @@ export function boundDispatchServerConfig(
   }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
   return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),...(knowledgeToolsEnabled?{knowledgeToolsEnabled:true}:{}),
-    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} )}
+    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} ),...(memoryEnabled?{memoryEnabled:true}:{} )}
 }
 function password(bytes:Buffer):string{
   const value=bytes.toString("utf8").replace(/[\r\n]+$/g,"")
@@ -144,6 +150,8 @@ export async function startBoundDispatchServer(
     await verifyWorkflowSampleLineageSchema(business)
     if(cfg.knowledgeSharingEnabled||cfg.workflowModelEnabled||cfg.workflowToolsEnabled)await verifyKnowledgeRuntimeSchema(business,true)
     if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
+    const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
+    if(cfg.memoryEnabled===true&&(!memoryAvailable||!memoryContextAvailable||!await inspectAgentHumanInputSchema(business)))throw Error("agent_memory_runtime_required")
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -165,14 +173,14 @@ export async function startBoundDispatchServer(
         model:cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
             new WorkflowV2ModelDispatch(business,encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
-              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,agentExecutor,
+              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,agentExecutor,
               nodeDebugExecutor:autonomous?undefined:createIsolatedWorkflowNodeDebugExecutor(env,origin,true)}))}):undefined,
         tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
             new WorkflowV2ToolDispatch(business,encryptionKey,{...createWorkflowToolNetwork(),
               ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
               summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
-                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true}))}):undefined,
+                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true}))}):undefined,
       }
     }
     const workflowHandlers=cfg.workflowModelEnabled||cfg.workflowToolsEnabled?makeV2Handlers(cfg.workflowFingerprint!,false):undefined

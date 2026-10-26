@@ -7,6 +7,7 @@ import {selectKnowledgeIndexRuntime} from "./knowledge-index-policy.ts"
 import {selectKnowledgeQueryRuntime} from "./knowledge-query-policy.ts"
 import {selectKnowledgeToolRuntime} from "./knowledge-tool-policy.ts"
 import {selectScheduleRuntime} from "./schedule-runtime-policy.ts"
+import {selectAgentMemoryRuntime} from "./agent-memory-runtime-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -35,6 +36,7 @@ export interface NativePg18UatCapabilities {
   /** Versioned Workflow queue/approval UAT, independent of Start/End-only. */
   workflowV2ExecutionUat?:boolean
   autonomousAgentUat?:boolean
+  agentMemoryUat?:boolean
   scheduleRuntimeUat?:boolean
   /** Additional independent UAT prerequisite; does not register a paid transport. */
   boundModelExecutionUat?:boolean
@@ -61,6 +63,7 @@ export function selectNativePg18UatCapabilities(
   uid=process.getuid?.(),
 ):NativePg18UatCapabilities {
   const autonomousAgentUat=selectAutonomousAgentExecution(env)
+  const agentMemoryUat=selectAgentMemoryRuntime(env)
   const scheduleRuntimeUat=selectScheduleRuntime(env)
   const mcpToolExecutionUat=selectMcpExecution(env)
   const smitheryManagementUat=selectSmitheryManagement(env)
@@ -96,6 +99,7 @@ export function selectNativePg18UatCapabilities(
   for(const value of [config,employees,run,ingest,probe,mcp,flow,execution,flowV2,boundModel])
     if(value!==undefined&&value!=="true")refuse()
   const configUat=config==="true"
+  if(agentMemoryUat&&(!configUat||!autonomousAgentUat))refuse()
   const employeeUat=employees==="true"
   const runUat=run==="true"
   const ingestUat=ingest==="true"
@@ -148,6 +152,7 @@ export function selectNativePg18UatCapabilities(
     ...(workflowExecutionUat?{workflowExecutionUat:true}:{}),
     ...(workflowV2ExecutionUat?{workflowV2ExecutionUat:true}:{}),
     ...(autonomousAgentUat?{autonomousAgentUat:true}:{}),
+    ...(agentMemoryUat?{agentMemoryUat:true}:{}),
     ...(scheduleRuntimeUat?{scheduleRuntimeUat:true}:{}),
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }

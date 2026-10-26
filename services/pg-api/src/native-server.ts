@@ -15,6 +15,9 @@ import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.t
 import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
 import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
+import {AgentMemoryRepository} from "./agent-memory-repository.ts"
+import {inspectAgentMemorySchema} from "./agent-memory-audit.ts"
+import {inspectAgentMemoryContextSchema} from "./agent-memory-context-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
 // Requires separate, non-superuser API and auth-service login accounts.
@@ -379,6 +382,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     const releasesAvailable=await inspectAgentReleaseSchema(business)
     const humanInputAvailable=await inspectAgentHumanInputSchema(business)
+    const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
+    if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -412,6 +417,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentCollaboration:collaborationAvailable,
       allowAgentReleases:releasesAvailable,
       allowAgentHumanInput:humanInputAvailable,
+      allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
         // Only verified employee identity (in createHandler) may mutate an
@@ -433,6 +439,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
+      ...(memoryAvailable?{agentMemoryRepository:new AgentMemoryRepository(business,{allowWrites:capabilities.configurationWrites===true})}:{}),
       ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
       ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
         allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
@@ -457,7 +464,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true}),
       workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),

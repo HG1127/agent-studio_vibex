@@ -55,6 +55,7 @@ export type PgNativeConfigCapabilities={
   agent_human_responses_enabled?:boolean
   agent_memory_available?:boolean
   agent_memory_writes_enabled?:boolean
+  agent_memory_runtime_enabled?:boolean
   schedule_execution_enabled?:boolean
   employee_governance_available?:boolean
   employee_governance_enabled?:boolean
@@ -514,6 +515,8 @@ export function createPgNativePilotApi(
           (value.agent_memory_available!==undefined&&typeof value.agent_memory_available!=="boolean")||
           (value.agent_memory_writes_enabled!==undefined&&typeof value.agent_memory_writes_enabled!=="boolean")||
           (value.agent_memory_writes_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_memory_runtime_enabled!==undefined&&typeof value.agent_memory_runtime_enabled!=="boolean")||
+          (value.agent_memory_runtime_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
           (value.agent_human_responses_enabled!==undefined&&typeof value.agent_human_responses_enabled!=="boolean")||
           (value.agent_human_responses_enabled===true&&(value.agent_human_input_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true&&value.workflow_v2_submission_enabled!==true))||
           (value.workflow_v2_submission_enabled!==undefined&&

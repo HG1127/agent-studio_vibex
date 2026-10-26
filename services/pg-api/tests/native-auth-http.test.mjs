@@ -203,6 +203,21 @@ test("semantic Tool capability requires its independent flag and every metadata/
   }
 })
 
+test("memory capability needs schema, write scope, standalone admission and its separate runtime grant",async()=>{
+  const complete={allowAgentMemory:true,allowConfigurationWrites:true,allowAutonomousAgentSubmission:true,allowAgentMemoryRuntime:true}
+  for(const missing of [null,...Object.keys(complete)]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,businessHandler:(_req,res)=>{res.writeHead(404);res.end()},...complete,...(missing?{[missing]:false}:{})})
+    const {server,base}=await listen(native.handler)
+    try{
+      assert.equal((await request(base,"/api/native-auth/capabilities")).status,401)
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const response=await request(base,"/api/native-auth/capabilities",{cookie:login.setCookie.split(";")[0],spoofUser:"forged-admin"})
+      assert.equal(response.status,200);assert.equal(response.data.agent_memory_runtime_enabled===true,missing===null)
+      if(missing==='allowAgentMemory')assert.equal(Object.hasOwn(response.data,'agent_memory_available'),false)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
 test("Native capabilities default to read-only even after login",async()=>{
   const native=createNativeAuthHttpHandler({
     auth:authStub(),allowedOrigin:origin,

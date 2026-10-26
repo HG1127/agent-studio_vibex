@@ -1,5 +1,4 @@
-// Proposed050 SQL/source-proof tests only. Worker/private dispatch wiring is
-// deliberately absent until this foundation is accepted.
+// Proposed050 SQL/source-proof and optional startup-audit coverage.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
@@ -9,7 +8,11 @@ import {AgentMemoryRepository} from '../src/agent-memory-repository.ts'
 import {AutonomousAgentRunRepository} from '../src/autonomous-agent-run-repository.ts'
 import {prepareOwnedAgentMemoryContext,insertAgentMemoryContextReceipt,verifyCurrentAgentMemoryContext} from '../src/agent-memory-context-policy.ts'
 import {agentMemoryContextHash} from '../src/agent-memory-context.ts'
-async function fixture(){const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});try{for(const sql of ['pg_v9_049_agent_memory.sql','pg_v9_050_agent_memory_context.sql'])await f.db.exec(f.sql('migrations/'+sql));return f}catch(error){await f.close();throw error}}
+import {inspectAgentMemorySchema} from '../src/agent-memory-audit.ts'
+import {inspectAgentMemoryContextSchema,verifyAgentMemoryContextCredentials} from '../src/agent-memory-context-audit.ts'
+async function fixture(){const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});try{for(const sql of ['pg_v9_049_agent_memory.sql','pg_v9_050_agent_memory_context.sql'])await f.db.exec(f.sql('migrations/'+sql));
+  try{assert.equal(await inspectAgentMemoryContextSchema(f.pool),true)}catch(error){const checks=(await f.db.query("SELECT conname,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_memory_run_contexts'::regclass AND contype='c'")).rows;throw Error('synthetic_memory_context_audit_failed '+JSON.stringify(checks),{cause:error})}
+  return f}catch(error){await f.close();throw error}}
 async function baseRun(f,instruction){const role=f.resources.alice.spec,owned=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true})
   const run=await owned.submit(f.identities.alice,role.id,{expected_revision:role.revision,max_steps:2,idempotency_key:'synthetic-memory-context-'+randomUUID(),instruction})
   return {owner_user_id:f.users.alice,spec_id:role.id,spec_revision:role.revision,instruction,run_id:run.run.id,graph_sha256:run.run.checkpoint.graph_sha256}
@@ -66,5 +69,22 @@ test('receipt insertion failure rolls back explicit memory and checkpoint togeth
     assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.agent_memory_receipts')).rows[0].n,0)
     const stored=(await f.db.query('SELECT checkpoint FROM agentstudio.runs WHERE id=$1',[p.run_id])).rows[0].checkpoint
     assert.equal(Object.hasOwn(stored,'memory_context'),false)
+  }finally{await f.close()}
+})
+
+test('memory startup stays optional without schema and rejects privilege, RLS, constraint or migration drift even when execution is off',async()=>{
+  const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
+  try{
+    assert.equal(await inspectAgentMemorySchema(f.pool),false);assert.equal(await inspectAgentMemoryContextSchema(f.pool),false)
+    await f.db.exec(f.sql('migrations/pg_v9_049_agent_memory.sql'))
+    assert.equal(await inspectAgentMemorySchema(f.pool),true);assert.equal(await inspectAgentMemoryContextSchema(f.pool),false)
+    await f.db.exec(f.sql('migrations/pg_v9_050_agent_memory_context.sql'))
+    assert.equal(await inspectAgentMemoryContextSchema(f.pool),true)
+    for(const drift of ['GRANT UPDATE ON agentstudio.agent_memory_run_contexts TO agentstudio_api','GRANT SELECT ON agentstudio.agent_memory_run_contexts TO agentstudio_worker',
+      'ALTER TABLE agentstudio.agent_memory_run_contexts NO FORCE ROW LEVEL SECURITY',"ALTER POLICY agent_memory_context_owner_read ON agentstudio.agent_memory_run_contexts USING(true)",
+      'ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_graph_sha256_check',
+      "DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_050'",'DROP TABLE agentstudio.agent_memory_run_contexts']){
+      await f.db.exec('BEGIN');try{await f.db.exec(drift);await assert.rejects(verifyAgentMemoryContextCredentials(f.db),/unsafe_agent_memory_context_privileges/)}finally{await f.db.exec('ROLLBACK')}
+    }
   }finally{await f.close()}
 })

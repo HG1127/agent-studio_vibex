@@ -19,6 +19,17 @@ const paid={...baseline,
   AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED:"true",
   AGENT_STUDIO_PG18_UAT_APPROVAL:"APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY",
   AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED:"APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY"}
+
+test("private memory execution requires its own marker and the separate standalone client identity",()=>{
+  const autonomous={...paid,AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY",AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32),
+    AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED:"true",AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED:"APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY",AGENT_STUDIO_PG_AUTONOMOUS_AGENT_CLIENT_FINGERPRINT:"EF".repeat(32)}
+  const memory={AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY"}
+  assert.equal(boundDispatchServerConfig(autonomous,"preflight","linux",1001).memoryEnabled,undefined)
+  assert.equal(boundDispatchServerConfig({...autonomous,...memory},"preflight","linux",1001).memoryEnabled,true)
+  assert.throws(()=>boundDispatchServerConfig({...paid,...memory},"preflight","linux",1001))
+  assert.throws(()=>boundDispatchServerConfig({...autonomous,...memory,AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:undefined},"preflight","linux",1001))
+})
 test("private Broker plan is offline and rejects implicit CLI startup before credential or database access",()=>{
   const plan=boundDispatchOfflinePlan()
   assert.equal(plan.network_used,false);assert.equal(plan.credentials_read,false)

@@ -1,13 +1,17 @@
-import type {SqlClient} from "./contracts.ts"
+import type {SqlClient,SqlPool} from "./contracts.ts"
 const api="agentstudio_api"
 const columns:Record<string,string[]>={
   agent_memory_entries:["owner_user_id","id","spec_id","kind","fact","content_sha256","created_at"],
   agent_memory_receipts:["owner_user_id","request_id","memory_id","spec_id","action","content_sha256","request_sha256","created_at"]
 }
 const refuse=():never=>{throw Error("unsafe_agent_memory_privileges")}
-// Optional foundation audit. Not yet wired into service startup or execution.
+// Optional schema audit, including when execution is disabled.
 export async function verifyAgentMemoryCredentials(db:SqlClient):Promise<boolean>{
   const objects=(await db.query<{name:string;id:number|null}>("SELECT name,to_regclass('agentstudio.'||name)::oid AS id FROM unnest($1::text[])name",[Object.keys(columns)])).rows
+  const canRead=(await db.query<{ok:boolean}>("SELECT has_column_privilege(current_user,'agentstudio.schema_migrations','version','SELECT') AS ok")).rows[0]?.ok
+  if(objects.length!==2||typeof canRead!=="boolean")refuse()
+  if(objects.every(o=>o.id===null)&&!canRead)return false
+  if(!canRead)refuse()
   const stamped=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_049') AS ok")).rows[0]?.ok
   if(objects.length!==2||typeof stamped!=="boolean")refuse()
   if(objects.every(o=>o.id===null)&&!stamped)return false
@@ -50,4 +54,9 @@ export async function verifyAgentMemoryCredentials(db:SqlClient):Promise<boolean
     "encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')=$1::text AS ok FROM pg_catalog.pg_proc p WHERE p.oid=to_regprocedure('agentstudio.agent_memory_entry_guard()')",["0fb997b6b1cd5838686064055c7af87d592040e3d70753164e47e4c2dd6f562b"])).rows[0]?.ok
   if(guard!==true)refuse()
   return true
+}
+export async function inspectAgentMemorySchema(pool:SqlPool):Promise<boolean>{
+  const db=await pool.connect()
+  try{await db.query("BEGIN READ ONLY");await db.query("SET LOCAL ROLE agentstudio_api");return await verifyAgentMemoryCredentials(db)}
+  finally{await db.query("ROLLBACK").catch(()=>{});db.release()}
 }

@@ -18,6 +18,20 @@ const configUat={configurationWrites:true,employeeProvisioning:false,
 const both={configurationWrites:true,employeeProvisioning:true,
   runApprovalUat:false,knowledgeIngestUat:false,modelProbeUat:false}
 
+test("memory admission needs its independent marker and both Native config and standalone Agent scope",()=>{
+  const memory={AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY"}
+  const autonomous={AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED:"true",AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED:"APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY"}
+  const valid={...enabled,...autonomous,...memory}
+  const selected=selectNativePg18UatCapabilities(valid,true,https,1100)
+  assert.equal(selected.agentMemoryUat,true);assert.equal(selected.autonomousAgentUat,true)
+  assert.equal(selectNativePg18UatCapabilities({...enabled,...autonomous},true,https,1100).agentMemoryUat,undefined)
+  for(const input of [memory,{...enabled,...memory},{...autonomous,...memory},{...valid,AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:undefined}])
+    assert.throws(()=>selectNativePg18UatCapabilities(input,true,https,1100))
+  assert.throws(()=>selectNativePg18UatCapabilities(valid,false,https,1100))
+  assert.throws(()=>selectNativePg18UatCapabilities(valid,true,https,0))
+  assert.throws(()=>selectNativePg18UatCapabilities(valid,true,"http://127.0.0.1:7403",1100))
+})
+
 test("PG18 native configuration is READ ONLY by default with no ambient permissions",()=>{
   assert.deepEqual(selectNativePg18UatCapabilities({},true,https,1100),readOnly)
   assert.deepEqual(selectNativePg18UatCapabilities({},false,"http://127.0.0.1:7403",0),readOnly)
