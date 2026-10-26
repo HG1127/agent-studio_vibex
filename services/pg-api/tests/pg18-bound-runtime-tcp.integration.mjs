@@ -37,6 +37,8 @@ import {AgentMemoryRepository} from "../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials,inspectAgentMemorySchema} from "../src/agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema,verifyAgentMemoryContextCredentials} from "../src/agent-memory-context-audit.ts"
 import {selectAgentMemoryRuntime} from "../src/agent-memory-runtime-policy.ts"
+import {AgentMemoryDerivedRepository} from "../src/agent-memory-derived-repository.ts"
+import {inspectAgentMemoryDerivedSchema,verifyAgentMemoryDerivedCredentials} from "../src/agent-memory-derived-audit.ts"
 import {inspectAgentReleaseSchema} from "../src/agent-release-audit.ts"
 import {WorkflowRepository} from "../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../src/workflow-safe-run-repository.ts"
@@ -1431,11 +1433,49 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
         await worker().tick()
       }throw Error('genuine_memory_transition_limit')}
       const done=await advance(memoryRun.run.id,'succeeded');assert.equal(done.run.result_text,report);assert.equal(memoryCalls,1)
+      mark('optional-memory-051-original-source-owner-receipts-and-erasure')
+      assert.equal(await inspectAgentMemoryDerivedSchema(apiPool),false)
+      await admin.query(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_051_agent_memory_derived.sql',import.meta.url),'utf8'))
+      assert.equal(await inspectAgentMemoryDerivedSchema(apiPool),true)
+      const driftClient=await admin.connect()
+      try{for(const mutation of [
+        'GRANT SELECT ON agentstudio.agent_memory_derived_entries TO agentstudio_worker',
+        'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) TO PUBLIC',
+        'ALTER FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) SECURITY DEFINER',
+        "ALTER TABLE agentstudio.agent_memory_derived_receipts DROP CONSTRAINT agent_memory_derived_receipts_source_sha256_check; ALTER TABLE agentstudio.agent_memory_derived_receipts ADD CONSTRAINT agent_memory_derived_receipts_source_sha256_check CHECK(source_sha256 ~ '^[a-f0-9 ]{64}$')"
+      ]){await driftClient.query('BEGIN');try{await driftClient.query(mutation);await assert.rejects(verifyAgentMemoryDerivedCredentials(driftClient),/unsafe_agent_memory_derived_privileges/)}finally{await driftClient.query('ROLLBACK')}}}finally{driftClient.release()}
+      const derived=new AgentMemoryDerivedRepository(apiPool,{allowWrites:true}),derivedReadonly=new AgentMemoryDerivedRepository(apiPool)
+      const derivedBefore=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+      const preview=await derivedReadonly.preview(memoryIdentity,memoryRole.id,memoryRun.run.id)
+      assert.equal(preview.kind,'fact');assert.equal(preview.fact,report.slice(0,500));assert.equal(preview.tools_used,'')
+      const shifted=await withActor(apiPool,memoryIdentity,async db=>{await db.query("SET LOCAL TIME ZONE 'Asia/Shanghai'");return db.query('SELECT agentstudio.agent_memory_run_source_sha256($1::uuid) AS hash',[memoryRun.run.id])})
+      assert.equal(shifted.rows[0].hash,preview.source_sha256)
+      const saveDerived={action:'save_success',request_id:randomUUID(),spec_id:memoryRole.id,source_run_id:memoryRun.run.id,expected_source_sha256:preview.source_sha256,confirm:true}
+      await assert.rejects(derivedReadonly.change(memoryIdentity,saveDerived),e=>e.code==='agent_memory_derived_writes_disabled')
+      await assert.rejects(derived.preview(reader,memoryRole.id,memoryRun.run.id),e=>e.status===404)
+      const derivedSaved=await derived.change(memoryIdentity,saveDerived)
+      assert.equal(derivedSaved.replayed,false);assert.equal((await derivedReadonly.confirm(memoryIdentity,saveDerived)).replayed,true)
+      assert.equal((await derivedReadonly.change(memoryIdentity,saveDerived)).replayed,true)
+      assert.equal((await derived.list(memoryIdentity,memoryRole.id)).items[0].fact,preview.fact)
       const current=(await memoryApi.listAgentMemories(memoryRole.id)).items[0]
       assert.equal(current.id,memoryRun.run.id)
       await memoryApi.changeAgentMemory({action:'forget',request_id:randomUUID(),spec_id:memoryRole.id,memory_id:current.id,expected_sha256:current.content_sha256,confirm:true})
       assert.equal((await memoryApi.getAutonomousAgentRun(memoryRun.run.id)).run.result_text,'')
       assert.equal((await memoryApi.getAutonomousAgentHumanHistory(memoryRun.run.id)).available,false)
+      await assert.rejects(derived.preview(memoryIdentity,memoryRole.id,memoryRun.run.id),e=>e.status===409)
+      const hidden=(await derived.list(memoryIdentity,memoryRole.id)).items[0]
+      assert.equal(hidden.source_current,false);assert.equal(hidden.fact,null);assert.equal(hidden.tools_used,null)
+      const forgetDerived={action:'forget',request_id:randomUUID(),spec_id:memoryRole.id,memory_id:derivedSaved.memory_id,expected_content_sha256:derivedSaved.content_sha256,expected_tools_sha256:derivedSaved.tools_sha256,confirm:true}
+      assert.equal((await derived.change(memoryIdentity,forgetDerived)).recorded,true)
+      assert.equal((await derivedReadonly.confirm(memoryIdentity,forgetDerived)).replayed,true)
+      assert.equal((await derivedReadonly.change(memoryIdentity,saveDerived)).replayed,true)
+      assert.equal((await derived.list(memoryIdentity,memoryRole.id)).items.length,0)
+      await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('INSERT INTO agentstudio.agent_memory_derived_entries(owner_user_id,id,fact,tools_used,content_sha256,tools_sha256) VALUES(agentstudio.actor_id(),$1::uuid,$2,$3,$4,$5)',[derivedSaved.memory_id,preview.fact,preview.tools_used,preview.content_sha256,preview.tools_sha256])),/agent_memory_derived_entry_receipt_required/)
+      const derivedState=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.agent_memory_derived_entries)::integer AS entries,(SELECT count(*) FROM agentstudio.agent_memory_derived_receipts)::integer AS receipts')).rows[0]
+      assert.deepEqual(derivedState,{entries:0,receipts:2})
+      const derivedAfter=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+      assert.deepEqual(derivedAfter,derivedBefore);assert.equal(memoryCalls,1)
+      mark('fresh-memory-050-revocation-before-private-dispatch')
       const replay=await memoryApi.submitAutonomousAgentRun(memoryRole.id,memoryRole.revision,memoryTask,memoryKey,1,false)
       assert.equal(replay.replayed,true);assert.equal(replay.run.id,memoryRun.run.id);assert.equal(replay.run.result_text,'')
       assert.equal((await memoryApi.listAgentMemories(memoryRole.id)).items.length,0)
