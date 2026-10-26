@@ -58,7 +58,12 @@ CREATE TABLE agentstudio.agent_release_acceptance_runs(
   spec_revision bigint NOT NULL CHECK(spec_revision BETWEEN 1 AND 9007199254740990),
   source_sha256 text NOT NULL CHECK(source_sha256~'^[a-f0-9]{64}$'),
   instruction_sha256 text NOT NULL CHECK(instruction_sha256~'^[a-f0-9]{64}$'),
-  max_steps integer NOT NULL CHECK(max_steps BETWEEN 1 AND 30),selected_model_binding jsonb NOT NULL CHECK(jsonb_typeof(selected_model_binding)='object'),
+  max_steps integer NOT NULL CHECK(max_steps BETWEEN 1 AND 30),selected_model_binding jsonb NOT NULL CHECK(coalesce(jsonb_typeof(selected_model_binding)='object' AND
+    selected_model_binding-ARRAY['connection_id','connection_revision','model_id']='{}'::jsonb AND jsonb_typeof(selected_model_binding->'connection_id')='string' AND
+    (selected_model_binding->>'connection_id')~*'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' AND
+    jsonb_typeof(selected_model_binding->'connection_revision')='number' AND (selected_model_binding->>'connection_revision')~'^[1-9][0-9]{0,15}$' AND
+    (selected_model_binding->>'connection_revision')::numeric<9007199254740991 AND jsonb_typeof(selected_model_binding->'model_id')='string' AND
+    (selected_model_binding->>'model_id')~'^[A-Za-z0-9._:/-]{1,120}$',false)),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),UNIQUE(owner_user_id,request_id),
   FOREIGN KEY(run_id,owner_user_id) REFERENCES agentstudio.runs(id,owner_user_id),
   FOREIGN KEY(spec_id,owner_user_id) REFERENCES agentstudio.agent_specs(id,owner_user_id)
@@ -79,9 +84,11 @@ DO $tables$ DECLARE t text; BEGIN
   END LOOP;
 END $tables$;
 GRANT SELECT(id,owner_user_id,name,spec,revision) ON agentstudio.agent_specs TO agentstudio_releases;
+GRANT SELECT(id,owner_user_id,kind,agent_spec_id,status,instruction,checkpoint) ON agentstudio.runs TO agentstudio_releases;
 GRANT SELECT(id,status,external_issuer,external_subject) ON agentstudio.users TO agentstudio_releases;
 GRANT SELECT(user_id,enabled) ON agentstudio_auth.accounts TO agentstudio_releases;
 CREATE POLICY release_specs ON agentstudio.agent_specs TO agentstudio_releases USING(true);
+CREATE POLICY release_runs ON agentstudio.runs TO agentstudio_releases USING(true);
 CREATE POLICY release_users ON agentstudio.users TO agentstudio_releases USING(true);
 CREATE POLICY release_accounts ON agentstudio_auth.accounts TO agentstudio_releases USING(true);
 GRANT INSERT(spec_id,owner_user_id) ON agentstudio.agent_release_heads TO agentstudio_releases;
@@ -90,6 +97,8 @@ GRANT UPDATE(active_version_id,revision) ON agentstudio.agent_release_heads TO a
 GRANT UPDATE(status,revision,updated_at,published_at) ON agentstudio.agent_release_versions TO agentstudio_releases;
 GRANT UPDATE(deleted_at) ON agentstudio.agent_release_versions TO agentstudio_releases;
 GRANT INSERT(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note) ON agentstudio.agent_release_versions TO agentstudio_releases;
+GRANT INSERT(test_run_id,test_passed,test_model_binding) ON agentstudio.agent_release_versions TO agentstudio_releases;
+GRANT INSERT(run_id,owner_user_id,spec_id,request_id,spec_revision,source_sha256,instruction_sha256,max_steps,selected_model_binding) ON agentstudio.agent_release_acceptance_runs TO agentstudio_releases;
 GRANT INSERT(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result) ON agentstudio.agent_release_receipts TO agentstudio_releases;
 GRANT INSERT(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) ON agentstudio.audit_events TO agentstudio_releases;
 CREATE POLICY release_audit ON agentstudio.audit_events FOR INSERT TO agentstudio_releases WITH CHECK(true);
@@ -135,6 +144,9 @@ BEGIN
   SELECT revision,next_version_no,active_version_id INTO h FROM agentstudio.agent_release_heads WHERE spec_id=p_spec AND owner_user_id=actor;
   RETURN jsonb_build_object('spec_id',s.id,'name',s.name,'spec_revision',s.revision,'source_sha256',agentstudio.release_source_sha(p_spec),
     'release_revision',coalesce(h.revision,1),'next_version_no',coalesce(h.next_version_no,1),'active_version_id',h.active_version_id,
+    'acceptance_runs',coalesce((SELECT jsonb_agg(a.value ORDER BY a.created_at DESC) FROM (SELECT a.created_at,jsonb_build_object('run_id',a.run_id,'spec_revision',a.spec_revision,
+      'source_sha256',a.source_sha256,'max_steps',a.max_steps,'status',r.status,'created_at',a.created_at) AS value FROM agentstudio.agent_release_acceptance_runs a
+      JOIN agentstudio.runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id WHERE a.spec_id=p_spec AND a.owner_user_id=actor ORDER BY a.created_at DESC LIMIT 10)a),'[]'::jsonb),
     'versions',coalesce((SELECT jsonb_agg(v.value ORDER BY v.version_no DESC) FROM (SELECT version_no,jsonb_build_object('id',id,'version_no',version_no,'spec_revision',spec_revision,
       'source_sha256',source_sha256,'version_sha256',agentstudio.release_version_sha(id),'name',name_snapshot,'note',note,'test_run_id',test_run_id,'test_passed',test_passed,
       'status',status,'revision',revision,'created_at',created_at,'published_at',published_at) AS value FROM agentstudio.agent_release_versions
@@ -153,9 +165,61 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT jsonb_build_object('request_sha256',request_sha256,'result',result||jsonb_build_object('replayed',true)) FROM agentstudio.agent_release_receipts
   WHERE actor_user_id=agentstudio.actor_id() AND request_id=p_request AND spec_id=p_spec AND agentstudio.release_native_active(actor_user_id)
 $fn$;
+-- Knowledge evidence is validated under the API actor immediately before the
+-- metadata helper. No release helper receives private observation access or
+-- extra EXECUTE grants on the separately audited knowledge helpers.
+CREATE FUNCTION agentstudio.release_test_checked(p_spec uuid,p_run uuid,p_source_sha text,p_kind text) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT coalesce(t->>'actor'=agentstudio.actor_id()::text AND t->>'spec'=p_spec::text AND t->>'run'=p_run::text AND
+    t->>'source_sha256'=p_source_sha AND t->>'kind'=p_kind AND t->>'transaction'=txid_current()::text,false)
+  FROM (SELECT nullif(current_setting('agentstudio.release_checked_test',true),'')::jsonb AS t)q
+$fn$;
+CREATE FUNCTION agentstudio.agent_release_acceptance_status(p_spec uuid,p_run uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT jsonb_build_object('spec_id',a.spec_id,'run_id',a.run_id,'spec_revision',a.spec_revision,'source_sha256',a.source_sha256,
+    'instruction_sha256',a.instruction_sha256,'max_steps',a.max_steps,'model_binding',a.selected_model_binding,'status',r.status,'created_at',a.created_at)
+  FROM agentstudio.agent_release_acceptance_runs a JOIN agentstudio.runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id
+    JOIN agentstudio.agent_specs s ON s.id=a.spec_id AND s.owner_user_id=a.owner_user_id
+  WHERE a.spec_id=p_spec AND a.run_id=p_run AND a.owner_user_id=agentstudio.actor_id() AND agentstudio.release_native_active(a.owner_user_id)
+$fn$;
+CREATE FUNCTION agentstudio.agent_release_acceptance(p_spec uuid,p_run uuid,p_revision bigint,p_source_sha text,p_request uuid,p_request_sha text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE actor uuid=agentstudio.actor_id(); s record; r record; previous agentstudio.agent_release_receipts%ROWTYPE; input_sha text; binding jsonb; rounds integer; result jsonb;
+BEGIN
+  IF actor IS NULL OR NOT agentstudio.release_native_active(actor) THEN RAISE EXCEPTION 'agent_release_actor_unavailable'; END IF;
+  IF p_spec IS NULL OR p_run IS NULL OR p_revision IS NULL OR p_revision<1 OR p_revision>=9007199254740991 OR p_source_sha IS NULL OR p_source_sha!~'^[a-f0-9]{64}$' OR
+    p_request IS NULL OR p_request_sha IS NULL OR p_request_sha!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'invalid_agent_release_acceptance'; END IF;
+  input_sha=encode(sha256(convert_to(jsonb_build_object('action','acceptance','spec',p_spec,'run',p_run,'spec_revision',p_revision,'source_sha256',p_source_sha,'request_sha256',p_request_sha)::text,'UTF8')),'hex');
+  PERFORM pg_advisory_xact_lock(hashtextextended(actor::text||':'||p_request::text,46));
+  SELECT * INTO previous FROM agentstudio.agent_release_receipts WHERE actor_user_id=actor AND request_id=p_request;
+  IF previous.request_id IS NOT NULL THEN
+    IF previous.spec_id<>p_spec OR previous.action<>'acceptance' OR previous.input_sha256<>input_sha THEN RAISE EXCEPTION 'agent_release_request_conflict'; END IF;
+    RETURN previous.result||jsonb_build_object('replayed',true);
+  END IF;
+  SELECT id,owner_user_id,name,spec,revision INTO s FROM agentstudio.agent_specs WHERE id=p_spec AND owner_user_id=actor;
+  IF s.id IS NULL THEN RAISE EXCEPTION 'agent_release_not_found'; END IF;
+  IF s.revision<>p_revision OR agentstudio.release_source_seal(s.id,s.owner_user_id,s.name,s.revision,s.spec) IS DISTINCT FROM p_source_sha THEN RAISE EXCEPTION 'agent_release_source_changed'; END IF;
+  SELECT id,kind,agent_spec_id,status,instruction,checkpoint INTO r FROM agentstudio.runs WHERE id=p_run AND owner_user_id=actor;
+  IF r.id IS NULL OR r.kind<>'agent' OR r.agent_spec_id IS DISTINCT FROM p_spec OR r.status<>'queued' OR
+    r.checkpoint->>'execution_mode' IS DISTINCT FROM 'agent_native_v2' OR r.checkpoint->>'stage' IS DISTINCT FROM 'agent_v2_queued' OR
+    r.checkpoint->>'spec_revision' IS DISTINCT FROM p_revision::text OR
+    r.checkpoint#>'{graph,nodes,1,data,agent_binding}' IS DISTINCT FROM jsonb_build_object('spec_id',p_spec,'spec_revision',p_revision) OR
+    jsonb_typeof(r.checkpoint#>'{graph,nodes,1,data,model_binding}') IS DISTINCT FROM 'object' OR
+    NOT coalesce((r.checkpoint#>>'{graph,nodes,1,data,max_steps}')~'^[1-9][0-9]?$',false) THEN RAISE EXCEPTION 'agent_release_acceptance_unavailable'; END IF;
+  rounds=(r.checkpoint#>>'{graph,nodes,1,data,max_steps}')::integer;binding=r.checkpoint#>'{graph,nodes,1,data,model_binding}';
+  IF rounds NOT BETWEEN 1 AND 30 THEN RAISE EXCEPTION 'agent_release_acceptance_unavailable'; END IF;
+  INSERT INTO agentstudio.agent_release_acceptance_runs(run_id,owner_user_id,spec_id,request_id,spec_revision,source_sha256,instruction_sha256,max_steps,selected_model_binding)
+    VALUES(p_run,actor,p_spec,p_request,p_revision,p_source_sha,encode(sha256(convert_to(r.instruction,'UTF8')),'hex'),rounds,binding);
+  result=jsonb_build_object('spec_id',p_spec,'request_id',p_request,'run_id',p_run,'spec_revision',p_revision,'source_sha256',p_source_sha,'status','queued','replayed',false);
+  INSERT INTO agentstudio.agent_release_receipts(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result)
+    VALUES(actor,p_request,p_spec,'acceptance',p_request_sha,input_sha,result);
+  INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata)
+    VALUES(actor,actor,'agent.release.acceptance','agent_spec',p_spec::text,'succeeded',jsonb_build_object('run_id',p_run,'spec_revision',p_revision,'source_sha256',p_source_sha,'max_steps',rounds));
+  RETURN result;
+END $fn$;
 CREATE FUNCTION agentstudio.agent_release_snapshot(p_spec uuid,p_revision bigint,p_source_sha text,p_note text,p_test_run uuid,p_request uuid,p_request_sha text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $fn$
-DECLARE actor uuid=agentstudio.actor_id(); s record; h record; previous agentstudio.agent_release_receipts%ROWTYPE; input_sha text; version_id uuid; result jsonb;
+DECLARE actor uuid=agentstudio.actor_id(); s record; h record; acceptance record; previous agentstudio.agent_release_receipts%ROWTYPE; input_sha text; version_id uuid; result jsonb; tested boolean=false; test_binding jsonb;
 BEGIN
   IF actor IS NULL OR NOT agentstudio.release_native_active(actor) THEN RAISE EXCEPTION 'agent_release_actor_unavailable'; END IF;
   IF p_spec IS NULL OR p_revision IS NULL OR p_revision<1 OR p_revision>=9007199254740991 OR p_source_sha IS NULL OR p_source_sha!~'^[a-f0-9]{64}$' OR
@@ -174,21 +238,27 @@ BEGIN
     FROM agentstudio.agent_specs WHERE id=p_spec AND owner_user_id=actor;
   IF s.id IS NULL THEN RAISE EXCEPTION 'agent_release_not_found'; END IF;
   IF s.revision<>p_revision OR s.sha IS DISTINCT FROM p_source_sha THEN RAISE EXCEPTION 'agent_release_source_changed'; END IF;
-  IF p_test_run IS NOT NULL THEN RAISE EXCEPTION 'agent_release_acceptance_not_ready'; END IF;
+  IF p_test_run IS NOT NULL THEN
+    SELECT a.spec_revision,a.source_sha256,a.selected_model_binding,r.status INTO acceptance FROM agentstudio.agent_release_acceptance_runs a
+      JOIN agentstudio.runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id WHERE a.run_id=p_test_run AND a.spec_id=p_spec AND a.owner_user_id=actor;
+    IF acceptance.spec_revision IS NULL OR acceptance.spec_revision<>s.revision OR acceptance.source_sha256 IS DISTINCT FROM s.sha OR acceptance.status<>'succeeded' OR
+      NOT agentstudio.release_test_checked(p_spec,p_test_run,s.sha,'snapshot') THEN RAISE EXCEPTION 'agent_release_acceptance_unavailable'; END IF;
+    tested=true;test_binding=acceptance.selected_model_binding;
+  END IF;
   INSERT INTO agentstudio.agent_release_heads(spec_id,owner_user_id) VALUES(p_spec,actor) ON CONFLICT(spec_id) DO NOTHING;
   SELECT * INTO h FROM agentstudio.agent_release_heads WHERE spec_id=p_spec AND owner_user_id=actor FOR UPDATE;
   IF h.spec_id IS NULL THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
   IF h.next_version_no>=9007199254740991 THEN RAISE EXCEPTION 'agent_release_counter_exhausted'; END IF;
   version_id=gen_random_uuid();
-  INSERT INTO agentstudio.agent_release_versions(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note)
-    VALUES(version_id,actor,p_spec,h.next_version_no,s.revision,s.sha,s.name,s.spec,p_note);
+  INSERT INTO agentstudio.agent_release_versions(id,owner_user_id,spec_id,version_no,spec_revision,source_sha256,name_snapshot,spec_snapshot,note,test_run_id,test_passed,test_model_binding)
+    VALUES(version_id,actor,p_spec,h.next_version_no,s.revision,s.sha,s.name,s.spec,p_note,p_test_run,tested,test_binding);
   UPDATE agentstudio.agent_release_heads SET next_version_no=next_version_no+1,updated_at=clock_timestamp() WHERE spec_id=p_spec AND owner_user_id=actor;
   result=jsonb_build_object('spec_id',p_spec,'request_id',p_request,'version_id',version_id,'version_no',h.next_version_no,'version_revision',1,
-    'version_sha256',agentstudio.release_version_sha(version_id),'release_revision',h.revision,'source_sha256',s.sha,'status','draft','test_passed',false,'replayed',false);
+    'version_sha256',agentstudio.release_version_sha(version_id),'release_revision',h.revision,'source_sha256',s.sha,'status','draft','test_passed',tested,'replayed',false);
   INSERT INTO agentstudio.agent_release_receipts(actor_user_id,request_id,spec_id,action,request_sha256,input_sha256,result)
     VALUES(actor,p_request,p_spec,'snapshot',p_request_sha,input_sha,result);
   INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata)
-    VALUES(actor,actor,'agent.release.snapshot','agent_spec',p_spec::text,'succeeded',jsonb_build_object('version_id',version_id,'version_no',h.next_version_no,'spec_revision',s.revision,'source_sha256',s.sha,'test_passed',false));
+    VALUES(actor,actor,'agent.release.snapshot','agent_spec',p_spec::text,'succeeded',jsonb_build_object('version_id',version_id,'version_no',h.next_version_no,'spec_revision',s.revision,'source_sha256',s.sha,'test_passed',tested));
   RETURN result;
 END $fn$;
 CREATE FUNCTION agentstudio.agent_release_publish(p_spec uuid,p_version uuid,p_spec_revision bigint,p_source_sha text,p_version_sha text,p_version_revision bigint,
@@ -217,7 +287,7 @@ BEGIN
   SELECT * INTO v FROM agentstudio.agent_release_versions WHERE id=p_version AND spec_id=p_spec AND owner_user_id=actor AND status<>'deleted' FOR UPDATE;
   IF v.id IS NULL THEN RAISE EXCEPTION 'agent_release_version_not_found'; END IF;
   IF v.revision<>p_version_revision OR agentstudio.release_version_sha(v.id) IS DISTINCT FROM p_version_sha THEN RAISE EXCEPTION 'agent_release_version_changed'; END IF;
-  IF NOT v.test_passed AND NOT p_ack_untested THEN RAISE EXCEPTION 'agent_release_untested_ack_required'; END IF;
+  IF NOT p_ack_untested AND (NOT v.test_passed OR NOT agentstudio.release_test_checked(p_spec,v.test_run_id,v.source_sha256,'publish')) THEN RAISE EXCEPTION 'agent_release_untested_ack_required'; END IF;
   SELECT id INTO current_id FROM agentstudio.agent_release_versions WHERE spec_id=p_spec AND owner_user_id=actor AND status='published' FOR UPDATE;
   IF h.active_version_id IS DISTINCT FROM current_id THEN RAISE EXCEPTION 'agent_release_head_changed'; END IF;
   already=v.status='published';
@@ -334,7 +404,8 @@ BEGIN
 END $fn$;
 DO $functions$ DECLARE signature text; BEGIN
   FOREACH signature IN ARRAY ARRAY['release_utf16_length(text)','release_native_active(uuid)','release_source_seal(uuid,uuid,text,bigint,jsonb)','release_source_sha(uuid)','release_version_sha(uuid)',
-    'release_version_immutable()','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)',
+    'release_version_immutable()','release_test_checked(uuid,uuid,text,text)','agent_release_workspace(uuid)','agent_release_detail(uuid,uuid)','agent_release_receipt(uuid,uuid)',
+    'agent_release_acceptance(uuid,uuid,bigint,text,uuid,text)','agent_release_acceptance_status(uuid,uuid)',
     'agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text)',
     'agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text)',
     'agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text)',
@@ -344,6 +415,7 @@ DO $functions$ DECLARE signature text; BEGIN
   END LOOP;
 END $functions$;
 GRANT EXECUTE ON FUNCTION agentstudio.agent_release_workspace(uuid),agentstudio.agent_release_detail(uuid,uuid),agentstudio.agent_release_receipt(uuid,uuid),
+  agentstudio.agent_release_acceptance(uuid,uuid,bigint,text,uuid,text),agentstudio.agent_release_acceptance_status(uuid,uuid),
   agentstudio.agent_release_snapshot(uuid,bigint,text,text,uuid,uuid,text),
   agentstudio.agent_release_publish(uuid,uuid,bigint,text,text,bigint,bigint,boolean,boolean,uuid,text),
   agentstudio.agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text),

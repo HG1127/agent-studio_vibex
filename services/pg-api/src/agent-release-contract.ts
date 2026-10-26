@@ -7,6 +7,7 @@ type Current={expected_spec_revision:number;source_sha256:string}
 type Version={version_id:string;version_sha256:string;expected_version_revision:number}
 export type AgentReleaseChoice=Request&(
   Current&{action:"snapshot";note:string;test_run_id:string|null}|
+  Current&{action:"acceptance";instruction:string;max_steps:number;model_binding:NonNullable<AgentSpecInput["model_binding"]>|null;confirm:true}|
   Current&Version&{action:"publish";expected_release_revision:number;confirm:true;acknowledge_untested:boolean}|
   Current&Version&{action:"restore";confirm:true;reason:string}|
   Version&{action:"delete_draft";confirm:true})
@@ -36,7 +37,7 @@ export function parseAgentReleaseStoredSpec(raw:unknown):{snapshot:Record<string
 export function parseAgentReleaseChoice(raw:unknown):AgentReleaseChoice{
   if(!raw||typeof raw!=="object"||Array.isArray(raw))invalid()
   const p=raw as Record<string,unknown>,common=["action","request_id"],current=["expected_spec_revision","source_sha256"],version=["version_id","version_sha256","expected_version_revision"]
-  const fields:Record<string,string[]>={snapshot:[...current,"note","test_run_id"],publish:[...current,...version,"expected_release_revision","confirm","acknowledge_untested"],restore:[...current,...version,"confirm","reason"],delete_draft:[...version,"confirm"]}
+  const fields:Record<string,string[]>={snapshot:[...current,"note","test_run_id"],acceptance:[...current,"instruction","max_steps","model_binding","confirm"],publish:[...current,...version,"expected_release_revision","confirm","acknowledge_untested"],restore:[...current,...version,"confirm","reason"],delete_draft:[...version,"confirm"]}
   if(typeof p.action!=="string"||!Object.hasOwn(fields,p.action))invalid()
   const keys=[...common,...fields[p.action]!]
   if(Object.keys(p).length!==keys.length||keys.some(k=>!Object.hasOwn(p,k)))invalid()
@@ -44,6 +45,12 @@ export function parseAgentReleaseChoice(raw:unknown):AgentReleaseChoice{
   const source=()=>({expected_spec_revision:revision(p.expected_spec_revision),source_sha256:sha(p.source_sha256)})
   if(p.action==="snapshot")return {action:"snapshot",request_id,...source(),note:text(p.note,0,500),test_run_id:p.test_run_id===null?null:uuid(p.test_run_id)}
   if(p.confirm!==true)invalid()
+  if(p.action==="acceptance"){
+    if(!Number.isSafeInteger(p.max_steps)||Number(p.max_steps)<1||Number(p.max_steps)>30)invalid()
+    let model_binding:NonNullable<AgentSpecInput["model_binding"]>|null=null
+    if(p.model_binding!==null){try{model_binding=safeAgentSpec({goal:"Validate owned acceptance model",model_binding:p.model_binding}).model_binding??invalid()}catch{invalid()}}
+    return {action:"acceptance",request_id,...source(),instruction:text(p.instruction,1,2000),max_steps:Number(p.max_steps),model_binding,confirm:true}
+  }
   const selected={version_id:uuid(p.version_id),version_sha256:sha(p.version_sha256),expected_version_revision:revision(p.expected_version_revision)}
   if(p.action==="delete_draft")return {action:"delete_draft",request_id,...selected,confirm:true}
   if(p.action==="restore")return {action:"restore",request_id,...source(),...selected,confirm:true,reason:text(p.reason,8,500)}

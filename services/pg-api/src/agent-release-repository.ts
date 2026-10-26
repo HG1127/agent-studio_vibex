@@ -1,9 +1,14 @@
 // Full configuration versions are owner-only. This repository is not routed
 // or enabled until migration046 and its independent startup audit are ready.
-import {createHash} from "node:crypto"
+import {createHash,randomUUID} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor,verifyAgentSpecResources} from "./repository.ts"
 import {parseAgentReleaseChoice,parseAgentReleaseStoredSpec,type AgentReleaseChoice} from "./agent-release-contract.ts"
+import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
+import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,workflowV2RunColumns,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
+import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
+import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
+import {workflowAgentJson} from "./workflow-v2-agent-machine.ts"
 
 type ObjectValue=Record<string,unknown>
 function object(value:unknown):ObjectValue{
@@ -18,7 +23,7 @@ function result(raw:unknown,spec:string,request:string):ObjectValue{
 }
 const errors=new Set(["agent_release_actor_unavailable","agent_release_not_found","agent_release_version_not_found","agent_release_request_conflict",
   "agent_release_source_changed","agent_release_version_changed","agent_release_head_changed","agent_release_untested_ack_required","agent_release_version_not_draft",
-  "agent_release_acceptance_not_ready","invalid_agent_release_snapshot","invalid_agent_release_publish","invalid_agent_release_delete","invalid_agent_release_restore",
+  "agent_release_acceptance_unavailable","invalid_agent_release_acceptance","invalid_agent_release_snapshot","invalid_agent_release_publish","invalid_agent_release_delete","invalid_agent_release_restore",
   "agent_release_restore_not_prepared","agent_release_restore_write_changed"])
 async function transaction<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,actor:string)=>Promise<T>):Promise<T>{
   try{return await withActor(pool,identity,async(db,actor)=>{
@@ -43,15 +48,45 @@ async function receipt(db:SqlClient,spec:string,request:string){
   return {request_sha256:value.request_sha256,result:result(value.result,spec,request)}
 }
 export class AgentReleaseRepository{
-  readonly pool:SqlPool;readonly enabled:boolean
-  constructor(pool:SqlPool,options:{enabled?:boolean}={}){this.pool=pool;this.enabled=options.enabled===true}
-  workspace(identity:Identity,rawId:string){const target=specId(rawId);return transaction(this.pool,identity,async db=>{
+  readonly pool:SqlPool;readonly enabled:boolean;readonly agents:AutonomousAgentRunRepository
+  constructor(pool:SqlPool,options:{enabled?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean}={}){
+    this.pool=pool;this.enabled=options.enabled===true;this.agents=new AutonomousAgentRunRepository(pool,options)
+  }
+  workspace(identity:Identity,rawId:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor)=>{
     const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item
     if(raw===null)throw new HttpError(404,"agent_release_not_found")
-    return object(raw)
+    const value=object(raw)
+    if(!Array.isArray(value.versions)||value.versions.length>100)throw new HttpError(503,"invalid_agent_release_response")
+    const validity=new Map<string,boolean>(),versions:ObjectValue[]=[]
+    for(const item of value.versions){const version=object(item)
+      let current=false
+      if(version.test_passed===true&&isUuid(version.test_run_id)&&typeof version.source_sha256==="string"){
+        const key=version.test_run_id+":"+version.source_sha256
+        if(!validity.has(key))validity.set(key,await this.currentAcceptance(db,actor,target,version.test_run_id,version.source_sha256))
+        current=validity.get(key)===true
+      }
+      versions.push({...version,test_current:current})
+    }
+    return {...value,versions}
   })}
   detail(identity:Identity,rawId:string,rawVersion:string){const target=specId(rawId),version=specId(rawVersion)
-    return transaction(this.pool,identity,db=>this.ownedDetail(db,target,version))
+    return transaction(this.pool,identity,async(db,actor)=>{
+      const value=await this.ownedDetail(db,target,version)
+      return {...value,test_current:value.test_passed===true&&isUuid(value.test_run_id)&&typeof value.source_sha256==="string"&&
+        await this.currentAcceptance(db,actor,target,value.test_run_id,value.source_sha256)}
+    })
+  }
+  async acceptanceStatus(identity:Identity,rawId:string,rawRun:string){
+    const target=specId(rawId),run=specId(rawRun)
+    const status=await transaction(this.pool,identity,async(db,actor)=>{
+      const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance_status($1::uuid,$2::uuid) AS item",[target,run])).rows[0]?.item
+      if(raw===null)throw new HttpError(404,"agent_release_acceptance_not_found")
+      const value=object(raw)
+      return {...value,test_current:typeof value.source_sha256==="string"&&await this.currentAcceptance(db,actor,target,run,value.source_sha256)}
+    })
+    // The standard run projection repeats the original source/ACL checks and
+    // clears unavailable knowledge output; no private checkpoint is returned.
+    return {...status,execution:await this.agents.get(identity,run)}
   }
   private async ownedDetail(db:SqlClient,target:string,version:string){
     const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_detail($1::uuid,$2::uuid) AS item",[target,version])).rows[0]?.item
@@ -88,11 +123,19 @@ export class AgentReleaseRepository{
   }
   private async apply(db:SqlClient,actor:string,target:string,choice:AgentReleaseChoice,fingerprint:string):Promise<ObjectValue>{
     if(choice.action==="restore")return this.restore(db,actor,target,choice,fingerprint)
+    if(choice.action==="acceptance")return this.acceptance(db,actor,target,choice,fingerprint)
     let query:string,args:unknown[]
     if(choice.action==="snapshot"){
+      if(choice.test_run_id!==null)await this.stageTest(db,actor,target,choice.test_run_id,choice.source_sha256,"snapshot")
       query="SELECT agentstudio.agent_release_snapshot($1::uuid,$2::bigint,$3::text,$4::text,$5::uuid,$6::uuid,$7::text) AS item"
       args=[target,choice.expected_spec_revision,choice.source_sha256,choice.note,choice.test_run_id,choice.request_id,fingerprint]
     }else if(choice.action==="publish"){
+      if(!choice.acknowledge_untested){
+        const version=await this.ownedDetail(db,target,choice.version_id)
+        if(version.test_passed!==true||!isUuid(version.test_run_id)||typeof version.source_sha256!=="string")throw new HttpError(409,"agent_release_untested_ack_required")
+        if(!await this.currentAcceptance(db,actor,target,version.test_run_id,version.source_sha256))throw new HttpError(409,"agent_release_untested_ack_required")
+        await this.stageTest(db,actor,target,version.test_run_id,version.source_sha256,"publish")
+      }
       query="SELECT agentstudio.agent_release_publish($1::uuid,$2::uuid,$3::bigint,$4::text,$5::text,$6::bigint,$7::bigint,$8::boolean,$9::boolean,$10::uuid,$11::text) AS item"
       args=[target,choice.version_id,choice.expected_spec_revision,choice.source_sha256,choice.version_sha256,choice.expected_version_revision,choice.expected_release_revision,
         choice.confirm,choice.acknowledge_untested,choice.request_id,fingerprint]
@@ -101,6 +144,45 @@ export class AgentReleaseRepository{
       args=[target,choice.version_id,choice.version_sha256,choice.expected_version_revision,choice.confirm,choice.request_id,fingerprint]
     }
     return result((await db.query<{item:unknown}>(query,args)).rows[0]?.item,target,choice.request_id)
+  }
+  private async acceptance(db:SqlClient,actor:string,target:string,choice:Extract<AgentReleaseChoice,{action:"acceptance"}>,fingerprint:string){
+    const owned=(await db.query<{spec:unknown;revision:string|number}>("SELECT spec,revision FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[target,actor])).rows[0]
+    if(!owned)throw new HttpError(404,"agent_release_not_found")
+    const current=object((await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item)
+    if(Number(owned.revision)!==choice.expected_spec_revision||current.source_sha256!==choice.source_sha256)throw new HttpError(409,"agent_release_source_changed")
+    const stored=parseAgentReleaseStoredSpec(owned.spec),binding=choice.model_binding??stored.validated.model_binding
+    if(!binding)throw new HttpError(409,"agent_release_model_required")
+    await verifyAgentSpecResources(db,actor,{...stored.validated,model_binding:binding})
+    const run=await this.agents.admitOwned(db,actor,target,{expected_revision:choice.expected_spec_revision,instruction:choice.instruction,max_steps:choice.max_steps,
+      idempotency_key:"release_acceptance_"+choice.request_id},randomUUID(),binding)
+    return result((await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance($1::uuid,$2::uuid,$3::bigint,$4::text,$5::uuid,$6::text) AS item",
+      [target,run.run.id,choice.expected_spec_revision,choice.source_sha256,choice.request_id,fingerprint])).rows[0]?.item,target,choice.request_id)
+  }
+  private async currentAcceptance(db:SqlClient,actor:string,target:string,runId:string,sourceSha:string):Promise<boolean>{
+    const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance_status($1::uuid,$2::uuid) AS item",[target,runId])).rows[0]?.item
+    if(raw===null)return false
+    const acceptance=object(raw)
+    if(acceptance.status!=="succeeded"||acceptance.source_sha256!==sourceSha)return false
+    const current=object((await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item)
+    if(current.source_sha256!==sourceSha)return false
+    const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[runId,actor])).rows[0]
+    if(!row||row.kind!=="agent"||row.agent_spec_id!==target||row.status!=="succeeded")return false
+    try{
+      const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+      if(state.execution_mode!=="agent_native_v2"||Number(acceptance.spec_revision)!==state.spec_revision||
+        Number(acceptance.max_steps)!==state.graph.nodes[1]?.data.max_steps||workflowAgentJson(acceptance.model_binding)!==workflowAgentJson(state.graph.nodes[1]?.data.model_binding)||
+        createHash("sha256").update(row.instruction).digest("hex")!==acceptance.instruction_sha256||
+        inspectWorkflowV2Checkpoint(state.graph,state.machine).status!=="succeeded")return false
+      await verifyWorkflowV2Snapshot(db,actor,row,state)
+    }catch(error){if(error instanceof HttpError&&[400,404,409].includes(error.status))return false;throw error}
+    const complete=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key='wf2_00002_agent' AND status='succeeded') AND "+
+      "EXISTS(SELECT 1 FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='succeeded' AND metadata->>'agent_phase'='model') AS ok",[runId,actor])).rows[0]?.ok
+    return complete===true&&await currentKnowledgeObservations(db,runId)
+  }
+  private async stageTest(db:SqlClient,actor:string,target:string,run:string,sourceSha:string,kind:"snapshot"|"publish"){
+    if(!await this.currentAcceptance(db,actor,target,run,sourceSha))throw new HttpError(409,"agent_release_acceptance_unavailable")
+    await db.query("SELECT set_config('agentstudio.release_checked_test',jsonb_build_object('actor',$1::uuid,'spec',$2::uuid,'run',$3::uuid,'source_sha256',$4::text,'kind',$5::text,'transaction',txid_current()::text)::text,true)",
+      [actor,target,run,sourceSha,kind])
   }
   private async restore(db:SqlClient,actor:string,target:string,choice:Extract<AgentReleaseChoice,{action:"restore"}>,fingerprint:string){
     const version=await this.ownedDetail(db,target,choice.version_id),stored=parseAgentReleaseStoredSpec(version.spec_snapshot)

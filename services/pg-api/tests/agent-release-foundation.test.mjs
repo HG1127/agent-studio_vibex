@@ -64,7 +64,7 @@ test("draft full-version foundation is private, owner-only, immutable and never 
       "SELECT agentstudio.agent_release_snapshot($1,$2,$3,$4,$5,$6,$7) AS item",[role.id,source.spec_revision,source.source_sha256,note,testRun,requestId,"b".repeat(64)])).rows[0].item)
     await assert.rejects(save(f.bob),/agent_release_not_found/)
     await assert.rejects(save(f.alice,"Owner snapshot",randomUUID(),{...snapshotSource,source_sha256:"f".repeat(64)}),/agent_release_source_changed/)
-    await assert.rejects(save(f.alice,"Owner snapshot",randomUUID(),snapshotSource,randomUUID()),/agent_release_acceptance_not_ready/)
+    await assert.rejects(save(f.alice,"Owner snapshot",randomUUID(),snapshotSource,randomUUID()),/agent_release_acceptance_unavailable/)
     const saved=await save();assert.equal(saved.version_no,2);assert.equal(saved.status,"draft");assert.equal(saved.test_passed,false)
     assert.equal(saved.replayed,false);assert.equal((await save()).replayed,true);assert.equal((await save()).version_id,saved.version_id)
     await assert.rejects(save(f.alice,"Changed request using same UUID"),/agent_release_request_conflict/)

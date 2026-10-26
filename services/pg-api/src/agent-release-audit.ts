@@ -6,9 +6,10 @@ const privateColumns:Record<string,string[]>={
   agent_release_acceptance_runs:["run_id","owner_user_id","spec_id","request_id","spec_revision","source_sha256","instruction_sha256","max_steps","selected_model_binding","created_at"],
   agent_release_receipts:["actor_user_id","request_id","spec_id","action","request_sha256","input_sha256","result","created_at"],
 }
-const reads={...privateColumns,agent_specs:["id","owner_user_id","name","spec","revision"],users:["id","status","external_issuer","external_subject"],"auth.accounts":["user_id","enabled"]}
+const reads={...privateColumns,agent_specs:["id","owner_user_id","name","spec","revision"],runs:["id","owner_user_id","kind","agent_spec_id","status","instruction","checkpoint"],users:["id","status","external_issuer","external_subject"],"auth.accounts":["user_id","enabled"]}
 const inserts:Record<string,string[]>={agent_release_heads:["spec_id","owner_user_id"],
-  agent_release_versions:["id","owner_user_id","spec_id","version_no","spec_revision","source_sha256","name_snapshot","spec_snapshot","note"],
+  agent_release_versions:["id","owner_user_id","spec_id","version_no","spec_revision","source_sha256","name_snapshot","spec_snapshot","note","test_run_id","test_passed","test_model_binding"],
+  agent_release_acceptance_runs:["run_id","owner_user_id","spec_id","request_id","spec_revision","source_sha256","instruction_sha256","max_steps","selected_model_binding"],
   agent_release_receipts:["actor_user_id","request_id","spec_id","action","request_sha256","input_sha256","result"],
   audit_events:["owner_user_id","actor_user_id","action","target_kind","target_id","result","metadata"]}
 const updates:Record<string,string[]>={agent_release_heads:["next_version_no","updated_at","active_version_id","revision"],agent_release_versions:["status","revision","updated_at","published_at","deleted_at"]}
@@ -20,6 +21,9 @@ export const agentReleaseFunctions:Array<[string,string[]]>=[
   ["agent_release_delete_draft(uuid,uuid,text,bigint,boolean,uuid,text)",[api]],
   ["agent_release_restore_prepare(uuid,uuid,bigint,text,text,bigint,boolean,text,uuid,text)",[api]],
   ["agent_release_restore_finish(uuid,uuid,text)",[api]],
+  ["release_test_checked(uuid,uuid,text,text)",[]],
+  ["agent_release_acceptance(uuid,uuid,bigint,text,uuid,text)",[api]],
+  ["agent_release_acceptance_status(uuid,uuid)",[api]],
 ]
 function refuse():never{throw Error("unsafe_agent_release_privileges")}
 export async function agentReleasesInstalled(db:SqlClient):Promise<boolean>{

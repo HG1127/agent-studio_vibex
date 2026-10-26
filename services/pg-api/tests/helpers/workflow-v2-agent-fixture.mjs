@@ -17,17 +17,23 @@ import {createWorkflowV2ToolInternalHandler} from "../../src/workflow-v2-tool-ha
 import {workflowV2ModelEffectExecutor} from "../../src/workflow-v2-model-client.ts"
 import {workflowV2ToolEffectExecutor} from "../../src/workflow-v2-tool-client.ts"
 import {withDisposableBoundModelTls} from "./bound-model-loopback-tls.mjs"
+import {agentCollaborationFixture} from "./agent-collaboration-fixture.mjs"
 export const issuer="https://synthetic-workflow-agent.invalid",alice={issuer,subject:"alice"},bob={issuer,subject:"bob"}
 const sql=file=>readFileSync(new URL("../../../../db/postgres/"+file,import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
-export async function agentFixture({autonomous=false,mcp=false,smithery=false,sharing=false}={}){
-  const db=await PGlite.create({extensions:{vector}});await db.exec(sql("001_stage_schema.sql"))
+export async function agentFixture({autonomous=false,mcp=false,smithery=false,sharing=false,nativeEmployees=false}={}){
+  const native=nativeEmployees?await agentCollaborationFixture():null
+  const alice=native?.alice??{issuer,subject:"alice"},bob=native?.bob??{issuer,subject:"bob"}
+  const db=native?.db??await PGlite.create({extensions:{vector}})
+  if(!native){await db.exec(sql("001_stage_schema.sql"))
   await db.query("INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_023','synthetic predecessor')")
   for(const migration of ["pg_v9_024_bound_dispatch_identity.sql","pg_v9_025_workflow_model_identity.sql","pg_v9_026_workflow_tool_identity.sql","pg_v9_027_workflow_agent_identity.sql",...(autonomous||mcp?["pg_v9_028_autonomous_agent_identity.sql"]:[]),...(mcp?["pg_v9_029_mcp_connections.sql","pg_v9_030_mcp_tool_identity.sql"]:[])])
     await db.exec(sql("migrations/"+migration))
   if(smithery){if(!mcp)throw Error("smithery_requires_mcp_fixture");await db.exec(sql("migrations/pg_v9_031_smithery_managed.sql"))}
   if(sharing){if(!smithery)throw Error("sharing_requires_full_predecessors");for(const version of ["032_knowledge_access","033_knowledge_content","034_knowledge_runtime"])await db.exec(sql("migrations/pg_v9_"+version+".sql"))}
-  const users={};for(const subject of ["alice","bob"])users[subject]=(await db.query("INSERT INTO agentstudio.users(external_issuer,external_subject) VALUES($1,$2) RETURNING id",[issuer,subject])).rows[0].id
+  }
+  const users=native?{alice:native.owner.id,bob:native.recipient.id}:{}
+  if(!native)for(const subject of ["alice","bob"])users[subject]=(await db.query("INSERT INTO agentstudio.users(external_issuer,external_subject) VALUES($1,$2) RETURNING id",[issuer,subject])).rows[0].id
   let tail=Promise.resolve(),fault,beforeDispatch
   const pool={knowledgeSharing:sharing,async connect(){const before=tail;let release;tail=new Promise(resolve=>{release=resolve});await before
     return {async query(text,values=[]){fault?.(text,values);return db.query(text,values)},release}}}
@@ -88,6 +94,6 @@ export async function agentFixture({autonomous=false,mcp=false,smithery=false,sh
       else if(["succeeded","failed","paused","cancelled"].includes(detail.run.status))return detail
     }throw Error("synthetic Agent did not settle")
   }
-  return {db,pool,resources,users,models,agents,flows,runs,make,approve,privateTls,drive,
+  return {db,pool,resources,users,identities:{alice,bob},models,agents,flows,runs,make,approve,privateTls,drive,
     setFault:fn=>{fault=fn},setBeforeDispatch:fn=>{beforeDispatch=fn},sql,async close(){await db.close();key.fill(0)}}
 }

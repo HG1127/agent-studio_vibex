@@ -103,7 +103,7 @@
     "test:knowledge-query": "node --experimental-strip-types --test --test-concurrency=1 tests/knowledge-execution-source.test.mjs tests/knowledge-query-runtime.test.mjs tests/knowledge-query-lifecycle.test.mjs tests/knowledge-query-policy.test.mjs tests/knowledge-query-privileges.test.mjs tests/knowledge-query-private-flow.test.mjs tests/knowledge-embedding-http.test.mjs tests/knowledge-index-service.test.mjs tests/knowledge-tool-execution.test.mjs",
     "test:schedule-runtime": "node --experimental-strip-types --test --test-concurrency=1 tests/schedule-runtime.test.mjs",
     "test:agent-collaboration": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-safe-text.test.mjs tests/agent-collaboration-contract.test.mjs tests/agent-collaboration-sql.test.mjs tests/agent-collaboration-repository.test.mjs tests/agent-collaboration-http.test.mjs tests/agent-role-limits.test.mjs ../../tests/pg-native-agent-collaboration.test.mjs",
-    "test:agent-releases": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-release-contract.test.mjs tests/agent-release-foundation.test.mjs tests/agent-release-restore.test.mjs"
+    "test:agent-releases": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-release-contract.test.mjs tests/agent-release-foundation.test.mjs tests/agent-release-restore.test.mjs tests/agent-release-acceptance.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",

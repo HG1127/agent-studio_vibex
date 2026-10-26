@@ -20,6 +20,12 @@ test("full version choices never accept client snapshots or test results and bin
   const drop={action:"delete_draft",request_id:id,version_id:version,version_sha256:hash,expected_version_revision:1,confirm:true}
   assert.deepEqual(parseAgentReleaseChoice(drop),drop)
   assert.throws(()=>parseAgentReleaseChoice({...drop,source_sha256:hash}))
+  const acceptance={action:"acceptance",...base,instruction:"Synthetic acceptance task",max_steps:8,model_binding:null,confirm:true}
+  assert.deepEqual(parseAgentReleaseChoice(acceptance),acceptance)
+  for(const extra of [{max_steps:31},{max_steps:0},{instruction:"x".repeat(2001)},{confirm:false},{model_binding:{api_key:"never accepted"}},{test_passed:true},{spec_snapshot:{}}])
+    assert.throws(()=>parseAgentReleaseChoice({...acceptance,...extra}))
+  assert.deepEqual(parseAgentReleaseChoice({...acceptance,model_binding:{connection_id:version,connection_revision:2,model_id:"synthetic-b"}}).model_binding,
+    {connection_id:version,connection_revision:2,model_id:"synthetic-b"})
 })
 test("owned historical snapshots retain exact text and bindings while rejecting credentials, disabled approval and overflow",()=>{
   const original={...safeAgentSpec({goal:"Reviewed role",tools:["calculate"]}),goal:"  Exact historical wording  ",model_binding:null}
