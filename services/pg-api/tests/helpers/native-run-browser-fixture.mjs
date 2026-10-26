@@ -31,6 +31,8 @@ import {inspectAgentHumanInputSchema} from "../../src/agent-human-input-audit.ts
 import {AgentMemoryRepository} from "../../src/agent-memory-repository.ts"
 import {verifyAgentMemoryCredentials} from "../../src/agent-memory-audit.ts"
 import {inspectAgentMemoryContextSchema} from "../../src/agent-memory-context-audit.ts"
+import {AgentMemoryDerivedRepository} from "../../src/agent-memory-derived-repository.ts"
+import {inspectAgentMemoryDerivedSchema} from "../../src/agent-memory-derived-audit.ts"
 import {WorkflowV2ModelDispatch,WorkflowV2ModelLeaseIdentity,verifiedWorkflowV2ModelDispatch} from "../../src/workflow-v2-model-dispatch.ts"
 import {WorkflowV2ToolDispatch,WorkflowV2ToolLeaseIdentity,verifiedWorkflowV2ToolDispatch} from "../../src/workflow-v2-tool-dispatch.ts"
 import {createWorkflowV2ModelInternalHandler} from "../../src/workflow-v2-model-handler.ts"
@@ -96,6 +98,8 @@ const memory=process.env.AGENT_STUDIO_PG_BROWSER_MEMORY==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_MEMORY!==undefined&&!memory||memory&&(!human||!autonomous))throw Error("invalid_synthetic_memory_browser_mode")
 const memoryRuntime=process.env.AGENT_STUDIO_PG_BROWSER_MEMORY_RUNTIME==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_MEMORY_RUNTIME!==undefined&&!memoryRuntime||memoryRuntime&&!memory)throw Error("invalid_synthetic_memory_runtime_browser_mode")
+const derivedMemory=process.env.AGENT_STUDIO_PG_BROWSER_DERIVED_MEMORY==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_DERIVED_MEMORY!==undefined&&!derivedMemory||derivedMemory&&!memoryRuntime)throw Error("invalid_synthetic_derived_memory_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -122,6 +126,7 @@ Object.assign(state,{collaborationDrop:false,collaborationHashes:[]})
 Object.assign(state,{releaseDrop:false,releaseHashes:[],humanDrop:false,humanHashes:[],humanConfirms:0,humanModelCalls:0})
 Object.assign(state,{memoryDrop:false,memoryHashes:[],memoryConfirms:0})
 Object.assign(state,{memoryPrompts:0})
+Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedHashes:[],derivedConfirms:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -144,6 +149,7 @@ try{
   if(human){await db.exec(load("db/postgres/migrations/pg_v9_048_agent_human_input.sql"));assert.equal(await inspectAgentHumanInputSchema(pool),true)}
   if(memory){await db.exec(load("db/postgres/migrations/pg_v9_049_agent_memory.sql"));assert.equal(await verifyAgentMemoryCredentials(db),true)}
   if(memoryRuntime){await db.exec(load("db/postgres/migrations/pg_v9_050_agent_memory_context.sql"));assert.equal(await inspectAgentMemoryContextSchema(pool),true)}
+  if(derivedMemory){await db.exec(load("db/postgres/migrations/pg_v9_051_agent_memory_derived.sql"));assert.equal(await inspectAgentMemoryDerivedSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -238,9 +244,10 @@ try{
       allowRunSubmission:state.allowed,allowBoundRunSubmission:state.allowed,allowAutonomousAgentSubmission:(autonomous||scheduling)&&state.allowed,allowWorkflowV2Submission:workflow&&state.allowed,allowScheduleRuntime:scheduling&&state.allowed,
       allowAgentCollaboration:collaboration,
       allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
+      allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:state.derivedAllowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
-          {...policy,configurationWrites:state.configAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
+          {...policy,configurationWrites:state.configAllowed,agentDerivedMemoryUat:state.derivedAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
             knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed})){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
@@ -274,6 +281,8 @@ try{
     }
     const memoryRepository=new AgentMemoryRepository(pool,{allowWrites:memory}),remember=memoryRepository.change.bind(memoryRepository)
     memoryRepository.change=async(identity,body)=>{state.memoryHashes.push({action:body.action,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return remember(identity,body)}
+    const derivedRepository=new AgentMemoryDerivedRepository(pool,{allowWrites:derivedMemory}),changeDerived=derivedRepository.change.bind(derivedRepository)
+    derivedRepository.change=async(identity,body)=>{state.derivedHashes.push({action:body.action,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return changeDerived(identity,body)}
     backend=createHandler({allowedOrigin:origin,verifyToken:async()=>{throw Error("native_cookie_required")},
       authenticateRequest:req=>native.authenticateRequest(req),repository:agents,
       runRepository:createNativeRunRepository(pool,policy),...(autonomous?{autonomousAgentRunRepository:runs}:workflow?{workflowV2RunRepository:runs}:{runRepository:runs}),workflowRepository:flows,
@@ -282,6 +291,7 @@ try{
       ...(releases?{agentReleaseRepository:releaseRepo}:{}),
       ...(human?{agentHumanInputRepository:humanRepository("agent_native_v2"),workflowHumanInputRepository:humanRepository("workflow_native_v2")}:{}),
       ...(memory?{agentMemoryRepository:memoryRepository}:{}),
+      ...(derivedMemory?{agentDerivedMemoryRepository:derivedRepository}:{}),
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
       ...(modern?{knowledgeAccessRepository:new KnowledgeAccessRepository(pool,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),knowledgeContentRepository:new KnowledgeContentRepository(pool)}:{}),
       ...(semantic?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(pool,embeddingEndpointPolicy({})),knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(pool),
@@ -320,6 +330,7 @@ try{
             ...(memory?{memoryHashes:state.memoryHashes,memoryConfirms:state.memoryConfirms,memoryEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_entries")).rows[0].n,
               memoryReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_receipts")).rows[0].n}:{}),
             ...(memoryRuntime?{memoryPrompts:state.memoryPrompts,memoryContexts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_run_contexts")).rows[0].n}:{}),
+            ...(derivedMemory?{derivedHashes:state.derivedHashes,derivedConfirms:state.derivedConfirms,derivedEntries:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_entries")).rows[0].n,derivedReceipts:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_derived_receipts")).rows[0].n}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
             ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,decisionHashes:state.decisionHashes,semanticModelPrompts:state.semanticModelPrompts,
@@ -345,6 +356,9 @@ try{
         else if(req.url==="/__fixture/model"&&req.method==="POST")output=await model.tick()
         else if(req.url==="/__fixture/drop-next-human"&&req.method==="POST"&&human){state.humanDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-memory"&&req.method==="POST"&&memory){state.memoryDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-derived-memory"&&req.method==="POST"&&derivedMemory){state.derivedDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/deny-derived-memory"&&req.method==="POST"&&derivedMemory){state.derivedAllowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/allow-derived-memory"&&req.method==="POST"&&derivedMemory){state.derivedAllowed=true;configure();output={ok:true}}
         else if(req.url==="/__fixture/drop-next-config"&&req.method==="POST"){state.configDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-knowledge"&&req.method==="POST"){state.contentDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-config"&&req.method==="POST"){state.configAllowed=false;configure();output={ok:true}}
@@ -377,6 +391,8 @@ try{
       if(human&&req.method==="POST"&&req.url.endsWith("/respond-confirm"))state.humanConfirms++
       if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/change"&&state.memoryDrop){state.memoryDrop=false;res.end=()=>{res.destroy();return res}}
       if(memory&&req.method==="POST"&&req.url==="/api/v2/agent-memories/confirm")state.memoryConfirms++
+      if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/change"&&state.derivedDrop){state.derivedDrop=false;res.end=()=>{res.destroy();return res}}
+      if(derivedMemory&&req.method==="POST"&&req.url==="/api/v2/agent-derived-memories/confirm")state.derivedConfirms++
       if(req.method==="POST"&&/^\/api\/v2\/schedules\/[0-9a-f-]{36}\/activate$/.test(req.url)&&state.scheduleDrop){state.scheduleDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&/^\/api\/v2\/agent-collaboration\/[0-9a-f-]{36}\/change$/.test(req.url)&&state.collaborationDrop){state.collaborationDrop=false;res.end=()=>{res.destroy();return res}}
       if(req.method==="POST"&&/^\/api\/v2\/agent-releases\/[0-9a-f-]{36}\/(?:change|acceptance)$/.test(req.url)&&state.releaseDrop){state.releaseDrop=false;res.end=()=>{res.destroy();return res}}

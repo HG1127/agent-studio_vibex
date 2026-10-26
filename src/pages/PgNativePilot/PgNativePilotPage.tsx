@@ -29,6 +29,7 @@ import PgNativeAgentRunPanel from "./PgNativeAgentRunPanel"
 import PgNativeAutonomousAgentPanel from "./PgNativeAutonomousAgentPanel"
 import PgNativeAgentPlanReviewPanel from "./PgNativeAgentPlanReviewPanel"
 import PgNativeAgentMemoryPanel from "./PgNativeAgentMemoryPanel"
+import PgNativeAgentDerivedMemoryPanel from "./PgNativeAgentDerivedMemoryPanel"
 import PgNativeAgentCollaborationPanel from "./PgNativeAgentCollaborationPanel"
 import PgNativeAgentReleasePanel from "./PgNativeAgentReleasePanel"
 const PgNativeWorkflowWorkspace=lazy(()=>import("./PgNativeWorkflowWorkspace"))
@@ -118,6 +119,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [employeeGovernance,setEmployeeGovernance]=useState({available:false,enabled:false})
   const [humanInput,setHumanInput]=useState({available:false,enabled:false})
   const [agentMemory,setAgentMemory]=useState({available:false,enabled:false})
+  const [derivedMemory,setDerivedMemory]=useState({available:false,enabled:false})
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
   const [toolConnections,setToolConnections]=useState<PgNativeToolConnection[]>([])
   const [modelEditing,setModelEditing]=useState<PgNativeModelConnection|null>(null)
@@ -150,6 +152,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setEmployeeGovernance({available:false,enabled:false})
     setHumanInput({available:false,enabled:false})
     setAgentMemory({available:false,enabled:false})
+    setDerivedMemory({available:false,enabled:false})
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
   const expireAgentSession=useCallback(()=>{
@@ -200,6 +203,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setEmployeeGovernance({available:capability?.employee_governance_available===true,enabled:capability?.employee_governance_enabled===true&&capability.config_writes_enabled===true})
       setHumanInput({available:capability?.agent_human_input_available===true,enabled:capability?.agent_human_responses_enabled===true&&capability.config_writes_enabled===true})
       setAgentMemory({available:capability?.agent_memory_available===true,enabled:capability?.agent_memory_writes_enabled===true&&capability.config_writes_enabled===true})
+      setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
       setReleasesAvailable(capability?.agent_releases_available===true)
       setReleaseAcceptanceEnabled(capability?.config_writes_enabled===true&&capability?.agent_release_acceptance_enabled===true)
@@ -554,6 +558,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}
             </>}
             <div hidden={section!=="agents"}>{agentMemory.available&&<PgNativeAgentMemoryPanel key={profile.id+":memory"} api={api} agents={agents} active={section==="agents"} canWrite={agentMemory.enabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
+            <div hidden={section!=="agents"}>{derivedMemory.available&&<PgNativeAgentDerivedMemoryPanel key={profile.id+":derived-memory"} api={api} agents={agents} active={section==="agents"} canWrite={derivedMemory.enabled&&!loading&&!busy} onExpired={expireAgentSession}/>}</div>
             <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentMcpToolsPanel key={profile.id} api={api} agents={agents}
               active={section==="agents"} enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}</div>
             <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentKnowledgePanel key={profile.id} api={api} agents={agents} bases={readableKnowledge}
