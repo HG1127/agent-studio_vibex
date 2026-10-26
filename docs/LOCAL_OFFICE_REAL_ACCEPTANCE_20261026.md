@@ -28,3 +28,11 @@
 ## 本机证据
 
 证据保存在项目忽略目录 `.tmp/real-computer-acceptance/office-business/`：`model-final-result.json`、`model-completed.png`、`receipt.json`、`independent-verification.json`、`model-report.pdf`、`model-report-page-1.png`。凭据、数据库、测试产物均不纳入 Git。
+
+## 发布与收尾
+
+用户明确批准后，连接提示修复部署为 `b808ce0207d986f92248561c2588c71b2a7b64fd`。沿用服务器原部署器，先校验脚本 SHA256、持锁、断言原运行版本为 e0ff8d6，再执行备份和部署；终端确认 `LAN_DEPLOY_OK b808ce0207d986f92248561c2588c71b2a7b64fd data_backup=yes`，配置与服务健康检查通过。最小发布包 SHA256：`88fcc079efa0f77dcda2038d32632b85ea884ac9beb1e24fd6b436fe7c342c22`。保留已合并的 Skill 功能，没有推送 GitHub。
+
+部署后重新载入原结果页并选择原已绑定电脑，确认提示为“本机已连接”，没有误报“1 项待连接”；原运行仍为已完成，回执、记录数和金额与部署前一致。未重跑任务或再次提交表单。补充证据：`postdeploy-ui-verification.json` 和 `deployment-b808ce0.png`。部署后 Tabbit 页面截图两次超时，因此以结构化 UI 核对和宝塔部署成功截图留证；部署前模型完成截图已保存。
+
+浏览器桥接在重载和个别交互时返回过可恢复的 `IndexSizeError` 警告；目标控件及结果核对成功。本轮隔离 React E2E 没有页面脚本错误。报告保留观察到的诊断，不宣称任意浏览器环境均无告警。
