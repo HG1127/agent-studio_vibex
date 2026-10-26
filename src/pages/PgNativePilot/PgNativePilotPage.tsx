@@ -542,11 +542,11 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                   kind:"agents",id:item.id,revision:item.revision,
                   name:item.name,detail:item.description
                 }):undefined}/>
-              {humanInput.available&&<PgNativeAgentPlanReviewPanel key={profile.id} api={api} agents={agents} enabled={canEditConfig&&!loading&&!busy} onUpdated={refresh} onExpired={expireAgentSession}/>}
+              {humanInput.available&&<PgNativeAgentPlanReviewPanel key={profile.id+":plan-review"} api={api} agents={agents} enabled={canEditConfig&&!loading&&!busy} onUpdated={refresh} onExpired={expireAgentSession}/>}
               {canEditConfig&&<PgNativeAgentModelBindingPanel
-                key={profile.id} api={api} agents={agents}
+                key={profile.id+":model-binding"} api={api} agents={agents}
                 connections={modelConnections} onUpdated={refresh} runtimeSubmissionEnabled={canRunOwnerModel}/>}
-              {canEditConfig&&<PgNativeAgentHttpToolsPanel key={profile.id} api={api} agents={agents} connections={toolConnections}
+              {canEditConfig&&<PgNativeAgentHttpToolsPanel key={profile.id+":http-tools"} api={api} agents={agents} connections={toolConnections}
                 enabled={configEditEnabled&&!loading&&!busy} onSaved={refresh} onExpired={expireAgentSession}/>}
             </>}
             <div hidden={section!=="agents"}>{(agentMcpOpened||section==="agents")&&<PgNativeAgentMcpToolsPanel key={profile.id} api={api} agents={agents}

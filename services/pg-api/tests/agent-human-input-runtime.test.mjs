@@ -99,9 +99,12 @@ test('scheduled Agent holds its overlap slot while awaiting the owner and standi
       const pending=await until(f,first.run_id,scheduled,'awaiting_input');assert.equal(calls,1)
       assert.equal((await scheduled({humanInputApproved:true}).tick()).status,'idle')
       assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.agent_human_input_responses WHERE run_id=$1',[first.run_id])).rows[0].n,0)
-      await f.db.query("UPDATE agentstudio.schedule_occurrences SET scheduled_for=scheduled_for-interval '2 minutes' WHERE run_id=$1",[first.run_id])
-      const overlap=await schedules.runNow(alice,draft.id,Number(activation.revision))
-      const skipped=await scheduler.tick();assert.equal(skipped.status,'skipped_overlap');assert.equal(skipped.occurrence_id,overlap.occurrence_id)
+      // Advance a distinct synthetic due occurrence, preserving the original
+      // scheduled_for / deterministic planned_run_id binding of the live run.
+      await f.db.query("UPDATE agentstudio.schedules SET next_at=clock_timestamp()-interval '1 second' WHERE id=$1",[draft.id])
+      const skipped=await scheduler.tick();assert.equal(skipped.status,'skipped_overlap')
+      const overlap=(await f.db.query("SELECT status,error_code,run_id FROM agentstudio.schedule_occurrences WHERE id=$1",[skipped.occurrence_id])).rows[0]
+      assert.deepEqual(overlap,{status:'skipped_overlap',error_code:'previous_run_incomplete',run_id:null})
       assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.runs')).rows[0].n,1);assert.equal(calls,1)
       await f.responses.change(alice,first.run_id,{...request(pending),decision:'approve',answer:''})
       const completed=await until(f,first.run_id,scheduled,'succeeded');assert.equal(completed.run.result_text,'Scheduled final after owner approval');assert.equal(calls,2)
