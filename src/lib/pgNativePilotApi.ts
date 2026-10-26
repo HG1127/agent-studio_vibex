@@ -3,6 +3,8 @@
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
+import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
+export type {PgNativeMemoryChoice,PgNativeMemoryReceipt,PgNativeMemoryItem,PgNativeMemoryPage} from "./pgNativeAgentMemory.ts"
 export type {AgentHumanResponse,PgNativeAgentHumanInput,PgNativeAgentHumanReceipt,PgNativeHumanHistory,PgNativeHumanHistoryPage} from "./pgNativeAgentHumanInput.ts"
 import {employeeChange,employeeGovernanceResult,employeeCreation,employeeCreationResult,type EmployeeChange,type EmployeeCreation} from "./pgNativeEmployeeGovernance.ts"
 import {agentDescriptiveLimits} from "../../shared/agent-role-limits.mjs"
@@ -51,6 +53,8 @@ export type PgNativeConfigCapabilities={
   autonomous_agent_submission_enabled?:boolean
   agent_human_input_available?:boolean
   agent_human_responses_enabled?:boolean
+  agent_memory_available?:boolean
+  agent_memory_writes_enabled?:boolean
   schedule_execution_enabled?:boolean
   employee_governance_available?:boolean
   employee_governance_enabled?:boolean
@@ -256,6 +260,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/shared-knowledge${string}`
   | `/api/v2/knowledge-embedding/${string}`
   | `/api/v2/knowledge-query/${string}`
+  | `/api/v2/agent-memories${string}`
   | `/api/v2/workflows/${string}/validate`
   | `/api/v2/workflow-validations/${string}`
   | `/api/v2/workflows/${string}/runs`
@@ -438,6 +443,11 @@ export function createPgNativePilotApi(
   const patch=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"PATCH",body,transport,rootPath)
   const del=<T>(route:Route)=>request<T>(route,"DELETE",undefined,transport,rootPath)
+  const memoryChange=async(raw:PgNativeMemoryChoice,confirmOnly=false)=>{
+    let choice:PgNativeMemoryChoice;try{choice=agentMemoryChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_memory_request")}
+    const result=await post<unknown>(confirmOnly?"/api/v2/agent-memories/confirm":"/api/v2/agent-memories/change",choice)
+    try{return await agentMemoryReceipt(result,choice,confirmOnly)}catch{throw new PgNativePilotError(503,"unconfirmed_agent_memory_request")}
+  }
   const humanResponse=async(root:typeof routes.autonomousAgentRuns|typeof routes.workflowV2Runs,id:string,raw:AgentHumanResponse,confirmOnly=false)=>{
     const route=recordRoute(root,id.toLowerCase())
     let choice:AgentHumanResponse;try{choice=agentHumanChoice(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_human_response")}
@@ -463,6 +473,13 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    changeAgentMemory:(choice:PgNativeMemoryChoice)=>memoryChange(choice),
+    confirmAgentMemory:(choice:PgNativeMemoryChoice)=>memoryChange(choice,true),
+    listAgentMemories:async(specId:string)=>{
+      if(!safeId.test(specId))throw new PgNativePilotError(400,"invalid_agent_spec_id")
+      const id=specId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-memories?spec_id=${id}`)
+      try{return await agentMemoryPage(result,id)}catch{throw new PgNativePilotError(503,"invalid_agent_memory_projection")}
+    },
     me:async()=> (await get<{authenticated:true;user:PgNativeStaff}>(routes.me)).user,
     getConfigCapabilities:async()=>{
       const value=await get<PgNativeConfigCapabilities>(routes.capabilities)
@@ -494,6 +511,9 @@ export function createPgNativePilotApi(
           (value.autonomous_agent_submission_enabled!==undefined&&typeof value.autonomous_agent_submission_enabled!=="boolean")||
           (value.autonomous_agent_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.agent_human_input_available!==undefined&&typeof value.agent_human_input_available!=="boolean")||
+          (value.agent_memory_available!==undefined&&typeof value.agent_memory_available!=="boolean")||
+          (value.agent_memory_writes_enabled!==undefined&&typeof value.agent_memory_writes_enabled!=="boolean")||
+          (value.agent_memory_writes_enabled===true&&(value.agent_memory_available!==true||value.config_writes_enabled!==true))||
           (value.agent_human_responses_enabled!==undefined&&typeof value.agent_human_responses_enabled!=="boolean")||
           (value.agent_human_responses_enabled===true&&(value.agent_human_input_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true&&value.workflow_v2_submission_enabled!==true))||
           (value.workflow_v2_submission_enabled!==undefined&&

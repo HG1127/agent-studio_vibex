@@ -165,6 +165,9 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  if(pathname==="/api/v2/agent-memories")return method==="GET"
+  if(pathname==="/api/v2/agent-memories/confirm")return method==="POST"
+  if(pathname==="/api/v2/agent-memories/change")return method==="POST"&&policy.configurationWrites===true
   const release=new RegExp("^/api/v2/agent-releases/"+uuid+"(?:/(change|confirm|acceptance|versions)(?:/("+uuid+"))?)?$").exec(pathname)
   if(release){
     const action=release[1],selected=release[2]
