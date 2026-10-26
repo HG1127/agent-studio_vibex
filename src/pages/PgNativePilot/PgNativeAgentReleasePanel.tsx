@@ -79,7 +79,8 @@ export default function PgNativeAgentReleasePanel({api,agents,connections,active
     catch(e){if(scope===epoch.current&&ticket===details.current)report(e)}
   }
   const finish=async(value:Pending,result:Awaited<ReturnType<Api['changeAgentRelease']>>)=>{
-    intent.current=null;setPending(null);setReview(null);setChecked(false);setReason("");setNotice("操作已确认，已重新读取当前状态。")
+    details.current++ // A late detail read must not resurrect a deleted preview.
+    intent.current=null;setPending(null);setPreview(null);setReview(null);setChecked(false);setReason("");setNotice("操作已确认，已重新读取当前状态。")
     if(value.body.action==="acceptance"&&result.run_id){setRunId(result.run_id);setLinkTest(false);setStartChecked(false)}
     await refresh();await callbacks.current.onUpdated()
   }
