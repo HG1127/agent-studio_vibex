@@ -186,7 +186,7 @@ export class WorkflowV2RunRepository{
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
     if(!flow)throw new HttpError(404,"workflow_not_found")
     if(Number(flow.revision)!==request.expected_revision)throw new HttpError(409,"workflow_revision_changed")
-    const graph=safeWorkflowGraph(flow.graph),machine=createWorkflowV2Checkpoint(graph,request.instruction)
+    const graph=safeWorkflowGraph(flow.graph),machine=createWorkflowV2Checkpoint(graph,request.instruction,{finalDelivery:true})
     await this.checkMcpAdmission(db,owner,graph)
     for(const node of graph.nodes){
       if(node.type==="model"&&(!node.data.model_binding||!node.data.prompt?.trim()))throw new HttpError(409,"workflow_node_not_ready")
@@ -245,7 +245,7 @@ export class WorkflowV2RunRepository{
       try{graph=workflowNodeDebugGraph(flow.graph,node_debug)}catch{throw new HttpError(400,"workflow_node_debug_input_not_ready")}
       const sourceSeal=await prepareWorkflowSampleLineage(db,owner,id,request.node_id,safeWorkflowGraph(flow.graph),request.samples)
       await verifyWorkflowGraphResources(db,owner,graph)
-      const machine=createWorkflowV2Checkpoint(graph,request.samples.input),checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",workflow_revision:request.expected_revision,graph,machine,node_debug}
+      const machine=createWorkflowV2Checkpoint(graph,request.samples.input,{finalDelivery:true}),checkpoint:WorkflowV2StoredState={stage:"workflow_v2_queued",execution_mode:"workflow_native_v2",workflow_revision:request.expected_revision,graph,machine,node_debug}
       const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs (owner_user_id,kind,workflow_id,status,instruction,checkpoint) "+
         "VALUES($1::uuid,'workflow',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,[owner,id,request.samples.input,JSON.stringify(checkpoint)])).rows[0]!
       await registerWorkflowSampleLineage(db,run.id,sourceSeal)

@@ -1304,6 +1304,32 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       const ledger=(await admin.query("SELECT count(*)::integer AS n FROM agentstudio.agent_human_input_responses WHERE run_id=ANY($1::uuid[])",[[humanRun.run.id,activeHumanRun]])).rows[0]
       assert.equal(ledger.n,3);assert.equal((await worker().tick()).status,"idle");assert.equal(humanCalls,5)
     },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler({...raw,executionMode:"agent_native_v2"})})
+    mark("workflow-complete-final-output-with-bounded-private-effect")
+    const finalGraph={version:2,nodes:[
+      {id:"start",type:"start",data:{title:"Start"},position:{x:0,y:0}},
+      {id:"report",type:"model",data:{title:"Report",prompt:"Create a bounded synthetic report",model_binding:{connection_id:ready.id,connection_revision:ready.revision,model_id:"gpt-4.1-mini"}},position:{x:220,y:0}},
+      {id:"end",type:"end",data:{title:"End",output_template:"{{Report.output}}".repeat(6)},position:{x:440,y:0}}],
+      edges:[{id:"s-r",source:"start",target:"report"},{id:"r-e",source:"report",target:"end"}]}
+    const finalFlow=await api.createWorkflowGraph("Complete final Workflow",finalGraph),finalKey="ci-workflow-complete-final"
+    const finalRun=await api.submitWorkflowV2Run(finalFlow.id,finalFlow.revision,"Synthetic complete final output",finalKey)
+    let finalCalls=0
+    const finalDispatch=new WorkflowV2ModelDispatch(apiPool,key,async material=>{assert.equal(material.api_key,secret);finalCalls++;return "交".repeat(4000)},brokerPool)
+    await withDisposableBoundModelTls(verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(identityPool),finalDispatch),async raw=>{
+      const executor=workflowV2ModelEffectExecutor(raw)
+      for(let i=0;i<16;i++){
+        const view=await api.getWorkflowV2Run(finalRun.run.id)
+        if(view.run.status==="succeeded")break
+        assert.equal(["failed","paused","cancelled"].includes(view.run.status),false,view.run.last_error_code)
+        if(view.run.status==="awaiting_approval")await api.decideWorkflowV2Node(finalRun.run.id,"approved",view.pending_effect.step_key,view.pending_effect.input_sha256)
+        await new WorkflowV2Worker(workerPool,"ci-final-output-"+i,{executor}).tick()
+      }
+      const completed=await api.getWorkflowV2Run(finalRun.run.id);assert.equal(completed.run.status,"succeeded");assert.equal(completed.run.result_text,"交".repeat(20000));assert.equal(finalCalls,1)
+      const replay=await api.submitWorkflowV2Run(finalFlow.id,finalFlow.revision,"Synthetic complete final output",finalKey);assert.equal(replay.replayed,true);assert.equal(replay.run.result_text,completed.run.result_text);assert.equal(finalCalls,1)
+      const saved=(await admin.query("SELECT checkpoint->'machine'->>'output_protocol' AS protocol FROM agentstudio.runs WHERE id=$1",[finalRun.run.id])).rows[0]
+      assert.equal(saved.protocol,"workflow_final_delivery_v1")
+      const effects=(await admin.query("SELECT result_reference FROM agentstudio.external_effects WHERE run_id=$1",[finalRun.run.id])).rows
+      assert.equal(effects.length,1);assert.equal(JSON.parse(effects[0].result_reference).output.length,4000)
+    },{handlerFactory:raw=>createWorkflowV2ModelInternalHandler(raw)})
     mark("employee-governance-and-password-session-revocation")
     const governed=await api.createGovernedEmployee({email:"governance@example.test",password:"SyntheticGovernancePassword#2026",display_name:"Synthetic governance employee",is_admin:true,share_enabled:false})
     const governedLogin=await auth.login("governance@example.test","SyntheticGovernancePassword#2026")

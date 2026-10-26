@@ -57,6 +57,12 @@ test("nested Workflow Agent: per-node plan review, exact lost revision recovery,
     await page.getByRole("button",{name:"取消工作流任务",exact:true}).click();await page.getByRole("button",{name:"确认取消此工作流任务",exact:true}).click()
     await expect(page.getByText("任务已取消。",{exact:true})).toBeVisible();await expect(plan).toHaveCount(0)
     expect((await control("workflow")).status).toBe("idle");proof=await control("state","GET");expect(proof.humanModelCalls).toBe(4);expect(proof.humanReceipts).toBe(2);expect(proof.runs).toBe(2);expect(external).toEqual([])
+    await page.getByRole("combobox",{name:"运行工作流",exact:true}).selectOption({label:"Synthetic complete final Workflow · 修订 1"})
+    await submit("交".repeat(2000));await advance("succeeded")
+    const final=page.getByRole("region",{name:"Workflow 执行结果",exact:true})
+    await expect(final.locator("pre")).toHaveText("交".repeat(20000))
+    await final.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath("native-workflow-complete-final-viewport.png")})
+    proof=await control("state","GET");expect(proof.humanModelCalls).toBe(4);expect(proof.generated).toBe(4);expect(proof.runs).toBe(3);expect(external).toEqual([])
   }finally{
     clearTimeout(timer);if(context)await context.close();if(browser)await browser.close();if(control)await control("stop").catch(()=>{})
     if(child.exitCode===null){const exited=new Promise(resolve=>child.once("exit",resolve)),forced=setTimeout(()=>child.kill("SIGTERM"),5000);await exited;clearTimeout(forced)}

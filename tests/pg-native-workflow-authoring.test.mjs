@@ -51,6 +51,15 @@ test("alignment changes only selected positions and distributes three nodes with
   const dist=alignPgWorkflowNodes(graph,selected,"distributeX").nodes.map(node=>node.position.x).sort((a,b)=>a-b)
   assert.equal(dist[1]-dist[0],dist[2]-dist[1]);assert.deepEqual(aligned.nodes[1].data,before.nodes[1].data);assert.deepEqual(graph,before)
 })
+test("final output preview can combine bounded node samples up to20000 without widening model input previews",()=>{
+  const graph=patchPgWorkflowNode(modelGraph(),"end",{title:"End",output_template:"{{Model.output}}".repeat(6)})
+  const model=graph.nodes.find(item=>item.type==="model")
+  const preview=previewWorkflowV2Node(graph,"end",{input:"Synthetic final output",outputs:{[model.id]:"字".repeat(4000)}})
+  assert.equal(preview.output,"字".repeat(20000));assert.deepEqual(preview.missing,[])
+  const paid=patchPgWorkflowNode(graph,model.id,{...model.data,prompt:"{{input}}".repeat(7)})
+  assert.throws(()=>previewWorkflowV2Node(paid,model.id,{input:"字".repeat(2000),outputs:{}}),error=>error.code==="workflow_rendered_input_too_large")
+})
+
 test("preview and actual replay share exact JSON-string substitution, condition and bounded nested-loop rules",()=>{
   let graph=addPgWorkflowNode(newPgWorkflowGraph(),"loop","start-end",ids())
   const tool=graph.nodes.find(node=>node.type==="tool"),samples={input:'quoted "text"\nline',outputs:{},loop:{item:'x"\\y',index:2}}

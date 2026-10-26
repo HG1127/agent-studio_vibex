@@ -56,7 +56,7 @@ export function previewWorkflowV2Node(graph:WorkflowGraph,nodeId:string,rawSampl
     if(inLoop&&samples.loop&&key==="loop.index")return String(samples.loop.index)
     if(key.endsWith(".output")){const ref=graph.nodes.find(item=>item.data.title===key.slice(0,-7));if(ref&&ref.id!==nodeId)return output(ref.id)}
     return undefined
-  },json)
+  },json,node.type==="end")
   const incoming=()=>{
     const edges=graph.edges.filter(edge=>edge.target===nodeId&&(!samples.source_node_id||edge.source===samples.source_node_id))
     if(edges.length>1)warnings.push("本地样本未确定实际运行分支；以下使用首个已提供的上游样本。")

@@ -8,8 +8,8 @@ const node=(id,type,data={})=>({id,type,data:{title:id,
   ...data},position:{x:0,y:0}})
 const edge=(source,target,sourceHandle)=>({id:source+"-"+target+"-"+(sourceHandle??"default"),source,target,
   ...(sourceHandle?{sourceHandle}:{})})
-function drive(graph,input,answer){
-  let cp=createWorkflowV2Checkpoint(graph,input),view=inspectWorkflowV2Checkpoint(graph,cp)
+function drive(graph,input,answer,options){
+  let cp=createWorkflowV2Checkpoint(graph,input,options),view=inspectWorkflowV2Checkpoint(graph,cp)
   const requests=[],events=[]
   for(let step=0;step<402;step++){
     const next=advanceWorkflowV2Checkpoint(graph,JSON.parse(JSON.stringify(cp)))
@@ -29,6 +29,29 @@ function drive(graph,input,answer){
   }
   return {cp,view,requests,events}
 }
+test("marked Workflow final templates retain20000 units from bounded nodes; legacy output and effect hashes remain stable",()=>{
+  const n=(id,type,data={})=>({id,type,data:{title:id,...data},position:{x:0,y:0}})
+  const graph={version:2,nodes:[n("start","start"),n("model","model",{prompt:"{{input}}",model_binding:{connection_id:"11111111-1111-4111-8111-111111111111",connection_revision:1,model_id:"synthetic"}}),n("end","end",{output_template:"{{model.output}}".repeat(6)})],edges:[{id:"s-m",source:"start",target:"model"},{id:"m-e",source:"model",target:"end"}]}
+  const old=drive(graph,"Synthetic final delivery",()=>"字".repeat(4000))
+  assert.equal(old.cp.graph_sha256,"db7bf9528eb8341ea3f408b83f2cf563216dd88099ea6b14651a0a7622d2326a")
+  assert.equal(old.requests[0].input_sha256,"48ca16d2e8c263efca61a444d3a81193a3fc40a595f157b6add3e327c1cec082")
+  assert.equal(old.view.status,"failed");assert.equal(old.view.error_code,"workflow_rendered_input_too_large");assert.equal(Object.hasOwn(old.cp,"output_protocol"),false)
+  const full=drive(graph,"Synthetic final delivery",()=>"字".repeat(4000),{finalDelivery:true})
+  assert.equal(full.view.status,"succeeded");assert.equal(full.view.result_text,"字".repeat(20000));assert.equal(full.requests.length,1)
+  assert.equal(full.cp.output_protocol,"workflow_final_delivery_v1");assert.equal(full.cp.effects[0].output.length,4000)
+  assert.ok(full.view.nodes.every(item=>item.output===undefined||item.output.length<=4000))
+  assert.notEqual(full.cp.graph_sha256,old.cp.graph_sha256);assert.notEqual(full.requests[0].input_sha256,old.requests[0].input_sha256)
+  assert.throws(()=>inspectWorkflowV2Checkpoint(graph,{...old.cp,output_protocol:"workflow_final_delivery_v1"}),/invalid_workflow_checkpoint/)
+  const {output_protocol,...stripped}=full.cp;assert.throws(()=>inspectWorkflowV2Checkpoint(graph,stripped),/invalid_workflow_checkpoint/)
+  assert.throws(()=>inspectWorkflowV2Checkpoint(graph,{...full.cp,output_protocol:"arbitrary"}),/invalid_workflow_checkpoint/)
+})
+
+test("complete final delivery does not widen the12000-unit paid model input budget",()=>{
+  const graph={version:2,nodes:[node("start","start"),node("model","model",{prompt:"{{input}}".repeat(7)}),node("end","end")],edges:[edge("start","model"),edge("model","end")]}
+  const result=drive(graph,"字".repeat(2000),()=>"must not be requested",{finalDelivery:true})
+  assert.equal(result.view.status,"failed");assert.equal(result.view.error_code,"workflow_rendered_input_too_large");assert.equal(result.requests.length,0)
+})
+
 function branching(){return {version:2,nodes:[node("start","start"),
   node("choice","condition",{ref_title:"start",op:"gt",value:"10"}),
   node("end","end",{output_template:"{{yes.output}}|{{no.output}}"}),

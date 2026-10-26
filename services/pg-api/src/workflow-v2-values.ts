@@ -2,7 +2,7 @@
 import type {WorkflowNodeDataV2} from "./workflow-graph-v2.ts"
 export class WorkflowValueError extends Error{readonly code:string;constructor(code:string){super(code);this.code=code}}
 const fail=(code:string):never=>{throw new WorkflowValueError(code)}
-export function renderWorkflowTemplate(source:string,resolve:(key:string)=>string|undefined,jsonStrings=false){
+export function renderWorkflowTemplate(source:string,resolve:(key:string)=>string|undefined,jsonStrings=false,finalOutput=false){
   const missing=new Set<string>(),pieces:string[]=[]
   let length=0,last=0,inString=false,escaped=false
   const scan=(text:string)=>{if(!jsonStrings)return;for(const character of text){
@@ -10,7 +10,11 @@ export function renderWorkflowTemplate(source:string,resolve:(key:string)=>strin
     if(inString&&character==="\\"){escaped=true;continue}
     if(character==='"')inString=!inString
   }}
-  const add=(value:string)=>{length+=value.length;if(length>12000)fail("workflow_rendered_input_too_large");pieces.push(value)}
+  if(finalOutput&&jsonStrings)fail("workflow_tool_template_invalid")
+  const add=(value:string)=>{
+    if(finalOutput){const bounded=value.slice(0,Math.max(0,20000-length));length+=bounded.length;if(bounded)pieces.push(bounded);return}
+    length+=value.length;if(length>12000)fail("workflow_rendered_input_too_large");pieces.push(value)
+  }
   for(const match of source.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)){
     const literal=source.slice(last,match.index);add(literal);scan(literal);last=match.index!+match[0].length
     const key=match[1]!.trim();let value=resolve(key)

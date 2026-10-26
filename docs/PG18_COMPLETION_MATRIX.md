@@ -38,15 +38,16 @@ PocketBase隔离回归在`ea6723a`通过19/19（两 Worker，79.5秒），之后
 后续候选和最新验证结果集中在[迁移草稿 PR](https://github.com/HG1127/agent-studio_vibex/pull/26)。
 
 人工回复接口与界面基线`d34ed3b`已通过[质量42/42](https://github.com/HG1127/agent-studio_vibex/actions/runs/40283578338)、`pnpm check`616项测试、类型/构建与95项资源检查，以及[真实PG18](https://github.com/HG1127/agent-studio_vibex/actions/runs/40283578339)和[既有浏览器4/4](https://github.com/HG1127/agent-studio_vibex/actions/runs/40283578157)。本地规范PocketBase19项/两Worker在相同运行时输入通过，用时95秒。
-完成证据候选`d1c293c`已通过13项人工回复Cookie/SQL/私有mTLS域和[质量42/42](https://github.com/HG1127/agent-studio_vibex/actions/runs/40287283086)、`pnpm check`617项、真实PG18及既有浏览器4/4回归。定时等待修复`f271b5b`已通过14项域、真实PG18及主浏览器回归，两个聚焦浏览器作业在安装阶段超时取消；完整成果候选`4c949b0`的14项域和真实PG18已通过，全量CI尚待完成。最新候选加入048新库、真实PG18人工回复与浏览器实际操作，尚未验收。
+此前完成证据提交`d1c293c`已通过13项人工回复Cookie/SQL/私有mTLS域和[质量42/42](https://github.com/HG1127/agent-studio_vibex/actions/runs/40287283086)、`pnpm check`617项、真实PG18及既有浏览器4/4回归。后续修复补齐定时等待、完整成果和048整合，最终证据以下述c0a448e为准。
+048整合提交`c0a448e`现已通过[质量42/42](https://github.com/HG1127/agent-studio_vibex/actions/runs/40298501237)、`pnpm check`619项及类型/构建、[真实PG18](https://github.com/HG1127/agent-studio_vibex/actions/runs/40298501269)、17项人工回复域和[浏览器4/4](https://github.com/HG1127/agent-studio_vibex/actions/runs/40298501232)；独立协作安装超时已补跑通过。主浏览器12/12、3分钟，覆盖独立Agent及嵌套Workflow人工回复与等待取消。PocketBase19项/两Worker通过97.6秒。源码包按此提交重建：初始化81个源文件、API/索引138个源文件，清单、13项初始化离线计划和默认拒绝执行均通过。
 
 ## 尚须补齐或逐项核实的功能
 
 | 范围 | PocketBase 参照 | 剩余工作 |
 | --- | --- | --- |
 | 委托审批与公司视图 | `src/pages/Manager/ManagerPage.tsx`、`pocketbase/pb_hooks/studio_company.pb.js`、`tests/studio-company.integration.mjs` | 本人明确委托及用途、经理仅看必要元数据、固定待审批操作指纹、一次性决定、撤销 / 来源变化校验、管理员公司汇总。现有本人运行审批不能代替经理委托。`InternalOverviewPage` 使用另一个总览接口，须另行核对。 |
-| Agent人工澄清与方案审核 | `src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` 的 `ask_user` / `/respond` | [人工回复开发记录](PG18_AGENT_HUMAN_INPUT.md)。已有同一运行等待、1600字符回复、批准/修改、持久续跑、本人Cookie与原回执、界面及完成证据核对。13项SQL/mTLS域通过；还须验证定时等待防重叠、角色默认设置、真实PG18与浏览器交互，整合048新库及最终包。模型final不能绕过所需本人方案批准，费用/工具授权仍独立。 |
-| Agent最终交付完整性 | `pocketbase/pb_hooks/agent_engine.pb.js` 的 `finishRun`、原生Agent状态机及Workflow输出 | 旧执行器保留脱敏后的完整成果。新候选用进入快照的协议标记补齐独立Agent完整成果，并从经核对的私有归档生成公开结果；旧任务固定指纹及4000字符外层Workflow预算保持。9项纯状态机/契约和后端类型通过，长中文SQL/mTLS、版本验收及界面仍待确认；Workflow完整交付另须按旧活跃路径核对。 |
+| Agent人工澄清与方案审核 | `src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` 的 `ask_user` / `/respond` | [人工回复验收](PG18_AGENT_HUMAN_INPUT.md)。048新库、同一运行等待、1600字符回复、批准/修改、本人Cookie和原回执、角色默认/单次覆盖、定时防重叠、完成证据及分页记录已有c0a448e的17项域、真实PG18和主浏览器12/12隔离证据。模型final不能绕过所需本人方案批准，费用/工具授权仍独立；真实员工UAT待签收。 |
+| Agent / Workflow最终交付完整性 | `pocketbase/pb_hooks/agent_engine.pb.js` 的 `finishRun`、`workflow_api.pb.js` 的结束节点 | 独立Agent完整成果已在c0a448e通过长中文SQL/mTLS、版本证据、实际PG18和浏览器检查，旧任务指纹保留。另发现Workflow结束模板仍先受12000展开限制；[后续候选](PG18_WORKFLOW_FINAL_DELIVERY.md)为新任务加入绑定摘要的最终交付协议，结束结果截取至20000，节点4000和付费输入12000保持。26项纯状态机/预览、前后端类型通过，新增SQL/PG18/浏览器仍待CI。 |
 | Agent跨运行记忆 | `src/components/agent-run/MemoryPanel.tsx`、`src/pages/AgentRun/useAgentRun.ts`、`pocketbase/pb_hooks/agent_engine.pb.js` | 实际运行页可查看 / 删除本人角色记忆，旧执行器还会注入并在成功后写回。须补齐原生所有者路径、原始来源 / 撤销检查和明确的提炼费用授权；已有知识库或历史导入不能代替运行能力。 |
 | 模板发布与复用 | `pocketbase/pb_hooks/template_market_api.pb.js`、`pocketbase/pb_hooks/internal_templates.pb.js`、`pocketbase/pb_hooks/agent_templates.pb.js` | 逐项核对发布、模板市场、使用、交接及权限。已有画布样本 / 导入导出和基础模板表不能直接作为这些操作的等价证明。 |
 | 反馈驱动的优化关联 | `pocketbase/pb_hooks/agent_optimization_lineage.pb.js`、`pocketbase/pb_hooks/agent_specs.pb.js` | 核对反馈、优化与目标角色之间的受保护关联，补齐原生活跃操作、权限和审计。 |

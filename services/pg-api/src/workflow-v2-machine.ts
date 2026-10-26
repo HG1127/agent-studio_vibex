@@ -13,6 +13,7 @@ export type WorkflowEffectResult={step_key:string;input_sha256:string;output:str
 export type WorkflowV2Checkpoint={
   format:"workflow_native_v2";graph_sha256:string;instruction:string
   cursor:number;effects:WorkflowEffectResult[]
+  output_protocol?:"workflow_final_delivery_v1"
 }
 export type WorkflowNodeTransition={
   step_key:string;node_id:string;node_type:string
@@ -43,9 +44,16 @@ function graph(raw:unknown):WorkflowGraph{
   if(value.version!==2)fail("workflow_v2_required")
   return value
 }
+function graphHash(value:WorkflowGraph,protocol?:unknown):string{
+  if(protocol===undefined)return sha(JSON.stringify(value))
+  if(protocol!=="workflow_final_delivery_v1")fail("invalid_workflow_checkpoint")
+  return sha(JSON.stringify({graph:value,output_protocol:protocol}))
+}
 function checkpoint(raw:unknown,hash:string):WorkflowV2Checkpoint{
   const value=plain(raw)
-  if(Object.keys(value).length!==5||!["format","graph_sha256","instruction","cursor","effects"].every(k=>Object.hasOwn(value,k))||
+  const full=Object.hasOwn(value,"output_protocol")
+  if(full&&value.output_protocol!=="workflow_final_delivery_v1")fail("invalid_workflow_checkpoint")
+  if(Object.keys(value).length!==(full?6:5)||!["format","graph_sha256","instruction","cursor","effects"].every(k=>Object.hasOwn(value,k))||
      value.format!=="workflow_native_v2"||value.graph_sha256!==hash||
      typeof value.instruction!=="string"||value.instruction.length>2000||value.instruction.includes("\0")||
      !Number.isSafeInteger(value.cursor)||(value.cursor as number)<0||(value.cursor as number)>401||
@@ -63,7 +71,7 @@ function checkpoint(raw:unknown,hash:string):WorkflowV2Checkpoint{
       ...(item.outcome==="rejected"?{outcome:"rejected" as const}:{})});seen.add(item.step_key)
   }
   return {format:"workflow_native_v2",graph_sha256:hash,instruction:value.instruction,
-    cursor:value.cursor as number,effects}
+    cursor:value.cursor as number,effects,...(full?{output_protocol:"workflow_final_delivery_v1" as const}:{})}
 }
 
 class Machine{
@@ -103,7 +111,7 @@ class Machine{
       .map(frame=>({node_id:frame.id,round:frame.round,total:frame.items.length}))
     this.events.push({step_key:key,node_id:node.id,node_type:node.type,status,...extra,...(path.length?{loop_path:path}:{})});return key
   }
-  template(source:string,nodeId:string,jsonStrings=false):{text:string;missing:string[]}{
+  template(source:string,nodeId:string,jsonStrings=false,finalOutput=false):{text:string;missing:string[]}{
     const frames=[...this.frames.values()].filter(f=>f.active&&this.bodies.get(f.id)!.has(nodeId))
       .sort((a,b)=>this.bodies.get(a.id)!.size-this.bodies.get(b.id)!.size)
     const frame=frames[0]
@@ -116,7 +124,7 @@ class Machine{
         if(ref)return this.nodes.get(ref.id)!.output
       }
       return undefined
-    },jsonStrings)
+    },jsonStrings,finalOutput)
   }
   forwardIncoming(id:string){return this.graph.edges.filter(e=>e.target===id&&!this.returns.has(e.id))}
   ready(id:string){
@@ -211,7 +219,7 @@ class Machine{
       this.key(node)
       if(node.type==="start")this.done(node,this.cp.instruction)
       else if(node.type==="end"){
-        const rendered=node.data.output_template?this.template(node.data.output_template,node.id):{text:this.outputFromIncoming(node.id),missing:[]}
+        const rendered=node.data.output_template?this.template(node.data.output_template,node.id,false,this.cp.output_protocol==="workflow_final_delivery_v1"):{text:this.outputFromIncoming(node.id),missing:[]}
         this.done(node,rendered.text,{missing:rendered.missing});this.result=rendered.text.slice(0,20000);this.status="succeeded"
       }else if(node.type==="condition"){
         const ref=node.data.ref_title?this.graph.nodes.find(n=>n.data.title===node.data.ref_title):undefined
@@ -261,7 +269,7 @@ class Machine{
 }
 
 function restore(rawGraph:unknown,raw:unknown,history?:Map<string,WorkflowNodeTransition>){
-  const checked=graph(rawGraph),hash=sha(JSON.stringify(checked)),cp=checkpoint(raw,hash),machine=new Machine(checked,cp)
+  const checked=graph(rawGraph),hash=graphHash(checked,plain(raw).output_protocol),cp=checkpoint(raw,hash),machine=new Machine(checked,cp)
   for(let cursor=0;cursor<cp.cursor;cursor++){
     const events=machine.step();if(events===null)fail("invalid_workflow_checkpoint")
     if(history)for(const event of events)history.set(event.step_key,event)
@@ -269,9 +277,10 @@ function restore(rawGraph:unknown,raw:unknown,history?:Map<string,WorkflowNodeTr
   for(const result of cp.effects)if(machine.requests.get(result.step_key)!==result.input_sha256)fail("invalid_workflow_checkpoint")
   return {cp,machine}
 }
-export function createWorkflowV2Checkpoint(rawGraph:unknown,instruction:string):WorkflowV2Checkpoint{
+export function createWorkflowV2Checkpoint(rawGraph:unknown,instruction:string,options:{finalDelivery?:boolean}={}):WorkflowV2Checkpoint{
   const checked=graph(rawGraph)
-  return checkpoint({format:"workflow_native_v2",graph_sha256:sha(JSON.stringify(checked)),instruction,cursor:0,effects:[]},sha(JSON.stringify(checked)))
+  const protocol=options.finalDelivery===true?"workflow_final_delivery_v1":undefined,hash=graphHash(checked,protocol)
+  return checkpoint({format:"workflow_native_v2",graph_sha256:hash,instruction,cursor:0,effects:[],...(protocol?{output_protocol:protocol}:{})},hash)
 }
 export function inspectWorkflowV2Checkpoint(rawGraph:unknown,raw:unknown):WorkflowV2View{
   return restore(rawGraph,raw).machine.view()

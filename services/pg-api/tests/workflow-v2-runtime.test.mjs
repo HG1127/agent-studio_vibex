@@ -10,6 +10,7 @@ import {WorkflowV2RunRepository} from "../src/workflow-v2-run-repository.ts"
 import {WorkflowV2Worker} from "../src/workflow-v2-worker.ts"
 import {WorkflowSafeWorker} from "../src/workflow-safe-worker.ts"
 import {AgentPrepareWorker} from "../src/agent-worker.ts"
+import {createWorkflowV2Checkpoint} from "../src/workflow-v2-machine.ts"
 const schema=readFileSync(new URL("../../../db/postgres/001_stage_schema.sql",import.meta.url),"utf8")
   .split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n")
 const issuer="https://workflow-v2.synthetic.invalid",alice={issuer,subject:"alice"},bob={issuer,subject:"bob"}
@@ -45,6 +46,26 @@ async function finish(f,id,worker){
   }
   throw Error("synthetic_workflow_did_not_finish")
 }
+
+test("new Workflow admissions persist complete20000-unit final delivery; exact old request recovery keeps its legacy output protocol",async()=>{
+  const f=await fixture(),instruction="字".repeat(2000)
+  try{
+    const graph={version:2,nodes:[node("start","start"),node("end","end",{output_template:"{{input}}".repeat(12)})],edges:[edge("start","end")]}
+    const flow=await f.flows.create(alice,"Full synthetic final output",graph)
+    const marked=await submit(f,flow,"workflow-full-delivery-new",instruction)
+    assert.equal((await f.db.query("SELECT checkpoint->'machine'->>'output_protocol' AS protocol FROM agentstudio.runs WHERE id=$1",[marked.run.id])).rows[0].protocol,"workflow_final_delivery_v1")
+    const done=await finish(f,marked.run.id,f.worker("full-output-new"));assert.equal(done.run.status,"succeeded");assert.equal(done.run.result_text,"字".repeat(20000))
+    const old=await submit(f,flow,"workflow-full-delivery-legacy",instruction),machine=createWorkflowV2Checkpoint(graph,instruction)
+    // Synthetic pre-upgrade persisted journal: its original protocol and job
+    // source agree. Replaying the same request must not upgrade that journal.
+    await f.db.query("UPDATE agentstudio.runs SET checkpoint=jsonb_set(checkpoint,'{machine}',$2::jsonb) WHERE id=$1",[old.run.id,JSON.stringify(machine)])
+    await f.db.query("UPDATE agentstudio.jobs SET payload=jsonb_set(payload,'{graph_sha256}',to_jsonb($2::text)) WHERE run_id=$1",[old.run.id,machine.graph_sha256])
+    assert.equal((await submit(f,flow,"workflow-full-delivery-legacy",instruction)).replayed,true)
+    assert.equal((await f.db.query("SELECT checkpoint->'machine' ? 'output_protocol' AS present FROM agentstudio.runs WHERE id=$1",[old.run.id])).rows[0].present,false)
+    const rejected=await finish(f,old.run.id,f.worker("full-output-old"));assert.equal(rejected.run.status,"failed");assert.equal(rejected.run.last_error_code,"workflow_rendered_input_too_large")
+    assert.equal((await f.db.query("SELECT count(*)::integer AS n FROM agentstudio.external_effects")).rows[0].n,0)
+  }finally{await f.close()}
+})
 
 test("V2 queue resumes pure nested loops beyond 30 leases, isolates old Workers and persists each unique step",async()=>{
   const f=await fixture()
