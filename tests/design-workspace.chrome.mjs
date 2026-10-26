@@ -585,12 +585,14 @@ test("design workspace: real login, editable capabilities, role grants, resource
 
     await page.goto(`${webOrigin}/agent-run?spec=${saved.id}`)
     await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), saved.id)
+    await page.getByRole("button", { name: "打开本次 Agent 配置" }).click()
     await page.locator("#agent-task-instruction").fill("验证直接进入试跑时，未接入的必需浏览器能力会阻止启动。")
     const readiness = page.getByRole("region", { name: "新任务启动检查", exact: true })
     await visible(readiness.getByText("浏览器操作：请连接工具或调整能力需求", { exact: true }))
     assert.equal(await page.getByRole("button", { name: "运行", exact: true }).isDisabled(), true)
     assert.equal(await readiness.getByRole("link", { name: "配置电脑与浏览器", exact: true }).getAttribute("href"), "/execution-connections")
     await screenshot("run-blocked-missing-capability")
+    await page.getByRole("button", { name: "关闭配置面板" }).click()
     results.push("direct trial entry blocks a missing required browser capability and exposes its repair entry")
 
     const market = await api("POST", "/api/market/connect", { name: "design_browser_fixture", title: "本地浏览器验收连接", url: fixtureOrigin + "/mcp", headers: [] })
@@ -651,6 +653,17 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const runSpec = await api("POST", "/api/agent_specs", { name: "运行页面验收助手", spec: { goal: "在真实引擎中验证工具审批和用户补充流程", task_scope: "仅使用隔离的本地测试数据", tools: [selectedToolId], task_plan: ["请求工具调用并等待批准", "交付测试报告"], deliverables: ["测试报告"], done_criteria: ["结果包含核心结论"], require_approval: true, require_plan_review: false } })
     await page.goto(`${webOrigin}/agent-run?spec=${runSpec.id}`)
     await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), runSpec.id)
+    const taskRail=page.getByRole("region", { name: "任务快速切换" }).first()
+    await visible(taskRail.getByRole("heading", { name: "任务列表" }))
+    await visible(page.getByRole("combobox", { name: "快速选择 Agent" }))
+    const railBox=await taskRail.boundingBox()
+    const taskBox=await page.locator("#agent-task-instruction").boundingBox()
+    assert.ok(railBox&&taskBox&&railBox.x+railBox.width<=taskBox.x,
+      "Desktop task list must occupy a separate left rail, not a tall section below results")
+    assert.equal(await page.getByRole("complementary",{name:"Agent 配置与资源"}).isVisible(),false,
+      "Narrow desktop configurations stay out of the task's main focus")
+    await page.getByRole("button",{name:"打开本次 Agent 配置"}).click()
+    await visible(page.getByRole("complementary",{name:"Agent 配置与资源"}))
     assert.equal(await page.locator("#run-config-content").isVisible(), false)
     assert.equal(await page.locator('[role="switch"]:visible').count(), 0)
     await page.getByRole("button", { name: "本次设置", exact: true }).click()
@@ -660,8 +673,31 @@ test("design workspace: real login, editable capabilities, role grants, resource
       assert.equal(await settings.getByRole("tab", { name: label, exact: true }).getAttribute("aria-selected"), "true")
     }
     await page.getByRole("button", { name: "收起本次运行设置", exact: true }).click()
+    await page.getByRole("button",{name:"关闭配置面板"}).click()
     await screenshot("run-ready-summary")
     results.push("collapsed run summary and all four configuration tabs")
+    results.push("responsive task-first desktop layout: left task rail, central execution, on-demand settings drawer, and retained four configuration tabs")
+    await page.setViewportSize({width:390,height:844})
+    const mobileTaskToggle=page.getByText(/^切换任务 · 最近/)
+    await visible(mobileTaskToggle)
+    await mobileTaskToggle.click()
+    await visible(page.getByRole("region",{name:"任务快速切换"}))
+    await page.getByRole("button",{name:"打开本次 Agent 配置"}).click()
+    await visible(page.getByRole("complementary",{name:"Agent 配置与资源"}))
+    await page.keyboard.press("Escape")
+    assert.equal(await page.getByRole("complementary",{name:"Agent 配置与资源"}).isVisible(),false,
+      "Mobile settings drawer must close with Escape")
+    await page.setViewportSize({width:1440,height:1000})
+    results.push("390px mobile: task history collapses, settings opens on demand and Escape closes it without clearing the task")
+    if(process.env.AGENT_STUDIO_RUN_UI_SMOKE_ONLY==="1"){
+      assert.deepEqual(errors,[],"run workspace responsive smoke must not generate browser exceptions")
+      console.log("AGENT_TASK_WORKSPACE_UI_SMOKE_PASS",JSON.stringify({
+        desktopLeftRail:true,desktopSettingsDrawer:true,mobileWidth:390,
+        mobileTaskSwitch:true,escapeClosesSettings:true,realModelCalls:0,
+        consoleErrors:consoleErrors.length,
+      }))
+      return
+    }
 
     async function startRun(instruction) {
       await page.locator("#agent-task-instruction").fill(instruction)
@@ -695,6 +731,17 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await screenshot("run-result")
     results.push("approval remains visible across all run tabs, draft survives tab switches, approved MCP invocation executes once")
 
+    const newTaskControl=taskRail.getByRole("button",{name:"发起新任务"})
+    await visible(newTaskControl)
+    const callsBeforeDraft=mcpCalls
+    await newTaskControl.click()
+    await page.waitForFunction(()=>!new URL(location.href).searchParams.has("run"))
+    assert.equal(await page.locator("#agent-task-instruction").inputValue(),"")
+    assert.equal(await page.getByRole("region",{name:"当前运行状态与下一步"}).count(),0)
+    assert.equal(mcpCalls,callsBeforeDraft,
+      "creating a draft must not re-run the previous Agent or call any tool")
+    results.push("New-task action exits history, clears old draft and run URL without triggering model/tool calls")
+
     const inputRunId = await startRun("DESIGN_WORKSPACE_INPUT 先请求我确认，再给出测试交付。")
     await visible(page.getByRole("region", { name: "等待人工补充", exact: true }))
     await workspace.getByRole("tab", { name: "长期记忆", exact: true }).click()
@@ -705,6 +752,15 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await visible(page.getByRole("heading", { name: "运行成果", exact: true }))
     assert.equal((await api("GET", "/api/agent_runs/" + inputRunId)).status, "succeeded")
     results.push("employee reply remains visible, persists through real respond API, and resumes execution")
+    const previousTask=taskRail.getByRole("button",{name:/运行页面验收助手.*DESIGN_WORKSPACE_APPROVAL/})
+    await visible(previousTask)
+    const callsBeforeSwitch=mcpCalls
+    await previousTask.click()
+    await page.waitForFunction(()=>
+      [...document.querySelectorAll('[aria-label="近期任务列表"] button[aria-current="true"]')]
+        .some(el=>el.textContent?.includes("DESIGN_WORKSPACE_APPROVAL")))
+    assert.equal(mcpCalls,callsBeforeSwitch,"switching task history must not re-run external tools")
+    results.push("left task rail restores an earlier completed run without replaying tools or charging the provider")
 
     // Complex multi-role Agent: all integrations terminate at a local fixture.
     const marketId = (await api("GET", "/api/market/connections")).items.find(row => row.id === market.connection.id).id

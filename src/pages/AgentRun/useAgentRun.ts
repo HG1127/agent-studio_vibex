@@ -309,6 +309,8 @@ export function useAgentRun() {
   const tickInFlightRef = useRef(false)
   const startInFlightRef = useRef(false)
   const pollBusyRef = useRef(false)
+  // Invalidates older history reads/polls when the employee switches tasks.
+  const viewedRunGenerationRef=useRef(0)
   const specParamAppliedRef = useRef(false)
   const optimizeRunIdRef = useRef("")
   const toolConnectionRequestRef = useRef(0)
@@ -732,9 +734,11 @@ export function useAgentRun() {
     async (runId: string) => {
       if (pollBusyRef.current) return
       pollBusyRef.current = true
+      const generation=viewedRunGenerationRef.current
       try {
         const fresh = await fetchRunRecord(runId)
-        if (fresh?.id) {
+        if(generation!==viewedRunGenerationRef.current)return
+        if (fresh?.id===runId) {
           setActiveRun(fresh)
           if (TERMINAL_STATES.includes(fresh.status)) {
             void loadRunHistory(rhUserId)
@@ -748,7 +752,7 @@ export function useAgentRun() {
           }
         }
         const items = await fetchRunEvents(runId)
-        if (items.length) setRunEvents(items)
+        if(generation===viewedRunGenerationRef.current && items.length)setRunEvents(items)
       } catch {
         // 单次轮询失败静默，下一轮重试
       } finally {
@@ -832,6 +836,7 @@ export function useAgentRun() {
       }
       const data = await res.json()
       const runId = String(data?.run_id || "")
+      viewedRunGenerationRef.current++
       if(runId) setAcceptedOptimizationLineage(null)
       setRunEvents([])
       if (runId) {
@@ -1383,8 +1388,31 @@ export function useAgentRun() {
 
   const dismissOptimizeError = useCallback(() => setOptimizeError(""), [])
 
+  /** Begin a new run draft without creating any run or consuming model/tool calls.
+   * A live run must be explicitly paused/finished or returned to, never hidden
+   * behind a "new task" navigation action.
+   */
+  const handlePrepareNewTask=useCallback(()=>{
+    if(activeRun && LIVE_STATES.includes(activeRun.status))return
+    setActiveRun(null)
+    viewedRunGenerationRef.current++
+    setRunEvents([])
+    setInstruction("")
+    setErrorMsg("")
+    setOptimizeError("")
+    setOptimizeSuccess("")
+    setOptimizeSuggestion(null)
+    setSearchParams(previous=>{
+      const next=new URLSearchParams(previous)
+      next.delete("run")
+      if(selectedSpecId)next.set("spec",selectedSpecId)
+      return next
+    },{replace:true})
+  },[activeRun,selectedSpecId,setSearchParams])
+
   const handleViewHistoryRun = useCallback(
     async (row: AgentRunRow) => {
+      const generation=++viewedRunGenerationRef.current
       setErrorMsg("")
       setRunEvents([])
       setActiveRun(row)
@@ -1392,8 +1420,10 @@ export function useAgentRun() {
       rememberRunUrl(row.id, row.spec_id)
       try {
         const full = await fetchRunRecord(row.id)
-        if (full) setActiveRun(full)
+        if(generation!==viewedRunGenerationRef.current)return
+        if (full?.id===row.id) setActiveRun(full)
         const items = await fetchRunEvents(row.id)
+        if(generation!==viewedRunGenerationRef.current)return
         setRunEvents(items)
       } catch {
         // 回看失败时保留列表行数据展示状态
@@ -1509,6 +1539,7 @@ export function useAgentRun() {
     copiedFlag,
     runHistory,
     handleViewHistoryRun,
+    handlePrepareNewTask,
     priceHint,
     requirePlanReview,
     handleTogglePlanReview,

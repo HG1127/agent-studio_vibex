@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { AlertCircle, ArrowRight, FileCheck2, LogIn, Rocket, X } from "lucide-react"
+import { AlertCircle, ArrowRight, FileCheck2, LogIn, Rocket, SlidersHorizontal, X } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ApprovalGateCard } from "@/components/agent-run/ApprovalGateCard"
 import { AgentQualityChecklist } from "@/components/agent-run/AgentQualityChecklist"
@@ -7,7 +7,8 @@ import { EvidenceLedgerPanel } from "@/components/agent-run/EvidenceLedgerPanel"
 import { AgentInputCard } from "@/components/agent-run/AgentInputCard"
 import { MemoryPanel } from "@/components/agent-run/MemoryPanel"
 import { RunStatusSummary } from "@/components/agent-run/RunStatusSummary"
-import { RunHistoryList } from "@/components/agent-run/RunHistoryList"
+import { RunTaskRail } from "@/components/agent-run/RunTaskRail"
+import { RunSettingsDrawer } from "@/components/agent-run/RunSettingsDrawer"
 import { RunLauncher } from "@/components/agent-run/RunLauncher"
 import { RunOptimizationRetestBanner } from "@/components/agent-run/RunOptimizationRetestBanner"
 import { RunResultPanel } from "@/components/agent-run/RunResultPanel"
@@ -20,9 +21,18 @@ import type { useAgentRun } from "./useAgentRun"
 export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
   const finished=Boolean(p.activeRun && ["succeeded","failed","cancelled"].includes(p.activeRun.status))
   const [runView, setRunView] = useState({ scope: "", value: "results" })
+  const [settingsOpen,setSettingsOpen]=useState(false)
   const viewScope = p.activeRun?.id || ""
   const selectedView = runView.scope === viewScope ? runView.value : "results"
   const openRunView = (value: string) => setRunView({ scope: viewScope, value })
+  const focusNewTask=()=>{
+    if(p.isLive)return
+    p.handlePrepareNewTask()
+    setRunView({scope:"",value:"results"})
+    window.requestAnimationFrame(()=>{
+      document.getElementById("agent-task-instruction")?.focus({preventScroll:false})
+    })
+  }
   const canRun =
     p.isLoggedIn &&
     Boolean(p.selectedSpec) &&
@@ -87,53 +97,47 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
           </div>
         )}
 
-        <section id="workbench" className="scroll-mt-20 py-5">
-          <div className="flex min-w-0 flex-col gap-4">
-            <div className="flex min-w-0 flex-col gap-4">
-            <SpecConfigPanel
-              specList={p.specList}
-              isLoadingSpecs={p.isLoadingSpecs}
-              selectedSpecId={p.selectedSpecId}
-              onSelectSpec={p.handleSelectSpec}
-              selectedSpec={p.selectedSpec}
-              onEditSpec={()=>window.dispatchEvent(new CustomEvent("studio:open-agent-editor",{detail:{specId:p.selectedSpecId}}))}
-              customModels={p.customModels}
-              isCustomModel={p.isCustomModel}
-              model={p.model}
-              onModelChange={p.setModel}
-              genWfBusy={p.genWfBusy}
-              onGenerateWorkflow={p.handleGenerateWorkflow}
-              builtinTools={p.builtinTools}
-              connectedToolNames={p.connectedToolNames}
-              localDevice={p.readyLocalDevice}
-              marketToolCount={p.marketToolCount}
-              connectedMarketTools={p.connectedMarketTools}
-              runReadiness={p.runReadiness}
-              toolConnectionsLoading={p.toolConnectionsLoading}
-              toolConnectionsError={p.toolConnectionsError}
-              onRefreshConnections={p.refreshToolConnections}
-              onRefreshSkillPreflight={p.refreshSkillPreflight}
-              enabledTools={p.enabledTools}
-              onToggleTool={p.handleToggleTool}
-              maxSteps={p.maxSteps}
-              onMaxStepsChange={p.setMaxSteps}
-              maxModelCalls={p.maxModelCalls}
-              onMaxModelCallsChange={p.setMaxModelCalls}
-              maxRuntimeMinutes={p.maxRuntimeMinutes}
-              onMaxRuntimeMinutesChange={p.setMaxRuntimeMinutes}
-              stopCondition={p.stopCondition}
-              onStopConditionChange={p.setStopCondition}
-              stopOnComplete={p.stopOnComplete}
-              onStopOnCompleteChange={p.setStopOnComplete}
-              requireApproval={p.requireApproval}
-              requirePlanReview={p.requirePlanReview}
-              onTogglePlanReview={p.handleTogglePlanReview}
-              onToggleRequireApproval={p.handleToggleRequireApproval}
-              isLoggedIn={p.isLoggedIn}
-              isLive={p.isLive}
-            />
-            </div>
-            <div className="flex min-w-0 flex-col gap-4">
+        <section id="workbench" className="scroll-mt-20 py-4">
+          <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(215px,260px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(215px,260px)_minmax(0,1fr)_minmax(270px,340px)]">
+            <aside className="hidden min-w-0 lg:sticky lg:top-20 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start">
+              <RunTaskRail runHistory={p.runHistory} activeRun={p.activeRun}
+                onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask}
+                isLoggedIn={p.isLoggedIn} isLive={p.isLive} isStarting={p.isStarting} stateMeta={p.runStateMeta}/>
+            </aside>
+            <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-start-1">
+              <section aria-label="当前 Agent 与本次工作" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="min-w-0 flex-1">
+                  <label htmlFor="run-quick-spec" className="text-xs font-medium text-muted-foreground">当前 Agent</label>
+                  <select id="run-quick-spec" aria-label="快速选择 Agent" value={p.selectedSpecId}
+                    disabled={!p.isLoggedIn||p.isLive}
+                    onChange={e=>p.handleSelectSpec(e.target.value)}
+                    className="mt-1 block min-h-9 w-full max-w-md truncate rounded-lg border border-input bg-background px-3 text-sm font-semibold">
+                    <option value="">选择已保存的 Agent</option>
+                    {p.specList.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {p.activeRun?.status==="awaiting_input"||p.activeRun?.status==="awaiting_approval"?
+                      "下一步：处理当前任务的人工待办":
+                      p.activeRun?.status==="succeeded"?"下一步：核对交付成果和验收结果":
+                      p.isLive?"任务正在推进；执行过程与角色交接在下方查看":
+                      "下一步：输入任务指令、确认必要资源后启动"}
+                  </p>
+                </div>
+                <button type="button" onClick={()=>setSettingsOpen(true)} aria-label="打开本次 Agent 配置"
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-secondary 2xl:hidden">
+                  <SlidersHorizontal className="h-4 w-4"/>资源与设置
+                  {p.runReadiness.issues.length>0&&<span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                    {p.runReadiness.issues.length} 项待补齐
+                  </span>}
+                </button>
+              </section>
+              <details className="rounded-xl border border-border bg-card lg:hidden">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">切换任务 · 最近 {p.runHistory.length} 条</summary>
+                <RunTaskRail runHistory={p.runHistory} activeRun={p.activeRun}
+                  onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask}
+                  isLoggedIn={p.isLoggedIn} isLive={p.isLive} isStarting={p.isStarting} stateMeta={p.runStateMeta}/>
+              </details>
+
               {!p.activeRun && p.selectedSpec && <RunOptimizationRetestBanner
                 candidate={p.recoverableOptimization}
                 linked={p.optimizationLinked}
@@ -158,7 +162,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                     "已有任务在执行，请等待完成或终止后再试跑" :
                   !p.isCustomModel ? "请先连接并启用一个可用的模型" :
                   p.toolConnectionsLoading ? "正在核验工具连接，请稍候" :
-                  !p.runReadiness.ready ? "请先补齐上方「新任务启动检查」中的必需能力与角色配置" :
+                  !p.runReadiness.ready ? "请打开「资源与设置」，查看并解决当前任务的角色、Skill 和工具预检问题" :
                   !p.instruction.trim() ? "请输入实际任务指令" :
                   p.requirePlanReview && p.maxSteps<2 ? "人工方案确认至少需要两个执行步骤" : ""}
               />
@@ -262,18 +266,54 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 </TabsContent>
               </Tabs>
             </div>
+            <RunSettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)}>
+            <SpecConfigPanel
+              specList={p.specList}
+              isLoadingSpecs={p.isLoadingSpecs}
+              selectedSpecId={p.selectedSpecId}
+              onSelectSpec={p.handleSelectSpec}
+              selectedSpec={p.selectedSpec}
+              onEditSpec={()=>window.dispatchEvent(new CustomEvent("studio:open-agent-editor",{detail:{specId:p.selectedSpecId}}))}
+              customModels={p.customModels}
+              isCustomModel={p.isCustomModel}
+              model={p.model}
+              onModelChange={p.setModel}
+              genWfBusy={p.genWfBusy}
+              onGenerateWorkflow={p.handleGenerateWorkflow}
+              builtinTools={p.builtinTools}
+              connectedToolNames={p.connectedToolNames}
+              localDevice={p.readyLocalDevice}
+              marketToolCount={p.marketToolCount}
+              connectedMarketTools={p.connectedMarketTools}
+              runReadiness={p.runReadiness}
+              toolConnectionsLoading={p.toolConnectionsLoading}
+              toolConnectionsError={p.toolConnectionsError}
+              onRefreshConnections={p.refreshToolConnections}
+              onRefreshSkillPreflight={p.refreshSkillPreflight}
+              enabledTools={p.enabledTools}
+              onToggleTool={p.handleToggleTool}
+              maxSteps={p.maxSteps}
+              onMaxStepsChange={p.setMaxSteps}
+              maxModelCalls={p.maxModelCalls}
+              onMaxModelCallsChange={p.setMaxModelCalls}
+              maxRuntimeMinutes={p.maxRuntimeMinutes}
+              onMaxRuntimeMinutesChange={p.setMaxRuntimeMinutes}
+              stopCondition={p.stopCondition}
+              onStopConditionChange={p.setStopCondition}
+              stopOnComplete={p.stopOnComplete}
+              onStopOnCompleteChange={p.setStopOnComplete}
+              requireApproval={p.requireApproval}
+              requirePlanReview={p.requirePlanReview}
+              onTogglePlanReview={p.handleTogglePlanReview}
+              onToggleRequireApproval={p.handleToggleRequireApproval}
+              isLoggedIn={p.isLoggedIn}
+              isLive={p.isLive}
+            />
+            </RunSettingsDrawer>
           </div>
         </section>
 
-        <section id="run-history" className="scroll-mt-20 pb-8">
-          <RunHistoryList
-            runHistory={p.runHistory}
-            onViewRun={p.handleViewHistoryRun}
-            activeRunId={p.activeRun?.id || ""}
-            isLoggedIn={p.isLoggedIn}
-            stateMeta={p.runStateMeta}
-          />
-        </section>
+
       </main>
 
 
