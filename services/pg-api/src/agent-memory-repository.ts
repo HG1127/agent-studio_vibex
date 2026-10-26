@@ -1,5 +1,5 @@
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
-import {withActor} from "./repository.ts"
+import {withActor,assertOwnedAdmissionContext} from "./repository.ts"
 import {parseAgentMemoryChange,type AgentMemoryChange} from "./agent-memory-contract.ts"
 import {sanitizeAgentMemoryText} from "./agent-memory-selection.ts"
 export type AgentMemoryReceipt={request_id:string;memory_id:string;spec_id:string;action:"remember"|"forget";content_sha256:string;recorded:true;replayed:boolean}
@@ -27,8 +27,14 @@ export class AgentMemoryRepository{
       if(!prior)throw new HttpError(404,"agent_memory_receipt_not_found");return prior})
   }
   async change(identity:Identity,raw:unknown):Promise<AgentMemoryReceipt>{
-    native(identity);const choice=parseAgentMemoryChange(raw)
-    return withActor(this.pool,identity,async(db,owner)=>{
+    native(identity);parseAgentMemoryChange(raw)
+    return withActor(this.pool,identity,(db,owner)=>this.changeOwned(db,owner,raw))
+  }
+  // Trusted compound admission only. Reuse the existing verified transaction;
+  // never obtain an owner from a request body or begin a nested pool transaction.
+  async changeOwned(db:SqlClient,owner:string,raw:unknown):Promise<AgentMemoryReceipt>{
+      await assertOwnedAdmissionContext(db,owner)
+      const choice=parseAgentMemoryChange(raw)
       await installed(db)
       // Serialize a request and every operation on the same memory. Receipt
       // lookup precedes the write gate so recovery works after deactivation.
@@ -58,7 +64,6 @@ export class AgentMemoryRepository{
       await db.query("INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) "+
         "VALUES($1::uuid,$1::uuid,$2,'agent_memory',$3,'succeeded',$4::jsonb)",[owner,"agent.memory_"+choice.action,memory,JSON.stringify({request_id:choice.request_id,spec_id:choice.spec_id,content_sha256:hash})])
       return receipt(row,false)
-    })
   }
   async list(identity:Identity,specId:string){
     native(identity);if(!isUuid(specId))throw new HttpError(400,"invalid_agent_spec_id")
