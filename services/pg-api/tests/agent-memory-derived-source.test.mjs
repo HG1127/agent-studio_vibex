@@ -11,6 +11,7 @@ import {loadAgentMemoryDerivedSource} from '../src/agent-memory-derived-source.t
 import {parseAgentMemoryDerivedChange} from '../src/agent-memory-derived-contract.ts'
 import {successfulMemoryFallback,failedMemoryLesson} from '../src/agent-memory-derived-text.ts'
 import {agentMemoryHash} from '../src/agent-memory-contract.ts'
+import {inspectAgentMemoryDerivedSchema,verifyAgentMemoryDerivedCredentials} from '../src/agent-memory-derived-audit.ts'
 let catalogRecorded=false
 async function fixture(){const f=await agentMemoryFixture();try{await f.db.exec(f.sql('migrations/pg_v9_051_agent_memory_derived.sql'));
   if(!catalogRecorded){catalogRecorded=true
@@ -18,6 +19,7 @@ async function fixture(){const f=await agentMemoryFixture();try{await f.db.exec(
     const functions=(await f.db.query("SELECT proname AS name,encode(sha256(convert_to(prosrc,'UTF8')),'hex') AS source_sha256 FROM pg_catalog.pg_proc WHERE oid IN(to_regprocedure('agentstudio.agent_memory_run_source_sha256(uuid)'),to_regprocedure('agentstudio.agent_memory_derived_receipt_guard()'),to_regprocedure('agentstudio.agent_memory_derived_entry_guard()')) ORDER BY proname")).rows
     process.stdout.write('SYNTHETIC_DERIVED_SCHEMA_CATALOG '+JSON.stringify({constraints,functions})+'\n')
   }
+  assert.equal(await inspectAgentMemoryDerivedSchema(f.pool),true)
   return f}catch(error){await f.close();throw error}}
 async function runSource(f,{failed=false,memory=false}={}){
   const spec=f.resources.alice.spec,repo=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true,allowMemory:memory})
@@ -90,9 +92,38 @@ test('a still-matching terminal fingerprint cannot substitute for current origin
   const f=await fixture()
   try{
     const original=await runSource(f,{memory:true}),memory=new AgentMemoryRepository(f.pool,{allowWrites:true}),entry=(await memory.list(f.identities.alice,original.spec.id)).items[0]
+    await assert.rejects(withActor(f.pool,f.identities.alice,async db=>{
+      await db.query("UPDATE agentstudio.runs SET status='failed' WHERE id=$1::uuid AND owner_user_id=$2::uuid",[original.id,f.users.alice])
+      await assert.rejects(loadAgentMemoryDerivedSource(db,f.users.alice,original.spec.id,original.id),e=>e.code==='agent_memory_derived_source_unavailable')
+      throw Error('synthetic_restore_original_terminal_state')
+    }),/synthetic_restore_original_terminal_state/)
     await memory.change(f.identities.alice,{action:'forget',request_id:randomUUID(),spec_id:original.spec.id,memory_id:entry.id,expected_sha256:entry.content_sha256,confirm:true})
     const hash=await withActor(f.pool,f.identities.alice,db=>db.query('SELECT agentstudio.agent_memory_run_source_sha256($1::uuid) AS hash',[original.id]));assert.equal(hash.rows[0].hash,original.source.source_sha256)
     await assert.rejects(original.load,e=>e.status===409)
     assert.equal((await counts(f)).entries,0)
+  }finally{await f.close()}
+})
+
+test('optional051 schema audit rejects data grants, helper authority, erased guards, source FK and quoted CHECK drift',async()=>{
+  const f=await agentMemoryFixture()
+  try{
+    assert.equal(await inspectAgentMemoryDerivedSchema(f.pool),false)
+    await f.db.exec(f.sql('migrations/pg_v9_051_agent_memory_derived.sql'))
+    assert.equal(await inspectAgentMemoryDerivedSchema(f.pool),true)
+    const fk=(await f.db.query("SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_memory_derived_receipts'::regclass AND contype='f' AND confrelid='agentstudio.runs'::regclass")).rows[0].conname
+    assert.match(fk,/^[a-z0-9_]+$/)
+    const changes=['GRANT UPDATE ON agentstudio.agent_memory_derived_entries TO agentstudio_api','GRANT SELECT ON agentstudio.agent_memory_derived_entries TO agentstudio_worker',
+      'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) TO PUBLIC',
+      'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) TO agentstudio_api WITH GRANT OPTION',
+      'GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_derived_entry_guard() TO agentstudio_api',
+      'ALTER FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) SECURITY DEFINER',
+      'ALTER FUNCTION agentstudio.agent_memory_run_source_sha256(uuid) IMMUTABLE',
+      'ALTER TABLE agentstudio.agent_memory_derived_entries NO FORCE ROW LEVEL SECURITY',
+      'ALTER TABLE agentstudio.agent_memory_derived_entries DISABLE TRIGGER agent_memory_derived_entry_receipt',
+      'ALTER POLICY agent_memory_derived_receipts_owner_read ON agentstudio.agent_memory_derived_receipts USING(true)',
+      'ALTER TABLE agentstudio.agent_memory_derived_receipts DROP CONSTRAINT "'+fk+'"',
+      "ALTER TABLE agentstudio.agent_memory_derived_receipts DROP CONSTRAINT agent_memory_derived_receipts_source_sha256_check; ALTER TABLE agentstudio.agent_memory_derived_receipts ADD CONSTRAINT agent_memory_derived_receipts_source_sha256_check CHECK(source_sha256 ~ '^[a-f0-9 ]{64}$')",
+      "DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_051'",'DROP TABLE agentstudio.agent_memory_derived_entries']
+    for(const sql of changes){await f.db.exec('BEGIN');try{await f.db.exec(sql);await assert.rejects(verifyAgentMemoryDerivedCredentials(f.db),/unsafe_agent_memory_derived_privileges/)}finally{await f.db.exec('ROLLBACK')}}
   }finally{await f.close()}
 })
