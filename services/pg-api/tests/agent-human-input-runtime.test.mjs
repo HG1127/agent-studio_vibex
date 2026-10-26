@@ -38,6 +38,26 @@ async function until(f,id,makeWorker,status){
 }
 async function submit(f,role=f.resources.alice.spec,max=3){return f.owned.submit(f.identities.alice,role.id,{expected_revision:role.revision,max_steps:max,idempotency_key:'synthetic-human-'+randomUUID(),instruction:'Synthetic owner task with a possible clarification.'})}
 
+test('human startup audits restricted identity/Broker catalogs without ledger access, while API still requires the actual stamp',async()=>{
+  const f=await fixture()
+  try{
+    for(const role of ['agentstudio_bound_dispatch','agentstudio_model_broker']){
+      await f.db.exec('BEGIN')
+      try{
+        await f.db.exec('SET LOCAL ROLE '+role)
+        assert.equal((await f.db.query("SELECT has_column_privilege(current_user,'agentstudio.schema_migrations','version','SELECT') AS ok")).rows[0].ok,false)
+        assert.equal(await verifyAgentHumanInputCredentials(f.db),true)
+      }finally{await f.db.exec('ROLLBACK')}
+    }
+    await f.db.exec('BEGIN')
+    try{
+      await f.db.exec("DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_048'; SET LOCAL ROLE agentstudio_api")
+      await assert.rejects(verifyAgentHumanInputCredentials(f.db),/unsafe_agent_human_input_privileges/)
+    }finally{await f.db.exec('ROLLBACK')}
+    assert.equal(await verifyAgentHumanInputCredentials(f.db),true)
+  }finally{await f.close()}
+})
+
 test('Native human clarification: private mTLS, durable wait, atomic original response, owner isolation and no automatic model or tool approval',async()=>{
   const f=await fixture(),{alice,bob}=f.identities
   let calls=0

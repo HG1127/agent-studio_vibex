@@ -11,8 +11,11 @@ export async function verifyAgentHumanInputCredentials(db:SqlClient):Promise<boo
   let stamped=false
   if(canRead){const value=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_048') AS ok")).rows[0]?.ok
     if(typeof value!=="boolean")refuse();stamped=value}
-  if(!id&&!stamped)return false
-  if(!id||!stamped)refuse()
+  // Dedicated identity/Broker groups cannot read the migration ledger. They
+  // still inspect the complete catalog and cross-role grants below. API and
+  // Worker (and the SET ROLE API startup wrapper) must verify the actual stamp.
+  if(!id){if(stamped)refuse();return false}
+  if(canRead&&!stamped)refuse()
   const state=(await db.query<{ok:boolean}>("SELECT c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity AND (SELECT rolsuper FROM pg_catalog.pg_roles WHERE oid=c.relowner) AND "+
     "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.oid<>c.relowner AND r.rolname NOT IN($2,'pg_read_all_data','pg_write_all_data') AND "+
     "(has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER'))) AND "+
