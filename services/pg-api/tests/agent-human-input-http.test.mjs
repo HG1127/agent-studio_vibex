@@ -13,7 +13,7 @@ import {permitNativePg18BusinessUatRequest} from '../src/native-config-uat-polic
 import {createHandler} from '../src/http.ts'
 import {createPgNativePilotApi} from '../../../src/lib/pgNativePilotApi.ts'
 test('Native Cookie human replies require exact owner/CSRF/current source; concurrent intent has one winner and confirmation stays read-only after opt-out',async()=>{
-  const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});let server,handler,enabled=true,calls=0
+  const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});let server,handler,enabled=true,workflowEnabled=false,calls=0
   try{
     await f.db.exec(f.sql('migrations/pg_v9_048_agent_human_input.sql'))
     const auth=new NativeAuthRepository(f.pool),owned=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true})
@@ -21,9 +21,9 @@ test('Native Cookie human replies require exact owner/CSRF/current source; concu
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port
     const configure=()=>{
       let business
-      const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:enabled,allowAutonomousAgentSubmission:enabled,allowAgentHumanInput:true,
+      const native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:enabled,allowAutonomousAgentSubmission:enabled,allowWorkflowV2Submission:workflowEnabled,allowAgentHumanInput:true,
         businessHandler:(req,res)=>{
-          if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,{configurationWrites:enabled,autonomousAgentUat:enabled})){
+          if(!permitNativePg18BusinessUatRequest(new URL(req.url,origin).pathname,req.method,{configurationWrites:enabled,autonomousAgentUat:enabled,workflowV2ExecutionUat:workflowEnabled})){
             res.writeHead(405,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'pilot_business_writes_disabled'}));return
           }return business(req,res)
         }})
@@ -61,7 +61,10 @@ test('Native Cookie human replies require exact owner/CSRF/current source; concu
       await assert.rejects(foreign.confirmAutonomousAgentResponse(id,body),e=>e.status===404)
       await assert.rejects(api.confirmAutonomousAgentResponse(id,body),e=>e.code==='agent_human_response_not_found')
       assert.equal((await call(path,{cookie:alice,body:{...body,source_sha256:'f'.repeat(64)}})).status,409)
+      assert.equal((await call('/api/v2/workflow-v2-runs/'+id+'/respond',{cookie:alice,body})).status,405)
+      workflowEnabled=true;configure()
       assert.equal((await call('/api/v2/workflow-v2-runs/'+id+'/respond',{cookie:alice,body})).status,404)
+      workflowEnabled=false;configure()
       const other={...body,request_id:randomUUID(),answer:'Competing owner choice'}
       const attempts=await Promise.all([call(path,{cookie:alice,body}),call(path,{cookie:alice,body:other})])
       assert.deepEqual(attempts.map(r=>r.status).sort(),[200,409])
