@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
 import {createServer} from 'node:http'
-import {agentFixture} from './helpers/workflow-v2-agent-fixture.mjs'
+import {agentMemoryFixture} from './helpers/agent-memory-fixture.mjs'
 import {AgentMemoryRepository} from '../src/agent-memory-repository.ts'
 import {NativeAuthRepository} from '../src/native-auth-repository.mjs'
 import {createNativeAuthHttpHandler} from '../src/native-auth-http.mjs'
@@ -11,9 +11,8 @@ import {createHandler} from '../src/http.ts'
 import {createPgNativePilotApi} from '../../../src/lib/pgNativePilotApi.ts'
 
 test('manual memory uses verified Native Cookie/Origin/CSRF; lost save and forget recover after write opt-out without resending',async()=>{
-  const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});let server,handler,enabled=true
+  const f=await agentMemoryFixture({stage:'manual'});let server,handler,enabled=true
   try{
-    await f.db.exec(f.sql('migrations/pg_v9_049_agent_memory.sql'))
     const auth=new NativeAuthRepository(f.pool)
     server=createServer((req,res)=>{void handler(req,res)})
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port

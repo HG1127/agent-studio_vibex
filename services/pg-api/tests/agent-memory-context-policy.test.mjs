@@ -2,7 +2,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
-import {agentFixture} from './helpers/workflow-v2-agent-fixture.mjs'
+import {agentMemoryFixture} from './helpers/agent-memory-fixture.mjs'
 import {withActor} from '../src/repository.ts'
 import {AgentMemoryRepository} from '../src/agent-memory-repository.ts'
 import {AutonomousAgentRunRepository} from '../src/autonomous-agent-run-repository.ts'
@@ -10,7 +10,7 @@ import {prepareOwnedAgentMemoryContext,insertAgentMemoryContextReceipt,verifyCur
 import {agentMemoryContextHash} from '../src/agent-memory-context.ts'
 import {inspectAgentMemorySchema} from '../src/agent-memory-audit.ts'
 import {inspectAgentMemoryContextSchema,verifyAgentMemoryContextCredentials} from '../src/agent-memory-context-audit.ts'
-async function fixture(){const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});try{for(const sql of ['pg_v9_049_agent_memory.sql','pg_v9_050_agent_memory_context.sql'])await f.db.exec(f.sql('migrations/'+sql));
+async function fixture(){const f=await agentMemoryFixture();try{
   try{assert.equal(await inspectAgentMemoryContextSchema(f.pool),true)}catch(error){const checks=(await f.db.query("SELECT conname,regexp_replace(pg_get_expr(conbin,conrelid),'[[:space:]]','','g') AS expression FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_memory_run_contexts'::regclass AND contype='c'")).rows;throw Error('synthetic_memory_context_audit_failed '+JSON.stringify(checks),{cause:error})}
   return f}catch(error){await f.close();throw error}}
 async function baseRun(f,instruction){const role=f.resources.alice.spec,owned=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true})
@@ -73,7 +73,7 @@ test('receipt insertion failure rolls back explicit memory and checkpoint togeth
 })
 
 test('memory startup stays optional without schema and rejects privilege, RLS, constraint or migration drift even when execution is off',async()=>{
-  const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true})
+  const f=await agentMemoryFixture({stage:'absent'})
   try{
     assert.equal(await inspectAgentMemorySchema(f.pool),false);assert.equal(await inspectAgentMemoryContextSchema(f.pool),false)
     await f.db.exec(f.sql('migrations/pg_v9_049_agent_memory.sql'))

@@ -52,6 +52,8 @@ test('owner memory execution: original submit recovery, private prompt, complete
     }throw Error('synthetic_memory_runtime_browser_transition_limit')}
     await advance('succeeded');await expect(page.getByText(full,{exact:true})).toBeVisible()
     proof=await control('state','GET');expect(proof.generated).toBe(1);expect(proof.memoryPrompts).toBe(1)
+    await expect(page.getByRole('button',{name:'刷新多轮任务',exact:true})).toBeEnabled()
+    await page.getByText(full,{exact:true}).scrollIntoViewIfNeeded()
     await page.screenshot({path:testInfo.outputPath('native-agent-memory-runtime-owner.png')})
     const panel=page.getByRole('region',{name:'本人角色记忆',exact:true})
     const forget=async()=>{

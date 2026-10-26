@@ -2,13 +2,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
-import {agentFixture} from './helpers/workflow-v2-agent-fixture.mjs'
+import {agentMemoryFixture} from './helpers/agent-memory-fixture.mjs'
 import {AgentMemoryRepository} from '../src/agent-memory-repository.ts'
 import {agentMemoryHash} from '../src/agent-memory-contract.ts'
 import {withActor} from '../src/repository.ts'
 import {verifyAgentMemoryCredentials} from '../src/agent-memory-audit.ts'
 const input=(role,fact='报告使用中文。')=>({action:'remember',request_id:randomUUID(),spec_id:role.id,expected_revision:role.revision,fact,confirm:true})
-async function fixture(){const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});try{await f.db.exec(f.sql('migrations/pg_v9_049_agent_memory.sql'));return {...f,memory:new AgentMemoryRepository(f.pool,{allowWrites:true}),readonly:new AgentMemoryRepository(f.pool)}}catch(error){await f.close();throw error}}
+async function fixture(){const f=await agentMemoryFixture({stage:'manual'});try{return {...f,memory:new AgentMemoryRepository(f.pool,{allowWrites:true}),readonly:new AgentMemoryRepository(f.pool)}}catch(error){await f.close();throw error}}
 
 test('owned manual memory: atomic receipts, erasure, original recovery, owner isolation and no resurrection',async()=>{
   const f=await fixture(),{alice,bob}=f.identities,role=f.resources.alice.spec,request=input(role,'report token=syntheticMemorySecret')

@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
-import {agentFixture} from './helpers/workflow-v2-agent-fixture.mjs'
+import {agentMemoryFixture} from './helpers/agent-memory-fixture.mjs'
 import {AutonomousAgentRunRepository} from '../src/autonomous-agent-run-repository.ts'
 import {AgentMemoryRepository} from '../src/agent-memory-repository.ts'
 import {AgentHumanInputRepository} from '../src/agent-human-input-repository.ts'
@@ -11,8 +11,7 @@ import {ScheduleDraftRepository} from '../src/schedule-draft-repository.ts'
 import {ScheduleRuntimeRepository} from '../src/schedule-runtime-repository.ts'
 import {ScheduleRuntimeWorker} from '../src/schedule-runtime-worker.ts'
 import {SCHEDULE_BACKGROUND_ACK} from '../src/schedule-runtime-contract.ts'
-async function fixture(){const f=await agentFixture({autonomous:true,sharing:true,nativeEmployees:true});try{
-  for(const file of ['pg_v9_049_agent_memory.sql','pg_v9_050_agent_memory_context.sql'])await f.db.exec(f.sql('migrations/'+file))
+async function fixture(){const f=await agentMemoryFixture();try{
   return {...f,owned:new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true,allowMemory:true}),memory:new AgentMemoryRepository(f.pool,{allowWrites:true})}
 }catch(error){await f.close();throw error}}
 const raw=f=>({expected_revision:f.resources.alice.spec.revision,max_steps:3,idempotency_key:'synthetic-memory-'+randomUUID(),instruction:'记住：财务报告使用中文。整理财务报告'})

@@ -83,12 +83,12 @@ test("post-install verification refuses login activation, private privilege drif
       "CREATE TABLE agentstudio.unreviewed_table(id integer)"]){
       await f.db.exec("BEGIN");try{await f.db.exec(sql);await assert.rejects(verifyFreshRuntime(f.api,snapshot,true),/fresh_runtime_verification_failed/)}finally{await f.db.exec("ROLLBACK")}
     }
-    for(const sql of ["GRANT UPDATE ON agentstudio.agent_memory_entries TO agentstudio_api",
-      "GRANT SELECT ON agentstudio.agent_memory_run_contexts TO agentstudio_worker",
-      "ALTER TABLE agentstudio.agent_memory_run_contexts NO FORCE ROW LEVEL SECURITY",
-      "ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_graph_sha256_check",
-      "ALTER TABLE agentstudio.agent_memory_entries DISABLE TRIGGER agent_memory_entry_receipt"]){
-      await f.db.exec("BEGIN");try{await f.db.exec(sql);await assert.rejects(verifyFreshRuntime(f.api,snapshot,true),/unsafe_agent_memory/)}finally{await f.db.exec("ROLLBACK")}
+    for(const [sql,expected] of [["GRANT UPDATE ON agentstudio.agent_memory_entries TO agentstudio_api",/unsafe_agent_memory_privileges/],
+      ["GRANT SELECT ON agentstudio.agent_memory_run_contexts TO agentstudio_worker",/unsafe_agent_memory_context_privileges/],
+      ["ALTER TABLE agentstudio.agent_memory_run_contexts NO FORCE ROW LEVEL SECURITY",/fresh_runtime_verification_failed/],
+      ["ALTER TABLE agentstudio.agent_memory_run_contexts DROP CONSTRAINT agent_memory_run_contexts_graph_sha256_check",/unsafe_agent_memory_context_privileges/],
+      ["ALTER TABLE agentstudio.agent_memory_entries DISABLE TRIGGER agent_memory_entry_receipt",/unsafe_agent_memory_privileges/]]){
+      await f.db.exec("BEGIN");try{await f.db.exec(sql);await assert.rejects(verifyFreshRuntime(f.api,snapshot,true),expected)}finally{await f.db.exec("ROLLBACK")}
     }
     assert.equal((await f.verify()).service_logins_enabled,false)
   }finally{await f.close()}
@@ -115,7 +115,7 @@ test("Native activation recognizes the exact empty full runtime receipt without 
     let evidence
     try{evidence=await collectNativeActivationEvidenceForTest(probe)}finally{await f.db.exec("ROLLBACK")}
     // Base counts exclude the separately checked private auth/audit schema.
-    assert.deepEqual(evidence.fresh_runtime,{verified:true});assert.equal(evidence.base_tables,56);assert.equal(evidence.base_force_rls,55)
+    assert.deepEqual(evidence.fresh_runtime,{verified:true});assert.equal(evidence.base_tables,59);assert.equal(evidence.base_force_rls,58)
     assert.equal(diagnoseNativeSchema(evidence).ready,true)
     for(const change of [{fresh_runtime:{verified:false}},{fresh_runtime:undefined},{base_tables:45},{base_force_rls:42},{auth_tables:2},{auth_force_rls:2},{state:{...state,port:5432}},{hba_rule:false},{local_rule_safe:false},{activated:true},{business_can_auth:true}])
       assert.equal(diagnoseNativeSchema({...evidence,...change}).ready,false)
