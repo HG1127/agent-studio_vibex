@@ -13,6 +13,7 @@ import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
 import {scheduleAutomaticEffect,scheduleOwnedRunCandidate} from "./schedule-effect-policy.ts"
 import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2-agent-machine.ts"
 import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
+import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:DurableV2Mode;workflow_id?:string;agent_spec_id?:string;workflow_revision?:number;spec_revision?:number;graph_sha256:string};
@@ -76,14 +77,18 @@ export class WorkflowV2Worker{
   readonly scheduleEnabled:boolean
   readonly humanEnabled:boolean
   readonly memoryEnabled:boolean
+  readonly outcomeEnabled:boolean
+  readonly outcomes:AgentMemoryOutcomeRepository
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;executionMode?:DurableV2Mode}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
     this.agentEnabled=options.agentExecutionApproved===true
     this.scheduleEnabled=options.scheduleExecutionApproved===true
     this.humanEnabled=options.humanInputApproved===true
     this.memoryEnabled=options.memoryExecutionApproved===true
+    this.outcomeEnabled=options.outcomeMemoryApproved===true
+    this.outcomes=new AgentMemoryOutcomeRepository(pool,{allowWriteback:this.outcomeEnabled})
     this.root=durableV2Root(options.executionMode??"workflow_native_v2")
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
@@ -138,6 +143,10 @@ export class WorkflowV2Worker{
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
+    if(this.root.kind==="agent"&&await this.outcomes.hasOwned(db,job.owner_user_id,job.run_id)&&(!this.outcomeEnabled||!this.humanEnabled)){
+      await this.persist(db,job,state,"paused","agent_memory_outcome_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
+      return {tick:{status:"paused",run_id:job.run_id}}
+    }
     if(!this.scheduleEnabled&&await scheduleOwnedRunCandidate(db,job.run_id)){
       await this.persist(db,job,state,"paused","schedule_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
       return {tick:{status:"paused",run_id:job.run_id}}
@@ -272,6 +281,16 @@ export class WorkflowV2Worker{
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.run_id,job.owner_user_id,status,JSON.stringify(state),result,error])
     if(status==="failed"||status==="succeeded"||status==="paused")await auditWorkflowV2(db,job.owner_user_id,job.run_id,
       "workflow.v2_"+status,{cursor:state.machine.cursor,error_code:error})
+    if(status==="failed"||status==="succeeded")await this.writeOutcome(db,job)
+  }
+  private async writeOutcome(db:SqlClient,job:Job){
+    if(this.root.kind!=="agent")return
+    await db.query("SAVEPOINT agent_memory_outcome_terminal")
+    try{await this.outcomes.finishOwned(db,job.owner_user_id,job.run_id);await db.query("RELEASE SAVEPOINT agent_memory_outcome_terminal")}
+    catch{
+      await db.query("ROLLBACK TO SAVEPOINT agent_memory_outcome_terminal");await db.query("RELEASE SAVEPOINT agent_memory_outcome_terminal")
+      await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_memory_outcome_unconfirmed",{reason_code:"storage_unavailable"})
+    }
   }
   private async finish(job:Job,request:WorkflowEffectRequest,output:string|undefined):Promise<WorkflowV2Tick>{return tx(this.pool,async db=>{
     const current=await lockLease(db,job,this.workerId);if(!current)return {status:"stale",run_id:job.run_id}
@@ -336,6 +355,7 @@ export class WorkflowV2Worker{
     await db.query("UPDATE agentstudio.runs SET status='failed',last_error_code=$3::text,finished_at=clock_timestamp(),updated_at=clock_timestamp() "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id,error])
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_failed",{error_code:error})
+    await this.writeOutcome(db,current)
     await acknowledge(db,job,this.workerId,"failed");return {status:"failed",run_id:job.run_id}
   })}
   private async reconcileExpired():Promise<WorkflowV2Tick|null>{return tx(this.pool,async db=>{
