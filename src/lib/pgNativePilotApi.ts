@@ -3,6 +3,8 @@
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
+import {agentReviewHistoryQuery,agentReviewHistoryPage,type PgNativeAgentReviewHistoryQuery} from "./pgNativeAgentReviewHistory.ts"
+export type {PgNativeAgentReviewHistoryQuery,PgNativeAgentReviewHistoryItem,PgNativeAgentReviewHistoryPage} from "./pgNativeAgentReviewHistory.ts"
 export type {PgNativeAgentReviewPurpose,PgNativeAgentReviewTarget,PgNativeAgentReviewModelBinding,PgNativeAgentReviewFeedbackSource,PgNativeAgentReviewSelection,PgNativeAgentReviewChoice,PgNativeAgentReviewSubmission,PgNativeAgentReviewControl,PgNativeAgentReviewSource,PgNativeAgentReviewPreview,PgNativeAgentReviewReceipt,PgNativeAgentReviewControlReceipt,PgNativeAgentReviewRequest,PgNativeAgentReviewEvaluation,PgNativeAgentReviewOptimization,PgNativeAgentReviewResult,PgNativeAgentReviewOutcome,PgNativeAgentReviewView} from "./pgNativeAgentReview.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
@@ -72,6 +74,7 @@ export type PgNativeConfigCapabilities={
   agent_optimization_acceptance_enabled?:boolean
   agent_review_available?:boolean
   agent_review_submission_enabled?:boolean
+  agent_review_history_available?:boolean
   agent_feedback_available?:boolean
   agent_feedback_submission_enabled?:boolean
   agent_feedback_lesson_storage_enabled?:boolean
@@ -287,6 +290,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/agent-derived-memories${string}`
   | `/api/v2/agent-optimizations${string}`
   | `/api/v2/agent-reviews/${string}`
+  | `/api/v2/agent-reviews?${string}`
   | `/api/v2/agent-feedback/${string}`
   | `/api/v2/agent-outcome-memories/${string}`
   | `/api/v2/workflows/${string}/validate`
@@ -535,6 +539,14 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    listAgentReviewHistory:async(raw:PgNativeAgentReviewHistoryQuery)=>{
+      let query:ReturnType<typeof agentReviewHistoryQuery>
+      try{query=agentReviewHistoryQuery(raw)}catch(cause){throw new PgNativePilotError(400,cause instanceof Error&&cause.message==="invalid_agent_review_history_cursor"?cause.message:"invalid_agent_review_history_query")}
+      const params=new URLSearchParams({spec_id:query.spec_id,run_id:query.run_id,purpose:query.purpose,limit:String(query.limit)})
+      if(query.before!==null)params.set("before",query.before)
+      const result=await get<unknown>(`/api/v2/agent-reviews?${params.toString()}`)
+      try{return agentReviewHistoryPage(result,query)}catch{throw new PgNativePilotError(503,"invalid_agent_review_history_response")}
+    },
     getAgentReviewSource:async(raw:PgNativeAgentReviewTarget)=>{
       const body=reviewInput(agentReviewTarget,raw),result=await post<unknown>("/api/v2/agent-reviews/source",body)
       return reviewResponse(()=>agentReviewSource(result,body))
@@ -638,6 +650,8 @@ export function createPgNativePilotApi(
           (value.agent_review_available!==undefined&&typeof value.agent_review_available!=="boolean")||
           (value.agent_review_submission_enabled!==undefined&&typeof value.agent_review_submission_enabled!=="boolean")||
           (value.agent_review_submission_enabled===true&&(value.agent_review_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_review_history_available!==undefined&&typeof value.agent_review_history_available!=="boolean")||
+          (value.agent_review_history_available===true&&value.agent_review_available!==true)||
           (value.agent_feedback_available!==undefined&&typeof value.agent_feedback_available!=="boolean")||
           (value.agent_feedback_submission_enabled!==undefined&&typeof value.agent_feedback_submission_enabled!=="boolean")||
           (value.agent_feedback_lesson_storage_enabled!==undefined&&typeof value.agent_feedback_lesson_storage_enabled!=="boolean")||

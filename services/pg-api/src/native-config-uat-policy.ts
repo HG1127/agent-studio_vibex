@@ -195,6 +195,7 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  if(pathname==="/api/v2/agent-reviews")return method==="GET"
   // Existing ledger decides original replay before its independent fresh-write
   // scope. Source/preview/recovery/privacy/current reads stay reachable closed.
   if(/^\/api\/v2\/agent-reviews\/(source|preview|submit|confirm)$/.test(pathname))return method==="POST"

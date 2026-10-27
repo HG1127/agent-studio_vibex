@@ -33,6 +33,7 @@ import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Ide
 import {parseAgentReviewSubmission} from "./agent-review-contract.ts"
 import {parseAgentReviewControl} from "./agent-review-control.ts"
 import {parseAgentOpinionView} from "./agent-opinion-contract.ts"
+import {parseAgentReviewHistoryUrl,parseAgentReviewHistoryPage} from "./agent-review-history-contract.ts"
 import {parseAgentReviewTarget,parsePublicAgentReviewChoice,publicAgentReviewSource,publicAgentReviewPreview,publicAgentReviewReceipt,publicAgentReviewControlReceipt} from "./agent-review-public-contract.ts"
 
 export interface AppDependencies {
@@ -55,6 +56,7 @@ export interface AppDependencies {
   agentReviewSourceRepository?:Pick<import("./agent-review-source.ts").AgentReviewSourceRepository,"source"|"preview">
   agentReviewLedgerRepository?:Pick<import("./agent-review-ledger.ts").AgentReviewLedgerRepository,"submit"|"confirm"|"change"|"confirmControl">
   agentOpinionRepository?:Pick<import("./agent-opinion-repository.ts").AgentOpinionRepository,"getCurrent">
+  agentReviewHistoryRepository?:Pick<import("./agent-review-history-repository.ts").AgentReviewHistoryRepository,"list">
   agentOutcomeMemoryRepository?:import("./agent-memory-outcome-repository.ts").AgentMemoryOutcomeRepository
   agentDerivedMemoryRepository?:import("./agent-memory-derived-repository.ts").AgentMemoryDerivedRepository
   workflowHumanInputRepository?:AgentHumanInputRepository
@@ -178,7 +180,8 @@ export function createHandler(deps:AppDependencies) {
       const optimizationRoute=/^\/api\/v2\/agent-optimizations(?:\/(preview|accept|confirm))?$/.exec(path)
       const reviewAction=/^\/api\/v2\/agent-reviews\/(source|preview|submit|confirm)$/.exec(path)
       const reviewItem=/^\/api\/v2\/agent-reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\/(control|control-confirm))?$/.exec(path)
-      const reviewRoute=reviewAction||reviewItem
+      const reviewCollection=path==="/api/v2/agent-reviews"
+      const reviewRoute=reviewAction||reviewItem||reviewCollection
       const feedbackRoute=/^\/api\/v2\/agent-feedback\/([0-9a-fA-F-]{36})(?:\/(change|confirm))?$/.exec(path)
       const outcomeMemoryRoute=/^\/api\/v2\/agent-outcome-memories\/([0-9a-fA-F-]{36})(?:\/(stop|stop-confirm))?$/.exec(path)
       const derivedMemoryRoute=/^\/api\/v2\/agent-derived-memories(?:\/(preview|change|confirm))?$/.exec(path)
@@ -194,6 +197,7 @@ export function createHandler(deps:AppDependencies) {
         throw new HttpError(405,"method_not_allowed")
       if(reviewRoute){
         if(!deps.agentReviewSourceRepository||!deps.agentReviewLedgerRepository||!deps.agentOpinionRepository)throw new HttpError(404,"route_not_found")
+        if(reviewCollection&&!deps.agentReviewHistoryRepository)throw new HttpError(404,"route_not_found")
         // Never evaluate an OIDC/PocketBase token fallback for this surface.
         if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
       }
@@ -220,6 +224,13 @@ export function createHandler(deps:AppDependencies) {
         throw new HttpError(401,"invalid_token")
       if(reviewRoute){
         if(identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+        if(reviewCollection){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          const query=parseAgentReviewHistoryUrl(req.url)
+          if(req.headers["transfer-encoding"]!==undefined||req.headers["content-length"]!==undefined&&req.headers["content-length"]!=="0")throw new HttpError(400,"invalid_agent_review_history_query")
+          for await(const chunk of req)if(Buffer.byteLength(chunk)>0)throw new HttpError(400,"invalid_agent_review_history_query")
+          return send(res,200,parseAgentReviewHistoryPage(await deps.agentReviewHistoryRepository!.list(identity,query),query))
+        }
         // Only exact origin-form paths: no query, fragment, encoded alias,
         // absolute URL or normalized dot-segment alternate route is accepted.
         if(req.url!==path)throw new HttpError(400,"invalid_agent_review_path")

@@ -969,3 +969,4 @@ jobs:
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:agent-opinion
           pnpm --dir services/pg-api test:agent-review-public
+          pnpm --dir services/pg-api test:agent-review-history

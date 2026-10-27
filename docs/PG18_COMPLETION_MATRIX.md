@@ -87,3 +87,22 @@
 可选058已在`28d39703909f1031ad53ed52bc68b59ae6c4cd3d`完成该阶段全套隔离验收：[质量49/49、根pnpm check 814/814与类型/构建](https://github.com/HG1127/agent-studio_vibex/actions/runs/40451577462)、新结果读取域23/23、[真实PG18四个作业及并发8/8](https://github.com/HG1127/agent-studio_vibex/actions/runs/40451577322)、[浏览器4/4主19/19](https://github.com/HG1127/agent-studio_vibex/actions/runs/40451577408)和[完整CLI8/8](https://github.com/HG1127/agent-studio_vibex/actions/runs/40451577393)全部通过。实际pg_blocking_pids证明读取与erase/反馈540删除/epoch变更的双方顺序；同UUID跨owner、零分/完整容量和无读取业务DML通过。37张当前合成截图中的接受来源页已目视复核；初始化86份和API/索引/assessment194份复制源码的新本地归档逐字节匹配。PB19真实执行仍为b493038的双Worker82.3秒，058的PB运行输入及根package非test字段已比对不变，没有声称在058重跑。默认fresh050不变，公开费用HTTP/SDK/UI是下一轮待验收草案，历史意见依赖与生成055接受、其他功能及正式部署验收仍未完成；迁移保持NO-GO。
 
 公开评审下一候选接入真实Native Cookie HTTP的source/安全preview/submit/confirm/control/control-confirm/current七入口，三仓库仅在完整058审计通过时挂载。新提交有独立且默认关闭的隔离UAT许可；关闭时原请求恢复、读取与隐私控制仍可用，不复用Worker执行开关。浏览器SDK/controller严格核对闭合协议和WebCrypto摘要，保留一次冻结的原提交与控制，超时/未知只核对，不自动新建或重发。新员工面板选择独立本人模型及反馈、安全预览后由本人明确确认可能费用，零分直接展示，优化建议只读。新增36项纯HTTP/policy/SDK/session测试已在各会话通过；父新增浏览器故事使用真实Cookie/SQL仓库和protected057 claim/context/reserve/finish合成完成，覆盖原请求丢响应、禁新提交后的读与擦除、独立模型、结果、反馈级联擦除及跨员工隔离。该浏览器控制不宣称同故事运行真实Worker或provider；那些路径由独立PG18/mTLS及完整CLI验证。当前公开端到端仍待候选隔离CI，不能从单测推定完成；历史意见依赖/发现历史列表、生成055来源接受及其他迁移和正式运维验收继续保留。默认fresh050、SQL001–058与生产流程未改，正式迁移NO-GO。
+
+公开评审已在`c1269da42f9947cccc38b58fabd6f27acd94aa25`完成本阶段全套隔离验收：[质量49/49、根pnpm check850/850及类型/构建](https://github.com/HG1127/agent-studio_vibex/actions/runs/40454976566)、结果读取SQL/仓库23/23和HTTP/policy10/10、[真正PG18四作业及并发8/8](https://github.com/HG1127/agent-studio_vibex/actions/runs/40454976576)、[浏览器4/4主20/20](https://github.com/HG1127/agent-studio_vibex/actions/runs/40454976596)和[完整CLI8/8](https://github.com/HG1127/agent-studio_vibex/actions/runs/40454976607)全部通过。同提交实际PocketBase19/19、双Worker78.5秒；38张合成截图中新增独立模型及零分评审界面已目视复核。初始化86份、API/索引/assessment200份复制源码的新本地归档逐字节核对，归档未上传。新故事真实经过Cookie/HTTP/SQL仓库/SDK/controller/界面，结果由protected057合成完成，不把该故事说成真实Worker/provider过程；它们仍由单独真正PG18/mTLS与完整CLI验收。已修复模型/输出变化取消后缺替代来源读取，以及浏览器confirm等待与异常子进程清理。新提交默认关闭，SQL001–058和默认fresh050不变；历史结果发现、prior依赖与生成055接受、其余活跃功能及正式UAT/运维验收尚待完成，整体迁移NO-GO。
+
+本轮按实际Standalone入口重新核对功能范围：PB入口`src/main.tsx -> App.tsx`及菜单/可达组件/hook/handler，对照独立PG入口`pg18-app/main.tsx -> PgNativePilotPage`。源级报告核对88处证据锚点、51份源码摘要，静态闭包324份源码；不把不可达旧VibeX导出页或RunningHub费用弹窗当作迁移要求。报告记录时Native已验收基线为c1269da；随后5份Native源码进入未验收history草案，不能把该草案算作已通过。该对照是范围证据，不替代运行/UAT验收。
+
+| 活跃功能缺口组 | 当前需完成的范围 |
+|---|---|
+| ACTIVE-PARITY-01 · 生成意见的受保护接受、来源关联和再次试跑闭环 | 缺少本人当前受保护生成结果到055候选接受及复测关联；历史评估输入仍拒绝。PB隐式聚合旧评估应改为有界明确选择与可撤回来源，不能照搬。 |
+| ACTIVE-PARITY-02 · 运行步骤的显式委托审批 | 无可达Native委托授予/撤销/到期、管理员委托队列及run/step/输入指纹绑定决定。Admin身份或浏览器owner_id不能替代原owner明确授权。 |
+| ACTIVE-PARITY-03 · 公司运营总览及本人跨任务待办 | 缺公司运行/待审批/失败/过期计划聚合及本人跨Agent/Workflow/计划的安全待办。不能以总览为由暴露同事prompt/output；不重复账号管理、不臆造组织架构。 |
+| ACTIVE-PARITY-04 · 模板中心与内部一次性分享 | 缺目录/本人发布/撤回/副本安装及审核后生成/兑换/撤销邀请。安装须清洁快照并重绑本人的模型/工具/知识，不能继承发布者凭证。 |
+| ACTIVE-PARITY-05 · 发布后集成：embed、外部调用密钥、试调及统计 | 缺外部主体/发行密钥的安全边界、轮换撤销、发布版本绑定、embed配置脚本、真实试调与按来源调用日志/统计。不能直接公开Cookie员工路由。 |
+| ACTIVE-PARITY-06 · 本地设备配对、受限任务与办公助手 | 缺Native owner设备配对/撤销/心跳目录、批准的本地claim/result/cancel和Agent/office绑定。不是任意本机shell，也不能沿用PB token当Native授权。 |
+| ACTIVE-PARITY-07 · 独立工具调试、调用总览与Worker/Harness监控 | 缺按工具能力明确授权的独立试调、按工具筛选的调用日志/聚合统计和Worker心跳/Harness屏。监控读取不能成为启动Worker或绕过owner审批的执行通道。 |
+| ACTIVE-PARITY-08 · MCP公共注册表浏览、推荐和说明层 | 仅缺官方公共MCP registry查询/推荐/详情及中文说明流程。独立试调/日志共性归07。模型翻译若保留须本人模型和明确费用确认，不复活旧RunningHub访客代付界面。 |
+
+纠正旧待办：计划任务的授权/暂停/立即运行/原occurrence重试及历史、结构化嵌套loop、Agent版本验收/保存/发布/完整恢复，以及基础员工治理与协作提案已有Native实现，继续保留回归，不重复开发。未发现活跃PB独立子Workflow节点或部门组织图的证据，不因类比追加功能。新历史发现是当前Native持久化请求流程的真实缺口：须在刷新/登录后恢复评估，并在来源失效时保留精确隐私控制；该功能正在独立实现。上述8组与最终完整schema/交付映射、真实员工UAT、网络/权限、备份恢复/回滚、长期Worker及GO仍未完成。正式迁移NO-GO。
+
+历史意见下一候选增加Native本人任务/用途范围的只读metadata发现和微秒keyset分页；独立history能力只管理发现，不授权正文、新付费请求或模型执行。重新加载后明确选择原UUID，经058核对正文；当前模型或来源失效时保留已知不可变hash，仍由本人明确取消或擦除，临时关闭列表能力不能撤销原056隐私控制。每个已接受历史项的cancel/erase观察保持单调，非法半页不得污染已知状态，注销/401/换任务严格隔离。无新SQL、角色、授权或索引，SQL001–058与defaultfresh050不变；LIMIT只限制响应候选数，真实性能仍须隔离PG查询计划证据。新增真实PG18微秒分页/owner碰撞/来源失效擦除证明及浏览器重新加载发现/正文拒绝后删除证明已编写，本候选尚待托管隔离CI。生成建议进入055、prior依赖/派生隐私及实际PB活跃功能缺口继续推进，迁移整体未完成、生产NO-GO。

@@ -39,6 +39,7 @@ import {inspectAgentFeedbackSchema} from "../../src/agent-feedback-audit.ts"
 import {AgentReviewSourceRepository} from "../../src/agent-review-source.ts"
 import {AgentReviewLedgerRepository} from "../../src/agent-review-ledger.ts"
 import {AgentOpinionRepository} from "../../src/agent-opinion-repository.ts"
+import {AgentReviewHistoryRepository} from "../../src/agent-review-history-repository.ts"
 import {inspectAgentOpinionSchema} from "../../src/agent-opinion-audit.ts"
 import {assessmentClaim,assessmentProof,assessmentContext,assessmentReserve,assessmentFinish,assessmentEvaluation,assessmentOptimization} from "./agent-assessment-fixture.mjs"
 import {AgentMemoryOutcomeRepository} from "../../src/agent-memory-outcome-repository.ts"
@@ -159,7 +160,7 @@ Object.assign(state,{outcomeAllowed:outcomeMemory,outcomeDrop:false,outcomeCapab
 Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedCapabilitiesDrop:false,derivedHashes:[],derivedConfirms:0})
 Object.assign(state,{feedbackAllowed:feedback,feedbackDrop:false,feedbackCapabilitiesDrop:false,feedbackHashes:[],feedbackConfirms:0,feedbackFailLesson:false})
 Object.assign(state,{optimizationAllowed:optimization,optimizationDrop:false,optimizationCapabilitiesDrop:false,optimizationHashes:[],optimizationConfirms:0})
-Object.assign(state,{reviewAllowed:review,reviewDrop:false,reviewCapabilitiesDrop:false,reviewHashes:[],reviewConfirms:0,reviewSyntheticCompletions:0})
+Object.assign(state,{reviewAllowed:review,reviewHistoryAllowed:review,reviewDrop:false,reviewCapabilitiesDrop:false,reviewHashes:[],reviewConfirms:0,reviewSyntheticCompletions:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -294,7 +295,7 @@ try{
       allowAgentOptimization:optimization,allowAgentOptimizationAcceptance:state.optimizationAllowed&&state.configAllowed,
       allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
       allowAgentFeedback:feedback,allowAgentFeedbackSubmission:state.feedbackAllowed,allowAgentFeedbackLessons:state.feedbackAllowed,
-      allowAgentReview:review,allowAgentReviewSubmission:state.reviewAllowed&&state.configAllowed,
+      allowAgentReview:review,allowAgentReviewSubmission:state.reviewAllowed&&state.configAllowed,allowAgentReviewHistory:state.reviewHistoryAllowed,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:state.outcomeAllowed,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:state.derivedAllowed,
       businessHandler:(req,res)=>{
@@ -352,7 +353,7 @@ try{
       ...(human?{agentHumanInputRepository:humanRepository("agent_native_v2"),workflowHumanInputRepository:humanRepository("workflow_native_v2")}:{}),
       ...(memory?{agentMemoryRepository:memoryRepository}:{}),
       ...(feedback?{agentFeedbackRepository:feedbackRepository}:{}),
-      ...(review?{agentReviewSourceRepository:new AgentReviewSourceRepository(pool),agentOpinionRepository:new AgentOpinionRepository(pool),agentReviewLedgerRepository:{
+      ...(review?{agentReviewHistoryRepository:new AgentReviewHistoryRepository(pool),agentReviewSourceRepository:new AgentReviewSourceRepository(pool),agentOpinionRepository:new AgentOpinionRepository(pool),agentReviewLedgerRepository:{
         confirm(identity,body){state.reviewConfirms++;return new AgentReviewLedgerRepository(pool).confirm(identity,body)},
         confirmControl(identity,body){state.reviewConfirms++;return new AgentReviewLedgerRepository(pool).confirmControl(identity,body)},
         submit(identity,body){state.reviewHashes.push({action:body.action,request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentReviewLedgerRepository(pool,{allowSubmissions:state.reviewAllowed&&state.configAllowed}).submit(identity,body)},
@@ -408,7 +409,8 @@ try{
               reviewInputs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_review_inputs")).rows[0].n,
               reviewEffects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_assessment_effects")).rows[0].n,
               reviewOutputs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_assessment_outputs")).rows[0].n,
-              reviewTombstones:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_review_tombstones")).rows[0].n}:{}),
+              reviewTombstones:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_review_tombstones")).rows[0].n,
+              reviewScopes:(await c.query("SELECT request_id,spec_id,run_id,purpose FROM agentstudio.agent_review_requests ORDER BY created_at DESC,request_id DESC LIMIT 20")).rows}:{}),
             ...(failureSource?{failureSources:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_failure_sources")).rows[0].n,effects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.external_effects")).rows[0].n,failPreparation:state.failPreparation}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -435,6 +437,14 @@ try{
         else if(req.url==="/__fixture/drop-next-review-capabilities"&&req.method==="POST"&&review){state.reviewCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-review"&&req.method==="POST"&&review){state.reviewAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/allow-review"&&req.method==="POST"&&review){state.reviewAllowed=true;configure();output={ok:true}}
+        else if(req.url==="/__fixture/deny-review-history"&&req.method==="POST"&&review){state.reviewHistoryAllowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/allow-review-history"&&req.method==="POST"&&review){state.reviewHistoryAllowed=true;configure();output={ok:true}}
+        else if(req.url==="/__fixture/disable-review-model"&&req.method==="POST"&&review){
+          await db.query("UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1",[state.reviewModel]);output={ok:true}
+        }
+        else if(req.url==="/__fixture/enable-review-model"&&req.method==="POST"&&review){
+          await db.query("UPDATE agentstudio.model_connections SET enabled=true,revision=revision+1 WHERE id=$1",[state.reviewModel]);output={ok:true}
+        }
         else if(req.url==="/__fixture/workflow"&&req.method==="POST"&&workflow)output=await tickAutonomous()
         else if(req.url==="/__fixture/schedule"&&req.method==="POST"&&scheduling&&state.allowed)output=await new ScheduleRuntimeWorker(pool,"browser-schedule").tick()
         else if(req.url==="/__fixture/schedule-agent"&&req.method==="POST"&&scheduling&&state.allowed){scheduledAgentMode=true;try{output=await tickAutonomous(true)}finally{scheduledAgentMode=false}}

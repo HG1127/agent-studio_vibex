@@ -29,6 +29,7 @@ import {inspectAgentOptimizationSchema} from "./agent-optimization-audit.ts"
 import {inspectAgentAssessmentSchema} from "./agent-assessment-audit.ts"
 import {inspectAgentOpinionSchema} from "./agent-opinion-audit.ts"
 import {AgentOpinionRepository} from "./agent-opinion-repository.ts"
+import {AgentReviewHistoryRepository} from "./agent-review-history-repository.ts"
 import {AgentReviewSourceRepository} from "./agent-review-source.ts"
 import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
@@ -449,7 +450,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentReleases:releasesAvailable,
       allowAgentHumanInput:humanInputAvailable,
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
-      allowAgentReview:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
+      allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
       allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
@@ -477,7 +478,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       repository:new AgentSpecRepository(business),
       ...(reviewAvailable?{agentReviewSourceRepository:new AgentReviewSourceRepository(business),
         agentReviewLedgerRepository:new AgentReviewLedgerRepository(business,{allowSubmissions:capabilities.configurationWrites===true&&capabilities.agentReviewSubmissionUat===true}),
-        agentOpinionRepository:new AgentOpinionRepository(business)}:{}),
+        agentOpinionRepository:new AgentOpinionRepository(business),agentReviewHistoryRepository:new AgentReviewHistoryRepository(business)}:{}),
       ...(memoryAvailable?{agentMemoryRepository:new AgentMemoryRepository(business,{allowWrites:capabilities.configurationWrites===true})}:{}),
       ...(optimizationAvailable?{agentOptimizationRepository:new AgentOptimizationRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true})}:{}),
       ...(feedbackAvailable?{agentFeedbackRepository:new AgentFeedbackRepository(business,{allowSubmit:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true,allowLessonStorage:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true&&capabilities.agentFeedbackLessonsUat===true})}:{}),

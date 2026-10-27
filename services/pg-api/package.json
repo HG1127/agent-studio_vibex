@@ -115,7 +115,8 @@
     "test:pg18:assessment:operator:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-assessment-operator.integration.mjs",
     "test:agent-opinion": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-opinion-contract.test.mjs tests/agent-opinion-sql.test.mjs tests/agent-opinion-repository.test.mjs",
     "test:pg18:opinion:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-opinion-tcp.integration.mjs",
-    "test:agent-review-public": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-http.test.mjs tests/agent-review-runtime-policy.test.mjs"
+    "test:agent-review-public": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-http.test.mjs tests/agent-review-runtime-policy.test.mjs",
+    "test:agent-review-history": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-history-contract.test.mjs tests/agent-review-history-http.test.mjs tests/agent-review-history-repository.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",

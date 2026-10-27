@@ -11,6 +11,7 @@ import {agentAssessmentTcpFixture,assessmentRequest,assessmentProof,assessmentRo
 import {reviewLedgerCounts,reviewLedgerFeedbackErase,reviewLedgerRow} from './helpers/agent-review-ledger-fixture.mjs'
 import {requireEphemeralPg18Ci} from '../src/pg18-ephemeral-ci-guard.mjs'
 import {AgentOpinionRepository} from '../src/agent-opinion-repository.ts'
+import {AgentReviewHistoryRepository} from '../src/agent-review-history-repository.ts'
 import {AgentReviewLedgerRepository} from '../src/agent-review-ledger.ts'
 import {AgentFeedbackRepository} from '../src/agent-feedback-repository.ts'
 import {verifyAgentOpinionCredentials,inspectAgentOpinionSchema} from '../src/agent-opinion-audit.ts'
@@ -221,6 +222,51 @@ test('disposable PG18 owner opinion reads: real source540/body/epoch lock orderi
         g.release();await read.promise;if(update)await update.promise
         if(writer){if(!committed)await writer.db.query('ROLLBACK').catch(()=>{});writer.db.release()}
       }
+    })
+    await t.test('actual API history uses microsecond keyset metadata only; owner collisions and stale model bodies do not remove original privacy authority',async()=>{
+      const finished=await completed(f,{purpose:'optimize'}),originalRows=await assessmentRows(f,finished.raw.request_id,finished.owner)
+      // Put pending synthetic admissions last: the preceding Worker proof
+      // cases must never accidentally claim this pagination fixture's queue.
+      const seed=await assessmentRequest(f),scope={spec_id:seed.role.id,run_id:seed.runId,purpose:'evaluate',limit:4}
+      for(let i=0;i<20;i++)await f.ledger.submit(seed.identity,{...seed.raw,request_id:randomUUID()})
+      const rows=(await f.db.query("SELECT request_id,pg_catalog.to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS exact_time FROM agentstudio.agent_review_requests WHERE owner_user_id=$1 AND spec_id=$2 AND run_id=$3 AND purpose='evaluate' ORDER BY created_at DESC,request_id DESC",[seed.owner,seed.role.id,seed.runId])).rows
+      assert.equal(rows.length,21)
+      const before=await snapshot(f),all=[];let cursor
+      for(let pageNumber=0;pageNumber<6;pageNumber++){
+        const traced=tracedPool(f.pool),page=await new AgentReviewHistoryRepository(traced.pool).list(seed.identity,{...scope,...(cursor?{before:cursor}:{})})
+        assert.equal(page.protocol,'agent_paid_review_history_v1');assert.equal(page.limit,4)
+        assert.deepEqual(page.items.map(item=>item.request.request_id),rows.slice(pageNumber*4,pageNumber*4+4).map(row=>row.request_id))
+        for(const item of page.items){assert.deepEqual(item.control,{job_state:'pending',body_erased:false});assert.equal(item.request.owner_epoch,seed.receipt.owner_epoch)}
+        assert.doesNotMatch(JSON.stringify(page),/"(?:result|execution|outcome|choice|messages|recorded|replayed|owner_user_id|lease_token|worker_id)"/)
+        noReadDml(traced.trace);assert.equal(traced.trace.some(q=>anchorSql.test(q.sql)||bodySql.test(q.sql)||sourceLockSql.test(q.sql)),false)
+        assert.equal(traced.trace.at(-1).sql,'COMMIT');all.push(...page.items.map(item=>item.request.request_id))
+        if(pageNumber===5){assert.equal(page.has_more,false);assert.equal(page.next_cursor,null)}
+        else{
+          assert.equal(page.has_more,true);assert.ok(page.next_cursor.startsWith('v1.'))
+          const decoded=JSON.parse(Buffer.from(page.next_cursor.slice(3),'base64url').toString('utf8')),last=rows[all.length-1]
+          assert.deepEqual(decoded,{created_at:last.exact_time,request_id:last.request_id},'cursor retains the actual PostgreSQL microseconds, not pg Date milliseconds')
+          cursor=page.next_cursor
+        }
+      }
+      assert.equal(new Set(all).size,21);await sameAfter(f,before)
+      await assert.rejects(new AgentReviewHistoryRepository(f.pool).list(f.identities.bob,scope),error=>error.status===404&&error.code==='agent_review_history_not_found')
+      const bob=await assessmentRequest(f,{who:'bob',requestId:seed.raw.request_id})
+      const bobPage=await new AgentReviewHistoryRepository(f.pool).list(bob.identity,{spec_id:bob.role.id,run_id:bob.runId,purpose:'evaluate',limit:20})
+      assert.equal(bobPage.items.length,1);assert.equal(bobPage.items[0].request.request_id,seed.raw.request_id)
+      assert.equal(bobPage.items[0].request.spec_id,bob.role.id);assert.notEqual(bobPage.items[0].request.input_sha256,seed.receipt.input_sha256)
+      // History must retain a genuinely completed original even when its
+      // selected current model can no longer authorize body publication.
+      await f.db.query('UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1',[finished.choice.model_binding.connection_id])
+      await assert.rejects(new AgentOpinionRepository(f.pool).getCurrent(finished.identity,finished.raw.request_id),unavailable)
+      const finishedScope={spec_id:finished.role.id,run_id:finished.runId,purpose:'optimize',limit:20},history=new AgentReviewHistoryRepository(f.pool)
+      const beforeHistory=await snapshot(f),immutable=await history.list(finished.identity,finishedScope)
+      assert.equal(immutable.items[0].request.request_sha256,finished.receipt.request_sha256);await sameAfter(f,beforeHistory)
+      await assessmentErase(f,finished)
+      const afterErase=await snapshot(f),erasedPage=await history.list(finished.identity,finishedScope)
+      assert.deepEqual(erasedPage.items[0].control,{job_state:'erased',body_erased:true})
+      assert.equal(erasedPage.items[0].request.request_sha256,finished.receipt.request_sha256);await sameAfter(f,afterErase)
+      const erasedRows=await assessmentRows(f,finished.raw.request_id,finished.owner)
+      assert.equal(erasedRows.outputs.length,0);assert.deepEqual(erasedRows.effects,originalRows.effects);assert.deepEqual(erasedRows.outcomes,originalRows.outcomes)
     })
   }finally{await admin.end();await f.close()}
 })
