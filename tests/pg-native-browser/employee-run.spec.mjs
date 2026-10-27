@@ -14,7 +14,9 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
   childEnv.AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS="true"
   const child=spawn(process.execPath,["--experimental-strip-types",helper],{
     cwd:root,env:childEnv,stdio:["ignore","pipe","pipe"],windowsHide:true})
-  let output="",timer,browser,context,page,info,control,heldRead,releaseRead
+  let output="",timer,browser,context,page,info,control,heldRead,releaseRead,settleHeldRead,primaryFailure
+  const cleanupErrors=[]
+  const cleanupStep=async(name,work)=>{try{await work()}catch(error){cleanupErrors.push({name,error})}}
   const ready=new Promise((resolve,reject)=>{
     timer=setTimeout(()=>reject(Error("synthetic_fixture_start_timeout")),45000)
     const onChunk=chunk=>{
@@ -171,36 +173,53 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
     await test.step("delayed real Alice detail and own metadata responses cannot rehydrate Bob's workspace",async()=>{
       const readReached=new Promise(resolve=>{heldRead=resolve})
       const released=new Promise(resolve=>{releaseRead=resolve})
-      let intercepted=false
-      await page.route("**/__pg_native/api/v2/runs/*",async route=>{
+      let intercepted=false,readDone
+      const settledRead=new Promise(resolve=>{readDone=resolve})
+      settleHeldRead=()=>intercepted?settledRead:Promise.resolve()
+      const detailUrl="**/__pg_native/api/v2/runs/*",holdLateDetail=async route=>{
         if(intercepted||route.request().method()!=="GET"){await route.continue();return}
         intercepted=true
-        const response=await route.fetch()
-        heldRead();await released;await route.fulfill({response})
-      })
+        try{const response=await route.fetch();heldRead();await released;await route.fulfill({response})}finally{readDone()}
+      }
+      await page.route(detailUrl,holdLateDetail)
       await page.getByRole("button",{name:"刷新任务",exact:true}).click()
-      await readReached
+      await readReached;await page.unroute(detailUrl,holdLateDetail)
       let ownReached,ownRelease,ownDone
       const reachedOwn=new Promise(resolve=>{ownReached=resolve}),ownGate=new Promise(resolve=>{ownRelease=resolve}),doneOwn=new Promise(resolve=>{ownDone=resolve})
       const ownUrl="**/__pg_native/api/v2/own-overview"
-      const holdOwn=async route=>{try{const response=await route.fetch();ownReached();await ownGate;await route.fulfill({response})}finally{ownDone()}}
+      let ownIntercepted=false
+      const holdOwn=async route=>{
+        if(ownIntercepted||route.request().method()!=="GET"){await route.continue();return}
+        ownIntercepted=true
+        try{const response=await route.fetch();ownReached();await ownGate;await route.fulfill({response})}finally{ownDone()}
+      }
       await page.route(ownUrl,holdOwn)
-      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click();await reachedOwn
-      await page.getByRole("button",{name:"退出",exact:true}).click()
-      await expect(page.getByRole("button",{name:"登录独立工作台",exact:true})).toBeVisible()
-      await login("bob")
-      releaseRead();releaseRead=null
-      ownRelease();await doneOwn;await page.unroute(ownUrl,holdOwn)
-      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
-      const bobOwn=page.getByRole("region",{name:"我的运行概览与待办",exact:true})
-      await expect(bobOwn).not.toContainText("Alice Browser Agent");await expect(bobOwn).not.toContainText(instruction)
-      await expect(bobOwn).not.toContainText("Browser synthetic bound result")
-      await page.getByRole("button",{name:"运行 Agent",exact:true}).click()
-      await expect(page.getByRole("combobox",{name:"选择 Agent",exact:true})).toContainText("Bob Browser Agent")
-      await expect(page.getByRole("combobox",{name:"选择 Agent",exact:true})).not.toContainText("Alice Browser Agent")
-      await expect(page.getByText(instruction,{exact:true})).toHaveCount(0)
-      await expect(page.getByText("Browser synthetic bound result",{exact:true})).toHaveCount(0)
-      await expect(page.getByRole("textbox",{name:"任务要求",exact:true})).toHaveValue("")
+      try{
+        await page.getByRole("button",{name:"我的概览与待办",exact:true}).click();await reachedOwn
+        // Only this already-fetched Alice response is delayed. Bob's fresh
+        // reads must never enter the old gate or outlive its route handler.
+        await page.unroute(ownUrl,holdOwn)
+        await page.getByRole("button",{name:"退出",exact:true}).click()
+        await expect(page.getByRole("button",{name:"登录独立工作台",exact:true})).toBeVisible()
+        await login("bob")
+        releaseRead();releaseRead=null;await settledRead
+        ownRelease();await doneOwn
+        await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+        const bobOwn=page.getByRole("region",{name:"我的运行概览与待办",exact:true})
+        await expect(bobOwn.getByText("暂无最近运行。",{exact:true})).toBeVisible()
+        await expect(bobOwn).not.toContainText("Alice Browser Agent");await expect(bobOwn).not.toContainText(instruction)
+        await expect(bobOwn).not.toContainText("Browser synthetic bound result")
+        await page.getByRole("button",{name:"运行 Agent",exact:true}).click()
+        await expect(page.getByRole("combobox",{name:"选择 Agent",exact:true})).toContainText("Bob Browser Agent")
+        await expect(page.getByRole("combobox",{name:"选择 Agent",exact:true})).not.toContainText("Alice Browser Agent")
+        await expect(page.getByText(instruction,{exact:true})).toHaveCount(0)
+        await expect(page.getByText("Browser synthetic bound result",{exact:true})).toHaveCount(0)
+        await expect(page.getByRole("textbox",{name:"任务要求",exact:true})).toHaveValue("")
+      }finally{
+        ownRelease()
+        await cleanupStep("unroute delayed own response",()=>page.unroute(ownUrl,holdOwn))
+        if(ownIntercepted)await cleanupStep("settle delayed own response",()=>doneOwn)
+      }
     })
     await test.step("revoked server admission removes controls without changing history permissions",async()=>{
       await control("deny-runs")
@@ -212,16 +231,23 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       const final=await control("state","GET")
       expect(final.runs).toBe(1);expect(final.generated).toBe(1)
     })
-  }finally{
+  }catch(error){primaryFailure=error;throw error}
+  finally{
     clearTimeout(timer)
     if(releaseRead)releaseRead()
-    if(context)await context.close()
-    if(browser)await browser.close()
-    if(control)await control("stop").catch(()=>undefined)
-    if(child.exitCode===null){
+    if(settleHeldRead)await cleanupStep("settle delayed task response",settleHeldRead)
+    if(context)await cleanupStep("close browser context",()=>context.close())
+    if(browser)await cleanupStep("close browser",()=>browser.close())
+    if(control)await cleanupStep("stop synthetic fixture",()=>control("stop"))
+    if(child.exitCode===null)await cleanupStep("wait for synthetic child exit",async()=>{
       const exited=new Promise(resolve=>child.once("exit",resolve))
       const forced=setTimeout(()=>child.kill("SIGTERM"),5000)
-      await exited;clearTimeout(forced)
+      try{await exited}finally{clearTimeout(forced)}
+    })
+    if(cleanupErrors.length){
+      const failure=new AggregateError(cleanupErrors.map(({name,error})=>new Error(name,{cause:error})),"employee_browser_cleanup_failed")
+      if(primaryFailure)console.error(failure)
+      else throw failure
     }
   }
 })
