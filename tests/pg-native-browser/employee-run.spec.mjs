@@ -14,7 +14,7 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
   childEnv.AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS="true"
   const child=spawn(process.execPath,["--experimental-strip-types",helper],{
     cwd:root,env:childEnv,stdio:["ignore","pipe","pipe"],windowsHide:true})
-  let output="",timer,browser,context,page,info,control,heldRead,releaseRead,settleHeldRead,primaryFailure
+  let output="",timer,browser,context,page,info,control,heldRead,releaseRead,settleHeldRead,unrouteHeldRead,primaryFailure
   const cleanupErrors=[]
   const cleanupStep=async(name,work)=>{try{await work()}catch(error){cleanupErrors.push({name,error})}}
   const ready=new Promise((resolve,reject)=>{
@@ -182,8 +182,9 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
         try{const response=await route.fetch();heldRead();await released;await route.fulfill({response})}finally{readDone()}
       }
       await page.route(detailUrl,holdLateDetail)
+      unrouteHeldRead=()=>page.unroute(detailUrl,holdLateDetail)
       await page.getByRole("button",{name:"刷新任务",exact:true}).click()
-      await readReached;await page.unroute(detailUrl,holdLateDetail)
+      await readReached
       let ownReached,ownRelease,ownDone
       const reachedOwn=new Promise(resolve=>{ownReached=resolve}),ownGate=new Promise(resolve=>{ownRelease=resolve}),doneOwn=new Promise(resolve=>{ownDone=resolve})
       const ownUrl="**/__pg_native/api/v2/own-overview"
@@ -196,14 +197,13 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       await page.route(ownUrl,holdOwn)
       try{
         await page.getByRole("button",{name:"我的概览与待办",exact:true}).click();await reachedOwn
-        // Only this already-fetched Alice response is delayed. Bob's fresh
-        // reads must never enter the old gate or outlive its route handler.
-        await page.unroute(ownUrl,holdOwn)
+        // Each one-shot handler holds only its fetched Alice response. Keep
+        // interception registered until fulfillment; later reads pass through.
         await page.getByRole("button",{name:"退出",exact:true}).click()
         await expect(page.getByRole("button",{name:"登录独立工作台",exact:true})).toBeVisible()
         await login("bob")
-        releaseRead();releaseRead=null;await settledRead
-        ownRelease();await doneOwn
+        releaseRead();releaseRead=null;await settledRead;await unrouteHeldRead()
+        ownRelease();await doneOwn;await page.unroute(ownUrl,holdOwn)
         await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
         const bobOwn=page.getByRole("region",{name:"我的运行概览与待办",exact:true})
         await expect(bobOwn.getByText("暂无最近运行。",{exact:true})).toBeVisible()
@@ -217,8 +217,8 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
         await expect(page.getByRole("textbox",{name:"任务要求",exact:true})).toHaveValue("")
       }finally{
         ownRelease()
-        await cleanupStep("unroute delayed own response",()=>page.unroute(ownUrl,holdOwn))
         if(ownIntercepted)await cleanupStep("settle delayed own response",()=>doneOwn)
+        await cleanupStep("unroute delayed own response",()=>page.unroute(ownUrl,holdOwn))
       }
     })
     await test.step("revoked server admission removes controls without changing history permissions",async()=>{
@@ -236,6 +236,7 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
     clearTimeout(timer)
     if(releaseRead)releaseRead()
     if(settleHeldRead)await cleanupStep("settle delayed task response",settleHeldRead)
+    if(unrouteHeldRead)await cleanupStep("unroute delayed task response",unrouteHeldRead)
     if(context)await cleanupStep("close browser context",()=>context.close())
     if(browser)await cleanupStep("close browser",()=>browser.close())
     if(control)await cleanupStep("stop synthetic fixture",()=>control("stop"))

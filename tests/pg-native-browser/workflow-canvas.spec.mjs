@@ -179,11 +179,6 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic node debug result")
     expect((await control("state","GET")).generated).toBe(5);expect((await control("state","GET")).runs).toBe(2)
     await page.screenshot({path:testInfo.outputPath("workflow-node-debug-desktop.png"),fullPage:true})
-    expect((await control("invalidate-sample-source")).changed).toBe(1)
-    await page.getByRole("button",{name:"刷新单模型测试",exact:true}).click()
-    await expect(page.getByRole("region",{name:"单模型节点测试",exact:true})).toContainText("运行来源或访问权限已经变化")
-    await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toHaveCount(0)
-    await page.screenshot({path:testInfo.outputPath("workflow-inherited-source-unavailable.png"),fullPage:true})
     await control("deny-config");await control("deny-runs");await page.getByRole("button",{name:"刷新",exact:true}).click()
     await expect(page.getByRole("textbox",{name:"新工作流名称",exact:true})).toBeDisabled()
     await expect(page.getByRole("button",{name:"运行已保存工作流",exact:true})).toBeDisabled()
@@ -194,18 +189,48 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
       expect(response.status()).toBe(200)
       const record=(await response.json()).recent.find(row=>row.kind==="workflow_v2"&&row.run_id===sourceId)
       expect(record?.resource_name).toBe("Alice synthetic seven-node Workflow")
-      // Reload destroys every prior controller. Own is opened before the
-      // conditional Workflow run panel; the actual PG18 entry uses StrictMode.
-      await page.reload({waitUntil:"domcontentloaded"})
-      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
-      await page.locator('[aria-label="最近运行与结果"] li').filter({hasText:record.run_id}).getByRole("button",{name:"打开原任务",exact:true}).click()
-      await expect(page.getByText("已重新核对并打开原任务。处理操作仍需在原任务中另行确认。",{exact:true})).toBeVisible()
-      await expect(page.getByText("正在重新核对原任务、资源和版本；完成前暂不能切换或提交任务。",{exact:true})).toHaveCount(0)
-      await expect(page.getByRole("button",{name:"提交工作流任务",exact:true})).toBeDisabled()
-      await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic Workflow result 4")
-      const after=await control("state","GET")
-      expect(after.runs).toBe(before.runs);expect(after.submissions).toBe(before.submissions);expect(after.generated).toBe(before.generated)
+      const paths=new Set(["/__pg_native/api/v2/own-overview","/__pg_native/api/v2/workflow-v2-runs","/__pg_native/api/v2/workflow-v2-runs/"+record.run_id,"/__pg_native/api/v2/workflows/"+record.resource_id])
+      const codes=new Set(["invalid_workflow_v2_state","run_not_found","workflow_not_found","session_required","pilot_business_writes_disabled","own_overview_unavailable"]),reads=[]
+      const captureRead=async response=>{
+        const method=response.request().method(),path=new URL(response.url()).pathname
+        if(method!=="GET"||!paths.has(path))return
+        const read={method,path,status:response.status()};reads.push(read)
+        if(read.status>=400)try{const value=await response.json();if(codes.has(value.error))read.error=value.error}catch{}
+      }
+      page.on("response",captureRead)
+      try{
+        const sourcePath="/__pg_native/api/v2/workflow-v2-runs/"+record.run_id
+        const sourceResponse=await page.request.get(new URL(sourcePath,info.url).href),sourceRead={method:"GET",path:sourcePath,status:sourceResponse.status()}
+        reads.push(sourceRead);const sourceValue=await sourceResponse.json()
+        if(codes.has(sourceValue?.error))sourceRead.error=sourceValue.error
+        expect(sourceResponse.status()).toBe(200);expect(sourceValue.run.id).toBe(record.run_id)
+        // Reload destroys every prior controller. Own is opened before the
+        // conditional Workflow run panel; the actual PG18 entry uses StrictMode.
+        await page.reload({waitUntil:"domcontentloaded"})
+        await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+        await page.locator('[aria-label="最近运行与结果"] li').filter({hasText:record.run_id}).getByRole("button",{name:"打开原任务",exact:true}).click()
+        await expect(page.getByText("已重新核对并打开原任务。处理操作仍需在原任务中另行确认。",{exact:true})).toBeVisible()
+        await expect(page.getByText("正在重新核对原任务、资源和版本；完成前暂不能切换或提交任务。",{exact:true})).toHaveCount(0)
+        await expect(page.getByRole("button",{name:"提交工作流任务",exact:true})).toBeDisabled()
+        await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic Workflow result 4")
+        const after=await control("state","GET")
+        expect(after.runs).toBe(before.runs);expect(after.submissions).toBe(before.submissions);expect(after.generated).toBe(before.generated)
+      }catch(error){console.error("synthetic_original_read_status",JSON.stringify(reads));throw error}
+      finally{page.off("response",captureRead)}
     })
+    // The real invalidation control changes the source instruction, which
+    // deliberately makes that source fail its stored-input seal. Exercise
+    // healthy original navigation first, then retain the privacy assertion.
+    await canvasTab().click()
+    await page.getByRole("combobox",{name:"打开工作流",exact:true}).selectOption({label:"Alice synthetic seven-node Workflow · 修订 2"})
+    const debugHistory=page.getByRole("region",{name:"单模型节点测试",exact:true}).locator('button[aria-pressed]')
+    await expect(debugHistory).toHaveCount(1);await debugHistory.click()
+    await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic node debug result")
+    expect((await control("invalidate-sample-source")).changed).toBe(1)
+    await page.getByRole("button",{name:"刷新单模型测试",exact:true}).click()
+    await expect(page.getByRole("region",{name:"单模型节点测试",exact:true})).toContainText("运行来源或访问权限已经变化")
+    await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toHaveCount(0)
+    await page.screenshot({path:testInfo.outputPath("workflow-inherited-source-unavailable.png"),fullPage:true})
     expect(external).toEqual([])
   }catch(error){
     if(page&&!page.isClosed()){
