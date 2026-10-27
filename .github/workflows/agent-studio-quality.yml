@@ -905,3 +905,24 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:agent-review-source
+
+  pg18-agent-review-ledger:
+    name: Native review ledger / atomic consent / physical source erasure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Owner admission, private body erasure, original receipts and exact optional schema
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-review-ledger

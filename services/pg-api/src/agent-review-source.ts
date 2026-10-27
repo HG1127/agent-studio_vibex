@@ -1,5 +1,5 @@
-// Internal readonly preparation only. No HTTP route, durable request, fee
-// receipt, Worker lease, provider effect or result publication is mounted.
+// Internal preparation, reusable on the verified admission transaction. No
+// HTTP route, Worker lease, provider effect or result publication is mounted.
 import {HttpError,isUuid,safeAgentSpec,type Identity,type SqlPool,type SqlClient,type AgentSpecInput} from "./contracts.ts"
 import {withActor,assertOwnedAdmissionContext,verifyAgentSpecResources} from "./repository.ts"
 import {verifyAgentOptimizationCredentials} from "./agent-optimization-audit.ts"
@@ -32,14 +32,20 @@ const date=(raw:unknown)=>{const value=raw instanceof Date?raw.toISOString():Str
 export class AgentReviewSourceRepository{
   readonly pool:SqlPool;readonly evaluationReader?:AgentReviewEvaluationReader
   constructor(pool:SqlPool,{evaluationReader}:{evaluationReader?:AgentReviewEvaluationReader}={}){this.pool=pool;this.evaluationReader=evaluationReader}
+  private async verifiedContext(identity:Identity,db:SqlClient,owner:string):Promise<number>{
+    if(identity?.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+    await assertOwnedAdmissionContext(db,owner)
+    const mapped=(await db.query<{id:string|null}>("SELECT agentstudio.identity_user_id($1::text,$2::text) AS id",[identity.issuer,identity.subject])).rows[0]?.id
+    if(mapped!==owner)throw new HttpError(403,"owned_admission_context_required")
+    if(!await verifyAgentOptimizationCredentials(db))throw new HttpError(409,"agent_review_source_schema_required")
+    const epoch=(await db.query<{epoch:unknown}>("SELECT agentstudio.agent_memory_outcome_epoch() AS epoch")).rows[0]?.epoch
+    if(epoch===null||epoch===undefined)throw new HttpError(403,"native_employee_identity_required")
+    return number(epoch)
+  }
   private async actor<T>(identity:Identity,body:(db:SqlClient,owner:string,epoch:number)=>Promise<T>):Promise<T>{
     if(identity?.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
     return withActor(this.pool,identity,async(db,owner)=>{
-      await assertOwnedAdmissionContext(db,owner)
-      if(!await verifyAgentOptimizationCredentials(db))throw new HttpError(409,"agent_review_source_schema_required")
-      const epoch=(await db.query<{epoch:unknown}>("SELECT agentstudio.agent_memory_outcome_epoch() AS epoch")).rows[0]?.epoch
-      if(epoch===null||epoch===undefined)throw new HttpError(403,"native_employee_identity_required")
-      return body(db,owner,number(epoch))
+      return body(db,owner,await this.verifiedContext(identity,db,owner))
     })
   }
   private async locks(db:SqlClient,owner:string,ids:string[]){for(const id of [...new Set(ids)].sort())await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,540))",[owner+":"+id])}
@@ -75,7 +81,15 @@ export class AgentReviewSourceRepository{
   }
   async preview(identity:Identity,raw:unknown){
     const choice=parseAgentReviewPreview(raw)
-    return this.actor(identity,async(db,owner,owner_epoch)=>{
+    return this.actor(identity,(db,owner,epoch)=>this.prepare(db,owner,epoch,choice))
+  }
+  // Caller owns BEGIN/COMMIT. All source locks and Native epoch validation
+  // remain held until the associated receipt/input/queue/audit commits.
+  async prepareOnClient(identity:Identity,db:SqlClient,owner:string,raw:unknown){
+    const choice=parseAgentReviewPreview(raw),epoch=await this.verifiedContext(identity,db,owner)
+    return this.prepare(db,owner,epoch,choice)
+  }
+  private async prepare(db:SqlClient,owner:string,owner_epoch:number,choice:AgentReviewPreview){
       await this.locks(db,owner,[choice.run_id,...choice.feedback_sources.map(s=>s.run_id),...choice.evaluation_sources.map(s=>s.run_id)])
       const c=await this.context(db,owner,choice)
       if(c.source_sha256!==choice.expected_source_sha256||number(c.role.revision)!==choice.expected_spec_revision||c.role.source_sha256!==choice.expected_spec_sha256)return unavailable()
@@ -99,6 +113,5 @@ export class AgentReviewSourceRepository{
       const input=prepareAgentReviewInput(choice,{role:c.role,run:{id:task.id,spec_id:choice.spec_id,status:task.status,instruction:task.instruction,result_text:task.result_text,source_sha256:c.source_sha256},feedback,evaluations})
       const input_sha256=agentMemoryHash(canonicalMcpJson({protocol:"agent_paid_review_prepared_input_v1",owner,owner_epoch,source_protocol:c.source_protocol,content_sha256:input.input_sha256}))
       return {...input,protocol:"agent_paid_review_prepared_input_v1" as const,content_sha256:input.input_sha256,input_sha256,choice,source_protocol:c.source_protocol,owner_epoch,recorded:false as const}
-    })
   }
 }

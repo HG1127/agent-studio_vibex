@@ -1,6 +1,7 @@
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {verifyAgentMemoryFailureSourceCredentials} from "./agent-memory-failure-source-audit.ts"
 import {verifyMemoryRelationAcl} from "./agent-memory-relation-acl.ts"
+import {verifyAgentReviewCore} from "./agent-review-audit-core.ts"
 const api="agentstudio_api",prefix="agent_feedback_",refuse=():never=>{throw Error("unsafe_agent_feedback_privileges")}
 const functions:Record<string,{args:string;returns:string;language:string;volatility:string;strict:boolean;execute:boolean;sha:string}>={
   agent_feedback_digest:{args:"text[]",returns:"text",language:"sql",volatility:"i",strict:true,execute:true,sha:"8aec820f04e8d122c050bf49285bef74b5dcaeae40d0833bf5ee2d8ad9fa5aec"},
@@ -27,6 +28,7 @@ const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b)
 // normalizing inside quoted values would accept a different index predicate.
 const revisionPredicate=(v:string|null)=>v==="(action <> 'forget_lesson'::text)"||v==="(action <> 'forget_lesson')"
 export async function verifyAgentFeedbackCredentials(db:SqlClient):Promise<boolean>{
+  const reviewAvailable=await verifyAgentReviewCore(db)
   const objects=(await db.query<{name:string;id:number}>("SELECT c.relname AS name,c.oid::integer AS id FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' AND left(c.relname,15)=$1 AND c.relkind NOT IN('i','I')",[prefix])).rows
   const routines=(await db.query<{name:string;args:string;returns:string;language:string;volatility:string;strict:boolean;execute:boolean;sha:string;safe:boolean}>(
     "SELECT p.proname AS name,oidvectortypes(p.proargtypes) AS args,p.prorettype::regtype::text AS returns,l.lanname AS language,p.provolatile AS volatility,p.proisstrict AS strict,"+
@@ -63,7 +65,9 @@ export async function verifyAgentFeedbackCredentials(db:SqlClient):Promise<boole
     const policyNames=[{name:policyPrefix+"_read",command:"r"},{name:policyPrefix+"_insert",command:"a"},...(expected.erase?[{name:policyPrefix+"_delete",command:"d"}]:[])]
     if(policies.length!==policyNames.length||policyNames.some(p=>!policies.some(q=>q.name===p.name&&q.command===p.command&&q.ok===true)))return refuse()
     const triggers=(await db.query<{name:string;fn:string;type:number;ok:boolean}>("SELECT t.tgname AS name,p.proname AS fn,t.tgtype::integer AS type,t.tgenabled='O' AND n.nspname='agentstudio' AND t.tgconstraint=0 AND NOT t.tgdeferrable AND NOT t.tginitdeferred AND t.tgnargs=0 AND encode(t.tgargs,'hex')='' AND t.tgattr::text='' AND t.tgqual IS NULL AND t.tgoldtable IS NULL AND t.tgnewtable IS NULL AS ok FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE t.tgrelid=$1::oid AND NOT t.tgisinternal",[id])).rows
-    if(triggers.length!==1||triggers[0]?.ok!==true||triggers[0].name!==expected.trigger||triggers[0].fn!==expected.fn||triggers[0].type!==expected.triggerType)return refuse()
+    const expectedTriggers=[{name:expected.trigger,fn:expected.fn,type:expected.triggerType},
+      ...(reviewAvailable&&object.name==="agent_feedback_bodies"?[{name:"agent_review_feedback_privacy",fn:"agent_review_feedback_erasure",type:9}]:[])]
+    if(triggers.length!==expectedTriggers.length||expectedTriggers.some(e=>!triggers.some(t=>t.ok===true&&t.name===e.name&&t.fn===e.fn&&t.type===e.type)))return refuse()
     const indexes=(await db.query<{primary:boolean;columns:string[];predicate:string|null;ok:boolean}>("SELECT i.indisprimary AS primary,pg_get_expr(i.indpred,i.indrelid) AS predicate,i.indisunique AND i.indisvalid AND i.indisready AND i.indislive AND i.indimmediate AND NOT i.indnullsnotdistinct AND i.indexprs IS NULL AND i.indnatts=i.indnkeyatts AS ok,"+
       "ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY k(n,o) JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.n ORDER BY k.o) AS columns FROM pg_catalog.pg_index i WHERE i.indrelid=$1::oid",[id])).rows
     const extra=object.name==="agent_feedback_receipts"

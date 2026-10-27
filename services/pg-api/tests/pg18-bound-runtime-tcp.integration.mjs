@@ -45,6 +45,8 @@ import {inspectAgentMemoryOutcomeSchema,verifyAgentMemoryOutcomeCredentials} fro
 import {inspectAgentMemoryFailureSourceSchema,verifyAgentMemoryFailureSourceCredentials} from "../src/agent-memory-failure-source-audit.ts"
 import {AgentFeedbackRepository} from "../src/agent-feedback-repository.ts"
 import {AgentReviewSourceRepository} from "../src/agent-review-source.ts"
+import {AgentReviewLedgerRepository} from "../src/agent-review-ledger.ts"
+import {verifyAgentReviewCredentials} from "../src/agent-review-audit.ts"
 import {AgentOptimizationRepository} from "../src/agent-optimization-repository.ts"
 import {inspectAgentOptimizationSchema,verifyAgentOptimizationCredentials} from "../src/agent-optimization-audit.ts"
 import {inspectAgentFeedbackSchema,verifyAgentFeedbackCredentials} from "../src/agent-feedback-audit.ts"
@@ -1843,6 +1845,64 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
     await feedbackClosed.change(memoryIdentity,{action:'erase_feedback',request_id:randomUUID(),spec_id:reviewRole.id,run_id:reviewTasks[0].runId,expected_revision:2,expected_feedback_sha256:correctedReviewFeedback.feedback_sha256,confirm:true})
     await assert.rejects(reviewSources.preview(memoryIdentity,freshReviewChoice),e=>e.code==='agent_review_feedback_changed')
     assert.equal((await reviewCounts()).effects,reviewBefore.effects);assert.equal((await reviewCounts()).accepted,reviewBefore.accepted)
+    mark("optional-review-056-atomic-admission-and-erasure")
+    await admin.query(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_056_agent_review_ledger.sql',import.meta.url),'utf8'))
+    assert.equal(await withActor(apiPool,memoryIdentity,db=>verifyAgentReviewCredentials(db)),true)
+    const reviewLedger=new AgentReviewLedgerRepository(apiPool,{allowSubmissions:true}),reviewLedgerClosed=new AgentReviewLedgerRepository(apiPool)
+    const ledgerRole=await new AgentSpecRepository(apiPool).get(memoryIdentity,memoryRole.id),ledgerSources=[]
+    for(let i=0;i<3;i++){
+      const started=await feedbackOwned.submit(memoryIdentity,ledgerRole.id,{expected_revision:ledgerRole.revision,max_steps:1,require_plan_review:false,idempotency_key:'ci-review-ledger-source-'+i,instruction:'Synthetic pending review private task '+i+' token=syntheticReviewLedgerTask'})
+      await feedbackOwned.cancel(memoryIdentity,started.run.id)
+      const state=await feedbackSql.status(memoryIdentity,started.run.id),body={action:'submit',request_id:randomUUID(),spec_id:ledgerRole.id,run_id:started.run.id,expected_revision:0,expected_source_sha256:state.source.source_sha256,rating:'down',tags:['核对😀'],comment:'Synthetic pending review feedback '+i+' token=syntheticReviewLedgerFeedback',remember_lesson:false,confirm:true}
+      ledgerSources.push({body,receipt:await feedbackSql.change(memoryIdentity,body)})
+    }
+    const ledgerAnchor=await reviewSources.source(memoryIdentity,{purpose:'optimize',spec_id:ledgerRole.id,run_id:ledgerSources[0].body.run_id})
+    const ledgerChoice={action:'preview',purpose:'optimize',spec_id:ledgerRole.id,run_id:ledgerSources[0].body.run_id,expected_source_sha256:ledgerAnchor.expected_source_sha256,expected_spec_revision:ledgerAnchor.expected_spec_revision,expected_spec_sha256:ledgerAnchor.expected_spec_sha256,model_binding:ledgerRole.spec.model_binding,output_token_limit:4096,feedback_sources:ledgerSources.slice(0,2).map(s=>({run_id:s.body.run_id,feedback_id:s.receipt.feedback_id,feedback_sha256:s.receipt.feedback_sha256})),evaluation_sources:[]}
+    const ledgerPrepared=await reviewSources.preview(memoryIdentity,ledgerChoice)
+    const ledgerBody={...ledgerChoice,action:'submit',request_id:randomUUID(),expected_input_sha256:ledgerPrepared.input_sha256,confirm:true,fee_acknowledgement:'APPROVE_ONE_PAID_AGENT_OPTIMIZATION_V1'}
+    const ledgerEffects=(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
+    await assert.rejects(reviewLedgerClosed.submit(memoryIdentity,ledgerBody),e=>e.status===403)
+    const sameRequestRace=await Promise.all([reviewLedger.submit(memoryIdentity,ledgerBody),reviewLedger.submit(memoryIdentity,ledgerBody)])
+    assert.equal(sameRequestRace.filter(r=>r.replayed===false).length,1);assert.equal(sameRequestRace.filter(r=>r.replayed===true).length,1)
+    const ledgerReceipt=sameRequestRace[0];assert.equal(ledgerReceipt.state,'pending');assert.equal(ledgerReceipt.body_erased,false);assert.equal(ledgerReceipt.recorded,true)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_requests')).rows[0].n,1)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_inputs')).rows[0].n,1)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_feedback_sources')).rows[0].n,2)
+    assert.equal((await admin.query("SELECT count(*)::integer AS n FROM agentstudio.audit_events WHERE action='agent_review.submitted'")).rows[0].n,1)
+    await assert.rejects(reviewLedgerClosed.confirm(foreignOptimizationIdentity,ledgerBody),e=>e.status===404)
+    await assert.rejects(reviewLedger.submit(memoryIdentity,{...ledgerBody,output_token_limit:8192}),e=>e.status===409)
+    const cancelReview={action:'cancel',request_id:randomUUID(),review_id:ledgerBody.request_id,expected_request_sha256:ledgerReceipt.request_sha256,confirm:true}
+    const controlRace=await Promise.all([reviewLedgerClosed.change(memoryIdentity,cancelReview),reviewLedgerClosed.change(memoryIdentity,cancelReview)])
+    assert.equal(controlRace.filter(r=>r.replayed===false).length,1);assert.equal(controlRace.filter(r=>r.replayed===true).length,1)
+    assert.equal((await reviewLedgerClosed.confirm(memoryIdentity,ledgerBody)).state,'cancelled')
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_inputs')).rows[0].n,1)
+    // Same-text feedback correction is a new generation and physically purges
+    // every dependent private review body in the feedback transaction.
+    await feedbackSql.change(memoryIdentity,{...ledgerSources[1].body,request_id:randomUUID(),expected_revision:1})
+    const erasedLedger=await reviewLedgerClosed.confirm(memoryIdentity,ledgerBody);assert.equal(erasedLedger.state,'erased');assert.equal(erasedLedger.body_erased,true)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_inputs')).rows[0].n,0)
+    assert.equal((await reviewLedgerClosed.submit(memoryIdentity,ledgerBody)).request_sha256,ledgerReceipt.request_sha256)
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_requests')).rows[0].n,1)
+    assert.equal((await reviewLedgerClosed.confirmControl(memoryIdentity,cancelReview)).replayed,true)
+    const eraseReview={...cancelReview,action:'erase',request_id:randomUUID()};await reviewLedgerClosed.change(memoryIdentity,eraseReview)
+    assert.equal((await reviewLedgerClosed.change(memoryIdentity,eraseReview)).replayed,true)
+    assert.doesNotMatch(JSON.stringify(erasedLedger),/syntheticReviewLedgerFeedback|syntheticReviewLedgerTask|messages|model_binding/)
+    // Concurrent admission versus source deletion: either admission commits
+    // first and is purged, or the changed source is refused. Neither ordering
+    // may leave private input available after feedback deletion commits.
+    const raceAnchor=await reviewSources.source(memoryIdentity,{purpose:'optimize',spec_id:ledgerRole.id,run_id:ledgerSources[2].body.run_id})
+    const raceChoice={...ledgerChoice,run_id:ledgerSources[2].body.run_id,expected_source_sha256:raceAnchor.expected_source_sha256,feedback_sources:[{run_id:ledgerSources[2].body.run_id,feedback_id:ledgerSources[2].receipt.feedback_id,feedback_sha256:ledgerSources[2].receipt.feedback_sha256}]}
+    const racePrepared=await reviewSources.preview(memoryIdentity,raceChoice),raceBody={...raceChoice,action:'submit',request_id:randomUUID(),expected_input_sha256:racePrepared.input_sha256,confirm:true,fee_acknowledgement:'APPROVE_ONE_PAID_AGENT_OPTIMIZATION_V1'}
+    const eraseSource={action:'erase_feedback',request_id:randomUUID(),spec_id:ledgerRole.id,run_id:ledgerSources[2].body.run_id,expected_revision:1,expected_feedback_sha256:ledgerSources[2].receipt.feedback_sha256,confirm:true}
+    const privacyRace=await Promise.allSettled([reviewLedger.submit(memoryIdentity,raceBody),feedbackClosed.change(memoryIdentity,eraseSource)])
+    assert.equal(privacyRace[1].status,'fulfilled')
+    if(privacyRace[0].status==='rejected')assert.equal(privacyRace[0].reason.status,409)
+    else {const r=await reviewLedgerClosed.confirm(memoryIdentity,raceBody);assert.equal(r.body_erased,true);assert.equal(r.state,'erased')}
+    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_review_inputs WHERE owner_user_id=$1 AND request_id=$2',[paidReviewOwner,raceBody.request_id])).rows[0].n,0)
+    await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query('SELECT body FROM agentstudio.agent_review_inputs')),/permission denied/)
+    await assert.rejects(withActor(apiPool,memoryIdentity,db=>db.query("INSERT INTO agentstudio.agent_review_jobs(owner_user_id,request_id,state) VALUES(agentstudio.actor_id(),$1,'pending')",[ledgerBody.request_id])),/permission denied/)
+    assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],ledgerEffects)
+    assert.equal((await new AgentSpecRepository(apiPool).get(memoryIdentity,ledgerRole.id)).revision,ledgerRole.revision)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
