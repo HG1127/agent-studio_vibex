@@ -15,6 +15,7 @@ import {AgentReviewHistoryRepository} from '../src/agent-review-history-reposito
 import {AgentReviewLedgerRepository} from '../src/agent-review-ledger.ts'
 import {AgentFeedbackRepository} from '../src/agent-feedback-repository.ts'
 import {verifyAgentOpinionCredentials,inspectAgentOpinionSchema} from '../src/agent-opinion-audit.ts'
+import {withActor} from '../src/repository.ts'
 import {canonicalMcpJson} from '../src/mcp-catalog.ts'
 import {agentDescriptiveLimits as limits} from '../../../shared/agent-role-limits.mjs'
 
@@ -223,7 +224,7 @@ test('disposable PG18 owner opinion reads: real source540/body/epoch lock orderi
         if(writer){if(!committed)await writer.db.query('ROLLBACK').catch(()=>{});writer.db.release()}
       }
     })
-    await t.test('actual API history uses microsecond keyset metadata only; owner collisions and stale model bodies do not remove original privacy authority',async()=>{
+    await t.test('actual API history uses microsecond keyset metadata only; owner collisions and stale model bodies do not remove original privacy authority',async historyCase=>{
       const finished=await completed(f,{purpose:'optimize'}),originalRows=await assessmentRows(f,finished.raw.request_id,finished.owner)
       // Put pending synthetic admissions last: the preceding Worker proof
       // cases must never accidentally claim this pagination fixture's queue.
@@ -240,6 +241,20 @@ test('disposable PG18 owner opinion reads: real source540/body/epoch lock orderi
         assert.doesNotMatch(JSON.stringify(page),/"(?:result|execution|outcome|choice|messages|recorded|replayed|owner_user_id|lease_token|worker_id)"/)
         noReadDml(traced.trace);assert.equal(traced.trace.some(q=>anchorSql.test(q.sql)||bodySql.test(q.sql)||sourceLockSql.test(q.sql)),false)
         assert.equal(traced.trace.at(-1).sql,'COMMIT');all.push(...page.items.map(item=>item.request.request_id))
+        if(pageNumber===0){
+          const statement=traced.trace.find(q=>/FROM agentstudio\.agent_review_requests r/.test(q.sql));assert.ok(statement)
+          const evidence=await withActor(f.pool,seed.identity,async(db,owner)=>{
+            assert.equal(owner,seed.owner);await db.query("SET LOCAL statement_timeout='8000ms'")
+            const context=(await db.query("SELECT current_user AS role,agentstudio.actor_id() AS actor,current_setting('server_version_num')::integer AS version")).rows[0]
+            assert.equal(context.role,'agentstudio_api');assert.equal(context.actor,seed.owner);assert.ok(context.version>=180000&&context.version<190000)
+            const plan=(await db.query('EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+statement.sql,statement.values)).rows[0]['QUERY PLAN']
+            return {role:context.role,version:context.version,ownedScopeRows:rows.length,returnedCandidates:scope.limit+1,plan}
+          })
+          assert.equal(evidence.plan[0].Plan['Node Type'],'Limit');assert.equal(evidence.plan[0].Plan['Actual Rows'],scope.limit+1)
+          assert.ok(Number.isFinite(evidence.plan[0]['Execution Time'])&&evidence.plan[0]['Execution Time']>=0)
+          historyCase.diagnostic('history_pg18_api_keyset_explain='+JSON.stringify(evidence))
+          historyCase.diagnostic('Synthetic21 owned-scope rows only; LIMIT bounds returned candidates, not production-size scan/sort cost. No new index or performance claim.')
+        }
         if(pageNumber===5){assert.equal(page.has_more,false);assert.equal(page.next_cursor,null)}
         else{
           assert.equal(page.has_more,true);assert.ok(page.next_cursor.startsWith('v1.'))

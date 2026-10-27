@@ -116,11 +116,14 @@ test('source/model/epoch invalidation does not hide immutable metadata; closed a
     const p=await completed(f),current=await f.opinions.getCurrent(p.identity,p.raw.request_id)
     assert.equal(current.available,true);assert.equal(current.result.score,0)
     const first=(await traceList(f,p.identity,scope(p))).value.items[0],metadata=structuredClone(first.request)
-    await f.db.query('UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1',[p.choice.model_binding.connection_id])
-    await assert.rejects(f.opinions.getCurrent(p.identity,p.raw.request_id),e=>e.status===409&&e.code==='agent_opinion_source_unavailable')
-    assert.deepEqual((await traceList(f,p.identity,scope(p))).value.items[0].request,metadata)
+    // Change the real role while its model binding is still valid. Disabling
+    // the model first correctly makes normal role-update admission refuse.
     const role=await f.agents.get(p.identity,p.role.id),{require_approval:_,...spec}=role.spec
     await f.agents.update(p.identity,role.id,role.name,safeAgentSpec({...spec,goal:'Synthetic current role changed after review'}),role.revision)
+    await assert.rejects(f.opinions.getCurrent(p.identity,p.raw.request_id),e=>e.status===409&&e.code==='agent_opinion_source_unavailable')
+    assert.deepEqual((await traceList(f,p.identity,scope(p))).value.items[0].request,metadata)
+    await f.db.query('UPDATE agentstudio.model_connections SET enabled=false,revision=revision+1 WHERE id=$1',[p.choice.model_binding.connection_id])
+    await assert.rejects(f.opinions.getCurrent(p.identity,p.raw.request_id),e=>e.status===409&&e.code==='agent_opinion_source_unavailable')
     assert.deepEqual((await traceList(f,p.identity,scope(p))).value.items[0].request,metadata)
     await f.h.assessmentCancel(f,p)
     assert.deepEqual((await traceList(f,p.identity,scope(p))).value.items[0],{request:metadata,control:{job_state:'cancelled',body_erased:false}})
