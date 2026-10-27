@@ -79,6 +79,13 @@ export function generatedAcceptanceChoice(preview,request_id=randomUUID()){
     expected_spec_revision:preview.before.revision,expected_spec_sha256:preview.before.source_sha256,expected_candidate_sha256:preview.candidate.candidate_sha256,
     confirm:true,acceptance_acknowledgement:'APPROVE_EXACT_GENERATED_DESCRIPTIVE_ROLE_CHANGE_V1'}
 }
+// The frozen055 wire parser invokes safeAgentSpec itself. Its output-only
+// require_approval flag cannot be sent back as a caller-selected spec field.
+export function generatedManualRoleInput(spec){
+  const {require_approval,...input}=spec
+  assert.equal(require_approval,true,'manual055 fixture starts from a real approval-required normalized candidate')
+  return structuredClone(input)
+}
 export const generatedPreviewChoice=p=>({action:'preview',review_id:p.raw.request_id,spec_id:p.role.id,target_run_id:p.runId})
 export const generatedDeferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}}
 export async function generatedBounded(promise,label,ms=10000){

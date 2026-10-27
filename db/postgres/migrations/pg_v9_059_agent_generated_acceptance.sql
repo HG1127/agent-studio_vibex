@@ -316,7 +316,7 @@ BEGIN
   body:=agentstudio.agent_opinion_body(review_id,a->>'input_sha256',v->>'expected_result_sha256');result:=body->'result';
   IF body->>'purpose'<>'optimize' OR jsonb_typeof(result->'descriptive') IS DISTINCT FROM 'object'
     OR (SELECT count(*) FROM jsonb_object_keys(result->'descriptive'))<>5
-    OR result->'descriptive'-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria']<>'{}'::jsonb
+    OR (result->'descriptive')-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria']<>'{}'::jsonb
   THEN RAISE EXCEPTION 'agent_generated_complete_output_required'; END IF;
   before_description:=agentstudio.collaboration_safe_text(role_row.spec);
   candidate:=(role_row.spec-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria'])||(result->'descriptive');

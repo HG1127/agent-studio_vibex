@@ -88,6 +88,15 @@ async function noMutation(f,fn){const before=await snapshot(f);try{return await 
 test('optional absent/full059 and readonly startup inspection preserve every unchanged predecessor audit and exact private catalog',serial,async()=>{
   const f=await fixture({installed:false})
   try{
+    // Hosted scalar regression: '-' binds before '->'. The former expression
+    // coerces the unquoted JSON token descriptive to jsonb before key removal,
+    // raising22P02 even for otherwise valid complete/partial/noop objects.
+    // Fixed synthetic constants only; do not expose any private stored body.
+    const synthetic={goal:'Synthetic',task_scope:'Disposable',deliverables:[],task_plan:[],done_criteria:[]}
+    await assert.rejects(f.db.query("SELECT $1::jsonb->'descriptive'-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria'] AS value",[JSON.stringify({descriptive:synthetic})]),e=>e.code==='22P02')
+    for(const [descriptive,expected] of [[synthetic,{}],[{...synthetic,synthetic_extra:'retained'},{synthetic_extra:'retained'}]]){
+      assert.deepEqual((await f.db.query("SELECT ($1::jsonb->'descriptive')-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria'] AS value",[JSON.stringify({descriptive})])).rows[0].value,expected)
+    }
     const identity=f.identities.alice
     assert.equal(await withActor(f.pool,identity,db=>verifyAgentGeneratedCredentials(db)),false)
     assert.equal(await inspectAgentGeneratedSchema(f.pool),false)

@@ -6,10 +6,11 @@ import {AgentGeneratedSourceRepository,agentGeneratedCandidate,agentGeneratedDes
 import {safeAgentSpec} from '../src/contracts.ts'
 import {canonicalMcpJson} from '../src/mcp-catalog.ts'
 import {agentDescriptiveLimits as limits} from '../../../shared/agent-role-limits.mjs'
-import {generatedAcceptanceTarget} from './helpers/agent-generated-acceptance-fixture.mjs'
+import {generatedAcceptanceTarget,generatedManualRoleInput} from './helpers/agent-generated-acceptance-fixture.mjs'
 import {generatedAcceptanceChoice} from './helpers/agent-generated-acceptance-fixture.mjs'
 import {agentGeneratedCandidateHash,agentGeneratedChangedKeys,agentGeneratedFeedbackHash,agentGeneratedPreviewHash,agentGeneratedRequestHash,agentGeneratedReceiptHash} from '../src/agent-generated-acceptance-contract.ts'
 import {agentGeneratedExpectedPreview,agentGeneratedOriginalReceipt} from '../src/agent-generated-acceptance-repository.ts'
+import {parseFeedbackOptimizationDraft,parseFeedbackOptimizationAcceptance,feedbackOptimizationChangedFields} from '../src/agent-feedback-optimization-contract.ts'
 
 const identity={issuer:'urn:agentstudio:local:v1',subject:'native-generated-synthetic'}
 const before=()=>safeAgentSpec({goal:'原目标😀',task_scope:'范围',deliverables:['原交付'],task_plan:[],done_criteria:[],tools:['calculate'],knowledge_base_ids:[],
@@ -142,4 +143,22 @@ test('the exact preview matcher refuses changed role/source/result/anchor/candid
   for(const key of ['expected_preview_sha256','expected_result_sha256','expected_candidate_sha256','anchor_run_id','anchor_feedback_id'])
     assert.throws(()=>agentGeneratedExpectedPreview(preview,{...original,[key]:key.endsWith('_id')?randomUUID():'0'.repeat(64)}),closed('agent_generated_source_unavailable'))
   assert.throws(()=>agentGeneratedOriginalReceipt({...arithmeticBinding().receipt,private_body:'never accepted'},original),closed('agent_generated_unavailable'))
+})
+
+test('real frozen055 preview/accept parsers accept fixture wire specs while retaining server-forced approval and every authority field',()=>{
+  const prior=before(),{require_approval:_,...input}=prior,candidate=safeAgentSpec({...input,goal:'Real manual055 collision'})
+  const draft={action:'preview',spec_id:randomUUID(),run_id:randomUUID(),feedback_id:randomUUID(),expected_feedback_sha256:'1'.repeat(64),
+    expected_spec_revision:7,expected_spec_sha256:'2'.repeat(64),name:'Synthetic retained role',spec:candidate}
+  assert.throws(()=>parseFeedbackOptimizationDraft(draft),error=>error.status===400&&error.code==='unsafe_agent_spec_field')
+  const originalCandidate=structuredClone(candidate),wire=generatedManualRoleInput(candidate)
+  assert.equal(Object.hasOwn(wire,'require_approval'),false)
+  assert.deepEqual(parseFeedbackOptimizationDraft({...draft,spec:wire}).spec,candidate)
+  const parsedPreview=parseFeedbackOptimizationDraft({...draft,spec:wire})
+  const accepted=parseFeedbackOptimizationAcceptance({...draft,action:'accept',request_id:randomUUID(),spec:generatedManualRoleInput(parsedPreview.spec),confirm:true})
+  assert.equal(accepted.spec.require_approval,true);assert.deepEqual(accepted.spec,candidate)
+  assert.deepEqual(feedbackOptimizationChangedFields({name:draft.name,spec:prior},{name:draft.name,spec:accepted.spec}),['goal'])
+  assert.deepEqual(accepted.spec.model_binding,prior.model_binding);assert.deepEqual(accepted.spec.tools,prior.tools)
+  assert.equal(accepted.spec.require_plan_review,prior.require_plan_review);assert.deepEqual(candidate,originalCandidate)
+  wire.tools.push('summarize');assert.deepEqual(candidate,originalCandidate,'fixture wire copy must not mutate the normalized candidate')
+  assert.throws(()=>generatedManualRoleInput({...candidate,require_approval:false}))
 })

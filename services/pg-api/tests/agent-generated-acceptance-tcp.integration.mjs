@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
 import {setTimeout as delay} from 'node:timers/promises'
-import {generatedAcceptanceTarget,generatedAcceptanceFixture,generatedAcceptanceChoice,generatedPreviewChoice,generatedTracedPool,generatedBounded} from './helpers/agent-generated-acceptance-fixture.mjs'
+import {generatedAcceptanceTarget,generatedAcceptanceFixture,generatedAcceptanceChoice,generatedPreviewChoice,generatedTracedPool,generatedBounded,generatedManualRoleInput} from './helpers/agent-generated-acceptance-fixture.mjs'
 
 const unavailable=error=>error.status===409
 const sourceLock=/^SELECT pg_advisory_xact_lock\(hashtextextended\(\$1::text,540\)\)/
@@ -96,10 +96,10 @@ test('generated acceptance foundation on real isolated PG18', {concurrency:false
       const manual=new AgentOptimizationRepository(f.pool,{allowAcceptance:true})
       const draft=await manual.preview(p.identity,{action:'preview',spec_id:current.id,run_id:feedback.runId,feedback_id:feedback.feedback.feedback_id,
         expected_feedback_sha256:feedback.feedback.feedback_sha256,expected_spec_revision:current.revision,expected_spec_sha256:p.preview.before.source_sha256,
-        name:current.name,spec:safeAgentSpec({...input,goal:'Real manual055 collision'})})
+        name:current.name,spec:generatedManualRoleInput(safeAgentSpec({...input,goal:'Real manual055 collision'}))})
       const original={action:'accept',request_id:p.original.request_id,spec_id:current.id,run_id:feedback.runId,feedback_id:feedback.feedback.feedback_id,
         expected_feedback_sha256:feedback.feedback.feedback_sha256,expected_spec_revision:current.revision,expected_spec_sha256:p.preview.before.source_sha256,
-        name:current.name,spec:draft.candidate.spec,confirm:true}
+        name:current.name,spec:generatedManualRoleInput(draft.candidate.spec),confirm:true}
       await manual.accept(p.identity,original)
       const manualState=await f.snapshot();await assert.rejects(f.generated.accept(p.identity,p.original),unavailable);assert.equal(await f.snapshot(),manualState)
       await assert.rejects(f.generated.receipt(p.identity,p.raw.request_id),e=>e.status===404)
@@ -204,7 +204,7 @@ test('generated acceptance foundation on real isolated PG18', {concurrency:false
         const p=await prepared(f),role=await f.agents.get(p.identity,p.role.id),{require_approval:_,...input}=role.spec
         const candidate=safeAgentSpec({...input,goal:'Other explicit configuration '+randomUUID()})
         const feedback=p.selected[0],manual={action:'accept',request_id:randomUUID(),spec_id:role.id,run_id:feedback.runId,feedback_id:feedback.feedback.feedback_id,
-          expected_feedback_sha256:feedback.feedback.feedback_sha256,expected_spec_revision:role.revision,expected_spec_sha256:p.preview.before.source_sha256,name:role.name,spec:candidate,confirm:true}
+          expected_feedback_sha256:feedback.feedback.feedback_sha256,expected_spec_revision:role.revision,expected_spec_sha256:p.preview.before.source_sha256,name:role.name,spec:generatedManualRoleInput(candidate),confirm:true}
         const generatedTrace=generatedTracedPool(f.pool,firstKind==='generated'?{after:bodySql}:{})
         const otherGate=kind==='manual055'?/^SELECT id,name,spec,revision,.* FOR UPDATE$/:/^UPDATE agentstudio\.agent_specs SET/
         const otherTrace=generatedTracedPool(f.pool,firstKind==='other'?{after:otherGate}:{})
