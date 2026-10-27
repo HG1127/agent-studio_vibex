@@ -8,7 +8,7 @@ import path from 'node:path'
 import os from 'node:os'
 import {createHash} from 'node:crypto'
 import {captureFreshRuntimeSources} from '../services/pg-api/src/pg18-fresh-runtime-source.mjs'
-import {assessmentCliCoordinatorPlan,assessmentCliLabels,assessmentCliPostgresArgv,inspectAssessmentCliContainer,assessmentCliContainedPath,finishAssessmentCliResources,verifyAssessmentCliFreshSources} from '../ops/pg18-assessment-cli-ci.mjs'
+import {assessmentCliCoordinatorPlan,assessmentCliLabels,assessmentCliPostgresArgv,inspectAssessmentCliContainer,assessmentCliContainedPath,finishAssessmentCliResources,verifyAssessmentCliFreshSources,assessmentCliSourceInventory} from '../ops/pg18-assessment-cli-ci.mjs'
 const target={runId:'123456',runAttempt:'1',containerId:'a'.repeat(64),nonce:'b'.repeat(64)},expected={name:'synthetic-owned-container',imageId:'sha256:'+'c'.repeat(64)}
 function metadata(){return {Id:target.containerId,Name:'/'+expected.name,Image:expected.imageId,Created:new Date().toISOString(),State:{Running:true},HostConfig:{NetworkMode:'none',Privileged:false,PidMode:'',IpcMode:'private',PublishAllPorts:false,PortBindings:{},Binds:null,VolumesFrom:null,Devices:[],DeviceRequests:null,CapAdd:null,Tmpfs:{'/run':'rw,nosuid,nodev,noexec,size=32m,mode=0755','/var/lib/postgresql':'rw,nosuid,nodev,noexec,size=512m,mode=0755'}},NetworkSettings:{Ports:{}},Mounts:[],Config:{Labels:assessmentCliLabels(target),Cmd:assessmentCliPostgresArgv(target),Env:['POSTGRES_USER=postgres','POSTGRES_DB=agent_studio','POSTGRES_PASSWORD=synthetic-agentstudio-review-cli-123456-1','PGDATA=/var/lib/postgresql/assessment-cli-ci']}}}
 test('owned image/container/run labels and exact isolated postgres arguments produce only safe attestation metadata',()=>{
@@ -87,4 +87,10 @@ test('fresh050 pins accept only verified Windows/Git-LF bytes and refuse changed
   const missing=new Map(manifest);missing.delete(snapshot.sources[0].path);assert.throws(()=>verifyAssessmentCliFreshSources(snapshot,missing),/fresh_baseline_drift/)
   assert.throws(()=>verifyAssessmentCliFreshSources({...snapshot,sources:[...snapshot.sources].reverse()},manifest),/fresh_baseline_drift/)
   assert.throws(()=>verifyAssessmentCliFreshSources({...snapshot,source_sha256:'0'.repeat(64)},manifest),/fresh_baseline_drift/)
+})
+test('literal SQL assets required by imported Worker helpers are packaged without becoming fresh migration steps',()=>{
+  const files=assessmentCliSourceInventory(),snapshot=captureFreshRuntimeSources()
+  assert.ok(files.has('db/postgres/008_claim_workflow_v2.sql'))
+  assert.ok(!snapshot.sources.some(item=>item.path==='db/postgres/008_claim_workflow_v2.sql'))
+  for(const name of files)assert.ok(/^(?:services\/pg-api\/(?:src|tests)\/|shared\/).+\.(?:ts|mts|mjs|js)$/.test(name)||/^db\/postgres\/[A-Za-z0-9_/-]+\.sql$/.test(name),name)
 })

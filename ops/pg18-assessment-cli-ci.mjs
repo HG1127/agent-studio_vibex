@@ -97,7 +97,13 @@ export function assessmentCliSourceInventory(){
     walk(tree)
     for(const target of targets)if(target.startsWith('.')){
       const next=path.posix.normalize(path.posix.join(path.posix.dirname(rel),target))
-      if(next.startsWith('db/postgres/')&&next.endsWith('.sql'))continue // exact SQL list below
+      if(next.startsWith('db/postgres/')&&next.endsWith('.sql')){
+        // Imported test helpers also load legacy Worker query text at module
+        // initialization. Package literal assets without adding them to the
+        // fresh initializer or the fixture's closed migration execution list.
+        if(!/^[A-Za-z0-9_./-]+$/.test(next)||next.includes('..'))refuse('sql_asset_path')
+        regular(path.join(root,next));files.add(next);continue
+      }
       visit(next)
     }
   }
