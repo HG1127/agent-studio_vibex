@@ -66,6 +66,12 @@ test('optional057 inventory, protected roles/routines, full predecessor audit an
       ['worker inheritance','ALTER ROLE agentstudio_review_worker INHERIT'],
       ['old Worker membership','GRANT agentstudio_review_dispatch TO agentstudio_worker'],
       ['output force RLS','ALTER TABLE agentstudio.agent_assessment_outputs NO FORCE ROW LEVEL SECURITY'],
+      ['renamed output input FK','ALTER TABLE agentstudio.agent_assessment_outputs RENAME CONSTRAINT agent_assessment_outputs_input_fkey TO synthetic_assessment_input_fkey'],
+      ['input FK changed to RESTRICT',`ALTER TABLE agentstudio.agent_assessment_outputs DROP CONSTRAINT agent_assessment_outputs_input_fkey;
+        ALTER TABLE agentstudio.agent_assessment_outputs ADD CONSTRAINT agent_assessment_outputs_input_fkey FOREIGN KEY(owner_user_id,request_id) REFERENCES agentstudio.agent_review_inputs(owner_user_id,request_id) ON DELETE RESTRICT`],
+      ['outcome FK changed to CASCADE',`ALTER TABLE agentstudio.agent_assessment_outputs DROP CONSTRAINT agent_assessment_outputs_outcome_fkey;
+        ALTER TABLE agentstudio.agent_assessment_outputs ADD CONSTRAINT agent_assessment_outputs_outcome_fkey FOREIGN KEY(owner_user_id,request_id) REFERENCES agentstudio.agent_assessment_outcomes(owner_user_id,request_id) ON DELETE CASCADE`],
+      ['disabled output internal RI triggers','ALTER TABLE agentstudio.agent_assessment_outputs DISABLE TRIGGER ALL'],
       ['extra output trigger',`CREATE FUNCTION agentstudio.synthetic_assessment_extra() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RETURN NEW; END$$;
         REVOKE ALL ON FUNCTION agentstudio.synthetic_assessment_extra() FROM PUBLIC;
         CREATE TRIGGER synthetic_assessment_extra BEFORE INSERT ON agentstudio.agent_assessment_outputs FOR EACH ROW EXECUTE FUNCTION agentstudio.synthetic_assessment_extra()`],

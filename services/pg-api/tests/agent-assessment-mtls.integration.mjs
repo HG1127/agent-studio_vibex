@@ -92,6 +92,14 @@ test('disposable PG18: actual isolated Worker -> private mTLS Broker -> committe
         const event=events.at(-1);assert.equal(event?.kind,'credential');assert.equal(event.owner,active.owner);assert.equal(event.request_id,active.raw.request_id)
         providerPosts++;events.push({kind:'post',owner:active.owner,request_id:active.raw.request_id})
         if(providerMode==='disconnect'){res.destroy();return}
+        if(providerMode==='cancel_after_post'||providerMode==='erase_after_post'){
+          // This provider has already received the POST. The independent API
+          // control suppresses publication; it proves no charge/refund status.
+          const control=providerMode==='cancel_after_post'?await assessmentCancel(f,active):await assessmentErase(f,active)
+          assert.equal(control.recorded,true);assert.equal(control.review_id,active.raw.request_id)
+          assert.equal(control.action,providerMode==='cancel_after_post'?'cancel':'erase')
+          events.push({kind:control.action,owner:active.owner,request_id:active.raw.request_id})
+        }
         const result=providerMode==='invalid_result'?{...assessmentEvaluation(),tools:['web_fetch']}:resultFor(active)
         res.writeHead(200,{'Content-Type':'application/json'})
         res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(result)}}]}))
@@ -183,7 +191,32 @@ test('disposable PG18: actual isolated Worker -> private mTLS Broker -> committe
         await assert.rejects(privateClient(proof),/agent_assessment_transport_unknown/)
         assert.equal(providerPosts,beforePosts+1);assert.deepEqual(await assessmentCounts(f),beforeReplay)
       }
-      assert.equal(providerPosts,5);assert.equal(credentialReads,5);assert.ok(brokerCalls>=5)
+      for(const action of ['cancel','erase']){
+        active=await assessmentRequest(f,{purpose:action==='cancel'?'evaluate':'optimize',outputTokenLimit:action==='cancel'?2048:16384})
+        providerMode=action+'_after_post';dropPrivateAck=false
+        const beforePosts=providerPosts,beforeReads=credentialReads,reply=await worker.tick(),proof=proofs.at(-1)
+        assert.equal(providerErrors.length,0,providerErrors[0]?.stack)
+        assert.equal(reply.request_id,active.raw.request_id);assert.equal(reply.state,'paused');metadataOnly(reply)
+        assert.equal(providerPosts,beforePosts+1,'control follows one actual provider POST and must never cause another')
+        assert.equal(credentialReads,beforeReads+1)
+        assert.deepEqual(events.at(-1),{kind:action,owner:active.owner,request_id:active.raw.request_id},'independent API control committed before the provider sent valid JSON')
+        const rows=await assessmentRows(f,active.raw.request_id,active.owner)
+        assert.equal(rows.effects.length,1);assert.equal(rows.outcomes.length,0);assert.equal(rows.outputs.length,0)
+        assert.equal(rows.leases[0].state,'paused')
+        const privacy=(await f.db.query(`SELECT
+          (SELECT count(*)::integer FROM agentstudio.agent_review_inputs WHERE owner_user_id=$1 AND request_id=$2) AS inputs,
+          (SELECT count(*)::integer FROM agentstudio.agent_review_tombstones WHERE owner_user_id=$1 AND request_id=$2) AS tombstones,
+          (SELECT state FROM agentstudio.agent_review_jobs WHERE owner_user_id=$1 AND request_id=$2) AS state`,[active.owner,active.raw.request_id])).rows[0]
+        assert.deepEqual(privacy,{inputs:action==='erase'?0:1,tombstones:action==='erase'?1:0,state:action==='erase'?'erased':'cancelled'})
+        providerMode='success'
+        await expireAssessmentLease(f,proof)
+        const beforeReplay=await assessmentCounts(f)
+        assert.deepEqual(await worker.tick(),{state:'idle'})
+        await assert.rejects(privateClient(proof),/agent_assessment_transport_unknown/)
+        assert.equal(providerPosts,beforePosts+1);assert.equal(credentialReads,beforeReads+1)
+        assert.deepEqual(await assessmentCounts(f),beforeReplay)
+      }
+      assert.equal(providerPosts,7);assert.equal(credentialReads,7);assert.ok(brokerCalls>=7)
     },{handlerFactory})
   }finally{await f.close()}
 })

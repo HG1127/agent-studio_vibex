@@ -44,8 +44,8 @@ CREATE TABLE agentstudio.agent_assessment_outcomes(
 CREATE TABLE agentstudio.agent_assessment_outputs(
   owner_user_id uuid NOT NULL,request_id uuid NOT NULL,effect_id uuid NOT NULL,result jsonb NOT NULL,result_sha256 text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(owner_user_id,request_id),
-  FOREIGN KEY(owner_user_id,request_id) REFERENCES agentstudio.agent_review_inputs(owner_user_id,request_id) ON DELETE CASCADE,
-  FOREIGN KEY(owner_user_id,request_id) REFERENCES agentstudio.agent_assessment_outcomes(owner_user_id,request_id) ON DELETE RESTRICT,
+  CONSTRAINT agent_assessment_outputs_input_fkey FOREIGN KEY(owner_user_id,request_id) REFERENCES agentstudio.agent_review_inputs(owner_user_id,request_id) ON DELETE CASCADE,
+  CONSTRAINT agent_assessment_outputs_outcome_fkey FOREIGN KEY(owner_user_id,request_id) REFERENCES agentstudio.agent_assessment_outcomes(owner_user_id,request_id) ON DELETE RESTRICT,
   FOREIGN KEY(effect_id) REFERENCES agentstudio.agent_assessment_effects(effect_id) ON DELETE RESTRICT
 );
 

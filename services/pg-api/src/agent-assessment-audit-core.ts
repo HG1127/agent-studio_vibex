@@ -16,9 +16,9 @@ const functions:Record<string,Routine>={
   agent_assessment_finish:{args:"uuid, uuid, bigint, uuid, jsonb",returns:"jsonb",language:"plpgsql",volatility:"v",strict:false,definer:true,worker:false,dispatch:true,sha:"3d3de42c16becc6f41204f2db2d2e14e21834fb6d37ca29fd5a89268c8f242bc"},
   agent_assessment_pause:{args:"uuid, uuid, bigint, uuid",returns:"jsonb",language:"plpgsql",volatility:"v",strict:false,definer:true,worker:true,dispatch:false,sha:"4f2abc21cbdebf3bba45d93b41172549b02f794790d12e21b76acdcb90558947"},
 }
-type Foreign={target:string;columns:string[];references:string[];delete_action:string}
+type Foreign={name?:string;target:string;columns:string[];references:string[];delete_action:string}
 type Table={fields:Record<string,string>;nullable:string[];pk:string[];unique:string[][];foreign:Foreign[]}
-const reference=(target:string,columns:string[],references:string[],delete_action="r"):Foreign=>({target:"agentstudio."+target,columns,references,delete_action})
+const reference=(target:string,columns:string[],references:string[],delete_action="r",name?:string):Foreign=>({...(name?{name}:{}),target:"agentstudio."+target,columns,references,delete_action})
 const key={owner_user_id:"uuid",request_id:"uuid"},created={created_at:"timestamp with time zone"},proof={worker_id:"uuid",lease_token:"uuid",lease_version:"bigint"}
 const foreign=(name:string)=>reference(name,["owner_user_id","request_id"],["owner_user_id","request_id"])
 const effect=()=>reference("agent_assessment_effects",["effect_id"],["effect_id"])
@@ -26,7 +26,9 @@ const tables:Record<string,Table>={
   agent_assessment_leases:{fields:{...key,...proof,lease_expires_at:"timestamp with time zone",state:"text",...created},nullable:[],pk:["owner_user_id","request_id"],unique:[["lease_token"]],foreign:[foreign("agent_review_requests")]},
   agent_assessment_effects:{fields:{...key,effect_id:"uuid",...proof,request_sha256:"text",input_sha256:"text",content_sha256:"text",...created},nullable:[],pk:["owner_user_id","request_id"],unique:[["effect_id"]],foreign:[foreign("agent_assessment_leases")]},
   agent_assessment_outcomes:{fields:{...key,effect_id:"uuid",status:"text",completion_sha256:"text",result_sha256:"text",failure_code:"text",...created},nullable:["result_sha256","failure_code"],pk:["owner_user_id","request_id"],unique:[],foreign:[foreign("agent_assessment_effects"),effect()]},
-  agent_assessment_outputs:{fields:{...key,effect_id:"uuid",result:"jsonb",result_sha256:"text",...created},nullable:[],pk:["owner_user_id","request_id"],unique:[],foreign:[reference("agent_review_inputs",["owner_user_id","request_id"],["owner_user_id","request_id"],"c"),foreign("agent_assessment_outcomes"),effect()]},
+  // Two different targets use the same local columns. Give both FKs explicit
+  // names; requiring one generated name for both can never match.
+  agent_assessment_outputs:{fields:{...key,effect_id:"uuid",result:"jsonb",result_sha256:"text",...created},nullable:[],pk:["owner_user_id","request_id"],unique:[],foreign:[reference("agent_review_inputs",["owner_user_id","request_id"],["owner_user_id","request_id"],"c","agent_assessment_outputs_input_fkey"),reference("agent_assessment_outcomes",["owner_user_id","request_id"],["owner_user_id","request_id"],"r","agent_assessment_outputs_outcome_fkey"),effect()]},
 }
 export async function verifyAgentAssessmentCore(db:SqlClient):Promise<boolean>{
   const objects=(await db.query<{name:string;id:number;kind:string}>("SELECT c.relname AS name,c.oid::integer AS id,c.relkind AS kind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' AND left(c.relname,17)=$1",[prefix])).rows
@@ -107,7 +109,7 @@ export async function verifyAgentAssessmentCore(db:SqlClient):Promise<boolean>{
         "WHEN 'RI_FKey_noaction_upd' THEN t.tgrelid=x.confrelid AND t.tgconstrrelid=x.conrelid AND t.tgtype=17 ELSE false END) FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE t.tgconstraint=x.oid) AS ok,"+
       "ARRAY(SELECT a.attname::text FROM unnest(conkey) WITH ORDINALITY k(n,o) JOIN pg_catalog.pg_attribute a ON a.attrelid=conrelid AND a.attnum=k.n ORDER BY k.o) AS columns,ARRAY(SELECT a.attname::text FROM unnest(confkey) WITH ORDINALITY k(n,o) JOIN pg_catalog.pg_attribute a ON a.attrelid=confrelid AND a.attnum=k.n ORDER BY k.o) AS references FROM pg_catalog.pg_constraint x WHERE conrelid=$1::oid AND contype='f'",[id])).rows
     const logical=(await db.query<{n:number}>("SELECT count(*)::integer AS n FROM pg_catalog.pg_constraint WHERE conrelid=$1::oid AND contype<>'n'",[id])).rows[0]?.n
-    if(references.length!==expected.foreign.length||logical!==1+expected.unique.length+expected.foreign.length||expected.foreign.some(e=>!references.some(f=>f.ok&&f.name===name+"_"+e.columns.join("_")+"_fkey"&&f.target===e.target&&f.delete_action===e.delete_action&&same(f.columns,e.columns)&&same(f.references,e.references))))return refuse()
+    if(references.length!==expected.foreign.length||logical!==1+expected.unique.length+expected.foreign.length||expected.foreign.some(e=>!references.some(f=>f.ok&&f.name===(e.name??name+"_"+e.columns.join("_")+"_fkey")&&f.target===e.target&&f.delete_action===e.delete_action&&same(f.columns,e.columns)&&same(f.references,e.references))))return refuse()
   }
   return true
 }
