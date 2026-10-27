@@ -121,7 +121,7 @@
     "test:pg18:generated:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-acceptance-tcp.integration.mjs",
     "test:pg18:generated:http:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-native-http.integration.mjs",
     "test:agent-generated-operator": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-operator-source.test.mjs tests/agent-generated-operator-core.test.mjs ../../tests/pg18-generated-operator-review-bundle.test.mjs ../../tests/pg18-generated-operator-ci.test.mjs tests/agent-memory-derived-check-shape.test.mjs",
-    "test:own-operations": "node --experimental-strip-types --test --test-concurrency=1 tests/own-operations-contract.test.mjs tests/own-operations-repository.test.mjs tests/own-operations-native-mount.test.mjs tests/native-config-uat-policy.test.mjs",
+    "test:own-operations": "node --experimental-strip-types --test --test-concurrency=1 tests/own-operations-contract.test.mjs tests/own-operations-repository.test.mjs tests/own-operations-native-mount.test.mjs tests/native-config-uat-policy.test.mjs tests/own-operations-tcp-harness.test.mjs",
     "test:pg18:own-operations:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/own-operations-tcp.integration.mjs"
   },
   "dependencies": {

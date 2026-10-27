@@ -157,8 +157,19 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
      assert.equal(restored.state,'installed_exact');await f.full(f.admin,true);assert.equal(await f.business(f.admin),e.beforeBusiness)
      if(fault==='ack_journal'){
       const contaminated=await single.pool.connect()
-      try{await contaminated.query('BEGIN')}finally{contaminated.release()}
-      await assert.rejects(f.core.inspectGeneratedOperator(single.pool,f.snapshot,e.approval,journal),errorCode('generated_operator_recovery_transaction_unsafe'))
+       try{
+        await contaminated.query('BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE')
+        const prior=(await contaminated.query("SELECT pg_backend_pid() AS pid,current_setting('transaction_read_only')='off' AS writable,current_setting('transaction_isolation') AS isolation,(SELECT count(*)::integer FROM agentstudio.schema_migrations) AS stamps")).rows[0]
+        assert.equal(prior.pid,journal.backend_pid);assert.equal(prior.writable,true);assert.equal(prior.isolation,'read committed');assert.ok(Number.isInteger(prior.stamps)&&prior.stamps>0)
+       }finally{contaminated.release()}
+       // The real table read establishes a snapshot. PG18 must reject changing
+       // its isolation level before inspect can reach its own readonly guard.
+       const unsafeRecovery=traceGeneratedOperatorPool(single.pool)
+       await assert.rejects(f.core.inspectGeneratedOperator(unsafeRecovery.pool,f.snapshot,e.approval,journal),error=>error.code==='25001'&&error.message==='SET TRANSACTION ISOLATION LEVEL must be called before any query')
+       assert.equal(unsafeRecovery.clients.length,1);assert.equal(unsafeRecovery.clients[0].pid,journal.backend_pid)
+       assert.deepEqual(unsafeRecovery.trace.map(q=>q.sql),['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY','ROLLBACK'],'the rejected inspection must execute no catalog, DDL or COMMIT')
+       const idle=(await f.admin.query('SELECT state,xact_start IS NULL AS outside_transaction FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start::text=$2',[journal.backend_pid,journal.backend_start])).rows[0]
+       assert.deepEqual(idle,{state:'idle',outside_transaction:true},'the same actual backend must remain alive with its transaction rolled back')
       await f.full(f.admin,true);assert.equal(await f.business(f.admin),e.beforeBusiness)
      }
     }

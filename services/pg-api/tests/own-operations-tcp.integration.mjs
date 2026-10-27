@@ -9,7 +9,7 @@ if(process.platform!=='linux'||process.env.RUNNER_OS!=='Linux')throw Error('own_
 const {default:pg}=await import('pg')
 const {agentAssessmentTcpFixture}=await import('./helpers/agent-assessment-fixture.mjs')
 const {OwnOperationsRepository,ownOperationsTodosSql,inspectOwnOperationsSchema}=await import('../src/own-operations-repository.ts')
-const {ownCursor,parseOwnCursor,parseOwnTodoQuery}=await import('../src/own-operations-contract.ts')
+const {ownCursor,parseOwnCursor,parseOwnTodoQuery,ownCategoryRanks}=await import('../src/own-operations-contract.ts')
 const {createNativeOwnOperationsBusinessHandler}=await import('../src/own-operations-http.ts')
 const {inspectAgentMemoryOutcomeSchema}=await import('../src/agent-memory-outcome-audit.ts')
 const {selectNativePg18UatCapabilities}=await import('../src/native-config-uat-policy.ts')
@@ -28,13 +28,31 @@ async function snapshot(f){
  return result
 }
 async function readOnly(f,body){const before=await snapshot(f);try{return await body()}finally{assert.deepEqual(await snapshot(f),before,'GET/refusal must not mutate any business/private/audit row')}}
-function tracePool(pool,{explain=false}={}){const trace=[],plans=[];return {trace,plans,pool:{knowledgeSharing:true,async connect(){const db=await pool.connect();return {release:()=>db.release(),async query(sql,args=[]){
- assert.doesNotMatch(sql,/^\s*(?:INSERT|UPDATE|DELETE|MERGE)\b/i);const result=await db.query(sql,args);trace.push({sql,args,count:result.rows.length})
- // Measure the actual restricted API role/actor transaction and RLS plan,
- // not an admin-bypass plan. This extra SELECT remains inside readOnly hashes.
- if(explain&&sql===ownOperationsTodosSql&&!plans.length)plans.push((await db.query('EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+sql,args)).rows[0]['QUERY PLAN'])
- return result
- }}}}}}
+function tracePool(pool,{explain=false}={}){
+ const trace=[],plans=[]
+ const connect=async()=>{const db=await pool.connect();return {release:()=>db.release(),async query(sql,args=[]){
+  assert.doesNotMatch(sql,/^\s*(?:INSERT|UPDATE|DELETE|MERGE)\b/i)
+  const result=await db.query(sql,args),parts=Array.isArray(result)?result:[result]
+  // node-postgres returns Result[] for the actor's two SET LOCAL statements.
+  // Trace its actual rows without altering/replacing the driver's result.
+  const counts=parts.map(part=>{assert.ok(Array.isArray(part.rows));return part.rows.length})
+  trace.push({sql,args,count:counts.reduce((sum,count)=>sum+count,0),result_counts:counts,multi_result:Array.isArray(result)})
+  // Measure the actual restricted API role/actor transaction and RLS plan,
+  // not an admin-bypass plan. This extra SELECT remains inside readOnly hashes.
+  if(explain&&sql===ownOperationsTodosSql&&!plans.length)plans.push((await db.query('EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+sql,args)).rows[0]['QUERY PLAN'])
+  return result
+ }}}
+ // Preserve the base pool's actual capability getters and method receiver;
+ // the tracer changes only connect/query observation, not permission flags.
+ const wrapped=new Proxy(Object.create(pool),{get(_target,key){if(key==='connect')return connect;const value=Reflect.get(pool,key,pool);return typeof value==='function'?value.bind(pool):value}})
+ return {trace,plans,pool:wrapped}
+}
+function fixedQuery(anchor,beforeId,query={}){
+ const q=parseOwnTodoQuery(query),category=q.category==='all'?'failed':q.category
+ // This is the actual saved server clock. Every seeded attention timestamp
+ // is at least59 seconds older, so this protocol-valid boundary omits none.
+ return {...q,before:ownCursor(q,anchor,{observed_at:anchor,id:beforeId,category_rank:ownCategoryRanks[category],step_key:category==='effect_review'?'fixture-page-start':null})}
+}
 async function seed(f){
  const anchor=(await f.db.query(`SELECT ${us('clock_timestamp()')} AS stamp`)).rows[0].stamp
  const alice=f.users.alice,bob=f.users.bob,spec=f.resources.alice.spec.id,other=f.resources.bob.spec.id,wf=id(900),searchSpec=id(901)
@@ -70,7 +88,7 @@ async function seed(f){
  await schedule(800,'60 seconds 1 microsecond');await schedule(801,'60 seconds');await schedule(802,'59 seconds');await schedule(803,'1 day',{enabled:false});await schedule(804,'1 day',{deleted:true})
  await f.db.query("INSERT INTO agentstudio.knowledge_bases(owner_user_id,name) VALUES($1,'Synthetic Alice KB'),($2,'Synthetic Bob KB')",[alice,bob])
  await f.db.query("INSERT INTO agentstudio.knowledge_access(base_id,owner_user_id,recipient_user_id,access_role) SELECT id,owner_user_id,$1,'viewer' FROM agentstudio.knowledge_bases WHERE owner_user_id=$2",[alice,bob])
- const fixed=(query={})=>{const q=parseOwnTodoQuery(query);return {...q,before:ownCursor(q,anchor,{observed_at:'9999-12-31T23:59:59.999999Z',id:'ffffffff-ffff-ffff-ffff-ffffffffffff',category_rank:6,step_key:null})}}
+ const fixed=(query={})=>fixedQuery(anchor,id(1),query)
  return {anchor,alice,bob,spec,wf,searchSpec,fixed}
 }
 test('actual disposable PG18 owner operations: data/RLS/Native HTTP/cursors/read-only', {concurrency:false,timeout:240000},async t=>{
