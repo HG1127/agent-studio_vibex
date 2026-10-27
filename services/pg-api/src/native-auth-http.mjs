@@ -125,6 +125,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
     allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,allowAgentReleases=false,allowAgentHumanInput=false,allowAgentMemory=false,allowAgentMemoryRuntime=false,allowAgentDerivedMemory=false,allowAgentDerivedMemoryWrites=false,allowAgentOutcomeMemory=false,allowAgentOutcomeMemoryAdmission=false,allowAgentFeedback=false,allowAgentFeedbackSubmission=false,allowAgentFeedbackLessons=false,allowAgentOptimization=false,allowAgentOptimizationAcceptance=false,
     allowAgentReview=false,allowAgentReviewHistory=false,allowAgentReviewSubmission=false,
     allowAgentGeneratedAcceptance=false,allowAgentGeneratedAcceptanceWrites=false,
+    allowOwnOperations=false,
     allowEmployeeProvisioning=true,allowEmployeeGovernance=false,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
@@ -192,6 +193,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         // passwords, raw role grants, runtime UAT markers, or task controls.
         return respond(res,200,{
           mode:"native_pg18",
+          ...(allowOwnOperations===true?{own_operations_available:true}:{}),
           ...(allowEmployeeGovernance===true?{employee_governance_available:true,employee_governance_enabled:allowConfigurationWrites===true}:{}),
           config_writes_enabled:allowConfigurationWrites===true,
           ...(allowAgentReview===true?{agent_review_available:true,agent_review_submission_enabled:allowConfigurationWrites===true&&allowAgentReviewSubmission===true}:{}),

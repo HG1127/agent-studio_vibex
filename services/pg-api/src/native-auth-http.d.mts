@@ -43,6 +43,9 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentReviewSubmission?:boolean
   allowAgentGeneratedAcceptance?:boolean
   allowAgentGeneratedAcceptanceWrites?:boolean
+  allowOwnOperations?:boolean
   allowEmployeeGovernance?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}
+export function nativeSessionToken(req:IncomingMessage):string|null
+export function verifyNativeOrigin(req:IncomingMessage,allowedOrigin:string,unsafe?:boolean):void

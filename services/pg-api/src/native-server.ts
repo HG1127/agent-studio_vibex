@@ -30,6 +30,8 @@ import {inspectAgentAssessmentSchema} from "./agent-assessment-audit.ts"
 import {inspectAgentOpinionSchema} from "./agent-opinion-audit.ts"
 import {AgentOpinionRepository} from "./agent-opinion-repository.ts"
 import {AgentReviewHistoryRepository} from "./agent-review-history-repository.ts"
+import {OwnOperationsRepository,inspectOwnOperationsSchema} from "./own-operations-repository.ts"
+import {createNativeOwnOperationsBusinessHandler} from "./own-operations-http.ts"
 import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
 import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
 import {AgentReviewSourceRepository} from "./agent-review-source.ts"
@@ -83,7 +85,7 @@ import {verifySmitheryPrivileges} from "./smithery-privileges.ts"
 import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
-import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
+import {selectNativePg18UatCapabilities}
   from "./native-config-uat-policy.ts"
 
 const portDefault=7403
@@ -403,6 +405,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
     const derivedMemoryAvailable=await inspectAgentMemoryDerivedSchema(business)
     const outcomeMemoryAvailable=await inspectAgentMemoryOutcomeSchema(business)
+    const ownOperationsAvailable=await inspectOwnOperationsSchema(business,outcomeMemoryAvailable)
     await inspectAgentMemoryFailureSourceSchema(business)
     const feedbackAvailable=await inspectAgentFeedbackSchema(business)
     const optimizationAvailable=await inspectAgentOptimizationSchema(business)
@@ -432,6 +435,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const auth=new NativeAuthRepository(adapter(authPool))
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+      allowOwnOperations:ownOperationsAvailable,
       allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
@@ -463,17 +467,6 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentDerivedMemory:derivedMemoryAvailable,allowAgentDerivedMemoryWrites:capabilities.agentDerivedMemoryUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
-        // Only verified employee identity (in createHandler) may mutate an
-        // owner-owned records. Each mutation needs its independent policy
-        // below; public routes never mount the private Broker or executor.
-        const pathname=new URL(req.url||"/","http://127.0.0.1").pathname
-        if(!permitNativePg18BusinessUatRequest(
-          pathname,req.method||"",capabilities)){
-          res.writeHead(405,{"Content-Type":"application/json; charset=utf-8",
-            "Cache-Control":"no-store"})
-          res.end(JSON.stringify({error:"pilot_business_writes_disabled"}))
-          return
-        }
         if(!businessHandler)throw Error("business_handler_unavailable")
         return businessHandler(req,res)
       }})
@@ -537,6 +530,14 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
         ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
+    })
+    // The shared composition applies the original Native global route policy
+    // to BOTH owner metadata and existing business handlers before dispatch.
+    businessHandler=createNativeOwnOperationsBusinessHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      available:ownOperationsAvailable,
+      ...(ownOperationsAvailable?{repository:new OwnOperationsRepository(business)}:{}),
+      policy:capabilities,businessHandler,
     })
     const localServer=createServer(native.handler)
     server=localServer

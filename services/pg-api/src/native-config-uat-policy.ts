@@ -200,6 +200,9 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  // Read-only owner metadata never inherits a configuration/submission gate.
+  // The Native handler still verifies Cookie identity and installed schema.
+  if(pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos")return method==="GET"
   // Exact original replay must reach059 before its independent fresh gate.
   if(/^\/api\/v2\/agent-generated-acceptances\/(preview|accept|confirm)$/.test(pathname))return method==="POST"
   if(new RegExp("^/api/v2/agent-generated-acceptances/reviews/"+uuid+"$").test(pathname))return method==="GET"
