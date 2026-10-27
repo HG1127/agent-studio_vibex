@@ -175,18 +175,22 @@ export async function generatedOperatorCiFixture(env=process.env){
   const clean=rows.map(row=>Object.fromEntries(Object.entries(row).flatMap(([key,value])=>{
    if(typeof value==='boolean'||value===null||identifier(value)||hex(value)||['n','count'].includes(key)&&Number.isSafeInteger(value))return [[key,value]]
    if(Array.isArray(value)&&value.length<=32&&value.every(identifier))return [[key,value]]
-   return []
+   if(typeof value==='number')return /(?:^id$|oid$|owner$)/.test(key)?[[key+'_name',objects.get(value)??'unreported_oid']]:[[key,value]]
+   if(typeof value==='string')return [[key+'_sha256',sha(value)],...(key==='expression'?[[key,value.slice(0,512)]]:[])]
+   return [[key+'_sha256',sha(JSON.stringify(value)??String(value))]]
   }))).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b),'en'))
   const failed=clean.find(row=>['ok','safe','clean','valid'].some(key=>row[key]===false))
   const targets=values.flatMap(value=>Array.isArray(value)?value.filter(identifier):identifier(value)?[value]:objects.has(value)?[objects.get(value)]:[]).slice(0,3)
-  return {query_sha256:sha(sql),targets,row_count:rows.length,result_sha256:sha(JSON.stringify(clean)),sample:failed??clean[0]??null}
+  const frame={query_sha256:sha(sql),targets,row_count:rows.length,result_sha256:sha(JSON.stringify(clean)),sample:failed??clean[0]??null}
+  Object.defineProperty(frame,'rows',{value:clean});return frame
  }
  async function auditProfile(pool){
   const layers=[]
   for(const [layer,file,method]of auditLayers){
-   const c=await pool.connect(),queries=[],objects=new Map();let ok=false,code
+   const c=await pool.connect(),queries=[],objects=new Map();let ok=false,code,session
    try{
     await c.query('BEGIN READ ONLY');await c.query('SET LOCAL ROLE agentstudio_api')
+    if(layer==='051')session=(await c.query("SELECT session_user,current_user,current_setting('search_path') AS search_path")).rows[0]
     const module=await from('services/pg-api/src/'+file)
     // Transparent read-only tracing: all original validator queries/results
     // go to/from this real driver connection. No positive result is supplied.
@@ -197,7 +201,7 @@ export async function generatedOperatorCiFixture(env=process.env){
     }})===true
    }catch(error){code=/^unsafe_[a-z_]+$/.test(error.message??'')?error.message:/^[A-Z0-9]{5}$/.test(error.code??'')?error.code:'diagnostic_error'}
    finally{await c.query('ROLLBACK').catch(()=>{});c.release()}
-   layers.push({layer,ok,code,queries})
+   layers.push({layer,ok,code,queries,session})
   }
   const c=await pool.connect();let database
   try{
@@ -217,11 +221,16 @@ export async function generatedOperatorCiFixture(env=process.env){
     if(!previous)continue
     for(let i=0;i<current.queries.length&&differences.length<4;i++){
      const before=previous.queries[i],after=current.queries[i]
-     if(!before||before.query_sha256!==after.query_sha256||before.result_sha256!==after.result_sha256)differences.push({layer:current.layer,query:i+1,before,after})
+     if(!before||before.query_sha256!==after.query_sha256||before.result_sha256!==after.result_sha256){
+      const changed=after.rows?.find(row=>JSON.stringify(row)!==JSON.stringify(before?.rows?.find(old=>old.name===row.name)))
+      differences.push({layer:current.layer,query:i+1,before:before?{...before,sample:changed?before.rows?.find(row=>row.name===changed.name)??null:before.sample}:null,after:{...after,sample:changed??after.sample}})
+     }
     }
    }
-   const value={stage,layers:observed.layers.map(({layer,ok,code})=>({layer,ok,code})),database_before:auditBaseline?.database,database_after:observed.database,differences}
+   const terminal=profile=>{const item=profile?.layers.find(row=>row.layer==='051');return item?{ok:item.ok,code:item.code,session:item.session,query_count:item.queries.length,last_queries:item.queries.slice(-3).map((q,i)=>({...q,query:Math.max(0,item.queries.length-3)+1+i,rows:q.rows?.slice(0,12)}))}:null}
+   const value={stage,baseline_layers:auditBaseline?.layers.map(({layer,ok,code})=>({layer,ok,code})),layers:observed.layers.map(({layer,ok,code})=>({layer,ok,code})),derived051:{before:terminal(auditBaseline),after:terminal(observed)},database_before:auditBaseline?.database,database_after:observed.database,differences}
    while(JSON.stringify(value).length>10000&&value.differences.length)value.differences.pop()
+   if(JSON.stringify(value).length>14000){for(const side of [value.derived051.before,value.derived051.after])if(side)side.last_queries=side.last_queries.slice(-1)}
    process.stderr.write('GENERATED_OPERATOR_RESTORE_DIAGNOSTIC:'+JSON.stringify(value)+'\n')
   }catch{process.stderr.write('GENERATED_OPERATOR_RESTORE_DIAGNOSTIC:'+JSON.stringify({stage,status:'diagnostic_probe_failed_original_failure_preserved'})+'\n')}
  }
