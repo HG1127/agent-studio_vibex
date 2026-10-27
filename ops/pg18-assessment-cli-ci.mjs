@@ -25,8 +25,15 @@ const freshSqlPaths=['db/postgres/001_stage_schema.sql','db/postgres/010_pg18_na
   '019_model_connections','020_model_credential_broker','021_tool_connections','022_schedule_draft_fence','023_workflow_safe_worker','024_bound_dispatch_identity','025_workflow_model_identity','026_workflow_tool_identity','027_workflow_agent_identity','028_autonomous_agent_identity','029_mcp_connections','030_mcp_tool_identity','031_smithery_managed','032_knowledge_access','033_knowledge_content','034_knowledge_runtime','035_knowledge_embedding_state','036_knowledge_embedding_consent','037_knowledge_index_runtime','038_knowledge_query_runtime','039_knowledge_execution_source','040_approved_semantic_tools','041_keyword_observations','042_agent_knowledge_observations','043_workflow_sample_lineage','044_schedule_execution','045_agent_collaboration','046_agent_releases','047_employee_governance','048_agent_human_input','049_agent_memory','050_agent_memory_context'
 ].map(name=>'db/postgres/migrations/pg_v9_'+name+'.sql')]
 const optionalSql=['051_agent_memory_derived','052_agent_memory_outcome','053_agent_memory_failure_source','054_agent_feedback','055_agent_optimization','056_agent_review_ledger','057_agent_assessment_execution'].map(name=>'db/postgres/migrations/pg_v9_'+name+'.sql')
+// Exact raw-byte variants of the same committed fresh050 SQL. Four files have
+// CRLF in the Windows checkout; Git/CI uses LF. Both normalize to the LF pin.
+const freshSourcePins=new Set(['69cbb979c0f8de76f628309a33bbb9363e92edaacb2dfd4f18377b0cdbaef59e','0a3baa8dd28309b5b133c10be944f803d10a71fc5bef1805d26153c69e813a13'])
 const hostEnvironment=()=>Object.fromEntries(['PATH','HOME','TMPDIR','TEMP','TMP'].filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]]))
 export function assessmentCliCoordinatorPlan(){return {mode:'plan',base_image:baseImage,network_mode:'none',published_ports:0,host_bind_mounts:0,tmpfs_mounts:['/run','/var/lib/postgresql'],test_uid:uid,database_port:5333,services_started:false,credentials_read:false,network_used:false,production_cutover_allowed:false}}
+export function verifyAssessmentCliFreshSources(snapshot,manifest){
+  const digest=hash(JSON.stringify({format:'pg18_fresh_runtime_sources_v1',sources:snapshot.sources}))
+  if(!freshSourcePins.has(digest)||snapshot.source_sha256!==digest||JSON.stringify(snapshot.sources.map(item=>item.path))!==JSON.stringify(freshSqlPaths)||snapshot.sources.some(item=>manifest.get(item.path)!==item.sha256))refuse('fresh_baseline_drift')
+}
 export function assessmentCliLabels(target){return {[labelPrefix+'run']:target.runId,[labelPrefix+'attempt']:target.runAttempt,[labelPrefix+'job']:'pg18-review-operator-lifecycle',[labelPrefix+'nonce']:target.nonce}}
 export function assessmentCliPostgresArgv(target){return ['postgres','-p','5333','-c','listen_addresses=127.0.0.1','-c','cluster_name=ci-review-'+target.nonce.slice(0,48)]}
 function ownedContainer(observed,target,expected){
@@ -111,7 +118,7 @@ async function prepareContext(directory){
   const snapshotSource=assessmentCliContainedPath(root,'services/pg-api/src/pg18-fresh-runtime-source.mjs')
   const {captureFreshRuntimeSources}=await import(pathToFileURL(snapshotSource).href)
   const snapshot=captureFreshRuntimeSources()
-  if(snapshot.source_sha256!=='69cbb979c0f8de76f628309a33bbb9363e92edaacb2dfd4f18377b0cdbaef59e'||JSON.stringify(snapshot.sources.map(item=>item.path))!==JSON.stringify(freshSqlPaths)||snapshot.sources.some(item=>manifest.get(item.path)!==item.sha256))refuse('fresh_baseline_drift')
+  verifyAssessmentCliFreshSources(snapshot,manifest)
   // The API install is standalone/frozen/ignore-scripts in this hosted job.
   // Preserve only relative dependency links whose resolved target stays inside
   // the copied node_modules tree; never follow a workspace or host link.

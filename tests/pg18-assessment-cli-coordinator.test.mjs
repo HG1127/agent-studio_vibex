@@ -6,7 +6,9 @@ import {fileURLToPath} from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import {assessmentCliCoordinatorPlan,assessmentCliLabels,assessmentCliPostgresArgv,inspectAssessmentCliContainer,assessmentCliContainedPath,finishAssessmentCliResources} from '../ops/pg18-assessment-cli-ci.mjs'
+import {createHash} from 'node:crypto'
+import {captureFreshRuntimeSources} from '../services/pg-api/src/pg18-fresh-runtime-source.mjs'
+import {assessmentCliCoordinatorPlan,assessmentCliLabels,assessmentCliPostgresArgv,inspectAssessmentCliContainer,assessmentCliContainedPath,finishAssessmentCliResources,verifyAssessmentCliFreshSources} from '../ops/pg18-assessment-cli-ci.mjs'
 const target={runId:'123456',runAttempt:'1',containerId:'a'.repeat(64),nonce:'b'.repeat(64)},expected={name:'synthetic-owned-container',imageId:'sha256:'+'c'.repeat(64)}
 function metadata(){return {Id:target.containerId,Name:'/'+expected.name,Image:expected.imageId,Created:new Date().toISOString(),State:{Running:true},HostConfig:{NetworkMode:'none',Privileged:false,PidMode:'',IpcMode:'private',PublishAllPorts:false,PortBindings:{},Binds:null,VolumesFrom:null,Devices:[],DeviceRequests:null,CapAdd:null,Tmpfs:{'/run':'rw,nosuid,nodev,noexec,size=32m,mode=0755','/var/lib/postgresql':'rw,nosuid,nodev,noexec,size=512m,mode=0755'}},NetworkSettings:{Ports:{}},Mounts:[],Config:{Labels:assessmentCliLabels(target),Cmd:assessmentCliPostgresArgv(target),Env:['POSTGRES_USER=postgres','POSTGRES_DB=agent_studio','POSTGRES_PASSWORD=synthetic-agentstudio-review-cli-123456-1','PGDATA=/var/lib/postgresql/assessment-cli-ci']}}}
 test('owned image/container/run labels and exact isolated postgres arguments produce only safe attestation metadata',()=>{
@@ -71,4 +73,18 @@ test('owned staging cleanup still runs when container ownership check or removal
     assert.deepEqual(events,['container','staging'])
   }
   const events=[];finishAssessmentCliResources(()=>events.push('container'),()=>events.push('staging'));assert.deepEqual(events,['container','staging'])
+})
+test('fresh050 pins accept only verified Windows/Git-LF bytes and refuse changed source, order or checksum',()=>{
+  const repository=fileURLToPath(new URL('../',import.meta.url)),sha=raw=>createHash('sha256').update(raw).digest('hex'),snapshot=captureFreshRuntimeSources()
+  const manifest=new Map(snapshot.sources.map(item=>[item.path,sha(fs.readFileSync(assessmentCliContainedPath(repository,item.path)))]))
+  assert.equal(verifyAssessmentCliFreshSources(snapshot,manifest),undefined)
+  const normalized=snapshot.sources.map(item=>({...item,sha256:sha(fs.readFileSync(assessmentCliContainedPath(repository,item.path),'utf8').replace(/\r\n/g,'\n'))}))
+  const lf={sources:normalized,source_sha256:sha(JSON.stringify({format:'pg18_fresh_runtime_sources_v1',sources:normalized}))}
+  assert.equal(lf.source_sha256,'0a3baa8dd28309b5b133c10be944f803d10a71fc5bef1805d26153c69e813a13')
+  assert.equal(verifyAssessmentCliFreshSources(lf,new Map(normalized.map(item=>[item.path,item.sha256]))),undefined)
+  const changed=new Map(manifest);changed.set(snapshot.sources[0].path,'0'.repeat(64))
+  assert.throws(()=>verifyAssessmentCliFreshSources(snapshot,changed),/fresh_baseline_drift/)
+  const missing=new Map(manifest);missing.delete(snapshot.sources[0].path);assert.throws(()=>verifyAssessmentCliFreshSources(snapshot,missing),/fresh_baseline_drift/)
+  assert.throws(()=>verifyAssessmentCliFreshSources({...snapshot,sources:[...snapshot.sources].reverse()},manifest),/fresh_baseline_drift/)
+  assert.throws(()=>verifyAssessmentCliFreshSources({...snapshot,source_sha256:'0'.repeat(64)},manifest),/fresh_baseline_drift/)
 })
