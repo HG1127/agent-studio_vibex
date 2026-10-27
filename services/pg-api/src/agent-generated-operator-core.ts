@@ -156,12 +156,17 @@ export async function inspectGeneratedOperator(pool:Pool,snapshot:GeneratedOpera
     assertGeneratedOperatorAuthorization(snapshot,approval)
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
     await db.query(generatedOperatorContextSql)
+    const transaction=(await db.query<{read_only:boolean}>("SELECT pg_catalog.current_setting('transaction_read_only')='on' AS read_only")).rows[0]
+    if(transaction?.read_only!==true)fail('recovery_transaction_unsafe')
     await db.query("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='45s'")
     await target(db,approval)
     const lock=(await db.query<{locked:boolean}>(lockSql)).rows[0]
     if(lock?.locked!==true)return {state:'pending' as const,installed:null,schema_verified:false,runtime_login_verified:false,production_cutover_allowed:false}
     if(journal){
-      const active=(await db.query<{active:boolean}>("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start::text=$2 AND xact_start IS NOT NULL) AS active",[journal.backend_pid,journal.backend_start])).rows[0]
+      // This confirmed read-only inspector transaction may reuse the backend
+      // of an ended install. Other live backends still block recovery, as do
+      // the original transaction's advisory locks checked above.
+      const active=(await db.query<{active:boolean}>("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND backend_start::text=$2 AND pid<>pg_backend_pid() AND xact_start IS NOT NULL) AS active",[journal.backend_pid,journal.backend_start])).rows[0]
       if(active?.active!==false)return {state:'pending' as const,installed:null,schema_verified:false,runtime_login_verified:false,production_cutover_allowed:false}
     }
     const installed=await schema(db,approval)
@@ -213,8 +218,9 @@ export async function applyGeneratedOperator(pool:Pool,snapshot:GeneratedOperato
 // Separate real login pool only; never pass the privileged installation client
 // through a fake pool or substitute role/session/user query results.
 export async function verifyGeneratedOperatorRuntimeLogin(pool:Pool,kind:'api'|'worker'|'identity'|'broker',expected:Target){
-  const login={api:'agentstudio_stage_login',worker:'agentstudio_stage_worker',identity:'agentstudio_bound_dispatch_login',broker:'agentstudio_model_broker_login'}[kind]
-  if(!login)fail('runtime_kind_invalid')
+  const logins={api:'agentstudio_stage_login',worker:'agentstudio_stage_worker',identity:'agentstudio_bound_dispatch_login',broker:'agentstudio_model_broker_login'}
+  if(!Object.hasOwn(logins,kind))fail('runtime_kind_invalid')
+  const login=logins[kind],role=kind==='identity'?'agentstudio_bound_dispatch':kind==='broker'?'agentstudio_model_broker':'agentstudio_api'
   record(expected,['system_identifier','database_oid']);if(!digits(expected.system_identifier)||!digits(expected.database_oid))fail('target_changed')
   const db=await pool.connect()
   try{
@@ -225,6 +231,13 @@ export async function verifyGeneratedOperatorRuntimeLogin(pool:Pool,kind:'api'|'
     // expected cluster binding is established by the separate admin postcheck;
     // this pool proves its actual login and forced endpoint/database identity.
     if(state?.ok!==true)fail('runtime_login_unsafe')
+    // NOINHERIT logins must explicitly assume their fixed, already-granted
+    // audit group. session_user remains the real login for the full boundary.
+    const member=(await db.query<{ok:boolean}>("SELECT pg_has_role(session_user,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1::text),'SET') AS ok",[role])).rows[0]
+    if(member?.ok!==true)fail('runtime_login_unsafe')
+    await db.query('SET LOCAL ROLE '+role)
+    const assumed=(await db.query<{login:string;role:string}>('SELECT session_user AS login,current_user AS role')).rows[0]
+    if(assumed?.login!==login||assumed.role!==role)fail('runtime_login_unsafe')
     await verifyOptionalCredentialBoundary(db,kind)
     if(kind==='api'||kind==='worker'){
       await db.query('SET LOCAL ROLE agentstudio_api')

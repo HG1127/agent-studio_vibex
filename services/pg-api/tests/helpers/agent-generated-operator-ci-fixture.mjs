@@ -84,7 +84,7 @@ function verifyStagedReview(root,expected){
  const closed=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key))
  const value=JSON.parse(bytes.toString('utf8'))
  if(!closed(value,['format','review_only','source_sha256','default_fresh_latest','initializes_database','activation_performed','pg_runtime_install_verified','files'])||
-  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='514807e12914116143068dd7254112fcc7c696e62843e9c2f113f0b77473bbb8'||
+  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'||
   value.default_fresh_latest!=='pg_v9_050'||value.initializes_database!==false||value.activation_performed!==false||value.pg_runtime_install_verified!==false||!Array.isArray(value.files)||value.files.length!==91)refuse('review_manifest')
  const files=new Set(['REVIEW_MANIFEST.json'])
  for(const item of value.files){
@@ -148,7 +148,7 @@ export async function generatedOperatorCiFixture(env=process.env){
  const pools=new Set(),passwords=new Map(),systemIds=new Map();let serial=0,baseDump,baseRoles,baseBusiness,baseDatabase,closed=false
  let auditBaseline,diagnosticEmitted=false
  const config=(target,database=target.db,user='postgres',password=proof.password)=>({host:'127.0.0.1',port:target.port,database,user,password,ssl:false,options:'',max:8,connectionTimeoutMillis:5000,statement_timeout:45000,query_timeout:50000})
- const connect=(target,database=target.db,user='postgres',password=proof.password)=>{const p=new pg.Pool(config(target,database,user,password));p.on('error',()=>{});pools.add(p);return p}
+ const connect=(target,database=target.db,user='postgres',password=proof.password,max=8)=>{const p=new pg.Pool({...config(target,database,user,password),max});p.on('error',()=>{});pools.add(p);return p}
  let admin=connect(main),restoreAdmin=connect(restore)
  async function freshProof(pool,target){
   const v=(await pool.query(`SELECT current_database() AS db,session_user AS login,current_user AS role,host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('data_directory') AS pgdata,current_setting('cluster_name') AS cluster,(pg_control_system()).system_identifier::text AS system_id,pg_postmaster_start_time() AS started,
@@ -343,6 +343,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   // CREATE from the actual roles dump, retaining its real ALTER and grants.
   dockerPg(restore,'psql',['--no-psqlrc','--set=ON_ERROR_STOP=on','--dbname=postgres'],roleText.replace(/^CREATE ROLE postgres;\r?\n/m,''))
   return {proof,main,restore,root,privateRoot,entry,snapshot,core,opinion,generated,source,get admin(){return admin},get restoreAdmin(){return restoreAdmin},full,business,databaseMetadata,reset,evidence,cli,close,
+   singleAdmin(){const pool=connect(main,main.db,'postgres',proof.password,1);return {pool,async close(){await pool.end();pools.delete(pool)}}},
    runtime(name){if(!passwords.has(name))refuse('unknown_synthetic_login');const pool=connect(main,main.db,name,passwords.get(name));return {pool,async close(){await pool.end();pools.delete(pool)}}},
    async recover(e,j=e.journal.at(-1)){return core.inspectGeneratedOperator(admin,snapshot,e.approval,j)},
    async assertUnchanged(e){await full(admin,false);assert.equal(await business(admin),e.beforeBusiness);const {state,catalog}=await capturePredecessor(admin);assert.equal(state.system_identifier,e.approval.system_identifier);assert.equal(state.database_oid,e.approval.database_oid);assert.equal(sha(JSON.stringify(catalog)),e.approval.predecessor_schema_sha256)},

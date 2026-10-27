@@ -21,11 +21,15 @@ function evidence({backupAge=20000,restoreAge=10000,expiresIn=3600000}={}){
 }
 const journal=approval=>({format:'agent_generated_operator_journal_v1',source_sha256:approval.source_sha256,system_identifier:approval.system_identifier,database_oid:approval.database_oid,
   predecessor_schema_sha256:approval.predecessor_schema_sha256,nonce:'00000000-0000-4000-8000-000000000001',backend_pid:77,backend_start:'2026-10-27 00:00:00+00',phase:'before_ddl'})
-function pool({locked=true,active=false,targetChanged=false,connections=0,catalogChanged=false,failRollback=false,failContext=false}={}){
+function pool({locked=true,active=false,targetChanged=false,connections=0,catalogChanged=false,failRollback=false,failContext=false,recoveryReadOnly=true,runtimeKind,runtimeMember=true,runtimeIdentityChanged=false}={}){
   const trace=[],released=[];let connects=0
   const client={release(destroy=false){released.push(destroy)},async query(sql,values=[]){
     trace.push({sql,values})
     if(sql===generatedOperatorContextSql&&failContext)throw Error('synthetic_context_refused')
+    if(sql==="SELECT pg_catalog.current_setting('transaction_read_only')='on' AS read_only")return {rows:[{read_only:recoveryReadOnly}]}
+    if(runtimeKind&&sql.includes('session_user=$1'))return {rows:[{ok:true}]}
+    if(runtimeKind&&sql.startsWith('SELECT pg_has_role(session_user,'))return {rows:[{ok:runtimeMember}]}
+    if(runtimeKind&&sql==='SELECT session_user AS login,current_user AS role')return {rows:[{login:runtimeIdentityChanged?'different_login':{api:'agentstudio_stage_login',worker:'agentstudio_stage_worker',identity:'agentstudio_bound_dispatch_login',broker:'agentstudio_model_broker_login'}[runtimeKind],role:runtimeKind==='identity'?'agentstudio_bound_dispatch':runtimeKind==='broker'?'agentstudio_model_broker':'agentstudio_api'}]}
     if(sql===generatedOperatorTargetSql)return {rows:[{system_identifier:targetChanged?'9':'1234567890123456789',database_oid:'42',backend_pid:77,backend_start:'synthetic backend start'}]}
     if(sql.includes('pg_try_advisory_xact_lock'))return {rows:[{locked}]}
     if(sql.includes('backend_start::text=$2'))return {rows:[{active}]}
@@ -160,7 +164,7 @@ test('quiescence uses authenticated role OIDs and transitive MEMBER for custom r
   }
 })
 test('recovery is read-only and remains pending while the old transaction/serialization lock is unresolved',async()=>{
-  const {approval}=evidence(),j=parseGeneratedOperatorJournal(journal(approval),approval)
+  const {approval}=evidence(),j=parseGeneratedOperatorJournal({...journal(approval),backend_pid:78},approval)
   for(const config of [{locked:false},{active:true}]){
     const db=pool(config),result=await inspectGeneratedOperator(db,snapshot,approval,j)
     assert.equal(result.state,'pending');assert.equal(result.installed,null);assert.equal(result.production_cutover_allowed,false)
@@ -168,6 +172,35 @@ test('recovery is read-only and remains pending while the old transaction/serial
     assert.ok(!db.trace.some(q=>q.sql===snapshot.body||q.sql==='COMMIT'));assert.equal(db.connects,1)
   }
   assert.throws(()=>parseGeneratedOperatorJournal({...j,source_sha256:prefix},approval),/invalid_journal/)
+})
+
+test('recovery excludes only its own confirmed readonly backend and retains exact other-backend journal matching',async()=>{
+  const {approval}=evidence(),j=parseGeneratedOperatorJournal(journal(approval),approval),db=pool()
+  // The double supplies the activity predicate result; real one-connection
+  // pool reuse and an independently active transaction are hosted assertions.
+  await assert.rejects(inspectGeneratedOperator(db,snapshot,approval,j),/unsafe_agent_generated_privileges/)
+  const active=db.trace.find(q=>q.sql.includes('backend_start::text=$2'))
+  assert.match(active.sql,/pid=\$1 AND backend_start::text=\$2 AND pid<>pg_backend_pid\(\) AND xact_start IS NOT NULL/)
+  assert.deepEqual(active.values,[j.backend_pid,j.backend_start]);assert.ok(db.trace.some(q=>q.sql.includes('pg_try_advisory_xact_lock')))
+  const unsafe=pool({recoveryReadOnly:false});await assert.rejects(inspectGeneratedOperator(unsafe,snapshot,approval,j),/recovery_transaction_unsafe/)
+  assert.deepEqual(unsafe.trace.map(q=>q.sql),['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',generatedOperatorContextSql,"SELECT pg_catalog.current_setting('transaction_read_only')='on' AS read_only",'ROLLBACK'])
+})
+
+test('real-login gate precedes fixed granted audit role selection without replacing session_user or skipping original audit',async()=>{
+  const expected={system_identifier:'1234567890123456789',database_oid:'42'}
+  for(const [kind,role]of [['api','agentstudio_api'],['worker','agentstudio_api'],['identity','agentstudio_bound_dispatch'],['broker','agentstudio_model_broker']]){
+    const db=pool({runtimeKind:kind})
+    await assert.rejects(verifyGeneratedOperatorRuntimeLogin(db,kind,expected),/unsafe_agent_human_input_privileges/)
+    const loginAt=db.trace.findIndex(q=>q.sql.includes('session_user=$1')),membershipAt=db.trace.findIndex(q=>q.sql.startsWith('SELECT pg_has_role(session_user,')),roleAt=db.trace.findIndex(q=>q.sql==='SET LOCAL ROLE '+role),auditAt=db.trace.findIndex(q=>q.sql==='SELECT to_regclass($1)::oid AS id')
+    assert.ok(loginAt>=0&&membershipAt>loginAt&&roleAt>membershipAt&&auditAt>roleAt)
+    assert.deepEqual(db.trace[membershipAt].values,[role]);assert.ok(db.trace[membershipAt].sql.includes("'SET'"))
+    assert.ok(!db.trace.some(q=>/SET SESSION AUTHORIZATION|SET ROLE postgres|GRANT /.test(q.sql)));assert.equal(db.trace.at(-1).sql,'ROLLBACK')
+    const denied=pool({runtimeKind:kind,runtimeMember:false});await assert.rejects(verifyGeneratedOperatorRuntimeLogin(denied,kind,expected),/runtime_login_unsafe/)
+    assert.ok(!denied.trace.some(q=>q.sql.startsWith('SET LOCAL ROLE ')))
+    const changed=pool({runtimeKind:kind,runtimeIdentityChanged:true});await assert.rejects(verifyGeneratedOperatorRuntimeLogin(changed,kind,expected),/runtime_login_unsafe/)
+    assert.ok(!changed.trace.some(q=>q.sql==='SELECT to_regclass($1)::oid AS id'))
+  }
+  for(const kind of ['constructor','__proto__','postgres']){const db=pool();await assert.rejects(verifyGeneratedOperatorRuntimeLogin(db,kind,expected),/runtime_kind_invalid/);assert.equal(db.connects,0)}
 })
 test('commit boundary writes durable pending before COMMIT and acknowledges only its returned response',async()=>{
   const {approval}=evidence(),trace=[],j=journal(approval)

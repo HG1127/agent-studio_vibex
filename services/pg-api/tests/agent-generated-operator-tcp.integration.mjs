@@ -60,7 +60,7 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
   })
   await t.test('one real privileged client sees uncommitted059 and direct FULL audits; postgres observer does not count as runtime',async()=>{
    const e=await start(),gate=operatorGate(),observer=await f.admin.connect();let identity,beforeCatalog,beforeContext
-   const context=async raw=>(await raw.query("SELECT session_user,current_user,current_setting('search_path') AS search_path,current_schemas(false) AS schemas")).rows[0]
+   const context=async raw=>(await raw.query("SELECT session_user,current_user,current_setting('search_path') AS search_path,current_schemas(false)::text[] AS schemas")).rows[0]
    const trace=traceGeneratedOperatorPool(f.admin,{
     async before({sql,raw}){if(sql===f.snapshot.body){beforeCatalog=(await raw.query(f.core.generatedOperatorCatalogSql)).rows[0].catalog;beforeContext=await context(raw)}},
     async after({sql,raw,pid}){
@@ -137,17 +137,32 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
    const result=await f.recover(e);assert.equal(result.state,'installed_exact');assert.equal(result.invocation_commit_acknowledged,false);assert.equal(result.automatic_retry_authorized,false)
    await f.full(f.admin,true);assert.equal(await f.business(f.admin),e.beforeBusiness)
   })
-  await t.test('real journal/postcheck failures distinguish rollback before COMMIT from installed-but-unverified afterward',async()=>{
+  await t.test('real journal/postcheck failures preserve rollback and installed state on actual same-PID recovery',async()=>{
    for(const fault of ['pending_journal','ack_journal','durable_postcheck']){
-    const e=await start();let committed=false,reached=false
-    const trace=traceGeneratedOperatorPool(f.admin,{
+    const e=await start(),single=f.singleAdmin();let committed=false,reached=false
+    try{
+    const trace=traceGeneratedOperatorPool(single.pool,{
      async before({sql}){if(sql==='BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'&&committed&&fault==='durable_postcheck'){reached=true;throw Error('synthetic_operator_postcheck_transport')}},
      async after({sql}){if(sql==='COMMIT')committed=true},
     })
     const write=async record=>{await e.persist(record);if(record.phase===(fault==='pending_journal'?'commit_pending':'commit_acknowledged')&&fault!=='durable_postcheck'){reached=true;throw Error('synthetic_operator_journal_transport')}}
     const result=await settle(f.core.applyGeneratedOperator(trace.pool,f.snapshot,e.approval,write));assert.equal(result.ok,false);assert.equal(reached,true)
     if(fault==='pending_journal'){assert.equal(committed,false);assert.ok(trace.trace.some(q=>q.sql==='ROLLBACK'));await f.assertUnchanged(e)}
-    else{assert.ok(result.error instanceof f.core.GeneratedOperatorInstalledUnverified);assert.equal(committed,true);assert.equal((await f.recover(e)).state,'installed_exact');await f.full(f.admin,true);assert.equal(await f.business(f.admin),e.beforeBusiness)}
+    else{
+     assert.ok(result.error instanceof f.core.GeneratedOperatorInstalledUnverified);assert.equal(committed,true)
+     const journal=e.journal.at(-1),recovery=traceGeneratedOperatorPool(single.pool)
+     const restored=await f.core.inspectGeneratedOperator(recovery.pool,f.snapshot,e.approval,journal)
+     assert.equal(recovery.clients.length,1);assert.equal(recovery.clients[0].pid,journal.backend_pid,'the real one-connection pool must reuse the acknowledged transaction backend')
+     const current=(await single.pool.query(f.core.generatedOperatorTargetSql)).rows[0];assert.equal(current.backend_start,journal.backend_start);assert.equal(current.backend_pid,journal.backend_pid)
+     assert.equal(restored.state,'installed_exact');await f.full(f.admin,true);assert.equal(await f.business(f.admin),e.beforeBusiness)
+     if(fault==='ack_journal'){
+      const contaminated=await single.pool.connect()
+      try{await contaminated.query('BEGIN')}finally{contaminated.release()}
+      await assert.rejects(f.core.inspectGeneratedOperator(single.pool,f.snapshot,e.approval,journal),errorCode('generated_operator_recovery_transaction_unsafe'))
+      await f.full(f.admin,true);assert.equal(await f.business(f.admin),e.beforeBusiness)
+     }
+    }
+    }finally{await single.close()}
    }
   })
   await t.test('server termination at COMMIT really rolls DDL back; recovery observes predecessor without retry',async()=>{
@@ -170,7 +185,8 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
     throw Error('synthetic_operator_unknown_inflight_transport')
    }}})
    await assert.rejects(f.core.applyGeneratedOperator(trace.pool,f.snapshot,e.approval,persist(e)),f.core.GeneratedOperatorCommitUnknown);assert.equal(sleeping,true)
-   assert.equal((await f.recover(e)).state,'pending');assert.equal(trace.trace.filter(q=>q.sql===f.snapshot.body).length,1)
+    const journal=e.journal.at(-1),recovery=traceGeneratedOperatorPool(f.admin)
+    assert.equal((await f.core.inspectGeneratedOperator(recovery.pool,f.snapshot,e.approval,journal)).state,'pending');assert.notEqual(recovery.clients[0].pid,journal.backend_pid);assert.equal(trace.trace.filter(q=>q.sql===f.snapshot.body).length,1)
    await operatorUntil(async()=>(await f.recover(e)).state==='predecessor_exact','unknown_actual_rollback',20000);await sleepPromise;await f.assertUnchanged(e)
   })
   await t.test('real wrong target, modified approval and tampered trusted-copy059 refuse with no source normalization',async()=>{
