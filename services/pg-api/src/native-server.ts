@@ -30,6 +30,8 @@ import {inspectAgentAssessmentSchema} from "./agent-assessment-audit.ts"
 import {inspectAgentOpinionSchema} from "./agent-opinion-audit.ts"
 import {AgentOpinionRepository} from "./agent-opinion-repository.ts"
 import {AgentReviewHistoryRepository} from "./agent-review-history-repository.ts"
+import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
+import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
 import {AgentReviewSourceRepository} from "./agent-review-source.ts"
 import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
@@ -410,12 +412,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
     await inspectAgentAssessmentSchema(business)
     // Optional058 may expose private result reads only with its exact schema.
     const reviewAvailable=await inspectAgentOpinionSchema(business)
+    // Optional059 is fully audited even with every fresh write scope closed.
+    const generatedAcceptanceAvailable=await inspectAgentGeneratedSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
     if(capabilities.agentFeedbackUat===true&&!feedbackAvailable)throw Error("agent_feedback_schema_required")
     if(capabilities.agentOptimizationUat===true&&!optimizationAvailable)throw Error("agent_optimization_schema_required")
     if(capabilities.agentReviewSubmissionUat===true&&!reviewAvailable)throw Error("agent_review_schema_required")
+    if(capabilities.agentGeneratedAcceptanceUat===true&&!generatedAcceptanceAvailable)throw Error("agent_generated_schema_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -451,6 +456,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentHumanInput:humanInputAvailable,
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
       allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
+      allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
       allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
@@ -476,6 +482,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
+      ...(generatedAcceptanceAvailable?{agentGeneratedAcceptanceRepository:new AgentGeneratedAcceptanceRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentGeneratedAcceptanceUat===true})}:{}),
       ...(reviewAvailable?{agentReviewSourceRepository:new AgentReviewSourceRepository(business),
         agentReviewLedgerRepository:new AgentReviewLedgerRepository(business,{allowSubmissions:capabilities.configurationWrites===true&&capabilities.agentReviewSubmissionUat===true}),
         agentOpinionRepository:new AgentOpinionRepository(business),agentReviewHistoryRepository:new AgentReviewHistoryRepository(business)}:{}),

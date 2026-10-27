@@ -4,6 +4,7 @@
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
 import {agentReviewHistoryQuery,agentReviewHistoryPage,type PgNativeAgentReviewHistoryQuery} from "./pgNativeAgentReviewHistory.ts"
+import {agentGeneratedPreviewInput,agentGeneratedAcceptance,agentGeneratedPreview,agentGeneratedReceipt,type PgNativeAgentGeneratedPreviewInput,type PgNativeAgentGeneratedAcceptance} from "./pgNativeAgentGeneratedAcceptance.ts"
 export type {PgNativeAgentReviewHistoryQuery,PgNativeAgentReviewHistoryItem,PgNativeAgentReviewHistoryPage} from "./pgNativeAgentReviewHistory.ts"
 export type {PgNativeAgentReviewPurpose,PgNativeAgentReviewTarget,PgNativeAgentReviewModelBinding,PgNativeAgentReviewFeedbackSource,PgNativeAgentReviewSelection,PgNativeAgentReviewChoice,PgNativeAgentReviewSubmission,PgNativeAgentReviewControl,PgNativeAgentReviewSource,PgNativeAgentReviewPreview,PgNativeAgentReviewReceipt,PgNativeAgentReviewControlReceipt,PgNativeAgentReviewRequest,PgNativeAgentReviewEvaluation,PgNativeAgentReviewOptimization,PgNativeAgentReviewResult,PgNativeAgentReviewOutcome,PgNativeAgentReviewView} from "./pgNativeAgentReview.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
@@ -75,6 +76,8 @@ export type PgNativeConfigCapabilities={
   agent_review_available?:boolean
   agent_review_submission_enabled?:boolean
   agent_review_history_available?:boolean
+  agent_generated_acceptance_available?:boolean
+  agent_generated_acceptance_enabled?:boolean
   agent_feedback_available?:boolean
   agent_feedback_submission_enabled?:boolean
   agent_feedback_lesson_storage_enabled?:boolean
@@ -291,6 +294,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/agent-optimizations${string}`
   | `/api/v2/agent-reviews/${string}`
   | `/api/v2/agent-reviews?${string}`
+  | `/api/v2/agent-generated-acceptances/${string}`
   | `/api/v2/agent-feedback/${string}`
   | `/api/v2/agent-outcome-memories/${string}`
   | `/api/v2/workflows/${string}/validate`
@@ -486,6 +490,17 @@ export function createPgNativePilotApi(
     const body=reviewInput(agentReviewControl,raw),result=await post<unknown>(`/api/v2/agent-reviews/${body.review_id}/${confirmOnly?"control-confirm":"control"}`,body)
     return reviewResponse(()=>agentReviewControlReceipt(result,body,confirmOnly))
   }
+  const generatedInput=<T>(parse:(raw:unknown)=>T,raw:unknown):T=>{
+    try{return parse(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_generated_request")}
+  }
+  const generatedResponse=async<T>(decode:()=>Promise<T>):Promise<T>=>{
+    try{return await decode()}catch{throw new PgNativePilotError(503,"unconfirmed_agent_generated_response")}
+  }
+  const generatedAccept=async(raw:PgNativeAgentGeneratedAcceptance,confirmOnly=false)=>{
+    const original=generatedInput(agentGeneratedAcceptance,raw)
+    const result=await post<unknown>(`/api/v2/agent-generated-acceptances/${confirmOnly?"confirm":"accept"}`,original)
+    return generatedResponse(()=>agentGeneratedReceipt(result,{original,...(confirmOnly?{replayed:true}:{})}))
+  }
   const patch=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"PATCH",body,transport,rootPath)
   const del=<T>(route:Route)=>request<T>(route,"DELETE",undefined,transport,rootPath)
@@ -539,6 +554,21 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    previewAgentGeneratedAcceptance:async(raw:PgNativeAgentGeneratedPreviewInput)=>{
+      const body=generatedInput(agentGeneratedPreviewInput,raw),result=await post<unknown>("/api/v2/agent-generated-acceptances/preview",body)
+      return generatedResponse(()=>agentGeneratedPreview(result,{review_id:body.review_id,spec_id:body.spec_id,target_run_id:body.target_run_id}))
+    },
+    acceptAgentGeneratedAcceptance:(original:PgNativeAgentGeneratedAcceptance)=>generatedAccept(original),
+    confirmAgentGeneratedAcceptance:(original:PgNativeAgentGeneratedAcceptance)=>generatedAccept(original,true),
+    getAgentGeneratedAcceptance:async(raw:string)=>{
+      const reviewId=generatedInput(value=>agentReviewId(value,true),raw)
+      const result=await get<unknown>(`/api/v2/agent-generated-acceptances/reviews/${reviewId}`)
+      return generatedResponse(async()=>{
+        const receipt=await agentGeneratedReceipt(result,{replayed:true})
+        if(receipt.source.review_id!==reviewId)throw Error("invalid_agent_generated_projection")
+        return receipt
+      })
+    },
     listAgentReviewHistory:async(raw:PgNativeAgentReviewHistoryQuery)=>{
       let query:ReturnType<typeof agentReviewHistoryQuery>
       try{query=agentReviewHistoryQuery(raw)}catch(cause){throw new PgNativePilotError(400,cause instanceof Error&&cause.message==="invalid_agent_review_history_cursor"?cause.message:"invalid_agent_review_history_query")}
@@ -652,6 +682,9 @@ export function createPgNativePilotApi(
           (value.agent_review_submission_enabled===true&&(value.agent_review_available!==true||value.config_writes_enabled!==true))||
           (value.agent_review_history_available!==undefined&&typeof value.agent_review_history_available!=="boolean")||
           (value.agent_review_history_available===true&&value.agent_review_available!==true)||
+          (value.agent_generated_acceptance_available!==undefined&&typeof value.agent_generated_acceptance_available!=="boolean")||
+          (value.agent_generated_acceptance_enabled!==undefined&&typeof value.agent_generated_acceptance_enabled!=="boolean")||
+          (value.agent_generated_acceptance_enabled===true&&(value.agent_generated_acceptance_available!==true||value.config_writes_enabled!==true))||
           (value.agent_feedback_available!==undefined&&typeof value.agent_feedback_available!=="boolean")||
           (value.agent_feedback_submission_enabled!==undefined&&typeof value.agent_feedback_submission_enabled!=="boolean")||
           (value.agent_feedback_lesson_storage_enabled!==undefined&&typeof value.agent_feedback_lesson_storage_enabled!=="boolean")||

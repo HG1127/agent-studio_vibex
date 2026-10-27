@@ -105,11 +105,11 @@ test("long-running Native API requires non-root systemd isolated credentials",()
 test("native server permits only owner-scoped Run reads by default; approval writes remain gated",()=>{
   const source=readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)),
     "../src/native-server.ts"),"utf8")
-  assert.match(source,/runRepository:createNativeRunRepository\(adapter\(businessPool\),capabilities\)/)
+  assert.match(source,/runRepository:createNativeRunRepository\(business,capabilities\)/)
   assert.match(source,/permitNativePg18BusinessUatRequest/)
   assert.doesNotMatch(source,/allowBoundModelRuns:true/)
   assert.match(source,/permitNativePg18BusinessUatRequest/)
-  assert.match(source,/verified_active_admins:1/)
+  assert.match(source,/verified_active_admins:verifiedActiveAdmins/)
   assert.match(source,/verified_roles:2/)
   assert.match(source,/host\(inet_server_addr\(\)\)/)
   assert.match(source,/rolcanlogin/)

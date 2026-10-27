@@ -7,6 +7,55 @@ import {createPgNativePilotApi,PgNativePilotError}
   from "../src/lib/pgNativePilotApi.ts"
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
 
+const generatedVector=JSON.parse(fs.readFileSync(path.join(root,"tests/pg-native-agent-generated-acceptance.test.mjs"),"utf8").match(/^const vector=(.*);$/m)[1])
+const generatedTarget={review_id:generatedVector.original.review_id,spec_id:generatedVector.original.spec_id,target_run_id:generatedVector.original.target_run_id}
+const generatedReply=(replayed=false)=>({...structuredClone(generatedVector.receipt),replayed})
+
+test("generated SDK sends four exact Cookie routes, closed14 original and independent privacy headers",async()=>{
+  for(const prefix of ["","/__pg_native"]){
+    const calls=[],api=createPgNativePilotApi(async(url,init)=>{
+      calls.push({url,init});const payload=String(url).endsWith("/preview")?generatedVector.preview:generatedReply(init.method==="GET"||String(url).endsWith("/confirm"))
+      return new Response(JSON.stringify(payload),{status:200})
+    },prefix)
+    assert.deepEqual(await api.previewAgentGeneratedAcceptance({action:"preview",...generatedTarget}),generatedVector.preview)
+    assert.deepEqual(await api.acceptAgentGeneratedAcceptance(generatedVector.original),generatedReply())
+    assert.deepEqual(await api.confirmAgentGeneratedAcceptance(generatedVector.original),generatedReply(true))
+    assert.deepEqual(await api.getAgentGeneratedAcceptance(generatedTarget.review_id),generatedReply(true))
+    assert.deepEqual(calls.map(c=>c.url),["preview","accept","confirm","reviews/"+generatedTarget.review_id].map(s=>prefix+"/api/v2/agent-generated-acceptances/"+s))
+    for(const {init}of calls){assert.equal(init.credentials,"same-origin");assert.equal(init.redirect,"error");assert.equal(init.cache,"no-store");assert.equal(init.referrerPolicy,"no-referrer");assert.equal(Object.hasOwn(init.headers,"Authorization"),false);assert.equal(Object.hasOwn(init.headers,"X-Rh-User-Id"),false)}
+    for(const {init}of calls.slice(0,3)){assert.equal(init.method,"POST");assert.equal(init.headers["X-AgentStudio-Request"],"1");assert.equal(init.headers["Content-Type"],"application/json");assert.ok(Buffer.byteLength(init.body)<=8192)}
+    assert.deepEqual(JSON.parse(calls[0].init.body),{action:"preview",...generatedTarget})
+    for(const call of calls.slice(1,3)){assert.equal(Object.keys(JSON.parse(call.init.body)).length,14);assert.deepEqual(JSON.parse(call.init.body),generatedVector.original)}
+    assert.equal(calls[3].init.method,"GET");assert.equal(calls[3].init.body,undefined)
+  }
+})
+test("generated SDK rejects foreign/extra inputs before transport and validates selector/replayed hashes",async()=>{
+  let calls=0,payload=generatedReply(true);const api=createPgNativePilotApi(async()=>{calls++;return new Response(JSON.stringify(payload),{status:200})})
+  for(const run of [()=>api.previewAgentGeneratedAcceptance({action:"preview",...generatedTarget,owner_user_id:"forbidden"}),()=>api.acceptAgentGeneratedAcceptance({...generatedVector.original,request_sha256:"a".repeat(64)}),()=>api.confirmAgentGeneratedAcceptance({...generatedVector.original,confirm:false}),()=>api.getAgentGeneratedAcceptance("ABCDEF00-0000-4000-8000-000000000001"),()=>api.getAgentGeneratedAcceptance(generatedTarget.review_id+"?owner=x")])await assert.rejects(run(),e=>e.status===400&&e.code==="invalid_agent_generated_request")
+  assert.equal(calls,0)
+  await assert.rejects(api.getAgentGeneratedAcceptance("00000000-0000-4000-8000-000000000077"),e=>e.status===503)
+  payload=generatedReply(false);await assert.rejects(api.getAgentGeneratedAcceptance(generatedTarget.review_id),e=>e.status===503);await assert.rejects(api.confirmAgentGeneratedAcceptance(generatedVector.original),e=>e.status===503)
+  payload={...generatedVector.preview,preview_sha256:"a".repeat(64)};await assert.rejects(api.previewAgentGeneratedAcceptance({action:"preview",...generatedTarget}),e=>e.status===503)
+  payload={...generatedReply(true),result:{private:true}};await assert.rejects(api.acceptAgentGeneratedAcceptance(generatedVector.original),e=>e.status===503)
+})
+test("generated SDK preserves real ambiguous408429/401 errors and malformed successes stay unconfirmed",async()=>{
+  for(const status of [401,403,404,408,409,429,500]){
+    const api=createPgNativePilotApi(async()=>new Response(JSON.stringify({error:"synthetic_failure"}),{status}))
+    await assert.rejects(api.confirmAgentGeneratedAcceptance(generatedVector.original),e=>e.status===status&&e.code==="synthetic_failure")
+  }
+  const lost=createPgNativePilotApi(async()=>{throw Error("connection lost")});await assert.rejects(lost.acceptAgentGeneratedAcceptance(generatedVector.original),e=>e.status===0)
+  const malformed=createPgNativePilotApi(async()=>new Response(JSON.stringify({recorded:true}),{status:200}));await assert.rejects(malformed.acceptAgentGeneratedAcceptance(generatedVector.original),e=>e.status===503&&e.code==="unconfirmed_agent_generated_response")
+})
+test("generated capability is independent, absent defaults closed and enabled requires availability plus config writes",async()=>{
+  const base={mode:"native_pg18",config_writes_enabled:true,model_probe_enabled:false,run_execution_enabled:false}
+  const read=value=>createPgNativePilotApi(async()=>new Response(JSON.stringify(value),{status:200})).getConfigCapabilities()
+  const manual={...base,agent_optimization_available:true,agent_optimization_acceptance_enabled:true,agent_review_available:true,agent_review_submission_enabled:true}
+  assert.equal((await read(manual)).agent_generated_acceptance_enabled,undefined)
+  assert.equal((await read({...base,config_writes_enabled:false,agent_generated_acceptance_available:true,agent_generated_acceptance_enabled:false})).agent_generated_acceptance_available,true)
+  assert.equal((await read({...base,agent_generated_acceptance_available:true,agent_generated_acceptance_enabled:true})).agent_generated_acceptance_enabled,true)
+  for(const patch of [{agent_generated_acceptance_available:"true"},{agent_generated_acceptance_enabled:1},{agent_generated_acceptance_enabled:true},{agent_generated_acceptance_available:false,agent_generated_acceptance_enabled:true},{agent_generated_acceptance_available:true,agent_generated_acceptance_enabled:true,config_writes_enabled:false}])await assert.rejects(read({...base,...patch}),e=>e.status===503&&e.code==="invalid_native_capabilities")
+})
+
 test("single-shot API removes unavailable result/citations on every response path and refuses a malformed availability flag",async()=>{
   const id="11111111-1111-4111-8111-111111111111"
   let flag=false

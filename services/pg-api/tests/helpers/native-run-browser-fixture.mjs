@@ -41,6 +41,8 @@ import {AgentReviewLedgerRepository} from "../../src/agent-review-ledger.ts"
 import {AgentOpinionRepository} from "../../src/agent-opinion-repository.ts"
 import {AgentReviewHistoryRepository} from "../../src/agent-review-history-repository.ts"
 import {inspectAgentOpinionSchema} from "../../src/agent-opinion-audit.ts"
+import {AgentGeneratedAcceptanceRepository} from "../../src/agent-generated-acceptance-repository.ts"
+import {inspectAgentGeneratedSchema} from "../../src/agent-generated-audit.ts"
 import {assessmentClaim,assessmentProof,assessmentContext,assessmentReserve,assessmentFinish,assessmentEvaluation,assessmentOptimization} from "./agent-assessment-fixture.mjs"
 import {AgentMemoryOutcomeRepository} from "../../src/agent-memory-outcome-repository.ts"
 import {inspectAgentMemoryOutcomeSchema} from "../../src/agent-memory-outcome-audit.ts"
@@ -124,6 +126,8 @@ const optimization=process.env.AGENT_STUDIO_PG_BROWSER_OPTIMIZATION==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_OPTIMIZATION!==undefined&&!optimization||optimization&&!feedback)throw Error("invalid_synthetic_optimization_browser_mode")
 const review=process.env.AGENT_STUDIO_PG_BROWSER_REVIEW==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_REVIEW!==undefined&&!review||review&&!optimization)throw Error("invalid_synthetic_review_browser_mode")
+const generatedAcceptance=process.env.AGENT_STUDIO_PG_BROWSER_GENERATED_ACCEPTANCE==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_GENERATED_ACCEPTANCE!==undefined&&!generatedAcceptance||generatedAcceptance&&!review)throw Error("invalid_synthetic_generated_acceptance_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -161,6 +165,7 @@ Object.assign(state,{derivedAllowed:derivedMemory,derivedDrop:false,derivedCapab
 Object.assign(state,{feedbackAllowed:feedback,feedbackDrop:false,feedbackCapabilitiesDrop:false,feedbackHashes:[],feedbackConfirms:0,feedbackFailLesson:false})
 Object.assign(state,{optimizationAllowed:optimization,optimizationDrop:false,optimizationCapabilitiesDrop:false,optimizationHashes:[],optimizationConfirms:0})
 Object.assign(state,{reviewAllowed:review,reviewHistoryAllowed:review,reviewDrop:false,reviewCapabilitiesDrop:false,reviewHashes:[],reviewConfirms:0,reviewSyntheticCompletions:0})
+Object.assign(state,{generatedAcceptanceAllowed:generatedAcceptance,generatedAcceptanceDrop:false,generatedAcceptanceCapabilitiesDrop:false,generatedAcceptanceHashes:[],generatedAcceptanceAgentsReads:0})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -193,6 +198,7 @@ try{
       await db.exec(load("db/postgres/migrations/pg_v9_"+name+".sql"))
     assert.equal(await inspectAgentOpinionSchema(pool),true)
   }
+  if(generatedAcceptance){await db.exec(load("db/postgres/migrations/pg_v9_059_agent_generated_acceptance.sql"));assert.equal(await inspectAgentGeneratedSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -296,12 +302,13 @@ try{
       allowAgentReleases:releases,allowAgentHumanInput:human,allowAgentMemory:memory,allowAgentMemoryRuntime:memoryRuntime,
       allowAgentFeedback:feedback,allowAgentFeedbackSubmission:state.feedbackAllowed,allowAgentFeedbackLessons:state.feedbackAllowed,
       allowAgentReview:review,allowAgentReviewSubmission:state.reviewAllowed&&state.configAllowed,allowAgentReviewHistory:state.reviewHistoryAllowed,
+      allowAgentGeneratedAcceptance:generatedAcceptance,allowAgentGeneratedAcceptanceWrites:generatedAcceptance&&state.generatedAcceptanceAllowed&&state.configAllowed,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:state.outcomeAllowed,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:state.derivedAllowed,
       businessHandler:(req,res)=>{
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
           {...policy,configurationWrites:state.configAllowed,agentOutcomeMemoryUat:state.outcomeAllowed,agentDerivedMemoryUat:state.derivedAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
-            knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed})){
+            knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed,agentGeneratedAcceptanceUat:generatedAcceptance&&state.generatedAcceptanceAllowed})){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
         return backend(req,res)
@@ -359,6 +366,12 @@ try{
         submit(identity,body){state.reviewHashes.push({action:body.action,request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentReviewLedgerRepository(pool,{allowSubmissions:state.reviewAllowed&&state.configAllowed}).submit(identity,body)},
         change(identity,body){state.reviewHashes.push({action:body.action,request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentReviewLedgerRepository(pool).change(identity,body)}
       }}:{}),
+      ...(generatedAcceptance?{agentGeneratedAcceptanceRepository:{
+        preview:(...args)=>new AgentGeneratedAcceptanceRepository(pool).preview(...args),
+        receipt:(...args)=>new AgentGeneratedAcceptanceRepository(pool).receipt(...args),
+        accept(identity,body){state.generatedAcceptanceHashes.push({operation:"accept",request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentGeneratedAcceptanceRepository(pool,{allowAcceptance:state.generatedAcceptanceAllowed&&state.configAllowed}).accept(identity,body)},
+        confirm(identity,body){state.generatedAcceptanceHashes.push({operation:"confirm",request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentGeneratedAcceptanceRepository(pool).confirm(identity,body)}
+      }}:{}),
       ...(outcomeMemory?{agentOutcomeMemoryRepository:outcomeRepository}:{}),
       ...(derivedMemory?{agentDerivedMemoryRepository:derivedRepository}:{}),
       workflowSafeRunRepository:new WorkflowSafeRunRepository(pool),knowledgeRepository:new KnowledgeBaseRepository(pool),
@@ -411,6 +424,11 @@ try{
               reviewOutputs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_assessment_outputs")).rows[0].n,
               reviewTombstones:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_review_tombstones")).rows[0].n,
               reviewScopes:(await c.query("SELECT request_id,spec_id,run_id,purpose FROM agentstudio.agent_review_requests ORDER BY created_at DESC,request_id DESC LIMIT 20")).rows}:{}),
+            ...(generatedAcceptance?{generatedAcceptanceHashes:state.generatedAcceptanceHashes,generatedAcceptanceAgentsReads:state.generatedAcceptanceAgentsReads,
+              generatedAcceptances:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_generated_acceptances")).rows[0].n,
+              generatedAcceptanceRefs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_generated_feedback_refs")).rows[0].n,
+              generatedAcceptanceAudits:(await c.query("SELECT count(*)::int AS n FROM agentstudio.audit_events WHERE action='agent.generated_acceptance'")).rows[0].n,
+              generatedAcceptanceWitnesses:(await c.query("SELECT request_id,review_id,spec_id,target_run_id,anchor_run_id,anchor_feedback_id,source_kind,source_protocol,before_spec_revision,after_spec_revision,before_revision_id,after_revision_id,receipt_sha256 FROM agentstudio.agent_generated_acceptances ORDER BY created_at,request_id")).rows}:{}),
             ...(failureSource?{failureSources:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_failure_sources")).rows[0].n,effects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.external_effects")).rows[0].n,failPreparation:state.failPreparation}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -434,6 +452,9 @@ try{
           }
         }
         else if(req.url==="/__fixture/drop-next-review"&&req.method==="POST"&&review){state.reviewDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-generated-acceptance"&&req.method==="POST"&&generatedAcceptance){state.generatedAcceptanceDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/deny-generated-acceptance"&&req.method==="POST"&&generatedAcceptance){state.generatedAcceptanceAllowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-generated-acceptance-capabilities"&&req.method==="POST"&&generatedAcceptance){state.generatedAcceptanceCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-review-capabilities"&&req.method==="POST"&&review){state.reviewCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-review"&&req.method==="POST"&&review){state.reviewAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/allow-review"&&req.method==="POST"&&review){state.reviewAllowed=true;configure();output={ok:true}}
@@ -510,6 +531,9 @@ try{
         else{res.writeHead(404);res.end();return}
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(output));return
       }
+      if(generatedAcceptance&&req.method==="GET"&&req.url==="/api/v2/agent-specs")state.generatedAcceptanceAgentsReads++
+      if(generatedAcceptance&&req.method==="POST"&&req.url==="/api/v2/agent-generated-acceptances/accept"&&state.generatedAcceptanceDrop){state.generatedAcceptanceDrop=false;res.end=()=>{res.destroy();return res}}
+      if(generatedAcceptance&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.generatedAcceptanceCapabilitiesDrop){state.generatedAcceptanceCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
       if(human&&req.method==="POST"&&/^\/api\/v2\/(?:agent-autonomous-runs|workflow-v2-runs)\/[^/]+\/respond$/.test(req.url)){
         if(state.humanDrop){state.humanDrop=false;res.end=()=>{res.destroy();return res}}

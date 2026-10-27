@@ -35,6 +35,7 @@ import {parseAgentReviewControl} from "./agent-review-control.ts"
 import {parseAgentOpinionView} from "./agent-opinion-contract.ts"
 import {parseAgentReviewHistoryUrl,parseAgentReviewHistoryPage} from "./agent-review-history-contract.ts"
 import {parseAgentReviewTarget,parsePublicAgentReviewChoice,publicAgentReviewSource,publicAgentReviewPreview,publicAgentReviewReceipt,publicAgentReviewControlReceipt} from "./agent-review-public-contract.ts"
+import {parseAgentGeneratedPreviewInput,parseAgentGeneratedAcceptance,parseAgentGeneratedPreview,parseAgentGeneratedReceipt,agentGeneratedAcknowledgement,type AgentGeneratedAcceptance,type AgentGeneratedReceipt} from "./agent-generated-acceptance-contract.ts"
 
 export interface AppDependencies {
   repository: AgentSpecRepository
@@ -57,6 +58,7 @@ export interface AppDependencies {
   agentReviewLedgerRepository?:Pick<import("./agent-review-ledger.ts").AgentReviewLedgerRepository,"submit"|"confirm"|"change"|"confirmControl">
   agentOpinionRepository?:Pick<import("./agent-opinion-repository.ts").AgentOpinionRepository,"getCurrent">
   agentReviewHistoryRepository?:Pick<import("./agent-review-history-repository.ts").AgentReviewHistoryRepository,"list">
+  agentGeneratedAcceptanceRepository?:Pick<import("./agent-generated-acceptance-repository.ts").AgentGeneratedAcceptanceRepository,"preview"|"accept"|"confirm"|"receipt">
   agentOutcomeMemoryRepository?:import("./agent-memory-outcome-repository.ts").AgentMemoryOutcomeRepository
   agentDerivedMemoryRepository?:import("./agent-memory-derived-repository.ts").AgentMemoryDerivedRepository
   workflowHumanInputRepository?:AgentHumanInputRepository
@@ -117,6 +119,40 @@ async function readReviewBody(req:IncomingMessage,maxBytes:number):Promise<Recor
   try{value=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(chunks)))}catch{throw new HttpError(400,"invalid_json")}
   if(!value||typeof value!=="object"||Array.isArray(value))throw new HttpError(400,"invalid_json")
   return value as Record<string,unknown>
+}
+// Separate strict reader: do not change the frozen older review surface.
+async function readGeneratedBody(req:IncomingMessage):Promise<Record<string,unknown>>{
+  const type=req.headers["content-type"],length=req.headers["content-length"]
+  if(typeof type!=="string"||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(type))throw new HttpError(415,"json_content_type_required")
+  if(length!==undefined&&(typeof length!=="string"||!/^\d+$/.test(length)||!Number.isSafeInteger(Number(length))||Number(length)>8192))throw new HttpError(413,"request_too_large")
+  if(length!==undefined&&req.headers["transfer-encoding"]!==undefined)throw new HttpError(400,"invalid_agent_generated_request")
+  let size=0;const chunks:Buffer[]=[]
+  for await(const chunk of req){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=bytes.length;if(size>8192)throw new HttpError(413,"request_too_large");chunks.push(bytes)}
+  const bytes=Buffer.concat(chunks)
+  if(bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf)throw new HttpError(400,"invalid_agent_generated_request")
+  let value:unknown
+  try{value=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes))}catch{throw new HttpError(400,"invalid_agent_generated_request")}
+  if(!value||typeof value!=="object"||Array.isArray(value))throw new HttpError(400,"invalid_agent_generated_request")
+  return value as Record<string,unknown>
+}
+async function emptyGeneratedGet(req:IncomingMessage):Promise<void>{
+  if(req.headers["transfer-encoding"]!==undefined||req.headers["content-length"]!==undefined&&req.headers["content-length"]!=="0")throw new HttpError(400,"invalid_agent_generated_request")
+  for await(const chunk of req)if(Buffer.byteLength(chunk)>0)throw new HttpError(400,"invalid_agent_generated_request")
+}
+function generatedProjection<T>(decode:()=>T):T{
+  // A fulfilled repository may already have committed. Invalid output is an
+  // uncertain server failure, never a definitive400/409 fresh rejection.
+  try{return decode()}catch{throw Error("unsafe_agent_generated_response")}
+}
+function generatedReceiptProjection(raw:unknown,original?:AgentGeneratedAcceptance,reviewId?:string,readonly=false):AgentGeneratedReceipt{
+  const value=parseAgentGeneratedReceipt(raw,original)
+  const expected=original??parseAgentGeneratedAcceptance({action:"accept",request_id:value.request_id,review_id:value.source.review_id,spec_id:value.source.spec_id,target_run_id:value.source.target_run_id,
+    anchor_run_id:value.anchor.run_id,anchor_feedback_id:value.anchor.feedback_id,expected_preview_sha256:value.preview_sha256,expected_result_sha256:value.source.result_sha256,
+    expected_spec_revision:value.before.revision,expected_spec_sha256:value.before.source_sha256,expected_candidate_sha256:value.candidate_sha256,confirm:true,acceptance_acknowledgement:agentGeneratedAcknowledgement})
+  // The derived original verifies visible metadata only, never retry consent.
+  parseAgentGeneratedReceipt(value,expected)
+  if(readonly&&value.replayed!==true||reviewId!==undefined&&value.source.review_id!==reviewId)throw Error("invalid_agent_generated_receipt_scope")
+  return value
 }
 function tokenFrom(req:IncomingMessage):string {
   const header=req.headers.authorization
@@ -182,6 +218,10 @@ export function createHandler(deps:AppDependencies) {
       const reviewItem=/^\/api\/v2\/agent-reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\/(control|control-confirm))?$/.exec(path)
       const reviewCollection=path==="/api/v2/agent-reviews"
       const reviewRoute=reviewAction||reviewItem||reviewCollection
+      const generatedBase="/api/v2/agent-generated-acceptances"
+      const generatedAction=/^\/api\/v2\/agent-generated-acceptances\/(preview|accept|confirm)$/.exec(path)
+      const generatedItem=/^\/api\/v2\/agent-generated-acceptances\/reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/.exec(path)
+      const generatedRoute=path===generatedBase||path.startsWith(generatedBase+"/")
       const feedbackRoute=/^\/api\/v2\/agent-feedback\/([0-9a-fA-F-]{36})(?:\/(change|confirm))?$/.exec(path)
       const outcomeMemoryRoute=/^\/api\/v2\/agent-outcome-memories\/([0-9a-fA-F-]{36})(?:\/(stop|stop-confirm))?$/.exec(path)
       const derivedMemoryRoute=/^\/api\/v2\/agent-derived-memories(?:\/(preview|change|confirm))?$/.exec(path)
@@ -189,7 +229,7 @@ export function createHandler(deps:AppDependencies) {
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute && !generatedRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
@@ -199,6 +239,10 @@ export function createHandler(deps:AppDependencies) {
         if(!deps.agentReviewSourceRepository||!deps.agentReviewLedgerRepository||!deps.agentOpinionRepository)throw new HttpError(404,"route_not_found")
         if(reviewCollection&&!deps.agentReviewHistoryRepository)throw new HttpError(404,"route_not_found")
         // Never evaluate an OIDC/PocketBase token fallback for this surface.
+        if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
+      }
+      if(generatedRoute){
+        if(!deps.agentGeneratedAcceptanceRepository)throw new HttpError(404,"route_not_found")
         if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
       }
 
@@ -222,6 +266,36 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(generatedRoute){
+        if(identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+        if(req.url!==path)throw new HttpError(400,"invalid_agent_generated_request")
+        const repo=deps.agentGeneratedAcceptanceRepository!
+        if(generatedAction){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const action=generatedAction[1],raw=await readGeneratedBody(req)
+          if(action==="preview"){
+            const input=parseAgentGeneratedPreviewInput(raw),value=await repo.preview(identity,input)
+            return send(res,200,generatedProjection(()=>{
+              const result=parseAgentGeneratedPreview(value,input)
+              if(Buffer.byteLength(JSON.stringify(result),"utf8")>1048576)throw Error("oversized_agent_generated_preview")
+              return result
+            }))
+          }
+          const original=parseAgentGeneratedAcceptance(raw)
+          // No outer fresh gate: exact accept replay belongs to the repository.
+          const value=action==="accept"?await repo.accept(identity,original):await repo.confirm(identity,original)
+          return send(res,200,generatedProjection(()=>generatedReceiptProjection(value,original,undefined,action==="confirm")))
+        }
+        if(generatedItem){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          const id=generatedItem[1]!
+          if(id!==id.toLowerCase())throw new HttpError(400,"invalid_agent_generated_request")
+          await emptyGeneratedGet(req)
+          const value=await repo.receipt(identity,id)
+          return send(res,200,generatedProjection(()=>generatedReceiptProjection(value,undefined,id,true)))
+        }
+        throw new HttpError(400,"invalid_agent_generated_request")
+      }
       if(reviewRoute){
         if(identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
         if(reviewCollection){

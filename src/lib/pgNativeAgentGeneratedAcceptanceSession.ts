@@ -7,15 +7,34 @@ function freeze<T>(value:T):T{if(value&&typeof value==="object"){Object.values(v
 const equal=(a:unknown,b:unknown)=>agentGeneratedCanonical(a)===agentGeneratedCanonical(b)
 function status(error:unknown):number|null{if(!error||typeof error!=="object")return null;const v=Object.getOwnPropertyDescriptor(error,"status")?.value;return typeof v==="number"&&Number.isInteger(v)?v:null}
 
-export function createPgNativeAgentGeneratedAcceptanceSession(api:PgNativeAgentGeneratedAcceptanceApi,{key=()=>crypto.randomUUID(),onExpired=()=>{}}:{key?:()=>string;onExpired?:()=>void}={}){
+type MetadataScope={api:object;ownerId:string;specId:string|null;runId:string|null;purpose:string;reviewId?:string|null;request?:{request_id:string;spec_id:string;run_id:string;purpose:string}|null}
+export type PgNativeAgentGeneratedSelection={api:object;ownerId:string;scope:string;target:PgNativeAgentGeneratedTarget|null}
+/** Retains validated request metadata when a paid opinion snapshot hides its body. */
+export function retainPgNativeAgentGeneratedSelection(previous:PgNativeAgentGeneratedSelection|null,value:MetadataScope):PgNativeAgentGeneratedSelection{
+  // The parent durable task view clears detail while hidden or refreshing.
+  // Missing detail is not an employee's explicit selection of another task.
+  if(previous?.api===value.api&&previous.ownerId===value.ownerId&&value.purpose==="optimize"&&(!value.specId||!value.runId))return previous
+  const scope=[value.purpose,value.specId,value.runId].join(":"),same=previous?.api===value.api&&previous.ownerId===value.ownerId&&previous.scope===scope
+  const current=same?previous:{api:value.api,ownerId:value.ownerId,scope,target:null}
+  if(value.purpose!=="optimize"||!value.reviewId)return current
+  const request=value.request
+  if(request?.request_id===value.reviewId&&request.purpose==="optimize"&&request.spec_id===value.specId&&request.run_id===value.runId){
+    try{const target=agentGeneratedTarget({review_id:request.request_id,spec_id:request.spec_id,target_run_id:request.run_id});return current.target&&equal(current.target,target)?current:{...current,target}}
+    catch{return current.target?{...current,target:null}:current}
+  }
+  return current.target?.review_id!==value.reviewId&&current.target?{...current,target:null}:current
+}
+
+export function createPgNativeAgentGeneratedAcceptanceSession(api:PgNativeAgentGeneratedAcceptanceApi,{key=()=>crypto.randomUUID(),onExpired=()=>{},onAccepted=()=>{}}:{key?:()=>string;onExpired?:()=>void;onAccepted?:(receipt:PgNativeAgentGeneratedReceipt)=>void}={}){
   let active=false,available=false,acceptance=false,disposed=false,life=0,reads=0,loading=false,busy=false
   let target:PgNativeAgentGeneratedTarget|null=null,preview:PgNativeAgentGeneratedPreview|null=null,receipt:PgNativeAgentGeneratedReceipt|null=null
   let pending:{original:PgNativeAgentGeneratedAcceptance;unknown:boolean;proof:PgNativeAgentGeneratedPreview}|null=null,flight:Promise<void>|null=null,error="",notice=""
   const listeners=new Set<()=>void>(),visible=()=>active&&!disposed
+  const notified=new Set<string>()
   const snapshot=():PgNativeAgentGeneratedAcceptanceSessionView=>!visible()?emptyAgentGeneratedAcceptanceView():structuredClone({target,preview,receipt,pending:pending?{original:pending.original,unknown:pending.unknown}:null,loading,busy,canAccept:available&&acceptance&&Boolean(preview)&&!receipt&&!pending&&!loading&&!busy,error,notice})
   const emit=()=>{if(!disposed)listeners.forEach(fn=>fn())}
   const invalidate=()=>{reads++;loading=false;preview=null}
-  const dispose=()=>{disposed=true;life++;reads++;target=null;preview=null;receipt=null;pending=null;flight=null;loading=false;busy=false;error="";notice="";listeners.forEach(fn=>fn());listeners.clear()}
+  const dispose=()=>{disposed=true;life++;reads++;target=null;preview=null;receipt=null;pending=null;flight=null;loading=false;busy=false;error="";notice="";notified.clear();listeners.forEach(fn=>fn());listeners.clear()}
   const expire=(ticket:number)=>{if(disposed||ticket!==life)return;dispose();onExpired()}
   const live=(ticket:number)=>!disposed&&ticket===life
   async function read(kind:"preview"|"receipt"){
@@ -48,6 +67,7 @@ export function createPgNativeAgentGeneratedAcceptanceSession(api:PgNativeAgentG
     const original=pending.original,proof=pending.proof,lifetime=life
     reads++;loading=false;preview=null;busy=true;error="";notice=""
     const work=(async()=>{
+      let accepted:PgNativeAgentGeneratedReceipt|null=null
       try{
         const raw=await(mode==="confirm"?api.confirmAgentGeneratedAcceptance(original):api.acceptAgentGeneratedAcceptance(original))
         if(!live(lifetime))return
@@ -55,12 +75,21 @@ export function createPgNativeAgentGeneratedAcceptanceSession(api:PgNativeAgentG
         if(!live(lifetime))return
         for(const k of ["source","feedback_sources","feedback_sources_sha256","anchor","changed_keys"] as const)if(!equal(value[k],proof[k]))throw Error("generated_receipt_binding_changed")
         receipt=freeze(value);pending=null;notice="已接受这份完整描述建议，角色配置已更新。"
+        accepted=value
       }catch(caught){
         if(!live(lifetime))return
         const code=status(caught)
         if(code===401){expire(lifetime);return}
         if(mode==="fresh"&&pending&&!pending.unknown&&code!==null&&[400,403,404,405,409,413,415].includes(code)){pending=null;error="本次配置修改未获确认，请重新核对来源后预览。"}
         else{if(pending)pending.unknown=true;error="配置修改结果尚未确认。请核对原请求，或明确重交完全相同的原请求。"}
+      }
+      // A UI observer cannot turn a verified committed receipt into ambiguity.
+      if(accepted&&live(lifetime)){
+        const notification=accepted.request_id+":"+accepted.receipt_sha256
+        if(!notified.has(notification)){
+          notified.add(notification)
+          try{void Promise.resolve(onAccepted(structuredClone(accepted))).catch(()=>{})}catch{/* Keep the verified receipt. */}
+        }
       }
     })()
     const finished=work.finally(()=>{if(live(lifetime)&&flight===finished){flight=null;busy=false;emit()}})

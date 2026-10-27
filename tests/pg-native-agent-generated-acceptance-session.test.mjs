@@ -13,10 +13,10 @@ function sealReceipt(r){const {receipt_sha256,recorded,replayed,...core}=r;r.rec
 function response(original=vector.original,replayed=false){const r=clone(vector.receipt);r.request_id=original.request_id;r.request_sha256=sha({protocol:'agent_generated_accept_intent_v1',...original});r.replayed=replayed;return sealReceipt(r)}
 
 const fault=(status,message='synthetic')=>Object.assign(Error(message),{status}),deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
-async function fixture({available=true,acceptance=true}={}){
+async function fixture({available=true,acceptance=true,onAccepted=()=>{},requestKey}={}){
  let keys=0,expired=0;const calls=[];
  const api={previewAgentGeneratedAcceptance:async input=>{calls.push(['preview',input]);return clone(vector.preview)},acceptAgentGeneratedAcceptance:async original=>{calls.push(['accept',original]);return response(original)},confirmAgentGeneratedAcceptance:async original=>{calls.push(['confirm',original]);return response(original,true)},getAgentGeneratedAcceptance:async review=>{calls.push(['receipt',review]);throw fault(404)}};
- const model=createPgNativeAgentGeneratedAcceptanceSession(api,{key:()=>{keys++;return id(98+keys)},onExpired:()=>expired++});model.setScopes({available,acceptance});model.setActive(true);await model.select(target);return {api,model,calls,keys:()=>keys,expired:()=>expired};
+ const model=createPgNativeAgentGeneratedAcceptanceSession(api,{key:()=>{keys++;return requestKey?requestKey():id(98+keys)},onExpired:()=>expired++,onAccepted});model.setScopes({available,acceptance});model.setActive(true);await model.select(target);return {api,model,calls,keys:()=>keys,expired:()=>expired};
 }
 const close=f=>f.model.dispose();
 test('selection is source-free receipt discovery, preview spends no ID and never applies',async()=>{
@@ -64,4 +64,33 @@ test('live401 destroys all private state and notifies once; disposed late401 can
 })
 test('definitive fresh rejection allows a new preview but never silently retries rejected intent',async()=>{
  const f=await fixture();try{await f.model.prepare();f.api.acceptAgentGeneratedAcceptance=async original=>{f.calls.push(['accept',original]);throw fault(409)};await f.model.accept(true);assert.equal(f.model.snapshot().pending,null);assert.equal(f.model.snapshot().preview,null);assert.equal(f.keys(),1);await f.model.retrySameRequest();assert.equal(f.calls.filter(c=>c[0]==='accept').length,1);await f.model.prepare();assert.ok(f.model.snapshot().preview)}finally{close(f)}
+})
+
+test('accepted observer sees recorded state once; readonly receipt rereads and later confirm never notify',async()=>{
+ const seen=[];let f,observed;f=await fixture({onAccepted:r=>{observed=f.model.snapshot();seen.push(r);r.source.review_id=id(888)}});
+ try{await f.model.prepare();await f.model.accept(true);assert.equal(seen.length,1);assert.equal(observed.pending,null);assert.equal(observed.receipt.receipt_sha256,vector.receipt.receipt_sha256);assert.equal(f.model.snapshot().receipt.source.review_id,id(1));f.api.getAgentGeneratedAcceptance=async()=>response(vector.original,true);await f.model.refreshReceipt();await f.model.confirm();await f.model.retrySameRequest();assert.equal(seen.length,1)}finally{close(f)}
+})
+test('lost original confirms once with fresh closed after another selection and hide/reopen',async()=>{
+ const seen=[],f=await fixture({onAccepted:r=>seen.push(r)});
+ try{await f.model.prepare();f.api.acceptAgentGeneratedAcceptance=async original=>{f.calls.push(['accept',original]);throw fault(0)};await f.model.accept(true);const original=f.calls.find(c=>c[0]==='accept')[1];await f.model.select({...target,review_id:id(77)});f.model.setActive(false);f.model.setScopes({available:false,acceptance:false});f.model.setActive(true);assert.equal(seen.length,0);await f.model.confirm();assert.equal(f.calls.find(c=>c[0]==='confirm')[1],original);assert.equal(seen.length,1);await f.model.confirm();assert.equal(seen.length,1);assert.equal(f.keys(),1)}finally{close(f)}
+})
+test('same-original retry settles once; duplicate server replay cannot notify again in this lifetime',async()=>{
+ const seen=[],f=await fixture({onAccepted:r=>seen.push(r),requestKey:()=>id(99)});
+ try{await f.model.prepare();f.api.acceptAgentGeneratedAcceptance=async()=>{throw fault(429)};await f.model.accept(true);f.api.acceptAgentGeneratedAcceptance=async original=>response(original,true);await f.model.retrySameRequest();assert.equal(seen.length,1);await f.model.select(null);await f.model.select(target);await f.model.prepare();await f.model.accept(true);assert.equal(f.model.snapshot().pending,null);assert.equal(seen.length,1)}finally{close(f)}
+})
+test('hidden successful settlement still notifies once without exposing hidden snapshot',async()=>{
+ const seen=[],gate=deferred(),f=await fixture({onAccepted:r=>seen.push(r)});
+ try{await f.model.prepare();f.api.acceptAgentGeneratedAcceptance=()=>gate.promise;const work=f.model.accept(true);f.model.setActive(false);f.model.setScopes({available:false,acceptance:false});gate.resolve(response());await work;assert.equal(seen.length,1);assert.equal(f.model.snapshot().receipt,null);f.model.setActive(true);assert.ok(f.model.snapshot().receipt);await f.model.confirm();assert.equal(seen.length,1)}finally{gate.resolve(response());close(f)}
+})
+test('observer sync throw or async rejection cannot undo recorded success or rebuild pending',async()=>{
+ for(const onAccepted of [()=>{throw Error('sync refresh failure')},async()=>{await Promise.resolve();throw Error('async refresh failure')}]){
+  const f=await fixture({onAccepted});try{await f.model.prepare();await f.model.accept(true);await new Promise(resolve=>setImmediate(resolve));assert.equal(f.model.snapshot().pending,null);assert.ok(f.model.snapshot().receipt);assert.equal(f.model.snapshot().error,'');assert.equal(f.keys(),1);await f.model.retrySameRequest();assert.equal(f.keys(),1)}finally{close(f)}
+ }
+})
+test('malformed matching-looking success does not notify until original proof is actually verified',async()=>{
+ const seen=[],f=await fixture({onAccepted:r=>seen.push(r)});try{await f.model.prepare();f.api.acceptAgentGeneratedAcceptance=async()=>{const r=response();r.source.content_sha256='e'.repeat(64);return sealReceipt(r)};await f.model.accept(true);assert.equal(seen.length,0);assert.ok(f.model.snapshot().pending.unknown);await f.model.confirm();assert.equal(seen.length,1)}finally{close(f)}
+})
+test('readonly discovery notifies zero and disposed original cannot notify a new employee lifetime',async()=>{
+ const seen=[],f=await fixture({available:false,acceptance:false,onAccepted:r=>seen.push(r)});try{f.api.getAgentGeneratedAcceptance=async()=>response(vector.original,true);await f.model.refreshReceipt();assert.ok(f.model.snapshot().receipt);assert.equal(seen.length,0)}finally{close(f)}
+ const gate=deferred(),old=await fixture({onAccepted:r=>seen.push(r)});await old.model.prepare();old.api.acceptAgentGeneratedAcceptance=()=>gate.promise;const work=old.model.accept(true);old.model.dispose();const fresh=await fixture({onAccepted:r=>seen.push(r)});try{gate.resolve(response());await work;assert.equal(seen.length,0);assert.equal(old.model.snapshot().pending,null);assert.equal(fresh.model.snapshot().receipt,null);assert.deepEqual(fresh.model.snapshot().target,target)}finally{gate.resolve(response());close(fresh)}
 })

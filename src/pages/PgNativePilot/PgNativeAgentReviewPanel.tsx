@@ -3,9 +3,12 @@ import {PgNativePilotError,type createPgNativePilotApi,type PgNativeFeedbackStat
 import {createPgNativeAgentReviewSession,emptyAgentReviewView} from "@/lib/pgNativeAgentReviewSession"
 import type {PgNativeAgentReviewPurpose,PgNativeAgentReviewSelection,PgNativeAgentReviewView} from "@/lib/pgNativeAgentReview"
 import type {PgNativeAgentReviewHistoryPage} from "@/lib/pgNativeAgentReviewHistory"
+import PgNativeAgentGeneratedAcceptancePanel from "./PgNativeAgentGeneratedAcceptancePanel"
+import {retainPgNativeAgentGeneratedSelection} from "@/lib/pgNativeAgentGeneratedAcceptanceSession"
+import type {PgNativeAgentGeneratedReceipt} from "@/lib/pgNativeAgentGeneratedAcceptance"
 
 type Controller=ReturnType<typeof createPgNativeAgentReviewSession>
-type Props={api:ReturnType<typeof createPgNativePilotApi>;ownerId:string;specId:string|null;runId:string|null;runStatus:string;connections:PgNativeModelConnection[];active:boolean;available:boolean;submitEnabled:boolean;historyAvailable?:boolean;onExpired:()=>void}
+type Props={api:ReturnType<typeof createPgNativePilotApi>;ownerId:string;specId:string|null;runId:string|null;runStatus:string;connections:PgNativeModelConnection[];active:boolean;available:boolean;submitEnabled:boolean;historyAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;onAccepted?:(receipt:PgNativeAgentGeneratedReceipt)=>void;onExpired:()=>void}
 const button="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const primary="inline-flex min-h-10 items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 const field="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
@@ -32,7 +35,7 @@ function OpinionHistory({page,loading,error,selectedId,disabled,onRefresh,onOlde
   </section>
 }
 
-function GeneratedOpinion({review}:{review:PgNativeAgentReviewView}){
+function GeneratedOpinion({review,canPreviewAcceptance}:{review:PgNativeAgentReviewView;canPreviewAcceptance:boolean}){
   if(!review.available||!review.result)return null
   const result=review.result
   if("score" in result)return <div aria-label="AI 任务评估结果" className="space-y-4">
@@ -42,7 +45,7 @@ function GeneratedOpinion({review}:{review:PgNativeAgentReviewView}){
     <p className="text-xs leading-5 text-slate-500">以上是模型意见，任务执行和审批状态请以实际任务记录为准。</p>
   </div>
   return <div aria-label="AI 角色优化建议" className="space-y-4">
-    <p className="text-sm leading-6 text-slate-600">以下建议仅供阅读。需要修改角色时，请另行核对并手工修改。</p>
+    <p className="text-sm leading-6 text-slate-600">{canPreviewAcceptance?"以下是模型建议。完整五项描述可在下方另行预览并明确确认配置修改；模型费用确认不会自动接受建议。":"以下建议仅供阅读。需要修改角色时，请另行核对并手工修改。"}</p>
     {Object.entries(descriptiveLabels).map(([key,label])=>{
       const value=result.descriptive[key as keyof typeof descriptiveLabels]
       if(value===undefined)return null
@@ -53,26 +56,33 @@ function GeneratedOpinion({review}:{review:PgNativeAgentReviewView}){
   </div>
 }
 
-export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runStatus,connections,active,available,submitEnabled,historyAvailable=false,onExpired}:Props){
+export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runStatus,connections,active,available,submitEnabled,historyAvailable=false,generatedAvailable=false,generatedEnabled=false,onAccepted,onExpired}:Props){
   const controller=useRef<Controller|null>(null),selectedTarget=useRef(""),selectedScope=useRef(""),historyScope=useRef("")
-  const [view,setView]=useState(emptyAgentReviewView),[opened,setOpened]=useState(false)
+  const [state,setState]=useState({api,ownerId,view:emptyAgentReviewView()}),[opened,setOpened]=useState(false)
+  const view=state.api===api&&state.ownerId===ownerId?state.view:emptyAgentReviewView()
   const [purpose,setPurpose]=useState<PgNativeAgentReviewPurpose>("evaluate"),[connectionId,setConnectionId]=useState(""),[modelId,setModelId]=useState("")
+  const [selection,setSelection]=useState(()=>retainPgNativeAgentGeneratedSelection(null,{api,ownerId,specId,runId,purpose}))
+  const generatedSelection=retainPgNativeAgentGeneratedSelection(selection,{api,ownerId,specId,runId,purpose})
+  if(generatedSelection!==selection)setSelection(generatedSelection)
   const [outputLimit,setOutputLimit]=useState<PgNativeAgentReviewSelection["output_token_limit"]>(2048),[selectedFeedback,setSelectedFeedback]=useState(false)
   const [feedback,setFeedback]=useState<PgNativeFeedbackStatus|null>(null),[feedbackLoading,setFeedbackLoading]=useState(false),[feedbackError,setFeedbackError]=useState("")
   const [feeConsent,setFeeConsent]=useState(""),[controlIntent,setControlIntent]=useState<{action:"cancel"|"erase";scope:string;confirmed:boolean}|null>(null),[readId,setReadId]=useState("")
   const feedbackReads=useRef({ticket:0}),pending=Boolean(view.pending),finished=["succeeded","failed","cancelled"].includes(runStatus)
   useEffect(()=>{
     const current=createPgNativeAgentReviewSession(api,{onExpired}),fence=feedbackReads.current;controller.current=current;selectedTarget.current="";selectedScope.current="";historyScope.current=""
-    const unsubscribe=current.subscribe(()=>setView(current.snapshot()))
+    const unsubscribe=current.subscribe(()=>{
+      const next=current.snapshot();setState({api,ownerId,view:next})
+      if(next.target)setSelection(previous=>retainPgNativeAgentGeneratedSelection(previous,{api,ownerId,specId:next.target!.spec_id,runId:next.target!.run_id,purpose:next.target!.purpose,reviewId:next.reviewId,request:next.selectedMetadata?.request??next.review?.request??next.receipt}))
+    })
     return()=>{fence.ticket++;unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
-  },[api,onExpired])
-  useEffect(()=>{controller.current?.setScopes({available,submit:submitEnabled,history:historyAvailable})},[available,submitEnabled,historyAvailable,api,onExpired])
-  useEffect(()=>{controller.current?.setActive(active&&opened)},[active,opened,api,onExpired])
+  },[api,ownerId,onExpired])
+  useEffect(()=>{controller.current?.setScopes({available,submit:submitEnabled,history:historyAvailable})},[available,submitEnabled,historyAvailable,api,ownerId,onExpired])
+  useEffect(()=>{controller.current?.setActive(active&&opened)},[active,opened,api,ownerId,onExpired])
   const eligible=connections.filter(item=>item.owner_user_id===ownerId&&item.enabled&&item.status==="ok"&&item.base_url===endpoints[item.provider]&&Number.isSafeInteger(item.revision)&&item.revision>=1&&item.revision<=Number.MAX_SAFE_INTEGER-2&&item.models.some(model=>validModelId.test(model)))
   const connection=eligible.find(item=>item.id===connectionId),validModel=Boolean(validModelId.test(modelId)&&connection?.models.includes(modelId)),modelScope=connection?connection.id+":"+connection.revision+":"+modelId:""
   // Invalidate before the selection effect starts a source read, so a model or
   // scope change cannot accidentally fence the replacement source request.
-  useEffect(()=>{controller.current?.invalidatePreview()},[modelScope,outputLimit,active,available,submitEnabled,historyAvailable,runId,specId,purpose,api,onExpired])
+  useEffect(()=>{controller.current?.invalidatePreview()},[modelScope,outputLimit,active,available,submitEnabled,historyAvailable,runId,specId,purpose,api,ownerId,onExpired])
   useEffect(()=>{
     if(!active||!opened||!available){selectedScope.current="";return}
     if(pending||view.busy)return
@@ -85,11 +95,11 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
     selectedScope.current=scope;selectedTarget.current=key
     if(changed||!target)void controller.current?.select(target)
     else void controller.current?.refresh()
-  },[active,opened,available,submitEnabled,historyAvailable,pending,view.busy,finished,runId,specId,purpose,modelScope,outputLimit,api,onExpired])
+  },[active,opened,available,submitEnabled,historyAvailable,pending,view.busy,finished,runId,specId,purpose,modelScope,outputLimit,api,ownerId,onExpired])
   const invalidate=()=>{setFeeConsent("");setControlIntent(null);controller.current?.invalidatePreview()}
   const loadFeedback=useCallback(async()=>{
     const fence=feedbackReads.current,ticket=++fence.ticket,current=controller.current
-    if(!current)return
+    if(!current||!ownerId)return
     setFeedback(null);setSelectedFeedback(false);setFeeConsent("");setFeedbackError("")
     if(!active||!opened||!available||!finished||!runId||!specId||purpose!=="optimize"||pending){setFeedbackLoading(false);return}
     setFeedbackLoading(true)
@@ -103,7 +113,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
       if(error instanceof PgNativePilotError&&error.status===401){onExpired();return}
       setFeedbackError("当前反馈暂无法核对，请重新读取。")
     }finally{if(ticket===fence.ticket&&controller.current===current)setFeedbackLoading(false)}
-  },[api,onExpired,active,opened,available,finished,runId,specId,purpose,pending])
+  },[api,ownerId,onExpired,active,opened,available,finished,runId,specId,purpose,pending])
   useEffect(()=>{
     const fence=feedbackReads.current,ticket=++fence.ticket,current=controller.current
     // Schedule the asynchronous read only while this exact setup is current;
@@ -118,7 +128,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
     if(pending||view.busy)return
     if(historyScope.current===historyTarget)return
     historyScope.current=historyTarget;void controller.current?.refreshHistory()
-  },[active,opened,available,historyAvailable,finished,historyTarget,pending,view.busy,api,onExpired])
+  },[active,opened,available,historyAvailable,finished,historyTarget,pending,view.busy,api,ownerId,onExpired])
   const history=historyAvailable&&targetMatches&&view.history?.spec_id===specId&&view.history.run_id===runId&&view.history.purpose===purpose?view.history:null
   const metadata=targetMatches&&view.selectedMetadata?.request.request_id===view.reviewId&&view.selectedMetadata.request.run_id===runId&&view.selectedMetadata.request.spec_id===specId&&view.selectedMetadata.request.purpose===purpose?view.selectedMetadata:null
   const metadataScope=metadata?[metadata.request.request_id,metadata.request.request_sha256,metadata.control.job_state,metadata.control.body_erased].join(":"):""
@@ -128,7 +138,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
   const preview=targetMatches&&choice&&connection&&validModel&&choice.model_binding.connection_id===connection.id&&choice.model_binding.connection_revision===connection.revision&&choice.model_binding.model_id===modelId&&choice.output_token_limit===outputLimit&&choice.feedback_sources.length===feedbackSources.length&&choice.feedback_sources.every((item,index)=>item.feedback_id===feedbackSources[index]?.feedback_id&&item.feedback_sha256===feedbackSources[index]?.feedback_sha256&&item.run_id===feedbackSources[index]?.run_id)?candidate:null
   const previewScope=preview?preview.input_sha256+":"+preview.content_sha256+":"+preview.owner_epoch:""
   const consentScope=previewScope&&active&&available&&submitEnabled?previewScope+":"+modelScope+":"+purpose+":"+runId+":"+specId+":"+metadataScope:"",feeConfirmed=Boolean(consentScope&&feeConsent===consentScope)
-  if(!active||!available||!finished&&!pending)return null
+  const showOpinion=active&&available&&(finished||pending)
   const locked=view.busy||view.loading||pending,selectionReady=targetMatches&&Boolean(view.source)&&validModel&&(purpose==="evaluate"||feedbackSources.length>0)
   const review=targetMatches&&view.review?.request.request_id===view.reviewId?view.review:null,receipt=targetMatches&&view.receipt?.request_id===view.reviewId?view.receipt:null
   const bodyErased=Boolean(review?.body_erased||metadata?.control.body_erased||receipt?.body_erased)
@@ -145,7 +155,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
     await controller.current?.prepare({model_binding:{connection_id:connection.id,connection_revision:connection.revision,model_id:modelId},output_token_limit:outputLimit,feedback_sources:feedbackSources})
   }
   const refresh=()=>{invalidate();void controller.current?.refresh();if(purpose==="optimize")void loadFeedback()}
-  return <section aria-label="AI 任务评估与优化建议" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">
+  return <>{showOpinion?<section aria-label="AI 任务评估与优化建议" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">
     <div><h3 className="font-semibold">AI 任务评估与优化建议</h3><p className="mt-2 text-sm leading-6 text-slate-500">选择独立模型评估已结束的任务，或根据本人选定的反馈生成角色优化建议。预览后再确认本次模型费用。</p></div>
     {!opened?<button type="button" className={button} onClick={()=>setOpened(true)}>查看与准备 AI 意见</button>:<>
       {view.error?<p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-800">{view.error}</p>:null}
@@ -189,7 +199,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
         {metadata?<section aria-label="AI 意见历史快照" className="space-y-2 rounded-xl bg-slate-50 p-3 text-sm"><h5 className="font-medium">已选择的历史请求</h5><p className="break-all text-xs">意见编号：{metadata.request.request_id}</p><p className="text-xs text-slate-500">创建于 <time dateTime={metadata.request.created_at}>{new Date(metadata.request.created_at).toLocaleString("zh-CN")}</time></p><p>控制快照：{jobLabels[metadata.control.job_state]} · {metadata.control.body_erased?"正文已删除":"快照未标记擦除"}</p><p className="text-xs leading-5 text-slate-500">此快照保留原请求元数据，可用于明确取消或删除正文；执行状态和正文须单独核对。</p></section>:null}
         <dl className="grid gap-3 text-sm sm:grid-cols-3"><div><dt className="text-xs text-slate-500">请求控制状态</dt><dd className="mt-1">{review?jobLabels[job??review.execution.job_state]:metadata?"历史控制快照为「"+jobLabels[metadata.control.job_state]+"」，当前待核对":receipt?"最近回执为「"+jobLabels[receipt.state]+"」，当前待核对":"尚未读取"}</dd></div><div><dt className="text-xs text-slate-500">执行记录</dt><dd className="mt-1">{!review?"执行状态待核对":review.execution.lease_state?leaseLabels[review.execution.lease_state]:"尚无领取记录"}</dd></div><div><dt className="text-xs text-slate-500">模型结果</dt><dd className="mt-1">{!review?"模型结果待核对":review.execution.outcome?resultLabels[review.execution.outcome.status]:"尚无已确认结果"}</dd></div></dl>
         <p className="text-xs leading-5 text-slate-500">{metadata&&!receipt?"历史元数据保留原请求和控制快照，模型执行与正文可用性须另行核对。":"回执表示请求已记录。"}取消、暂停或删除正文均不代表没有发生调用、没有费用或已经退款。</p>
-        {review?.available&&!bodyErased&&job==="pending"?<GeneratedOpinion review={review}/>:<p role="status" className="text-sm leading-6 text-slate-600">{bodyErased?"本次意见的输入与结果正文已删除，历史请求和执行摘要保留。":!review?metadata?"已找到原请求元数据，当前正文无法核对。仍可取消后续处理或删除正文。":"结果正文尚未读取，或当前来源无法核对。请核对状态后继续。":job==="cancelled"?"本次请求已取消，正文不再提供，历史执行摘要仍可核对。":review.execution.outcome?.status==="succeeded"?"已保留成功摘要，当前正文不可用。来源或身份权限变化后，需重新核对当前状态。":"当前没有可供读取的结果正文。可核对状态，结果不确定时请保留原请求继续确认。"}</p>}
+        {review?.available&&!bodyErased&&job==="pending"?<GeneratedOpinion review={review} canPreviewAcceptance={generatedAvailable}/>:<p role="status" className="text-sm leading-6 text-slate-600">{bodyErased?"本次意见的输入与结果正文已删除，历史请求和执行摘要保留。":!review?metadata?"已找到原请求元数据，当前正文无法核对。仍可取消后续处理或删除正文。":"结果正文尚未读取，或当前来源无法核对。请核对状态后继续。":job==="cancelled"?"本次请求已取消，正文不再提供，历史执行摘要仍可核对。":review.execution.outcome?.status==="succeeded"?"已保留成功摘要，当前正文不可用。来源或身份权限变化后，需重新核对当前状态。":"当前没有可供读取的结果正文。可核对状态，结果不确定时请保留原请求继续确认。"}</p>}
         {!bodyErased&&!pending?<div className="space-y-3">
           <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={locked||job!=="pending"} onClick={()=>{setControlFor("cancel");setControlConfirmed(false)}}>取消后续处理</button><button type="button" className={button} disabled={locked||job==="erased"} onClick={()=>{setControlFor("erase");setControlConfirmed(false)}}>删除本次意见正文</button></div>
           {controlFor?<div role="group" aria-label="确认 AI 意见控制操作" className="space-y-3 rounded-xl bg-amber-50 p-3 text-sm leading-6"><p>{controlFor==="erase"?"删除本次意见的输入与结果正文，保留请求及执行摘要。删除后无法恢复正文。":"取消这条请求的后续处理。已发出的调用和费用仍需按实际记录核对。"}</p><label className="flex items-start gap-2"><input type="checkbox" className="mt-1.5" aria-label={controlFor==="erase"?"确认删除本次 AI 意见正文":"确认取消本次 AI 意见后续处理"} disabled={locked} checked={controlConfirmed} onChange={event=>setControlConfirmed(event.target.checked)}/>我确认{controlFor==="erase"?"删除本次意见正文":"取消本次意见的后续处理"}。</label><div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={locked||!controlConfirmed} onClick={()=>{if(locked||!controlConfirmed||!controlFor)return;const action=controlFor;setControlFor(null);setControlConfirmed(false);setFeeConsent("");if(action==="erase")void controller.current?.erase(true);else void controller.current?.cancel(true)}}>{controlFor==="erase"?"确认删除正文":"确认取消后续处理"}</button><button type="button" className={button} disabled={locked} onClick={()=>{setControlFor(null);setControlConfirmed(false)}}>返回</button></div></div>:null}
@@ -197,5 +207,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
       </div>:null}
       {!historyAvailable?<details className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-medium">读取已有的本人意见</summary><form className="mt-3 space-y-3" onSubmit={event=>{event.preventDefault();if(!locked){invalidate();void controller.current?.read(readId.trim())}}}><label className="block text-sm">本人意见编号<input className={field} aria-label="本人 AI 意见编号" autoComplete="off" spellCheck={false} required maxLength={36} pattern="[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}" value={readId} disabled={locked} onChange={event=>setReadId(event.target.value)}/></label><p className="text-xs leading-5 text-slate-500">读取时会核对当前员工、本任务、意见用途及有效来源。</p><button type="submit" className={button} disabled={locked||!readId.trim()}>读取本人意见与状态</button></form></details>:null}
     </>}
-  </section>
+  </section>:null}
+    <PgNativeAgentGeneratedAcceptancePanel api={api} ownerId={ownerId} target={generatedSelection.target} active={active&&opened} available={generatedAvailable} acceptanceEnabled={generatedEnabled&&finished&&Boolean(runId&&specId)} onAccepted={onAccepted} onExpired={onExpired}/>
+  </>
 }
