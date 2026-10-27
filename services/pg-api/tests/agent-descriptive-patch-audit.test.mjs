@@ -9,7 +9,7 @@ const sql=readFileSync(new URL('../../../db/postgres/migrations/pg_v9_060_agent_
 const digest=value=>createHash('sha256').update(value,'utf8').digest('hex')
 const prefix='agent_descriptive_patch_',bad=/^unsafe_agent_descriptive_patch_privileges$/
 const refused=error=>bad.test(error.message)
-const pins={agent_descriptive_patch_receipt:'598e628e351ab88a863f6204780515894508d1d6a0ea7aef3ebdf9256b96aa68',agent_descriptive_patch_accept:'e94210ffb63ff8ceb672cd5d9fba909207e586a9aea03c1f698a141f4164c7fb'}
+const pins={agent_descriptive_patch_receipt:'598e628e351ab88a863f6204780515894508d1d6a0ea7aef3ebdf9256b96aa68',agent_descriptive_patch_accept:'7d52ca4a0fb3b8a9580503dc8f3c1389bebaf8d56ab8a361caead942b5412091'}
 // Fixture expectations come from independently reviewed, fingerprinted DDL,
 // never from the production auditor's private literal manifest.
 function definitions(){
@@ -64,8 +64,8 @@ function fixture(){
 }
 const reject=async mutate=>{const f=fixture();mutate(f);await assert.rejects(verifyAgentDescriptivePatchCore(f.db),refused)}
 
-test('fixed060 v2 SQL inventory and offline raw body pins match independently reviewed literals',()=>{
- assert.equal(digest(sql),'bb25fac028f49bfcdf46279c02d0aea8e2be5b41c2cf42ece2c440553b0278f5')
+test('fixed060 v3 SQL inventory and offline raw body pins match independently reviewed literals',()=>{
+ assert.equal(digest(sql),'b8aac275e692a81d2e05c8825f33bba7e5f418199e3dce97a409832f951ccbc9')
  const defs=definitions();assert.deepEqual(defs.map(d=>[d.fields.length,d.keys.length,d.checks.length,d.foreign.length]),[[32,2,7,0],[9,3,3,1]])
  const source=readFileSync(new URL('../src/agent-descriptive-patch-audit-core.ts',import.meta.url),'utf8')
  const found=[];for(const m of sql.matchAll(/CREATE FUNCTION agentstudio\.(\w+)\([^]*?AS \$fn\$([^]*?)\$fn\$;/g)){found.push(m[1]);assert.equal(digest(m[2]),pins[m[1]]);assert.ok(source.includes('sha:"'+pins[m[1]]+'"'))}

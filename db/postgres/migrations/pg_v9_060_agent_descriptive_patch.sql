@@ -309,6 +309,32 @@ BEGIN
     agentstudio.agent_review_digest(jsonb_build_object('protocol','agent_review_statement_anchor_v1','owner',owner,'spec_id',sid,'run_id',target_run,
       'status',task.status,'finished_at',to_char(task.finished_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')))
   THEN RAISE EXCEPTION 'agent_descriptive_patch_source_unavailable'; END IF;
+  -- The role execution model and independently selected review model are
+  -- separate resources. A frozen role hash cannot prove its model is current.
+  -- Check fresh acceptance only; immutable original recovery above stays valid
+  -- after a connection is disabled, changed or removed.
+  binding:=role_row.spec->'model_binding';
+  IF binding IS NOT NULL AND binding<>'null'::jsonb THEN
+    IF jsonb_typeof(binding) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'agent_descriptive_patch_source_unavailable'; END IF;
+    IF ((SELECT count(*) FROM jsonb_object_keys(binding))=3
+      AND binding-ARRAY['connection_id','connection_revision','model_id']='{}'::jsonb
+      AND jsonb_typeof(binding->'connection_id')='string'
+      AND binding->>'connection_id' ~* '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+      AND jsonb_typeof(binding->'connection_revision')='number'
+      AND binding->>'connection_revision' ~ '^[1-9][0-9]*$'
+      AND (binding->>'connection_revision')::numeric BETWEEN 1 AND 9007199254740991
+      AND jsonb_typeof(binding->'model_id')='string'
+      AND binding->>'model_id' ~ '^[A-Za-z0-9._:/-]{1,120}$') IS NOT TRUE
+    THEN RAISE EXCEPTION 'agent_descriptive_patch_source_unavailable'; END IF;
+    SELECT * INTO model FROM agentstudio.model_connections WHERE id=(binding->>'connection_id')::uuid AND owner_user_id=owner FOR SHARE;
+    IF NOT FOUND OR model.enabled IS DISTINCT FROM true OR model.status IS DISTINCT FROM 'ok'
+      OR model.revision IS DISTINCT FROM (binding->>'connection_revision')::bigint
+      OR (model.models ? (binding->>'model_id')) IS DISTINCT FROM true
+      OR model.base_url IS DISTINCT FROM (CASE model.provider
+        WHEN 'openai' THEN 'https://api.openai.com/v1' WHEN 'anthropic' THEN 'https://api.anthropic.com/v1'
+        WHEN 'gemini' THEN 'https://generativelanguage.googleapis.com/v1beta' ELSE NULL END)
+    THEN RAISE EXCEPTION 'agent_descriptive_patch_source_unavailable'; END IF;
+  END IF;
   binding:=choice->'model_binding';
   SELECT * INTO model FROM agentstudio.model_connections WHERE id=(binding->>'connection_id')::uuid AND owner_user_id=owner FOR SHARE;
   IF NOT FOUND OR model.enabled IS DISTINCT FROM true OR model.status<>'ok' OR model.revision<>(binding->>'connection_revision')::bigint

@@ -161,7 +161,7 @@ const tables:Record<string,Table>={
 }
 const functions:Record<string,{args:string;sha:string}>={
   agent_descriptive_patch_receipt:{args:"uuid, text",sha:"598e628e351ab88a863f6204780515894508d1d6a0ea7aef3ebdf9256b96aa68"},
-  agent_descriptive_patch_accept:{args:"jsonb",sha:"e94210ffb63ff8ceb672cd5d9fba909207e586a9aea03c1f698a141f4164c7fb"}
+  agent_descriptive_patch_accept:{args:"jsonb",sha:"7d52ca4a0fb3b8a9580503dc8f3c1389bebaf8d56ab8a361caead942b5412091"}
 }
 const tableNames=Object.keys(tables),indexNames=Object.values(tables).flatMap(t=>[t.pk.name,...t.unique.map(k=>k.name)])
 const objectNames=[...tableNames,...indexNames],routineNames=Object.keys(functions)

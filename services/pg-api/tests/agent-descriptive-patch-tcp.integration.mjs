@@ -183,6 +183,55 @@ test('S1 descriptive patch genuine independent PG18 foundation',{concurrency:fal
         try{const snapshot=await f.patchSnapshot();await assert.rejects(f.patchAccept(next,next.original),refused);assert.equal(await f.patchSnapshot(),snapshot);await assert.rejects(f.patchDirectAccept(next.identity,next.original),refused);assert.equal(await f.patchSnapshot(),snapshot)}
         finally{if(saved)await f.db.query('UPDATE agentstudio.model_connections SET enabled=$2,revision=$3 WHERE id=$1',[saved.id,saved.enabled,saved.revision])}
       }
+      // Separate each expressible A guard from revision changes. B remains
+      // the actual independently selected active review connection throughout.
+      // All mutations obey existing CHECK/FK definitions; no schema weakening.
+      const columns='id,owner_user_id,revision,enabled,status,models,provider,base_url'
+      const model=async id=>(await f.db.query('SELECT '+columns+' FROM agentstudio.model_connections WHERE id=$1',[id])).rows[0]
+      const faults=[
+        {kind:'A_revision_only',field:'revision',sql:'UPDATE agentstudio.model_connections SET revision=revision+1 WHERE id=$1',values:(p,a)=>[a.id]},
+        {kind:'A_enabled_only',field:'enabled',sql:'UPDATE agentstudio.model_connections SET enabled=false WHERE id=$1',values:(p,a)=>[a.id]},
+        {kind:'A_status_error_only',field:'status',sql:"UPDATE agentstudio.model_connections SET status='error' WHERE id=$1",values:(p,a)=>[a.id]},
+        {kind:'A_selected_model_removed',field:'models',sql:'UPDATE agentstudio.model_connections SET models=models-$2::text WHERE id=$1',values:(p,a)=>[a.id,p.role.spec.model_binding.model_id]},
+        {kind:'A_endpoint_only',field:'base_url',sql:"UPDATE agentstudio.model_connections SET base_url=base_url||'/synthetic-not-allowlisted' WHERE id=$1",values:(p,a)=>[a.id]},
+        {kind:'A_legal_provider_wrong_endpoint',field:'provider',sql:"UPDATE agentstudio.model_connections SET provider='anthropic' WHERE id=$1",values:(p,a)=>[a.id]},
+        {kind:'A_owner_mismatch',field:'owner_user_id',sql:'UPDATE agentstudio.model_connections SET owner_user_id=$2::uuid WHERE id=$1',values:(p,a)=>[a.id,f.users.bob]}
+      ]
+      for(const fault of faults){
+        const next=await f.patchReady({isolatedReviewModel:true}),bindingA=next.role.spec.model_binding,bindingB=next.choice.model_binding
+        assert.ok(bindingA);assert.notEqual(bindingA.connection_id,bindingB.connection_id,fault.kind)
+        const saved=await model(bindingA.connection_id),review=await model(bindingB.connection_id)
+        assert.ok(saved&&review);assert.equal(saved.owner_user_id,next.owner);assert.equal(saved.enabled,true);assert.equal(saved.status,'ok');assert.equal(saved.provider,'openai')
+        assert.equal(Number(saved.revision),bindingA.connection_revision);assert.ok(saved.models.includes(bindingA.model_id))
+        assert.equal(review.owner_user_id,next.owner);assert.equal(review.enabled,true);assert.equal(review.status,'ok');assert.equal(Number(review.revision),bindingB.connection_revision);assert.ok(review.models.includes(bindingB.model_id))
+        if(fault.kind==='A_owner_mismatch'){
+          // Existing035 composite FK is NO ACTION on owner updates. The actual
+          // default execution model has no embedding profile in this fixture.
+          assert.notEqual(f.users.bob,next.owner)
+          assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.knowledge_embedding_profiles WHERE connection_id=$1',[saved.id])).rows[0].n,0)
+        }
+        const beforeMutation=await f.patchSnapshot()
+        try{
+          const changed=await f.db.query(fault.sql+' RETURNING '+columns,fault.values(next,saved))
+          assert.equal(changed.rowCount,1,fault.kind);assert.equal(changed.rows.length,1)
+          const actual=changed.rows[0]
+          for(const key of Object.keys(saved)){
+            if(key===fault.field)assert.notDeepEqual(actual[key],saved[key],fault.kind+' must actually change '+key)
+            else assert.deepEqual(actual[key],saved[key],fault.kind+' must preserve '+key)
+          }
+          assert.deepEqual(await model(bindingB.connection_id),review,fault.kind+' must leave B unchanged')
+          const snapshot=await f.patchSnapshot()
+          await assert.rejects(f.patchAccept(next,next.original),refused,'same-client Source must independently refuse '+fault.kind)
+          assert.equal(await f.patchSnapshot(),snapshot,fault.kind+' Source refusal writes nothing')
+          await assert.rejects(f.patchDirectAccept(next.identity,next.original),refused,'direct protected060 must independently refuse '+fault.kind)
+          assert.equal(await f.patchSnapshot(),snapshot,fault.kind+' direct SQL refusal writes nothing')
+        }finally{
+          await f.db.query('UPDATE agentstudio.model_connections SET owner_user_id=$2::uuid,revision=$3::bigint,enabled=$4::boolean,status=$5::text,models=$6::jsonb,provider=$7::text,base_url=$8::text WHERE id=$1',[saved.id,saved.owner_user_id,saved.revision,saved.enabled,saved.status,JSON.stringify(saved.models),saved.provider,saved.base_url])
+          assert.deepEqual(await model(saved.id),saved,fault.kind+' restores actual A metadata')
+          assert.deepEqual(await model(bindingB.connection_id),review,fault.kind+' never changes B')
+          assert.equal(await f.patchSnapshot(),beforeMutation,fault.kind+' restores full fixture with no acceptance side effects')
+        }
+      }
     })
 
     await t.test('actual055/role/045/link/new witness/ref/hash/audit faults roll back ALL old and new business rows',async()=>{
@@ -336,7 +385,9 @@ test('S1 descriptive patch genuine independent PG18 foundation',{concurrency:fal
     await t.test('extra new-family FK/ACL/body/schema drift and unchanged059 extra-FK rejection stay strict in real catalogs',async()=>{
       const drift=[
         ['GRANT SELECT ON agentstudio.agent_descriptive_patch_acceptances TO agentstudio_api',false],
-        ['GRANT EXECUTE ON FUNCTION agentstudio.agent_descriptive_patch_accept(jsonb) TO agentstudio_review_worker',false],
+        // FULL059 includes057's global review-role surface: Worker EXECUTE
+        // outside agent_assessment_ is forbidden even under a new prefix.
+        ['GRANT EXECUTE ON FUNCTION agentstudio.agent_descriptive_patch_accept(jsonb) TO agentstudio_review_worker',true],
         ['ALTER TABLE agentstudio.agent_descriptive_patch_acceptances DISABLE ROW LEVEL SECURITY',false],
         ["CREATE OR REPLACE FUNCTION agentstudio.agent_descriptive_patch_receipt(uuid,text) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $bad$BEGIN RETURN NULL; END$bad$",false],
         ['CREATE TABLE public.agent_descriptive_patch_shadow(id uuid)',false],
