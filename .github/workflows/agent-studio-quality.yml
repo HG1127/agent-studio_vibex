@@ -947,3 +947,24 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm --dir services/pg-api test:agent-assessment
+
+  pg18-agent-opinion:
+    name: Native owner opinion read / current sources / erasure and strict schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Strict owner result DTO, actual protected completion, current-source privacy and exact optional schema
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-opinion

@@ -27,6 +27,7 @@ import {inspectAgentFeedbackSchema} from "./agent-feedback-audit.ts"
 import {AgentOptimizationRepository} from "./agent-optimization-repository.ts"
 import {inspectAgentOptimizationSchema} from "./agent-optimization-audit.ts"
 import {inspectAgentAssessmentSchema} from "./agent-assessment-audit.ts"
+import {inspectAgentOpinionSchema} from "./agent-opinion-audit.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
@@ -403,6 +404,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     await inspectAgentReviewSchema(business)
     // Optional057 is audited even when no review execution service is mounted.
     await inspectAgentAssessmentSchema(business)
+    // Optional058 may expose private result reads only with its exact schema.
+    await inspectAgentOpinionSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")

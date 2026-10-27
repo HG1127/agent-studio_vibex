@@ -112,7 +112,9 @@
     "test:agent-review-ledger": "node --experimental-strip-types --test --test-concurrency=1 ../../tests/agent-review-control.test.mjs tests/agent-review-ledger.test.mjs",
     "test:agent-assessment": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-assessment-contract.test.mjs tests/agent-assessment-client.test.mjs tests/agent-assessment-worker.test.mjs tests/agent-assessment-role.test.mjs tests/agent-assessment-ci-guard.test.mjs tests/agent-assessment-sql.test.mjs tests/agent-assessment-service-config.test.mjs tests/agent-assessment-service.test.mjs tests/assessment-full-cli-ci-guard.test.mjs",
     "test:pg18:assessment:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-assessment-mtls.integration.mjs",
-    "test:pg18:assessment:operator:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-assessment-operator.integration.mjs"
+    "test:pg18:assessment:operator:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-assessment-operator.integration.mjs",
+    "test:agent-opinion": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-opinion-contract.test.mjs tests/agent-opinion-sql.test.mjs tests/agent-opinion-repository.test.mjs",
+    "test:pg18:opinion:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-opinion-tcp.integration.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
