@@ -970,3 +970,34 @@ jobs:
           pnpm --dir services/pg-api test:agent-opinion
           pnpm --dir services/pg-api test:agent-review-public
           pnpm --dir services/pg-api test:agent-review-history
+
+  pg18-agent-generated:
+    name: Native generated acceptance / real055 provenance / exact private schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Strict generated protocol, actual055 atomic provenance and exact optional059 audit
+        # This job executes isolated embedded SQL only. The same strict
+        # disposable-target guard is attested; no TCP server is used here.
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-generated

@@ -116,7 +116,9 @@
     "test:agent-opinion": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-opinion-contract.test.mjs tests/agent-opinion-sql.test.mjs tests/agent-opinion-repository.test.mjs",
     "test:pg18:opinion:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-opinion-tcp.integration.mjs",
     "test:agent-review-public": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-http.test.mjs tests/agent-review-runtime-policy.test.mjs",
-    "test:agent-review-history": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-history-contract.test.mjs tests/agent-review-history-http.test.mjs tests/agent-review-history-repository.test.mjs"
+    "test:agent-review-history": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-history-contract.test.mjs tests/agent-review-history-http.test.mjs tests/agent-review-history-repository.test.mjs",
+    "test:agent-generated": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-acceptance-contract.test.mjs tests/agent-generated-acceptance-repository.test.mjs tests/agent-generated-acceptance-sql.test.mjs ../../tests/pg-native-agent-generated-interop.test.mjs",
+    "test:pg18:generated:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-acceptance-tcp.integration.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
