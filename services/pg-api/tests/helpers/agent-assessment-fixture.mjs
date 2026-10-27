@@ -154,7 +154,7 @@ export async function agentAssessmentTcpFixture(env=process.env){
     const alice=await store.provisionInitialAdmin({email:'assessment-alice@example.test',password:'SyntheticAssessmentAlice#2026',display_name:'Synthetic Alice'})
     const session=await store.login('assessment-alice@example.test','SyntheticAssessmentAlice#2026')
     const bob=await store.provisionEmployee(session.token,{email:'assessment-bob@example.test',password:'SyntheticAssessmentBob#2026',display_name:'Synthetic Bob'})
-    const users={alice:alice.id,bob:bob.id},identities={},resources={},models=new ModelConnectionRepository(pool,key),agents=new AgentSpecRepository(pool)
+    const users={alice:alice.id,bob:bob.id},identities={},resources={},models=new ModelConnectionRepository(pool,key,secretPool),agents=new AgentSpecRepository(pool)
     for(const who of ['alice','bob']){
       identities[who]=(await admin.query('SELECT external_issuer AS issuer,external_subject AS subject FROM agentstudio.users WHERE id=$1',[users[who]])).rows[0]
       const created=await models.create(identities[who],{name:'Synthetic assessment '+who,provider:'openai',base_url:'https://api.openai.com/v1',api_key:'synthetic-'+who+'-assessment-key-never-network',models:['synthetic'],enabled:true})

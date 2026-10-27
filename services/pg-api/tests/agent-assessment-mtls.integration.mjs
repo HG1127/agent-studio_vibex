@@ -164,12 +164,18 @@ test('disposable PG18: actual isolated Worker -> private mTLS Broker -> committe
         providerMode=mode==='lost_private_ack'?'success':mode;dropPrivateAck=mode==='lost_private_ack'
         const beforePosts=providerPosts,reply=await worker.tick(),proof=proofs.at(-1)
         assert.equal(providerErrors.length,0,providerErrors[0]?.stack)
-        assert.equal(reply.state,'unknown');assert.equal(reply.request_id,active.raw.request_id);metadataOnly(reply)
+        assert.equal(reply.state,mode==='lost_private_ack'?'succeeded':'unknown');assert.equal(reply.request_id,active.raw.request_id);metadataOnly(reply)
+        if(mode==='lost_private_ack')assert.equal(reply.result_sha256,assessmentOutputHash(active,resultFor(active)),'lost acknowledgement recovers the actual committed successful receipt')
         assert.equal(providerPosts,beforePosts+1,'each reserved request makes at most one actual provider POST')
         const rows=await assessmentRows(f,active.raw.request_id,active.owner)
         assert.equal(rows.effects.length,1);assert.equal(rows.outcomes.length,1)
         assert.equal(rows.outcomes[0].status,mode==='lost_private_ack'?'succeeded':'unknown')
         assert.equal(rows.outputs.length,mode==='lost_private_ack'?1:0)
+        if(mode==='lost_private_ack'){
+          assert.equal(rows.outcomes[0].result_sha256,reply.result_sha256)
+          assert.equal(rows.outputs[0].result_sha256,reply.result_sha256)
+          assert.deepEqual(rows.outputs[0].result,resultFor(active))
+        }
         providerMode='success';dropPrivateAck=false
         await expireAssessmentLease(f,proof)
         const beforeReplay=await assessmentCounts(f)

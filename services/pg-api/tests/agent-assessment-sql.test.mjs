@@ -58,6 +58,7 @@ test('optional057 inventory, protected roles/routines, full predecessor audit an
       ['API explicit MAINTAIN','GRANT MAINTAIN ON agentstudio.agent_assessment_outputs TO agentstudio_api'],
       ['field grant','GRANT UPDATE(lease_token) ON agentstudio.agent_assessment_leases TO agentstudio_review_worker'],
       ['API claim grant','GRANT EXECUTE ON FUNCTION agentstudio.agent_assessment_claim(uuid) TO agentstudio_api'],
+      ['legacy invite PUBLIC EXECUTE','GRANT EXECUTE ON FUNCTION agentstudio.reject_invite_snapshot_mutation() TO PUBLIC'],
       ['Worker context grant','GRANT EXECUTE ON FUNCTION agentstudio.agent_assessment_context(uuid,uuid,bigint,uuid) TO agentstudio_review_worker'],
       ['reserve security','ALTER FUNCTION agentstudio.agent_assessment_reserve(uuid,uuid,bigint,uuid) SECURITY INVOKER'],
       ['finish search path','ALTER FUNCTION agentstudio.agent_assessment_finish(uuid,uuid,bigint,uuid,jsonb) SET search_path=public'],
@@ -72,6 +73,22 @@ test('optional057 inventory, protected roles/routines, full predecessor audit an
       ['partial schema','DROP TABLE agentstudio.agent_assessment_outputs'],
       ['extra prefixed object','CREATE TABLE agentstudio.agent_assessment_orphan(id integer)']
     ])await assertTamper(f,label,mutation)
+    const snapshot={goal:'Synthetic reviewed immutable invite snapshot'},inviteColumns='id,owner_user_id,source_spec_id,safe_snapshot,token_hash,expires_at,created_at'
+    const tokenHash=randomUUID().replaceAll('-','')+randomUUID().replaceAll('-','')
+    const invite=(await withActor(f.pool,f.identities.alice,(db,owner)=>db.query(
+      'INSERT INTO agentstudio.template_invites(owner_user_id,source_spec_id,safe_snapshot,token_hash,expires_at) VALUES($1,$2,$3::jsonb,$4,clock_timestamp()+interval \'1 hour\') RETURNING '+inviteColumns,
+      [owner,f.resources.alice.spec.id,JSON.stringify(snapshot),tokenHash]))).rows[0]
+    assert.ok(invite);assert.deepEqual(invite.safe_snapshot,snapshot)
+    const caller=(await withActor(f.pool,f.identities.alice,db=>db.query("SELECT has_function_privilege(current_user,'agentstudio.reject_invite_snapshot_mutation()','EXECUTE') AS execute"))).rows[0]
+    assert.equal(caller.execute,false,'ordinary API cannot directly execute the old trigger function after057')
+    await assert.rejects(withActor(f.pool,f.identities.alice,db=>db.query(
+      'UPDATE agentstudio.template_invites SET safe_snapshot=$2::jsonb WHERE id=$1',[invite.id,JSON.stringify({goal:'Forbidden replacement snapshot'})])),
+      error=>error.code==='23514'&&/immutable_template_invite_fields/.test(error.message),'the original installed trigger must still enforce immutable snapshots')
+    const unchanged=(await withActor(f.pool,f.identities.alice,db=>db.query('SELECT '+inviteColumns+' FROM agentstudio.template_invites WHERE id=$1',[invite.id]))).rows[0]
+    assert.deepEqual(unchanged,invite,'rejected snapshot UPDATE leaves every original immutable field intact')
+    const revoked=(await withActor(f.pool,f.identities.alice,db=>db.query('UPDATE agentstudio.template_invites SET revoked_at=clock_timestamp() WHERE id=$1 RETURNING safe_snapshot,revoked_at',[invite.id]))).rows[0]
+    assert.deepEqual(revoked.safe_snapshot,snapshot);assert.ok(revoked.revoked_at,'permitted lifecycle UPDATE still passes the installed trigger')
+    assert.equal(await verifyAgentAssessmentCredentials(f.db),true)
     for(const role of ['agentstudio_api','agentstudio_worker',...Object.values(assessmentRoles)])for(const suffix of ['leases','effects','outcomes','outputs']){
       const table='agentstudio.agent_assessment_'+suffix
       for(const sql of ['INSERT INTO '+table+' DEFAULT VALUES','UPDATE '+table+' SET request_id=request_id','DELETE FROM '+table,'TRUNCATE '+table])

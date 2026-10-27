@@ -17,6 +17,11 @@ CREATE ROLE agentstudio_review_dispatch NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRL
 GRANT USAGE ON SCHEMA agentstudio TO agentstudio_review_worker,agentstudio_review_dispatch;
 -- Required by the readonly predecessor audit; never grants private data.
 GRANT SELECT(version) ON agentstudio.schema_migrations TO agentstudio_review_worker,agentstudio_review_dispatch;
+-- The original baseline left this invoker trigger-only routine executable by
+-- PUBLIC. Remove that ambient capability rather than exempting old routines
+-- from the new roles' strict execute boundary. The installed invitation guard
+-- and its body remain unchanged; no existing trigger is created or replaced.
+REVOKE EXECUTE ON FUNCTION agentstudio.reject_invite_snapshot_mutation() FROM PUBLIC;
 
 CREATE TABLE agentstudio.agent_assessment_leases(
   owner_user_id uuid NOT NULL,request_id uuid NOT NULL,worker_id uuid NOT NULL,lease_token uuid NOT NULL,lease_version bigint NOT NULL,
