@@ -19,11 +19,15 @@ const errorCode=code=>error=>error.message===code
 test('real isolated PG18 optional059 operator: restored058, actual same-client full audit, rollback and uncertain commit', {timeout:1200000,concurrency:false},async t=>{
  const f=await generatedOperatorCiFixture(),start=async()=>{await f.reset();return await f.evidence()},persist=e=>record=>e.persist(record)
  try{
-  await t.test('actual trusted extracted plan and default/half-configuration refusal precede secrets and pg',async()=>{
+  await t.test('actual same-name archive restore preserves DB metadata; trusted plan and entry guards',async()=>{
    const plan=await f.actualPlan();assert.equal(plan.code,0,plan.stderr);const value=JSON.parse(plan.stdout)
    assert.equal(value.source_sha256,f.snapshot.source_sha256);assert.equal(value.default_fresh_latest,'pg_v9_050');assert.equal(value.network_used,false);assert.equal(value.secret_read,false)
    const absent=await f.rawNode([]);assert.notEqual(absent.code,0);assert.match(absent.stderr,/generated_operator_invalid_arguments/)
-   const e=await start(),half=await f.cli('apply',e,{AGENT_STUDIO_GENERATED_059_READ_APPROVED:undefined,AGENT_STUDIO_GENERATED_059_ADMIN_PASSWORD_FILE:'/nonexistent-generated-operator-secret'})
+   const e=await start()
+   assert.equal(f.main.db,'agent_studio');assert.equal(f.restore.db,'agent_studio');assert.equal(f.main.port,5333);assert.equal(f.restore.port,5334)
+   assert.notEqual(f.main.systemIdentifier,f.restore.systemIdentifier)
+   assert.deepEqual(await f.databaseMetadata(f.admin),e.beforeDatabase);assert.deepEqual(await f.databaseMetadata(f.restoreAdmin),e.beforeDatabase)
+   const half=await f.cli('apply',e,{AGENT_STUDIO_GENERATED_059_READ_APPROVED:undefined,AGENT_STUDIO_GENERATED_059_ADMIN_PASSWORD_FILE:'/nonexistent-generated-operator-secret'})
    assert.notEqual(half.code,0);assert.match(half.stderr,/generated_operator_disabled/);await f.assertUnchanged(e)
   })
   await t.test('real default/custom/NOINHERIT review/API/index members block installation while idle',async()=>{
@@ -135,6 +139,8 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
   })
   await t.test('real wrong target, modified approval and tampered trusted-copy059 refuse with no source normalization',async()=>{
    const e=await start()
+   const wrong=(await f.restoreAdmin.query('SELECT current_database() AS db,inet_server_port() AS port,(pg_control_system()).system_identifier::text AS system_id')).rows[0]
+   assert.equal(wrong.db,'agent_studio');assert.equal(wrong.port,5334);assert.notEqual(wrong.system_id,e.approval.system_identifier)
    await assert.rejects(f.core.applyGeneratedOperator(f.restoreAdmin,f.snapshot,e.approval,persist(e)),error=>error.code==='P0001'&&error.message==='service_login_target_not_approved')
    const bad=await f.cli('preflight',e,{AGENT_STUDIO_GENERATED_059_APPROVAL_SHA256:'0'.repeat(64),AGENT_STUDIO_GENERATED_059_ADMIN_PASSWORD_FILE:'/not-read-generated-operator-secret'})
    assert.notEqual(bad.code,0);assert.match(bad.stderr,/generated_operator_evidence_changed/)

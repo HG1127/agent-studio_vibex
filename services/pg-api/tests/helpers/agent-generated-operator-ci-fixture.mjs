@@ -41,7 +41,7 @@ const childEnv={PATH:'/usr/bin:/bin',HOME:'/root',LANG:'C.UTF-8'}
 function command(binary,args,options={}){try{return execFileSync(binary,args,{env:childEnv,timeout:45000,maxBuffer:32*1024*1024,windowsHide:true,...options})}catch{refuse('bounded_child_failed_'+path.basename(binary))}}
 function inspectContainer(proof,purpose){
  if(!sealed.has(proof)||!['main','restore'].includes(purpose))refuse('unsealed')
- const id=purpose==='main'?proof.mainId:proof.restoreId,port=purpose==='main'?5333:5334,db=purpose==='main'?'agent_studio':'agent_studio_restore'
+ const id=purpose==='main'?proof.mainId:proof.restoreId,port=purpose==='main'?5333:5334,db='agent_studio'
  const name='agentstudio-generated-operator-'+purpose+'-'+proof.run+'-'+proof.attempt+'-'+proof.nonce.slice(0,12)
  const pgdata='/var/lib/postgresql/generated-operator-'+purpose+'-'+proof.nonce.slice(0,16),cluster='ci-generated-'+purpose+'-'+proof.nonce.slice(0,32)
  const list=JSON.parse(command('/usr/bin/docker',['inspect',id],{encoding:'utf8'}));if(list.length!==1)refuse('container_count')
@@ -84,7 +84,7 @@ function verifyStagedReview(root,expected){
  const closed=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key))
  const value=JSON.parse(bytes.toString('utf8'))
  if(!closed(value,['format','review_only','source_sha256','default_fresh_latest','initializes_database','activation_performed','pg_runtime_install_verified','files'])||
-  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='7d0f97c4861332958496919eea1af803a2008175e1e6efb8cfe1fc6d1c3921da'||
+  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='7fef4e6496faeac82aac8a320be2b60065fd380f485a07faca2900a70a407679'||
   value.default_fresh_latest!=='pg_v9_050'||value.initializes_database!==false||value.activation_performed!==false||value.pg_runtime_install_verified!==false||!Array.isArray(value.files)||value.files.length!==91)refuse('review_manifest')
  const files=new Set(['REVIEW_MANIFEST.json'])
  for(const item of value.files){
@@ -145,7 +145,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   from('services/pg-api/src/pg18-fresh-runtime-source.mjs'),from('services/pg-api/src/pg18-fresh-runtime-install.ts'),from('services/pg-api/src/baota-pg18-fresh-init.mjs'),from('services/pg-api/src/native-activation-cli.mjs')])
  const snapshot=await source.captureGeneratedOperatorSources();source.assertGeneratedOperatorDeployment(snapshot)
  for(const p of [...snapshot.manifest.sources,...snapshot.manifest.fresh_sources,snapshot.manifest.sql])if(!sourceFiles.has(p.path))refuse('source_asset_missing')
- const pools=new Set(),passwords=new Map(),systemIds=new Map();let serial=0,baseDump,baseRoles,baseBusiness,closed=false
+ const pools=new Set(),passwords=new Map(),systemIds=new Map();let serial=0,baseDump,baseRoles,baseBusiness,baseDatabase,closed=false
  let auditBaseline,diagnosticEmitted=false
  const config=(target,database=target.db,user='postgres',password=proof.password)=>({host:'127.0.0.1',port:target.port,database,user,password,ssl:false,options:'',max:8,connectionTimeoutMillis:5000,statement_timeout:45000,query_timeout:50000})
  const connect=(target,database=target.db,user='postgres',password=proof.password)=>{const p=new pg.Pool(config(target,database,user,password));p.on('error',()=>{});pools.add(p);return p}
@@ -203,13 +203,9 @@ export async function generatedOperatorCiFixture(env=process.env){
    finally{await c.query('ROLLBACK').catch(()=>{});c.release()}
    layers.push({layer,ok,code,queries,session})
   }
-  const c=await pool.connect();let database
-  try{
-   await c.query('BEGIN READ ONLY')
-   const row=(await c.query("SELECT owner.rolname AS owner,coalesce((SELECT jsonb_agg(jsonb_build_array(coalesce(grantee.rolname,'PUBLIC'),grantor.rolname,a.privilege_type,a.is_grantable) ORDER BY coalesce(grantee.rolname,'PUBLIC'),grantor.rolname,a.privilege_type) FROM aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a LEFT JOIN pg_roles grantee ON grantee.oid=a.grantee JOIN pg_roles grantor ON grantor.oid=a.grantor),'[]'::jsonb) AS acl,(SELECT coalesce(jsonb_agg(jsonb_build_array(coalesce(r.rolname,'ALL'),s.setconfig) ORDER BY coalesce(r.rolname,'ALL')),'[]'::jsonb) FROM pg_db_role_setting s LEFT JOIN pg_roles r ON r.oid=s.setrole WHERE s.setdatabase=d.oid) AS settings,pg_encoding_to_char(d.encoding) AS encoding,d.datcollate,d.datctype FROM pg_database d JOIN pg_roles owner ON owner.oid=d.datdba WHERE d.datname=current_database()")).rows[0]
-   // Only digests of DB-level configuration/ACL leave this diagnostic probe.
-   database={owner:row.owner,acl_sha256:sha(JSON.stringify(row.acl)),settings_sha256:sha(JSON.stringify(row.settings)),locale_sha256:sha(JSON.stringify([row.encoding,row.datcollate,row.datctype]))}
-  }finally{await c.query('ROLLBACK').catch(()=>{});c.release()}
+  const row=await databaseMetadata(pool)
+  // Only digests of DB-level configuration/ACL leave this diagnostic probe.
+  const database={owner:row.owner,acl_sha256:sha(JSON.stringify(row.acl)),settings_sha256:sha(JSON.stringify(row.settings)),locale_sha256:sha(JSON.stringify(row.locale))}
   return {layers,database}
  }
  async function diagnoseRestore(pool,stage){
@@ -241,6 +237,19 @@ export async function generatedOperatorCiFixture(env=process.env){
   if(failure){await diagnoseRestore(pool,stage);throw failure}
  }
  async function business(pool){return sha(JSON.stringify((await pool.query("SELECT jsonb_build_object('users',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,external_issuer,external_subject,display_name,status) ORDER BY id),'[]'::jsonb) FROM agentstudio.users),'accounts',(SELECT coalesce(jsonb_agg(jsonb_build_array(user_id,enabled,governance_revision) ORDER BY user_id),'[]'::jsonb) FROM agentstudio_auth.accounts)) AS value")).rows[0].value))}
+ async function databaseMetadata(pool){
+  const c=await pool.connect()
+  try{
+   await c.query('BEGIN READ ONLY')
+   const row=(await c.query(`SELECT d.datname AS name,owner.rolname AS owner,t.spcname AS tablespace,d.datistemplate AS is_template,d.datallowconn AS allow_connections,d.datconnlimit AS connection_limit,
+    coalesce((SELECT jsonb_agg(jsonb_build_array(CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE grantee.rolname END,grantor.rolname,a.privilege_type,a.is_grantable) ORDER BY CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE grantee.rolname END,grantor.rolname,a.privilege_type,a.is_grantable) FROM pg_catalog.aclexplode(coalesce(d.datacl,pg_catalog.acldefault('d',d.datdba))) a LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid=a.grantee JOIN pg_catalog.pg_roles grantor ON grantor.oid=a.grantor),'[]'::jsonb) AS acl,
+    (SELECT coalesce(jsonb_agg(jsonb_build_array(CASE WHEN s.setrole=0 THEN 'ALL' ELSE r.rolname END,ARRAY(SELECT value FROM pg_catalog.unnest(s.setconfig) AS config(value) ORDER BY value)) ORDER BY CASE WHEN s.setrole=0 THEN 'ALL' ELSE r.rolname END),'[]'::jsonb) FROM pg_catalog.pg_db_role_setting s LEFT JOIN pg_catalog.pg_roles r ON r.oid=s.setrole WHERE s.setdatabase=d.oid) AS settings,
+    jsonb_build_object('encoding',pg_catalog.pg_encoding_to_char(d.encoding),'provider',d.datlocprovider,'collate',d.datcollate,'ctype',d.datctype,'locale',d.datlocale,'icu_rules',d.daticurules,'version',d.datcollversion) AS locale,
+    pg_catalog.shobj_description(d.oid,'pg_database') AS comment
+    FROM pg_catalog.pg_database d JOIN pg_catalog.pg_roles owner ON owner.oid=d.datdba JOIN pg_catalog.pg_tablespace t ON t.oid=d.dattablespace WHERE d.datname=current_database()`)).rows[0]
+   assert.equal(row?.name,'agent_studio');return row
+  }finally{await c.query('ROLLBACK').catch(()=>{});c.release()}
+ }
  async function owned(target){
   const again=inspectContainer(proof,target===main?'main':'restore');assert.equal(again.id,target.id)
   const p=connect(target,'postgres');try{const v=(await p.query("SELECT (pg_control_system()).system_identifier::text AS id,inet_server_port() AS port,current_setting('cluster_name') AS cluster,session_user AS login")).rows[0];assert.equal(v.id,systemIds.get(target.id));assert.equal(v.port,target.port);assert.equal(v.cluster,target.cluster);assert.equal(v.login,'postgres')}finally{await p.end();pools.delete(p)}
@@ -248,10 +257,13 @@ export async function generatedOperatorCiFixture(env=process.env){
  function dockerPg(target,program,args,input){if(!sealed.has(target)||!systemIds.has(target.id))refuse('unowned_dump_restore');return command('/usr/bin/docker',['exec','-i','--user','postgres','-e','PGPASSWORD='+proof.password,target.id,program,'--host=127.0.0.1','--port='+target.port,'--username=postgres',...args],input===undefined?{}:{input})}
  async function recreate(target,dump){
   await owned(target)
+  assert.equal(target.db,'agent_studio')
   const p=connect(target,'postgres')
-  try{await p.query('DROP DATABASE "'+target.db+'" WITH (FORCE)');await p.query('CREATE DATABASE "'+target.db+'" TEMPLATE template0')}
+  try{await p.query('DROP DATABASE "agent_studio" WITH (FORCE)')}
   finally{await p.end();pools.delete(p)}
-  dockerPg(target,'pg_restore',['--exit-on-error','--dbname='+target.db],dump)
+  // The real archive creates its original database and restores DB-level
+  // owner/ACL/settings; never synthesize a replacement DB or rewrite the dump.
+  dockerPg(target,'pg_restore',['--exit-on-error','--create','--dbname=postgres'],dump)
  }
  const allGroups={agentstudio_stage_login:['agentstudio_api'],agentstudio_stage_worker:['agentstudio_api','agentstudio_worker'],agentstudio_bound_dispatch_login:['agentstudio_bound_dispatch'],agentstudio_model_broker_login:['agentstudio_model_broker'],
   agentstudio_knowledge_index_worker_login:['agentstudio_knowledge_index_worker'],agentstudio_knowledge_index_broker_login:['agentstudio_knowledge_index_broker'],agentstudio_review_worker_login:['agentstudio_review_worker'],agentstudio_review_dispatch_login:['agentstudio_review_dispatch'],
@@ -266,19 +278,23 @@ export async function generatedOperatorCiFixture(env=process.env){
   for(const p of [...pools]){await p.end();pools.delete(p)}
   await recreate(main,baseDump);admin=connect(main);restoreAdmin=connect(restore)
   await full(admin,false,'main_restore058');assert.equal(await business(admin),baseBusiness)
+  assert.deepEqual(await databaseMetadata(admin),baseDatabase,'main archive restore must preserve named database metadata')
  }
  async function evidence(){
   await owned(main);await full(admin,false)
-  const state=(await admin.query(core.generatedOperatorTargetSql)).rows[0],catalog=(await admin.query(core.generatedOperatorCatalogSql)).rows[0].catalog
+  const state=(await admin.query(core.generatedOperatorTargetSql)).rows[0],catalog=(await admin.query(core.generatedOperatorCatalogSql)).rows[0].catalog,beforeDatabase=await databaseMetadata(admin)
+  assert.deepEqual(beforeDatabase,baseDatabase,'source database metadata must match the validated baseline')
   const catalogSha=sha(JSON.stringify(catalog)),n=String(++serial),directory=privateRoot+'/evidence-'+n
   fs.mkdirSync(directory,{mode:0o700});privateStat(directory,true)
-  const capturedAt=new Date().toISOString(),dump=dockerPg(main,'pg_dump',['--format=custom','--dbname='+main.db]),roles=dockerPg(main,'pg_dumpall',['--roles-only','--no-role-passwords'])
+  const capturedAt=new Date().toISOString(),dump=dockerPg(main,'pg_dump',['--format=custom','--create','--dbname='+main.db]),roles=dockerPg(main,'pg_dumpall',['--roles-only','--no-role-passwords'])
   const dumpFile=privateWrite(directory+'/database.dump',dump),rolesFile=privateWrite(directory+'/roles.sql',roles)
   command('/usr/bin/tar',['-cf',directory+'/backup.tar','-C',directory,'database.dump','roles.sql']);fs.chmodSync(directory+'/backup.tar',0o600);privateStat(directory+'/backup.tar')
   // Recreate only the second attested disposable DB. Roles were actually
   // restored once below; later source/global role catalogs must remain equal.
   await restoreAdmin.end();pools.delete(restoreAdmin);await recreate(restore,dump);restoreAdmin=connect(restore)
   await full(restoreAdmin,false,'independent_restore058');assert.equal(await business(restoreAdmin),await business(admin))
+  assert.deepEqual(await databaseMetadata(restoreAdmin),beforeDatabase,'independent archive restore must preserve named database metadata')
+  assert.deepEqual(await databaseMetadata(admin),beforeDatabase,'source database metadata must remain unchanged')
   assert.equal(sha(fs.readFileSync(dumpFile)),sha(dump));assert.equal(sha(fs.readFileSync(rolesFile)),sha(roles))
   const globals=async p=>({roles:(await p.query("SELECT rolname,rolcanlogin,rolsuper,rolinherit,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication,rolconfig FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY rolname")).rows,
    memberships:(await p.query("SELECT parent.rolname AS parent,child.rolname AS child,grantor.rolname AS grantor,m.admin_option,m.inherit_option,m.set_option FROM pg_auth_members m JOIN pg_roles parent ON parent.oid=m.roleid JOIN pg_roles child ON child.oid=m.member JOIN pg_roles grantor ON grantor.oid=m.grantor WHERE parent.rolname !~ '^pg_' OR child.rolname !~ '^pg_' ORDER BY parent.rolname,child.rolname,grantor.rolname")).rows})
@@ -292,7 +308,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   const approvalBytes=Buffer.from(JSON.stringify(raw)+'\n'),approval=core.parseGeneratedOperatorApproval(raw,snapshot)
   core.verifyGeneratedOperatorBackupEvidence(approval,backup,restored,backupSha,sha(restoreBytes))
   const files={approval:privateWrite(directory+'/approval.json',approvalBytes),backup:privateWrite(directory+'/backup.json',backupBytes),restore:privateWrite(directory+'/restore.json',restoreBytes),admin:privateWrite(directory+'/admin.secret',proof.password)}
-  return {approval,raw,files,directory,archiveSha,approvalSha:sha(approvalBytes),journal:[],async persist(record){privateWrite(directory+'/journal-'+this.journal.length+'.json',JSON.stringify(record)+'\n');this.journal.push(record)},beforeBusiness:await business(admin)}
+  return {approval,raw,files,directory,archiveSha,approvalSha:sha(approvalBytes),journal:[],async persist(record){privateWrite(directory+'/journal-'+this.journal.length+'.json',JSON.stringify(record)+'\n');this.journal.push(record)},beforeBusiness:await business(admin),beforeDatabase}
  }
  async function cli(mode,e,changes={}){
   const p='AGENT_STUDIO_GENERATED_059_',env={PATH:path.dirname(process.execPath)+':/usr/bin:/bin',HOME:'/root',LANG:'C.UTF-8',
@@ -312,13 +328,13 @@ export async function generatedOperatorCiFixture(env=process.env){
   await login(admin,'agentstudio_native_login',[],true)
   const native=connect(main,main.db,'agentstudio_native_login',passwords.get('agentstudio_native_login'))
   try{const {NativeAuthRepository}=await import('../../src/native-auth-repository.mjs');const store=new NativeAuthRepository(native);await store.provisionInitialAdmin({email:'generated-operator-ci@example.test',password:'SyntheticOperatorAlice#'+randomBytes(12).toString('hex'),display_name:'Synthetic Operator Employee'})}finally{await native.end();pools.delete(native)}
-  await full(admin,false,'bootstrap058');auditBaseline=await auditProfile(admin);baseBusiness=await business(admin)
-  baseDump=dockerPg(main,'pg_dump',['--format=custom','--dbname='+main.db]);baseRoles=dockerPg(main,'pg_dumpall',['--roles-only','--no-role-passwords'])
+  await full(admin,false,'bootstrap058');auditBaseline=await auditProfile(admin);baseBusiness=await business(admin);baseDatabase=await databaseMetadata(admin)
+  baseDump=dockerPg(main,'pg_dump',['--format=custom','--create','--dbname='+main.db]);baseRoles=dockerPg(main,'pg_dumpall',['--roles-only','--no-role-passwords'])
   const roleText=baseRoles.toString('utf8');if((roleText.match(/^CREATE ROLE postgres;$/gm)??[]).length!==1)refuse('globals_format')
   // Both pristine clusters already possess postgres. Omit ONLY that duplicate
   // CREATE from the actual roles dump, retaining its real ALTER and grants.
   dockerPg(restore,'psql',['--no-psqlrc','--set=ON_ERROR_STOP=on','--dbname=postgres'],roleText.replace(/^CREATE ROLE postgres;\r?\n/m,''))
-  return {proof,main,restore,root,privateRoot,entry,snapshot,core,opinion,generated,source,get admin(){return admin},get restoreAdmin(){return restoreAdmin},full,business,reset,evidence,cli,close,
+  return {proof,main,restore,root,privateRoot,entry,snapshot,core,opinion,generated,source,get admin(){return admin},get restoreAdmin(){return restoreAdmin},full,business,databaseMetadata,reset,evidence,cli,close,
    runtime(name){if(!passwords.has(name))refuse('unknown_synthetic_login');const pool=connect(main,main.db,name,passwords.get(name));return {pool,async close(){await pool.end();pools.delete(pool)}}},
    async recover(e,j=e.journal.at(-1)){return core.inspectGeneratedOperator(admin,snapshot,e.approval,j)},
    async assertUnchanged(e){await full(admin,false);assert.equal(await business(admin),e.beforeBusiness);assert.equal((await admin.query(core.generatedOperatorTargetSql)).rows[0].system_identifier,e.approval.system_identifier);assert.equal(sha(JSON.stringify((await admin.query(core.generatedOperatorCatalogSql)).rows[0].catalog)),e.approval.predecessor_schema_sha256)},

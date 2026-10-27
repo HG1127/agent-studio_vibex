@@ -30,7 +30,7 @@ function forged(name,change){const bytes=Buffer.from(rawTar);change(bytes);const
 
 test('real final46-file97-edge AST closure,34 fresh assets and literal059/prosrc are the only source payload',()=>{
   const m=collected.snapshot.manifest
-  assert.equal(collected.snapshot.source_sha256,'7d0f97c4861332958496919eea1af803a2008175e1e6efb8cfe1fc6d1c3921da')
+  assert.equal(collected.snapshot.source_sha256,'7fef4e6496faeac82aac8a320be2b60065fd380f485a07faca2900a70a407679')
   assert.equal(m.sources.length,46);assert.equal(m.imports.length,97);assert.equal(m.fresh_sources.length,34)
   assert.equal(m.default_fresh_latest,'pg_v9_050');assert.equal(m.sql.sha256,'74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063')
   assert.equal(m.sql.body_sha256,'1b035acd7e039e1b3eac252cf72779e9057228dbe7a0547b460ab1d5d90bb8ca')

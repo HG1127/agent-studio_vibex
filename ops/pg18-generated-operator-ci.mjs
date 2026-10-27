@@ -19,7 +19,7 @@ const json=value=>JSON.stringify(value,null,2)+'\n'
 const positive=value=>typeof value==='string'&&/^[1-9][0-9]*$/.test(value)
 const safeRelative=value=>typeof value==='string'&&/^[A-Za-z0-9_@./+-]+$/.test(value)&&!value.startsWith('/')&&value.split('/').every(p=>p&&p!=='.'&&p!=='..')
 
-export function generatedOperatorCiPlan(){return {mode:'plan',synthetic_only:true,workflow,job,image,main:{host:'127.0.0.1',port:5333,database:'agent_studio'},restore:{host:'127.0.0.1',port:5334,database:'agent_studio_restore'},pg_version:pgVersion,parser_version:'5.9.3',source_guard_unchanged:true,dependency_installation_performed:false,network_used:false,secret_read:false,containers_started:false,production_cutover_allowed:false}}
+export function generatedOperatorCiPlan(){return {mode:'plan',synthetic_only:true,workflow,job,image,main:{host:'127.0.0.1',port:5333,database:'agent_studio'},restore:{host:'127.0.0.1',port:5334,database:'agent_studio'},pg_version:pgVersion,parser_version:'5.9.3',source_guard_unchanged:true,dependency_installation_performed:false,network_used:false,secret_read:false,containers_started:false,production_cutover_allowed:false}}
 export function requireGeneratedOperatorProvisionCi(env=process.env){
  const allowed=['EPHEMERAL','PURPOSE','WRITE_APPROVED']
  if(process.platform!=='linux'||process.getuid?.()!==0||process.getgid?.()!==0||process.versions.node.split('.')[0]!=='24'||
@@ -95,7 +95,7 @@ function command(binary,args,{timeout=120000,...options}={}){
  }
 }
 function containerSpec(proof,nonce,purpose){
- const port=purpose==='main'?5333:5334,db=purpose==='main'?'agent_studio':'agent_studio_restore'
+ const port=purpose==='main'?5333:5334,db='agent_studio'
  return {purpose,port,db,name:'agentstudio-generated-operator-'+purpose+'-'+proof.run+'-'+proof.attempt+'-'+nonce.slice(0,12),pgdata:'/var/lib/postgresql/generated-operator-'+purpose+'-'+nonce.slice(0,16),cluster:'ci-generated-'+purpose+'-'+nonce.slice(0,32)}
 }
 function stopOwnedContainer(id,spec,proof,nonce){

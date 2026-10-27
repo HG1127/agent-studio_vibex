@@ -11,7 +11,7 @@ import {captureGeneratedOperatorSources,assertGeneratedOperatorSnapshot,generate
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const entry='services/pg-api/src/agent-generated-operator-cli.mjs',prefix='AGENT_STUDIO_GENERATED_059_'
-const sourceSha='7d0f97c4861332958496919eea1af803a2008175e1e6efb8cfe1fc6d1c3921da'
+const sourceSha='7fef4e6496faeac82aac8a320be2b60065fd380f485a07faca2900a70a407679'
 const lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'
 const parserRoot='services/pg-api/node_modules/typescript/'
 const parserPins=Object.freeze({
