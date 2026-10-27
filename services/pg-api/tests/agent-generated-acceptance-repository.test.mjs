@@ -6,11 +6,12 @@ import {AgentGeneratedSourceRepository,agentGeneratedCandidate,agentGeneratedDes
 import {safeAgentSpec} from '../src/contracts.ts'
 import {canonicalMcpJson} from '../src/mcp-catalog.ts'
 import {agentDescriptiveLimits as limits} from '../../../shared/agent-role-limits.mjs'
-import {generatedAcceptanceTarget,generatedManualRoleInput} from './helpers/agent-generated-acceptance-fixture.mjs'
+import {generatedAcceptanceTarget,generatedManualRoleInput,generatedRecoverySourceRead} from './helpers/agent-generated-acceptance-fixture.mjs'
 import {generatedAcceptanceChoice} from './helpers/agent-generated-acceptance-fixture.mjs'
 import {agentGeneratedCandidateHash,agentGeneratedChangedKeys,agentGeneratedFeedbackHash,agentGeneratedPreviewHash,agentGeneratedRequestHash,agentGeneratedReceiptHash} from '../src/agent-generated-acceptance-contract.ts'
 import {agentGeneratedExpectedPreview,agentGeneratedOriginalReceipt} from '../src/agent-generated-acceptance-repository.ts'
 import {parseFeedbackOptimizationDraft,parseFeedbackOptimizationAcceptance,feedbackOptimizationChangedFields} from '../src/agent-feedback-optimization-contract.ts'
+import {verifyAgentGeneratedCredentials} from '../src/agent-generated-audit.ts'
 
 const identity={issuer:'urn:agentstudio:local:v1',subject:'native-generated-synthetic'}
 const before=()=>safeAgentSpec({goal:'原目标😀',task_scope:'范围',deliverables:['原交付'],task_plan:[],done_criteria:[],tools:['calculate'],knowledge_base_ids:[],
@@ -161,4 +162,25 @@ test('real frozen055 preview/accept parsers accept fixture wire specs while reta
   assert.equal(accepted.spec.require_plan_review,prior.require_plan_review);assert.deepEqual(candidate,originalCandidate)
   wire.tools.push('summarize');assert.deepEqual(candidate,originalCandidate,'fixture wire copy must not mutate the normalized candidate')
   assert.throws(()=>generatedManualRoleInput({...candidate,require_approval:false}))
+})
+
+test('recovery trace permits the actual full059 catalog query but catches genuine source/private/current-resource SQL',async()=>{
+  // Pure query generation probe, not a simulated successful audit or SQL run.
+  // The unmodified full auditor emits this exact second catalog statement.
+  const queries=[]
+  await assert.rejects(verifyAgentGeneratedCredentials({async query(sql){queries.push(sql);if(queries.length===2)throw Error('stop_after_second_catalog_query');return {rows:[]}}}),/unsafe_agent_generated_privileges/)
+  assert.equal(queries.length,2);assert.match(queries[1],/pg_catalog/)
+  assert.match(queries[1],/to_regprocedure\('agentstudio\.agent_opinion_body\(uuid,text,text\)'\)/)
+  assert.equal(/agent_opinion_(?:anchor|body)\(/.test(queries[1]),true,'old whole-query predicate misclassified this exact real audit statement')
+  assert.equal(generatedRecoverySourceRead(queries[1]),false)
+  for(const sql of [
+    'SELECT agentstudio.agent_opinion_anchor($1::uuid) AS value',
+    'SELECT agentstudio.agent_opinion_body($1::uuid,$2::text,$3::text) AS value',
+    'SELECT name,spec,revision FROM agentstudio.agent_specs WHERE id=$1::uuid FOR SHARE',
+    'SELECT revision,enabled,status,models,provider,base_url FROM agentstudio.model_connections WHERE id=$1 FOR SHARE',
+    'SELECT * FROM agentstudio.agent_review_inputs WHERE request_id=$1',
+    'SELECT * FROM agentstudio.agent_assessment_outputs WHERE request_id=$1'
+  ])assert.equal(generatedRecoverySourceRead(sql),true,sql)
+  assert.equal(generatedRecoverySourceRead("SELECT pg_get_functiondef(to_regprocedure('agentstudio.agent_opinion_body(uuid,text,text)'))"),false)
+  assert.equal(generatedRecoverySourceRead("SELECT 'FROM agentstudio.agent_specs', 'agent_opinion_body(' FROM pg_catalog.pg_class"),false)
 })

@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
 import {setTimeout as delay} from 'node:timers/promises'
-import {generatedAcceptanceTarget,generatedAcceptanceFixture,generatedAcceptanceChoice,generatedPreviewChoice,generatedTracedPool,generatedBounded,generatedManualRoleInput} from './helpers/agent-generated-acceptance-fixture.mjs'
+import {generatedAcceptanceTarget,generatedAcceptanceFixture,generatedAcceptanceChoice,generatedPreviewChoice,generatedTracedPool,generatedBounded,generatedManualRoleInput,generatedRecoverySourceRead} from './helpers/agent-generated-acceptance-fixture.mjs'
 
 const unavailable=error=>error.status===409
 const sourceLock=/^SELECT pg_advisory_xact_lock\(hashtextextended\(\$1::text,540\)\)/
@@ -116,9 +116,10 @@ test('generated acceptance foundation on real isolated PG18', {concurrency:false
       await f.db.query('UPDATE agentstudio_auth.accounts SET governance_revision=governance_revision+2 WHERE user_id=$1',[p.owner])
       const snapshot=await f.snapshot()
       for(const operation of ['accept','confirm','receipt']){
-          const trace=generatedTracedPool(f.pool,{fault(sql){if(/agent_opinion_(?:anchor|body)\(|\bFROM agentstudio\.(?:agent_review_inputs|agent_assessment_outputs|model_connections|agent_specs)\b/.test(sql))throw Error('recovery_read_private_or_current_source')}})
+          const trace=generatedTracedPool(f.pool,{fault(sql){if(generatedRecoverySourceRead(sql))throw Error('recovery_read_private_or_current_source')}})
           const closed=new AgentGeneratedAcceptanceRepository(trace.pool),receipt=await closed[operation](p.identity,operation==='receipt'?p.raw.request_id:p.original)
           assert.deepEqual(receipt,{...accepted,replayed:true});assert.doesNotMatch(JSON.stringify(receipt),privateFields)
+          assert.equal(trace.trace.filter(({sql})=>generatedRecoverySourceRead(sql)).length,0)
       }
       assert.equal(await f.snapshot(),snapshot)
       await assert.rejects(f.generatedClosed.confirm(p.identity,{...p.original,expected_candidate_sha256:'0'.repeat(64)}),e=>e.status===409&&e.code==='agent_generated_request_conflict')
@@ -155,11 +156,19 @@ test('generated acceptance foundation on real isolated PG18', {concurrency:false
             const marker="PERFORM pg_catalog.nextval('agentstudio.synthetic_generated_fault_counter'::regclass); "
             const fault=marker+(point==='receipt_hash'?"NEW.receipt_sha256:=repeat('0',64); RETURN NEW;":"RAISE EXCEPTION 'synthetic_generated_"+point+"_failure';")
             const when=point==='audit'?" WHEN (NEW.action='agent.generated_acceptance')":""
-            await f.db.exec("CREATE SEQUENCE agentstudio.synthetic_generated_fault_counter; CREATE FUNCTION agentstudio.synthetic_generated_fault() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN "+fault+" END$$; CREATE TRIGGER synthetic_generated_fault BEFORE "+target[1]+" ON agentstudio."+target[0]+" FOR EACH ROW"+when+" EXECUTE FUNCTION agentstudio.synthetic_generated_fault()")
+            // The genuine045 history writer is SECURITY DEFINER owned by
+            // agentstudio_collaboration. Its invoker fault trigger needs only
+            // USAGE on this disposable marker sequence, not production grants.
+            await f.db.exec("CREATE SEQUENCE agentstudio.synthetic_generated_fault_counter; GRANT USAGE ON SEQUENCE agentstudio.synthetic_generated_fault_counter TO agentstudio_collaboration; CREATE FUNCTION agentstudio.synthetic_generated_fault() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN "+fault+" END$$; CREATE TRIGGER synthetic_generated_fault BEFORE "+target[1]+" ON agentstudio."+target[0]+" FOR EACH ROW"+when+" EXECUTE FUNCTION agentstudio.synthetic_generated_fault()")
             installed=true;gate.release()
           }
           const reply=await generatedBounded(state.promise,'failure_'+point);assert.equal(reply.ok,false)
-          if(target)assert.equal((await f.db.query('SELECT is_called FROM agentstudio.synthetic_generated_fault_counter')).rows[0].is_called,true,'exact synthetic_generated_'+point+'_failure/corruption must actually execute; an early ACL/preflight rejection is insufficient')
+          if(target){
+            const detail=JSON.stringify({code:reply.error.code,message:reply.error.message})
+            assert.equal((await f.db.query('SELECT is_called FROM agentstudio.synthetic_generated_fault_counter')).rows[0].is_called,true,'exact synthetic_generated_'+point+'_failure/corruption must execute; actual error='+detail)
+            if(point==='receipt_hash'){assert.equal(reply.error.status,409);assert.equal(reply.error.code,'agent_generated_unavailable')}
+            else{assert.equal(reply.error.code,'P0001',detail);assert.equal(reply.error.message,'synthetic_generated_'+point+'_failure',detail)}
+          }
           else{assert.equal(commitFault,true);assert.equal(reply.error.message,'synthetic_generated_COMMIT_failure')}
           assert.ok(gate.trace.some(q=>q.sql==='ROLLBACK'));assert.equal(await f.snapshot(),snapshot,'failure at '+point+' must preserve all old/new/private business rows')
         }finally{

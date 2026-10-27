@@ -86,6 +86,13 @@ export function generatedManualRoleInput(spec){
   assert.equal(require_approval,true,'manual055 fixture starts from a real approval-required normalized candidate')
   return structuredClone(input)
 }
+// Classify real Node business reads only. Catalog queries may legitimately
+// contain a routine/table name as a quoted verification literal.
+export function generatedRecoverySourceRead(sql){
+  if(/^\s*SELECT\s+agentstudio\.agent_opinion_(?:anchor|body)\(/i.test(sql))return true
+  const statement=sql.replace(/'(?:[^']|'')*'/g,"''")
+  return /^\s*SELECT\b/i.test(statement)&&/\b(?:FROM|JOIN)\s+agentstudio\.(?:agent_review_inputs|agent_assessment_outputs|model_connections|agent_specs)\b/i.test(statement)
+}
 export const generatedPreviewChoice=p=>({action:'preview',review_id:p.raw.request_id,spec_id:p.role.id,target_run_id:p.runId})
 export const generatedDeferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}}
 export async function generatedBounded(promise,label,ms=10000){
