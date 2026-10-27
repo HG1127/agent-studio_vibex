@@ -81,3 +81,17 @@
 /services/pg-api/src/schedule-runtime-audit.ts text eol=lf
 /services/pg-api/src/workflow-graph-v2.ts text eol=lf
 /shared/agent-role-limits.mjs text eol=lf
+
+# Exact LF source for the isolated optional060 foundation.
+.github/workflows/pg18-descriptive-patch-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql text eol=lf
+services/pg-api/src/agent-descriptive-patch-acceptance-repository.ts text eol=lf
+services/pg-api/src/agent-descriptive-patch-audit-core.ts text eol=lf
+services/pg-api/src/agent-descriptive-patch-audit.ts text eol=lf
+services/pg-api/src/agent-descriptive-patch-contract.ts text eol=lf
+services/pg-api/src/agent-descriptive-patch-source.ts text eol=lf
+services/pg-api/tests/agent-descriptive-patch-audit.test.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-contract.test.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-source.test.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-tcp.integration.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-fixture.mjs text eol=lf
