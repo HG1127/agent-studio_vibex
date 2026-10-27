@@ -44,6 +44,7 @@ import {AgentMemoryOutcomeRepository} from "../src/agent-memory-outcome-reposito
 import {inspectAgentMemoryOutcomeSchema,verifyAgentMemoryOutcomeCredentials} from "../src/agent-memory-outcome-audit.ts"
 import {inspectAgentMemoryFailureSourceSchema,verifyAgentMemoryFailureSourceCredentials} from "../src/agent-memory-failure-source-audit.ts"
 import {AgentFeedbackRepository} from "../src/agent-feedback-repository.ts"
+import {AgentReviewSourceRepository} from "../src/agent-review-source.ts"
 import {AgentOptimizationRepository} from "../src/agent-optimization-repository.ts"
 import {inspectAgentOptimizationSchema,verifyAgentOptimizationCredentials} from "../src/agent-optimization-audit.ts"
 import {inspectAgentFeedbackSchema,verifyAgentFeedbackCredentials} from "../src/agent-feedback-audit.ts"
@@ -1811,6 +1812,37 @@ test("PG18 TCP: native HTTPS approval -> independent private mTLS Broker -> dura
       assert.equal((await admin.query('SELECT count(*)::integer AS n FROM agentstudio.agent_optimization_links')).rows[0].n,2)
       assert.deepEqual((await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0],optimizationHttpBefore)
     }finally{await optimizationHttpRecovery.close()}
+    mark("optional-review-readonly-source-preparation")
+    // Source/input preparation only: no paid request, new Worker or provider.
+    const reviewSources=new AgentReviewSourceRepository(apiPool),reviewRole=await new AgentSpecRepository(apiPool).get(memoryIdentity,memoryRole.id),reviewTasks=[]
+    for(let i=0;i<2;i++){
+      const started=await feedbackOwned.submit(memoryIdentity,reviewRole.id,{expected_revision:reviewRole.revision,max_steps:1,require_plan_review:false,idempotency_key:'ci-readonly-review-source-'+i,instruction:'Synthetic review original private task '+i+' token=syntheticReviewTcpTask'})
+      await feedbackOwned.cancel(memoryIdentity,started.run.id)
+      const state=await feedbackSql.status(memoryIdentity,started.run.id),body={action:'submit',request_id:randomUUID(),spec_id:reviewRole.id,run_id:started.run.id,expected_revision:0,expected_source_sha256:state.source.source_sha256,rating:'down',tags:['核对😀'],comment:'Synthetic selected employee statement '+i+' token=syntheticReviewTcpFeedback',remember_lesson:false,confirm:true}
+      reviewTasks.push({runId:started.run.id,body,receipt:await feedbackSql.change(memoryIdentity,body)})
+    }
+    const reviewAnchor=await reviewSources.source(memoryIdentity,{purpose:'optimize',spec_id:reviewRole.id,run_id:reviewTasks[0].runId})
+    const paidReviewChoice={action:'preview',purpose:'optimize',spec_id:reviewRole.id,run_id:reviewTasks[0].runId,expected_source_sha256:reviewAnchor.expected_source_sha256,expected_spec_revision:reviewAnchor.expected_spec_revision,expected_spec_sha256:reviewAnchor.expected_spec_sha256,model_binding:reviewRole.spec.model_binding,output_token_limit:2048,feedback_sources:reviewTasks.map(s=>({run_id:s.runId,feedback_id:s.receipt.feedback_id,feedback_sha256:s.receipt.feedback_sha256})),evaluation_sources:[]}
+    const reviewCounts=async()=>(await admin.query('SELECT (SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects,(SELECT count(*) FROM agentstudio.agent_optimization_links)::integer AS accepted,(SELECT count(*) FROM agentstudio.audit_events)::integer AS audits')).rows[0]
+    const reviewBefore=await reviewCounts(),preparedReview=await reviewSources.preview(memoryIdentity,paidReviewChoice)
+    assert.equal(preparedReview.recorded,false);assert.equal(preparedReview.source_protocol,'employee_statement_anchor_v1');assert.equal(JSON.parse(preparedReview.messages[1].content).task,null);assert.equal(JSON.parse(preparedReview.messages[1].content).employee_statements.length,2);assert.doesNotMatch(JSON.stringify(preparedReview.messages),/syntheticReviewTcpTask|syntheticReviewTcpFeedback|checkpoint|model_binding|api_key_ciphertext/)
+    const reviewConcurrent=await Promise.all([reviewSources.preview(memoryIdentity,paidReviewChoice),reviewSources.preview(memoryIdentity,{...paidReviewChoice,feedback_sources:[...paidReviewChoice.feedback_sources].reverse()})]);assert.ok(reviewConcurrent.every(v=>v.recorded===false));assert.notEqual(reviewConcurrent[0].input_sha256,reviewConcurrent[1].input_sha256)
+    await assert.rejects(reviewSources.preview(foreignOptimizationIdentity,paidReviewChoice),e=>e.status===404)
+    const reviewEvaluationAnchor=await reviewSources.source(memoryIdentity,{purpose:'evaluate',spec_id:reviewRole.id,run_id:reviewTasks[0].runId}),reviewEvaluation={...paidReviewChoice,purpose:'evaluate',feedback_sources:[],expected_source_sha256:reviewEvaluationAnchor.expected_source_sha256}
+    const evaluatedInput=await reviewSources.preview(memoryIdentity,reviewEvaluation);assert.equal(evaluatedInput.source_protocol,'current_task_delivery_v1');assert.equal(JSON.parse(evaluatedInput.messages[1].content).task.status,'cancelled')
+    assert.deepEqual(await reviewCounts(),reviewBefore)
+    const correctedReviewFeedback=await feedbackSql.change(memoryIdentity,{...reviewTasks[0].body,request_id:randomUUID(),expected_revision:1});assert.equal(correctedReviewFeedback.statement_sha256,reviewTasks[0].receipt.statement_sha256)
+    await assert.rejects(reviewSources.preview(memoryIdentity,paidReviewChoice),e=>e.code==='agent_review_feedback_changed')
+    const freshReviewChoice={...paidReviewChoice,feedback_sources:[{run_id:reviewTasks[0].runId,feedback_id:correctedReviewFeedback.feedback_id,feedback_sha256:correctedReviewFeedback.feedback_sha256},paidReviewChoice.feedback_sources[1]]}
+    await admin.query("UPDATE agentstudio.runs SET checkpoint='{}'::jsonb,result_text='Synthetic unselected old review delivery' WHERE id=$1",[reviewTasks[0].runId])
+    await assert.rejects(reviewSources.preview(memoryIdentity,reviewEvaluation),e=>e.status===409)
+    const quotesOnly=await reviewSources.preview(memoryIdentity,freshReviewChoice);assert.equal(JSON.parse(quotesOnly.messages[1].content).task,null);assert.doesNotMatch(quotesOnly.messages[1].content,/Synthetic unselected old review delivery/)
+    const paidReviewOwner=await withActor(apiPool,memoryIdentity,async(_db,owner)=>owner)
+    await admin.query('UPDATE agentstudio_auth.accounts SET governance_revision=governance_revision+2 WHERE user_id=$1',[paidReviewOwner])
+    const epochChangedReview=await reviewSources.preview(memoryIdentity,freshReviewChoice);assert.equal(epochChangedReview.content_sha256,quotesOnly.content_sha256);assert.notEqual(epochChangedReview.input_sha256,quotesOnly.input_sha256)
+    await feedbackClosed.change(memoryIdentity,{action:'erase_feedback',request_id:randomUUID(),spec_id:reviewRole.id,run_id:reviewTasks[0].runId,expected_revision:2,expected_feedback_sha256:correctedReviewFeedback.feedback_sha256,confirm:true})
+    await assert.rejects(reviewSources.preview(memoryIdentity,freshReviewChoice),e=>e.code==='agent_review_feedback_changed')
+    assert.equal((await reviewCounts()).effects,reviewBefore.effects);assert.equal((await reviewCounts()).accepted,reviewBefore.accepted)
     mark("completed")
   }catch(error){
     process.stderr.write("PG18_SYNTHETIC_FAILURE "+phase+" "+(typeof error?.code==="string"?error.code:"test_failure")+"\n")
