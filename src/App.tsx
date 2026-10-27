@@ -11,6 +11,10 @@ const PG_PILOT_LOCAL_ONLY = import.meta.env.DEV &&
 const PgPilotRoute = PG_PILOT_LOCAL_ONLY
   ? lazy(() => import("./pages/PgPilot/PgPilotPage.tsx"))
   : null
+const PG_NATIVE_LOCAL_ONLY=import.meta.env.DEV &&
+  import.meta.env.VITE_AGENT_STUDIO_PG_NATIVE_LOCAL_UI_ENABLED === "true"
+const PgNativePilotRoute=PG_NATIVE_LOCAL_ONLY
+  ?lazy(()=>import("./pages/PgNativePilot/PgNativePilotPage.tsx")):null
 const HomeRoute = lazy(() => import("./pages/Home/index.tsx"))
 const InternalOverviewRoute = lazy(() => import("./pages/InternalOverview/index.tsx"))
 const InternalTemplatesRoute = lazy(() => import("./pages/InternalTemplates/index.tsx"))
@@ -71,6 +75,7 @@ function App() {
   return <Suspense fallback={<RouteLoading />}>
     <Routes>
       {PgPilotRoute && <Route path="/pg-pilot" element={<PgPilotRoute />} />}
+      {PgNativePilotRoute && <Route path="/pg-native-pilot" element={<PgNativePilotRoute />} />}
       <Route path="/login" element={<LoginRoute />} />
       <Route element={<AuthGate />}>
         <Route path="/" element={<HomeRoute />} />

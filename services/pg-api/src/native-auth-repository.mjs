@@ -3,6 +3,8 @@
 // Must run via an isolated non-superuser login that can SET ROLE to
 // agentstudio_native_auth. Business API/Worker roles must NEVER join that group.
 import {randomUUID} from "node:crypto"
+import {NativeEmployeeGovernanceRepository} from "./native-employee-governance.mjs"
+import {inspectEmployeeGovernance} from "./native-employee-governance-audit.mjs"
 import {
   normalizeEmployeeEmail,verifyEmployeePassword,hashEmployeePassword,
   validateEmployeePassword,validateEmployeeDisplayName,
@@ -40,7 +42,12 @@ function asDate(value){
   return Number.isFinite(d.getTime())?d:null
 }
 export class NativeAuthRepository{
-  constructor(pool){this.pool=pool}
+  constructor(pool){this.pool=pool;this.governance=new NativeEmployeeGovernanceRepository(pool,withNativeAuth)}
+  inspectEmployeeGovernance(){return withNativeAuth(this.pool,db=>inspectEmployeeGovernance(db))}
+  changeEmployee(token,choice){return this.governance.change(token,choice)}
+  confirmEmployeeChange(token,choice){return this.governance.confirm(token,choice)}
+  createGovernedEmployee(token,choice){return this.governance.create(token,choice)}
+  changePassword(token,choice){return this.governance.changePassword(token,choice)}
   // Operator-only bootstrap entry point. Never expose as an HTTP route.
   // Exclusive transaction-scoped lock makes parallel first-admin attempts
   // mutually exclusive across server processes and authenticated sessions.
@@ -133,7 +140,7 @@ export class NativeAuthRepository{
     catch{return null}
     return await withNativeAuth(this.pool,async(db)=>{
       const result=await db.query(
-        "SELECT u.id,u.external_subject,u.display_name,a.email,a.is_admin "+
+        "SELECT u.id,u.external_subject,u.display_name,a.email,a.is_admin,(to_jsonb(a)->>'share_enabled')::boolean AS share_enabled "+
         "FROM agentstudio_auth.sessions s "+
         "JOIN agentstudio_auth.accounts a ON a.user_id=s.user_id "+
         "JOIN agentstudio.users u ON u.id=s.user_id "+
@@ -145,7 +152,7 @@ export class NativeAuthRepository{
       return row&&typeof row.external_subject==="string"&&
         row.external_subject.length>0&&row.external_subject.length<=255
         ?{id:row.id,email:row.email,display_name:row.display_name,
-          is_admin:row.is_admin===true,
+          is_admin:row.is_admin===true,share_enabled:row.share_enabled!==false,
           identity:{issuer:NATIVE_LOCAL_ISSUER,subject:row.external_subject}}
         :null
     })
@@ -153,6 +160,26 @@ export class NativeAuthRepository{
   async verifySession(token){
     const profile=await this.getSessionProfile(token)
     return profile?.identity??null
+  }
+  // Server-internal exact recipient resolution, after Native Cookie identity
+  // verification. Never expose as employee search or accept a browser actor ID.
+  // The business pool receives only id/name; no auth schema privileges change.
+  async resolveKnowledgeRecipient(identity,email){
+    if(identity?.issuer!==NATIVE_LOCAL_ISSUER||typeof identity.subject!=="string"||
+      !identity.subject||identity.subject.length>255)throw Error("native_employee_identity_required")
+    const normalized=normalizeEmployeeEmail(email)
+    return await withNativeAuth(this.pool,async db=>{
+      const caller=(await db.query("SELECT u.id FROM agentstudio.users u "+
+        "JOIN agentstudio_auth.accounts a ON a.user_id=u.id AND a.enabled=true "+
+        "WHERE u.external_issuer=$1 AND u.external_subject=$2 AND u.status='active'",
+        [NATIVE_LOCAL_ISSUER,identity.subject])).rows[0]
+      if(!caller)throw Error("native_employee_identity_required")
+      const row=(await db.query("SELECT u.id,u.display_name FROM agentstudio_auth.accounts a "+
+        "JOIN agentstudio.users u ON u.id=a.user_id AND u.status='active' "+
+        "WHERE a.email=$1 AND a.enabled=true AND u.external_issuer=$2 AND u.id<>$3::uuid",
+        [normalized,NATIVE_LOCAL_ISSUER,caller.id])).rows[0]
+      return row?{id:row.id,display_name:row.display_name}:null
+    })
   }
   async listEmployees(adminSessionToken,limit=50){
     const bounded=Number.isSafeInteger(limit)?Math.max(1,Math.min(100,limit)):50
@@ -172,18 +199,22 @@ export class NativeAuthRepository{
         throw Error("admin_session_required")
       const result=await db.query(
         "SELECT u.id,a.email,u.display_name,a.is_admin,a.enabled,u.status,"+
-        "u.created_at FROM agentstudio_auth.accounts a "+
+        "u.created_at,(to_jsonb(a)->>'share_enabled')::boolean AS share_enabled,(to_jsonb(a)->>'governance_revision')::bigint AS governance_revision FROM agentstudio_auth.accounts a "+
         "JOIN agentstudio.users u ON u.id=a.user_id "+
         "WHERE u.external_issuer=$1 ORDER BY u.created_at DESC,u.id "+
         "LIMIT $2::int",[NATIVE_LOCAL_ISSUER,bounded])
       return result.rows.map(row=>({
         id:row.id,email:row.email,display_name:row.display_name,
         is_admin:row.is_admin===true,enabled:row.enabled===true,
-        status:row.status,created_at:row.created_at,
+        status:row.status,created_at:row.created_at,share_enabled:row.share_enabled!==false,revision:Number(row.governance_revision??1),
       }))
     })
   }
   async provisionEmployee(adminSessionToken,{email,password,display_name}){
+    // Keep the compatibility endpoint inside the same private governance audit
+    // once047 is installed. It cannot create an administrator or omit a receipt.
+    if(await this.inspectEmployeeGovernance())return this.createGovernedEmployee(adminSessionToken,
+      {email,password,display_name,is_admin:false,share_enabled:true})
     const normalized=normalizeEmployeeEmail(email)
     validateEmployeePassword(password)
     const display=validateEmployeeDisplayName(display_name)

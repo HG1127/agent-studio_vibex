@@ -15,10 +15,11 @@ const allowedMimes=new Set([
 export function parserProcessCount():number {return activeParsers}
 
 export async function parseDocumentIsolated(
-  raw:unknown,timeoutMs=12000,
+  raw:unknown,timeoutMs=12000,profile:"pilot"|"employee"="pilot",
 ):Promise<ParsedDocument> {
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>12000)
     throw new Error("invalid_parser_timeout")
+  if(profile!=="pilot"&&profile!=="employee")throw new HttpError(400,"invalid_parser_profile")
   if(!raw||typeof raw!=="object"||Array.isArray(raw))
     throw new HttpError(400,"invalid_document_request")
   const input=raw as Record<string,unknown>
@@ -74,8 +75,8 @@ export async function parseDocumentIsolated(
         if(result.ok===true){
           const parsed=result.parsed
           if(!parsed||typeof parsed.filename!=="string"||
-             parsed.filename.length>120||typeof parsed.text!=="string"||
-             Array.from(parsed.text).length>12000||
+             parsed.filename.length>(profile==="employee"?180:120)||typeof parsed.text!=="string"||
+             Array.from(parsed.text).length>(profile==="employee"?160000:12000)||
              !allowedMimes.has(parsed.mime_type))
             return finish(new HttpError(422,"document_parse_failed"))
           return finish(undefined,parsed)
@@ -90,7 +91,7 @@ export async function parseDocumentIsolated(
       timer=setTimeout(()=>{
         finish(new HttpError(422,"document_parse_timeout"))
       },timeoutMs)
-      child.send(raw,error=>{
+      child.send({input:raw,profile},error=>{
         if(error)finish(new HttpError(422,"document_parse_failed"))
       })
     }catch{

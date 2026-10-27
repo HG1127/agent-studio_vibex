@@ -1,3 +1,5 @@
+-- BASELINE-ONLY: 001 plus010 schema before Native login activation.
+-- Full019..043 runtime uses pg18-runtime-postcheck-cli.mjs with an explicit stage.
 -- BaoTa PostgreSQL 18 — Native Auth SCHEMA POST-CHECK, READ ONLY.
 -- Run ONLY after an approved 010 migration on agent_studio:5333.
 -- This does NOT enable login, read sensitive hashes, start HTTP, or modify roles.

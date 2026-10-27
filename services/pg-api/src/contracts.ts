@@ -1,4 +1,10 @@
 // V8 standalone API pilot. Current V7 PocketBase runtime remains authoritative.
+import {parseWorkflowGraphV2,InvalidWorkflowGraphV2,type WorkflowNodeType,type WorkflowNode,type WorkflowEdge,type WorkflowGraph} from "./workflow-graph-v2.ts"
+import {parseAgentHttpTools,type AgentHttpTool} from "./agent-http-tools.ts"
+import {parseAgentMcpTools,type AgentMcpTool} from "./mcp-binding.ts"
+import {parseKnowledgeRetrievalBinding,type KnowledgeRetrievalBinding} from "./knowledge-retrieval-binding.ts"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
+export type {WorkflowNodeType,WorkflowNode,WorkflowEdge,WorkflowGraph} from "./workflow-graph-v2.ts"
 export type Identity = { issuer: string; subject: string }
 
 export interface QueryResult<Row> { rows: Row[] }
@@ -9,6 +15,13 @@ export interface SqlClient {
   release(): void
 }
 export interface SqlPool {
+  /** Trusted service configuration only; never derived from request fields. */
+  readonly knowledgeSharing?:boolean
+  readonly knowledgeEmbeddingSettings?:boolean
+  readonly knowledgeEmbeddingConsent?:boolean
+  readonly knowledgeIndexRuntime?:boolean
+  readonly knowledgeQueryRuntime?:boolean
+  readonly knowledgeToolRuntime?:boolean
   connect(): Promise<SqlClient>
 }
 
@@ -23,6 +36,7 @@ export class HttpError extends Error {
 }
 
 export interface AgentSpecInput {
+  require_plan_review?:boolean
   model_binding?:{
     connection_id:string
     connection_revision:number
@@ -34,7 +48,10 @@ export interface AgentSpecInput {
   task_plan: string[]
   done_criteria: string[]
   tools: string[]
+  http_tools?:AgentHttpTool[]
+  mcp_tools?:AgentMcpTool[]
   knowledge_base_ids: string[]
+  knowledge_retrieval?:KnowledgeRetrievalBinding
   require_approval: true
 }
 
@@ -43,13 +60,13 @@ const allowedTools=new Set([
 ])
 
 function field(value:unknown,max:number): string {
-  if(typeof value!=="string" || value.length>max) throw new HttpError(400,"invalid_agent_spec")
+  if(typeof value!=="string" || value.length>max||value.includes("\0")) throw new HttpError(400,"invalid_agent_spec")
   return value.trim()
 }
-function textList(value:unknown):string[] {
+function textList(value:unknown,maxItems=20,maxItem=300):string[] {
   if(value===undefined)return []
-  if(!Array.isArray(value) || value.length>20)throw new HttpError(400,"invalid_agent_spec")
-  return value.map(v=>field(v,300))
+  if(!Array.isArray(value) || value.length>maxItems)throw new HttpError(400,"invalid_agent_spec")
+  return value.map(v=>field(v,maxItem))
 }
 function knowledgeBaseIds(value:unknown,tools:readonly string[]):string[]{
   if(value===undefined)return []
@@ -59,7 +76,7 @@ function knowledgeBaseIds(value:unknown,tools:readonly string[]):string[]{
     throw new HttpError(400,"invalid_agent_knowledge_scope")
   return [...value]
 }
-function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
+export function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
   if(raw===undefined||raw===null)return undefined
   if(!raw||typeof raw!=="object"||Array.isArray(raw))
     throw new HttpError(400,"invalid_agent_model_binding")
@@ -80,27 +97,44 @@ function safeModelBinding(raw:unknown):AgentSpecInput["model_binding"]{
 export function safeAgentSpec(raw:unknown):AgentSpecInput {
   if(!raw || typeof raw!=="object" || Array.isArray(raw))throw new HttpError(400,"invalid_agent_spec")
   const data=raw as Record<string,unknown>
-  const goal=field(data.goal,2000)
+  const goal=field(data.goal,roleLimits.goal)
   if(!goal)throw new HttpError(400,"invalid_agent_spec")
   const tools=textList(data.tools)
-  if(tools.some(t=>!allowedTools.has(t)))throw new HttpError(400,"unknown_tool")
+  let httpTools:AgentHttpTool[]
+  try{httpTools=parseAgentHttpTools(data.http_tools)}catch{throw new HttpError(400,"invalid_agent_http_tools")}
+  const customNames=new Set(httpTools.map(tool=>tool.name))
+  let mcpTools:AgentMcpTool[]
+  try{mcpTools=parseAgentMcpTools(data.mcp_tools)}catch{throw new HttpError(400,"invalid_agent_mcp_tools")}
+  mcpTools.forEach(tool=>customNames.add(tool.name))
+  if(tools.some(t=>!allowedTools.has(t)&&!customNames.has(t)))throw new HttpError(400,"unknown_tool")
+  if(httpTools.some(tool=>!tools.includes(tool.name)))throw new HttpError(400,"invalid_agent_http_tools")
+  if(mcpTools.some(tool=>!tools.includes(tool.name)))throw new HttpError(400,"invalid_agent_mcp_tools")
   // Only owner-validated model-connection IDs may enter a spec; never
   // accept passwords, API keys, provider URL overrides or worker tokens.
   const permitted=new Set([
     "goal","task_scope","deliverables","task_plan","done_criteria","tools",
-    "knowledge_base_ids","model_binding",
+    "knowledge_base_ids","knowledge_retrieval","model_binding","http_tools","mcp_tools","require_plan_review",
   ])
   if(Object.keys(data).some(k=>!permitted.has(k)))throw new HttpError(400,"unsafe_agent_spec_field")
+  if(Object.hasOwn(data,"require_plan_review")&&typeof data.require_plan_review!=="boolean")throw new HttpError(400,"invalid_agent_plan_review")
   const modelBinding=safeModelBinding(data.model_binding)
+  let retrieval:KnowledgeRetrievalBinding|undefined
+  try{retrieval=parseKnowledgeRetrievalBinding(data.knowledge_retrieval)}catch{throw new HttpError(400,"invalid_agent_knowledge_retrieval")}
+  if(retrieval&&(!Array.isArray(data.knowledge_base_ids)||!data.knowledge_base_ids.length||!tools.includes("knowledge_search")||
+    [...httpTools,...mcpTools].some(tool=>tool.name==="knowledge_search")))throw new HttpError(400,"invalid_agent_knowledge_retrieval")
   return {
-    goal, task_scope:data.task_scope===undefined?"":field(data.task_scope,2000),
-    deliverables:textList(data.deliverables),
-    task_plan:textList(data.task_plan),
-    done_criteria:textList(data.done_criteria),
+    goal, task_scope:data.task_scope===undefined?"":field(data.task_scope,roleLimits.task_scope),
+    deliverables:textList(data.deliverables,roleLimits.list_items,roleLimits.list_item),
+    task_plan:textList(data.task_plan,roleLimits.list_items,roleLimits.list_item),
+    done_criteria:textList(data.done_criteria,roleLimits.list_items,roleLimits.list_item),
     tools:[...new Set(tools)],
+    ...(httpTools.length?{http_tools:httpTools}:{}),
+    ...(mcpTools.length?{mcp_tools:mcpTools}:{}),
     knowledge_base_ids:knowledgeBaseIds(data.knowledge_base_ids,tools),
+    ...(retrieval?{knowledge_retrieval:retrieval}:{}),
     ...(modelBinding?{model_binding:modelBinding}:{}),
     require_approval:true,
+    ...(Object.hasOwn(data,"require_plan_review")?{require_plan_review:data.require_plan_review as boolean}:{}),
   }
 }
 export function safeName(raw:unknown):string {
@@ -112,26 +146,9 @@ export function isUuid(raw:unknown):raw is string {
   return typeof raw==="string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
 }
-// Workflow storage pilot only. Graph nodes intentionally exclude runnable
-// model prompts, HTTP URLs, credentials, resource IDs, and tool arguments.
-// This skeleton is NOT an executable Workflow.
-export type WorkflowNodeType =
-  "start" | "end" | "model" | "tool" | "agent" | "condition" | "loop"
-export interface WorkflowNode {
-  id:string
-  type:WorkflowNodeType
-  data:{title:string}
-  position:{x:number;y:number}
-}
-export interface WorkflowEdge {
-  id:string
-  source:string
-  target:string
-}
-export interface WorkflowGraph {
-  nodes:WorkflowNode[]
-  edges:WorkflowEdge[]
-}
+// Unversioned graphs retain the original title-only storage contract.
+// Explicit version 2 adds bounded node configuration and owner-checked resource
+// revisions. Neither format alone authorizes model/tool/Workflow execution.
 const workflowTypes=new Set([
   "start","end","model","tool","agent","condition","loop",
 ])
@@ -149,6 +166,10 @@ function graphId(value:unknown):string {
 }
 export function safeWorkflowGraph(raw:unknown):WorkflowGraph {
   const input=object(raw)
+  if(input.version===2){
+    try{return parseWorkflowGraphV2(input)}
+    catch(error){if(error instanceof InvalidWorkflowGraphV2)graphError();throw error}
+  }
   onlyFields(input,["nodes","edges"])
   if(!Array.isArray(input.nodes) || !Array.isArray(input.edges) ||
      input.nodes.length<2 || input.nodes.length>40 || input.edges.length>100)

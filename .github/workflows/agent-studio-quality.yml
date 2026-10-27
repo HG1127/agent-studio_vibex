@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'shared/**'
       - 'vibex-local/start-*'
       - 'pocketbase/pb_hooks/**'
       - 'worker/**'
@@ -753,3 +754,250 @@ jobs:
         run: pnpm test:knowledge
       - name: V6 to V7 database upgrade and idempotency
         run: pnpm test:migrations
+
+  pg-workflow-v2-config:
+    name: Workflow V2 configuration / native Cookie / owner RLS (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Typed configuration and real embedded SQL / Native Cookie / audit rollback
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:workflow-v2-config
+
+  pg-workflow-v2-runtime:
+    name: Workflow V2 replay / approvals / leases / uncertain effects (synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Typed runtime / real embedded SQL / Native Cookie / no-replay fault tests
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:workflow-v2-runtime
+          pnpm --dir services/pg-api test:schedule-runtime
+          pnpm --dir services/pg-api test:agent-collaboration
+          pnpm --dir services/pg-api test:agent-releases
+
+  pg18-human-input-domain:
+    name: Native owner clarification and plan-review domain
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout isolated migration candidate
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Types and real embedded SQL with private synthetic mTLS
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-human-input
+
+  pg18-agent-memory-foundation:
+    name: Native owner memory foundation / no execution grant
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Owner receipts, content erasure and actual embedded SQL isolation
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-memory-foundation
+
+  pg18-agent-feedback-foundation:
+    name: Native employee feedback / no model grant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Native statements, source checks, original receipts and physical erasure
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-feedback
+
+  pg18-agent-optimization-foundation:
+    name: Native feedback-linked role acceptance / no provider grant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual owner role transition, immutable lineage and original recovery
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-optimization
+
+  pg18-agent-review-source:
+    name: Native review input / current SQL sources / no provider grant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Purpose contracts, full input projection and actual owner SQL source preparation
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-review-source
+
+  pg18-agent-review-ledger:
+    name: Native review ledger / atomic consent / physical source erasure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Owner admission, private body erasure, original receipts and exact optional schema
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-review-ledger
+
+  pg18-agent-assessment:
+    name: Native private review execution / leases / one effect / erasable output
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Strict private protocol, session roles, SQL lease and irreversible effect/privacy boundaries
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-assessment
+
+  pg18-agent-opinion:
+    name: Native owner opinion read / current sources / erasure and strict schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Strict owner result DTO, actual protected completion, current-source privacy and exact optional schema
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-opinion
+          pnpm --dir services/pg-api test:agent-review-public
+          pnpm --dir services/pg-api test:agent-review-history
+
+  pg18-agent-generated:
+    name: Native generated acceptance / real055 provenance / exact private schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Strict generated protocol, actual055 atomic provenance and exact optional059 audit
+        # This job executes isolated embedded SQL only. The same strict
+        # disposable-target guard is attested; no TCP server is used here.
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-generated

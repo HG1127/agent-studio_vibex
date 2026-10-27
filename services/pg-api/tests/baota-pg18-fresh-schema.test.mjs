@@ -24,7 +24,7 @@ test("real embedded PostgreSQL applies one atomic fresh-schema and least privile
     await pg.exec(loginSqlForTest)
     const verified=await verifyFreshForTest(pg)
     assert.deepEqual(verified,{
-      tables:21,rls:20,pgvector:true,ledger:3,users:0,jobs:0,login_roles:2})
+      tables:23,rls:22,pgvector:true,ledger:3,users:0,jobs:0,login_roles:2})
     await pg.exec("COMMIT")
     const userPassword=(await pg.query(
       "SELECT rolpassword FROM pg_authid WHERE rolname='agentstudio_stage_login'")).rows[0]?.rolpassword

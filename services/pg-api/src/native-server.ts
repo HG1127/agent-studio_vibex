@@ -1,4 +1,43 @@
 #!/usr/bin/env node
+import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
+import {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
+import {verifyKnowledgeEmbeddingConsentSchema} from "./knowledge-embedding-consent-privileges.ts"
+import {scopedKnowledgeIndexPool} from "./knowledge-index-policy.ts"
+import {KnowledgeIndexRepository} from "./knowledge-index-repository.ts"
+import {verifyKnowledgeIndexSchema} from "./knowledge-index-privileges.ts"
+import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
+import {KnowledgeQueryRepository} from "./knowledge-query-repository.ts"
+import {verifyKnowledgeQuerySchema} from "./knowledge-query-audit.ts"
+import {scopedKnowledgeToolPool,verifyKnowledgeToolSchema} from "./knowledge-tool-policy.ts"
+import {KnowledgeEmbeddingRepository} from "./knowledge-embedding-repository.ts"
+import {embeddingEndpointPolicy} from "./knowledge-embedding-policy.ts"
+import {verifyKnowledgeEmbeddingSchema} from "./knowledge-embedding-privileges.ts"
+import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
+import {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
+import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
+import {AgentMemoryRepository} from "./agent-memory-repository.ts"
+import {inspectAgentMemorySchema} from "./agent-memory-audit.ts"
+import {inspectAgentMemoryContextSchema} from "./agent-memory-context-audit.ts"
+import {AgentMemoryDerivedRepository} from "./agent-memory-derived-repository.ts"
+import {inspectAgentMemoryDerivedSchema} from "./agent-memory-derived-audit.ts"
+import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
+import {inspectAgentMemoryFailureSourceSchema} from "./agent-memory-failure-source-audit.ts"
+import {AgentFeedbackRepository} from "./agent-feedback-repository.ts"
+import {inspectAgentFeedbackSchema} from "./agent-feedback-audit.ts"
+import {AgentOptimizationRepository} from "./agent-optimization-repository.ts"
+import {inspectAgentOptimizationSchema} from "./agent-optimization-audit.ts"
+import {inspectAgentAssessmentSchema} from "./agent-assessment-audit.ts"
+import {inspectAgentOpinionSchema} from "./agent-opinion-audit.ts"
+import {AgentOpinionRepository} from "./agent-opinion-repository.ts"
+import {AgentReviewHistoryRepository} from "./agent-review-history-repository.ts"
+import {OwnOperationsRepository,inspectOwnOperationsSchema} from "./own-operations-repository.ts"
+import {createNativeOwnOperationsBusinessHandler} from "./own-operations-http.ts"
+import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
+import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
+import {AgentReviewSourceRepository} from "./agent-review-source.ts"
+import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
+import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
+import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
 // No user identities, service logins or passwords are provisioned here.
 // Requires separate, non-superuser API and auth-service login accounts.
@@ -16,18 +55,37 @@ import {verifyDatabaseRole,AgentSpecRepository} from "./repository.ts"
 import {createNativeRunRepository} from "./native-run-repository.ts"
 import {ScheduleInventoryRepository} from "./schedule-inventory-repository.ts"
 import {ScheduleDraftRepository} from "./schedule-draft-repository.ts"
+import {ScheduleRuntimeRepository} from "./schedule-runtime-repository.ts"
+import {AgentCollaborationRepository} from "./agent-collaboration-repository.ts"
+import {inspectAgentCollaborationSchema} from "./agent-collaboration-audit.ts"
+import {AgentReleaseRepository} from "./agent-release-repository.ts"
+import {inspectAgentReleaseSchema} from "./agent-release-audit.ts"
+import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import {WorkflowRepository} from "./workflow-repository.ts"
 import {WorkflowValidationRepository} from "./workflow-validation-repository.ts"
 import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
+import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {KnowledgeBaseRepository} from "./knowledge-repository.ts"
+import {KnowledgeAccessRepository} from "./knowledge-access-repository.ts"
+import {KnowledgeContentRepository} from "./knowledge-content-repository.ts"
+import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 import {createHandler} from "./http.ts"
 import {NativeAuthRepository} from "./native-auth-repository.mjs"
+import {inspectEmployeeGovernanceSchema} from "./native-employee-governance-audit.mjs"
 import {createNativeAuthHttpHandler} from "./native-auth-http.mjs"
 import {ModelConnectionRepository} from "./model-connection-repository.ts"
 import {ToolConnectionRepository} from "./tool-connection-repository.ts"
+import {McpConnectionRepository} from "./mcp-connection-repository.ts"
+import {createMcpDiscovery} from "./mcp-discovery.ts"
+import {createMcpNetwork} from "./mcp-network.ts"
+import {verifyMcpDiscoveryPrivileges,verifyMcpExecutionSchema} from "./mcp-privileges.ts"
+import {SmitheryRepository} from "./smithery-repository.ts"
+import {createSmitheryNetwork} from "./smithery-network.ts"
+import {verifySmitheryPrivileges} from "./smithery-privileges.ts"
+import {verifyOptionalCredentialBoundary} from "./optional-credential-boundary.ts"
 import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
-import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
+import {selectNativePg18UatCapabilities}
   from "./native-config-uat-policy.ts"
 
 const portDefault=7403
@@ -227,7 +285,7 @@ async function verifyNativeAuthService(pool:SqlPool){
         "WHERE a.enabled AND a.is_admin "+
         "AND u.status='active' AND "+
         "u.external_issuer='urn:agentstudio:local:v1'")).rows[0]
-      if(Number(approved?.active_admins)!==1)reject()
+      if(!approved||!Number.isSafeInteger(Number(approved.active_admins))||Number(approved.active_admins)<1)reject()
       // A compromised role grant must not expose private Agent records,
       // even to the dedicated password verifier identity.
       await client.query("SAVEPOINT native_preflight_access")
@@ -240,6 +298,7 @@ async function verifyNativeAuthService(pool:SqlPool){
       await client.query("ROLLBACK TO SAVEPOINT native_preflight_access")
       await client.query("RELEASE SAVEPOINT native_preflight_access")
       if(!denied)reject()
+      return Number(approved.active_admins)
     }finally{await client.query("ROLLBACK")}
   }finally{client.release()}
 }
@@ -259,7 +318,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const authSecret=safeSecret(files.authFile,listen,env)
   const modelKeySecret=safeSecret(files.modelKeyFile,listen,env)
   const brokerFile=nativeBrokerCredentialConfig(
-    env,listen,capabilities.modelProbeUat)
+    env,listen,capabilities.modelProbeUat||capabilities.mcpDiscoveryUat===true||capabilities.smitheryManagementUat===true)
   const brokerSecret=brokerFile?safeSecret(brokerFile,listen,env):null
   const {parseModelEncryptionKey}=await import("./model-connection-crypto.ts")
   const modelEncryptionKey=parseModelEncryptionKey(modelKeySecret.password)
@@ -281,14 +340,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
+  const business=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true),capabilities.knowledgeQueryRuntimeUat===true),capabilities.knowledgeToolExecutionUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
   try{
-    await verifyPgRuntimeTarget(adapter(businessPool),cfg.api)
-    await verifyDatabaseRole(adapter(businessPool))
-    await verifyNativeAuthService(adapter(authPool))
+    await verifyPgRuntimeTarget(business,cfg.api)
+    await verifyDatabaseRole(business)
+    const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
       // Read-only, before opening HTTP. The model secret broker must be
       // independent of both regular API and Worker login membership.
@@ -311,38 +371,102 @@ export async function startNativePg18Server(env=process.env,listen=true){
           if(!role||role.role!=="agentstudio_model_broker"||
              role.api!==false||role.worker!==false||
              role.keyReadable!==true||role.writeAllowed!==false)reject()
+          await verifyOptionalCredentialBoundary({
+            async query<Row>(sql:string,params:unknown[]=[]){const value=await db.query(sql,params);return {rows:value.rows as Row[]}},
+            release(){/* The enclosing transaction owns this connection. */},
+          },"broker")
         }finally{await db.query("ROLLBACK")}
       }finally{db.release()}
     }
     // A separate, strictly read-only deployment preflight never opens HTTP.
+    if(capabilities.mcpDiscoveryUat===true){
+      if(!brokerPool)reject()
+      await verifyMcpDiscoveryPrivileges(business,adapter(brokerPool))
+    }
+    if(capabilities.mcpToolExecutionUat===true)await verifyMcpExecutionSchema(business)
+    if(capabilities.smitheryManagementUat===true){
+      if(!brokerPool)reject()
+      await verifyMcpDiscoveryPrivileges(business,adapter(brokerPool))
+      await verifySmitheryPrivileges(business,adapter(brokerPool))
+    }
+    await verifyKnowledgeAgentSchema(business)
+    await verifyWorkflowSampleLineageSchema(business)
+    if(capabilities.knowledgeSharingUat===true||capabilities.workflowV2ExecutionUat===true||capabilities.autonomousAgentUat===true)await verifyKnowledgeRuntimeSchema(business,true)
+    if(capabilities.knowledgeEmbeddingSettingsUat===true)await verifyKnowledgeEmbeddingSchema(business)
+    if(capabilities.knowledgeEmbeddingConsentUat===true)await verifyKnowledgeEmbeddingConsentSchema(business)
+    if(capabilities.knowledgeIndexRuntimeUat===true)await verifyKnowledgeIndexSchema(business)
+    if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
+    if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
+    if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
+    const employeeGovernanceAvailable=await inspectEmployeeGovernanceSchema(business)
+    const collaborationAvailable=await inspectAgentCollaborationSchema(business)
+    const releasesAvailable=await inspectAgentReleaseSchema(business)
+    const humanInputAvailable=await inspectAgentHumanInputSchema(business)
+    const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
+    const derivedMemoryAvailable=await inspectAgentMemoryDerivedSchema(business)
+    const outcomeMemoryAvailable=await inspectAgentMemoryOutcomeSchema(business)
+    const ownOperationsAvailable=await inspectOwnOperationsSchema(business,outcomeMemoryAvailable)
+    await inspectAgentMemoryFailureSourceSchema(business)
+    const feedbackAvailable=await inspectAgentFeedbackSchema(business)
+    const optimizationAvailable=await inspectAgentOptimizationSchema(business)
+    // Optional056 must be complete even while every paid-review flow is closed.
+    await inspectAgentReviewSchema(business)
+    // Optional057 is audited even when no review execution service is mounted.
+    await inspectAgentAssessmentSchema(business)
+    // Optional058 may expose private result reads only with its exact schema.
+    const reviewAvailable=await inspectAgentOpinionSchema(business)
+    // Optional059 is fully audited even with every fresh write scope closed.
+    const generatedAcceptanceAvailable=await inspectAgentGeneratedSchema(business)
+    if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
+    if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
+    if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
+    if(capabilities.agentFeedbackUat===true&&!feedbackAvailable)throw Error("agent_feedback_schema_required")
+    if(capabilities.agentOptimizationUat===true&&!optimizationAvailable)throw Error("agent_optimization_schema_required")
+    if(capabilities.agentReviewSubmissionUat===true&&!reviewAvailable)throw Error("agent_review_schema_required")
+    if(capabilities.agentGeneratedAcceptanceUat===true&&!generatedAcceptanceAvailable)throw Error("agent_generated_schema_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
       return {mode:"preflight",ready:true,target:"agent_studio",
-        verified_roles:2,verified_active_admins:1,
+        verified_roles:2,verified_active_admins:verifiedActiveAdmins,
         writes_performed:false,port_opened:false,
         workers_started:false,production_cutover_allowed:false}
     }
     const auth=new NativeAuthRepository(adapter(authPool))
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+      allowOwnOperations:ownOperationsAvailable,
+      allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
+      allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
+      allowSmitheryManagement:capabilities.smitheryManagementUat===true,
+      allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
+      allowKnowledgeEmbeddingSettings:capabilities.knowledgeEmbeddingSettingsUat===true,
+      allowKnowledgeEmbeddingConsent:capabilities.knowledgeEmbeddingConsentUat===true,
+      allowKnowledgeIndexRuntime:capabilities.knowledgeIndexRuntimeUat===true,
+      allowKnowledgeQueryRuntime:capabilities.knowledgeQueryRuntimeUat===true,
+      allowKnowledgeToolExecution:capabilities.knowledgeToolExecutionUat===true,
+      allowMcpToolExecution:capabilities.mcpToolExecutionUat===true,
+      allowRunSubmission:capabilities.runApprovalUat,
+      allowBoundRunSubmission:capabilities.boundModelExecutionUat===true,
       allowWorkflowValidation:capabilities.workflowValidationUat===true,
       allowWorkflowExecution:capabilities.workflowExecutionUat===true,
+      allowAutonomousAgentSubmission:capabilities.autonomousAgentUat===true,
+      allowWorkflowV2Submission:capabilities.workflowV2ExecutionUat===true,
+      allowScheduleRuntime:capabilities.scheduleRuntimeUat===true,
+      allowAgentCollaboration:collaborationAvailable,
+      allowAgentReleases:releasesAvailable,
+      allowAgentHumanInput:humanInputAvailable,
+      allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
+      allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
+      allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
+      allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
+      allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
+      allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
+      allowAgentDerivedMemory:derivedMemoryAvailable,allowAgentDerivedMemoryWrites:capabilities.agentDerivedMemoryUat===true,
       allowEmployeeProvisioning:capabilities.employeeProvisioning,
       businessHandler:(req:IncomingMessage,res:ServerResponse)=>{
-        // Only verified employee identity (in createHandler) may mutate an
-        // owner-owned config. Never admit runs, approvals, tool effects or
-        // knowledge imports through this opt-in test service.
-        const pathname=new URL(req.url||"/","http://127.0.0.1").pathname
-        if(!permitNativePg18BusinessUatRequest(
-          pathname,req.method||"",capabilities)){
-          res.writeHead(405,{"Content-Type":"application/json; charset=utf-8",
-            "Cache-Control":"no-store"})
-          res.end(JSON.stringify({error:"pilot_business_writes_disabled"}))
-          return
-        }
         if(!businessHandler)throw Error("business_handler_unavailable")
         return businessHandler(req,res)
       }})
@@ -350,12 +474,27 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
-      repository:new AgentSpecRepository(adapter(businessPool)),
+      repository:new AgentSpecRepository(business),
+      ...(generatedAcceptanceAvailable?{agentGeneratedAcceptanceRepository:new AgentGeneratedAcceptanceRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentGeneratedAcceptanceUat===true})}:{}),
+      ...(reviewAvailable?{agentReviewSourceRepository:new AgentReviewSourceRepository(business),
+        agentReviewLedgerRepository:new AgentReviewLedgerRepository(business,{allowSubmissions:capabilities.configurationWrites===true&&capabilities.agentReviewSubmissionUat===true}),
+        agentOpinionRepository:new AgentOpinionRepository(business),agentReviewHistoryRepository:new AgentReviewHistoryRepository(business)}:{}),
+      ...(memoryAvailable?{agentMemoryRepository:new AgentMemoryRepository(business,{allowWrites:capabilities.configurationWrites===true})}:{}),
+      ...(optimizationAvailable?{agentOptimizationRepository:new AgentOptimizationRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true})}:{}),
+      ...(feedbackAvailable?{agentFeedbackRepository:new AgentFeedbackRepository(business,{allowSubmit:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true,allowLessonStorage:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true&&capabilities.agentFeedbackLessonsUat===true})}:{}),
+      ...(outcomeMemoryAvailable?{agentOutcomeMemoryRepository:new AgentMemoryOutcomeRepository(business)}:{}),
+      ...(derivedMemoryAvailable?{agentDerivedMemoryRepository:new AgentMemoryDerivedRepository(business,{allowWrites:capabilities.configurationWrites===true&&capabilities.agentDerivedMemoryUat===true})}:{}),
+      ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
+      ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
+        allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
       modelConnectionRepository:new ModelConnectionRepository(
-        adapter(businessPool),modelEncryptionKey,
-        brokerPool?adapter(brokerPool):adapter(businessPool)),
+        business,modelEncryptionKey,
+        brokerPool?adapter(brokerPool):business),
       toolConnectionRepository:new ToolConnectionRepository(
-        adapter(businessPool),modelEncryptionKey),
+        business,modelEncryptionKey),
+      mcpConnectionRepository:new McpConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),
+      ...(capabilities.mcpDiscoveryUat===true?{mcpDiscovery:createMcpDiscovery(createMcpNetwork())}:{}),
+      ...(capabilities.smitheryManagementUat===true?{smitheryRepository:new SmitheryRepository(business,modelEncryptionKey,adapter(brokerPool!),createSmitheryNetwork())}:{}),
       // Explicit opt-in is required for ANY provider-network egress.
       ...(capabilities.modelProbeUat===true
         ?{modelConnectionProbe:createProviderConnectivityProbe()}:{}),
@@ -364,20 +503,41 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // the SECOND explicit isolated UAT grant is present. Model binding
       // submission additionally requires the independent generation UAT grant.
       // The public API never constructs a provider executor or private Broker.
-      runRepository:createNativeRunRepository(adapter(businessPool),capabilities),
-      workflowRepository:new WorkflowRepository(adapter(businessPool)),
+      runRepository:createNativeRunRepository(business,capabilities),
+      workflowRepository:new WorkflowRepository(business),
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
-      workflowSafeRunRepository:new WorkflowSafeRunRepository(adapter(businessPool)),
+      workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true}),
+      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
+        workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
       // Only a separately approved, inert Start/End-only validation run.
       ...(capabilities.workflowValidationUat===true
         ?{workflowValidationRepository:new WorkflowValidationRepository(
-          adapter(businessPool))}:{}),
-      knowledgeRepository:new KnowledgeBaseRepository(adapter(businessPool)),
-      scheduleInventory:new ScheduleInventoryRepository(adapter(businessPool)),
+          business)}:{}),
+      knowledgeRepository:new KnowledgeBaseRepository(business),
+      ...(capabilities.knowledgeSharingUat===true?{
+        knowledgeAccessRepository:new KnowledgeAccessRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email)),
+        knowledgeContentRepository:new KnowledgeContentRepository(business),
+      }:{}),
+      ...(capabilities.knowledgeEmbeddingSettingsUat===true?{knowledgeEmbeddingRepository:new KnowledgeEmbeddingRepository(business,embeddingEndpointPolicy(process.env))}:{}),
+      ...(capabilities.knowledgeEmbeddingConsentUat===true?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(business)}:{}),
+      ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
+      ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
+      scheduleInventory:new ScheduleInventoryRepository(business),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
-        ?{scheduleDraftRepository:new ScheduleDraftRepository(adapter(businessPool))}:{})
+        ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
+    })
+    // The shared composition applies the original Native global route policy
+    // to BOTH owner metadata and existing business handlers before dispatch.
+    businessHandler=createNativeOwnOperationsBusinessHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      available:ownOperationsAvailable,
+      ...(ownOperationsAvailable?{repository:new OwnOperationsRepository(business)}:{}),
+      policy:capabilities,businessHandler,
     })
     const localServer=createServer(native.handler)
     server=localServer
@@ -398,6 +558,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       provider_probe_uat_enabled:capabilities.modelProbeUat,
       workflow_validation_uat_enabled:capabilities.workflowValidationUat===true,
       workflow_execution_uat_enabled:capabilities.workflowExecutionUat===true,
+      autonomous_agent_submission_uat_enabled:capabilities.autonomousAgentUat===true,
+      workflow_v2_submission_uat_enabled:capabilities.workflowV2ExecutionUat===true,
+      schedule_execution_uat_enabled:capabilities.scheduleRuntimeUat===true,
       workers_started:false,production_cutover_allowed:false})+"\n")
     let shuttingDown=false
     const shutdown=()=>{

@@ -8,7 +8,44 @@ export function createNativeAuthHttpHandler(deps:{
   businessHandler:HttpHandler
   allowConfigurationWrites?:boolean
   allowModelProbe?:boolean
+  allowMcpDiscovery?:boolean
+  allowMcpToolExecution?:boolean
+  allowSmitheryManagement?:boolean
+  allowKnowledgeSharing?:boolean
+  allowKnowledgeEmbeddingSettings?:boolean
+  allowKnowledgeEmbeddingConsent?:boolean
+  allowKnowledgeIndexRuntime?:boolean
+  allowKnowledgeQueryRuntime?:boolean
+  allowKnowledgeToolExecution?:boolean
+  allowRunSubmission?:boolean
+  allowBoundRunSubmission?:boolean
   allowWorkflowValidation?:boolean
   allowWorkflowExecution?:boolean
+  allowAutonomousAgentSubmission?:boolean
+  allowWorkflowV2Submission?:boolean
+  allowScheduleRuntime?:boolean
+  allowAgentCollaboration?:boolean
+  allowAgentReleases?:boolean
+  allowAgentHumanInput?:boolean
+  allowAgentMemory?:boolean
+  allowAgentMemoryRuntime?:boolean
+  allowAgentDerivedMemory?:boolean
+  allowAgentDerivedMemoryWrites?:boolean
+  allowAgentOutcomeMemory?:boolean
+  allowAgentOutcomeMemoryAdmission?:boolean
+  allowAgentFeedback?:boolean
+  allowAgentFeedbackSubmission?:boolean
+  allowAgentFeedbackLessons?:boolean
+  allowAgentOptimization?:boolean
+  allowAgentOptimizationAcceptance?:boolean
+  allowAgentReview?:boolean
+  allowAgentReviewHistory?:boolean
+  allowAgentReviewSubmission?:boolean
+  allowAgentGeneratedAcceptance?:boolean
+  allowAgentGeneratedAcceptanceWrites?:boolean
+  allowOwnOperations?:boolean
+  allowEmployeeGovernance?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}
+export function nativeSessionToken(req:IncomingMessage):string|null
+export function verifyNativeOrigin(req:IncomingMessage,allowedOrigin:string,unsafe?:boolean):void

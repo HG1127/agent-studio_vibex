@@ -5,6 +5,7 @@ import {createHash,randomUUID} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlPool}
   from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import {lockKnowledgeOwner} from "./knowledge-scope-policy.ts"
 
 
 function hasControl(value:string):boolean {
@@ -139,6 +140,7 @@ export class KnowledgeBaseRepository {
   }
   create(identity:Identity,name:string,description:string):Promise<KnowledgeBaseRow> {
     return withActor(this.pool,identity,async(db,actor)=>{
+      await lockKnowledgeOwner(db,actor)
       const result=await db.query<KnowledgeBaseRow>(
         "INSERT INTO agentstudio.knowledge_bases "+
         "(owner_user_id,name,description,visibility) "+
@@ -154,6 +156,7 @@ export class KnowledgeBaseRepository {
     if(!Number.isSafeInteger(revision)||revision<1)
       throw new HttpError(400,"invalid_revision")
     return withActor(this.pool,identity,async(db,actor)=>{
+      await lockKnowledgeOwner(db,actor)
       const result=await db.query<KnowledgeBaseRow>(
         "UPDATE agentstudio.knowledge_bases SET "+
         "name=$3::text,description=$4::text,revision=revision+1,updated_at=now() "+
@@ -284,6 +287,7 @@ export class KnowledgeBaseRepository {
     const documentId=randomUUID()
     const mime=expected
     return withActor(this.pool,identity,async(db,actor)=>{
+      await lockKnowledgeOwner(db,actor)
       const owned=await db.query<{id:string}>(
         "SELECT id FROM agentstudio.knowledge_bases "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND visibility='private'",

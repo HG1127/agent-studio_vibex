@@ -270,7 +270,7 @@ CREATE TABLE agentstudio.external_effects (
   tool_name text NOT NULL,
   arguments_sha256 text NOT NULL CHECK(arguments_sha256 ~ '^[0-9a-f]{64}$'),
   idempotency_key text NOT NULL UNIQUE,
-  status text NOT NULL CHECK(status IN ('started','succeeded','unknown')),
+  status text NOT NULL CHECK(status IN ('started','succeeded','failed','unknown')),
   result_reference text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),

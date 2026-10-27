@@ -4,7 +4,8 @@ import {parseUploadedDocument} from "./document-parser.ts"
 
 process.once("message",async raw=>{
   try{
-    const parsed=await parseUploadedDocument(raw)
+    if(!raw||typeof raw!=="object"||Object.keys(raw).some(key=>!["input","profile"].includes(key)))throw Error("invalid_parser_message")
+    const parsed=await parseUploadedDocument(raw.input,raw.profile)
     if(process.send)process.send({ok:true,parsed},()=>process.exit(0))
     else process.exit(1)
   }catch(error){

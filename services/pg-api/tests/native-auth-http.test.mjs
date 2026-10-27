@@ -180,7 +180,7 @@ test("Native capabilities are authenticated and never browser-controlled",async(
     assert.deepEqual(capabilities.data,{
       mode:"native_pg18",config_writes_enabled:true,run_execution_enabled:false,
       model_probe_enabled:false,workflow_validation_enabled:false,
-      workflow_execution_enabled:false
+      workflow_execution_enabled:false,run_submission_enabled:false,bound_model_runs_enabled:false
     })
     assert.equal((await request(base,"/api/native-auth/capabilities",{
       cookie,bearer:"forged.jwt.token"})).status,401)
@@ -189,6 +189,35 @@ test("Native capabilities are authenticated and never browser-controlled",async(
     assert.equal((await request(base,"/api/native-auth/capabilities",{cookie})).status,401)
   }finally{await new Promise(resolve=>server.close(resolve))}
 })
+test("semantic Tool capability requires its independent flag and every metadata/query prerequisite",async()=>{
+  const complete={allowConfigurationWrites:true,allowKnowledgeSharing:true,allowKnowledgeEmbeddingSettings:true,allowKnowledgeEmbeddingConsent:true,allowKnowledgeQueryRuntime:true,allowKnowledgeToolExecution:true}
+  for(const missing of [null,...Object.keys(complete)]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,businessHandler:(_req,res)=>{res.writeHead(404);res.end()},...complete,...(missing?{[missing]:false}:{})})
+    const {server,base}=await listen(native.handler)
+    try{
+      assert.equal((await request(base,"/api/native-auth/capabilities")).status,401)
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const cookie=login.setCookie.split(";")[0],response=await request(base,"/api/native-auth/capabilities",{cookie,spoofUser:"forged-admin"})
+      assert.equal(response.status,200);assert.equal(response.data.knowledge_tool_runtime_enabled===true,missing===null)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
+test("memory capability needs schema, write scope, standalone admission and its separate runtime grant",async()=>{
+  const complete={allowAgentMemory:true,allowConfigurationWrites:true,allowAutonomousAgentSubmission:true,allowAgentMemoryRuntime:true}
+  for(const missing of [null,...Object.keys(complete)]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,businessHandler:(_req,res)=>{res.writeHead(404);res.end()},...complete,...(missing?{[missing]:false}:{})})
+    const {server,base}=await listen(native.handler)
+    try{
+      assert.equal((await request(base,"/api/native-auth/capabilities")).status,401)
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const response=await request(base,"/api/native-auth/capabilities",{cookie:login.setCookie.split(";")[0],spoofUser:"forged-admin"})
+      assert.equal(response.status,200);assert.equal(response.data.agent_memory_runtime_enabled===true,missing===null)
+      if(missing==='allowAgentMemory')assert.equal(Object.hasOwn(response.data,'agent_memory_available'),false)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
 test("Native capabilities default to read-only even after login",async()=>{
   const native=createNativeAuthHttpHandler({
     auth:authStub(),allowedOrigin:origin,
@@ -210,6 +239,28 @@ test("Native capabilities default to read-only even after login",async()=>{
     assert.equal(capabilities.data.run_execution_enabled,false)
   }finally{await new Promise(resolve=>server.close(resolve))}
 })
+test("owner-bound Run discovery requires all server grants and never advertises Worker activation",async()=>{
+  for(const [config,run,bound,submitAllowed,boundAllowed] of [
+    [false,true,true,false,false],[true,false,true,false,false],
+    [true,true,false,true,false],[true,true,true,true,true],
+  ]){
+    const native=createNativeAuthHttpHandler({auth:authStub(),allowedOrigin:origin,
+      allowConfigurationWrites:config,allowRunSubmission:run,allowBoundRunSubmission:bound,
+      businessHandler:(_req,res)=>{res.writeHead(405);res.end()}})
+    const {server,base}=await listen(native.handler)
+    try{
+      const login=await request(base,"/api/native-auth/login",{method:"POST",csrf:true,
+        originHeader:origin,data:{email:"staff@example.com",password:"correct-password-1234"}})
+      const response=await request(base,"/api/native-auth/capabilities",{
+        cookie:login.setCookie.split(";")[0],spoofUser:"forged-admin"})
+      assert.equal(response.status,200)
+      assert.equal(response.data.run_submission_enabled,submitAllowed)
+      assert.equal(response.data.bound_model_runs_enabled,boundAllowed)
+      assert.equal(response.data.run_execution_enabled,false)
+    }finally{await new Promise(resolve=>server.close(resolve))}
+  }
+})
+
 test("native session cookie parser rejects duplicate and malformed tokens",()=>{
   const token=generateOpaqueSession().token
   assert.equal(nativeSessionToken({headers:{cookie:
@@ -276,4 +327,32 @@ test("native password attempt limiter has time-bound per-identity and per-IP cap
     /login_rate_limited/)
   clock+=60001
   assert.doesNotThrow(()=>limiter.admit("127.0.0.1","user@example.com"))
+})
+
+test("employee governance authenticates Cookie/CSRF and current admin; write-off confirmation is read-only and self password clears Cookie",async()=>{
+  const auth=authStub(),calls=[]
+  for(const name of ["changeEmployee","confirmEmployeeChange","createGovernedEmployee","changePassword"])
+    auth[name]=async(token,body)=>{calls.push({name,body});return name==="changePassword"?{ok:true,reauthenticate:true}:{request_id:body.request_id}}
+  let writes=true
+  const build=()=>createNativeAuthHttpHandler({auth,allowedOrigin:origin,allowConfigurationWrites:writes,allowEmployeeGovernance:true,businessHandler:()=>{}}).handler
+  const {server,base}=await listen((req,res)=>build()(req,res))
+  const credentials={method:"POST",csrf:true,originHeader:origin}
+  try{
+    const admin=await request(base,"/api/native-auth/login",{...credentials,data:{email:"admin@example.com",password:"correct-password-1234"}})
+    const staff=await request(base,"/api/native-auth/login",{...credentials,data:{email:"staff@example.com",password:"correct-password-1234"}})
+    const cookie=admin.setCookie.split(";")[0],staffCookie=staff.setCookie.split(";")[0],route="/api/native-auth/employees/change"
+    assert.equal((await request(base,route,{...credentials,cookie:staffCookie,data:{}})).status,403)
+    assert.equal((await request(base,route,{method:"POST",cookie,data:{}})).status,403)
+    assert.equal((await request(base,route,{...credentials,cookie,bearer:"fake",data:{}})).status,401)
+    assert.equal(calls.length,0)
+    assert.equal((await request(base,route,{...credentials,cookie,data:{request_id:"synthetic-request"}})).status,200)
+    writes=false
+    assert.equal((await request(base,route,{...credentials,cookie,data:{}})).status,403)
+    assert.equal((await request(base,"/api/native-auth/employees/confirm",{...credentials,cookie,data:{request_id:"synthetic-request"}})).status,200)
+    assert.deepEqual(calls.map(c=>c.name),["changeEmployee","confirmEmployeeChange"])
+    writes=true
+    const password=await request(base,"/api/native-auth/change-password",{...credentials,cookie:staffCookie,data:{old_password:"SyntheticOldPassword#2026",new_password:"SyntheticNewPassword#2026"}})
+    assert.equal(password.status,200);assert.match(password.setCookie,/Max-Age=0/)
+    assert.equal(calls.at(-1).name,"changePassword")
+  }finally{await new Promise(resolve=>server.close(resolve))}
 })

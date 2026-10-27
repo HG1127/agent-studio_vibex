@@ -65,6 +65,19 @@ test("authenticated and pinned synthetic client can submit exact bounded ownerle
   assert.equal(result.headers["Cache-Control"],"no-store")
   assert.equal(calls,1)
 })
+test("authenticated private endpoint dispatches full Unicode evidence without truncation",async()=>{
+  const unicode={...input,knowledgeEvidence:Array.from({length:6},(_,index)=>({citation:"😀".repeat(176)+".txt#chunk-"+index,snippet:"😀".repeat(300)}))}
+  let calls=0
+  const handler=createIsolatedBoundModelInternalHandler({
+    approvedForIsolatedUat:true,reviewedClientFingerprint256:pin,
+    async dispatch(observedClaim,observedInput){
+      calls++;assert.deepEqual(observedClaim,claim);assert.deepEqual(observedInput,unicode)
+      return {status:"succeeded",text:"Synthetic cited answer"}
+    }
+  })
+  const result=await simulate(handler,{request:{claim,input:unicode}})
+  assert.equal(result.status,200);assert.equal(calls,1)
+})
 test("missing or forged transport authorization, wrong cert, forged headers and paths never dispatch",async()=>{
   let calls=0
   const handler=createIsolatedBoundModelInternalHandler({

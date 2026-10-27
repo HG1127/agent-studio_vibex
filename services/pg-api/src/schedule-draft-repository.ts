@@ -120,12 +120,13 @@ export class ScheduleDraftRepository{
     return withActor(this.pool,identity,async(db,actor)=>{
       await ownedTarget(db,actor,input)
       const result=await db.query<ScheduleDraftRow>(
-        "UPDATE agentstudio.schedules SET name=$3::text,kind=$4::text,"+
+        "UPDATE agentstudio.schedules s SET name=$3::text,kind=$4::text,"+
         "agent_spec_id=$5::uuid,workflow_id=$6::uuid,time_zone=$7::text,"+
         "recurrence=$8::jsonb,enabled=false,next_at=NULL,"+
         "revision=revision+1,updated_at=clock_timestamp() "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid "+
         "AND revision=$9::bigint AND enabled=false AND next_at IS NULL "+
+        "AND to_jsonb(s)->>'deleted_at' IS NULL "+
         "AND recurrence->>'config_format'=$10::text RETURNING "+columns,
         [id,actor,input.name,input.kind,
           input.kind==="agent"?input.target_id:null,
@@ -148,6 +149,13 @@ export class ScheduleDraftRepository{
     if(!isUuid(id)||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
       invalid()
     return withActor(this.pool,identity,async(db,actor)=>{
+      const native=(await db.query<{installed:boolean}>("SELECT to_regprocedure('agentstudio.schedule_control(uuid,bigint,text)') IS NOT NULL AS installed")).rows[0]?.installed===true
+      if(native){
+        const own=(await db.query<{id:string}>("SELECT id FROM agentstudio.schedules s WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$3::bigint "+
+          "AND enabled=false AND next_at IS NULL AND recurrence->>'config_format'=$4::text AND to_jsonb(s)->>'deleted_at' IS NULL FOR UPDATE",[id,actor,expectedRevision,format])).rows[0]
+        if(!own)return false
+        return (await db.query<{ok:boolean}>("SELECT agentstudio.schedule_control($1::uuid,$2::bigint,'delete') AS ok",[id,expectedRevision])).rows[0]?.ok===true
+      }
       const result=await db.query<{id:string}>(
         "DELETE FROM agentstudio.schedules WHERE id=$1::uuid "+
         "AND owner_user_id=$2::uuid AND revision=$3::bigint "+

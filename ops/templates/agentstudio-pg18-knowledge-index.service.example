@@ -1,0 +1,42 @@
+# REVIEW ONLY. Read-only preflight; do not install or enable.
+# No --serve, paid execution flags or [Install] section.
+[Unit]
+Description=Agent Studio PG18 knowledge index Worker read-only preflight
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=agentstudio-pg18-kb-index
+DynamicUser=yes
+WorkingDirectory=/opt/agentstudio-pg18-api-preflight-v1/services/pg-api
+ExecStart=/opt/agentstudio-node24/bin/node --experimental-strip-types /opt/agentstudio-pg18-api-preflight-v1/services/pg-api/src/knowledge-index-service.ts --preflight worker
+Restart=no
+UMask=0077
+LimitCORE=0
+LoadCredential=worker.secret:/root/.agentstudio-pg18-secrets/knowledge-index-worker.secret
+LoadCredential=dispatch-ca.pem:/root/.agentstudio-pg18-secrets/knowledge-index-ca.pem
+LoadCredential=dispatch-worker.pem:/root/.agentstudio-pg18-secrets/knowledge-index-worker.pem
+LoadCredential=dispatch-worker.key:/root/.agentstudio-pg18-secrets/knowledge-index-worker.key
+Environment=AGENT_STUDIO_PG_KNOWLEDGE_INDEX_REVIEWED=true
+Environment=AGENT_STUDIO_PG_KNOWLEDGE_INDEX_SERVER_FINGERPRINT=REPLACE_WITH_REVIEWED_INDEX_SERVER_SHA256
+Environment=AGENT_STUDIO_PG_PILOT_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_TARGET_CONFIRMED=true
+Environment=AGENT_STUDIO_PG_HOST=127.0.0.1
+Environment=AGENT_STUDIO_PG_PORT=5333
+Environment=AGENT_STUDIO_PG_DATABASE=agent_studio
+Environment=AGENT_STUDIO_PG_USER=agentstudio_stage_login
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+CapabilityBoundingSet=
+AmbientCapabilities=

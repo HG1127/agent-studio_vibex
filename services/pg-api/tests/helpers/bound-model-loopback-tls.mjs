@@ -8,7 +8,7 @@ import {createServer} from "node:https"
 import {createIsolatedBoundModelInternalHandler} from "../../src/bound-model-internal-handler.ts"
 import {assertBoundDispatchTlsMaterial} from "../../src/bound-dispatch-server.ts"
 
-export async function withDisposableBoundModelTls(dispatch,run){
+export async function withDisposableBoundModelTls(dispatch,run,{handlerFactory=createIsolatedBoundModelInternalHandler}={}){
   const parent=realpathSync(tmpdir())
   const temp=mkdtempSync(path.join(parent,"agentstudio-bound-flow-"))
   if(path.dirname(realpathSync(temp))!==parent||!path.basename(temp).startsWith("agentstudio-bound-flow-"))
@@ -35,7 +35,7 @@ export async function withDisposableBoundModelTls(dispatch,run){
     const ca=read("ca.pem"),cert=read("server.pem"),key=read("server.key")
     const workerCert=read("worker.pem")
     assertBoundDispatchTlsMaterial(ca,cert,key)
-    const handler=createIsolatedBoundModelInternalHandler({approvedForIsolatedUat:true,
+    const handler=handlerFactory({approvedForIsolatedUat:true,
       reviewedClientFingerprint256:new X509Certificate(workerCert).fingerprint256,dispatch})
     server=createServer({ca,cert,key,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},
       (req,res)=>{void handler(req,res).catch(()=>res.destroy())})

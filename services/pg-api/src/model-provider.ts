@@ -1,11 +1,14 @@
 // Explicitly gated, model-only staging adapter. No arbitrary HTTP URLs,
 // tools, plugins, browsers, or customer-supplied API credentials.
 import {readFileSync,statSync} from "node:fs"
+import {safeModelKnowledgeEvidence} from "./knowledge-evidence.ts"
+import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 
 export interface ModelInput {
   goal:string
   instruction:string
   taskScope:string
+  taskPlan?:string[]
   deliverables:string[]
   doneCriteria:string[]
   knowledgeEvidence?:{citation:string;snippet:string}[]
@@ -39,31 +42,24 @@ export function createStagingOpenAIProvider(
     throw Error("unsafe_model_secret")
   return {
     async generate(input:ModelInput):Promise<string> {
-      if(!input.goal.trim()||input.goal.length>2000 ||
-         input.instruction.length>1200 ||
-         input.taskScope.length>2000 ||
-         input.deliverables.length>20||input.doneCriteria.length>20 ||
+      if(!input.goal.trim()||input.goal.length>roleLimits.goal ||
+         input.instruction.length>2000 ||
+         input.taskScope.length>roleLimits.task_scope ||
+         input.deliverables.length>roleLimits.list_items||input.doneCriteria.length>roleLimits.list_items ||
+         input.taskPlan!==undefined&&(!Array.isArray(input.taskPlan)||input.taskPlan.length>roleLimits.list_items)||
          [...input.deliverables,...input.doneCriteria]
-           .some(x=>typeof x!=="string"||x.length>300))
+           .concat(input.taskPlan??[]).some(x=>typeof x!=="string"||x.length>roleLimits.list_item||x.includes("\0")))
         throw Error("invalid_model_input")
       // Defense in depth: only a small RLS-selected set of citations may
       // enter a Model request. Direct callers cannot inject large/unsafe
       // strings or replace the trusted server-side search policy.
-      const evidence=input.knowledgeEvidence
-      if(evidence!==undefined&&(
-        !Array.isArray(evidence)||evidence.length>6||
-        evidence.some(hit=>!hit||typeof hit.citation!=="string"||
-          typeof hit.snippet!=="string"||hit.citation.length<1||
-          hit.citation.length>160||hit.snippet.length<1||
-          hit.snippet.length>320||/[\u0000-\u001f\u007f]/u.test(hit.citation)||
-          hit.snippet.includes("\u0000"))||
-        JSON.stringify(evidence).length>3300))
-        throw Error("invalid_model_knowledge_evidence")
+      const evidence=safeModelKnowledgeEvidence(input.knowledgeEvidence)
       const content=[
         "Goal: "+input.goal,
         "Scope: "+input.taskScope,
         "Instruction: "+input.instruction,
         "Deliverables:\n"+input.deliverables.join("\n"),
+        ...(input.taskPlan?.length?["Task plan:\n"+input.taskPlan.join("\n")]:[]),
         "Acceptance criteria:\n"+input.doneCriteria.join("\n"),
         ...(evidence!==undefined?[
           "Owner-scoped knowledge search (LITERAL keyword only). "+

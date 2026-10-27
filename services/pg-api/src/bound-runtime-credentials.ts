@@ -1,14 +1,18 @@
 // Exact systemd credential mounts only. Importing performs no filesystem I/O.
 import {readFileSync,lstatSync,realpathSync,accessSync,constants} from "node:fs"
-export type BoundServiceKind="model"|"dispatch"
+export type BoundServiceKind="model"|"dispatch"|"workflow"|"agent"|"knowledge-index"|"knowledge-index-broker"
 const names:Record<BoundServiceKind,ReadonlySet<string>>={
   model:new Set(["dispatch-ca.pem","dispatch-worker.pem","dispatch-worker.key"]),
+  agent:new Set(["dispatch-ca.pem","dispatch-agent.pem","dispatch-agent.key"]),
+  workflow:new Set(["dispatch-ca.pem","dispatch-workflow.pem","dispatch-workflow.key"]),
   dispatch:new Set(["api.secret","identity.secret","broker.secret","model-encryption.secret",
     "dispatch-ca.pem","dispatch-server.pem","dispatch-server.key"]),
+  "knowledge-index":new Set(["worker.secret","dispatch-ca.pem","dispatch-worker.pem","dispatch-worker.key"]),
+  "knowledge-index-broker":new Set(["index.secret","broker.secret","model-encryption.secret","dispatch-ca.pem","dispatch-server.pem","dispatch-server.key"]),
 }
 function refuse():never{throw Error("unsafe_bound_runtime_credential")}
 export function boundCredentialDirectory(kind:BoundServiceKind):string{
-  if(kind!=="model"&&kind!=="dispatch")refuse()
+  if(kind!=="model"&&kind!=="dispatch"&&kind!=="workflow"&&kind!=="agent"&&kind!=="knowledge-index"&&kind!=="knowledge-index-broker")refuse()
   return "/run/credentials/agentstudio-pg18-"+kind+".service"
 }
 export function readBoundRuntimeCredential(

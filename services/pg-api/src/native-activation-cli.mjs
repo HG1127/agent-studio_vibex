@@ -7,6 +7,8 @@ import {readFileSync,realpathSync,lstatSync,statSync} from "node:fs"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 import {createHash,createHmac,pbkdf2Sync,randomBytes} from "node:crypto"
+import {captureFreshRuntimeSources,freshRuntimeReceipt} from "./pg18-fresh-runtime-source.mjs"
+import {verifyFreshRuntime} from "./pg18-fresh-runtime-install.ts"
 
 const database="agent_studio",host="127.0.0.1",port=5333
 const group="agentstudio_native_auth",login="agentstudio_native_login"
@@ -79,12 +81,14 @@ const activatePassword=password=>{
 const isSpecific=(array,value)=>Array.isArray(array)&&array.includes(value)
 function maybeMatchesDb(values){
   return isSpecific(values,database)||isSpecific(values,"all")||
-    isSpecific(values,"samerole")||isSpecific(values,"samegroup")
-}
-function maybeMatchesUser(values){
-  return isSpecific(values,login)||isSpecific(values,"all")||
+    isSpecific(values,"samerole")||isSpecific(values,"samegroup")||
     (Array.isArray(values)&&values.some(x=>typeof x==="string"&&
-      (x.startsWith("+")||x.startsWith("@"))))
+      (x.startsWith("/")||x.startsWith("@"))))
+}
+function maybeMatchesUser(values,expectedLogin){
+  return isSpecific(values,expectedLogin)||isSpecific(values,"all")||
+    (Array.isArray(values)&&values.some(x=>typeof x==="string"&&
+      (x.startsWith("+")||x.startsWith("@")||x.startsWith("/"))))
 }
 function ipv4Int(value){
   if(typeof value!=="string")return null
@@ -107,16 +111,19 @@ function couldMatchLoopback(rule){
   const loop=ipv4Int(host)
   return ((address&mask)>>>0)===((loop&mask)>>>0)
 }
-export function verifyNativeHbaOrder(rows){
-  if(!Array.isArray(rows)||rows.some(x=>x.error!==null&&
-     x.error!==undefined))return {tcp:false,local:false}
+export function verifyPg18ServiceHbaOrder(rows,expectedLogin){
+  if(![login,"agentstudio_stage_login","agentstudio_stage_worker","agentstudio_bound_dispatch_login","agentstudio_model_broker_login","agentstudio_knowledge_index_worker_login","agentstudio_knowledge_index_broker_login"].includes(expectedLogin))return {tcp:false,local:false}
+  if(!Array.isArray(rows)||rows.some(x=>!x||x.error!=null||
+     !Number.isSafeInteger(Number(x.rule_number))||Number(x.rule_number)<1||
+     !["local","host","hostssl","hostnossl","hostgssenc","hostnogssenc"].includes(x.type))||
+     new Set(rows.map(x=>Number(x.rule_number))).size!==rows.length)return {tcp:false,local:false}
   const ordered=[...rows].sort((a,b)=>Number(a.rule_number)-Number(b.rule_number))
-  const applies=r=>maybeMatchesDb(r.database)&&maybeMatchesUser(r.user_name)
+  const applies=r=>maybeMatchesDb(r.database)&&maybeMatchesUser(r.user_name,expectedLogin)
   const local=ordered.find(r=>r.type==="local"&&applies(r))
-  const tcp=ordered.find(r=>["host","hostnossl"].includes(r.type)&&
+  const tcp=ordered.find(r=>["host","hostnossl","hostnogssenc"].includes(r.type)&&
     applies(r)&&couldMatchLoopback(r))
   const exact=r=>isSpecific(r?.database,database)&&
-    isSpecific(r?.user_name,login)&&
+    isSpecific(r?.user_name,expectedLogin)&&
     !r.database.includes("all")&&!r.user_name.includes("all")
   return {
     local:!!local&&exact(local)&&
@@ -126,6 +133,8 @@ export function verifyNativeHbaOrder(rows){
       (tcp.netmask==="255.255.255.255"||tcp.netmask==="32"),
   }
 }
+export const verifyNativeHbaOrder=rows=>verifyPg18ServiceHbaOrder(rows,login)
+export {outsideRepo as readPg18OperatorSecret}
 
 export function diagnoseNativeSchema(rows){
   const errors=[]
@@ -136,11 +145,16 @@ export function diagnoseNativeSchema(rows){
      Number(state.version)<180000||Number(state.version)>=190000||
      state.session_user!=="postgres"||state.superuser!==true)
     errors.push("unexpected_pg18_target")
-  if(Number(rows?.base_tables)!==23||Number(rows?.base_force_rls)!==22)
+  let expectedTables=23,expectedRls=22,expectedAuthTables=2
+  if(rows?.fresh_runtime){
+    if(rows.fresh_runtime.verified!==true)errors.push("fresh_runtime_schema_not_verified")
+    else{const snapshot=captureFreshRuntimeSources();expectedTables=snapshot.tables.filter(t=>t.startsWith("agentstudio.")).length;expectedRls=expectedTables-1;expectedAuthTables=snapshot.tables.filter(t=>t.startsWith("agentstudio_auth.")).length}
+  }
+  if(Number(rows?.base_tables)!==expectedTables||Number(rows?.base_force_rls)!==expectedRls)
     errors.push("baseline_tables_or_rls_missing")
   if(rows?.vector!=="0.8.7")errors.push("vector_version_mismatch")
   if(rows?.ledger!==true)errors.push("native_auth_migration_not_applied")
-  if(Number(rows?.auth_tables)!==2||Number(rows?.auth_force_rls)!==2)
+  if(Number(rows?.auth_tables)!==expectedAuthTables||Number(rows?.auth_force_rls)!==expectedAuthTables)
     errors.push("native_auth_tables_or_rls_missing")
   if(rows?.membership!==true||rows?.business_can_auth!==false||
      rows?.worker_can_auth!==false||
@@ -176,6 +190,11 @@ async function collectEvidence(db){
     ?(await db.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations "+
       "WHERE version='pg18_native_auth_001') AS applied")).rows[0].applied
     :false
+  let freshRuntime
+  if(base.ledger_table&&(await db.query("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version=$1) AS applied",[freshRuntimeReceipt])).rows[0]?.applied){
+    try{await verifyFreshRuntime(db,captureFreshRuntimeSources(),true);freshRuntime={verified:true}}
+    catch{freshRuntime={verified:false}}
+  }
   const auth=(await db.query(
     "SELECT (SELECT count(*)::integer FROM pg_tables "+
     "WHERE schemaname='agentstudio_auth') AS tables,"+
@@ -208,6 +227,7 @@ async function collectEvidence(db){
   const hba=verifyNativeHbaOrder(rules)
   return {
     state,base_tables:base.tables,base_force_rls:base.force_rls,
+    ...(freshRuntime?{fresh_runtime:freshRuntime}:{}),
     vector:base.vector,ledger,auth_tables:auth.tables,
     auth_force_rls:auth.rls,membership:roles.member,
     business_can_auth:roles.api_member,worker_can_auth:roles.worker_member,
@@ -256,7 +276,9 @@ export async function runNativeActivation(argv,env=process.env){
   try{
     const client=await pool.connect()
     try{
-      const rows=await collectEvidence(client)
+      await client.query("BEGIN READ ONLY")
+      let rows
+      try{rows=await collectEvidence(client)}finally{await client.query("ROLLBACK")}
       const report=diagnoseNativeSchema(rows)
       if(cfg.mode==="preflight"){
         return {mode:cfg.mode,...report,target:database,auth_login:login,

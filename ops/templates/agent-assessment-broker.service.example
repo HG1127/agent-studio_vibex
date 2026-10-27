@@ -1,0 +1,57 @@
+# SOURCE EXAMPLE ONLY. Do not install/enable. Save only after separate review
+# as agentstudio-pg18-review-broker.service to match the credential mount.
+# Default-off read-only preflight; loopback only. No [Install] or --serve.
+[Unit]
+Description=Agent Studio isolated review Broker readonly preflight
+After=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+User=agentstudio-pg18-review-broker
+WorkingDirectory=/opt/agentstudio-pg18-api-preflight-v1/services/pg-api
+ExecStart=/opt/agentstudio-node24/bin/node --experimental-strip-types /opt/agentstudio-pg18-api-preflight-v1/services/pg-api/src/agent-assessment-service.ts --preflight broker
+Restart=no
+TimeoutStopSec=65
+RuntimeMaxSec=120
+KillMode=mixed
+UMask=0077
+LimitCORE=0
+LoadCredential=api.secret:/root/.agentstudio-pg18-secrets/stage-api.secret
+LoadCredential=dispatch.secret:/root/.agentstudio-pg18-secrets/review-dispatch.secret
+LoadCredential=broker.secret:/root/.agentstudio-pg18-secrets/model-broker.secret
+LoadCredential=model-encryption.secret:/root/.agentstudio-pg18-secrets/model-encryption.secret
+LoadCredential=review-ca.pem:/root/.agentstudio-pg18-secrets/review-ca.pem
+LoadCredential=review-server.pem:/root/.agentstudio-pg18-secrets/review-server.pem
+LoadCredential=review-server.key:/root/.agentstudio-pg18-secrets/review-server.key
+Environment=AGENT_STUDIO_PG18_REVIEW_EXECUTION_ENABLED=false
+Environment=AGENT_STUDIO_PG18_REVIEW_EXECUTION_APPROVED=REVIEW_REQUIRED
+Environment=AGENT_STUDIO_PG_REVIEW_SERVICE_REVIEWED=false
+Environment=AGENT_STUDIO_PG_REVIEW_ORIGIN=https://127.0.0.1:7459
+Environment=AGENT_STUDIO_PG_REVIEW_SERVER_FINGERPRINT=REPLACE_WITH_REVIEWED_SERVER_SHA256
+Environment=AGENT_STUDIO_PG_REVIEW_CLIENT_FINGERPRINT=REPLACE_WITH_DISTINCT_REVIEWED_WORKER_SHA256
+Environment=AGENT_STUDIO_PG_REVIEW_WORKER_LOGIN=agentstudio_review_worker_login
+Environment=AGENT_STUDIO_PG_REVIEW_DISPATCH_LOGIN=agentstudio_review_dispatch_login
+Environment=AGENT_STUDIO_PG_PILOT_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_ENABLED=true
+Environment=AGENT_STUDIO_PG_BAOTA18_TARGET_CONFIRMED=true
+Environment=AGENT_STUDIO_PG_HOST=127.0.0.1
+Environment=AGENT_STUDIO_PG_PORT=5333
+Environment=AGENT_STUDIO_PG_DATABASE=agent_studio
+Environment=AGENT_STUDIO_PG_USER=agentstudio_stage_login
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+# Read-only preflight needs only PG loopback. Paid serve requires a separate
+# reviewed provider/DNS egress policy; do not relax this example automatically.
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+CapabilityBoundingSet=
+AmbientCapabilities=

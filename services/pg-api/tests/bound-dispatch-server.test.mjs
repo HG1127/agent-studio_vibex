@@ -19,6 +19,17 @@ const paid={...baseline,
   AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED:"true",
   AGENT_STUDIO_PG18_UAT_APPROVAL:"APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY",
   AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED:"APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY"}
+
+test("private memory execution requires its own marker and the separate standalone client identity",()=>{
+  const autonomous={...paid,AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY",AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32),
+    AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED:"true",AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED:"APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY",AGENT_STUDIO_PG_AUTONOMOUS_AGENT_CLIENT_FINGERPRINT:"EF".repeat(32)}
+  const memory={AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED:"true",AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:"APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY"}
+  assert.equal(boundDispatchServerConfig(autonomous,"preflight","linux",1001).memoryEnabled,undefined)
+  assert.equal(boundDispatchServerConfig({...autonomous,...memory},"preflight","linux",1001).memoryEnabled,true)
+  assert.throws(()=>boundDispatchServerConfig({...paid,...memory},"preflight","linux",1001))
+  assert.throws(()=>boundDispatchServerConfig({...autonomous,...memory,AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED:undefined},"preflight","linux",1001))
+})
 test("private Broker plan is offline and rejects implicit CLI startup before credential or database access",()=>{
   const plan=boundDispatchOfflinePlan()
   assert.equal(plan.network_used,false);assert.equal(plan.credentials_read,false)
@@ -63,4 +74,38 @@ test("private Broker preview unit cannot become a paid service by installation",
   assert.doesNotMatch(unit,/^Environment=AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_ENABLED=true/m)
   assert.match(unit,/^DynamicUser=yes/m)
   assert.match(unit,/^IPAddressAllow=127\.0\.0\.0\/8/m)
+})
+
+test("Workflow V2 serving needs its own enable pair and a distinct client certificate pin",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY"}
+  assert.equal(boundDispatchServerConfig(paid,"serve","linux",1001).workflowModelEnabled,false)
+  for(const delta of [flags,{...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:baseline.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT},
+    {AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true"}])
+    assert.throws(()=>boundDispatchServerConfig({...paid,...delta},"serve","linux",1001))
+  const cfg=boundDispatchServerConfig({...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)},"serve","linux",1001)
+  assert.equal(cfg.workflowModelEnabled,true)
+})
+
+test("Tool serving is independently gated and shares only the reviewed Workflow client pin",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY"}
+  assert.equal(boundDispatchServerConfig(paid,"serve","linux",1001).workflowToolsEnabled,false)
+  for(const delta of [flags,{AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true"},
+    {...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:baseline.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT}])
+    assert.throws(()=>boundDispatchServerConfig({...paid,...delta},"serve","linux",1001))
+  const config=boundDispatchServerConfig({...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)},"serve","linux",1001)
+  assert.equal(config.workflowToolsEnabled,true);assert.equal(config.workflowModelEnabled,false)
+})
+
+test("Agent execution requires its own marker plus both independently approved Model and Tool adapters",()=>{
+  const flags={AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_AGENTS_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_CLIENT_FINGERPRINT:"CD".repeat(32)}
+  assert.throws(()=>boundDispatchServerConfig({...paid,...flags},"serve","linux",1001))
+  const ready={...paid,...flags,AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED:"true",
+    AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY",
+    AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED:"true",AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED:"APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY"}
+  assert.equal(boundDispatchServerConfig(ready,"serve","linux",1001).workflowAgentsEnabled,true)
+  assert.throws(()=>boundDispatchServerConfig({...ready,AGENT_STUDIO_PG_WORKFLOW_V2_AGENTS_APPROVED:undefined},"preflight","linux",1001))
 })

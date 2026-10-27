@@ -24,7 +24,7 @@ function respond(res,status,body,extra={}){
 }
 function publicProfile(profile){
   return {id:profile.id,email:profile.email,
-    display_name:profile.display_name,is_admin:profile.is_admin===true}
+    display_name:profile.display_name,is_admin:profile.is_admin===true,...(typeof profile.share_enabled==="boolean"?{share_enabled:profile.share_enabled}:{})}
 }
 export function nativeSessionToken(req){
   const raw=req.headers.cookie
@@ -119,9 +119,14 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
+    allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
-    allowEmployeeProvisioning=true,
+    allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,allowAgentReleases=false,allowAgentHumanInput=false,allowAgentMemory=false,allowAgentMemoryRuntime=false,allowAgentDerivedMemory=false,allowAgentDerivedMemoryWrites=false,allowAgentOutcomeMemory=false,allowAgentOutcomeMemoryAdmission=false,allowAgentFeedback=false,allowAgentFeedbackSubmission=false,allowAgentFeedbackLessons=false,allowAgentOptimization=false,allowAgentOptimizationAcceptance=false,
+    allowAgentReview=false,allowAgentReviewHistory=false,allowAgentReviewSubmission=false,
+    allowAgentGeneratedAcceptance=false,allowAgentGeneratedAcceptanceWrites=false,
+    allowOwnOperations=false,
+    allowEmployeeProvisioning=true,allowEmployeeGovernance=false,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
      typeof auth.getSessionProfile!=="function"||
@@ -188,10 +193,40 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         // passwords, raw role grants, runtime UAT markers, or task controls.
         return respond(res,200,{
           mode:"native_pg18",
+          ...(allowOwnOperations===true?{own_operations_available:true}:{}),
+          ...(allowEmployeeGovernance===true?{employee_governance_available:true,employee_governance_enabled:allowConfigurationWrites===true}:{}),
           config_writes_enabled:allowConfigurationWrites===true,
+          ...(allowAgentReview===true?{agent_review_available:true,agent_review_submission_enabled:allowConfigurationWrites===true&&allowAgentReviewSubmission===true}:{}),
+          ...(allowAgentReview===true&&allowAgentReviewHistory===true?{agent_review_history_available:true}:{}),
+          ...(allowAgentGeneratedAcceptance===true?{agent_generated_acceptance_available:true,agent_generated_acceptance_enabled:allowConfigurationWrites===true&&allowAgentGeneratedAcceptanceWrites===true}:{}),
+          ...(allowAgentOptimization===true?{agent_optimization_available:true,agent_optimization_acceptance_enabled:allowConfigurationWrites===true&&allowAgentOptimizationAcceptance===true}:{}),
+          ...(allowAgentFeedback===true?{agent_feedback_available:true,agent_feedback_submission_enabled:allowConfigurationWrites===true&&allowAgentFeedbackSubmission===true,agent_feedback_lesson_storage_enabled:allowConfigurationWrites===true&&allowAgentFeedbackSubmission===true&&allowAgentFeedbackLessons===true}:{}),
+          ...(allowAgentOutcomeMemory===true?{agent_outcome_memory_available:true,agent_outcome_memory_admission_enabled:allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true&&allowAgentDerivedMemoryWrites===true&&allowAgentOutcomeMemoryAdmission===true}:{}),
+          ...(allowAgentDerivedMemory===true?{agent_derived_memory_available:true,agent_derived_memory_writes_enabled:allowConfigurationWrites===true&&allowAgentDerivedMemoryWrites===true}:{}),
+          ...(allowAgentMemory===true?{agent_memory_available:true,agent_memory_writes_enabled:allowConfigurationWrites===true,
+            agent_memory_runtime_enabled:allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true&&allowAgentMemoryRuntime===true}:{}),
+          ...(allowAgentHumanInput===true?{agent_human_input_available:true,agent_human_responses_enabled:allowConfigurationWrites===true&&(allowAutonomousAgentSubmission===true||allowWorkflowV2Submission===true)}:{}),
+          ...(allowAgentCollaboration===true?{agent_collaboration_available:true}:{}),
+          ...(allowAgentReleases===true?{agent_releases_available:true,agent_release_acceptance_enabled:allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true}:{}),
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
+          ...(allowConfigurationWrites===true&&allowMcpDiscovery===true?{mcp_discovery_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowMcpToolExecution===true?{mcp_tool_runs_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowSmitheryManagement===true?{smithery_management_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true?{knowledge_sharing_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true?{knowledge_embedding_settings_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true?{knowledge_embedding_consent_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeIndexRuntime===true?{knowledge_index_runtime_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeQueryRuntime===true?{knowledge_query_runtime_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowKnowledgeSharing===true&&allowKnowledgeEmbeddingSettings===true&&allowKnowledgeEmbeddingConsent===true&&allowKnowledgeQueryRuntime===true&&allowKnowledgeToolExecution===true?{knowledge_tool_runtime_enabled:true}:{}),
           workflow_validation_enabled:allowConfigurationWrites===true&&allowWorkflowValidation===true,
           workflow_execution_enabled:allowConfigurationWrites===true&&allowWorkflowExecution===true,
+          ...(allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true?{autonomous_agent_submission_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowWorkflowV2Submission===true
+            ?{workflow_v2_submission_enabled:true}:{}),
+          ...(allowConfigurationWrites===true&&allowWorkflowV2Submission===true&&allowAutonomousAgentSubmission===true&&allowScheduleRuntime===true
+            ?{schedule_execution_enabled:true}:{}),
+          run_submission_enabled:allowConfigurationWrites===true&&allowRunSubmission===true,
+          bound_model_runs_enabled:allowConfigurationWrites===true&&allowRunSubmission===true&&allowBoundRunSubmission===true,
           run_execution_enabled:false,
         })
       }
@@ -200,6 +235,37 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         if(token)await auth.revokeSession(token)
         return respond(res,200,{ok:true},
           {"Set-Cookie":clearNativeSessionCookie()})
+      }
+      if((pathname===prefix+"/employees/change"||pathname===prefix+"/employees/confirm"||pathname===prefix+"/employees/create"||pathname===prefix+"/change-password")&&method==="POST"){
+        if(!allowEmployeeGovernance||!pathname.endsWith("/confirm")&&!allowConfigurationWrites)abort(403,"employee_governance_disabled")
+        if(pathname.endsWith("/create")&&!allowEmployeeProvisioning)abort(403,"employee_provisioning_disabled")
+        const token=nativeSessionToken(req)
+        if(!token)abort(401,"session_required")
+        const profile=await auth.getSessionProfile(token)
+        if(!profile)abort(401,"session_required")
+        const passwordRoute=pathname===prefix+"/change-password"
+        if(!passwordRoute&&!profile.is_admin)abort(403,"admin_required")
+        const body=await readJson(req)
+        if(passwordRoute)limiter.admit(req.socket?.remoteAddress,profile.id)
+        try{
+          if(passwordRoute){
+            const result=await auth.changePassword(token,body)
+            return respond(res,200,result,{"Set-Cookie":clearNativeSessionCookie()})
+          }
+          if(pathname.endsWith("/create"))return respond(res,201,{user:await auth.createGovernedEmployee(token,body)})
+          const result=pathname.endsWith("/confirm")?await auth.confirmEmployeeChange(token,body):await auth.changeEmployee(token,body)
+          return respond(res,200,result)
+        }catch(err){
+          if(err?.code==="23505")abort(409,"employee_already_exists")
+          const code=err?.message
+          if(code==="admin_session_required")abort(403,"admin_required")
+          if(code==="session_required")abort(401,code)
+          if(code==="invalid_current_password")abort(403,code)
+          if(["invalid_employee_governance_input","invalid_employee_display_name","invalid_employee_password","invalid_employee_email","employee_password_unchanged"].includes(code))abort(400,code)
+          if(["cannot_disable_self_admin","last_active_admin_required","employee_revision_changed","employee_request_conflict"].includes(code))abort(409,code)
+          if(["employee_not_found","employee_receipt_not_found"].includes(code))abort(404,code)
+          throw err
+        }
       }
       if(pathname===prefix+"/employees"&&method==="GET"){
         const token=nativeSessionToken(req)

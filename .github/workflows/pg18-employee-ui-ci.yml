@@ -1,0 +1,206 @@
+name: Agent Studio PG18 employee UI isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-employee-run-ui-20261022'
+      - 'codex/pg18-workflow-v2-config-20261022'
+      - 'codex/pg18-workflow-v2-runtime-20261022'
+      - 'codex/pg18-workflow-v2-model-20261022'
+      - 'codex/pg18-workflow-v2-tools-20261022'
+      - 'codex/pg18-workflow-v2-agents-20261022'
+      - 'codex/pg18-autonomous-agent-20261023'
+      - 'codex/pg18-autonomous-agent-ui-20261023'
+      - 'codex/pg18-workflow-canvas-20261023'
+      - 'codex/pg18-workflow-authoring-20261023'
+      - 'codex/pg18-workflow-output-samples-20261023'
+      - 'codex/pg18-agent-http-tools-20261023'
+      - 'codex/pg18-mcp-discovery-20261023'
+      - 'codex/pg18-mcp-execution-20261023'
+      - 'codex/pg18-smithery-managed-20261023'
+      - 'codex/pg18-credential-boundary-20261023'
+      - 'codex/pg18-knowledge-access-foundation-20261023'
+      - 'codex/pg18-shared-knowledge-ui-20261023'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-employee-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-employee-browser:
+    name: Native employee UI / synthetic SQL / private mTLS / browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Types, fail-closed CI guard and independent PG-only build
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs tests/pg-native-run-submission.test.mjs tests/pg-native-autonomous-session.test.mjs tests/pg-native-autonomous-render.test.mjs tests/pg-native-pilot-api.test.mjs tests/pg18-only-web-candidate.test.mjs
+          pnpm test:pg18:knowledge-runtime
+          pnpm test:pg18:knowledge-semantic-ui
+          pnpm test:pg18:shared-knowledge
+          pnpm test:pg18:knowledge-access
+          pnpm test:pg18:credential-boundary
+          pnpm test:pg18:smithery
+          pnpm test:pg18:mcp-execution
+          pnpm test:pg18:mcp-discovery
+          pnpm test:pg18:agent-http-tools
+          pnpm test:pg18:workflow-outputs
+          pnpm test:pg18:workflow-authoring
+          pnpm test:pg18:workflow-canvas
+          pnpm test:pg18:schedules
+          pnpm build:pg18:trial
+      - name: Readonly review package dependency closure
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 tests/pg18-worker-review-bundle.test.mjs tests/pg18-nonroot-worker-preflight-bundle.test.mjs tests/pg18-native-worker-readonly.test.mjs
+          python3 -m unittest discover -s tests -p 'test_baota_pg18_*worker*preflight*.py'
+          node ops/build-pg18-native-api-preflight-bundle.mjs --output-dir "$RUNNER_TEMP/pg18-native-api-review"
+      - name: Install isolated Chromium on the disposable runner
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual browser / Cookie / SQL / private mTLS, synthetic model only
+        env:
+          AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
+        run: pnpm test:pg18:employee-ui:ci
+      - name: Retain synthetic UI screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-employee-ui-synthetic
+          path: .tmp/pg-migration-completion/ci-browser-results/**/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+
+  native-collaboration-browser:
+    name: Native collaboration / focused synthetic browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Fail-closed browser guard
+        run: node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Collaboration actor isolation / response recovery / safe restore
+        env:
+          AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
+        run: pnpm test:pg18:employee-ui:ci collaboration.spec.mjs
+      - name: Retain synthetic collaboration screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-collaboration-ui-synthetic
+          path: .tmp/pg-migration-completion/ci-browser-results/**/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+
+  native-releases-browser:
+    name: Native full versions / focused synthetic browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Fail-closed browser guard
+        run: node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Full snapshots / restore / model selection / owner receipts
+        env:
+          AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
+        run: pnpm test:pg18:employee-ui:ci releases.spec.mjs
+      - name: Retain synthetic version screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-releases-ui-synthetic
+          path: .tmp/pg-migration-completion/ci-browser-results/**/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+
+  native-employee-governance-browser:
+    name: Native employee governance / focused synthetic browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Fail-closed browser guard
+        run: node --experimental-strip-types --test tests/pg-native-browser-ci-guard.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Admin changes / private receipts / password reauthentication
+        env:
+          AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
+        run: pnpm test:pg18:employee-ui:ci employees.spec.mjs
+      - name: Retain synthetic employee governance screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-employee-governance-ui-synthetic
+          path: .tmp/pg-migration-completion/ci-browser-results/**/*.png
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7

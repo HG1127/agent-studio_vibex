@@ -1,0 +1,54 @@
+name: Agent Studio PG18 generated operator isolated verification
+on:
+  push:
+    branches: ['codex/pg18-*']
+    paths:
+      - 'services/pg-api/**'
+      - 'db/postgres/**'
+      - 'shared/**'
+      - 'ops/*pg18*'
+      - 'tests/pg18*'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/pg18-generated-operator-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pg18-generated-operator-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  pg18-generated-operator:
+    name: PostgreSQL 18 / trusted optional059 artifact / actual install restore and recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout reviewed candidate without persisted upload credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked workspace and API test dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Types, actual offline artifact plan and ordinary-host negative guards
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:agent-generated-operator
+          pnpm --dir services/pg-api test:pg18:tcp:guard
+          node --experimental-strip-types --test services/pg-api/tests/agent-assessment-ci-guard.test.mjs
+      - name: Independent empty PG18 clusters, real backup and restore, uncommitted audit and uncertain-commit recovery
+        env:
+          AGENT_STUDIO_GENERATED_OPERATOR_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_GENERATED_OPERATOR_CI_PURPOSE: GENERATED_059_OPERATOR_SYNTHETIC_ONLY
+          AGENT_STUDIO_GENERATED_OPERATOR_CI_WRITE_APPROVED: YES_DISPOSABLE_GENERATED_OPERATOR_ONLY
+        run: |
+          node_path="$(command -v node)"
+          pnpm_path="$(command -v pnpm)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_GENERATED_OPERATOR_CI_EPHEMERAL,AGENT_STUDIO_GENERATED_OPERATOR_CI_PURPOSE,AGENT_STUDIO_GENERATED_OPERATOR_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-generated-operator-ci.mjs --run --pnpm "$pnpm_path"

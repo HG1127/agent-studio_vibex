@@ -6,12 +6,14 @@
 // owner-bound paid POST; errors/ambiguous outcomes are never auto retried.
 import {createHash} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlPool} from "./contracts.ts"
+import {requireKnowledgeScope,storedKnowledgeIds} from "./knowledge-runtime-scope.ts"
 import {withActor} from "./repository.ts"
 import {withModelBrokerActor} from "./model-broker-actor.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
 import type {SelectedModelMaterial} from "./model-connection-executor.ts"
 import type {ModelInput} from "./model-provider.ts"
+import {requireCurrentSingleAgentInput} from "./knowledge-agent-execution.ts"
 
 export interface BoundModelClaim {
   run_id:string
@@ -138,6 +140,8 @@ export class OwnerBoundModelDispatch {
          Number(row.spec_revision)!==version)
         throw new HttpError(409,"bound_model_approval_or_revision_invalid")
       const binding=row.spec?.model_binding as Record<string,unknown>|undefined
+      const knowledgeIds=storedKnowledgeIds(row.spec)
+      await requireKnowledgeScope(db,owner,knowledgeIds)
       if(!binding||typeof binding!=="object"||Array.isArray(binding)||
          Object.keys(binding).length!==3||
          !isUuid(binding.connection_id)||
@@ -152,6 +156,7 @@ export class OwnerBoundModelDispatch {
       const fingerprint=boundModelFingerprint(input,binding)
       if(row.arguments_sha256!==fingerprint)
         throw new HttpError(409,"bound_model_input_fingerprint_mismatch")
+      await requireCurrentSingleAgentInput(db,claim.run_id,fingerprint,input)
       const models=await db.query<Omit<ModelSecretRow,
         "api_key_ciphertext"|"api_key_nonce"|"api_key_tag">>(
         "SELECT revision,status,enabled,provider,base_url,models "+
@@ -185,6 +190,8 @@ export class OwnerBoundModelDispatch {
         connection_revision:binding.connection_revision as number,
         model_id:binding.model_id as string,
         provider:chosen.provider,base_url:chosen.base_url,
+        knowledgeIds,
+        fingerprint,
       }
     })
     // The API login has no SELECT on ciphertext columns, and the Worker
@@ -218,6 +225,12 @@ export class OwnerBoundModelDispatch {
             model_id:materialRef.model_id,api_key}
         })
     }catch{throw new HttpError(503,"bound_model_outcome_unknown")}
+    // A revoke/deactivation may have committed while the separate Broker
+    // transaction loaded the reader's credential. Do not send old citations.
+    try{await withActor(this.pool,identity,async(db,owner)=>{
+      await requireKnowledgeScope(db,owner,materialRef.knowledgeIds)
+      await requireCurrentSingleAgentInput(db,claim.run_id,materialRef.fingerprint,input)
+    })}catch{throw new HttpError(503,"bound_model_outcome_unknown")}
     // No DB transaction is held across the paid POST.
     // Its outcome may be ambiguous even on a socket error: fail closed and
     // require explicit manual reconciliation, never an automatic retry.
@@ -226,6 +239,9 @@ export class OwnerBoundModelDispatch {
       text=await this.executor(material,input)
       if(!text.trim()||text.length>12000)
         throw Error("invalid_bound_model_result")
+      await withActor(this.pool,identity,async db=>{
+        await requireCurrentSingleAgentInput(db,claim.run_id,materialRef.fingerprint,input)
+      })
     }catch{
       failed=true
       text=""
