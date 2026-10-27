@@ -84,7 +84,7 @@ function verifyStagedReview(root,expected){
  const closed=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key))
  const value=JSON.parse(bytes.toString('utf8'))
  if(!closed(value,['format','review_only','source_sha256','default_fresh_latest','initializes_database','activation_performed','pg_runtime_install_verified','files'])||
-  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='06f8c7f37824e6866ea1587704afab45546f0cba9988e894f6f73af9eeba8747'||
+  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='514807e12914116143068dd7254112fcc7c696e62843e9c2f113f0b77473bbb8'||
   value.default_fresh_latest!=='pg_v9_050'||value.initializes_database!==false||value.activation_performed!==false||value.pg_runtime_install_verified!==false||!Array.isArray(value.files)||value.files.length!==91)refuse('review_manifest')
  const files=new Set(['REVIEW_MANIFEST.json'])
  for(const item of value.files){
@@ -189,7 +189,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   for(const [layer,file,method]of auditLayers){
    const c=await pool.connect(),queries=[],objects=new Map();let ok=false,code,session
    try{
-    await c.query('BEGIN READ ONLY');await c.query('SET LOCAL ROLE agentstudio_api')
+    await c.query('BEGIN READ ONLY');await c.query(core.generatedOperatorContextSql);await c.query('SET LOCAL ROLE agentstudio_api')
     if(layer==='051')session=(await c.query("SELECT session_user,current_user,current_setting('search_path') AS search_path")).rows[0]
     const module=await from('services/pg-api/src/'+file)
     // Transparent read-only tracing: all original validator queries/results
@@ -232,9 +232,17 @@ export async function generatedOperatorCiFixture(env=process.env){
  }
  async function full(pool,installed=false,stage='full'){
   const c=await pool.connect();let failure
-  try{await c.query('BEGIN READ ONLY');await c.query('SET LOCAL ROLE agentstudio_api');assert.equal(await opinion.verifyAgentOpinionCredentials(c),true);assert.equal(await generated.verifyAgentGeneratedCredentials(c),installed)}catch(error){failure=error}
+  try{await c.query('BEGIN READ ONLY');await c.query(core.generatedOperatorContextSql);await c.query('SET LOCAL ROLE agentstudio_api');assert.equal(await opinion.verifyAgentOpinionCredentials(c),true);assert.equal(await generated.verifyAgentGeneratedCredentials(c),installed)}catch(error){failure=error}
   finally{await c.query('ROLLBACK');c.release()}
   if(failure){await diagnoseRestore(pool,stage);throw failure}
+ }
+ async function capturePredecessor(pool){
+  const c=await pool.connect();let destroy=false
+  try{
+   await c.query('BEGIN READ ONLY');await c.query(core.generatedOperatorContextSql)
+   const state=(await c.query(core.generatedOperatorTargetSql)).rows[0],catalog=(await c.query(core.generatedOperatorCatalogSql)).rows[0]?.catalog
+   assert.ok(state&&catalog);return {state,catalog}
+  }finally{await c.query('ROLLBACK').catch(()=>{destroy=true});c.release(destroy)}
  }
  async function business(pool){return sha(JSON.stringify((await pool.query("SELECT jsonb_build_object('users',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,external_issuer,external_subject,display_name,status) ORDER BY id),'[]'::jsonb) FROM agentstudio.users),'accounts',(SELECT coalesce(jsonb_agg(jsonb_build_array(user_id,enabled,governance_revision) ORDER BY user_id),'[]'::jsonb) FROM agentstudio_auth.accounts)) AS value")).rows[0].value))}
  async function databaseMetadata(pool){
@@ -282,7 +290,7 @@ export async function generatedOperatorCiFixture(env=process.env){
  }
  async function evidence(){
   await owned(main);await full(admin,false)
-  const state=(await admin.query(core.generatedOperatorTargetSql)).rows[0],catalog=(await admin.query(core.generatedOperatorCatalogSql)).rows[0].catalog,beforeDatabase=await databaseMetadata(admin)
+  const {state,catalog}=await capturePredecessor(admin),beforeDatabase=await databaseMetadata(admin)
   assert.deepEqual(beforeDatabase,baseDatabase,'source database metadata must match the validated baseline')
   const catalogSha=sha(JSON.stringify(catalog)),n=String(++serial),directory=privateRoot+'/evidence-'+n
   fs.mkdirSync(directory,{mode:0o700});privateStat(directory,true)
@@ -337,7 +345,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   return {proof,main,restore,root,privateRoot,entry,snapshot,core,opinion,generated,source,get admin(){return admin},get restoreAdmin(){return restoreAdmin},full,business,databaseMetadata,reset,evidence,cli,close,
    runtime(name){if(!passwords.has(name))refuse('unknown_synthetic_login');const pool=connect(main,main.db,name,passwords.get(name));return {pool,async close(){await pool.end();pools.delete(pool)}}},
    async recover(e,j=e.journal.at(-1)){return core.inspectGeneratedOperator(admin,snapshot,e.approval,j)},
-   async assertUnchanged(e){await full(admin,false);assert.equal(await business(admin),e.beforeBusiness);assert.equal((await admin.query(core.generatedOperatorTargetSql)).rows[0].system_identifier,e.approval.system_identifier);assert.equal(sha(JSON.stringify((await admin.query(core.generatedOperatorCatalogSql)).rows[0].catalog)),e.approval.predecessor_schema_sha256)},
+   async assertUnchanged(e){await full(admin,false);assert.equal(await business(admin),e.beforeBusiness);const {state,catalog}=await capturePredecessor(admin);assert.equal(state.system_identifier,e.approval.system_identifier);assert.equal(state.database_oid,e.approval.database_oid);assert.equal(sha(JSON.stringify(catalog)),e.approval.predecessor_schema_sha256)},
    async actualPlan(){return childNode([entry,'--plan'],childEnv,root)},
    async rawNode(args,env={}){return childNode([entry,...args],{...childEnv,...env},root)},
   }

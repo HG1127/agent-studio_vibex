@@ -48,6 +48,7 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
    const e=await start(),client=await f.admin.connect()
    try{
     await client.query('BEGIN')
+    await client.query(f.core.generatedOperatorContextSql)
     await client.query('ALTER TABLE agentstudio.agent_memory_derived_entries DROP CONSTRAINT agent_memory_derived_entries_fact_check')
     await client.query("ALTER TABLE agentstudio.agent_memory_derived_entries ADD CONSTRAINT agent_memory_derived_receipts_content_sha256_check CHECK(content_sha256~'^[a-f0-9]{64}$'::text)")
     const checks=(await client.query("SELECT conname AS name,convalidated AS valid FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_memory_derived_entries'::regclass AND contype='c' ORDER BY conname")).rows
@@ -59,10 +60,12 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
   })
   await t.test('one real privileged client sees uncommitted059 and direct FULL audits; postgres observer does not count as runtime',async()=>{
    const e=await start(),gate=operatorGate(),observer=await f.admin.connect();let identity,beforeCatalog,beforeContext
-   const context=async raw=>(await raw.query("SELECT session_user,current_user,current_setting('search_path') AS search_path")).rows[0]
+   const context=async raw=>(await raw.query("SELECT session_user,current_user,current_setting('search_path') AS search_path,current_schemas(false) AS schemas")).rows[0]
    const trace=traceGeneratedOperatorPool(f.admin,{
     async before({sql,raw}){if(sql===f.snapshot.body){beforeCatalog=(await raw.query(f.core.generatedOperatorCatalogSql)).rows[0].catalog;beforeContext=await context(raw)}},
-    async after({sql,raw,pid}){if(sql===f.snapshot.body){
+    async after({sql,raw,pid}){
+     if(sql===f.core.generatedOperatorContextSql||sql===f.core.generatedOperatorCatalogSql){const actual=await context(raw);assert.deepEqual(actual.schemas,['pg_catalog','public']);assert.equal(actual.current_user,'postgres')}
+     if(sql===f.snapshot.body){
      // Read genuine same-transaction metadata only. Never replace or normalize
      // rows delivered to the operator/full validators, or change search_path.
      try{
@@ -94,6 +97,7 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
     const sql=trace.trace.map(q=>q.sql),body=sql.indexOf(f.snapshot.body),commit=sql.indexOf('COMMIT')
     assert.ok(body>0&&commit>body)
     const after=sql.slice(body+1,commit);assert.ok(after.includes('SET LOCAL ROLE agentstudio_api'));assert.ok(after.includes('RESET ROLE'))
+    assert.equal(after[0],f.core.generatedOperatorContextSql);assert.ok(after.indexOf(f.core.generatedOperatorCatalogSql)>after.indexOf(f.core.generatedOperatorContextSql),'actual core restores its canonical context before the post-DDL fingerprint')
     assert.ok(after.some(s=>s.includes("to_regprocedure('agentstudio.agent_opinion_body(uuid,text,text)')")),'actual full059 core query executed, not a positive audit double')
     assert.ok(after.some(s=>s.includes('p.proname')&&s.includes('pg_catalog.pg_proc')))
     assert.ok(trace.trace.slice(body,commit+1).every(q=>q.pid===identity.pid));assert.equal(sql.filter(s=>s===f.snapshot.body).length,1)

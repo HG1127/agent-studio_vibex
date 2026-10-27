@@ -89,6 +89,9 @@ export async function commitGeneratedOperatorTransaction(db:SqlClient,journal:Ge
   try{await persist(Object.freeze(acknowledged))}catch{throw new GeneratedOperatorInstalledUnverified(acknowledged)}
   return acknowledged
 }
+// Fixed caller context for deparsing public extension objects and full audits.
+// Re-establish it after the unchanged059 body sets its own transaction-local path.
+export const generatedOperatorContextSql='SET LOCAL search_path=pg_catalog,public'
 // Stable catalog metadata only. No employee/feedback/output rows or prosrc text
 // leave PostgreSQL. New059 RI triggers on old parent tables are excluded by the
 // validated new FK namespace; the unchanged full validators remain authoritative.
@@ -118,6 +121,7 @@ async function target(db:SqlClient,expected:Target){
   return actual
 }
 async function schema(db:SqlClient,approval:GeneratedOperatorApproval){
+  await db.query(generatedOperatorContextSql)
   const migrations=(await db.query<{version:string;description:string}>('SELECT version,description FROM agentstudio.schema_migrations ORDER BY version')).rows
   if(!migrations.some(m=>m.version==='pg_v9_058')||new Set(migrations.map(m=>m.version)).size!==migrations.length||migrations.some(m=>/^pg_v9_/.test(m.version)&&(!/^pg_v9_0(?:[1-4][0-9]|5[0-9])$/.test(m.version)||m.version>'pg_v9_059')))fail('predecessor_changed')
   const fresh=migrations.find(m=>m.version==='pg18_fresh_runtime_001');let receipt:Record<string,unknown>
@@ -151,6 +155,7 @@ export async function inspectGeneratedOperator(pool:Pool,snapshot:GeneratedOpera
   try{
     assertGeneratedOperatorAuthorization(snapshot,approval)
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+    await db.query(generatedOperatorContextSql)
     await db.query("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='45s'")
     await target(db,approval)
     const lock=(await db.query<{locked:boolean}>(lockSql)).rows[0]
@@ -171,6 +176,7 @@ export async function applyGeneratedOperator(pool:Pool,snapshot:GeneratedOperato
   try{
     assertGeneratedOperatorAuthorization(snapshot,approval)
     await db.query('BEGIN')
+    await db.query(generatedOperatorContextSql)
     await db.query("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='45s'")
     const actual=await target(db,approval)
     if((await db.query<{locked:boolean}>(lockSql)).rows[0]?.locked!==true)fail('schema_lock_busy')
@@ -188,7 +194,7 @@ export async function applyGeneratedOperator(pool:Pool,snapshot:GeneratedOperato
     assertGeneratedOperatorAuthorization(snapshot,approval)
     await db.query(snapshot.body)
     // Direct full validator on THIS real client sees uncommitted059. schema()
-    // sets only the API role, never session authorization or employee context.
+    // restores the fixed caller path and API role, never an employee identity.
     if(!await schema(db,approval))fail('postflight_failed')
     const same=await target(db,approval)
     if(same.backend_pid!==actual.backend_pid||same.backend_start!==actual.backend_start)fail('client_changed')
@@ -213,6 +219,7 @@ export async function verifyGeneratedOperatorRuntimeLogin(pool:Pool,kind:'api'|'
   const db=await pool.connect()
   try{
     await db.query('BEGIN READ ONLY')
+    await db.query(generatedOperatorContextSql)
     const state=(await db.query<{ok:boolean}>("SELECT current_database()='agent_studio' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5333 AND current_setting('server_version_num')::integer BETWEEN 180000 AND 189999 AND session_user=$1 AND current_user=session_user AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication AND NOT pg_is_in_recovery() AND (SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database())=$2 AS ok FROM pg_catalog.pg_roles r WHERE r.rolname=session_user",[login,expected.database_oid])).rows[0]
     // pg_control_system is intentionally NOT granted to runtime logins. The
     // expected cluster binding is established by the separate admin postcheck;

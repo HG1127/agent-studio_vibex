@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto'
 import {captureGeneratedOperatorSources} from '../src/agent-generated-operator-source.mjs'
 import {parseGeneratedOperatorApproval,verifyGeneratedOperatorBackupEvidence,assertGeneratedOperatorAuthorization,parseGeneratedOperatorJournal,applyGeneratedOperator,inspectGeneratedOperator,
   commitGeneratedOperatorTransaction,GeneratedOperatorCommitUnknown,GeneratedOperatorInstalledUnverified,verifyGeneratedOperatorRuntimeLogin,
-  generatedOperatorCatalogSql,generatedOperatorTargetSql} from '../src/agent-generated-operator-core.ts'
+  generatedOperatorCatalogSql,generatedOperatorContextSql,generatedOperatorTargetSql} from '../src/agent-generated-operator-core.ts'
 let snapshot
 before(async()=>{snapshot=await captureGeneratedOperatorSources()})
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex'),catalog={synthetic:'catalog metadata only'},prefix='a'.repeat(64)
@@ -21,10 +21,11 @@ function evidence({backupAge=20000,restoreAge=10000,expiresIn=3600000}={}){
 }
 const journal=approval=>({format:'agent_generated_operator_journal_v1',source_sha256:approval.source_sha256,system_identifier:approval.system_identifier,database_oid:approval.database_oid,
   predecessor_schema_sha256:approval.predecessor_schema_sha256,nonce:'00000000-0000-4000-8000-000000000001',backend_pid:77,backend_start:'2026-10-27 00:00:00+00',phase:'before_ddl'})
-function pool({locked=true,active=false,targetChanged=false,connections=0,catalogChanged=false,failRollback=false}={}){
+function pool({locked=true,active=false,targetChanged=false,connections=0,catalogChanged=false,failRollback=false,failContext=false}={}){
   const trace=[],released=[];let connects=0
   const client={release(destroy=false){released.push(destroy)},async query(sql,values=[]){
     trace.push({sql,values})
+    if(sql===generatedOperatorContextSql&&failContext)throw Error('synthetic_context_refused')
     if(sql===generatedOperatorTargetSql)return {rows:[{system_identifier:targetChanged?'9':'1234567890123456789',database_oid:'42',backend_pid:77,backend_start:'synthetic backend start'}]}
     if(sql.includes('pg_try_advisory_xact_lock'))return {rows:[{locked}]}
     if(sql.includes('backend_start::text=$2'))return {rows:[{active}]}
@@ -111,6 +112,32 @@ test('the real unchanged full auditor failure on the same client resets role and
   assert.ok(role>0);assert.ok(sql.slice(role+1).some(s=>s.includes('to_regprocedure(\'agentstudio.agent_opinion_body')))
   assert.equal(sql.at(-2),'RESET ROLE');assert.equal(sql.at(-1),'ROLLBACK');assert.equal(db.connects,1)
   assert.ok(!sql.includes(snapshot.body)&&!sql.includes('COMMIT'))
+})
+
+test('install and readonly recovery establish a fixed pg_catalog-first context before target, catalog and unchanged full audit',async()=>{
+  assert.equal(generatedOperatorContextSql,'SET LOCAL search_path=pg_catalog,public')
+  const {approval,raw}=evidence()
+  for(const callerPath of ['pg_temp,public','attacker,pg_catalog','"$user",public'])assert.throws(()=>parseGeneratedOperatorApproval({...raw,search_path:callerPath},snapshot),/invalid_evidence/)
+  for(const mode of ['apply','inspect']){
+    const db=pool()
+    await assert.rejects(mode==='apply'?applyGeneratedOperator(db,snapshot,approval,async()=>{}):inspectGeneratedOperator(db,snapshot,approval),/unsafe_agent_generated_privileges/)
+    assert.equal(db.trace[1].sql,generatedOperatorContextSql)
+    const catalogAt=db.trace.findIndex(q=>q.sql===generatedOperatorCatalogSql),contextAt=db.trace.findLastIndex((q,i)=>i<catalogAt&&q.sql===generatedOperatorContextSql)
+    assert.ok(contextAt>0&&catalogAt>contextAt);assert.ok(db.trace.slice(catalogAt+1).some(q=>q.sql==='SET LOCAL ROLE agentstudio_api'))
+    assert.ok(db.trace.filter(q=>q.sql.startsWith('SET LOCAL search_path')).every(q=>q.sql===generatedOperatorContextSql&&q.values.length===0))
+    assert.ok(!db.trace.some(q=>/current_setting\('search_path'|RESET search_path|set_config\('search_path'/.test(q.sql)))
+    assert.equal(db.trace.at(-1).sql,'ROLLBACK')
+  }
+})
+
+test('failure to establish canonical context refuses install and readonly recovery before catalog, role switch or DDL',async()=>{
+  const {approval}=evidence()
+  for(const mode of ['apply','inspect']){
+    const db=pool({failContext:true})
+    await assert.rejects(mode==='apply'?applyGeneratedOperator(db,snapshot,approval,async()=>{}):inspectGeneratedOperator(db,snapshot,approval),/synthetic_context_refused/)
+    assert.deepEqual(db.trace.map(q=>q.sql),[mode==='apply'?'BEGIN':'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',generatedOperatorContextSql,'ROLLBACK'])
+    assert.deepEqual(db.released,[false])
+  }
 })
 test('quiescence uses authenticated role OIDs and transitive MEMBER for custom review/index logins, excluding superuser observers',async()=>{
   const {approval}=evidence()
