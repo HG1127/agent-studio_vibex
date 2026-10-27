@@ -138,6 +138,20 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
     return {mode,service:kind,ready:true,bind:"127.0.0.1",port:cfg.port,requires_mutual_tls:true,execution_enabled:true,production_cutover_allowed:false,close:shutdown}
   }catch(error){if(shutdown)await shutdown().catch(()=>undefined);else{await bounded(endPools(),5000).catch(()=>undefined);clear()}throw error}
 }
+type ShutdownControl={signals:{on(event:"SIGTERM"|"SIGINT",listener:()=>void):unknown;off(event:"SIGTERM"|"SIGINT",listener:()=>void):unknown};timer:(callback:()=>void,ms:number)=>ReturnType<typeof setTimeout>;clear:(timer:ReturnType<typeof setTimeout>)=>void;exit:()=>void;reportFailure:()=>void}
+export function attachAgentAssessmentShutdown(close:()=>Promise<void>,control:ShutdownControl={signals:process,timer:setTimeout,clear:clearTimeout,exit:()=>process.exit(1),reportFailure:()=>{process.stderr.write("AGENT_ASSESSMENT_SHUTDOWN_INCOMPLETE\n")}}):void{
+  let stopping=false
+  const remove=()=>{control.signals.off("SIGTERM",stop);control.signals.off("SIGINT",stop)}
+  const stop=()=>{
+    if(stopping)return
+    stopping=true
+    const deadline=control.timer(control.exit,65000)
+    // Keep both listeners throughout drain: a repeated same signal must not
+    // regain the OS default and terminate authorized in-flight work early.
+    void Promise.resolve().then(close).then(()=>{control.clear(deadline);remove()},()=>{control.clear(deadline);remove();control.reportFailure();control.exit()})
+  }
+  control.signals.on("SIGTERM",stop);control.signals.on("SIGINT",stop)
+}
 export async function runAgentAssessmentServiceCli(args:string[],env:NodeJS.ProcessEnv=process.env):Promise<void>{
   const selected=parseAgentAssessmentServiceArgs(args)
   if(selected.mode==="plan"){process.stdout.write(JSON.stringify(agentAssessmentServiceOfflinePlan())+"\n");return}
@@ -145,6 +159,6 @@ export async function runAgentAssessmentServiceCli(args:string[],env:NodeJS.Proc
   if(!("kind" in selected))throw Error("agent_assessment_explicit_mode_required")
   const result=await startAgentAssessmentService(selected.kind,selected.mode,env),{close,...report}=result
   process.stdout.write(JSON.stringify(report)+"\n")
-  if(close){let stopping=false;const stop=()=>{if(stopping)return;stopping=true;const deadline=setTimeout(()=>process.exit(1),65000);void close().then(()=>clearTimeout(deadline)).catch(()=>{process.stderr.write("AGENT_ASSESSMENT_SHUTDOWN_INCOMPLETE\n");process.exit(1)})};process.once("SIGTERM",stop);process.once("SIGINT",stop)}
+  if(close)attachAgentAssessmentShutdown(close)
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))void runAgentAssessmentServiceCli(process.argv.slice(2)).catch(()=>{process.stderr.write("AGENT_ASSESSMENT_SERVICE_REFUSED\n");process.exitCode=1})

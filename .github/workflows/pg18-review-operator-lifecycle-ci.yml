@@ -1,0 +1,35 @@
+name: Agent Studio PG18 review operator lifecycle isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-shared-knowledge-ui-20261023'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pg18-review-operator-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API test dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Pure guards, owned-container policy and offline coordinator
+        run: |
+          node --experimental-strip-types --test services/pg-api/tests/assessment-full-cli-ci-guard.test.mjs tests/pg18-assessment-cli-coordinator.test.mjs
+          node ops/pg18-assessment-cli-ci.mjs --plan
+      - name: Fresh network-none PG18 container and actual nonroot CLI lifecycle
+        env:
+          AGENT_STUDIO_ASSESSMENT_CLI_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_ASSESSMENT_CLI_CI_WRITE_APPROVED: YES_DISPOSABLE_CONTAINER_ONLY
+          AGENT_STUDIO_ASSESSMENT_CLI_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-review-cli-${{ github.run_id }}-${{ github.run_attempt }}'
+        run: node ops/pg18-assessment-cli-ci.mjs --run

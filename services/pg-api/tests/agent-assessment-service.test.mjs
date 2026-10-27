@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import {spawnSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
 import {EventEmitter} from 'node:events'
-import {startAgentAssessmentService,runAgentAssessmentServiceCli,createAgentAssessmentServiceAdmission} from '../src/agent-assessment-service.ts'
+import {startAgentAssessmentService,runAgentAssessmentServiceCli,createAgentAssessmentServiceAdmission,attachAgentAssessmentShutdown} from '../src/agent-assessment-service.ts'
 const entry=fileURLToPath(new URL('../src/agent-assessment-service.ts',import.meta.url))
 function cli(args){const env=Object.fromEntries(['PATH','SystemRoot','WINDIR','TEMP','TMP','TMPDIR'].filter(name=>process.env[name]!==undefined).map(name=>[name,process.env[name]]));Object.assign(env,{AGENT_STUDIO_PG18_REVIEW_EXECUTION_ENABLED:'false',AGENT_STUDIO_PG18_REVIEW_EXECUTION_APPROVED:'synthetic-private-approval',DATABASE_URL:'postgres://synthetic-forbidden-never-contact',CREDENTIALS_DIRECTORY:'/never/read/synthetic-private-key'});const r=spawnSync(process.execPath,['--experimental-strip-types',entry,...args],{env,encoding:'utf8',timeout:10000,windowsHide:true});assert.equal(r.error,undefined);assert.doesNotMatch(r.stdout+r.stderr,/synthetic-private|never-contact|never\/read/);return r}
 test('standalone --plan/--help exit successfully with hostile ambient DB/credential settings and no activation',()=>{
@@ -75,4 +75,15 @@ test('an early HTTP close error does not cut short the active application drain'
   const drain=admission.drain({listening:true,close(callback){callback(Error('synthetic close failure'))},closeAllConnections(){}})
   const rejected=assert.rejects(drain,{message:'agent_assessment_shutdown_timeout'}).then(()=>{settled=true})
   await flush();assert.equal(settled,false);finish();await dispatch;await rejected;assert.equal(waits,1)
+})
+test('same SIGTERM remains handled throughout drain, closes once and removes signal/timer handles after success',async()=>{
+  const signals=new EventEmitter();let release,calls=0,exits=0,reports=0,timers=0,cleared=0;const token={}
+  attachAgentAssessmentShutdown(async()=>{calls++;await new Promise(resolve=>{release=resolve})},{signals,timer(_callback,ms){assert.equal(ms,65000);timers++;return token},clear(value){assert.equal(value,token);cleared++},exit(){exits++},reportFailure(){reports++}})
+  signals.emit('SIGTERM');await flush();signals.emit('SIGTERM');signals.emit('SIGINT');assert.equal(calls,1);assert.equal(timers,1);assert.equal(signals.listenerCount('SIGTERM'),1);assert.equal(signals.listenerCount('SIGINT'),1);assert.equal(cleared,0);assert.equal(exits,0)
+  release();await flush();assert.equal(cleared,1);assert.equal(signals.listenerCount('SIGTERM'),0);assert.equal(signals.listenerCount('SIGINT'),0);assert.equal(exits,0);assert.equal(reports,0)
+})
+test('failed graceful shutdown clears handlers/timer and reports only the fixed failure path',async()=>{
+  const signals=new EventEmitter();let exits=0,reports=0,cleared=0
+  attachAgentAssessmentShutdown(async()=>{throw Error('private shutdown detail')},{signals,timer(_callback,ms){assert.equal(ms,65000);return {}},clear(){cleared++},exit(){exits++},reportFailure(){reports++}})
+  signals.emit('SIGTERM');signals.emit('SIGTERM');await flush();assert.equal(exits,1);assert.equal(reports,1);assert.equal(cleared,1);assert.equal(signals.listenerCount('SIGTERM'),0);assert.equal(signals.listenerCount('SIGINT'),0)
 })
