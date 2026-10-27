@@ -218,7 +218,7 @@ const tables:Record<string,Table>={
 }
 const functions:Record<string,{args:string;sha:string}>={
   agent_generated_receipt:{args:"uuid, text",sha:"de102ea81efb146895200ac1f301d0b7b2912e452f032d87d66fe7b8b682adfa"},
-  agent_generated_accept:{args:"jsonb",sha:"2fbdf199f1cf1975dcf2fbbcb65da394609fac58d00279c900bdee99a48d6adc"}
+  agent_generated_accept:{args:"jsonb",sha:"be363c6f963485013baa4549fecfb57992b3dc27f415677fc66920a51c656593"}
 }
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b)
 

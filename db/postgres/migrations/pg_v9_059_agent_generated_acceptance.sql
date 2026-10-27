@@ -287,9 +287,9 @@ BEGIN
   binding:=choice->'model_binding';
   SELECT * INTO model FROM agentstudio.model_connections WHERE id=(binding->>'connection_id')::uuid AND owner_user_id=owner FOR SHARE;
   IF NOT FOUND OR model.enabled IS DISTINCT FROM true OR model.status<>'ok' OR model.revision<>(binding->>'connection_revision')::bigint
-    OR NOT model.models ? (binding->>'model_id') OR model.base_url IS DISTINCT FROM CASE model.provider
+    OR NOT model.models ? (binding->>'model_id') OR model.base_url IS DISTINCT FROM (CASE model.provider
       WHEN 'openai' THEN 'https://api.openai.com/v1' WHEN 'anthropic' THEN 'https://api.anthropic.com/v1'
-      WHEN 'gemini' THEN 'https://generativelanguage.googleapis.com/v1beta' ELSE NULL END
+      WHEN 'gemini' THEN 'https://generativelanguage.googleapis.com/v1beta' ELSE NULL END)
   THEN RAISE EXCEPTION 'agent_generated_source_unavailable'; END IF;
   FOR source_ref IN SELECT value FROM jsonb_array_elements(choice->'feedback_sources')
       ORDER BY (value->>'run_id')::uuid,(value->>'feedback_id')::uuid LOOP
