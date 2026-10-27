@@ -123,6 +123,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [outcomeMemory,setOutcomeMemory]=useState({available:false,enabled:false})
   const [optimization,setOptimization]=useState({available:false,enabled:false})
   const [feedback,setFeedback]=useState({available:false,enabled:false,lessons:false})
+  const [agentReview,setAgentReview]=useState({available:false,enabled:false})
   const [derivedMemoryOpened,setDerivedMemoryOpened]=useState(false)
   useEffect(()=>{if(derivedMemory.available)setDerivedMemoryOpened(true)},[derivedMemory.available])
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
@@ -161,6 +162,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setOutcomeMemory({available:false,enabled:false})
     setOptimization({available:false,enabled:false})
     setFeedback({available:false,enabled:false,lessons:false})
+    setAgentReview({available:false,enabled:false})
     setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
@@ -214,6 +216,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setAgentMemory({available:capability?.agent_memory_available===true,enabled:capability?.agent_memory_writes_enabled===true&&capability.config_writes_enabled===true})
       setOptimization({available:capability?.agent_optimization_available===true,enabled:capability?.agent_optimization_acceptance_enabled===true&&capability.config_writes_enabled===true})
       setFeedback({available:capability?.agent_feedback_available===true,enabled:capability?.agent_feedback_submission_enabled===true&&capability.config_writes_enabled===true,lessons:capability?.agent_feedback_lesson_storage_enabled===true&&capability.config_writes_enabled===true})
+      setAgentReview({available:capability?.agent_review_available===true,enabled:capability?.agent_review_available===true&&capability.agent_review_submission_enabled===true&&capability.config_writes_enabled===true})
       setOutcomeMemory({available:capability?.agent_outcome_memory_available===true,enabled:capability?.agent_outcome_memory_admission_enabled===true&&capability.config_writes_enabled===true})
       setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
@@ -539,11 +542,12 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               当前环境未授权提交模型任务。已有记录可在运行历史中查看。
             </p>}
             <div hidden={section!=="autonomousAgent"}>
-              <PgNativeAutonomousAgentPanel key={profile.id} api={api} agents={agents} connections={modelConnections} tools={toolConnections}
+              <PgNativeAutonomousAgentPanel key={profile.id} api={api} ownerId={profile.id} agents={agents} connections={modelConnections} tools={toolConnections}
                 humanAvailable={humanInput.available} humanEnabled={humanInput.enabled}
                 outcomeAvailable={outcomeMemory.available} outcomeEnabled={outcomeMemory.enabled&&!loading&&!busy}
                 optimizationAvailable={optimization.available} optimizationEnabled={optimization.enabled&&!loading&&!busy} onRoleChanged={refresh}
                 feedbackAvailable={feedback.available} feedbackEnabled={feedback.enabled&&!loading&&!busy} feedbackLessons={feedback.lessons&&!loading&&!busy}
+                reviewAvailable={agentReview.available} reviewEnabled={agentReview.enabled&&!loading&&!busy}
                 target={autonomousTarget}
                 mcpEnabled={mcpToolsEnabled}
                 active={section==="autonomousAgent"} enabled={autonomousEnabled&&!loading&&!busy} onExpired={expireAgentSession}/>

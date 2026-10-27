@@ -28,6 +28,9 @@ import {AgentOptimizationRepository} from "./agent-optimization-repository.ts"
 import {inspectAgentOptimizationSchema} from "./agent-optimization-audit.ts"
 import {inspectAgentAssessmentSchema} from "./agent-assessment-audit.ts"
 import {inspectAgentOpinionSchema} from "./agent-opinion-audit.ts"
+import {AgentOpinionRepository} from "./agent-opinion-repository.ts"
+import {AgentReviewSourceRepository} from "./agent-review-source.ts"
+import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
 // Independent PostgreSQL 18 / native employee-auth API PILOT.
@@ -405,12 +408,13 @@ export async function startNativePg18Server(env=process.env,listen=true){
     // Optional057 is audited even when no review execution service is mounted.
     await inspectAgentAssessmentSchema(business)
     // Optional058 may expose private result reads only with its exact schema.
-    await inspectAgentOpinionSchema(business)
+    const reviewAvailable=await inspectAgentOpinionSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
     if(capabilities.agentFeedbackUat===true&&!feedbackAvailable)throw Error("agent_feedback_schema_required")
     if(capabilities.agentOptimizationUat===true&&!optimizationAvailable)throw Error("agent_optimization_schema_required")
+    if(capabilities.agentReviewSubmissionUat===true&&!reviewAvailable)throw Error("agent_review_schema_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -445,6 +449,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentReleases:releasesAvailable,
       allowAgentHumanInput:humanInputAvailable,
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
+      allowAgentReview:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
       allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
@@ -470,6 +475,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
       repository:new AgentSpecRepository(business),
+      ...(reviewAvailable?{agentReviewSourceRepository:new AgentReviewSourceRepository(business),
+        agentReviewLedgerRepository:new AgentReviewLedgerRepository(business,{allowSubmissions:capabilities.configurationWrites===true&&capabilities.agentReviewSubmissionUat===true}),
+        agentOpinionRepository:new AgentOpinionRepository(business)}:{}),
       ...(memoryAvailable?{agentMemoryRepository:new AgentMemoryRepository(business,{allowWrites:capabilities.configurationWrites===true})}:{}),
       ...(optimizationAvailable?{agentOptimizationRepository:new AgentOptimizationRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true})}:{}),
       ...(feedbackAvailable?{agentFeedbackRepository:new AgentFeedbackRepository(business,{allowSubmit:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true,allowLessonStorage:capabilities.configurationWrites===true&&capabilities.agentFeedbackUat===true&&capabilities.agentFeedbackLessonsUat===true})}:{}),

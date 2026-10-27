@@ -30,6 +30,10 @@ import type {SmitheryRepository} from "./smithery-repository.ts"
 import type {ProviderProbeInput,ProviderProbeResult} from "./model-connection-probe.ts"
 import {parseDocumentIsolated} from "./document-worker.ts"
 import { HttpError, isUuid, safeAgentSpec, safeName, safeWorkflowGraph, type Identity } from "./contracts.ts"
+import {parseAgentReviewSubmission} from "./agent-review-contract.ts"
+import {parseAgentReviewControl} from "./agent-review-control.ts"
+import {parseAgentOpinionView} from "./agent-opinion-contract.ts"
+import {parseAgentReviewTarget,parsePublicAgentReviewChoice,publicAgentReviewSource,publicAgentReviewPreview,publicAgentReviewReceipt,publicAgentReviewControlReceipt} from "./agent-review-public-contract.ts"
 
 export interface AppDependencies {
   repository: AgentSpecRepository
@@ -47,6 +51,10 @@ export interface AppDependencies {
   agentMemoryRepository?:AgentMemoryRepository
   agentOptimizationRepository?:import("./agent-optimization-repository.ts").AgentOptimizationRepository
   agentFeedbackRepository?:import("./agent-feedback-repository.ts").AgentFeedbackRepository
+  /** Mounted atomically only after full optional058/057/056 schema inspection. */
+  agentReviewSourceRepository?:Pick<import("./agent-review-source.ts").AgentReviewSourceRepository,"source"|"preview">
+  agentReviewLedgerRepository?:Pick<import("./agent-review-ledger.ts").AgentReviewLedgerRepository,"submit"|"confirm"|"change"|"confirmControl">
+  agentOpinionRepository?:Pick<import("./agent-opinion-repository.ts").AgentOpinionRepository,"getCurrent">
   agentOutcomeMemoryRepository?:import("./agent-memory-outcome-repository.ts").AgentMemoryOutcomeRepository
   agentDerivedMemoryRepository?:import("./agent-memory-derived-repository.ts").AgentMemoryDerivedRepository
   workflowHumanInputRepository?:AgentHumanInputRepository
@@ -96,6 +104,17 @@ async function readBody(req:IncomingMessage,maxBytes=32768):Promise<Record<strin
   if(!data || typeof data!=="object" || Array.isArray(data))
     throw new HttpError(400,"invalid_json")
   return data as Record<string,unknown>
+}
+async function readReviewBody(req:IncomingMessage,maxBytes:number):Promise<Record<string,unknown>>{
+  const type=req.headers["content-type"],length=req.headers["content-length"]
+  if(typeof type!=="string"||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(type))throw new HttpError(415,"json_content_type_required")
+  if(length!==undefined&&(typeof length!=="string"||!/^\d+$/.test(length)||!Number.isSafeInteger(Number(length))||Number(length)>maxBytes))throw new HttpError(413,"request_too_large")
+  let size=0;const chunks:Buffer[]=[]
+  for await(const chunk of req){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=bytes.length;if(size>maxBytes)throw new HttpError(413,"request_too_large");chunks.push(bytes)}
+  let value:unknown
+  try{value=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(chunks)))}catch{throw new HttpError(400,"invalid_json")}
+  if(!value||typeof value!=="object"||Array.isArray(value))throw new HttpError(400,"invalid_json")
+  return value as Record<string,unknown>
 }
 function tokenFrom(req:IncomingMessage):string {
   const header=req.headers.authorization
@@ -157,6 +176,9 @@ export function createHandler(deps:AppDependencies) {
       const collaborationRoute=/^\/api\/v2\/agent-collaboration(?:\/([0-9a-fA-F-]{36})(?:\/(revisions|change|revoke|reject|confirm))?)?$/.exec(path)
       const memoryRoute=/^\/api\/v2\/agent-memories(?:\/(change|confirm))?$/.exec(path)
       const optimizationRoute=/^\/api\/v2\/agent-optimizations(?:\/(preview|accept|confirm))?$/.exec(path)
+      const reviewAction=/^\/api\/v2\/agent-reviews\/(source|preview|submit|confirm)$/.exec(path)
+      const reviewItem=/^\/api\/v2\/agent-reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\/(control|control-confirm))?$/.exec(path)
+      const reviewRoute=reviewAction||reviewItem
       const feedbackRoute=/^\/api\/v2\/agent-feedback\/([0-9a-fA-F-]{36})(?:\/(change|confirm))?$/.exec(path)
       const outcomeMemoryRoute=/^\/api\/v2\/agent-outcome-memories\/([0-9a-fA-F-]{36})(?:\/(stop|stop-confirm))?$/.exec(path)
       const derivedMemoryRoute=/^\/api\/v2\/agent-derived-memories(?:\/(preview|change|confirm))?$/.exec(path)
@@ -164,12 +186,17 @@ export function createHandler(deps:AppDependencies) {
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
       if(!["GET","POST","PATCH","DELETE"].includes(method))
         throw new HttpError(405,"method_not_allowed")
+      if(reviewRoute){
+        if(!deps.agentReviewSourceRepository||!deps.agentReviewLedgerRepository||!deps.agentOpinionRepository)throw new HttpError(404,"route_not_found")
+        // Never evaluate an OIDC/PocketBase token fallback for this surface.
+        if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
+      }
 
 
       // Explicitly ignore X-Rh-User-Id. In native mode the server-side
@@ -191,6 +218,44 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(reviewRoute){
+        if(identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+        // Only exact origin-form paths: no query, fragment, encoded alias,
+        // absolute URL or normalized dot-segment alternate route is accepted.
+        if(req.url!==path)throw new HttpError(400,"invalid_agent_review_path")
+        const repositories={source:deps.agentReviewSourceRepository!,ledger:deps.agentReviewLedgerRepository!,opinions:deps.agentOpinionRepository!}
+        if(reviewAction){
+          if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+          const action=reviewAction[1],body=await readReviewBody(req,action==="source"?8192:16384)
+          if(action==="source"){
+            const target=parseAgentReviewTarget(body)
+            return send(res,200,publicAgentReviewSource(await repositories.source.source(identity,target),target))
+          }
+          if(action==="preview"){
+            const choice=parsePublicAgentReviewChoice(body)
+            return send(res,200,publicAgentReviewPreview(await repositories.source.preview(identity,choice),choice))
+          }
+          parseAgentReviewSubmission(body)
+          // Existing ledger checks an exact original replay before its new
+          // admission flag. HTTP must not replace that gate or mutate intent.
+          const receipt=action==="submit"?await repositories.ledger.submit(identity,body):await repositories.ledger.confirm(identity,body)
+          return send(res,200,publicAgentReviewReceipt(receipt,body))
+        }
+        const id=reviewItem![1]!.toLowerCase(),action=reviewItem![2]
+        if(!action){
+          if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+          const current=await repositories.opinions.getCurrent(identity,id)
+          let result:ReturnType<typeof parseAgentOpinionView>
+          try{result=parseAgentOpinionView(current)}catch{throw new HttpError(502,"agent_review_response_unavailable")}
+          if(result.request.request_id!==id)throw new HttpError(502,"agent_review_response_unavailable")
+          return send(res,200,result)
+        }
+        if(method!=="POST")throw new HttpError(405,"method_not_allowed")
+        const body=await readReviewBody(req,8192),control=parseAgentReviewControl(body)
+        if(control.review_id!==id)throw new HttpError(400,"agent_review_id_mismatch")
+        const receipt=action==="control"?await repositories.ledger.change(identity,body):await repositories.ledger.confirmControl(identity,body)
+        return send(res,200,publicAgentReviewControlReceipt(receipt,body))
+      }
       if(optimizationRoute){
         if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
         const optimization=deps.agentOptimizationRepository

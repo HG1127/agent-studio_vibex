@@ -2,6 +2,8 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
+export type {PgNativeAgentReviewPurpose,PgNativeAgentReviewTarget,PgNativeAgentReviewModelBinding,PgNativeAgentReviewFeedbackSource,PgNativeAgentReviewSelection,PgNativeAgentReviewChoice,PgNativeAgentReviewSubmission,PgNativeAgentReviewControl,PgNativeAgentReviewSource,PgNativeAgentReviewPreview,PgNativeAgentReviewReceipt,PgNativeAgentReviewControlReceipt,PgNativeAgentReviewRequest,PgNativeAgentReviewEvaluation,PgNativeAgentReviewOptimization,PgNativeAgentReviewResult,PgNativeAgentReviewOutcome,PgNativeAgentReviewView} from "./pgNativeAgentReview.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
 import {agentDerivedMemoryChoice,agentDerivedMemoryReceipt,agentDerivedMemoryPreview,agentDerivedMemoryPage,type PgNativeDerivedMemoryChoice} from "./pgNativeAgentDerivedMemory.ts"
@@ -68,6 +70,8 @@ export type PgNativeConfigCapabilities={
   agent_derived_memory_writes_enabled?:boolean
   agent_optimization_available?:boolean
   agent_optimization_acceptance_enabled?:boolean
+  agent_review_available?:boolean
+  agent_review_submission_enabled?:boolean
   agent_feedback_available?:boolean
   agent_feedback_submission_enabled?:boolean
   agent_feedback_lesson_storage_enabled?:boolean
@@ -282,6 +286,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/agent-memories${string}`
   | `/api/v2/agent-derived-memories${string}`
   | `/api/v2/agent-optimizations${string}`
+  | `/api/v2/agent-reviews/${string}`
   | `/api/v2/agent-feedback/${string}`
   | `/api/v2/agent-outcome-memories/${string}`
   | `/api/v2/workflows/${string}/validate`
@@ -463,6 +468,20 @@ export function createPgNativePilotApi(
   const get=<T>(route:Route)=>request<T>(route,"GET",undefined,transport,rootPath)
   const post=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"POST",body,transport,rootPath)
+  const reviewInput=<T>(parse:(raw:unknown)=>T,raw:unknown):T=>{
+    try{return parse(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_review_request")}
+  }
+  const reviewResponse=async<T>(decode:()=>T|Promise<T>):Promise<T>=>{
+    try{return await decode()}catch{throw new PgNativePilotError(503,"unconfirmed_agent_review_response")}
+  }
+  const reviewSubmit=async(raw:PgNativeAgentReviewSubmission,confirmOnly=false)=>{
+    const body=reviewInput(agentReviewSubmission,raw),result=await post<unknown>(`/api/v2/agent-reviews/${confirmOnly?"confirm":"submit"}`,body)
+    return reviewResponse(()=>agentReviewReceipt(result,body,confirmOnly))
+  }
+  const reviewControl=async(raw:PgNativeAgentReviewControl,confirmOnly=false)=>{
+    const body=reviewInput(agentReviewControl,raw),result=await post<unknown>(`/api/v2/agent-reviews/${body.review_id}/${confirmOnly?"control-confirm":"control"}`,body)
+    return reviewResponse(()=>agentReviewControlReceipt(result,body,confirmOnly))
+  }
   const patch=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"PATCH",body,transport,rootPath)
   const del=<T>(route:Route)=>request<T>(route,"DELETE",undefined,transport,rootPath)
@@ -516,6 +535,22 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    getAgentReviewSource:async(raw:PgNativeAgentReviewTarget)=>{
+      const body=reviewInput(agentReviewTarget,raw),result=await post<unknown>("/api/v2/agent-reviews/source",body)
+      return reviewResponse(()=>agentReviewSource(result,body))
+    },
+    previewAgentReview:async(raw:PgNativeAgentReviewChoice)=>{
+      const body=reviewInput(agentReviewChoice,raw),result=await post<unknown>("/api/v2/agent-reviews/preview",body)
+      return reviewResponse(()=>agentReviewPreview(result,body))
+    },
+    submitAgentReview:(body:PgNativeAgentReviewSubmission)=>reviewSubmit(body),
+    confirmAgentReview:(body:PgNativeAgentReviewSubmission)=>reviewSubmit(body,true),
+    changeAgentReviewControl:(body:PgNativeAgentReviewControl)=>reviewControl(body),
+    confirmAgentReviewControl:(body:PgNativeAgentReviewControl)=>reviewControl(body,true),
+    getAgentReview:async(raw:string)=>{
+      const id=reviewInput(agentReviewId,raw),result=await get<unknown>(`/api/v2/agent-reviews/${id}`)
+      return reviewResponse(()=>agentReviewView(result,id))
+    },
     getAgentOptimizations:async(specId:string)=>{
       if(!safeId.test(specId))throw new PgNativePilotError(400,"invalid_agent_optimization_spec")
       const spec=specId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-optimizations?spec_id=${spec}`)
@@ -600,6 +635,9 @@ export function createPgNativePilotApi(
           (value.agent_optimization_available!==undefined&&typeof value.agent_optimization_available!=="boolean")||
           (value.agent_optimization_acceptance_enabled!==undefined&&typeof value.agent_optimization_acceptance_enabled!=="boolean")||
           (value.agent_optimization_acceptance_enabled===true&&(value.agent_optimization_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_review_available!==undefined&&typeof value.agent_review_available!=="boolean")||
+          (value.agent_review_submission_enabled!==undefined&&typeof value.agent_review_submission_enabled!=="boolean")||
+          (value.agent_review_submission_enabled===true&&(value.agent_review_available!==true||value.config_writes_enabled!==true))||
           (value.agent_feedback_available!==undefined&&typeof value.agent_feedback_available!=="boolean")||
           (value.agent_feedback_submission_enabled!==undefined&&typeof value.agent_feedback_submission_enabled!=="boolean")||
           (value.agent_feedback_lesson_storage_enabled!==undefined&&typeof value.agent_feedback_lesson_storage_enabled!=="boolean")||

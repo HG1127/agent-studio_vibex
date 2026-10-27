@@ -10,6 +10,7 @@ import {selectScheduleRuntime} from "./schedule-runtime-policy.ts"
 import {selectAgentMemoryRuntime,selectAgentDerivedMemoryWrites,selectAgentOutcomeMemoryWrites} from "./agent-memory-runtime-policy.ts"
 import {selectAgentFeedbackScopes} from "./agent-feedback-runtime-policy.ts"
 import {selectAgentOptimizationAcceptance} from "./agent-optimization-runtime-policy.ts"
+import {selectAgentReviewSubmission} from "./agent-review-runtime-policy.ts"
 // Standalone PG18 UAT-only business configuration mutation policy.
 // This module does NOT connect to a database or start an HTTP listener.
 // The current 8090/PocketBase site remains authoritative until full UAT.
@@ -44,6 +45,7 @@ export interface NativePg18UatCapabilities {
   agentFeedbackUat?:boolean
   agentFeedbackLessonsUat?:boolean
   agentOptimizationUat?:boolean
+  agentReviewSubmissionUat?:boolean
   scheduleRuntimeUat?:boolean
   /** Additional independent UAT prerequisite; does not register a paid transport. */
   boundModelExecutionUat?:boolean
@@ -75,6 +77,7 @@ export function selectNativePg18UatCapabilities(
   const agentOutcomeMemoryUat=selectAgentOutcomeMemoryWrites(env)
   const feedback=selectAgentFeedbackScopes(env)
   const optimization=selectAgentOptimizationAcceptance(env)
+  const reviewSubmission=selectAgentReviewSubmission(env)
   const scheduleRuntimeUat=selectScheduleRuntime(env)
   const mcpToolExecutionUat=selectMcpExecution(env)
   const smitheryManagementUat=selectSmitheryManagement(env)
@@ -114,6 +117,7 @@ export function selectNativePg18UatCapabilities(
   if(agentDerivedMemoryUat&&!configUat)refuse()
   if(feedback.submit&&!configUat)refuse()
   if(optimization&&!configUat)refuse()
+  if(reviewSubmission&&!configUat)refuse()
   if(agentOutcomeMemoryUat&&(!configUat||!autonomousAgentUat||!agentDerivedMemoryUat))refuse()
   const employeeUat=employees==="true"
   const runUat=run==="true"
@@ -173,6 +177,7 @@ export function selectNativePg18UatCapabilities(
     ...(feedback.submit?{agentFeedbackUat:true}:{}),
     ...(feedback.lessons?{agentFeedbackLessonsUat:true}:{}),
     ...(optimization?{agentOptimizationUat:true}:{}),
+    ...(reviewSubmission?{agentReviewSubmissionUat:true}:{}),
     ...(scheduleRuntimeUat?{scheduleRuntimeUat:true}:{}),
     ...(boundModelExecutionUat?{boundModelExecutionUat:true}:{})}
 }
@@ -190,6 +195,11 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  // Existing ledger decides original replay before its independent fresh-write
+  // scope. Source/preview/recovery/privacy/current reads stay reachable closed.
+  if(/^\/api\/v2\/agent-reviews\/(source|preview|submit|confirm)$/.test(pathname))return method==="POST"
+  const review=new RegExp("^/api/v2/agent-reviews/"+uuid+"(?:/(control|control-confirm))?$").exec(pathname)
+  if(review)return review[1]?method==="POST":method==="GET"
   // The repository gates new submissions. Original recovery and privacy
   // deletion stay reachable when the operator closes new feedback admission.
   const optimization=/^\/api\/v2\/agent-optimizations(?:\/(preview|accept|confirm))?$/.exec(pathname)
