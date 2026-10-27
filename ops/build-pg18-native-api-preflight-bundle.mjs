@@ -16,7 +16,17 @@ const included=new Set([
   "services/pg-api/src/native-auth-http.d.mts",
   "ops/baota-pg18-native-api-preflight.sh",
 ])
+const assessmentAssets=[
+  "ops/templates/agent-assessment-worker.service.example",
+  "ops/templates/agent-assessment-broker.service.example",
+  "ops/agent-assessment-logins.sql.example",
+  "ops/agent-assessment-pg-hba.conf.example",
+  "ops/agent-assessment-operator-plan.txt",
+]
 const hash=raw=>createHash("sha256").update(raw).digest("hex")
+// All child programs share one environment boundary, including tar. Ambient
+// NODE_OPTIONS, test harness flags and TAR_OPTIONS are never forwarded.
+const childEnvironment=Object.fromEntries(["PATH","Path","SystemRoot","SYSTEMROOT","WINDIR","TEMP","TMP","TMPDIR","HOME","USERPROFILE"].filter(key=>typeof process.env[key]==="string").map(key=>[key,process.env[key]]))
 const thirdParty={
   ajv:"8.20.0",
   pg:"8.23.1",
@@ -65,7 +75,7 @@ function includeSource(rel){
 }
 function tar(args){
   const result=spawnSync("tar",args,{
-    encoding:"utf8",timeout:30000,cwd:repo,
+    encoding:"utf8",timeout:30000,cwd:repo,env:childEnvironment,
   })
   if(result.status!==0)refuse("tar_failed:"+result.stderr.slice(0,150))
   return result.stdout
@@ -75,7 +85,7 @@ function checkFile(file){
      fs.lstatSync(file).isSymbolicLink())refuse("non_regular_source")
   return fs.readFileSync(file)
 }
-function build(output,includeKnowledgeIndex=false){
+function build(output,includeKnowledgeIndex=false,includeAssessment=false){
   if(typeof output!=="string"||!path.isAbsolute(output)||output.includes("\0"))
     refuse("absolute_output_directory_required")
   const pathNormalized=path.resolve(output)
@@ -91,6 +101,10 @@ function build(output,includeKnowledgeIndex=false){
     included.add("ops/templates/agentstudio-pg18-knowledge-index.service.example")
     included.add("ops/templates/agentstudio-pg18-knowledge-index-broker.service.example")
   }
+  if(includeAssessment){
+    includeSource("services/pg-api/src/agent-assessment-service.ts")
+    for(const asset of assessmentAssets)included.add(asset)
+  }
   for(const module of foundExternals){
     if(!(module in thirdParty))refuse("unapproved_runtime_dependency:"+module)
   }
@@ -98,7 +112,7 @@ function build(output,includeKnowledgeIndex=false){
     if(!(required in thirdParty))refuse("incomplete_package")
   const date=new Date().toISOString().replace(/[-:]/g,"").replace(/\..*/,"")
   const archive=path.join(pathNormalized,
-    (includeKnowledgeIndex?"agentstudio_pg18_native_api_index_preflight_v1_":"agentstudio_pg18_native_api_preflight_v1_")+date+".tar.gz")
+    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+"_preflight_v1_"+date+".tar.gz")
   if(fs.existsSync(archive))refuse("archive_already_exists")
   const staging=fs.mkdtempSync(path.join(pathNormalized,
     "native-api-review-staging-"))
@@ -108,7 +122,7 @@ function build(output,includeKnowledgeIndex=false){
       if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||includeKnowledgeIndex&&[
         "ops/templates/agentstudio-pg18-knowledge-index.service.example",
         "ops/templates/agentstudio-pg18-knowledge-index-broker.service.example",
-      ].includes(relativePath)){
+      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)){
         files[relativePath]=checkFile(path.join(repo,relativePath))
         continue
       }
@@ -132,6 +146,12 @@ function build(output,includeKnowledgeIndex=false){
         "Index offline plan: node --experimental-strip-types services/pg-api/src/knowledge-index-service.ts --plan",
         "SQL032-038 and dedicated NOINHERIT logins must be separately reviewed/provisioned; this package applies no SQL.",
         "Index and reader-query dispatch require separate operator approval and per-owner/per-query billing confirmation."]:[]),
+      ...(includeAssessment?[
+        "Includes independent review Worker/Broker source and default-off readonly operator examples. No service is started.",
+        "Review offline plan/help: node --experimental-strip-types services/pg-api/src/agent-assessment-service.ts --plan (or --help)",
+        "Optional056/057 and dedicated logins require separate review/provisioning. This archive applies no SQL or HBA changes.",
+        "The login SQL.example deliberately ends ROLLBACK; neither preflight nor serve is authorized by this source package.",
+      ]:[]),
       "Use a NEW directory /opt/agentstudio-pg18-api-preflight-v1.",
       "Target: PostgreSQL 18 at 127.0.0.1:5333, agent_studio only.",
       "Preserve all existing PocketBase and vcaios services.",
@@ -188,7 +208,7 @@ function build(output,includeKnowledgeIndex=false){
         "--experimental-strip-types",
         "services/pg-api/src/native-server.ts","--plan",
       ],{cwd:verify,encoding:"utf8",timeout:18000,
-        env:{...process.env,DATABASE_URL:"postgres://forbidden-prod"}})
+        env:{...childEnvironment,DATABASE_URL:"postgres://forbidden-prod"}})
       if(probe.status!==0)
         refuse("isolated_offline_plan_failed:"+
           probe.stderr.slice(0,190))
@@ -199,18 +219,39 @@ function build(output,includeKnowledgeIndex=false){
       // No listener or unknown launch is permitted without --serve.
       const noArgs=spawnSync(process.execPath,[
         "--experimental-strip-types","services/pg-api/src/native-server.ts",
-      ],{cwd:verify,encoding:"utf8",timeout:16000})
+      ],{cwd:verify,encoding:"utf8",timeout:16000,env:childEnvironment})
       if(noArgs.status!==1||
          !noArgs.stderr.includes("NATIVE_SERVER_EXPLICIT_MODE_REQUIRED"))
         refuse("default_start_not_refused")
       if(includeKnowledgeIndex){
         for(const args of [[],["--plan"]]){
           const index=spawnSync(process.execPath,["--experimental-strip-types","services/pg-api/src/knowledge-index-service.ts",...args],
-            {cwd:verify,encoding:"utf8",timeout:18000,env:{...process.env,DATABASE_URL:"postgres://forbidden-prod"}})
+            {cwd:verify,encoding:"utf8",timeout:18000,env:{...childEnvironment,DATABASE_URL:"postgres://forbidden-prod"}})
           if(index.status!==0)refuse("isolated_index_plan_failed")
           const value=JSON.parse(index.stdout.trim())
           if(["credentials_read","network_used","provider_calls","workers_started","production_cutover_allowed"].some(key=>value[key]!==false))refuse("index_plan_not_safe")
         }
+      }
+      if(includeAssessment){
+        // A fresh extracted tree has no node_modules or credentials. Use a
+        // minimal child environment so test-runner flags cannot hide a probe.
+        const env={...childEnvironment}
+        Object.assign(env,{DATABASE_URL:"postgres://forbidden-prod",CREDENTIALS_DIRECTORY:"/never/read/source-review",AGENT_STUDIO_PG18_REVIEW_EXECUTION_ENABLED:"false",AGENT_STUDIO_PG18_REVIEW_EXECUTION_APPROVED:"REVIEW_REQUIRED"})
+        const run=args=>spawnSync(process.execPath,["--experimental-strip-types","services/pg-api/src/agent-assessment-service.ts",...args],{cwd:verify,encoding:"utf8",timeout:18000,env})
+        for(const mode of ["--plan","--help"]){
+          const probe=run([mode])
+          if(probe.status!==0||probe.stderr!=="")refuse("isolated_assessment_offline_failed")
+          const plan=JSON.parse(probe.stdout.trim())
+          if(plan.default_enabled!==false||plan.production_cutover_allowed!==false)refuse("assessment_offline_not_safe")
+          if(mode==="--plan"&&["credentials_read","network_used","db_writes_performed","workers_started","external_model_calls"].some(key=>plan[key]!==false))refuse("assessment_plan_not_safe")
+          if(mode==="--help"&&plan.preflight_read_only!==true)refuse("assessment_help_not_safe")
+        }
+        for(const args of [[],["--preflight","worker"],["--preflight","broker"],["--serve","worker"],["--serve","broker"]]){
+          const probe=run(args)
+          if(probe.status!==1||probe.stdout!==""||probe.stderr!=="AGENT_ASSESSMENT_SERVICE_REFUSED\n")refuse("assessment_unapproved_not_refused")
+        }
+        for(const rel of ["agent-assessment-service.ts","agent-assessment-service-config.ts","agent-assessment-worker.ts","agent-assessment-client.ts","agent-assessment-broker.ts","agent-assessment-role.ts","agent-assessment-audit.ts","agent-assessment-audit-core.ts","agent-review-source.ts","model-broker-actor.ts","model-connection-crypto.ts"])
+          if(!manifestPaths.includes("services/pg-api/src/"+rel))refuse("incomplete_assessment_runtime_closure")
       }
     }finally{fs.rmSync(verify,{recursive:true,force:true})}
     return {
@@ -224,15 +265,17 @@ function build(output,includeKnowledgeIndex=false){
       default_start_refused:true,
       contains_secrets:false,
       ...(includeKnowledgeIndex?{knowledge_index_service_included:true,index_default_plan_only:true}:{}),
+      ...(includeAssessment?{assessment_service_source_included:true,assessment_default_enabled:false,assessment_offline_plan_verified:true,assessment_unapproved_modes_refused:true}:{}),
     }
   }finally{fs.rmSync(staging,{recursive:true,force:true})}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===
   fileURLToPath(import.meta.url)){
   try{
-    if(![4,5].includes(process.argv.length)||process.argv[2]!=="--output-dir"||process.argv.length===5&&process.argv[4]!=="--with-knowledge-index")
+    const flags=process.argv.slice(4)
+    if(![4,5,6].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment"].includes(flag)))
       refuse("exact_output_arguments_required")
-    process.stdout.write(JSON.stringify(build(process.argv[3],process.argv.length===5))+"\n")
+    process.stdout.write(JSON.stringify(build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment")))+"\n")
   }catch(e){
     process.stderr.write("PG18_NATIVE_API_BUNDLE_REFUSED:"+
       (e instanceof Error?e.message:"unknown")+"\n")

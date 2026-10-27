@@ -1,0 +1,70 @@
+Independent review service source examples; production remains NO-GO.
+
+These files do not deploy, migrate, create logins, edit HBA, install services,
+enable paid work or promote fresh050. Importing the CLI starts nothing.
+Source collector/package/Workflow wiring is left to the integration owner.
+
+Offline commands (no credential reads, DB, listener or model calls):
+  node --experimental-strip-types services/pg-api/src/agent-assessment-service.ts --plan
+  node --experimental-strip-types services/pg-api/src/agent-assessment-service.ts --help
+
+Operator prerequisites for a separately authorized disposable PG18 exercise:
+1. Accepted056/057, independent backups and reviewed exact source/audit pins.
+2. Review the rollback-only login template and HBA ordering. Create NEW
+   NOINHERIT/NOSUPER/NOBYPASS/NOCREATE/NOREPLICATION logins only after separate
+   authorization, with independent SCRAM credentials handled outside source.
+   Each may SET exactly its one new review group; ADMIN/INHERIT must be false.
+   Never grant a review/secret group to an old Worker/API/service login.
+3. Preserve the existing independently verified stage API/model-broker login
+   boundaries. Broker needs THREE separate pools/passwords: API, new review
+   dispatch, existing restricted model secret. Worker has one new login and
+   never gets a model key, encryption key, API login or generated result body.
+4. Provision a dedicated reviewed review CA, distinct Worker/server leaf certs
+   with clientAuth/serverAuth respectively, matching private keys and SHA256
+   fingerprints; server SAN must include localhost and127.0.0.1. Put source
+   credentials under protected root custody and use systemd LoadCredential.
+   Runtime accepts only the exact /run/credentials/agentstudio-pg18-review-
+   worker.service or ...review-broker.service mount. No symlinks, writable
+   group/world files, ambient DATABASE_URL/PG variables or root process.
+5. The systemd examples are disabled, oneshot read-only preflight only. Review
+   target127.0.0.1:5333/agent_studio, PG18 flags, distinct pins, own login names,
+   credential metadata and exact package path before changing their false gates.
+   Even preflight requires ALL independent flags:
+   AGENT_STUDIO_PG18_REVIEW_EXECUTION_ENABLED=true
+   AGENT_STUDIO_PG18_REVIEW_EXECUTION_APPROVED=APPROVE_DISPOSABLE_PG18_PAID_REVIEW_EXECUTION_ONLY
+   AGENT_STUDIO_PG_REVIEW_SERVICE_REVIEWED=true
+   These flags authorize constructing the isolated mechanism, not arbitrary
+   user work. Every056 request still needs its original exact fee consent.
+6. Run --preflight worker and --preflight broker under their actual nonroot
+   systemd credential contexts. Preflight reads only PG target/catalog/ACL/
+   migration metadata, does not claim/reserve/finish or select employee/model
+   credential rows, never loads model encryption-key content or constructs a
+   provider executor. Report contains no credentials, prompts or identity IDs.
+
+Actual serve commands exist but require later explicit operator activation:
+  node --experimental-strip-types src/agent-assessment-service.ts --serve broker
+  node --experimental-strip-types src/agent-assessment-service.ts --serve worker
+Do not change the source oneshot units into running services without separate
+review of paid-execution approval, synthetic request scope, DNS/provider egress,
+TimeoutStopSec>=65, dedicated UIDs/HBA and long Worker/backup/access-control UAT.
+The preflight units deliberately allow only loopback; a future reviewed Broker
+serve unit needs approved DNS/provider egress and Type=simple, not an automatic
+relaxation of these examples. Do not enable/restart original PB/Native services.
+
+Broker serves only127.0.0.1:7459 HTTPS, requires and pins the Worker certificate,
+and uses the reviewed client/server pins. All role/schema preflights precede
+executor/listener construction. Worker claims only after startup preflights;
+SIGTERM/SIGINT stop new claims/request/dispatch admission. Broker tracks handler
+and dispatch promises even after HTTP disconnect, and drains those promises plus
+HTTP connections in one55s total budget. Raw TCP connections, including pending
+TLS handshakes, are tracked and destroyed at the deadline. Pool shutdown and
+owned-buffer cleanup follow that drain; CLI has a65s hard shutdown deadline.
+Worker client.close aborts remaining private RPCs and clears its copied CA/cert/
+key Buffers after the bounded current-tick wait. This clears owned JS Buffers;
+it is not a claim that every native TLS allocation or JS string is zeroized.
+Detected post-read credential metadata failures clear the local read Buffer.
+Unknown paid
+effects are fenced permanently by reservation and must never be auto resent.
+
+Hosted synthetic SQL/mTLS and real operator/preflight integration, source
+delivery, employee UAT and production GO signoff remain outstanding.

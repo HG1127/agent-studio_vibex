@@ -22,6 +22,30 @@ test('private transport refuses redirects, oversized/malformed/private replies o
   for(const variation of [{status:302},{type:'text/html'},{encoding:'gzip'},{error:true},{body:Buffer.from([0xc3,0x28])},{body:'x'.repeat(2049)},{body:JSON.stringify({...result,result:{private:'body'}})},{body:JSON.stringify({...result,request_id:proof.worker_id})}]){const events=[];await assert.rejects(createAgentAssessmentMutualTlsClient(config(),fake({...variation,events}))(proof),/agent_assessment_transport_unknown/);assert.equal(events.filter(v=>v.options).length,1)}
   let called=0;await assert.rejects(createAgentAssessmentMutualTlsClient(config(),()=>{called++;throw Error()})({...proof,messages:[]}));assert.equal(called,0)
 })
+test('callable client close is idempotent, clears only its owned credential copies and refuses further calls',async()=>{
+  const settings=config(),events=[],send=createAgentAssessmentMutualTlsClient(settings,fake({events})),original={ca:Buffer.from(settings.ca),cert:Buffer.from(settings.cert),key:Buffer.from(settings.key)}
+  assert.deepEqual(await send(proof),result);const sent=events[0].options
+  for(const name of ['ca','cert','key'])assert.notEqual(sent[name],settings[name])
+  assert.equal(send.close(),undefined);assert.equal(send.close(),undefined)
+  for(const name of ['ca','cert','key']){assert.ok(sent[name].every(byte=>byte===0));assert.deepEqual(settings[name],original[name])}
+  await assert.rejects(send(proof),{message:'agent_assessment_client_closed'});assert.equal(events.filter(event=>event.options).length,1)
+})
+test('client close destroys pending RPC and any partial response without asserting an outcome or allowing retry',async()=>{
+  for(const partial of [false,true]){
+    let options,request,callback,response,requestDestroyed=0,responseDestroyed=0,sockets=0
+    const send=createAgentAssessmentMutualTlsClient(config(),(opts,cb)=>{options=opts;callback=cb;sockets++;request=new EventEmitter();request.destroy=()=>{requestDestroyed++;request.emit('error',Error('private transport detail'));return request};request.end=()=>{if(partial){response=new EventEmitter();response.statusCode=200;response.headers={'content-type':'application/json'};response.destroy=()=>{responseDestroyed++};cb(response);response.emit('data',Buffer.from('{"request_id":'))}};return request})
+    const pending=send(proof),rejected=assert.rejects(pending,{message:'agent_assessment_transport_unknown'})
+    send.close();send.close();await rejected
+    assert.equal(requestDestroyed,1);assert.equal(responseDestroyed,partial?1:0)
+    for(const key of ['ca','cert','key'])assert.ok(options[key].every(byte=>byte===0))
+    if(!partial){const late=new EventEmitter();late.statusCode=200;late.headers={'content-type':'application/json'};late.destroy=()=>{responseDestroyed++};callback(late);assert.equal(responseDestroyed,1)}else{response.emit('data',Buffer.from('private late body'));response.emit('end')}
+    await assert.rejects(send(proof),{message:'agent_assessment_client_closed'});assert.equal(sockets,1)
+  }
+})
+test('closing an unused client opens no socket and never modifies caller-owned credentials',async()=>{
+  let calls=0;const settings=config(),copy=Buffer.from(settings.key),send=createAgentAssessmentMutualTlsClient(settings,()=>{calls++;throw Error('must not dial')})
+  send.close();send.close();await assert.rejects(send(proof),{message:'agent_assessment_client_closed'});assert.equal(calls,0);assert.deepEqual(settings.key,copy)
+})
 test('private handler denies plain/header-spoofed peers before reading a body or invoking Broker',async()=>{
   let dispatches=0,reads=0;const handler=createAgentAssessmentInternalHandler({...active,reviewedClientFingerprint256:'AB'.repeat(32),dispatch:async()=>{dispatches++;return result}})
   const req={socket:{authorized:true,encrypted:true},headers:{'x-forwarded-client-cert':'pretend'},async *[Symbol.asyncIterator](){reads++;yield Buffer.from('{}')}};let status,body;await handler(req,{writeHead(v){status=v},end(v){body=JSON.parse(v)}});assert.equal(status,403);assert.equal(reads,0);assert.equal(dispatches,0);assert.deepEqual(body,{error:'agent_assessment_denied'})

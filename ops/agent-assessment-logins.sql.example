@@ -1,0 +1,25 @@
+-- SOURCE-ONLY REVIEW TEMPLATE. NEVER imported by the service or fresh050.
+-- Do not run against a real target without separate operator authorization.
+-- No existing login gets a membership. No generated password/verifier here.
+BEGIN;
+DO $review$ BEGIN
+  IF current_setting('agentstudio.review_login_provisioning_approved',true) IS DISTINCT FROM 'APPROVE_DISPOSABLE_PG18_REVIEW_LOGIN_PROVISIONING_ONLY'
+    OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=session_user AND rolsuper)
+    OR current_database()<>'agent_studio' OR current_setting('server_version_num')::integer NOT BETWEEN 180000 AND 189999
+    OR inet_server_port() IS DISTINCT FROM 5333 OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'
+    OR NOT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_057')
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname IN('agentstudio_review_worker_login','agentstudio_review_dispatch_login'))
+    OR (SELECT count(*) FROM pg_catalog.pg_roles r WHERE rolname IN('agentstudio_review_worker','agentstudio_review_dispatch') AND NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls
+      AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members parent WHERE parent.member=r.oid))<>2
+  THEN RAISE EXCEPTION 'assessment_login_provisioning_not_authorized'; END IF;
+END $review$;
+CREATE ROLE agentstudio_review_worker_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD NULL;
+CREATE ROLE agentstudio_review_dispatch_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD NULL;
+GRANT agentstudio_review_worker TO agentstudio_review_worker_login WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
+GRANT agentstudio_review_dispatch TO agentstudio_review_dispatch_login WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
+-- No table/function/secret grants to either login. Only057 role functions.
+-- NULL passwords must be replaced using reviewed independent SCRAM secret
+-- handling; never paste passwords into this file, logs, shell argv or Git.
+-- Review CONNECT/pg_hba and the entire diff before any separately approved
+-- COMMIT. This source example deliberately rolls back and creates nothing.
+ROLLBACK;

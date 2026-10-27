@@ -1,0 +1,8 @@
+# SOURCE EXAMPLE ONLY. Do not copy/reload automatically.
+# Place the reviewed exact-user rules before any broader matching rules.
+# Dedicated assessment logins may authenticate only to the isolated PG18 DB.
+host agent_studio agentstudio_review_worker_login 127.0.0.1/32 scram-sha-256
+host agent_studio agentstudio_review_dispatch_login 127.0.0.1/32 scram-sha-256
+local all agentstudio_review_worker_login,agentstudio_review_dispatch_login reject
+host all agentstudio_review_worker_login,agentstudio_review_dispatch_login 0.0.0.0/0 reject
+host all agentstudio_review_worker_login,agentstudio_review_dispatch_login ::/0 reject
