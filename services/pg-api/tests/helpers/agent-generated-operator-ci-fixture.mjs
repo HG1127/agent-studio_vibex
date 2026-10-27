@@ -84,7 +84,7 @@ function verifyStagedReview(root,expected){
  const closed=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key))
  const value=JSON.parse(bytes.toString('utf8'))
  if(!closed(value,['format','review_only','source_sha256','default_fresh_latest','initializes_database','activation_performed','pg_runtime_install_verified','files'])||
-  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='7fef4e6496faeac82aac8a320be2b60065fd380f485a07faca2900a70a407679'||
+  value.format!=='agent_generated_operator_review_v1'||value.review_only!==true||value.source_sha256!=='06f8c7f37824e6866ea1587704afab45546f0cba9988e894f6f73af9eeba8747'||
   value.default_fresh_latest!=='pg_v9_050'||value.initializes_database!==false||value.activation_performed!==false||value.pg_runtime_install_verified!==false||!Array.isArray(value.files)||value.files.length!==91)refuse('review_manifest')
  const files=new Set(['REVIEW_MANIFEST.json'])
  for(const item of value.files){

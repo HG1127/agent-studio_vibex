@@ -2,7 +2,7 @@
 // No SQL engine, pg import, connection, auditor override or fixture is used.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {matchesAgentMemoryDerivedCheck} from '../src/agent-memory-derived-audit.ts'
+import {matchesAgentMemoryDerivedCheck,matchesAgentMemoryDerivedChecks} from '../src/agent-memory-derived-audit.ts'
 
 const name='agent_memory_derived_entries_fact_check'
 const original='(((length(btrim(fact)) >= 1) AND (length(btrim(fact)) <= 500)) AND (octet_length(fact) <= 2000))'
@@ -36,4 +36,21 @@ test('existing quoted CHECK literals are exact and do not inherit the fact-only 
   for(const changed of [expression.replace('[[:cntrl:]]',' [[:cntrl:]]'),expression.replace('!~','~'),expression.replace('<= 300','<= 301')]){
     assert.equal(matchesAgentMemoryDerivedCheck(constraint,changed),false)
   }
+})
+
+test('each table requires its exact complete CHECK-name set; another table cannot supply a replacement fact bound',()=>{
+  const row=(name,expression)=>({name,expression,valid:true})
+  const checks=[
+    row('agent_memory_derived_entries_check',"(content_sha256 = encode(sha256(convert_to(fact, 'UTF8'::name)), 'hex'::text))"),
+    row('agent_memory_derived_entries_check1',"(tools_sha256 = encode(sha256(convert_to(tools_used, 'UTF8'::name)), 'hex'::text))"),
+    row(name,restored),
+    row('agent_memory_derived_entries_tools_used_check',"((length(tools_used) <= 300) AND (octet_length(tools_used) <= 1200) AND (tools_used !~ '[[:cntrl:]]'::text))"),
+  ]
+  assert.equal(matchesAgentMemoryDerivedChecks('agent_memory_derived_entries',checks),true)
+  const replacement=row('agent_memory_derived_receipts_content_sha256_check',"(content_sha256 ~ '^[a-f0-9]{64}$'::text)")
+  assert.equal(matchesAgentMemoryDerivedCheck(replacement.name,replacement.expression),true,'the other table has a valid constraint in its own scope')
+  assert.equal(matchesAgentMemoryDerivedChecks('agent_memory_derived_entries',[...checks.slice(0,2),replacement,checks[3]]),false)
+  assert.equal(matchesAgentMemoryDerivedChecks('agent_memory_derived_entries',[...checks.slice(0,2),checks[3],checks[3]]),false)
+  assert.equal(matchesAgentMemoryDerivedChecks('agent_memory_derived_entries',checks.slice(1)),false)
+  assert.equal(matchesAgentMemoryDerivedChecks('__proto__',checks),false)
 })

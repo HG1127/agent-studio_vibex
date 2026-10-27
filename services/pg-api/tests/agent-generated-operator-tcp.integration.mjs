@@ -44,11 +44,43 @@ test('real isolated PG18 optional059 operator: restored058, actual same-client f
     }finally{client.release();await runtime.close()}
    }
   })
+  await t.test('real full058 rejects a receipt-named CHECK substituted into derived entries; rollback preserves058',async()=>{
+   const e=await start(),client=await f.admin.connect()
+   try{
+    await client.query('BEGIN')
+    await client.query('ALTER TABLE agentstudio.agent_memory_derived_entries DROP CONSTRAINT agent_memory_derived_entries_fact_check')
+    await client.query("ALTER TABLE agentstudio.agent_memory_derived_entries ADD CONSTRAINT agent_memory_derived_receipts_content_sha256_check CHECK(content_sha256~'^[a-f0-9]{64}$'::text)")
+    const checks=(await client.query("SELECT conname AS name,convalidated AS valid FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_memory_derived_entries'::regclass AND contype='c' ORDER BY conname")).rows
+    assert.equal(checks.length,4);assert.ok(checks.every(row=>row.valid));assert.ok(checks.some(row=>row.name==='agent_memory_derived_receipts_content_sha256_check'));assert.ok(!checks.some(row=>row.name==='agent_memory_derived_entries_fact_check'))
+    await client.query('SET LOCAL ROLE agentstudio_api')
+    await assert.rejects(f.opinion.verifyAgentOpinionCredentials(client),errorCode('unsafe_agent_opinion_privileges'))
+   }finally{try{await client.query('ROLLBACK')}finally{client.release()}}
+   await f.assertUnchanged(e)
+  })
   await t.test('one real privileged client sees uncommitted059 and direct FULL audits; postgres observer does not count as runtime',async()=>{
-   const e=await start(),gate=operatorGate(),observer=await f.admin.connect();let identity
-   const trace=traceGeneratedOperatorPool(f.admin,{async after({sql,raw,pid}){
-    if(sql===f.snapshot.body){identity=(await raw.query('SELECT session_user AS login,current_user AS role,pg_backend_pid() AS pid,to_regclass(\'agentstudio.agent_generated_acceptances\') IS NOT NULL AS visible')).rows[0];assert.equal(identity.pid,pid);await gate.hold(identity)}
-   }})
+   const e=await start(),gate=operatorGate(),observer=await f.admin.connect();let identity,beforeCatalog,beforeContext
+   const context=async raw=>(await raw.query("SELECT session_user,current_user,current_setting('search_path') AS search_path")).rows[0]
+   const trace=traceGeneratedOperatorPool(f.admin,{
+    async before({sql,raw}){if(sql===f.snapshot.body){beforeCatalog=(await raw.query(f.core.generatedOperatorCatalogSql)).rows[0].catalog;beforeContext=await context(raw)}},
+    async after({sql,raw,pid}){if(sql===f.snapshot.body){
+     // Read genuine same-transaction metadata only. Never replace or normalize
+     // rows delivered to the operator/full validators, or change search_path.
+     try{
+      const afterCatalog=(await raw.query(f.core.generatedOperatorCatalogSql)).rows[0].catalog,afterContext=await context(raw),changes=[]
+      for(const layer of Object.keys(beforeCatalog)){
+       const before=beforeCatalog[layer],after=afterCatalog[layer]
+       if(JSON.stringify(before)===JSON.stringify(after))continue
+       const old=new Set(before.map(row=>JSON.stringify(row))),fresh=new Set(after.map(row=>JSON.stringify(row)))
+       const sample=rows=>rows.slice(0,3).map(row=>layer==='migrations'?[row[0],'description_omitted']:row.map(value=>typeof value==='string'?value.slice(0,1200):value))
+       changes.push({layer,before_count:before.length,after_count:after.length,removed:sample(before.filter(row=>!fresh.has(JSON.stringify(row)))),added:sample(after.filter(row=>!old.has(JSON.stringify(row))))})
+      }
+      const diagnostic={before_context:beforeContext,after_context:afterContext,changed_layers:changes.map(row=>row.layer),differences:changes.slice(0,6)}
+      while(JSON.stringify(diagnostic).length>18000&&diagnostic.differences.length)diagnostic.differences.pop()
+      process.stderr.write('GENERATED_OPERATOR_POST_DDL_CATALOG_DIAGNOSTIC:'+JSON.stringify(diagnostic)+'\n')
+     }catch{process.stderr.write('GENERATED_OPERATOR_POST_DDL_CATALOG_DIAGNOSTIC:{"status":"readonly_probe_failed"}\n')}
+     identity=(await raw.query('SELECT session_user AS login,current_user AS role,pg_backend_pid() AS pid,to_regclass(\'agentstudio.agent_generated_acceptances\') IS NOT NULL AS visible')).rows[0];assert.equal(identity.pid,pid);await gate.hold(identity)
+    }},
+   })
    const state=settle(f.core.applyGeneratedOperator(trace.pool,f.snapshot,e.approval,persist(e)))
    try{
     await observer.query('BEGIN READ ONLY');await observer.query('SELECT 1')

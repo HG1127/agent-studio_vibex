@@ -44,6 +44,12 @@ export function matchesAgentMemoryDerivedCheck(name:string,value:string):boolean
   return name==="agent_memory_derived_entries_fact_check"&&
     key==="((length(btrim(fact))>=1)AND(length(btrim(fact))<=500)AND(octet_length(fact)<=2000))"
 }
+export function matchesAgentMemoryDerivedChecks(table:string,constraints:readonly {name:string;expression:string;valid:boolean}[]):boolean{
+  if(typeof table!=="string"||!Object.hasOwn(fields,table)||!Array.isArray(constraints))return false
+  const names=Object.keys(checks).filter(name=>name.startsWith(table+"_"))
+  return constraints.length===names.length&&new Set(constraints.map(c=>c?.name)).size===names.length&&
+    constraints.every(c=>c?.valid===true&&names.includes(c.name)&&matchesAgentMemoryDerivedCheck(c.name,c.expression))
+}
 export async function verifyAgentMemoryDerivedCredentials(db:SqlClient):Promise<boolean>{
   const objects=(await db.query<{name:string;id:number|null}>("SELECT name,to_regclass('agentstudio.'||name)::oid AS id FROM unnest($1::text[])name",[Object.keys(fields)])).rows
   const routines=(await db.query<{name:string;hash:string;language:string;volatility:string;result:string;arguments:string;safe:boolean;execute:boolean}>("SELECT p.proname AS name,encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') AS hash,l.lanname AS language,p.provolatile AS volatility,p.prorettype::regtype::text AS result,oidvectortypes(p.proargtypes) AS arguments,"+
@@ -86,7 +92,7 @@ export async function verifyAgentMemoryDerivedCredentials(db:SqlClient):Promise<
       {target:"agentstudio.runs",columns:["source_run_id","owner_user_id"],references:["id","owner_user_id"]}]
     if(foreign.length!==wanted.length||wanted.some(w=>!foreign.some(f=>f.valid&&f.target===w.target&&JSON.stringify(f.columns)===JSON.stringify(w.columns)&&JSON.stringify(f.references)===JSON.stringify(w.references))))return refuse()
     const constraints=(await db.query<{name:string;expression:string;valid:boolean}>("SELECT conname AS name,pg_get_expr(conbin,conrelid) AS expression,convalidated AND NOT connoinherit AS valid FROM pg_catalog.pg_constraint WHERE conrelid=$1::oid AND contype='c'",[id])).rows
-    if(constraints.length!==Object.keys(checks).filter(name=>name.startsWith(object.name+"_")).length||constraints.some(c=>!c.valid||!matchesAgentMemoryDerivedCheck(c.name,c.expression)))return refuse()
+    if(!matchesAgentMemoryDerivedChecks(object.name,constraints))return refuse()
   }
   return true
 }
