@@ -1,6 +1,7 @@
 // Shared employee-lifetime recovery for Native Workflow and standalone Agent runs.
 // Fixed adapters select the protocol. No storage, credentials, timers or executors.
 import {PgNativePilotError} from "./pgNativePilotApi.ts"
+import {isOwnTaskTarget,type OwnTaskRunTarget} from "./pgNativeOwnTaskNavigation.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,type AgentHumanResponse,type PgNativeAgentHumanInput,type PgNativeAgentHumanReceipt} from "./pgNativeAgentHumanInput.ts"
 import {usesPaidKnowledge} from "./pgNativeKnowledgeTool.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/src/knowledge-retrieval-binding.ts"
@@ -21,7 +22,8 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
   decide(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<TResult>;cancel(id:string):Promise<TResult>;
   respond?(id:string,choice:AgentHumanResponse):Promise<PgNativeAgentHumanReceipt>;confirmHumanResponse?(id:string,choice:AgentHumanResponse):Promise<PgNativeAgentHumanReceipt>
 },options:{freezeDraft:(draft:TDraft)=>TDraft;acceptSubmit:(result:TResult,body:TDraft)=>boolean;acceptDetail:(result:TResult)=>boolean;
-  submittedNotice:string;describe:(error:unknown)=>string;key?:()=>string;responseKey?:()=>string;onExpired?:()=>void;canApprove?:(detail:TResult)=>boolean}){
+  submittedNotice:string;describe:(error:unknown)=>string;key?:()=>string;responseKey?:()=>string;onExpired?:()=>void;canApprove?:(detail:TResult)=>boolean;
+  validateOriginal?:(target:OwnTaskRunTarget,detail:TResult)=>Promise<void>}){
   const checked=(value:TResult,id?:string)=>{
     if(!value||!uuid.test(value.run?.id??"")||id&&value.run.id!==id||!Array.isArray(value.approvals)||!Array.isArray(value.steps)||
        typeof value.replayed!=="boolean"||value.knowledge_outputs_available!==undefined&&typeof value.knowledge_outputs_available!=="boolean"||!options.acceptDetail(value))throw Error("unconfirmed_durable_response")
@@ -29,6 +31,7 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
   }
   let state:DurableRunView<TResult,TSummary,TDraft>=emptyDurableRunView(),closed=false,active=false,ticket=0,selected:string|null=null
   let uncertain=false,flight:Promise<void>|null=null
+  let originalTarget:OwnTaskRunTarget|null=null
   const listeners=new Set<()=>void>()
   const update=(patch:Partial<DurableRunView<TResult,TSummary,TDraft>>)=>{if(!closed){state={...state,...patch};for(const listener of listeners)listener()}}
   const expired=(error:unknown)=>{
@@ -48,12 +51,15 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
   }
   async function refresh(id=selected,background=false):Promise<void>{
     if(closed||!active)return
-    const read=++ticket;if(!background)update({loading:true,error:""})
+    const expected=originalTarget?.runId===id?originalTarget:null
+    const read=++ticket;if(!background)update({loading:true,...(expected?{detail:null}:{}),error:""})
     try{
       const [runs,detail]=await Promise.all([background?Promise.resolve(state.runs):api.list(),id?api.get(id):Promise.resolve(null)])
       if(closed||!active||read!==ticket)return
       if(!Array.isArray(runs)||runs.some(run=>!run||!uuid.test(run.id)||typeof run.status!=="string"||typeof run.instruction_preview!=="string"))throw Error("invalid_autonomous_history")
-      if(detail)checked(detail,id!);selected=id
+      if(detail){checked(detail,id!);if(expected){if(!options.validateOriginal)throw Error("original_task_source_unconfirmed");await options.validateOriginal(expected,detail)}}
+      if(closed||!active||read!==ticket)return
+      selected=id
       update({runs:runs.slice(0,50).map(row=>background&&row.id===detail?.run.id?{...row,status:detail.run.status,result_preview:detail.run.result_text.slice(0,240)}:row),detail,error:""})
       if(detail)confirmMutation(detail)
     }catch(error){if(!closed&&active&&read===ticket&&!expired(error))update({runs:[],detail:null,error:options.describe(error)})}
@@ -68,12 +74,18 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
   }
   return {
     snapshot:()=>state,
+    navigationBlocked:()=>!closed&&Boolean(state.busy||state.loading||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse||flight),
     subscribe(fn:()=>void){listeners.add(fn);return ()=>{listeners.delete(fn)}},
     dispose(){closed=true;active=false;++ticket;selected=null;state={...emptyDurableRunView<TResult,TSummary,TDraft>()};listeners.clear()},
     setActive(value:boolean){if(closed)return;active=value;if(value)void refresh();else{++ticket;update({loading:false,detail:null,runs:[]})}},
     refresh,
     poll(){return selected&&!state.busy&&!state.loading&&!state.pendingSubmit&&!state.pendingMutation&&!state.pendingHumanResponse?refresh(selected,true):Promise.resolve()},
-    select(id:string){if(!uuid.test(id)||state.busy||state.pendingMutation||state.pendingHumanResponse)return Promise.resolve();return refresh(id)},
+    select(id:string){if(!uuid.test(id)||state.busy||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse)return Promise.resolve();originalTarget=null;return refresh(id)},
+    async selectOriginal(target:OwnTaskRunTarget){
+      if(closed||!active||!isOwnTaskTarget(target)||state.busy||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse)return false
+      originalTarget=target;selected=target.runId;await refresh(target.runId)
+      return !closed&&active&&originalTarget===target&&state.detail?.run.id===target.runId&&!state.error
+    },
     submit(draft:TDraft){
       if(state.pendingMutation||state.pendingHumanResponse)return Promise.resolve()
       return perform(async()=>{

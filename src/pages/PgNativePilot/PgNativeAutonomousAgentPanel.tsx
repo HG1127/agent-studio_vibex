@@ -5,6 +5,7 @@ import {readyAgentHttpTools} from "@/lib/pgNativeAgentHttpTools"
 import {readyAgentMcpTools} from "@/lib/pgNativeMcpConnection"
 import {useMcpConnections} from "./useMcpConnections"
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomousModel} from "@/lib/pgNativeAutonomousAgentSession"
+import {watchPgNativeOriginalTaskController,pgNativeOriginalTasksBlocked,createOwnTaskTargetDelivery,type OwnTaskRunTarget} from "@/lib/pgNativeOwnTaskNavigation"
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
 import PgNativeAgentOutcomeMemoryPanel from "./PgNativeAgentOutcomeMemoryPanel"
@@ -15,9 +16,9 @@ import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
 const noRoleChange=()=>{}
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,ownerId="",tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,reviewAvailable=false,reviewEnabled=false,reviewHistoryAvailable=false,generatedAvailable=false,generatedEnabled=false,optimizationAvailable=false,optimizationEnabled=false,onRoleChanged=noRoleChange,active,enabled,onExpired,target}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,ownerId="",tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,reviewAvailable=false,reviewEnabled=false,reviewHistoryAvailable=false,generatedAvailable=false,generatedEnabled=false,optimizationAvailable=false,optimizationEnabled=false,onRoleChanged=noRoleChange,active,enabled,onExpired,target,runTarget,onTargetSettled}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  ownerId?:string;tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;reviewAvailable?:boolean;reviewEnabled?:boolean;reviewHistoryAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;optimizationAvailable?:boolean;optimizationEnabled?:boolean;onRoleChanged?:()=>void;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null
+  ownerId?:string;tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;reviewAvailable?:boolean;reviewEnabled?:boolean;reviewHistoryAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;optimizationAvailable?:boolean;optimizationEnabled?:boolean;onRoleChanged?:()=>void;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
 }){
   const mcps=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyAutonomousView)
@@ -35,16 +36,23 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
     openedTarget.current=""
     model.current=controller;setView(controller.snapshot())
     const unsubscribe=controller.subscribe(()=>setView(controller.snapshot()))
-    return ()=>{unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,controller)
+    return ()=>{unwatch();unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
   },[api,onExpired])
   useEffect(()=>{model.current?.setActive(active)},[active,api,onExpired])
   useEffect(()=>{
-    if(!active||!target||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse)return
+    if(!active||!target||runTarget||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||pgNativeOriginalTasksBlocked(api))return
     const key=target.id+":"+target.selection
     if(openedTarget.current===key)return
     openedTarget.current=key
     void model.current?.select(target.id)
-  },[active,target?.id,target?.selection,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,api,onExpired])
+  },[active,target?.id,target?.selection,runTarget,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,api,onExpired])
+  const targetDelivery=useRef(createOwnTaskTargetDelivery())
+  useEffect(()=>{
+    const controller=model.current
+    if(!active||!runTarget||!controller)return
+    return targetDelivery.current.attach(controller,runTarget,()=>controller.selectOriginal(runTarget),opened=>{if(model.current===controller)onTargetSettled?.(runTarget.selection,opened)})
+  },[active,runTarget,api,onExpired,onTargetSettled])
   useEffect(()=>{
     if(!active||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||view.error||
        !["queued","running"].includes(view.detail?.run.status??""))return

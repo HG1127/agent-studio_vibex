@@ -4,6 +4,7 @@ import {loadWorkflowRunReview,type WorkflowRunDetail} from "./pgNativeWorkflowRu
 import {autonomousError} from "./pgNativeAutonomousAgentSession.ts"
 import {safeWorkflowNodeDebugRequest,workflowNodeDebugFingerprintData} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
 import type {WorkflowPreviewSamples} from "../../services/pg-api/src/workflow-v2-preview.ts"
+import {watchPgNativeOriginalTaskController} from "./pgNativeOwnTaskNavigation.ts"
 export type WorkflowDebugDraft={workflowId:string;revision:number;nodeId:string;samples:WorkflowPreviewSamples;nodeTitle?:string;workflowName?:string}
 export type WorkflowDebugView=DurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowDebugDraft>
 export const emptyWorkflowDebugView=emptyDurableRunView<WorkflowRunDetail,PgNativeWorkflowV2Summary,WorkflowDebugDraft>()
@@ -14,7 +15,7 @@ export async function workflowDebugFingerprint(draft:WorkflowDebugDraft){
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text))),byte=>byte.toString(16).padStart(2,"0")).join("")
 }
 export function createPgNativeWorkflowDebugSession(api:ReturnType<typeof createPgNativePilotApi>,options:{onExpired?:()=>void;key?:()=>string}={}){
-  return createPgNativeDurableRunSession<WorkflowDebugDraft,WorkflowRunDetail,PgNativeWorkflowV2Summary>({
+  const controller=createPgNativeDurableRunSession<WorkflowDebugDraft,WorkflowRunDetail,PgNativeWorkflowV2Summary>({
     get:id=>loadWorkflowRunReview(api,id),list:async()=>(await api.listWorkflowV2Runs()).filter(run=>run.debug_node_id),
     submit:async body=>{
       const expected=await workflowDebugFingerprint(body),result=await api.submitWorkflowNodeDebug(body.workflowId,{node_id:body.nodeId,expected_revision:body.revision,samples:body.samples,idempotency_key:body.key})
@@ -33,4 +34,7 @@ export function createPgNativeWorkflowDebugSession(api:ReturnType<typeof createP
     acceptSubmit:(result,body)=>result.run.workflow_id===body.workflowId&&result.run.checkpoint.workflow_revision===body.revision&&
       (result.run.instruction===body.samples.input||result.knowledge_outputs_available===false&&result.run.instruction==="")&&debugNode(result)===body.nodeId,
   })
+  const unwatch=watchPgNativeOriginalTaskController(api,controller),dispose=controller.dispose
+  controller.dispose=()=>{unwatch();dispose()}
+  return controller
 }

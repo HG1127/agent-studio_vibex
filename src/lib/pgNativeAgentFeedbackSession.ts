@@ -56,6 +56,7 @@ export function createPgNativeFeedbackSession(api:Api,{key=()=>crypto.randomUUID
   }
   const changeVisibility=()=>{epoch++;reads++;status=null;loading=false;busy=false;flight=null;error="";notice="";emit();if(visible())void load()}
   return {
+    navigationBlocked:()=>!disposed&&Boolean(busy||loading||pending||flight),
     snapshot,dispose,refresh:()=>load(),subscribe(fn:()=>void){if(!disposed)listeners.add(fn);return()=>listeners.delete(fn)},
     setActive(value:boolean){if(disposed||active===value)return;active=value;changeVisibility()},
     setScopes(value:{available:boolean;submit:boolean;lessons:boolean}){

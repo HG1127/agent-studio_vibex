@@ -2,6 +2,7 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {createPgNativeOwnOperationsApi} from "./pgNativeOwnOperations.ts"
 import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
 import {agentReviewHistoryQuery,agentReviewHistoryPage,type PgNativeAgentReviewHistoryQuery} from "./pgNativeAgentReviewHistory.ts"
 import {agentGeneratedPreviewInput,agentGeneratedAcceptance,agentGeneratedPreview,agentGeneratedReceipt,type PgNativeAgentGeneratedPreviewInput,type PgNativeAgentGeneratedAcceptance} from "./pgNativeAgentGeneratedAcceptance.ts"
@@ -48,6 +49,7 @@ export type {KnowledgeEmbeddingConsent,KnowledgeEmbeddingConsentChange,Knowledge
 export type {KnowledgeEmbeddingSettings,KnowledgeEmbeddingStatus,KnowledgeEmbeddingReceipt,KnowledgeEmbeddingChange} from "../../services/pg-api/src/knowledge-embedding-contracts.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
+  own_operations_available?:boolean
   model_probe_enabled:boolean
   mcp_discovery_enabled?:boolean
   mcp_tool_runs_enabled?:boolean
@@ -554,6 +556,7 @@ export function createPgNativePilotApi(
   }
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
+    ...createPgNativeOwnOperationsApi({transport,rootPath}),
     previewAgentGeneratedAcceptance:async(raw:PgNativeAgentGeneratedPreviewInput)=>{
       const body=generatedInput(agentGeneratedPreviewInput,raw),result=await post<unknown>("/api/v2/agent-generated-acceptances/preview",body)
       return generatedResponse(()=>agentGeneratedPreview(result,{review_id:body.review_id,spec_id:body.spec_id,target_run_id:body.target_run_id}))
@@ -642,6 +645,7 @@ export function createPgNativePilotApi(
     getConfigCapabilities:async()=>{
       const value=await get<PgNativeConfigCapabilities>(routes.capabilities)
       if(value?.mode!=="native_pg18"||
+         (value.own_operations_available!==undefined&&typeof value.own_operations_available!=="boolean")||
          typeof value.config_writes_enabled!=="boolean"||
          typeof value.model_probe_enabled!=="boolean"||
           (value.mcp_discovery_enabled!==undefined&&typeof value.mcp_discovery_enabled!=="boolean")||
@@ -718,7 +722,7 @@ export function createPgNativePilotApi(
           (value.bound_model_runs_enabled===true&&value.run_submission_enabled!==true)||
          value.run_execution_enabled!==false)
         throw new PgNativePilotError(503,"invalid_native_capabilities")
-      return value
+      return {...value,own_operations_available:value.own_operations_available===true}
     },
     login:(email:string,password:string)=>post<{authenticated:true;role:string}>(
       routes.login,{email,password}),
@@ -1216,6 +1220,12 @@ export function createPgNativePilotApi(
         "DELETE",{expected_revision:safeRevision(revision)},transport,rootPath),
     listSchedules:async()=>
       (await get<{items:PgNativeSchedule[]}>(routes.schedules)).items,
+    getSchedule:async(id:string)=>{
+      const value=(await get<{item:PgNativeSchedule}>(scheduleDraftRoute(id))).item
+      if(!value||value.id!==id||!Number.isSafeInteger(value.revision)||value.revision<1||typeof value.enabled!=="boolean"||
+        !["agent","workflow"].includes(value.kind)||!safeId.test(value.kind==="agent"?value.agent_spec_id??"":value.workflow_id??""))throw new PgNativePilotError(503,"invalid_schedule_response")
+      return value
+    },
     getScheduleExecution:async(id:string)=>{
       const value=(await get<{state:PgNativeScheduleExecution}>((scheduleDraftRoute(id)+"/execution") as Route)).state
       if(!value||value.schedule_id!==id||!Number.isSafeInteger(value.revision)||typeof value.enabled!=="boolean"||typeof value.source_current!=="boolean"||

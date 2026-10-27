@@ -96,7 +96,7 @@
 |---|---|
 | ACTIVE-PARITY-01 · 生成意见的受保护接受、来源关联和再次试跑闭环 | 缺少本人当前受保护生成结果到055候选接受及复测关联；历史评估输入仍拒绝。PB隐式聚合旧评估应改为有界明确选择与可撤回来源，不能照搬。 |
 | ACTIVE-PARITY-02 · 运行步骤的显式委托审批 | 无可达Native委托授予/撤销/到期、管理员委托队列及run/step/输入指纹绑定决定。Admin身份或浏览器owner_id不能替代原owner明确授权。 |
-| ACTIVE-PARITY-03 · 公司运营总览及本人跨任务待办 | 缺公司运行/待审批/失败/过期计划聚合及本人跨Agent/Workflow/计划的安全待办。不能以总览为由暴露同事prompt/output；不重复账号管理、不臆造组织架构。 |
+| ACTIVE-PARITY-03 · 公司运营总览及本人跨任务待办 | 本人只读概览/完整待办后端已通过独立PG18 9/9；本轮原任务精确导航页面已集成并通过类型/200项纯测试，实际浏览器及全套验收待执行。管理员公司聚合与真实Worker心跳仍缺，不能以总览暴露同事prompt/output，不臆造组织架构或存活状态。 |
 | ACTIVE-PARITY-04 · 模板中心与内部一次性分享 | 缺目录/本人发布/撤回/副本安装及审核后生成/兑换/撤销邀请。安装须清洁快照并重绑本人的模型/工具/知识，不能继承发布者凭证。 |
 | ACTIVE-PARITY-05 · 发布后集成：embed、外部调用密钥、试调及统计 | 缺外部主体/发行密钥的安全边界、轮换撤销、发布版本绑定、embed配置脚本、真实试调与按来源调用日志/统计。不能直接公开Cookie员工路由。 |
 | ACTIVE-PARITY-06 · 本地设备配对、受限任务与办公助手 | 缺Native owner设备配对/撤销/心跳目录、批准的本地claim/result/cancel和Agent/office绑定。不是任意本机shell，也不能沿用PB token当Native授权。 |
@@ -138,3 +138,13 @@ The previously accepted Native complete-five UI/HTTP path remains based on49cfbd
 The preceding2b37d3e passed all50 quality jobs/1022 root units, all6 genuinePG18 jobs, all4 browser jobs/21 cases and the existing full CLI lifecycle. The separate optional059 install/restore exercises failed before installation. Actual job122186005643 showed that pg_dump/restore flattened one associative AND in agent_memory_derived_entries_fact_check; all terms/bounds and the real API session remained identical. The validator now accepts only those two exact observed spellings for that named CHECK. Three pure regressions reject weakened bounds, altered boolean operators, missing terms and changed quoted literals. No migration SQL was edited.
 
 The authored fixture now takes an actual create-capable custom dump and restores through the postgres maintenance database into each independently attested agent_studio database. Port5334 remains a different cluster from the approved5333 target. Source/restored named database owner, ACL, settings, locale and properties are checked in addition to full058, business metadata and global roles before restored:true evidence is issued. This candidate has passed34 focused pure tests, API types and10 ordinary-host negatives; its genuine backup/restore/install/fault results remain pending. Prior2b37d3e archives are historical and need payload revalidation/refresh for the new051 auditor source. Default fresh remains050 and SQL001–059 Git contents are unchanged. No real target, feature activation, deployment or production GO is included.
+
+## 2026-10-27 本轮候选：安装恢复与本人概览/待办
+
+已推送的09a95ca具有独立组件证据：[可选059真实安装与恢复12/12](https://github.com/HG1127/agent-studio_vibex/actions/runs/40521987108)和[本人概览/待办真实PG18测试9/9及完整7个隔离作业](https://github.com/HG1127/agent-studio_vibex/actions/runs/40522007450)全部通过。前者包括真实备份/独立恢复、同连接完整058/059校验、四类真实运行登录、事务回滚、提交回执丢失、同PID恢复及服务端仍运行时的pending；后者包括完整计数、limit+1微秒分页、Unicode顺序、原生Cookie/所有者/停用/权限、无写入摘要和真实锁顺序。安装不等于启用业务功能。
+
+本轮页面候选已接入本人概览、跨Agent/Workflow/计划待办，以及实际原任务的两次来源/资源/版本读取；聚合数据不授予审批或执行权。原请求结果不明时保留参数，主任务、反馈/评审/接受、节点调试和计划控制器共同阻止任务替换；员工/API切换及迟到401保持隔离。StrictMode读取重放与调试控制器遗漏均已修复并交叉复核。集成后的目标类型检查和15个入口200项纯测试通过；浏览器场景仅作者化，本轮完整五类CI、实际浏览器和规范PB19回归尚待执行，不能据此推进整体验收基线。
+
+浏览器验证使用合成PGlite加真实Native HTTP/mTLS，与上面的独立PG18 TCP证据分开。测试fixture仅在显式own开关及完整052/七表校验通过后挂载实际仓库；逾期计划控制仅修改固定合成Alice已有计划的next_at，不启动调度或创建任务。三个本地审阅包已逐字节核对86/211/87份源码，包含实际待办导入闭包；归档不提交或上传。默认初始化仍050，SQL001–059原字节不变。
+
+这只是本轮候选记录。公司管理员汇总、实际Worker心跳、委托审批、partial/edited/prior-only接受及其他活跃功能和真实目标/UAT/运维签收仍未完成，正式迁移继续NO-GO。

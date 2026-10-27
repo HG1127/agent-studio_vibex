@@ -53,6 +53,7 @@ export function createPgNativeOptimizationSession(api:Api,{key=()=>crypto.random
   }
   const changeVisibility=()=>{epoch++;reads++;role=null;feedback=null;history=null;preview=null;draft=null;loading=false;busy=false;flight=null;if(pending)pending.ambiguous=true;error="";notice="";emit();if(visible())void load()}
   return {
+    navigationBlocked:()=>!disposed&&Boolean(busy||loading||pending||flight),
     snapshot,dispose,refresh:()=>load(),subscribe(fn:()=>void){if(!disposed)listeners.add(fn);return()=>listeners.delete(fn)},
     setActive(value:boolean){if(disposed||active===value)return;active=value;changeVisibility()},
     setScopes(value:{available:boolean;accept:boolean}){if(disposed)return;const changed=available!==(value.available===true);available=value.available===true;accepting=available&&value.accept===true;if(changed)changeVisibility();else emit()},

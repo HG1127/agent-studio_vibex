@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState,type FormEvent} from "react"
 import {PgNativePilotError,type createPgNativePilotApi,type PgNativeSchedule,type PgNativeScheduleActivation,type PgNativeScheduleExecution,type PgNativeScheduleOccurrence,type PgNativeModelConnection,type PgNativeAgentModelBinding} from "@/lib/pgNativePilotApi"
 import {scheduleActivationLocalStart,scheduleActivationWindow} from "@/lib/pgNativeScheduleTime"
+import {registerPgNativeOriginalTaskGuard} from "@/lib/pgNativeOwnTaskNavigation"
 type Api=ReturnType<typeof createPgNativePilotApi>
 const inputClass="w-full rounded-lg border border-slate-200 px-3 py-2"
 function message(error:unknown){
@@ -12,8 +13,8 @@ function message(error:unknown){
   }
   return "未收到操作确认。启用操作可用同一请求重试；请先刷新检查当前状态。"
 }
-export default function PgNativeScheduleExecutionControls({api,item,targetRevision,occurrences,onChanged,canActivate=true,connections=[],targetModelBinding}:{
-  api:Api;item:PgNativeSchedule;targetRevision:number|undefined;occurrences:PgNativeScheduleOccurrence[];onChanged:()=>Promise<void>;canActivate?:boolean;connections?:PgNativeModelConnection[];targetModelBinding?:PgNativeAgentModelBinding
+export default function PgNativeScheduleExecutionControls({api,item,targetRevision,occurrences,onChanged,canActivate=true,connections=[],targetModelBinding,onExpired}:{
+  api:Api;item:PgNativeSchedule;targetRevision:number|undefined;occurrences:PgNativeScheduleOccurrence[];onChanged:()=>Promise<void>;canActivate?:boolean;connections?:PgNativeModelConnection[];targetModelBinding?:PgNativeAgentModelBinding;onExpired?:()=>void
 }){
   const [state,setState]=useState<PgNativeScheduleExecution|null>(null),[loading,setLoading]=useState(true)
   const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false)
@@ -23,32 +24,45 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
   const [uncertain,setUncertain]=useState(false)
   const [modelBinding,setModelBinding]=useState<PgNativeAgentModelBinding|null>(null)
   const [deferred,setDeferred]=useState(false),[startDate,setStartDate]=useState(""),[startTime,setStartTime]=useState("09:00")
-  const pending=useRef<PgNativeScheduleActivation|null>(null),generation=useRef(0)
-  useEffect(()=>{let live=true;setLoading(true);setState(null);setError("");setBusy(false);pending.current=null;setUncertain(false);setBackground(false);setKnowledge(false)
+  const pending=useRef<PgNativeScheduleActivation|null>(null),generation=useRef(0),reads=useRef(0)
+  const pendingAction=useRef<{action:()=>Promise<unknown>;text:string}|null>(null)
+  const [actionUnknown,setActionUnknown]=useState(false)
+  const [readVersion,setReadVersion]=useState(0)
+  const activity=useRef({busy,loading});activity.current={busy,loading}
+  const guard=useRef<ReturnType<typeof registerPgNativeOriginalTaskGuard>|null>(null)
+  useEffect(()=>{const current=registerPgNativeOriginalTaskGuard(api,()=>Boolean(activity.current.busy||activity.current.loading||pending.current||pendingAction.current));guard.current=current;return()=>{current.dispose();if(guard.current===current)guard.current=null}},[api])
+  useEffect(()=>()=>{generation.current++;reads.current++},[api,item.id])
+  useEffect(()=>{guard.current?.changed()},[busy,loading,uncertain,actionUnknown])
+  useEffect(()=>{
+    // Metadata/capability refresh cannot discard an unresolved original body.
+    if(pending.current||pendingAction.current||activity.current.busy)return
+    let live=true;setLoading(true);setState(null);setError("");setBackground(false);setKnowledge(false)
     setDeferred(false);setStartDate("");setStartTime("09:00");setModelBinding(null)
-    const ticket=++generation.current
+    const ticket=++reads.current
     void api.getScheduleExecution(item.id).then(value=>{
-      if(!live||ticket!==generation.current)return
+      if(!live||ticket!==reads.current)return
       setState(value);setInstruction(value.execution.instruction??"");setMaxSteps(value.execution.max_steps??3);setMaxAuto(value.execution.max_auto_effects??50);setModelBinding(value.execution.model_binding??null)
       const start=scheduleActivationLocalStart(value.execution.anchor_at,item.time_zone,Date.now())
       if(start){setDeferred(true);setStartDate(start.date);setStartTime(start.time)}
       setUnlimited(Boolean(value.authority_id)&&value.max_occurrences===null&&value.expires_at===null);setOccurrenceCap(value.max_occurrences??10)
       setDays(value.expires_at?Math.max(1,Math.min(365,Math.ceil((Date.parse(value.expires_at)-Date.now())/86400000))):7)
-    }).catch(e=>{if(live&&ticket===generation.current)setError(message(e))}).finally(()=>{if(live&&ticket===generation.current)setLoading(false)})
-    return ()=>{live=false;generation.current++}
-  },[api,item.id,item.revision,item.time_zone,targetRevision,canActivate,occurrences])
+    }).catch(e=>{if(live&&ticket===reads.current){if(e instanceof PgNativePilotError&&e.status===401)onExpired?.();setError(message(e))}}).finally(()=>{if(live&&ticket===reads.current)setLoading(false)})
+    return ()=>{live=false;reads.current++}
+  },[api,item.id,item.revision,item.time_zone,targetRevision,canActivate,occurrences,onExpired,readVersion])
   const effectiveModel=modelBinding??targetModelBinding
   const modelReady=item.kind!=="agent"||Boolean(effectiveModel&&connections.some(c=>c.id===effectiveModel.connection_id&&c.revision===effectiveModel.connection_revision&&c.enabled&&c.status==="ok"&&c.models.includes(effectiveModel.model_id)))
   const modelKey=(binding:PgNativeAgentModelBinding)=>JSON.stringify([binding.connection_id,binding.connection_revision,binding.model_id])
   const modelOptions=connections.filter(c=>c.enabled&&c.status==="ok").flatMap(c=>c.models.map(model=>({binding:{connection_id:c.id,connection_revision:c.revision,model_id:model},label:c.name+" · "+model+"（版本 "+c.revision+"）"})))
   const perform=async(action:()=>Promise<unknown>,text:string)=>{
-    if(busy)return;const ticket=generation.current;setBusy(true);setError("");setNotice("")
-    try{await action();if(ticket!==generation.current)return;setNotice(text);await onChanged()}
-    catch(e){if(ticket===generation.current)setError(message(e))}
-    finally{if(ticket===generation.current)setBusy(false)}
+    if(busy||pending.current||pendingAction.current)return
+    const ticket=generation.current;pendingAction.current={action,text};activity.current.busy=true;guard.current?.changed();setBusy(true);setError("");setNotice("")
+    let confirmed=false
+    try{await action();if(ticket!==generation.current)return;confirmed=true;pendingAction.current=null;setActionUnknown(false);setNotice(text);await onChanged()}
+    catch(e){if(ticket===generation.current){if(e instanceof PgNativePilotError&&e.status===401){onExpired?.();return};if(confirmed)setError("已收到操作确认，当前计划状态需要重新读取。");else{if(e instanceof PgNativePilotError&&e.status>=400&&e.status<500)pendingAction.current=null;else setActionUnknown(true);setError(message(e))}}}
+    finally{if(ticket===generation.current){activity.current.busy=false;setBusy(false);if(confirmed)setReadVersion(value=>value+1);guard.current?.changed()}}
   }
   const activate=async(event:FormEvent)=>{
-    event.preventDefault();if(busy||!targetRevision||!background||!canActivate||!pending.current&&!modelReady)return
+    event.preventDefault();if(busy||pendingAction.current||!pending.current&&(!targetRevision||!background||!canActivate||!modelReady))return
     let body=pending.current
     if(!body)try{
       const window=scheduleActivationWindow({start:deferred?{date:startDate,time:startTime}:null,timeZone:item.time_zone,now:Date.now(),unlimited,days})
@@ -61,30 +75,32 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
         code==="dst_local_time_missing"?"所选时刻因夏令时调整而不存在，请选择其他时间。":"首次生效日期或时间不合法，请核对计划时区及有效期。")
       return
     }
-    pending.current=body;const ticket=generation.current;setBusy(true);setError("");setNotice("")
-    try{await api.activateSchedule(item.id,body);if(ticket!==generation.current)return;pending.current=null;setUncertain(false);setNotice("后台计划已授权。运行进度和结果可在对应的 Agent / Workflow 运行记录中查看。");await onChanged()}
-    catch(e){if(ticket===generation.current){setUncertain(true);setError(message(e))}}
-    finally{if(ticket===generation.current)setBusy(false)}
+    pending.current=body;const ticket=generation.current;activity.current.busy=true;guard.current?.changed();setBusy(true);setError("");setNotice("")
+    let confirmed=false
+    try{await api.activateSchedule(item.id,body);if(ticket!==generation.current)return;confirmed=true;pending.current=null;setUncertain(false);setNotice("后台计划已授权。运行进度和结果可在对应的 Agent / Workflow 运行记录中查看。");await onChanged()}
+    catch(e){if(ticket===generation.current){if(e instanceof PgNativePilotError&&e.status===401){onExpired?.();return};if(confirmed)setError("已收到启用确认，当前计划状态需要重新读取。");else{if(e instanceof PgNativePilotError&&e.status>=400&&e.status<500&&!uncertain)pending.current=null;else setUncertain(true);setError(message(e))}}}
+    finally{if(ticket===generation.current){activity.current.busy=false;setBusy(false);if(confirmed)setReadVersion(value=>value+1);guard.current?.changed()}}
   }
   if(loading)return <p role="status" className="p-3 text-sm text-slate-500">正在读取后台授权…</p>
   return <section aria-label="计划执行授权" className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+    {actionUnknown&&<p role="status" className="text-sm text-amber-900">原计划操作结果尚未确认，原参数已保留；暂不能更换计划，也不会自动重放此操作。</p>}
     {error&&<p role="alert" className="text-sm text-rose-800">{error}</p>}
     {notice&&<p role="status" className="text-sm text-emerald-800">{notice}</p>}
     {state&&<p className="text-xs text-slate-600">已保留 {state.used_occurrences} 次触发 / {state.max_occurrences??"不限制次数"}；
       {state.authority_id?(state.source_current?"授权来源有效":"授权已失效，请重新核实并启用"):"尚未授予后台运行权限"}</p>}
     <div className="flex flex-wrap gap-2">
-      {canActivate&&<button type="button" disabled={busy||!item.enabled||!state?.source_current} onClick={()=>void perform(()=>api.runScheduleNow(item.id,item.revision),"本次任务已排队；同一分钟不会重复排队。")}
+      {canActivate&&<button type="button" disabled={busy||uncertain||actionUnknown||!item.enabled||!state?.source_current} onClick={()=>void perform(()=>api.runScheduleNow(item.id,item.revision),"本次任务已排队；同一分钟不会重复排队。")}
         className="rounded-lg bg-indigo-600 px-3 py-2 text-xs text-white disabled:opacity-50">立即运行</button>}
-      <button type="button" disabled={busy||!state?.authority_id} onClick={()=>void perform(()=>api.pauseSchedule(item.id,item.revision),"计划已暂停，待启动触发已取消，未完成运行的持续授权已撤销。")}
+      <button type="button" disabled={busy||uncertain||actionUnknown||!state?.authority_id} onClick={()=>void perform(()=>api.pauseSchedule(item.id,item.revision),"计划已暂停，待启动触发已取消，未完成运行的持续授权已撤销。")}
         className="rounded-lg border border-slate-300 px-3 py-2 text-xs disabled:opacity-50">暂停并撤销授权</button>
-      {canActivate&&occurrences.filter(o=>o.status==="failed_start"&&Number(o.schedule_revision)===item.revision).map(o=><button key={o.id} type="button" disabled={busy}
+      {canActivate&&occurrences.filter(o=>o.status==="failed_start"&&Number(o.schedule_revision)===item.revision).map(o=><button key={o.id} type="button" disabled={busy||uncertain||actionUnknown}
         onClick={()=>void perform(()=>api.retryScheduleStart(item.id,item.revision,o.id),"已重新排队该次启动；保留原运行编号。")}
         className="rounded-lg border border-amber-300 px-3 py-2 text-xs disabled:opacity-50">重试失败启动（{new Date(o.scheduled_for).toLocaleString("zh-CN")}）</button>)}
     </div>
     {!canActivate&&<p className="text-xs text-amber-800">当前环境已关闭后台执行，仍可暂停并撤销自己的计划授权。</p>}
-    {canActivate&&<details open={!item.enabled}><summary className="cursor-pointer text-sm font-semibold">{item.enabled?"重新授予后台权限":"启用后台计划"}</summary>
+    {(canActivate||pending.current)&&<details open={!item.enabled||uncertain}><summary className="cursor-pointer text-sm font-semibold">{item.enabled?"重新授予后台权限":"启用后台计划"}</summary>
       <form onSubmit={e=>void activate(e)} className="mt-3 space-y-3">
-        <fieldset disabled={busy||uncertain} className="space-y-3 disabled:opacity-60">
+        <fieldset disabled={busy||uncertain||actionUnknown} className="space-y-3 disabled:opacity-60">
           {item.kind==="agent"&&<label className="block text-xs">本计划使用的模型
             <select className={inputClass} value={modelBinding?modelKey(modelBinding):"inherit"} onChange={e=>{
               setModelBinding(modelOptions.find(o=>modelKey(o.binding)===e.target.value)?.binding??null);setBackground(false);setKnowledge(false)
@@ -116,7 +132,8 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
         </fieldset>
         {!targetRevision&&<p className="text-xs text-rose-700">目标配置不可用，请刷新目标列表。</p>}
         {!modelReady&&<p className="text-xs text-rose-700">模型连接不可用、版本已变化或尚未测试，请选择本人可用模型并重新确认授权。</p>}
-        <button type="submit" disabled={busy||!background||!targetRevision||!uncertain&&!modelReady} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50">{busy?"处理中…":uncertain?"用原请求重试启用":"确认授权并启用"}</button>
+        {pending.current&&<p className="text-xs text-amber-900">原启用请求对应计划修订 {pending.current.expected_revision}，目标修订 {pending.current.expected_target_revision}；重试保持原参数。</p>}
+        <button type="submit" disabled={busy||actionUnknown||!pending.current&&(!background||!targetRevision||!canActivate||!modelReady)} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-50">{busy?"处理中…":uncertain?"用原请求重试启用":"确认授权并启用"}</button>
         {uncertain&&<button type="button" disabled={busy} className="ml-2 text-xs underline" onClick={()=>void onChanged()}>刷新确认当前状态</button>}
       </form>
     </details>}

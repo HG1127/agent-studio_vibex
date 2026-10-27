@@ -51,6 +51,7 @@ export function createPgNativeOutcomeMemorySession(api:Api,{key=()=>crypto.rando
   }
   const setVisible=()=>{epoch++;reads++;busy=false;loading=false;status=null;error="";notice="";flight=null;emit();if(visible())void refresh()}
   return {
+    navigationBlocked:()=>!disposed&&Boolean(busy||loading||pending||flight),
     snapshot,subscribe(fn:()=>void){listeners.add(fn);return()=>listeners.delete(fn)},refresh,
     setActive(value:boolean){if(disposed||active===value)return;active=value;setVisible()},
     setAvailable(value:boolean){if(disposed||available===value)return;available=value;setVisible()},

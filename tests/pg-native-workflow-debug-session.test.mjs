@@ -28,7 +28,10 @@ test("a normal Workflow response cannot confirm a node test, and logout/401 fenc
   f.detail={...f.detail,run:{...f.detail.run,checkpoint:{workflow_revision:2}}}
   const controller=createPgNativeWorkflowDebugSession(f.api,{onExpired:()=>{expired++},key:()=>"synthetic-debug-key"});controller.setActive(true);await controller.refresh()
   await controller.submit(draft());assert.ok(controller.snapshot().pendingSubmit)
-  f.api.getWorkflowV2Run=async()=>{throw new PgNativePilotError(401,"expired")};await controller.select(run)
+  f.api.getWorkflowV2Run=async()=>{throw new PgNativePilotError(401,"expired")}
+  const pending=controller.snapshot().pendingSubmit
+  await controller.select(run);assert.equal(expired,0);assert.equal(controller.snapshot().pendingSubmit,pending)
+  await controller.refresh(run) // The original read can expire; replacement selection stays blocked.
   assert.equal(expired,1);assert.equal(controller.snapshot().detail,null);assert.equal(controller.snapshot().pendingSubmit,null)
   controller.dispose()
 })

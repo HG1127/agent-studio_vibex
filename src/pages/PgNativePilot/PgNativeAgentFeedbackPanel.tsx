@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState,type FormEvent} from "react"
 import type {createPgNativePilotApi} from "@/lib/pgNativePilotApi"
 import {createPgNativeFeedbackSession,emptyFeedbackView} from "@/lib/pgNativeAgentFeedbackSession"
+import {watchPgNativeOriginalTaskController} from "@/lib/pgNativeOwnTaskNavigation"
 type Controller=ReturnType<typeof createPgNativeFeedbackSession>
 const button="min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm disabled:opacity-50"
 const field="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-50"
@@ -13,7 +14,8 @@ export default function PgNativeAgentFeedbackPanel({api,runId,runStatus,active,a
   useEffect(()=>{
     const current=createPgNativeFeedbackSession(api,{onExpired});controller.current=current;setView(current.snapshot())
     const unsubscribe=current.subscribe(()=>setView(current.snapshot()))
-    return()=>{unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,current)
+    return()=>{unwatch();unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
   },[api,onExpired])
   useEffect(()=>{controller.current?.setScopes({available,submit:submitEnabled,lessons:lessonEnabled});if(available)setOpened(true)},[available,submitEnabled,lessonEnabled,api,onExpired])
   useEffect(()=>{controller.current?.setActive(active)},[active,api,onExpired])

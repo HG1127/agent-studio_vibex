@@ -2,6 +2,7 @@ import {useEffect,useRef,useState,type FormEvent} from "react"
 import type {createPgNativePilotApi,PgNativeAgentSafeText} from "@/lib/pgNativePilotApi"
 import {createPgNativeOptimizationSession,emptyOptimizationView} from "@/lib/pgNativeAgentOptimizationSession"
 import {optimizationRoleSpec} from "@/lib/pgNativeAgentOptimization"
+import {watchPgNativeOriginalTaskController} from "@/lib/pgNativeOwnTaskNavigation"
 import PgNativeAgentSafeFields,{PgNativeAgentSafeTextView} from "./PgNativeAgentSafeFields"
 
 type Controller=ReturnType<typeof createPgNativeOptimizationSession>
@@ -15,7 +16,8 @@ export default function PgNativeAgentOptimizationPanel({api,runId,runStatus,acti
   useEffect(()=>{
     const current=createPgNativeOptimizationSession(api,{onExpired,onChanged});controller.current=current;setView(current.snapshot())
     const unsubscribe=current.subscribe(()=>setView(current.snapshot()))
-    return()=>{unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,current)
+    return()=>{unwatch();unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
   },[api,onExpired,onChanged])
   useEffect(()=>{controller.current?.setScopes({available,accept:acceptEnabled});if(available)setOpened(true)},[available,acceptEnabled,api,onExpired,onChanged])
   useEffect(()=>{controller.current?.setActive(active)},[active,api,onExpired,onChanged])

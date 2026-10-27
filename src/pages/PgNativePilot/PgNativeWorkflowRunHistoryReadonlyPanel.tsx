@@ -4,6 +4,7 @@ import {useCallback,useEffect,useRef,useState} from "react"
 import {Clock3,Loader2,RefreshCcw,ShieldCheck} from "lucide-react"
 import {PgNativePilotError,type PgNativeWorkflowSafeRunResult,
   createPgNativePilotApi} from "@/lib/pgNativePilotApi"
+import {verifyOwnTaskRun,createOwnTaskTargetDelivery,type OwnTaskRunTarget} from "@/lib/pgNativeOwnTaskNavigation"
 
 type Api=ReturnType<typeof createPgNativePilotApi>
 const stateNames:Record<string,string>={
@@ -28,13 +29,14 @@ function describe(error:unknown):string{
   }
   return "Workflow 历史暂时无法读取，请稍后重试。"
 }
-export default function PgNativeWorkflowRunHistoryReadonlyPanel({api}:{api:Api}){
+export default function PgNativeWorkflowRunHistoryReadonlyPanel({api,runTarget,onTargetSettled,onExpired}:{api:Api;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void;onExpired?:()=>void}){
   const [runs,setRuns]=useState<PgNativeWorkflowSafeRunResult[]>([])
   const [detail,setDetail]=useState<PgNativeWorkflowSafeRunResult|null>(null)
   const [loading,setLoading]=useState(false)
   const [opening,setOpening]=useState<string|null>(null)
   const [error,setError]=useState("")
   const active=useRef(false)
+  const readScope=useRef<object>({})
   const generation=useRef(0)
   const refresh=useCallback(async()=>{
     const seq=++generation.current
@@ -45,32 +47,43 @@ export default function PgNativeWorkflowRunHistoryReadonlyPanel({api}:{api:Api})
         setRuns(Array.isArray(records)?records.slice(0,50):[])
     }catch(err){
       if(active.current&&seq===generation.current){
+        if(err instanceof PgNativePilotError&&err.status===401)onExpired?.()
         setRuns([]);setError(describe(err))
       }
     }finally{
       if(active.current&&seq===generation.current)setLoading(false)
     }
-  },[api])
+  },[api,onExpired])
   useEffect(()=>{
+    readScope.current={}
     active.current=true
     void refresh()
     return ()=>{active.current=false;++generation.current}
   },[refresh])
-  const inspect=async(id:string)=>{
+  const inspect=useCallback(async(id:string,target?:OwnTaskRunTarget)=>{
     const seq=++generation.current
-    setOpening(id);setError("")
+    setOpening(id);setLoading(false);setDetail(null);setError("")
     try{
       const item=await api.getWorkflowRun(id)
-      if(active.current&&seq===generation.current&&item.run?.id===id)
-        setDetail(item)
+      if(!active.current||seq!==generation.current)return false
+      if(target){if(target.kind!=="workflow_safe")throw Error("original_task_kind_changed");await verifyOwnTaskRun(api,target,item)}
+      if(active.current&&seq===generation.current&&item.run?.id===id){setDetail(item);return true}
+      return false
     }catch(err){
       if(active.current&&seq===generation.current){
+        if(err instanceof PgNativePilotError&&err.status===401)onExpired?.()
         setDetail(null);setError(describe(err))
       }
+      return false
     }finally{
       if(active.current&&seq===generation.current)setOpening(null)
     }
-  }
+  },[api,onExpired])
+  const targetDelivery=useRef(createOwnTaskTargetDelivery())
+  useEffect(()=>{
+    if(!runTarget)return
+    return targetDelivery.current.attach(readScope.current,runTarget,()=>inspect(runTarget.runId,runTarget),opened=>onTargetSettled?.(runTarget.selection,opened))
+  },[runTarget,inspect,onTargetSettled])
   return <section className="space-y-4" aria-label="本人 Workflow 运行历史，只读">
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5">
       <div>

@@ -9,7 +9,7 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
   const approved=requireNativeBrowserCi() // FIRST: no file, child, socket or browser before this guard.
   const root=path.resolve(fileURLToPath(new URL("../../",import.meta.url)))
   const env=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))
-  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true"})
+  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true",AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS:"true"})
   const child=spawn(process.execPath,["--experimental-strip-types",path.join(root,"services/pg-api/tests/helpers/native-run-browser-fixture.mjs")],{cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true})
   let browser,context,control,timer,page,output=""
   const ready=new Promise((resolve,reject)=>{
@@ -148,11 +148,21 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     await expect(page.locator('details[aria-label="Workflow 节点预览"]').getByRole("checkbox",{name:/使用所选历史运行样本/})).not.toBeChecked()
     await page.locator('details[aria-label="Workflow 节点预览"]').getByRole("checkbox",{name:/使用所选历史运行样本/}).check()
     await page.getByRole("button",{name:"准备单模型测试",exact:true}).click()
+    const debugBodies=[],captureDebug=request=>{if(request.method()==="POST"&&new URL(request.url()).pathname.endsWith("/model-node-debug"))debugBodies.push(request.postDataJSON())}
+    page.on("request",captureDebug)
     await control("drop-next");await page.getByRole("button",{name:"提交单模型节点测试",exact:true}).click()
     await expect(page.getByRole("button",{name:"确认上次单模型测试",exact:true})).toBeEnabled()
-    await page.getByRole("button",{name:"知识库 0",exact:true}).click();await canvasTab().click()
+    const pendingDebug=await control("state","GET")
+    await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+    const blockedOriginal=page.locator('[aria-label="最近运行与结果"] li').filter({hasText:sourceId}).getByRole("button",{name:"打开原任务",exact:true})
+    await expect(blockedOriginal).toBeVisible();await expect(blockedOriginal).toBeDisabled()
+    const heldDebug=await control("state","GET")
+    expect(heldDebug.runs).toBe(2);expect(heldDebug.submissions).toBe(pendingDebug.submissions);expect(heldDebug.generated).toBe(pendingDebug.generated)
+    await canvasTab().click()
     await expect(page.getByRole("region",{name:"单模型节点测试",exact:true})).toContainText("历史样本需重新读取来源")
     await page.getByRole("button",{name:"确认上次单模型测试",exact:true}).click()
+    await expect(page.getByRole("region",{name:"单模型节点测试",exact:true})).toContainText("已确认上次提交，未创建重复任务。")
+    expect(debugBodies).toHaveLength(2);expect(debugBodies[1]).toEqual(debugBodies[0]);page.off("request",captureDebug)
     expect((await control("workflow")).status).toBe("awaiting_approval");await page.getByRole("button",{name:"刷新单模型测试",exact:true}).click()
     const debugReview=page.getByRole("region",{name:"Workflow 当前步骤审批",exact:true})
     await expect(debugReview).toContainText("完成 Workflow synthetic task / 样本项")
@@ -179,6 +189,23 @@ test("native Workflow canvas: seven types, exact save recovery, per-step consent
     await expect(page.getByRole("button",{name:"运行已保存工作流",exact:true})).toBeDisabled()
     await page.getByRole("button",{name:"Workflow 运行与审批",exact:true}).click()
     await expect(page.getByRole("button",{name:"提交工作流任务",exact:true})).toBeDisabled()
+    await test.step("StrictMode first conditional mount opens the real Workflow original while writes remain disabled",async()=>{
+      const before=await control("state","GET"),response=await page.request.get(new URL("/__pg_native/api/v2/own-overview",info.url).href)
+      expect(response.status()).toBe(200)
+      const record=(await response.json()).recent.find(row=>row.kind==="workflow_v2"&&row.run_id===sourceId)
+      expect(record?.resource_name).toBe("Alice synthetic seven-node Workflow")
+      // Reload destroys every prior controller. Own is opened before the
+      // conditional Workflow run panel; the actual PG18 entry uses StrictMode.
+      await page.reload({waitUntil:"domcontentloaded"})
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+      await page.locator('[aria-label="最近运行与结果"] li').filter({hasText:record.run_id}).getByRole("button",{name:"打开原任务",exact:true}).click()
+      await expect(page.getByText("已重新核对并打开原任务。处理操作仍需在原任务中另行确认。",{exact:true})).toBeVisible()
+      await expect(page.getByText("正在重新核对原任务、资源和版本；完成前暂不能切换或提交任务。",{exact:true})).toHaveCount(0)
+      await expect(page.getByRole("button",{name:"提交工作流任务",exact:true})).toBeDisabled()
+      await expect(page.getByRole("region",{name:"Workflow 执行结果",exact:true})).toContainText("Browser synthetic Workflow result 4")
+      const after=await control("state","GET")
+      expect(after.runs).toBe(before.runs);expect(after.submissions).toBe(before.submissions);expect(after.generated).toBe(before.generated)
+    })
     expect(external).toEqual([])
   }catch(error){
     if(page&&!page.isClosed()){

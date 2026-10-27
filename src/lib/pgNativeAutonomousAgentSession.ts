@@ -1,4 +1,5 @@
 import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
+import {verifyOwnTaskRun} from "./pgNativeOwnTaskNavigation.ts"
 import {declaredAgentHttpTool,readyAgentHttpTools} from "./pgNativeAgentHttpTools.ts"
 import {declaredAgentMcpTool,readyAgentMcpTools} from "./pgNativeMcpConnection.ts"
 import {optionalKnowledgeToolContext,knowledgeBindingCurrent,knowledgePendingMatches,knowledgeToolScopeCurrent,usesPaidKnowledge,type KnowledgeToolContext} from "./pgNativeKnowledgeTool.ts"
@@ -98,6 +99,7 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
     ...(api.respondAutonomousAgent?{respond:(id,choice)=>api.respondAutonomousAgent!(id,choice)}:{}),
     ...(api.confirmAutonomousAgentResponse?{confirmHumanResponse:(id,choice)=>api.confirmAutonomousAgentResponse!(id,choice)}:{}),
   },{...options,describe:autonomousError,submittedNotice:"多轮任务已提交，等待逐步审批。",
+    validateOriginal:async(target,detail)=>{if(target.kind!=="agent_autonomous")throw Error("original_task_kind_changed");await verifyOwnTaskRun(api,target,detail)},
     canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||knowledgeBindingCurrent(detail.pending_effect?.configuration.knowledge_retrieval,detail.knowledge)&&
       knowledgeToolScopeCurrent((detail.pending_effect?.configuration.knowledge_base_ids??[]) as string[],detail.knowledge),
     freezeDraft(draft){

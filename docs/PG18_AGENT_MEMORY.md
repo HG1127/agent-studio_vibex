@@ -152,3 +152,13 @@ The previously accepted Native complete-five UI/HTTP path remains based on49cfbd
 The preceding2b37d3e passed all50 quality jobs/1022 root units, all6 genuinePG18 jobs, all4 browser jobs/21 cases and the existing full CLI lifecycle. The separate optional059 install/restore exercises failed before installation. Actual job122186005643 showed that pg_dump/restore flattened one associative AND in agent_memory_derived_entries_fact_check; all terms/bounds and the real API session remained identical. The validator now accepts only those two exact observed spellings for that named CHECK. Three pure regressions reject weakened bounds, altered boolean operators, missing terms and changed quoted literals. No migration SQL was edited.
 
 The authored fixture now takes an actual create-capable custom dump and restores through the postgres maintenance database into each independently attested agent_studio database. Port5334 remains a different cluster from the approved5333 target. Source/restored named database owner, ACL, settings, locale and properties are checked in addition to full058, business metadata and global roles before restored:true evidence is issued. This candidate has passed34 focused pure tests, API types and10 ordinary-host negatives; its genuine backup/restore/install/fault results remain pending. Prior2b37d3e archives are historical and need payload revalidation/refresh for the new051 auditor source. Default fresh remains050 and SQL001–059 Git contents are unchanged. No real target, feature activation, deployment or production GO is included.
+
+## 2026-10-27 本轮候选：安装恢复与本人概览/待办
+
+已推送的09a95ca具有独立组件证据：[可选059真实安装与恢复12/12](https://github.com/HG1127/agent-studio_vibex/actions/runs/40521987108)和[本人概览/待办真实PG18测试9/9及完整7个隔离作业](https://github.com/HG1127/agent-studio_vibex/actions/runs/40522007450)全部通过。前者包括真实备份/独立恢复、同连接完整058/059校验、四类真实运行登录、事务回滚、提交回执丢失、同PID恢复及服务端仍运行时的pending；后者包括完整计数、limit+1微秒分页、Unicode顺序、原生Cookie/所有者/停用/权限、无写入摘要和真实锁顺序。安装不等于启用业务功能。
+
+本轮页面候选已接入本人概览、跨Agent/Workflow/计划待办，以及实际原任务的两次来源/资源/版本读取；聚合数据不授予审批或执行权。原请求结果不明时保留参数，主任务、反馈/评审/接受、节点调试和计划控制器共同阻止任务替换；员工/API切换及迟到401保持隔离。StrictMode读取重放与调试控制器遗漏均已修复并交叉复核。集成后的目标类型检查和15个入口200项纯测试通过；浏览器场景仅作者化，本轮完整五类CI、实际浏览器和规范PB19回归尚待执行，不能据此推进整体验收基线。
+
+浏览器验证使用合成PGlite加真实Native HTTP/mTLS，与上面的独立PG18 TCP证据分开。测试fixture仅在显式own开关及完整052/七表校验通过后挂载实际仓库；逾期计划控制仅修改固定合成Alice已有计划的next_at，不启动调度或创建任务。三个本地审阅包已逐字节核对86/211/87份源码，包含实际待办导入闭包；归档不提交或上传。默认初始化仍050，SQL001–059原字节不变。
+
+这只是本轮候选记录。公司管理员汇总、实际Worker心跳、委托审批、partial/edited/prior-only接受及其他活跃功能和真实目标/UAT/运维签收仍未完成，正式迁移继续NO-GO。

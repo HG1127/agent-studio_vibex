@@ -1,8 +1,9 @@
 // One employee/API lifetime. Retain recovery requests, never hidden result data.
 import {PgNativePilotError,type PgNativeRun,type PgNativeRunDetail,type createPgNativePilotApi} from "./pgNativePilotApi.ts"
 import {createPgNativeRunSubmission,type RunDraft,type PendingRun} from "./pgNativeRunSubmission.ts"
+import {isOwnTaskTarget,verifyOwnTaskRun,type OwnTaskRunTarget} from "./pgNativeOwnTaskNavigation.ts"
 
-type Api=Pick<ReturnType<typeof createPgNativePilotApi>,"listRuns"|"getRun"|"submitRun"|"decideModel">
+type Api=Pick<ReturnType<typeof createPgNativePilotApi>,"listRuns"|"getRun"|"submitRun"|"decideModel">&Partial<Pick<ReturnType<typeof createPgNativePilotApi>,"getAgent">>
 export type AgentRunDecision=Readonly<{id:string;value:"approved"|"rejected"}>
 export type AgentRunView={runs:PgNativeRun[];detail:PgNativeRunDetail|null;pending:PendingRun|null;
   decision:AgentRunDecision|null;busy:boolean;loading:boolean;error:string;notice:string}
@@ -32,8 +33,9 @@ function checkedDetail(detail:PgNativeRunDetail,id:string){
     !["pending","approved","rejected"].includes(detail.approval.status)))throw Error("unconfirmed_agent_detail")
   return {...detail,run,steps:run.knowledge_outputs_available===false?detail.steps.map(step=>({...step,metadata:{}})):detail.steps}
 }
-export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}={}){
+export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string;onExpired?:()=>void}={}){
   let state=emptyAgentRunView(),active=false,closed=false,ticket=0,selected:string|null=null,flight:Promise<void>|null=null
+  let originalTarget:OwnTaskRunTarget|null=null
   const submission=createPgNativeRunSubmission(options.key),listeners=new Set<()=>void>()
   const submitApi={submitRun:async(...args:Parameters<Api["submitRun"]>)=>{
     const outcome=await api.submitRun(...args)
@@ -43,10 +45,11 @@ export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}=
   const expired=(error:unknown)=>{
     if(!(error instanceof PgNativePilotError)||error.status!==401)return false
     ++ticket;selected=null;active=false;submission.dispose()
-    update({...emptyAgentRunView(),error:agentRunError(error)});closed=true;listeners.clear();return true
+    update({...emptyAgentRunView(),error:agentRunError(error)});closed=true;listeners.clear();options.onExpired?.();return true
   }
   async function refresh(id=selected){
     if(closed||!active)return
+    const expected=originalTarget?.runId===id?originalTarget:null
     const read=++ticket
     // A refresh is a new authorization read. Clear the previous payload while
     // waiting, including when a different task or workspace tab was selected.
@@ -56,6 +59,8 @@ export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}=
       if(closed||!active||read!==ticket)return
       if(!Array.isArray(runs))throw Error("unconfirmed_agent_history")
       const safeRuns=runs.map(run=>checkedRun(run)),safeDetail=detail?checkedDetail(detail,id!):null
+      if(expected&&safeDetail){if(expected.kind!=="agent_single")throw Error("original_task_kind_changed");await verifyOwnTaskRun(api,expected,safeDetail)}
+      if(closed||!active||read!==ticket)return
       const decision=state.decision
       const confirmed=decision?.id===detail?.run.id&&["approved","rejected"].includes(detail?.approval?.status??"")
       update({runs:safeRuns.slice(0,50),detail:safeDetail,...(confirmed?{decision:null,notice:detail!.approval!.status===decision!.value?
@@ -72,6 +77,7 @@ export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}=
   }
   return {
     snapshot:()=>state,
+    navigationBlocked:()=>!closed&&Boolean(state.busy||state.loading||state.pending||state.decision||flight),
     subscribe(listener:()=>void){listeners.add(listener);return ()=>{listeners.delete(listener)}},
     dispose(){closed=true;active=false;++ticket;selected=null;submission.dispose();state=emptyAgentRunView();listeners.clear()},
     setActive(value:boolean){
@@ -81,7 +87,12 @@ export function createPgNativeAgentRunSession(api:Api,options:{key?:()=>string}=
       ++ticket;update({runs:[],detail:null,loading:false});return Promise.resolve()
     },
     refresh,
-    select(id:string){if(!uuid.test(id)||state.busy||state.decision)return Promise.resolve();selected=id;return refresh(id)},
+    select(id:string){if(!uuid.test(id)||state.busy||state.pending||state.decision)return Promise.resolve();originalTarget=null;selected=id;return refresh(id)},
+    async selectOriginal(target:OwnTaskRunTarget){
+      if(closed||!active||!isOwnTaskTarget(target)||target.kind!=="agent_single"||state.busy||state.pending||state.decision)return false
+      originalTarget=target;selected=target.runId;await refresh(target.runId)
+      return !closed&&active&&originalTarget===target&&state.detail?.run.id===target.runId&&!state.error
+    },
     submit(draft:RunDraft){
       if(state.decision)return Promise.resolve()
       return perform(async()=>{

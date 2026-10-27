@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from "react"
+import {watchPgNativeOriginalTaskController} from "@/lib/pgNativeOwnTaskNavigation"
 import {agentGeneratedCanonical,agentGeneratedDescriptiveKeys,type PgNativeAgentGeneratedAcceptanceApi,type PgNativeAgentGeneratedTarget,type PgNativeAgentGeneratedPreview,type PgNativeAgentGeneratedReceipt} from "@/lib/pgNativeAgentGeneratedAcceptance"
 import {createPgNativeAgentGeneratedAcceptanceSession,emptyAgentGeneratedAcceptanceView} from "@/lib/pgNativeAgentGeneratedAcceptanceSession"
 
@@ -29,7 +30,8 @@ export default function PgNativeAgentGeneratedAcceptancePanel({api,ownerId,targe
   useEffect(()=>{
     const current=createPgNativeAgentGeneratedAcceptanceSession(api,{onExpired,onAccepted:value=>acceptedCallback.current?.(value)});controller.current=current
     const publish=()=>setState({api,ownerId,view:current.snapshot()});const unsubscribe=current.subscribe(publish)
-    return()=>{unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,current)
+    return()=>{unwatch();unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
   },[api,ownerId,onExpired])
   useEffect(()=>{controller.current?.setActive(active)},[active,api,ownerId,onExpired])
   useEffect(()=>{controller.current?.setScopes({available,acceptance:acceptanceEnabled})},[available,acceptanceEnabled,api,ownerId,onExpired])

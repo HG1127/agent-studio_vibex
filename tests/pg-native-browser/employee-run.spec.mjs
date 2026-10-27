@@ -11,6 +11,7 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
   const childEnv=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"]
     .filter(name=>process.env[name]!==undefined).map(name=>[name,process.env[name]]))
   childEnv.AGENT_STUDIO_PG_BROWSER_FIXTURE="SYNTHETIC_LOCAL_ONLY"
+  childEnv.AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS="true"
   const child=spawn(process.execPath,["--experimental-strip-types",helper],{
     cwd:root,env:childEnv,stdio:["ignore","pipe","pipe"],windowsHide:true})
   let output="",timer,browser,context,page,info,control,heldRead,releaseRead
@@ -69,7 +70,10 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       await expect(page.getByRole("button",{name:"确认上次提交",exact:true})).toBeEnabled()
       await expect(page.getByRole("textbox",{name:"任务要求",exact:true})).toBeDisabled()
       expect((await control("state","GET")).runs).toBe(1)
-      await page.getByRole("button",{name:"知识库 0",exact:true}).click()
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+      const pendingOriginal=page.locator('[aria-label="最近运行与结果"] li').filter({hasText:"Alice Browser Agent"}).getByRole("button",{name:"打开原任务",exact:true})
+      await expect(pendingOriginal).toBeVisible();await expect(pendingOriginal).toBeDisabled()
+      expect((await control("state","GET")).submissions).toBe(1)
       await page.getByRole("button",{name:"运行 Agent",exact:true}).click()
       // Commit the recovery POST, then deliver its old response only after
       // navigation. Hidden workspaces must retain the request, not its data.
@@ -98,9 +102,19 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
     await test.step("model approval requires charge acknowledgement",async()=>{
       expect((await control("prepare")).status).toBe("prepared")
       await page.getByRole("button",{name:"刷新任务",exact:true}).click()
+      const response=await page.request.get(new URL("/__pg_native/api/v2/own-overview",info.url).href)
+      expect(response.status()).toBe(200)
+      const record=(await response.json()).recent.find(row=>row.kind==="agent_single")
+      expect(record?.status).toBe("awaiting_approval")
+      const before=await control("state","GET")
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+      await page.locator('[aria-label="最近运行与结果"] li').filter({hasText:record.run_id}).getByRole("button",{name:"打开原任务",exact:true}).click()
+      await expect(page.getByText("已重新核对并打开原任务。处理操作仍需在原任务中另行确认。",{exact:true})).toBeVisible()
       const approve=page.getByRole("button",{name:"批准模型调用",exact:true})
       await expect(approve).toBeVisible();await expect(approve).toBeDisabled()
       await expect(page.getByText("模型：Alice synthetic model · gpt-4.1-mini",{exact:true})).toBeVisible()
+      await expect(page.getByRole("checkbox",{name:"我已核对任务与模型，确认调用可能产生费用。",exact:true})).not.toBeChecked()
+      expect((await control("state","GET")).generated).toBe(before.generated)
       await page.getByRole("checkbox",{name:"我已核对任务与模型，确认调用可能产生费用。",exact:true}).check()
       await approve.click()
       await expect(page.getByText("已批准模型步骤，后台处理可能产生费用。",{exact:true})).toBeVisible()
@@ -117,6 +131,23 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
       await page.screenshot({path:testInfo.outputPath("employee-run-mobile.png"),fullPage:true})
       await page.setViewportSize({width:1280,height:900})
+    })
+    await test.step("actual own metadata opens the exact single task without submitting or granting consent",async()=>{
+      const before=await control("state","GET")
+      const response=await page.request.get(new URL("/__pg_native/api/v2/own-overview",info.url).href)
+      expect(response.status()).toBe(200)
+      const own=await response.json(),record=own.recent.find(row=>row.kind==="agent_single")
+      expect(record?.resource_name).toBe("Alice Browser Agent")
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+      const row=page.locator('[aria-label="最近运行与结果"] li').filter({hasText:record.run_id})
+      await row.getByRole("button",{name:"打开原任务",exact:true}).click()
+      await expect(page.getByText("已重新核对并打开原任务。处理操作仍需在原任务中另行确认。",{exact:true})).toBeVisible()
+      const detail=page.locator('section[aria-label="运行 Agent"] article[aria-label="任务详情"]')
+      await expect(detail).toContainText(instruction);await expect(detail).toContainText(record.run_id)
+      await expect(detail).toContainText("Browser synthetic bound result")
+      await expect(page.getByRole("checkbox",{name:"我已核对任务与模型，确认调用可能产生费用。",exact:true})).toHaveCount(0)
+      const after=await control("state","GET")
+      expect(after.submissions).toBe(before.submissions);expect(after.runs).toBe(before.runs);expect(after.generated).toBe(before.generated)
     })
     await test.step("returning to the Agent tab cannot display its old result before a fresh read",async()=>{
       await page.getByRole("button",{name:"知识库 0",exact:true}).click()
@@ -137,7 +168,7 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
         expect((await control("state","GET")).generated).toBe(1)
       }finally{release();await page.unroute(detailUrl,holdDetail)}
     })
-    await test.step("a delayed Alice detail response cannot rehydrate Bob's workspace",async()=>{
+    await test.step("delayed real Alice detail and own metadata responses cannot rehydrate Bob's workspace",async()=>{
       const readReached=new Promise(resolve=>{heldRead=resolve})
       const released=new Promise(resolve=>{releaseRead=resolve})
       let intercepted=false
@@ -149,10 +180,21 @@ test("owner-bound employee Run: lost response, charge consent, private mTLS, log
       })
       await page.getByRole("button",{name:"刷新任务",exact:true}).click()
       await readReached
+      let ownReached,ownRelease,ownDone
+      const reachedOwn=new Promise(resolve=>{ownReached=resolve}),ownGate=new Promise(resolve=>{ownRelease=resolve}),doneOwn=new Promise(resolve=>{ownDone=resolve})
+      const ownUrl="**/__pg_native/api/v2/own-overview"
+      const holdOwn=async route=>{try{const response=await route.fetch();ownReached();await ownGate;await route.fulfill({response})}finally{ownDone()}}
+      await page.route(ownUrl,holdOwn)
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click();await reachedOwn
       await page.getByRole("button",{name:"退出",exact:true}).click()
       await expect(page.getByRole("button",{name:"登录独立工作台",exact:true})).toBeVisible()
       await login("bob")
       releaseRead();releaseRead=null
+      ownRelease();await doneOwn;await page.unroute(ownUrl,holdOwn)
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+      const bobOwn=page.getByRole("region",{name:"我的运行概览与待办",exact:true})
+      await expect(bobOwn).not.toContainText("Alice Browser Agent");await expect(bobOwn).not.toContainText(instruction)
+      await expect(bobOwn).not.toContainText("Browser synthetic bound result")
       await page.getByRole("button",{name:"运行 Agent",exact:true}).click()
       await expect(page.getByRole("combobox",{name:"选择 Agent",exact:true})).toContainText("Bob Browser Agent")
       await expect(page.getByRole("combobox",{name:"选择 Agent",exact:true})).not.toContainText("Alice Browser Agent")

@@ -1,6 +1,7 @@
 import {PgNativePilotError,type createPgNativePilotApi,type PgNativeAgent,type PgNativeModelConnection,type PgNativeToolConnection,type PgNativeMcpConnection,
   type PgNativeWorkflow,type PgNativeWorkflowV2Pending,type PgNativeWorkflowV2Result,type PgNativeWorkflowV2Summary} from "./pgNativePilotApi.ts"
 import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
+import {verifyOwnTaskRun} from "./pgNativeOwnTaskNavigation.ts"
 import {autonomousError,autonomousReview} from "./pgNativeAutonomousAgentSession.ts"
 import {parseWorkflowGraphV2,type WorkflowNodeDataV2} from "./pgNativeWorkflowGraph.ts"
 import {declaredAgentHttpTool} from "./pgNativeAgentHttpTools.ts"
@@ -49,6 +50,7 @@ export function createPgNativeWorkflowRunSession(api:Api,options:{onExpired?:()=
     decide:(...args)=>api.decideWorkflowV2Node(...args),cancel:id=>api.cancelWorkflowV2Run(id),
     respond:(id,choice)=>api.respondWorkflowAgent(id,choice),confirmHumanResponse:(id,choice)=>api.confirmWorkflowAgentResponse(id,choice),
   },{...options,describe:autonomousError,submittedNotice:"工作流任务已提交，外部操作将逐步请求审批。",
+    validateOriginal:async(target,detail)=>{if(target.kind!=="workflow_v2")throw Error("original_task_kind_changed");await verifyOwnTaskRun(api,target,detail)},
     canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||workflowApprovalReady(detail),
     freezeDraft(draft){const instruction=draft.instruction.trim()
       if(!uuid.test(draft.workflowId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>2000||instruction.includes("\0"))throw Error("invalid_workflow_run_draft")

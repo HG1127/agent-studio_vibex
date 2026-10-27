@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from "react"
 import type {createPgNativePilotApi} from "@/lib/pgNativePilotApi"
 import {createPgNativeOutcomeMemorySession,emptyOutcomeMemoryView} from "@/lib/pgNativeAgentOutcomeMemorySession"
+import {watchPgNativeOriginalTaskController} from "@/lib/pgNativeOwnTaskNavigation"
 type Controller=ReturnType<typeof createPgNativeOutcomeMemorySession>
 const button="min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm disabled:opacity-50"
 const resultText={stored:"本次任务曾保存经验或教训。请在任务经验与教训中核对当前内容或忘记；此处保留历史记录。",revoked:"本次自动保存已停止，任务结果已保留。",source_unavailable:"原任务来源已变化或无法核对，本次未自动保存。",writes_disabled:"后台未开放自动保存，任务结果已保留。",write_failed:"本次自动保存失败，任务结果已保留。可在任务经验与教训中核对。"}
@@ -12,7 +13,8 @@ export default function PgNativeAgentOutcomeMemoryPanel({api,runId,runStatus,act
   useEffect(()=>{
     const current=createPgNativeOutcomeMemorySession(api,{onExpired});controller.current=current;setView(current.snapshot())
     const unsubscribe=current.subscribe(()=>setView(current.snapshot()))
-    return()=>{unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,current)
+    return()=>{unwatch();unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
   },[api,onExpired])
   useEffect(()=>{controller.current?.setActive(active)},[active,api,onExpired])
   useEffect(()=>{controller.current?.setAvailable(available);if(available)setOpened(true)},[available,api,onExpired])

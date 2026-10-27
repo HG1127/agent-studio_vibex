@@ -15,6 +15,8 @@ import {withDisposableBoundModelTls} from "./bound-model-loopback-tls.mjs"
 import {NativeAuthRepository} from "../../src/native-auth-repository.mjs"
 import {createNativeAuthHttpHandler} from "../../src/native-auth-http.mjs"
 import {permitNativePg18BusinessUatRequest} from "../../src/native-config-uat-policy.ts"
+import {OwnOperationsRepository,inspectOwnOperationsSchema} from "../../src/own-operations-repository.ts"
+import {createNativeOwnOperationsBusinessHandler} from "../../src/own-operations-http.ts"
 import {createHandler} from "../../src/http.ts"
 import {HttpError,safeAgentSpec} from "../../src/contracts.ts"
 import {AutonomousAgentRunRepository} from "../../src/autonomous-agent-run-repository.ts"
@@ -55,7 +57,7 @@ import {createWorkflowV2ToolInternalHandler} from "../../src/workflow-v2-tool-ha
 import {workflowV2ModelEffectExecutor} from "../../src/workflow-v2-model-client.ts"
 import {workflowV2ToolEffectExecutor} from "../../src/workflow-v2-tool-client.ts"
 import {createNativeRunRepository} from "../../src/native-run-repository.ts"
-import {AgentSpecRepository} from "../../src/repository.ts"
+import {AgentSpecRepository,withActor} from "../../src/repository.ts"
 import {WorkflowRepository} from "../../src/workflow-repository.ts"
 import {WorkflowSafeRunRepository} from "../../src/workflow-safe-run-repository.ts"
 import {KnowledgeBaseRepository} from "../../src/knowledge-repository.ts"
@@ -92,6 +94,8 @@ import assert from "node:assert/strict"
 
 if(process.env.AGENT_STUDIO_PG_BROWSER_FIXTURE!=="SYNTHETIC_LOCAL_ONLY")
   throw Error("synthetic_local_browser_fixture_required")
+const ownOperations=process.env.AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS!==undefined&&!ownOperations)throw Error("invalid_synthetic_own_operations_browser_mode")
 const autonomous=process.env.AGENT_STUDIO_PG_BROWSER_AUTONOMOUS==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_AUTONOMOUS!==undefined&&!autonomous)throw Error("invalid_synthetic_browser_mode")
 const workflow=process.env.AGENT_STUDIO_PG_BROWSER_WORKFLOW==="true"
@@ -140,6 +144,30 @@ let queue=Promise.resolve(),server,vite,stop
 const stopped=new Promise(resolve=>{stop=resolve})
 // PGlite has one SQL connection: serialize whole transactions, including
 // simultaneous browser reads, rather than interleaving employee role state.
+function ownOperationsFixtureQuery(database,enabled,sql,values=[]){
+  // PGlite.query uses Extended Query (one statement); exec uses Simple Query.
+  // Only this exact parameter-free pair from the owner actor needs exec.
+  // Both SETs execute in the already-held real transaction; return its actual
+  // result array unchanged. All old/default fixture queries keep their path.
+  if(enabled===true&&values.length===0&&sql==="SET LOCAL statement_timeout='8000ms'; SET LOCAL lock_timeout='3000ms'")return database.exec(sql)
+  return database.query(sql,values)
+}
+async function ownOverdueScheduleControl(request,connectionPool,modes,alice){
+  if(modes.ownOperations!==true||modes.scheduling!==true||request.method!=="POST")return {status:404,body:{error:"synthetic_own_overdue_schedule_unavailable"}}
+  if(request.headers["x-agentstudio-synthetic-fixture"]!=="1")return {status:403,body:{error:"synthetic_fixture_header_required"}}
+  if(request.headers["transfer-encoding"]!==undefined||request.headers["content-length"]!==undefined&&request.headers["content-length"]!=="0")return {status:400,body:{error:"synthetic_control_body_not_allowed"}}
+  for await(const chunk of request)if(chunk.length)return {status:400,body:{error:"synthetic_control_body_not_allowed"}}
+  if(!alice||typeof alice.id!=="string"||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(alice.id)||alice.identity?.issuer!=="urn:agentstudio:local:v1")return {status:409,body:{error:"synthetic_alice_profile_unavailable"}}
+  return withActor(connectionPool,alice.identity,async(client,owner)=>{
+    if(owner!==alice.id)return {status:409,body:{error:"synthetic_alice_profile_unavailable"}}
+    const row=(await client.query(`WITH selected AS (
+      SELECT id FROM agentstudio.schedules WHERE owner_user_id=$1::uuid AND kind='agent' AND enabled AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1
+    ) UPDATE agentstudio.schedules s SET next_at=clock_timestamp()-interval '2 minutes'
+      FROM selected WHERE s.id=selected.id AND s.owner_user_id=$1::uuid AND s.kind='agent' AND s.enabled AND s.deleted_at IS NULL
+      RETURNING s.id,to_char(s.next_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS next_at`,[owner])).rows[0]
+    return row?{status:200,body:{scheduleId:row.id,next_at:row.next_at}}:{status:404,body:{error:"synthetic_own_overdue_schedule_not_found"}}
+  })
+}
 const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledgeEmbeddingConsent:semantic,knowledgeIndexRuntime:semantic,knowledgeQueryRuntime:semantic,knowledgeToolRuntime:semantic,async connect(){
   const before=queue;let release
   queue=new Promise(resolve=>{release=resolve});await before
@@ -148,7 +176,7 @@ const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledg
       state.failPreparation=false;throw new HttpError(409,'synthetic_worker_preparation_failed')
     }
     if(feedback&&state.feedbackFailLesson&&sql.startsWith("INSERT INTO agentstudio.agent_feedback_lessons(")){state.feedbackFailLesson=false;throw Error("synthetic_feedback_lesson_storage_fault")}
-    return db.query(sql,values)
+    return ownOperationsFixtureQuery(db,ownOperations,sql,values)
   },release}
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
@@ -181,15 +209,22 @@ try{
   for(const migration of ["pg_v9_035_knowledge_embedding_state.sql","pg_v9_036_knowledge_embedding_consent.sql","pg_v9_037_knowledge_index_runtime.sql","pg_v9_038_knowledge_query_runtime.sql","pg_v9_039_knowledge_execution_source.sql","pg_v9_040_approved_semantic_tools.sql","pg_v9_041_keyword_observations.sql","pg_v9_042_agent_knowledge_observations.sql","pg_v9_043_workflow_sample_lineage.sql"])
     await db.exec(load("db/postgres/migrations/"+migration).split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
   const auth=new NativeAuthRepository(pool)
-  if(scheduling||releases||human)await db.exec(load("db/postgres/migrations/pg_v9_044_schedule_execution.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(collaboration||releases||human)await db.exec(load("db/postgres/migrations/pg_v9_045_agent_collaboration.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(releases||human)await db.exec(load("db/postgres/migrations/pg_v9_046_agent_releases.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
-  if(governance||human)await db.exec(load("db/postgres/migrations/pg_v9_047_employee_governance.sql"))
-  if(human){await db.exec(load("db/postgres/migrations/pg_v9_048_agent_human_input.sql"));assert.equal(await inspectAgentHumanInputSchema(pool),true)}
-  if(memory){await db.exec(load("db/postgres/migrations/pg_v9_049_agent_memory.sql"));assert.equal(await verifyAgentMemoryCredentials(db),true)}
-  if(memoryRuntime||outcomeMemory){await db.exec(load("db/postgres/migrations/pg_v9_050_agent_memory_context.sql"));assert.equal(await inspectAgentMemoryContextSchema(pool),true)}
-  if(derivedMemory){await db.exec(load("db/postgres/migrations/pg_v9_051_agent_memory_derived.sql"));assert.equal(await inspectAgentMemoryDerivedSchema(pool),true)}
-  if(outcomeMemory){await db.exec(load("db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql"));assert.equal(await inspectAgentMemoryOutcomeSchema(pool),true)}
+  // The explicit owner-read fixture mode installs the existing044..052
+  // schema chain only; it does not enable human/memory/execution capabilities.
+  if(scheduling||releases||human||ownOperations)await db.exec(load("db/postgres/migrations/pg_v9_044_schedule_execution.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+  if(collaboration||releases||human||ownOperations)await db.exec(load("db/postgres/migrations/pg_v9_045_agent_collaboration.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+  if(releases||human||ownOperations)await db.exec(load("db/postgres/migrations/pg_v9_046_agent_releases.sql").split(/\r?\n/).filter(line=>!line.trim().startsWith("\\")).join("\n"))
+  if(governance||human||ownOperations)await db.exec(load("db/postgres/migrations/pg_v9_047_employee_governance.sql"))
+  if(human||ownOperations){await db.exec(load("db/postgres/migrations/pg_v9_048_agent_human_input.sql"));assert.equal(await inspectAgentHumanInputSchema(pool),true)}
+  if(memory||ownOperations){await db.exec(load("db/postgres/migrations/pg_v9_049_agent_memory.sql"));assert.equal(await verifyAgentMemoryCredentials(db),true)}
+  if(memoryRuntime||outcomeMemory||ownOperations){await db.exec(load("db/postgres/migrations/pg_v9_050_agent_memory_context.sql"));assert.equal(await inspectAgentMemoryContextSchema(pool),true)}
+  if(derivedMemory||ownOperations){await db.exec(load("db/postgres/migrations/pg_v9_051_agent_memory_derived.sql"));assert.equal(await inspectAgentMemoryDerivedSchema(pool),true)}
+  let outcomeSchemaAvailable=false
+  if(outcomeMemory||ownOperations){await db.exec(load("db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql"));outcomeSchemaAvailable=await inspectAgentMemoryOutcomeSchema(pool);assert.equal(outcomeSchemaAvailable,true)}
+  const ownOperationsAvailable=ownOperations?await inspectOwnOperationsSchema(pool,outcomeSchemaAvailable):false
+  if(ownOperations)assert.equal(ownOperationsAvailable,true)
+  const ownOperationsRepository=ownOperationsAvailable?new OwnOperationsRepository(pool):undefined
+  let ownOperationsAlice=null
   if(failureSource){await db.exec(load("db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql"));assert.equal(await inspectAgentMemoryFailureSourceSchema(pool),true)}
   if(feedback){await db.exec(load("db/postgres/migrations/pg_v9_054_agent_feedback.sql"));assert.equal(await inspectAgentFeedbackSchema(pool),true)}
   if(optimization){await db.exec(load("db/postgres/migrations/pg_v9_055_agent_optimization.sql"));assert.equal(await inspectAgentOptimizationSchema(pool),true)}
@@ -209,6 +244,7 @@ try{
   for(const [email,password,name] of [["alice@example.com","SyntheticAlicePassword#2026","Alice"],
     ["bob@example.com","SyntheticBobPassword#2026","Bob"]]){
     const session=await auth.login(email,password),profile=await auth.getSessionProfile(session.token)
+    if(ownOperations&&name==="Alice")ownOperationsAlice={id:profile.id,identity:profile.identity}
     const connection=await models.create(profile.identity,{name:name+" synthetic model",provider:"openai",
       base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowserOnlyCredential0123456789",enabled:true,models:["gpt-4.1-mini"]})
     // Fixture setup only: no external probe or credentials are used.
@@ -288,6 +324,7 @@ try{
       executor:{supports:request=>adapters.some(adapter=>adapter.supports(request)),execute(request,lease){return adapters.find(adapter=>adapter.supports(request)).execute(request,lease)}}}).tick()
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
+      allowOwnOperations:ownOperationsAvailable,
       allowConfigurationWrites:state.configAllowed,allowEmployeeProvisioning:state.configAllowed,allowEmployeeGovernance:governance,
       allowMcpDiscovery:modern&&state.configAllowed,
       allowMcpToolExecution:modern&&state.configAllowed&&state.allowed,
@@ -306,9 +343,11 @@ try{
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:state.outcomeAllowed,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:state.derivedAllowed,
       businessHandler:(req,res)=>{
-        if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,
-          {...policy,configurationWrites:state.configAllowed,agentOutcomeMemoryUat:state.outcomeAllowed,agentDerivedMemoryUat:state.derivedAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
-            knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed,agentGeneratedAcceptanceUat:generatedAcceptance&&state.generatedAcceptanceAllowed})){
+        const currentPolicy={...policy,configurationWrites:state.configAllowed,agentOutcomeMemoryUat:state.outcomeAllowed,agentDerivedMemoryUat:state.derivedAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
+          knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed,agentGeneratedAcceptanceUat:generatedAcceptance&&state.generatedAcceptanceAllowed}
+        if(ownOperations)return createNativeOwnOperationsBusinessHandler({available:ownOperationsAvailable,repository:ownOperationsRepository,policy:currentPolicy,
+          allowedOrigin:origin,authenticateRequest:native.authenticateRequest,businessHandler:(request,response)=>backend(request,response)})(req,res)
+        if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,currentPolicy)){
           res.writeHead(405,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"pilot_business_writes_disabled"}));return
         }
         return backend(req,res)
@@ -435,6 +474,9 @@ try{
             ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,decisionHashes:state.decisionHashes,semanticModelPrompts:state.semanticModelPrompts,
               queryJobs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.knowledge_query_jobs")).rows[0].n}:{} )}}
           finally{c.release()}
+        }else if(req.url==="/__fixture/own-overdue-schedule"){
+          const result=await ownOverdueScheduleControl(req,pool,{ownOperations,scheduling},ownOperationsAlice)
+          res.writeHead(result.status,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(result.body));return
         }else if(review&&req.method==="POST"&&["/__fixture/review-complete","/__fixture/review-failed","/__fixture/review-unknown"].includes(req.url)){
           // Browser story completion control only: actual protected057 SQL,
           // no provider call, fake result row INSERT or weakened Worker login.

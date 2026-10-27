@@ -7,19 +7,27 @@ import {autonomousStates} from "./PgNativeAutonomousAgentDetail"
 import PgNativeWorkflowRunDetail from "./PgNativeWorkflowRunDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
 import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
+import {watchPgNativeOriginalTaskController,createOwnTaskTargetDelivery,type OwnTaskRunTarget} from "@/lib/pgNativeOwnTaskNavigation"
 type Controller=ReturnType<typeof createPgNativeWorkflowRunSession>
-export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,humanEnabled=false,humanAvailable=false,target,onExpired}:{
+export default function PgNativeWorkflowRunPanel({api,workflows,active,enabled,humanEnabled=false,humanAvailable=false,target,onExpired,runTarget,onTargetSettled}:{
   api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];active:boolean;enabled:boolean;humanEnabled?:boolean;humanAvailable?:boolean;
-  target:{id:string;revision:number;selection?:number}|null;onExpired:()=>void
+  target:{id:string;revision:number;selection?:number}|null;onExpired:()=>void;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
 }){
   const [view,setView]=useState(emptyWorkflowRunView),[selection,setSelection]=useState<{token:string;id:string}|null>(null),[instruction,setInstruction]=useState("")
   const model=useRef<Controller|null>(null)
   useEffect(()=>{
     const controller=createPgNativeWorkflowRunSession(api,{onExpired});model.current=controller;setView(controller.snapshot())
     const unsubscribe=controller.subscribe(()=>setView(controller.snapshot()))
-    return ()=>{unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,controller)
+    return ()=>{unwatch();unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
   },[api,onExpired])
   useEffect(()=>{model.current?.setActive(active)},[active,api,onExpired])
+  const targetDelivery=useRef(createOwnTaskTargetDelivery())
+  useEffect(()=>{
+    const controller=model.current
+    if(!active||!runTarget||!controller)return
+    return targetDelivery.current.attach(controller,runTarget,()=>controller.selectOriginal(runTarget),opened=>{if(model.current===controller)onTargetSettled?.(runTarget.selection,opened)})
+  },[active,runTarget,api,onExpired,onTargetSettled])
   useEffect(()=>{
     if(!active||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||view.error||!["queued","running"].includes(view.detail?.run.status??""))return
     const timer=setTimeout(()=>{void model.current?.poll()},2000);return ()=>clearTimeout(timer)

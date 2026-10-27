@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react"
 import {PgNativePilotError,type createPgNativePilotApi,type PgNativeFeedbackStatus,type PgNativeModelConnection} from "@/lib/pgNativePilotApi"
 import {createPgNativeAgentReviewSession,emptyAgentReviewView} from "@/lib/pgNativeAgentReviewSession"
+import {watchPgNativeOriginalTaskController} from "@/lib/pgNativeOwnTaskNavigation"
 import type {PgNativeAgentReviewPurpose,PgNativeAgentReviewSelection,PgNativeAgentReviewView} from "@/lib/pgNativeAgentReview"
 import type {PgNativeAgentReviewHistoryPage} from "@/lib/pgNativeAgentReviewHistory"
 import PgNativeAgentGeneratedAcceptancePanel from "./PgNativeAgentGeneratedAcceptancePanel"
@@ -74,7 +75,8 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
       const next=current.snapshot();setState({api,ownerId,view:next})
       if(next.target)setSelection(previous=>retainPgNativeAgentGeneratedSelection(previous,{api,ownerId,specId:next.target!.spec_id,runId:next.target!.run_id,purpose:next.target!.purpose,reviewId:next.reviewId,request:next.selectedMetadata?.request??next.review?.request??next.receipt}))
     })
-    return()=>{fence.ticket++;unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
+    const unwatch=watchPgNativeOriginalTaskController(api,current)
+    return()=>{fence.ticket++;unwatch();unsubscribe();current.dispose();if(controller.current===current)controller.current=null}
   },[api,ownerId,onExpired])
   useEffect(()=>{controller.current?.setScopes({available,submit:submitEnabled,history:historyAvailable})},[available,submitEnabled,historyAvailable,api,ownerId,onExpired])
   useEffect(()=>{controller.current?.setActive(active&&opened)},[active,opened,api,ownerId,onExpired])

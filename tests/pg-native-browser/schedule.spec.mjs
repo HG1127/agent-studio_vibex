@@ -7,7 +7,7 @@ test("native schedule: owner grant, exact activation recovery, once-per-minute q
   const approved=requireNativeBrowserCi() // FIRST effectful gate; never run on a developer workstation.
   const root=path.resolve(fileURLToPath(new URL("../../",import.meta.url)))
   const env=Object.fromEntries(["PATH","HOME","TMPDIR","TEMP","TMP","LANG"].filter(k=>process.env[k]!==undefined).map(k=>[k,process.env[k]]))
-  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true",AGENT_STUDIO_PG_BROWSER_SCHEDULE:"true"})
+  Object.assign(env,{AGENT_STUDIO_PG_BROWSER_FIXTURE:"SYNTHETIC_LOCAL_ONLY",AGENT_STUDIO_PG_BROWSER_WORKFLOW:"true",AGENT_STUDIO_PG_BROWSER_SCHEDULE:"true",AGENT_STUDIO_PG_BROWSER_OWN_OPERATIONS:"true"})
   const child=spawn(process.execPath,["--experimental-strip-types",path.join(root,"services/pg-api/tests/helpers/native-run-browser-fixture.mjs")],{cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true})
   let browser,context,page,control,timer,output=""
   const ready=new Promise((resolve,reject)=>{timer=setTimeout(()=>reject(Error("synthetic_fixture_timeout")),45000)
@@ -47,6 +47,12 @@ test("native schedule: owner grant, exact activation recovery, once-per-minute q
     await page.getByRole("region",{name:"计划执行授权",exact:true}).screenshot({path:testInfo.outputPath("native-schedule-future-consent.png")})
     await control("drop-next-schedule");await page.getByRole("button",{name:"确认授权并启用",exact:true}).click()
     await expect(page.getByRole("button",{name:"用原请求重试启用",exact:true})).toBeEnabled()
+    await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+    await expect(page.getByRole("region",{name:"我的运行概览与待办",exact:true})).toBeVisible()
+    await page.getByRole("button",{name:"定时计划草稿",exact:true}).click()
+    await expect(page.getByRole("button",{name:"用原请求重试启用",exact:true})).toBeEnabled()
+    await expect(page.getByLabel("首次生效日期",{exact:true})).toHaveValue(effectiveDate)
+    expect((await control("state","GET")).scheduleHashes).toHaveLength(1)
     await page.getByRole("button",{name:"用原请求重试启用",exact:true}).click()
     await expect(page.getByRole("button",{name:"立即运行",exact:true})).toBeEnabled()
     const recovered=await control("state","GET");expect(recovered.scheduleHashes).toHaveLength(2);expect(recovered.scheduleHashes[0]).toBe(recovered.scheduleHashes[1]);expect(recovered.runs).toBe(0)
@@ -89,6 +95,55 @@ test("native schedule: owner grant, exact activation recovery, once-per-minute q
     expect((await control("state","GET")).scheduleModelCalls).toBe(2)
     await inspectAgent();await expect(page.getByText(/运行完成/)).toBeVisible()
     await page.getByRole("region",{name:"计划执行授权",exact:true}).screenshot({path:testInfo.outputPath("native-schedule-selected-model.png")})
+    await test.step("StrictMode first conditional mount opens the real overdue schedule without scheduling work",async()=>{
+      const read=async pathname=>{const response=await page.request.get(new URL("/__pg_native"+pathname,info.url).href);expect(response.status()).toBe(200);return response.json()}
+      const before=await control("state","GET"),beforeActivations=structuredClone(activations)
+      const original=(await read("/api/v2/schedules")).items.find(item=>item.name==="Alice independent model task")
+      expect(original?.enabled).toBe(true);expect(original?.kind).toBe("agent")
+      const execution=(await read("/api/v2/schedules/"+original.id+"/execution")).state
+      const history=await read("/api/v2/schedules/"+original.id+"/occurrences")
+      expect(execution.authority_id).toBeTruthy();expect(execution.source_current).toBe(true)
+      const due=await control("own-overdue-schedule") // Fixed synthetic Alice; empty body, no tick/run/job.
+      expect(due.scheduleId).toBe(original.id);expect(Number.isFinite(Date.parse(due.next_at))).toBe(true)
+      expect(Date.parse(due.next_at)).toBeLessThan(Date.now())
+      const changed=(await read("/api/v2/schedules/"+due.scheduleId)).item
+      expect(changed).toEqual({...original,next_at:due.next_at})
+      const changedExecution=(await read("/api/v2/schedules/"+due.scheduleId+"/execution")).state
+      // SQL jsonb timestamps may keep a zone/microsecond spelling while the
+      // fixture response uses milliseconds. All authority fields stay exact.
+      const {next_at:beforeNext,...beforeAuthority}=execution,{next_at:changedNext,...changedAuthority}=changedExecution
+      expect(beforeNext).toBeTruthy();expect(Date.parse(changedNext)).toBe(Date.parse(due.next_at))
+      expect(changedAuthority).toEqual(beforeAuthority)
+      expect(await read("/api/v2/schedules/"+due.scheduleId+"/occurrences")).toEqual(history)
+      // The PG18 entry uses StrictMode. Reload removes the earlier schedule
+      // controller; visit Own before ever opening the conditional schedule tab.
+      await page.reload({waitUntil:"domcontentloaded"})
+      await page.getByRole("button",{name:"我的概览与待办",exact:true}).click()
+      await page.getByRole("combobox",{name:"待办类别",exact:true}).selectOption("schedule_overdue")
+      await page.getByRole("combobox",{name:"任务类型",exact:true}).selectOption("schedule")
+      const own=(await read("/api/v2/own-todos?category=schedule_overdue&kind=schedule&q=&limit=20"))
+      expect(own.items).toContainEqual(expect.objectContaining({category:"schedule_overdue",kind:"schedule",id:due.scheduleId,status:"overdue"}))
+      const row=page.locator('[aria-label="待办筛选与当前页"] li').filter({hasText:due.scheduleId})
+      await expect(row).toContainText("Alice independent model task")
+      const exactRead=page.waitForResponse(response=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/__pg_native/api/v2/schedules/"+due.scheduleId)
+      await row.getByRole("button",{name:"打开原任务",exact:true}).click()
+      const response=await exactRead;expect(response.status()).toBe(200);expect((await response.json()).item.id).toBe(due.scheduleId)
+      await expect(page.getByText("已重新核对并打开原任务。处理操作仍需在原任务中另行确认。",{exact:true})).toBeVisible()
+      await expect(page.getByText("正在重新核对原任务、资源和版本；完成前暂不能切换或提交任务。",{exact:true})).toHaveCount(0)
+      const card=page.getByRole("button",{name:/Alice independent model task/}).locator("..")
+      const controls=card.getByRole("region",{name:"计划执行授权",exact:true})
+      await expect(controls).toContainText("授权来源有效")
+      await controls.getByText("重新授予后台权限",{exact:true}).click()
+      await expect(controls.getByRole("textbox",{name:"每次运行的任务说明",exact:true})).toHaveValue(execution.execution.instruction)
+      await expect(controls.getByRole("checkbox",{name:/我授权当前目标和连接版本/})).not.toBeChecked()
+      expect((await read("/api/v2/schedules/"+due.scheduleId)).item).toEqual(changed)
+      expect((await read("/api/v2/schedules/"+due.scheduleId+"/execution")).state).toEqual(changedExecution)
+      expect(await read("/api/v2/schedules/"+due.scheduleId+"/occurrences")).toEqual(history)
+      const after=await control("state","GET")
+      for(const key of ["runs","submissions","generated","scheduleModelCalls"])expect(after[key]).toBe(before[key])
+      expect(after.scheduleHashes).toEqual(before.scheduleHashes);expect(activations).toEqual(beforeActivations)
+      await page.screenshot({path:testInfo.outputPath("native-schedule-own-first-mount.png"),fullPage:true})
+    })
     await page.getByRole("button",{name:"退出",exact:true}).click();await login("bob");await page.getByRole("button",{name:"定时计划草稿",exact:true}).click()
     await expect(page.getByText("Alice recurring task",{exact:false})).toHaveCount(0);await expect(page.getByText("Alice independent model task",{exact:false})).toHaveCount(0);expect(external).toHaveLength(0)
   }catch(error){if(page)await page.screenshot({path:testInfo.outputPath("native-schedule-failure.png"),fullPage:true}).catch(()=>{});throw error}

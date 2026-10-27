@@ -96,6 +96,7 @@ export function createPgNativeAgentGeneratedAcceptanceSession(api:PgNativeAgentG
     flight=finished;emit();return finished
   }
   return {
+    navigationBlocked:()=>!disposed&&Boolean(busy||loading||pending||flight),
     snapshot,dispose,subscribe(fn:()=>void){if(!disposed)listeners.add(fn);return()=>listeners.delete(fn)},
     setActive(value:boolean){if(disposed||active===Boolean(value))return;active=Boolean(value);invalidate();emit()},
     setScopes(value:{available:boolean;acceptance:boolean}){if(disposed)return;const next=value.available===true,enabled=next&&value.acceptance===true;if(next!==available||enabled!==acceptance){available=next;acceptance=enabled;invalidate();emit()}},

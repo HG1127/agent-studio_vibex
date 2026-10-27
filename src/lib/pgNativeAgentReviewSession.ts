@@ -122,6 +122,7 @@ export function createPgNativeAgentReviewSession(api:Api,{key=()=>crypto.randomU
     return apply(false)
   }
   return {
+    navigationBlocked:()=>!disposed&&Boolean(busy||loading||historyLoading||pending||flight),
     snapshot,dispose,subscribe(fn:()=>void){if(!disposed)listeners.add(fn);return()=>listeners.delete(fn)},
     setActive(value:boolean){if(disposed||active===value)return;active=value;invalidate();invalidateHistory();emit()},
     setScopes(value:{available:boolean;submit:boolean;history?:boolean}){

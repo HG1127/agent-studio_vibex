@@ -2,6 +2,7 @@ import {useEffect,useRef,useState,type FormEvent} from "react"
 import {Clock3,Loader2,Play,RefreshCcw,ShieldCheck} from "lucide-react"
 import {type PgNativeAgent,type PgNativeModelConnection,createPgNativePilotApi} from "@/lib/pgNativePilotApi"
 import {createPgNativeAgentRunSession,emptyAgentRunView} from "@/lib/pgNativeAgentRunSession"
+import {watchPgNativeOriginalTaskController,createOwnTaskTargetDelivery,type OwnTaskRunTarget} from "@/lib/pgNativeOwnTaskNavigation"
 
 type Api=ReturnType<typeof createPgNativePilotApi>
 type Controller=ReturnType<typeof createPgNativeAgentRunSession>
@@ -13,8 +14,8 @@ const states:Record<string,string>={queued:"排队中",running:"处理中",await
 const providerBases={openai:"https://api.openai.com/v1",anthropic:"https://api.anthropic.com/v1",
   gemini:"https://generativelanguage.googleapis.com/v1beta"}
 /** Kept mounted across workspace tabs; logout/account change destroys its key. */
-export default function PgNativeAgentRunPanel({api,agents,connections,active,enabled}:{
-  api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[];active:boolean;enabled:boolean
+export default function PgNativeAgentRunPanel({api,agents,connections,active,enabled,onExpired,runTarget,onTargetSettled}:{
+  api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[];active:boolean;enabled:boolean;onExpired?:()=>void;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
 }){
   const [snapshot,setSnapshot]=useState<{api:Api;view:ReturnType<Controller["snapshot"]>}>({api,view:emptyAgentRunView()})
   // A changed API/session cannot render the previous employee's snapshot,
@@ -27,13 +28,21 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
   const model=useRef<Controller|null>(null)
   useEffect(()=>{
     // StrictMode cleanup/setup must recreate the disposed lifetime.
-    const controller=createPgNativeAgentRunSession(api)
+    const controller=createPgNativeAgentRunSession(api,{onExpired})
     model.current=controller;setSnapshot({api,view:controller.snapshot()})
     setAgentId("");setInstruction("");setCostAccepted(false)
     const unsubscribe=controller.subscribe(()=>setSnapshot({api,view:controller.snapshot()}))
-    return ()=>{unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
-  },[api])
+    const unwatch=watchPgNativeOriginalTaskController(api,controller)
+    return ()=>{unwatch();unsubscribe();controller.dispose();if(model.current===controller)model.current=null}
+  },[api,onExpired])
   useEffect(()=>{setCostAccepted(false);void model.current?.setActive(active)},[active,api])
+  const targetDelivery=useRef(createOwnTaskTargetDelivery())
+  useEffect(()=>{
+    const controller=model.current
+    if(!active||!runTarget||!controller)return
+    setCostAccepted(false)
+    return targetDelivery.current.attach(controller,runTarget,()=>controller.selectOriginal(runTarget),opened=>{if(model.current===controller)onTargetSettled?.(runTarget.selection,opened)})
+  },[active,runTarget,api,onExpired,onTargetSettled])
   const readyConnection=(agent:PgNativeAgent|undefined)=>{
     const binding=agent?.spec.model_binding
     return binding?connections.find(c=>c.id===binding.connection_id&&c.enabled&&c.status==="ok"&&

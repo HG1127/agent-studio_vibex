@@ -79,7 +79,7 @@ test("Native config capability uses same-origin GET and rejects malformed grants
     }),{status:200})
   },"")
   assert.deepEqual(await api.getConfigCapabilities(),{
-    mode:"native_pg18",config_writes_enabled:true,model_probe_enabled:false,run_execution_enabled:false
+    mode:"native_pg18",config_writes_enabled:true,model_probe_enabled:false,run_execution_enabled:false,own_operations_available:false
   })
   assert.deepEqual(calls.map(x=>x.url),["/api/native-auth/capabilities"])
   assert.equal(calls[0].init.method,"GET")
@@ -119,7 +119,8 @@ test("PG18 standalone configuration editing requires server authenticated approv
   const page=fs.readFileSync(path.join(root,
     "src/pages/PgNativePilot/PgNativePilotPage.tsx"),"utf8")
   assert.match(page,/api\.getConfigCapabilities\(\)/)
-  assert.match(page,/\.catch\(\(\)=>null\)/)
+  assert.match(page,/\.catch\(err=>\{/)
+  assert.match(page,/err\.status===401\)expireAgentSession\(\)/)
   assert.match(page,/const canEditConfig=!productionRoot\|\|configEditEnabled/)
   assert.match(page,/setConfigEditEnabled\(false\)/)
   assert.match(page,/setConfigEditEnabled\(capability\?\.config_writes_enabled===true\)/)

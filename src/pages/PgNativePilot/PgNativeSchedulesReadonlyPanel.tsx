@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react"
 import {CalendarClock,Clock3,Loader2,RefreshCw,ShieldCheck,Plus,Trash2} from "lucide-react"
 import PgNativeScheduleExecutionControls from "./PgNativeScheduleExecutionControls"
+import {pgNativeOriginalTasksBlocked,registerPgNativeOriginalTaskGuard,verifyOwnTaskSchedule,createOwnTaskTargetDelivery,type OwnTaskScheduleTarget} from "@/lib/pgNativeOwnTaskNavigation"
 import {createPgNativePilotApi,PgNativePilotError,
   type PgNativeSchedule,type PgNativeScheduleOccurrence,
   type PgNativeAgent,type PgNativeWorkflow,type PgNativeModelConnection,
@@ -22,8 +23,8 @@ function safeError(error:unknown):string{
 }
 
 /** Inert schedule-draft config and read-only occurrence inventory; NO scheduler. */
-export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,canEdit,canExecute=false,connections=[]}:{
-  api:NativeApi;agents:PgNativeAgent[];workflows:PgNativeWorkflow[];canEdit:boolean;canExecute?:boolean;connections?:PgNativeModelConnection[]
+export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,canEdit,canExecute=false,connections=[],active=true,onExpired,scheduleTarget,onTargetSettled}:{
+  api:NativeApi;agents:PgNativeAgent[];workflows:PgNativeWorkflow[];canEdit:boolean;canExecute?:boolean;connections?:PgNativeModelConnection[];active?:boolean;onExpired?:()=>void;scheduleTarget?:OwnTaskScheduleTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
 }){
   const [items,setItems]=useState<PgNativeSchedule[]>([])
   const [selected,setSelected]=useState<string|null>(null)
@@ -31,6 +32,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
   const [loading,setLoading]=useState(true)
   const [historyLoading,setHistoryLoading]=useState(false)
   const [error,setError]=useState("")
+  const [readFailed,setReadFailed]=useState(false)
   const [notice,setNotice]=useState("")
   const [editing,setEditing]=useState<PgNativeSchedule|null>(null)
   const [name,setName]=useState("")
@@ -45,36 +47,63 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
   const [saving,setSaving]=useState(false)
   const [formOpen,setFormOpen]=useState(false)
   const revision=useRef(0)
+  const readScope=useRef<object>({})
+  const selectedRef=useRef(selected);selectedRef.current=selected
+  const activity=useRef({saving,loading,historyLoading});activity.current={saving,loading,historyLoading}
+  const draftOriginal=useRef<unknown>(null)
+  const [draftUnknown,setDraftUnknown]=useState(false)
+  const guard=useRef<ReturnType<typeof registerPgNativeOriginalTaskGuard>|null>(null)
+  useEffect(()=>{const current=registerPgNativeOriginalTaskGuard(api,()=>Boolean(activity.current.saving||activity.current.loading||activity.current.historyLoading||draftOriginal.current));guard.current=current;return()=>{current.dispose();if(guard.current===current)guard.current=null}},[api])
+  useEffect(()=>{guard.current?.changed()},[saving,loading,historyLoading,draftUnknown])
   const getItems=useCallback(async()=>{
     const ticket=++revision.current
     setLoading(true)
+    setReadFailed(true)
     setError("")
     try{
       const rows=await api.listSchedules()
-      if(ticket===revision.current)setItems(rows)
+      if(ticket===revision.current){setReadFailed(false);setItems(previous=>{
+        const retained=previous.find(item=>item.id===selectedRef.current)
+        return retained&&pgNativeOriginalTasksBlocked(api)&&!rows.some(item=>item.id===retained.id)?[retained,...rows]:rows
+      })}
     }catch(e){
-      if(ticket===revision.current){setItems([]);setError(safeError(e))}
+      if(ticket===revision.current){if(e instanceof PgNativePilotError&&e.status===401)onExpired?.();if(!pgNativeOriginalTasksBlocked(api))setItems([]);setError(safeError(e))}
     }finally{
       if(ticket===revision.current)setLoading(false)
     }
-  },[api])
+  },[api,onExpired])
   useEffect(()=>{
+    readScope.current={}
     void getItems()
     return ()=>{revision.current++}
   },[getItems])
-  const inspect=async(id:string)=>{
+  const inspect=useCallback(async(id:string,target?:OwnTaskScheduleTarget,confirmedRefresh=false)=>{
+    if(!active||saving||draftOriginal.current||!target&&!confirmedRefresh&&pgNativeOriginalTasksBlocked(api)||confirmedRefresh&&selectedRef.current!==id)return false
     const ticket=++revision.current
-    setSelected(id);setOccurrences([]);setError("")
-    setHistoryLoading(true)
+    setOccurrences([]);setError("");setReadFailed(true);setLoading(false);setHistoryLoading(true)
     try{
+      const item=await api.getSchedule(id)
+      if(ticket!==revision.current)return false
+      if(target){
+        const resource=await(item.kind==="agent"?api.getAgent(item.agent_spec_id!):api.getWorkflow(item.workflow_id!))
+        if(ticket!==revision.current)return false
+        verifyOwnTaskSchedule(api,target,item,resource)
+      }
       const rows=await api.listScheduleOccurrences(id)
-      if(ticket===revision.current)setOccurrences(rows)
+      if(ticket===revision.current){setReadFailed(false);setItems(previous=>[item,...previous.filter(row=>row.id!==id)]);setSelected(id);setOccurrences(rows);return true}
+      return false
     }catch(e){
-      if(ticket===revision.current){setSelected(null);setError(safeError(e))}
+      if(ticket===revision.current){if(e instanceof PgNativePilotError&&e.status===401)onExpired?.();setError(safeError(e))}
+      return false
     }finally{
       if(ticket===revision.current)setHistoryLoading(false)
     }
-  }
+  },[api,active,saving,onExpired])
+  const targetDelivery=useRef(createOwnTaskTargetDelivery())
+  useEffect(()=>{
+    if(!active||!scheduleTarget)return
+    return targetDelivery.current.attach(readScope.current,scheduleTarget,()=>inspect(scheduleTarget.scheduleId,scheduleTarget),opened=>onTargetSettled?.(scheduleTarget.selection,opened))
+  },[active,scheduleTarget,inspect,onTargetSettled])
   const resetForm=()=>{
     setEditing(null);setName("");setKind("agent")
     setTargetId(agents[0]?.id||"");setTimeZone("Asia/Shanghai")
@@ -99,7 +128,7 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
   }
   const saveDraft=async(event:FormEvent)=>{
     event.preventDefault()
-    if(!canEdit||saving)return
+    if(!canEdit||saving||draftOriginal.current)return
     const rule:PgNativeScheduleDraftRule=ruleKind==="once"?
       {kind:"once",start_date:startDate,local_time:localTime}:
       ruleKind==="daily"?{kind:"daily",local_time:localTime}:
@@ -108,14 +137,20 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
     const input:PgNativeScheduleDraftInput={
       name:name.trim(),kind,target_id:targetId,time_zone:timeZone,rule
     }
+    draftOriginal.current=Object.freeze({action:editing?"update":"create",id:editing?.id??null,revision:editing?.revision??null,input:structuredClone(input)})
+    activity.current.saving=true;guard.current?.changed()
     setSaving(true);setError("");setNotice("")
     try{
       if(editing)await api.updateScheduleDraft(editing.id,editing.revision,input)
       else await api.createScheduleDraft(input)
+      draftOriginal.current=null;setDraftUnknown(false)
       resetForm()
       await getItems()
       setNotice("计划已保存为停用草稿。原后台授权已撤销，需要重新启用才会继续调度。")
     }catch(err){
+      if(err instanceof PgNativePilotError&&err.status===401){onExpired?.();return}
+      if(err instanceof PgNativePilotError&&err.status>=400&&err.status<500)draftOriginal.current=null
+      else setDraftUnknown(true)
       if(err instanceof PgNativePilotError&&err.status===409)
         setError("草稿版本已变化，或该记录是不可修改的旧版隔离计划；请刷新后重试。")
       else if(err instanceof PgNativePilotError&&err.status===404)
@@ -123,26 +158,32 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
       else if(err instanceof PgNativePilotError&&err.status===400)
         setError("计划参数不合法，请检查目标、时区、日期及重复规则。")
       else setError("计划草稿保存失败，请检查独立 PG18 配置权限。")
-    }finally{setSaving(false)}
+    }finally{activity.current.saving=false;setSaving(false);guard.current?.changed()}
   }
   const deleteDraft=async(item:PgNativeSchedule)=>{
-    if(!canEdit||saving||
+    if(!canEdit||saving||draftOriginal.current||
        !(item.recurrence?.config_format==="pg_schedule_draft_v1"||canExecute&&item.recurrence?.config_format==="pg_schedule_execution_v2"))return
     if(typeof window!=="undefined"&&
        !window.confirm("删除计划“"+item.name+"”并撤销后台授权？历史运行记录将保留。"))return
-    setSaving(true);setError("");setNotice("")
+    draftOriginal.current=Object.freeze({action:"delete",id:item.id,revision:item.revision})
+    activity.current.saving=true;guard.current?.changed();setSaving(true);setError("");setNotice("")
     try{
       await api.deleteScheduleDraft(item.id,item.revision)
+      draftOriginal.current=null;setDraftUnknown(false)
       if(item.id===selected){setSelected(null);setOccurrences([])}
       if(item.id===editing?.id)resetForm()
       await getItems()
       setNotice("计划草稿已删除。")
     }catch(err){
+      if(err instanceof PgNativePilotError&&err.status===401){onExpired?.();return}
+      if(err instanceof PgNativePilotError&&err.status>=400&&err.status<500)draftOriginal.current=null
+      else setDraftUnknown(true)
       setError(err instanceof PgNativePilotError&&err.status===409?
         "删除被版本冲突或历史记录保护机制阻止。":"删除失败，请重新加载最新状态。")
-    }finally{setSaving(false)}
+    }finally{activity.current.saving=false;setSaving(false);guard.current?.changed()}
   }
-  return <div className="space-y-4">
+  return <fieldset disabled={!active||draftUnknown} className="space-y-4 border-0 p-0">
+    {draftUnknown&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">原计划配置操作的结果尚未确认，原参数已保留。暂不能切换原任务，也不会自动重交；需要核对后再处理。</p>}
     <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
         <ShieldCheck size={18}/>{canExecute?"我的后台计划与运行历史":"计划草稿与历史清单 · 执行未开放"}
@@ -251,12 +292,13 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
       {loading&&<p role="status" className="flex items-center gap-2 text-sm text-slate-500">
         <Loader2 className="animate-spin" size={16}/>正在读取计划…
       </p>}
-      {!loading&&!items.length&&<p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">
+      {!loading&&!readFailed&&!items.length&&<p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">
         当前员工尚无 PostgreSQL 计划记录。旧 PocketBase 中的计划不会自动出现。
       </p>}
-      <div className="space-y-2">
+      <div className="space-y-2" hidden={readFailed}>
         {items.map(item=><div key={item.id} className="space-y-2">
           <button type="button"
+          disabled={loading||historyLoading||pgNativeOriginalTasksBlocked(api)}
           onClick={()=>void inspect(item.id)}
           className={"w-full rounded-xl border p-4 text-left hover:bg-slate-50 "+
             (item.id===selected?"border-indigo-300 bg-indigo-50":"border-slate-100")}>
@@ -293,10 +335,11 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
             <PgNativeScheduleExecutionControls api={api} item={item} occurrences={occurrences} canActivate={canExecute}
               targetRevision={item.kind==="agent"?agents.find(a=>a.id===item.agent_spec_id)?.revision:workflows.find(w=>w.id===item.workflow_id)?.revision}
               connections={connections} targetModelBinding={agents.find(a=>a.id===item.agent_spec_id)?.spec.model_binding}
-              onChanged={async()=>{await getItems();await inspect(item.id)}}/>}
+              onExpired={onExpired}
+              onChanged={async()=>{await getItems();await inspect(item.id,undefined,true)}}/>}
         </div>)}
       </div>
-      {selected&&<div className="mt-5 border-t border-slate-100 pt-4">
+      {selected&&!readFailed&&<div className="mt-5 border-t border-slate-100 pt-4">
         <h3 className="flex items-center gap-2 font-semibold">
           <Clock3 size={17} className="text-indigo-600"/>计划历史
         </h3>
@@ -312,5 +355,5 @@ export default function PgNativeSchedulesReadonlyPanel({api,agents,workflows,can
         </ol>
       </div>}
     </section>
-  </div>
+  </fieldset>
 }
