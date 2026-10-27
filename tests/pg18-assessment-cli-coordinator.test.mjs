@@ -40,6 +40,11 @@ test('plan is offline and actual --run refuses an ordinary checkout before creat
     if(mode==='--plan'){assert.equal(result.status,0);assert.deepEqual(JSON.parse(result.stdout),plan);assert.equal(result.stderr,'')}
     else{assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'ASSESSMENT_CLI_COORDINATOR_REFUSED\n')}
   }
+  const debug=spawnSync(process.execPath,[entry,'--run'],{env:{...env,GITHUB_ACTIONS:'true',CI:'true',GITHUB_REPOSITORY:'synthetic-private-repository',NODE_OPTIONS:undefined},encoding:'utf8',timeout:15000,windowsHide:true})
+  assert.equal(debug.status,1);assert.equal(debug.stdout,'')
+  const lines=debug.stderr.trim().split('\n');assert.equal(lines.at(-1),'ASSESSMENT_CLI_COORDINATOR_REFUSED')
+  const failure=JSON.parse(lines[0]);assert.equal(failure.error,'ASSESSMENT_CLI_STAGE_FAILURE');assert.ok(['host_profile','ci_gate'].includes(failure.phase));assert.ok(Object.values(failure.gates).every(value=>typeof value==='boolean'))
+  assert.doesNotMatch(debug.stderr,/synthetic-private|forbidden-prod|postgres:\/\//)
 })
 test('canonical source, dependency-root and Dockerfile boundaries refuse parent and final symlink escapes',()=>{
   const parent=fs.realpathSync(os.tmpdir()),directory=fs.mkdtempSync(path.join(parent,'assessment-cli-path-policy-'))

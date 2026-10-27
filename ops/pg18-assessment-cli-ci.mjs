@@ -18,6 +18,8 @@ const uid=20001
 const labelPrefix='org.agentstudio.assessment-cli.'
 const hash=raw=>createHash('sha256').update(raw).digest('hex')
 const refuse=reason=>{throw Error('assessment_cli_coordinator_refused:'+reason)}
+let phase='not_started'
+const stage=value=>{phase=value}
 const sourceSeeds=['services/pg-api/src/agent-assessment-service.ts','services/pg-api/tests/assessment-full-cli-lifecycle.integration.mjs']
 const freshSqlPaths=['db/postgres/001_stage_schema.sql','db/postgres/010_pg18_native_auth_proposed.sql',...[
   '019_model_connections','020_model_credential_broker','021_tool_connections','022_schedule_draft_fence','023_workflow_safe_worker','024_bound_dispatch_identity','025_workflow_model_identity','026_workflow_tool_identity','027_workflow_agent_identity','028_autonomous_agent_identity','029_mcp_connections','030_mcp_tool_identity','031_smithery_managed','032_knowledge_access','033_knowledge_content','034_knowledge_runtime','035_knowledge_embedding_state','036_knowledge_embedding_consent','037_knowledge_index_runtime','038_knowledge_query_runtime','039_knowledge_execution_source','040_approved_semantic_tools','041_keyword_observations','042_agent_knowledge_observations','043_workflow_sample_lineage','044_schedule_execution','045_agent_collaboration','046_agent_releases','047_employee_governance','048_agent_human_input','049_agent_memory','050_agent_memory_context'
@@ -96,11 +98,13 @@ export function assessmentCliSourceInventory(){
   return files
 }
 async function prepareContext(directory){
+  stage('source_inventory')
   const payload=path.join(directory,'payload'),manifest=new Map(),copy=(rel,raw)=>{
     if(rel.includes('\n')||rel.includes('\r')||rel.includes('\\')||path.posix.isAbsolute(rel)||rel.split('/').includes('..'))refuse('payload_path')
     const file=path.join(payload,rel);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,raw);manifest.set(rel,hash(raw))
   }
   for(const rel of assessmentCliSourceInventory())copy(rel,regular(path.join(root,rel)))
+  stage('sql_sources')
   // Validate every fixed SQL parent before calling the loader that reads it.
   // Keep this closed list aligned with the pinned fresh050 source fingerprint.
   for(const rel of [...freshSqlPaths,...optionalSql,'services/pg-api/package.json','services/pg-api/pnpm-lock.yaml'])copy(rel,regular(path.join(root,rel)))
@@ -111,6 +115,7 @@ async function prepareContext(directory){
   // The API install is standalone/frozen/ignore-scripts in this hosted job.
   // Preserve only relative dependency links whose resolved target stays inside
   // the copied node_modules tree; never follow a workspace or host link.
+  stage('dependency_copy')
   const modules=assessmentCliContainedPath(root,'services/pg-api/node_modules','directory')
   const inside=file=>{const rel=path.relative(modules,file);return rel===''||!rel.startsWith('..'+path.sep)&&rel!=='..'&&!path.isAbsolute(rel)}
   function dependency(relative){
@@ -155,7 +160,9 @@ export function finishAssessmentCliResources(containerCleanup,contextCleanup){tr
 export async function runAssessmentCliCoordinator(env=process.env){
   // The host gate is pure. Placeholder identity cannot unlock container/node
   // operations; the actual ID/nonce must subsequently pass docker inspect.
+  stage('host_profile')
   if(process.platform!=='linux'||env.DOCKER_HOST!==undefined||env.DOCKER_CONTEXT!==undefined)refuse('host_profile')
+  stage('ci_gate')
   const profile=requireAssessmentFullCliCi({...env,AGENT_STUDIO_ASSESSMENT_CLI_CI_CONTAINER_ID:'f'.repeat(64),AGENT_STUDIO_ASSESSMENT_CLI_CI_NONCE:'e'.repeat(64)})
   const nonce=randomBytes(32).toString('hex'),target={runId:profile.runId,runAttempt:profile.runAttempt,nonce,containerId:''}
   const parent=fs.realpathSync(os.tmpdir()),directory=fs.mkdtempSync(path.join(parent,'agentstudio-assessment-cli-ci-'))
@@ -165,6 +172,7 @@ export async function runAssessmentCliCoordinator(env=process.env){
   const inspect=()=>JSON.parse(docker(['inspect',target.containerId]))[0]
   try{
     const payload=await prepareContext(directory)
+    stage('image_build')
     docker(['build','--file',path.join(directory,'Dockerfile'),'--tag',tag,directory],{timeout:600000,inherit:true})
     imageId=docker(['image','inspect',tag,'--format','{{.Id}}']);if(!/^sha256:[a-f0-9]{64}$/.test(imageId))refuse('image_identity')
     const password='synthetic-agentstudio-review-cli-'+target.runId+'-'+target.runAttempt
@@ -173,20 +181,24 @@ export async function runAssessmentCliCoordinator(env=process.env){
     for(const [key,value] of Object.entries(assessmentCliLabels(target)))args.push('--label',key+'='+value)
     for(const key of ['POSTGRES_USER','POSTGRES_DB','POSTGRES_PASSWORD','PGDATA'])args.push('--env',key)
     target.containerId=docker([...args,imageId,...assessmentCliPostgresArgv(target)],{env:dockerEnv,timeout:30000})
+    stage('container_inspection')
     if(!/^[a-f0-9]{64}$/.test(target.containerId))refuse('container_identity')
     const expected={name,imageId};inspectAssessmentCliContainer(inspect(),target,expected)
     let ready=false
+    stage('postgres_readiness')
     for(let attempt=0;attempt<90;attempt++){
       try{docker(['exec','--user','postgres',target.containerId,'pg_isready','-h','127.0.0.1','-p','5333','-U','postgres','-d','agent_studio'],{timeout:5000});ready=true;break}catch{}
       await delay(1000)
     }
     if(!ready)refuse('postgres_start_timeout')
+    stage('postgres_fingerprint')
     const observed=inspect(),verified=inspectAssessmentCliContainer(observed,target,expected)
     const systemId=docker(['exec','--user','postgres',target.containerId,'psql','-X','-Atq','-p','5333','-U','postgres','-d','agent_studio','-c','SELECT system_identifier::text FROM pg_control_system()'])
     const netns=docker(['exec','--user','0',target.containerId,'readlink','/proc/self/ns/net']),postgresNetns=docker(['exec','--user','postgres',target.containerId,'readlink','/proc/self/ns/net'])
     if(!/^[1-9][0-9]{0,19}$/.test(systemId)||!/^net:\[[1-9][0-9]*\]$/.test(netns)||postgresNetns!==netns)refuse('postgres_namespace')
     const marker={format:'agentstudio_assessment_full_cli_ci_v1',repository:'HG1127/agent-studio_vibex',workflow:'Agent Studio PG18 review operator lifecycle isolated verification',job:'pg18-review-operator-lifecycle',run_id:target.runId,run_attempt:target.runAttempt,container_id:target.containerId,nonce,host_inspected:true,image:baseImage,image_id:imageId,source_sha256:payload.sourceSha256,created_at:verified.createdAt,network_mode:'none',published_ports:[],publish_all_ports:false,bind_mounts:[],devices:[],volumes_from:[],tmpfs_mounts:['/run','/var/lib/postgresql'],privileged:false,pid_mode:'private',labels:verified.labels,postgres_argv:assessmentCliPostgresArgv(target),netns,postgres_netns:postgresNetns,test_uid:uid,test_gid:uid,pg_system_identifier:systemId,pgdata,fresh_cluster:true}
     docker(['exec','--interactive','--user','0',target.containerId,'node','--input-type=module','-e',rootSetup],{input:JSON.stringify(marker)})
+    stage('nonroot_lifecycle')
     const controls={GITHUB_ACTIONS:'true',CI:'true',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:'Agent Studio PG18 review operator lifecycle isolated verification',GITHUB_JOB:'pg18-review-operator-lifecycle',GITHUB_RUN_ID:target.runId,GITHUB_RUN_ATTEMPT:target.runAttempt,AGENT_STUDIO_ASSESSMENT_CLI_CI_EPHEMERAL:'true',AGENT_STUDIO_ASSESSMENT_CLI_CI_WRITE_APPROVED:'YES_DISPOSABLE_CONTAINER_ONLY',AGENT_STUDIO_ASSESSMENT_CLI_CI_ADMIN_PASSWORD:password,AGENT_STUDIO_ASSESSMENT_CLI_CI_CONTAINER_ID:target.containerId,AGENT_STUDIO_ASSESSMENT_CLI_CI_NONCE:nonce,HOME:'/tmp/assessment-ci',TMPDIR:'/tmp/assessment-ci'}
     const execution=['exec','--user',uid+':'+uid,'--workdir','/opt/assessment-ci']
     for(const key of Object.keys(controls))execution.push('--env',key)
@@ -211,6 +223,15 @@ export async function runAssessmentCliCoordinator(env=process.env){
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.length===3&&process.argv[2]==='--plan')process.stdout.write(JSON.stringify(assessmentCliCoordinatorPlan())+'\n')
-  else if(process.argv.length===3&&process.argv[2]==='--run')void runAssessmentCliCoordinator().catch(()=>{process.stderr.write('ASSESSMENT_CLI_COORDINATOR_REFUSED\n');process.exitCode=1})
+  else if(process.argv.length===3&&process.argv[2]==='--run')void runAssessmentCliCoordinator().catch(error=>{
+    // Failure diagnostics contain fixed stages/codes and boolean gates only.
+    // Never print an environment value, raw exception, argv, path or stack.
+    if(process.env.GITHUB_ACTIONS==='true'&&process.env.CI==='true'){
+      const value=typeof error?.message==='string'?error.message:'',match=/^assessment_cli_coordinator_refused:([a-z_]+)$/.exec(value)
+      const reason=match?.[1]??(value==='refuse_non_ephemeral_assessment_full_cli_ci'?'ci_profile':/^[A-Z_]+$/.test(error?.code??'')?error.code:'unexpected_error')
+      process.stderr.write(JSON.stringify({error:'ASSESSMENT_CLI_STAGE_FAILURE',phase,reason,gates:{platform_linux:process.platform==='linux',docker_override_absent:process.env.DOCKER_HOST===undefined&&process.env.DOCKER_CONTEXT===undefined,repository:process.env.GITHUB_REPOSITORY==='HG1127/agent-studio_vibex',workflow:process.env.GITHUB_WORKFLOW==='Agent Studio PG18 review operator lifecycle isolated verification',job:process.env.GITHUB_JOB==='pg18-review-operator-lifecycle',runner:process.env.RUNNER_ENVIRONMENT==='github-hosted',database_env:Object.keys(process.env).some(key=>key==='DATABASE_URL'||/^PG[A-Z_]/.test(key)),proxy_env:['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'].some(key=>process.env[key]!==undefined),node_override:['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED'].some(key=>process.env[key]!==undefined)}})+'\n')
+    }
+    process.stderr.write('ASSESSMENT_CLI_COORDINATOR_REFUSED\n');process.exitCode=1
+  })
   else{process.stderr.write('ASSESSMENT_CLI_COORDINATOR_EXPLICIT_MODE_REQUIRED\n');process.exitCode=1}
 }
