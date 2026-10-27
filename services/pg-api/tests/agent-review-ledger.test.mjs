@@ -100,7 +100,12 @@ test('optional056 auditor rejects orphans, partial schema, extra triggers, sourc
           FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_roles b WHERE r.rolname='synthetic_review_maintainer' AND b.rolname='pg_maintain'`)).rows[0]
         assert.deepEqual(row,{login:false,inherit:false,member:true,inherited:false,can_set:true},'NOINHERIT membership is still reachable through SET ROLE')
       }],
-      ['pg_maintain LOGIN','ALTER ROLE pg_maintain LOGIN'],
+      // ALTER ROLE rejects reserved builtins before the auditor can run. The
+      // disposable superuser fixture instead simulates damaged catalog state.
+      ['pg_maintain damaged catalog LOGIN',"UPDATE pg_catalog.pg_authid SET rolcanlogin=true WHERE rolname='pg_maintain'",async db=>{
+        assert.deepEqual((await db.query("SELECT rolcanlogin AS login FROM pg_catalog.pg_roles WHERE rolname='pg_maintain'")).rows,[{login:true}],
+          'synthetic catalog damage must reach the auditor as a login-capable builtin')
+      }],
       ['field grant','GRANT UPDATE(body) ON agentstudio.agent_review_inputs TO agentstudio_api'],
       ['API input SELECT','GRANT SELECT ON agentstudio.agent_review_inputs TO agentstudio_api'],
       ['API input field SELECT','GRANT SELECT(body) ON agentstudio.agent_review_inputs TO agentstudio_api'],
