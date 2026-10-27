@@ -146,6 +146,7 @@ export async function generatedOperatorCiFixture(env=process.env){
  const snapshot=await source.captureGeneratedOperatorSources();source.assertGeneratedOperatorDeployment(snapshot)
  for(const p of [...snapshot.manifest.sources,...snapshot.manifest.fresh_sources,snapshot.manifest.sql])if(!sourceFiles.has(p.path))refuse('source_asset_missing')
  const pools=new Set(),passwords=new Map(),systemIds=new Map();let serial=0,baseDump,baseRoles,baseBusiness,closed=false
+ let auditBaseline,diagnosticEmitted=false
  const config=(target,database=target.db,user='postgres',password=proof.password)=>({host:'127.0.0.1',port:target.port,database,user,password,ssl:false,options:'',max:8,connectionTimeoutMillis:5000,statement_timeout:45000,query_timeout:50000})
  const connect=(target,database=target.db,user='postgres',password=proof.password)=>{const p=new pg.Pool(config(target,database,user,password));p.on('error',()=>{});pools.add(p);return p}
  let admin=connect(main),restoreAdmin=connect(restore)
@@ -161,7 +162,75 @@ export async function generatedOperatorCiFixture(env=process.env){
    !Number.isFinite(start)||start<created-5000||start>Date.now()+2000||Date.now()-start>300000||v.schemas!==0||JSON.stringify(v.roles)!=='["postgres"]'||v.objects!==0||v.functions!==0||v.extensions!==0)refuse('fresh_empty_cluster')
   systemIds.set(target.id,v.system_id)
  }
- async function full(pool,installed=false){const c=await pool.connect();try{await c.query('BEGIN READ ONLY');await c.query('SET LOCAL ROLE agentstudio_api');assert.equal(await opinion.verifyAgentOpinionCredentials(c),true);assert.equal(await generated.verifyAgentGeneratedCredentials(c),installed)}finally{await c.query('ROLLBACK');c.release()}}
+ const auditLayers=[
+  ['045','agent-collaboration-audit.ts','verifyAgentCollaborationCredentials'],['049','agent-memory-audit.ts','verifyAgentMemoryCredentials'],
+  ['050','agent-memory-context-audit.ts','verifyAgentMemoryContextCredentials'],['051','agent-memory-derived-audit.ts','verifyAgentMemoryDerivedCredentials'],
+  ['052','agent-memory-outcome-audit.ts','verifyAgentMemoryOutcomeCredentials'],['053','agent-memory-failure-source-audit.ts','verifyAgentMemoryFailureSourceCredentials'],
+  ['054','agent-feedback-audit.ts','verifyAgentFeedbackCredentials'],['055','agent-optimization-audit.ts','verifyAgentOptimizationCredentials'],
+  ['056','agent-review-audit-core.ts','verifyAgentReviewCore'],['057','agent-assessment-audit-core.ts','verifyAgentAssessmentCore'],['058','agent-opinion-audit-core.ts','verifyAgentOpinionCore'],
+ ]
+ const identifier=v=>typeof v==='string'&&/^[A-Za-z_][A-Za-z0-9_. ,\[\]=]{0,127}$/.test(v)
+ function auditFrame(sql,values,rows,objects){
+  for(const row of rows)if(Number.isSafeInteger(row.id)&&identifier(row.name))objects.set(row.id,row.name)
+  const clean=rows.map(row=>Object.fromEntries(Object.entries(row).flatMap(([key,value])=>{
+   if(typeof value==='boolean'||value===null||identifier(value)||hex(value)||['n','count'].includes(key)&&Number.isSafeInteger(value))return [[key,value]]
+   if(Array.isArray(value)&&value.length<=32&&value.every(identifier))return [[key,value]]
+   return []
+  }))).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b),'en'))
+  const failed=clean.find(row=>['ok','safe','clean','valid'].some(key=>row[key]===false))
+  const targets=values.flatMap(value=>Array.isArray(value)?value.filter(identifier):identifier(value)?[value]:objects.has(value)?[objects.get(value)]:[]).slice(0,3)
+  return {query_sha256:sha(sql),targets,row_count:rows.length,result_sha256:sha(JSON.stringify(clean)),sample:failed??clean[0]??null}
+ }
+ async function auditProfile(pool){
+  const layers=[]
+  for(const [layer,file,method]of auditLayers){
+   const c=await pool.connect(),queries=[],objects=new Map();let ok=false,code
+   try{
+    await c.query('BEGIN READ ONLY');await c.query('SET LOCAL ROLE agentstudio_api')
+    const module=await from('services/pg-api/src/'+file)
+    // Transparent read-only tracing: all original validator queries/results
+    // go to/from this real driver connection. No positive result is supplied.
+    ok=await module[method]({async query(sql,values=[]){
+     let result
+     try{result=await c.query(sql,values)}catch(error){queries.push({...auditFrame(sql,values,[],objects),row_count:null,error_code:/^[A-Z0-9]{5}$/.test(error.code??'')?error.code:'query_error'});throw error}
+     queries.push(auditFrame(sql,values,result.rows,objects));return result
+    }})===true
+   }catch(error){code=/^unsafe_[a-z_]+$/.test(error.message??'')?error.message:/^[A-Z0-9]{5}$/.test(error.code??'')?error.code:'diagnostic_error'}
+   finally{await c.query('ROLLBACK').catch(()=>{});c.release()}
+   layers.push({layer,ok,code,queries})
+  }
+  const c=await pool.connect();let database
+  try{
+   await c.query('BEGIN READ ONLY')
+   const row=(await c.query("SELECT owner.rolname AS owner,coalesce((SELECT jsonb_agg(jsonb_build_array(coalesce(grantee.rolname,'PUBLIC'),grantor.rolname,a.privilege_type,a.is_grantable) ORDER BY coalesce(grantee.rolname,'PUBLIC'),grantor.rolname,a.privilege_type) FROM aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a LEFT JOIN pg_roles grantee ON grantee.oid=a.grantee JOIN pg_roles grantor ON grantor.oid=a.grantor),'[]'::jsonb) AS acl,(SELECT coalesce(jsonb_agg(jsonb_build_array(coalesce(r.rolname,'ALL'),s.setconfig) ORDER BY coalesce(r.rolname,'ALL')),'[]'::jsonb) FROM pg_db_role_setting s LEFT JOIN pg_roles r ON r.oid=s.setrole WHERE s.setdatabase=d.oid) AS settings,pg_encoding_to_char(d.encoding) AS encoding,d.datcollate,d.datctype FROM pg_database d JOIN pg_roles owner ON owner.oid=d.datdba WHERE d.datname=current_database()")).rows[0]
+   // Only digests of DB-level configuration/ACL leave this diagnostic probe.
+   database={owner:row.owner,acl_sha256:sha(JSON.stringify(row.acl)),settings_sha256:sha(JSON.stringify(row.settings)),locale_sha256:sha(JSON.stringify([row.encoding,row.datcollate,row.datctype]))}
+  }finally{await c.query('ROLLBACK').catch(()=>{});c.release()}
+  return {layers,database}
+ }
+ async function diagnoseRestore(pool,stage){
+  if(diagnosticEmitted)return;diagnosticEmitted=true
+  try{
+   const observed=await auditProfile(pool),differences=[]
+   for(const current of observed.layers.filter(layer=>!layer.ok)){
+    const previous=auditBaseline?.layers.find(item=>item.layer===current.layer)
+    if(!previous)continue
+    for(let i=0;i<current.queries.length&&differences.length<4;i++){
+     const before=previous.queries[i],after=current.queries[i]
+     if(!before||before.query_sha256!==after.query_sha256||before.result_sha256!==after.result_sha256)differences.push({layer:current.layer,query:i+1,before,after})
+    }
+   }
+   const value={stage,layers:observed.layers.map(({layer,ok,code})=>({layer,ok,code})),database_before:auditBaseline?.database,database_after:observed.database,differences}
+   while(JSON.stringify(value).length>10000&&value.differences.length)value.differences.pop()
+   process.stderr.write('GENERATED_OPERATOR_RESTORE_DIAGNOSTIC:'+JSON.stringify(value)+'\n')
+  }catch{process.stderr.write('GENERATED_OPERATOR_RESTORE_DIAGNOSTIC:'+JSON.stringify({stage,status:'diagnostic_probe_failed_original_failure_preserved'})+'\n')}
+ }
+ async function full(pool,installed=false,stage='full'){
+  const c=await pool.connect();let failure
+  try{await c.query('BEGIN READ ONLY');await c.query('SET LOCAL ROLE agentstudio_api');assert.equal(await opinion.verifyAgentOpinionCredentials(c),true);assert.equal(await generated.verifyAgentGeneratedCredentials(c),installed)}catch(error){failure=error}
+  finally{await c.query('ROLLBACK');c.release()}
+  if(failure){await diagnoseRestore(pool,stage);throw failure}
+ }
  async function business(pool){return sha(JSON.stringify((await pool.query("SELECT jsonb_build_object('users',(SELECT coalesce(jsonb_agg(jsonb_build_array(id,external_issuer,external_subject,display_name,status) ORDER BY id),'[]'::jsonb) FROM agentstudio.users),'accounts',(SELECT coalesce(jsonb_agg(jsonb_build_array(user_id,enabled,governance_revision) ORDER BY user_id),'[]'::jsonb) FROM agentstudio_auth.accounts)) AS value")).rows[0].value))}
  async function owned(target){
   const again=inspectContainer(proof,target===main?'main':'restore');assert.equal(again.id,target.id)
@@ -187,7 +256,7 @@ export async function generatedOperatorCiFixture(env=process.env){
  async function reset(){
   for(const p of [...pools]){await p.end();pools.delete(p)}
   await recreate(main,baseDump);admin=connect(main);restoreAdmin=connect(restore)
-  await full(admin,false);assert.equal(await business(admin),baseBusiness)
+  await full(admin,false,'main_restore058');assert.equal(await business(admin),baseBusiness)
  }
  async function evidence(){
   await owned(main);await full(admin,false)
@@ -200,7 +269,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   // Recreate only the second attested disposable DB. Roles were actually
   // restored once below; later source/global role catalogs must remain equal.
   await restoreAdmin.end();pools.delete(restoreAdmin);await recreate(restore,dump);restoreAdmin=connect(restore)
-  await full(restoreAdmin,false);assert.equal(await business(restoreAdmin),await business(admin))
+  await full(restoreAdmin,false,'independent_restore058');assert.equal(await business(restoreAdmin),await business(admin))
   assert.equal(sha(fs.readFileSync(dumpFile)),sha(dump));assert.equal(sha(fs.readFileSync(rolesFile)),sha(roles))
   const globals=async p=>({roles:(await p.query("SELECT rolname,rolcanlogin,rolsuper,rolinherit,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication,rolconfig FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY rolname")).rows,
    memberships:(await p.query("SELECT parent.rolname AS parent,child.rolname AS child,grantor.rolname AS grantor,m.admin_option,m.inherit_option,m.set_option FROM pg_auth_members m JOIN pg_roles parent ON parent.oid=m.roleid JOIN pg_roles child ON child.oid=m.member JOIN pg_roles grantor ON grantor.oid=m.grantor WHERE parent.rolname !~ '^pg_' OR child.rolname !~ '^pg_' ORDER BY parent.rolname,child.rolname,grantor.rolname")).rows})
@@ -234,7 +303,7 @@ export async function generatedOperatorCiFixture(env=process.env){
   await login(admin,'agentstudio_native_login',[],true)
   const native=connect(main,main.db,'agentstudio_native_login',passwords.get('agentstudio_native_login'))
   try{const {NativeAuthRepository}=await import('../../src/native-auth-repository.mjs');const store=new NativeAuthRepository(native);await store.provisionInitialAdmin({email:'generated-operator-ci@example.test',password:'SyntheticOperatorAlice#'+randomBytes(12).toString('hex'),display_name:'Synthetic Operator Employee'})}finally{await native.end();pools.delete(native)}
-  await full(admin,false);baseBusiness=await business(admin)
+  await full(admin,false,'bootstrap058');auditBaseline=await auditProfile(admin);baseBusiness=await business(admin)
   baseDump=dockerPg(main,'pg_dump',['--format=custom','--dbname='+main.db]);baseRoles=dockerPg(main,'pg_dumpall',['--roles-only','--no-role-passwords'])
   const roleText=baseRoles.toString('utf8');if((roleText.match(/^CREATE ROLE postgres;$/gm)??[]).length!==1)refuse('globals_format')
   // Both pristine clusters already possess postgres. Omit ONLY that duplicate
