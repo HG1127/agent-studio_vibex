@@ -51,9 +51,9 @@ async function roleQuery(f,role,body){
   try{await db.query('BEGIN');await db.query('SET LOCAL ROLE '+role);return await body(db)}
   finally{await db.query('ROLLBACK').catch(()=>{});db.release()}
 }
-async function refuseTamper(f,label,mutation){
+async function refuseTamper(f,label,mutation,inspectMutation){
   await f.db.exec('BEGIN')
-  try{await f.db.exec(mutation);await assert.rejects(verifyAgentReviewCredentials(f.db),/unsafe_agent_review_privileges/,label)}
+  try{await f.db.exec(mutation);await inspectMutation?.(f.db);await assert.rejects(verifyAgentReviewCredentials(f.db),/unsafe_agent_review_privileges/,label)}
   finally{await f.db.exec('ROLLBACK')}
   assert.equal(await verifyAgentReviewCredentials(f.db),true,'rollback restores '+label)
 }
@@ -90,8 +90,17 @@ test('optional056 auditor rejects orphans, partial schema, extra triggers, sourc
     assert.equal(await withActor(f.pool,f.identities.alice,verifyAgentReviewCredentials),true)
     assert.equal(await withActor(f.pool,f.identities.alice,verifyAgentFeedbackCredentials),true)
     assert.equal(await withActor(f.pool,f.identities.alice,verifyAgentOptimizationCredentials),true)
-    for(const [label,mutation] of [
+    for(const [label,mutation,inspectMutation] of [
       ['API table write','GRANT INSERT ON agentstudio.agent_review_requests TO agentstudio_api'],
+      ['API explicit MAINTAIN','GRANT MAINTAIN ON agentstudio.agent_review_requests TO agentstudio_api'],
+      ['NOINHERIT role can SET ROLE pg_maintain',`CREATE ROLE synthetic_review_maintainer NOLOGIN NOINHERIT;
+        GRANT pg_maintain TO synthetic_review_maintainer`,async db=>{
+        const row=(await db.query(`SELECT r.rolcanlogin AS login,r.rolinherit AS inherit,
+          pg_has_role(r.oid,b.oid,'MEMBER') AS member,pg_has_role(r.oid,b.oid,'USAGE') AS inherited,pg_has_role(r.oid,b.oid,'SET') AS can_set
+          FROM pg_catalog.pg_roles r CROSS JOIN pg_catalog.pg_roles b WHERE r.rolname='synthetic_review_maintainer' AND b.rolname='pg_maintain'`)).rows[0]
+        assert.deepEqual(row,{login:false,inherit:false,member:true,inherited:false,can_set:true},'NOINHERIT membership is still reachable through SET ROLE')
+      }],
+      ['pg_maintain LOGIN','ALTER ROLE pg_maintain LOGIN'],
       ['field grant','GRANT UPDATE(body) ON agentstudio.agent_review_inputs TO agentstudio_api'],
       ['API input SELECT','GRANT SELECT ON agentstudio.agent_review_inputs TO agentstudio_api'],
       ['API input field SELECT','GRANT SELECT(body) ON agentstudio.agent_review_inputs TO agentstudio_api'],
@@ -113,7 +122,7 @@ test('optional056 auditor rejects orphans, partial schema, extra triggers, sourc
       ['missing stamp',"DELETE FROM agentstudio.schema_migrations WHERE version='pg_v9_056'"],
       ['partial schema','DROP TABLE agentstudio.agent_review_inputs'],
       ['installed orphan','CREATE TABLE agentstudio.agent_review_orphan(id integer)']
-    ])await refuseTamper(f,label,mutation)
+    ])await refuseTamper(f,label,mutation,inspectMutation)
   }finally{await f.close()}
 })
 

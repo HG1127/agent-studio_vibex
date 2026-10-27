@@ -77,11 +77,11 @@ export async function verifyAgentReviewCore(db:SqlClient):Promise<boolean>{
   const role=(await db.query<{ok:boolean}>(
     "SELECT NOT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication AND "+
     "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members WHERE member=r.oid) AND "+
-    // Predefined all-data roles inherently report access. They are inert only
+    // Predefined all-data/maintenance roles inherently report access. They are inert only
     // when NOLOGIN and unreachable by any non-superuser, including NOINHERIT
     // memberships that can SET ROLE. Every other role is checked below.
-    "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles all_data WHERE all_data.rolname IN('pg_read_all_data','pg_write_all_data') AND "+
-      "(all_data.rolcanlogin OR EXISTS(SELECT 1 FROM pg_catalog.pg_roles member WHERE NOT member.rolsuper AND member.oid<>all_data.oid AND pg_has_role(member.oid,all_data.oid,'MEMBER')))) AS ok "+
+    "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles builtin WHERE builtin.rolname IN('pg_read_all_data','pg_write_all_data','pg_maintain') AND "+
+      "(builtin.rolcanlogin OR EXISTS(SELECT 1 FROM pg_catalog.pg_roles member WHERE NOT member.rolsuper AND member.oid<>builtin.oid AND pg_has_role(member.oid,builtin.oid,'MEMBER')))) AS ok "+
     "FROM pg_catalog.pg_roles r WHERE r.rolname=$1",[api])).rows[0]?.ok
   if(role!==true)return refuse()
   for(const [name,expected] of Object.entries(tables)){
@@ -94,7 +94,7 @@ export async function verifyAgentReviewCore(db:SqlClient):Promise<boolean>{
       "SELECT c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relhasrules AND c.relrowsecurity AND c.relforcerowsecurity AND "+
       "(SELECT rolsuper FROM pg_catalog.pg_roles WHERE oid=c.relowner) AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid) AND NOT EXISTS(SELECT 1 FROM difference) AND "+
       "has_table_privilege($2,c.oid,'SELECT')=$3::boolean AND NOT has_any_column_privilege($2,c.oid,'INSERT,UPDATE,REFERENCES') AND NOT has_table_privilege($2,c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN') AND "+
-      "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.rolname NOT IN($2,'pg_read_all_data','pg_write_all_data') AND "+
+      "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.rolname NOT IN($2,'pg_read_all_data','pg_write_all_data','pg_maintain') AND "+
         "(has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN'))) AS ok FROM relation c",[id,api,expected.read])).rows[0]?.ok
     if(relation!==true)return refuse()
     const columns=(await db.query<{name:string;type:string;required:boolean;clean:boolean}>(
