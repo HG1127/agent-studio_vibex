@@ -39,9 +39,16 @@ test('Native paid opinions: explicit independent model consent, original recover
     await fee.check();await control('drop-next-review');await submit.click();await expect(panel.getByRole('button',{name:'核对原请求',exact:true})).toBeEnabled()
     proof=await control('state','GET');expect(proof.reviewRequests).toBe(1);expect(proof.reviewInputs).toBe(1);expect(proof.reviewEffects).toBe(0)
     const original=proof.reviewHashes[0].request_id
-    await control('deny-review');await page.getByRole('button',{name:'刷新',exact:true}).click();await panel.getByRole('button',{name:'核对原请求',exact:true}).click()
+    await control('deny-review')
+    const globalRefresh=page.getByRole('button',{name:'刷新',exact:true})
+    const [capabilityReply]=await Promise.all([page.waitForResponse(reply=>new URL(reply.url()).pathname.endsWith('/api/native-auth/capabilities')&&reply.status()===200),globalRefresh.click()])
+    expect((await capabilityReply.json()).agent_review_submission_enabled).toBe(false)
+    await expect(globalRefresh).toBeEnabled();await expect(panel.getByText('当前未开放新意见提交。仍可核对原请求、读取已有意见、取消后续处理或删除正文。',{exact:true})).toBeVisible()
+    await panel.getByRole('button',{name:'核对原请求',exact:true}).click()
+    await expect(panel.getByRole('button',{name:'核对原请求',exact:true})).toHaveCount(0)
+    const refresh=panel.getByRole('button',{name:'核对当前来源与状态',exact:true});await expect(refresh).toBeEnabled()
     proof=await control('state','GET');expect(proof.reviewConfirms).toBe(1);expect(proof.reviewRequests).toBe(1);expect(proof.reviewEffects).toBe(0)
-    const refresh=panel.getByRole('button',{name:'核对当前来源与状态',exact:true});await control('review-complete');await refresh.click()
+    await control('review-complete');await refresh.click()
     const result=panel.getByLabel('AI 任务评估结果',{exact:true});await expect(result).toBeVisible();await expect(result.getByText('0',{exact:true})).toBeVisible()
     await expect(result.getByText('目标达成 · 0 / 100',{exact:true})).toBeVisible();expect(await panel.textContent()).not.toMatch(/SyntheticBrowser.*Key|"messages"|lease_token|owner_user_id/)
     proof=await control('state','GET');expect(proof.reviewRequests).toBe(1);expect(proof.reviewEffects).toBe(1);expect(proof.reviewOutputs).toBe(1);expect(proof.optimizationLinks).toBe(0);expect(proof.optimizationCurrent.model_preserved).toBe(true)
@@ -71,6 +78,14 @@ test('Native paid opinions: explicit independent model consent, original recover
     expect(external).toEqual([])
   }finally{
     clearTimeout(timer);if(context)await context.close();if(browser)await browser.close();if(control)await control('stop').catch(()=>{})
-    if(child.exitCode===null){const exited=new Promise(resolve=>child.once('exit',resolve)),forced=setTimeout(()=>child.kill('SIGTERM'),5000);await exited;clearTimeout(forced)}
+    if(typeof child.pid==='number'&&child.exitCode===null&&child.signalCode===null){
+      await new Promise(resolve=>{
+        let forced,deadline
+        const done=()=>{clearTimeout(forced);clearTimeout(deadline);child.off('exit',done);resolve()}
+        child.once('exit',done)
+        forced=setTimeout(()=>child.kill('SIGTERM'),5000)
+        deadline=setTimeout(()=>{child.kill('SIGKILL');done()},10000)
+      })
+    }
   }
 })

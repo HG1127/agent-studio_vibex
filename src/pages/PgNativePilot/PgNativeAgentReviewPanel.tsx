@@ -62,13 +62,15 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
     if(!active||!opened||!available){selectedScope.current="";return}
     if(pending)return
     const target=finished&&runId&&specId?{purpose,run_id:runId,spec_id:specId}:null,key=target?purpose+":"+specId+":"+runId:""
-    const scope=key+":"+submitEnabled
+    // Every input that invalidates the shared read ticket must also restart
+    // source admission, even when the owned target and submit scope stay put.
+    const scope=key+":"+submitEnabled+":"+modelScope+":"+outputLimit
     if(selectedScope.current===scope)return
     const changed=selectedTarget.current!==key
     selectedScope.current=scope;selectedTarget.current=key
     if(changed||!target)void controller.current?.select(target)
     else void controller.current?.refresh()
-  },[active,opened,available,submitEnabled,pending,finished,runId,specId,purpose,api,onExpired])
+  },[active,opened,available,submitEnabled,pending,finished,runId,specId,purpose,modelScope,outputLimit,api,onExpired])
   const invalidate=()=>{setFeeConsent("");setControlIntent(null);controller.current?.invalidatePreview()}
   const loadFeedback=useCallback(async()=>{
     const fence=feedbackReads.current,ticket=++fence.ticket,current=controller.current
