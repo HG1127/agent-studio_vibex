@@ -181,7 +181,7 @@ test("Native config-write discovery follows approved owner policy and never enab
         mode:"native_pg18",config_writes_enabled:writeApproved,
         model_probe_enabled:false,workflow_validation_enabled:false,
         workflow_execution_enabled:false,run_execution_enabled:false,
-        run_submission_enabled:false,bound_model_runs_enabled:false
+        run_submission_enabled:false,bound_model_runs_enabled:false,own_operations_available:false
       })
       if(writeApproved){
         const item=await f.api.createAgent("Approved metadata","No execution")

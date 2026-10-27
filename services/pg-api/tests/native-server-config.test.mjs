@@ -1,10 +1,13 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {spawnSync} from "node:child_process"
+import {Readable} from "node:stream"
 import {readFileSync} from "node:fs"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 import {nativePg18ServerConfig,nativePg18ServerPlan,assertNativeServeOrigin,nativeRuntimeCredentialConfig} from "../src/native-server.ts"
+import {createNativeOwnOperationsBusinessHandler} from "../src/own-operations-http.ts"
+import {selectNativePg18UatCapabilities} from "../src/native-config-uat-policy.ts"
 const baseline={
   AGENT_STUDIO_PG_NATIVE_PILOT_ENABLED:"true",
   AGENT_STUDIO_PG_NATIVE_REVIEWED:"true",
@@ -102,13 +105,20 @@ test("long-running Native API requires non-root systemd isolated credentials",()
     modelKeyFile:"/root/.agentstudio-pg18-secrets/model-encryption.secret"
   })
 })
-test("native server permits only owner-scoped Run reads by default; approval writes remain gated",()=>{
+test("native server permits only owner-scoped Run reads by default; approval writes remain gated",async()=>{
   const source=readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)),
     "../src/native-server.ts"),"utf8")
   assert.match(source,/runRepository:createNativeRunRepository\(business,capabilities\)/)
-  assert.match(source,/permitNativePg18BusinessUatRequest/)
+  const shared=readFileSync(new URL("../src/own-operations-http.ts",import.meta.url),"utf8")
+  assert.match(source,/import \{createNativeOwnOperationsBusinessHandler\} from "\.\/own-operations-http\.ts"/)
+  assert.match(source,/businessHandler=createNativeOwnOperationsBusinessHandler\(\{[\s\S]*?authenticateRequest:native\.authenticateRequest,[\s\S]*?policy:capabilities,businessHandler,\s*\}\)/)
+  assert.match(source,/businessHandler:\(req:IncomingMessage,res:ServerResponse\)=>\{[\s\S]*?return businessHandler\(req,res\)/)
+  const compose=source.indexOf("businessHandler=createNativeOwnOperationsBusinessHandler("),listen=source.indexOf("const localServer=createServer(native.handler)")
+  assert.ok(compose>=0&&listen>compose,"the actual listener must use the composed Native handler")
+  assert.match(shared,/if\(!permitNativePg18BusinessUatRequest\(pathname,req\.method\|\|"",policy\)\)/)
+  const guard=shared.indexOf("if(!permitNativePg18BusinessUatRequest("),own=shared.indexOf("if(await own(req,res))return"),fallback=shared.indexOf("await businessHandler(req,res)")
+  assert.ok(guard>=0&&own>guard&&fallback>own,"the original global policy must precede owner auth and fallback")
   assert.doesNotMatch(source,/allowBoundModelRuns:true/)
-  assert.match(source,/permitNativePg18BusinessUatRequest/)
   assert.match(source,/verified_active_admins:verifiedActiveAdmins/)
   assert.match(source,/verified_roles:2/)
   assert.match(source,/host\(inet_server_addr\(\)\)/)
@@ -122,9 +132,35 @@ test("native server permits only owner-scoped Run reads by default; approval wri
   assert.match(source,/ROLLBACK TO SAVEPOINT native_preflight_access/)
   assert.match(source,/if\(!denied\)reject\(\)/)
   assert.match(source,/allowEmployeeProvisioning:capabilities.employeeProvisioning/)
-  assert.match(source,/pilot_business_writes_disabled/)
-  assert.match(source,/permitNativePg18BusinessUatRequest/)
+  assert.match(shared,/pilot_business_writes_disabled/)
   assert.match(source,/selectNativePg18UatCapabilities/)
+
+  // Exercise the real shared dispatcher with in-memory streams only. A foreign
+  // Origin makes an Own request fail403 if its handler runs before the guard.
+  const origin="https://studio.test",trace=[]
+  const policy=selectNativePg18UatCapabilities({},false,origin,0)
+  assert.equal(policy.configurationWrites,false);assert.equal(policy.runApprovalUat,false)
+  const handler=createNativeOwnOperationsBusinessHandler({policy,allowedOrigin:origin,
+    authenticateRequest:async()=>{trace.push("auth");return {issuer:"urn:agentstudio:local:v1",subject:"synthetic-verified-owner"}},
+    businessHandler:async(_req,res)=>{trace.push("fallback");res.writeHead(200);res.end(JSON.stringify({existing:true}))},
+  })
+  const request=async(url,method,requestOrigin="https://foreign.test")=>{
+    const req=Readable.from([]);Object.assign(req,{url,method,headers:{origin:requestOrigin,cookie:"__Host-agentstudio_session="+"S".repeat(43)}})
+    const res={writeHead(status){this.status=status},end(raw){this.body=JSON.parse(raw)}}
+    await handler(req,res);return res
+  }
+  const id="11111111-1111-4111-8111-111111111111"
+  for(const url of ["/api/v2/own-overview","/api/v2/own-todos"]){
+    const res=await request(url,"POST");assert.equal(res.status,405);assert.deepEqual(res.body,{error:"method_not_allowed"})
+  }
+  for(const [url,method] of [["/api/v2/agent-specs","POST"],["/api/v2/runs","POST"],["/api/v2/runs/"+id+"/model-approval","POST"],["/api/v2/workflows/"+id+"/runs","POST"],["/api/v2/workflow-v2-runs/"+id+"/decision","POST"]]){
+    const res=await request(url,method);assert.equal(res.status,405);assert.deepEqual(res.body,{error:"pilot_business_writes_disabled"})
+  }
+  assert.deepEqual(trace,[],"denied routes must reach neither owner authentication nor business fallback")
+  const ownRead=await request("/api/v2/own-overview","GET",origin)
+  assert.equal(ownRead.status,409);assert.deepEqual(ownRead.body,{error:"own_overview_unavailable"});assert.deepEqual(trace,["auth"])
+  const runRead=await request("/api/v2/runs","GET",origin)
+  assert.equal(runRead.status,200);assert.deepEqual(runRead.body,{existing:true});assert.deepEqual(trace,["auth","fallback"])
 })
 test("native PG18 refuses nonapproved targets, role reuse, implicit URLs and unsafely served sites",()=>{
   const wrong=[

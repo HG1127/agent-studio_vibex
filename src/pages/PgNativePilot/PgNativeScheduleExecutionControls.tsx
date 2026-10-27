@@ -62,18 +62,24 @@ export default function PgNativeScheduleExecutionControls({api,item,targetRevisi
     finally{if(ticket===generation.current){activity.current.busy=false;setBusy(false);if(confirmed)setReadVersion(value=>value+1);guard.current?.changed()}}
   }
   const activate=async(event:FormEvent)=>{
-    event.preventDefault();if(busy||pendingAction.current||!pending.current&&(!targetRevision||!background||!canActivate||!modelReady))return
-    let body=pending.current
-    if(!body)try{
-      const window=scheduleActivationWindow({start:deferred?{date:startDate,time:startTime}:null,timeZone:item.time_zone,now:Date.now(),unlimited,days})
-      body={expected_revision:item.revision,expected_target_revision:targetRevision,instruction,max_steps:item.kind==="agent"?maxSteps:1,
-        ...window,max_occurrences:unlimited?null:occurrenceCap,max_auto_effects:maxAuto,background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1",
-        knowledge_charge_ack:knowledge?"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1":null,request_id:crypto.randomUUID(),model_binding:item.kind==="agent"?modelBinding:null}
-    }catch(e){
-      const code=e instanceof Error?e.message:""
-      setError(code==="schedule_start_in_past"?"首次生效时间必须晚于当前时间。":code==="schedule_expiry_before_start"?"首次生效时间超出授权有效期，请延长有效期或选择持续执行。":
-        code==="dst_local_time_missing"?"所选时刻因夏令时调整而不存在，请选择其他时间。":"首次生效日期或时间不合法，请核对计划时区及有效期。")
-      return
+    event.preventDefault();if(busy||pendingAction.current)return
+    const original=pending.current
+    let body:PgNativeScheduleActivation
+    if(original)body=original
+    else{
+      const revision=targetRevision
+      if(!revision||!background||!canActivate||!modelReady)return
+      try{
+        const window=scheduleActivationWindow({start:deferred?{date:startDate,time:startTime}:null,timeZone:item.time_zone,now:Date.now(),unlimited,days})
+        body={expected_revision:item.revision,expected_target_revision:revision,instruction,max_steps:item.kind==="agent"?maxSteps:1,
+          ...window,max_occurrences:unlimited?null:occurrenceCap,max_auto_effects:maxAuto,background_ack:"AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1",
+          knowledge_charge_ack:knowledge?"AUTHORIZE_SCHEDULED_KNOWLEDGE_CHARGES_V1":null,request_id:crypto.randomUUID(),model_binding:item.kind==="agent"?modelBinding:null}
+      }catch(e){
+        const code=e instanceof Error?e.message:""
+        setError(code==="schedule_start_in_past"?"首次生效时间必须晚于当前时间。":code==="schedule_expiry_before_start"?"首次生效时间超出授权有效期，请延长有效期或选择持续执行。":
+          code==="dst_local_time_missing"?"所选时刻因夏令时调整而不存在，请选择其他时间。":"首次生效日期或时间不合法，请核对计划时区及有效期。")
+        return
+      }
     }
     pending.current=body;const ticket=generation.current;activity.current.busy=true;guard.current?.changed();setBusy(true);setError("");setNotice("")
     let confirmed=false

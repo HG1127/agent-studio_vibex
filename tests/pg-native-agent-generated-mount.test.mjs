@@ -42,10 +42,29 @@ test('actual review return always mounts one generated sibling outside paid avai
  assert.equal(attr(children[0],'available').expression.name,'generatedAvailable');assert.equal(attr(children[0],'acceptanceEnabled').expression.left.left.name,'generatedEnabled')
  assert.equal(attr(children[0],'target').expression.object.name,'generatedSelection')
 })
-test('Page keeps employee-keyed autonomous mount and acceptance notification uses the one existing refresh callback',()=>{
- const page=ast('src/pages/PgNativePilot/PgNativePilotPage.tsx'),auto=nodes(page,element('PgNativeAutonomousAgentPanel'))[0]
- assert.equal(attr(auto,'key').expression.object.name,'profile');assert.equal(attr(auto,'key').expression.property.name,'id')
- assert.equal(attr(auto,'onRoleChanged').expression.name,'refresh')
+test('Page keeps employee-and-API-keyed autonomous mount and acceptance notification uses the one existing refresh callback',()=>{
+ const page=ast('src/pages/PgNativePilot/PgNativePilotPage.tsx')
+ const component=page.program.body.find(n=>n.type==='ExportDefaultDeclaration').declaration
+ const declarations=component.body.body.filter(n=>n.type==='VariableDeclaration').flatMap(n=>n.declarations)
+ const mounts=nodes(component,element('PgNativeAutonomousAgentPanel'));assert.equal(mounts.length,1)
+ const auto=mounts[0],key=attr(auto,'key').expression;assert.equal(key.type,'Identifier')
+ const keyDeclarations=declarations.filter(n=>n.id.type==='Identifier'&&n.id.name===key.name);assert.equal(keyDeclarations.length,1)
+ const keyValue=keyDeclarations[0].init
+ assert.equal(keyValue.type,'BinaryExpression');assert.equal(keyValue.operator,'+')
+ assert.equal(keyValue.left.type,'BinaryExpression');assert.equal(keyValue.left.operator,'+')
+ assert.equal(keyValue.left.right.type,'StringLiteral');assert.equal(keyValue.left.right.value,':')
+ const employee=keyValue.left.left
+ assert.equal(employee.type,'LogicalExpression');assert.equal(employee.operator,'??')
+ assert.equal(employee.left.type,'OptionalMemberExpression');assert.equal(employee.left.object.name,'profile');assert.equal(employee.left.property.name,'id')
+ assert.equal(employee.right.type,'StringLiteral');assert.equal(employee.right.value,'signedout')
+ const apiScope=keyValue.right;assert.equal(apiScope.type,'CallExpression');assert.equal(apiScope.callee.type,'Identifier')
+ const imports=page.program.body.filter(n=>n.type==='ImportDeclaration'&&n.source.value==='@/lib/pgNativeOwnTaskNavigation').flatMap(n=>n.specifiers)
+ assert.equal(imports.filter(n=>n.type==='ImportSpecifier'&&n.imported.name==='pgNativeOriginalTaskScopeKey'&&n.local.name===apiScope.callee.name).length,1)
+ assert.equal(apiScope.arguments.length,1);assert.equal(apiScope.arguments[0].type,'Identifier');assert.equal(apiScope.arguments[0].name,'api')
+ assert.equal(attr(auto,'ownerId').expression.object.name,'profile');assert.equal(attr(auto,'ownerId').expression.property.name,'id')
+ const refresh=attr(auto,'onRoleChanged').expression;assert.equal(refresh.type,'Identifier');assert.equal(refresh.name,'refresh')
+ const refreshDeclarations=declarations.filter(n=>n.id.type==='Identifier'&&n.id.name===refresh.name);assert.equal(refreshDeclarations.length,1)
+ assert.equal(refreshDeclarations[0].init.type,'CallExpression');assert.equal(refreshDeclarations[0].init.callee.name,'useCallback')
  assert.equal(attr(auto,'generatedAvailable').expression.object.name,'generatedAcceptance')
  const own=nodes(ast('src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx'),element('PgNativeAgentReviewPanel'))
  assert.equal(own.length,1);assert.equal(attr(own[0],'key'),undefined);assert.equal(attr(own[0],'onAccepted').expression.name,'onRoleChanged')
