@@ -131,3 +131,17 @@ Native状态/停止接口为 `/api/v2/agent-outcome-memories/<run_id>`、其 `/s
 The optional059 foundation passed all50 quality jobs (951 root units and49 generated-domain tests), all5 genuinePG18 jobs (new generated12/12 plus guard9/9), all4 browser jobs (existing20 cases), the full CLI lifecycle (18 pure+8 actual), and exact-head canonical PocketBase/SQLite19/19 with two workers. Browser artifact12723867219 was visually checked. Offline init/API review bundles were rebuilt and all86/202 copied files compared with this candidate; their receipts are recorded in the local acceptance evidence.
 
 This is foundation acceptance only: the HTTP/SDK/page mounting, browser21 and optional059 privileged operator are the next separately integrated source changes. Partial/edited/prior-only acceptance and other active-feature parity remain open. Default fresh initialization stays050; no real target was initialized or deployed, and production remains NO-GO pending complete feature and operational acceptance.
+
+
+### 2026-10-27 — Native generated acceptance UI and HTTP accepted at 49cfbd5
+
+All50 quality jobs (991 root units,73 generated-domain cases), all6 genuinePG18 jobs (including5 actual Native Cookie/HTTP cases), all4 browser jobs (21 actual browser cases) and the existing full CLI lifecycle passed. Browser artifact12727901635 was visually checked after actual opinion erasure. Independent consent, lost-response recovery across opinion/tab/scope changes, one accepted role revision, genuine045/055/059 history, no refresh on historical GET and late-response employee isolation were exercised. Refreshed offline init/API bundles matched all86/208 copied source files. PB19 last actually ran at2aa913f; its runtime and canonical E2E inputs were verified unchanged at49cfbd5, not reported as rerun.
+
+This closes the complete-five Native acceptance path only. The separate optional059 operator is still awaiting trusted-artifact and actual install/backup/restore/crash-recovery evidence; partial/edited/prior-only and other active-feature parity remain open. Default fresh stays050, no real target was initialized or deployed, and whole migration/production GO remains incomplete.
+
+
+### 2026-10-27 — Optional059 trusted operator candidate submitted for isolated verification
+
+The candidate adds a separate review-only source archive, a pg-only installation projected from the unchanged full lock, and a dedicated hosted PG18 profile with two fresh loopback clusters. Authored exercises cover actual backup/independent restore, uncommitted same-client full audits, rollback, runtime-login checks and uncertain-COMMIT recovery. A cross-review finding about backup/restore proof ageing was corrected with entry and pre-DDL freshness checks. These are authored capabilities, not a claim that the genuine operator exercises have passed; exact-head hosted results must be recorded separately.
+
+The previously accepted Native complete-five UI/HTTP path remains based on49cfbd5. Default fresh initialization remains050; SQL001–059 and the original5432 synthetic guard are unchanged. This candidate does not initialize a real target, activate the feature, deploy or approve production migration. Remaining partial/edited/prior-only generated acceptance and other active feature groups still require completion.

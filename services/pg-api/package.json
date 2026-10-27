@@ -119,7 +119,8 @@
     "test:agent-review-history": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-review-history-contract.test.mjs tests/agent-review-history-http.test.mjs tests/agent-review-history-repository.test.mjs",
     "test:agent-generated": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-acceptance-contract.test.mjs tests/agent-generated-acceptance-repository.test.mjs tests/agent-generated-acceptance-sql.test.mjs ../../tests/pg-native-agent-generated-interop.test.mjs tests/agent-generated-http.test.mjs tests/agent-generated-runtime-policy.test.mjs tests/native-server-config.test.mjs",
     "test:pg18:generated:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-acceptance-tcp.integration.mjs",
-    "test:pg18:generated:http:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-native-http.integration.mjs"
+    "test:pg18:generated:http:ci": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-native-http.integration.mjs",
+    "test:agent-generated-operator": "node --experimental-strip-types --test --test-concurrency=1 tests/agent-generated-operator-source.test.mjs tests/agent-generated-operator-core.test.mjs ../../tests/pg18-generated-operator-review-bundle.test.mjs ../../tests/pg18-generated-operator-ci.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
