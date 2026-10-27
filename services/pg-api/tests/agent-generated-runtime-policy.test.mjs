@@ -32,8 +32,24 @@ test('both exact markers are mandatory; malformed/half/false/alternate markers r
 
 test('fresh generated acceptance requires reviewed config, real serve mode, nonroot UID and HTTPS',()=>{
   assert.throws(()=>selectNativePg18UatCapabilities(generated,true,origin,1100),/unsafe_native_pg18_uat_config/)
-  for(const [listen,url,uid] of [[false,origin,1100],[true,origin,0],[true,origin,undefined],[true,'http://127.0.0.1:7403',1100]])
+  for(const [listen,url,uid] of [[false,origin,1100],[true,origin,0],[true,origin,-1],[true,origin,NaN],[true,'http://127.0.0.1:7403',1100]])
     assert.throws(()=>selectNativePg18UatCapabilities({...config,...generated},listen,url,uid),/unsafe_native_pg18_uat_config/)
+  // undefined selects the actual process UID by default; simulate each platform
+  // explicitly so a nonroot Linux runner cannot turn the rejection case valid.
+  const originalGetuid=Object.getOwnPropertyDescriptor(process,'getuid')
+  try{
+    for(const uid of [1100,0,undefined]){
+      Object.defineProperty(process,'getuid',{configurable:true,writable:true,value:()=>uid})
+      const selectDefault=()=>selectNativePg18UatCapabilities({...config,...generated},true,origin,undefined)
+      if(uid===1100)assert.equal(selectDefault().agentGeneratedAcceptanceUat,true)
+      else assert.throws(selectDefault,/unsafe_native_pg18_uat_config/)
+    }
+    delete process.getuid
+    assert.throws(()=>selectNativePg18UatCapabilities({...config,...generated},true,origin),/unsafe_native_pg18_uat_config/)
+  }finally{
+    if(originalGetuid)Object.defineProperty(process,'getuid',originalGetuid)
+    else delete process.getuid
+  }
   assert.deepEqual(selectNativePg18UatCapabilities({},false,'http://127.0.0.1:7403',0),readOnly)
   assert.equal(selectNativePg18UatCapabilities(config,true,origin,1100).agentGeneratedAcceptanceUat,undefined)
 })

@@ -91,7 +91,8 @@ test('generated acceptance uses actual Native sessions and full audits on isolat
       assert.equal(replay.status,200);assert.deepEqual(replay.body,accepted)
       const known=await request(route+'/reviews/'+p.raw.request_id,{cookie:alice})
       assert.equal(known.status,200);assert.deepEqual(known.body,accepted);assert.equal(await f.snapshot(),before)
-      const fresh=await f.complete({isolatedReviewModel:true}),preview=await request(route+'/preview',{method:'POST',cookie:alice,body:generatedPreviewChoice(fresh)})
+      const freshResult=structuredClone(p.result);freshResult.descriptive.goal='A distinct complete generated proposal after the accepted role revision'
+      const fresh=await f.complete({isolatedReviewModel:true,result:freshResult}),preview=await request(route+'/preview',{method:'POST',cookie:alice,body:generatedPreviewChoice(fresh)})
       assert.equal(preview.status,200,'readonly preview remains independently available')
       const freshBefore=await f.snapshot()
       assert.equal((await request(route+'/accept',{method:'POST',cookie:alice,body:generatedAcceptanceChoice(preview.body)})).status,403)
@@ -104,10 +105,17 @@ test('generated acceptance uses actual Native sessions and full audits on isolat
       const before=await f.snapshot(),receipt=await request(route+'/reviews/'+p.raw.request_id,{cookie:alice})
       assert.equal(receipt.status,200);assert.deepEqual(receipt.body,accepted)
       assert.doesNotMatch(JSON.stringify(receipt.body),/"(?:descriptive|messages|choice|identity|owner_user_id|model_binding|lease_token|rationale|tools_note)"|api_key/)
-      for(const [path,body] of [[route+'/reviews/'+p.raw.request_id,undefined],[route+'/confirm',original],[route+'/accept',original]]){
+      for(const [path,body] of [[route+'/reviews/'+p.raw.request_id,undefined],[route+'/confirm',original]]){
         const reply=await request(path,{method:body?'POST':'GET',cookie:bob,body,headers:{'X-Rh-User-Id':f.users.alice}})
         assert.equal(reply.status,404)
       }
+      const closedForeign=await request(route+'/accept',{method:'POST',cookie:bob,body:original})
+      assert.equal(closedForeign.status,403,'closed fresh scope rejects before admitting any new acceptance')
+      state.fresh=true;state.config=true;configure()
+      try{
+        const foreign=await request(route+'/accept',{method:'POST',cookie:bob,body:original,headers:{'X-Rh-User-Id':f.users.alice}})
+        assert.equal(foreign.status,404,'with fresh scope open the real verified Bob identity cannot see Alice source')
+      }finally{state.fresh=false;state.config=false;configure()}
       assert.equal(await f.snapshot(),before)
     })
     await t.test('runtime full059 audit still refuses genuine catalog drift while all mutation flags are off',async()=>{
