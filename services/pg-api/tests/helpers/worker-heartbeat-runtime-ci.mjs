@@ -173,8 +173,10 @@ export async function workerHeartbeatRuntimeFixture(capability){
   }
   const mainOptions=workerHeartbeatCiAdminOptions(capability,'main')
   for(const name of ['agentstudio_stage_login','agentstudio_stage_worker']){
+   const original=(await domain.telemetryPool.query('SELECT rolcanlogin AS login FROM pg_catalog.pg_roles WHERE rolname=$1',[name])).rows
+   check(original.length===1&&original[0].login===false,'original_stage_login_stays_disabled')
    const password=createHash('sha512').update(mainOptions.password+':assessment:'+name).digest('hex').slice(0,80)
-   const client=makeClient(name,password);try{await heartbeatRuntimeReject(()=>client.connect(),'42501')}finally{await closeClient(client)}
+   const client=makeClient(name,password);try{await heartbeatRuntimeReject(()=>client.connect(),'28000')}finally{await closeClient(client)}
   }
  }
  async function attributes(){

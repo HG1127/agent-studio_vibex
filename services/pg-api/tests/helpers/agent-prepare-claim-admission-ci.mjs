@@ -24,9 +24,10 @@ export async function prepareClaimTcpFixture(capability){
  const {default:pg}=await import('pg')
  const admin=new pg.Pool({...target,max:2}),extraPools=[],liveClients=new Set()
  let fixture,createdLogin=false,baseline
- const login='prepare_claim_ci_'+process.env.GITHUB_RUN_ID
+ const login='prepare_claim_ci_'+process.env.GITHUB_RUN_ID,ownedLogin='prepare_owned_ci_'+process.env.GITHUB_RUN_ID
  assert.match(login,/^prepare_claim_ci_[0-9]{1,32}$/)
  const password=createHash('sha512').update('disposable_prepare_claim:'+process.env.GITHUB_RUN_ID).digest('hex').slice(0,80)
+ const ownedPassword=createHash('sha512').update('disposable_prepare_owned:'+process.env.GITHUB_RUN_ID).digest('hex').slice(0,80)
  const identity=async()=>{
   const row=(await admin.query("SELECT current_database() AS database,session_user AS login,current_setting('server_version_num')::integer AS version,(SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=session_user) AS superuser,(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database()) AS database_oid,(SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS system_identifier")).rows[0]
   assert.equal(row.database,'agentstudio_pg18_ci');assert.equal(row.login,'agentstudio_admin');assert.equal(row.superuser,true)
@@ -45,9 +46,13 @@ export async function prepareClaimTcpFixture(capability){
   const {AgentPrepareWorker}=await import('../../src/agent-worker.ts')
   const claimSql=readFileSync(new URL('../../../../db/postgres/005_claim_agent_prepare.sql',import.meta.url),'utf8')
   const finishSql=readFileSync(new URL('../../../../db/postgres/003_finish_job.sql',import.meta.url),'utf8')
-  const full=()=>fixture.h.withActor(fixture.pool,fixture.identities.alice,async db=>{
-   assert.equal(await fixture.h.verifyAgentDescriptivePatchCredentials(db),true)
-  })
+  const full=async()=>{
+   await fixture.h.withActor(fixture.pool,fixture.identities.alice,async db=>{
+    assert.equal(await fixture.h.verifyAgentDescriptivePatchCredentials(db),true)
+   })
+   const old=(await admin.query("SELECT rolname::text AS name,rolcanlogin AS login FROM pg_catalog.pg_roles WHERE rolname IN('agentstudio_stage_login','agentstudio_stage_worker') ORDER BY rolname")).rows
+   assert.deepEqual(old,[{name:'agentstudio_stage_login',login:false},{name:'agentstudio_stage_worker',login:false}])
+  }
   await full()
   const {makeNativeScramVerifier}=await import('../../src/native-activation-cli.mjs')
   const loginInstaller=await admin.connect()
@@ -57,23 +62,27 @@ export async function prepareClaimTcpFixture(capability){
    await loginInstaller.query("BEGIN; SET LOCAL password_encryption='scram-sha-256'")
    await loginInstaller.query('CREATE ROLE '+quote(login)+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION CONNECTION LIMIT 2 PASSWORD '"+makeNativeScramVerifier(password)+"'")
    await loginInstaller.query('GRANT agentstudio_worker TO '+quote(login)+' WITH ADMIN FALSE, INHERIT FALSE, SET TRUE')
+   await loginInstaller.query('CREATE ROLE '+quote(ownedLogin)+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION CONNECTION LIMIT 2 PASSWORD '"+makeNativeScramVerifier(ownedPassword)+"'")
+   for(const role of ['agentstudio_api','agentstudio_worker'])await loginInstaller.query('GRANT '+role+' TO '+quote(ownedLogin)+' WITH ADMIN FALSE, INHERIT FALSE, SET TRUE')
    await loginInstaller.query('COMMIT');createdLogin=true
   }catch(error){await loginInstaller.query('ROLLBACK').catch(()=>{});throw Error('prepare_ci_synthetic_login_setup_failed')}
   finally{loginInstaller.release()}
   const runtimePool=new pg.Pool({...target,user:login,password,max:2,application_name:'prepare_claim_minimal_ci'})
   extraPools.push(runtimePool)
-  // Existing original fixture login: retain its ORIGINAL worker+API authority
-  // for held prepare/finish. Never add API to the new minimal claim LOGIN.
-  const stagePassword=createHash('sha512').update(target.password+':assessment:agentstudio_stage_worker').digest('hex').slice(0,80)
-  const stagePool=new pg.Pool({...target,user:'agentstudio_stage_worker',password:stagePassword,max:2,application_name:'prepare_claim_existing_stage_ci'})
-  extraPools.push(stagePool)
+  // The original fresh installer intentionally leaves both old stage roles
+  // NOLOGIN. A separate disposable login exercises held prepare's existing
+  // worker-to-owner API transition; the minimal claim login still has no API.
+  const ownedPool=new pg.Pool({...target,user:ownedLogin,password:ownedPassword,max:2,application_name:'prepare_held_synthetic_ci'})
+  extraPools.push(ownedPool)
   const verifyRuntime=async(db,expected=login)=>{
    const r=(await db.query("SELECT session_user::text AS login,current_user::text AS role,pg_backend_pid()::integer AS pid,r.rolsuper AS superuser,r.rolbypassrls AS bypass,r.rolinherit AS inherits,r.rolcanlogin AS can_login,r.rolcreatedb AS create_db,r.rolcreaterole AS create_role,r.rolreplication AS replication,r.rolconnlimit AS connection_limit,ARRAY(SELECT p.rolname::text FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid ORDER BY p.rolname) AS parents FROM pg_catalog.pg_roles r WHERE r.rolname=session_user")).rows[0]
    assert.equal(r.login,expected);assert.equal(r.role,expected);assert.notEqual(r.login,'agentstudio_admin')
    for(const key of ['superuser','bypass','inherits','create_db','create_role','replication'])assert.equal(r[key],false,key)
    assert.equal(r.can_login,true);assert.ok(Number.isInteger(r.pid)&&r.pid>0)
-   assert.deepEqual(r.parents,expected===login?['agentstudio_worker']:['agentstudio_api','agentstudio_worker'])
-   if(expected===login)assert.equal(r.connection_limit,2)
+   const expectedParents=expected===login?['agentstudio_worker']:['agentstudio_api','agentstudio_worker']
+   assert.deepEqual(r.parents,expectedParents);assert.equal(r.connection_limit,2)
+   const memberships=(await db.query("SELECT p.rolname::text AS role,m.admin_option AS admin,m.inherit_option AS inherit,m.set_option AS set FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles p ON p.oid=m.roleid WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=session_user) ORDER BY p.rolname")).rows
+   assert.deepEqual(memberships,expectedParents.map(role=>({role,admin:false,inherit:false,set:true})))
    return r
   }
   await full() // Old FULL must coexist with the new narrow LOGIN.
@@ -114,7 +123,7 @@ export async function prepareClaimTcpFixture(capability){
    throw Error('prepare_ci_server_rollback_not_observed')
   }
   const probe=(options={})=>{
-   const base=options.stage?stagePool:runtimePool,expected=options.stage?'agentstudio_stage_worker':login
+   const base=options.owned?ownedPool:runtimePool,expected=options.owned?ownedLogin:login
    const gates=new Map((options.holds??[]).map(name=>[name,{hit:prepareDeferred(),gate:prepareDeferred(),used:false}]))
    const trace=[],owned=new Set(),pid=prepareDeferred(),lost=Error('prepare_ci_delivery_lost_after_real_sql')
    const label=sql=>sql===claimSql?'claim':sql.startsWith("SELECT set_config('agentstudio.")?'scope:'+sql.split("'")[1].slice('agentstudio.'.length):sql
@@ -153,18 +162,18 @@ export async function prepareClaimTcpFixture(capability){
     async settle(work){this.releaseAll();if(work)try{await prepareBounded(work.catch(()=>{}),'case_cleanup',5000)}catch{for(const db of owned)db.connection.stream.destroy();await prepareBounded(work.catch(()=>{}),'case_destroy',5000)}},
    }
   }
-  return {AgentPrepareWorker,admin,fixture,runtimePool,stagePool,login,claimSql,finishSql,verifyRuntime,full,seed,state,cleanupSeed,locked,waitDisconnected,probe,
+  return {AgentPrepareWorker,admin,fixture,runtimePool,ownedPool,login,claimSql,finishSql,verifyRuntime,full,seed,state,cleanupSeed,locked,waitDisconnected,probe,
    async close(){
     for(const db of liveClients)db.connection.stream.destroy()
     const errors=(await Promise.allSettled(extraPools.map(p=>p.end()))).filter(x=>x.status==='rejected')
-    try{await identity();if(createdLogin)await admin.query('DROP ROLE '+quote(login))}
+    try{await identity();if(createdLogin)for(const name of [ownedLogin,login])await admin.query('DROP ROLE '+quote(name))}
     finally{try{await fixture.close()}finally{await admin.end()}}
     if(errors.length)throw Error('prepare_ci_runtime_pool_cleanup_failed')
    }}
  }catch(error){
   for(const db of liveClients)db.connection.stream.destroy()
   await Promise.allSettled(extraPools.map(p=>p.end()))
-  if(createdLogin)await admin.query('DROP ROLE '+quote(login)).catch(()=>{})
+  if(createdLogin)for(const name of [ownedLogin,login])await admin.query('DROP ROLE '+quote(name)).catch(()=>{})
   await fixture?.close().catch(()=>{});await admin.end();throw error
  }
 }

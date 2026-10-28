@@ -125,8 +125,8 @@ test('prepare admission on actual independent LOGINs beside unchanged full060',{
     assert.equal((await f.state(s)).status,'succeeded');assert.deepEqual(prepareCounts(worker),[true,0,0])
    })
   })
-  await t.test('existing original stage Worker LOGIN retains authorized held prepare/approval/finish after close',async()=>{
-   await scenario({stage:true},async({s,worker,start})=>{
+  await t.test('separate synthetic worker-and-API LOGIN retains held prepare/approval/finish after close; old stage stays disabled',async()=>{
+   await scenario({owned:true},async({s,worker,start})=>{
     const lease=await prepareBounded(start(),'owned_stage_claim');worker.closeNewClaims()
     assert.deepEqual(await worker.prepare(lease),{status:'prepared',run_id:s.run})
     const observed=(await f.admin.query("SELECT r.status,(SELECT count(*)::integer FROM agentstudio.run_steps x WHERE x.run_id=r.id AND x.step_key='prepare') AS steps,(SELECT count(*)::integer FROM agentstudio.approvals a WHERE a.run_id=r.id AND a.step_key='model') AS approvals FROM agentstudio.runs r WHERE r.id=$1",[s.run])).rows[0]
