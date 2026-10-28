@@ -135,3 +135,11 @@ services/pg-api/tests/agent-descriptive-patch-operator-runtime.test.mjs text eol
 ops/pg18-descriptive-operator-runtime-ci.mjs text eol=lf
 services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs text eol=lf
 services/pg-api/tests/helpers/agent-descriptive-patch-operator-runtime-ci-fixture.mjs text eol=lf
+
+# Synthetic full059 archive and controlled060 install verification
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-stage.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-containers.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-guard.mjs text eol=lf
+ops/pg18-descriptive-operator-install-ci.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-install-ci.integration.mjs text eol=lf

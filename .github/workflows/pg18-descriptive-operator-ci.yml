@@ -55,3 +55,58 @@ jobs:
         run: |
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_EPHEMERAL,AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_PURPOSE,AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_APPROVED "$node_path" ops/pg18-descriptive-operator-runtime-ci.mjs --run
+
+  pg18-descriptive-operator-install:
+    name: PostgreSQL 18 / authentic full059 backup restore / controlled060 install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - name: Checkout reviewed candidate without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact API lock without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Install entries refuse ordinary execution before all effects
+        run: |
+          node --input-type=module -e '
+          import {spawnSync} from "node:child_process";
+          for(const file of ["ops/pg18-descriptive-operator-install-ci.mjs","services/pg-api/tests/agent-descriptive-patch-operator-install-ci.integration.mjs"]){
+           const r=spawnSync(process.execPath,["--experimental-strip-types",file,"--run"],{encoding:"utf8",timeout:15000,env:{PATH:process.env.PATH,CI:"false",GITHUB_ACTIONS:"false"}});
+           const out=(r.stdout??"")+(r.stderr??"");
+           if(r.status!==1||!out.includes("descriptive_install_ci_refused:host")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(out))throw Error("ordinary_install_entry_did_not_refuse:"+file);
+          }
+          console.log("Both install entries refused before source capture, staging, Docker or driver load.");'
+      - name: Actual owned full059 archive restore, sealed060 install and readonly recovery
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+          AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+          AGENT_STUDIO_PG18_CI_PORT: '5432'
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+          AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_PURPOSE: DESCRIPTIVE_060_AUTHENTIC_INSTALL_RESTORE_SYNTHETIC_ONLY
+          AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_WRITE_APPROVED: YES_NEW_DISPOSABLE_CONTAINERS_ONLY
+        run: |
+          node_path="$(command -v node)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_EPHEMERAL,AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_PURPOSE,AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-descriptive-operator-install-ci.mjs --run
