@@ -11,6 +11,18 @@ const generatedVector=JSON.parse(fs.readFileSync(path.join(root,"tests/pg-native
 const generatedTarget={review_id:generatedVector.original.review_id,spec_id:generatedVector.original.spec_id,target_run_id:generatedVector.original.target_run_id}
 const generatedReply=(replayed=false)=>({...structuredClone(generatedVector.receipt),replayed})
 
+test("company metadata capability stays read-only and malformed server hints fail closed",async()=>{
+  const base={mode:"native_pg18",config_writes_enabled:false,model_probe_enabled:false,run_execution_enabled:false}
+  const read=patch=>createPgNativePilotApi(async()=>new Response(JSON.stringify({...base,...patch}),{status:200})).getConfigCapabilities()
+  assert.equal(Object.hasOwn(await read({}),"company_overview_available"),false)
+  for(const flag of [false,true]){
+    const value=await read({company_overview_available:flag})
+    assert.equal(value.company_overview_available,flag);assert.equal(value.config_writes_enabled,false);assert.equal(value.run_execution_enabled,false)
+  }
+  for(const flag of ["true","false",0,1,null,{},[]])await assert.rejects(read({company_overview_available:flag}),
+    error=>error instanceof PgNativePilotError&&error.status===503&&error.code==="invalid_native_capabilities")
+})
+
 test("generated SDK sends four exact Cookie routes, closed14 original and independent privacy headers",async()=>{
   for(const prefix of ["","/__pg_native"]){
     const calls=[],api=createPgNativePilotApi(async(url,init)=>{

@@ -127,6 +127,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
     allowAgentGeneratedAcceptance=false,allowAgentGeneratedAcceptanceWrites=false,
     allowAgentDescriptivePatch=false,allowAgentDescriptivePatchWrites=false,
     allowOwnOperations=false,
+    allowCompanyOverview=false,
     allowEmployeeProvisioning=true,allowEmployeeGovernance=false,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
@@ -195,6 +196,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         return respond(res,200,{
           mode:"native_pg18",
           ...(allowOwnOperations===true?{own_operations_available:true}:{}),
+          ...(allowCompanyOverview===true&&profile.is_admin===true?{company_overview_available:true}:{}),
           ...(allowEmployeeGovernance===true?{employee_governance_available:true,employee_governance_enabled:allowConfigurationWrites===true}:{}),
           config_writes_enabled:allowConfigurationWrites===true,
           ...(allowAgentReview===true?{agent_review_available:true,agent_review_submission_enabled:allowConfigurationWrites===true&&allowAgentReviewSubmission===true}:{}),

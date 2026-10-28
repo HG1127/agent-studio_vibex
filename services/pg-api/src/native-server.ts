@@ -32,6 +32,9 @@ import {AgentOpinionRepository} from "./agent-opinion-repository.ts"
 import {AgentReviewHistoryRepository} from "./agent-review-history-repository.ts"
 import {OwnOperationsRepository,inspectOwnOperationsSchema} from "./own-operations-repository.ts"
 import {createNativeOwnOperationsBusinessHandler} from "./own-operations-http.ts"
+import {CompanyOverviewRepository} from "./company-overview-repository.ts"
+import {inspectCompanyOverviewSchema} from "./company-overview-audit.ts"
+import {createNativeCompanyOverviewBusinessHandler} from "./company-overview-http.ts"
 import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
 import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
 import {AgentDescriptivePatchAcceptanceRepository} from "./agent-descriptive-patch-acceptance-repository.ts"
@@ -422,6 +425,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const generatedAcceptanceAvailable=await inspectAgentGeneratedSchema(business)
     // Optional060 is inspected in read-only startup modes as well as serve.
     const descriptivePatchAvailable=await inspectAgentDescriptivePatchSchema(business)
+    // Optional061 is either entirely absent or fully audited, even in preflight.
+    const companyOverviewAvailable=await inspectCompanyOverviewSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
@@ -442,6 +447,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
       allowOwnOperations:ownOperationsAvailable,
+      allowCompanyOverview:companyOverviewAvailable,
       allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
@@ -546,6 +552,12 @@ export async function startNativePg18Server(env=process.env,listen=true){
       })
       businessHandler=async(req,res)=>{if(await descriptivePatch(req,res))return;await fallback(req,res)}
     }
+    businessHandler=createNativeCompanyOverviewBusinessHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      available:companyOverviewAvailable,
+      ...(companyOverviewAvailable?{repository:new CompanyOverviewRepository(business)}:{}),
+      businessHandler,
+    })
     // The shared composition applies the original Native global route policy
     // to BOTH owner metadata and existing business handlers before dispatch.
     businessHandler=createNativeOwnOperationsBusinessHandler({

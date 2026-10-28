@@ -33,6 +33,8 @@ import PgNativeAgentDerivedMemoryPanel from "./PgNativeAgentDerivedMemoryPanel"
 import PgNativeAgentCollaborationPanel from "./PgNativeAgentCollaborationPanel"
 import PgNativeAgentReleasePanel from "./PgNativeAgentReleasePanel"
 import OwnOperationsPanel from "./OwnOperationsPanel"
+import CompanyOverviewPanel from "./CompanyOverviewPanel"
+import {createPgNativeCompanyOverviewApi} from "@/lib/pgNativeCompanyOverview"
 import {readOwnTaskTarget,ownTaskTargetResource,pgNativeOriginalTasksBlocked,subscribePgNativeOriginalTasks,pgNativeOriginalTaskScopeKey,type OwnTaskTarget} from "@/lib/pgNativeOwnTaskNavigation"
 import type {OwnOriginalTask} from "@/lib/pgNativeOwnOperations"
 const PgNativeWorkflowWorkspace=lazy(()=>import("./PgNativeWorkflowWorkspace"))
@@ -54,7 +56,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="ownOperations"|"agents"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="ownOperations"|"companyOverview"|"agents"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -76,12 +78,15 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   // its own isolated /__pg_native proxy. No PocketBase tokens or storage.
   const api=useMemo(()=>createPgNativePilotApi(fetch,
     productionRoot?"":"/__pg_native"),[productionRoot])
+  const companyApi=useMemo(()=>createPgNativeCompanyOverviewApi({transport:fetch,
+    rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const authenticatedApi=useRef(api)
   const apiMatches=authenticatedApi.current===api
   const [status,setStatus]=useState<State>("checking")
   const [profile,setProfile]=useState<PgNativeStaff|null>(null)
   const [section,setSection]=useState<Screen>("agents")
   const [ownOperationsAvailable,setOwnOperationsAvailable]=useState(false)
+  const [companyOverviewAvailable,setCompanyOverviewAvailable]=useState(false)
   const [originalTarget,setOriginalTarget]=useState<OwnTaskTarget|null>(null)
   const [originalOpening,setOriginalOpening]=useState(false)
   const [originalBlocked,setOriginalBlocked]=useState(false)
@@ -178,6 +183,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setWorkflowCanvasOpened(false);setWorkflowRunsOpened(false);setWorkflowRunTarget(null)
     originalSequence.current++;originalPending.current=null;setOriginalTarget(null);setOriginalOpening(false)
     setOwnOperationsAvailable(false);setSchedulesOpened(false)
+    setCompanyOverviewAvailable(false)
     setMcpOpened(false)
     setAgentMcpOpened(false)
     setKnowledgeSharingOpened(false);setKnowledgeSharingEnabled(false)
@@ -218,17 +224,22 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     const ticket=sessionFence.current.beginRead()
     setReadableKnowledge([])
     setConfigEditEnabled(false);setWorkflowV2Enabled(false)
+    setCompanyOverviewAvailable(false)
     setGeneratedAcceptance(previous=>({...previous,enabled:false}))
     setDescriptivePatch(previous=>({...previous,enabled:false}))
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false);setScheduleEnabled(false)
     setLoading(true)
     try{
       const capabilities=api.getConfigCapabilities().then(value=>{
-        if(originalIdentity.current.api===api&&sessionFence.current.acceptsRead(ticket))setOwnOperationsAvailable(value.own_operations_available===true)
+        if(originalIdentity.current.api===api&&sessionFence.current.acceptsRead(ticket)){
+          setOwnOperationsAvailable(value.own_operations_available===true)
+          setCompanyOverviewAvailable(value.company_overview_available===true)
+        }
         return value
       }).catch(err=>{
         if(originalIdentity.current.api===api&&sessionFence.current.acceptsRead(ticket)){
           setOwnOperationsAvailable(false)
+          setCompanyOverviewAvailable(false)
           if(err instanceof PgNativePilotError&&err.status===401)expireAgentSession()
         }
         return null
@@ -505,6 +516,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const canReadSingleTask=canRunOwnerModel||ownOperationsAvailable||originalTarget?.kind==="agent_single"
   const originalTaskKey=(profile?.id??"signedout")+":"+pgNativeOriginalTaskScopeKey(api)
   const title=[{key:"ownOperations" as const,label:"我的概览与待办",icon:ClipboardCheck,count:null},{key:"agents" as const,label:"Agent 配置",icon:Bot,count:agents.length},
+    ...(apiMatches&&profile?.is_admin&&companyOverviewAvailable?[{key:"companyOverview" as const,label:"公司概览",icon:BriefcaseBusiness,count:null}]:[]),
     ...(collaborationAvailable?[{key:"collaboration" as const,label:"Agent 协作",icon:Users,count:null}]:[]),
     ...(releasesAvailable?[{key:"releases" as const,label:"版本与发布",icon:ClipboardCheck,count:null}]:[]),
     ...(canReadSingleTask?[{key:"runAgent" as const,label:canRunOwnerModel?"运行 Agent":"Agent 原任务（只读）",icon:Bot,count:null}]:[]),
@@ -620,6 +632,11 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               <OwnOperationsPanel key={originalTaskKey} api={api} employeeId={profile.id} active={section==="ownOperations"}
                 availability={{own_overview_available:ownOperationsAvailable,own_todos_available:ownOperationsAvailable}}
                 destinationBusy={originalOpening||originalBlocked||busy} onOpenOriginal={openOwnOriginal} onExpired={expireOriginalTaskSession}/>
+            </div>
+            <div hidden={section!=="companyOverview"}>
+              <CompanyOverviewPanel key={originalTaskKey} api={companyApi} employeeId={profile.id}
+                currentAdmin={apiMatches&&profile.is_admin===true} available={apiMatches&&companyOverviewAvailable}
+                active={apiMatches&&section==="companyOverview"} onExpired={expireOriginalTaskSession}/>
             </div>
             {releasesAvailable&&<div hidden={section!=="releases"}>
               <PgNativeAgentReleasePanel key={profile.id} api={api} agents={agents} connections={modelConnections} active={section==="releases"}
