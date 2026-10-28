@@ -15,8 +15,16 @@ test('nonempty knowledge index/query claims preserve original consent, digest an
   const s=await f.seed(lane),p=f.probe(lane,options),worker=f.worker(lane,p.pool)
   let work
   const start=()=>{work=worker.claim();work.catch(()=>{});return work}
+  let primary
   try{return await body({s,p,worker,start})}
-  finally{try{await p.settle(work)}finally{await f.cleanup(s)}}
+  catch(error){primary=error;throw error}
+  finally{
+   try{try{await p.settle(work)}finally{await f.cleanup(s)}}
+   catch(cleanupError){
+    if(primary)throw new AggregateError([primary,cleanupError],'knowledge_nonempty_primary_and_cleanup_failed')
+    throw cleanupError
+   }
+  }
  }
  const noReplay=async(p,lane,worker)=>{const n=sent(p,lane);assert.equal(await worker.claim(),null);assert.equal(sent(p,lane),n)}
  try{
@@ -118,7 +126,7 @@ test('nonempty knowledge index/query claims preserve original consent, digest an
    })
    await t.test(lane+': original owner API content/revision change invalidates a held lease at real reserve',async()=>{
     await scenario(lane,{},async({s,worker,start})=>{
-     const dto=await bounded(start(),'before_source_change');worker.closeNewClaims()
+     const dto=await bounded(start(),'before_source_change');await f.assertClaim(s,dto);worker.closeNewClaims()
      await f.invalidateByOriginalApi(s)
      assert.equal(await f.broker(lane,'reserve',dto),null)
      assert.equal((await f.state(s))[0].status,lane==='index'?'discarded':'rejected')

@@ -132,14 +132,25 @@ export async function knowledgeNonemptyTcpFixture(capability){
     // Never change unknown/terminal outcomes, tokens, owner, fences or TTL.
     await base.admin.query("UPDATE agentstudio.knowledge_query_jobs SET status='rejected',failure_reason='synthetic_fixture_cleanup' WHERE id=$1 AND reader_user_id=$2 AND status='prepared'",[s.query,owner])
    }
-   await base.admin.query('DELETE FROM agentstudio.knowledge_bases WHERE id=$1 AND owner_user_id=$2',[s.base,owner]);knownBases.delete(s.base)
-   // Original attempts/query receipts and immutable audit history are retained.
+   // The original document FK deliberately retains its base. Dispose only the
+   // case's live document content through the owner API and keep the base,
+   // attempts, query receipts and immutable audit history until service removal.
+   // This also runs the original queue/source invalidation, never a new cascade.
+   for(const document of await content.documents(identity,s.base)){
+    if(document.status!=='deleted'){
+     const receipt=await content.delete(identity,s.base,randomUUID(),document.id,document.sha256)
+     assert.equal(receipt.item.action,'delete');assert.equal(receipt.item.document_id,document.id)
+    }
+   }
+   assert.deepEqual(await content.documents(identity,s.base),[])
   }
   const privateToOwner=async s=>assert.equal(await bases.get(base.fixture.identities.bob,s.base),null)
   const invalidateByOriginalApi=async s=>{
    if(s.lane==='index'){
     const docs=await content.documents(identity,s.base);assert.equal(docs.length,1)
-    await content.delete(identity,s.base,randomUUID(),docs[0].id,docs[0].sha256)
+    const receipt=await content.delete(identity,s.base,randomUUID(),docs[0].id,docs[0].sha256)
+    assert.equal(receipt.item.action,'delete');assert.equal(receipt.item.document_id,docs[0].id)
+    assert.deepEqual(await content.documents(identity,s.base),[])
    }else{
     const current=await bases.get(identity,s.base);assert.ok(current)
     const updated=await bases.update(identity,s.base,current.name+' changed',current.description,Number(current.revision))
