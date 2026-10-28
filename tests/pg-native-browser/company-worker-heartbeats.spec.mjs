@@ -151,6 +151,7 @@ test('company Worker UI: synthetic wire projection, expiry, denial and late empl
     await expect(page.getByRole('button',{name:'公司概览',exact:true})).toHaveCount(0)
     await expect(panel).toHaveCount(0)
     await expect(page.getByText('就绪（快照时点）',{exact:true})).toHaveCount(0)
+    await page.getByRole('button',{name:/^Agent 配置/}).click()
     await expect(page.getByText('Bob Browser Agent',{exact:true}).first()).toBeVisible()
     const after=await control('state','GET')
     expect(after.companyBusinessSnapshot).toEqual(before.companyBusinessSnapshot)
