@@ -224,3 +224,7 @@ services/pg-api/tests/native-current-company-admin.test.mjs text eol=lf
 services/pg-api/src/worker-heartbeat-activated-audit-core.ts text eol=lf
 services/pg-api/src/worker-heartbeat-activated-audit.ts text eol=lf
 services/pg-api/tests/worker-heartbeat-activated-audit.test.mjs text eol=lf
+
+# Genuine activated reader catalog comparisons, separate from activation
+services/pg-api/tests/helpers/worker-heartbeat-activated-audit-ci.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activated-audit-tcp.integration.mjs text eol=lf
