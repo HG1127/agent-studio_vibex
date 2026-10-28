@@ -15,7 +15,11 @@ concurrency:
 
 jobs:
   pg18-worker-heartbeat-domain:
-    name: PostgreSQL 18 / separate dormant telemetry / unchanged full060 and full061
+    name: PostgreSQL 18 / ${{ matrix.case }} / genuine isolated TCP
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [dormant, prepare]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -52,10 +56,11 @@ jobs:
           import {spawnSync} from "node:child_process";
           const env={...process.env,CI:"false",GITHUB_ACTIONS:"false"};
           delete env.NODE_OPTIONS;
-          const r=spawnSync(process.execPath,["--experimental-strip-types","--test","services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs"],{env,encoding:"utf8",timeout:15000});
+          for(const entry of ["services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs","services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs"]){
+          const r=spawnSync(process.execPath,["--experimental-strip-types","--test",entry],{env,encoding:"utf8",timeout:15000});
           const output=(r.stdout??"")+(r.stderr??"");
-          if(r.status!==1||!output.includes("refuse_non_ephemeral_pg18_ci")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(output))throw Error("telemetry_entry_did_not_refuse_before_imports");
-          process.stdout.write("Telemetry entry refused ordinary invocation before runtime imports.\n");'
+          if(r.status!==1||!output.includes("refuse_non_ephemeral_pg18_ci")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(output))throw Error("tcp_entry_did_not_refuse_before_imports");
+          process.stdout.write("TCP entry refused ordinary invocation before runtime imports.\n");}'
       - name: Closed heartbeat protocols, local claim admission and exact SchemaFull auditor
         run: >-
           node --experimental-strip-types --test --test-concurrency=1
@@ -66,7 +71,7 @@ jobs:
           services/pg-api/tests/model-claim-admission.test.mjs
           services/pg-api/tests/workflow-safe-claim-admission.test.mjs
           services/pg-api/tests/worker-heartbeat-audit.test.mjs
-      - name: Actual new empty telemetry database and dormant schema beside unchanged full060/full061
+      - name: Actual fresh-service TCP case beside unchanged full060/full061
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
           AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
@@ -77,6 +82,9 @@ jobs:
           AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
           AGENT_STUDIO_WORKER_HEARTBEAT_CI_MODE: SYNTHETIC_DOMAIN_ONLY
           AGENT_STUDIO_WORKER_HEARTBEAT_CI_WRITE_APPROVED: YES_DISPOSABLE_TELEMETRY_ONLY
-        run: >-
-          node --experimental-strip-types --test --test-concurrency=1
-          services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs
+        run: |
+          case "${{ matrix.case }}" in
+            dormant) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs ;;
+            prepare) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs ;;
+            *) exit 2 ;;
+          esac

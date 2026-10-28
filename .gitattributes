@@ -172,3 +172,7 @@ services/pg-api/src/workflow-safe-worker.ts text eol=lf
 services/pg-api/src/workflow-worker-loop.ts text eol=lf
 services/pg-api/tests/model-claim-admission.test.mjs text eol=lf
 services/pg-api/tests/workflow-safe-claim-admission.test.mjs text eol=lf
+
+# Genuine hosted-only prepare transaction admission probes
+services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs text eol=lf
+services/pg-api/tests/helpers/agent-prepare-claim-admission-ci.mjs text eol=lf
