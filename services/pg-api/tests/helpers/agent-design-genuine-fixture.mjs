@@ -8,8 +8,8 @@ const jobs=new Set(['pg18-agent-design-genuine','pg18-agent-design-browser'])
 // a role: every positive still executes the actual original-client auditor.
 export const agentDesignGenuineFrozenSources=Object.freeze({
   'db/postgres/migrations/pg_v9_062_agent_design.sql':'609ce80af4b63814849a3173467cd7f6527dc1b583de8796f113278072b07966',
-  'services/pg-api/src/agent-design-audit-core.ts':'88578ab5e1d15c803a777defa6b001098e430dff62e139964454e780d2997ce5',
-  'services/pg-api/src/agent-design-audit.ts':'31f17580b9a51bf1fb67273d18df0ca86c4294310fa25678e6a816072a320999',
+  'services/pg-api/src/agent-design-audit-core.ts':'0d748c67d4127c40959ddd939834195329970191fa9365b4c451a951967942c0',
+  'services/pg-api/src/agent-design-audit.ts':'1efe6de5bea8e14fa4b957e050edddcfee9a595f438d636f9a4046cce0921f78',
   'services/pg-api/src/native-auth-http.mjs':'c6c78de82431ca3a83a403707f66a64b0d68c0569a30d2869e7a85fe018b7730',
   'src/pages/PgNativePilot/PgNativeAgentDesignPanel.tsx':'92fbc7a5a4ad338745a66a699783f003a72a9e768d469b836a261911d4cb969e',
   'services/pg-api/src/agent-design-value-contract.ts':'a7e6ca69da599cd6423feb300010d6297fc104b5bd11c7864aa9000c86dc2110',

@@ -694,7 +694,9 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The complete serial regression now exceeds the former 20 minute job cap.
+    # Keep every pnpm check/integration step and all application deadlines.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -37,7 +37,16 @@ try{
  await check('actual_reader_capacity_two_and_lease_expiry',()=>fixture.assertCapacityAndExpiry())
  await check('reader_nologin_with_real_active_history_remains_manageable',async()=>{await fixture.disableReader();assert.equal((await fixture.inspect()).read_gate,'closed');unavailable(await fixture.nativeReadAdmin());await fixture.verify()})
  await check('native_http_reader_nologin_never_becomes_unknown_success',async()=>{assert.equal((await fixture.nativeHttpRead('admin')).status,503);await fixture.nativeHttpClean()})
- await check('signed_reader_reenable_keeps_real_history',async()=>{await fixture.enableReader();assert.equal((await fixture.inspect()).read_gate,'open');assert.equal(snapshot((await fixture.nativeReadAdmin()).snapshot).workers[0].state,'draining')})
+ await check('signed_reader_reenable_keeps_real_history',async()=>{
+  await fixture.enableReader();assert.equal((await fixture.inspect()).read_gate,'open')
+  const started=performance.now(),response=await fixture.nativeReadAdmin(),elapsed_ms=Math.round(performance.now()-started)
+  const hasSnapshot=Object.hasOwn(response,'snapshot'),hasError=Object.hasOwn(response,'error')
+  const status=hasSnapshot&&!hasError?200:[401,403,503].includes(response.error?.status)?response.error.status:null
+  const code=['session_required','admin_required','company_worker_heartbeats_unavailable','native_control_ci_failed','native_control_ci_refused'].includes(response.error?.code)?response.error.code:null
+  process.stdout.write(JSON.stringify({event:'telemetry_control_ci_case22_native_result',status,code,hasSnapshot,elapsed_ms})+'\n')
+  assert.equal(hasError,false);assert.equal(hasSnapshot,true)
+  assert.equal(snapshot(response.snapshot).workers[0].state,'draining')
+ })
  await check('actual_committed_transaction_with_dropped_ack_requires_readonly_recovery_and_new_signed_resume',async()=>{const r=await fixture.rotateFirstWithCommitAckLoss();assert.equal(r.recovery.observed,'after_matches');assert.equal(r.recovery.original_commit_acknowledged,false);assert.equal(r.recovery.automatic_retry_authorized,false);assert.equal(r.recovery.read_gate_opened,false);assert.equal(r.resumed.read_gate,'open')})
  await check('recovered_rotation_has_no_fabricated_new_generation_heartbeat',async()=>{const s=snapshot((await fixture.nativeReadAdmin()).snapshot);assert.equal(s.workers[0].state,'unknown');assert.equal(s.workers[0].reason,'not_observed')})
  await check('retired_writer_is_disabled_without_false_liveness',async()=>{await fixture.retireFirst();const r=snapshot((await fixture.nativeReadAdmin()).snapshot).workers[0];assert.equal(r.state,'unknown');assert.equal(r.reason,'component_disabled')})

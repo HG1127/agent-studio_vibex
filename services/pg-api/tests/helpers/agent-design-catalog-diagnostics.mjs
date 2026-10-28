@@ -3,16 +3,16 @@ import {requireAgentDesignDatabaseCi} from './agent-design-database-ci.mjs'
 
 export async function diagnoseAgentDesignFixture(f,env=process.env){
   const target=requireAgentDesignDatabaseCi(env)
-  const [assertModule,pgModule,repository,core,company,descriptive,generated]=await Promise.all([
+  const [assertModule,pgModule,repository,core,company,descriptive,generated,designCompany]=await Promise.all([
     import('node:assert/strict'),import('pg'),import('../../src/repository.ts'),
-    import('./agent-design-diagnostic-core.ts'),import('./agent-design-diagnostic-company.ts'),import('./agent-design-diagnostic-descriptive.ts'),import('../../src/agent-generated-audit.ts')])
+    import('./agent-design-diagnostic-core.ts'),import('./agent-design-diagnostic-company.ts'),import('./agent-design-diagnostic-descriptive.ts'),import('../../src/agent-generated-audit.ts'),import('../../src/agent-design-predecessor-audit-core.ts')])
   const assert=assertModule.default,pg=pgModule.default,observations=[]
   const onClient=async(db,kind,expectedLogin,expectedRole)=>{
     assert.ok(db instanceof pg.Client);assert.equal(db.connectionParameters.host,target.host);assert.equal(Number(db.connectionParameters.port),5432);assert.equal(db.connectionParameters.database,target.database)
     assert.equal(db.connection.stream.remoteAddress,'127.0.0.1');assert.equal(db.connection.stream.remotePort,5432)
     const who=(await db.query('SELECT session_user AS login,current_user AS role,pg_backend_pid() AS pid')).rows[0]
     assert.equal(who.login,expectedLogin);assert.equal(who.role,expectedRole);assert.equal(who.pid,db.processID)
-    for(const [stage,run] of [['core062',core.runDiagnosticCore],['company061',company.runDiagnosticCore],['descriptive060',descriptive.runDiagnosticCore],['generated059_chain',generated.verifyAgentGeneratedCredentials],['original062_wrapper',f.audit]]){
+    for(const [stage,run] of [['core062',core.runDiagnosticCore],['company061',company.runDiagnosticCore],...(kind==='api'?[]:[['company061_design_dependency',designCompany.verifyAgentDesignCompanyDependencies]]),['descriptive060',descriptive.runDiagnosticCore],['generated059_chain',generated.verifyAgentGeneratedCredentials],['original062_wrapper',f.audit]]){
       await db.query('SAVEPOINT f01_catalog_diagnostic')
       try{
         const value=await run(db)

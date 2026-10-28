@@ -394,3 +394,5 @@ services/pg-api/tests/helpers/agent-design-diagnostic-company.ts text eol=lf
 services/pg-api/tests/helpers/agent-design-diagnostic-descriptive.ts text eol=lf
 services/pg-api/tests/helpers/agent-design-catalog-diagnostics.mjs text eol=lf
 services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs text eol=lf
+services/pg-api/src/agent-design-predecessor-audit-core.ts text eol=lf
+services/pg-api/tests/agent-design-predecessor-audit.test.mjs text eol=lf
