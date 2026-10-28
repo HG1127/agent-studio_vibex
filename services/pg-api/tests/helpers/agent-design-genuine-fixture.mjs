@@ -7,8 +7,8 @@ const jobs=new Set(['pg18-agent-design-genuine','pg18-agent-design-browser'])
 // Reviewed runtime source pins are test provenance only. They never authorize
 // a role: every positive still executes the actual original-client auditor.
 export const agentDesignGenuineFrozenSources=Object.freeze({
-  'db/postgres/migrations/pg_v9_062_agent_design.sql':'aff31372fe13e82f89914854dfa6e2c8edbc6b77a0a4d474a10053f38073e22d',
-  'services/pg-api/src/agent-design-audit-core.ts':'4cbd73566ec317db347a48c2ac0a3042ee1915dde46e283209777a9e854fbf20',
+  'db/postgres/migrations/pg_v9_062_agent_design.sql':'b5d6b5e8d90a107f90933f7ba25b322941f07ef472a7ec4c248bfa21579a24fc',
+  'services/pg-api/src/agent-design-audit-core.ts':'12c03e4a3f8c1e1d6799d9f4ca27ce445fdb4d8684ced99e35eb62f383946a41',
   'services/pg-api/src/agent-design-audit.ts':'1efe6de5bea8e14fa4b957e050edddcfee9a595f438d636f9a4046cce0921f78',
   'services/pg-api/src/native-auth-http.mjs':'c6c78de82431ca3a83a403707f66a64b0d68c0569a30d2869e7a85fe018b7730',
   'src/pages/PgNativePilot/PgNativeAgentDesignPanel.tsx':'92fbc7a5a4ad338745a66a699783f003a72a9e768d469b836a261911d4cb969e',

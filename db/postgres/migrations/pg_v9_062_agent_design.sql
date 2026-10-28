@@ -389,7 +389,7 @@ BEGIN
   END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(spec->'tools') n WHERE n NOT IN('calculate','summarize','knowledge_search','web_search','web_fetch') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(spec->'http_tools','[]')) AS design_http_ref(value) WHERE design_http_ref.value->>'name'=n) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(spec->'mcp_tools','[]')) AS design_mcp_ref(value) WHERE design_mcp_ref.value->>'name'=n)) THEN RAISE EXCEPTION 'agent_design_invalid_source_resources'; END IF;
   SELECT coalesce(array_agg(value::uuid ORDER BY value),'{}') INTO base_ids FROM jsonb_array_elements_text(spec->'knowledge_base_ids');
-  SELECT coalesce(array_agg(DISTINCT owner_user_id ORDER BY owner_user_id),'{}') INTO base_owners FROM agentstudio.knowledge_bases WHERE id=ANY(base_ids);
+  SELECT coalesce(array_agg(DISTINCT kb_owner.owner_user_id ORDER BY kb_owner.owner_user_id),'{}') INTO base_owners FROM agentstudio.knowledge_bases AS kb_owner WHERE kb_owner.id=ANY(design_source_locals.base_ids);
   locked_owners:=base_owners;
   FOREACH id IN ARRAY locked_owners LOOP PERFORM pg_advisory_xact_lock(hashtextextended(id::text,6635)); END LOOP;
   FOREACH id IN ARRAY base_ids LOOP
@@ -401,7 +401,7 @@ BEGIN
     IF NOT FOUND OR a.governance_revision IS NULL OR a.governance_revision NOT BETWEEN 1 AND 9007199254740989 THEN RAISE EXCEPTION 'agent_design_knowledge_changed'; END IF;
     scope:=jsonb_build_object('base',id,'owner',b.owner_user_id,'revision',b.revision,'owner_governance_revision',a.governance_revision,'base_sha256',encode(sha256(convert_to(to_jsonb(b)::text,'UTF8')),'hex'));
     IF b.owner_user_id<>$1 THEN
-      SELECT g.*,g.xmin::text AS row_version INTO a FROM agentstudio.knowledge_access g WHERE g.base_id=id AND g.owner_user_id=b.owner_user_id AND g.recipient_user_id=$1 FOR SHARE;
+      SELECT g.*,g.xmin::text AS row_version INTO a FROM agentstudio.knowledge_access g WHERE g.base_id=design_source_locals.id AND g.owner_user_id=b.owner_user_id AND g.recipient_user_id=$1 FOR SHARE;
       IF NOT FOUND OR a.revoked OR a.access_role NOT IN('viewer','editor') OR (spec?'knowledge_retrieval' AND NOT a.semantic_allowed) THEN RAISE EXCEPTION 'agent_design_knowledge_changed'; END IF;
       scope:=scope||jsonb_build_object('grant_sha256',encode(sha256(convert_to(to_jsonb(a)::text,'UTF8')),'hex'));
     ELSE scope:=scope||jsonb_build_object('access','owner'); END IF;
