@@ -708,7 +708,7 @@ BEGIN
     AND preview->>'design_request_id'=target::text AND preview->>'purpose'=req.purpose AND preview->>'result_sha256'=result_hash AND preview->>'input_sha256'=req.input_sha256 AND preview->>'source_sha256'=req.source_sha256 AND preview->>'resources_sha256'=req.resources_sha256 AND agentstudio.agent_design_fields_valid(preview->'fields',false)) IS NOT TRUE THEN RAISE EXCEPTION 'agent_design_invalid_save_preview'; END IF;
   fields:=preview->'fields';
   IF req.purpose='generate' THEN protected:='{"tools":[],"knowledge_base_ids":[],"require_approval":true}';
-  ELSE protected:=fresh->'before'->'spec'-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria']; END IF;
+  ELSE protected:=(fresh->'before'->'spec')-ARRAY['goal','task_scope','deliverables','task_plan','done_criteria']; END IF;
   candidate_spec:=protected||(fields-'name');candidate_hash:=agentstudio.agent_design_digest(jsonb_build_object('protocol','agent_design_candidate_v1','name',fields->'name','spec',candidate_spec));
   candidate:=jsonb_build_object('name',fields->'name','spec',candidate_spec,'tool_suggestions',output.result->'tools','candidate_sha256',candidate_hash,'edited',fields IS DISTINCT FROM output.result-'tools','authority',false);
   preview_hash:=agentstudio.agent_design_digest(jsonb_build_object('protocol','agent_design_save_preview_binding_v1','design_request_id',target,'purpose',req.purpose,'result_sha256',result_hash,'input_sha256',req.input_sha256,'source_sha256',req.source_sha256,'resources_sha256',req.resources_sha256,'fields',fields,'candidate_sha256',candidate_hash));

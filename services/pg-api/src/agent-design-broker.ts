@@ -80,7 +80,9 @@ export class AgentDesignBroker {
     return withModelBrokerActor(this.secretPool, selected.identity, async (db, owner) => {
       if (owner !== selected.owner_user_id) return unavailable()
       const b = selected.choice.model_binding
-      const row = (await db.query<Secret>("SELECT revision,provider,base_url,enabled,status,models,api_key_ciphertext,api_key_nonce,api_key_tag FROM agentstudio.model_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE", [b.connection_id, owner])).rows[0]
+      // The secret role has column SELECT only; row locking requires UPDATE.
+      // Private source snapshots are rechecked before and after this read.
+      const row = (await db.query<Secret>("SELECT revision,provider,base_url,enabled,status,models,api_key_ciphertext,api_key_nonce,api_key_tag FROM agentstudio.model_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid", [b.connection_id, owner])).rows[0]
       if (!row || row.enabled !== true || row.status !== "ok" || version(row.revision) !== b.connection_revision || row.provider !== expected.provider || row.base_url !== expected.base_url || canonicalMcpJson(row.models) !== canonicalMcpJson(expected.models) || !modelIds(row.models).includes(b.model_id) || this.closed) return unavailable()
       return {provider: row.provider, base_url: row.base_url, model_id: b.model_id, api_key: decryptModelSecret({ciphertext: Buffer.from(row.api_key_ciphertext), nonce: Buffer.from(row.api_key_nonce), tag: Buffer.from(row.api_key_tag)}, this.key)}
     })

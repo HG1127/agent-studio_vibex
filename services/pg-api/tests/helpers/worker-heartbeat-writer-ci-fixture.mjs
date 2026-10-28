@@ -567,7 +567,12 @@ async function closeFixture(s){
    // Parent owns both immutable code stages. Leave its nonce marker alongside
    // them for parent stage disposal; never recursively remove a stage here.
   }
-  if(errors.length)throw new AggregateError(errors,'telemetry_control_ci_fixture_owned_cleanup_failed')
+  if(errors.length){
+   const allowed=['own_ack_rule_cleanup','own_native_http_close','own_read_close','own_child_stop','own_writer_close','actual_reader_absence','writer_backend_absence','own_pool_close','own_container_close','writer_owned_artifact_cleanup','own_root_cleanup']
+   const failures=errors.map(error=>{const value=/^telemetry_control_ci_fixture_refused:([a-z_]+):([A-Z0-9_]+)$/.exec(String(error?.message));return {phase:value&&allowed.includes(value[1])?value[1]:'unknown',sqlstate:value&&/^[A-Z0-9]{5}$/.test(value[2])?value[2]:null}})
+   process.stderr.write(JSON.stringify({event:'genuine_writer_ci_cleanup_failure_phases',failures})+'\n')
+   throw new AggregateError(errors,'telemetry_control_ci_fixture_owned_cleanup_failed')
+  }
  })();return s.closing
 }
 
@@ -771,7 +776,7 @@ async function writerArtifactsCleanup(s){
   const st=fs.lstatSync(store);if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o7777)!==0o700)fail('writer_cleanup_store')
   const issued=new Map(writerJournal(s).filter(v=>v.phase==='writer_boot_issued').map(v=>[v.data.boot_id,v.data]))
   for(const name of fs.readdirSync(store)){
-   const match=/^([a-f0-9-]{36})\.(?:([a-z_]+)\.(boot|delivery)|batch\.delivery)\.json$/.exec(name),file=store+'/'+name,meta=fs.lstatSync(file),boot=match&&issued.get(match[1])
+   const match=/^([a-f0-9-]{36})\.(?:(prepare|model|workflow_safe|workflow_v2|agent_autonomous|knowledge_index|knowledge_query|assessment)\.(boot|delivery)|batch\.delivery)\.json$/.exec(name),file=store+'/'+name,meta=fs.lstatSync(file),boot=match&&issued.get(match[1])
    if(!boot||!meta.isFile()||meta.isSymbolicLink()||meta.nlink!==1||meta.gid!==0||meta.uid!==(match[3]==='boot'?boot.uid:0)||(meta.mode&0o7777)!==(match[3]==='boot'?0o400:0o600)||match[2]&&!boot.bindings.some(v=>v.kind===match[2]))fail('writer_cleanup_unknown_credential')
    fs.unlinkSync(file)
   }

@@ -8,8 +8,9 @@ const {performance}=await import('node:perf_hooks')
 const {publishWorkerHeartbeatControlCiStages}=await import('./helpers/worker-heartbeat-activation-control-ci-stage.mjs')
 const {createWorkerHeartbeatWriterCiFixture}=await import('./helpers/worker-heartbeat-writer-ci-fixture.mjs')
 const {parseWorkerHeartbeatSnapshot}=await import('../src/worker-heartbeat-contract.ts')
+const {controlErrorCodes}=await import('../src/worker-heartbeat-activation-control-contract.ts')
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),kinds=['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment']
-let fixture,passed=0,failed=false,cleanupPassed=0,activeCase=null
+let fixture,passed=0,failed=false,cleanupPassed=0,activeCase=null,activeStage=null
 const until=async(check,label,ms=15000)=>{const end=performance.now()+ms;do{if(await check())return;await wait(25)}while(performance.now()<end);throw Error('writer_ci_timeout_'+label)}
 async function check(name,body){activeCase=name;process.stdout.write(JSON.stringify({event:'genuine_writer_ci_case_start',case:name})+'\n');const start=performance.now();await body();passed++;process.stdout.write(JSON.stringify({event:'genuine_writer_ci_case_pass',case:name,duration_ms:Math.round(performance.now()-start),component_only:name.startsWith('component_')})+'\n');activeCase=null}
 const changes=action=>kinds.map(kind=>({kind,slot_no:1,action})),row=async kind=>(await fixture.writer.rows()).find(r=>r.kind===kind&&r.slot_no===1)
@@ -64,9 +65,20 @@ try{
   assert.equal((await fixture.writer.command(child,{op:'report',sequence:3})).ok,false);assert.equal((await fixture.writer.command(child,{op:'rebind'})).ok,false);assert.deepEqual(await row('prepare'),before)
  })
  await check('actual_mutation_cancels_inflight_record_and_observes_owned_backend_absence_before_publication',async()=>{
-  const prepared=await fixture.writer.prepareRotate('model'),hold=await fixture.writer.rowLock('model'),child=bound[1],pending=fixture.writer.command(child,{op:'report',sequence:2},8000).catch(()=>({test_control_reply_missing:true}));let mutation
-  try{await fixture.writer.waitWriterRecord('model');mutation=fixture.apply(prepared);await until(async()=>!(await fixture.writer.backends()).some(v=>v.usename==='studio_telemetry_tx_model_1'),'mutating_writer_actual_backend_gone',5000);assert.equal((await fixture.writer.command(child,{op:'snapshot'})).snapshot.io,'uncertain')}finally{await hold.release()}
-  const result=await mutation;assert.equal(result.publication_completed,true);assert.equal((await fixture.writer.command(child,{op:'snapshot'})).snapshot.io,'uncertain');assert.equal((await row('model')).sequence,'0');await pending
+  activeStage='prepare_rotation';const prepared=await fixture.writer.prepareRotate('model')
+  activeStage='acquire_row_lock';const hold=await fixture.writer.rowLock('model'),child=bound[1]
+  activeStage='dispatch_record';const pending=fixture.writer.command(child,{op:'report',sequence:2},8000).catch(()=>({test_control_reply_missing:true}));let mutation
+  try{
+   activeStage='observe_record_lock';await fixture.writer.waitWriterRecord('model')
+   activeStage='apply_mutation';mutation=fixture.apply(prepared)
+   void mutation.catch(error=>{const rawCode=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_mutation_rejected',stage:'apply_mutation',code:controlErrorCodes.includes(rawCode)?rawCode:null})+'\n')})
+   activeStage='observe_backend_absence';await until(async()=>!(await fixture.writer.backends()).some(v=>v.usename==='studio_telemetry_tx_model_1'),'mutating_writer_actual_backend_gone',5000)
+   activeStage='snapshot_before_unlock';assert.equal((await fixture.writer.command(child,{op:'snapshot'})).snapshot.io,'uncertain')
+  }finally{const priorStage=activeStage;activeStage='release_row_lock';await hold.release();activeStage=priorStage}
+  activeStage='await_mutation';const result=await mutation;activeStage='verify_publication';assert.equal(result.publication_completed,true)
+  activeStage='snapshot_after_mutation';assert.equal((await fixture.writer.command(child,{op:'snapshot'})).snapshot.io,'uncertain')
+  activeStage='verify_reset_sequence';assert.equal((await row('model')).sequence,'0')
+  activeStage='await_pending_reply';await pending;activeStage=null
  })
  await stopAll(bound.slice(1)) // Keep the actual old UID process alive for fencing.
  await check('actual_knowledge_partial_rotation_does_not_rebind_consumed_sibling_to_new_uid',async()=>{
@@ -110,5 +122,9 @@ try{
   finally{await fixture.writer.stop(child)}
  })
  await check('actual_final_owned_backend_absence_and_unchanged_empty_business_queues',async()=>{await fixture.writer.final();assert.deepEqual(await fixture.writer.businessCounts(),{jobs:0,runs:0,reviews:0,queries:0});await fixture.final()})
-}catch(error){failed=true;process.exitCode=1;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_failed',case:activeCase,completed_cases:passed,message:/^(writer_ci_|telemetry_control_ci_fixture_refused:)/.test(String(error?.message))?String(error.message).slice(0,180):'runtime_assertion_failed',production_cutover_allowed:false})+'\n')}
+}catch(error){
+ failed=true;process.exitCode=1;const rawCode=Object.getOwnPropertyDescriptor(error??{},'code')?.value
+ const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply'].includes(activeStage)?activeStage:null
+ process.stderr.write(JSON.stringify({event:'genuine_writer_ci_failed',case:activeCase,stage,code,completed_cases:passed,message:/^(writer_ci_|telemetry_control_ci_fixture_refused:)/.test(String(error?.message))?String(error.message).slice(0,180):'runtime_assertion_failed',production_cutover_allowed:false})+'\n')
+}
 finally{try{await closeFixture()}catch{failed=true;process.exitCode=1;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_failed'})+'\n')}process.stdout.write(JSON.stringify({event:'genuine_writer_ci_summary',passed,failed,owned_cleanups:cleanupPassed,production_cutover_allowed:false,synthetic_only:true,real_execution_required:true})+'\n')}
