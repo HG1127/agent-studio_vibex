@@ -16,7 +16,11 @@ concurrency:
 
 jobs:
   pg18-agent-design-genuine:
-    name: F01 / real PG18 Cookie mTLS synthetic provider and atomic save
+    name: F01 / real PG18 ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [flow, database]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -55,10 +59,17 @@ jobs:
       - name: Actual API compiler and ordinary-host refusal guards
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs
+          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs
+      # Each matrix leg owns a fresh PostgreSQL service. Never initialize062
+      # twice on a populated fixture or substitute catalog tests for the flow.
       - name: Actual Native Cookie through SQL062 private dispatch and synthetic TLS provider
+        if: matrix.suite == 'flow'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-design-genuine-pg18.test.mjs
+      - name: Actual installed062 catalog roles golden protocols rollback and race boundaries
+        if: matrix.suite == 'database'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-design-database-pg18.test.mjs
 
   pg18-agent-design-browser:
     name: F01 / real PG18 browser editing save recovery and employee isolation
@@ -102,11 +113,13 @@ jobs:
       - name: Actual browser compiler configuration and ordinary-host refusal guards
         run: |
           pnpm exec tsc -p tsconfig.app.json --noEmit
-          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs
+          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual HTTPS browser through the real PG18 design and save chain
-        run: pnpm exec playwright test --config=tests/pg-native-agent-design-genuine.config.mjs
+        # Invoke the installed CLI directly. The pnpm binary shim injects
+        # NODE_PATH, which the genuine fixture correctly refuses.
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-agent-design-genuine.config.mjs
       - name: Retain synthetic page images only
         if: always()
         uses: actions/upload-artifact@v4

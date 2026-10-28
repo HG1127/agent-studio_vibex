@@ -111,7 +111,7 @@ BEGIN
     IF cp>65535 THEN units:=units||ARRAY[55296+(cp-65536)/1024,56320+(cp-65536)%1024]; ELSE units:=array_append(units,cp); END IF;
   END LOOP;
   RETURN units;
-$fn$;
+END $fn$;
 -- Match JSON.stringify's integer-property ordering, UTF16 key ordering and
 -- finite double number rendering; do not use old C-collation for MCP schemas.
 CREATE FUNCTION agentstudio.agent_design_number(numeric) RETURNS text
@@ -133,7 +133,7 @@ BEGIN
     ELSE RETURN neg||left(digits,point)||'.'||substr(digits,point+1); END IF;
   END IF;
   RETURN neg||left(digits,1)||CASE WHEN length(digits)>1 THEN '.'||substr(digits,2) ELSE '' END||'e'||CASE WHEN expo>=0 THEN '+' ELSE '' END||expo::text;
-$fn$;
+END $fn$;
 CREATE FUNCTION agentstudio.agent_design_index_key(text) RETURNS bigint
 LANGUAGE sql IMMUTABLE STRICT SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $fn$
   SELECT CASE WHEN $1 ~ '^(0|[1-9][0-9]{0,9})$' THEN CASE WHEN $1::bigint<4294967295 THEN $1::bigint END END
@@ -149,7 +149,7 @@ BEGIN
     WHEN 'number' THEN RETURN agentstudio.agent_design_number(($1#>>'{}')::numeric);
     ELSE RETURN $1::text;
   END CASE;
-$fn$;
+END $fn$;
 CREATE FUNCTION agentstudio.agent_design_digest(jsonb) RETURNS text
 LANGUAGE sql IMMUTABLE STRICT SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $fn$
   SELECT encode(sha256(convert_to(agentstudio.agent_design_compact($1),'UTF8')),'hex')
@@ -174,7 +174,7 @@ BEGIN
     IF jsonb_typeof($1->k)<>'string' OR NOT agentstudio.agent_design_text_valid($1->>k,CASE k WHEN 'name' THEN 120 WHEN 'goal' THEN 3000 ELSE 4000 END,k<>'task_scope') THEN RETURN false; END IF;
   END LOOP;
   FOREACH k IN ARRAY CASE WHEN $2 THEN ARRAY['deliverables','task_plan','done_criteria','tools'] ELSE ARRAY['deliverables','task_plan','done_criteria'] END LOOP
-    IF jsonb_typeof($1->k)<>'array' OR jsonb_array_length($1->k)>CASE k WHEN 'tools' THEN 20 ELSE 30 END THEN RETURN false; END IF;
+    IF jsonb_typeof($1->k)<>'array' OR jsonb_array_length($1->k)>(CASE k WHEN 'tools' THEN 20 ELSE 30 END) THEN RETURN false; END IF;
     FOR item IN SELECT value FROM jsonb_array_elements($1->k) LOOP
       IF jsonb_typeof(item)<>'string' OR NOT agentstudio.agent_design_text_valid(item#>>'{}',CASE k WHEN 'tools' THEN 300 ELSE 500 END,false) THEN RETURN false; END IF;
     END LOOP;
@@ -338,7 +338,7 @@ BEGIN
   FOREACH id IN ARRAY models_ids LOOP
     SELECT m.*,m.xmin::text AS row_version INTO c FROM agentstudio.model_connections m WHERE m.id=id AND m.owner_user_id=$1 FOR SHARE;
     IF NOT FOUND OR c.enabled IS DISTINCT FROM true OR c.status IS DISTINCT FROM 'ok' OR c.revision IS NULL OR c.revision NOT BETWEEN 1 AND 9007199254740989 OR
-      c.base_url IS DISTINCT FROM CASE c.provider WHEN 'openai' THEN 'https://api.openai.com/v1' WHEN 'anthropic' THEN 'https://api.anthropic.com/v1' WHEN 'gemini' THEN 'https://generativelanguage.googleapis.com/v1beta' END
+      c.base_url IS DISTINCT FROM (CASE c.provider WHEN 'openai' THEN 'https://api.openai.com/v1' WHEN 'anthropic' THEN 'https://api.anthropic.com/v1' WHEN 'gemini' THEN 'https://generativelanguage.googleapis.com/v1beta' END)
     THEN RAISE EXCEPTION 'agent_design_model_changed'; END IF;
     IF jsonb_typeof(c.models) IS DISTINCT FROM 'array' OR jsonb_array_length(c.models) NOT BETWEEN 1 AND 100 OR (SELECT count(DISTINCT value) FROM jsonb_array_elements(c.models))<>jsonb_array_length(c.models)
       OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.models) x WHERE jsonb_typeof(x)<>'string' OR x#>>'{}' !~ '^[A-Za-z0-9._:/-]{1,120}$') THEN RAISE EXCEPTION 'agent_design_model_changed'; END IF;

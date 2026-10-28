@@ -382,3 +382,6 @@ tests/helpers/pg-native-agent-design-genuine-fixture.mjs text eol=lf
 services/pg-api/tests/helpers/bound-model-loopback-tls.mjs text eol=lf
 tests/pg-native-agent-design-genuine.config.mjs text eol=lf
 .github/workflows/pg18-agent-design-genuine-ci.yml text eol=lf
+services/pg-api/tests/helpers/agent-design-database-ci.mjs text eol=lf
+services/pg-api/tests/agent-design-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-design-database-guard.test.mjs text eol=lf

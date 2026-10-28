@@ -20,8 +20,7 @@ export function selectNativeAgentDesignCapabilities(env: Record<string, string |
 // A fixed runtime dependency, resolved only after explicit feature opt-in. This
 // loads the DB author's actual auditor; no fallback accepts a missing module.
 export async function loadAgentDesignAuditVerifier(): Promise<AgentDesignAuditVerifier> {
-  const modulePath = "./agent-design-audit.ts"
-  const value: unknown = (await import(modulePath)).verifyAgentDesignCredentials
+  const value: unknown = (await import("./agent-design-audit.ts")).verifyAgentDesignCredentials
   if (typeof value !== "function") throw Error("agent_design_actual_auditor_required")
   return value as AgentDesignAuditVerifier
 }
