@@ -3,7 +3,7 @@
 import {safeAgentSpec, type AgentSpecInput} from "./contracts.ts"
 import {agentDesignObject as O, agentDesignText, parseAgentDesignEditableFields, parseAgentDesignModelOutput,
   agentDesignJsonValue, agentDesignSameValue, agentDesignOutputTokenLimits, type AgentDesignModelOutput, type AgentDesignEditableFields} from "./agent-design-value-contract.ts"
-import type {AgentDesignChoice, AgentDesignModelBinding, AgentDesignRoleReference, AgentDesignPurpose} from "./agent-design-contract.ts"
+import type {AgentDesignChoice, AgentDesignModelBinding, AgentDesignRoleReference, AgentDesignPurpose} from "./agent-design-value-contract.ts"
 
 export class AgentDesignProjectionError extends Error {
   readonly status = 503; readonly code = "invalid_agent_design_projection"

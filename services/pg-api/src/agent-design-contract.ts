@@ -2,13 +2,10 @@
 import {createHash} from "node:crypto"
 import {canonicalMcpJson} from "./mcp-catalog.ts"
 import {agentDesignObject as object, agentDesignJsonValue, agentDesignText, invalidAgentDesignValue as invalid,
-  agentDesignInstructionLimit, agentDesignOutputTokenLimits, parseAgentDesignEditableFields, type AgentDesignEditableFields} from "./agent-design-value-contract.ts"
+  agentDesignInstructionLimit, agentDesignOutputTokenLimits, parseAgentDesignEditableFields, type AgentDesignEditableFields,
+  type AgentDesignPurpose, type AgentDesignModelBinding, type AgentDesignRoleReference, type AgentDesignChoice} from "./agent-design-value-contract.ts"
 
-export type AgentDesignPurpose = "generate" | "revise"
-export type AgentDesignModelBinding = {connection_id: string; connection_revision: number; model_id: string}
-export type AgentDesignRoleReference = {spec_id: string; revision: number; source_sha256: string}
-export type AgentDesignChoice = {action: "preview"; purpose: AgentDesignPurpose; instruction: string; model_binding: AgentDesignModelBinding;
-  output_token_limit: typeof agentDesignOutputTokenLimits[number]; source: AgentDesignRoleReference | null}
+export type {AgentDesignPurpose, AgentDesignModelBinding, AgentDesignRoleReference, AgentDesignChoice} from "./agent-design-value-contract.ts"
 export const agentDesignFees = Object.freeze({generate: "APPROVE_EXPLICIT_PAID_AGENT_DESIGN_GENERATE_V1", revise: "APPROVE_EXPLICIT_PAID_AGENT_DESIGN_REVISE_V1"} as const)
 export const agentDesignSaveAcknowledgement = "APPROVE_EXACT_AGENT_DESIGN_SAVE_ONLY_V1" as const
 export const agentDesignHash = (raw: unknown): string => createHash("sha256").update(canonicalMcpJson(agentDesignJsonValue(raw))).digest("hex")

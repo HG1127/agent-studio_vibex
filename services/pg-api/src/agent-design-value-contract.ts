@@ -4,6 +4,11 @@ import {agentDescriptiveLimits} from "../../../shared/agent-role-limits.mjs"
 
 export const agentDesignInstructionLimit = 2000
 export const agentDesignOutputTokenLimits = Object.freeze([4096, 8192, 16384] as const)
+export type AgentDesignPurpose = "generate" | "revise"
+export type AgentDesignModelBinding = {connection_id: string; connection_revision: number; model_id: string}
+export type AgentDesignRoleReference = {spec_id: string; revision: number; source_sha256: string}
+export type AgentDesignChoice = {action: "preview"; purpose: AgentDesignPurpose; instruction: string; model_binding: AgentDesignModelBinding;
+  output_token_limit: typeof agentDesignOutputTokenLimits[number]; source: AgentDesignRoleReference | null}
 export const agentDesignMaxModelJsonBytes = 393216
 export const agentDesignMaxPrivateInputBytes = 524288
 export const agentDesignDescriptionKeys = Object.freeze(["goal", "task_scope", "deliverables", "task_plan", "done_criteria"] as const)
