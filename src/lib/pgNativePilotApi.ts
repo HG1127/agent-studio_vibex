@@ -86,6 +86,8 @@ export type PgNativeConfigCapabilities={
   agent_design_available?:boolean
   agent_design_submissions_enabled?:boolean
   agent_design_saves_enabled?:boolean
+  agent_template_market_available?:boolean
+  agent_template_market_writes_enabled?:boolean
   agent_descriptive_patch_available?:boolean
   agent_descriptive_patch_enabled?:boolean
   agent_feedback_available?:boolean
@@ -730,6 +732,9 @@ export function createPgNativePilotApi(
           (value.agent_design_submissions_enabled!==undefined&&typeof value.agent_design_submissions_enabled!=="boolean")||
           (value.agent_design_saves_enabled!==undefined&&typeof value.agent_design_saves_enabled!=="boolean")||
           ((value.agent_design_submissions_enabled===true||value.agent_design_saves_enabled===true)&&(value.agent_design_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_template_market_available!==undefined&&typeof value.agent_template_market_available!=="boolean")||
+          (value.agent_template_market_writes_enabled!==undefined&&typeof value.agent_template_market_writes_enabled!=="boolean")||
+          (value.agent_template_market_writes_enabled===true&&(value.agent_template_market_available!==true||value.config_writes_enabled!==true))||
           (value.agent_descriptive_patch_available!==undefined&&typeof value.agent_descriptive_patch_available!=="boolean")||
           (value.agent_descriptive_patch_enabled!==undefined&&typeof value.agent_descriptive_patch_enabled!=="boolean")||
           (value.agent_descriptive_patch_enabled===true&&(value.agent_descriptive_patch_available!==true||value.config_writes_enabled!==true))||

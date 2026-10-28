@@ -552,6 +552,7 @@ async function closeFixture(s){
   for(const rule of [...s.ackRules])try{removeAckRule(s,rule)}catch(error){errors.push(safe('own_ack_rule_cleanup',error))}
   if(s.httpNative)try{await nativeHttpStop(s)}catch(error){errors.push(safe('own_native_http_close',error))}
   for(const r of [...s.reads])try{await r.close()}catch(error){errors.push(safe('own_read_close',error))}
+  for(const lock of [...s.writerRowLocks?.values()??[]])try{await lock.handle.release()}catch(error){errors.push(safe('own_writer_row_lock_release',error))}
   for(const c of [...s.children])try{await stopProcess(s,c)}catch(error){errors.push(safe('own_child_stop',error))}
   for(const c of [...s.writers])try{await c.end();s.writers.delete(c)}catch(error){errors.push(safe('own_writer_close',error))}
   // Actual SQL backend absence is queried after process exit, never inferred
@@ -568,7 +569,7 @@ async function closeFixture(s){
    // them for parent stage disposal; never recursively remove a stage here.
   }
   if(errors.length){
-   const allowed=['own_ack_rule_cleanup','own_native_http_close','own_read_close','own_child_stop','own_writer_close','actual_reader_absence','writer_backend_absence','own_pool_close','own_container_close','writer_owned_artifact_cleanup','own_root_cleanup']
+   const allowed=['own_ack_rule_cleanup','own_native_http_close','own_read_close','own_child_stop','own_writer_row_lock_release','own_writer_close','actual_reader_absence','writer_backend_absence','own_pool_close','own_container_close','writer_owned_artifact_cleanup','own_root_cleanup']
    const failures=errors.map(error=>{const value=/^telemetry_control_ci_fixture_refused:([a-z_]+):([A-Z0-9_]+)$/.exec(String(error?.message));return {phase:value&&allowed.includes(value[1])?value[1]:'unknown',sqlstate:value&&/^[A-Z0-9]{5}$/.test(value[2])?value[2]:null}})
    process.stderr.write(JSON.stringify({event:'genuine_writer_ci_cleanup_failure_phases',failures})+'\n')
    throw new AggregateError(errors,'telemetry_control_ci_fixture_owned_cleanup_failed')
@@ -583,7 +584,7 @@ function writerCiProfile(s,base){
  if(settings.groups.some(v=>v.gid===s.workspace.gid)||settings.boot_uids.includes(s.workspace.uid))fail('reserved_identity_collision')
  const passwd=fs.readFileSync('/etc/passwd','utf8').split('\n').filter(Boolean).map(line=>Number(line.split(':')[2]))
  if(settings.boot_uids.some(uid=>passwd.includes(uid)))fail('reserved_uid_already_allocated')
- s.writerSettings=settings;s.writerChildren=new Set();s.writerFiles=new Map();s.writerDirectories=new Map();s.writerMounts=[]
+ s.writerSettings=settings;s.writerChildren=new Set();s.writerFiles=new Map();s.writerDirectories=new Map();s.writerMounts=[];s.writerRowLocks=new Map();s.writerRecordWitnesses=new WeakMap()
  const protocol=s.writerVariant==='v1'?base.protocol:'worker_heartbeat_control_profile_v2'
  s.writerProfile={...base,protocol,...(s.writerVariant==='v2_on'?{writers:settings}:s.writerVariant==='v2_off'?{writers:{enabled:false}}:{})}
  return s.writerProfile
@@ -666,7 +667,7 @@ async function writerCommand(s,c,command,ms=15000){
  const id=randomUUID();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.pending.delete(id);reject(Error('writer_ci_command_timeout'))},ms);c.pending.set(id,{resolve,reject,timer});c.p.send({...command,id})})
 }
 async function writerRows(s){return (await s.telemetry.query("SELECT kind,slot_no::integer,generation::text,last_sequence::text AS sequence,state,reason,to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS observed_at,draining,enabled FROM studio_telemetry.slot_state ORDER BY kind,slot_no")).rows}
-async function writerBackendRows(s){return (await s.telemetry.query("SELECT a.pid,a.backend_start::text AS started,a.usename,r.oid::integer AS role_oid,a.state,a.wait_event_type,a.wait_event,a.query FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND starts_with(a.usename,'studio_telemetry_tx_') ORDER BY a.usename",[s.binding.database_oid])).rows}
+async function writerBackendRows(s){return (await s.telemetry.query("SELECT a.pid,a.backend_start::text AS started,a.usename,r.oid::integer AS role_oid,a.state,a.wait_event_type,a.wait_event,a.query,a.datid::integer AS database_oid,pg_blocking_pids(a.pid) AS blocking_pids FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND starts_with(a.usename,'studio_telemetry_tx_') ORDER BY a.usename",[s.binding.database_oid])).rows}
 async function writerChange(s,changes){
  const d=draft(s,s.currentPolicy.reader.login?'keep':'activate');for(const change of changes){if(!kinds.includes(change.kind)||![1,2].includes(change.slot_no)||!['activate','rotate','retire'].includes(change.action))fail('writer_fixed_change');d.kinds[kinds.indexOf(change.kind)]={kind:change.kind,instrumented:true,enabled:change.action!=='retire'};d.slots.find(v=>v.kind===change.kind&&v.slot_no===change.slot_no).action=change.action}
  const result=await apply(s,await prepare(s,d));return {result,batches:writerDeliveries(s)}
@@ -677,15 +678,146 @@ async function writerNoIo(s){
  assert.equal(writerJournal(s).filter(v=>v.phase.startsWith('writer_')).length,0);assert.equal((await writerBackendRows(s)).length,0)
  return true
 }
+// TEST observations only. Original CI proof/container owns every client/file.
+// These private handles never authorize a Controller/SQL/Worker operation.
+const writerLockIdentitySQL="SELECT pg_backend_pid() AS pid,a.backend_start::text AS started,a.datid::integer AS database_oid,current_user::text AS actor,session_user::text AS login FROM pg_stat_activity a WHERE a.pid=pg_backend_pid()"
+function writerObservationJournal(s){
+ const text=read(paths.store+'/journal.jsonl').toString('utf8');if(!text.endsWith('\n'))fail('writer_ci_journal_incomplete')
+ const records=text.slice(0,-1).split('\n').map(line=>s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),2097152));let previous='0'.repeat(64)
+ for(let i=0;i<records.length;i++){
+  const r=fields(records[i],['format','sequence','previous_sha256','instance_id','epoch','action_id','phase','data','record_sha256']),{record_sha256,...body}=r
+  if(r.format!=='worker_heartbeat_control_journal_v1'||r.sequence!==i||r.previous_sha256!==previous||!uuid(r.instance_id)||!s.contract.controlEpoch(r.epoch)||r.action_id!==null&&!uuid(r.action_id)||!s.contract.controlJournalPhases.includes(r.phase)||!hex(record_sha256)||sha(JSON.stringify(body))!==record_sha256)fail('writer_ci_journal_chain')
+  previous=record_sha256
+ }
+ return records
+}
+async function writerLockIdentity(s,db){
+ const rows=(await db.query(writerLockIdentitySQL)).rows,r=rows[0]
+ if(rows.length!==1||!Number.isInteger(r.pid)||r.pid<1||typeof r.started!=='string'||!r.started||r.started.length>100||r.database_oid!==s.binding.database_oid||r.actor!==s.binding.operator_login||r.login!==s.binding.operator_login)fail('writer_ci_owned_lock_identity')
+ return {pid:r.pid,started:r.started}
+}
+async function writerRowLock(s,kind,slot_no=1){
+ if(!kinds.includes(kind)||![1,2].includes(slot_no))fail('writer_lock_selection')
+ const key=kind+':'+slot_no;if(s.writerRowLocks.has(key))fail('writer_ci_duplicate_owned_lock')
+ const db=await s.telemetry.connect();let begun=false,released=false,releaseError,attempted=false,lease
+ try{
+  await db.query('BEGIN');begun=true;const backend=await writerLockIdentity(s,db)
+  const rows=(await db.query('SELECT kind FROM studio_telemetry.slot_state WHERE kind=$1 AND slot_no=$2 FOR UPDATE',[kind,slot_no])).rows
+  if(rows.length!==1||rows[0].kind!==kind)fail('writer_ci_owned_lock_row')
+  const handle=Object.freeze({async release(){
+   if(attempted){if(releaseError)throw releaseError;if(!released)fail('writer_ci_owned_lock_release_unknown');return}
+   attempted=true
+   try{const result=await db.query('ROLLBACK');if(result.command!=='ROLLBACK')fail('writer_ci_owned_lock_release_unknown');released=true;lease.released=true;s.writerRowLocks.delete(key)}
+   catch(error){releaseError=error;throw error}finally{db.release()}
+  }})
+  lease={kind,slot_no,backend,db,handle,released:false};s.writerRowLocks.set(key,lease);return handle
+ }catch(error){if(begun)try{await db.query('ROLLBACK')}finally{db.release()}else db.release();throw error}
+}
+function writerBoundObservation(s,kind,current,records,allowEnded=false){
+ const role=s.binding.roles.find(r=>r.name==='studio_telemetry_tx_'+kind+'_1')
+ if(!role||!current||current.enabled!==true||!uuid(current.generation))fail('writer_ci_current_generation')
+ const bound=records.filter(r=>r.phase==='writer_backend_bound'&&r.instance_id===s.instance&&r.data.kind===kind&&r.data.slot_no===1&&r.data.generation===current.generation&&r.data.role_oid===role.oid&&r.data.database_oid===s.binding.database_oid)
+ if(bound.length!==1)fail('writer_ci_current_bound_backend')
+ const r=bound[0],d=fields(r.data,['backend_id','kind','slot_no','generation','role_oid','database_oid','backend']),b=fields(d.backend,['pid','started'])
+ if(!uuid(d.backend_id)||!Number.isInteger(b.pid)||b.pid<1||typeof b.started!=='string'||!b.started)fail('writer_ci_bound_backend_identity')
+ if(!allowEnded&&records.some(r=>r.phase==='writer_backend_ended'&&r.instance_id===s.instance&&r.data.backend_id===d.backend_id))fail('writer_ci_record_backend_already_ended')
+ return {instance:s.instance,role_name:role.name,...d,backend:{pid:b.pid,started:b.started},bound_sequence:r.sequence}
+}
+function writerActiveRecordMatches(row,bound,lock){
+ return row.pid===bound.backend.pid&&row.started===bound.backend.started&&row.role_oid===bound.role_oid&&row.database_oid===bound.database_oid&&row.usename===bound.role_name&&row.state==='active'&&row.query==='SELECT studio_telemetry.record($1::text,$2::text,$3::bigint,$4::text,$5::text) AS value'&&row.wait_event_type==='Lock'&&Array.isArray(row.blocking_pids)&&row.blocking_pids.every(pid=>Number.isInteger(pid)&&pid>0)&&row.blocking_pids.includes(lock.backend.pid)
+}
+async function writerWaitRecord(s,kind){
+ if(!kinds.includes(kind))fail('writer_fixed_kind')
+ const lock=s.writerRowLocks.get(kind+':1');if(!lock||lock.released)fail('writer_ci_record_owned_lock_required')
+ const identity=await writerLockIdentity(s,lock.db);if(identity.pid!==lock.backend.pid||identity.started!==lock.backend.started)fail('writer_ci_owned_lock_replaced')
+ const current=(await writerRows(s)).find(r=>r.kind===kind&&r.slot_no===1),initial=writerObservationJournal(s),bound=writerBoundObservation(s,kind,current,initial)
+ let actual,observed
+ await until(async()=>{
+  if(lock.released)fail('writer_ci_record_owned_lock_released')
+  const records=writerObservationJournal(s);if(records.some(r=>r.phase==='writer_backend_ended'&&r.instance_id===bound.instance&&r.data.backend_id===bound.backend_id))fail('writer_ci_record_ended_before_observation')
+  actual=(await writerBackendRows(s)).find(row=>writerActiveRecordMatches(row,bound,lock));if(!actual)return false
+  observed=records.at(-1).sequence;return true
+ },'writer_real_minimal_role_record',10000)
+ const handle=Object.freeze({pid:actual.pid,role_oid:actual.role_oid,login:actual.usename,record_called_as_su:false,observed_data_only:true,authority:false})
+ s.writerRecordWitnesses.set(handle,{bound,lock,observed_head:observed});return handle
+}
+function writerCancellationWitness(s,handle,prepared){
+ const witness=s.writerRecordWitnesses.get(handle),plan=s.plans.get(prepared)
+ if(!witness||!plan||!plan.used||s.lastAction!==plan.summary.action_id||witness.bound.instance!==s.instance)fail('writer_ci_owned_cancellation_witness')
+ return {witness,action:plan.summary.action_id}
+}
+function writerSameEnded(record,bound){
+ if(record.phase!=='writer_backend_ended'||record.instance_id!==bound.instance||record.data.backend_id!==bound.backend_id)return false
+ const d=fields(record.data,['backend_id','kind','slot_no','generation','role_oid','database_oid','backend']),b=fields(d.backend,['pid','started'])
+ if(d.kind!==bound.kind||d.slot_no!==bound.slot_no||d.generation!==bound.generation||d.role_oid!==bound.role_oid||d.database_oid!==bound.database_oid||b.pid!==bound.backend.pid||b.started!==bound.backend.started)fail('writer_ci_ended_backend_mismatch')
+ return true
+}
+async function writerBackendAbsent(s,b){
+ const rows=(await s.telemetry.query("SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND backend_start=$2::timestamptz AND datid=$3::oid) AS exact_gone,NOT EXISTS(SELECT 1 FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$3::oid AND r.oid=$4::oid) AS role_gone",[b.backend.pid,b.backend.started,b.database_oid,b.role_oid])).rows
+ if(rows.length!==1||typeof rows[0].exact_gone!=='boolean'||typeof rows[0].role_gone!=='boolean')fail('writer_ci_backend_absence_shape')
+ return rows[0].exact_gone&&rows[0].role_gone
+}
+async function writerWaitChildCleanup(s,c){
+ if(!s.writerChildren.has(c)||c.mode!=='component'||c.kernelUidVerified!==true||c.selected.length!==1||!c.batch)fail('writer_ci_owned_cleanup_child')
+ const kind=c.selected[0],item=c.batch.items.find(v=>v.kind===kind),records=writerObservationJournal(s),current=(await writerRows(s)).find(r=>r.kind===kind&&r.slot_no===1)
+ if(!item||current?.generation!==item.generation)fail('writer_ci_owned_cleanup_generation')
+ const bound=writerBoundObservation(s,kind,current,records,true),claimed=records.filter(r=>r.phase==='writer_boot_claimed'&&r.instance_id===bound.instance&&r.data.boot_id===c.batch.boot_id&&r.data.uid===c.uid&&r.data.kind===kind&&r.data.slot_no===1&&r.data.generation===bound.generation&&r.data.role_oid===bound.role_oid)
+ if(claimed.length!==1)fail('writer_ci_owned_cleanup_claim')
+ await until(async()=>{
+  const fresh=writerObservationJournal(s),ended=fresh.filter(r=>writerSameEnded(r,bound))
+  if(ended.length>1)fail('writer_ci_owned_cleanup_duplicate_end');if(!ended.length)return false
+  if(ended[0].sequence<=bound.bound_sequence||!await writerBackendAbsent(s,bound))fail('writer_ci_backend_live_after_ended')
+  return true
+ },'writer_previous_owned_cleanup',5000)
+ process.stdout.write(JSON.stringify({event:'genuine_writer_ci_previous_owned_cleanup',matching_bound_and_claimed_backend:true,matching_backend_ended_observed:true,actual_exact_backend_absent:true,actual_role_backend_absent:true,nonroot_uncertain_slot_untouched:true,observed_data_only:true})+'\n')
+ return Object.freeze({observed_data_only:true,authority:false})
+}
+function writerCancellationProgress(records,witness,action){
+ const {bound,lock}=witness;if(lock.released)fail('writer_ci_cancellation_lock_released')
+ const closes=records.filter(r=>r.phase==='closing'&&r.instance_id===bound.instance&&r.action_id===action),ends=records.filter(r=>writerSameEnded(r,bound))
+ if(closes.length>1||ends.length>1)fail('writer_ci_cancellation_duplicate_journal')
+ if(records.some(r=>r.instance_id===bound.instance&&r.action_id===action&&['before_change','commit_pending','commit_acknowledged','publication_pending','published'].includes(r.phase)))fail('writer_ci_mutation_crossed_held_row_lock')
+ if(ends.length&&(!closes.length||ends[0].sequence<=closes[0].sequence))fail('writer_ci_record_ended_before_closing')
+ if(!closes.length||!ends.length)return null
+ if(closes[0].sequence<=witness.observed_head||bound.bound_sequence>witness.observed_head)fail('writer_ci_cancellation_journal_order')
+ return {closing_sequence:closes[0].sequence,ended_sequence:ends[0].sequence,observed_head:records.at(-1).sequence}
+}
+async function writerCancellationAbsent(s,handle,prepared){
+ const {witness,action}=writerCancellationWitness(s,handle,prepared),records=writerObservationJournal(s),progress=writerCancellationProgress(records,witness,action)
+ if(!progress)return false
+ if(!await writerBackendAbsent(s,witness.bound))fail('writer_ci_backend_live_after_ended')
+ if(witness.lock.released)fail('writer_ci_cancellation_lock_released')
+ const fresh=writerObservationJournal(s),checked=writerCancellationProgress(fresh,witness,action)
+ if(!checked||checked.closing_sequence!==progress.closing_sequence||checked.ended_sequence!==progress.ended_sequence)fail('writer_ci_cancellation_observation_changed')
+ witness.absence={...checked,action}
+ process.stdout.write(JSON.stringify({event:'genuine_writer_ci_cancellation_absence',active_owned_backend_observed:true,owned_lock_blocker_observed:true,closing_before_ended:true,actual_exact_backend_absent:true,actual_role_backend_absent:true,own_row_lock_held:true,published:false,observed_data_only:true})+'\n')
+ return true
+}
+function writerAssertCancellationPublished(s,handle,prepared,result){
+ const {witness,action}=writerCancellationWitness(s,handle,prepared),a=witness.absence
+ if(!a||a.action!==action||!witness.lock.released||result.action_id!==action||result.publication_completed!==true)fail('writer_ci_cancellation_absence_required')
+ const records=writerObservationJournal(s),phases=['closing','readers_clean','before_change','material_staged','commit_pending','commit_acknowledged','after_verified','old_connections_retired','publication_pending','published'],selected=Object.create(null)
+ for(const phase of phases){const rows=records.filter(r=>r.instance_id===witness.bound.instance&&r.action_id===action&&r.phase===phase);if(rows.length!==1)fail('writer_ci_cancellation_publication_phase');selected[phase]=rows[0]}
+ const ends=records.filter(r=>writerSameEnded(r,witness.bound));if(ends.length!==1||ends[0].sequence!==a.ended_sequence||selected.closing.sequence!==a.closing_sequence)fail('writer_ci_cancellation_publication_backend')
+ if(!(witness.bound.bound_sequence<=witness.observed_head&&witness.observed_head<selected.closing.sequence&&selected.closing.sequence<ends[0].sequence&&ends[0].sequence<=a.observed_head&&a.observed_head<selected.before_change.sequence&&ends[0].sequence<selected.readers_clean.sequence&&selected.readers_clean.sequence<selected.before_change.sequence))fail('writer_ci_cancellation_publication_order')
+ for(let i=2;i<phases.length-1;i++)if(selected[phases[i]].sequence>=selected[phases[i+1]].sequence)fail('writer_ci_cancellation_publication_order')
+ if(selected.published.epoch!==result.epoch)fail('writer_ci_cancellation_publication_epoch')
+ process.stdout.write(JSON.stringify({event:'genuine_writer_ci_cancellation_publication',closing_before_owned_backend_ended:true,actual_absence_before_write:true,actual_absence_before_publication:true,original_mutation_acknowledged:true,observed_data_only:true})+'\n')
+ return Object.freeze({observed_data_only:true,authority:false})
+}
+
 function writerCiApi(s){return Object.freeze({
  kinds:Object.freeze([...kinds]),variant:s.writerVariant,
  change:changes=>writerChange(s,changes),deliveries:()=>writerDeliveries(s),rows:()=>writerRows(s),backends:()=>writerBackendRows(s),journal:()=>writerJournal(s).filter(r=>r.phase.startsWith('writer_')).map(r=>({phase:r.phase,instance_id:r.instance_id,data:r.data})),
  launch:options=>launchWriter(s,options),command:(c,command,ms)=>writerCommand(s,c,command,ms),stop:c=>writerStop(s,c),noIo:()=>writerNoIo(s),
- async rowLock(kind,slot_no=1){if(!kinds.includes(kind)||![1,2].includes(slot_no))fail('writer_lock_selection');const db=await s.telemetry.connect();await db.query('BEGIN');await db.query('SELECT kind FROM studio_telemetry.slot_state WHERE kind=$1 AND slot_no=$2 FOR UPDATE',[kind,slot_no]);let done=false;return Object.freeze({async release(){if(done)return;done=true;try{await db.query('ROLLBACK')}finally{db.release()}}})},
+ rowLock:(kind,slot_no=1)=>writerRowLock(s,kind,slot_no),
  async tableLock(){const db=await s.telemetry.connect();await db.query('BEGIN');await db.query('LOCK TABLE studio_telemetry.slot_state IN ACCESS EXCLUSIVE MODE');let done=false;return Object.freeze({async release(){if(done)return;done=true;try{await db.query('ROLLBACK')}finally{db.release()}}})},
  async waitBindBlocked(){await until(async()=>(await s.telemetry.query("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock' AND query LIKE 'SELECT k.instrumented,%') AS held",[s.controlBackend.pid])).rows[0].held,'writer_actual_bind_guard_blocked',10000);return true},
  async prepareRotate(kind){if(!kinds.includes(kind))fail('writer_fixed_kind');const d=draft(s);d.slots.find(v=>v.kind===kind&&v.slot_no===1).action='rotate';return prepare(s,d)},
- async waitWriterRecord(kind){let actual;await until(async()=>{actual=(await writerBackendRows(s)).find(r=>r.usename==='studio_telemetry_tx_'+kind+'_1'&&r.query==='SELECT studio_telemetry.record($1::text,$2::text,$3::bigint,$4::text,$5::text) AS value'&&r.wait_event_type==='Lock');return actual},'writer_real_minimal_role_record',10000);return {pid:actual.pid,role_oid:actual.role_oid,login:actual.usename,record_called_as_su:false}},
+ waitWriterRecord:kind=>writerWaitRecord(s,kind),
+ waitChildCleanup:child=>writerWaitChildCleanup(s,child),
+ cancellationAbsent:(witness,prepared)=>writerCancellationAbsent(s,witness,prepared),
+ assertCancellationPublished:(witness,prepared,result)=>writerAssertCancellationPublished(s,witness,prepared,result),
  async waitReady(selected,ms=130000){await until(async()=>{const rows=await writerRows(s);return selected.every(kind=>{const row=rows.find(v=>v.kind===kind&&v.slot_no===1);return row?.state==='ready'&&Number(row.sequence)>=2})},'writer_actual_ready_rows',ms);return true},
  async kernelAccess({selected,batch,groups,native=false,extraBatches=[]}){const child=await launchWriter(s,{selected,mode:'access',batch,access:groups,native,extraBatches});await until(()=>child.messages.some(v=>v.event==='kernel_access'),'writer_real_access_result',10000);const result=child.messages.find(v=>v.event==='kernel_access');assert.equal(result.uid,child.uid);await writerStop(s,child);return result},
  async restartServing(){await stopProcess(s,s.control);await removeSockets(s);await writerRemoveSockets(s);await startController(s);const status=await rpc(s,{op:'inspect'});if(status.phase!=='closed')fail('writer_restart_closed');await apply(s,await prepare(s,draft(s,'keep')));return rpc(s,{op:'inspect'})},

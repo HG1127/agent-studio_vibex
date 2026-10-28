@@ -63,19 +63,20 @@ try{
   const child=bound[0],result=await fixture.writer.command(child,{op:'late_report',sequence:2},12000)
   assert.equal(result.ok,true);assert.ok(result.actual_block_ms>=6500);assert.equal(result.settled,false);assert.equal(result.snapshot.lifecycle,'closed');assert.equal(result.snapshot.io,'uncertain');const before=await row('prepare');assert.equal(before.sequence,'2')
   assert.equal((await fixture.writer.command(child,{op:'report',sequence:3})).ok,false);assert.equal((await fixture.writer.command(child,{op:'rebind'})).ok,false);assert.deepEqual(await row('prepare'),before)
+  activeStage='previous_owned_cleanup';await fixture.writer.waitChildCleanup(child);activeStage=null
  })
  await check('actual_mutation_cancels_inflight_record_and_observes_owned_backend_absence_before_publication',async()=>{
   activeStage='prepare_rotation';const prepared=await fixture.writer.prepareRotate('model')
   activeStage='acquire_row_lock';const hold=await fixture.writer.rowLock('model'),child=bound[1]
-  activeStage='dispatch_record';const pending=fixture.writer.command(child,{op:'report',sequence:2},8000).catch(()=>({test_control_reply_missing:true}));let mutation
+  activeStage='dispatch_record';const pending=fixture.writer.command(child,{op:'report',sequence:2},8000).catch(()=>({test_control_reply_missing:true}));let mutation,witness
   try{
-   activeStage='observe_record_lock';await fixture.writer.waitWriterRecord('model')
+   activeStage='observe_record_lock';witness=await fixture.writer.waitWriterRecord('model')
    activeStage='apply_mutation';mutation=fixture.apply(prepared)
    void mutation.catch(error=>{const rawCode=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_mutation_rejected',stage:'apply_mutation',code:controlErrorCodes.includes(rawCode)?rawCode:null})+'\n')})
-   activeStage='observe_backend_absence';await until(async()=>!(await fixture.writer.backends()).some(v=>v.usename==='studio_telemetry_tx_model_1'),'mutating_writer_actual_backend_gone',5000)
+   activeStage='observe_backend_absence';await until(()=>fixture.writer.cancellationAbsent(witness,prepared),'mutating_writer_actual_backend_gone',5000)
    activeStage='snapshot_before_unlock';assert.equal((await fixture.writer.command(child,{op:'snapshot'})).snapshot.io,'uncertain')
   }finally{const priorStage=activeStage;activeStage='release_row_lock';await hold.release();activeStage=priorStage}
-  activeStage='await_mutation';const result=await mutation;activeStage='verify_publication';assert.equal(result.publication_completed,true)
+  activeStage='await_mutation';const result=await mutation;activeStage='verify_publication';assert.equal(result.publication_completed,true);fixture.writer.assertCancellationPublished(witness,prepared,result)
   activeStage='snapshot_after_mutation';assert.equal((await fixture.writer.command(child,{op:'snapshot'})).snapshot.io,'uncertain')
   activeStage='verify_reset_sequence';assert.equal((await row('model')).sequence,'0')
   activeStage='await_pending_reply';await pending;activeStage=null
@@ -124,7 +125,7 @@ try{
  await check('actual_final_owned_backend_absence_and_unchanged_empty_business_queues',async()=>{await fixture.writer.final();assert.deepEqual(await fixture.writer.businessCounts(),{jobs:0,runs:0,reviews:0,queries:0});await fixture.final()})
 }catch(error){
  failed=true;process.exitCode=1;const rawCode=Object.getOwnPropertyDescriptor(error??{},'code')?.value
- const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply'].includes(activeStage)?activeStage:null
+ const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['previous_owned_cleanup','prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply'].includes(activeStage)?activeStage:null
  process.stderr.write(JSON.stringify({event:'genuine_writer_ci_failed',case:activeCase,stage,code,completed_cases:passed,message:/^(writer_ci_|telemetry_control_ci_fixture_refused:)/.test(String(error?.message))?String(error.message).slice(0,180):'runtime_assertion_failed',production_cutover_allowed:false})+'\n')
 }
 finally{try{await closeFixture()}catch{failed=true;process.exitCode=1;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_failed'})+'\n')}process.stdout.write(JSON.stringify({event:'genuine_writer_ci_summary',passed,failed,owned_cleanups:cleanupPassed,production_cutover_allowed:false,synthetic_only:true,real_execution_required:true})+'\n')}

@@ -46,6 +46,9 @@ import {AgentReviewSourceRepository} from "./agent-review-source.ts"
 import {AgentDesignLedgerRepository} from "./agent-design-ledger.ts"
 import {createAgentDesignHttpHandler} from "./agent-design-http.ts"
 import {selectNativeAgentDesignCapabilities,loadAgentDesignAuditVerifier,inspectAgentDesignApiPool,type AgentDesignAuditVerifier} from "./agent-design-runtime-policy.ts"
+import {AgentTemplateMarketRepository} from "./agent-template-market-repository.ts"
+import {createAgentTemplateMarketHttpHandler} from "./agent-template-market-http.ts"
+import {selectNativeAgentTemplateMarketCapabilities,loadAgentTemplateMarketAuditVerifier,inspectAgentTemplateMarketApiPool,type AgentTemplateMarketAuditVerifier} from "./agent-template-market-runtime-policy.ts"
 import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
@@ -325,6 +328,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const capabilities=selectNativePg18UatCapabilities(
     env,listen,cfg.allowedOrigin)
   const agentDesign=selectNativeAgentDesignCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const templateMarket=selectNativeAgentTemplateMarketCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
@@ -445,6 +449,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     // Default-off performs no new auditor import, SQL, credential read or network.
     let agentDesignAudit:AgentDesignAuditVerifier|undefined
     if(agentDesign.available){agentDesignAudit=await loadAgentDesignAuditVerifier();await inspectAgentDesignApiPool(business,agentDesignAudit)}
+    let templateMarketAudit:AgentTemplateMarketAuditVerifier|undefined
+    if(templateMarket.available){templateMarketAudit=await loadAgentTemplateMarketAuditVerifier();await inspectAgentTemplateMarketApiPool(business,templateMarketAudit)}
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -491,6 +497,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
       allowAgentDesign:agentDesign.available,allowAgentDesignSubmissions:agentDesign.submissions,allowAgentDesignSaves:agentDesign.saves,
+      allowAgentTemplateMarket:templateMarket.available,allowAgentTemplateMarketWrites:templateMarket.writes,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
@@ -591,10 +598,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
       repository:new AgentDesignLedgerRepository(business,{audit:agentDesignAudit,allowSubmissions:agentDesign.submissions,allowSaves:agentDesign.saves}),
     }):null
     const guardedBusinessHandler=businessHandler
+    const templateMarketHttp=templateMarket.available?createAgentTemplateMarketHttpHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      repository:new AgentTemplateMarketRepository(business,{available:true,allowWrites:templateMarket.writes,verifyCredentials:templateMarketAudit}),
+    }):null
     businessHandler=async(req,res)=>{
       // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
       // and original-receipt gates, including recovery after new writes turn off.
       if(agentDesignHttp&&await agentDesignHttp(req,res))return
+      if(templateMarketHttp&&await templateMarketHttp(req,res))return
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }
