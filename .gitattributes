@@ -212,3 +212,7 @@ services/pg-api/tests/knowledge-assessment-claim-admission-tcp.integration.mjs t
 # Genuine V2/autonomous and scheduler transaction admission probes
 services/pg-api/tests/helpers/workflow-v2-schedule-claim-admission-ci.mjs text eol=lf
 services/pg-api/tests/workflow-v2-schedule-claim-admission-tcp.integration.mjs text eol=lf
+
+# Genuine nonempty knowledge consent/digest/fenced claim probes
+services/pg-api/tests/helpers/knowledge-nonempty-claim-admission-ci.mjs text eol=lf
+services/pg-api/tests/knowledge-nonempty-claim-admission-tcp.integration.mjs text eol=lf
