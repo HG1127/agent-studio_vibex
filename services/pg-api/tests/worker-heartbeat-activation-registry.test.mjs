@@ -252,5 +252,14 @@ test('source retains old pins and constructs no connection/authority/transaction
  ['../src/worker-heartbeat-activated-audit-core.ts','ba670a1722b241781f6cd28b85bbd571ff1919bac47e5f1ebca090ddfcff28b5'],
  ['../../../db/postgres/telemetry/001_worker_heartbeats.sql','5ed1080d9f7b651ea2ae7fceca09db7f61c679f107e196df13ae201a8f99505f']])assert.equal(sha(readFileSync(new URL(path,import.meta.url))),expected)
 })
+test('the original observation is required to detect active sequence rollback across a read',async()=>{
+ const f=fixture(true);report(f,2);const prior=await inspectF(f)
+ report(f,1)
+ await assert.rejects(inspect(f.db,f.access.read,prior),refused)
+ // A fresh policy comparison has no historical checkpoint. This is why the
+ // controller must forward its original private observation at finalization.
+ const fresh=await inspectF(f);assert.equal(describe(fresh).policy_sha256,describe(prior).policy_sha256)
+ await assert.rejects(inspect(f.db,f.access.read,structuredClone(prior)),refused)
+})
 
 

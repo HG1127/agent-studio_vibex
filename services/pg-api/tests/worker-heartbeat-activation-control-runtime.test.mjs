@@ -253,7 +253,7 @@ test('approval verification and durable digest use one captured buffer across at
   await exercise(A,true)
   const invalid=JSON.parse(A.toString());invalid.payload.actor='unsigned_actor';await exercise(Buffer.from(JSON.stringify(invalid)),false)
 })
-test('final read audit passes the actual policy rather than the private observation handle',async()=>{
+test('final read audit retains the private prior observation for Registry progression checks',async()=>{
   // Pure execution of the actual function body with explicit local state
   // doubles. No genuine lease, policy authority, controller or DB is minted.
   const source=readFileSync(new URL('../src/worker-heartbeat-activation-control.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('control.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
@@ -265,9 +265,91 @@ test('final read audit passes the actual policy rather than the private observat
   let audits=0
   const context={Date,state:v=>{assert.equal(v,control);return s},peer:(v,p,kind)=>{assert.equal(v,s);assert.equal(p,peerHandle);assert.equal(kind,'reader');return owner},leaseStates,finishedStates,
     leaseCheck:(value,phase)=>{assert.equal(value,l);assert.equal(value.phase,phase)},serial:async(v,job)=>{assert.equal(v,s);return job()},
-    inspectRegistry:async(v,p,read)=>{audits++;assert.equal(v,s);assert.equal(p,policy);assert.notEqual(p,begin);assert.equal(read,l);return end},observedSha:()=>digest,
+    inspectRegistry:async(v,p,read)=>{audits++;assert.equal(v,s);assert.equal(p,begin);assert.notEqual(p,policy);assert.equal(read,l);return end},observedSha:()=>digest,
     empty:()=>Object.freeze(Object.create(null)),controlFail,WorkerHeartbeatControlError:Error,revoke:()=>assert.fail('valid final audit revoked'),cleanupLease:()=>assert.fail('valid final audit cleaned as failure')}
   vm.runInNewContext(code,context,{timeout:1000});const finished=await context.subject(control,peerHandle,leaseHandle)
   assert.equal(audits,1);assert.equal(l.phase,'finished');assert.equal(l.clean,true);assert.equal(finishedStates.get(finished),l)
 })
+test('each synchronous access guard runs full verification once and preserves lease/state/write refusals',()=>{
+  // Actual source bodies, with explicit pure-model state and runtime counters.
+  // No real private capability, SQL query, filesystem or loader is admitted.
+  const source=readFileSync(new URL('../src/worker-heartbeat-activation-control.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('control.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+  const names=['assertWorkerHeartbeatControlDbAccess','leaseCheck','runtimeCheck'],text=names.map(name=>{const n=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n);return n.getText(tree).replace(/^export /,'')}).join('\n')
+  const code=ts.transpileModule(text+'\nglobalThis.subject=assertWorkerHeartbeatControlDbAccess;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  let scans=0;const cap={},db={},permit={},dbAccesses=new WeakMap(),s={healthy:true,phase:'serving',epoch:7n,runtimeCap:cap,runtime:{assertWorkerHeartbeatActivationControlRuntime:v=>{assert.equal(v,cap);scans++}}}
+  const lease={s,peer:{open:true},phase:'preparing',epoch:7n,deadline:performance.now()+60000},a={active:true,db,s,mode:'read',lease,leasePhase:'preparing'};dbAccesses.set(permit,a)
+  const context={performance,dbAccesses,controlFail,host:()=>{},revoke:v=>{assert.equal(v,lease);v.phase='revoked'}}
+  vm.runInNewContext(code,context,{timeout:1000})
+  const accepted=mode=>{const before=scans;context.subject(db,permit,mode);assert.equal(scans-before,1)}
+  const refused=(job,pattern)=>assert.throws(job,pattern)
+  accepted('read');accepted('read')
+  lease.s={...s};refused(()=>context.subject(db,permit,'read'),/untrusted_reference/);lease.s=s
+  lease.peer.open=false;refused(()=>context.subject(db,permit,'read'),/lease_revoked/);lease.peer.open=true
+  lease.deadline=performance.now()-1;refused(()=>context.subject(db,permit,'read'),/lease_expired/);lease.deadline=performance.now()+60000;lease.phase='preparing'
+  s.healthy=false;refused(()=>context.subject(db,permit,'read'),/control_closed/);s.healthy=true
+  a.lease=undefined;a.leasePhase=undefined;accepted('read')
+  refused(()=>context.subject(db,permit,'write'),/untrusted_reference/)
+  Object.assign(a,{mode:'write',beforeChange:true,allLocked:true,epoch:7n,expires:performance.now()+60000});s.phase='applying';accepted('write')
+  a.epoch=6n;refused(()=>context.subject(db,permit,'write'),/untrusted_reference/);a.epoch=7n
+  a.expires=performance.now()-1;refused(()=>context.subject(db,permit,'write'),/untrusted_reference/)
+  refused(()=>context.subject({},permit,'read'),/untrusted_reference/);refused(()=>context.subject(db,{},'read'),/untrusted_reference/)
+})
+
+
+// BEGIN additive fresh-byte performance regression section. Keep parent-owned
+// approval/finalization tests when applying this section to a newer H suite.
+function runtimeBytePolicy(read){
+  const source=readFileSync(new URL('../src/worker-heartbeat-activation-control-runtime.mjs',import.meta.url),'utf8')
+  const tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
+  const functions=['fail','assertUtf8Bytes','utf8','readExactBoundBytes'].map(name=>{
+    const matches=tree.statements.filter(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.equal(matches.length,1);return matches[0].getText()
+  }).join('\n')
+  const require=createRequire(import.meta.url),{isUtf8}=require('node:buffer')
+  // Exact private production bodies, isolated BYTE policies only. These local
+  // functions cannot register a production runtime/source/cache capability.
+  return Function('readSync','isUtf8',functions+'\nreturn {assertUtf8Bytes,utf8,readExactBoundBytes}')(read,isUtf8)
+}
+test('native UTF8 byte validation preserves strict legacy acceptance without decoding code buffers',()=>{
+  const p=runtimeBytePolicy(()=>assert.fail('UTF8 validation must not read'))
+  const legacy=(raw,max)=>{const b=typeof raw==='string'?Buffer.from(raw):raw instanceof Uint8Array?Buffer.from(raw):undefined;if(!b||!b.length||b.length>max)throw Error('legacy_refused');const t=b.toString('utf8');if(t.startsWith('\uFEFF')||t.includes('\0')||!Buffer.from(t).equals(b)||typeof raw==='string'&&raw!==t)throw Error('legacy_refused');return t}
+  const inputs=['ASCII code','中文🙂','\ufffd','a\ufeffb','\ufeffbad','nul\0bad','\ud800','\udfff','',
+    Buffer.from([0x80]),Buffer.from([0xc0,0x80]),Buffer.from([0xc3]),Buffer.from([0xe2,0x28,0xa1]),Buffer.from([0xed,0xa0,0x80]),Buffer.from([0xed,0xbf,0xbf]),Buffer.from([0xf4,0x90,0x80,0x80]),Buffer.from([0xff]),Buffer.from([0xef,0xbb,0xbf,65]),Buffer.from([0,65]),Buffer.from([65,0]),Buffer.from([65]),Buffer.from('actual UTF8 \ufffd')]
+  for(const raw of inputs)for(const max of [1,4,1024]){
+    let expected,refused=false;try{expected=legacy(raw,max)}catch{refused=true}
+    if(refused)assert.throws(()=>p.utf8(raw,max),/runtime_refused/)
+    else assert.equal(p.utf8(raw,max),expected)
+  }
+  const source=readFileSync(new URL('../src/worker-heartbeat-activation-control-runtime.mjs',import.meta.url),'utf8'),tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
+  const validator=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='assertUtf8Bytes').getText()
+  assert.doesNotMatch(validator,/\.toString\(|Buffer\.from\(|Buffer\.concat\(/)
+  assert.match(validator,/isUtf8\(bytes\)/);assert.match(validator,/bytes\.includes\(0\)/)
+  assert.throws(()=>assertWorkerHeartbeatActivationControlRuntime(p),/runtime_refused/)
+})
+test('fresh preallocated FD reads handle short reads, EOF, growth, truncation and real file changes without stale byte reuse',()=>{
+  const bytes=Buffer.from('actual code 中文'),trace=[]
+  const read=(fd,target,offset,length,position)=>{assert.equal(fd,9);trace.push({offset,length,position});const n=Math.min(2,length,bytes.length-position);if(n>0)bytes.copy(target,offset,position,position+n);return n}
+  const p=runtimeBytePolicy(read),first=p.readExactBoundBytes(9,bytes.length)
+  assert.deepEqual(first,bytes);assert.equal(first.length,bytes.length);assert.equal(trace.at(-1).position,bytes.length);assert.equal(trace.at(-1).length,1)
+  bytes[0]=98;assert.deepEqual(p.readExactBoundBytes(9,bytes.length),bytes);assert.notEqual(first[0],bytes[0])
+  assert.throws(()=>p.readExactBoundBytes(9,bytes.length-1),/runtime_refused/)
+  assert.throws(()=>p.readExactBoundBytes(9,bytes.length+1),/runtime_refused/)
+  assert.throws(()=>runtimeBytePolicy(()=>-1).readExactBoundBytes(9,1),/runtime_refused/)
+  assert.throws(()=>runtimeBytePolicy((_fd,_target,_offset,length)=>length+1).readExactBoundBytes(9,1),/runtime_refused/)
+  const require=createRequire(import.meta.url),fs=require('node:fs'),base=path.resolve(tmpdir()),dir=fs.mkdtempSync(path.join(base,'telemetry-control-runtime-bytes-')),file=path.join(dir,'owned-code.js')
+  try{
+    fs.writeFileSync(file,Buffer.from('first content'));const actual=runtimeBytePolicy(fs.readSync),fd=fs.openSync(file,fs.constants.O_RDONLY)
+    try{assert.equal(actual.readExactBoundBytes(fd,13).toString(),'first content');fs.writeFileSync(file,'other content');assert.equal(actual.readExactBoundBytes(fd,13).toString(),'other content');fs.writeFileSync(file,'longer content');assert.throws(()=>actual.readExactBoundBytes(fd,13),/runtime_refused/);fs.writeFileSync(file,'short');assert.throws(()=>actual.readExactBoundBytes(fd,13),/runtime_refused/)}finally{fs.closeSync(fd)}
+  }finally{const resolved=path.resolve(dir);assert.ok(resolved.startsWith(base+path.sep)&&path.basename(resolved).startsWith('telemetry-control-runtime-bytes-'));fs.rmSync(resolved,{recursive:true,force:true})}
+})
+test('byte-pipeline optimization leaves full fresh hash, FD/path/ancestor and cache checks in every assertion',()=>{
+  const source=readFileSync(new URL('../src/worker-heartbeat-activation-control-runtime.mjs',import.meta.url),'utf8'),tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
+  const body=name=>tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText()
+  const reader=body('readBound'),exact=body('readExactBoundBytes'),verify=body('verifyTree')
+  assert.match(exact,/Buffer\.allocUnsafe\(size\+1\)/);assert.doesNotMatch(exact,/Buffer\.from\(|Buffer\.concat\(|\.toString\(/)
+  for(const text of ['ancestors(file,kind===\'manifest\')','before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','stamp(fstatSync(fd))','stamp(lstatSync(file))','sha(bytes)!==expected','assertUtf8Bytes(bytes','closeSync(fd)'])assert.ok(reader.includes(text),text)
+  assert.equal((reader.match(/ancestors\(file,/g)||[]).length,2)
+  for(const text of ['host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)','readBound(state.manifestFile','readBound(path.join(root,\'services/pg-api/pnpm-lock.yaml\')','readdirSync','readBound(actual,record.sha256','assertWorkerHeartbeatActivationControlRuntimeInventory','packageInfo(state,name)','cacheCheck(state)'])assert.ok(verify.includes(text),text)
+  assert.ok(body('assertWorkerHeartbeatActivationControlRuntime').includes('try{verifyTree(state)}catch(error){state.failed=true;throw error}'))
+})
+// END additive fresh-byte performance regression section.
 

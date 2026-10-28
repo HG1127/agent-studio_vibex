@@ -79,7 +79,13 @@ async function target(raw:Client,b:Binding):Promise<Backend>{const r=(await raw.
 function connection(s:Pick<State,'binding'|'operatorPassword'>){return {host:s.binding.server_addr,port:s.binding.server_port,database:s.binding.database,user:s.binding.operator_login,password:s.operatorPassword,ssl:false as const,options:'',connectionTimeoutMillis:2000,statement_timeout:10000,query_timeout:12000}}
 function facade(raw:Client|PoolClient):SqlClient{const db:SqlClient={async query<Row=Record<string,unknown>>(sql:string,values:unknown[]=[]){const token=facadeAccesses.get(db),a=token&&dbAccesses.get(token);if(!token||!a||a.raw!==raw)controlFail('untrusted_reference');assertWorkerHeartbeatControlDbAccess(db,token,a.mode);const result=await raw.query(sql,values);assertWorkerHeartbeatControlDbAccess(db,token,a.mode);return result as unknown as QueryResult<Row>},release(){controlFail('untrusted_reference')}};return db}
 function access(s:State,raw:Client|PoolClient,db:SqlClient,mode:'read'|'write'):ControlDbAccess{if(facadeAccesses.has(db))controlFail('control_busy');const token=empty<ControlDbAccess>(),a={s,raw,db,mode,active:true,beforeChange:false,allLocked:false};dbAccesses.set(token,a);facadeAccesses.set(db,token);s.accesses.add(a);return token}
-export function assertWorkerHeartbeatControlDbAccess(db:SqlClient,permit:ControlDbAccess,mode:'read'|'write'):void{const a=dbAccesses.get(permit);if(!a||!a.active||a.db!==db||!['read','write'].includes(mode)||mode==='write'&&(!a.s.healthy||a.mode!=='write'||!a.beforeChange||!a.allLocked||a.s.phase!=='applying'||a.epoch!==a.s.epoch||a.expires===undefined||performance.now()>=a.expires))controlFail('untrusted_reference');if(a.lease&&a.leasePhase)leaseCheck(a.lease,a.leasePhase);a.s.runtime.assertWorkerHeartbeatActivationControlRuntime(a.s.runtimeCap)}
+export function assertWorkerHeartbeatControlDbAccess(db:SqlClient,permit:ControlDbAccess,mode:'read'|'write'):void{
+ const a=dbAccesses.get(permit);if(!a||!a.active||a.db!==db||!['read','write'].includes(mode)||mode==='write'&&(!a.s.healthy||a.mode!=='write'||!a.beforeChange||!a.allLocked||a.s.phase!=='applying'||a.epoch!==a.s.epoch||a.expires===undefined||performance.now()>=a.expires))controlFail('untrusted_reference')
+ // leaseCheck synchronously performs the complete source/runtime check. There
+ // is no await or external callback between it and the former duplicate scan.
+ if(a.lease&&a.leasePhase){if(a.lease.s!==a.s)controlFail('untrusted_reference');leaseCheck(a.lease,a.leasePhase)}
+ else a.s.runtime.assertWorkerHeartbeatActivationControlRuntime(a.s.runtimeCap)
+}
 function invalidateAccess(s:State,token:ControlDbAccess){const a=dbAccesses.get(token);if(a){a.active=false;s.accesses.delete(a);dbAccesses.delete(token);if(facadeAccesses.get(a.db)===token)facadeAccesses.delete(a.db)}}
 function observedSha(s:State,value:RegistryObservation){const v=s.registry.describeWorkerHeartbeatRegistry(value);return controlSha(JSON.stringify([v.policy_sha256,v.private_material_sha256]))}
 async function managementCatalog(s:State,db:SqlClient,policy:unknown){
@@ -196,7 +202,7 @@ export async function finalizeWorkerHeartbeatControlRead(control:Control,p:Reade
  const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference')
  leaseCheck(l,'pending');l.phase='finalizing'
  try{
-  await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,s.policy,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
+  await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,l.begin,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
   leaseCheck(l,'finalizing')
   if(l.client&&!l.released){if(l.clientError)l.client.off('error',l.clientError);l.client.release();l.released=true}if(l.queryPending||l.transaction)controlFail('reader_cleanup_unknown');l.clean=true
   const finished=empty<FinishedRead>();l.phase='finished';l.finished=finished;finishedStates.set(finished,l);return finished

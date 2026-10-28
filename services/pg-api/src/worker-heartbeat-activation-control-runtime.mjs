@@ -4,6 +4,7 @@ import {lstatSync,realpathSync,openSync,fstatSync,readSync,closeSync,readdirSync
 import path from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {createHash} from 'node:crypto'
+import {isUtf8} from 'node:buffer'
 import {createRequire,registerHooks,isBuiltin,getCompileCacheDir} from 'node:module'
 import {assertWorkerHeartbeatActivationControlSources} from './worker-heartbeat-activation-control-source.mjs'
 
@@ -47,12 +48,17 @@ function closed(v,keys){
   if(keys.some(k=>!d[k]||!('value'in d[k])||!d[k].enumerable))fail()
   return v
 }
+function assertUtf8Bytes(bytes,max){
+  if(!Buffer.isBuffer(bytes)||!bytes.length||bytes.length>max||
+    bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf||bytes.includes(0)||!isUtf8(bytes))fail()
+}
 function utf8(raw,max){
   const b=typeof raw==='string'?Buffer.from(raw):raw instanceof Uint8Array?Buffer.from(raw):undefined
-  if(!b||!b.length||b.length>max)fail()
-  const t=b.toString('utf8')
-  if(t.startsWith('\uFEFF')||t.includes('\0')||!Buffer.from(t).equals(b)||typeof raw==='string'&&raw!==t)fail()
-  return t
+  assertUtf8Bytes(b,max)
+  const text=b.toString('utf8')
+  // A JS string may contain an unpaired surrogate that Buffer.from replaced.
+  if(typeof raw==='string'&&raw!==text)fail()
+  return text
 }
 // Independent strict JSON reader; importing CLI here would form an entry cycle.
 function json(raw){
@@ -143,6 +149,14 @@ function ancestors(file,privateParent=false){
   return chain
 }
 function sameChain(a,b){if(a.length!==b.length||a.some((v,i)=>Object.keys(v).some(k=>v[k]!==b[i][k])))fail()}
+function readExactBoundBytes(fd,size){
+  // Read the current FD afresh, including one extra byte/EOF probe. The view
+  // never exposes the uninitialized tail; growth/truncation still fail closed.
+  const allocation=Buffer.allocUnsafe(size+1);let offset=0
+  while(offset<=size){const length=size+1-offset,n=readSync(fd,allocation,offset,length,offset);if(!Number.isInteger(n)||n<0||n>length)fail();if(!n)break;offset+=n;if(offset>size)fail()}
+  if(offset!==size)fail()
+  return allocation.subarray(0,offset)
+}
 function readBound(file,expected,kind,expectedBytes){
   const chain=ancestors(file,kind==='manifest'),before=lstatSync(file)
   assertWorkerHeartbeatActivationControlRuntimeMetadata(meta(before),kind)
@@ -150,12 +164,10 @@ function readBound(file,expected,kind,expectedBytes){
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
   try{
     assertWorkerHeartbeatActivationControlRuntimeStable(stamp(before),stamp(fstatSync(fd)))
-    const chunks=[],chunk=Buffer.alloc(65536);let offset=0
-    while(offset<=before.size){const n=readSync(fd,chunk,0,Math.min(chunk.length,before.size+1-offset),offset);if(!n)break;offset+=n;if(offset>before.size)fail();chunks.push(Buffer.from(chunk.subarray(0,n)))}
-    const bytes=Buffer.concat(chunks)
+    const bytes=readExactBoundBytes(fd,before.size)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
     assertWorkerHeartbeatActivationControlRuntimeStable(stamp(before),stamp(fstatSync(fd)));assertWorkerHeartbeatActivationControlRuntimeStable(stamp(before),stamp(lstatSync(file)))
-    sameChain(chain,ancestors(file,kind==='manifest'));utf8(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
+    sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
     return {bytes,stamp:stamp(before),chain}
   }finally{closeSync(fd)}
 }

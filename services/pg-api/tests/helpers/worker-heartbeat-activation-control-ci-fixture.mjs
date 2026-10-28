@@ -93,7 +93,7 @@ async function preauditManagement(s){
  // A separate genuine read-only catalog check, not a controller DbAccess,
  // runtime capability or registry observation. Query results are never adapted.
  const {verifyWorkerHeartbeatManagementCatalog}=await import(pathToFileURL(s.stage.controlRoot+'/services/pg-api/src/worker-heartbeat-management-audit.ts').href)
- const raw=await s.telemetry.connect();let last='none',queries=0,active=false
+ const raw=await s.telemetry.connect();let last='none',queries=0,active=false,primary,cleanup,rollbackKnown=false
  try{
   const address=(await raw.query('SELECT inet_server_addr()::text AS inet_text,host(inet_server_addr()) AS host_text')).rows[0]
   if(address.host_text!=='127.0.0.1'||address.inet_text!=='127.0.0.1/32')fail('actual_inet_address_representation')
@@ -104,8 +104,14 @@ async function preauditManagement(s){
   const b=s.binding,expectations={protocol:'worker_heartbeat_management_catalog_expectations_v1',database_oid:b.database_oid,database_owner_oid:b.owner_oid,schema_oid:b.schema_oid,operator:{oid:b.operator_oid,name:b.operator_login},roles:b.roles.map((r,i)=>({oid:r.oid,name:r.name,login:false,inherit:false,super:false,bypass:false,create_db:false,create_role:false,replication:false,connection_limit:i===0?-1:i===1?2:1,config:null,no_expiry:true,memberships:0}))}
   await verifyWorkerHeartbeatManagementCatalog(db,expectations)
   process.stdout.write(JSON.stringify({event:'telemetry_control_ci_management_catalog_preaudit_pass',queries,controller_authority:false})+'\n')
- }catch(error){process.stderr.write(JSON.stringify({event:'telemetry_control_ci_management_catalog_preaudit_failed',last_query_tag:last,queries,controller_authority:false})+'\n');throw error}
- finally{try{if(active)await raw.query('ROLLBACK')}finally{raw.release()}}
+ }catch(error){primary=error;process.stderr.write(JSON.stringify({event:'telemetry_control_ci_management_catalog_preaudit_failed',last_query_tag:last,queries,controller_authority:false})+'\n')}
+ finally{
+  if(active)try{await raw.query('ROLLBACK');rollbackKnown=true}catch(error){cleanup=error}
+  try{raw.release(Boolean(primary||cleanup)||!rollbackKnown)}catch(error){cleanup=cleanup?new AggregateError([cleanup,error],'telemetry_control_ci_preaudit_rollback_and_release_failed'):error}
+ }
+ if(primary&&cleanup)throw new AggregateError([primary,cleanup],'telemetry_control_ci_management_preaudit_and_cleanup_failed')
+ if(primary)throw primary
+ if(cleanup)throw cleanup
 }
 async function configure(s){
  const identity=(await s.telemetry.query("SELECT system_identifier::text AS system_id,current_database() AS database,d.oid::integer AS database_oid,d.datdba::integer AS owner_oid,(SELECT oid::integer FROM pg_namespace WHERE nspname='studio_telemetry') AS schema_oid,session_user::text AS operator_login,r.oid::integer AS operator_oid,host(inet_server_addr()) AS server_addr,inet_server_port() AS server_port,(extract(epoch FROM pg_postmaster_start_time())*1000000)::numeric(30,0)::text AS postmaster_started_us FROM pg_control_system(),pg_database d JOIN pg_roles r ON r.rolname=session_user WHERE d.datname=current_database()")).rows[0]
