@@ -301,3 +301,7 @@ services/pg-api/tests/helpers/native-company-worker-heartbeats-control-ci-child.
 services/pg-api/tests/worker-heartbeat-activation-control-ci.integration.mjs text eol=lf
 .github/workflows/pg18-telemetry-control-ci.yml text eol=lf
 services/pg-api/tests/helpers/worker-heartbeat-activation-control-ci-fixture.mjs text eol=lf
+ops/pg18-fresh-cutover-gate.mjs text eol=lf
+tests/pg18-fresh-cutover-gate.test.mjs text eol=lf
+services/pg-api/src/native-company-worker-heartbeats-http.ts text eol=lf
+services/pg-api/tests/native-company-worker-heartbeats-http.test.mjs text eol=lf

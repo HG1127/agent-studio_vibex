@@ -35,6 +35,8 @@ import {createNativeOwnOperationsBusinessHandler} from "./own-operations-http.ts
 import {CompanyOverviewRepository} from "./company-overview-repository.ts"
 import {inspectCompanyOverviewSchema} from "./company-overview-audit.ts"
 import {createNativeCompanyOverviewBusinessHandler} from "./company-overview-http.ts"
+import {NativeCompanyWorkerHeartbeats} from "./native-company-worker-heartbeats.ts"
+import {createNativeCompanyWorkerHeartbeatsHttpHandler,selectNativeCompanyWorkerHeartbeatsHttp} from "./native-company-worker-heartbeats-http.ts"
 import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
 import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
 import {AgentDescriptivePatchAcceptanceRepository} from "./agent-descriptive-patch-acceptance-repository.ts"
@@ -241,7 +243,7 @@ function adapter(pool:PgPool):SqlPool{
         const value=await client.query(sql,params)
         return {rows:value.rows as Row[]}
       },
-      release(){client.release()}
+      release(destroy?:boolean){client.release(destroy)}
     }
   }}
 }
@@ -319,6 +321,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   // No UAT capabilities are permitted with --preflight.
   const capabilities=selectNativePg18UatCapabilities(
     env,listen,cfg.allowedOrigin)
+  const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
   const authSecret=safeSecret(files.authFile,listen,env)
@@ -444,10 +447,17 @@ export async function startNativePg18Server(env=process.env,listen=true){
         workers_started:false,production_cutover_allowed:false}
     }
     const auth=new NativeAuthRepository(adapter(authPool))
+    // One actual component per Native service; all HTTP reads share its H3
+    // guard and capacity reservations. Construction performs no I/O.
+    const companyWorkerHeartbeats=new NativeCompanyWorkerHeartbeats(adapter(authPool))
+    const companyWorkerHeartbeatsHttp=createNativeCompanyWorkerHeartbeatsHttpHandler({
+      component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
+    })
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
       allowOwnOperations:ownOperationsAvailable,
       allowCompanyOverview:companyOverviewAvailable,
+      allowCompanyWorkerHeartbeats:companyWorkerHeartbeatsEnabled,
       allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
@@ -566,6 +576,13 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(ownOperationsAvailable?{repository:new OwnOperationsRepository(business)}:{}),
       policy:capabilities,businessHandler,
     })
+    // This fixed GET-only boundary handles only company Worker metadata.
+    // Every fallback still crosses the original global Native route policy.
+    const guardedBusinessHandler=businessHandler
+    businessHandler=async(req,res)=>{
+      if(await companyWorkerHeartbeatsHttp(req,res))return
+      await guardedBusinessHandler(req,res)
+    }
     const localServer=createServer(native.handler)
     server=localServer
     localServer.requestTimeout=15000

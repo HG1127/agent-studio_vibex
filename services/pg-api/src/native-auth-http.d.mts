@@ -47,6 +47,7 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentDescriptivePatchWrites?:boolean
   allowOwnOperations?:boolean
   allowCompanyOverview?:boolean
+  allowCompanyWorkerHeartbeats?:boolean
   allowEmployeeGovernance?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}
