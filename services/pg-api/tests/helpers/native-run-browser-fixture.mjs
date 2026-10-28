@@ -137,6 +137,16 @@ const generatedAcceptance=process.env.AGENT_STUDIO_PG_BROWSER_GENERATED_ACCEPTAN
 if(process.env.AGENT_STUDIO_PG_BROWSER_GENERATED_ACCEPTANCE!==undefined&&!generatedAcceptance||generatedAcceptance&&!review)throw Error("invalid_synthetic_generated_acceptance_browser_mode")
 const descriptivePatch=process.env.AGENT_STUDIO_PG_BROWSER_DESCRIPTIVE_PATCH==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_DESCRIPTIVE_PATCH!==undefined&&!descriptivePatch||descriptivePatch&&!generatedAcceptance)throw Error("invalid_synthetic_descriptive_patch_browser_mode")
+// CT03 is opt-in: old browser modes never import or install061.
+const companyOverview=process.env.AGENT_STUDIO_PG_BROWSER_COMPANY_OVERVIEW==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_COMPANY_OVERVIEW!==undefined&&!companyOverview||companyOverview&&!descriptivePatch)throw Error("invalid_synthetic_company_overview_browser_mode")
+const companyModules=companyOverview?{
+  ...await import("../../src/company-overview-repository.ts"),
+  ...await import("../../src/company-overview-http.ts"),
+  ...await import("../../src/company-overview-audit.ts"),
+  ...await import("../../src/native-employee-auth.mjs"),
+}:null
+let companyOverviewAvailable=false,companyAlice=null
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -151,7 +161,7 @@ const stopped=new Promise(resolve=>{stop=resolve})
 // simultaneous browser reads, rather than interleaving employee role state.
 function ownOperationsFixtureQuery(database,enabled,sql,values=[]){
   // PGlite.query uses Extended Query (one statement); exec uses Simple Query.
-  // Only this exact parameter-free pair from the owner actor needs exec.
+  // Only this exact parameter-free pair from an audited read actor needs exec.
   // Both SETs execute in the already-held real transaction; return its actual
   // result array unchanged. All old/default fixture queries keep their path.
   if(enabled===true&&values.length===0&&sql==="SET LOCAL statement_timeout='8000ms'; SET LOCAL lock_timeout='3000ms'")return database.exec(sql)
@@ -181,7 +191,7 @@ const pool={knowledgeSharing:modern,knowledgeEmbeddingSettings:semantic,knowledg
       state.failPreparation=false;throw new HttpError(409,'synthetic_worker_preparation_failed')
     }
     if(feedback&&state.feedbackFailLesson&&sql.startsWith("INSERT INTO agentstudio.agent_feedback_lessons(")){state.feedbackFailLesson=false;throw Error("synthetic_feedback_lesson_storage_fault")}
-    return ownOperationsFixtureQuery(db,ownOperations,sql,values)
+    return ownOperationsFixtureQuery(db,ownOperations||companyOverview,sql,values)
   },release}
 }}
 const policy={configurationWrites:true,employeeProvisioning:true,runApprovalUat:true,
@@ -200,6 +210,19 @@ Object.assign(state,{optimizationAllowed:optimization,optimizationDrop:false,opt
 Object.assign(state,{reviewAllowed:review,reviewHistoryAllowed:review,reviewDrop:false,reviewCapabilitiesDrop:false,reviewHashes:[],reviewConfirms:0,reviewSyntheticCompletions:0})
 Object.assign(state,{generatedAcceptanceAllowed:generatedAcceptance,generatedAcceptanceDrop:false,generatedAcceptanceCapabilitiesDrop:false,generatedAcceptanceHashes:[],generatedAcceptanceAgentsReads:0})
 Object.assign(state,{descriptivePatchAllowed:descriptivePatch,descriptivePatchDrop:false,descriptivePatchCapabilitiesDrop:false,descriptivePatchHashes:[]})
+if(companyOverview)Object.assign(state,{companyAllowed:true,companySeedIds:[]})
+// Administrative synthetic setup/readback only. No successful Company HTTP
+// response is substituted: those reads always use the real audited repository.
+async function companyBusinessSnapshot(connection){
+  const tables=(await connection.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='agentstudio' ORDER BY tablename")).rows
+  const result=[]
+  for(const {tablename} of tables){
+    if(!/^[a-z][a-z0-9_]*$/.test(tablename))throw Error("unsafe_synthetic_company_table")
+    const value=(await connection.query(`SELECT count(*)::int AS rows,md5(coalesce(string_agg(to_jsonb(t)::text,E'\\n' ORDER BY to_jsonb(t)::text),'')) AS md5 FROM agentstudio."${tablename}" t`)).rows[0]
+    result.push({table:tablename,...value})
+  }
+  return result
+}
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -242,6 +265,11 @@ try{
   if(generatedAcceptance){await db.exec(load("db/postgres/migrations/pg_v9_059_agent_generated_acceptance.sql"));assert.equal(await inspectAgentGeneratedSchema(pool),true)}
   if(descriptivePatch){await db.exec(load("db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql"));assert.equal(await inspectAgentDescriptivePatchSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
+  if(companyOverview){
+    await db.exec(load("db/postgres/migrations/pg_v9_061_company_overview.sql"))
+    companyOverviewAvailable=await companyModules.inspectCompanyOverviewSchema(pool)
+    assert.equal(companyOverviewAvailable,true) // full061 ->060 predecessor audit
+  }
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
   await auth.provisionInitialAdmin({email:"alice@example.com",password:"SyntheticAlicePassword#2026",display_name:"Browser Alice"})
@@ -252,6 +280,7 @@ try{
     ["bob@example.com","SyntheticBobPassword#2026","Bob"]]){
     const session=await auth.login(email,password),profile=await auth.getSessionProfile(session.token)
     if(ownOperations&&name==="Alice")ownOperationsAlice={id:profile.id,identity:profile.identity}
+    if(companyOverview&&name==="Alice")companyAlice={id:profile.id,identity:profile.identity}
     const connection=await models.create(profile.identity,{name:name+" synthetic model",provider:"openai",
       base_url:"https://api.openai.com/v1",api_key:"SyntheticBrowserOnlyCredential0123456789",enabled:true,models:["gpt-4.1-mini"]})
     // Fixture setup only: no external probe or credentials are used.
@@ -283,6 +312,34 @@ try{
       edges:[{id:"s-e",source:"start",target:"end"}]})
     if(modern)await new ToolConnectionRepository(pool,key).create(profile.identity,{name:name+" synthetic HTTP",description:"Lookup synthetic evidence; params: query",
       url:"https://tools.example.com/lookup",method:"POST",headers:[],body_template:"{{input}}",timeout_s:5,enabled:true})
+  }
+  if(companyOverview){
+    assert.ok(companyAlice?.id)
+    // Two real login accounts plus203 constrained Native accounts. One fresh
+    // unknown password KDF; never perform205 logins or use real employee data.
+    const passwordRecord=await companyModules.hashEmployeePassword("SyntheticCompanyOnly#"+randomBytes(24).toString("hex"))
+    const c=await pool.connect()
+    try{
+      await c.query("BEGIN")
+      await c.query(`INSERT INTO agentstudio.users(id,external_issuer,external_subject,display_name,status)
+        SELECT ('00000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'urn:agentstudio:local:v1','synthetic-company-'||n,
+          CASE n WHEN 1 THEN '合成停用账号甲' WHEN 2 THEN '合成停用账号乙' ELSE '合成员工 '||n END,
+          CASE n WHEN 2 THEN 'disabled' ELSE 'active' END FROM generate_series(1,203) n`)
+      await c.query(`INSERT INTO agentstudio_auth.accounts(user_id,email,password_record,enabled,is_admin)
+        SELECT ('00000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'company-synthetic-'||n||'@example.com',$1,n<>1,n=3
+        FROM generate_series(1,203) n`,[passwordRecord])
+      for(const [n,count] of [[1,7],[2,3],[203,5]]){
+        const owner='00000000-0000-4000-8000-'+String(n).padStart(12,'0'),spec='00000000-0000-4000-9000-'+String(n).padStart(12,'0')
+        state.companySeedIds.push(owner)
+        await c.query("INSERT INTO agentstudio.agent_specs(id,owner_user_id,name,spec) VALUES($1::uuid,$2::uuid,'COMPANY_BROWSER_PRIVATE_SPEC',$3::jsonb)",
+          [spec,owner,JSON.stringify(safeAgentSpec({goal:"COMPANY_BROWSER_PRIVATE_GOAL",tools:[],knowledge_base_ids:[]}))])
+        await c.query(`INSERT INTO agentstudio.runs(owner_user_id,kind,agent_spec_id,status,instruction)
+          SELECT $1::uuid,'agent',$2::uuid,'running','COMPANY_BROWSER_PRIVATE_INSTRUCTION' FROM generate_series(1,$3::integer)`,[owner,spec,count])
+      }
+      const staff=(await c.query("SELECT count(*)::int AS total,count(*) FILTER(WHERE a.enabled AND u.status='active')::int AS active FROM agentstudio.users u JOIN agentstudio_auth.accounts a ON a.user_id=u.id WHERE u.external_issuer='urn:agentstudio:local:v1'")).rows[0]
+      assert.deepEqual(staff,{total:205,active:203})
+      await c.query("COMMIT")
+    }catch(error){await c.query("ROLLBACK");throw error}finally{c.release()}
   }
   const broker=new OwnerBoundModelDispatch(pool,key,async(_material,input)=>{
     if(input.knowledgeEvidence?.length)state.singleEvidence=(state.singleEvidence??0)+1
@@ -332,6 +389,7 @@ try{
     let native,backend
     const configure=()=>{native=createNativeAuthHttpHandler({auth,allowedOrigin:origin,
       allowOwnOperations:ownOperationsAvailable,
+      allowCompanyOverview:companyOverviewAvailable&&state.companyAllowed===true,
       allowConfigurationWrites:state.configAllowed,allowEmployeeProvisioning:state.configAllowed,allowEmployeeGovernance:governance,
       allowMcpDiscovery:modern&&state.configAllowed,
       allowMcpToolExecution:modern&&state.configAllowed&&state.allowed,
@@ -353,6 +411,14 @@ try{
       businessHandler:(req,res)=>{
         const currentPolicy={...policy,configurationWrites:state.configAllowed,agentOutcomeMemoryUat:state.outcomeAllowed,agentDerivedMemoryUat:state.derivedAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
           knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed,agentGeneratedAcceptanceUat:generatedAcceptance&&state.generatedAcceptanceAllowed,agentDescriptivePatchUat:descriptivePatch&&state.descriptivePatchAllowed}
+        if(companyOverview){
+          const company=companyModules.createNativeCompanyOverviewBusinessHandler({
+            available:companyOverviewAvailable&&state.companyAllowed,
+            repository:companyOverviewAvailable?new companyModules.CompanyOverviewRepository(pool):undefined,
+            allowedOrigin:origin,authenticateRequest:native.authenticateRequest,businessHandler:(request,response)=>backend(request,response)})
+          return createNativeOwnOperationsBusinessHandler({available:ownOperationsAvailable,repository:ownOperationsRepository,policy:currentPolicy,
+            allowedOrigin:origin,authenticateRequest:native.authenticateRequest,businessHandler:company})(req,res)
+        }
         if(ownOperations)return createNativeOwnOperationsBusinessHandler({available:ownOperationsAvailable,repository:ownOperationsRepository,policy:currentPolicy,
           allowedOrigin:origin,authenticateRequest:native.authenticateRequest,businessHandler:(request,response)=>backend(request,response)})(req,res)
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,currentPolicy)){
@@ -459,6 +525,8 @@ try{
         if(req.url==="/__fixture/state"&&req.method==="GET"){
           const c=await pool.connect()
           try{output={submissions:state.submissions,submitHashes:state.submitHashes,configHashes:state.configHashes,configRequests:state.configRequests,generated:state.generated,singleEvidence:state.singleEvidence??0,httpCalls:state.httpCalls,mcpCalls:state.mcpCalls,mcpDiscoveries:state.mcpDiscoveries,smitheryWrites:state.smitheryWrites,
+            ...(companyOverview?{companyOverviewAvailable,companyAllowed:state.companyAllowed,companyAliceId:companyAlice.id,companySeedIds:state.companySeedIds,
+              companyBusinessSnapshot:await companyBusinessSnapshot(c),companyStaff:(await c.query("SELECT count(*)::int AS total,count(*) FILTER(WHERE a.enabled AND u.status='active')::int AS active FROM agentstudio.users u JOIN agentstudio_auth.accounts a ON a.user_id=u.id WHERE u.external_issuer='urn:agentstudio:local:v1'")).rows[0]}:{}),
             ...(scheduling?{scheduleHashes:state.scheduleHashes,scheduleModelCalls:state.scheduleModelCalls??0}:{}),
             ...(collaboration?{collaborationHashes:state.collaborationHashes,collaborationModelPreserved:(await c.query("SELECT spec->'model_binding'->>'connection_id'=$2::text AS preserved FROM agentstudio.agent_specs WHERE id=$1",[state.collaborationRole,state.collaborationAlternative.connection_id])).rows[0].preserved}:{}),
             ...(releases?{releaseHashes:state.releaseHashes,releaseModelCalls:state.scheduleModelCalls??0,releaseRole:state.releaseRole,releaseCurrent:(await c.query("SELECT spec->>'goal' AS goal,spec->'model_binding'->>'connection_id'=$2::text AS default_model FROM agentstudio.agent_specs WHERE id=$1",[state.releaseRole,state.releaseDefaultModel])).rows[0],
@@ -497,6 +565,11 @@ try{
             ...(semantic?{queryPosts:state.queryPosts,settingsPosts:state.settingsPosts,indexEmbeddings:state.indexEmbeddings,queryEmbeddings:state.queryEmbeddings,queryInputs:state.queryInputs,decisionHashes:state.decisionHashes,semanticModelPrompts:state.semanticModelPrompts,
               queryJobs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.knowledge_query_jobs")).rows[0].n}:{} )}}
           finally{c.release()}
+        }else if(companyOverview&&req.method==="POST"&&["/__fixture/company-demote-alice","/__fixture/company-restore-alice"].includes(req.url)){
+          const c=await pool.connect()
+          try{await c.query("UPDATE agentstudio_auth.accounts SET is_admin=$2::boolean WHERE user_id=$1::uuid",[companyAlice.id,req.url.endsWith("company-restore-alice")]);output={ok:true}}finally{c.release()}
+        }else if(companyOverview&&req.method==="POST"&&["/__fixture/deny-company-overview","/__fixture/allow-company-overview"].includes(req.url)){
+          state.companyAllowed=req.url.endsWith("/allow-company-overview");configure();output={ok:true}
         }else if(req.url==="/__fixture/own-overdue-schedule"){
           const result=await ownOverdueScheduleControl(req,pool,{ownOperations,scheduling},ownOperationsAlice)
           res.writeHead(result.status,{"Content-Type":"application/json","Cache-Control":"no-store"});res.end(JSON.stringify(result.body));return

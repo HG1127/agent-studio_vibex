@@ -127,3 +127,12 @@ tests/pg-native-browser/agent-descriptive-patch.spec.mjs text eol=lf
 /services/pg-api/tests/company-overview-tcp.integration.mjs text eol=lf
 /tests/company-overview-contract.test.mjs text eol=lf
 /services/pg-api/tests/company-overview-native-http.integration.mjs text eol=lf
+
+# Company metadata browser and session sources
+src/lib/pgNativeCompanyOverview.ts text eol=lf
+src/lib/pgNativeCompanyOverviewSession.ts text eol=lf
+tests/pg-native-company-overview.test.mjs text eol=lf
+tests/pg-native-company-overview-session.test.mjs text eol=lf
+src/pages/PgNativePilot/CompanyOverviewPanel.tsx text eol=lf
+tests/pg-native-company-overview-render.test.mjs text eol=lf
+tests/pg-native-browser/company-overview.spec.mjs text eol=lf
