@@ -253,4 +253,21 @@ test('approval verification and durable digest use one captured buffer across at
   await exercise(A,true)
   const invalid=JSON.parse(A.toString());invalid.payload.actor='unsigned_actor';await exercise(Buffer.from(JSON.stringify(invalid)),false)
 })
+test('final read audit passes the actual policy rather than the private observation handle',async()=>{
+  // Pure execution of the actual function body with explicit local state
+  // doubles. No genuine lease, policy authority, controller or DB is minted.
+  const source=readFileSync(new URL('../src/worker-heartbeat-activation-control.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('control.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
+  const node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='finalizeWorkerHeartbeatControlRead');assert.ok(node)
+  const code=ts.transpileModule(node.getText(tree).replace(/^export /,'')+'\nglobalThis.subject=finalizeWorkerHeartbeatControlRead;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const control={},owner={},peerHandle={},leaseHandle={},begin=Object.freeze(Object.create(null)),end=Object.freeze(Object.create(null)),policy={PURE_MODEL_POLICY:true}
+  const s={policy,registry:{describeWorkerHeartbeatRegistry:v=>{assert.ok(v===begin||v===end);return {checked_at_utc:v===begin?'2026-10-28T12:00:00.000Z':'2026-10-28T12:00:00.002Z'}}}}
+  const l={s,peer:owner,begin,snapshot:{as_of:'2026-10-28T12:00:00.001Z'},phase:'pending',queryPending:false,transaction:false},leaseStates=new WeakMap([[leaseHandle,l]]),finishedStates=new WeakMap()
+  let audits=0
+  const context={Date,state:v=>{assert.equal(v,control);return s},peer:(v,p,kind)=>{assert.equal(v,s);assert.equal(p,peerHandle);assert.equal(kind,'reader');return owner},leaseStates,finishedStates,
+    leaseCheck:(value,phase)=>{assert.equal(value,l);assert.equal(value.phase,phase)},serial:async(v,job)=>{assert.equal(v,s);return job()},
+    inspectRegistry:async(v,p,read)=>{audits++;assert.equal(v,s);assert.equal(p,policy);assert.notEqual(p,begin);assert.equal(read,l);return end},observedSha:()=>digest,
+    empty:()=>Object.freeze(Object.create(null)),controlFail,WorkerHeartbeatControlError:Error,revoke:()=>assert.fail('valid final audit revoked'),cleanupLease:()=>assert.fail('valid final audit cleaned as failure')}
+  vm.runInNewContext(code,context,{timeout:1000});const finished=await context.subject(control,peerHandle,leaseHandle)
+  assert.equal(audits,1);assert.equal(l.phase,'finished');assert.equal(l.clean,true);assert.equal(finishedStates.get(finished),l)
+})
 

@@ -8,8 +8,9 @@ const {default:assert}=await import('node:assert/strict')
 const {publishWorkerHeartbeatControlCiStages}=await import('./helpers/worker-heartbeat-activation-control-ci-stage.mjs')
 const {createWorkerHeartbeatActivationControlCiFixture}=await import('./helpers/worker-heartbeat-activation-control-ci-fixture.mjs')
 const {parseWorkerHeartbeatSnapshot}=await import('../src/worker-heartbeat-contract.ts')
+const {controlErrorCodes}=await import('../src/worker-heartbeat-activation-control-contract.ts')
 let fixture,count=0,failed=false
-const check=async(name,run)=>{await run();count++;process.stdout.write(JSON.stringify({event:'genuine_telemetry_control_case_pass',case:name})+'\n')}
+const check=async(name,run)=>{const start=performance.now();await run();count++;process.stdout.write(JSON.stringify({event:'genuine_telemetry_control_case_pass',case:name,duration_ms:Math.round(performance.now()-start)})+'\n')}
 const snapshot=value=>{const s=parseWorkerHeartbeatSnapshot(value);assert.equal(s.workers.length,8);return s}
 const unavailable=value=>{assert.equal(value.error?.status,503);assert.equal(value.error?.code,'company_worker_heartbeats_unavailable')}
 try{
@@ -35,7 +36,7 @@ try{
  await check('retired_writer_is_disabled_without_false_liveness',async()=>{await fixture.retireFirst();const r=snapshot((await fixture.nativeReadAdmin()).snapshot).workers[0];assert.equal(r.state,'unknown');assert.equal(r.reason,'component_disabled')})
  await check('restart_with_signed_closed_profile_keeps_read_gate_closed',async()=>{const old=(await fixture.inspect()).instance_id,s=await fixture.restart();assert.notEqual(s.instance_id,old);assert.equal(s.phase,'closed');assert.equal(s.read_gate,'closed');unavailable(await fixture.nativeReadAdmin())})
  await check('untouched_native_schema_and_synthetic_accounts_jobs_runs',()=>fixture.final())
-}catch(error){failed=true;const e={event:'genuine_telemetry_control_failed',completed_cases:count,name:error?.name??'Error',message:String(error?.message??'unknown').slice(0,180)};process.stderr.write(JSON.stringify(e)+'\n');process.exitCode=1}
+}catch(error){failed=true;const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value,e={event:'genuine_telemetry_control_failed',completed_cases:count,name:error?.name??'Error',message:String(error?.message??'unknown').slice(0,180),...(controlErrorCodes.includes(code)?{code}:{})};process.stderr.write(JSON.stringify(e)+'\n');process.exitCode=1}
 finally{
  if(fixture)try{await fixture.close();process.stdout.write(JSON.stringify({event:'genuine_telemetry_control_owned_cleanup_pass'})+'\n')}catch{failed=true;process.stderr.write(JSON.stringify({event:'genuine_telemetry_control_owned_cleanup_failed'})+'\n');process.exitCode=1}
  process.stdout.write(JSON.stringify({event:'genuine_telemetry_control_summary',passed:count,failed,production_cutover_allowed:false,synthetic_only:true})+'\n')

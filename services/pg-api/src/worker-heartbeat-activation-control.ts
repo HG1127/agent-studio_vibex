@@ -196,7 +196,7 @@ export async function finalizeWorkerHeartbeatControlRead(control:Control,p:Reade
  const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference')
  leaseCheck(l,'pending');l.phase='finalizing'
  try{
-  await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,l.begin,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
+  await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,s.policy,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
   leaseCheck(l,'finalizing')
   if(l.client&&!l.released){if(l.clientError)l.client.off('error',l.clientError);l.client.release();l.released=true}if(l.queryPending||l.transaction)controlFail('reader_cleanup_unknown');l.clean=true
   const finished=empty<FinishedRead>();l.phase='finished';l.finished=finished;finishedStates.set(finished,l);return finished
