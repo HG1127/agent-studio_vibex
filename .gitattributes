@@ -216,3 +216,11 @@ services/pg-api/tests/workflow-v2-schedule-claim-admission-tcp.integration.mjs t
 # Genuine nonempty knowledge consent/digest/fenced claim probes
 services/pg-api/tests/helpers/knowledge-nonempty-claim-admission-ci.mjs text eol=lf
 services/pg-api/tests/knowledge-nonempty-claim-admission-tcp.integration.mjs text eol=lf
+
+# Separate catalog-only reader audit and internal Native admin context
+services/pg-api/src/native-current-company-admin.mjs text eol=lf
+services/pg-api/src/native-current-company-admin.d.mts text eol=lf
+services/pg-api/tests/native-current-company-admin.test.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-activated-audit-core.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activated-audit.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-activated-audit.test.mjs text eol=lf

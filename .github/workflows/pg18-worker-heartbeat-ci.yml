@@ -76,6 +76,8 @@ jobs:
           services/pg-api/tests/knowledge-query-claim-admission.test.mjs
           services/pg-api/tests/assessment-claim-admission.test.mjs
           services/pg-api/tests/worker-heartbeat-audit.test.mjs
+          services/pg-api/tests/native-current-company-admin.test.mjs
+          services/pg-api/tests/worker-heartbeat-activated-audit.test.mjs
       - name: Actual fresh-service TCP case beside unchanged full060/full061
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
