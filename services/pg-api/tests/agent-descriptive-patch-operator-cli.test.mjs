@@ -13,7 +13,7 @@ import {
   formatDescriptivePatchOperatorJournalLine,parseDescriptivePatchOperatorJournalFile,runDescriptivePatchOperatorCli,
 } from '../src/agent-descriptive-patch-operator-cli.mjs'
 const prefix='AGENT_STUDIO_DESCRIPTIVE_PATCH_060_',hash=raw=>createHash('sha256').update(raw).digest('hex'),digest='a'.repeat(64)
-const expected='35fb4b198db7f7517ac5e5b174f1c3813cc035213a408337b436a82a6ae3112d'
+const expected='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247'
 const cli=fileURLToPath(new URL('../src/agent-descriptive-patch-operator-cli.mjs',import.meta.url))
 const args=mode=>['--'+mode,'--confirm-database','agent_studio','--expected-source-sha256',expected]
 const env=mode=>Object.fromEntries(Object.entries({ENABLED:'true',READ_APPROVED:'APPROVE_DESCRIPTIVE_PATCH_060_READ_ONLY',

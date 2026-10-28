@@ -18,8 +18,9 @@ import {
 
 let snapshot,predecessor
 const digest='a'.repeat(64),predecessorSha='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'
-// Independently supplied foundation digest. This is NOT a seal of new core/CLI.
-const expected='35fb4b198db7f7517ac5e5b174f1c3813cc035213a408337b436a82a6ae3112d'
+// Parent-reviewed complete production-source candidate, supplied explicitly.
+// It is not backup evidence or authorization for any production target.
+const expected='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247'
 before(async()=>{snapshot=await captureDescriptivePatchOperatorSources();predecessor=await captureGeneratedOperatorSources()})
 function candidate(options={}){
   return {format:'agent_descriptive_patch_operator_approval_v1',source_sha256:expected,predecessor_source_sha256:predecessorSha,
@@ -62,9 +63,12 @@ test('candidate accessors, symbols and foreign prototypes are refused without in
   for(const value of [Object.assign(Object.create(null),candidate()),{...candidate(),[Symbol('extra')]:true}])assert.throws(()=>parseDescriptivePatchOperatorApproval(value,snapshot,expected),/invalid_evidence/)
 })
 
-test('the frozen offline35fb foundation is explicitly unusable as a sealed core/CLI installation snapshot',()=>{
+test('the complete production source candidate seals actual entries while retired foundation pins and clones refuse',()=>{
   assert.equal(snapshot.source_sha256,expected)
-  assert.throws(()=>assertDescriptivePatchOperatorSealedSnapshot(snapshot,expected),/unsealed_operator_source/)
+  assert.doesNotThrow(()=>assertDescriptivePatchOperatorSealedSnapshot(snapshot,expected))
+  for(const name of ['agent-descriptive-patch-operator-core.ts','agent-descriptive-patch-operator-cli.mjs','agent-descriptive-patch-operator-cli.d.mts','agent-descriptive-patch-operator-runtime.mjs','agent-descriptive-patch-operator-runtime.d.mts'])
+    assert.ok(snapshot.manifest.sources.some(source=>source.path==='services/pg-api/src/'+name),name)
+  assert.throws(()=>assertDescriptivePatchOperatorSealedSnapshot(snapshot,'35fb4b198db7f7517ac5e5b174f1c3813cc035213a408337b436a82a6ae3112d'),/source_refused/)
   assert.throws(()=>assertDescriptivePatchOperatorSealedSnapshot(structuredClone(snapshot),expected),/source_refused/)
   assert.throws(()=>assertDescriptivePatchOperatorSealedSnapshot(snapshot,digest),/source_refused/)
 })

@@ -9,6 +9,19 @@ import {captureGeneratedOperatorSources,assertGeneratedOperatorSnapshot} from '.
 const here=fileURLToPath(import.meta.url),root=path.resolve(path.dirname(here),'../../..')
 const self='services/pg-api/src/agent-descriptive-patch-operator-source.mjs'
 const declaration='services/pg-api/src/agent-descriptive-patch-operator-source.d.mts'
+// Production060 entry roots only. Every byte and import edge is discovered by
+// the same real AST traversal below; test files are not runtime dependencies.
+const operatorCore='services/pg-api/src/agent-descriptive-patch-operator-core.ts'
+const operatorCli='services/pg-api/src/agent-descriptive-patch-operator-cli.mjs'
+const operatorCliDeclaration='services/pg-api/src/agent-descriptive-patch-operator-cli.d.mts'
+const operatorRuntime='services/pg-api/src/agent-descriptive-patch-operator-runtime.mjs'
+const operatorRuntimeDeclaration='services/pg-api/src/agent-descriptive-patch-operator-runtime.d.mts'
+const operatorRoots=[operatorCore,operatorCli,operatorCliDeclaration,operatorRuntime,operatorRuntimeDeclaration]
+const requiredOperatorEdges=[
+  [operatorCli,self],[operatorCli,operatorCore],[operatorCli,operatorRuntime],
+  [operatorCliDeclaration,operatorCore],[operatorRuntime,self],
+  [operatorRuntimeDeclaration,self],[operatorCore,self],
+]
 const sqlPath='db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql'
 const sqlSha='b8aac275e692a81d2e05c8825f33bba7e5f418199e3dce97a409832f951ccbc9'
 const auditCore='services/pg-api/src/agent-descriptive-patch-audit-core.ts'
@@ -93,7 +106,7 @@ export async function captureDescriptivePatchOperatorSources(){
     assertGeneratedOperatorSnapshot(predecessor,predecessorSha)
     if(predecessor.manifest.latest_migration!=='pg_v9_059'||predecessor.manifest.default_fresh_latest!=='pg_v9_050'||predecessor.manifest.fresh_sources.length!==34)refuse()
     const entries=new Map(),edges=[],externals=new Set()
-    const pending=[self,declaration,fullAudit,...predecessor.manifest.sources.map(s=>s.path)]
+    const pending=[self,declaration,fullAudit,...operatorRoots,...predecessor.manifest.sources.map(s=>s.path)]
     while(pending.length){
       const relative=sourceFile(pending.pop())
       if(entries.has(relative))continue
@@ -138,6 +151,9 @@ export async function captureDescriptivePatchOperatorSources(){
       }
     }
     if(entries.get(fullAudit)?.sha256!==fullSha||!entries.has(auditCore))refuse()
+    // Roots alone cannot substitute for the actual entry's imports: removing
+    // a required literal import must refuse, even when its target is a root.
+    if(operatorRoots.some(p=>!entries.has(p))||requiredOperatorEdges.some(([from,to])=>!edges.some(e=>e.from===from&&e.to===to)))refuse()
     for(const source of predecessor.manifest.sources)if(entries.get(source.path)?.sha256!==source.sha256)refuse()
     for(const source of predecessor.manifest.fresh_sources)if(descriptivePatchOperatorSha(read(source.path))!==source.sha256)refuse()
     const raw=read(sqlPath),sql=utf8(raw),body=descriptivePatchOperatorSqlBody(sql)

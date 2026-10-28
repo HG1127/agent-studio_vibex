@@ -1,7 +1,7 @@
 // Pure source/AST/argument checks. No database, credentials or runtime service.
 import test,{before} from 'node:test'
 import assert from 'node:assert/strict'
-import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,copyFileSync,symlinkSync,rmSync,lstatSync} from 'node:fs'
+import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,copyFileSync,symlinkSync,unlinkSync,rmSync,lstatSync} from 'node:fs'
 import path from 'node:path'
 import {tmpdir} from 'node:os'
 import {fileURLToPath,pathToFileURL} from 'node:url'
@@ -17,6 +17,12 @@ import {captureGeneratedOperatorSources} from '../src/agent-generated-operator-s
 const root=fileURLToPath(new URL('../../../',import.meta.url))
 const self='services/pg-api/src/agent-descriptive-patch-operator-source.mjs'
 const declaration='services/pg-api/src/agent-descriptive-patch-operator-source.d.mts'
+const core='services/pg-api/src/agent-descriptive-patch-operator-core.ts'
+const cli='services/pg-api/src/agent-descriptive-patch-operator-cli.mjs'
+const cliDeclaration='services/pg-api/src/agent-descriptive-patch-operator-cli.d.mts'
+const runtime='services/pg-api/src/agent-descriptive-patch-operator-runtime.mjs'
+const runtimeDeclaration='services/pg-api/src/agent-descriptive-patch-operator-runtime.d.mts'
+const productionRoots=[core,cli,cliDeclaration,runtime,runtimeDeclaration]
 const predecessorSha='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'
 const digest='a'.repeat(64)
 let snapshot
@@ -49,6 +55,10 @@ test('real locked TypeScript5.9 AST closes full060 and the complete fixed059 pre
     assert.ok(paths.has('services/pg-api/src/'+name),name)
   }
   assert.ok(paths.has(self));assert.ok(paths.has(declaration));assert.ok(paths.has('shared/agent-role-limits.mjs'))
+  for(const entry of productionRoots){
+    assert.ok(paths.has(entry),entry)
+    assert.equal(snapshot.manifest.sources.find(s=>s.path===entry).sha256,descriptivePatchOperatorSha(readFileSync(path.join(root,entry))))
+  }
   assert.ok(edges.some(e=>e.from.endsWith('agent-descriptive-patch-audit.ts')&&e.to.endsWith('agent-generated-audit.ts')))
   assert.ok(edges.some(e=>e.from===declaration&&e.to.endsWith('agent-generated-operator-source.mjs')))
   assert.ok(snapshot.manifest.externals.includes('typescript'))
@@ -59,6 +69,27 @@ test('real locked TypeScript5.9 AST closes full060 and the complete fixed059 pre
   assert.deepEqual(snapshot.manifest.predecessor.manifest,predecessor.manifest)
   for(const source of predecessor.manifest.sources)assert.deepEqual(snapshot.manifest.sources.find(s=>s.path===source.path),source)
   assert.equal((await captureDescriptivePatchOperatorSources()).source_sha256,snapshot.source_sha256)
+})
+
+test('actual production static, dynamic and type imports are present as real060 AST edges, not only manifest roots',()=>{
+  const edges=snapshot.manifest.imports
+  const required=[
+    [cli,self],[cli,core],[cli,runtime],[cli,'services/pg-api/src/agent-generated-operator-source.mjs'],
+    [cli,'services/pg-api/src/agent-generated-operator-core.ts'],[cliDeclaration,core],
+    [runtime,self],[runtimeDeclaration,self],[core,self],
+    [core,'services/pg-api/src/contracts.ts'],[core,'services/pg-api/src/agent-generated-operator-source.mjs'],
+    [core,'services/pg-api/src/agent-generated-operator-core.ts'],[core,'services/pg-api/src/agent-descriptive-patch-audit.ts'],
+    [core,'services/pg-api/src/optional-credential-boundary.ts'],[core,'services/pg-api/src/pg18-service-login-policy.mjs'],
+  ]
+  for(const [from,to] of required)assert.ok(edges.some(e=>e.from===from&&e.to===to),`${from} -> ${to}`)
+  // Confirm important source syntax independently of the manifest strings.
+  const text=readFileSync(path.join(root,cli),'utf8'),tree=ts.createSourceFile(cli,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
+  const dynamic=[]
+  const visit=node=>{if(ts.isCallExpression(node)&&node.expression.kind===ts.SyntaxKind.ImportKeyword){assert.ok(ts.isStringLiteralLike(node.arguments[0]));dynamic.push(node.arguments[0].text)}ts.forEachChild(node,visit)}
+  visit(tree)
+  assert.deepEqual(dynamic,['./agent-descriptive-patch-operator-core.ts','./agent-descriptive-patch-operator-runtime.mjs','./agent-generated-operator-core.ts'])
+  assert.ok(snapshot.manifest.externals.includes('pg'))
+  assert.ok(snapshot.manifest.sources.every(s=>!s.path.includes('/tests/')))
 })
 
 test('exact raw LF060 and its two independently fixed prosrc bodies survive outer transaction extraction byte-for-byte',()=>{
@@ -151,6 +182,34 @@ test('isolated source copies prove AST-only discovery and fail closed on compute
       await mutate(self,s=>s+suffix)
     }
     for(const suffix of ["\nexport type Absent = import('./missing-source.ts').Absent\n","\nexport * from 'unreviewed-external'\n"]){await mutate(declaration,s=>s+suffix)}
+    // Newly included production code is READ/PARSED, never evaluated. Changing
+    // its bytes makes a new candidate and cannot authorize the old digest.
+    for(const relative of productionRoots){
+      const changed=await mutate(relative,s=>s+'\nthrow new Error("source-capture-must-not-execute-production-entry")\n',true)
+      assert.notEqual(changed.source_sha256,snapshot.source_sha256,relative)
+      assert.equal(changed.manifest.sources.find(s=>s.path===relative).sha256,descriptivePatchOperatorSha(readFileSync(path.join(root,relative),'utf8')+'\nthrow new Error("source-capture-must-not-execute-production-entry")\n'))
+      assert.throws(()=>isolated.assertDescriptivePatchOperatorSnapshot(changed,snapshot.source_sha256),/source_refused/)
+      const file=path.join(fixture,relative),original=readFileSync(file)
+      try{unlinkSync(file);await assert.rejects(isolated.captureDescriptivePatchOperatorSources(),/source_refused/)}finally{writeFileSync(file,original)}
+    }
+    // Each required edge must still arise from a real AST import. A comment or
+    // string that resembles the deleted import does not repair the edge.
+    const removed=[
+      [cli,/^import [^\n]* from '\.\/agent-descriptive-patch-operator-source\.mjs'$/m],
+      [cli,/const core=await import\('\.\/agent-descriptive-patch-operator-core\.ts'\)/],
+      [cli,/const runtime=await import\('\.\/agent-descriptive-patch-operator-runtime\.mjs'\)/],
+      [cliDeclaration,/^import type [^\n]* from '\.\/agent-descriptive-patch-operator-core\.ts'$/m],
+      [runtime,/^import [^\n]* from '\.\/agent-descriptive-patch-operator-source\.mjs'$/m],
+      [runtimeDeclaration,/^import type [^\n]* from '\.\/agent-descriptive-patch-operator-source\.mjs'$/m],
+      [core,/^import [^\n]* from '\.\/agent-descriptive-patch-operator-source\.mjs'$/m],
+    ]
+    for(const [relative,pattern] of removed)await mutate(relative,s=>{
+      assert.match(s,pattern)
+      return s.replace(pattern,match=>match.startsWith('const ')?match.replace(/await import\([^)]*\)/,'{}'):'// '+match)
+    })
+    for(const relative of [core,cli,runtime]){
+      for(const suffix of ["\nfunction computed(name){return import(name)}\n","\nfunction computed(name){return import('./'+name)}\n","\nfunction computed(name){return require(name)}\n","\nfunction computed(name){return new URL(name,import.meta.url)}\n","\nexport * from 'unreviewed-external'\n","\nexport const =\n"]){await mutate(relative,s=>s+suffix)}
+    }
     await mutate('services/pg-api/src/agent-generated-operator-source.d.mts',s=>s+'\n// changed complete059 predecessor\n')
     await mutate('services/pg-api/src/agent-descriptive-patch-audit.ts',s=>s+'\n// changed full060 wrapper\n')
     await mutate('services/pg-api/src/agent-descriptive-patch-audit-core.ts',s=>s.replace('598e628e','00000000'))
