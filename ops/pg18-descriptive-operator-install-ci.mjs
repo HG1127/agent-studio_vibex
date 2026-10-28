@@ -15,7 +15,7 @@ export async function publishDescriptiveInstallCi(env=process.env){
   created=await containers.createDescriptiveInstallContainers(permit,loaded)
   const childEnv={PATH:path.dirname(process.execPath)+':/usr/local/bin:/usr/bin:/bin',HOME:'/root',LANG:'C.UTF-8'}
   for(const key of ['GITHUB_ACTIONS','CI','RUNNER_OS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_EVENT_NAME','AGENT_STUDIO_PG18_CI_EPHEMERAL','AGENT_STUDIO_PG18_CI_WRITE_APPROVED','AGENT_STUDIO_PG18_CI_HOST','AGENT_STUDIO_PG18_CI_PORT','AGENT_STUDIO_PG18_CI_DATABASE','AGENT_STUDIO_PG18_CI_ADMIN_USER','AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD'])childEnv[key]=env[key]
-  Object.assign(childEnv,{[prefix+'EPHEMERAL']:'true',[prefix+'PURPOSE']:'DESCRIPTIVE_060_AUTHENTIC_INSTALL_RESTORE_SYNTHETIC_ONLY',[prefix+'WRITE_APPROVED']:'YES_NEW_DISPOSABLE_CONTAINERS_ONLY',[prefix+'NONCE']:stage.nonce,[prefix+'MAIN_CONTAINER_ID']:created.mainId,[prefix+'RESTORE_CONTAINER_ID']:created.restoreId,[prefix+'IMAGE_ID']:created.imageId,[prefix+'SOURCE_SHA256']:'daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247',[prefix+'SOURCE_MANIFEST_SHA256']:stage.sourceManifestSha,[prefix+'RUNTIME_MANIFEST_SHA256']:stage.runtimeManifestSha,[prefix+'LOCK_SHA256']:'eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a',[prefix+'PACKAGE_SHA256']:'90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'})
+  Object.assign(childEnv,{[prefix+'EPHEMERAL']:'true',[prefix+'PURPOSE']:'DESCRIPTIVE_060_AUTHENTIC_INSTALL_RESTORE_SYNTHETIC_ONLY',[prefix+'WRITE_APPROVED']:'YES_NEW_DISPOSABLE_CONTAINERS_ONLY',[prefix+'NONCE']:stage.nonce,[prefix+'MAIN_CONTAINER_ID']:created.mainId,[prefix+'RESTORE_CONTAINER_ID']:created.restoreId,[prefix+'IMAGE_ID']:created.imageId,[prefix+'SOURCE_SHA256']:'bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67',[prefix+'SOURCE_MANIFEST_SHA256']:stage.sourceManifestSha,[prefix+'RUNTIME_MANIFEST_SHA256']:stage.runtimeManifestSha,[prefix+'LOCK_SHA256']:'eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a',[prefix+'PACKAGE_SHA256']:'90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'})
   const output=await new Promise((resolve,reject)=>{
    // Plain script: Node --test workers add forbidden execArgv. node:test still
    // runs all tests/reporters when this actual integration script is executed.
@@ -27,7 +27,7 @@ export async function publishDescriptiveInstallCi(env=process.env){
   })
   if(!/tests\s+10\b/.test(output)||!/pass\s+10\b/.test(output)||!/fail\s+0\b/.test(output))fail('expected_real_test_count')
   process.stdout.write(output)
-  return Object.freeze({format:'descriptive_install_ci_publisher_result_v2',source_sha256:'daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247',runtime_manifest_sha256:stage.runtimeManifestSha,synthetic_only:true,actual_install_matrix_passed:true,real_target_initialized:false,production_cutover_allowed:false})
+  return Object.freeze({format:'descriptive_install_ci_publisher_result_v2',source_sha256:'bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67',runtime_manifest_sha256:stage.runtimeManifestSha,synthetic_only:true,actual_install_matrix_passed:true,real_target_initialized:false,production_cutover_allowed:false})
  }finally{if(created)await containers.closeDescriptiveInstallContainers(created.lease)}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===here){

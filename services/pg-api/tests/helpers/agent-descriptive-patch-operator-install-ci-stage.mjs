@@ -6,7 +6,7 @@ import {createHash,randomBytes} from 'node:crypto'
 import {createRequire} from 'node:module'
 import {assertDescriptivePatchInstallCiPermit,descriptivePatchInstallCiBinding} from './agent-descriptive-patch-operator-install-ci-guard.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../..')
-const sourceSha='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247',lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a',packageSha='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'
+const sourceSha='bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67',lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a',packageSha='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'
 const sha=b=>createHash('sha256').update(b).digest('hex'),fail=code=>{throw Error('descriptive_install_stage_refused:'+code)}
 const stages=new WeakSet(),loadedStages=new WeakSet()
 const parserPins={'lib/typescript.js':'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','package.json':'822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6','LICENSE.txt':'a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47','ThirdPartyNoticeText.txt':'1af3c68039c57e539422da82a4faada506ce6d0ea6f90e0b699d02dbcdb7a90c'}

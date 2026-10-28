@@ -4,7 +4,7 @@ import {requireEphemeralPg18Ci} from '../../src/pg18-ephemeral-ci-guard.mjs'
 
 const prefix='AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_'
 const workflow='Agent Studio PG18 descriptive operator isolated verification',job='pg18-descriptive-operator-install'
-const source='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247'
+const source='bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67'
 const lock='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'
 const pkg='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'
 const permits=new WeakSet(),bindings=new WeakMap(),hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)

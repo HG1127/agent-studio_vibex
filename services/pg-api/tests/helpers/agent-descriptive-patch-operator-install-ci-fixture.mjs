@@ -117,10 +117,12 @@ export async function descriptivePatchInstallCiFixture(permit){
  const stage=stageTools.descriptiveInstallStageDescriptor(permit)
  phase='verify_stage_runtime'
  const loaded=await stageTools.loadVerifiedDescriptiveInstallStage(permit,stage)
+ loaded.assertRuntime()
  // Actual verified stage Pool is obtained BEFORE container metadata or any
  // administrator secret is read. Targets are then attested by real SQL.
  phase='attest_targets'
  const targets=await owned.attestDescriptiveInstallTargets(permit,loaded)
+ loaded.assertRuntime()
  const from=loaded.from,check=(ok,code)=>{if(!ok)throw Error('descriptive_install_ci_check:'+code)},same=(a,b,code)=>check(JSON.stringify(a)===JSON.stringify(b),code)
  phase='import_sealed_modules'
  const [fresh,installer,baseline,activation,originalSource,original,core,opinion,generated,descriptive,cli]=await Promise.all([
@@ -128,8 +130,10 @@ export async function descriptivePatchInstallCiFixture(permit){
   from('services/pg-api/src/agent-generated-operator-source.mjs'),from('services/pg-api/src/agent-generated-operator-core.ts'),from('services/pg-api/src/agent-descriptive-patch-operator-core.ts'),
   from('services/pg-api/src/agent-opinion-audit.ts'),from('services/pg-api/src/agent-generated-audit.ts'),from('services/pg-api/src/agent-descriptive-patch-audit.ts'),from('services/pg-api/src/agent-descriptive-patch-operator-cli.mjs'),
  ])
+ loaded.assertRuntime()
  phase='capture_predecessor'
  const predecessor=await originalSource.captureGeneratedOperatorSources();originalSource.assertGeneratedOperatorSnapshot(predecessor,'c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb')
+ loaded.assertRuntime()
  const pools=new Map(),passwords=new Map();let admin,restoreAdmin,full059Dump,serial=0,globalsRestored=false,ended=false
  const add=async(target,max=2)=>{const pool=await owned.ownedDescriptivePool(target,max);pools.set(pool,target);return pool}
  const end=async pool=>{if(!pool)return;pools.delete(pool);await pool.end()}
@@ -141,7 +145,8 @@ export async function descriptivePatchInstallCiFixture(permit){
   check(['agentstudio_stage_login','agentstudio_stage_worker','agentstudio_native_login','ci060_api','ci060_worker','ci060_nested'].includes(name),'fixed_synthetic_login')
   const password=randomBytes(40).toString('hex');passwords.set(name,password)
   await db.query((existing?'ALTER':'CREATE')+' ROLE '+name+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+activation.makeNativeScramVerifier(password)+"'")
-  for(const group of groups){check(['agentstudio_api','agentstudio_worker','ci060_bridge'].includes(group),'fixed_group');await db.query('GRANT '+group+' TO '+name+' WITH ADMIN FALSE, INHERIT FALSE, SET TRUE')}
+  loaded.assertRuntime()
+  for(const group of groups){check(['agentstudio_api','agentstudio_worker','ci060_bridge'].includes(group),'fixed_group');await db.query('GRANT '+group+' TO '+name+' WITH ADMIN FALSE, INHERIT FALSE, SET TRUE');loaded.assertRuntime()}
  }
  async function full(pool,installed){
   const c=await pool.connect()
@@ -239,38 +244,44 @@ export async function descriptivePatchInstallCiFixture(permit){
  }
  async function assertRows(e,installed){await full(admin,installed);check(await image(admin)===e.beforeRows&&await image(admin,true)===e.beforePhysical,'business_auth_physical_rows_unchanged');same(await metadata(admin),e.beforeMetadata,'database_metadata_unchanged');same(await globals(admin),e.beforeGlobals,'globals_unchanged')}
  try{
-  phase='open_main_pool';admin=await add(targets.main)
-  phase='open_restore_pool';restoreAdmin=await add(targets.restore)
+  // Each existing fixed phase now brackets an original post-await runtime
+  // assertion. First invalidation fails here; no cache refresh or bypass.
+  phase='open_main_pool';admin=await add(targets.main);loaded.assertRuntime()
+  phase='open_restore_pool';restoreAdmin=await add(targets.restore);loaded.assertRuntime()
   phase='capture_fresh_source'
   const originalFresh=fresh.captureFreshRuntimeSources();check(originalFresh.source_sha256===loaded.snapshot.manifest.default_fresh_source_sha256,'actual_fresh050_source')
+  loaded.assertRuntime()
   phase='connect_fresh_admin'
   const db=await admin.connect()
   try{
-   phase='fresh_begin';await db.query('BEGIN')
-   phase='fresh_baseline';await db.query(originalFresh.baseline.sql)
-   phase='fresh_stage_api_login';await login(db,'agentstudio_stage_login',['agentstudio_api'])
-   phase='fresh_stage_worker_login';await login(db,'agentstudio_stage_worker',['agentstudio_api','agentstudio_worker'])
-   phase='fresh_baseline_verify';await baseline.verifyFreshForTest(db)
-   phase='fresh_runtime_install';await installer.installFreshRuntime(db,originalFresh)
-   phase='fresh_commit';await db.query('COMMIT')
+   loaded.assertRuntime()
+   phase='fresh_begin';await db.query('BEGIN');loaded.assertRuntime()
+   phase='fresh_baseline';await db.query(originalFresh.baseline.sql);loaded.assertRuntime()
+   phase='fresh_stage_api_login';await login(db,'agentstudio_stage_login',['agentstudio_api']);loaded.assertRuntime()
+   phase='fresh_stage_worker_login';await login(db,'agentstudio_stage_worker',['agentstudio_api','agentstudio_worker']);loaded.assertRuntime()
+   phase='fresh_baseline_verify';await baseline.verifyFreshForTest(db);loaded.assertRuntime()
+   phase='fresh_runtime_install';await installer.installFreshRuntime(db,originalFresh);loaded.assertRuntime()
+   phase='fresh_commit';await db.query('COMMIT');loaded.assertRuntime()
   }catch(error){await db.query('ROLLBACK').catch(()=>{});throw error}finally{db.release()}
   const bootstrapPhases=['bootstrap_051','bootstrap_052','bootstrap_053','bootstrap_054','bootstrap_055','bootstrap_056','bootstrap_057','bootstrap_058']
   let bootstrapIndex=0
-  for(const[suffix,pin]of Object.entries(stageTools.descriptiveInstallBootstrapSteps)){phase=bootstrapPhases[bootstrapIndex++];const bytes=readFileSync(stage.input+'/bootstrap/'+suffix+'.sql');check(hash(bytes)===pin,'frozen_bootstrap_SQL');await admin.query(bytes.toString('utf8'))}
+  for(const[suffix,pin]of Object.entries(stageTools.descriptiveInstallBootstrapSteps)){phase=bootstrapPhases[bootstrapIndex++];const bytes=readFileSync(stage.input+'/bootstrap/'+suffix+'.sql');check(hash(bytes)===pin,'frozen_bootstrap_SQL');await admin.query(bytes.toString('utf8'));loaded.assertRuntime()}
   // Genuine raw059 setup is separate from the060 operator under test. No old
   //058 evidence() is reused or relabeled as a059 backup/provenance object.
-  phase='bootstrap_059';check(hash(predecessor.sql)==='74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063','raw059_pin');await admin.query(predecessor.sql)
+  phase='bootstrap_059';check(hash(predecessor.sql)==='74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063','raw059_pin');await admin.query(predecessor.sql);loaded.assertRuntime()
   phase='create_sentinel_bridge'
   await admin.query('CREATE ROLE ci060_bridge NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION; GRANT agentstudio_worker TO ci060_bridge WITH ADMIN FALSE, INHERIT FALSE, SET TRUE')
-  phase='create_sentinel_api';await login(admin,'ci060_api',['agentstudio_api'])
-  phase='create_sentinel_worker';await login(admin,'ci060_worker',['agentstudio_worker'])
-  phase='create_sentinel_nested';await login(admin,'ci060_nested',['ci060_bridge'])
-  phase='enable_native_login';await login(admin,'agentstudio_native_login',[],{existing:true})
+  loaded.assertRuntime()
+  phase='create_sentinel_api';await login(admin,'ci060_api',['agentstudio_api']);loaded.assertRuntime()
+  phase='create_sentinel_worker';await login(admin,'ci060_worker',['agentstudio_worker']);loaded.assertRuntime()
+  phase='create_sentinel_nested';await login(admin,'ci060_nested',['ci060_bridge']);loaded.assertRuntime()
+  phase='enable_native_login';await login(admin,'agentstudio_native_login',[],{existing:true});loaded.assertRuntime()
   phase='open_native_pool'
   const native=await owned.ownedDescriptiveRuntimePool(targets.main,'agentstudio_native_login',passwords.get('agentstudio_native_login'))
-  try{phase='import_native_repository';const {NativeAuthRepository}=await import(pathToFileURL(path.join(root,'services/pg-api/src/native-auth-repository.mjs')).href);phase='seed_native_admin';await new NativeAuthRepository(native).provisionInitialAdmin({email:'descriptive-install-ci@example.test',password:'Synthetic060Employee#'+randomBytes(12).toString('hex'),display_name:'Synthetic060 Employee'});phase='close_native_pool'}finally{await native.end()}
-  phase='full059_verify';await full(admin,false)
-  phase='capture_full059_dump';full059Dump=await owned.ownedDescriptiveArchive(targets.main,'dump')
+  try{loaded.assertRuntime();phase='import_native_repository';const {NativeAuthRepository}=await import(pathToFileURL(path.join(root,'services/pg-api/src/native-auth-repository.mjs')).href);loaded.assertRuntime();phase='seed_native_admin';await new NativeAuthRepository(native).provisionInitialAdmin({email:'descriptive-install-ci@example.test',password:'Synthetic060Employee#'+randomBytes(12).toString('hex'),display_name:'Synthetic060 Employee'});loaded.assertRuntime();phase='close_native_pool'}finally{await native.end()}
+  loaded.assertRuntime()
+  phase='full059_verify';await full(admin,false);loaded.assertRuntime()
+  phase='capture_full059_dump';full059Dump=await owned.ownedDescriptiveArchive(targets.main,'dump');loaded.assertRuntime()
   phase='initialized'
   return {loaded,core,original,predecessor,check,same,prepare,cliRun,tracedApply,sentinel,assertRows,
    async recover(e){const trace=[],pool={async connect(){const raw=await admin.connect();return {release:destroy=>raw.release(destroy),async query(sql,values=[]){trace.push(sql);return raw.query(sql,values)}}}};const result=await core.recoverDescriptivePatchOperator(pool,loaded.snapshot,e.capability,e.writer.records);check(trace.includes('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')&&!trace.includes(loaded.snapshot.body)&&!trace.includes('COMMIT')&&result.automatic_retry_authorized===false&&result.invocation_commit_acknowledged===false,'actual_readonly_recovery_no_DDL_or_retry');return result},

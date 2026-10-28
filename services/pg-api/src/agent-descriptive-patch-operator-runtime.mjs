@@ -10,6 +10,9 @@ import {assertDescriptivePatchOperatorSnapshot} from './agent-descriptive-patch-
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),prefix='services/pg-api/node_modules/'
 const sha=b=>createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
 const lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'
+const protocolMessagesFile=prefix+'pg-protocol/dist/messages.js',protocolParserFile=prefix+'pg-protocol/dist/parser.js'
+const protocolPins=Object.freeze({[protocolMessagesFile]:'dfd22ad639f3030b41617ff0ee201ece7cdbce4adb7e1aae7978541b1384cd31',[protocolParserFile]:'6f841aabda7240df44e1b08bbe8e202502ead969576c1ecc17311af48f57f2ef'})
+const protocolMessageNames=Object.freeze(['parseComplete','bindComplete','closeComplete','noData'])
 const parserPins=Object.freeze({
   'lib/typescript.js':'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675',
   'package.json':'822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6',
@@ -160,7 +163,7 @@ function external(file){
   if(typeof file!=='string'||file.length>4096||!path.isAbsolute(file)||path.normalize(file)!==file||/[\\\x00-\x1f\x7f]/.test(file)||file===root||file.startsWith(root+path.sep)||file.split(path.sep).some(p=>['node_modules','.pnpm','.git','.codex','.agents'].includes(p.toLowerCase())))fail()
 }
 function host(){if(process.platform!=='linux'||process.getuid?.()!==0||process.getgid?.()!==0||process.versions.node.split('.')[0]!=='24'||getCompileCacheDir()!==undefined)fail();assertDescriptivePatchOperatorRuntimeEnvironment(process.env,process.execArgv)}
-const capabilities=new WeakMap(),claimed=new Map(),cjs=createRequire(import.meta.url)
+const capabilities=new WeakMap(),claimed=new Map(),protocolStates=new WeakMap(),cjs=createRequire(import.meta.url)
 function assertSource(snapshot,expected){
   assertDescriptivePatchOperatorSnapshot(snapshot,expected)
   const files=new Set(snapshot.manifest.sources.map(f=>f.path)),edges=snapshot.manifest.imports
@@ -175,7 +178,54 @@ function inspectExports(value,seen=new Map()){
   for(const k of Reflect.ownKeys(descriptors)){const d=descriptors[k];if('value'in d)inspectExports(d.value,seen)}
   return seen
 }
-function checkExports(graph){for(const [object,before] of graph){const after=Object.getOwnPropertyDescriptors(object);if(Reflect.ownKeys(before).length!==Reflect.ownKeys(after).length)fail();for(const k of Reflect.ownKeys(before)){const a=before[k],b=after[k];if(!b||['value','get','set','writable','enumerable','configurable'].some(p=>a[p]!==b[p]))fail()}}}
+function assertProtocolPins(state){
+  if(!(state.files instanceof Map))fail()
+  for(const [file,pin] of Object.entries(protocolPins))if(Object.getOwnPropertyDescriptor(state.files.get(file)??{},'sha256')?.value!==pin)fail()
+}
+// Only cacheCheck supplies a verified actual module. The per-runtime memo is
+// private; neither parsed JSON nor this return value grants a runtime capability.
+function protocolMessageExports(state,file,module,exports){
+  if(file!==path.join(root,protocolMessagesFile))return undefined
+  const memo=protocolStates.get(state);if(!memo)fail()
+  const cached=Object.getOwnPropertyDescriptor(state.cacheObject,file)
+  if(!cached||!('value'in cached)||cached.value!==module)fail()
+  assertProtocolPins(state);assertDescriptivePatchOperatorRuntimeCacheRecord(module,file,module,exports)
+  if(Object.getPrototypeOf(exports)!==Object.prototype)fail()
+  const descriptors=Object.getOwnPropertyDescriptors(exports)
+  if(memo.binding){
+    const b=memo.binding;if(b.file!==file||b.module!==module||b.exports!==exports)fail()
+    for(const name of protocolMessageNames){const d=descriptors[name];if(!d||!('value'in d)||b.cells.get(d.value)?.name!==name||Object.getPrototypeOf(d.value)!==Object.prototype)fail()}
+    return b.cells
+  }
+  const cells=new WeakMap(),objects=new Set()
+  for(const name of protocolMessageNames){
+    const d=descriptors[name],object=d?.value
+    if(!d||!('value'in d)||!d.writable||!d.enumerable||!d.configurable||!object||Object.getPrototypeOf(object)!==Object.prototype||objects.has(object))fail()
+    const fields=Object.getOwnPropertyDescriptors(object)
+    if(Reflect.ownKeys(fields).length!==2||!fields.name||!fields.length)fail()
+    for(const key of ['name','length']){const f=fields[key];if(!('value'in f)||!f.writable||!f.enumerable||!f.configurable||f.value!==(key==='name'?name:5))fail()}
+    objects.add(object);cells.set(object,{name,normalized:false})
+  }
+  memo.binding={file,module,exports,cells};return cells
+}
+function checkExports(graph,protocolCells){
+  if(protocolCells!==undefined&&!(protocolCells instanceof WeakMap))fail()
+  for(const [object,before] of graph){
+    const after=Object.getOwnPropertyDescriptors(object),cell=protocolCells?.get(object)
+    if(Reflect.ownKeys(before).length!==Reflect.ownKeys(after).length)fail()
+    for(const k of Reflect.ownKeys(before)){
+      const a=before[k],b=after[k]
+      if(!b||['get','set','writable','enumerable','configurable'].some(p=>a[p]!==b[p]))fail()
+      if(cell&&k==='length'){
+        // Locked pg-protocol 1.16.1 literals start at5; legitimate empty frames
+        // have wire length4. This checks observed values, not who assigned them
+        // or mutations restored between checks. Once observed4,5 is refused.
+        if(a.value!==5||!('value'in b)||(b.value!==5&&b.value!==4)||cell.normalized&&b.value!==4)fail()
+        if(b.value===4)cell.normalized=true
+      }else if(a.value!==b.value)fail()
+    }
+  }
+}
 // Pure cache-record policy only; this function creates no verification ability.
 export function assertDescriptivePatchOperatorRuntimeCacheRecord(module,file,previousModule,previousExports){
   if(!module||typeof module!=='object'||typeof file!=='string')fail()
@@ -194,7 +244,8 @@ function cacheCheck(state){
     const module=d.value,md=Object.getOwnPropertyDescriptors(module)
     const saved=state.cache.get(file)
     assertDescriptivePatchOperatorRuntimeCacheRecord(module,file,saved?.module,saved?.exports)
-    if(saved){checkExports(saved.graph)}
+    const protocolCells=protocolMessageExports(state,file,module,md.exports.value)
+    if(saved){checkExports(saved.graph,protocolCells)}
     else state.cache.set(file,{module,exports:md.exports.value,graph:inspectExports(md.exports.value)})
   }
   for(const [file,saved] of state.cache){const d=Object.getOwnPropertyDescriptor(state.cacheObject,file);if(!d||!('value'in d)||d.value!==saved.module)fail()}
@@ -209,7 +260,7 @@ function packageInfo(state,name){
   return p
 }
 function verifyTree(state,initial=false){
-  host();assertSource(state.snapshot,state.expected)
+  host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)
   const manifest=readBound(state.manifestFile,state.manifestSha,'manifest')
   if(state.manifestStamp)assertDescriptivePatchOperatorRuntimeStable(state.manifestStamp,manifest.stamp)
   if(state.manifestChain)sameChain(state.manifestChain,manifest.chain)
@@ -262,6 +313,7 @@ export function verifyDescriptivePatchOperatorRuntime(snapshot,expectedSourceSha
   for(const file of cachedFiles(cacheObject)){const relative=path.relative(root,file).replaceAll(path.sep,'/');if(!relative.startsWith(prefix+'typescript/')||!Object.hasOwn(parserPins,relative.slice((prefix+'typescript/').length)))fail()}
   const state={snapshot,expected:expectedSourceSha256,manifestFile:o.manifestFile,manifestSha:o.manifestSha256,manifestStamp:raw.stamp,
     files,stamps:new Map(),chains:new Map(),directoryStamps:new Map(),cacheObject,cache:new Map(),loadedSources:new Set(),entry:path.join(root,prefix+'pg/lib/index.js'),loaded:false,failed:false}
+  protocolStates.set(state,{binding:undefined})
   verifyTree(state,true)
   const capability=Object.freeze({});capabilities.set(capability,state);claimed.set(root,state);return capability
 }

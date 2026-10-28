@@ -14,7 +14,7 @@ import dgram from 'node:dgram'
 
 const here=fileURLToPath(import.meta.url),prefix='AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_'
 const repository='HG1127/agent-studio_vibex',workflow='Agent Studio PG18 descriptive operator isolated verification',job='pg18-descriptive-operator-runtime'
-const sourceSha='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247'
+const sourceSha='bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67'
 const predecessorSha='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'
 const lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'
 const packageSha='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'
@@ -73,6 +73,9 @@ const scenarios=[
   ['negative-manifest-mode','verify'],['negative-lock-hash','verify'],['negative-preloaded-cache','verify'],['negative-replaced-cache','assert'],
   ['negative-replaced-exports','assert'],['negative-mutated-exports','assert'],['negative-deleted-cache','assert'],['negative-ancestor','require'],
   ['negative-force-native','load'],['negative-esm','import'],['negative-native-getter','require'],['negative-native-require','require'],['negative-second-verification','verify'],
+  ['positive-protocol-normalization','protocol',true],
+  ['negative-protocol-length-revert','assert'],['negative-protocol-length-invalid','assert'],
+  ['negative-protocol-singleton-clone','assert'],['negative-protocol-length-getter','assert'],
 ]
 export const descriptiveOperatorRuntimeCiCases=Object.freeze(scenarios.map(([id,phase,positive=false])=>Object.freeze({id,phase,positive})))
 function requireProof(proof){if(!sealed.has(proof))refuse('unsealed')}
@@ -175,12 +178,78 @@ function expectRefusal(operation,code=runtimeCode){let caught;assert.throws(oper
 async function expectAsyncRefusal(operation,code=runtimeCode){let caught;await assert.rejects(operation,error=>{caught=error;return error?.message===code});return caught.message}
 function mutateBytes(file){const raw=fs.readFileSync(file);raw[raw.length-1]^=1;fs.writeFileSync(file,raw)}
 
+// Only called AFTER the genuine stage/verify/load path. Read the two modules
+// that pg already loaded from the SAME cache; never require a new protocol module.
+function normalizeOriginalProtocolMessages(runtime,cap,require,absolute){
+  const definitions=[['parseComplete',49],['bindComplete',50],['closeComplete',51],['noData',110]]
+  const cache=require.cache
+  const parserFile=absolute(modules+'pg-protocol/dist/parser.js'),messagesFile=absolute(modules+'pg-protocol/dist/messages.js')
+  const pins=[[parserFile,'6f841aabda7240df44e1b08bbe8e202502ead969576c1ecc17311af48f57f2ef'],
+    [messagesFile,'dfd22ad639f3030b41617ff0ee201ece7cdbce4adb7e1aae7978541b1384cd31']]
+  const cached=file=>{
+    const descriptor=Object.getOwnPropertyDescriptor(cache,file)
+    assert.ok(descriptor&&'value'in descriptor)
+    const module=descriptor.value,fields=Object.getOwnPropertyDescriptors(module)
+    assert.equal(fields.id?.value,file);assert.equal(fields.filename?.value,file);assert.equal(fields.loaded?.value,true)
+    assert.ok(fields.exports&&'value'in fields.exports)
+    return {module,exports:fields.exports.value}
+  }
+  for(const[file,pin]of pins)assert.equal(sha(fs.readFileSync(file)),pin)
+  const parserRecord=cached(parserFile),messagesRecord=cached(messagesFile),messages=messagesRecord.exports
+  const parserDescriptor=Object.getOwnPropertyDescriptor(parserRecord.exports,'Parser')
+  assert.ok(parserDescriptor&&'value'in parserDescriptor)
+  const Parser=parserDescriptor.value;assert.equal(typeof Parser,'function')
+  assert.equal(Object.getPrototypeOf(messages),Object.prototype)
+  const originals=new Map(),exportDescriptors=new Map(),fieldDescriptors=new Map()
+  for(const[name]of definitions){
+    const exported=Object.getOwnPropertyDescriptor(messages,name)
+    assert.ok(exported&&'value'in exported)
+    assert.equal(exported.writable,true);assert.equal(exported.enumerable,true);assert.equal(exported.configurable,true)
+    const object=exported.value,fields=Object.getOwnPropertyDescriptors(object)
+    assert.equal(Object.getPrototypeOf(object),Object.prototype)
+    assert.deepEqual(Reflect.ownKeys(fields).sort(),['length','name'])
+    for(const key of ['name','length']){
+      const descriptor=fields[key];assert.ok(descriptor&&'value'in descriptor)
+      assert.equal(descriptor.writable,true);assert.equal(descriptor.enumerable,true);assert.equal(descriptor.configurable,true)
+      assert.equal(descriptor.value,key==='name'?name:5)
+    }
+    originals.set(name,object);exportDescriptors.set(name,exported);fieldDescriptors.set(name,fields)
+  }
+  const evidence={messages:definitions.map(([name])=>name),initial_lengths:definitions.map(()=>5),wire_hex:[],
+    original_singleton_callbacks:true,same_verified_cache:true,locked_protocol_hashes:true,
+    normalizations:0,assertions_after_wire:0,getter_calls:0}
+  runtime.assertDescriptivePatchOperatorRuntime(cap)
+  for(const[name,code]of definitions){
+    const bytes=Buffer.from([code,0,0,0,4]),emitted=[]
+    new Parser().parse(bytes,message=>emitted.push(message))
+    assert.equal(emitted.length,1);assert.strictEqual(emitted[0],originals.get(name))
+    const before=fieldDescriptors.get(name)
+    assert.deepEqual(Object.getOwnPropertyDescriptors(originals.get(name)),{
+      name:before.name,length:{...before.length,value:4},
+    })
+    assert.strictEqual(require.cache,cache)
+    assert.strictEqual(cached(parserFile).module,parserRecord.module)
+    assert.strictEqual(cached(messagesFile).module,messagesRecord.module)
+    assert.strictEqual(cached(parserFile).exports,parserRecord.exports)
+    assert.strictEqual(cached(messagesFile).exports,messages)
+    assert.strictEqual(Object.getOwnPropertyDescriptor(parserRecord.exports,'Parser').value,Parser)
+    assert.deepEqual(Object.getOwnPropertyDescriptor(messages,name),exportDescriptors.get(name))
+    // Each real wire frame must be observed by the actual runtime before any
+    // negative mutation. A later failure cannot masquerade as normalization.
+    runtime.assertDescriptivePatchOperatorRuntime(cap)
+    evidence.normalizations++;evidence.assertions_after_wire++;evidence.wire_hex.push(bytes.toString('hex'))
+  }
+  assert.equal(evidence.normalizations,4)
+  for(const[file,pin]of pins)assert.equal(sha(fs.readFileSync(file)),pin)
+  return {messages,originals,evidence}
+}
+
 async function executeCase(proof,id){
   requireProof(proof);const scenario=descriptiveOperatorRuntimeCiCases.find(value=>value.id===id);if(!scenario)refuse('case')
   const databaseCalls=blockDatabaseIo(),s=stage(proof,id),absolute=relative=>s.root+'/'+relative,entry=absolute(modules+'pg/lib/index.js'),code=absolute(modules+'pg/lib/defaults.js')
   const from=relative=>import(pathToFileURL(absolute(relative)).href)
   const source=await from('services/pg-api/src/agent-descriptive-patch-operator-source.mjs')
-  let rejection,verified=false
+  let rejection,verified=false,protocolEvidence
   if(scenario.phase==='capture'){
     const file=id==='negative-parser-hash'?absolute(parser+'lib/typescript.js'):id==='negative-raw060'?absolute(sql060):absolute('services/pg-api/src/agent-descriptive-patch-operator-cli.mjs')
     fs.appendFileSync(file,'\n')
@@ -237,6 +306,38 @@ async function executeCase(proof,id){
         if(id==='negative-esm')rejection=await expectAsyncRefusal(()=>import(pathToFileURL(absolute(modules+'pg/esm/index.mjs')).href))
         if(id==='negative-native-getter')rejection=expectRefusal(()=>Object.getOwnPropertyDescriptor(pg,'native').get.call(pg))
         if(id==='negative-native-require')rejection=expectRefusal(()=>require('./native'))
+        if(id==='positive-protocol-normalization'||id.startsWith('negative-protocol-')){
+          const protocol=normalizeOriginalProtocolMessages(runtime,cap,require,absolute)
+          protocolEvidence=protocol.evidence
+          const object=protocol.originals.get('noData'),descriptor=Object.getOwnPropertyDescriptor(object,'length')
+          assert.equal(descriptor.value,4)
+          if(id==='negative-protocol-length-revert'||id==='negative-protocol-length-invalid'){
+            const value=id==='negative-protocol-length-revert'?5:6
+            Object.defineProperty(object,'length',{...descriptor,value})
+            assert.equal(Object.getOwnPropertyDescriptor(object,'length').value,value)
+            protocolEvidence.mutation=value===5?'observed4_to5':'observed4_to6'
+            rejection=expectRefusal(()=>runtime.assertDescriptivePatchOperatorRuntime(cap))
+          }
+          if(id==='negative-protocol-singleton-clone'){
+            const clone=Object.create(Object.getPrototypeOf(object),Object.getOwnPropertyDescriptors(object))
+            assert.notStrictEqual(clone,object)
+            assert.deepEqual(Object.getOwnPropertyDescriptors(clone),Object.getOwnPropertyDescriptors(object))
+            const exported=Object.getOwnPropertyDescriptor(protocol.messages,'noData')
+            // Change only exports.noData identity, retaining the real module
+            // exports root and exactly the same name/length/descriptor values.
+            Object.defineProperty(protocol.messages,'noData',{...exported,value:clone})
+            protocolEvidence.mutation='same_shape_noData_clone'
+            rejection=expectRefusal(()=>runtime.assertDescriptivePatchOperatorRuntime(cap))
+          }
+          if(id==='negative-protocol-length-getter'){
+            Object.defineProperty(object,'length',{enumerable:descriptor.enumerable,configurable:descriptor.configurable,
+              get(){protocolEvidence.getter_calls++;return 4}})
+            assert.equal(protocolEvidence.getter_calls,0)
+            protocolEvidence.mutation='length_getter_returning4'
+            rejection=expectRefusal(()=>runtime.assertDescriptivePatchOperatorRuntime(cap))
+            assert.equal(protocolEvidence.getter_calls,0,'runtime must reject the descriptor without executing the getter')
+          }
+        }
         if(scenario.positive){runtime.assertDescriptivePatchOperatorRuntime(cap);assert.strictEqual(runtime.loadDescriptivePatchOperatorPg(cap),handle)}
       }
     }
@@ -249,7 +350,7 @@ async function executeCase(proof,id){
   assert.equal(s.options.manifestSha256,proof.runtimeManifestSha)
   return {format:'descriptive_operator_runtime_ci_case_v1',case:id,phase:scenario.phase,result:scenario.positive?'verified':'refused',
     rejection_code:rejection,verified_before_rejection:verified,actual_posix_stage:true,approved_manifest_sha_unchanged:true,manifest_copy_unchanged:id!=='negative-manifest-hash',
-    source_sha256:sourceSha,source_files:55,source_edges:119,database_calls:databaseCalls()}
+    source_sha256:sourceSha,source_files:55,source_edges:119,database_calls:databaseCalls(),...(protocolEvidence?{protocol:protocolEvidence}:{})}
 }
 export async function runDescriptiveOperatorRuntimeCiChild(proof,id){
   requireProof(proof);if(!descriptiveOperatorRuntimeCiCases.some(scenario=>scenario.id===id))refuse('case')

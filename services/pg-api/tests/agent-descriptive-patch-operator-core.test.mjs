@@ -20,7 +20,7 @@ let snapshot,predecessor
 const digest='a'.repeat(64),predecessorSha='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'
 // Parent-reviewed complete production-source candidate, supplied explicitly.
 // It is not backup evidence or authorization for any production target.
-const expected='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247'
+const expected='bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67'
 before(async()=>{snapshot=await captureDescriptivePatchOperatorSources();predecessor=await captureGeneratedOperatorSources()})
 function candidate(options={}){
   return {format:'agent_descriptive_patch_operator_approval_v1',source_sha256:expected,predecessor_source_sha256:predecessorSha,

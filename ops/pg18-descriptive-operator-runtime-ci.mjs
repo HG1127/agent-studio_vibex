@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process'
 
 const here=fileURLToPath(import.meta.url),root=path.resolve(path.dirname(here),'..')
 const prefix='AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_'
-const sourceSha='daa6e1c402221335d204c55e1469d290ca3aaf898b1c66fdc09d0262f5298247'
+const sourceSha='bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67'
 const lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'
 const packageSha='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'
 const image='node:24-bookworm-slim'
@@ -16,8 +16,8 @@ const github=['GITHUB_ACTIONS','CI','RUNNER_OS','RUNNER_ENVIRONMENT','GITHUB_REP
 const markers={EPHEMERAL:'true',PURPOSE:'DESCRIPTIVE_060_RUNTIME_DEPENDENCIES_ONLY',APPROVED:'YES_DISPOSABLE_DEPENDENCY_LOAD_ONLY'}
 const parserPins={'lib/typescript.js':'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','package.json':'822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6','LICENSE.txt':'a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47','ThirdPartyNoticeText.txt':'1af3c68039c57e539422da82a4faada506ce6d0ea6f90e0b699d02dbcdb7a90c'}
 const harnessPins={
- 'services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs':'21a34d4446284d71a874422e6bda325ef7b9d9c70a03f27862f2c646676ea73a',
- 'services/pg-api/tests/helpers/agent-descriptive-patch-operator-runtime-ci-fixture.mjs':'b1ed3d3a25fa717ae0007a1971dfc9716122b25aed64c313747833d0deb82962',
+ 'services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs':'dccb6ee5f32a13605cc5aa2193eeff1cc928991a8e13caee8567cfce3c62be84',
+ 'services/pg-api/tests/helpers/agent-descriptive-patch-operator-runtime-ci-fixture.mjs':'dfb6c2d4fea7123008799dda937e42dea00a4441ea850a202d5a6187b1f4d406',
 }
 const sha=b=>createHash('sha256').update(b).digest('hex')
 const fail=reason=>{throw Error('descriptive_operator_runtime_ci_refused:'+reason)}
@@ -154,7 +154,7 @@ function runContainer(proof,stage){
   inspect() // Actual fixed image, network-none, root and readonly own mounts.
   const output=command(['start','--attach',id],15*60*1000)
   const final=inspect()
-  if(final.State?.Running||final.State?.ExitCode!==0||!/tests 28\b/.test(output)||!/pass 28\b/.test(output)||!/fail 0\b/.test(output))fail('runtime_cases_failed')
+  if(final.State?.Running||final.State?.ExitCode!==0||!/tests 33\b/.test(output)||!/pass 33\b/.test(output)||!/fail 0\b/.test(output))fail('runtime_cases_failed')
   process.stdout.write(output)
   process.stdout.write(JSON.stringify({format:'descriptive_runtime_ci_publisher_result_v1',source_sha256:sourceSha,source_manifest_sha256:stage.sourceManifestSha,runtime_manifest_sha256:stage.runtimeManifestSha,runtime_files:stage.runtimeFiles,image_id:imageId,container_id:id,network:'none',database_calls:0,installer_executed:false,production_cutover_allowed:false})+'\n')
  }catch(error){
