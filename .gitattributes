@@ -183,3 +183,7 @@ services/pg-api/src/workflow-v2-worker-loop.ts text eol=lf
 services/pg-api/src/workflow-v2-worker.ts text eol=lf
 services/pg-api/tests/schedule-claim-admission.test.mjs text eol=lf
 services/pg-api/tests/workflow-v2-claim-admission.test.mjs text eol=lf
+
+# Genuine independent LOGIN telemetry replay and fencing probes
+services/pg-api/tests/helpers/worker-heartbeat-runtime-ci.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-runtime-tcp.integration.mjs text eol=lf
