@@ -136,3 +136,9 @@ tests/pg-native-company-overview-session.test.mjs text eol=lf
 src/pages/PgNativePilot/CompanyOverviewPanel.tsx text eol=lf
 tests/pg-native-company-overview-render.test.mjs text eol=lf
 tests/pg-native-browser/company-overview.spec.mjs text eol=lf
+
+# Unmounted independent Worker heartbeat value protocols
+services/pg-api/src/worker-heartbeat-contract.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-contract.test.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-report-sequence.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs text eol=lf
