@@ -154,7 +154,7 @@ SELECT current_database() AS database,d.oid::text AS database_oid,d.datdba::text
  (current_user=session_user AND s.oid=d.datdba AND s.rolsuper) AS authentic_operator,
  NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles x WHERE NOT x.rolsuper AND pg_catalog.pg_has_role(x.oid,s.oid,'MEMBER')) AS owner_no_non_super_members,
  current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,
- inet_server_addr()::text AS server_addr,inet_server_port() AS server_port,
+ host(inet_server_addr()) AS server_addr,inet_server_port() AS server_port,
  (extract(epoch FROM pg_catalog.pg_postmaster_start_time())*1000000)::numeric(30,0)::text AS postmaster_started_us,
  (SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS system_id,
  current_setting('transaction_read_only') AS read_only,current_setting('transaction_isolation') AS isolation,

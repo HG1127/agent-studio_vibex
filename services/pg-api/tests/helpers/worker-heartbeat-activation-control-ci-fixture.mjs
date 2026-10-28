@@ -76,6 +76,7 @@ export async function createWorkerHeartbeatActivationControlCiFixture(proof,priv
   s.phase='new_telemetry_database_original001';await containers.createTelemetryControlCiDatabase(s.container);s.telemetryOptions=containers.telemetryControlCiContainerTelemetryOptions(s.container);s.telemetry=pool(s.telemetryOptions)
   const telemetrySql=fs.readFileSync(path.join(root,'db/postgres/telemetry/001_worker_heartbeats.sql'));if(sha(telemetrySql)!==sqlPin)fail('telemetry_sql_pin');await s.telemetry.query(telemetrySql.toString('utf8'))
   s.phase='private_root_configuration';await configure(s)
+  s.phase='genuine_management_catalog_preaudit';await preauditManagement(s)
   s.phase='cold_actual_controller';await startController(s)
   const bootStatus=await rpc(s,{op:'inspect'});if(bootStatus.phase!=='closed'||bootStatus.read_gate!=='closed'||bootStatus.in_flight_reads!==0||!hex(bootStatus.policy_sha256)||bootStatus.is_activation_capability!==false)fail('new_actual_closed_bootstrap')
   s.phase='actual_native_child';await startNative(s)
@@ -87,6 +88,24 @@ async function nativeSchema(s){
  const versions=(await s.nativeAdmin.query('SELECT version,description FROM agentstudio.schema_migrations ORDER BY version')).rows
  const objects=(await s.nativeAdmin.query("SELECT n.nspname,c.relname,c.relowner::text,c.relacl,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') ORDER BY n.nspname,c.relname")).rows
  return sha(JSON.stringify({versions,objects}))
+}
+async function preauditManagement(s){
+ // A separate genuine read-only catalog check, not a controller DbAccess,
+ // runtime capability or registry observation. Query results are never adapted.
+ const {verifyWorkerHeartbeatManagementCatalog}=await import(pathToFileURL(s.stage.controlRoot+'/services/pg-api/src/worker-heartbeat-management-audit.ts').href)
+ const raw=await s.telemetry.connect();let last='none',queries=0,active=false
+ try{
+  const address=(await raw.query('SELECT inet_server_addr()::text AS inet_text,host(inet_server_addr()) AS host_text')).rows[0]
+  if(address.host_text!=='127.0.0.1'||address.inet_text!=='127.0.0.1/32')fail('actual_inet_address_representation')
+  process.stdout.write(JSON.stringify({event:'telemetry_control_ci_actual_loopback_representation',...address})+'\n')
+  await raw.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');active=true
+  await raw.query("SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='1000ms'; SET LOCAL lock_timeout='250ms'")
+  const db={async query(sql,args=[]){const tag=/^\/\* telemetry_v1_management_catalog:([a-z_]+) \*\//.exec(sql);if(!tag)fail('catalog_probe_query_tag');last=tag[1];queries++;return raw.query(sql,args)},release(){fail('catalog_probe_cannot_release')}}
+  const b=s.binding,expectations={protocol:'worker_heartbeat_management_catalog_expectations_v1',database_oid:b.database_oid,database_owner_oid:b.owner_oid,schema_oid:b.schema_oid,operator:{oid:b.operator_oid,name:b.operator_login},roles:b.roles.map((r,i)=>({oid:r.oid,name:r.name,login:false,inherit:false,super:false,bypass:false,create_db:false,create_role:false,replication:false,connection_limit:i===0?-1:i===1?2:1,config:null,no_expiry:true,memberships:0}))}
+  await verifyWorkerHeartbeatManagementCatalog(db,expectations)
+  process.stdout.write(JSON.stringify({event:'telemetry_control_ci_management_catalog_preaudit_pass',queries,controller_authority:false})+'\n')
+ }catch(error){process.stderr.write(JSON.stringify({event:'telemetry_control_ci_management_catalog_preaudit_failed',last_query_tag:last,queries,controller_authority:false})+'\n');throw error}
+ finally{try{if(active)await raw.query('ROLLBACK')}finally{raw.release()}}
 }
 async function configure(s){
  const identity=(await s.telemetry.query("SELECT system_identifier::text AS system_id,current_database() AS database,d.oid::integer AS database_oid,d.datdba::integer AS owner_oid,(SELECT oid::integer FROM pg_namespace WHERE nspname='studio_telemetry') AS schema_oid,session_user::text AS operator_login,r.oid::integer AS operator_oid,host(inet_server_addr()) AS server_addr,inet_server_port() AS server_port,(extract(epoch FROM pg_postmaster_start_time())*1000000)::numeric(30,0)::text AS postmaster_started_us FROM pg_control_system(),pg_database d JOIN pg_roles r ON r.rolname=session_user WHERE d.datname=current_database()")).rows[0]

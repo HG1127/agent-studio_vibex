@@ -50,7 +50,7 @@ function fixture(active=false){
  let row
  if(sql.startsWith('/* telemetry_activation_registry:target */'))row={
  database:'agent_studio_telemetry',database_oid:'40',owner_oid:'1',schema_oid:'10',...context(),
- authentic_operator:true,owner_no_non_super_members:true,version:180006,encoding:'UTF8',server_addr:'127.0.0.1',server_port:5432,
+ authentic_operator:true,owner_no_non_super_members:true,version:180006,encoding:'UTF8',server_addr:sql.includes('host(inet_server_addr()) AS server_addr')?'127.0.0.1':'127.0.0.1/32',server_port:5432,
  postmaster_started_us:'1793188800000000',system_id:'1234567890123456789',recovery:false,roles:state.roles,...state.target}
  else if(sql.startsWith('/* telemetry_activation_registry:registry */'))row={
  protocol:'telemetry_registry_observation_v1',...context(),clock_valid:true,as_of:state.at,kinds:state.kinds,slots:state.slots,...state.registry}
