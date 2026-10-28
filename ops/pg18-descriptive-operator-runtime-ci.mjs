@@ -31,10 +31,10 @@ function gate(){
  return Object.freeze({run:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT})
 }
 function privateDirectory(file,create=false){
- if(!file.startsWith('/opt/')||path.normalize(file)!==file)fail('private_path')
+ if(!file.startsWith('/root/agentstudio-descriptive-runtime-')||path.normalize(file)!==file)fail('private_path')
  if(create)fs.mkdirSync(file,{recursive:true,mode:0o700})
  let at='/'
- for(const part of file.split('/').filter(Boolean)){at=path.join(at,part);const s=fs.lstatSync(at);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==0||s.gid!==0||(s.mode&0o7022)!==0)fail('private_ancestor')}
+ for(const part of file.split('/').filter(Boolean)){at=path.join(at,part);const s=fs.lstatSync(at);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==0||s.gid!==0||(s.mode&0o7022)!==0){process.stderr.write(JSON.stringify({phase:'private_ancestor',path:at,uid:s.uid,gid:s.gid,mode:s.mode&0o7777})+'\n');fail('private_ancestor')}}
 }
 function read(file,expected){
  const a=fs.lstatSync(file)
@@ -60,7 +60,9 @@ async function publish(proof){
  source.assertDescriptivePatchOperatorSnapshot(snapshot,sourceSha)
  if(policy.lock_sha256!==lockSha||snapshot.manifest.predecessor.source_sha256!=='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'||snapshot.manifest.default_fresh_latest!=='pg_v9_050')fail('source_binding')
  const nonce=randomBytes(32).toString('hex'),label=proof.run+'-'+proof.attempt+'-'+nonce
- const input='/opt/agentstudio-descriptive-runtime-input/'+label,harness='/opt/agentstudio-descriptive-runtime-harness/'+label,tools='/opt/agentstudio-descriptive-runtime-tools/'+label
+ // Host staging uses a new private root directory. The container has its own
+ // /opt ancestry and receives only the two readonly, reviewed bind mounts.
+ const input='/root/agentstudio-descriptive-runtime-input/'+label,harness='/root/agentstudio-descriptive-runtime-harness/'+label,tools='/root/agentstudio-descriptive-runtime-tools/'+label
  for(const dir of [input,harness,tools]){if(fs.existsSync(dir))fail('existing_stage');privateDirectory(dir,true)}
  const tree=input+'/tree',records=new Map()
  const add=(relative,bytes,expected)=>{
@@ -124,11 +126,12 @@ function runContainer(proof,stage){
  for(const[k,v]of Object.entries(markers))env[prefix+k]=v
  Object.assign(env,{[prefix+'NONCE']:stage.nonce,[prefix+'SOURCE_MANIFEST_SHA256']:stage.sourceManifestSha,[prefix+'RUNTIME_MANIFEST_SHA256']:stage.runtimeManifestSha})
  const harnessTarget='/opt/agentstudio-descriptive-runtime-harness/'+proof.run+'-'+proof.attempt+'-'+stage.nonce
+ const inputTarget='/opt/agentstudio-descriptive-runtime-input/'+proof.run+'-'+proof.attempt+'-'+stage.nonce
  const args=['create','--name',name,'--label','org.agentstudio.descriptive-runtime.nonce='+stage.nonce,
   // DAC_OVERRIDE permits intentional edits to this test's own0444/0555 stage.
   // Readonly input mounts remain readonly; no administrative/network caps.
   '--network','none','--user','0:0','--cap-drop','ALL','--cap-add','DAC_OVERRIDE','--security-opt','no-new-privileges','--pids-limit','256','--memory','2g','--cpus','2',
-  '--mount','type=bind,src='+stage.input+',dst='+stage.input+',readonly',
+  '--mount','type=bind,src='+stage.input+',dst='+inputTarget+',readonly',
   '--mount','type=bind,src='+stage.harness+',dst='+harnessTarget+',readonly']
  for(const[k,v]of Object.entries(env))args.push('--env',k+'='+v)
  args.push(imageId,'node','--experimental-strip-types',harnessTarget+'/services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs')
@@ -136,7 +139,7 @@ function runContainer(proof,stage){
  const inspect=()=>{
   const rows=JSON.parse(command(['inspect',id])),c=rows[0],host=c?.HostConfig
   if(rows.length!==1||c.Id!==id||c.Name!=='/'+name||c.Image!==imageId||c.Config?.Image!==imageId||c.Config?.User!=='0:0'||c.Config?.Labels?.['org.agentstudio.descriptive-runtime.nonce']!==stage.nonce||host?.NetworkMode!=='none'||host.Privileged!==false||(host.Binds??[]).length||(host.Devices??[]).length||(host.VolumesFrom??[]).length||JSON.stringify(host.CapAdd)!==JSON.stringify(['DAC_OVERRIDE'])||JSON.stringify(host.CapDrop)!==JSON.stringify(['ALL'])||!host.SecurityOpt?.includes('no-new-privileges')||Object.keys(host.PortBindings??{}).length||!Array.isArray(c.Mounts)||c.Mounts.length!==2)fail('container_configuration')
-  const expected=new Map([[stage.input,stage.input],[harnessTarget,stage.harness]])
+  const expected=new Map([[inputTarget,stage.input],[harnessTarget,stage.harness]])
   for(const mount of c.Mounts)if(mount.Type!=='bind'||mount.RW!==false||expected.get(mount.Destination)!==mount.Source)fail('container_mount')
   if(!Object.entries(env).every(([k,v])=>c.Config.Env.includes(k+'='+v)))fail('container_environment')
   return c
