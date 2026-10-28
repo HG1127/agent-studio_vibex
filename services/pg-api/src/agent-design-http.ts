@@ -50,7 +50,16 @@ export function createAgentDesignHttpHandler({repository: r, authenticateRequest
       const item = /^\/api\/v2\/agent-design\/(sources|requests)\/([a-f0-9-]{36})$/.exec(path)
       if (!action && !item) return invalid()
       allow = action ? "POST" : "GET"; if (req.method !== allow) throw new HttpError(405, "method_not_allowed")
-      const identity = await authenticateRequest(req); requireAgentDesignNative(identity)
+      let identity: Identity
+      try {identity = await authenticateRequest(req)} catch (error) {
+        // The actual Native closure uses Error + status, rather than HttpError.
+        // Only its fixed authentication refusals become a public401; a backend
+        // or post-write projection failure must remain an uncertain500.
+        if (error instanceof Error && Object.getOwnPropertyDescriptor(error, "status")?.value === 401 &&
+          ["session_required", "native_cookie_only"].includes(error.message)) throw new HttpError(401, "session_required")
+        throw error
+      }
+      requireAgentDesignNative(identity)
       if (item) {
         await empty(req); const id = parseInput(() => designId(item[2]))
         const itemValue = item[1] === "sources" ? await r.source.reference(identity, id) : await r.view(identity, id)
