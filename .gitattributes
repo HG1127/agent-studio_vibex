@@ -146,3 +146,4 @@ services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs text eol=lf
 # Dedicated disposable telemetry CI admission
 services/pg-api/tests/helpers/worker-heartbeat-ci-guard.mjs text eol=lf
 services/pg-api/tests/worker-heartbeat-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-domain-fixture.mjs text eol=lf

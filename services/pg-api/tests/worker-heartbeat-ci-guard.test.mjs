@@ -70,3 +70,21 @@ test('ordinary-machine import and invocation refuse before any runtime or socket
  assert.match(source,/import \{requireEphemeralPg18Ci\} from/)
  assert.doesNotMatch(source,/import\(['"]pg['"]|from ['"]pg['"]|\bPool\b|\bClient\b|node:net|node:tls|readFile|execFile|spawn/)
 })
+
+test('the real domain fixture refuses ordinary invocation before loading pg or the complete old fixture',()=>{
+ const fixturePath=new URL('./helpers/worker-heartbeat-domain-fixture.mjs',import.meta.url).href
+ const script=`import {registerHooks} from 'node:module';
+ registerHooks({resolve(specifier,context,next){
+  if(specifier==='pg'||specifier==='node:net'||specifier==='node:tls'||specifier.includes('agent-descriptive-patch-fixture'))
+   throw Error('unexpected_database_runtime_import');
+  return next(specifier,context);
+ }});
+ const {workerHeartbeatDomainFixture}=await import(${JSON.stringify(fixturePath)});
+ await workerHeartbeatDomainFixture();`
+ const child=spawnSync(process.execPath,['--input-type=module','-e',script],{
+  cwd:root,encoding:'utf8',timeout:15000,
+  env:{PATH:process.env.PATH??'',CI:'false',GITHUB_ACTIONS:'false',DATABASE_URL:'forbidden://do-not-connect'}
+ })
+ assert.equal(child.status,1);assert.match(child.stderr,/refuse_non_ephemeral_pg18_ci/)
+ assert.doesNotMatch(child.stdout+child.stderr,/unexpected_database_runtime_import|ERR_MODULE_NOT_FOUND|ECONNREFUSED/)
+})
