@@ -52,6 +52,7 @@ export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   own_operations_available?:boolean
   company_overview_available?:boolean
+  company_worker_heartbeats_available?:boolean
   model_probe_enabled:boolean
   mcp_discovery_enabled?:boolean
   mcp_tool_runs_enabled?:boolean
@@ -678,6 +679,7 @@ export function createPgNativePilotApi(
       if(value?.mode!=="native_pg18"||
          (value.own_operations_available!==undefined&&typeof value.own_operations_available!=="boolean")||
          (value.company_overview_available!==undefined&&typeof value.company_overview_available!=="boolean")||
+         (value.company_worker_heartbeats_available!==undefined&&typeof value.company_worker_heartbeats_available!=="boolean")||
          typeof value.config_writes_enabled!=="boolean"||
          typeof value.model_probe_enabled!=="boolean"||
           (value.mcp_discovery_enabled!==undefined&&typeof value.mcp_discovery_enabled!=="boolean")||
