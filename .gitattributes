@@ -147,3 +147,11 @@ services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs text eol=lf
 services/pg-api/tests/helpers/worker-heartbeat-ci-guard.mjs text eol=lf
 services/pg-api/tests/worker-heartbeat-ci-guard.test.mjs text eol=lf
 services/pg-api/tests/helpers/worker-heartbeat-domain-fixture.mjs text eol=lf
+
+# Independent dormant telemetry domain and actual hosted verification
+.github/workflows/pg18-worker-heartbeat-ci.yml text eol=lf
+db/postgres/telemetry/001_worker_heartbeats.sql text eol=lf
+services/pg-api/src/worker-heartbeat-audit-core.ts text eol=lf
+services/pg-api/src/worker-heartbeat-audit.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-audit.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs text eol=lf
