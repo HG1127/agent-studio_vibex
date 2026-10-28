@@ -28,6 +28,8 @@ const builderErrorCodes=Object.freeze([
  'descriptive_install_ci_check:FULL058','descriptive_install_ci_check:FULL059','descriptive_install_ci_check:FULL060_state',
  'descriptive_install_container_refused:owner_changed','descriptive_install_container_refused:bounded_docker_operation',
  'descriptive_install_container_refused:private_target_reference_required','descriptive_install_container_refused:fixture_runtime_login',
+ 'descriptive_install_container_refused:full_container_id','descriptive_install_container_refused:identity','descriptive_install_container_refused:private_docker_config_required',
+ 'descriptive_install_stage_refused:verified_stage_reference_required','descriptive_patch_operator_runtime_refused','descriptive_patch_operator_source_refused',
  'ENOENT','EACCES','ERR_MODULE_NOT_FOUND','ERR_UNKNOWN_FILE_EXTENSION','ECONNREFUSED','ECONNRESET','ETIMEDOUT',
 ])
 export function descriptiveInstallCiBuilderDiagnostic(phase,error){

@@ -9,6 +9,22 @@ import {assertVerifiedDescriptiveInstallStage} from './agent-descriptive-patch-o
 const image='pgvector/pgvector:0.8.7-pg18',job='pg18-descriptive-operator-install',leases=new WeakMap(),targets=new WeakMap()
 let dockerConfig
 const fail=code=>{throw Error('descriptive_install_container_refused:'+code)},hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
+const runtimePoolPhases=Object.freeze(['private_target_reference','verified_stage_runtime','container_inspect','ownership_pool_construct','ownership_query','ownership_pool_end','runtime_login_validation','runtime_pool_construct','runtime_pool_error_handler'])
+const runtimePoolErrorCodes=Object.freeze([
+ 'descriptive_install_container_refused:private_target_reference_required','descriptive_install_container_refused:full_container_id',
+ 'descriptive_install_container_refused:identity','descriptive_install_container_refused:private_docker_config_required',
+ 'descriptive_install_container_refused:bounded_docker_operation','descriptive_install_container_refused:owner_changed','descriptive_install_container_refused:fixture_runtime_login',
+ 'descriptive_install_stage_refused:verified_stage_reference_required','descriptive_patch_operator_runtime_refused','descriptive_patch_operator_source_refused',
+ 'ENOENT','EACCES','ERR_MODULE_NOT_FOUND','ECONNREFUSED','ECONNRESET','ETIMEDOUT',
+])
+// Pure closed diagnostic formatter: no message/stack/SQL/parameters are echoed.
+export function descriptiveInstallRuntimePoolDiagnostic(phase,error){
+ let code,message
+ try{code=Object.getOwnPropertyDescriptor(error,'code')?.value;message=Object.getOwnPropertyDescriptor(error,'message')?.value}catch{}
+ return Object.freeze({diagnostic:'descriptive_install_ci_runtime_pool_failure_v1',phase:runtimePoolPhases.includes(phase)?phase:'unknown_phase',
+  sqlstate:typeof code==='string'&&/^[A-Z0-9]{5}$/.test(code)?code:'no_sqlstate',
+  error_code:runtimePoolErrorCodes.includes(code)?code:runtimePoolErrorCodes.includes(message)?message:'operation_failed'})
+}
 const env=()=>({PATH:'/usr/local/bin:/usr/bin:/bin',HOME:'/root',LANG:'C.UTF-8'})
 function command(args,{input,extraEnv={},timeout=120000}={}){if(!dockerConfig)fail('private_docker_config_required');try{return execFileSync('/usr/bin/docker',['--config',dockerConfig,...args],{env:{...env(),...extraEnv},input,timeout,maxBuffer:128*1024*1024,windowsHide:true})}catch{fail('bounded_docker_operation')}}
 function configure(loaded,create=false){assertVerifiedDescriptiveInstallStage(loaded);const dir=loaded.stageInput+'/docker-config';if(create)fs.mkdirSync(dir,{mode:0o700});const s=fs.lstatSync(dir);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==0||s.gid!==0||(s.mode&0o7777)!==0o700)fail('private_docker_config');dockerConfig=dir}
@@ -84,10 +100,16 @@ export async function attestDescriptiveInstallTargets(permit,loaded){
  if(result.main.systemIdentifier===result.restore.systemIdentifier)fail('independent_system_identifiers')
  return Object.freeze(result)
 }
-async function owned(target){
- const s=targets.get(target);if(!s)fail('private_target_reference_required');assertVerifiedDescriptiveInstallStage(s.loaded);inspect(s.id,s.spec,s.b,s.b.nonce,s.b.imageId)
+async function owned(target,trace){
+ const mark=phase=>{if(trace)trace.phase=phase}
+ mark('private_target_reference')
+ const s=targets.get(target);if(!s)fail('private_target_reference_required')
+ mark('verified_stage_runtime');assertVerifiedDescriptiveInstallStage(s.loaded)
+ mark('container_inspect');inspect(s.id,s.spec,s.b,s.b.nonce,s.b.imageId)
+ mark('ownership_pool_construct')
  const pool=new s.loaded.Pool({host:'127.0.0.1',port:s.spec.port,database:'postgres',user:'postgres',password:s.password,max:1,connectionTimeoutMillis:5000});pool.on('error',()=>{})
- try{const r=(await pool.query("SELECT (pg_control_system()).system_identifier::text AS system_id,inet_server_port() AS port,current_setting('data_directory') AS data,current_setting('cluster_name') AS cluster,session_user AS login,(SELECT oid::text FROM pg_database WHERE datname='agent_studio') AS oid,(SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='agent_studio') AS owner")).rows[0];if(r.system_id!==s.system||r.port!==s.spec.port||r.data!==s.spec.pgdata||r.cluster!==s.spec.cluster||r.login!=='postgres'||r.oid!==s.oid||r.owner!=='postgres')fail('owner_changed')}finally{await pool.end()}
+ let verified=false
+ try{mark('ownership_query');const r=(await pool.query("SELECT (pg_control_system()).system_identifier::text AS system_id,inet_server_port() AS port,current_setting('data_directory') AS data,current_setting('cluster_name') AS cluster,session_user AS login,(SELECT oid::text FROM pg_database WHERE datname='agent_studio') AS oid,(SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='agent_studio') AS owner")).rows[0];if(r.system_id!==s.system||r.port!==s.spec.port||r.data!==s.spec.pgdata||r.cluster!==s.spec.cluster||r.login!=='postgres'||r.oid!==s.oid||r.owner!=='postgres')fail('owner_changed');verified=true}finally{if(verified)mark('ownership_pool_end');await pool.end()}
  return s
 }
 export async function ownedDescriptivePool(target,max=2){const s=await owned(target);if(![1,2,4].includes(max))fail('pool_bound');const pool=new s.loaded.Pool({host:'127.0.0.1',port:s.spec.port,database:'agent_studio',user:'postgres',password:s.password,ssl:false,options:'',max,connectionTimeoutMillis:5000,statement_timeout:45000,query_timeout:50000});pool.on('error',()=>{});return pool}
@@ -97,9 +119,15 @@ export async function ownedDescriptiveArchive(target,operation,input){
  return command(['exec','--interactive','--user','postgres','--env','PGPASSWORD='+s.password,s.id,selected[0],'--host=127.0.0.1','--port='+s.spec.port,'--username=postgres',...selected.slice(1)],{input})
 }
 export async function ownedDescriptiveRuntimePool(target,login,password){
- const s=await owned(target)
- if(!['agentstudio_native_login','ci060_api','ci060_worker','ci060_nested'].includes(login)||!/^\w{80}$/.test(password)||!/^[a-f0-9]{80}$/.test(password))fail('fixture_runtime_login')
- const pool=new s.loaded.Pool({host:'127.0.0.1',port:s.spec.port,database:'agent_studio',user:login,password,ssl:false,options:'',max:1,connectionTimeoutMillis:5000,statement_timeout:45000});pool.on('error',()=>{});return pool
+ const trace={phase:'private_target_reference'}
+ try{
+  const s=await owned(target,trace)
+  trace.phase='runtime_login_validation'
+  if(!['agentstudio_native_login','ci060_api','ci060_worker','ci060_nested'].includes(login)||!/^\w{80}$/.test(password)||!/^[a-f0-9]{80}$/.test(password))fail('fixture_runtime_login')
+  trace.phase='runtime_pool_construct'
+  const pool=new s.loaded.Pool({host:'127.0.0.1',port:s.spec.port,database:'agent_studio',user:login,password,ssl:false,options:'',max:1,connectionTimeoutMillis:5000,statement_timeout:45000})
+  trace.phase='runtime_pool_error_handler';pool.on('error',()=>{});return pool
+ }catch(error){try{process.stderr.write(JSON.stringify(descriptiveInstallRuntimePoolDiagnostic(trace.phase,error))+'\n')}catch{}throw error}
 }
 export async function restoreOwnedDescriptiveDatabase(target,dump){
  const s=await owned(target);if(!Buffer.isBuffer(dump)||dump.length<1||dump.length>128*1024*1024)fail('archive_input')
