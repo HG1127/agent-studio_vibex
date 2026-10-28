@@ -204,3 +204,7 @@ services/pg-api/tests/model-safe-claim-admission-tcp.integration.mjs text eol=lf
 
 # Exact pure idempotency fixture scope/catalog query projections
 services/pg-api/tests/pg18-run-idempotency-race.test.mjs text eol=lf
+
+# Genuine knowledge and assessment transaction admission probes
+services/pg-api/tests/helpers/knowledge-assessment-claim-admission-ci.mjs text eol=lf
+services/pg-api/tests/knowledge-assessment-claim-admission-tcp.integration.mjs text eol=lf
