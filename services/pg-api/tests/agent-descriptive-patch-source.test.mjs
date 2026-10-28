@@ -49,7 +49,7 @@ function harness(f,options={}){
       equal(values,[owner]);return {rows:[{ok:options.contextOk??true}]}
     }
     if(sql==='SELECT agentstudio.agent_memory_outcome_epoch() AS epoch'){assert.equal(values,undefined);return {rows:[{epoch:Object.hasOwn(options,'epoch')?options.epoch:'5'}]}}
-    if(sql==='SELECT agentstudio.agent_opinion_anchor($1::uuid) AS value'){equal(values,[id(1)]);return {rows:options.missingAnchorRow?[]:[{value:Object.hasOwn(options,'anchor')?clone(options.anchor):clone(f.anchor)}]}}
+    if(sql==='SELECT agentstudio.agent_opinion_anchor($1::uuid) AS value'){equal(values,[id(1)]);if(options.anchorError)throw options.anchorError;return {rows:options.missingAnchorRow?[]:[{value:Object.hasOwn(options,'anchor')?clone(options.anchor):clone(f.anchor)}]}}
     if(sql==='SELECT pg_advisory_xact_lock(hashtextextended($1::text,540))'){
       assert.equal(roleLocked,false);equal(values,[lockKeys[locks++]]);return {rows:[]}
     }
@@ -160,6 +160,17 @@ test('anchor selection/source/disposition/paid intent and unsupported prior scop
   await runMocked(t,f,{},async h=>{await assert.rejects(h.kernel.prepareOnClient(identity,h.db,owner,keys()),unavailable);assert.equal(h.state().locks,0)})
   await runMocked(t,fixture(),{anchor:null},async h=>{await assert.rejects(h.kernel.prepareOnClient(identity,h.db,owner,keys()),e=>e.status===404&&e.code==='agent_descriptive_patch_review_not_found');assert.equal(h.state().locks,0)})
   await runMocked(t,fixture(),{missingAnchorRow:true},async h=>assert.rejects(h.kernel.prepareOnClient(identity,h.db,owner,keys()),unavailable))
+})
+
+test('only the exact protected058 not-found exception maps to404 before locks or private reads',async t=>{
+  const exact=Object.assign(Error('agent_opinion_not_found'),{code:'P0001'})
+  const others=[Object.assign(Error('agent_opinion_source_unavailable'),{code:'P0001'}),Object.assign(Error('agent_opinion_not_found'),{code:'XX000'}),Error('agent_opinion_not_found'),Object.assign(Error('agent_opinion_not_found PRIVATE_DB_DETAIL'),{code:'P0001'})]
+  for(const error of [exact,...others])await runMocked(t,fixture(),{anchorError:error},async h=>{
+    await assert.rejects(h.kernel.prepareOnClient(identity,h.db,owner,keys()),error===exact
+      ?e=>e.status===404&&e.code==='agent_descriptive_patch_review_not_found'&&e.message===e.code
+      :unavailable)
+    const state=h.state();assert.equal(state.locks,0);assert.equal(state.sourceCalls,0);assert.equal(state.bodyReads,0);assert.equal(state.feedbackReads,0);assert.equal(state.compatReads,0)
+  })
 })
 
 test('missing/wrong terminal target, unsafe role and stale exact revision refuse before real Source/body preparation',async t=>{

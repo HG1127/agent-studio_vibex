@@ -31,6 +31,7 @@ export class AgentDescriptivePatchSourceRepository{
       const epoch=agentGeneratedEpoch((await db.query<{epoch:unknown}>("SELECT agentstudio.agent_memory_outcome_epoch() AS epoch")).rows[0]?.epoch)
       return await this.prepare(identity,db,owner,epoch,selected)
     }catch(error){
+      if(error&&typeof error==="object"&&"code" in error&&error.code==="P0001"&&"message" in error&&error.message==="agent_opinion_not_found")throw new HttpError(404,"agent_descriptive_patch_review_not_found")
       if(error instanceof HttpError&&["native_employee_identity_required","owned_admission_context_required","agent_descriptive_patch_review_not_found","agent_descriptive_patch_role_changed","agent_descriptive_patch_feedback_changed","agent_descriptive_patch_change_required"].includes(error.code))throw error
       return unavailable()
     }
