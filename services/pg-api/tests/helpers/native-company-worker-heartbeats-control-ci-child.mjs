@@ -65,7 +65,7 @@ function host(){
  const status=fs.readFileSync('/proc/self/status','utf8')
  for(const key of ['CapInh','CapPrm','CapEff','CapAmb'])if(!new RegExp('^'+key+':\\s+0+$','m').test(status))refuse()
  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../..')
- if(!/^\/opt\/agentstudio-telemetry-native-ci-[1-9][0-9]{0,31}-[1-9][0-9]{0,31}-[a-f0-9]{16}$/.test(root)||
+ if(!/^\/var\/lib\/agentstudio-telemetry-native-ci-[1-9][0-9]{0,31}-[1-9][0-9]{0,31}-[a-f0-9]{16}$/.test(root)||
   fileURLToPath(import.meta.url)!==root+'/'+helper)refuse()
  let at='/'
  for(const part of root.split('/').filter(Boolean)){at=path.join(at,part);const st=fs.lstatSync(at);if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o7022)!==0)refuse()}
@@ -99,7 +99,7 @@ async function bind(root,input){
  if(meta.protocol!=='native_company_worker_heartbeats_control_ci_fixture_v1'||!hex(meta.child_sha256)||meta.child_sha256!==sha(readSealed(root+'/'+helper)))refuse()
  const actual=fixture(meta.fixture,controlObject),x=input.fixture,e=process.env
  if(JSON.stringify(actual)!==JSON.stringify(x)||x.run!==e.GITHUB_RUN_ID||x.attempt!==e.GITHUB_RUN_ATTEMPT||x.source_revision!==e.GITHUB_SHA||
-  process.getuid()!==x.native_uid||process.getgid()!==x.native_gid||root!=='/opt/agentstudio-telemetry-native-ci-'+x.run+'-'+x.attempt+'-'+x.nonce.slice(0,16))refuse()
+  process.getuid()!==x.native_uid||process.getgid()!==x.native_gid||root!=='/var/lib/agentstudio-telemetry-native-ci-'+x.run+'-'+x.attempt+'-'+x.nonce.slice(0,16))refuse()
 }
 const identitySql="SELECT current_database() AS database,d.oid::text AS database_oid,session_user::text AS login,current_user::text AS actor,host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,(extract(epoch FROM pg_postmaster_start_time())*1000000)::numeric(30,0)::text AS started,r.oid::text AS login_oid,r.rolcanlogin AS can_login,r.rolsuper AS super,r.rolinherit AS inherit,r.rolbypassrls AS bypass,r.rolcreatedb AS create_db,r.rolcreaterole AS create_role,r.rolreplication AS replication,current_setting('transaction_read_only') AS read_only,current_setting('default_transaction_read_only') AS default_read_only FROM pg_catalog.pg_database d JOIN pg_catalog.pg_roles r ON r.rolname=session_user WHERE d.datname=current_database()"
 async function target(pool,fixture){

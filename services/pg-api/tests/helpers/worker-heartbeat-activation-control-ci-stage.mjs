@@ -33,7 +33,7 @@ function ancestors(dir){
   at=path.join(at,p)
   if(!fs.existsSync(at))break
   const st=fs.lstatSync(at)
-  if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o7022)!==0||fs.realpathSync(at)!==at)fail('ancestor')
+  if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o7022)!==0||fs.realpathSync(at)!==at)fail('ancestor:'+at+':'+st.uid+':'+st.gid+':'+(st.mode&0o7777).toString(8))
  }
 }
 function makeNew(dir){
@@ -130,8 +130,11 @@ function dependencies(apiRequire,policy){
 export async function publishWorkerHeartbeatControlCiStages(proof){
  const ci=workerHeartbeatActivationControlCiDescriptor(proof)
  const suffix=ci.run+'-'+ci.attempt+'-'+ci.nonce.slice(0,16)
- const controlRoot='/opt/agentstudio-telemetry-control-ci-'+suffix,nativeRoot='/opt/agentstudio-telemetry-native-ci-'+suffix
+ const controlRoot='/var/lib/agentstudio-telemetry-control-ci-'+suffix,nativeRoot='/var/lib/agentstudio-telemetry-native-ci-'+suffix
  const parent='/root/agentstudio-telemetry-control-ci-input',tools=parent+'/'+suffix
+ // Fixed host-directory metadata only; no credentials or target information.
+ // Hosted images may make /opt writable by their ordinary runner account.
+ for(const dir of ['/opt','/var/lib','/root']){const st=fs.lstatSync(dir);process.stdout.write(JSON.stringify({event:'telemetry_control_ci_stage_parent_metadata',path:dir,uid:st.uid,gid:st.gid,mode:(st.mode&0o7777).toString(8),symlink:st.isSymbolicLink()})+'\n')}
  for(const dir of [controlRoot,nativeRoot])makeNew(dir)
  if(!fs.existsSync(parent))makeNew(parent)
  else{ancestors(parent);if((fs.lstatSync(parent).mode&0o7777)!==0o700)fail('private_parent')}
