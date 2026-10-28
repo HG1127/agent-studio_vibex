@@ -20,6 +20,7 @@ const env=mode=>Object.fromEntries(Object.entries({ENABLED:'true',READ_APPROVED:
   APPROVAL_FILE:'/vault/approval.json',APPROVAL_SHA256:digest,PREDECESSOR_APPROVAL_FILE:'/vault/original059.json',PREDECESSOR_APPROVAL_SHA256:digest,
   BACKUP_MANIFEST_FILE:'/vault/backup.json',BACKUP_ARCHIVE_FILE:'/vault/archive.dump',RESTORE_EVIDENCE_FILE:'/vault/restore.json',
   ADMIN_PASSWORD_FILE:'/vault/admin.txt',ADMIN_PASSWORD_SHA256:digest,
+  RUNTIME_MANIFEST_FILE:'/vault/runtime.json',RUNTIME_MANIFEST_SHA256:digest,RUNTIME_LOCK_SHA256:'eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a',
   ...(mode==='apply'?{WRITE_APPROVED:'APPROVE_DESCRIPTIVE_PATCH_060_INSTALL_ONLY',JOURNAL_FILE:'/vault/new-journal.jsonl'}:{}),
   ...(mode==='recover'?{JOURNAL_FILE:'/vault/existing-journal.jsonl',JOURNAL_SHA256:digest}:{}),
 }).map(([k,v])=>[prefix+k,v]))
@@ -51,7 +52,7 @@ test('read/install/recovery approvals are separate, immutable, complete and cont
     assert.equal(cfg.predecessor_approval_sha256,digest);assert.equal(cfg.admin_password_sha256,digest)
   }
   for(const key of ['ENABLED','READ_APPROVED','APPROVAL_FILE','APPROVAL_SHA256','PREDECESSOR_APPROVAL_FILE','PREDECESSOR_APPROVAL_SHA256',
-    'BACKUP_MANIFEST_FILE','BACKUP_ARCHIVE_FILE','RESTORE_EVIDENCE_FILE','ADMIN_PASSWORD_FILE','ADMIN_PASSWORD_SHA256']){
+    'BACKUP_MANIFEST_FILE','BACKUP_ARCHIVE_FILE','RESTORE_EVIDENCE_FILE','ADMIN_PASSWORD_FILE','ADMIN_PASSWORD_SHA256','RUNTIME_MANIFEST_FILE','RUNTIME_MANIFEST_SHA256','RUNTIME_LOCK_SHA256']){
     const values=env('preflight');delete values[prefix+key];assert.throws(()=>parse(args('preflight'),values))
   }
   for(const [mode,key] of [['apply','WRITE_APPROVED'],['apply','JOURNAL_FILE'],['recover','JOURNAL_SHA256']]){
@@ -62,15 +63,17 @@ test('read/install/recovery approvals are separate, immutable, complete and cont
   assert.throws(()=>parse(args('apply'),{...env('apply'),[prefix+'JOURNAL_SHA256']:digest}),/incomplete_configuration/)
   assert.throws(()=>parse(args('preflight'),{...env('preflight'),[prefix+'JOURNAL_FILE']:'/vault/no'}),/incomplete_configuration/)
   assert.throws(()=>parse(args('preflight'),{...env('preflight'),[prefix+'BACKUP_ARCHIVE_FILE']:'/vault/backup.json'}),/private_file_required/)
+  assert.throws(()=>parse(args('preflight'),{...env('preflight'),[prefix+'RUNTIME_LOCK_SHA256']:digest}),/incomplete_configuration/)
 })
 
 test('ordinary hosts, ambient PG/loader/TLS credentials and unknown prefix fields refuse without reading getters',()=>{
   for(const [platform,uid,gid] of [['win32',0,0],['linux',1000,0],['linux',0,1000]])assert.throws(()=>parse(args('preflight'),env('preflight'),platform,uid,gid),/disabled/)
   for(const key of ['DATABASE_URL','PGHOST','PGPASSWORD','PGPASSFILE','PGSERVICEFILE','PGOPTIONS','NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS',
-    'NODE_TLS_REJECT_UNAUTHORIZED','SSL_CERT_FILE','SSL_CERT_DIR','OPENSSL_CONF','OPENSSL_MODULES','AGENT_STUDIO_GENERATED_059_APPROVAL_FILE']){
+    'NODE_TLS_REJECT_UNAUTHORIZED','SSL_CERT_FILE','SSL_CERT_DIR','OPENSSL_CONF','OPENSSL_MODULES','NODE_PG_FORCE_NATIVE','NODE_PG_FORCE_JS','LD_PRELOAD','LD_LIBRARY_PATH','AGENT_STUDIO_GENERATED_059_APPROVAL_FILE']){
     assert.throws(()=>parse(args('preflight'),{...env('preflight'),[key]:'do-not-use'}),/ambient_configuration_refused/,key)
   }
   assert.throws(()=>parse(args('preflight'),{...env('preflight'),PGHOST:''}),/ambient_configuration_refused/)
+  assert.throws(()=>parse(args('preflight'),{...env('preflight'),NODE_PG_FORCE_NATIVE:''}),/ambient_configuration_refused/)
   assert.throws(()=>parse(args('preflight'),{...env('preflight'),[prefix+'DATABASE_URL']:'do-not-use'}),/incomplete_configuration/)
   let reads=0;const values=env('preflight');Object.defineProperty(values,prefix+'ADMIN_PASSWORD_FILE',{get(){reads++;return '/do-not-read'},enumerable:true})
   assert.throws(()=>parse(args('preflight'),values),/disabled/);assert.equal(reads,0)
@@ -163,8 +166,10 @@ test('actual AST preserves sealed-before-private-before-pg order, original raw-f
   const source=readFileSync(cli,'utf8'),tree=ts.createSourceFile('operator-cli.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
   assert.equal(tree.parseDiagnostics.length,0)
   const run=tree.statements.find(s=>ts.isFunctionDeclaration(s)&&s.name.text==='runDescriptivePatchOperatorCli').getText(tree)
-  const seal=run.indexOf('core.assertDescriptivePatchOperatorSealedSnapshot('),file=run.indexOf('readPrivate('),pg=run.indexOf("import('pg')")
-  assert.ok(seal>0&&file>seal&&pg>file)
+  const seal=run.indexOf('core.assertDescriptivePatchOperatorSealedSnapshot('),file=run.indexOf('readPrivate('),pg=run.indexOf('runtime.loadDescriptivePatchOperatorPg(')
+  const verified=run.indexOf('runtime.verifyDescriptivePatchOperatorRuntime('),secret=run.indexOf('const credential=')
+  assert.ok(seal>0&&verified>seal&&pg>verified&&file>pg&&secret>pg)
+  assert.doesNotMatch(source,/import\(['"]pg['"]\)/)
   const coverage=run.indexOf('assertEntrySealed(snapshot)'),deployment=run.indexOf('assertDeployment(snapshot)'),coreImport=run.indexOf("import('./agent-descriptive-patch-operator-core.ts')")
   assert.ok(coverage>0&&deployment>coverage&&coreImport>deployment&&seal>coreImport)
   assert.match(run,/original\.verifyGeneratedOperatorBackupEvidence\(predecessorApproval,backup,restore,/)

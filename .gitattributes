@@ -124,3 +124,8 @@ services/pg-api/tests/agent-descriptive-patch-operator-core.test.mjs text eol=lf
 services/pg-api/src/agent-descriptive-patch-operator-cli.mjs text eol=lf
 services/pg-api/src/agent-descriptive-patch-operator-cli.d.mts text eol=lf
 services/pg-api/tests/agent-descriptive-patch-operator-cli.test.mjs text eol=lf
+
+# Reviewed controlled060 runtime dependency verification
+services/pg-api/src/agent-descriptive-patch-operator-runtime.d.mts text eol=lf
+services/pg-api/src/agent-descriptive-patch-operator-runtime.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-runtime.test.mjs text eol=lf

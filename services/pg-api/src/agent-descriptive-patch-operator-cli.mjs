@@ -31,8 +31,8 @@ function argvValues(argv){
     return d.value
   })
 }
-const fileKeys=['APPROVAL_FILE','PREDECESSOR_APPROVAL_FILE','BACKUP_MANIFEST_FILE','BACKUP_ARCHIVE_FILE','RESTORE_EVIDENCE_FILE','ADMIN_PASSWORD_FILE']
-const allowedKeys=new Set(['ENABLED','READ_APPROVED','WRITE_APPROVED',...fileKeys,'APPROVAL_SHA256','PREDECESSOR_APPROVAL_SHA256','ADMIN_PASSWORD_SHA256','JOURNAL_FILE','JOURNAL_SHA256'])
+const fileKeys=['APPROVAL_FILE','PREDECESSOR_APPROVAL_FILE','BACKUP_MANIFEST_FILE','BACKUP_ARCHIVE_FILE','RESTORE_EVIDENCE_FILE','ADMIN_PASSWORD_FILE','RUNTIME_MANIFEST_FILE']
+const allowedKeys=new Set(['ENABLED','READ_APPROVED','WRITE_APPROVED',...fileKeys,'APPROVAL_SHA256','PREDECESSOR_APPROVAL_SHA256','ADMIN_PASSWORD_SHA256','JOURNAL_FILE','JOURNAL_SHA256','RUNTIME_MANIFEST_SHA256','RUNTIME_LOCK_SHA256'])
 export function parseDescriptivePatchOperatorCliArguments(argv,env=process.env,platform=process.platform,uid=process.getuid?.(),gid=process.getgid?.()){
   const args=argvValues(argv)
   if(args.length===3&&args[0]==='--plan'&&args[1]==='--expected-source-sha256'&&isSha(args[2]))return Object.freeze({mode:'plan',expected_source_sha256:args[2]})
@@ -43,7 +43,7 @@ export function parseDescriptivePatchOperatorCliArguments(argv,env=process.env,p
   for(const key of Reflect.ownKeys(descriptors)){
     const d=descriptors[key]
     if(typeof key!=='string'||!('value'in d)||typeof d.value!=='string'&&d.value!==undefined)fail('disabled')
-    if(key==='DATABASE_URL'||/^PG(?:[A-Z_]|$)/.test(key)||/^AGENT_STUDIO_GENERATED_059_/.test(key)||
+    if(key==='DATABASE_URL'||/^PG(?:[A-Z_]|$)|^NODE_PG_/.test(key)||/^AGENT_STUDIO_GENERATED_059_/.test(key)||['LD_PRELOAD','LD_LIBRARY_PATH','DYLD_INSERT_LIBRARIES','DYLD_LIBRARY_PATH','NODE_COMPILE_CACHE','NODE_V8_COVERAGE'].includes(key)&&d.value!==undefined||
       ['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','SSL_CERT_FILE','SSL_CERT_DIR','OPENSSL_CONF','OPENSSL_MODULES'].includes(key)&&d.value)fail('ambient_configuration_refused')
     if(key.startsWith(prefix)){
       const short=key.slice(prefix.length)
@@ -55,12 +55,14 @@ export function parseDescriptivePatchOperatorCliArguments(argv,env=process.env,p
   if(values.ENABLED!=='true'||values.READ_APPROVED!=='APPROVE_DESCRIPTIVE_PATCH_060_READ_ONLY')fail('disabled')
   if(mode==='apply'?values.WRITE_APPROVED!=='APPROVE_DESCRIPTIVE_PATCH_060_INSTALL_ONLY':values.WRITE_APPROVED!==undefined)fail('write_not_approved')
   for(const key of [...fileKeys,...(mode==='preflight'?[]:['JOURNAL_FILE'])])assertDescriptivePatchOperatorExternalPath(values[key],root)
-  for(const key of ['APPROVAL_SHA256','PREDECESSOR_APPROVAL_SHA256','ADMIN_PASSWORD_SHA256',...(mode==='recover'?['JOURNAL_SHA256']:[])])if(!isSha(values[key]))fail('incomplete_configuration')
+  for(const key of ['APPROVAL_SHA256','PREDECESSOR_APPROVAL_SHA256','ADMIN_PASSWORD_SHA256','RUNTIME_MANIFEST_SHA256','RUNTIME_LOCK_SHA256',...(mode==='recover'?['JOURNAL_SHA256']:[])])if(!isSha(values[key]))fail('incomplete_configuration')
+  if(values.RUNTIME_LOCK_SHA256!=='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a')fail('incomplete_configuration')
   if(mode==='preflight'&&(values.JOURNAL_FILE!==undefined||values.JOURNAL_SHA256!==undefined)||mode==='apply'&&values.JOURNAL_SHA256!==undefined)fail('incomplete_configuration')
   const files=[...fileKeys,...(mode==='preflight'?[]:['JOURNAL_FILE'])].map(k=>values[k])
   if(new Set(files).size!==files.length)fail('private_file_required')
   return Object.freeze({mode,expected_source_sha256:args[4],files:Object.freeze(Object.fromEntries(fileKeys.map(k=>[k,values[k]]))),
     approval_sha256:values.APPROVAL_SHA256,predecessor_approval_sha256:values.PREDECESSOR_APPROVAL_SHA256,
+    runtime_manifest_sha256:values.RUNTIME_MANIFEST_SHA256,runtime_lock_sha256:values.RUNTIME_LOCK_SHA256,
     admin_password_sha256:values.ADMIN_PASSWORD_SHA256,...(mode==='preflight'?{}:{journal_file:values.JOURNAL_FILE}),
     ...(mode==='recover'?{journal_sha256:values.JOURNAL_SHA256}:{})})
 }
@@ -260,7 +262,8 @@ function assertEntrySealed(snapshot){
   const core='services/pg-api/src/agent-descriptive-patch-operator-core.ts'
   const source='services/pg-api/src/agent-descriptive-patch-operator-source.mjs'
   const paths=new Set(snapshot.manifest.sources.map(s=>s.path)),edges=snapshot.manifest.imports
-  if(![cli,declaration,core].every(p=>paths.has(p))||!edges.some(e=>e.from===cli&&e.to===core)||!edges.some(e=>e.from===core&&e.to===source))fail('unsealed_operator_source')
+  const runtime='services/pg-api/src/agent-descriptive-patch-operator-runtime.mjs'
+  if(![cli,declaration,core,runtime,runtime.replace('.mjs','.d.mts')].every(p=>paths.has(p))||!edges.some(e=>e.from===cli&&e.to===runtime)||!edges.some(e=>e.from===cli&&e.to===core)||!edges.some(e=>e.from===core&&e.to===source))fail('unsealed_operator_source')
 }
 function createJournal(file,binding,approval,core,boundary){
   const before=privatePath(file,true),fd=openSync(file,constants.O_RDWR|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW|constants.O_NONBLOCK,0o600)
@@ -319,6 +322,11 @@ export async function runDescriptivePatchOperatorCli(argv,env=process.env){
   const core=await import('./agent-descriptive-patch-operator-core.ts')
   core.assertDescriptivePatchOperatorSealedSnapshot(snapshot,cfg.expected_source_sha256)
   assertDeployment(snapshot)
+  const runtime=await import('./agent-descriptive-patch-operator-runtime.mjs')
+  const runtimeCapability=runtime.verifyDescriptivePatchOperatorRuntime(snapshot,cfg.expected_source_sha256,{
+    manifestFile:cfg.files.RUNTIME_MANIFEST_FILE,manifestSha256:cfg.runtime_manifest_sha256,lockSha256:cfg.runtime_lock_sha256})
+  const {Pool}=runtime.loadDescriptivePatchOperatorPg(runtimeCapability)
+  runtime.assertDescriptivePatchOperatorRuntime(runtimeCapability)
   const receipts=[]
   const json=(file,expected)=>{const result=readPrivate(file,expected);receipts.push(result.receipt);return parseDescriptivePatchOperatorJson(result.raw)}
   const approval=core.parseDescriptivePatchOperatorApproval(json(cfg.files.APPROVAL_FILE,cfg.approval_sha256),snapshot,cfg.expected_source_sha256)
@@ -340,11 +348,13 @@ export async function runDescriptivePatchOperatorCli(argv,env=process.env){
     recovered=parseDescriptivePatchOperatorJournalFile(raw.raw,binding)
     core.parseDescriptivePatchOperatorJournalRecords(recovered.records,approval)
   }
+  runtime.assertDescriptivePatchOperatorRuntime(runtimeCapability)
   const credential=readPrivate(cfg.files.ADMIN_PASSWORD_FILE,cfg.admin_password_sha256,514);receipts.push(credential.receipt)
   const boundary=()=>{
     requireRoot()
     if(JSON.stringify(parseDescriptivePatchOperatorCliArguments(args,env))!==JSON.stringify(cfg))fail('configuration_changed')
     core.assertDescriptivePatchOperatorAuthorization(snapshot,capability)
+    runtime.assertDescriptivePatchOperatorRuntime(runtimeCapability)
     assertDeployment(snapshot);verifyReceipts(receipts)
     core.assertDescriptivePatchOperatorAuthorization(snapshot,capability)
   }
@@ -355,7 +365,6 @@ export async function runDescriptivePatchOperatorCli(argv,env=process.env){
     boundary()
     if(cfg.mode==='apply')writer=createJournal(cfg.journal_file,binding,approval,core,boundary)
     boundary()
-    const {Pool}=await import('pg')
     pool=new Pool({host:'127.0.0.1',port:5333,database:'agent_studio',user:'postgres',password,ssl:false,options:'',max:1,
       connectionTimeoutMillis:5000,statement_timeout:45000,application_name:'agent_descriptive_patch_060_operator'})
     state=cfg.mode==='apply'?await core.applyDescriptivePatchOperator(pool,snapshot,capability,writer.persist):

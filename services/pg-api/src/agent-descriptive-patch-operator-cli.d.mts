@@ -4,8 +4,9 @@ export type DescriptivePatchOperatorCliConfig=Readonly<{
   mode:'plan';expected_source_sha256:string
 }>|Readonly<{
   mode:'preflight'|'apply'|'recover';expected_source_sha256:string
-  files:Readonly<Record<'APPROVAL_FILE'|'PREDECESSOR_APPROVAL_FILE'|'BACKUP_MANIFEST_FILE'|'BACKUP_ARCHIVE_FILE'|'RESTORE_EVIDENCE_FILE'|'ADMIN_PASSWORD_FILE',string>>
+  files:Readonly<Record<'APPROVAL_FILE'|'PREDECESSOR_APPROVAL_FILE'|'BACKUP_MANIFEST_FILE'|'BACKUP_ARCHIVE_FILE'|'RESTORE_EVIDENCE_FILE'|'ADMIN_PASSWORD_FILE'|'RUNTIME_MANIFEST_FILE',string>>
   approval_sha256:string;predecessor_approval_sha256:string;admin_password_sha256:string
+  runtime_manifest_sha256:string;runtime_lock_sha256:string
   journal_file?:string;journal_sha256?:string
 }>
 export type DescriptivePatchOperatorFileMetadata=Readonly<{
