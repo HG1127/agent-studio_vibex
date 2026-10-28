@@ -142,3 +142,7 @@ services/pg-api/src/worker-heartbeat-contract.ts text eol=lf
 services/pg-api/tests/worker-heartbeat-contract.test.mjs text eol=lf
 services/pg-api/src/worker-heartbeat-report-sequence.ts text eol=lf
 services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs text eol=lf
+
+# Dedicated disposable telemetry CI admission
+services/pg-api/tests/helpers/worker-heartbeat-ci-guard.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-ci-guard.test.mjs text eol=lf
