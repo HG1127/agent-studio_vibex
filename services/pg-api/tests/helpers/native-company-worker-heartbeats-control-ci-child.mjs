@@ -10,6 +10,8 @@ const helper='services/pg-api/tests/helpers/native-company-worker-heartbeats-con
 const fixtureName='native-control-ci-fixture.json'
 const sourcePins=Object.freeze({
  'native-company-worker-heartbeats.ts':'6058c7bd324155790939f6e8d6762ed85ade39e05e024915b76d71be061b89a1',
+ 'native-company-worker-heartbeats-http.ts':'0158cb5217331ecf302c14321c30e99369faad7baed37510320dd8d43f4d8917',
+ 'native-auth-http.mjs':'54ef0b9573b0d4e0b00223c1cc069aa83d0268f9ebf1543e439e2fc9a35748fc',
  'native-current-company-admin.mjs':'83fc4c1d49f3805fd0439e3e4d6a1f093bfed8556940179220e1deeafc2ea889',
  'native-employee-auth.mjs':'96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee',
  'native-employee-governance-audit.mjs':'ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238',
@@ -47,7 +49,7 @@ export async function parseNativeControlCiChildFrame(raw){
 }
 function host(){
  const e=process.env
- if(process.argv.length!==3||process.argv[2]!=='--run'||process.platform!=='linux'||process.versions.node.split('.')[0]!=='24'||
+ if(process.argv.length!==3||!['--run','--http-run'].includes(process.argv[2])||process.platform!=='linux'||process.versions.node.split('.')[0]!=='24'||
   process.getuid?.()===undefined||process.getuid()===0||process.getgid?.()===undefined||process.getgid()===0||
   process.geteuid()!==process.getuid()||process.getegid()!==process.getgid()||process.getgroups().includes(0)||
   process.execArgv.some(v=>v!=='--experimental-strip-types')||e.CI!=='true'||e.GITHUB_ACTIONS!=='true'||
@@ -114,6 +116,151 @@ function errorCode(error){
  }catch{}
  return {status:503,code:'native_control_ci_failed'}
 }
+// Genuine CI-only HTTP lifecycle; every request uses the same unmodified
+// Facade and actual pg.Pool. IPC changes availability/observes local state only.
+async function serveNativeHttp(reader,pool,emit){
+ if(typeof process.send!=='function'||!process.connected)refuse()
+ const {createServer}=await import('node:http')
+ const {createNativeCompanyWorkerHeartbeatsHttpHandler}=await import('../../src/native-company-worker-heartbeats-http.ts')
+ const {controlObject}=await grammar(),origin='https://native-control-ci.example.test'
+ const off=createNativeCompanyWorkerHeartbeatsHttpHandler({component:reader,allowedOrigin:origin})
+ const on=createNativeCompanyWorkerHeartbeatsHttpHandler({component:reader,allowedOrigin:origin,enabled:true})
+ let enabled=false,settled=false,closing,warmWork,holdWork,holdTimer
+ const warmClients=[],heldClients=[],unconfirmedClients=new Set()
+ let warmReleaseErrors=0,hold={cycle:0,phase:'idle',acquired:0,released:0,release_errors:0,failed:false,release_reason:null,started:null,finished:null}
+ const receipts=[],requestIds=new Set()
+ let resolveDone,rejectDone
+ const done=new Promise((yes,no)=>{resolveDone=yes;rejectDone=no})
+ const finish=error=>{if(settled)return;settled=true;error?rejectDone(Error('native_http_ci_refused')):resolveDone()}
+ const holdStatus=()=>({cycle:hold.cycle,phase:hold.phase,held:heldClients.length,acquired:hold.acquired,released:hold.released,
+  release_errors:hold.release_errors,failed:hold.failed,release_reason:hold.release_reason,
+  elapsed_ms:hold.started===null?0:Math.floor(performance.now()-hold.started),
+  duration_ms:hold.finished===null||hold.started===null?0:Math.floor(hold.finished-hold.started),
+  warming:warmWork!==undefined,warm_held:warmClients.length,warm_release_errors:warmReleaseErrors,unconfirmed:unconfirmedClients.size})
+ const status=()=>({protocol:'native_company_worker_heartbeats_http_ci_status_v2',enabled,
+  local:reader.localStatus(),pool:{total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount},hold:holdStatus(),responses:receipts.slice()})
+ // Fixed test operations on this actual pool only. No duration, SQL, target or
+ // adapter field can enter the closed IPC grammar.
+ const releaseHeld=reason=>{
+  if(holdTimer!==undefined){clearTimeout(holdTimer);holdTimer=undefined}
+  const clients=heldClients.splice(0)
+  if(!clients.length)return
+  hold.release_reason=reason
+  for(const client of clients)try{client.release(hold.failed);hold.released++}catch{unconfirmedClients.add(client);hold.release_errors++;hold.failed=true}
+  hold.finished=performance.now();hold.phase=hold.failed?'failed':'released'
+  if(hold.failed)finish(true)
+ }
+ const primeAuthClients=()=>{
+  if(closing||warmWork||holdWork||heldClients.length||reader.localStatus().inFlight!==0)refuse()
+  const work=(async()=>{
+   let failed=false
+   try{
+    for(let i=0;i<2;i++)warmClients.push(await pool.connect())
+    if(new Set(warmClients).size!==2)refuse()
+    for(const client of warmClients){const result=await client.query('SELECT 1 AS warm');if(result.rows.length!==1||result.rows[0].warm!==1)refuse()}
+   }catch(error){failed=true;throw error}
+   finally{
+    for(const client of warmClients.splice(0))try{client.release(failed)}catch{unconfirmedClients.add(client);warmReleaseErrors++;failed=true}
+    if(warmReleaseErrors)refuse()
+   }
+  })()
+  warmWork=work
+  return work.finally(()=>{if(warmWork===work)warmWork=undefined})
+ }
+ const holdAuthClientsOneSecond=()=>{
+  if(closing||warmWork||holdWork||heldClients.length||reader.localStatus().inFlight!==0||
+   pool.totalCount!==2||pool.idleCount!==2||pool.waitingCount!==0)refuse()
+  hold={cycle:hold.cycle+1,phase:'acquiring',acquired:0,released:0,release_errors:0,failed:false,release_reason:null,started:null,finished:null}
+  const work=(async()=>{
+   try{
+    // Idle checkout performs no SQL; the real existing clients stay owned.
+    for(let i=0;i<2;i++){heldClients.push(await pool.connect());hold.acquired++}
+    if(closing||reader.localStatus().inFlight!==0||new Set(heldClients).size!==2)refuse()
+    hold.started=performance.now();hold.phase='held'
+    const deadline=hold.started+1000
+    const timer=()=>{
+     const left=deadline-performance.now()
+     if(left>0){holdTimer=setTimeout(timer,Math.max(1,Math.ceil(left)));return}
+     releaseHeld('timer')
+    }
+    holdTimer=setTimeout(timer,1000)
+   }catch(error){hold.failed=true;releaseHeld('error');hold.phase='failed';throw error}
+  })()
+  holdWork=work
+  return work.finally(()=>{if(holdWork===work)holdWork=undefined})
+ }
+ const server=createServer((req,res)=>{
+  const id=req.headers['x-agentstudio-ci-request']
+  res.once('finish',()=>{
+   if(typeof id==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)){
+    receipts.push({request_id:id,status:res.statusCode,local:reader.localStatus()});if(receipts.length>32)receipts.shift()
+   }
+  })
+  void (async()=>{
+   if(await(enabled?on:off)(req,res))return
+   res.writeHead(503,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'})
+   res.end(JSON.stringify({error:'company_worker_heartbeats_unavailable'}))
+  })().catch(()=>{if(!res.headersSent){res.writeHead(503,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:'company_worker_heartbeats_unavailable'}))}else res.destroy()})
+ })
+ server.requestTimeout=15000;server.headersTimeout=12000;server.maxRequestsPerSocket=100
+ const stop=()=>{
+  if(closing)return closing
+  enabled=false
+  closing=(async()=>{
+   if(warmWork)await warmWork.catch(()=>{})
+   if(holdWork)await holdWork.catch(()=>{})
+   releaseHeld('stop')
+   if(unconfirmedClients.size){
+    // Keep uncertain ownership visible. Attempt to close only these actual
+    // owned clients, then fail; a failed release never becomes drain proof.
+    for(const client of unconfirmedClients)try{await client.end()}catch{}
+    refuse()
+   }
+   if(warmClients.length||heldClients.length||warmReleaseErrors||hold.release_errors||hold.failed)refuse()
+   await new Promise((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeIdleConnections()})
+   const deadline=performance.now()+20000
+   while(reader.localStatus().inFlight!==0){if(performance.now()>=deadline)refuse();await new Promise(resolve=>setTimeout(resolve,10))}
+   if(reader.localStatus().cleanupUnknown!==0||pool.waitingCount!==0)refuse()
+  })()
+  return closing
+ }
+ const send=(request_id,ok,value)=>new Promise((resolve,reject)=>{
+  if(!process.connected)return reject(Error('native_http_ci_refused'))
+  process.send({protocol:'native_company_worker_heartbeats_http_ci_reply_v2',request_id,ok,value},error=>error?reject(error):resolve())
+ })
+ const message=raw=>{void(async()=>{
+  let id
+  try{
+   const command=controlObject(raw,['protocol','request_id','op']);id=command.request_id
+   if(command.protocol!=='native_company_worker_heartbeats_http_ci_command_v2'||typeof id!=='string'||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)||
+    !['enable','disable','status','stop','prime_auth_clients','hold_auth_clients_1s'].includes(command.op)||requestIds.has(id)||requestIds.size>=4096)refuse()
+   requestIds.add(id)
+   if(command.op==='enable'){if(closing)refuse();enabled=true}
+   if(command.op==='disable')enabled=false
+   if(command.op==='prime_auth_clients')await primeAuthClients()
+   if(command.op==='hold_auth_clients_1s')await holdAuthClientsOneSecond()
+   if(command.op==='stop'){await stop();await send(id,true,status());finish();return}
+   await send(id,true,status())
+  }catch{if(typeof id==='string'&&process.connected)await send(id,false,{code:'native_http_ci_refused'}).catch(()=>{});finish(true)}
+ })()}
+ const disconnected=()=>{void stop().then(()=>finish(),()=>finish(true))}
+ const terminated=()=>{void stop().then(()=>finish(),()=>finish(true))}
+ process.on('message',message);process.once('disconnect',disconnected);process.once('SIGTERM',terminated)
+ try{
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)})
+  server.on('error',()=>finish(true))
+  const address=server.address()
+  if(!address||typeof address==='string'||address.address!=='127.0.0.1'||!Number.isInteger(address.port)||address.port<1024||address.port>65535)refuse()
+  emit({protocol:'native_company_worker_heartbeats_http_ci_ready_v2',host:'127.0.0.1',port:address.port,origin,enabled:false,local:reader.localStatus()})
+  await done
+ }finally{
+  process.off('message',message);process.off('disconnect',disconnected);process.off('SIGTERM',terminated)
+  if(server.listening)await stop()
+  if(process.connected)process.disconnect()
+ }
+}
+
 export async function runNativeCompanyWorkerHeartbeatsControlCiChild(){
  let pool,reader,sent=false
  const emit=value=>{if(sent)return;sent=true;process.stdout.write(JSON.stringify(value)+'\n')}
@@ -124,9 +271,10 @@ export async function runNativeCompanyWorkerHeartbeatsControlCiChild(){
   if(entry!==root+'/services/pg-api/node_modules/pg/esm/index.mjs')refuse()
   const {default:pg}=await import('pg'),{NativeCompanyWorkerHeartbeats}=await import('../../src/native-company-worker-heartbeats.ts')
   pool=new pg.Pool({host:'127.0.0.1',port:5333,database:'agent_studio',user:'agentstudio_native_login',password:input.auth_password,max:2,ssl:false,
-   options:'-c default_transaction_read_only=on -c search_path=pg_catalog',application_name:'agentstudio-native-control-ci',connectionTimeoutMillis:2000,statement_timeout:3000,query_timeout:4000,idleTimeoutMillis:1000})
+   options:'-c default_transaction_read_only=on -c search_path=pg_catalog',application_name:process.argv[2]==='--http-run'?'agentstudio-native-http-control-ci':'agentstudio-native-control-ci',connectionTimeoutMillis:2000,statement_timeout:3000,query_timeout:4000,idleTimeoutMillis:process.argv[2]==='--http-run'?30000:1000})
   pool.on('error',()=>{});await target(pool,input.fixture)
   reader=new NativeCompanyWorkerHeartbeats(pool)
+  if(process.argv[2]==='--http-run'){await serveNativeHttp(reader,pool,emit);return}
   try{const snapshot=await reader.read(input.cookie);emit({snapshot,local:reader.localStatus()})}
   catch(error){process.exitCode=1;emit({error:errorCode(error),local:reader.localStatus()})}
  }catch{process.exitCode=2;emit({error:{status:503,code:'native_control_ci_refused'},local:null})}

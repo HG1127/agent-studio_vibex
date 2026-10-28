@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import net from 'node:net'
+import {request as httpRequest} from 'node:http'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {spawn,execFileSync} from 'node:child_process'
 import {randomBytes,randomUUID,createHash,generateKeyPairSync,sign} from 'node:crypto'
@@ -55,7 +56,7 @@ export async function createWorkerHeartbeatActivationControlCiFixture(proof,priv
  if(sourceManifest.format!=='worker_heartbeat_activation_control_sources_v1'||nativeManifest.format!=='worker_heartbeat_native_ci_files_v1')fail('manifest_format')
  for(const [base,entries]of [[stage.controlRoot,sourceManifest.sources],[stage.nativeRoot,nativeManifest.files]])for(const file of entries){if(typeof file.path!=='string'||! /^(?:services\/pg-api|shared|db\/postgres)\/[A-Za-z0-9_./-]+$/.test(file.path)||file.path.split('/').some(v=>!v||v==='.'||v==='..'))fail('manifest_path');read(base+'/'+file.path,{mode:0o444,pin:file.sha256,max:16777216})}
  const snapshot=fresh.captureFreshRuntimeSources();if(snapshot.source_sha256!==freshPin||snapshot.baseline.hash!==baselinePin||snapshot.versions.at(-1)!=='pg_v9_050')fail('frozen_fresh050')
- const s={proof,ci,stage,pg,containers,client,contract,workspace,snapshot,installer,activation,sourceBytes,runtimeBytes,pools:new Set(),reads:new Set(),writers:new Set(),children:new Set(),ackRules:new Set(),ownedDirectories:new Map(),ownedSockets:new Map(),plans:new WeakMap(),lastAction:null,currentPolicy:null,closed:false,container:null,control:null,native:null,phase:'create_owned_container'}
+ const s={proof,ci,stage,pg,containers,client,contract,workspace,snapshot,installer,activation,sourceBytes,runtimeBytes,pools:new Set(),reads:new Set(),writers:new Set(),children:new Set(),ackRules:new Set(),ownedDirectories:new Map(),ownedSockets:new Map(),plans:new WeakMap(),lastAction:null,currentPolicy:null,closed:false,container:null,control:null,native:null,httpNative:null,httpRequests:new Set(),phase:'create_owned_container'}
  const pool=options=>{const p=new pg.Pool(options);p.on('error',()=>{});s.pools.add(p);return p}
  async function close(){return closeFixture(s)}
  try{
@@ -72,6 +73,8 @@ export async function createWorkerHeartbeatActivationControlCiFixture(proof,priv
   s.authOptions={...s.nativeOptions,user:'agentstudio_native_login',password:s.nativePassword,max:2};s.auth=pool(s.authOptions);s.repo=new nativeAuth.NativeAuthRepository(s.auth)
   const a={email:'control-admin@example.test',password:'ControlAdmin#'+randomBytes(20).toString('hex'),display_name:'Synthetic Control Admin'},b={email:'control-employee@example.test',password:'ControlEmployee#'+randomBytes(20).toString('hex'),display_name:'Synthetic Control Employee'}
   await s.repo.provisionInitialAdmin(a);s.adminSession=await s.repo.login(a.email,a.password);await s.repo.createGovernedEmployee(s.adminSession.token,{...b,is_admin:false,share_enabled:true});s.employeeSession=await s.repo.login(b.email,b.password)
+  s.revokedSession=await s.repo.login(a.email,a.password);await s.repo.revokeSession(s.revokedSession.token)
+  s.nativeDataSha=await nativeHttpData(s)
   await installer.verifyRuntimeSchemaReceipt(s.nativeAdmin,snapshot,true);s.nativeSchema=await nativeSchema(s)
   s.phase='new_telemetry_database_original001';await containers.createTelemetryControlCiDatabase(s.container);s.telemetryOptions=containers.telemetryControlCiContainerTelemetryOptions(s.container);s.telemetry=pool(s.telemetryOptions)
   const telemetrySql=fs.readFileSync(path.join(root,'db/postgres/telemetry/001_worker_heartbeats.sql'));if(sha(telemetrySql)!==sqlPin)fail('telemetry_sql_pin');await s.telemetry.query(telemetrySql.toString('utf8'))
@@ -89,6 +92,15 @@ async function nativeSchema(s){
  const objects=(await s.nativeAdmin.query("SELECT n.nspname,c.relname,c.relowner::text,c.relacl,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') ORDER BY n.nspname,c.relname")).rows
  return sha(JSON.stringify({versions,objects}))
 }
+async function nativeHttpData(s){
+ // Only server-side row digests leave SQL; never log accounts/password/session
+ // data. This is an invariant comparison, not an authentication capability.
+ const row=(await s.nativeAdmin.query("SELECT (SELECT md5(coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.user_id)::text,'[]')) FROM agentstudio_auth.accounts a) AS accounts,(SELECT md5(coalesce(jsonb_agg(to_jsonb(u) ORDER BY u.id)::text,'[]')) FROM agentstudio.users u) AS users,(SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.token_digest)::text,'[]')) FROM agentstudio_auth.sessions t) AS sessions")).rows[0]
+ const x=fields(row,['accounts','users','sessions'])
+ if(Object.values(x).some(value=>typeof value!=='string'||!/^[a-f0-9]{32}$/.test(value)))fail('native_http_data_digest')
+ return sha(Buffer.from(JSON.stringify(x)))
+}
+
 async function preauditManagement(s){
  // A separate genuine read-only catalog check, not a controller DbAccess,
  // runtime capability or registry observation. Query results are never adapted.
@@ -179,6 +191,188 @@ async function nativeRead(s,choice){
   return {error,local:o.local}
  }finally{clearTimeout(timer);s.children.delete(owned);if(s.native===owned)s.native=null}
 }
+function nativeHttpStatus(raw){
+ const v=fields(raw,['protocol','enabled','local','pool','hold','responses'])
+ if(v.protocol!=='native_company_worker_heartbeats_http_ci_status_v2'||typeof v.enabled!=='boolean')fail('native_http_status')
+ const local=value=>{const x=fields(value,['inFlight','timedOut','cleanupUnknown']);if(Object.values(x).some(n=>!Number.isInteger(n)||n<0||n>2)||x.timedOut>x.inFlight||x.cleanupUnknown>x.inFlight)fail('native_http_local');return x}
+ const l=local(v.local),p=fields(v.pool,['total','idle','waiting'])
+ if(Object.values(p).some(n=>!Number.isInteger(n)||n<0||n>2)||p.idle>p.total||!Array.isArray(v.responses)||v.responses.length>32)fail('native_http_pool')
+ const hold=fields(v.hold,['cycle','phase','held','acquired','released','release_errors','failed','release_reason','elapsed_ms','duration_ms','warming','warm_held','warm_release_errors','unconfirmed'])
+ if(!Number.isSafeInteger(hold.cycle)||hold.cycle<0||hold.cycle>4096||!['idle','acquiring','held','released','failed'].includes(hold.phase)||
+  ['held','acquired','released','release_errors','warm_held','warm_release_errors','unconfirmed'].some(key=>!Number.isInteger(hold[key])||hold[key]<0||hold[key]>2)||
+  hold.released>hold.acquired||typeof hold.failed!=='boolean'||typeof hold.warming!=='boolean'||
+  ![null,'timer','stop','error'].includes(hold.release_reason)||
+  ['elapsed_ms','duration_ms'].some(key=>!Number.isSafeInteger(hold[key])||hold[key]<0||hold[key]>3600000))fail('native_http_hold_status')
+ const responses=v.responses.map(raw=>{const r=fields(raw,['request_id','status','local']);if(!uuid(r.request_id)||![200,401,403,503].includes(r.status))fail('native_http_response_receipt');return {...r,local:local(r.local)}})
+ return {...v,local:l,pool:p,hold,responses}
+}
+async function nativeHttpStart(s){
+ if(s.httpNative)return
+ if(s.closed)fail('native_http_fixture_closed')
+ const ci=workerHeartbeatActivationControlCiDescriptor(s.proof)
+ if(ci.nonce!==s.ci.nonce)fail('native_http_proof')
+ const env={PATH:'/usr/local/bin:/usr/bin:/bin',LANG:'C.UTF-8',AGENT_STUDIO_NATIVE_CONTROL_CI_CHILD:'YES_DISPOSABLE_NATIVE_READ_FIXTURE_ONLY'}
+ for(const key of ['CI','GITHUB_ACTIONS','RUNNER_OS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_SHA','GITHUB_REF','GITHUB_WORKFLOW_REF'])env[key]=process.env[key]
+ const p=spawn('/usr/bin/setpriv',['--reuid='+s.workspace.uid,'--regid='+s.workspace.gid,'--clear-groups','--inh-caps=-all','--ambient-caps=-all','--bounding-set=-all',s.stage.nodePath,'--experimental-strip-types',s.stage.nativeChildPath,'--http-run'],{cwd:s.stage.nativeRoot,env,stdio:['pipe','pipe','pipe','ipc'],windowsHide:true})
+ const c={p,exited:false,exit:null,pending:new Map(),address:null,stdout:Buffer.alloc(0),stderr:0};s.children.add(c);s.httpNative=c
+ let readyResolve,readyReject
+ const ready=new Promise((yes,no)=>{readyResolve=yes;readyReject=no})
+ const failReady=()=>readyReject(Error('telemetry_control_ci_fixture_refused:native_http_child'))
+ p.on('error',failReady);p.stdin.on('error',()=>{})
+ p.stdout.on('data',chunk=>{c.stdout=Buffer.concat([c.stdout,chunk]);if(c.stdout.length>32768){failReady();p.kill('SIGTERM');return}
+  if(!c.stdout.includes(10))return
+  try{
+   if(c.address||c.stdout.indexOf(10)!==c.stdout.length-1)fail('native_http_ready_frame')
+   const v=fields(s.contract.parseWorkerHeartbeatControlJson(c.stdout.subarray(0,-1),32768),['protocol','host','port','origin','enabled','local'])
+   if(v.protocol!=='native_company_worker_heartbeats_http_ci_ready_v2'||v.host!=='127.0.0.1'||!Number.isInteger(v.port)||v.port<1024||v.port>65535||[5333,5432].includes(v.port)||v.origin!=='https://native-control-ci.example.test'||v.enabled!==false)fail('native_http_ready_binding')
+   assert.deepEqual(v.local,{inFlight:0,timedOut:0,cleanupUnknown:0});c.address=v;readyResolve()
+  }catch{failReady();p.kill('SIGTERM')}
+ })
+ p.stderr.on('data',chunk=>{c.stderr+=chunk.length;if(c.stderr>32768){failReady();p.kill('SIGTERM')}})
+ p.on('message',raw=>{try{
+  const v=fields(raw,['protocol','request_id','ok','value']),pending=c.pending.get(v.request_id)
+  if(v.protocol!=='native_company_worker_heartbeats_http_ci_reply_v2'||!uuid(v.request_id)||typeof v.ok!=='boolean'||!pending)fail('native_http_reply')
+  const status=v.ok?nativeHttpStatus(v.value):null
+  c.pending.delete(v.request_id);clearTimeout(pending.timer)
+  v.ok?pending.resolve(status):pending.reject(Error('telemetry_control_ci_fixture_refused:native_http_command'))
+ }catch{failReady();for(const pending of c.pending.values()){clearTimeout(pending.timer);pending.reject(Error('telemetry_control_ci_fixture_refused:native_http_bad_reply'))}c.pending.clear();p.kill('SIGTERM')}})
+ p.once('close',(code,signal)=>{c.exited=true;c.exit={code,signal};failReady();for(const pending of c.pending.values()){clearTimeout(pending.timer);pending.reject(Error('telemetry_control_ci_fixture_refused:native_http_exit'))}c.pending.clear()})
+ const timer=setTimeout(()=>{failReady();p.kill('SIGTERM')},30000)
+ p.stdin.end(packet({protocol:'native_company_worker_heartbeats_control_ci_child_v1',fixture_sha256:s.nativeFixtureSha,fixture:s.nativeFixture,auth_password:s.nativePassword,cookie:''}))
+ try{await ready}finally{clearTimeout(timer)}
+}
+async function nativeHttpCommand(s,op){
+ const c=s.httpNative
+ if(!c||c.exited||!c.address||!['enable','disable','status','stop','prime_auth_clients','hold_auth_clients_1s'].includes(op)||c.pending.size>=8)fail('native_http_command_scope')
+ const request_id=randomUUID()
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{c.pending.delete(request_id);reject(Error('telemetry_control_ci_fixture_refused:native_http_command_timeout'))},op==='stop'?30000:5000)
+  c.pending.set(request_id,{resolve,reject,timer})
+  c.p.send({protocol:'native_company_worker_heartbeats_http_ci_command_v2',request_id,op},error=>{if(error){const pending=c.pending.get(request_id);if(pending){clearTimeout(timer);c.pending.delete(request_id);reject(Error('telemetry_control_ci_fixture_refused:native_http_send'))}}})
+ })
+}
+async function nativeHttpRead(s,choice){
+ const c=s.httpNative
+ if(s.closed||!c||c.exited||!c.address||!['admin','employee','missing','invalid','revoked','spoof','origin'].includes(choice))fail('native_http_read_scope')
+ const {NATIVE_SESSION_COOKIE}=await import('../../src/native-employee-auth.mjs')
+ const cookie=choice==='employee'?s.employeeSession.token:choice==='revoked'?s.revokedSession.token:choice==='invalid'?randomBytes(32).toString('base64url'):s.adminSession.token
+ const id=randomUUID(),headers={Origin:choice==='origin'?'https://foreign.example.test':c.address.origin,'X-Agentstudio-Ci-Request':id,Connection:'close'}
+ if(choice!=='missing')headers.Cookie=NATIVE_SESSION_COOKIE+'='+cookie
+ if(choice==='spoof')headers['X-Rh-User-Id']='00000000-0000-4000-8000-000000000001'
+ const started=performance.now()
+ const work=new Promise((resolve,reject)=>{
+  let bytes=Buffer.alloc(0),done=false
+  const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);error?reject(Error('telemetry_control_ci_fixture_refused:native_http_transport')):resolve(value)}
+  const request=httpRequest({host:'127.0.0.1',port:c.address.port,method:'GET',path:'/api/v2/company-worker-heartbeats',headers,agent:false},response=>{
+   response.on('data',chunk=>{bytes=Buffer.concat([bytes,chunk]);if(bytes.length>32768){response.destroy();finish(true)}})
+   response.once('error',()=>finish(true));response.once('aborted',()=>finish(true))
+   response.once('end',()=>{try{
+    if(!response.complete||![200,401,403,503].includes(response.statusCode))fail('native_http_status_code')
+    const body=s.contract.parseWorkerHeartbeatControlJson(bytes,32768)
+    for(const [key,value]of Object.entries({'cache-control':'no-store',pragma:'no-cache','x-content-type-options':'nosniff','referrer-policy':'no-referrer','cross-origin-resource-policy':'same-origin','x-frame-options':'DENY'}))if(response.headers[key]!==value)fail('native_http_response_headers')
+    if(['set-cookie','location','access-control-allow-origin'].some(k=>response.headers[k]!==undefined))fail('native_http_private_headers')
+    if(response.statusCode===200){snapshotValue(s,body).then(snapshot=>finish(false,{request_id:id,status:200,body:snapshot,elapsed_ms:Math.round(performance.now()-started)}),()=>finish(true));return}
+    const value=fields(body,['error']),expected=response.statusCode===401?'session_required':response.statusCode===403?'admin_required':'company_worker_heartbeats_unavailable'
+    if(value.error!==expected)fail('native_http_error_body')
+    finish(false,{request_id:id,status:response.statusCode,body,elapsed_ms:Math.round(performance.now()-started)})
+   }catch{finish(true)}})
+  })
+  const timer=setTimeout(()=>{request.destroy();finish(true)},14000)
+  request.once('error',()=>finish(true));request.end()
+ })
+ s.httpRequests.add(work);try{return await work}finally{s.httpRequests.delete(work)}
+}
+async function nativeHttpClean(s){
+ await until(async()=>{
+  const status=await nativeHttpCommand(s,'status')
+  if(status.local.inFlight!==0||status.local.cleanupUnknown!==0||status.pool.waiting!==0||status.hold.held!==0||status.hold.warming||status.hold.warm_held!==0)return false
+  if(status.hold.unconfirmed!==0)fail('native_http_unconfirmed_owned_clients')
+  if(status.hold.failed||status.hold.release_errors!==0||status.hold.warm_release_errors!==0)fail('native_http_owned_client_release_failed')
+  const row=(await s.nativeAdmin.query("SELECT count(*)::integer AS total,count(*) FILTER(WHERE state IS DISTINCT FROM 'idle' OR xact_start IS NOT NULL)::integer AS busy FROM pg_stat_activity WHERE datid=$1::oid AND usename='agentstudio_native_login' AND application_name='agentstudio-native-http-control-ci'",[s.nativeFixture.database_oid])).rows[0]
+  return row.total<=2&&row.busy===0
+ },'native_http_actual_cleanup',30000)
+ await waitReaders(s)
+}
+async function nativeHttpStop(s){
+ const c=s.httpNative;if(!c)return true
+ if(!c.exited){await nativeHttpClean(s);await nativeHttpCommand(s,'stop');await until(()=>c.exited,'native_http_owned_exit',12000)}
+ if(c.exit?.code!==0||c.exit?.signal!==null)fail('native_http_exit_code')
+ if(s.httpRequests.size!==0)fail('native_http_requests_not_settled')
+ s.children.delete(c);s.httpNative=null
+ await until(async()=>(await s.nativeAdmin.query("SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datid=$1::oid AND usename='agentstudio_native_login' AND application_name='agentstudio-native-http-control-ci') AS gone",[s.nativeFixture.database_oid])).rows[0]?.gone===true,'native_http_actual_backend_absence',10000)
+ return true
+}
+async function nativeHttpCapacity(s){
+ await nativeHttpClean(s)
+ let firstDone=false,secondDone=false
+ const a=nativeHttpRead(s,'admin').finally(()=>{firstDone=true}),b=nativeHttpRead(s,'admin').finally(()=>{secondDone=true})
+ const settled=Promise.allSettled([a,b])
+ try{
+  await until(async()=>(await nativeHttpCommand(s,'status')).local.inFlight===2,'native_http_shared_two_reservations',3000)
+  const third=await nativeHttpRead(s,'admin')
+  assert.equal(third.status,503);assert.equal(firstDone,false);assert.equal(secondDone,false)
+  for(const result of await settled){if(result.status!=='fulfilled')throw result.reason;assert.ok([200,503].includes(result.value.status))}
+ }finally{await settled;await nativeHttpClean(s)}
+ return true
+}
+async function nativeHttpLateCleanup(s){
+ const ci=workerHeartbeatActivationControlCiDescriptor(s.proof)
+ if(s.closed||ci.nonce!==s.ci.nonce||!s.httpNative)fail('native_http_own_fault_scope')
+ await nativeHttpClean(s)
+ const warm=await nativeHttpRead(s,'admin');assert.equal(warm.status,200);await nativeHttpClean(s)
+ // Establish both actual idle connections before enrolling DROP rules. The
+ // later fixed hold only borrows these existing clients; it creates no socket.
+ const primed=await nativeHttpCommand(s,'prime_auth_clients')
+ assert.equal(primed.pool.total,2);assert.equal(primed.pool.idle,2);assert.equal(primed.pool.waiting,0)
+ assert.equal(primed.hold.warming,false);assert.equal(primed.hold.warm_held,0);assert.equal(primed.hold.warm_release_errors,0);assert.equal(primed.hold.unconfirmed,0)
+ const rows=(await s.nativeAdmin.query("SELECT a.pid,a.backend_start::text AS started,a.client_port,host(a.client_addr) AS client_addr,a.datid::text AS database_oid,r.oid::text AS login_oid,a.backend_type,a.state,a.xact_start FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid AND a.application_name='agentstudio-native-http-control-ci'",[s.nativeFixture.database_oid,s.nativeFixture.login_oid])).rows
+ if(rows.length!==2||new Set(rows.map(r=>r.client_port)).size!==rows.length)fail('native_http_owned_connections')
+ const rules=[]
+ for(const r of rows){
+  if(!Number.isInteger(r.pid)||r.pid<1||typeof r.started!=='string'||!Number.isFinite(Date.parse(r.started))||r.database_oid!==s.nativeFixture.database_oid||r.login_oid!==s.nativeFixture.login_oid||r.client_addr!=='127.0.0.1'||r.backend_type!=='client backend'||r.state!=='idle'||r.xact_start!==null||!Number.isInteger(r.client_port)||r.client_port<1024||r.client_port>65535||[5333,5432].includes(r.client_port))fail('native_http_owned_connection_identity')
+  const comment='agentstudio-native-http-ci:'+ci.run+':'+ci.attempt+':'+ci.nonce.slice(0,16)+':'+randomUUID()
+  const rule=Object.freeze({comment,args:Object.freeze(['-p','tcp','-s','127.0.0.1','-d','127.0.0.1','--sport','5333','--dport',String(r.client_port),'-m','comment','--comment',comment,'-j','DROP'])})
+  if(rulePresent(rule))fail('native_http_fault_not_unique');s.ackRules.add(rule);rules.push(rule)
+ }
+ let primary,result,requestOutcome
+ try{
+  for(const rule of rules){iptables(['-I','OUTPUT','1',...rule.args]);if(!rulePresent(rule))fail('native_http_fault_missing')}
+  const held=await nativeHttpCommand(s,'hold_auth_clients_1s')
+  if(held.hold.phase!=='held'||held.hold.held!==2||held.hold.acquired!==2||held.hold.released!==0||held.hold.failed||held.hold.release_errors!==0||held.hold.unconfirmed!==0||held.hold.elapsed_ms>200)fail('native_http_hold_setup_window_missed')
+  const cycle=held.hold.cycle
+  // Observe every outcome immediately, including any setup rejection below.
+  requestOutcome=nativeHttpRead(s,'admin').then(value=>({value}),error=>({error}))
+  let queued
+  await until(async()=>{
+   const status=await nativeHttpCommand(s,'status')
+   if(status.hold.cycle!==cycle||status.hold.phase!=='held'||status.hold.held!==2||status.hold.elapsed_ms>200)fail('native_http_hold_queue_window_missed')
+   if(status.pool.waiting>=1&&status.local.inFlight>=1){queued=status;return true}
+   return false
+  },'native_http_actual_auth_checkout_queue',1000)
+  const outcome=await requestOutcome;if(outcome.error)throw outcome.error
+  const response=outcome.value
+  if(response.status!==503||response.elapsed_ms<7900||response.elapsed_ms>=14000)fail('native_http_original_budget_not_exercised_by_fixture')
+  const status=await nativeHttpCommand(s,'status'),released=status.hold
+  assert.equal(released.cycle,cycle);assert.equal(released.phase,'released');assert.equal(released.held,0)
+  assert.equal(released.acquired,2);assert.equal(released.released,2);assert.equal(released.release_errors,0);assert.equal(released.failed,false)
+  assert.equal(released.release_reason,'timer');assert.ok(released.duration_ms>=1000)
+  assert.equal(released.warming,false);assert.equal(released.warm_held,0);assert.equal(released.warm_release_errors,0);assert.equal(released.unconfirmed,0)
+  const receipt=status.responses.find(r=>r.request_id===response.request_id)
+  if(!receipt||receipt.status!==503||receipt.local.inFlight<1||receipt.local.timedOut<1)fail('native_http_retention_window_not_observed_by_fixture')
+  process.stdout.write(JSON.stringify({event:'native_http_real_hold_cleanup_evidence',hold_duration_ms:released.duration_ms,queue_observed_elapsed_ms:queued.hold.elapsed_ms,actual_clients_acquired:2,actual_clients_released:2,response_elapsed_ms:response.elapsed_ms,reservation_retained_at_response:true})+'\n')
+  result={http_status:503,real_timeout_observed:true,reservation_retained_at_response:true,real_pool_hold_released:true,queued_during_fixed_hold:true}
+ }catch(error){primary=error}
+ const cleanup=[]
+ for(const rule of rules)try{removeAckRule(s,rule)}catch(error){cleanup.push(error)}
+ // No timed-out or failed HTTP promise is abandoned during fault teardown.
+ if(requestOutcome)await requestOutcome
+ if(cleanup.length)throw new AggregateError([...(primary?[primary]:[]),...cleanup],'native_http_exact_fault_cleanup_failed')
+ if(primary)throw primary
+ await nativeHttpClean(s)
+ const after=await nativeHttpRead(s,'admin');assert.equal(after.status,200);await nativeHttpClean(s)
+ return Object.freeze({...result,actual_cleanup_verified:true,new_explicit_request_succeeded:true})
+}
+
 async function snapshotValue(s,value){const m=await import(pathToFileURL(s.stage.nativeRoot+'/services/pg-api/src/worker-heartbeat-contract.ts').href);return m.parseWorkerHeartbeatSnapshot(value)}
 async function wire(s){
  if(s.closed||!s.control||s.control.exited)fail('own_control_required')
@@ -294,6 +488,8 @@ function makeApi(s){
    finally{await r.close();await waitReaders(s)}
   },
   nativeReadAdmin:()=>nativeRead(s,'admin'),nativeReadEmployee:()=>nativeRead(s,'employee'),nativeReadMissing:()=>nativeRead(s,'missing'),
+  nativeHttpStart:()=>nativeHttpStart(s),nativeHttpRead:choice=>nativeHttpRead(s,choice),nativeHttpEnable:()=>nativeHttpCommand(s,'enable'),nativeHttpStatus:()=>nativeHttpCommand(s,'status'),
+  nativeHttpCapacity:()=>nativeHttpCapacity(s),nativeHttpLateCleanup:()=>nativeHttpLateCleanup(s),nativeHttpClean:()=>nativeHttpClean(s),nativeHttpStop:()=>nativeHttpStop(s),
   async openRead(){const r=await wire(s);return Object.freeze({prepare:()=>r.prepare(),finish:()=>r.finish(),cancel:()=>r.cancel(),close:()=>r.close()})},
   async assertReplayRefused(){const r=await wire(s);try{await r.prepare();await r.finish();await assert.rejects(()=>r.finish(),error=>error.code==='untrusted_reference'||error.code==='lease_revoked'||error.code==='lease_replayed')}finally{await r.close();await waitReaders(s)}return true},
   async assertCapacityAndExpiry(){
@@ -326,7 +522,7 @@ function makeApi(s){
   },
   async restart(){await stopProcess(s,s.control);if(s.controlBackend)await until(async()=>(await s.telemetry.query('SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND backend_start=$2::timestamptz) AS gone',[s.controlBackend.pid,s.controlBackend.started])).rows[0]?.gone===true,'actual_old_control_absence');await removeSockets(s);await startController(s);return rpc(s,{op:'inspect'})},
   async verify(){stageBinding(s.stage,s.ci);if(await s.containers.verifyTelemetryControlCiContainer(s.container)!==true)fail('owned_container_binding');if(await nativeSchema(s)!==s.nativeSchema)fail('native_schema_changed');await s.installer.verifyRuntimeSchemaReceipt(s.nativeAdmin,s.snapshot,true);if(s.closed)fail('fixture_closed');const status=await rpc(s,{op:'inspect'});if(status.instance_id!==s.instance||status.in_flight_reads>2)fail('actual_controller_status');return true},
-  async final(){await waitReaders(s);await this.verify();const rows=(await s.nativeAdmin.query('SELECT (SELECT count(*)::integer FROM agentstudio_auth.accounts) AS accounts,(SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs')).rows[0];if(rows.accounts!==2||rows.jobs!==0||rows.runs!==0||await s.repo.inspectEmployeeGovernance()!==true)fail('synthetic_native_data_invariants');return true},
+  async final(){await waitReaders(s);await this.verify();const rows=(await s.nativeAdmin.query('SELECT (SELECT count(*)::integer FROM agentstudio_auth.accounts) AS accounts,(SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs')).rows[0];if(rows.accounts!==2||rows.jobs!==0||rows.runs!==0||await s.repo.inspectEmployeeGovernance()!==true||await nativeHttpData(s)!==s.nativeDataSha)fail('synthetic_native_data_invariants');return true},
   close:()=>closeFixture(s),
  }
  return api
@@ -353,6 +549,7 @@ async function closeFixture(s){
  s.closed=true
  s.closing=(async()=>{const errors=[]
   for(const rule of [...s.ackRules])try{removeAckRule(s,rule)}catch(error){errors.push(safe('own_ack_rule_cleanup',error))}
+  if(s.httpNative)try{await nativeHttpStop(s)}catch(error){errors.push(safe('own_native_http_close',error))}
   for(const r of [...s.reads])try{await r.close()}catch(error){errors.push(safe('own_read_close',error))}
   for(const c of [...s.children])try{await stopProcess(s,c)}catch(error){errors.push(safe('own_child_stop',error))}
   for(const c of [...s.writers])try{await c.end();s.writers.delete(c)}catch(error){errors.push(safe('own_writer_close',error))}

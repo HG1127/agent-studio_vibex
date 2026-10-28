@@ -312,3 +312,4 @@ tests/pg-native-company-worker-heartbeats.test.mjs text eol=lf
 tests/pg-native-company-worker-heartbeats-session.test.mjs text eol=lf
 tests/pg-native-company-worker-heartbeats-render.test.mjs text eol=lf
 docs/PG18_FEATURE_BASELINE_20261029.json text eol=lf
+tests/pg-native-browser/company-worker-heartbeats.spec.mjs text eol=lf
