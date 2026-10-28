@@ -119,3 +119,8 @@ services/pg-api/tests/agent-descriptive-patch-operator-source.test.mjs text eol=
 # Unmounted controlled060 operation core
 services/pg-api/src/agent-descriptive-patch-operator-core.ts text eol=lf
 services/pg-api/tests/agent-descriptive-patch-operator-core.test.mjs text eol=lf
+
+# Guarded controlled060 CLI foundation; currently unsealed
+services/pg-api/src/agent-descriptive-patch-operator-cli.mjs text eol=lf
+services/pg-api/src/agent-descriptive-patch-operator-cli.d.mts text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-cli.test.mjs text eol=lf
