@@ -138,7 +138,13 @@ function runContainer(proof,stage){
  const id=command(args).trim();if(!/^[a-f0-9]{64}$/.test(id))fail('container_id')
  const inspect=()=>{
   const rows=JSON.parse(command(['inspect',id])),c=rows[0],host=c?.HostConfig
-  if(rows.length!==1||c.Id!==id||c.Name!=='/'+name||c.Image!==imageId||c.Config?.Image!==imageId||c.Config?.User!=='0:0'||c.Config?.Labels?.['org.agentstudio.descriptive-runtime.nonce']!==stage.nonce||host?.NetworkMode!=='none'||host.Privileged!==false||(host.Binds??[]).length||(host.Devices??[]).length||(host.VolumesFrom??[]).length||JSON.stringify(host.CapAdd)!==JSON.stringify(['DAC_OVERRIDE'])||JSON.stringify(host.CapDrop)!==JSON.stringify(['ALL'])||!host.SecurityOpt?.includes('no-new-privileges')||Object.keys(host.PortBindings??{}).length||!Array.isArray(c.Mounts)||c.Mounts.length!==2)fail('container_configuration')
+  // Docker documents DAC_OVERRIDE and CAP_DAC_OVERRIDE as equivalent names:
+  // https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities
+  const adds=host?.CapAdd,oneDac=Array.isArray(adds)&&adds.length===1&&/^(?:CAP_)?DAC_OVERRIDE$/.test(adds[0])
+  if(rows.length!==1||c.Id!==id||c.Name!=='/'+name||c.Image!==imageId||c.Config?.Image!==imageId||c.Config?.User!=='0:0'||c.Config?.Labels?.['org.agentstudio.descriptive-runtime.nonce']!==stage.nonce||host?.NetworkMode!=='none'||host.Privileged!==false||(host.Binds??[]).length||(host.Devices??[]).length||(host.VolumesFrom??[]).length||!oneDac||JSON.stringify(host.CapDrop)!==JSON.stringify(['ALL'])||!host.SecurityOpt?.includes('no-new-privileges')||Object.keys(host.PortBindings??{}).length||!Array.isArray(c.Mounts)||c.Mounts.length!==2){
+   process.stderr.write('DESCRIPTIVE_RUNTIME_CONTAINER_METADATA '+JSON.stringify({name:c?.Name,image:c?.Image,configured_image:c?.Config?.Image,user:c?.Config?.User,network:host?.NetworkMode,privileged:host?.Privileged,cap_add:host?.CapAdd,cap_drop:host?.CapDrop,security:host?.SecurityOpt,binds:host?.Binds,devices:host?.Devices,mounts:c?.Mounts?.map(m=>({type:m.Type,destination:m.Destination,rw:m.RW}))})+'\n')
+   fail('container_configuration')
+  }
   const expected=new Map([[inputTarget,stage.input],[harnessTarget,stage.harness]])
   for(const mount of c.Mounts)if(mount.Type!=='bind'||mount.RW!==false||expected.get(mount.Destination)!==mount.Source)fail('container_mount')
   if(!Object.entries(env).every(([k,v])=>c.Config.Env.includes(k+'='+v)))fail('container_environment')
