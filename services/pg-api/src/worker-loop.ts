@@ -51,6 +51,11 @@ async function main(preflight=false){
      (!preflight&&process.env.AGENT_STUDIO_PG_PREPARE_WORKER_ENABLED!=="true"))
     throw Error("worker_disabled")
   const config=workerConnection()
+  let stopping=false
+  let closeNewClaims:(()=>void)|undefined
+  const stop=()=>{stopping=true;closeNewClaims?.()}
+  process.once("SIGTERM",stop)
+  process.once("SIGINT",stop)
   // Keep --plan completely offline; for --preflight load ONLY the DB driver,
   // never the worker SQL sources or execution engine.
   const {Pool}=await import("pg")
@@ -71,9 +76,6 @@ async function main(preflight=false){
       }
     },
   }
-  let stopping=false
-  process.once("SIGTERM",()=>{stopping=true})
-  process.once("SIGINT",()=>{stopping=true})
   try{
     await verifyPgRuntimeTarget(adapter,config)
     await verifyPgWorkerRoleBoundary(adapter,config)
@@ -91,6 +93,9 @@ async function main(preflight=false){
     const {AgentPrepareWorker}=await import("./agent-worker.ts")
     const worker=new AgentPrepareWorker(adapter,
       "agent-prepare-"+randomUUID().slice(0,8))
+    closeNewClaims=()=>worker.closeNewClaims()
+    // A signal may have arrived while startup checks or the lazy import awaited.
+    if(stopping){closeNewClaims();return}
     process.stdout.write(JSON.stringify({
       service:"pg-agent-prepare",state:"ready",mode:"prepare_only",
     })+"\n")
