@@ -56,11 +56,12 @@ jobs:
           const output=(r.stdout??"")+(r.stderr??"");
           if(r.status!==1||!output.includes("refuse_non_ephemeral_pg18_ci")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(output))throw Error("telemetry_entry_did_not_refuse_before_imports");
           process.stdout.write("Telemetry entry refused ordinary invocation before runtime imports.\n");'
-      - name: Closed heartbeat protocols and exact SchemaFull auditor pure cases
+      - name: Closed heartbeat protocols, local claim admission and exact SchemaFull auditor
         run: >-
           node --experimental-strip-types --test --test-concurrency=1
           services/pg-api/tests/worker-heartbeat-contract.test.mjs
           services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs
+          services/pg-api/tests/worker-claim-admission.test.mjs
           services/pg-api/tests/worker-heartbeat-audit.test.mjs
       - name: Actual new empty telemetry database and dormant schema beside unchanged full060/full061
         env:

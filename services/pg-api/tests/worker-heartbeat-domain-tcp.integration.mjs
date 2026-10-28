@@ -85,6 +85,24 @@ test('separate telemetry dormant SchemaFull on genuine PG18 beside unchanged ful
    }
    await full()
   })
+  // An alternate table AM can use the same builtin heap handler and preserve
+  // all row/column/key/policy/ACL properties. Check the actual relation method,
+  // not only a mocked aggregate "ok" or the presence of another catalog row.
+  for(const table of ['kind_config','slot_state'])await t.test('actual alternate table method refuses and heap restoration recovers: '+table,async()=>{
+   assert.equal((await f.telemetryPool.query("SELECT count(*)::integer AS n FROM pg_catalog.pg_am WHERE amname='telemetry_ci_heap_alias'")).rows[0].n,0)
+   await f.telemetryPool.query('CREATE ACCESS METHOD telemetry_ci_heap_alias TYPE TABLE HANDLER pg_catalog.heap_tableam_handler')
+   try{
+    await full() // An unused AM alias alone does not invalidate either table.
+    await f.telemetryPool.query('ALTER TABLE studio_telemetry.'+quote(table)+' SET ACCESS METHOD telemetry_ci_heap_alias')
+    const actual=(await f.telemetryPool.query("SELECT am.amname::text AS method,am.amtype::text AS type,am.amhandler='pg_catalog.heap_tableam_handler'::regproc AS same_builtin_handler FROM pg_catalog.pg_class c JOIN pg_catalog.pg_am am ON am.oid=c.relam WHERE c.oid=$1::regclass",['studio_telemetry.'+table])).rows[0]
+    assert.deepEqual(actual,{method:'telemetry_ci_heap_alias',type:'t',same_builtin_handler:true})
+    await assert.rejects(inspect(),unavailable)
+   }finally{
+    await f.telemetryPool.query('ALTER TABLE studio_telemetry.'+quote(table)+' SET ACCESS METHOD heap')
+    await f.telemetryPool.query('DROP ACCESS METHOD telemetry_ci_heap_alias')
+   }
+   await full()
+  })
   const drifts=[
    ['unexpected LOGIN','ALTER ROLE studio_telemetry_reader LOGIN','ALTER ROLE studio_telemetry_reader NOLOGIN'],
    ['unexpected inheritance','ALTER ROLE studio_telemetry_tx_prepare_1 INHERIT','ALTER ROLE studio_telemetry_tx_prepare_1 NOINHERIT'],

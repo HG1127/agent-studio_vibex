@@ -13,7 +13,7 @@ const kinds=['prepare','model','workflow_safe','workflow_v2','agent_autonomous',
 const writers=kinds.flatMap(k=>[1,2].map(s=>`studio_telemetry_tx_${k}_${s}`))
 const names=['studio_telemetry_owner','studio_telemetry_reader',...writers]
 const expected={schema:'telemetry_v1',phase:'schema_full_dormant',runtime_activated:false}
-const pins={"sql":"d4131c5b60434e56e2a58a634ad27a440c29d6aec39809b791af337b59c252c9","record":"4e1fd93b6217d5cf414189f568d395f48a3e3e54e1ee455e65d28d4717e15143","snapshot":"17215237dbc5f81ba8fbbb2fd8eae2a9da7e0e0cfa859124ab50f3ccd60671ec"}
+const pins={"sql":"5ed1080d9f7b651ea2ae7fceca09db7f61c679f107e196df13ae201a8f99505f","record":"4e1fd93b6217d5cf414189f568d395f48a3e3e54e1ee455e65d28d4717e15143","snapshot":"17215237dbc5f81ba8fbbb2fd8eae2a9da7e0e0cfa859124ab50f3ccd60671ec"}
 const defs={kind_config:[['ordinal','smallint',true,null],['kind','text',true,null],['instrumented','boolean',true,'false'],['enabled','boolean',true,'false']],slot_state:[['kind','text',true,null],['slot_no','smallint',true,null],['login_oid','oid',true,null],['login_name','text',true,null],['enabled','boolean',true,'false'],['generation','uuid',false,null],['last_sequence','bigint',true,"'0'::bigint"],['state','text',false,null],['reason','text',false,null],['observed_at','timestamp with time zone',false,null],['draining','boolean',true,'false']]}
 const ck={
  telemetry_kind_range:'((ordinal >= 1) AND (ordinal <= 8))',telemetry_kind_enabled:'((NOT enabled) OR instrumented)',
@@ -23,6 +23,7 @@ const ck={
 const keys=[['telemetry_kind_pk','kind_config','p',['ordinal']],['telemetry_kind_unique','kind_config','u',['kind']],['telemetry_slot_pk','slot_state','p',['kind','slot_no']],['telemetry_slot_login_oid','slot_state','u',['login_oid']],['telemetry_slot_login_name','slot_state','u',['login_name']],['telemetry_slot_kind_fk','slot_state','f',['kind']]]
 function fixture(){
  let n=300
+ const heap={access_method_id:200,access_method:'heap',access_method_type:'t',handler_id:201,heap_handler_id:201,handler_schema:'pg_catalog',handler_name:'heap_tableam_handler',handler_language:'internal',handler_source:'heap_tableam_handler',handler_args:'internal',handler_result:'table_am_handler',handler_kind:'f'}
  const roles=names.map((name,i)=>({id:100+i,name,login:false,inherit:false,super:false,bypass:false,create_db:false,create_role:false,replication:false,connection_limit:i===0?-1:i===1?2:1,config:null,no_expiry:true,memberships:0}))
  const funcs=['record','snapshot'].map((name,i)=>({id:30+i,schema:'studio_telemetry',name,owner_id:100,args:i===0?'text, text, bigint, text, text':'',result:'jsonb',language:'plpgsql',volatility:'v',definer:true,strict:false,leakproof:false,parallel:'u',kind:'f',defaults:0,modes:null,argnames:null,ordinary:true,config:['search_path=pg_catalog'],sha:pins[name]}))
  const indexes=keys.filter(k=>k[2]!=='f').map(([name,relation,kind,columns],i)=>({id:50+i,name,relation,columns,primary:kind==='p',ok:true}))
@@ -35,7 +36,7 @@ function fixture(){
  for(const id of [20,21])for(const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'])acl.push({object:'table',id,grantor:100,grantee:100,privilege,grantable:false})
  const database_acl=['CREATE','CONNECT','TEMPORARY'].map(privilege=>({grantor:1,grantee:1,privilege,grantable:false}))
  for(const r of roles.slice(1))database_acl.push({grantor:1,grantee:r.id,privilege:'CONNECT',grantable:false})
- const state={target:{database:'agent_studio_telemetry',version:180006,encoding:'UTF8',owner_id:1,owner_super:true,authentic_audit:true,consistent_readonly:true,controlled_path:true,isolated:true},roles,namespace:[{id:10,name:'studio_telemetry',owner_id:1,comment:'agent_studio_telemetry/telemetry_v1/schema_full_dormant'}],tables:[{id:20,name:'kind_config',owner_id:100,ok:true},{id:21,name:'slot_state',owner_id:100,ok:true}],columns:Object.entries(defs).flatMap(([relation,attrs])=>attrs.map(([name,type,required,def],i)=>({relation,name,type,required,default:def,ordinal:i+1,plain:true}))),not_nulls:Object.entries(defs).flatMap(([relation,attrs])=>attrs.filter(a=>a[2]).map(a=>({relation,columns:[a[0]],ok:true}))),constraints,indexes,policies:['kind_config','slot_state'].map(relation=>({relation,name:'telemetry_owner_policy',command:'*',permissive:true,roles:[100],qual:'true',check:'true'})),routines:funcs,acl,boundaries:{ok:true},database_acl,sensitive:roles.flatMap(r=>['pg_authid','pg_shadow'].map((name,i)=>({role_id:r.id,name:'pg_catalog.'+name,kind:i?'v':'r',effective:false,raw_grant:false}))),kind_registry:kinds.map((kind,i)=>({ordinal:i+1,kind,instrumented:false,enabled:false})),slot_registry:kinds.flatMap(kind=>[1,2].map(slot_no=>({kind,slot_no,login_name:`studio_telemetry_tx_${kind}_${slot_no}`,login_oid:roles.find(r=>r.name===`studio_telemetry_tx_${kind}_${slot_no}`).id,enabled:false,generation:null,last_sequence:'0',state:null,reason:null,observed_at:null,draining:false})))}
+ const state={target:{database:'agent_studio_telemetry',version:180006,encoding:'UTF8',owner_id:1,owner_super:true,authentic_audit:true,consistent_readonly:true,controlled_path:true,isolated:true},roles,namespace:[{id:10,name:'studio_telemetry',owner_id:1,comment:'agent_studio_telemetry/telemetry_v1/schema_full_dormant'}],tables:[{id:20,name:'kind_config',owner_id:100,ok:true,...heap},{id:21,name:'slot_state',owner_id:100,ok:true,...heap}],columns:Object.entries(defs).flatMap(([relation,attrs])=>attrs.map(([name,type,required,def],i)=>({relation,name,type,required,default:def,ordinal:i+1,plain:true}))),not_nulls:Object.entries(defs).flatMap(([relation,attrs])=>attrs.filter(a=>a[2]).map(a=>({relation,columns:[a[0]],ok:true}))),constraints,indexes,policies:['kind_config','slot_state'].map(relation=>({relation,name:'telemetry_owner_policy',command:'*',permissive:true,roles:[100],qual:'true',check:'true'})),routines:funcs,acl,boundaries:{ok:true},database_acl,sensitive:roles.flatMap(r=>['pg_authid','pg_shadow'].map((name,i)=>({role_id:r.id,name:'pg_catalog.'+name,kind:i?'v':'r',effective:false,raw_grant:false}))),kind_registry:kinds.map((kind,i)=>({ordinal:i+1,kind,instrumented:false,enabled:false})),slot_registry:kinds.flatMap(kind=>[1,2].map(slot_no=>({kind,slot_no,login_name:`studio_telemetry_tx_${kind}_${slot_no}`,login_oid:roles.find(r=>r.name===`studio_telemetry_tx_${kind}_${slot_no}`).id,enabled:false,generation:null,last_sequence:'0',state:null,reason:null,observed_at:null,draining:false})))}
  const trace=[],faults=new Set();let released=0
  const db={async query(sql,args=[]){trace.push({sql,args:structuredClone(args)});if(faults.has(sql))throw Error('private query failure')
   if(['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY','SET LOCAL search_path=pg_catalog','ROLLBACK'].includes(sql))return {rows:[]}
@@ -61,6 +62,7 @@ test('nonexecuted installation guard requires exact empty dedicated PG18 DB and 
  assert.ok(source.indexOf("current_database() <> 'agent_studio_telemetry'")<source.indexOf('CREATE ROLE'))
  assert.match(source,/BETWEEN 180000 AND 189999/);assert.match(source,/requires_empty_database/)
  assert.equal((source.match(/CREATE TABLE /g)||[]).length,2);assert.equal((source.match(/CREATE FUNCTION /g)||[]).length,2)
+ assert.equal((source.match(/\) USING heap;/g)||[]).length,2)
  assert.doesNotMatch(source,/CREATE DATABASE|CREATE OR REPLACE|\bLOGIN\b|PASSWORD|pg_v9_|agentstudio[._]|ALTER DEFAULT PRIVILEGES|SET ROLE/)
  assert.match(source,/CREATE ROLE studio_telemetry_owner NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS/)
  assert.match(source,/FOR s IN 1\.\.2/);assert.match(source,/generate_series\(1,2\)/)
@@ -111,8 +113,14 @@ test('all eighteen roles require NOLOGIN and exact flags, zero memberships, expi
  for(const [key,value] of Object.entries({memberships:1,config:[],no_expiry:false,connection_limit:4,id:'100',name:'agentstudio_api'}))await reject(s=>{s.roles[0][key]=value})
  await reject(s=>{s.roles[1].id=s.roles[0].id});await reject(s=>{s.roles.push({...s.roles[0],id:999})})
 })
-test('table relation ownership/RLS/FORCE/heap assumptions and exact fifteen plain columns are closed',async()=>{
+test('table ownership/RLS/FORCE, actual heap AM and builtin handler identity, and exact fifteen columns are closed',async()=>{
  for(const [key,value] of Object.entries({name:'extra',owner_id:1,id:0,ok:false}))await reject(s=>{s.tables[0][key]=value})
+ for(let i=0;i<2;i++)for(const [key,value] of Object.entries({access_method_id:0,access_method:'heap_alias',access_method_type:'i',handler_id:999,heap_handler_id:0,handler_schema:'public',handler_name:'heap_alias_handler',handler_language:'c',handler_source:'alternate_handler',handler_args:'',handler_result:'index_am_handler',handler_kind:'p'}))await reject(s=>{s.tables[i][key]=value})
+ for(let i=0;i<2;i++)for(const key of Object.keys(fixture().state.tables[i]).filter(key=>key.startsWith('access_method')||key.includes('handler')))await reject(s=>{delete s.tables[i][key]})
+ const f=fixture();assert.deepEqual(await verifyWorkerHeartbeatCore(f.db),expected)
+ const query=f.trace.find(q=>q.sql.startsWith('/* telemetry_v1:tables */')).sql
+ assert.match(query,/c\.relam::integer AS access_method_id/);assert.match(query,/pg_catalog\.pg_am am ON am\.oid=c\.relam/)
+ assert.match(query,/pg_catalog\.pg_proc h ON h\.oid=am\.amhandler/);assert.match(query,/'pg_catalog\.heap_tableam_handler\(pg_catalog\.internal\)'::pg_catalog\.regprocedure/)
  for(const [key,value] of Object.entries({name:'payload',ordinal:2,type:'integer',required:false,default:'1',plain:false}))await reject(s=>{s.columns[0][key]=value})
  await reject(s=>{s.columns[10].default='0::bigint'});await reject(s=>{s.columns.push({...s.columns[0]})})
 })

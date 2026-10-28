@@ -5,7 +5,7 @@ import type {SqlClient} from "./contracts.ts"
 import {workerHeartbeatKinds} from "./worker-heartbeat-contract.ts"
 
 export const workerHeartbeatSchemaPins = Object.freeze({
-  sql: "d4131c5b60434e56e2a58a634ad27a440c29d6aec39809b791af337b59c252c9",
+  sql: "5ed1080d9f7b651ea2ae7fceca09db7f61c679f107e196df13ae201a8f99505f",
   record: "4e1fd93b6217d5cf414189f568d395f48a3e3e54e1ee455e65d28d4717e15143",
   snapshot: "17215237dbc5f81ba8fbbb2fd8eae2a9da7e0e0cfa859124ab50f3ccd60671ec",
 })
@@ -64,10 +64,14 @@ async function verify(db:SqlClient):Promise<false|WorkerHeartbeatSchemaFull>{
  const roleIds=ids(roles)
  if(roles.length!==18||new Set(roles.map(r=>r.name)).size!==18||roles.some(r=>!roleNames.includes(String(r.name))||r.login!==false||r.inherit!==false||r.super!==false||r.bypass!==false||r.create_db!==false||r.create_role!==false||r.replication!==false||r.config!==null||r.no_expiry!==true||r.memberships!==0||r.connection_limit!==(r.name===ownerName?-1:r.name===readerName?2:1)))return fail()
  const owner=roles.find(r=>r.name===ownerName)!,reader=roles.find(r=>r.name===readerName)!
- const relationRows=await read(db,"/* telemetry_v1:tables */ SELECT c.oid::integer AS id,c.relname AS name,c.relowner::integer AS owner_id,c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND c.relrowsecurity AND c.relforcerowsecurity AND NOT c.relhasrules AND c.reloptions IS NULL AND "+
-  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid) AS ok FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind NOT IN('i')",[schema])
+ const relationRows=await read(db,"/* telemetry_v1:tables */ SELECT c.oid::integer AS id,c.relname AS name,c.relowner::integer AS owner_id,c.relam::integer AS access_method_id,am.amname::text AS access_method,am.amtype::text AS access_method_type,"+
+  "h.oid::integer AS handler_id,'pg_catalog.heap_tableam_handler(pg_catalog.internal)'::pg_catalog.regprocedure::oid::integer AS heap_handler_id,hn.nspname::text AS handler_schema,h.proname::text AS handler_name,l.lanname::text AS handler_language,h.prosrc AS handler_source,"+
+  "pg_catalog.pg_get_function_identity_arguments(h.oid) AS handler_args,pg_catalog.pg_get_function_result(h.oid) AS handler_result,h.prokind::text AS handler_kind,c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND c.relrowsecurity AND c.relforcerowsecurity AND NOT c.relhasrules AND c.reloptions IS NULL AND "+
+  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid) AS ok FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_am am ON am.oid=c.relam LEFT JOIN pg_catalog.pg_proc h ON h.oid=am.amhandler LEFT JOIN pg_catalog.pg_namespace hn ON hn.oid=h.pronamespace LEFT JOIN pg_catalog.pg_language l ON l.oid=h.prolang WHERE n.nspname=$1 AND c.relkind NOT IN('i')",[schema])
  const tableIds=ids(relationRows)
- if(relationRows.length!==2||!same(relationRows.map(x=>x.name).sort(),["kind_config","slot_state"])||relationRows.some(x=>x.owner_id!==owner.id||x.ok!==true))return fail()
+ if(relationRows.length!==2||!same(relationRows.map(x=>x.name).sort(),["kind_config","slot_state"])||relationRows.some(x=>x.owner_id!==owner.id||x.ok!==true||
+  !oid(x.access_method_id)||x.access_method!=="heap"||x.access_method_type!=="t"||!oid(x.handler_id)||!oid(x.heap_handler_id)||x.handler_id!==x.heap_handler_id||
+  x.handler_schema!=="pg_catalog"||x.handler_name!=="heap_tableam_handler"||x.handler_language!=="internal"||x.handler_source!=="heap_tableam_handler"||x.handler_args!=="internal"||x.handler_result!=="table_am_handler"||x.handler_kind!=="f"))return fail()
  const attrs=await read(db,"/* telemetry_v1:columns */ SELECT c.relname AS relation,a.attname AS name,a.attnum::integer AS ordinal,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS required,pg_get_expr(d.adbin,d.adrelid) AS default,"+
   "NOT a.attisdropped AND a.attidentity='' AND a.attgenerated='' AND a.attinhcount=0 AND a.attislocal AND a.attoptions IS NULL AND a.attfdwoptions IS NULL AND a.attacl IS NULL AND "+
   "a.attcollation=CASE WHEN a.atttypid='pg_catalog.text'::regtype THEN 'pg_catalog.\"C\"'::regcollation ELSE 0::oid END AS plain FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=ANY($1::oid[]) AND a.attnum>0 ORDER BY c.relname,a.attnum",[tableIds])

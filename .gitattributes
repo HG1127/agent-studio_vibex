@@ -155,3 +155,7 @@ services/pg-api/src/worker-heartbeat-audit-core.ts text eol=lf
 services/pg-api/src/worker-heartbeat-audit.ts text eol=lf
 services/pg-api/tests/worker-heartbeat-audit.test.mjs text eol=lf
 services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs text eol=lf
+
+# Process-local claim admission; real hooks are separate
+services/pg-api/src/worker-claim-admission.ts text eol=lf
+services/pg-api/tests/worker-claim-admission.test.mjs text eol=lf

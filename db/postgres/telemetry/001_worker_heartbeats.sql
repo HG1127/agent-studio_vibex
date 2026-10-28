@@ -50,7 +50,7 @@ CREATE TABLE studio_telemetry.kind_config (
   CONSTRAINT telemetry_kind_unique UNIQUE (kind),
   CONSTRAINT telemetry_kind_range CHECK (ordinal>=1 AND ordinal<=8),
   CONSTRAINT telemetry_kind_enabled CHECK (NOT enabled OR instrumented)
-);
+) USING heap;
 CREATE TABLE studio_telemetry.slot_state (
   kind text COLLATE "C" NOT NULL,
   slot_no smallint NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE studio_telemetry.slot_state (
       AND ((state='unknown' AND reason IN ('startup_checks_pending','loop_unavailable'))
         OR (state='ready' AND reason='startup_checks_complete') OR (state='draining' AND reason='new_claims_closed'))
       AND draining=(state='draining')))
-);
+) USING heap;
 INSERT INTO studio_telemetry.kind_config(ordinal,kind)
 SELECT ordinal::smallint,kind FROM unnest(ARRAY['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment']) WITH ORDINALITY AS t(kind,ordinal);
 INSERT INTO studio_telemetry.slot_state(kind,slot_no,login_oid,login_name)
