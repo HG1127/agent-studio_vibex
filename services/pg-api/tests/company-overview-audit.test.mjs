@@ -93,6 +93,22 @@ test('the complete independent catalog fixture passes with no employee/source/te
  assert.ok(f.trace.every(t=>!t.sql.includes('SELECT agentstudio.company_overview(')))
 })
 
+test('catalog name arrays explicitly use text[] wire decoding with the actual pg driver, retaining strict array validation',async()=>{
+ const {default:pg}=await import('pg')
+ const nameArray=pg.types.getTypeParser(1003,'text'),textArray=pg.types.getTypeParser(1009,'text')
+ // Actual pg-types2.2.0 treats PostgreSQL name[] as an unparsed string. Never
+ // accept that string or normalize it into a guessed permission/key array.
+ assert.equal(nameArray('{}'),'{}');assert.equal(nameArray('{id}'),'{id}')
+ assert.deepEqual(textArray('{}'),[]);assert.deepEqual(textArray('{id}'),['id'])
+ const f=fixture();assert.equal(await verifyCompanyOverviewCore(f.db),true)
+ assert.match(f.trace.find(t=>t.sql.startsWith('/* company061:function_effective */')).sql,/ARRAY\(SELECT rolname::text FROM pg_catalog\.pg_roles/)
+ assert.match(f.trace.find(t=>t.sql.startsWith('/* company061:identity_keys */')).sql,/ARRAY\(SELECT a\.attname::text FROM unnest\(x\.conkey\)/)
+ const valid=fixture();valid.state.function_effective[0].other_roles=textArray('{}');valid.state.identity_keys[0].columns=textArray('{id}');valid.state.identity_keys[1].columns=textArray('{user_id}')
+ assert.equal(await verifyCompanyOverviewCore(valid.db),true)
+ await reject(s=>{s.function_effective[0].other_roles=nameArray('{}')})
+ await reject(s=>{s.identity_keys[0].columns=nameArray('{id}')})
+})
+
 test('owner role attributes/memberships and API raw-auth reachability fail closed',async()=>{
  for(const field of ['login','inherit','super','bypass','create_role','create_db','replication'])await reject(s=>{s.roles[0][field]=true})
  for(const patch of [{memberships:1},{config:['search_path=public']},{connection_limit:0},{name:'agentstudio_company_shadow'},{id:0}])await reject(s=>Object.assign(s.roles[0],patch))

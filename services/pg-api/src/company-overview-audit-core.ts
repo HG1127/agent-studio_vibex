@@ -67,7 +67,7 @@ async function verify(db:SqlClient):Promise<boolean>{
  if(grants.length!==4)return fail()
  for(const id of fnIds){const g=grants.filter(g=>g.function_id===id);if(g.length!==2||new Set(g.map(g=>g.grantee)).size!==2||g.some(g=>g.grantor!==owner.id||![owner.id,api.id].includes(g.grantee)||g.privilege!=="EXECUTE"||g.grantable!==false))return fail()}
  const effective=await read(db,"/* company061:function_effective */ SELECT p.oid::integer AS id,has_function_privilege('agentstudio_api',p.oid,'EXECUTE') AS api,"+
-  "ARRAY(SELECT rolname FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.oid NOT IN($2::oid,$3::oid) AND has_function_privilege(r.oid,p.oid,'EXECUTE') ORDER BY rolname) AS other_roles FROM pg_catalog.pg_proc p WHERE p.oid=ANY($1::oid[])",[fnIds,owner.id,api.id])
+  "ARRAY(SELECT rolname::text FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.oid NOT IN($2::oid,$3::oid) AND has_function_privilege(r.oid,p.oid,'EXECUTE') ORDER BY rolname) AS other_roles FROM pg_catalog.pg_proc p WHERE p.oid=ANY($1::oid[])",[fnIds,owner.id,api.id])
  if(effective.length!==2||!same(exactIds(effective,"id").sort((a,b)=>a-b),[...fnIds].sort((a,b)=>a-b))||effective.some(e=>e.api!==true||!same(e.other_roles,[])))return fail()
  const surface=await one(db,"/* company061:owner_surface */ SELECT has_schema_privilege($1::oid,'agentstudio','USAGE') AND has_schema_privilege($1::oid,'agentstudio_auth','USAGE') AND "+
   "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND has_schema_privilege($1::oid,n.oid,'CREATE')) AND "+
@@ -87,7 +87,7 @@ async function verify(db:SqlClient):Promise<boolean>{
  const baseIds=exactIds(bases,"id")
  const identityNames=["agentstudio.users","agentstudio_auth.accounts"]
  const identityKeys=await read(db,"/* company061:identity_keys */ SELECT n.nspname||'.'||t.relname AS relation,t.oid::integer AS relation_id,i.indexrelid::integer AS id,"+
-  "ARRAY(SELECT a.attname FROM unnest(x.conkey) WITH ORDINALITY k(num,pos) JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.num ORDER BY k.pos) AS columns,"+
+  "ARRAY(SELECT a.attname::text FROM unnest(x.conkey) WITH ORDINALITY k(num,pos) JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.num ORDER BY k.pos) AS columns,"+
   "x.convalidated AND NOT x.condeferrable AND NOT x.condeferred AND i.indisprimary AND i.indisunique AND NOT i.indisexclusion AND i.indisvalid AND i.indisready AND i.indislive AND i.indimmediate AND NOT i.indnullsnotdistinct AND "+
   "i.indexprs IS NULL AND i.indpred IS NULL AND i.indnatts=1 AND i.indnkeyatts=1 AND i.indkey[0]=x.conkey[1] AND i.indcollation[0]=0 AND i.indoption[0]=0 AND "+
   "(SELECT opcnamespace='pg_catalog'::regnamespace AND opcname='uuid_ops' AND opcdefault FROM pg_catalog.pg_opclass WHERE oid=i.indclass[0]) AND "+

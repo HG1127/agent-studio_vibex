@@ -18,6 +18,29 @@ const denied=code=>e=>e.status===code&&e.code===(code===403?'admin_required':'se
 const sqlDenied=message=>e=>e.code==='P0001'&&e.message===message
 const permissionDenied=e=>e.code==='42501'
 function observe(promise){const state={done:false};state.promise=promise.then(value=>{state.done=true;return {ok:true,value}},error=>{state.done=true;return {ok:false,error}});return state}
+// Only called after the unchanged hosted-only guard/fixture. Production audits
+// keep their fixed503; an unexpected FIRST positive audit failure additionally
+// records bounded real catalog metadata, without query/result substitution or
+// business rows, SQL text, parameters, credentials or private exception text.
+async function diagnosticAudit(client,verify){
+ const trace=[],fields=new Set(['id','name','relation','relation_id','owner_id','schema','args','result','language','volatility','definer','strict','leakproof','parallel','kind','defaults','modes','argnames','ordinary','config','sha','login','inherit','super','bypass','create_role','create_db','replication','connection_limit','memberships','current_role','version','ok','api','other_roles','columns','readable','installed','predecessor','grantor','grantee','function_id','privilege','grantable','owner_grant','type','required','plain','read','insert','update','reference','command','permissive','roles','qual','check','executable','owner_safe'])
+ let untaggedAfterLast=0
+ const observed=new Proxy(client,{get(db,key){
+  if(key!=='query'){const value=Reflect.get(db,key,db);return typeof value==='function'?value.bind(db):value}
+  return async(text,values)=>{
+   const tag=/^\/\* company061:([a-z_]+) \*\//.exec(text)?.[1]
+   if(!tag){untaggedAfterLast++;return db.query(text,values)}
+   untaggedAfterLast=0
+   try{
+    const result=await db.query(text,values),rows=result.rows
+    const useful=tag==='columns'?rows.filter(r=>r.read||r.insert||r.update||r.reference||['id','user_id','external_issuer','display_name','status','enabled','is_admin','owner_user_id','kind','created_at','deleted_at','next_at'].includes(r.name)):rows
+    trace.push({tag,row_count:rows.length,sample:useful.slice(0,tag==='columns'?25:5).map(row=>Object.fromEntries(Object.entries(row).filter(([key])=>fields.has(key))))})
+    return result // Original pg.Result and original rows remain untouched.
+   }catch(error){trace.push({tag,sqlstate:typeof error.code==='string'&&/^[A-Z0-9]{5}$/.test(error.code)?error.code:'unknown',position:error.position??null});throw error}
+  }
+ }})
+ try{return await verify(observed)}catch(error){process.stderr.write('CT03_COMPANY061_CATALOG_FAILURE '+JSON.stringify({last_tag:trace.at(-1)?.tag??null,untagged_after_last:untaggedAfterLast,catalog:trace})+'\n');throw error}
+}
 async function blocking(admin,waiter,blocker,state,label){
  const until=Date.now()+15000
  while(Date.now()<until){
@@ -92,7 +115,7 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
    import('../src/company-overview-audit.ts'),import('../src/company-overview-contract.ts'),import('../src/company-overview-repository.ts'),import('../src/company-overview-http.ts'),import('../src/native-auth-http.mjs'),import('../src/own-operations-http.ts'),import('../src/own-operations-repository.ts'),import('../src/native-config-uat-policy.ts'),import('pg'),import('node:http'),import('../src/native-auth-repository.mjs')
   ])
   const {withActor}=f.h,{verifyCompanyOverviewSchema,inspectCompanyOverviewSchema}=audit
-  const full=()=>withActor(f.pool,f.identities.alice,db=>verifyCompanyOverviewSchema(db))
+  const full=({diagnose=false}={})=>withActor(f.pool,f.identities.alice,db=>diagnose?diagnosticAudit(db,verifyCompanyOverviewSchema):verifyCompanyOverviewSchema(db))
   const oldFull=()=>withActor(f.pool,f.identities.alice,async db=>assert.equal(await f.h.verifyAgentDescriptivePatchCredentials(db),true))
   await oldFull();assert.equal(await inspectCompanyOverviewSchema(f.pool),false)
   const ddl=readFileSync(new URL('../../../db/postgres/migrations/pg_v9_061_company_overview.sql',import.meta.url),'utf8')
@@ -104,7 +127,7 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
   const rawPage=(limit=20,after=null)=>withActor(f.pool,f.identities.alice,async db=>(await db.query(repository.companyEmployeeStatsSql,[limit,after])).rows[0].value)
 
   await t.test('exact061 installs beside all original060 FULL checks without granting a raw business identity',async()=>{
-   const before=await snapshot(f);await full();await oldFull();assert.equal(await inspectCompanyOverviewSchema(f.pool),true)
+   const before=await snapshot(f);await full({diagnose:true});await oldFull();assert.equal(await inspectCompanyOverviewSchema(f.pool),true)
    const raw=await rawOverview();rawClosed(raw,'overview');assert.equal(raw.totals.employees,'2')
    assert.deepEqual((await repo.overview(f.identities.alice)).totals,{employees:2,active:2,...Object.fromEntries(opKeys.map(k=>[k,0]))})
    assert.equal(await snapshot(f),before)
