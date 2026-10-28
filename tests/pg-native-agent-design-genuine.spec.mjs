@@ -26,7 +26,11 @@ test('F01 actual PG18 Native browser: paid design, full editing, lost original/s
     await panel.getByRole('combobox',{name:'设计模型',exact:true}).selectOption({label:'Synthetic assessment alice · synthetic'})
     await panel.getByRole('textbox',{name:'助手需求或修改要求',exact:true}).fill('F01 genuine browser: prepare a complete synthetic role with all descriptions; retain manual save consent.')
     await expect(panel.getByRole('combobox',{name:'输出容量',exact:true})).toHaveValue('4096')
-    const [previewReply]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/api/v2/agent-design/preview')&&r.status()===200),panel.getByRole('button',{name:'预览发送内容',exact:true}).click()])
+    const [previewReply]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/api/v2/agent-design/preview')&&r.request().method()==='POST'),panel.getByRole('button',{name:'预览发送内容',exact:true}).click()])
+    // Capture a refusal immediately instead of masking its status as a timeout.
+    // Only public response metadata is attached; no body, Cookie or credentials.
+    await testInfo.attach('f01-preview-response-metadata',{body:JSON.stringify({status:previewReply.status(),content_type:previewReply.headers()['content-type']??'',path:new URL(previewReply.url()).pathname}),contentType:'application/json'})
+    expect(previewReply.status(),'F01 preview must return HTTP 200; see preview response metadata').toBe(200)
     const preview=await previewReply.json();expect(preview.choice.purpose).toBe('generate');expect(preview.choice.source).toBeNull();expect(preview.recorded).toBe(false)
     expect(f.providerRequests).toHaveLength(0);expect((await f.counts()).requests).toBe(before.requests);expect(submitted).toHaveLength(0)
     await panel.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('f01-genuine-preview-desktop.png'),fullPage:true})

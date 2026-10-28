@@ -594,7 +594,7 @@ function writerFile(s,file,bytes,uid=0,mode=0o600){
 }
 async function writerCodeStage(s){
  s.writerWork='/root/agentstudio-telemetry-writer-ci-'+s.ci.run+'-'+s.ci.attempt+'-'+s.ci.nonce.slice(0,16)
- s.writerCode='/opt/agentstudio-telemetry-writer-ci-'+s.ci.run+'-'+s.ci.attempt+'-'+s.ci.nonce.slice(0,16)
+ s.writerCode='/var/lib/agentstudio-telemetry-writer-ci-'+s.ci.run+'-'+s.ci.attempt+'-'+s.ci.nonce.slice(0,16)
  writerPrivateDirectory(s,s.writerWork);writerPrivateDirectory(s,s.writerWork+'/business');writerPrivateDirectory(s,s.writerCode)
  // Only actual checked-out source and installed locked dependencies. Never
  // copy .env, pb_data, company data or user-supplied package/target material.

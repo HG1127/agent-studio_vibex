@@ -59,7 +59,7 @@ jobs:
       - name: Actual API compiler and ordinary-host refusal guards
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs
+          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
       # Each matrix leg owns a fresh PostgreSQL service. Never initialize062
       # twice on a populated fixture or substitute catalog tests for the flow.
       - name: Actual Native Cookie through SQL062 private dispatch and synthetic TLS provider
@@ -113,7 +113,7 @@ jobs:
       - name: Actual browser compiler configuration and ordinary-host refusal guards
         run: |
           pnpm exec tsc -p tsconfig.app.json --noEmit
-          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs
+          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual HTTPS browser through the real PG18 design and save chain

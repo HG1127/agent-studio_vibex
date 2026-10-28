@@ -168,7 +168,12 @@ function ancestors(file,privateParent=false){
   if(privateParent)for(const d of chain)for(const name of ['package.json','pnpm-workspace.yaml','.git','pyproject.toml']){try{lstatSync(path.join(d.path,name));fail()}catch(error){if(error?.code!=='ENOENT')throw error}}
   return chain
 }
-function sameChain(a,b){if(a.length!==b.length||a.some((v,i)=>Object.keys(v).some(k=>v[k]!==b[i][k])))fail()}
+function sameChain(a,b){
+  // Both chains come only from the private six-field ancestors constructor.
+  // Read every identity field; avoid one keys array/closure per directory.
+  if(a.length!==b.length)fail()
+  for(let i=0;i<a.length;i++){const before=a[i],after=b[i];if(before.path!==after.path||before.dev!==after.dev||before.ino!==after.ino||before.mode!==after.mode||before.uid!==after.uid||before.gid!==after.gid)fail()}
+}
 function readExactBoundBytes(fd,size){
   // Read the current FD afresh, including one extra byte/EOF probe. The view
   // never exposes the uninitialized tail; growth/truncation still fail closed.
@@ -183,12 +188,14 @@ function readBound(file,expected,kind,expectedBytes){
   if(realpathSync(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
   try{
-    trustedStable(stamp(before),stamp(fstatSync(fd)))
+    // Reuse only this captured Stats value, never a filesystem observation.
+    const beforeStamp=stamp(before)
+    trustedStable(beforeStamp,stamp(fstatSync(fd)))
     const bytes=readExactBoundBytes(fd,before.size)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
-    trustedStable(stamp(before),stamp(fstatSync(fd)));trustedStable(stamp(before),stamp(lstatSync(file)))
+    trustedStable(beforeStamp,stamp(fstatSync(fd)));trustedStable(beforeStamp,stamp(lstatSync(file)))
     sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
-    return {bytes,stamp:stamp(before),chain}
+    return {bytes,stamp:beforeStamp,chain}
   }finally{closeSync(fd)}
 }
 function external(file){
