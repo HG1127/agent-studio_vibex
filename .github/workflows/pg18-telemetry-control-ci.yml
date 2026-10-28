@@ -1,0 +1,80 @@
+name: Agent Studio PG18 telemetry control isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+      - 'codex/pg18-telemetry-control-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-telemetry-control-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-telemetry-control-domain:
+    name: PostgreSQL 18 / actual controller and nonroot Native IPC
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout reviewed migration candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and unchanged original ephemeral guard
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:pg18:tcp:guard
+      - name: Pure control contracts, registry, catalog and distinct CI refusal guards
+        run: >-
+          node --experimental-strip-types --test --test-concurrency=1
+          services/pg-api/tests/worker-heartbeat-activation-control-ci-guard.test.mjs
+          services/pg-api/tests/worker-heartbeat-activation-control-contract.test.mjs
+          services/pg-api/tests/worker-heartbeat-activation-control-runtime.test.mjs
+          services/pg-api/tests/worker-heartbeat-activation-registry.test.mjs
+          services/pg-api/tests/worker-heartbeat-management-audit.test.mjs
+      - name: Actual control entry refuses before effects on an ordinary machine
+        run: |
+          node --input-type=module -e '
+          import {spawnSync} from "node:child_process";
+          const r=spawnSync(process.execPath,["--experimental-strip-types","services/pg-api/tests/worker-heartbeat-activation-control-ci.integration.mjs","--run"],{encoding:"utf8",timeout:15000,env:{PATH:process.env.PATH,CI:"false",GITHUB_ACTIONS:"false"}});
+          const output=(r.stdout??"")+(r.stderr??"");
+          if(r.status!==1||!output.includes("refuse_non_ephemeral_telemetry_control_ci")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(output))throw Error("ordinary_control_entry_did_not_refuse");
+          console.log("Actual controller CI entry refused before source capture, driver or filesystem effects.");'
+      - name: Actual synthetic controller, signed changes and nonroot Native reader
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+          AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+          AGENT_STUDIO_PG18_CI_PORT: '5432'
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+          AGENT_STUDIO_TELEMETRY_CONTROL_CI_MODE: OWNED_SYNTHETIC_CONTROL_ONLY
+          AGENT_STUDIO_TELEMETRY_CONTROL_CI_WRITE_APPROVED: YES_DISPOSABLE_CONTROL_FIXTURE_ONLY
+        run: |
+          node_path="$(command -v node)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_WORKFLOW_REF,GITHUB_JOB,GITHUB_SHA,GITHUB_REF,GITHUB_EVENT_NAME,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_TELEMETRY_CONTROL_CI_MODE,AGENT_STUDIO_TELEMETRY_CONTROL_CI_WRITE_APPROVED "$node_path" --experimental-strip-types services/pg-api/tests/worker-heartbeat-activation-control-ci.integration.mjs --run
