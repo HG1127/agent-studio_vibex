@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 // Isolated opt-in model execution. NEVER starts alongside production V7 Worker.
@@ -53,6 +54,7 @@ async function main(preflight=false){
   // Defer the driver until credential and target validation. Offline --plan
   // does not load any DB, provider, Worker or task SQL modules.
   let stop=false
+  let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
   let closeNewClaims:(()=>void)|undefined
   const requestStop=()=>{stop=true;closeNewClaims?.()}
   process.once("SIGTERM",requestStop)
@@ -88,6 +90,7 @@ async function main(preflight=false){
       })+"\n")
       return
     }
+    if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('model')
     // Do not configure the provider until the exact DB endpoint and role pass.
     // Neither a model provider nor claim SQL is loaded in read-only preflight.
     const [{AgentModelWorker},{createStagingOpenAIProvider},transport]=await Promise.all([
@@ -103,8 +106,9 @@ async function main(preflight=false){
     const worker=new AgentModelWorker(adapter,
       "agent-model-"+randomUUID().slice(0,8),provider,
       dispatch?{boundModelDispatch:dispatch,boundExecutionApproved:true,boundOnly:true}:{})
-    closeNewClaims=()=>worker.closeNewClaims()
+    closeNewClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
     if(stop){closeNewClaims();return}
+    heartbeat?.startupChecksComplete()
     process.stdout.write(JSON.stringify({service:"pg-agent-model",
       state:"ready",mode:bound?"approved_owner_bound_text_only":"approved_text_only"})+"\n")
     while(!stop){
@@ -114,12 +118,13 @@ async function main(preflight=false){
           service:"pg-agent-model",state:result.status})+"\n")
         await sleep(result.status==="idle"?900:150)
       }catch{
+        heartbeat?.loopUnavailable()
         process.stderr.write(JSON.stringify({service:"pg-agent-model",
           error:"model_worker_tick_failed"})+"\n")
         await sleep(2000)
       }
     }
-  }finally{await pool.end()}
+  }finally{heartbeat?.close();await pool.end()}
 }
 const launchArgs=process.argv.slice(2)
 if(launchArgs.length===1&&launchArgs[0]==="--plan"){

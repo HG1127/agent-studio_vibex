@@ -1,3 +1,4 @@
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
 import {inspectAgentHumanInputSchema} from "./agent-human-input-audit.ts"
@@ -65,8 +66,10 @@ export function runV2WorkerCli(autonomous=false){
     const password=readFileSync(file,"utf8").replace(/[\r\n]+$/g,"")
     if(password.length<32||password.length>4096||/^(.)\1+$/.test(password))throw Error("unsafe_worker_secret")
     let stop=false
+    let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
+    let claimsClosed:(()=>boolean)|undefined
     let closeWorkerClaims:(()=>void)|undefined,closeScheduleClaims:(()=>void)|undefined
-    const requestStop=()=>{stop=true;closeWorkerClaims?.();closeScheduleClaims?.()}
+    const requestStop=()=>{stop=true;closeWorkerClaims?.();closeScheduleClaims?.();if(claimsClosed?.())heartbeat?.newClaimsClosed()}
     process.once("SIGTERM",requestStop);process.once("SIGINT",requestStop)
     const {Pool}=await import("pg")
     const pool=new Pool({host:target.host,port:target.port,user:target.user,database:target.database,password,max:2,
@@ -104,15 +107,19 @@ export function runV2WorkerCli(autonomous=false){
           ...(memoryApproved?{memory_schema_verified:true,memory_execution_enabled:autonomous}:{}),
           ...(outcomeApproved?{outcome_memory_schema_verified:true,outcome_memory_execution_enabled:autonomous}:{}),production_cutover_allowed:false})+"\n");return
       }
+      if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle(autonomous?'agent_autonomous':'workflow_v2')
       // Preflight never loads either execution Worker or its claim SQL.
       const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
       const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
       const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       closeWorkerClaims=()=>worker.closeNewClaims()
-      if(stop){closeWorkerClaims();return}
+      claimsClosed=()=>worker.claimAdmissionSnapshot().closed
+      if(stop){closeWorkerClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}
       const scheduler=scheduleRuntime?new scheduleRuntime.ScheduleRuntimeWorker(adapter,"pg-schedule-"+randomUUID().slice(0,8),{allowMcpExecution:selectMcpExecution(process.env),allowKnowledgeExecution:knowledgeToolsEnabled,allowHumanInput:humanInputAvailable}):undefined
       closeScheduleClaims=()=>scheduler?.closeNewClaims()
-      if(stop){closeWorkerClaims();closeScheduleClaims();return}
+      claimsClosed=()=>worker.claimAdmissionSnapshot().closed&&(!scheduler||scheduler.claimAdmissionSnapshot().closed)
+      if(stop){closeWorkerClaims();closeScheduleClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}
+      heartbeat?.startupChecksComplete()
       process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:"ready",effect_executor_installed:adapters.length>0,
         scheduler_started:Boolean(scheduler),production_cutover_allowed:false})+"\n")
       while(!stop){
@@ -121,9 +128,9 @@ export function runV2WorkerCli(autonomous=false){
           const result=await worker.tick()
           if(result.status!=="idle")process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:result.status,run_id:result.run_id})+"\n")
           if(!stop)await sleep(result.status==="idle"?900:100)
-        }catch{process.stderr.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",error:"durable_v2_tick_failed"})+"\n");if(!stop)await sleep(1500)}
+        }catch{heartbeat?.loopUnavailable();process.stderr.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",error:"durable_v2_tick_failed"})+"\n");if(!stop)await sleep(1500)}
       }
-    }finally{await pool.end()}
+    }finally{heartbeat?.close();await pool.end()}
   }
   const args=process.argv.slice(2)
   if(args.length===1&&args[0]==="--plan"){

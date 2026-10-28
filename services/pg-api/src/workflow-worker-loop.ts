@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 // Separate opt-in PostgreSQL Workflow Worker. Start/End nodes only.
 // Never imports model providers, tools, arbitrary HTTP or PocketBase workers.
 import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
@@ -44,6 +45,7 @@ async function main(mode:"serve"|"preflight"){
   assertPg18WorkerCredentialBinding(process.env,"workflow")
   const cfg=connection()
   let stop=false
+  let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
   let closeNewClaims:(()=>void)|undefined
   const requestStop=()=>{stop=true;closeNewClaims?.()}
   process.once("SIGTERM",requestStop)
@@ -68,11 +70,13 @@ async function main(mode:"serve"|"preflight"){
         production_cutover_allowed:false})+"\n")
       return
     }
+    if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('workflow_safe')
     // Read-only preflight never loads the executor or its claim SQL.
     const {WorkflowSafeWorker}=await import("./workflow-safe-worker.ts")
     const worker=new WorkflowSafeWorker(adapter,"pg-workflow-"+randomUUID().slice(0,8))
-    closeNewClaims=()=>worker.closeNewClaims()
+    closeNewClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
     if(stop){closeNewClaims();return}
+    heartbeat?.startupChecksComplete()
     process.stdout.write(JSON.stringify({service:"pg-agent-workflow",
       state:"ready",mode:"start_end_only",external_calls:false,
       scheduler_started:false,production_cutover_allowed:false})+"\n")
@@ -85,12 +89,13 @@ async function main(mode:"serve"|"preflight"){
         })+"\n")
         await sleep(result.status==="idle"?900:100)
       }catch{
+        heartbeat?.loopUnavailable()
         process.stderr.write(JSON.stringify({service:"pg-agent-workflow",
           error:"workflow_worker_tick_failed"})+"\n")
         await sleep(1500)
       }
     }
-  }finally{await pool.end()}
+  }finally{heartbeat?.close();await pool.end()}
 }
 const args=process.argv.slice(2)
 if(args.length===1&&args[0]==="--plan"){

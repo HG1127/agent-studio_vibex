@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 // Explicit standalone review service only. No default/NativeServer wiring.
 // Plan/help are offline. Preflight never constructs Worker/Broker/executor.
 import path from "node:path"
@@ -86,10 +87,11 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
   const cfg=agentAssessmentServiceConfig(env,kind,mode),buffers:Buffer[]=[]
   const read=(name:string)=>{const bytes=readAgentAssessmentCredential(cfg,name);buffers.push(bytes);return bytes}
   let encryptionKey:Buffer|undefined
+  let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
   let closeClient:undefined|(()=>void)
   const pools:PgPool[]=[];let shutdown:undefined|(()=>Promise<void>)
   const endPools=async()=>{const results=await Promise.allSettled(pools.map(pool=>pool.end()));if(results.some(result=>result.status==="rejected"))throw Error("agent_assessment_pool_shutdown_failed")}
-  const clear=()=>{closeClient?.();for(const bytes of buffers)bytes.fill(0);encryptionKey?.fill(0)}
+  const clear=()=>{heartbeat?.close();closeClient?.();for(const bytes of buffers)bytes.fill(0);encryptionKey?.fill(0)}
   try{
     const passwordNames=kind==="worker"?["worker.secret"]:["api.secret","dispatch.secret","broker.secret"],passwords=passwordNames.map(name=>agentAssessmentDatabasePassword(read(name)))
     if(new Set(passwords).size!==passwords.length)throw Error("unsafe_agent_assessment_credential")
@@ -117,11 +119,14 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
       const [{AgentAssessmentWorker},{createAgentAssessmentMutualTlsClient}]=await Promise.all([import("./agent-assessment-worker.ts"),import("./agent-assessment-client.ts")])
       const client=createAgentAssessmentMutualTlsClient({...activation,origin:cfg.origin,reviewedServerFingerprint256:cfg.serverFingerprint,ca,cert,key:tlsKey})
       closeClient=client.close
+      if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('assessment')
       const worker=new AgentAssessmentWorker(dedicated,randomUUID(),client,activation)
+      const closeWorkerClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
+      heartbeat?.startupChecksComplete()
       let stopping=false;const stopDelay=new AbortController()
-      const loop=(async()=>{while(!stopping){let wait=1500;try{const result=await worker.tick();wait=result.state==="idle"?750:100;if(result.state!=="idle")process.stdout.write(JSON.stringify({service:"agent-assessment-worker",state:result.state})+"\n")}catch{process.stderr.write("AGENT_ASSESSMENT_WORKER_TICK_UNAVAILABLE\n")}if(!stopping)await delay(wait,undefined,{signal:stopDelay.signal}).catch(()=>undefined)}})()
+      const loop=(async()=>{while(!stopping){let wait=1500;try{const result=await worker.tick();wait=result.state==="idle"?750:100;if(result.state!=="idle")process.stdout.write(JSON.stringify({service:"agent-assessment-worker",state:result.state})+"\n")}catch{heartbeat?.loopUnavailable();process.stderr.write("AGENT_ASSESSMENT_WORKER_TICK_UNAVAILABLE\n")}if(!stopping)await delay(wait,undefined,{signal:stopDelay.signal}).catch(()=>undefined)}})()
       let closing:Promise<void>|undefined
-      shutdown=()=>closing??(closing=(async()=>{stopping=true;stopDelay.abort();try{await bounded(loop,55000)}finally{closeClient?.();try{await bounded(endPools(),5000)}finally{clear()}}})())
+      shutdown=()=>{stopping=true;closeWorkerClaims();stopDelay.abort();return closing??(closing=(async()=>{try{await bounded(loop,55000)}finally{closeClient?.();try{await bounded(endPools(),5000)}finally{clear()}}})())}
       return {mode,service:kind,ready:true,worker_started:true,execution_enabled:true,production_cutover_allowed:false,close:shutdown}
     }
     const [{parseModelEncryptionKey},{AgentAssessmentBroker},{createAgentAssessmentInternalHandler},{createServer}]=await Promise.all([import("./model-connection-crypto.ts"),import("./agent-assessment-broker.ts"),import("./agent-assessment-client.ts"),import("node:https")])
@@ -148,7 +153,9 @@ export function attachAgentAssessmentShutdown(close:()=>Promise<void>,control:Sh
     const deadline=control.timer(control.exit,65000)
     // Keep both listeners throughout drain: a repeated same signal must not
     // regain the OS default and terminate authorized in-flight work early.
-    void Promise.resolve().then(close).then(()=>{control.clear(deadline);remove()},()=>{control.clear(deadline);remove();control.reportFailure();control.exit()})
+    let work:Promise<void>
+    try{work=close()}catch{work=Promise.reject(Error('agent_assessment_shutdown_incomplete'))}
+    void Promise.resolve(work).then(()=>{control.clear(deadline);remove()},()=>{control.clear(deadline);remove();control.reportFailure();control.exit()})
   }
   control.signals.on("SIGTERM",stop);control.signals.on("SIGINT",stop)
 }

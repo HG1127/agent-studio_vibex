@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema} from "./knowledge-content-privileges.ts"
 // V8 isolated PostgreSQL preparation Worker. Never starts V7 PocketBase or
@@ -52,6 +53,7 @@ async function main(preflight=false){
     throw Error("worker_disabled")
   const config=workerConnection()
   let stopping=false
+  let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
   let closeNewClaims:(()=>void)|undefined
   const stop=()=>{stopping=true;closeNewClaims?.()}
   process.once("SIGTERM",stop)
@@ -89,13 +91,15 @@ async function main(preflight=false){
       })+"\n")
       return
     }
+    if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('prepare')
     // Execution-only code and claim SQL are not loaded during --preflight.
     const {AgentPrepareWorker}=await import("./agent-worker.ts")
     const worker=new AgentPrepareWorker(adapter,
       "agent-prepare-"+randomUUID().slice(0,8))
-    closeNewClaims=()=>worker.closeNewClaims()
+    closeNewClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
     // A signal may have arrived while startup checks or the lazy import awaited.
     if(stopping){closeNewClaims();return}
+    heartbeat?.startupChecksComplete()
     process.stdout.write(JSON.stringify({
       service:"pg-agent-prepare",state:"ready",mode:"prepare_only",
     })+"\n")
@@ -108,13 +112,14 @@ async function main(preflight=false){
         })+"\n")
         await sleep(result.status==="idle"?750:100)
       }catch{
+        heartbeat?.loopUnavailable()
         process.stderr.write(JSON.stringify({
           service:"pg-agent-prepare",error:"worker_tick_failed",
         })+"\n")
         await sleep(2000)
       }
     }
-  }finally{await pool.end()}
+  }finally{heartbeat?.close();await pool.end()}
 }
 const launchArgs=process.argv.slice(2)
 if(launchArgs.length===1&&launchArgs[0]==="--plan"){

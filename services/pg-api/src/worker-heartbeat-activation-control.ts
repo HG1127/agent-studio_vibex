@@ -6,6 +6,10 @@ import {performance} from 'node:perf_hooks'
 import {fileURLToPath} from 'node:url'
 import {createPublicKey,verify,randomUUID,randomBytes,pbkdf2Sync,createHmac,timingSafeEqual,createHash} from 'node:crypto'
 import type {Client,Pool,PoolClient} from 'pg'
+import {openWorkerHeartbeatWriterBroker,refreshWorkerHeartbeatWriterBroker,serveWorkerHeartbeatWriterBroker,pauseWorkerHeartbeatWriterBroker,closeWorkerHeartbeatWriterBroker,type WorkerHeartbeatWriterBroker,type WorkerHeartbeatWriterRootBridge,type WriterSlotReference,type WriterBackendReference,type WriterPublishedSlot,type WriterJournalPhase} from './worker-heartbeat-writer-broker.ts'
+import {writerLimits,writerFail,writerUtc,parseWriterReport,type WriterAck} from './worker-heartbeat-writer-protocol.ts'
+import type {WorkerHeartbeatKind} from './worker-heartbeat-contract.ts'
+import type {WorkerHeartbeatReport} from './worker-heartbeat-report-sequence.ts'
 import type {SqlClient,QueryResult} from './contracts.ts'
 import {workerHeartbeatKinds,parseWorkerHeartbeatSnapshot,type WorkerHeartbeatSnapshot} from './worker-heartbeat-contract.ts'
 import {verifyWorkerHeartbeatActivatedCatalog} from './worker-heartbeat-activated-audit.ts'
@@ -25,7 +29,7 @@ type Lease={s:State;peer:Peer;handle:ReadLease;id:string;request:string;epoch:bi
 type Action={id:string;plan:RegistryPlan;summary:PlanSummary;policy:unknown;privateMaterial?:unknown;approvalSha?:string;ack:boolean;epoch?:bigint}
 type Mutation={s:State;peer:Peer;action:Action;expected:bigint;expires:number;consumed:boolean}
 type Recovered={s:State;action:string;epoch:bigint;report:RecoveryReport;used:boolean;material?:WorkerHeartbeatRegistryPrivateMaterial;materialSha?:string;beforePasswords?:{oid:string;name:string;verifier:string|null}[]}
-type State={handle:Control;profile:RootProfile;binding:Binding;registry:Registry;runtime:Runtime;runtimeCap:Parameters<Runtime['assertWorkerHeartbeatActivationControlRuntime']>[0];driver:{Client:typeof Client;Pool:typeof Pool};raw:Client;db:SqlClient;reader:Pool;operatorPassword:string;readerPassword:string;publicKey:ReturnType<typeof createPublicKey>;instance:string;phase:Phase;epoch:bigint;published:bigint|null;policy:unknown;policySha:string|null;journal:JournalRecord[];journalBytes:string;journalHead:string;journalFile:string;controlBackend:Backend;sqlTail:Promise<unknown>;sqlJobs:number;mutation:boolean;healthy:boolean;leases:Set<Lease>;peers:Set<Peer>;servers:Set<net.Server>;actions:Map<string,Action>;recoveries:Map<string,Recovered>;accesses:Set<Access>}
+type State={handle:Control;profile:RootProfile;binding:Binding;registry:Registry;runtime:Runtime;runtimeCap:Parameters<Runtime['assertWorkerHeartbeatActivationControlRuntime']>[0];driver:{Client:typeof Client;Pool:typeof Pool};raw:Client;db:SqlClient;reader:Pool;operatorPassword:string;readerPassword:string;publicKey:ReturnType<typeof createPublicKey>;instance:string;phase:Phase;epoch:bigint;published:bigint|null;policy:unknown;policySha:string|null;journal:JournalRecord[];journalBytes:string;journalHead:string;journalFile:string;controlBackend:Backend;sqlTail:Promise<unknown>;sqlJobs:number;mutation:boolean;healthy:boolean;leases:Set<Lease>;peers:Set<Peer>;servers:Set<net.Server>;actions:Map<string,Action>;recoveries:Map<string,Recovered>;accesses:Set<Access>;writerBroker?:WorkerHeartbeatWriterBroker|null;writerBridge?:WorkerHeartbeatWriterRootBridge;writerOperation:boolean;writerCleanups:number;writerBackends:Set<RootWriterBackend>;writerSlots:Map<string,WriterSlotReference>}
 const states=new WeakMap<object,State>(),peerStates=new WeakMap<object,Peer>(),mutationStates=new WeakMap<object,Mutation>(),recoveryStates=new WeakMap<object,Recovered>(),leaseStates=new WeakMap<object,Lease>(),finishedStates=new WeakMap<object,Lease>(),dbAccesses=new WeakMap<object,Access>()
 const closures=new WeakMap<object,Promise<void>>()
 const facadeAccesses=new WeakMap<object,ControlDbAccess>()
@@ -92,7 +96,7 @@ async function managementCatalog(s:State,db:SqlClient,policy:unknown){
  const p=policyParts(s,policy)
  return verifyWorkerHeartbeatManagementCatalog(db,{protocol:'worker_heartbeat_management_catalog_expectations_v1',database_oid:s.binding.database_oid,database_owner_oid:s.binding.owner_oid,schema_oid:s.binding.schema_oid,operator:{oid:s.binding.operator_oid,name:s.binding.operator_login},roles:s.binding.roles.map((r,i)=>({oid:r.oid,name:r.name,login:i===0?false:i===1?p.reader.login:p.slots[i-2]!.mode==='active',inherit:false,super:false,bypass:false,create_db:false,create_role:false,replication:false,connection_limit:i===0?-1:i===1?2:1,config:null,no_expiry:true,memberships:0}))})
 }
-async function serial<T>(s:State,job:()=>Promise<T>):Promise<T>{if(s.sqlJobs>=4)controlFail('control_busy');s.sqlJobs++;const result=s.sqlTail.then(job);s.sqlTail=result.catch(()=>{});try{return await result}finally{s.sqlJobs--}}
+async function serial<T>(s:State,job:()=>Promise<T>):Promise<T>{if(rootWriterBusy(s)||s.sqlJobs>=4)controlFail('control_busy');s.sqlJobs++;const result=s.sqlTail.then(job);s.sqlTail=result.catch(()=>{});try{return await result}finally{s.sqlJobs--}}
 function append(s:State,phase:JournalPhase,action:string|null,data:unknown){
  const record={format:'worker_heartbeat_control_journal_v1' as const,sequence:s.journal.length,previous_sha256:s.journalHead,instance_id:s.instance,epoch:s.epoch.toString(),action_id:action,phase,data},record_sha256=controlSha(JSON.stringify(record)),full={...record,record_sha256},line=JSON.stringify(full)+'\n'
  if(!privateRead(s.journalFile,4194304).equals(Buffer.from(s.journalBytes)))controlFail('store_invalid')
@@ -122,13 +126,14 @@ export async function openWorkerHeartbeatActivationControl():Promise<Control>{
   const first=records[0]!,enrollment=controlObject(first.data,['protocol','binding_sha256','source_sha256','initial_policy_json_sha256']);if(first.sequence!==0||first.epoch!=='0'||first.phase!=='boot'||first.action_id!==null||enrollment.protocol!=='worker_heartbeat_control_enrollment_v1'||enrollment.binding_sha256!==controlSha(JSON.stringify(binding))||enrollment.source_sha256!==profile.source_sha256||enrollment.initial_policy_json_sha256!==controlSha(JSON.stringify(profile.policy)))controlFail('not_enrolled')
   const epoch=BigInt(records.at(-1)!.epoch)+1n;if(epoch>18446744073709551615n)controlFail('store_invalid')
   const handle=empty<Control>(),reader=new driver.Pool({...connection({binding,operatorPassword:readerBytes.toString()}),user:'studio_telemetry_reader',max:2,connectionTimeoutMillis:2000,statement_timeout:3000,query_timeout:4000});reader.on('error',()=>{})
-  const s:State={handle,profile,binding,registry,runtime,runtimeCap,driver,raw,db:facade(raw),reader,operatorPassword:operatorBytes.toString(),readerPassword:readerBytes.toString(),publicKey,instance:randomUUID(),phase:'closed',epoch,published:null,policy:profile.policy,policySha:null,journal:records,journalBytes,journalHead:records.at(-1)!.record_sha256,journalFile,controlBackend,sqlTail:Promise.resolve(),sqlJobs:0,mutation:false,healthy:true,leases:new Set(),peers:new Set(),servers:new Set(),actions:new Map(),recoveries:new Map(),accesses:new Set()};states.set(handle,s)
+  const s:State={handle,profile,binding,registry,runtime,runtimeCap,driver,raw,db:facade(raw),reader,operatorPassword:operatorBytes.toString(),readerPassword:readerBytes.toString(),publicKey,instance:randomUUID(),phase:'closed',epoch,published:null,policy:profile.policy,policySha:null,journal:records,journalBytes,journalHead:records.at(-1)!.record_sha256,journalFile,controlBackend,sqlTail:Promise.resolve(),sqlJobs:0,mutation:false,healthy:true,leases:new Set(),peers:new Set(),servers:new Set(),actions:new Map(),recoveries:new Map(),accesses:new Set(),writerOperation:false,writerCleanups:0,writerBackends:new Set(),writerSlots:new Map()};states.set(handle,s)
   raw.on('error',()=>{if(s.raw===raw){s.healthy=false;fault(s,'control_io_failed')}});raw.on('end',()=>{if(s.raw===raw){s.healthy=false;fault(s,'control_io_failed')}});append(s,'boot',null,{source_sha256:profile.source_sha256,control_backend:controlBackend})
   const pending=new Set<string>();for(const r of records){if(r.action_id&&['before_change','commit_pending','commit_acknowledged','commit_unknown','rollback_unknown','publication_pending'].includes(r.phase))pending.add(r.action_id);if(r.action_id&&['published','abandoned'].includes(r.phase))pending.delete(r.action_id)}
   await reconcileReaders(s,records)
   const latest=[...records].reverse().find(r=>r.phase==='published');if(latest){const data=latest.data as {policy?:unknown};s.policy=data.policy}policyParts(s,s.policy)
   for(const r of records)if(r.phase==='published'&&r.action_id){const staged=readStaged(s,r.action_id);if(staged.material.roles.some(v=>v.name==='studio_telemetry_reader'))await replaceReaderPool(s,staged.material)}
   if(pending.size)s.phase='recovery_required';else{s.phase='auditing';const observed=await serial(s,()=>inspectRegistry(s));s.policySha=observedSha(s,observed);const p=policyParts(s,s.policy);if(p.reader.login&&!passwordsMatch({roles:[{name:'studio_telemetry_reader',oid:s.binding.roles[1]!.oid,password:s.readerPassword,verifier_sha256:p.reader.verifier_sha256 as string,generation:null}]},await verifierRows(s.raw,['studio_telemetry_reader'])))controlFail('binding_changed');if(profile.mode==='serve'){s.published=s.epoch;append(s,'published',null,{policy:s.policy,policy_sha256:s.policySha});s.phase=registry.describeWorkerHeartbeatRegistry(observed).catalog_expectations?'serving':'closed'}else s.phase='closed'}
+  if(rootWriterSettings(s)){await reconcileRootWriters(s);if(s.phase==='serving')s.writerBroker=await openWorkerHeartbeatWriterBroker(handle)}
   return handle
  }catch(error){if(connected)await raw.end().catch(()=>{});throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
@@ -180,7 +185,7 @@ function revoke(l:Lease){
 }
 export async function prepareWorkerHeartbeatControlRead(control:Control,p:ReaderPeer):Promise<ReadLease>{
  const s=state(control),owner=peer(s,p,'reader');runtimeCheck(s)
- if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
+ if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(rootWriterBusy(s))controlFail('control_busy');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
  const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request:owner.request??randomUUID(),epoch:s.epoch,deadline:performance.now()+controlLimits.leaseMs,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
  leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),controlLimits.leaseMs)
  l.work=(async()=>{
@@ -294,7 +299,7 @@ export async function applyWorkerHeartbeatMutation(control:Control,p:OperatorPee
  if(s.epoch===18446744073709551615n)controlFail('store_invalid');permit.consumed=true;s.mutation=true;s.phase='closing_reads';s.epoch++;const action=permit.action;action.epoch=s.epoch
  let transaction=false,commitSent=false,accessToken:ControlDbAccess|undefined
  try{
-  append(s,'closing',action.id,{plan_sha256:action.summary.plan_sha256});s.phase='waiting_readers';await cleanReaders(s);append(s,'readers_clean',action.id,{})
+  append(s,'closing',action.id,{plan_sha256:action.summary.plan_sha256});s.phase='waiting_readers';if(s.writerBroker)await pauseWorkerHeartbeatWriterBroker(s.writerBroker);await cleanReaders(s);append(s,'readers_clean',action.id,{})
   return await serial(s,async()=>{
    if(performance.now()>=permit.expires)controlFail('approval_expired');await target(s.raw,s.binding);s.phase='applying';await s.raw.query('BEGIN ISOLATION LEVEL READ COMMITTED');transaction=true;await s.raw.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='1000ms'; SET LOCAL statement_timeout='10000ms'");await lockRegistry(s);const lockedBefore=await observePolicy(s,s.policy);if(lockedBefore.sha!==action.summary.before_sha256)controlFail('plan_stale')
    append(s,'before_change',action.id,{plan_sha256:action.summary.plan_sha256,before_sha256:action.summary.before_sha256,after_sha256:action.summary.after_sha256,before_policy:s.policy});accessToken=access(s,s.raw,s.db,'write');const grant=dbAccesses.get(accessToken)!;grant.allLocked=true;grant.beforeChange=true;grant.expires=permit.expires;grant.epoch=s.epoch
@@ -312,7 +317,7 @@ export async function applyWorkerHeartbeatMutation(control:Control,p:OperatorPee
   if(commitSent&&!action.ack){try{append(s,'commit_unknown',action.id,{})}catch{}s.healthy=false;void s.raw.end().catch(()=>{});fault(s,'commit_unknown');controlFail('commit_unknown')}
   if(transaction)try{await s.raw.query('ROLLBACK');append(s,'rollback_known',action.id,{})}catch{try{append(s,'rollback_unknown',action.id,{})}catch{}fault(s,'rollback_unknown');controlFail('rollback_unknown')}
   fault(s,action.ack?'committed_unpublished':'registry_mismatch');throw new WorkerHeartbeatControlError(action.ack?'committed_unpublished':error instanceof WorkerHeartbeatControlError?error.code:'control_io_failed')
- }finally{s.mutation=false;s.actions.delete(action.id)}
+ }finally{s.mutation=false;s.actions.delete(action.id);if(rootWriterSettings(s))await refreshRootWriterAfterMutation(s)}
 }
 function readStaged(s:State,id:string){
  const bytes=privateRead(materialPath(id)),sha=controlSha(bytes),record=s.journal.find(r=>r.action_id===id&&r.phase==='material_staged'),head=record?.data as {material_sha256?:unknown}|undefined
@@ -337,6 +342,7 @@ export async function recoverWorkerHeartbeatMutation(control:Control,p:OperatorP
  const entries=s.journal.filter(r=>r.action_id===id),start=entries.find(r=>r.phase==='before_change');if(!start||entries.some(r=>['published','abandoned'].includes(r.phase)))controlFail('recovery_conflict')
  s.mutation=true
  try{
+  if(s.writerBroker)await pauseWorkerHeartbeatWriterBroker(s.writerBroker)
   await cleanReaders(s)
   const ack=entries.some(r=>r.phase==='commit_acknowledged'),rolledBack=entries.some(r=>r.phase==='rollback_known'),old=oldBackend(s,id)
   let observed:RecoveryReport['observed']='unobservable',sha:string|null=null,staged:ReturnType<typeof readStaged>|undefined
@@ -373,7 +379,7 @@ export async function resumeWorkerHeartbeatPublication(control:Control,p:Operato
  if(x.protocol!=='worker_heartbeat_control_resume_v1'||x.action_id!==id||x.recovered_action_id!==recoveredId||x.expected_epoch!==s.epoch.toString()||x.journal_head_sha256!==s.journalHead||x.source_sha256!==s.profile.source_sha256||x.binding_sha256!==controlSha(JSON.stringify(s.binding))||x.observed!==recovered.report.observed||typeof x.actor!=='string'||! /^[A-Za-z0-9_.@-]{1,128}$/.test(x.actor)||typeof x.not_before!=='string'||!Number.isFinite(Date.parse(x.not_before))||Date.parse(x.not_before)>Date.now()||x.scope!=='RESUME_VERIFIED_PUBLICATION_ONLY')controlFail('approval_invalid')
  const expires=expiry(x.expires_at);if(s.epoch===18446744073709551615n)controlFail('store_invalid');recovered.used=true;s.mutation=true;s.phase='waiting_readers';s.epoch++
  try{
-  await cleanReaders(s);await reacquire(s,recoveredId)
+  if(s.writerBroker)await pauseWorkerHeartbeatWriterBroker(s.writerBroker);await cleanReaders(s);await reacquire(s,recoveredId)
   return await serial(s,async()=>{
    if(performance.now()>=expires)controlFail('approval_expired')
    const after=recovered.report.observed==='after_matches',material=recovered.material,start=s.journal.find(r=>r.action_id===recoveredId&&r.phase==='before_change')!,policy=after?material?.after_policy:(start.data as {before_policy:unknown}).before_policy
@@ -384,7 +390,7 @@ export async function resumeWorkerHeartbeatPublication(control:Control,p:Operato
    else{s.policy=policy;s.published=s.epoch;append(s,'abandoned',recoveredId,{resume_action_id:id,before_sha256:current.sha});append(s,'published',null,{policy,policy_sha256:current.sha,resume_action_id:id});s.phase=s.registry.describeWorkerHeartbeatRegistry(current.observation).catalog_expectations?'serving':'closed'}
    append(s,'abandoned',id,{resumed_action_id:recoveredId});return inspectWorkerHeartbeatActivationControl(control)
   })
- }catch(error){fault(s,'recovery_conflict');throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('recovery_conflict')}finally{s.mutation=false}
+ }catch(error){fault(s,'recovery_conflict');throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('recovery_conflict')}finally{s.mutation=false;if(rootWriterSettings(s))await refreshRootWriterAfterMutation(s)}
 }
 function frame(value:unknown){const bytes=Buffer.from(JSON.stringify(value));if(bytes.length<1||bytes.length>controlLimits.frameBytes)controlFail('invalid_command');const head=Buffer.alloc(4);head.writeUInt32BE(bytes.length);return Buffer.concat([head,bytes])}
 async function operatorCommand(s:State,handle:OperatorPeer,raw:unknown){
@@ -445,7 +451,7 @@ export async function serveWorkerHeartbeatActivationControl(control:Control):Pro
  try{for(const kind of ['operator','reader'] as const){const file=kind==='operator'?controlPaths.ops:controlPaths.reader;if(fs.existsSync(file))controlFail('store_invalid');const server=net.createServer(socket=>accept(s,socket,kind));s.servers.add(server);server.on('error',()=>{fault(s,'control_io_failed')});const old=process.umask(0o077)
    try{await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(file,()=>{server.off('error',reject);resolve()})})}finally{process.umask(old)}
    fs.chownSync(file,0,kind==='reader'?s.profile.native_gid:0);fs.chmodSync(file,kind==='reader'?0o660:0o600);const st=fs.lstatSync(file);if(!st.isSocket()||st.uid!==0||st.gid!==(kind==='reader'?s.profile.native_gid:0)||(st.mode&0o7777)!==(kind==='reader'?0o660:0o600))controlFail('binding_changed');syncDir(controlPaths.sockets)
-  }}catch(error){await closeWorkerHeartbeatActivationControl(control);throw error}
+  }if(s.writerBroker)await serveWorkerHeartbeatWriterBroker(s.writerBroker)}catch(error){await closeWorkerHeartbeatActivationControl(control);throw error}
 }
 export async function closeWorkerHeartbeatActivationControl(control:Control):Promise<void>{
  const s=state(control);if(s.phase==='stopped')return
@@ -453,6 +459,181 @@ export async function closeWorkerHeartbeatActivationControl(control:Control):Pro
  const closing=(async()=>{s.phase='stopping';for(const a of s.accesses)a.active=false
   const servers=[...s.servers].map(server=>new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve())))
   for(const p of s.peers)p.socket.destroy()
-  try{await cleanReaders(s);await s.sqlTail;await s.reader.end();await s.raw.end();await Promise.all(servers);s.servers.clear();s.healthy=false;s.phase='stopped';s.operatorPassword='';s.readerPassword=''}catch{fault(s,'reader_cleanup_unknown');controlFail('reader_cleanup_unknown')}
+  try{if(s.writerBroker)await closeWorkerHeartbeatWriterBroker(s.writerBroker);for(const backend of [...s.writerBackends])await closeRootWriterBackend(s,backend);await Promise.all([...s.writerBackends].map(b=>b.work?.catch(()=>{})));await cleanReaders(s);await s.sqlTail;await s.reader.end();await s.raw.end();await Promise.all(servers);s.servers.clear();s.healthy=false;s.phase='stopped';s.operatorPassword='';s.readerPassword=''}catch{fault(s,'reader_cleanup_unknown');controlFail('reader_cleanup_unknown')}
  })();closures.set(control,closing);return closing
+}
+
+// Root writer authority. Only this real State creates backend references.
+type RootWriterSlot={s:State;reference:WriterSlotReference;kind:WorkerHeartbeatKind;slot_no:1|2;generation:string;role_oid:number;role_name:string;password:string;verifier_sha256:string;action_id:string;publication_epoch:string}
+type RootWriterBackend={s:State;handle:WriterBackendReference;slot:RootWriterSlot;raw:Client;backend?:Backend;id:string;closed:boolean;uncertain:boolean;work?:Promise<unknown>;closing?:Promise<void>}
+type RootWriterOperation={s:State;slot:RootWriterSlot;epoch:bigint;deadline:number;backend?:RootWriterBackend}
+const rootWriterSlots=new WeakMap<object,RootWriterSlot>(),rootWriterBackends=new WeakMap<object,RootWriterBackend>(),rootWriterClosedBackends=new WeakMap<object,State>()
+async function refreshRootWriterAfterMutation(s:State){
+ if(!rootWriterSettings(s)||s.phase!=='serving')return
+ try{if(s.writerBroker)await refreshWorkerHeartbeatWriterBroker(s.writerBroker);else{s.writerBroker=await openWorkerHeartbeatWriterBroker(s.handle);if(s.writerBroker&&s.servers.size)await serveWorkerHeartbeatWriterBroker(s.writerBroker)}}catch{/* Writer enrollment remains closed; no synthetic ready or retry. */}
+}
+const writerRecordSQL='SELECT studio_telemetry.record($1::text,$2::text,$3::bigint,$4::text,$5::text) AS value'
+const writerIdentitySQL="SELECT current_database() AS database,d.oid::text AS database_oid,session_user::text AS login,current_user::text AS actor,r.oid::text AS role_oid,r.rolcanlogin AS login_enabled,r.rolinherit AS inherit,r.rolsuper AS super,r.rolbypassrls AS bypass,r.rolcreatedb AS create_db,r.rolcreaterole AS create_role,r.rolreplication AS replication,r.rolconnlimit AS connection_limit,r.rolconfig AS config,r.rolvaliduntil::text AS expires,NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS no_memberships,host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,NOT pg_is_in_recovery() AS primary,pg_backend_pid() AS pid,a.backend_start::text AS backend_start FROM pg_database d JOIN pg_roles r ON r.rolname=session_user JOIN pg_stat_activity a ON a.pid=pg_backend_pid() WHERE d.datname=current_database()"
+const writerSelectedSQL="SELECT k.instrumented,k.enabled AS kind_enabled,s.kind,s.slot_no::integer,s.login_oid::text,s.login_name,s.enabled,s.generation::text,s.last_sequence::text,s.state,s.reason,CASE WHEN s.observed_at IS NULL THEN NULL ELSE to_char(s.observed_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') END AS observed_at FROM studio_telemetry.kind_config k JOIN studio_telemetry.slot_state s ON s.kind=k.kind WHERE s.kind=$1 AND s.slot_no=$2"
+function rootWriterCleanupCheck(s:State){host();s.runtime.assertWorkerHeartbeatActivationControlRuntime(s.runtimeCap)}
+async function rootWriterCleanupAwait<T>(s:State,job:()=>Promise<T>):Promise<T>{rootWriterCleanupCheck(s);const result=await job();rootWriterCleanupCheck(s);return result}
+async function rootWriterObserver<T>(s:State,body:(db:SqlClient)=>Promise<T>):Promise<T>{
+ rootWriterCleanupCheck(s);const raw=new s.driver.Client(connection(s));raw.on('error',()=>{})
+ const db:SqlClient={async query<Row>(sql:string,values:unknown[]=[]){const result=await rootWriterCleanupAwait(s,()=>raw.query(sql,values));return {rows:result.rows as Row[]}},release(){controlFail('untrusted_reference')}}
+ try{
+  await rootWriterCleanupAwait(s,()=>raw.connect());await rootWriterCleanupAwait(s,()=>target(raw,s.binding));await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+  try{await db.query("SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='1000ms'; SET LOCAL lock_timeout='250ms'");return await rootWriterCleanupAwait(s,()=>body(db))}finally{await db.query('ROLLBACK')}
+ }finally{await rootWriterCleanupAwait(s,()=>raw.end())}
+}
+async function waitRootWriterBackendGone(s:State,b:Backend){
+ const deadline=performance.now()+2000
+ do{const gone=await rootWriterObserver(s,async db=>(await db.query<{gone:boolean}>('SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND backend_start=$2::timestamptz AND datid=$3::oid) AS gone',[b.pid,b.started,s.binding.database_oid])).rows[0]?.gone===true);if(gone)return;await rootWriterCleanupAwait(s,()=>new Promise<void>(resolve=>setTimeout(resolve,25)))}while(performance.now()<deadline)
+ writerFail('writer_uncertain')
+}
+function rootWriterSettings(s:State){return s.profile.protocol==='worker_heartbeat_control_profile_v2'&&s.profile.writers?.enabled?s.profile.writers:undefined}
+function rootWriterBusy(s:State){return s.writerOperation||s.writerCleanups>0}
+function rootWriterCheck(s:State,slot?:RootWriterSlot){
+ runtimeCheck(s)
+ if(!rootWriterSettings(s)||s.phase!=='serving'||s.mutation||s.published!==s.epoch||!s.policySha)writerFail('writer_closed')
+ if(slot){
+  if(slot.s!==s)writerFail('writer_not_enrolled')
+  const p=policyParts(s,s.policy),index=workerHeartbeatKinds.indexOf(slot.kind)*2+slot.slot_no-1,row=p.slots[index]!,raw=controlObject(s.policy,['protocol','binding','reader','kinds','slots'])
+  if(!Array.isArray(raw.kinds))writerFail('writer_closed');const kind=controlObject(raw.kinds[workerHeartbeatKinds.indexOf(slot.kind)],['kind','instrumented','enabled'])
+  if(kind.kind!==slot.kind||kind.instrumented!==true||kind.enabled!==true||row.mode!=='active'||row.generation!==slot.generation||row.verifier_sha256!==slot.verifier_sha256||s.binding.roles[index+2]?.oid!==slot.role_oid||s.binding.roles[index+2]?.name!==slot.role_name)writerFail('writer_closed')
+ }
+}
+function rootWriterOperationCheck(op:RootWriterOperation){rootWriterCheck(op.s,op.slot);if(op.epoch!==op.s.epoch||performance.now()>=op.deadline||op.backend&&(op.backend.closed||op.backend.uncertain))writerFail('writer_closed')}
+function rootWriterBegin(s:State,slot:RootWriterSlot,backend?:RootWriterBackend):RootWriterOperation{
+ rootWriterCheck(s,slot);if(rootWriterBusy(s)||s.leases.size||s.sqlJobs)writerFail('writer_busy');s.writerOperation=true
+ return {s,slot,epoch:s.epoch,deadline:performance.now()+writerLimits.sendMs,backend}
+}
+async function rootWriterAwait<T>(op:RootWriterOperation,job:()=>Promise<T>):Promise<T>{rootWriterOperationCheck(op);const result=await job();rootWriterOperationCheck(op);return result}
+function currentRootWriterSlots(s:State):readonly WriterPublishedSlot[]{
+ rootWriterCheck(s);const p=policyParts(s,s.policy),policy=controlObject(s.policy,['protocol','binding','reader','kinds','slots']);if(!Array.isArray(policy.kinds))writerFail('writer_closed')
+ const result:WriterPublishedSlot[]=[],liveKeys=new Set<string>()
+ for(let i=0;i<16;i++){
+  const row=p.slots[i]!,kind=workerHeartbeatKinds[Math.floor(i/2)]!,k=controlObject(policy.kinds[Math.floor(i/2)],['kind','instrumented','enabled'])
+  if(row.mode!=='active'||k.instrumented!==true||k.enabled!==true)continue
+  const generation=row.generation as string,key=kind+':'+row.slot_no+':'+generation;let reference=s.writerSlots.get(key),slot=reference&&rootWriterSlots.get(reference)
+  if(!slot){
+   const role=s.binding.roles[i+2]!
+   for(const published of [...s.journal].reverse()){
+    if(published.phase!=='published'||!published.action_id)continue
+    const material=readStaged(s,published.action_id).material,secret=material.roles.find(r=>r.name===role.name&&r.oid===role.oid&&r.generation===generation&&r.verifier_sha256===row.verifier_sha256&&r.password!==null)
+    if(!secret)continue
+    reference=empty<WriterSlotReference>();slot={s,reference,kind,slot_no:row.slot_no as 1|2,generation,role_oid:role.oid,role_name:role.name,password:secret.password!,verifier_sha256:secret.verifier_sha256!,action_id:published.action_id,publication_epoch:published.epoch};rootWriterSlots.set(reference,slot);s.writerSlots.set(key,reference);break
+   }
+  }
+  if(slot){liveKeys.add(key);result.push(Object.freeze({reference:slot.reference,kind,slot_no:slot.slot_no,generation,role_oid:slot.role_oid,action_id:slot.action_id,publication_epoch:slot.publication_epoch}))}
+ }
+ for(const key of s.writerSlots.keys())if(!liveKeys.has(key))s.writerSlots.delete(key)
+ return Object.freeze(result)
+}
+async function verifyRootWriterIdentity(op:RootWriterOperation,b:RootWriterBackend){
+ const r=(await rootWriterAwait(op,()=>b.raw.query(writerIdentitySQL))).rows[0],slot=op.slot,target=op.s.binding
+ if(!r||r.database!==target.database||r.database_oid!==String(target.database_oid)||r.login!==slot.role_name||r.actor!==slot.role_name||r.role_oid!==String(slot.role_oid)||r.login_enabled!==true||r.inherit!==false||r.super!==false||r.bypass!==false||r.create_db!==false||r.create_role!==false||r.replication!==false||r.connection_limit!==1||r.config!==null||r.expires!==null||r.no_memberships!==true||r.address!==target.server_addr||r.port!==target.server_port||r.version<180000||r.version>=190000||r.encoding!=='UTF8'||r.primary!==true||!Number.isInteger(r.pid)||r.pid<1||typeof r.backend_start!=='string')writerFail('writer_not_enrolled')
+ const identity={pid:r.pid as number,started:r.backend_start as string};if(b.backend&&(b.backend.pid!==identity.pid||b.backend.started!==identity.started))writerFail('writer_not_enrolled');return identity
+}
+async function verifyRootWriterSelected(op:RootWriterOperation,report?:WorkerHeartbeatReport,ack?:{sequence:number;observed_at:string}){
+ await rootWriterAwait(op,()=>target(op.s.raw,op.s.binding))
+ const rows=(await rootWriterAwait(op,()=>op.s.raw.query(writerSelectedSQL,[op.slot.kind,op.slot.slot_no]))).rows,r=rows[0]
+ if(rows.length!==1||r.instrumented!==true||r.kind_enabled!==true||r.kind!==op.slot.kind||r.slot_no!==op.slot.slot_no||r.login_oid!==String(op.slot.role_oid)||r.login_name!==op.slot.role_name||r.enabled!==true||r.generation!==op.slot.generation)writerFail('writer_not_enrolled')
+ const verifiers=await rootWriterAwait(op,()=>verifierRows(op.s.raw,[op.slot.role_name]))
+ if(!passwordsMatch({roles:[{name:op.slot.role_name,oid:op.slot.role_oid,password:op.slot.password,verifier_sha256:op.slot.verifier_sha256,generation:op.slot.generation}]},verifiers))writerFail('writer_not_enrolled')
+ if(report&&ack&&(r.last_sequence!==String(report.sequence)||r.state!==report.state||r.reason!==report.reason||r.observed_at!==ack.observed_at))writerFail('writer_uncertain')
+}
+async function closeRootWriterBackend(s:State,b:RootWriterBackend):Promise<void>{
+ if(b.s!==s)writerFail('writer_not_enrolled');if(b.closing)return b.closing
+ s.writerCleanups++
+ b.closing=(async()=>{
+  // Normal activation may already be revoked; cleanup still requires this real
+  // State/runtime and only this privately registered backend's own identity.
+  await rootWriterCleanupAwait(s,()=>b.raw.end())
+  if(!b.backend){
+   const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string}>('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,b.slot.role_oid])).rows)
+   if(rows.length>1)writerFail('writer_uncertain');if(rows.length)b.backend={pid:rows[0]!.pid,started:rows[0]!.started}
+  }
+  if(b.backend)await waitRootWriterBackendGone(s,b.backend)
+  b.closed=true;s.writerBackends.delete(b);rootWriterBackends.delete(b.handle);rootWriterClosedBackends.set(b.handle,s)
+  if(b.backend)append(s,'writer_backend_ended',null,{backend_id:b.id,kind:b.slot.kind,slot_no:b.slot.slot_no,generation:b.slot.generation,role_oid:b.slot.role_oid,database_oid:s.binding.database_oid,backend:b.backend})
+  s.writerCleanups--
+ })()
+ return b.closing
+}
+async function openRootWriterBackend(s:State,reference:WriterSlotReference):Promise<WriterBackendReference>{
+ const slot=rootWriterSlots.get(reference);if(!slot||slot.s!==s)writerFail('writer_not_enrolled')
+ rootWriterCheck(s,slot)
+ const handle=empty<WriterBackendReference>(),raw=new s.driver.Client({...connection(s),user:slot.role_name,password:slot.password,connectionTimeoutMillis:1000,statement_timeout:2000,query_timeout:3000}),b:RootWriterBackend={s,handle,slot,raw,id:randomUUID(),closed:false,uncertain:false}
+ raw.on('error',()=>{b.uncertain=true});raw.on('end',()=>{if(!b.closed)b.uncertain=true})
+ const op=rootWriterBegin(s,slot,b);rootWriterBackends.set(handle,b);s.writerBackends.add(b)
+ const work=(async()=>{
+  try{
+   await rootWriterAwait(op,()=>raw.connect());b.backend=await verifyRootWriterIdentity(op,b)
+   append(s,'writer_backend_bound',null,{backend_id:b.id,kind:slot.kind,slot_no:slot.slot_no,generation:slot.generation,role_oid:slot.role_oid,database_oid:s.binding.database_oid,backend:b.backend})
+   await verifyRootWriterSelected(op);rootWriterOperationCheck(op);return handle
+  }catch{b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
+ })();b.work=work;return work
+}
+async function recordRootWriterReport(s:State,handle:WriterBackendReference,raw:WorkerHeartbeatReport):Promise<Omit<WriterAck,'next_permit'>>{
+ const b=rootWriterBackends.get(handle);if(!b||b.s!==s||b.closed||b.uncertain)writerFail('writer_closed')
+ const report=parseWriterReport(raw);if(report.generation!==b.slot.generation)writerFail('writer_closed')
+ const op=rootWriterBegin(s,b.slot,b)
+ const work=(async()=>{
+  try{
+   await verifyRootWriterIdentity(op,b);await verifyRootWriterSelected(op)
+   // No await/caller callback separates the final guard and this writer-role
+   // query. The SU observer above never executes record.
+   const rows=(await rootWriterAwait(op,()=>b.raw.query(writerRecordSQL,[report.protocol,report.generation,report.sequence,report.state,report.reason]))).rows
+   if(rows.length!==1)writerFail('writer_uncertain');const value=controlObject(rows[0]?.value,['accepted','sequence','observed_at'])
+   if(value.accepted!==true||value.sequence!==report.sequence)writerFail('writer_uncertain')
+   const ack=Object.freeze({accepted:true as const,sequence:report.sequence,observed_at:writerUtc(value.observed_at)})
+   await verifyRootWriterSelected(op,report,ack);await verifyRootWriterIdentity(op,b);rootWriterOperationCheck(op);return ack
+  }catch{b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
+ })();b.work=work;return work
+}
+function persistRootWriterEvent(s:State,phase:WriterJournalPhase,data:unknown){
+ rootWriterCheck(s)
+ if(phase==='writer_boot_issued'||phase==='writer_boot_staged'){
+  const x=controlObject(data,['boot_id','uid','bindings']),settings=rootWriterSettings(s)!
+  if(!controlUuid(x.boot_id)||typeof x.uid!=='number'||!settings.boot_uids.includes(x.uid)||!Array.isArray(x.bindings)||x.bindings.length<1||x.bindings.length>2)writerFail()
+  const current=currentRootWriterSlots(s),rows=x.bindings.map(raw=>{const r=controlObject(raw,['kind','slot_no','generation','role_oid','secret_sha256']);if(!controlHex(r.secret_sha256)||!current.some(v=>v.kind===r.kind&&v.slot_no===r.slot_no&&v.generation===r.generation&&v.role_oid===r.role_oid))writerFail();return r})
+  if(rows.length===2&&(rows[0]!.kind===rows[1]!.kind||!rows.every(r=>r.kind==='knowledge_index'||r.kind==='knowledge_query')||rows[0]!.slot_no!==rows[1]!.slot_no))writerFail()
+  if(phase==='writer_boot_issued'){
+   for(const r of s.journal)if(r.phase==='writer_boot_issued'){const old=controlObject(r.data,['boot_id','uid','bindings']);if(old.uid===x.uid||old.boot_id===x.boot_id||!Array.isArray(old.bindings)||old.bindings.some(v=>{const a=v as {generation?:unknown};return rows.some(row=>row.generation===a.generation)}))writerFail('writer_not_enrolled')}
+  }else{
+   const issued=s.journal.filter(r=>r.phase==='writer_boot_issued'&&r.instance_id===s.instance&&sameData(r.data,x));if(issued.length!==1||s.journal.some(r=>r.phase==='writer_boot_staged'&&(r.data as {boot_id?:unknown}).boot_id===x.boot_id))writerFail('writer_not_enrolled')
+  }
+ }else if(phase==='writer_boot_claimed'){
+  const x=controlObject(data,['boot_id','uid','kind','slot_no','generation','role_oid','binding_id'])
+  if(!controlUuid(x.boot_id)||!controlHex(x.binding_id)||s.journal.some(r=>r.phase==='writer_boot_claimed'&&(r.data as {generation?:unknown}).generation===x.generation))writerFail('writer_not_enrolled')
+  const staged=s.journal.find(r=>r.phase==='writer_boot_staged'&&r.instance_id===s.instance&&(r.data as {boot_id?:unknown}).boot_id===x.boot_id),d=staged?.data as {uid?:unknown;bindings?:unknown}|undefined
+  if(!d||d.uid!==x.uid||!Array.isArray(d.bindings)||!d.bindings.some(raw=>{const v=raw as Record<string,unknown>;return ['kind','slot_no','generation','role_oid'].every(k=>v[k]===x[k])}))writerFail('writer_not_enrolled')
+ }else writerFail()
+ append(s,phase,null,data)
+}
+export function getWorkerHeartbeatWriterBridge(control:Control):WorkerHeartbeatWriterRootBridge|null{
+ const s=state(control),settings=rootWriterSettings(s);if(!settings)return null
+ runtimeCheck(s);if(s.writerBridge)return s.writerBridge
+ const bridge:WorkerHeartbeatWriterRootBridge=Object.freeze({settings,instance_id:s.instance,
+  check(mode){if(mode==='serve')rootWriterCheck(s);else rootWriterCleanupCheck(s)},
+  current:()=>currentRootWriterSlots(s),history:()=>Object.freeze(s.journal.filter(r=>r.phase.startsWith('writer_')).map(r=>Object.freeze({phase:r.phase as WriterJournalPhase,data:r.data,instance_id:r.instance_id}))),
+  persist:(phase,data)=>persistRootWriterEvent(s,phase,data),busy:()=>rootWriterBusy(s)||s.leases.size>0||s.sqlJobs>0||s.phase!=='serving'||s.mutation,
+  open:reference=>openRootWriterBackend(s,reference),record:(backend,report)=>recordRootWriterReport(s,backend,report),
+  close:async handle=>{const b=rootWriterBackends.get(handle);if(!b){if(rootWriterClosedBackends.get(handle)!==s)writerFail('writer_not_enrolled');return}if(b.s!==s)writerFail('writer_not_enrolled');await closeRootWriterBackend(s,b)},
+ });s.writerBridge=bridge;return bridge
+}
+async function reconcileRootWriters(s:State){
+ if(!rootWriterSettings(s))return
+ const ownedRoles=new Set<number>()
+ for(const record of s.journal)if(record.phase==='writer_boot_issued'){
+  const value=controlObject(record.data,['boot_id','uid','bindings']);if(!Array.isArray(value.bindings))writerFail('writer_not_enrolled')
+  for(const raw of value.bindings){const row=controlObject(raw,['kind','slot_no','generation','role_oid','secret_sha256']),name='studio_telemetry_tx_'+row.kind+'_'+row.slot_no;if(!s.binding.roles.some(v=>v.name===name&&v.oid===row.role_oid))writerFail('writer_not_enrolled');ownedRoles.add(row.role_oid as number)}
+ }
+ const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string;role_oid:number}>('SELECT a.pid,a.backend_start::text AS started,r.oid::integer AS role_oid FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=ANY($2::oid[])',[s.binding.database_oid,s.binding.roles.slice(2).map(r=>r.oid)])).rows)
+ rootWriterCleanupCheck(s)
+ for(const row of rows){
+  if(!ownedRoles.has(row.role_oid)||!Number.isInteger(row.pid)||row.pid<1||typeof row.started!=='string')writerFail('writer_not_enrolled')
+  const stopped=await rootWriterCleanupAwait(s,()=>s.raw.query('SELECT pg_terminate_backend(a.pid) AS stopped FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.pid=$1 AND a.backend_start=$2::timestamptz AND a.datid=$3::oid AND r.oid=$4::oid',[row.pid,row.started,s.binding.database_oid,row.role_oid]))
+  if(stopped.rows.length>1||stopped.rows.length===1&&stopped.rows[0].stopped!==true)writerFail('writer_uncertain');await waitRootWriterBackendGone(s,{pid:row.pid,started:row.started});rootWriterCleanupCheck(s)
+ }
 }

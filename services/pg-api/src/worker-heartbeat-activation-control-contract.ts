@@ -1,6 +1,7 @@
 // Comparison data and closed protocols only. No factory here grants authority.
 import {createHash} from 'node:crypto'
 import type {WorkerHeartbeatSnapshot} from './worker-heartbeat-contract.ts'
+import {parseWriterSettings,type WriterSettings} from './worker-heartbeat-writer-protocol.ts'
 declare const controlBrand:unique symbol,peerBrand:unique symbol,mutationBrand:unique symbol,recoveryBrand:unique symbol,readBrand:unique symbol,finishedBrand:unique symbol,dbBrand:unique symbol
 export type Control=Readonly<{[controlBrand]:true}>
 export type OperatorPeer=Readonly<{[peerBrand]:'operator'}>
@@ -27,12 +28,12 @@ export type MutationOutcome=Readonly<{action_id:string;epoch:string;commit_ackno
 export type RecoveryReport=Readonly<{action_id:string;observed:'after_matches'|'before_matches'|'mixed_or_unsafe'|'old_backend_live'|'unobservable';observed_policy_sha256:string|null;journal_head_sha256:string;original_commit_acknowledged:boolean;automatic_retry_authorized:false;read_gate_opened:false}>
 export type ControlCommand=Readonly<{op:'inspect'|'stop'}|{op:'prepare'|'apply'|'recover';action_id:string}|{op:'resume_publication';action_id:string;recovered_action_id:string}>
 export type WireRequest=Readonly<{protocol:'worker_heartbeat_control_v1';request_id:string;op:'prepare_read'}|{protocol:'worker_heartbeat_control_v1';request_id:string;op:'finish_read'|'cancel_read';pending_id:string;instance_id:string;epoch:string}>
-export type JournalPhase='boot'|'plan_prepared'|'authorized'|'closing'|'readers_clean'|'before_change'|'material_staged'|'commit_pending'|'commit_acknowledged'|'commit_unknown'|'rollback_known'|'rollback_unknown'|'after_verified'|'old_connections_retired'|'publication_pending'|'published'|'abandoned'|'recovery_observed'|'reader_bound'|'reader_ended'
-export const controlJournalPhases:readonly JournalPhase[]=Object.freeze(['boot','plan_prepared','authorized','closing','readers_clean','before_change','material_staged','commit_pending','commit_acknowledged','commit_unknown','rollback_known','rollback_unknown','after_verified','old_connections_retired','publication_pending','published','abandoned','recovery_observed','reader_bound','reader_ended'])
+export type JournalPhase='boot'|'plan_prepared'|'authorized'|'closing'|'readers_clean'|'before_change'|'material_staged'|'commit_pending'|'commit_acknowledged'|'commit_unknown'|'rollback_known'|'rollback_unknown'|'after_verified'|'old_connections_retired'|'publication_pending'|'published'|'abandoned'|'recovery_observed'|'reader_bound'|'reader_ended'|'writer_boot_issued'|'writer_boot_staged'|'writer_boot_claimed'|'writer_backend_bound'|'writer_backend_ended'|'writer_quarantined'
+export const controlJournalPhases:readonly JournalPhase[]=Object.freeze(['boot','plan_prepared','authorized','closing','readers_clean','before_change','material_staged','commit_pending','commit_acknowledged','commit_unknown','rollback_known','rollback_unknown','after_verified','old_connections_retired','publication_pending','published','abandoned','recovery_observed','reader_bound','reader_ended','writer_boot_issued','writer_boot_staged','writer_boot_claimed','writer_backend_bound','writer_backend_ended','writer_quarantined'])
 /** Sensitive data, NOT authority. Only protected write access may obtain it. */
 export type WorkerHeartbeatRegistryPrivateMaterial=Readonly<{protocol:'worker_heartbeat_registry_private_material_v1';plan_sha256:string;before_sha256:string;after_sha256:string;before_policy:unknown;after_policy:unknown;roles:readonly Readonly<{name:string;oid:number;password:string|null;verifier_sha256:string|null;generation:string|null}>[]}>
 export type JournalRecord=Readonly<{format:'worker_heartbeat_control_journal_v1';sequence:number;previous_sha256:string;record_sha256:string;instance_id:string;epoch:string;action_id:string|null;phase:JournalPhase;data:unknown}>
-export type RootProfile=Readonly<{protocol:'worker_heartbeat_control_profile_v1';mode:'closed'|'serve';source_sha256:string;source_manifest_sha256:string;runtime_manifest_sha256:string;admin_password_sha256:string;reader_password_sha256:string;native_gid:number;binding:unknown;policy:unknown}>
+export type RootProfile=Readonly<{protocol:'worker_heartbeat_control_profile_v1'|'worker_heartbeat_control_profile_v2';mode:'closed'|'serve';source_sha256:string;source_manifest_sha256:string;runtime_manifest_sha256:string;admin_password_sha256:string;reader_password_sha256:string;native_gid:number;binding:unknown;policy:unknown;writers?:WriterSettings}>
 export type PendingSnapshot=Readonly<{snapshot:WorkerHeartbeatSnapshot;static_sha256:string;as_of:string}>
 export const controlSha=(value:string|Uint8Array):string=>createHash('sha256').update(value).digest('hex')
 export const controlHex=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
@@ -78,7 +79,10 @@ export function parseWorkerHeartbeatReadRequest(raw:unknown):WireRequest{
  return controlFail('invalid_command')
 }
 export function parseWorkerHeartbeatRootProfile(raw:unknown):RootProfile{
- const x=controlObject(raw,['protocol','mode','source_sha256','source_manifest_sha256','runtime_manifest_sha256','admin_password_sha256','reader_password_sha256','native_gid','binding','policy'])
- if(x.protocol!=='worker_heartbeat_control_profile_v1'||typeof x.mode!=='string'||!['closed','serve'].includes(x.mode)||typeof x.native_gid!=='number'||!Number.isSafeInteger(x.native_gid)||x.native_gid<1||x.native_gid>2147483647||['source_sha256','source_manifest_sha256','runtime_manifest_sha256','admin_password_sha256','reader_password_sha256'].some(k=>!controlHex(x[k])))return controlFail('invalid_command')
+ const protocol=raw&&typeof raw==='object'?Object.getOwnPropertyDescriptor(raw,'protocol')?.value:undefined,v2=protocol==='worker_heartbeat_control_profile_v2'
+ const hasWriters=v2&&Object.hasOwn(raw as object,'writers')
+ const x=controlObject(raw,['protocol','mode','source_sha256','source_manifest_sha256','runtime_manifest_sha256','admin_password_sha256','reader_password_sha256','native_gid','binding','policy',...(hasWriters?['writers']:[])])
+ if((x.protocol!=='worker_heartbeat_control_profile_v1'&&!v2)||typeof x.mode!=='string'||!['closed','serve'].includes(x.mode)||typeof x.native_gid!=='number'||!Number.isSafeInteger(x.native_gid)||x.native_gid<1||x.native_gid>2147483647||['source_sha256','source_manifest_sha256','runtime_manifest_sha256','admin_password_sha256','reader_password_sha256'].some(k=>!controlHex(x[k])))return controlFail('invalid_command')
+ if(hasWriters)x.writers=parseWriterSettings(x.writers,x.native_gid)
  return controlFreeze(x) as RootProfile
 }
