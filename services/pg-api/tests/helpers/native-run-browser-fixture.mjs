@@ -45,6 +45,9 @@ import {AgentReviewHistoryRepository} from "../../src/agent-review-history-repos
 import {inspectAgentOpinionSchema} from "../../src/agent-opinion-audit.ts"
 import {AgentGeneratedAcceptanceRepository} from "../../src/agent-generated-acceptance-repository.ts"
 import {inspectAgentGeneratedSchema} from "../../src/agent-generated-audit.ts"
+import {AgentDescriptivePatchAcceptanceRepository} from "../../src/agent-descriptive-patch-acceptance-repository.ts"
+import {inspectAgentDescriptivePatchSchema} from "../../src/agent-descriptive-patch-audit.ts"
+import {createAgentDescriptivePatchHttpHandler} from "../../src/agent-descriptive-patch-http.ts"
 import {assessmentClaim,assessmentProof,assessmentContext,assessmentReserve,assessmentFinish,assessmentEvaluation,assessmentOptimization} from "./agent-assessment-fixture.mjs"
 import {AgentMemoryOutcomeRepository} from "../../src/agent-memory-outcome-repository.ts"
 import {inspectAgentMemoryOutcomeSchema} from "../../src/agent-memory-outcome-audit.ts"
@@ -132,6 +135,8 @@ const review=process.env.AGENT_STUDIO_PG_BROWSER_REVIEW==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_REVIEW!==undefined&&!review||review&&!optimization)throw Error("invalid_synthetic_review_browser_mode")
 const generatedAcceptance=process.env.AGENT_STUDIO_PG_BROWSER_GENERATED_ACCEPTANCE==="true"
 if(process.env.AGENT_STUDIO_PG_BROWSER_GENERATED_ACCEPTANCE!==undefined&&!generatedAcceptance||generatedAcceptance&&!review)throw Error("invalid_synthetic_generated_acceptance_browser_mode")
+const descriptivePatch=process.env.AGENT_STUDIO_PG_BROWSER_DESCRIPTIVE_PATCH==="true"
+if(process.env.AGENT_STUDIO_PG_BROWSER_DESCRIPTIVE_PATCH!==undefined&&!descriptivePatch||descriptivePatch&&!generatedAcceptance)throw Error("invalid_synthetic_descriptive_patch_browser_mode")
 const fullHumanDelivery="已核对本人方案，交付完整合成报告。\n".repeat(400)
 const root=path.resolve(fileURLToPath(new URL("../../../../",import.meta.url)))
 const parent=path.join(root,".tmp","pg-migration-completion")
@@ -194,6 +199,7 @@ Object.assign(state,{feedbackAllowed:feedback,feedbackDrop:false,feedbackCapabil
 Object.assign(state,{optimizationAllowed:optimization,optimizationDrop:false,optimizationCapabilitiesDrop:false,optimizationHashes:[],optimizationConfirms:0})
 Object.assign(state,{reviewAllowed:review,reviewHistoryAllowed:review,reviewDrop:false,reviewCapabilitiesDrop:false,reviewHashes:[],reviewConfirms:0,reviewSyntheticCompletions:0})
 Object.assign(state,{generatedAcceptanceAllowed:generatedAcceptance,generatedAcceptanceDrop:false,generatedAcceptanceCapabilitiesDrop:false,generatedAcceptanceHashes:[],generatedAcceptanceAgentsReads:0})
+Object.assign(state,{descriptivePatchAllowed:descriptivePatch,descriptivePatchDrop:false,descriptivePatchCapabilitiesDrop:false,descriptivePatchHashes:[]})
 const managedRemote=new Map()
 try{
   await db.exec("CREATE DATABASE agent_studio")
@@ -234,6 +240,7 @@ try{
     assert.equal(await inspectAgentOpinionSchema(pool),true)
   }
   if(generatedAcceptance){await db.exec(load("db/postgres/migrations/pg_v9_059_agent_generated_acceptance.sql"));assert.equal(await inspectAgentGeneratedSchema(pool),true)}
+  if(descriptivePatch){await db.exec(load("db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql"));assert.equal(await inspectAgentDescriptivePatchSchema(pool),true)}
   if(modern)await verifyKnowledgeRuntimeSchema(pool)
   await verifyKnowledgeAgentSchema(pool)
   await verifyWorkflowSampleLineageSchema(pool)
@@ -340,11 +347,12 @@ try{
       allowAgentFeedback:feedback,allowAgentFeedbackSubmission:state.feedbackAllowed,allowAgentFeedbackLessons:state.feedbackAllowed,
       allowAgentReview:review,allowAgentReviewSubmission:state.reviewAllowed&&state.configAllowed,allowAgentReviewHistory:state.reviewHistoryAllowed,
       allowAgentGeneratedAcceptance:generatedAcceptance,allowAgentGeneratedAcceptanceWrites:generatedAcceptance&&state.generatedAcceptanceAllowed&&state.configAllowed,
+      allowAgentDescriptivePatch:descriptivePatch,allowAgentDescriptivePatchWrites:descriptivePatch&&state.descriptivePatchAllowed&&state.configAllowed,
       allowAgentOutcomeMemory:outcomeMemory,allowAgentOutcomeMemoryAdmission:state.outcomeAllowed,
       allowAgentDerivedMemory:derivedMemory,allowAgentDerivedMemoryWrites:state.derivedAllowed,
       businessHandler:(req,res)=>{
         const currentPolicy={...policy,configurationWrites:state.configAllowed,agentOutcomeMemoryUat:state.outcomeAllowed,agentDerivedMemoryUat:state.derivedAllowed,mcpDiscoveryUat:modern,smitheryManagementUat:modern,knowledgeSharingUat:modern,knowledgeEmbeddingSettingsUat:semantic&&state.semanticAllowed,knowledgeEmbeddingConsentUat:semantic&&state.semanticAllowed,
-          knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed,agentGeneratedAcceptanceUat:generatedAcceptance&&state.generatedAcceptanceAllowed}
+          knowledgeIndexRuntimeUat:semantic&&state.semanticAllowed,knowledgeQueryRuntimeUat:semantic&&state.semanticAllowed,runApprovalUat:state.allowed,boundModelExecutionUat:state.allowed,autonomousAgentUat:(autonomous||scheduling)&&state.allowed,workflowV2ExecutionUat:workflow&&state.allowed,scheduleRuntimeUat:scheduling&&state.allowed,agentGeneratedAcceptanceUat:generatedAcceptance&&state.generatedAcceptanceAllowed,agentDescriptivePatchUat:descriptivePatch&&state.descriptivePatchAllowed}
         if(ownOperations)return createNativeOwnOperationsBusinessHandler({available:ownOperationsAvailable,repository:ownOperationsRepository,policy:currentPolicy,
           allowedOrigin:origin,authenticateRequest:native.authenticateRequest,businessHandler:(request,response)=>backend(request,response)})(req,res)
         if(!permitNativePg18BusinessUatRequest(req.url.split("?")[0],req.method,currentPolicy)){
@@ -432,6 +440,16 @@ try{
         state.mcpDiscoveries++
         return {status:200,session:"",content_type:"application/json",text:JSON.stringify({jsonrpc:"2.0",id:wire.body.id,result:{tools:[{name:"synthetic_lookup",description:"Synthetic MCP tool",inputSchema:{type:"object"}}]}})}
       })}:{})})
+    if(descriptivePatch){
+      const fallback=backend
+      const partial=createAgentDescriptivePatchHttpHandler({allowedOrigin:origin,authenticateRequest:req=>native.authenticateRequest(req),repository:{
+        preview:(...args)=>new AgentDescriptivePatchAcceptanceRepository(pool).preview(...args),
+        receipt:(...args)=>new AgentDescriptivePatchAcceptanceRepository(pool).receipt(...args),
+        accept(identity,body){state.descriptivePatchHashes.push({operation:"accept",request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentDescriptivePatchAcceptanceRepository(pool,{allowAcceptance:state.descriptivePatchAllowed&&state.configAllowed}).accept(identity,body)},
+        confirm(identity,body){state.descriptivePatchHashes.push({operation:"confirm",request_id:body.request_id,sha256:createHash("sha256").update(JSON.stringify(body)).digest("hex")});return new AgentDescriptivePatchAcceptanceRepository(pool).confirm(identity,body)},
+      }})
+      backend=async(req,res)=>{if(await partial(req,res))return;await fallback(req,res)}
+    }
     server=createServer((req,res)=>{void(async()=>{
       if(req.url.startsWith("/__fixture/")){
         if(req.headers["x-agentstudio-synthetic-fixture"]!=="1"){
@@ -468,6 +486,11 @@ try{
               generatedAcceptanceRefs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_generated_feedback_refs")).rows[0].n,
               generatedAcceptanceAudits:(await c.query("SELECT count(*)::int AS n FROM agentstudio.audit_events WHERE action='agent.generated_acceptance'")).rows[0].n,
               generatedAcceptanceWitnesses:(await c.query("SELECT request_id,review_id,spec_id,target_run_id,anchor_run_id,anchor_feedback_id,source_kind,source_protocol,before_spec_revision,after_spec_revision,before_revision_id,after_revision_id,receipt_sha256 FROM agentstudio.agent_generated_acceptances ORDER BY created_at,request_id")).rows}:{}),
+            ...(descriptivePatch?{descriptivePatchHashes:state.descriptivePatchHashes,
+              descriptivePatchAcceptances:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_descriptive_patch_acceptances")).rows[0].n,
+              descriptivePatchRefs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_descriptive_patch_feedback_refs")).rows[0].n,
+              descriptivePatchAudits:(await c.query("SELECT count(*)::int AS n FROM agentstudio.audit_events WHERE action='agent.descriptive_patch_acceptance'")).rows[0].n,
+              descriptivePatchWitnesses:(await c.query("SELECT request_id,review_id,spec_id,target_run_id,anchor_run_id,anchor_feedback_id,source_kind,source_protocol,before_spec_revision,after_spec_revision,before_revision_id,after_revision_id,patch_sha256,provided_keys,changed_keys,request_sha256,receipt_sha256 FROM agentstudio.agent_descriptive_patch_acceptances ORDER BY created_at,request_id")).rows}:{}),
             ...(failureSource?{failureSources:(await c.query("SELECT count(*)::int AS n FROM agentstudio.agent_memory_failure_sources")).rows[0].n,effects:(await c.query("SELECT count(*)::int AS n FROM agentstudio.external_effects")).rows[0].n,failPreparation:state.failPreparation}:{}),
             workflows:(await c.query("SELECT count(*)::int AS n FROM agentstudio.workflows")).rows[0].n,
             runs:(await c.query("SELECT count(*)::int AS n FROM agentstudio.runs")).rows[0].n,
@@ -489,7 +512,9 @@ try{
             assert.ok(context&&["evaluate","optimize"].includes(context.purpose))
             await assessmentReserve({pool},proof)
             const status=req.url==="/__fixture/review-complete"?"succeeded":req.url.endsWith("-failed")?"failed":"unknown"
-            output=await assessmentFinish({pool},proof,status==="succeeded"?{status,result:context.purpose==="evaluate"?assessmentEvaluation():assessmentOptimization()}:{status,failure_code:"synthetic_browser_"+status})
+            const optimizationOutput=context.purpose==="optimize"?assessmentOptimization():null
+            const result=context.purpose==="evaluate"?assessmentEvaluation():descriptivePatch?{...optimizationOutput,descriptive:{goal:optimizationOutput.descriptive.goal,deliverables:[]}}:optimizationOutput
+            output=await assessmentFinish({pool},proof,status==="succeeded"?{status,result}:{status,failure_code:"synthetic_browser_"+status})
             state.reviewSyntheticCompletions++
           }
         }
@@ -497,6 +522,9 @@ try{
         else if(req.url==="/__fixture/drop-next-generated-acceptance"&&req.method==="POST"&&generatedAcceptance){state.generatedAcceptanceDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-generated-acceptance"&&req.method==="POST"&&generatedAcceptance){state.generatedAcceptanceAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/drop-next-generated-acceptance-capabilities"&&req.method==="POST"&&generatedAcceptance){state.generatedAcceptanceCapabilitiesDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-descriptive-patch"&&req.method==="POST"&&descriptivePatch){state.descriptivePatchDrop=true;output={ok:true}}
+        else if(req.url==="/__fixture/deny-descriptive-patch"&&req.method==="POST"&&descriptivePatch){state.descriptivePatchAllowed=false;configure();output={ok:true}}
+        else if(req.url==="/__fixture/drop-next-descriptive-patch-capabilities"&&req.method==="POST"&&descriptivePatch){state.descriptivePatchCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/drop-next-review-capabilities"&&req.method==="POST"&&review){state.reviewCapabilitiesDrop=true;output={ok:true}}
         else if(req.url==="/__fixture/deny-review"&&req.method==="POST"&&review){state.reviewAllowed=false;configure();output={ok:true}}
         else if(req.url==="/__fixture/allow-review"&&req.method==="POST"&&review){state.reviewAllowed=true;configure();output={ok:true}}
@@ -576,6 +604,8 @@ try{
       if(generatedAcceptance&&req.method==="GET"&&req.url==="/api/v2/agent-specs")state.generatedAcceptanceAgentsReads++
       if(generatedAcceptance&&req.method==="POST"&&req.url==="/api/v2/agent-generated-acceptances/accept"&&state.generatedAcceptanceDrop){state.generatedAcceptanceDrop=false;res.end=()=>{res.destroy();return res}}
       if(generatedAcceptance&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.generatedAcceptanceCapabilitiesDrop){state.generatedAcceptanceCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
+      if(descriptivePatch&&req.method==="POST"&&req.url==="/api/v2/agent-descriptive-patches/accept"&&state.descriptivePatchDrop){state.descriptivePatchDrop=false;res.end=()=>{res.destroy();return res}}
+      if(descriptivePatch&&req.method==="GET"&&req.url==="/api/native-auth/capabilities"&&state.descriptivePatchCapabilitiesDrop){state.descriptivePatchCapabilitiesDrop=false;res.writeHead(503,{"Content-Type":"application/json"});res.end(JSON.stringify({error:"synthetic_capability_unavailable"}));return}
       if(req.method==="POST"&&req.url==="/api/v2/workflows"){state.configRequests++;if(state.configDrop){state.configDrop=false;res.end=()=>{res.destroy();return res}}}
       if(human&&req.method==="POST"&&/^\/api\/v2\/(?:agent-autonomous-runs|workflow-v2-runs)\/[^/]+\/respond$/.test(req.url)){
         if(state.humanDrop){state.humanDrop=false;res.end=()=>{res.destroy();return res}}

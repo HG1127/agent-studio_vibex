@@ -51,6 +51,8 @@ jobs:
           services/pg-api/tests/agent-descriptive-patch-contract.test.mjs
           services/pg-api/tests/agent-descriptive-patch-source.test.mjs
           services/pg-api/tests/agent-descriptive-patch-audit.test.mjs
+          services/pg-api/tests/agent-descriptive-patch-http.test.mjs
+          tests/agent-descriptive-patch-runtime-policy.test.mjs
       - name: Actual optional060 with unchanged045/055/058/059 and synthetic protected outputs
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
@@ -63,3 +65,58 @@ jobs:
         run: >-
           node --experimental-strip-types --test --test-concurrency=1
           services/pg-api/tests/agent-descriptive-patch-tcp.integration.mjs
+
+  pg18-descriptive-patch-native-http:
+    name: PostgreSQL 18 / Native Cookie / partial-output HTTP and recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout reviewed candidate
+        uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and ordinary-machine refusal guard
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:pg18:tcp:guard
+      - name: New Native HTTP entry refuses before runtime imports or listening
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import {spawnSync} from 'node:child_process'
+          const result=spawnSync(process.execPath,['--experimental-strip-types','--test','services/pg-api/tests/agent-descriptive-patch-native-http.integration.mjs'],{encoding:'utf8',timeout:20000,maxBuffer:1048576,env:{...process.env,AGENT_STUDIO_PG18_CI_EPHEMERAL:'false'}})
+          assert.equal(result.status,1)
+          assert.match(result.stdout+result.stderr,/refuse_non_ephemeral_pg18_ci/)
+          assert.doesNotMatch(result.stdout+result.stderr,/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/)
+          process.stdout.write('Native HTTP entry refused before runtime imports/listening\n')
+          JS
+      - name: Actual independent060 service with Native Cookie and shared policy
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: >-
+          node --experimental-strip-types --test --test-concurrency=1
+          services/pg-api/tests/agent-descriptive-patch-native-http.integration.mjs

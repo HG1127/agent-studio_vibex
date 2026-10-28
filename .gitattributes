@@ -95,3 +95,18 @@ services/pg-api/tests/agent-descriptive-patch-contract.test.mjs text eol=lf
 services/pg-api/tests/agent-descriptive-patch-source.test.mjs text eol=lf
 services/pg-api/tests/agent-descriptive-patch-tcp.integration.mjs text eol=lf
 services/pg-api/tests/helpers/agent-descriptive-patch-fixture.mjs text eol=lf
+
+# Exact LF for reviewed Native provided-field acceptance sources.
+services/pg-api/src/agent-descriptive-patch-http.ts text eol=lf
+services/pg-api/src/agent-descriptive-patch-runtime-policy.ts text eol=lf
+services/pg-api/tests/agent-descriptive-patch-http.test.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-native-http.integration.mjs text eol=lf
+src/lib/pgNativeAgentDescriptivePatch.ts text eol=lf
+src/lib/pgNativeAgentDescriptivePatchSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativeAgentDescriptivePatchPanel.tsx text eol=lf
+tests/agent-descriptive-patch-runtime-policy.test.mjs text eol=lf
+tests/pg-native-agent-descriptive-patch-client.test.mjs text eol=lf
+tests/pg-native-agent-descriptive-patch-render.test.mjs text eol=lf
+tests/pg-native-agent-descriptive-patch-session.test.mjs text eol=lf
+tests/pg-native-agent-descriptive-patch.test.mjs text eol=lf
+tests/pg-native-browser/agent-descriptive-patch.spec.mjs text eol=lf

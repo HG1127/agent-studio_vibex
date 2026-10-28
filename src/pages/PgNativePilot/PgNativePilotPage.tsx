@@ -137,6 +137,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [feedback,setFeedback]=useState({available:false,enabled:false,lessons:false})
   const [agentReview,setAgentReview]=useState({available:false,enabled:false,history:false})
   const [generatedAcceptance,setGeneratedAcceptance]=useState({available:false,enabled:false})
+  const [descriptivePatch,setDescriptivePatch]=useState({available:false,enabled:false})
   const [derivedMemoryOpened,setDerivedMemoryOpened]=useState(false)
   useEffect(()=>{if(derivedMemory.available)setDerivedMemoryOpened(true)},[derivedMemory.available])
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
@@ -191,6 +192,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setFeedback({available:false,enabled:false,lessons:false})
     setAgentReview({available:false,enabled:false,history:false})
     setGeneratedAcceptance({available:false,enabled:false})
+    setDescriptivePatch({available:false,enabled:false})
     setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
@@ -217,6 +219,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setReadableKnowledge([])
     setConfigEditEnabled(false);setWorkflowV2Enabled(false)
     setGeneratedAcceptance(previous=>({...previous,enabled:false}))
+    setDescriptivePatch(previous=>({...previous,enabled:false}))
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false);setScheduleEnabled(false)
     setLoading(true)
     try{
@@ -266,6 +269,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setFeedback({available:capability?.agent_feedback_available===true,enabled:capability?.agent_feedback_submission_enabled===true&&capability.config_writes_enabled===true,lessons:capability?.agent_feedback_lesson_storage_enabled===true&&capability.config_writes_enabled===true})
       setAgentReview({available:capability?.agent_review_available===true,enabled:capability?.agent_review_available===true&&capability.agent_review_submission_enabled===true&&capability.config_writes_enabled===true,history:capability?.agent_review_available===true&&capability.agent_review_history_available===true})
       setGeneratedAcceptance({available:capability?.agent_generated_acceptance_available===true,enabled:capability?.agent_generated_acceptance_enabled===true&&capability.config_writes_enabled===true})
+      setDescriptivePatch({available:capability?.agent_descriptive_patch_available===true,enabled:capability?.agent_descriptive_patch_enabled===true&&capability.config_writes_enabled===true})
       setOutcomeMemory({available:capability?.agent_outcome_memory_available===true,enabled:capability?.agent_outcome_memory_admission_enabled===true&&capability.config_writes_enabled===true})
       setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
@@ -644,6 +648,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 feedbackAvailable={feedback.available} feedbackEnabled={feedback.enabled&&!loading&&!busy} feedbackLessons={feedback.lessons&&!loading&&!busy}
                 reviewAvailable={agentReview.available} reviewEnabled={agentReview.enabled&&!loading&&!busy} reviewHistoryAvailable={agentReview.history}
                 generatedAvailable={generatedAcceptance.available} generatedEnabled={generatedAcceptance.enabled&&!loading&&!busy}
+                descriptivePatchAvailable={descriptivePatch.available} descriptivePatchEnabled={descriptivePatch.enabled&&!loading&&!busy}
                 target={autonomousTarget}
                 runTarget={originalTarget?.kind==="agent_autonomous"?originalTarget:null} onTargetSettled={originalTargetSettled}
                 mcpEnabled={mcpToolsEnabled}

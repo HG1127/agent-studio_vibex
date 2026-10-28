@@ -5,11 +5,11 @@ import {watchPgNativeOriginalTaskController} from "@/lib/pgNativeOwnTaskNavigati
 import type {PgNativeAgentReviewPurpose,PgNativeAgentReviewSelection,PgNativeAgentReviewView} from "@/lib/pgNativeAgentReview"
 import type {PgNativeAgentReviewHistoryPage} from "@/lib/pgNativeAgentReviewHistory"
 import PgNativeAgentGeneratedAcceptancePanel from "./PgNativeAgentGeneratedAcceptancePanel"
+import PgNativeAgentDescriptivePatchPanel from "./PgNativeAgentDescriptivePatchPanel"
 import {retainPgNativeAgentGeneratedSelection} from "@/lib/pgNativeAgentGeneratedAcceptanceSession"
-import type {PgNativeAgentGeneratedReceipt} from "@/lib/pgNativeAgentGeneratedAcceptance"
 
 type Controller=ReturnType<typeof createPgNativeAgentReviewSession>
-type Props={api:ReturnType<typeof createPgNativePilotApi>;ownerId:string;specId:string|null;runId:string|null;runStatus:string;connections:PgNativeModelConnection[];active:boolean;available:boolean;submitEnabled:boolean;historyAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;onAccepted?:(receipt:PgNativeAgentGeneratedReceipt)=>void;onExpired:()=>void}
+type Props={api:ReturnType<typeof createPgNativePilotApi>;ownerId:string;specId:string|null;runId:string|null;runStatus:string;connections:PgNativeModelConnection[];active:boolean;available:boolean;submitEnabled:boolean;historyAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;descriptivePatchAvailable?:boolean;descriptivePatchEnabled?:boolean;onAccepted?:()=>void;onExpired:()=>void}
 const button="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const primary="inline-flex min-h-10 items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 const field="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50"
@@ -36,7 +36,7 @@ function OpinionHistory({page,loading,error,selectedId,disabled,onRefresh,onOlde
   </section>
 }
 
-function GeneratedOpinion({review,canPreviewAcceptance}:{review:PgNativeAgentReviewView;canPreviewAcceptance:boolean}){
+function GeneratedOpinion({review,canPreviewAcceptance,canPreviewPatch=false}:{review:PgNativeAgentReviewView;canPreviewAcceptance:boolean;canPreviewPatch?:boolean}){
   if(!review.available||!review.result)return null
   const result=review.result
   if("score" in result)return <div aria-label="AI 任务评估结果" className="space-y-4">
@@ -46,7 +46,7 @@ function GeneratedOpinion({review,canPreviewAcceptance}:{review:PgNativeAgentRev
     <p className="text-xs leading-5 text-slate-500">以上是模型意见，任务执行和审批状态请以实际任务记录为准。</p>
   </div>
   return <div aria-label="AI 角色优化建议" className="space-y-4">
-    <p className="text-sm leading-6 text-slate-600">{canPreviewAcceptance?"以下是模型建议。完整五项描述可在下方另行预览并明确确认配置修改；模型费用确认不会自动接受建议。":"以下建议仅供阅读。需要修改角色时，请另行核对并手工修改。"}</p>
+    <p className="text-sm leading-6 text-slate-600">{canPreviewPatch?"以下是模型建议。可在下方核对模型实际提供的字段，并另行确认配置修改；未提供字段沿用当前值，模型费用确认不会自动接受建议。":canPreviewAcceptance?"以下是模型建议。完整五项描述可在下方另行预览并明确确认配置修改；模型费用确认不会自动接受建议。":"以下建议仅供阅读。需要修改角色时，请另行核对并手工修改。"}</p>
     {Object.entries(descriptiveLabels).map(([key,label])=>{
       const value=result.descriptive[key as keyof typeof descriptiveLabels]
       if(value===undefined)return null
@@ -57,10 +57,13 @@ function GeneratedOpinion({review,canPreviewAcceptance}:{review:PgNativeAgentRev
   </div>
 }
 
-export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runStatus,connections,active,available,submitEnabled,historyAvailable=false,generatedAvailable=false,generatedEnabled=false,onAccepted,onExpired}:Props){
+export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runStatus,connections,active,available,submitEnabled,historyAvailable=false,generatedAvailable=false,generatedEnabled=false,descriptivePatchAvailable=false,descriptivePatchEnabled=false,onAccepted,onExpired}:Props){
   const controller=useRef<Controller|null>(null),selectedTarget=useRef(""),selectedScope=useRef(""),historyScope=useRef("")
   const [state,setState]=useState({api,ownerId,view:emptyAgentReviewView()}),[opened,setOpened]=useState(false)
   const view=state.api===api&&state.ownerId===ownerId?state.view:emptyAgentReviewView()
+  const [patchLifetime,setPatchLifetime]=useState({api,ownerId,seen:descriptivePatchAvailable})
+  const patchSeen=patchLifetime.api===api&&patchLifetime.ownerId===ownerId&&patchLifetime.seen
+  if(patchLifetime.api!==api||patchLifetime.ownerId!==ownerId||descriptivePatchAvailable&&!patchSeen)setPatchLifetime({api,ownerId,seen:descriptivePatchAvailable||patchSeen})
   const [purpose,setPurpose]=useState<PgNativeAgentReviewPurpose>("evaluate"),[connectionId,setConnectionId]=useState(""),[modelId,setModelId]=useState("")
   const [selection,setSelection]=useState(()=>retainPgNativeAgentGeneratedSelection(null,{api,ownerId,specId,runId,purpose}))
   const generatedSelection=retainPgNativeAgentGeneratedSelection(selection,{api,ownerId,specId,runId,purpose})
@@ -201,7 +204,7 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
         {metadata?<section aria-label="AI 意见历史快照" className="space-y-2 rounded-xl bg-slate-50 p-3 text-sm"><h5 className="font-medium">已选择的历史请求</h5><p className="break-all text-xs">意见编号：{metadata.request.request_id}</p><p className="text-xs text-slate-500">创建于 <time dateTime={metadata.request.created_at}>{new Date(metadata.request.created_at).toLocaleString("zh-CN")}</time></p><p>控制快照：{jobLabels[metadata.control.job_state]} · {metadata.control.body_erased?"正文已删除":"快照未标记擦除"}</p><p className="text-xs leading-5 text-slate-500">此快照保留原请求元数据，可用于明确取消或删除正文；执行状态和正文须单独核对。</p></section>:null}
         <dl className="grid gap-3 text-sm sm:grid-cols-3"><div><dt className="text-xs text-slate-500">请求控制状态</dt><dd className="mt-1">{review?jobLabels[job??review.execution.job_state]:metadata?"历史控制快照为「"+jobLabels[metadata.control.job_state]+"」，当前待核对":receipt?"最近回执为「"+jobLabels[receipt.state]+"」，当前待核对":"尚未读取"}</dd></div><div><dt className="text-xs text-slate-500">执行记录</dt><dd className="mt-1">{!review?"执行状态待核对":review.execution.lease_state?leaseLabels[review.execution.lease_state]:"尚无领取记录"}</dd></div><div><dt className="text-xs text-slate-500">模型结果</dt><dd className="mt-1">{!review?"模型结果待核对":review.execution.outcome?resultLabels[review.execution.outcome.status]:"尚无已确认结果"}</dd></div></dl>
         <p className="text-xs leading-5 text-slate-500">{metadata&&!receipt?"历史元数据保留原请求和控制快照，模型执行与正文可用性须另行核对。":"回执表示请求已记录。"}取消、暂停或删除正文均不代表没有发生调用、没有费用或已经退款。</p>
-        {review?.available&&!bodyErased&&job==="pending"?<GeneratedOpinion review={review} canPreviewAcceptance={generatedAvailable}/>:<p role="status" className="text-sm leading-6 text-slate-600">{bodyErased?"本次意见的输入与结果正文已删除，历史请求和执行摘要保留。":!review?metadata?"已找到原请求元数据，当前正文无法核对。仍可取消后续处理或删除正文。":"结果正文尚未读取，或当前来源无法核对。请核对状态后继续。":job==="cancelled"?"本次请求已取消，正文不再提供，历史执行摘要仍可核对。":review.execution.outcome?.status==="succeeded"?"已保留成功摘要，当前正文不可用。来源或身份权限变化后，需重新核对当前状态。":"当前没有可供读取的结果正文。可核对状态，结果不确定时请保留原请求继续确认。"}</p>}
+        {review?.available&&!bodyErased&&job==="pending"?<GeneratedOpinion review={review} canPreviewAcceptance={generatedAvailable} canPreviewPatch={descriptivePatchAvailable}/>:<p role="status" className="text-sm leading-6 text-slate-600">{bodyErased?"本次意见的输入与结果正文已删除，历史请求和执行摘要保留。":!review?metadata?"已找到原请求元数据，当前正文无法核对。仍可取消后续处理或删除正文。":"结果正文尚未读取，或当前来源无法核对。请核对状态后继续。":job==="cancelled"?"本次请求已取消，正文不再提供，历史执行摘要仍可核对。":review.execution.outcome?.status==="succeeded"?"已保留成功摘要，当前正文不可用。来源或身份权限变化后，需重新核对当前状态。":"当前没有可供读取的结果正文。可核对状态，结果不确定时请保留原请求继续确认。"}</p>}
         {!bodyErased&&!pending?<div className="space-y-3">
           <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={locked||job!=="pending"} onClick={()=>{setControlFor("cancel");setControlConfirmed(false)}}>取消后续处理</button><button type="button" className={button} disabled={locked||job==="erased"} onClick={()=>{setControlFor("erase");setControlConfirmed(false)}}>删除本次意见正文</button></div>
           {controlFor?<div role="group" aria-label="确认 AI 意见控制操作" className="space-y-3 rounded-xl bg-amber-50 p-3 text-sm leading-6"><p>{controlFor==="erase"?"删除本次意见的输入与结果正文，保留请求及执行摘要。删除后无法恢复正文。":"取消这条请求的后续处理。已发出的调用和费用仍需按实际记录核对。"}</p><label className="flex items-start gap-2"><input type="checkbox" className="mt-1.5" aria-label={controlFor==="erase"?"确认删除本次 AI 意见正文":"确认取消本次 AI 意见后续处理"} disabled={locked} checked={controlConfirmed} onChange={event=>setControlConfirmed(event.target.checked)}/>我确认{controlFor==="erase"?"删除本次意见正文":"取消本次意见的后续处理"}。</label><div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={locked||!controlConfirmed} onClick={()=>{if(locked||!controlConfirmed||!controlFor)return;const action=controlFor;setControlFor(null);setControlConfirmed(false);setFeeConsent("");if(action==="erase")void controller.current?.erase(true);else void controller.current?.cancel(true)}}>{controlFor==="erase"?"确认删除正文":"确认取消后续处理"}</button><button type="button" className={button} disabled={locked} onClick={()=>{setControlFor(null);setControlConfirmed(false)}}>返回</button></div></div>:null}
@@ -211,5 +214,6 @@ export default function PgNativeAgentReviewPanel({api,ownerId,specId,runId,runSt
     </>}
   </section>:null}
     <PgNativeAgentGeneratedAcceptancePanel api={api} ownerId={ownerId} target={generatedSelection.target} active={active&&opened} available={generatedAvailable} acceptanceEnabled={generatedEnabled&&finished&&Boolean(runId&&specId)} onAccepted={onAccepted} onExpired={onExpired}/>
+    <PgNativeAgentDescriptivePatchPanel api={api} ownerId={ownerId} target={generatedSelection.target} active={active&&opened&&(descriptivePatchAvailable||patchSeen)} available={descriptivePatchAvailable} acceptanceEnabled={descriptivePatchEnabled&&finished&&Boolean(runId&&specId)} onAccepted={onAccepted} onExpired={onExpired}/>
   </>
 }

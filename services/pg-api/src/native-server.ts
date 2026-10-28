@@ -34,6 +34,9 @@ import {OwnOperationsRepository,inspectOwnOperationsSchema} from "./own-operatio
 import {createNativeOwnOperationsBusinessHandler} from "./own-operations-http.ts"
 import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
 import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
+import {AgentDescriptivePatchAcceptanceRepository} from "./agent-descriptive-patch-acceptance-repository.ts"
+import {inspectAgentDescriptivePatchSchema} from "./agent-descriptive-patch-audit.ts"
+import {createAgentDescriptivePatchHttpHandler} from "./agent-descriptive-patch-http.ts"
 import {AgentReviewSourceRepository} from "./agent-review-source.ts"
 import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
@@ -417,6 +420,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const reviewAvailable=await inspectAgentOpinionSchema(business)
     // Optional059 is fully audited even with every fresh write scope closed.
     const generatedAcceptanceAvailable=await inspectAgentGeneratedSchema(business)
+    // Optional060 is inspected in read-only startup modes as well as serve.
+    const descriptivePatchAvailable=await inspectAgentDescriptivePatchSchema(business)
     if(capabilities.agentMemoryUat===true&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
     if(capabilities.agentDerivedMemoryUat===true&&(!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_derived_schema_required")
     if(capabilities.agentOutcomeMemoryUat===true&&(!outcomeMemoryAvailable||!derivedMemoryAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
@@ -424,6 +429,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.agentOptimizationUat===true&&!optimizationAvailable)throw Error("agent_optimization_schema_required")
     if(capabilities.agentReviewSubmissionUat===true&&!reviewAvailable)throw Error("agent_review_schema_required")
     if(capabilities.agentGeneratedAcceptanceUat===true&&!generatedAcceptanceAvailable)throw Error("agent_generated_schema_required")
+    if(capabilities.agentDescriptivePatchUat===true&&!descriptivePatchAvailable)throw Error("agent_descriptive_patch_schema_required")
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -461,6 +467,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
       allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
+      allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
       allowAgentOutcomeMemory:outcomeMemoryAvailable,allowAgentOutcomeMemoryAdmission:capabilities.agentOutcomeMemoryUat===true,
@@ -531,6 +538,14 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.configurationWrites===true
         ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
     })
+    if(descriptivePatchAvailable){
+      const fallback=businessHandler
+      const descriptivePatch=createAgentDescriptivePatchHttpHandler({
+        allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+        repository:new AgentDescriptivePatchAcceptanceRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentDescriptivePatchUat===true}),
+      })
+      businessHandler=async(req,res)=>{if(await descriptivePatch(req,res))return;await fallback(req,res)}
+    }
     // The shared composition applies the original Native global route policy
     // to BOTH owner metadata and existing business handlers before dispatch.
     businessHandler=createNativeOwnOperationsBusinessHandler({

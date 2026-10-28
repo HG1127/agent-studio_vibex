@@ -6,6 +6,7 @@ import {createPgNativeOwnOperationsApi} from "./pgNativeOwnOperations.ts"
 import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
 import {agentReviewHistoryQuery,agentReviewHistoryPage,type PgNativeAgentReviewHistoryQuery} from "./pgNativeAgentReviewHistory.ts"
 import {agentGeneratedPreviewInput,agentGeneratedAcceptance,agentGeneratedPreview,agentGeneratedReceipt,type PgNativeAgentGeneratedPreviewInput,type PgNativeAgentGeneratedAcceptance} from "./pgNativeAgentGeneratedAcceptance.ts"
+import {agentDescriptivePatchPreviewInput,agentDescriptivePatchAcceptance,agentDescriptivePatchPreview,agentDescriptivePatchReceipt,type PgNativeDescriptivePatchPreviewInput,type PgNativeDescriptivePatchAcceptance} from "./pgNativeAgentDescriptivePatch.ts"
 export type {PgNativeAgentReviewHistoryQuery,PgNativeAgentReviewHistoryItem,PgNativeAgentReviewHistoryPage} from "./pgNativeAgentReviewHistory.ts"
 export type {PgNativeAgentReviewPurpose,PgNativeAgentReviewTarget,PgNativeAgentReviewModelBinding,PgNativeAgentReviewFeedbackSource,PgNativeAgentReviewSelection,PgNativeAgentReviewChoice,PgNativeAgentReviewSubmission,PgNativeAgentReviewControl,PgNativeAgentReviewSource,PgNativeAgentReviewPreview,PgNativeAgentReviewReceipt,PgNativeAgentReviewControlReceipt,PgNativeAgentReviewRequest,PgNativeAgentReviewEvaluation,PgNativeAgentReviewOptimization,PgNativeAgentReviewResult,PgNativeAgentReviewOutcome,PgNativeAgentReviewView} from "./pgNativeAgentReview.ts"
 import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistory,validHumanHistoryQuery,type AgentHumanResponse,type PgNativeAgentHumanInput} from "./pgNativeAgentHumanInput.ts"
@@ -80,6 +81,8 @@ export type PgNativeConfigCapabilities={
   agent_review_history_available?:boolean
   agent_generated_acceptance_available?:boolean
   agent_generated_acceptance_enabled?:boolean
+  agent_descriptive_patch_available?:boolean
+  agent_descriptive_patch_enabled?:boolean
   agent_feedback_available?:boolean
   agent_feedback_submission_enabled?:boolean
   agent_feedback_lesson_storage_enabled?:boolean
@@ -297,6 +300,7 @@ type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`
   | `/api/v2/agent-reviews/${string}`
   | `/api/v2/agent-reviews?${string}`
   | `/api/v2/agent-generated-acceptances/${string}`
+  | `/api/v2/agent-descriptive-patches/${string}`
   | `/api/v2/agent-feedback/${string}`
   | `/api/v2/agent-outcome-memories/${string}`
   | `/api/v2/workflows/${string}/validate`
@@ -503,6 +507,17 @@ export function createPgNativePilotApi(
     const result=await post<unknown>(`/api/v2/agent-generated-acceptances/${confirmOnly?"confirm":"accept"}`,original)
     return generatedResponse(()=>agentGeneratedReceipt(result,{original,...(confirmOnly?{replayed:true}:{})}))
   }
+  const descriptiveInput=<T>(parse:(raw:unknown)=>T,raw:unknown):T=>{
+    try{return parse(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_descriptive_patch_request")}
+  }
+  const descriptiveResponse=async<T>(decode:()=>Promise<T>):Promise<T>=>{
+    try{return await decode()}catch{throw new PgNativePilotError(503,"unconfirmed_agent_descriptive_patch_response")}
+  }
+  const descriptiveAccept=async(raw:PgNativeDescriptivePatchAcceptance,confirmOnly=false)=>{
+    const original=descriptiveInput(agentDescriptivePatchAcceptance,raw)
+    const result=await post<unknown>(`/api/v2/agent-descriptive-patches/${confirmOnly?"confirm":"accept"}`,original)
+    return descriptiveResponse(()=>agentDescriptivePatchReceipt(result,{original,...(confirmOnly?{replayed:true}:{})}))
+  }
   const patch=<T>(route:Route,body:Record<string,unknown>)=>
     request<T>(route,"PATCH",body,transport,rootPath)
   const del=<T>(route:Route)=>request<T>(route,"DELETE",undefined,transport,rootPath)
@@ -557,6 +572,21 @@ export function createPgNativePilotApi(
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
     ...createPgNativeOwnOperationsApi({transport,rootPath}),
+    previewAgentDescriptivePatch:async(raw:PgNativeDescriptivePatchPreviewInput)=>{
+      const body=descriptiveInput(agentDescriptivePatchPreviewInput,raw),result=await post<unknown>("/api/v2/agent-descriptive-patches/preview",body)
+      return descriptiveResponse(()=>agentDescriptivePatchPreview(result,{review_id:body.review_id,spec_id:body.spec_id,target_run_id:body.target_run_id}))
+    },
+    acceptAgentDescriptivePatch:(original:PgNativeDescriptivePatchAcceptance)=>descriptiveAccept(original),
+    confirmAgentDescriptivePatch:(original:PgNativeDescriptivePatchAcceptance)=>descriptiveAccept(original,true),
+    getAgentDescriptivePatch:async(raw:string)=>{
+      const reviewId=descriptiveInput(value=>agentReviewId(value,true),raw)
+      const result=await get<unknown>(`/api/v2/agent-descriptive-patches/reviews/${reviewId}`)
+      return descriptiveResponse(async()=>{
+        const receipt=await agentDescriptivePatchReceipt(result,{replayed:true})
+        if(receipt.source.review_id!==reviewId)throw Error("invalid_agent_descriptive_patch_projection")
+        return receipt
+      })
+    },
     previewAgentGeneratedAcceptance:async(raw:PgNativeAgentGeneratedPreviewInput)=>{
       const body=generatedInput(agentGeneratedPreviewInput,raw),result=await post<unknown>("/api/v2/agent-generated-acceptances/preview",body)
       return generatedResponse(()=>agentGeneratedPreview(result,{review_id:body.review_id,spec_id:body.spec_id,target_run_id:body.target_run_id}))
@@ -689,6 +719,9 @@ export function createPgNativePilotApi(
           (value.agent_generated_acceptance_available!==undefined&&typeof value.agent_generated_acceptance_available!=="boolean")||
           (value.agent_generated_acceptance_enabled!==undefined&&typeof value.agent_generated_acceptance_enabled!=="boolean")||
           (value.agent_generated_acceptance_enabled===true&&(value.agent_generated_acceptance_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_descriptive_patch_available!==undefined&&typeof value.agent_descriptive_patch_available!=="boolean")||
+          (value.agent_descriptive_patch_enabled!==undefined&&typeof value.agent_descriptive_patch_enabled!=="boolean")||
+          (value.agent_descriptive_patch_enabled===true&&(value.agent_descriptive_patch_available!==true||value.config_writes_enabled!==true))||
           (value.agent_feedback_available!==undefined&&typeof value.agent_feedback_available!=="boolean")||
           (value.agent_feedback_submission_enabled!==undefined&&typeof value.agent_feedback_submission_enabled!=="boolean")||
           (value.agent_feedback_lesson_storage_enabled!==undefined&&typeof value.agent_feedback_lesson_storage_enabled!=="boolean")||
