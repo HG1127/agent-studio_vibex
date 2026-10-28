@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
+import {isUtf8} from 'node:buffer'
 import {isBuiltin} from 'node:module'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 const parserSha='3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675'
@@ -18,7 +19,7 @@ function read(file,sealed=false){
  const before=fs.lstatSync(absolute)
  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size<1||before.size>4*1024*1024||fs.realpathSync(absolute)!==absolute||sealed&&(before.uid!==0||before.gid!==0||(before.mode&0o7777)!==0o444))fail()
  const fd=fs.openSync(absolute,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK)
- try{const bytes=fs.readFileSync(fd),after=fs.fstatSync(fd),last=fs.lstatSync(absolute);for(const k of ['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid','nlink'])if(before[k]!==after[k]||before[k]!==last[k])fail();if(bytes.length!==before.size||bytes.includes(0)||!Buffer.from(bytes.toString('utf8')).equals(bytes))fail();return bytes}finally{fs.closeSync(fd)}
+ try{const bytes=fs.readFileSync(fd),after=fs.fstatSync(fd),last=fs.lstatSync(absolute);for(const k of ['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid','nlink'])if(before[k]!==after[k]||before[k]!==last[k])fail();if(bytes.length!==before.size||bytes.includes(0)||!isUtf8(bytes))fail();return bytes}finally{fs.closeSync(fd)}
 }
 export async function captureWorkerHeartbeatActivationControlSources(){
  try{

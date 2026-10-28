@@ -147,8 +147,16 @@ export function assertWorkerHeartbeatActivationControlRuntimeStable(before,after
 // Only module-created stamp(st) records and their private saved baselines
 // reach this core. JSON, modules and caller records keep strict validators.
 function stableValues(before,after){
-  const keys=['dev','ino','mode','uid','gid','nlink','size','mtimeMs','ctimeMs']
-  if(keys.some(k=>!Number.isFinite(before[k])||before[k]!==after[k]))fail()
+  // Same nine finite/equality checks, in the same short-circuit field order.
+  if(!Number.isFinite(before.dev)||before.dev!==after.dev||
+    !Number.isFinite(before.ino)||before.ino!==after.ino||
+    !Number.isFinite(before.mode)||before.mode!==after.mode||
+    !Number.isFinite(before.uid)||before.uid!==after.uid||
+    !Number.isFinite(before.gid)||before.gid!==after.gid||
+    !Number.isFinite(before.nlink)||before.nlink!==after.nlink||
+    !Number.isFinite(before.size)||before.size!==after.size||
+    !Number.isFinite(before.mtimeMs)||before.mtimeMs!==after.mtimeMs||
+    !Number.isFinite(before.ctimeMs)||before.ctimeMs!==after.ctimeMs)fail()
 }
 export function assertWorkerHeartbeatActivationControlRuntimeInventory(expected,actual){
   const list=value=>{
