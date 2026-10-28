@@ -23,7 +23,7 @@ function observe(promise){const state={done:false};state.promise=promise.then(va
 // records bounded real catalog metadata, without query/result substitution or
 // business rows, SQL text, parameters, credentials or private exception text.
 async function diagnosticAudit(client,verify){
- const trace=[],fields=new Set(['id','name','relation','relation_id','owner_id','schema','args','result','language','volatility','definer','strict','leakproof','parallel','kind','defaults','modes','argnames','ordinary','config','sha','login','inherit','super','bypass','create_role','create_db','replication','connection_limit','memberships','current_role','version','ok','api','other_roles','columns','readable','installed','predecessor','grantor','grantee','function_id','privilege','grantable','owner_grant','type','required','plain','read','insert','update','reference','command','permissive','roles','qual','check','executable','owner_safe'])
+ const trace=[],fields=new Set(['id','name','relation','relation_id','owner_id','schema','args','result','language','volatility','definer','strict','leakproof','parallel','kind','defaults','modes','argnames','ordinary','config','sha','login','inherit','super','bypass','create_role','create_db','replication','connection_limit','memberships','current_role','version','ok','api','other_roles','columns','readable','installed','predecessor','grantor','grantee','function_id','privilege','grantable','owner_grant','type','required','plain','read','table_read','column_read','table_write','column_write','insert','update','reference','command','permissive','roles','qual','check','executable','owner_safe'])
  let untaggedAfterLast=0
  const observed=new Proxy(client,{get(db,key){
   if(key!=='query'){const value=Reflect.get(db,key,db);return typeof value==='function'?value.bind(db):value}
@@ -251,7 +251,7 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
    const role=(await f.db.query('SELECT oid,rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication,rolconfig FROM pg_catalog.pg_roles WHERE rolname=$1',[ownerRole])).rows[0]
    for(const key of ['rolcanlogin','rolinherit','rolsuper','rolbypassrls','rolcreaterole','rolcreatedb','rolreplication'])assert.equal(role[key],false,key)
    assert.equal(role.rolconfig,null);assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM pg_catalog.pg_auth_members WHERE roleid=$1 OR member=$1',[role.oid])).rows[0].n,0)
-   const columns=(await f.db.query("SELECT n.nspname||'.'||c.relname||'.'||a.attname AS name,has_column_privilege($1::oid,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1::oid,c.oid,a.attnum,'INSERT,UPDATE,REFERENCES') AS write FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[role.oid])).rows
+   const columns=(await f.db.query("SELECT n.nspname||'.'||c.relname||'.'||a.attname AS name,has_column_privilege($1::oid,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1::oid,c.oid,a.attnum,'INSERT,UPDATE,REFERENCES') AS write FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema' AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[role.oid])).rows
    assert.deepEqual(columns.filter(c=>c.read).map(c=>c.name).sort(),[
     'agentstudio.users.id','agentstudio.users.external_issuer','agentstudio.users.display_name','agentstudio.users.status',
     'agentstudio_auth.accounts.user_id','agentstudio_auth.accounts.enabled','agentstudio_auth.accounts.is_admin',
@@ -393,6 +393,96 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
     const reply=await getNoWrite('/api/v2/company-overview',{},503);assert.deepEqual(reply.body,{error:'company_overview_unavailable'})
    }finally{await f.db.exec('ALTER FUNCTION agentstudio.agent_descriptive_patch_accept(jsonb) VOLATILE')}
    await full();await oldFull();assert.deepEqual((await repo.overview(f.identities.alice)).totals,expected)
+  })
+  const schemaCore=(await import('../src/company-overview-audit-core.ts')).verifyCompanyOverviewCore
+  const metadataRoleOid=(await f.db.query('SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1',[ownerRole])).rows[0].oid
+  // Six additional actual cases: an ordinary user-schema control and a legal
+  // pgx_ lookalike, each with table-level, direct column and PUBLIC-derived
+  // column rights. Setup commits before the separate restricted API observes
+  // the mutation. PUBLIC schema USAGE avoids an unrelated explicit schema-ACL
+  // rejection masking the original prefix-filter problem.
+  for(const prefix of ['ct03_literal','pgx_literal'])for(const mode of ['table','column','public_column'])await t.test('literal system-schema prefix retains user schema '+prefix+' '+mode+' SELECT and exact recovery',async()=>{
+   const schema=prefix+'_'+mode,table=quote(schema)+'.read_canary',grantee=mode==='public_column'?'PUBLIC':ownerRole
+   assert.match(schema,/^[a-z_]+$/)
+   const grant=(mode==='table'?'SELECT':'SELECT(secret_text)')+' ON '+table
+   await f.db.exec('CREATE SCHEMA '+quote(schema)+'; GRANT USAGE ON SCHEMA '+quote(schema)+' TO PUBLIC; CREATE TABLE '+table+"(secret_text text NOT NULL); INSERT INTO "+table+" VALUES('CT03_PRIVATE_CANARY')")
+   try{
+    await full({diagnose:true});await oldFull()
+    assert.equal(await withActor(f.pool,f.identities.alice,schemaCore),true,'unreadable unrelated user tables are a valid clean baseline')
+    const probe=async()=>(await f.db.query(`SELECT
+      $2::text LIKE 'pg_%' AS wildcard_excluded,starts_with($2::text,'pg_') AS literal_system_prefix,
+      has_schema_privilege($1::oid,$2::text,'USAGE') AS schema_usage,
+      has_table_privilege($1::oid,$3::text,'SELECT') AS table_read,
+      has_column_privilege($1::oid,$3::text,'secret_text','SELECT') AS column_read,
+      (SELECT count(*)::integer FROM pg_catalog.pg_attribute a CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) x
+       WHERE a.attrelid=$3::regclass AND x.grantee=$1::oid) AS explicit_owner_column_grants`,[metadataRoleOid,schema,table])).rows[0]
+    const clean=await probe();assert.equal(clean.schema_usage,true);assert.equal(clean.literal_system_prefix,false);assert.equal(clean.wildcard_excluded,prefix==='pgx_literal');assert.equal(clean.table_read,false);assert.equal(clean.column_read,false);assert.equal(clean.explicit_owner_column_grants,0)
+    await f.db.exec('GRANT '+grant+' TO '+grantee)
+    try{
+     const actual=await probe();assert.equal(actual.column_read,true);assert.equal(actual.table_read,mode==='table');assert.equal(actual.explicit_owner_column_grants,mode==='column'?1:0)
+     // Table-level and PUBLIC-column cases have no explicit column grant to
+     // this role. They must be caught by EFFECTIVE privilege checks, rather
+     // than accidentally passing only because explicit attacl detects them.
+     await assert.rejects(withActor(f.pool,f.identities.alice,schemaCore),error=>error.message==='unsafe_company_overview_privileges')
+     await assert.rejects(full(),fixed503);await assert.rejects(inspectCompanyOverviewSchema(f.pool),fixed503)
+     const reply=await getNoWrite('/api/v2/company-overview',{},503);assert.deepEqual(reply.body,{error:'company_overview_unavailable'})
+    }finally{await f.db.exec('REVOKE '+grant+' FROM '+grantee)}
+    const restored=await probe();assert.equal(restored.table_read,false);assert.equal(restored.column_read,false);assert.equal(restored.explicit_owner_column_grants,0)
+    await full({diagnose:true});await oldFull();assert.deepEqual((await repo.overview(f.identities.alice)).totals,expected)
+   }finally{await f.db.exec('DROP TABLE '+table+'; DROP SCHEMA '+quote(schema))}
+  })
+  // Sensitive system catalogs are a separate, exact denylist; ordinary PUBLIC
+  // metadata such as pg_roles stays readable. These probes only inspect ACL
+  // booleans and column-ACL counts in pg_class/pg_attribute. NEVER select a
+  // pg_authid/pg_shadow row, password value or view definition here.
+  for(const [relation,column] of [['pg_catalog.pg_authid','rolpassword'],['pg_catalog.pg_shadow','passwd']])for(const mode of ['table','column','public_table','public_column'])await t.test('sensitive catalog denies '+relation+' '+mode+' SELECT with exact recovery and no credential row reads',async()=>{
+   const publicGrant=mode.startsWith('public_'),tableGrant=mode.endsWith('table'),grantee=publicGrant?'PUBLIC':ownerRole
+   const grant=(tableGrant?'SELECT':'SELECT('+column+')')+' ON '+relation
+   const probe=async()=>(await f.db.query(`SELECT
+     has_table_privilege($1::oid,$2::text,'SELECT') AS table_read,
+     has_any_column_privilege($1::oid,$2::text,'SELECT') AS column_read,
+     has_column_privilege($1::oid,$2::text,$3::text,'SELECT') AS selected_column_read,
+     has_table_privilege($1::oid,$2::text,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS table_write,
+     has_any_column_privilege($1::oid,$2::text,'INSERT,UPDATE,REFERENCES') AS column_write,
+     has_table_privilege($1::oid,'pg_catalog.pg_roles','SELECT') AS ordinary_public_metadata,
+     (SELECT count(*)::integer FROM pg_catalog.pg_attribute a CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) x
+      WHERE a.attrelid=$2::regclass AND x.grantee=$1::oid) AS explicit_owner_column_grants`,[metadataRoleOid,relation,column])).rows[0]
+   await full({diagnose:true});await oldFull()
+   const clean=await probe();assert.equal(clean.table_read,false);assert.equal(clean.column_read,false);assert.equal(clean.selected_column_read,false);assert.equal(clean.table_write,false);assert.equal(clean.column_write,false);assert.equal(clean.explicit_owner_column_grants,0);assert.equal(clean.ordinary_public_metadata,true)
+   await f.db.exec('GRANT '+grant+' TO '+grantee)
+   try{
+    const actual=await probe();assert.equal(actual.table_read,tableGrant);assert.equal(actual.column_read,true);assert.equal(actual.selected_column_read,true);assert.equal(actual.table_write,false);assert.equal(actual.column_write,false);assert.equal(actual.explicit_owner_column_grants,!publicGrant&&!tableGrant?1:0);assert.equal(actual.ordinary_public_metadata,true)
+    // Table grants and PUBLIC-derived column grants create no owner attacl.
+    // The exact sensitive EFFECTIVE-permission check must still reject them.
+    await assert.rejects(withActor(f.pool,f.identities.alice,schemaCore),error=>error.message==='unsafe_company_overview_privileges')
+    await assert.rejects(full(),fixed503);await assert.rejects(inspectCompanyOverviewSchema(f.pool),fixed503)
+    const reply=await getNoWrite('/api/v2/company-overview',{},503);assert.deepEqual(reply.body,{error:'company_overview_unavailable'})
+   }finally{await f.db.exec('REVOKE '+grant+' FROM '+grantee)}
+   assert.deepEqual(await probe(),clean,'the exact effective and explicit privilege baseline is restored')
+   await full({diagnose:true});await oldFull();assert.deepEqual((await repo.overview(f.identities.alice)).totals,expected)
+  })
+  for(const mode of ['table','column'])await t.test('sensitive catalog denies pg_catalog.pg_authid '+mode+' UPDATE grant without reading or updating credential rows',async()=>{
+   const relation='pg_catalog.pg_authid',grant=(mode==='table'?'UPDATE':'UPDATE(rolpassword)')+' ON '+relation
+   const probe=async()=>(await f.db.query(`SELECT
+     has_table_privilege($1::oid,$2::text,'SELECT') AS table_read,
+     has_any_column_privilege($1::oid,$2::text,'SELECT') AS column_read,
+     has_table_privilege($1::oid,$2::text,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS table_write,
+     has_any_column_privilege($1::oid,$2::text,'INSERT,UPDATE,REFERENCES') AS column_write,
+     has_column_privilege($1::oid,$2::text,'rolpassword','UPDATE') AS selected_column_write,
+     has_table_privilege($1::oid,'pg_catalog.pg_roles','SELECT') AS ordinary_public_metadata,
+     (SELECT count(*)::integer FROM pg_catalog.pg_attribute a CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) x
+      WHERE a.attrelid=$2::regclass AND x.grantee=$1::oid) AS explicit_owner_column_grants`,[metadataRoleOid,relation])).rows[0]
+   await full({diagnose:true});await oldFull()
+   const clean=await probe();assert.equal(clean.table_read,false);assert.equal(clean.column_read,false);assert.equal(clean.table_write,false);assert.equal(clean.column_write,false);assert.equal(clean.selected_column_write,false);assert.equal(clean.explicit_owner_column_grants,0);assert.equal(clean.ordinary_public_metadata,true)
+   await f.db.exec('GRANT '+grant+' TO '+ownerRole)
+   try{
+    const actual=await probe();assert.equal(actual.table_read,false);assert.equal(actual.column_read,false);assert.equal(actual.table_write,mode==='table');assert.equal(actual.column_write,true);assert.equal(actual.selected_column_write,true);assert.equal(actual.explicit_owner_column_grants,mode==='column'?1:0);assert.equal(actual.ordinary_public_metadata,true)
+    await assert.rejects(withActor(f.pool,f.identities.alice,schemaCore),error=>error.message==='unsafe_company_overview_privileges')
+    await assert.rejects(full(),fixed503);await assert.rejects(inspectCompanyOverviewSchema(f.pool),fixed503)
+    const reply=await getNoWrite('/api/v2/company-overview',{},503);assert.deepEqual(reply.body,{error:'company_overview_unavailable'})
+   }finally{await f.db.exec('REVOKE '+grant+' FROM '+ownerRole)}
+   assert.deepEqual(await probe(),clean)
+   await full({diagnose:true});await oldFull();assert.deepEqual((await repo.overview(f.identities.alice)).totals,expected)
   })
   await t.test('final real FULL coexistence, exact source pin and GET zero-write state remain intact',async()=>{
    await full();await oldFull();assert.equal(await inspectCompanyOverviewSchema(f.pool),true)

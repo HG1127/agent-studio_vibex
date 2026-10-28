@@ -18,6 +18,10 @@ const routines:Record<string,{args:string;sha:string}>={
  company_employee_stats:{args:"integer, uuid",sha:"ac6b0eedcb87d0e9c60ab68217c4e3ec11f35003b7daa428a90d8340f31989b8"},
 }
 const actorSha="084b38798ae2c68f4165ee40800b909c874e8765372d357ee41845f92ec80555"
+// Ordinary PUBLIC-readable catalogs (for example pg_roles) stay usable. These
+// two credential-bearing relations must have no read/write authority for this
+// owner, whether table-wide, per-column, direct or inherited from PUBLIC.
+const sensitiveCatalogs:Record<string,string>={"pg_catalog.pg_authid":"r","pg_catalog.pg_shadow":"v"}
 const nativeQual="(external_issuer = 'urn:agentstudio:local:v1'::text)"
 const policyNames:Record<string,string>={"agentstudio.users":"company_users_select","agentstudio_auth.accounts":"company_accounts_select","agentstudio.runs":"company_runs_select","agentstudio.schedules":"company_schedules_select","agentstudio.knowledge_bases":"company_knowledge_select"}
 const apiPolicies:Record<string,{name:string;expression:string}>={
@@ -70,12 +74,17 @@ async function verify(db:SqlClient):Promise<boolean>{
   "ARRAY(SELECT rolname::text FROM pg_catalog.pg_roles r WHERE NOT r.rolsuper AND r.oid NOT IN($2::oid,$3::oid) AND has_function_privilege(r.oid,p.oid,'EXECUTE') ORDER BY rolname) AS other_roles FROM pg_catalog.pg_proc p WHERE p.oid=ANY($1::oid[])",[fnIds,owner.id,api.id])
  if(effective.length!==2||!same(exactIds(effective,"id").sort((a,b)=>a-b),[...fnIds].sort((a,b)=>a-b))||effective.some(e=>e.api!==true||!same(e.other_roles,[])))return fail()
  const surface=await one(db,"/* company061:owner_surface */ SELECT has_schema_privilege($1::oid,'agentstudio','USAGE') AND has_schema_privilege($1::oid,'agentstudio_auth','USAGE') AND "+
-  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND has_schema_privilege($1::oid,n.oid,'CREATE')) AND "+
+  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace n WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema' AND has_schema_privilege($1::oid,n.oid,'CREATE')) AND "+
   "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_default_acl WHERE defaclrole=$1::oid) AND "+
   "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_shdepend d WHERE d.refclassid='pg_authid'::regclass AND d.refobjid=$1::oid AND d.deptype='o' AND NOT(d.dbid=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database()) AND d.classid='pg_proc'::regclass AND d.objsubid=0 AND d.objid=ANY($2::oid[]))) AND "+
-  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND p.prosecdef AND NOT(p.oid=ANY($2::oid[])) AND has_function_privilege($1::oid,p.oid,'EXECUTE')) AND "+
-  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND ((c.relkind IN('r','p','v','m','f') AND has_table_privilege($1::oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')) OR(c.relkind='S' AND has_sequence_privilege($1::oid,c.oid,'SELECT,UPDATE,USAGE')))) AS ok",[owner.id,fnIds])
+  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema' AND p.prosecdef AND NOT(p.oid=ANY($2::oid[])) AND has_function_privilege($1::oid,p.oid,'EXECUTE')) AND "+
+  "NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema' AND ((c.relkind IN('r','p','v','m','f') AND has_table_privilege($1::oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')) OR(c.relkind='S' AND has_sequence_privilege($1::oid,c.oid,'SELECT,UPDATE,USAGE')))) AS ok",[owner.id,fnIds])
  if(surface.ok!==true)return fail()
+ const sensitive=await read(db,"/* company061:sensitive_catalogs */ SELECT n.nspname||'.'||c.relname AS name,c.oid::integer AS id,c.relkind AS kind,"+
+  "has_table_privilege($1::oid,c.oid,'SELECT') AS table_read,has_any_column_privilege($1::oid,c.oid,'SELECT') AS column_read,"+
+  "has_table_privilege($1::oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS table_write,has_any_column_privilege($1::oid,c.oid,'INSERT,UPDATE,REFERENCES') AS column_write "+
+  "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='pg_catalog' AND c.relname=ANY($2::text[])",[owner.id,["pg_authid","pg_shadow"]])
+ if(sensitive.length!==2||new Set(sensitive.map(c=>c.name)).size!==2||exactIds(sensitive,"id").length!==2||sensitive.some(c=>c.kind!==sensitiveCatalogs[String(c.name)]||!sensitiveCatalogs[String(c.name)]||c.table_read!==false||c.column_read!==false||c.table_write!==false||c.column_write!==false))return fail()
  const schemas=await read(db,"/* company061:schema_acl */ SELECT n.nspname AS name,a.grantor::integer=n.nspowner::integer AS owner_grant,a.privilege_type AS privilege,a.is_grantable AS grantable FROM pg_catalog.pg_namespace n "+
   "CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(n.nspacl,pg_catalog.acldefault('n',n.nspowner))) a WHERE a.grantee=$1::oid",[owner.id])
  if(schemas.length!==2||!same(schemas.map(s=>s.name).sort(),["agentstudio","agentstudio_auth"])||schemas.some(s=>s.owner_grant!==true||s.privilege!=="USAGE"||s.grantable!==false))return fail()
@@ -98,7 +107,7 @@ async function verify(db:SqlClient):Promise<boolean>{
  const columns=await read(db,"/* company061:columns */ SELECT n.nspname||'.'||c.relname AS relation,c.oid::integer AS relation_id,c.relowner::integer AS owner_id,a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS required,"+
   "a.attidentity='' AND a.attgenerated='' AND NOT a.atthasmissing AND a.attndims=0 AND a.attcollation=(SELECT typcollation FROM pg_catalog.pg_type WHERE oid=a.atttypid) AS plain,has_column_privilege($1::oid,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1::oid,c.oid,a.attnum,'INSERT') AS insert,"+
   "has_column_privilege($1::oid,c.oid,a.attnum,'UPDATE') AS update,has_column_privilege($1::oid,c.oid,a.attnum,'REFERENCES') AS reference FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "+
-  "WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[owner.id])
+  "WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema' AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[owner.id])
  const seen=new Set<string>()
  for(const c of columns){const key=String(c.relation)+":"+String(c.name);if(seen.has(key)||c.insert!==false||c.update!==false||c.reference!==false)return fail();seen.add(key)
   const expected=tables[String(c.relation)]?.[String(c.name)],base=bases.find(b=>b.name===c.relation)
