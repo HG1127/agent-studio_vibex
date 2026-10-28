@@ -232,3 +232,6 @@ services/pg-api/tests/worker-heartbeat-activated-audit-tcp.integration.mjs text 
 # Genuine original Native Cookie/current-admin prepost verification
 services/pg-api/tests/helpers/native-current-company-admin-ci.mjs text eol=lf
 services/pg-api/tests/native-current-company-admin-tcp.integration.mjs text eol=lf
+
+# Dedicated owned native5333 PostgreSQL test container
+services/pg-api/tests/helpers/native-current-company-admin-container-ci.mjs text eol=lf

@@ -1,6 +1,6 @@
 // Hosted authoring only. Import-safe builtins + the unchanged private CI guard.
 // Never adapts the fixed Native database/login, grants ledger access, or starts
-// a Worker/provider/HTTP/telemetry service. The service owns final DB disposal.
+// a Worker/provider/HTTP/telemetry service. Only its own new container is removed.
 import assert from 'node:assert/strict'
 import {createHash,randomBytes,randomUUID} from 'node:crypto'
 import {readFileSync} from 'node:fs'
@@ -29,34 +29,31 @@ export async function nativeCurrentAdminTcpFixture(capability){
  // This exact original branded capability MUST refuse before files/imports/pg.
  const mainOptions=workerHeartbeatCiAdminOptions(capability,'main')
  for(const [file,pin]of Object.entries(nativeAdminGuardPins))assert.equal(sha(readFileSync(new URL('../../src/'+file,import.meta.url))),pin,'frozen H Native guard trio')
- const [{default:pg},fresh,installer,baseline,activation,native,guardModule]=await Promise.all([
+ const [{default:pg},fresh,installer,baseline,activation,native,guardModule,containers]=await Promise.all([
   import('pg'),import('../../src/pg18-fresh-runtime-source.mjs'),import('../../src/pg18-fresh-runtime-install.ts'),
   import('../../src/baota-pg18-fresh-init.mjs'),import('../../src/native-activation-cli.mjs'),
   import('../../src/native-auth-repository.mjs'),import('../../src/native-current-company-admin.mjs'),
+  import('./native-current-company-admin-container-ci.mjs'),
  ])
  const snapshot=fresh.captureFreshRuntimeSources()
  assert.equal(snapshot.source_sha256,freshPin);assert.equal(snapshot.baseline.hash,baselinePin);assert.equal(snapshot.sources.length,34)
  assert.equal(snapshot.versions.at(-1),'pg_v9_050')
  const pools=new Set(),live=new Set(),probes=new Set(),seen=new WeakSet()
  const add=options=>{const pool=new pg.Pool(options);pool.on('error',()=>{});pools.add(pool);return pool}
- const main=add({...mainOptions,ssl:false,options:''})
- let admin,auth,repo,rootIdentity,targetIdentity,closed=false,schemaBaseline
+ let admin,auth,repo,containerLease,adminOptions,targetIdentity,closed=false,schemaBaseline,setupPhase='owned_container'
  const watch=client=>{if(!seen.has(client)){seen.add(client);client.on('error',()=>{})}return client}
  const release=(client,destroy=false)=>{live.delete(client);client.release(destroy)}
  const connect=async pool=>{const client=watch(await pool.connect());live.add(client);return client}
  const end=async pool=>{pools.delete(pool);await pool.end()}
  async function identity(pool,database){
   const row=(await pool.query("SELECT current_database() AS database,session_user::text AS login,current_user::text AS actor,host(inet_server_addr()) AS host,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,(pg_control_system()).system_identifier::text AS system_identifier,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS oid,(SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()) AS owner,(SELECT rolsuper FROM pg_roles WHERE rolname=session_user) AS superuser,NOT pg_is_in_recovery() AS primary")).rows[0]
-  assert.equal(row.database,database);assert.equal(row.login,'agentstudio_admin');assert.equal(row.actor,row.login)
-  // Client host stays the original private guard's127.0.0.1:5432. PostgreSQL
-  // reports its actual container interface behind that published client port.
-  // Preserve that IPv4 as observed metadata; never rewrite it to loopback.
-  assert.equal(isIP(row.host),4);assert.equal(row.port,5432);assert.equal(row.encoding,'UTF8');assert.equal(row.owner,'agentstudio_admin')
+  assert.equal(database,'agent_studio');assert.equal(row.database,database);assert.equal(row.login,'postgres');assert.equal(row.actor,row.login)
+  // Actual original010 contract: independent owned postgres5333 cluster. The
+  // unchanged5432/main authorization service is checked by the container helper.
+  assert.equal(isIP(row.host),4);assert.equal(row.host,'127.0.0.1');assert.equal(row.port,5333);assert.equal(row.encoding,'UTF8');assert.equal(row.owner,'postgres')
   assert.equal(row.superuser,true);assert.equal(row.primary,true);assert.ok(row.version>=180000&&row.version<190000)
   assert.match(row.oid,/^[1-9][0-9]*$/);assert.match(row.system_identifier,/^[1-9][0-9]*$/)
-  if(rootIdentity){assert.equal(row.host,rootIdentity.host);assert.equal(row.system_identifier,rootIdentity.system_identifier)}
-  const expected=database==='agentstudio_pg18_ci'?rootIdentity:targetIdentity
-  if(expected)assert.equal(row.oid,expected.oid)
+  if(targetIdentity){assert.equal(row.host,targetIdentity.host);assert.equal(row.system_identifier,targetIdentity.system_identifier);assert.equal(row.oid,targetIdentity.oid)}
   return row
  }
  async function nativeRoles(enabled){
@@ -97,17 +94,16 @@ export async function nativeCurrentAdminTcpFixture(capability){
   for(const p of [...probes])try{await p.close()}catch(error){errors.push(error)}
   for(const c of [...live])try{release(c,true)}catch(error){errors.push(error)}
   for(const pool of [...pools])try{await end(pool)}catch(error){errors.push(error)}
+  if(containerLease)try{await containers.closeNativeAdminCiContainer(containerLease)}catch(error){errors.push(error)}
   if(errors.length)throw new AggregateError(errors,'native_admin_ci_owned_pool_cleanup_failed')
  }
  try{
-  rootIdentity=await identity(main,'agentstudio_pg18_ci')
-  const empty=(await main.query("SELECT (SELECT count(*)::integer FROM pg_namespace WHERE NOT starts_with(nspname,'pg_') AND nspname NOT IN('public','information_schema')) AS schemas,(SELECT count(*)::integer FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema') AS relations,(SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE NOT starts_with(n.nspname,'pg_') AND n.nspname<>'information_schema') AS functions,(SELECT count(*)::integer FROM pg_roles WHERE NOT starts_with(rolname,'pg_')) AS roles,(SELECT count(*)::integer FROM pg_extension WHERE extname<>'plpgsql') AS extensions,EXISTS(SELECT 1 FROM pg_database WHERE datname='agent_studio') AS target_exists")).rows[0]
-  assert.deepEqual(empty,{schemas:0,relations:0,functions:0,roles:1,extensions:0,target_exists:false},'Native matrix requires one completely fresh isolated service')
-  // Exclusive fixed NEW database only. Never DROP/rename/replace an existing DB.
-  await main.query('CREATE DATABASE agent_studio TEMPLATE template0 OWNER agentstudio_admin')
-  admin=add({...mainOptions,database:'agent_studio',ssl:false,options:'',max:2})
+  containerLease=await containers.createNativeAdminCiContainer(capability)
+  adminOptions=containers.nativeAdminCiContainerAdminOptions(containerLease)
+  admin=add(adminOptions)
   targetIdentity=await identity(admin,'agent_studio')
-  assert.equal(targetIdentity.system_identifier,rootIdentity.system_identifier);assert.notEqual(targetIdentity.oid,rootIdentity.oid)
+  assert.equal(await containers.verifyNativeAdminCiContainer(containerLease),true)
+  setupPhase='original_fresh050'
   const c=await connect(admin)
   try{
    await c.query('BEGIN');await c.query(snapshot.baseline.sql)
@@ -119,11 +115,13 @@ export async function nativeCurrentAdminTcpFixture(capability){
    await baseline.verifyFreshForTest(c);await installer.installFreshRuntime(c,snapshot);await c.query('COMMIT')
   }catch(error){await c.query('ROLLBACK').catch(()=>{});throw error}finally{release(c)}
   await nativeRoles(false)
+  setupPhase='fixed_native_activation'
   const nativePassword=randomBytes(40).toString('hex')
   await admin.query("ALTER ROLE agentstudio_native_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+activation.makeNativeScramVerifier(nativePassword)+"'")
   await nativeRoles(true)
-  const authOptions={...mainOptions,database:'agent_studio',user:'agentstudio_native_login',password:nativePassword,ssl:false,options:'',max:2}
+  const authOptions={...adminOptions,user:'agentstudio_native_login',password:nativePassword,max:2}
   auth=add(authOptions);repo=new native.NativeAuthRepository(auth)
+  setupPhase='original_native_seed'
   const credentials={A:{email:'native-ci-a@example.test',password:'NativeCiA#2026'+randomBytes(16).toString('hex')},B:{email:'native-ci-b@example.test',password:'NativeCiB#2026'+randomBytes(16).toString('hex')},C:{email:'native-ci-c@example.test',password:'NativeCiC#2026'+randomBytes(16).toString('hex')}}
   const users={A:await repo.provisionInitialAdmin({...credentials.A,display_name:'Synthetic Native A'})}
   const A=await repo.login(credentials.A.email,credentials.A.password)
@@ -180,9 +178,15 @@ export async function nativeCurrentAdminTcpFixture(capability){
   const login=async name=>{assert.ok(Object.hasOwn(credentials,name));return repo.login(credentials[name].email,credentials[name].password)}
   const changeB=async changes=>{const current=(await repo.listEmployees(A.token)).find(row=>row.id===users.B.id);assert.ok(current);return repo.changeEmployee(A.token,{request_id:randomUUID(),target_id:users.B.id,expected_revision:current.revision,is_admin:current.is_admin,enabled:current.enabled,share_enabled:current.share_enabled,...changes,confirm:true})}
   return {probe,login,changeB,repo,A,users,readOnly,image,guardModule,
-   async unchangedSchema(){assert.equal(await schema(),schemaBaseline);await nativeRoles(true);assert.deepEqual(await identity(main,'agentstudio_pg18_ci'),rootIdentity);assert.deepEqual(await identity(admin,'agent_studio'),targetIdentity);assert.equal(fresh.captureFreshRuntimeSources().source_sha256,freshPin)},
+   async unchangedSchema(){assert.equal(await schema(),schemaBaseline);await nativeRoles(true);assert.equal(await containers.verifyNativeAdminCiContainer(containerLease),true);assert.deepEqual(await identity(admin,'agent_studio'),targetIdentity);assert.equal(fresh.captureFreshRuntimeSources().source_sha256,freshPin)},
    async final(){await nativeRoles(true);assert.equal(await repo.inspectEmployeeGovernance(),true);const rows=(await admin.query("SELECT (SELECT count(*)::integer FROM agentstudio_auth.accounts) AS accounts,(SELECT count(*)::integer FROM agentstudio_auth.employee_governance_events) AS audit,(SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs,NOT EXISTS(SELECT 1 FROM pg_database WHERE datname='agent_studio_telemetry') AS no_telemetry")).rows[0];assert.equal(rows.accounts,3);assert.ok(rows.audit>=6);assert.equal(rows.jobs,0);assert.equal(rows.runs,0);assert.equal(rows.no_telemetry,true);await this.unchangedSchema()},
    close,
   }
- }catch(error){try{await close()}catch(cleanup){throw new AggregateError([error,cleanup],'native_admin_ci_setup_and_cleanup_failed')}throw error}
+ }catch(error){
+  let code,message;try{code=Object.getOwnPropertyDescriptor(error,'code')?.value;message=Object.getOwnPropertyDescriptor(error,'message')?.value}catch{}
+  const closedContainerError=typeof message==='string'&&/^native_admin_container_ci_refused:[a-z_]{1,48}(?::(?:[A-Z0-9]{5}|NO_SQLSTATE))?$/.test(message)
+  const primary=Error(closedContainerError?message:'native_admin_ci_setup_failed:'+setupPhase+':'+(typeof code==='string'&&/^[A-Z0-9]{5}$/.test(code)?code:'NO_SQLSTATE'))
+  try{await close()}catch{throw new AggregateError([primary,Error('native_admin_ci_owned_cleanup_failed')],'native_admin_ci_setup_and_cleanup_failed')}
+  throw primary
+ }
 }
