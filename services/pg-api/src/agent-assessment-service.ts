@@ -12,6 +12,7 @@ import type {Duplex} from "node:stream"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 import type {PgRuntimeTarget} from "./pg-runtime-target.ts"
 import type {AgentAssessmentProof,AgentAssessmentReply} from "./agent-assessment-contract.ts"
+import {agentDesignExecutionApproval,loadAgentDesignAuditVerifier,inspectAgentDesignApiPool,assertAgentDesignSession,type AgentDesignAuditVerifier} from "./agent-design-runtime-policy.ts"
 import {agentAssessmentServiceConfig,parseAgentAssessmentServiceArgs,agentAssessmentServiceOfflinePlan,agentAssessmentServiceHelp,readAgentAssessmentCredential,inspectAgentAssessmentCredential,agentAssessmentDatabasePassword,assertAgentAssessmentServiceTls,type AgentAssessmentServiceKind} from "./agent-assessment-service-config.ts"
 
 function adapter(pool:PgPool,scope?:{knowledgeSharing:boolean;knowledgeTools:boolean}):SqlPool{
@@ -29,6 +30,18 @@ export async function inspectAgentAssessmentOperatorPool(pool:SqlPool,target:PgR
     await db.query("SET LOCAL lock_timeout='3s'");await db.query("SET LOCAL statement_timeout='8s'")
     await assertAgentAssessmentSession(db,role);await db.query("SET LOCAL ROLE "+role)
     if((await db.query<{role:string}>("SELECT current_user AS role")).rows[0]?.role!==role||!await verifyAgentAssessmentCredentials(db))throw Error("agent_assessment_preflight_refused")
+  }finally{try{if(begun)await db.query("ROLLBACK")}finally{db.release()}}
+}
+export async function inspectAgentDesignOperatorPool(pool:SqlPool,target:PgRuntimeTarget,kind:"worker"|"dispatch",audit:AgentDesignAuditVerifier):Promise<void>{
+  const {verifyPgRuntimeTarget}=await import("./pg-runtime-target.ts")
+  await verifyPgRuntimeTarget(pool,target)
+  const db=await pool.connect();let begun=false
+  const role=kind==="worker"?"agentstudio_design_worker":"agentstudio_design_dispatch"
+  try{
+    await db.query("BEGIN READ ONLY");begun=true
+    await assertAgentDesignSession(db,role);await db.query("SET LOCAL ROLE "+role)
+    await db.query("SET LOCAL lock_timeout='3s'");await db.query("SET LOCAL statement_timeout='8s'")
+    if((await db.query<{role:string}>("SELECT current_user AS role")).rows[0]?.role!==role||!await audit(db))throw Error("agent_design_preflight_refused")
   }finally{try{if(begun)await db.query("ROLLBACK")}finally{db.release()}}
 }
 async function inspectApiSchema(pool:SqlPool):Promise<void>{
@@ -53,6 +66,10 @@ export function createAgentAssessmentServiceAdmission(dispatch:(proof:AgentAsses
   let drain:Promise<void>|undefined
   return {
     close(){closing=true},
+    dispatchOwned<T>(operation:()=>Promise<T>):Promise<T>{
+      if(closing)return Promise.reject(Error("agent_assessment_service_closing"))
+      return track(Promise.resolve().then(()=>{if(closing)throw Error("agent_assessment_service_closing");return operation()}),dispatches)
+    },
     dispatch(proof:AgentAssessmentProof):Promise<AgentAssessmentReply>{
       if(closing)return Promise.reject(Error("agent_assessment_service_closing"))
       return track(Promise.resolve().then(()=>{if(closing)throw Error("agent_assessment_service_closing");return dispatch(proof)}),dispatches)
@@ -89,11 +106,12 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
   let encryptionKey:Buffer|undefined
   let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
   let closeClient:undefined|(()=>void)
+  let closeDesign:undefined|(()=>void)
   const pools:PgPool[]=[];let shutdown:undefined|(()=>Promise<void>)
   const endPools=async()=>{const results=await Promise.allSettled(pools.map(pool=>pool.end()));if(results.some(result=>result.status==="rejected"))throw Error("agent_assessment_pool_shutdown_failed")}
-  const clear=()=>{heartbeat?.close();closeClient?.();for(const bytes of buffers)bytes.fill(0);encryptionKey?.fill(0)}
+  const clear=()=>{heartbeat?.close();closeClient?.();closeDesign?.();for(const bytes of buffers)bytes.fill(0);encryptionKey?.fill(0)}
   try{
-    const passwordNames=kind==="worker"?["worker.secret"]:["api.secret","dispatch.secret","broker.secret"],passwords=passwordNames.map(name=>agentAssessmentDatabasePassword(read(name)))
+    const passwordNames=[...(kind==="worker"?["worker.secret"]:["api.secret","dispatch.secret","broker.secret"]),...(cfg.design?[kind==="worker"?"design-worker.secret":"design-dispatch.secret"]:[])],passwords=passwordNames.map(name=>agentAssessmentDatabasePassword(read(name)))
     if(new Set(passwords).size!==passwords.length)throw Error("unsafe_agent_assessment_credential")
     // Preflight checks encryption-key metadata only, never decrypts a model
     // credential or loads the model encryption key into executable Broker.
@@ -110,9 +128,22 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
       const {verifyBoundDispatchRole}=await import("./bound-dispatch-role-preflight.ts")
       await verifyBoundDispatchRole(business,cfg.target,"api");await verifyBoundDispatchRole(secret,cfg.target,"broker");await inspectApiSchema(business)
     }
+    let designAudit:AgentDesignAuditVerifier|undefined,designDedicated:SqlPool|undefined,designBusiness:SqlPool|undefined,designSecret:SqlPool|undefined
+    if(cfg.design){
+      designAudit=await loadAgentDesignAuditVerifier()
+      const login=kind==="worker"?cfg.designWorkerLogin:cfg.designDispatchLogin
+      designDedicated=connect(login,passwords.at(-1)!)
+      await inspectAgentDesignOperatorPool(designDedicated,{...cfg.target,user:login},kind==="worker"?"worker":"dispatch",designAudit)
+      if(kind==="broker"){
+        designBusiness=connect("agentstudio_stage_login",passwords[0]!);designSecret=connect("agentstudio_model_broker_login",passwords[2]!)
+        const {verifyBoundDispatchRole}=await import("./bound-dispatch-role-preflight.ts")
+        await verifyBoundDispatchRole(designBusiness,cfg.target,"api");await verifyBoundDispatchRole(designSecret,cfg.target,"broker")
+        await inspectAgentDesignApiPool(designBusiness,designAudit)
+      }
+    }
     if(mode==="preflight"){
       await bounded(endPools(),10000);clear()
-      return {mode,service:kind,ready:true,read_only:true,verified_roles:kind==="worker"?1:3,tls_material_verified:true,encryption_key_loaded:false,db_writes_performed:false,port_opened:false,worker_started:false,external_model_calls:false,production_cutover_allowed:false}
+      return {mode,service:kind,ready:true,read_only:true,verified_roles:(kind==="worker"?1:3)+(cfg.design?(kind==="worker"?1:3):0),design_enabled:cfg.design,tls_material_verified:true,encryption_key_loaded:false,db_writes_performed:false,port_opened:false,worker_started:false,external_model_calls:false,production_cutover_allowed:false}
     }
     const {agentAssessmentApproval}=await import("./agent-assessment-contract.ts"),activation={executionEnabled:true,executionApproval:agentAssessmentApproval}
     if(kind==="worker"){
@@ -121,19 +152,37 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
       closeClient=client.close
       if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('assessment')
       const worker=new AgentAssessmentWorker(dedicated,randomUUID(),client,activation)
-      const closeWorkerClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
+      let designWorker:import("./agent-design-worker.ts").AgentDesignWorker|undefined,designClient:import("./agent-design-client.ts").AgentDesignMutualTlsClient|undefined
+      if(cfg.design){
+        const [{AgentDesignWorker},{createAgentDesignMutualTlsClient}]=await Promise.all([import("./agent-design-worker.ts"),import("./agent-design-client.ts")])
+        const designActivation={executionEnabled:true,executionApproval:agentDesignExecutionApproval,audit:designAudit}
+        designClient=createAgentDesignMutualTlsClient({...designActivation,origin:cfg.origin,reviewedServerFingerprint256:cfg.serverFingerprint,ca,cert,key:tlsKey})
+        closeDesign=designClient.close
+        designWorker=new AgentDesignWorker(designDedicated!,randomUUID(),designClient,designActivation)
+      }
+      const closeWorkerClaims=()=>{worker.closeNewClaims();designWorker?.closeNewClaims();if(worker.claimAdmissionSnapshot().closed&&(!designWorker||designWorker.claimAdmissionSnapshot().closed))heartbeat?.newClaimsClosed()}
       heartbeat?.startupChecksComplete()
       let stopping=false;const stopDelay=new AbortController()
+      const designLoop=designWorker?(async()=>{while(!stopping){try{await designWorker!.tick()}catch{heartbeat?.loopUnavailable();process.stderr.write("AGENT_DESIGN_WORKER_TICK_UNAVAILABLE\n")}if(!stopping)await delay(750,undefined,{signal:stopDelay.signal}).catch(()=>undefined)}})():Promise.resolve()
       const loop=(async()=>{while(!stopping){let wait=1500;try{const result=await worker.tick();wait=result.state==="idle"?750:100;if(result.state!=="idle")process.stdout.write(JSON.stringify({service:"agent-assessment-worker",state:result.state})+"\n")}catch{heartbeat?.loopUnavailable();process.stderr.write("AGENT_ASSESSMENT_WORKER_TICK_UNAVAILABLE\n")}if(!stopping)await delay(wait,undefined,{signal:stopDelay.signal}).catch(()=>undefined)}})()
       let closing:Promise<void>|undefined
-      shutdown=()=>{stopping=true;closeWorkerClaims();stopDelay.abort();return closing??(closing=(async()=>{try{await bounded(loop,55000)}finally{closeClient?.();try{await bounded(endPools(),5000)}finally{clear()}}})())}
+      shutdown=()=>{stopping=true;closeWorkerClaims();stopDelay.abort();return closing??(closing=(async()=>{try{await bounded(Promise.all([loop,designLoop]),55000)}finally{closeClient?.();closeDesign?.();try{await bounded(endPools(),5000)}finally{clear()}}})())}
       return {mode,service:kind,ready:true,worker_started:true,execution_enabled:true,production_cutover_allowed:false,close:shutdown}
     }
     const [{parseModelEncryptionKey},{AgentAssessmentBroker},{createAgentAssessmentInternalHandler},{createServer}]=await Promise.all([import("./model-connection-crypto.ts"),import("./agent-assessment-broker.ts"),import("./agent-assessment-client.ts"),import("node:https")])
     encryptionKey=parseModelEncryptionKey(read("model-encryption.secret").toString("utf8"))
     if(passwords.includes(encryptionKey.toString("hex")))throw Error("unsafe_agent_assessment_credential")
     const broker=new AgentAssessmentBroker(business!,dedicated,secret!,encryptionKey,activation),admission=createAgentAssessmentServiceAdmission(proof=>broker.dispatch(proof))
-    const handler=admission.handler(createAgentAssessmentInternalHandler({...activation,reviewedClientFingerprint256:cfg.clientFingerprint,dispatch:proof=>admission.dispatch(proof)}))
+    const reviewHandler=admission.handler(createAgentAssessmentInternalHandler({...activation,reviewedClientFingerprint256:cfg.clientFingerprint,dispatch:proof=>admission.dispatch(proof)}))
+    let designHandler:((req:IncomingMessage,res:ServerResponse)=>Promise<void>)|undefined
+    if(cfg.design){
+      const [{AgentDesignBroker},{createAgentDesignInternalHandler}]=await Promise.all([import("./agent-design-broker.ts"),import("./agent-design-client.ts")])
+      const designActivation={executionEnabled:true,executionApproval:agentDesignExecutionApproval,audit:designAudit}
+      const designBroker=new AgentDesignBroker(designBusiness!,designDedicated!,designSecret!,encryptionKey,designActivation)
+      closeDesign=()=>designBroker.close()
+      designHandler=admission.handler(createAgentDesignInternalHandler({...designActivation,reviewedClientFingerprint256:cfg.clientFingerprint,dispatch:proof=>admission.dispatchOwned(()=>designBroker.dispatch(proof))}))
+    }
+    const handler=(req:IncomingMessage,res:ServerResponse)=>req.url==="/__internal/v1/agent-design/dispatch"&&designHandler?designHandler(req,res):reviewHandler(req,res)
     const server=createServer({ca,cert,key:tlsKey,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},(req,res)=>{void handler(req,res).catch(()=>res.destroy())})
     server.on("connection",socket=>admission.trackSocket(socket))
     server.requestTimeout=60000;server.headersTimeout=12000;server.keepAliveTimeout=1000;server.maxRequestsPerSocket=1

@@ -49,6 +49,6 @@ test('assessment first-signal hook invokes synchronous actual close before its p
  hook(()=>{calls++;return pending},control);signals.emit('SIGTERM');assert.equal(calls,1);signals.emit('SIGTERM');signals.emit('SIGINT');assert.equal(calls,1);assert.equal(exited,0)
  finish();await Promise.resolve();await Promise.resolve()
  assert.match(source,/shutdown=\(\)=>\{stopping=true;closeWorkerClaims\(\);stopDelay\.abort\(\)/)
- assert.match(source,/worker\.closeNewClaims\(\);if\(worker\.claimAdmissionSnapshot\(\)\.closed\)heartbeat\?\.newClaimsClosed/)
+ assert.match(source,/worker\.closeNewClaims\(\);designWorker\?\.closeNewClaims\(\);if\(worker\.claimAdmissionSnapshot\(\)\.closed&&\(!designWorker\|\|designWorker\.claimAdmissionSnapshot\(\)\.closed\)\)heartbeat\?\.newClaimsClosed/)
  assert.ok(source.indexOf('if(mode==="preflight")')<source.indexOf('.openWorkerHeartbeatWorkerLifecycle('))
 })

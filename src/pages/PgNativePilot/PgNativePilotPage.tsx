@@ -33,6 +33,8 @@ import PgNativeAgentDerivedMemoryPanel from "./PgNativeAgentDerivedMemoryPanel"
 import PgNativeAgentCollaborationPanel from "./PgNativeAgentCollaborationPanel"
 import PgNativeAgentReleasePanel from "./PgNativeAgentReleasePanel"
 import OwnOperationsPanel from "./OwnOperationsPanel"
+import PgNativeAgentDesignPanel from "./PgNativeAgentDesignPanel.tsx"
+import {createPgNativeAgentDesignApi} from "@/lib/pgNativeAgentDesign"
 import CompanyOverviewPanel from "./CompanyOverviewPanel"
 import {createPgNativeCompanyOverviewApi} from "@/lib/pgNativeCompanyOverview"
 import {createPgNativeCompanyWorkerHeartbeatsApi} from "@/lib/pgNativeCompanyWorkerHeartbeats"
@@ -83,6 +85,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const companyWorkerApi=useMemo(()=>createPgNativeCompanyWorkerHeartbeatsApi({transport:fetch,
     rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
+  const designApi=useMemo(()=>createPgNativeAgentDesignApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const authenticatedApi=useRef(api)
   const apiMatches=authenticatedApi.current===api
   const [status,setStatus]=useState<State>("checking")
@@ -147,6 +150,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [agentReview,setAgentReview]=useState({available:false,enabled:false,history:false})
   const [generatedAcceptance,setGeneratedAcceptance]=useState({available:false,enabled:false})
   const [descriptivePatch,setDescriptivePatch]=useState({available:false,enabled:false})
+  const [agentDesign,setAgentDesign]=useState({available:false,submissions:false,saves:false})
+  const [agentDesignOpened,setAgentDesignOpened]=useState(false)
+  useEffect(()=>{if(agentDesign.available)setAgentDesignOpened(true)},[agentDesign.available])
   const [derivedMemoryOpened,setDerivedMemoryOpened]=useState(false)
   useEffect(()=>{if(derivedMemory.available)setDerivedMemoryOpened(true)},[derivedMemory.available])
   const [modelConnections,setModelConnections]=useState<PgNativeModelConnection[]>([])
@@ -203,6 +209,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setAgentReview({available:false,enabled:false,history:false})
     setGeneratedAcceptance({available:false,enabled:false})
     setDescriptivePatch({available:false,enabled:false})
+    setAgentDesign({available:false,submissions:false,saves:false});setAgentDesignOpened(false)
     setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
@@ -231,6 +238,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setCompanyOverviewAvailable(false);setCompanyWorkerHeartbeatsAvailable(false)
     setGeneratedAcceptance(previous=>({...previous,enabled:false}))
     setDescriptivePatch(previous=>({...previous,enabled:false}))
+    setAgentDesign({available:false,submissions:false,saves:false})
     setRunSubmissionEnabled(false);setBoundModelRunsEnabled(false);setAutonomousEnabled(false);setScheduleEnabled(false)
     setLoading(true)
     try{
@@ -286,6 +294,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setAgentReview({available:capability?.agent_review_available===true,enabled:capability?.agent_review_available===true&&capability.agent_review_submission_enabled===true&&capability.config_writes_enabled===true,history:capability?.agent_review_available===true&&capability.agent_review_history_available===true})
       setGeneratedAcceptance({available:capability?.agent_generated_acceptance_available===true,enabled:capability?.agent_generated_acceptance_enabled===true&&capability.config_writes_enabled===true})
       setDescriptivePatch({available:capability?.agent_descriptive_patch_available===true,enabled:capability?.agent_descriptive_patch_enabled===true&&capability.config_writes_enabled===true})
+      setAgentDesign({available:capability?.agent_design_available===true,submissions:capability?.agent_design_submissions_enabled===true&&capability.config_writes_enabled===true,saves:capability?.agent_design_saves_enabled===true&&capability.config_writes_enabled===true})
       setOutcomeMemory({available:capability?.agent_outcome_memory_available===true,enabled:capability?.agent_outcome_memory_admission_enabled===true&&capability.config_writes_enabled===true})
       setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
@@ -677,6 +686,11 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 mcpEnabled={mcpToolsEnabled}
                 active={section==="autonomousAgent"} enabled={autonomousEnabled&&!loading&&!busy} onExpired={expireOriginalTaskSession}/>
             </div>
+            <div hidden={section!=="agents"}>{(agentDesignOpened||agentDesign.available)&&<PgNativeAgentDesignPanel key={profile.id+":design"} api={designApi} employeeId={profile.id}
+              active={apiMatches&&section==="agents"} available={agentDesign.available}
+              submissions={agentDesign.submissions&&!loading&&!busy} saves={agentDesign.saves&&!loading&&!busy}
+              models={modelConnections.filter(c=>c.enabled&&c.status==="ok").flatMap(c=>c.models.map(model_id=>({connection_id:c.id,connection_revision:c.revision,model_id,label:c.name})))}
+              sources={agents.map(a=>({spec_id:a.id,name:a.name}))} onExpired={expireAgentSession}/>}</div>
             {section==="agents"&&<>
               {canEditConfig&&<CreateCard title="创建 Agent 配置" description="创建后写入本人独立的 PG18 Agent 记录，不会自动运行。">
                 <form className="space-y-3" onSubmit={e=>{e.preventDefault();void action(()=>

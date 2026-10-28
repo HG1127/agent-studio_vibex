@@ -43,6 +43,9 @@ import {AgentDescriptivePatchAcceptanceRepository} from "./agent-descriptive-pat
 import {inspectAgentDescriptivePatchSchema} from "./agent-descriptive-patch-audit.ts"
 import {createAgentDescriptivePatchHttpHandler} from "./agent-descriptive-patch-http.ts"
 import {AgentReviewSourceRepository} from "./agent-review-source.ts"
+import {AgentDesignLedgerRepository} from "./agent-design-ledger.ts"
+import {createAgentDesignHttpHandler} from "./agent-design-http.ts"
+import {selectNativeAgentDesignCapabilities,loadAgentDesignAuditVerifier,inspectAgentDesignApiPool,type AgentDesignAuditVerifier} from "./agent-design-runtime-policy.ts"
 import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
@@ -321,6 +324,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   // No UAT capabilities are permitted with --preflight.
   const capabilities=selectNativePg18UatCapabilities(
     env,listen,cfg.allowedOrigin)
+  const agentDesign=selectNativeAgentDesignCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
@@ -438,6 +442,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.agentReviewSubmissionUat===true&&!reviewAvailable)throw Error("agent_review_schema_required")
     if(capabilities.agentGeneratedAcceptanceUat===true&&!generatedAcceptanceAvailable)throw Error("agent_generated_schema_required")
     if(capabilities.agentDescriptivePatchUat===true&&!descriptivePatchAvailable)throw Error("agent_descriptive_patch_schema_required")
+    // Default-off performs no new auditor import, SQL, credential read or network.
+    let agentDesignAudit:AgentDesignAuditVerifier|undefined
+    if(agentDesign.available){agentDesignAudit=await loadAgentDesignAuditVerifier();await inspectAgentDesignApiPool(business,agentDesignAudit)}
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -483,6 +490,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
       allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
+      allowAgentDesign:agentDesign.available,allowAgentDesignSubmissions:agentDesign.submissions,allowAgentDesignSaves:agentDesign.saves,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
@@ -578,8 +586,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
     })
     // This fixed GET-only boundary handles only company Worker metadata.
     // Every fallback still crosses the original global Native route policy.
+    const agentDesignHttp=agentDesign.available?createAgentDesignHttpHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      repository:new AgentDesignLedgerRepository(business,{audit:agentDesignAudit,allowSubmissions:agentDesign.submissions,allowSaves:agentDesign.saves}),
+    }):null
     const guardedBusinessHandler=businessHandler
     businessHandler=async(req,res)=>{
+      // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
+      // and original-receipt gates, including recovery after new writes turn off.
+      if(agentDesignHttp&&await agentDesignHttp(req,res))return
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }

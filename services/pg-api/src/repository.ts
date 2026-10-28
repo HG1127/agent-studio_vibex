@@ -55,6 +55,13 @@ export async function withActor<T>(
   }
 }
 
+/** Original-client062 save RPC: SQL performs Agent+045 history+receipt+audit
+ * atomically; this helper owns no transaction, pool or nested Actor scope. */
+export async function recordAgentDesignSaveOnClient(db:SqlClient,owner:string,intent:unknown,preview:unknown):Promise<unknown>{
+  await assertOwnedAdmissionContext(db,owner)
+  return (await db.query<{value:unknown}>("SELECT agentstudio.agent_design_save_record($1::jsonb,$2::jsonb) AS value",[JSON.stringify(intent),JSON.stringify(preview)])).rows[0]?.value
+}
+
 export interface SpecRow {
   id:string
   owner_user_id:string
