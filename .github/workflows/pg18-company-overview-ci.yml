@@ -73,3 +73,57 @@ jobs:
         run: >-
           node --experimental-strip-types --test --test-concurrency=1
           services/pg-api/tests/company-overview-tcp.integration.mjs
+
+  pg18-company-overview-native-http:
+    name: PostgreSQL 18 / Native Cookie / company metadata and current authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout reviewed candidate
+        uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and unchanged ordinary-machine guard
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:pg18:tcp:guard
+      - name: New Native HTTP entry refuses before imports or listening
+        run: |
+          node --input-type=module -e '
+          import {spawnSync} from "node:child_process";
+          const env={...process.env,CI:"false",GITHUB_ACTIONS:"false"};
+          delete env.NODE_OPTIONS;
+          const result=spawnSync(process.execPath,["--experimental-strip-types","--test","services/pg-api/tests/company-overview-native-http.integration.mjs"],{env,encoding:"utf8",timeout:15000});
+          const output=(result.stdout??"")+(result.stderr??"");
+          if(result.status!==1||!output.includes("refuse_non_ephemeral_pg18_ci")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(output))throw Error("company_native_http_ci_guard_did_not_refuse");
+          process.stdout.write("Company Native HTTP entry refused before runtime imports/listening.\n");'
+      - name: Actual independent061 service with Native Cookie and shared global policy
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        run: >-
+          node --experimental-strip-types --test --test-concurrency=1
+          services/pg-api/tests/company-overview-native-http.integration.mjs

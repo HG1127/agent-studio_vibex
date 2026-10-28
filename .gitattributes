@@ -126,3 +126,4 @@ tests/pg-native-browser/agent-descriptive-patch.spec.mjs text eol=lf
 /services/pg-api/tests/company-overview-repository.test.mjs text eol=lf
 /services/pg-api/tests/company-overview-tcp.integration.mjs text eol=lf
 /tests/company-overview-contract.test.mjs text eol=lf
+/services/pg-api/tests/company-overview-native-http.integration.mjs text eol=lf
