@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import {createHash,randomBytes,randomUUID} from 'node:crypto'
 import {readFileSync} from 'node:fs'
 import {performance} from 'node:perf_hooks'
+import {isIP} from 'node:net'
 import {workerHeartbeatCiAdminOptions} from './worker-heartbeat-ci-guard.mjs'
 
 const freshPin='0a3baa8dd28309b5b133c10be944f803d10a71fc5bef1805d26153c69e813a13'
@@ -39,7 +40,7 @@ export async function nativeCurrentAdminTcpFixture(capability){
  const pools=new Set(),live=new Set(),probes=new Set(),seen=new WeakSet()
  const add=options=>{const pool=new pg.Pool(options);pool.on('error',()=>{});pools.add(pool);return pool}
  const main=add({...mainOptions,ssl:false,options:''})
- let admin,auth,repo,rootIdentity,closed=false,schemaBaseline
+ let admin,auth,repo,rootIdentity,targetIdentity,closed=false,schemaBaseline
  const watch=client=>{if(!seen.has(client)){seen.add(client);client.on('error',()=>{})}return client}
  const release=(client,destroy=false)=>{live.delete(client);client.release(destroy)}
  const connect=async pool=>{const client=watch(await pool.connect());live.add(client);return client}
@@ -47,9 +48,15 @@ export async function nativeCurrentAdminTcpFixture(capability){
  async function identity(pool,database){
   const row=(await pool.query("SELECT current_database() AS database,session_user::text AS login,current_user::text AS actor,host(inet_server_addr()) AS host,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,(pg_control_system()).system_identifier::text AS system_identifier,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS oid,(SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()) AS owner,(SELECT rolsuper FROM pg_roles WHERE rolname=session_user) AS superuser,NOT pg_is_in_recovery() AS primary")).rows[0]
   assert.equal(row.database,database);assert.equal(row.login,'agentstudio_admin');assert.equal(row.actor,row.login)
-  assert.equal(row.host,'127.0.0.1');assert.equal(row.port,5432);assert.equal(row.encoding,'UTF8');assert.equal(row.owner,'agentstudio_admin')
+  // Client host stays the original private guard's127.0.0.1:5432. PostgreSQL
+  // reports its actual container interface behind that published client port.
+  // Preserve that IPv4 as observed metadata; never rewrite it to loopback.
+  assert.equal(isIP(row.host),4);assert.equal(row.port,5432);assert.equal(row.encoding,'UTF8');assert.equal(row.owner,'agentstudio_admin')
   assert.equal(row.superuser,true);assert.equal(row.primary,true);assert.ok(row.version>=180000&&row.version<190000)
   assert.match(row.oid,/^[1-9][0-9]*$/);assert.match(row.system_identifier,/^[1-9][0-9]*$/)
+  if(rootIdentity){assert.equal(row.host,rootIdentity.host);assert.equal(row.system_identifier,rootIdentity.system_identifier)}
+  const expected=database==='agentstudio_pg18_ci'?rootIdentity:targetIdentity
+  if(expected)assert.equal(row.oid,expected.oid)
   return row
  }
  async function nativeRoles(enabled){
@@ -99,7 +106,7 @@ export async function nativeCurrentAdminTcpFixture(capability){
   // Exclusive fixed NEW database only. Never DROP/rename/replace an existing DB.
   await main.query('CREATE DATABASE agent_studio TEMPLATE template0 OWNER agentstudio_admin')
   admin=add({...mainOptions,database:'agent_studio',ssl:false,options:'',max:2})
-  const targetIdentity=await identity(admin,'agent_studio')
+  targetIdentity=await identity(admin,'agent_studio')
   assert.equal(targetIdentity.system_identifier,rootIdentity.system_identifier);assert.notEqual(targetIdentity.oid,rootIdentity.oid)
   const c=await connect(admin)
   try{
@@ -173,7 +180,7 @@ export async function nativeCurrentAdminTcpFixture(capability){
   const login=async name=>{assert.ok(Object.hasOwn(credentials,name));return repo.login(credentials[name].email,credentials[name].password)}
   const changeB=async changes=>{const current=(await repo.listEmployees(A.token)).find(row=>row.id===users.B.id);assert.ok(current);return repo.changeEmployee(A.token,{request_id:randomUUID(),target_id:users.B.id,expected_revision:current.revision,is_admin:current.is_admin,enabled:current.enabled,share_enabled:current.share_enabled,...changes,confirm:true})}
   return {probe,login,changeB,repo,A,users,readOnly,image,guardModule,
-   async unchangedSchema(){assert.equal(await schema(),schemaBaseline);await nativeRoles(true);assert.deepEqual(await identity(main,'agentstudio_pg18_ci'),rootIdentity);assert.equal(fresh.captureFreshRuntimeSources().source_sha256,freshPin)},
+   async unchangedSchema(){assert.equal(await schema(),schemaBaseline);await nativeRoles(true);assert.deepEqual(await identity(main,'agentstudio_pg18_ci'),rootIdentity);assert.deepEqual(await identity(admin,'agent_studio'),targetIdentity);assert.equal(fresh.captureFreshRuntimeSources().source_sha256,freshPin)},
    async final(){await nativeRoles(true);assert.equal(await repo.inspectEmployeeGovernance(),true);const rows=(await admin.query("SELECT (SELECT count(*)::integer FROM agentstudio_auth.accounts) AS accounts,(SELECT count(*)::integer FROM agentstudio_auth.employee_governance_events) AS audit,(SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs,NOT EXISTS(SELECT 1 FROM pg_database WHERE datname='agent_studio_telemetry') AS no_telemetry")).rows[0];assert.equal(rows.accounts,3);assert.ok(rows.audit>=6);assert.equal(rows.jobs,0);assert.equal(rows.runs,0);assert.equal(rows.no_telemetry,true);await this.unchangedSchema()},
    close,
   }
