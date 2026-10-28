@@ -72,6 +72,9 @@ jobs:
           services/pg-api/tests/workflow-safe-claim-admission.test.mjs
           services/pg-api/tests/workflow-v2-claim-admission.test.mjs
           services/pg-api/tests/schedule-claim-admission.test.mjs
+          services/pg-api/tests/knowledge-index-claim-admission.test.mjs
+          services/pg-api/tests/knowledge-query-claim-admission.test.mjs
+          services/pg-api/tests/assessment-claim-admission.test.mjs
           services/pg-api/tests/worker-heartbeat-audit.test.mjs
       - name: Actual fresh-service TCP case beside unchanged full060/full061
         env:

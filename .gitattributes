@@ -187,3 +187,13 @@ services/pg-api/tests/workflow-v2-claim-admission.test.mjs text eol=lf
 # Genuine independent LOGIN telemetry replay and fencing probes
 services/pg-api/tests/helpers/worker-heartbeat-runtime-ci.mjs text eol=lf
 services/pg-api/tests/worker-heartbeat-runtime-tcp.integration.mjs text eol=lf
+
+# Remaining knowledge and assessment claim transaction admission
+services/pg-api/src/agent-assessment-worker.ts text eol=lf
+services/pg-api/src/knowledge-index-role.ts text eol=lf
+services/pg-api/src/knowledge-index-worker.ts text eol=lf
+services/pg-api/src/knowledge-query-role.ts text eol=lf
+services/pg-api/src/knowledge-query-worker.ts text eol=lf
+services/pg-api/tests/assessment-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/knowledge-index-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/knowledge-query-claim-admission.test.mjs text eol=lf
