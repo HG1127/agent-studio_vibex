@@ -114,7 +114,11 @@ export function assertWorkerHeartbeatActivationControlRuntimeEnvironment(env,exe
   }
 }
 export function assertWorkerHeartbeatActivationControlRuntimeMetadata(raw,kind){
-  const m=closed(raw,['type','symlink','uid','gid','mode','nlink','size'])
+  metadataValues(closed(raw,['type','symlink','uid','gid','mode','nlink','size']),kind)
+}
+// Only module-created meta(st) records bypass the public shape validator.
+// Keep every value/permission check shared with the strict public wrapper.
+function metadataValues(m,kind){
   if(m.symlink!==false||m.uid!==0||m.gid!==0||!Number.isSafeInteger(m.mode)||!Number.isSafeInteger(m.nlink)||m.nlink<1||!Number.isSafeInteger(m.size)||m.size<0)fail()
   const bits=m.mode&0o7777
   if(kind==='ancestor'){if(m.type!=='directory'||(bits&0o7022)!==0)fail()}
@@ -124,10 +128,26 @@ export function assertWorkerHeartbeatActivationControlRuntimeMetadata(raw,kind){
     if(m.type!=='file'||m.nlink!==1||bits!==(kind==='code'?0o444:0o600)||m.size<1||m.size>(kind==='code'?16:2)*1024*1024)fail()
   }else fail()
 }
-const meta=st=>({type:st.isFile()?'file':st.isDirectory()?'directory':'other',symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:st.mode,nlink:st.nlink,size:st.size})
-const stamp=st=>({dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid,nlink:st.nlink,size:st.size,mtimeMs:st.mtimeMs,ctimeMs:st.ctimeMs})
+// Weak membership records constructor provenance only; never filesystem state.
+const metadataRecords=new WeakSet(),stampRecords=new WeakSet()
+const meta=st=>{const record={type:st.isFile()?'file':st.isDirectory()?'directory':'other',symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:st.mode,nlink:st.nlink,size:st.size};Object.freeze(record);metadataRecords.add(record);return record}
+const stamp=st=>{const record={dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid,nlink:st.nlink,size:st.size,mtimeMs:st.mtimeMs,ctimeMs:st.ctimeMs};Object.freeze(record);stampRecords.add(record);return record}
+function trustedMetadata(record,kind){
+  if(!metadataRecords.has(record))fail()
+  metadataValues(record,kind)
+}
+function trustedStable(before,after){
+  if(!stampRecords.has(before)||!stampRecords.has(after))fail()
+  stableValues(before,after)
+}
 export function assertWorkerHeartbeatActivationControlRuntimeStable(before,after){
   const keys=['dev','ino','mode','uid','gid','nlink','size','mtimeMs','ctimeMs'];closed(before,keys);closed(after,keys)
+  stableValues(before,after)
+}
+// Only module-created stamp(st) records and their private saved baselines
+// reach this core. JSON, modules and caller records keep strict validators.
+function stableValues(before,after){
+  const keys=['dev','ino','mode','uid','gid','nlink','size','mtimeMs','ctimeMs']
   if(keys.some(k=>!Number.isFinite(before[k])||before[k]!==after[k]))fail()
 }
 export function assertWorkerHeartbeatActivationControlRuntimeInventory(expected,actual){
@@ -144,7 +164,7 @@ export function assertWorkerHeartbeatActivationControlRuntimeInventory(expected,
 }
 function ancestors(file,privateParent=false){
   let current=path.dirname(file),first=true;const chain=[]
-  for(;;){const st=lstatSync(current);assertWorkerHeartbeatActivationControlRuntimeMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=path.dirname(current);if(parent===current)break;current=parent;first=false}
+  for(;;){const st=lstatSync(current);trustedMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=path.dirname(current);if(parent===current)break;current=parent;first=false}
   if(privateParent)for(const d of chain)for(const name of ['package.json','pnpm-workspace.yaml','.git','pyproject.toml']){try{lstatSync(path.join(d.path,name));fail()}catch(error){if(error?.code!=='ENOENT')throw error}}
   return chain
 }
@@ -159,14 +179,14 @@ function readExactBoundBytes(fd,size){
 }
 function readBound(file,expected,kind,expectedBytes){
   const chain=ancestors(file,kind==='manifest'),before=lstatSync(file)
-  assertWorkerHeartbeatActivationControlRuntimeMetadata(meta(before),kind)
+  trustedMetadata(meta(before),kind)
   if(realpathSync(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
   try{
-    assertWorkerHeartbeatActivationControlRuntimeStable(stamp(before),stamp(fstatSync(fd)))
+    trustedStable(stamp(before),stamp(fstatSync(fd)))
     const bytes=readExactBoundBytes(fd,before.size)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
-    assertWorkerHeartbeatActivationControlRuntimeStable(stamp(before),stamp(fstatSync(fd)));assertWorkerHeartbeatActivationControlRuntimeStable(stamp(before),stamp(lstatSync(file)))
+    trustedStable(stamp(before),stamp(fstatSync(fd)));trustedStable(stamp(before),stamp(lstatSync(file)))
     sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
     return {bytes,stamp:stamp(before),chain}
   }finally{closeSync(fd)}
@@ -274,10 +294,10 @@ function packageInfo(state,name){
 function verifyTree(state,initial=false){
   host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)
   const manifest=readBound(state.manifestFile,state.manifestSha,'manifest')
-  if(state.manifestStamp)assertWorkerHeartbeatActivationControlRuntimeStable(state.manifestStamp,manifest.stamp)
+  if(state.manifestStamp)trustedStable(state.manifestStamp,manifest.stamp)
   if(state.manifestChain)sameChain(state.manifestChain,manifest.chain)
   const lock=readBound(path.join(root,'services/pg-api/pnpm-lock.yaml'),lockSha,'code')
-  if(state.lockStamp)assertWorkerHeartbeatActivationControlRuntimeStable(state.lockStamp,lock.stamp)
+  if(state.lockStamp)trustedStable(state.lockStamp,lock.stamp)
   if(state.lockChain)sameChain(state.lockChain,lock.chain)
   const allowed=new Map(state.files)
   for(const [p,h] of Object.entries(parserPins))allowed.set(prefix+'typescript/'+p,{sha256:h,bytes:undefined})
@@ -286,9 +306,9 @@ function verifyTree(state,initial=false){
   const seen=new Set();let count=0
   const walk=relative=>{
     const directory=lstatSync(path.join(root,relative)),directoryStamp=stamp(directory)
-    assertWorkerHeartbeatActivationControlRuntimeMetadata(meta(directory),'directory')
+    trustedMetadata(meta(directory),'directory')
     const oldDirectory=state.directoryStamps.get(relative)
-    if(oldDirectory)assertWorkerHeartbeatActivationControlRuntimeStable(oldDirectory,directoryStamp)
+    if(oldDirectory)trustedStable(oldDirectory,directoryStamp)
     else if(initial)state.directoryStamps.set(relative,directoryStamp);else fail()
     for(const name of readdirSync(path.join(root,relative))){
       const next=relative+'/'+name,actual=path.join(root,next),st=lstatSync(actual)
@@ -301,14 +321,14 @@ function verifyTree(state,initial=false){
           const p=json(bound.bytes)
           if(p.type!==undefined&&p.type!=='commonjs'&&(p.type!=='module'||!next.includes('/esm/')))fail()
         }
-        if(old)assertWorkerHeartbeatActivationControlRuntimeStable(old,bound.stamp)
+        if(old)trustedStable(old,bound.stamp)
         else if(initial)state.stamps.set(next,bound.stamp);else fail()
         const oldChain=state.chains.get(next)
         if(oldChain)sameChain(oldChain,bound.chain);else if(initial)state.chains.set(next,bound.chain);else fail()
         seen.add(next)
       }
     }
-    assertWorkerHeartbeatActivationControlRuntimeStable(directoryStamp,stamp(lstatSync(path.join(root,relative))))
+    trustedStable(directoryStamp,stamp(lstatSync(path.join(root,relative))))
   }
   walk(prefix.slice(0,-1));assertWorkerHeartbeatActivationControlRuntimeInventory([...allowed.keys()],[...seen])
   for(const name of Object.keys(graph))packageInfo(state,name)
@@ -387,7 +407,7 @@ export function loadWorkerHeartbeatActivationControlPg(capability){
         }
         if(state.failed||parsed.search||parsed.hash||context.format==='module')fail()
         const record=state.files.get(relative),bound=readBound(file,record.sha256,'code',record.bytes)
-        assertWorkerHeartbeatActivationControlRuntimeStable(state.stamps.get(relative),bound.stamp)
+        trustedStable(state.stamps.get(relative),bound.stamp)
         const format=executable(relative);state.loadedSources.add(relative)
         return {format,source:bound.bytes.toString('utf8'),shortCircuit:true}
       },

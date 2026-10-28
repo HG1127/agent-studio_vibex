@@ -287,7 +287,12 @@ function makeApi(s){
   disableReader(){return this.change(draft(s,'disable'))},
   enableReader(){return this.change(draft(s,'activate'))},
   recordFirst:input=>record(s,input),
-  async controlledRead(){const r=await wire(s);try{await r.prepare();return await r.finish()}finally{await r.close();await waitReaders(s)}},
+  async controlledRead(){
+   const start=performance.now(),r=await wire(s);let phase='prepare'
+   try{await r.prepare();process.stdout.write(JSON.stringify({event:'telemetry_control_ci_read_phase',phase,elapsed_ms:Math.round(performance.now()-start)})+'\n');phase='finish';const result=await r.finish();process.stdout.write(JSON.stringify({event:'telemetry_control_ci_read_phase',phase,elapsed_ms:Math.round(performance.now()-start)})+'\n');return result}
+   catch(error){const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;process.stderr.write(JSON.stringify({event:'telemetry_control_ci_read_phase_failed',phase,elapsed_ms:Math.round(performance.now()-start),...(s.contract.controlErrorCodes.includes(code)?{code}:{})})+'\n');throw error}
+   finally{await r.close();await waitReaders(s)}
+  },
   nativeReadAdmin:()=>nativeRead(s,'admin'),nativeReadEmployee:()=>nativeRead(s,'employee'),nativeReadMissing:()=>nativeRead(s,'missing'),
   async openRead(){const r=await wire(s);return Object.freeze({prepare:()=>r.prepare(),finish:()=>r.finish(),cancel:()=>r.cancel(),close:()=>r.close()})},
   async assertReplayRefused(){const r=await wire(s);try{await r.prepare();await r.finish();await assert.rejects(()=>r.finish(),error=>error.code==='untrusted_reference'||error.code==='lease_revoked'||error.code==='lease_replayed')}finally{await r.close();await waitReaders(s)}return true},

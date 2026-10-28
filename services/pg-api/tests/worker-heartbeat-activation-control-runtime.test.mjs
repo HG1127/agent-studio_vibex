@@ -353,3 +353,161 @@ test('byte-pipeline optimization leaves full fresh hash, FD/path/ancestor and ca
 })
 // END additive fresh-byte performance regression section.
 
+
+// BEGIN additive trusted-metadata-value performance regression section.
+// Append this section to the parent's current suite; retain its other tests.
+function runtimeScalarSource(){
+  const source=readFileSync(new URL('../src/worker-heartbeat-activation-control-runtime.mjs',import.meta.url),'utf8'),tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
+  const body=name=>{const found=tree.statements.filter(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.equal(found.length,1);return found[0].getText()}
+  return {source,tree,body}
+}
+function runtimeScalarPolicy(io={},strictInternal=false){
+  const {tree,body}=runtimeScalarSource(),names=['fail','closed','assertWorkerHeartbeatActivationControlRuntimeMetadata','metadataValues','assertWorkerHeartbeatActivationControlRuntimeStable','stableValues','trustedMetadata','trustedStable','ancestors','sameChain','readExactBoundBytes','assertUtf8Bytes','readBound']
+  const declarations=tree.statements.filter(ts.isVariableStatement).flatMap(n=>[...n.declarationList.declarations])
+  const values=['metadataRecords','stampRecords','meta','stamp'].map(name=>'const '+declarations.find(n=>n.name.getText()===name).getText()+';').join('\n')
+  const functions=names.map(name=>{
+    let text=body(name).replace(/^export /,'')
+    // Reference path differs only by routing the same fresh, locally-created
+    // records through public shape checks; both paths run identical values.
+    if(strictInternal&&['ancestors','readBound'].includes(name))text=text.replaceAll('trustedMetadata(','assertWorkerHeartbeatActivationControlRuntimeMetadata(').replaceAll('trustedStable(','assertWorkerHeartbeatActivationControlRuntimeStable(')
+    return text
+  }).join('\n')
+  const {isUtf8}=createRequire(import.meta.url)('node:buffer')
+  return Function('path','sha','isUtf8','lstatSync','realpathSync','openSync','fstatSync','readSync','closeSync','constants',values+'\n'+functions+'\nreturn {metadataValues,stableValues,trustedMetadata,trustedStable,meta,stamp,readBound}')(
+    path.posix,hash,isUtf8,io.lstatSync,io.realpathSync,io.openSync,io.fstatSync,io.readSync,io.closeSync,{O_RDONLY:0,O_NOFOLLOW:0o400000,O_NONBLOCK:0o4000})
+}
+
+test('public metadata/stability wrappers retain closed-object rejection without invoking caller getters',()=>{
+  const stamp={dev:1,ino:2,mode:0o100444,uid:0,gid:0,nlink:1,size:8,mtimeMs:2,ctimeMs:2};let reads=0
+  function malformed(base){
+    const key=Object.keys(base)[0],missing={...base};delete missing[key]
+    const hidden={...base},getter={...base},symbol={...base},nonenumerableExtra={...base}
+    Object.defineProperty(hidden,key,{enumerable:false});Object.defineProperty(getter,key,{get(){reads++;return base[key]}})
+    symbol[Symbol('extra')]=true;Object.defineProperty(nonenumerableExtra,'extra',{value:true})
+    return [undefined,null,[],()=>{},Object.assign(Object.create(null),base),Object.assign(Object.create({}),base),missing,{...base,extra:true},hidden,getter,symbol,nonenumerableExtra]
+  }
+  for(const raw of malformed(metadata()))assert.throws(()=>assertWorkerHeartbeatActivationControlRuntimeMetadata(raw,'code'),/runtime_refused/)
+  for(const raw of malformed(stamp)){
+    assert.throws(()=>assertWorkerHeartbeatActivationControlRuntimeStable(raw,stamp),/runtime_refused/)
+    assert.throws(()=>assertWorkerHeartbeatActivationControlRuntimeStable(stamp,raw),/runtime_refused/)
+  }
+  assert.equal(reads,0);assert.throws(()=>assertWorkerHeartbeatActivationControlRuntimeMetadata(metadata(),'unknown'),/runtime_refused/)
+})
+
+test('shared scalar cores preserve all root permission, file bounds and finite identity values',()=>{
+  const p=runtimeScalarPolicy(),cases=[
+    ['code',metadata(),[{type:'directory'},{mode:0o100644},{mode:0o104444},{nlink:2},{size:0},{size:16*1024*1024+1}]],
+    ['manifest',metadata({mode:0o100600}),[{type:'directory'},{mode:0o100444},{nlink:2},{size:0},{size:2*1024*1024+1}]],
+    ['ancestor',metadata({type:'directory',mode:0o40755,nlink:2}),[{type:'file'},{mode:0o40777},{mode:0o42755},{mode:0o44755}]],
+    ['directory',metadata({type:'directory',mode:0o40555,nlink:2}),[{type:'file'},{mode:0o40755},{mode:0o41555}]],
+    ['private-directory',metadata({type:'directory',mode:0o40700,nlink:2}),[{type:'file'},{mode:0o40555},{mode:0o41700}]],
+  ]
+  for(const [kind,good,bad]of cases){
+    assert.doesNotThrow(()=>p.metadataValues(good,kind));assert.doesNotThrow(()=>assertWorkerHeartbeatActivationControlRuntimeMetadata(good,kind))
+    const common=[{symlink:true},{uid:1},{gid:1},{mode:NaN},{mode:Infinity},{mode:1.5},{nlink:0},{nlink:Infinity},{nlink:1.5},{size:-1},{size:Infinity},{size:0.5}]
+    for(const patch of [...common,...bad]){
+      assert.throws(()=>p.metadataValues({...good,...patch},kind),/runtime_refused/)
+      assert.throws(()=>assertWorkerHeartbeatActivationControlRuntimeMetadata({...good,...patch},kind),/runtime_refused/)
+    }
+  }
+  for(const [kind,size]of [['code',16*1024*1024],['manifest',2*1024*1024]])assert.doesNotThrow(()=>p.metadataValues(metadata({size,mode:kind==='manifest'?0o100600:0o100444}),kind))
+  const stamp={dev:1,ino:2,mode:0o100444,uid:0,gid:0,nlink:1,size:8,mtimeMs:2,ctimeMs:2}
+  assert.doesNotThrow(()=>p.stableValues(stamp,{...stamp}))
+  for(const key of Object.keys(stamp)){
+    assert.throws(()=>p.stableValues(stamp,{...stamp,[key]:stamp[key]+1}),/runtime_refused/)
+    for(const value of [NaN,Infinity,-Infinity,'1',undefined]){
+      const invalid={...stamp,[key]:value};assert.throws(()=>p.stableValues(invalid,{...invalid}),/runtime_refused/)
+      assert.throws(()=>assertWorkerHeartbeatActivationControlRuntimeStable(invalid,{...invalid}),/runtime_refused/)
+    }
+  }
+  assert.throws(()=>assertWorkerHeartbeatActivationControlRuntime(p),/runtime_refused/)
+})
+
+test('trusted scalar routing preserves fresh per-file ancestor/FD/path/read/hash order and mutation refusal',()=>{
+  // Explicit POSIX filesystem policy model only; these are not Linux FDs and
+  // cannot register a production source/runtime/database capability.
+  function model(strict,change){
+    const bytes=Buffer.from('fresh contents'),trace=[],nodes=new Map();let opened=false,changed=false
+    for(const [i,file]of ['/','/tree','/tree/a','/tree/a/code.js'].entries())nodes.set(file,{dev:1,ino:i+1,uid:0,gid:0,mode:i===3?0o100444:0o40755,nlink:i===3?1:2,size:i===3?bytes.length:64,mtimeMs:1,ctimeMs:1,type:i===3?'file':'directory'})
+    const stats=file=>{const n=nodes.get(file);return {...n,isFile:()=>n.type==='file',isDirectory:()=>n.type==='directory',isSymbolicLink:()=>false}}
+    const io={
+      lstatSync(file){trace.push(['lstat',file]);return stats(file)},realpathSync(file){trace.push(['realpath',file]);return file},
+      openSync(file,flags){trace.push(['open',file,flags]);assert.equal(opened,false);opened=true;return 7},
+      fstatSync(fd){trace.push(['fstat',fd]);assert.equal(opened,true);return stats('/tree/a/code.js')},
+      readSync(fd,out,offset,length,position){trace.push(['read',fd,offset,length,position]);if(!changed){changed=true;change?.({nodes,bytes})}const n=Math.min(length,bytes.length-position);if(n>0)bytes.copy(out,offset,position,position+n);return n},
+      closeSync(fd){trace.push(['close',fd]);assert.equal(opened,true);opened=false},
+    }
+    const p=runtimeScalarPolicy(io,strict),expected=hash(bytes);let refused=false
+    try{p.readBound('/tree/a/code.js',expected,'code',bytes.length)}catch(error){assert.match(error.message,/runtime_refused/);refused=true}
+    assert.equal(opened,false)
+    return {trace,refused,p,bytes,expected,io}
+  }
+  for(const change of [undefined,({nodes})=>nodes.get('/tree/a').mode=0o40777,({nodes})=>nodes.get('/tree/a').ino++,({nodes})=>nodes.get('/tree/a/code.js').ctimeMs++,({bytes})=>bytes[0]=88]){
+    const candidate=model(false,change),reference=model(true,change)
+    assert.deepEqual(candidate.trace,reference.trace);assert.equal(candidate.refused,reference.refused);assert.equal(candidate.refused,change!==undefined)
+  }
+  const fresh=model(false);fresh.bytes[0]=88
+  assert.throws(()=>fresh.p.readBound('/tree/a/code.js',fresh.expected,'code',fresh.bytes.length),/runtime_refused/)
+  assert.equal(fresh.trace.filter(([op])=>op==='open').length,2);assert.equal(fresh.trace.filter(([op])=>op==='close').length,2)
+  assert.equal(fresh.trace.filter(([op,file])=>op==='lstat'&&file==='/tree/a').length,3)
+})
+
+test('private scalar cores have only trusted metadata/stamp callers and retain every non-scalar guard',()=>{
+  const {source,tree,body}=runtimeScalarSource(),calls=[]
+  function visit(node,owner){
+    if(ts.isFunctionDeclaration(node)&&node.name)owner=node.name.text
+    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['metadataValues','stableValues','trustedMetadata','trustedStable'].includes(node.expression.text))calls.push({owner,name:node.expression.text,args:node.arguments.map(a=>a.getText())})
+    ts.forEachChild(node,child=>visit(child,owner))
+  }
+  visit(tree,undefined)
+  const metadataCalls=calls.filter(c=>c.name==='trustedMetadata'),stableCalls=calls.filter(c=>c.name==='trustedStable')
+  assert.deepEqual(calls.filter(c=>c.name==='metadataValues').map(c=>c.owner),['assertWorkerHeartbeatActivationControlRuntimeMetadata','trustedMetadata'])
+  assert.deepEqual(calls.filter(c=>c.name==='stableValues').map(c=>c.owner),['trustedStable','assertWorkerHeartbeatActivationControlRuntimeStable'])
+  assert.deepEqual(metadataCalls.map(c=>c.owner),['ancestors','readBound','verifyTree'])
+  assert.deepEqual(metadataCalls.map(c=>c.args[0]),['meta(st)','meta(before)','meta(directory)'])
+  assert.deepEqual(stableCalls.map(c=>c.owner),['readBound','readBound','readBound','verifyTree','verifyTree','verifyTree','verifyTree','verifyTree','loadWorkerHeartbeatActivationControlPg'])
+  for(const name of ['metadataValues','stableValues'])assert.doesNotMatch(body(name),/^export |closed\(|getOwnPropertyDescriptors|Reflect\.ownKeys/)
+  assert.match(body('assertWorkerHeartbeatActivationControlRuntimeMetadata'),/metadataValues\(closed\(raw,/)
+  assert.match(body('assertWorkerHeartbeatActivationControlRuntimeStable'),/closed\(before,keys\);closed\(after,keys\)/)
+  assert.ok(body('trustedMetadata').indexOf('metadataRecords.has(record)')<body('trustedMetadata').indexOf('metadataValues(record,kind)'))
+  assert.ok(body('trustedStable').indexOf('stampRecords.has(after)')<body('trustedStable').indexOf('stableValues(before,after)'))
+  assert.doesNotMatch(source,/DirectoryPass|directoryPasses/)
+  const reader=body('readBound')
+  assert.equal((reader.match(/ancestors\(file,kind==='manifest'\)/g)||[]).length,2)
+  for(const token of ['before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','readExactBoundBytes(fd,before.size)','sha(bytes)!==expected','stamp(fstatSync(fd))','stamp(lstatSync(file))','assertUtf8Bytes(bytes','finally{closeSync(fd)}'])assert.ok(reader.includes(token),token)
+  for(const name of ['json','cacheCheck','inspectExports','checkExports','assertWorkerHeartbeatActivationControlRuntimeCacheRecord','assertProtocolPins','parseWorkerHeartbeatActivationControlRuntimeManifest'])assert.doesNotMatch(body(name),/metadataValues\(|stableValues\(|trustedMetadata\(|trustedStable\(/)
+})
+
+test('private trusted wrappers require constructor provenance and reject clones, raw records and proxies before field access',()=>{
+  // This exact-body isolated policy has its own WeakSets; no production factory
+  // or state is exported, and none of these objects grants runtime authority.
+  const p=runtimeScalarPolicy(),q=runtimeScalarPolicy(),st={dev:1,ino:2,uid:0,gid:0,mode:0o100444,nlink:1,size:8,mtimeMs:1,ctimeMs:2,isFile:()=>true,isDirectory:()=>false,isSymbolicLink:()=>false}
+  const goodMeta=p.meta(st),before=p.stamp(st),after=p.stamp(st);let reads=0
+  assert.doesNotThrow(()=>p.trustedMetadata(goodMeta,'code'));assert.doesNotThrow(()=>p.trustedStable(before,after))
+  const trap=()=>{reads++;throw Error('untrusted_property_must_not_be_read')}
+  for(const record of [goodMeta,before,after]){
+    assert.equal(Object.isFrozen(record),true)
+    assert.throws(()=>{record.size++},TypeError);assert.throws(()=>{delete record.size},TypeError)
+    assert.throws(()=>Object.defineProperty(record,'size',{get:trap}),TypeError)
+    assert.throws(()=>Object.defineProperty(record,'extra',{value:true}),TypeError)
+    assert.throws(()=>Object.setPrototypeOf(record,null),TypeError)
+  }
+  assert.doesNotThrow(()=>p.trustedMetadata(goodMeta,'code'));assert.doesNotThrow(()=>p.trustedStable(before,after))
+  function untrusted(good,foreign){
+    const getter={...good};for(const key of Object.keys(getter))Object.defineProperty(getter,key,{get:trap})
+    const proxy=new Proxy(good,{get:trap,getPrototypeOf:trap,ownKeys:trap,getOwnPropertyDescriptor:trap})
+    const revoked=Proxy.revocable(good,{});revoked.revoke()
+    return [undefined,null,1,'raw',{},Object.assign(Object.create(good),{}),{...good},structuredClone(good),getter,proxy,revoked.proxy,foreign]
+  }
+  for(const record of untrusted(goodMeta,q.meta(st)))assert.throws(()=>p.trustedMetadata(record,'code'),/runtime_refused/)
+  for(const record of untrusted(before,q.stamp(st))){
+    assert.throws(()=>p.trustedStable(record,after),/runtime_refused/)
+    assert.throws(()=>p.trustedStable(before,record),/runtime_refused/)
+  }
+  assert.throws(()=>p.trustedMetadata(before,'code'),/runtime_refused/);assert.throws(()=>p.trustedStable(goodMeta,after),/runtime_refused/)
+  assert.equal(reads,0)
+  assert.doesNotThrow(()=>assertWorkerHeartbeatActivationControlRuntimeMetadata({...goodMeta},'code'))
+  assert.doesNotThrow(()=>assertWorkerHeartbeatActivationControlRuntimeStable({...before},{...after}))
+  for(const record of [goodMeta,before,after])assert.throws(()=>assertWorkerHeartbeatActivationControlRuntime(record),/runtime_refused/)
+})
+// END additive trusted-metadata-value performance regression section.
