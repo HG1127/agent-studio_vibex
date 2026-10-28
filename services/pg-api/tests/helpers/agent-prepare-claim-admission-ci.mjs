@@ -26,7 +26,7 @@ export async function prepareClaimTcpFixture(capability){
  let fixture,createdLogin=false,baseline
  const login='prepare_claim_ci_'+process.env.GITHUB_RUN_ID
  assert.match(login,/^prepare_claim_ci_[0-9]{1,32}$/)
- const password=createHash('sha512').update('disposable_prepare_claim:'+process.env.GITHUB_RUN_ID).digest('hex')
+ const password=createHash('sha512').update('disposable_prepare_claim:'+process.env.GITHUB_RUN_ID).digest('hex').slice(0,80)
  const identity=async()=>{
   const row=(await admin.query("SELECT current_database() AS database,session_user AS login,current_setting('server_version_num')::integer AS version,(SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=session_user) AS superuser,(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=current_database()) AS database_oid,(SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS system_identifier")).rows[0]
   assert.equal(row.database,'agentstudio_pg18_ci');assert.equal(row.login,'agentstudio_admin');assert.equal(row.superuser,true)

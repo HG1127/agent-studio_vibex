@@ -21,7 +21,7 @@ import {selectPgRuntimeTarget,verifyPgRuntimeTarget} from "./pg-runtime-target.t
 import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
 import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
 import {assertPgWorkerActivation,assertPg18WorkerCredentialBinding,pgWorkerOfflinePlan} from "./worker-activation-guard.ts"
-import {WorkflowV2Worker,type WorkflowV2EffectExecutor} from "./workflow-v2-worker.ts"
+import type {WorkflowV2EffectExecutor} from "./workflow-v2-worker.ts"
 import {selectWorkflowV2ModelExecution} from "./workflow-v2-model-contract.ts"
 import {readBoundRuntimeCredential} from "./bound-runtime-credentials.ts"
 import {workflowV2ModelEffectExecutor} from "./workflow-v2-model-client.ts"
@@ -30,7 +30,6 @@ import {workflowV2ToolEffectExecutor} from "./workflow-v2-tool-client.ts"
 import {selectWorkflowAgentExecution} from "./workflow-v2-agent-machine.ts"
 import {selectScheduleRuntime} from "./schedule-runtime-policy.ts"
 import {selectMcpExecution} from "./mcp-call.ts"
-import {ScheduleRuntimeWorker} from "./schedule-runtime-worker.ts"
 import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import type {SqlPool} from "./contracts.ts"
 export function runV2WorkerCli(autonomous=false){
@@ -65,13 +64,16 @@ export function runV2WorkerCli(autonomous=false){
     assertPg18CredentialMetadata({kind,env:process.env,file,stat,uid:process.getuid?.(),canRead})
     const password=readFileSync(file,"utf8").replace(/[\r\n]+$/g,"")
     if(password.length<32||password.length>4096||/^(.)\1+$/.test(password))throw Error("unsafe_worker_secret")
+    let stop=false
+    let closeWorkerClaims:(()=>void)|undefined,closeScheduleClaims:(()=>void)|undefined
+    const requestStop=()=>{stop=true;closeWorkerClaims?.();closeScheduleClaims?.()}
+    process.once("SIGTERM",requestStop);process.once("SIGINT",requestStop)
     const {Pool}=await import("pg")
     const pool=new Pool({host:target.host,port:target.port,user:target.user,database:target.database,password,max:2,
       connectionTimeoutMillis:4000,statement_timeout:8000,idleTimeoutMillis:10000})
     const rawAdapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),async connect(){const db=await pool.connect();return {
       async query<Row>(sql:string,values:unknown[]=[]){return {rows:(await db.query(sql,values)).rows as Row[]}},release(){db.release()}}}}
     const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
-    let stop=false;process.once("SIGTERM",()=>{stop=true});process.once("SIGINT",()=>{stop=true})
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
       await verifyWorkflowSampleLineageSchema(adapter)
@@ -102,12 +104,20 @@ export function runV2WorkerCli(autonomous=false){
           ...(memoryApproved?{memory_schema_verified:true,memory_execution_enabled:autonomous}:{}),
           ...(outcomeApproved?{outcome_memory_schema_verified:true,outcome_memory_execution_enabled:autonomous}:{}),production_cutover_allowed:false})+"\n");return
       }
+      // Preflight never loads either execution Worker or its claim SQL.
+      const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
+      const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
       const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
-      const scheduler=scheduleEnabled?new ScheduleRuntimeWorker(adapter,"pg-schedule-"+randomUUID().slice(0,8),{allowMcpExecution:selectMcpExecution(process.env),allowKnowledgeExecution:knowledgeToolsEnabled,allowHumanInput:humanInputAvailable}):undefined
+      closeWorkerClaims=()=>worker.closeNewClaims()
+      if(stop){closeWorkerClaims();return}
+      const scheduler=scheduleRuntime?new scheduleRuntime.ScheduleRuntimeWorker(adapter,"pg-schedule-"+randomUUID().slice(0,8),{allowMcpExecution:selectMcpExecution(process.env),allowKnowledgeExecution:knowledgeToolsEnabled,allowHumanInput:humanInputAvailable}):undefined
+      closeScheduleClaims=()=>scheduler?.closeNewClaims()
+      if(stop){closeWorkerClaims();closeScheduleClaims();return}
       process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:"ready",effect_executor_installed:adapters.length>0,
         scheduler_started:Boolean(scheduler),production_cutover_allowed:false})+"\n")
       while(!stop){
         try{if(scheduler){const dispatched=await scheduler.tick();if(dispatched.status!=="idle")process.stdout.write(JSON.stringify({service:"pg-scheduler",state:dispatched.status})+"\n")}
+          if(stop)break
           const result=await worker.tick()
           if(result.status!=="idle")process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:result.status,run_id:result.run_id})+"\n")
           if(!stop)await sleep(result.status==="idle"?900:100)

@@ -15,6 +15,8 @@ import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2
 import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
 import {recordAgentMemoryFailureSource} from "./agent-memory-failure-source.ts"
 import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
+import {createWorkerClaimAdmission,type WorkerClaimAdmission,type WorkerClaimAdmissionView,type WorkerClaimPermit}
+  from "./worker-claim-admission.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:DurableV2Mode;workflow_id?:string;agent_spec_id?:string;workflow_revision?:number;spec_revision?:number;graph_sha256:string};
@@ -80,6 +82,8 @@ export class WorkflowV2Worker{
   readonly memoryEnabled:boolean
   readonly outcomeEnabled:boolean
   readonly outcomes:AgentMemoryOutcomeRepository
+  readonly #claimAdmission:WorkerClaimAdmission
+  readonly #claimLane:DurableV2Mode
   readonly root:ReturnType<typeof durableV2Root>
   constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
@@ -91,19 +95,56 @@ export class WorkflowV2Worker{
     this.outcomeEnabled=options.outcomeMemoryApproved===true
     this.outcomes=new AgentMemoryOutcomeRepository(pool,{allowWriteback:this.outcomeEnabled})
     this.root=durableV2Root(options.executionMode??"workflow_native_v2")
+    this.#claimLane=this.root.mode
+    this.#claimAdmission=createWorkerClaimAdmission({lanes:[this.#claimLane]})
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
        !Number.isSafeInteger(this.batch)||this.batch<1||this.batch>20)throw Error("invalid_workflow_v2_worker_options")
   }
-  async claim():Promise<Job|null>{return tx(this.pool,async db=>{
-    await db.query("SET LOCAL ROLE agentstudio_worker")
-    const job=(await db.query<Job>(this.root.mode==="agent_native_v2"?agentClaimSql:claimSql,[this.workerId,60])).rows[0]
-    if(job&&!valid(job,this.workerId,this.root.mode))throw Error("invalid_workflow_v2_claim")
-    return job??null
-  })}
+  closeNewClaims():void {this.#claimAdmission.close()}
+  // Only this instance's fixed V2 mode and local claim transactions are covered.
+  claimAdmissionSnapshot():WorkerClaimAdmissionView {return this.#claimAdmission.snapshot()}
+  async claim():Promise<Job|null>{
+    const admission=this.#claimAdmission
+    if(admission.snapshot().closed)return null
+    const db=await this.pool.connect()
+    let started=false,commitAttempted=false,dispatched=false
+    let permit:WorkerClaimPermit|null=null
+    try{
+      await db.query("BEGIN");started=true
+      await applyKnowledgeScope(db,this.pool)
+      await db.query("SET LOCAL ROLE agentstudio_worker")
+      permit=admission.tryEnter(this.#claimLane)
+      let job:Job|null=null
+      if(permit){
+        const request=admission.dispatch(permit,()=>{
+          dispatched=true
+          return db.query<Job>(this.root.mode==="agent_native_v2"?agentClaimSql:claimSql,[this.workerId,60])
+        })
+        if(request.started){
+          job=(await request.value).rows[0]??null
+          if(job&&!valid(job,this.workerId,this.root.mode))throw Error("invalid_workflow_v2_claim")
+        }else permit=null
+      }
+      commitAttempted=true
+      await db.query("COMMIT");started=false
+      if(permit)admission.confirm(permit,{outcome:"commit_confirmed"})
+      return job
+    }catch(error){
+      if(permit&&dispatched)admission.markUncertain(permit)
+      let rolledBack=false
+      if(started)try{await db.query("ROLLBACK");rolledBack=true}catch{}
+      if(permit){
+        if(!dispatched)admission.discardUndispatched(permit)
+        else if(!commitAttempted&&rolledBack)admission.confirm(permit,{outcome:"rollback_confirmed"})
+      }
+      throw error
+    }finally{db.release()}
+  }
   async tick():Promise<WorkflowV2Tick>{
     const ambiguous=await this.reconcileExpired()
     if(ambiguous)return ambiguous
+    if(this.#claimAdmission.snapshot().closed)return {status:"idle"}
     const job=await this.claim();return job?this.execute(job):{status:"idle"}
   }
   async execute(job:Job):Promise<WorkflowV2Tick>{

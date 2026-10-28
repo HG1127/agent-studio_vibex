@@ -176,3 +176,10 @@ services/pg-api/tests/workflow-safe-claim-admission.test.mjs text eol=lf
 # Genuine hosted-only prepare transaction admission probes
 services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs text eol=lf
 services/pg-api/tests/helpers/agent-prepare-claim-admission-ci.mjs text eol=lf
+
+# V2/autonomous and cohost scheduler final claim admission hooks
+services/pg-api/src/schedule-runtime-worker.ts text eol=lf
+services/pg-api/src/workflow-v2-worker-loop.ts text eol=lf
+services/pg-api/src/workflow-v2-worker.ts text eol=lf
+services/pg-api/tests/schedule-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/workflow-v2-claim-admission.test.mjs text eol=lf
