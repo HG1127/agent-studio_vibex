@@ -19,7 +19,7 @@ const sqlDenied=message=>e=>e.code==='P0001'&&e.message===message
 const permissionDenied=e=>e.code==='42501'
 function observe(promise){const state={done:false};state.promise=promise.then(value=>{state.done=true;return {ok:true,value}},error=>{state.done=true;return {ok:false,error}});return state}
 // Only called after the unchanged hosted-only guard/fixture. Production audits
-// keep their fixed503; an unexpected FIRST positive audit failure additionally
+// keep their fixed503; an unexpected positive audit failure additionally
 // records bounded real catalog metadata, without query/result substitution or
 // business rows, SQL text, parameters, credentials or private exception text.
 async function diagnosticAudit(client,verify){
@@ -251,7 +251,7 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
    const role=(await f.db.query('SELECT oid,rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication,rolconfig FROM pg_catalog.pg_roles WHERE rolname=$1',[ownerRole])).rows[0]
    for(const key of ['rolcanlogin','rolinherit','rolsuper','rolbypassrls','rolcreaterole','rolcreatedb','rolreplication'])assert.equal(role[key],false,key)
    assert.equal(role.rolconfig,null);assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM pg_catalog.pg_auth_members WHERE roleid=$1 OR member=$1',[role.oid])).rows[0].n,0)
-   const columns=(await f.db.query("SELECT n.nspname||'.'||c.relname||'.'||a.attname AS name,has_column_privilege($1,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1,c.oid,a.attnum,'INSERT,UPDATE,REFERENCES') AS write FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[role.oid])).rows
+   const columns=(await f.db.query("SELECT n.nspname||'.'||c.relname||'.'||a.attname AS name,has_column_privilege($1::oid,c.oid,a.attnum,'SELECT') AS read,has_column_privilege($1::oid,c.oid,a.attnum,'INSERT,UPDATE,REFERENCES') AS write FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema' AND c.relkind IN('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped",[role.oid])).rows
    assert.deepEqual(columns.filter(c=>c.read).map(c=>c.name).sort(),[
     'agentstudio.users.id','agentstudio.users.external_issuer','agentstudio.users.display_name','agentstudio.users.status',
     'agentstudio_auth.accounts.user_id','agentstudio_auth.accounts.enabled','agentstudio_auth.accounts.is_admin',
@@ -342,7 +342,9 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
    ['private email column','GRANT SELECT(email) ON agentstudio_auth.accounts TO '+ownerRole,'REVOKE SELECT(email) ON agentstudio_auth.accounts FROM '+ownerRole],
    ['private job payload','GRANT SELECT(payload) ON agentstudio.jobs TO '+ownerRole,'REVOKE SELECT(payload) ON agentstudio.jobs FROM '+ownerRole],
    ['private session digest','GRANT SELECT(token_digest) ON agentstudio_auth.sessions TO '+ownerRole,'REVOKE SELECT(token_digest) ON agentstudio_auth.sessions FROM '+ownerRole],
-   ['extra table SELECT','GRANT SELECT ON agentstudio.users TO '+ownerRole,'REVOKE SELECT ON agentstudio.users FROM '+ownerRole],
+   // PostgreSQL table REVOKE also revokes corresponding per-column grants:
+   // restore the original four users columns after removing the broad grant.
+   ['extra table SELECT','GRANT SELECT ON agentstudio.users TO '+ownerRole,'REVOKE SELECT ON agentstudio.users FROM '+ownerRole+'; GRANT SELECT(id,external_issuer,display_name,status) ON agentstudio.users TO '+ownerRole],
    ['metadata write column','GRANT UPDATE(is_admin) ON agentstudio_auth.accounts TO '+ownerRole,'REVOKE UPDATE(is_admin) ON agentstudio_auth.accounts FROM '+ownerRole],
    ['column grant option','GRANT SELECT(is_admin) ON agentstudio_auth.accounts TO '+ownerRole+' WITH GRANT OPTION','REVOKE GRANT OPTION FOR SELECT(is_admin) ON agentstudio_auth.accounts FROM '+ownerRole],
    ['API raw-auth grant','GRANT SELECT(email) ON agentstudio_auth.accounts TO agentstudio_api','REVOKE SELECT(email) ON agentstudio_auth.accounts FROM agentstudio_api'],
@@ -377,7 +379,7 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
     await assert.rejects(inspectCompanyOverviewSchema(f.pool),fixed503)
     const reply=await getNoWrite('/api/v2/company-overview',{},503);assert.deepEqual(reply.body,{error:'company_overview_unavailable'})
    }finally{if(typeof restore==='function')await restore();else await f.db.exec(restore)}
-   await full();await oldFull();assert.deepEqual((await repo.overview(f.identities.alice)).totals,expected)
+   await full({diagnose:true});await oldFull();assert.deepEqual((await repo.overview(f.identities.alice)).totals,expected)
   })
   await t.test('new061 core alone cannot replace the genuine unchanged060 FULL predecessor chain',async()=>{
    const {verifyCompanyOverviewCore}=await import('../src/company-overview-audit-core.ts')
