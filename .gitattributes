@@ -371,3 +371,6 @@ src/pages/PgNativePilot/PgNativePilotPage.tsx text eol=lf
 services/pg-api/src/repository.ts text eol=lf
 services/pg-api/src/agent-assessment-service-config.ts text eol=lf
 docs/PG18_AGENT_DESIGN_MIGRATION.md text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-writer-ci-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-writer-ci-child.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-ci.integration.mjs text eol=lf

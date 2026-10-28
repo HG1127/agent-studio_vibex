@@ -102,12 +102,14 @@ test('ordinary stage invocation has no source/runtime/parser import or output fi
  assert.equal(r.status,1);assert.match(r.stderr,/refuse_non_ephemeral_telemetry_control_ci/)
  assert.doesNotMatch(r.stdout+r.stderr,/unexpected_stage_runtime_import|unexpected_stage_output|ERR_MODULE_NOT_FOUND|ECONNREFUSED/)
 })
-test('actual integration entry refuses ordinary invocation before importing its effectful fixture or source publisher',()=>{
- const url=new URL('./worker-heartbeat-activation-control-ci.integration.mjs',import.meta.url).href
- const code=`import {registerHooks} from 'node:module';registerHooks({resolve(s,c,n){if(/activation-control-ci-(?:fixture|stage)\\.mjs$/.test(s)||['pg','node:fs','node:net','node:child_process'].includes(s))throw Error('unexpected_control_ci_effect');return n(s,c)}});await import(${JSON.stringify(url)});`
- const r=spawnSync(process.execPath,['--input-type=module','-e',code],{encoding:'utf8',timeout:15000,env:{PATH:process.env.PATH??'',CI:'false',GITHUB_ACTIONS:'false'}})
- assert.equal(r.status,1);assert.match(r.stderr,/refuse_non_ephemeral_telemetry_control_ci/)
- assert.doesNotMatch(r.stdout+r.stderr,/unexpected_control_ci_effect|ERR_MODULE_NOT_FOUND|ECONNREFUSED/)
+test('actual control and writer integration entries refuse before effectful fixture or source imports',()=>{
+ for(const entry of ['worker-heartbeat-activation-control-ci.integration.mjs','worker-heartbeat-writer-ci.integration.mjs']){
+  const url=new URL('./'+entry,import.meta.url).href
+  const code=`import {registerHooks} from 'node:module';registerHooks({resolve(s,c,n){if(/(?:activation-control|worker-heartbeat-writer)-ci-(?:fixture|stage)\\.mjs$/.test(s)||['pg','node:fs','node:net','node:child_process'].includes(s))throw Error('unexpected_control_ci_effect');return n(s,c)}});await import(${JSON.stringify(url)});`
+  const r=spawnSync(process.execPath,['--input-type=module','-e',code],{encoding:'utf8',timeout:15000,env:{PATH:process.env.PATH??'',CI:'false',GITHUB_ACTIONS:'false'}})
+  assert.equal(r.status,1,entry);assert.match(r.stderr,/refuse_non_ephemeral_telemetry_control_ci/,entry)
+  assert.doesNotMatch(r.stdout+r.stderr,/unexpected_control_ci_effect|ERR_MODULE_NOT_FOUND|ECONNREFUSED/,entry)
+ }
 })
 test('actual fixture factory rejects fabricated proof and stage before driver or effectful helper imports',async()=>{
  const {createWorkerHeartbeatActivationControlCiFixture:create}=await import('./helpers/worker-heartbeat-activation-control-ci-fixture.mjs')
