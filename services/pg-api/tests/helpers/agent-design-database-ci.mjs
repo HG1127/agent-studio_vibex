@@ -104,7 +104,7 @@ async function harness(f,env){
   const routine=async name=>admin(async db=>(await db.query('SELECT pg_get_functiondef($1::regprocedure) AS def',[name])).rows[0].def)
   const ownState=specId=>admin(async db=>(await db.query(`SELECT jsonb_build_object('agent',(SELECT to_jsonb(s) FROM agentstudio.agent_specs s WHERE id=$1),'history',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM agentstudio.agent_collaboration_revisions r WHERE r.spec_id=$1),'saves',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.save_request_id),'[]'::jsonb) FROM agentstudio.agent_design_save_receipts r WHERE r.spec_id=$1),'audit',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM agentstudio.audit_events r WHERE r.target_id=$1::text OR r.metadata->>'spec_id'=$1::text)) AS value`,[specId])).rows[0].value)
   const createLegacy=async()=>{
-    const password=crypto.randomBytes(36).toString('hex'),verifier=activation.makeNativeScramVerifier(password)
+    const password=crypto.randomBytes(40).toString('hex'),verifier=activation.makeNativeScramVerifier(password)
     await commitAdmin(async db=>{await db.query('CREATE ROLE '+quote(legacy)+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+verifier+"'");await db.query('GRANT agentstudio_api,agentstudio_worker TO '+quote(legacy)+' WITH ADMIN FALSE, INHERIT FALSE, SET TRUE')})
     const pool=new pg.Pool({...target,user:legacy,password,max:1});pool.on('error',()=>{});pools.push(pool);return pool
   }

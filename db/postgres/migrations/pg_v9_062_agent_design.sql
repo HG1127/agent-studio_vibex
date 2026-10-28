@@ -291,6 +291,7 @@ END $fn$;
 -- substitutes for these row locks, current eligibility tests or snapshots.
 CREATE FUNCTION agentstudio.agent_design_source(uuid,jsonb,boolean) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
+<<design_source_locals>>
 DECLARE native jsonb;choice jsonb:=$2;s record;c record;r record;b record;a record;p record;e record;t jsonb;v jsonb;k text;id uuid;profile_connection uuid;
   spec jsonb;before_value jsonb:='null';owner_value jsonb;description jsonb;protected jsonb;models_snapshot jsonb:='[]';resources_snapshot jsonb:='[]';
   selected_model jsonb;models_ids uuid[];base_ids uuid[];base_owners uuid[];locked_owners uuid[];scope jsonb;host text;resource_hash text;source_hash text;content_hash text;input_value jsonb;messages jsonb;prepared jsonb;payload jsonb;bytes integer;header_count integer;
@@ -317,9 +318,9 @@ BEGIN
     spec:='{"goal":"Resource selection validation","task_scope":"","deliverables":[],"task_plan":[],"done_criteria":[],"tools":[],"knowledge_base_ids":[],"require_approval":true}';description:='null';
   END IF;
   IF jsonb_typeof(spec->'tools')<>'array' OR jsonb_array_length(spec->'tools')>20 OR (SELECT count(DISTINCT value) FROM jsonb_array_elements(spec->'tools'))<>jsonb_array_length(spec->'tools')
-    OR EXISTS(SELECT 1 FROM jsonb_array_elements(spec->'tools') v WHERE jsonb_typeof(v)<>'string' OR NOT agentstudio.agent_design_text_valid(v#>>'{}',300,false))
+    OR EXISTS(SELECT 1 FROM jsonb_array_elements(spec->'tools') AS design_tool_row(value) WHERE jsonb_typeof(design_tool_row.value)<>'string' OR NOT agentstudio.agent_design_text_valid(design_tool_row.value#>>'{}',300,false))
     OR jsonb_typeof(spec->'knowledge_base_ids')<>'array' OR jsonb_array_length(spec->'knowledge_base_ids')>3
-    OR EXISTS(SELECT 1 FROM jsonb_array_elements(spec->'knowledge_base_ids') v WHERE (jsonb_typeof(v)='string' AND v#>>'{}' ~* '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$') IS NOT TRUE)
+    OR EXISTS(SELECT 1 FROM jsonb_array_elements(spec->'knowledge_base_ids') AS design_knowledge_row(value) WHERE (jsonb_typeof(design_knowledge_row.value)='string' AND design_knowledge_row.value#>>'{}' ~* '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$') IS NOT TRUE)
     OR (SELECT count(DISTINCT lower(value)) FROM jsonb_array_elements_text(spec->'knowledge_base_ids'))<>jsonb_array_length(spec->'knowledge_base_ids')
     OR (jsonb_array_length(spec->'knowledge_base_ids')>0 AND NOT spec->'tools' ? 'knowledge_search')
     OR (spec?'model_binding' AND agentstudio.agent_design_resource_binding(spec->'model_binding') IS NOT TRUE)
@@ -336,7 +337,7 @@ BEGIN
   -- whole-row digests + xmin. Encrypted values never leave this private scope.
   SELECT array_agg(DISTINCT x ORDER BY x) INTO models_ids FROM unnest(ARRAY[(choice->'model_binding'->>'connection_id')::uuid,(spec->'model_binding'->>'connection_id')::uuid,profile_connection]) x WHERE x IS NOT NULL;
   FOREACH id IN ARRAY models_ids LOOP
-    SELECT m.*,m.xmin::text AS row_version INTO c FROM agentstudio.model_connections m WHERE m.id=id AND m.owner_user_id=$1 FOR SHARE;
+    SELECT m.*,m.xmin::text AS row_version INTO c FROM agentstudio.model_connections m WHERE m.id=design_source_locals.id AND m.owner_user_id=$1 FOR SHARE;
     IF NOT FOUND OR c.enabled IS DISTINCT FROM true OR c.status IS DISTINCT FROM 'ok' OR c.revision IS NULL OR c.revision NOT BETWEEN 1 AND 9007199254740989 OR
       c.base_url IS DISTINCT FROM (CASE c.provider WHEN 'openai' THEN 'https://api.openai.com/v1' WHEN 'anthropic' THEN 'https://api.anthropic.com/v1' WHEN 'gemini' THEN 'https://generativelanguage.googleapis.com/v1beta' END)
     THEN RAISE EXCEPTION 'agent_design_model_changed'; END IF;
@@ -386,13 +387,13 @@ BEGIN
       END LOOP;
     END LOOP;
   END IF;
-  IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(spec->'tools') n WHERE n NOT IN('calculate','summarize','knowledge_search','web_search','web_fetch') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(spec->'http_tools','[]')) t WHERE t->>'name'=n) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(spec->'mcp_tools','[]')) t WHERE t->>'name'=n)) THEN RAISE EXCEPTION 'agent_design_invalid_source_resources'; END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(spec->'tools') n WHERE n NOT IN('calculate','summarize','knowledge_search','web_search','web_fetch') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(spec->'http_tools','[]')) AS design_http_ref(value) WHERE design_http_ref.value->>'name'=n) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(spec->'mcp_tools','[]')) AS design_mcp_ref(value) WHERE design_mcp_ref.value->>'name'=n)) THEN RAISE EXCEPTION 'agent_design_invalid_source_resources'; END IF;
   SELECT coalesce(array_agg(value::uuid ORDER BY value),'{}') INTO base_ids FROM jsonb_array_elements_text(spec->'knowledge_base_ids');
   SELECT coalesce(array_agg(DISTINCT owner_user_id ORDER BY owner_user_id),'{}') INTO base_owners FROM agentstudio.knowledge_bases WHERE id=ANY(base_ids);
   locked_owners:=base_owners;
   FOREACH id IN ARRAY locked_owners LOOP PERFORM pg_advisory_xact_lock(hashtextextended(id::text,6635)); END LOOP;
   FOREACH id IN ARRAY base_ids LOOP
-    SELECT k.*,k.xmin::text AS row_version INTO b FROM agentstudio.knowledge_bases k WHERE k.id=id FOR SHARE;
+    SELECT k.*,k.xmin::text AS row_version INTO b FROM agentstudio.knowledge_bases k WHERE k.id=design_source_locals.id FOR SHARE;
     IF NOT FOUND OR b.visibility IS DISTINCT FROM 'private' OR NOT b.owner_user_id=ANY(locked_owners) OR b.revision IS NULL OR b.revision NOT BETWEEN 1 AND 9007199254740989 THEN RAISE EXCEPTION 'agent_design_knowledge_changed'; END IF;
     -- Matching shared governance lock makes current Native governance stable;
     -- do not acquire another Native row lock after the design/source locks.
