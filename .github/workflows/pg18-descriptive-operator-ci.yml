@@ -1,0 +1,57 @@
+name: Agent Studio PG18 descriptive operator isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-descriptive-operator-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-descriptive-operator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pg18-descriptive-operator-runtime:
+    name: Node 24 / actual isolated POSIX dependencies / no database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout reviewed candidate without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact API lock without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and complete offline operator checks
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-descriptive-patch-operator-source.test.mjs services/pg-api/tests/agent-descriptive-patch-operator-core.test.mjs services/pg-api/tests/agent-descriptive-patch-operator-cli.test.mjs services/pg-api/tests/agent-descriptive-patch-operator-runtime.test.mjs
+      - name: Publisher and both container entries refuse ordinary invocation
+        run: |
+          node --input-type=module -e '
+          import {spawnSync} from "node:child_process";
+          const files=["ops/pg18-descriptive-operator-runtime-ci.mjs","services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs","services/pg-api/tests/helpers/agent-descriptive-patch-operator-runtime-ci-fixture.mjs"];
+          for(const file of files){
+           const args=["--experimental-strip-types",file,...(file.startsWith("ops/")?["--run"]:[])];
+           const r=spawnSync(process.execPath,args,{encoding:"utf8",timeout:15000,env:{PATH:process.env.PATH,CI:"false",GITHUB_ACTIONS:"false"}});
+           const out=(r.stdout??"")+(r.stderr??"");
+           if(r.status!==1||!out.includes("descriptive_operator_runtime_ci_refused:host")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(out))throw Error("ordinary_runtime_entry_did_not_refuse:"+file);
+          }
+          console.log("All runtime entries refused before source capture, staging or driver load.");'
+      - name: Genuine root-owned POSIX stages and actual pg loading in a network-none container
+        env:
+          AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_PURPOSE: DESCRIPTIVE_060_RUNTIME_DEPENDENCIES_ONLY
+          AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_APPROVED: YES_DISPOSABLE_DEPENDENCY_LOAD_ONLY
+        run: |
+          node_path="$(command -v node)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_EPHEMERAL,AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_PURPOSE,AGENT_STUDIO_DESCRIPTIVE_OPERATOR_RUNTIME_CI_APPROVED "$node_path" ops/pg18-descriptive-operator-runtime-ci.mjs --run

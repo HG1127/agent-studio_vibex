@@ -129,3 +129,9 @@ services/pg-api/tests/agent-descriptive-patch-operator-cli.test.mjs text eol=lf
 services/pg-api/src/agent-descriptive-patch-operator-runtime.d.mts text eol=lf
 services/pg-api/src/agent-descriptive-patch-operator-runtime.mjs text eol=lf
 services/pg-api/tests/agent-descriptive-patch-operator-runtime.test.mjs text eol=lf
+
+# Synthetic controlled060 POSIX dependency load CI only
+.github/workflows/pg18-descriptive-operator-ci.yml text eol=lf
+ops/pg18-descriptive-operator-runtime-ci.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-runtime-ci-fixture.mjs text eol=lf
