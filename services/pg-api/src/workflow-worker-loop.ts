@@ -10,7 +10,6 @@ import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
 import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
 import {assertPgWorkerActivation,assertPg18WorkerCredentialBinding,
   pgWorkerOfflinePlan} from "./worker-activation-guard.ts"
-import {WorkflowSafeWorker} from "./workflow-safe-worker.ts"
 const approval="APPROVE_ISOLATED_PG_WORKFLOW_START_END_ONLY"
 function required(name:string):string{
   const value=process.env[name]?.trim()||""
@@ -44,6 +43,11 @@ async function main(mode:"serve"|"preflight"){
   }
   assertPg18WorkerCredentialBinding(process.env,"workflow")
   const cfg=connection()
+  let stop=false
+  let closeNewClaims:(()=>void)|undefined
+  const requestStop=()=>{stop=true;closeNewClaims?.()}
+  process.once("SIGTERM",requestStop)
+  process.once("SIGINT",requestStop)
   const {Pool}=await import("pg")
   const pool=new Pool({host:cfg.host,port:cfg.port,user:cfg.user,
     database:cfg.database,password:cfg.password,max:2,
@@ -54,9 +58,6 @@ async function main(mode:"serve"|"preflight"){
       const result=await db.query(sql,params);return {rows:result.rows as Row[]}
     },release(){db.release()}}
   }}
-  let stop=false
-  process.once("SIGTERM",()=>{stop=true})
-  process.once("SIGINT",()=>{stop=true})
   try{
     await verifyPgRuntimeTarget(adapter,cfg)
     await verifyPgWorkerRoleBoundary(adapter,cfg)
@@ -67,7 +68,11 @@ async function main(mode:"serve"|"preflight"){
         production_cutover_allowed:false})+"\n")
       return
     }
+    // Read-only preflight never loads the executor or its claim SQL.
+    const {WorkflowSafeWorker}=await import("./workflow-safe-worker.ts")
     const worker=new WorkflowSafeWorker(adapter,"pg-workflow-"+randomUUID().slice(0,8))
+    closeNewClaims=()=>worker.closeNewClaims()
+    if(stop){closeNewClaims();return}
     process.stdout.write(JSON.stringify({service:"pg-agent-workflow",
       state:"ready",mode:"start_end_only",external_calls:false,
       scheduler_started:false,production_cutover_allowed:false})+"\n")

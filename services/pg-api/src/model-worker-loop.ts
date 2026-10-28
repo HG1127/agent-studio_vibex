@@ -52,6 +52,11 @@ async function main(preflight=false){
   const config=connection()
   // Defer the driver until credential and target validation. Offline --plan
   // does not load any DB, provider, Worker or task SQL modules.
+  let stop=false
+  let closeNewClaims:(()=>void)|undefined
+  const requestStop=()=>{stop=true;closeNewClaims?.()}
+  process.once("SIGTERM",requestStop)
+  process.once("SIGINT",requestStop)
   const {Pool}=await import("pg")
   const pool=new Pool({host:config.host,port:config.port,
     user:config.user,database:config.database,password:config.password,
@@ -67,9 +72,6 @@ async function main(preflight=false){
       release(){db.release()},
     }
   }}
-  let stop=false
-  process.once("SIGTERM",()=>{stop=true})
-  process.once("SIGINT",()=>{stop=true})
   try{
     await verifyPgRuntimeTarget(adapter,config)
     // Shared read-only role preflight rejects extra privilege and leaked
@@ -101,6 +103,8 @@ async function main(preflight=false){
     const worker=new AgentModelWorker(adapter,
       "agent-model-"+randomUUID().slice(0,8),provider,
       dispatch?{boundModelDispatch:dispatch,boundExecutionApproved:true,boundOnly:true}:{})
+    closeNewClaims=()=>worker.closeNewClaims()
+    if(stop){closeNewClaims();return}
     process.stdout.write(JSON.stringify({service:"pg-agent-model",
       state:"ready",mode:bound?"approved_owner_bound_text_only":"approved_text_only"})+"\n")
     while(!stop){

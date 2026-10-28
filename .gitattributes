@@ -164,3 +164,11 @@ services/pg-api/tests/worker-claim-admission.test.mjs text eol=lf
 services/pg-api/src/agent-worker.ts text eol=lf
 services/pg-api/src/worker-loop.ts text eol=lf
 services/pg-api/tests/agent-prepare-claim-admission.test.mjs text eol=lf
+
+# Model and safe workflow claim admission final hooks
+services/pg-api/src/model-worker-loop.ts text eol=lf
+services/pg-api/src/model-worker.ts text eol=lf
+services/pg-api/src/workflow-safe-worker.ts text eol=lf
+services/pg-api/src/workflow-worker-loop.ts text eol=lf
+services/pg-api/tests/model-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/workflow-safe-claim-admission.test.mjs text eol=lf
