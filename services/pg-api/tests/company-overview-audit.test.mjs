@@ -30,7 +30,7 @@ function fixture(){
  const state={stamp:{readable:true,installed:true,predecessor:true},roles:[{id:role,name:'agentstudio_company_metadata_reader',login:false,inherit:false,super:false,bypass:false,create_role:false,create_db:false,replication:false,connection_limit:-1,config:null,memberships:0}],routines,policies,orphans:{ok:true},api:{id:api,current_role:true,ok:true,version:180006},function_acl:routines.flatMap(f=>[role,api].map(grantee=>({function_id:f.id,grantor:role,grantee,privilege:'EXECUTE',grantable:false}))),function_effective:routines.map(f=>({id:f.id,api:true,other_roles:[]})),owner_surface:{ok:true},schema_acl:['agentstudio','agentstudio_auth'].map(name=>({name,owner_grant:true,privilege:'USAGE',grantable:false})),bases,columns,column_acl:columns.filter(c=>c.read).map(c=>({relation:c.relation,name:c.name,owner_grant:true,privilege:'SELECT',grantable:false})),applicable_policies,actor:{id:90,schema:'agentstudio',name:'actor_id',args:'',result:'uuid',language:'sql',volatility:'s',definer:false,strict:false,leakproof:false,config:null,sha:'084b38798ae2c68f4165ee40800b909c874e8765372d357ee41845f92ec80555',executable:true,owner_safe:true}}
  state.identity_keys=[{relation:'agentstudio.users',relation_id:200,id:210,columns:['id'],ok:true},{relation:'agentstudio_auth.accounts',relation_id:201,id:211,columns:['user_id'],ok:true}]
  state.actor.ordinary=true
- state.sensitive_catalogs=[{name:'pg_catalog.pg_authid',id:1260,kind:'r',table_read:false,column_read:false,table_write:false,column_write:false},{name:'pg_catalog.pg_shadow',id:12000,kind:'v',table_read:false,column_read:false,table_write:false,column_write:false}]
+ state.sensitive_catalogs=[{name:'pg_catalog.pg_authid',id:1260,kind:'r',table_read:false,column_read:false,table_write:false,column_write:false,table_acl_grant:false,column_acl_grant:false},{name:'pg_catalog.pg_shadow',id:12000,kind:'v',table_read:false,column_read:false,table_write:false,column_write:false,table_acl_grant:false,column_acl_grant:false}]
  const trace=[];let oldCalls=0,released=0;const faults=new Set()
  const db={async query(query,args=[]){trace.push({sql:query,args:structuredClone(args)});if(faults.has(query))throw Error('synthetic private driver details')
   if(['BEGIN READ ONLY','SET LOCAL ROLE agentstudio_api','ROLLBACK'].includes(query))return {rows:[]}
@@ -131,9 +131,12 @@ test('both exact sensitive catalogs reject any effective read/write without sele
  assert.match(q.sql,/has_any_column_privilege\(\$1::oid,c\.oid,'SELECT'\)/)
  assert.match(q.sql,/has_table_privilege\(\$1::oid,c\.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'\)/)
  assert.match(q.sql,/has_any_column_privilege\(\$1::oid,c\.oid,'INSERT,UPDATE,REFERENCES'\)/)
+ assert.match(q.sql,/aclexplode\(coalesce\(c\.relacl,pg_catalog\.acldefault\('r',c\.relowner\)\)\)/)
+ assert.equal([...q.sql.matchAll(/g\.grantee IN\(\$1::oid,0::oid\)/g)].length,2)
+ assert.match(q.sql,/a\.attrelid=c\.oid AND a\.attnum>0 AND NOT a\.attisdropped/)
  assert.match(q.sql,/WHERE n\.nspname='pg_catalog' AND c\.relname=ANY\(\$2::text\[\]\)/)
  assert.doesNotMatch(q.sql,/FROM pg_catalog\.(?:pg_authid|pg_shadow)|rolpassword|passwd|SELECT \*/i)
- for(const index of [0,1])for(const field of ['table_read','column_read','table_write','column_write'])await reject(s=>{s.sensitive_catalogs[index][field]=true})
+ for(const index of [0,1])for(const field of ['table_read','column_read','table_write','column_write','table_acl_grant','column_acl_grant'])await reject(s=>{s.sensitive_catalogs[index][field]=true})
  // Existing PUBLIC-readable pg_roles is not put on the denylist. No global
  // catalog SELECT prohibition or sensitive row probe is used by this check.
  assert.ok(!q.args[1].includes('pg_roles'))
@@ -142,7 +145,7 @@ test('both exact sensitive catalogs reject any effective read/write without sele
 test('missing, duplicate, substituted or malformed sensitive-catalog metadata fails closed',async()=>{
  await reject(s=>s.sensitive_catalogs.pop());await reject(s=>s.sensitive_catalogs.push({...s.sensitive_catalogs[0]}))
  await reject(s=>{s.sensitive_catalogs[1]={...s.sensitive_catalogs[0]}})
- for(const patch of [{id:0},{id:null},{name:'pg_catalog.pg_roles'},{kind:'v'},{table_read:null},{column_read:'false'},{table_write:undefined},{column_write:'false'}])await reject(s=>Object.assign(s.sensitive_catalogs[0],patch))
+ for(const patch of [{id:0},{id:null},{name:'pg_catalog.pg_roles'},{kind:'v'},{table_read:null},{column_read:'false'},{table_write:undefined},{column_write:'false'},{table_acl_grant:null},{column_acl_grant:undefined}])await reject(s=>Object.assign(s.sensitive_catalogs[0],patch))
  await reject(s=>{s.sensitive_catalogs[1].id=s.sensitive_catalogs[0].id})
 })
 

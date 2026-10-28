@@ -23,7 +23,7 @@ function observe(promise){const state={done:false};state.promise=promise.then(va
 // records bounded real catalog metadata, without query/result substitution or
 // business rows, SQL text, parameters, credentials or private exception text.
 async function diagnosticAudit(client,verify){
- const trace=[],fields=new Set(['id','name','relation','relation_id','owner_id','schema','args','result','language','volatility','definer','strict','leakproof','parallel','kind','defaults','modes','argnames','ordinary','config','sha','login','inherit','super','bypass','create_role','create_db','replication','connection_limit','memberships','current_role','version','ok','api','other_roles','columns','readable','installed','predecessor','grantor','grantee','function_id','privilege','grantable','owner_grant','type','required','plain','read','table_read','column_read','table_write','column_write','insert','update','reference','command','permissive','roles','qual','check','executable','owner_safe'])
+ const trace=[],fields=new Set(['id','name','relation','relation_id','owner_id','schema','args','result','language','volatility','definer','strict','leakproof','parallel','kind','defaults','modes','argnames','ordinary','config','sha','login','inherit','super','bypass','create_role','create_db','replication','connection_limit','memberships','current_role','version','ok','api','other_roles','columns','readable','installed','predecessor','grantor','grantee','function_id','privilege','grantable','owner_grant','type','required','plain','read','table_read','column_read','table_write','column_write','table_acl_grant','column_acl_grant','insert','update','reference','command','permissive','roles','qual','check','executable','owner_safe'])
  let untaggedAfterLast=0
  const observed=new Proxy(client,{get(db,key){
   if(key!=='query'){const value=Reflect.get(db,key,db);return typeof value==='function'?value.bind(db):value}
@@ -403,7 +403,7 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
   // rejection masking the original prefix-filter problem.
   for(const prefix of ['ct03_literal','pgx_literal'])for(const mode of ['table','column','public_column'])await t.test('literal system-schema prefix retains user schema '+prefix+' '+mode+' SELECT and exact recovery',async()=>{
    const schema=prefix+'_'+mode,table=quote(schema)+'.read_canary',grantee=mode==='public_column'?'PUBLIC':ownerRole
-   assert.match(schema,/^[a-z_]+$/)
+   assert.match(schema,/^(?:ct03|pgx)_literal_(?:table|column|public_column)$/)
    const grant=(mode==='table'?'SELECT':'SELECT(secret_text)')+' ON '+table
    await f.db.exec('CREATE SCHEMA '+quote(schema)+'; GRANT USAGE ON SCHEMA '+quote(schema)+' TO PUBLIC; CREATE TABLE '+table+"(secret_text text NOT NULL); INSERT INTO "+table+" VALUES('CT03_PRIVATE_CANARY')")
    try{
@@ -470,13 +470,22 @@ test('CT03 company overview genuine independent PG18 full061 plus unchanged full
      has_any_column_privilege($1::oid,$2::text,'INSERT,UPDATE,REFERENCES') AS column_write,
      has_column_privilege($1::oid,$2::text,'rolpassword','UPDATE') AS selected_column_write,
      has_table_privilege($1::oid,'pg_catalog.pg_roles','SELECT') AS ordinary_public_metadata,
+     (SELECT c.relowner::integer FROM pg_catalog.pg_class c WHERE c.oid=$2::regclass) AS catalog_owner_id,
+     coalesce((SELECT jsonb_agg(jsonb_build_object('grantor',g.grantor::integer,'grantee',g.grantee::integer,'privilege',g.privilege_type,'grantable',g.is_grantable) ORDER BY g.grantee,g.grantor)
+      FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) g
+      WHERE c.oid=$2::regclass AND g.grantee IN($1::oid,0::oid) AND g.privilege_type='UPDATE'),'[]'::jsonb) AS table_update_grants,
      (SELECT count(*)::integer FROM pg_catalog.pg_attribute a CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) x
       WHERE a.attrelid=$2::regclass AND x.grantee=$1::oid) AS explicit_owner_column_grants`,[metadataRoleOid,relation])).rows[0]
    await full({diagnose:true});await oldFull()
-   const clean=await probe();assert.equal(clean.table_read,false);assert.equal(clean.column_read,false);assert.equal(clean.table_write,false);assert.equal(clean.column_write,false);assert.equal(clean.selected_column_write,false);assert.equal(clean.explicit_owner_column_grants,0);assert.equal(clean.ordinary_public_metadata,true)
+   const clean=await probe();assert.equal(clean.table_read,false);assert.equal(clean.column_read,false);assert.equal(clean.table_write,false);assert.equal(clean.column_write,false);assert.equal(clean.selected_column_write,false);assert.equal(clean.explicit_owner_column_grants,0);assert.equal(clean.ordinary_public_metadata,true);assert.deepEqual(clean.table_update_grants,[])
    await f.db.exec('GRANT '+grant+' TO '+ownerRole)
    try{
-    const actual=await probe();assert.equal(actual.table_read,false);assert.equal(actual.column_read,false);assert.equal(actual.table_write,mode==='table');assert.equal(actual.column_write,true);assert.equal(actual.selected_column_write,true);assert.equal(actual.explicit_owner_column_grants,mode==='column'?1:0);assert.equal(actual.ordinary_public_metadata,true)
+    const actual=await probe();assert.equal(actual.table_read,false);assert.equal(actual.column_read,false)
+    // PG18 masks table-level UPDATE on system tables for non-superusers.
+    // Independently prove the raw grant/grantor exists and STILL require the
+    // Core/FULL/GET refusal below; an effective=false result is not no grant.
+    assert.equal(actual.table_write,false);assert.equal(actual.column_write,mode==='column');assert.equal(actual.selected_column_write,mode==='column');assert.equal(actual.explicit_owner_column_grants,mode==='column'?1:0);assert.equal(actual.ordinary_public_metadata,true)
+    assert.deepEqual(actual.table_update_grants,mode==='table'?[{grantor:actual.catalog_owner_id,grantee:Number(metadataRoleOid),privilege:'UPDATE',grantable:false}]:[])
     await assert.rejects(withActor(f.pool,f.identities.alice,schemaCore),error=>error.message==='unsafe_company_overview_privileges')
     await assert.rejects(full(),fixed503);await assert.rejects(inspectCompanyOverviewSchema(f.pool),fixed503)
     const reply=await getNoWrite('/api/v2/company-overview',{},503);assert.deepEqual(reply.body,{error:'company_overview_unavailable'})

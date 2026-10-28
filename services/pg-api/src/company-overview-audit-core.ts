@@ -82,9 +82,14 @@ async function verify(db:SqlClient):Promise<boolean>{
  if(surface.ok!==true)return fail()
  const sensitive=await read(db,"/* company061:sensitive_catalogs */ SELECT n.nspname||'.'||c.relname AS name,c.oid::integer AS id,c.relkind AS kind,"+
   "has_table_privilege($1::oid,c.oid,'SELECT') AS table_read,has_any_column_privilege($1::oid,c.oid,'SELECT') AS column_read,"+
-  "has_table_privilege($1::oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS table_write,has_any_column_privilege($1::oid,c.oid,'INSERT,UPDATE,REFERENCES') AS column_write "+
+  "has_table_privilege($1::oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS table_write,has_any_column_privilege($1::oid,c.oid,'INSERT,UPDATE,REFERENCES') AS column_write,"+
+  // System-table write protection can mask granted UPDATE in has_* predicates.
+  // Reject non-default owner/PUBLIC ACL entries too; never reject the normal
+  // catalog owner's own ACL or select any credential-bearing catalog rows.
+  "EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault('r',c.relowner))) g WHERE g.grantee IN($1::oid,0::oid) AND g.privilege_type IN('SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN')) AS table_acl_grant,"+
+  "EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) g WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND g.grantee IN($1::oid,0::oid) AND g.privilege_type IN('SELECT','INSERT','UPDATE','REFERENCES')) AS column_acl_grant "+
   "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='pg_catalog' AND c.relname=ANY($2::text[])",[owner.id,["pg_authid","pg_shadow"]])
- if(sensitive.length!==2||new Set(sensitive.map(c=>c.name)).size!==2||exactIds(sensitive,"id").length!==2||sensitive.some(c=>c.kind!==sensitiveCatalogs[String(c.name)]||!sensitiveCatalogs[String(c.name)]||c.table_read!==false||c.column_read!==false||c.table_write!==false||c.column_write!==false))return fail()
+ if(sensitive.length!==2||new Set(sensitive.map(c=>c.name)).size!==2||exactIds(sensitive,"id").length!==2||sensitive.some(c=>c.kind!==sensitiveCatalogs[String(c.name)]||!sensitiveCatalogs[String(c.name)]||c.table_read!==false||c.column_read!==false||c.table_write!==false||c.column_write!==false||c.table_acl_grant!==false||c.column_acl_grant!==false))return fail()
  const schemas=await read(db,"/* company061:schema_acl */ SELECT n.nspname AS name,a.grantor::integer=n.nspowner::integer AS owner_grant,a.privilege_type AS privilege,a.is_grantable AS grantable FROM pg_catalog.pg_namespace n "+
   "CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(n.nspacl,pg_catalog.acldefault('n',n.nspowner))) a WHERE a.grantee=$1::oid",[owner.id])
  if(schemas.length!==2||!same(schemas.map(s=>s.name).sort(),["agentstudio","agentstudio_auth"])||schemas.some(s=>s.owner_grant!==true||s.privilege!=="USAGE"||s.grantable!==false))return fail()
