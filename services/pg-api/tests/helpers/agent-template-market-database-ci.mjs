@@ -75,7 +75,25 @@ async function harness(f,env){
     }
     return principals
   }
-  const legacyApiPool=()=>{const login='agentstudio_stage_worker';return ownPool(login,crypto.createHash('sha512').update(target.password+':assessment:'+login).digest('hex').slice(0,80))}
+  const legacyApiPool=async()=>{
+    const login='agentstudio_stage_worker'
+    // The unchanged fresh initializer intentionally disabled this existing
+    // two-parent login. Open it only inside this guarded disposable test.
+    const original=await admin(async db=>(await db.query("SELECT r.rolcanlogin AS login,NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AS safe,ARRAY(SELECT p.rolname::text FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles p ON p.oid=m.roleid WHERE m.member=r.oid ORDER BY p.rolname) AS parents,NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid AND (m.admin_option OR m.inherit_option OR NOT m.set_option)) AS membership_safe FROM pg_catalog.pg_roles r WHERE r.rolname=$1::text",[login])).rows[0])
+    assert.ok(original);assert.equal(original.login,false);assert.equal(original.safe,true);assert.equal(original.membership_safe,true);assert.deepEqual(original.parents,['agentstudio_api','agentstudio_worker'])
+    await commitAdmin(db=>db.query('ALTER ROLE '+quote(login)+' LOGIN'))
+    let pool,restored=false
+    const restore=async()=>{
+      if(restored)return;restored=true
+      try{if(pool)await pool.end()}
+      finally{
+        if(pool){const index=pools.indexOf(pool);assert.ok(index>=0);pools.splice(index,1)}
+        await commitAdmin(db=>db.query('ALTER ROLE '+quote(login)+' NOLOGIN'))
+      }
+    }
+    try{pool=ownPool(login,crypto.createHash('sha512').update(target.password+':assessment:'+login).digest('hex').slice(0,80));return{pool,restore}}
+    catch(error){await restore();throw error}
+  }
   const catalogState=()=>admin(async db=>(await db.query(`SELECT jsonb_build_object(
     'versions',(SELECT jsonb_agg(to_jsonb(s) ORDER BY version) FROM agentstudio.schema_migrations s),
     'relations',(SELECT jsonb_agg(jsonb_build_array(n.nspname,c.relname,c.relkind,c.relowner,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity,c.relreplident,c.reloptions,c.reltablespace,
@@ -251,9 +269,14 @@ export async function runAgentTemplateMarketDatabaseSuite(t,f,env=process.env){
       }
     })
     await run('an actual existing two-parent Worker/API login cannot borrow the API receipt or auditor',async()=>{
-      const pool=h.legacyApiPool()
-      await assert.rejects(()=>h.asRole(pool,'agentstudio_api',db=>call(db,'receipt',[crypto.randomUUID()])),e=>e.code==='P0001'&&/agent_design_session_refused/.test(e.message))
-      await assert.rejects(()=>h.asRole(pool,'agentstudio_api',db=>h.audit.verifyAgentTemplateMarketCredentials(db)),/unsafe_agent_template_market_privileges/)
+      const before=await h.catalogState(),{pool,restore}=await h.legacyApiPool()
+      try{
+        // asRole proves an original authenticated TCP Client, login/role/PID,
+        // database and PG18 BEFORE either original refusal assertion runs.
+        await h.asRole(pool,'agentstudio_api',async()=>undefined)
+        await assert.rejects(()=>h.asRole(pool,'agentstudio_api',db=>call(db,'receipt',[crypto.randomUUID()])),e=>e.code==='P0001'&&/agent_design_session_refused/.test(e.message))
+        await assert.rejects(()=>h.asRole(pool,'agentstudio_api',db=>h.audit.verifyAgentTemplateMarketCredentials(db)),/unsafe_agent_template_market_privileges/)
+      }finally{await restore();assert.deepEqual(await h.catalogState(),before,'restore original two-parent NOLOGIN fixture');await h.positive()}
     })
     let owned,originalCopy,originalUse,originalUseReceipt
     await run('actual Native owner source and publication retain all descriptions and remove resource authority',async()=>{
