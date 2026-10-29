@@ -26,3 +26,10 @@ export function pathCiTelemetryHbaLines(){
  ])
 }
 export function pathCiTelemetryHbaText(){return pathCiTelemetryHbaLines().join('\n')+'\n'}
+
+// Diagnostic DATA only. Never replaces the original signed network hash check.
+export function pathCiNetworkDrift(before,after){
+ if([before,after].some(v=>typeof v!=='string'||Buffer.byteLength(v)>2097152||v.includes('\0')))throw Error('full069_path_ci_refused:network_observation_shape')
+ const lines=value=>value.split('\n'),a=lines(before),b=lines(after),policy=value=>lines(value).map(line=>/^:[A-Za-z0-9_-]+ (?:ACCEPT|DROP|-) \[(?:0|[1-9][0-9]*):(?:0|[1-9][0-9]*)\]$/.test(line)?line.replace(/\[[0-9]+:[0-9]+\]$/,'[0:0]'):line).join('\n'),same=before===after
+ return Object.freeze({exact_same:same,changed_only_chain_counters:!same&&policy(before)===policy(after),changed_line_count:Array.from({length:Math.max(a.length,b.length)},(_,i)=>a[i]!==b[i]).filter(Boolean).length,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false})
+}

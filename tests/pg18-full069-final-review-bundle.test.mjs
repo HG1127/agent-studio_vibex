@@ -24,7 +24,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),sha=b
 const originalSpawnSync=cp.spawnSync
 let archivePolicy=null
 function directoryIdentity(file){const s=fs.lstatSync(file,{bigint:true});assert.equal(s.isDirectory(),true);assert.equal(s.isSymbolicLink(),false);assert.equal(fs.realpathSync(file),file);return {file,dev:s.dev,ino:s.ino,uid:s.uid,gid:s.gid,mode:s.mode}}
-function assertDirectory(record){const s=directoryIdentity(record.file);for(const key of ['dev','ino','uid','gid','mode'])assert.equal(s[key],record[key]);return record.file}
+function assertDirectory(record){const s=directoryIdentity(record.file);for(const key of ['dev','ino','uid','gid','mode']){if(s[key]!==record[key])process.stderr.write(JSON.stringify({event:'offline_final_review_directory_changed',phase:archivePolicy?.phase??null,field:key,before:String(record[key]),after:String(s[key]),observed_data_only:true})+'\n');assert.equal(s[key],record[key])}return record.file}
 function archiveChild(file,prefix){assertDirectory(archivePolicy.output);assert.equal(path.dirname(file),archivePolicy.output.file);assert.match(path.basename(file),new RegExp('^'+prefix+'[A-Za-z0-9]{6}$'));return directoryIdentity(file)}
 function regularFile(file){const s=fs.lstatSync(file);assert.equal(s.isFile(),true);assert.equal(s.isSymbolicLink(),false);assert.equal(s.nlink,1);assert.equal(fs.realpathSync(file),file)}
 function sourceTree(directory){for(const name of fs.readdirSync(directory)){const file=path.join(directory,name),s=fs.lstatSync(file);assert.equal(s.isSymbolicLink(),false);assert.equal(fs.realpathSync(file),file);if(s.isDirectory())sourceTree(file);else regularFile(file)}}
@@ -57,6 +57,7 @@ function allowArchiveTar(command,args,options){
  const result=originalSpawnSync('tar',args,options);assertDirectory(archivePolicy.output);for(const directory of directories)assertDirectory(directory);archivePolicy.phase=phase;return result
 }
 function enrollHarnessExtraction(unpacked,result){assert.ok(archivePolicy);assert.equal(archivePolicy.phase,'extracted');assertDirectory(archivePolicy.output);assert.equal(result.archive,archivePolicy.archive);regularFile(result.archive);assert.match(result.sha256,/^[a-f0-9]{64}$/);assert.equal(sha(fs.readFileSync(result.archive)),result.sha256);assert.equal(unpacked,path.join(archivePolicy.output.file,'unpacked'));archivePolicy.unpacked=directoryIdentity(unpacked);archivePolicy.archiveSha=result.sha256;archivePolicy.phase='harness_enrolled'}
+function observedArchiveTar(command,args,options){try{return allowArchiveTar(command,args,options)}catch(error){process.stderr.write(JSON.stringify({event:'offline_final_review_tar_refused',phase:archivePolicy?.phase??null,observed_data_only:true})+'\n');throw error}}
 // This exact implementation is preloaded in each fixed offline child as well.
 // It only rejects effects and delegates parent tar after private path checks.
 function installOfflineGuard(allowedSpawn){
@@ -76,7 +77,7 @@ function installOfflineGuard(allowedSpawn){
  workerThreads.Worker=deny
  for(const key of ['spawn','fork','exec','execSync','execFile','execFileSync'])cp[key]=deny
  cp.ChildProcess.prototype.spawn=deny
- cp.spawnSync=(command,args,options)=>{if(typeof allowedSpawn!=='function')return deny();try{return allowedSpawn(command,args,options)}catch{return deny()}}
+  cp.spawnSync=(command,args,options)=>{if(typeof allowedSpawn!=='function')return deny();try{return allowedSpawn(command,args,options)}catch{return deny()}}
  globalThis.fetch=deny;globalThis.WebSocket=deny
  registerHooks({resolve(specifier,context,next){
   if(specifier==='pg'||specifier.startsWith('pg/')||['jszip','mammoth'].includes(specifier)||specifier.startsWith('pdfjs-dist/')||specifier.endsWith('.node'))deny()
@@ -86,7 +87,7 @@ function installOfflineGuard(allowedSpawn){
  }})
  syncBuiltinESMExports();process.on('exit',()=>{if(attempted)process.exitCode=95})
 }
-installOfflineGuard(allowArchiveTar)
+installOfflineGuard(observedArchiveTar)
 // All application imports, source captures and collectors run after the guard.
 const {captureFull069FinalSources,finalModules}=await import('../services/pg-api/src/pg18-full069-final-sources.mjs')
 const {parseFull069FinalReviewArguments,collectFull069FinalReviewSources,buildFull069FinalReviewBundle}=await import('../ops/build-pg18-full069-final-review-bundle.mjs')
@@ -119,7 +120,7 @@ test('real final archive exact extraction and actual source recapture/offline pl
  try{
   const s=await captureFull069FinalSources(),cfg={expectedSource:s.complete.source_sha256,expectedLiveSource:s.live.source_sha256,expectedFinalSource:s.source_sha256,output};beginArchivePolicy(output,owned,parent,cfg);const result=await buildFull069FinalReviewBundle(cfg)
   assert.equal(sha(fs.readFileSync(result.archive)),result.sha256);for(const k of[...nonAuthority,'network_used','sql_executed','services_started'])assert.equal(result[k],false,k);assert.equal(result.archive_extracted_inventory_verified,true);assert.equal(result.archive_extracted_hashes_verified,true)
-  const unpacked=path.join(output,'unpacked');fs.mkdirSync(unpacked);enrollHarnessExtraction(unpacked,result);const unpack=cp.spawnSync('tar',['-xzf',result.archive,'-C',unpacked],{env,encoding:'utf8',timeout:30000,maxBuffer:2097152});assert.equal(unpack.status,0,unpack.stderr)
+   const unpacked=path.join(output,'unpacked');fs.mkdirSync(unpacked,{mode:0o700});enrollHarnessExtraction(unpacked,result);const unpack=cp.spawnSync('tar',['-xzf',result.archive,'-C',unpacked],{env,encoding:'utf8',timeout:30000,maxBuffer:2097152});assert.equal(unpack.status,0,unpack.stderr)
   const actual=[];const walk=(dir,prefix='')=>{for(const n of fs.readdirSync(dir)){const rel=prefix+n,f=path.join(dir,n),st=fs.lstatSync(f);assert.equal(st.isSymbolicLink(),false);if(st.isDirectory())walk(f,rel+'/');else{assert.equal(st.isFile(),true);assert.equal(st.nlink,1);actual.push(rel)}}};walk(unpacked)
   const read=n=>fs.readFileSync(path.join(unpacked,n)),sums=read('SHA256SUMS').toString().trim().split('\n').map(l=>/^([a-f0-9]{64})  ([A-Za-z0-9_./-]+)$/.exec(l));assert.ok(sums.every(Boolean));assert.equal(actual.length,result.packed_files);assert.deepEqual(actual.sort(),[...sums.map(m=>m[2]),'SHA256SUMS'].sort());for(const m of sums)assert.equal(sha(read(m[2])),m[1],m[2])
   // No child permit reaches tested code. Only these three fixed offline

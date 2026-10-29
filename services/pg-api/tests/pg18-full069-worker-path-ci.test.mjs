@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {pathCiApproval,requirePathCiApproval,assertPathCiResult,assertPathCiWarm,assertPathCiCleanup,pathCiOriginalSevenLogins,pathCiTelemetryHbaLines,pathCiTelemetryHbaText} from './helpers/pg18-full069-worker-path-ci-contract.mjs'
+import {pathCiApproval,requirePathCiApproval,assertPathCiResult,assertPathCiWarm,assertPathCiCleanup,pathCiOriginalSevenLogins,pathCiTelemetryHbaLines,pathCiTelemetryHbaText,pathCiNetworkDrift} from './helpers/pg18-full069-worker-path-ci-contract.mjs'
 import fs from 'node:fs'
 import {inspectComplete069ReviewWorkerHba} from '../src/pg18-complete-review-worker-plan.mjs'
 import {verifyPg18ServiceHbaOrder} from '../src/native-activation-cli.mjs'
@@ -49,3 +49,12 @@ test('fixture reads actual final PG rules after reload then calls unchanged guar
  const source=fs.readFileSync(new URL('./helpers/pg18-full069-worker-path-ci-fixture.mjs',import.meta.url),'utf8'),reload=source.indexOf("'hba_reload_wait',5000)"),read=source.indexOf('FROM pg_hba_file_rules ORDER BY rule_number',reload),review=source.indexOf('inspectComplete069ReviewWorkerHba(hbaRows)',read),seven=source.indexOf('verifyPg18ServiceHbaOrder(hbaRows,login)',read),create=source.indexOf("await s.admin.query('CREATE DATABASE agent_studio_telemetry OWNER postgres')",read)
  assert.ok(reload>=0&&read>reload&&review>read&&seven>read&&create>review&&create>seven);assert.ok(source.includes('input:Buffer.from(hbaText)'));assert.ok(source.includes("fail('current_hba_review_or_original_seven')"));assert.equal(source.slice(read,create).includes('.filter('),false);assert.ok(source.includes('/var/lib/agentstudio-full069-path-runtime-'));assert.equal(source.includes('/opt/agentstudio-full069-path-ci-'),false)
 })
+test('network drift observation distinguishes exact bytes and chain counters without granting hash acceptance',()=>{
+ const before='*filter\n:OUTPUT ACCEPT [1:20]\n:AS_F069 - [0:0]\n-A OUTPUT -m owner --uid-owner 61001 -j AS_F069\nCOMMIT',after=before.replace('[1:20]','[2:40]'),same=pathCiNetworkDrift(before,before),changed=pathCiNetworkDrift(before,after)
+ assert.equal(same.exact_same,true);assert.equal(same.changed_only_chain_counters,false);assert.equal(same.changed_line_count,0);assert.equal(changed.exact_same,false);assert.equal(changed.changed_only_chain_counters,true);assert.equal(changed.changed_line_count,1);for(const v of[same,changed]){assert.equal(v.observed_data_only,true);assert.equal(v.qualifies_run,false);assert.equal(v.production_cutover_allowed,false);assert.equal(Object.isFrozen(v),true)}
+})
+test('network drift cannot classify policy, UID, rule order, extra rule or rule counter changes as chain counters',()=>{
+ const before='*filter\n:OUTPUT ACCEPT [1:20]\n-A OUTPUT -m owner --uid-owner 61001 -j ACCEPT\n-A OUTPUT -j REJECT\nCOMMIT'
+ for(const after of[before.replace('OUTPUT ACCEPT','OUTPUT DROP'),before.replace('61001','61002'),before.replace('-j ACCEPT','-j DROP'),before.replace('COMMIT','-A OUTPUT -j ACCEPT\nCOMMIT'),before.split('\n').reverse().join('\n'),before.replace('--uid-owner 61001','--uid-owner 61001 -c 1 2'),before.replace(':OUTPUT ACCEPT [1:20]',':OUTPUT ACCEPT [2:40] ').replace('61001','61002')])assert.equal(pathCiNetworkDrift(before,after).changed_only_chain_counters,false)
+})
+test('network drift data refuses nontext, NUL and oversized input before analysis',()=>{for(const value of[null,{},Buffer.from('x'),'a\0b','x'.repeat(2097153)]){assert.throws(()=>pathCiNetworkDrift(value,''),/network_observation_shape/);assert.throws(()=>pathCiNetworkDrift('',value),/network_observation_shape/)}})
