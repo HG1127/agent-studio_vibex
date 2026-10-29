@@ -8,6 +8,7 @@ on:
       - 'shared/**'
       - 'ops/pg18-complete-install-ci.mjs'
       - 'ops/pg18-complete-service-ci.mjs'
+      - 'ops/pg18-full069-worker-path-ci.mjs'
       - '.github/workflows/pg18-complete-install-ci.yml'
   workflow_dispatch:
 permissions:
@@ -46,7 +47,7 @@ jobs:
       - name: Actual compiler, offline complete plan and ordinary-host refusal
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs services/pg-api/tests/pg18-complete-service-plan.test.mjs services/pg-api/tests/pg18-complete-service-driver.test.mjs services/pg-api/tests/pg18-complete-service-case-counter.test.mjs services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs services/pg-api/tests/pg18-complete-review-worker-source.test.mjs services/pg-api/tests/pg18-complete-executor-plan.test.mjs services/pg-api/tests/pg18-complete-executor-source.test.mjs services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs services/pg-api/tests/pg18-complete-review-stack-source.test.mjs services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs services/pg-api/tests/pg18-complete-role-closure.test.mjs
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs services/pg-api/tests/pg18-complete-service-plan.test.mjs services/pg-api/tests/pg18-complete-service-driver.test.mjs services/pg-api/tests/pg18-complete-service-case-counter.test.mjs services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs services/pg-api/tests/pg18-complete-review-worker-source.test.mjs services/pg-api/tests/pg18-complete-executor-plan.test.mjs services/pg-api/tests/pg18-complete-executor-source.test.mjs services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs services/pg-api/tests/pg18-complete-review-stack-source.test.mjs services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs services/pg-api/tests/pg18-complete-role-closure.test.mjs services/pg-api/tests/pg18-full069-worker-live.test.mjs services/pg-api/tests/pg18-full069-worker-path-validation.test.mjs services/pg-api/tests/pg18-full069-worker-path-ci.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-plan.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-source.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-guard.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-lock-boundary.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-chain.test.mjs services/pg-api/tests/pg18-complete-companion-sources.test.mjs
       - name: Own empty PG18 clusters and actual complete069 install
         env: &complete069SyntheticAdmission
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
@@ -63,7 +64,25 @@ jobs:
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-install-ci.mjs --run
       - name: Fresh full069 fixed service preparation and original first-admin CLI
-        env: *complete069SyntheticAdmission
+        env:
+          <<: *complete069SyntheticAdmission
+          AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE: YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY
         run: |
           node_path="$(command -v node)"
-          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run
+      - name: Bounded seven original Worker entries and Native HTTPS paths
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+          AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+          AGENT_STUDIO_PG18_CI_PORT: '5432'
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE: COMPLETE_069_INSTALL_SYNTHETIC_ONLY
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED: YES_NEW_DISPOSABLE_CONTAINERS_ONLY
+          AGENT_STUDIO_FULL069_WORKER_PATH_CI_APPROVED: RUN_BOUNDED_OWNED_FULL069_WORKER_PATHS_ONLY
+        run: |
+          node_path="$(command -v node)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_FULL069_WORKER_PATH_CI_APPROVED "$node_path" --experimental-strip-types ops/pg18-full069-worker-path-ci.mjs --run

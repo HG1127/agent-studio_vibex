@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto'
 import {captureCompleteProfileSources,assertCompleteProfileSnapshot,assertCompleteProfileDeployment} from './pg18-complete-profile-source.mjs'
 import {liveEntries,liveFail,freeze,hex} from './pg18-full069-worker-live-contract.mjs'
 export const liveRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
-export const liveModules=Object.freeze(['contract','sources','trust','runtime','processes','child','native','runner','cli'].map(n=>'services/pg-api/src/pg18-full069-worker-live-'+n+'.mjs'))
+export const liveModules=Object.freeze([...['contract','sources','trust','runtime','processes','child','native','runner','cli'].map(n=>'services/pg-api/src/pg18-full069-worker-live-'+n+'.mjs'),...['contract','guard','runner','cli'].map(n=>'services/pg-api/src/pg18-full069-worker-path-validation-'+n+'.mjs')])
 const snapshots=new WeakSet(),sha=v=>createHash('sha256').update(v).digest('hex')
 export async function captureFull069WorkerLiveSources(){
   const complete=await captureCompleteProfileSources(),ts=await import('typescript'),entries=new Map(complete.manifest.sources.map(x=>[x.path,{...x}])),pending=[...liveModules,'services/pg-api/src/native-server.ts',...liveEntries.map(x=>'services/pg-api/src/'+x.file)],seen=new Set(),edges=[]

@@ -35,7 +35,10 @@ test('actual source collection includes full069 preparation and exact parser whi
  const sums=read('SHA256SUMS').toString('utf8').trim().split('\n').map(line=>{const m=/^([a-f0-9]{64})  ([A-Za-z0-9_./-]+)$/.exec(line);assert.ok(m);return m})
  assert.deepEqual(sums.map(m=>m[2]).sort(),r.files.filter(n=>n!=='SHA256SUMS'));for(const m of sums)assert.equal(hash(read(m[2])),m[1])
  assert.match(read('README_REVIEW_ONLY.txt').toString(),/SOURCE REVIEW ONLY/);assert.match(read('README_REVIEW_ONLY.txt').toString(),/api -> native-auth -> first-admin/)
- assert.ok(read('docs/PG18_COMPLETE_069_PREPARATION.md'));assert.equal(r.files.includes('services/pg-api/src/native-local-executor-service-preflight-cli.mjs'),false)
+ assert.ok(read('docs/PG18_COMPLETE_069_PREPARATION.md'))
+ const executorPreflight='services/pg-api/src/native-local-executor-service-preflight-cli.mjs'
+ assert.equal(hash(read(executorPreflight)),expected.manifest.sources.find(f=>f.path===executorPreflight)?.sha256)
+ assert.equal(r.files.includes('ops/templates/agentstudio-pg18-native-local-executor.service.example'),false)
  for(const name of r.files)assert.doesNotMatch(name,/(?:^|\/)(?:\.env[^/]*|pb_data|secrets?|credentials?)(?:\/|$)|\.(?:db|sqlite|wal|exe|dll|pem|key|zip)$/i)
  await assert.rejects(collectComplete069ReviewSources('0'.repeat(64)),/complete069_source_refused/)
 })

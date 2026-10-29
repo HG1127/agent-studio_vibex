@@ -86,6 +86,29 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const reviewStack=await verifyComplete069ReviewStackCi(loaded,targets.main,{api:passwords.api,modelBroker:passwords.broker})
   assert.equal(reviewStack.actual_preparation_cli,true);assert.equal(reviewStack.actual_three_dedicated_login_audits,true);assert.equal(reviewStack.original_nonroot_broker_design_preflight_verified,true);assert.equal(reviewStack.original_nonroot_worker_design_preflight_verified,true);assert.equal(reviewStack.all133_table_images_unchanged,true);assert.equal(reviewStack.runtime_authorization,false)
   console.log(JSON.stringify({event:'complete069_review_stack_actual_summary',...reviewStack}))
+  if(env.AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE!==undefined){
+   assert.equal(env.AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE,'YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY')
+   const {verifyComplete069PlanWorkflowCi}=await import('./helpers/pg18-complete-plan-workflow-ci.mjs')
+   const predecessorFiles=[
+    {login:'agentstudio_stage_login',secret_file:files.api},
+    {login:'agentstudio_native_login',secret_file:files['native-auth']},
+    {login:'agentstudio_stage_worker',secret_file:files.worker},
+    {login:'agentstudio_bound_dispatch_login',secret_file:files.identity},
+    {login:'agentstudio_model_broker_login',secret_file:files.broker},
+    {login:'agentstudio_knowledge_index_worker_login',secret_file:files['index-worker']},
+    {login:'agentstudio_knowledge_index_broker_login',secret_file:files['index-broker']},
+    {login:'agentstudio_review_worker_login',secret_file:stage.input+'/review-worker.secret'},
+    {login:'agentstudio_local_executor_login',secret_file:stage.input+'/executor.secret'},
+    {login:'agentstudio_review_dispatch_login',secret_file:stage.input+'/review-stack-review_dispatch.secret'},
+    {login:'agentstudio_design_worker_login',secret_file:stage.input+'/review-stack-design_worker.secret'},
+    {login:'agentstudio_design_dispatch_login',secret_file:stage.input+'/review-stack-design_dispatch.secret'},
+   ]
+   const planWorkflow=await verifyComplete069PlanWorkflowCi(loaded,targets.main,{predecessorFiles})
+   assert.equal(planWorkflow.actual_case_count,9);assert.equal(planWorkflow.actual_predecessor_login_count,12);assert.equal(planWorkflow.actual_F05_login_count,2)
+   for(const key of ['actual_preparation_cli','original_auditors_verified','original_nonroot_worker_preflight_verified','original_nonroot_broker_preflight_verified','actual_postgres_future_SELECT_negative_verified','all133_table_images_unchanged','ledger57_unchanged'])assert.equal(planWorkflow[key],true)
+   for(const key of ['prior_commit_acknowledged','runtime_authorization','worker_process_started','broker_listener_started','external_model_calls','actual_pg_commit_ack_loss_injected','production_GO'])assert.equal(planWorkflow[key],false)
+   console.log(JSON.stringify({event:'complete069_plan_workflow_actual_summary',...planWorkflow}))
+  }
   console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:caseCounter.finish(),actual_review_worker_login_verified:true,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
  }finally{await admin.end()}
 }

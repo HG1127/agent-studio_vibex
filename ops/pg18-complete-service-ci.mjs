@@ -18,7 +18,7 @@ export async function runCompleteServiceCi(argv,env=process.env){
   phase('create_owned_empty_clusters')
   owned=await createCompleteProfileContainers(permit,loaded)
   phase('run_actual_cli_fixture')
-  const keys=['PATH','HOME','LANG','CI','GITHUB_ACTIONS','RUNNER_OS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_EVENT_NAME']
+  const keys=['PATH','HOME','LANG','CI','GITHUB_ACTIONS','RUNNER_OS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_WORKFLOW','GITHUB_JOB','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_EVENT_NAME','AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE']
   const childEnv=Object.fromEntries(Object.entries(env).filter(([key])=>keys.includes(key)||key.startsWith('AGENT_STUDIO_PG18_CI_')||key.startsWith('AGENT_STUDIO_COMPLETE_PROFILE_CI_')))
   const prefix='AGENT_STUDIO_COMPLETE_PROFILE_CI_'
   for(const [key,value]of Object.entries({PROFILE_SHA256:stage.profileSha,NONCE:stage.nonce,MAIN_CONTAINER_ID:owned.mainId,RESTORE_CONTAINER_ID:owned.restoreId,IMAGE_ID:owned.imageId,SOURCE_SHA256:'bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67',SOURCE_MANIFEST_SHA256:stage.sourceManifestSha,RUNTIME_MANIFEST_SHA256:stage.runtimeManifestSha,LOCK_SHA256:'eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a',PACKAGE_SHA256:'90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'}))childEnv[prefix+key]=value

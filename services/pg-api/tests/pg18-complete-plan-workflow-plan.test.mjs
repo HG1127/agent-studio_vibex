@@ -1,0 +1,24 @@
+import test from'node:test'
+import assert from'node:assert/strict'
+import fs from'node:fs'
+import {complete069PlanWorkflowAbi as abi,complete069PlanWorkflowPlan,parseComplete069PlanWorkflowArguments,complete069PlanWorkflowReservationSql,complete069PlanWorkflowActivationSql,inspectComplete069PlanWorkflowHba}from'../src/pg18-complete-plan-workflow-plan.mjs'
+test('F05 pair is independent, fixed and never grants runtime or old action authority',()=>{
+ const p=complete069PlanWorkflowPlan();assert.equal(abi.length,2);assert.deepEqual(abi.map(a=>a.login),['agentstudio_plan_workflow_worker_login','agentstudio_plan_workflow_dispatch_login']);assert.equal(Object.isFrozen(abi),true);for(const a of abi)assert.equal(Object.isFrozen(a),true)
+ for(const k of ['original_C8_changed','original_review_ABI_changed','old050059060_changed','source_delivery_is_runtime_capability','preparation_is_runtime_authorization','network_used','credentials_read','writes_performed','services_started','production_cutover_allowed'])assert.equal(p[k],false,k)
+ assert.equal(p.atomic_pair,true);assert.equal(p.broker_independent_original_pools,3);assert.deepEqual(p.original_preflight_args,[['--preflight','worker'],['--preflight','broker']])
+ assert.equal((complete069PlanWorkflowReservationSql.match(/CREATE ROLE /g)||[]).length,2);assert.equal((complete069PlanWorkflowReservationSql.match(/CONNECTION LIMIT 3/g)||[]).length,2);assert.doesNotMatch(complete069PlanWorkflowReservationSql,/GRANT (?:SELECT|INSERT|UPDATE|EXECUTE|USAGE)|schema_migrations|IF NOT EXISTS|agentstudio_review_/)
+})
+test('closed pair arguments and canonical independent SCRAM verifiers reject extra actions and borrowed ABI',()=>{
+ const valid=['--prepare','--profile','complete069','--confirm-database','agent_studio','--expected-source-sha256','a'.repeat(64),'--expected-plan-workflow-source-sha256','b'.repeat(64),'--expected-system-identifier','123','--expected-database-oid','456','--operation-id','11111111-1111-4111-8111-111111111111'];assert.equal(parseComplete069PlanWorkflowArguments(valid).mode,'prepare');assert.deepEqual(parseComplete069PlanWorkflowArguments(['--plan']),{mode:'plan'})
+ for(const bad of [[],[...valid,'--action','worker'],valid.slice(0,-2),valid.map((v,i)=>i===2?'complete050':v),valid.map((v,i)=>i===8?'bad':v),valid.map((v,i)=>i===14?'not-uuid':v),['--prepare','--kind','review-worker']])assert.throws(()=>parseComplete069PlanWorkflowArguments(bad),/arguments_refused/)
+ const scram=n=>'SCRAM-SHA-256$15000:'+Buffer.alloc(16,n).toString('base64')+'$'+Buffer.alloc(32,n+1).toString('base64')+':'+Buffer.alloc(32,n+2).toString('base64'),a=scram(1),b=scram(5);assert.equal((complete069PlanWorkflowActivationSql([a,b]).match(/ALTER ROLE /g)||[]).length,2)
+ for(const bad of [[a,a],[a],[a,b+"';DROP ROLE x;--"],['plaintext',b],[a.replace('15000','4096'),b]])assert.throws(()=>complete069PlanWorkflowActivationSql(bad),/scram_refused/)
+})
+test('each fixed pair HBA rejects earlier trust, foreign login, missing remote refusal and options',()=>{
+ for(const a of abi){const rule=(n,type,database,address,netmask,auth_method)=>({rule_number:n,type,database,user_name:[a.login],address,netmask,auth_method,error:null,options:null}),rows=[rule(1,'local',['all'],null,null,'reject'),rule(2,'host',['agent_studio'],'127.0.0.1','255.255.255.255','scram-sha-256'),rule(3,'host',['all'],'0.0.0.0','0.0.0.0','reject'),rule(4,'host',['all'],'::','::','reject')];assert.equal(inspectComplete069PlanWorkflowHba(rows,a.login).safe,true)
+  assert.equal(inspectComplete069PlanWorkflowHba(rows,'agentstudio_review_worker_login').safe,false);assert.equal(inspectComplete069PlanWorkflowHba(rows.slice(0,-1),a.login).safe,false);assert.equal(inspectComplete069PlanWorkflowHba([{...rows[1],rule_number:0},...rows],a.login).safe,false);assert.equal(inspectComplete069PlanWorkflowHba([{...rows[1],rule_number:1,auth_method:'trust'},...rows.map(r=>({...r,rule_number:r.rule_number+1}))],a.login).safe,false);assert.equal(inspectComplete069PlanWorkflowHba(rows.map(r=>r.rule_number===2?{...r,options:['clientcert=verify-full']}:r),a.login).safe,false)
+ }
+})
+test('installation examples use original exact CLI/credentials and refuse by default',()=>{
+ for(const a of abi){const base=new URL('../../../ops/templates/agentstudio-pg18-plan-workflow-'+a.kind,import.meta.url),unit=fs.readFileSync(new URL(base+'.service.example'),'utf8'),config=fs.readFileSync(new URL(base+'.conf.example'),'utf8');assert.match(unit,new RegExp('agent-plan-workflow-service\\.ts --preflight '+a.kind));assert.match(unit,new RegExp('agent-plan-workflow-service\\.ts --serve '+a.kind));assert.doesNotMatch(unit,/^\[Install\]|Restart=always|Restart=on-failure/m);assert.match(config,/EXECUTION_ENABLED=false/);assert.match(config,/EXECUTION_APPROVED=NOT_APPROVED/);assert.match(config,/SERVICE_REVIEWED=false/);assert.doesNotMatch(config,/PASSWORD=|DATABASE_URL=|NODE_OPTIONS=/)}
+})

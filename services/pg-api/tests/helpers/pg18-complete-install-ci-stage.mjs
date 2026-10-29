@@ -44,6 +44,7 @@ export async function buildCompleteProfileStage(permit){
  const completeSource=await import(pathToFileURL(path.join(root,'services/pg-api/src/pg18-complete-profile-source.mjs')).href),complete=await completeSource.captureCompleteProfileSources()
  if(complete.manifest.profile!=='complete069'||complete.manifest.latest_migration!=='pg_v9_069'||complete.manifest.sql_sources.length!==53)fail('complete_source_binding')
  completeSource.assertCompleteProfileSnapshot(complete,complete.source_sha256)
+ const f05Stage=await import('./pg18-complete-plan-workflow-ci-stage.mjs'),f05=f05Stage.complete069PlanWorkflowCiStageEnabled(permit)?await f05Stage.collectComplete069PlanWorkflowCiStage(permit,complete):null
  const nonce=randomBytes(32).toString('hex'),label=proof.run+'-'+proof.attempt+'-'+nonce
  // Host staging uses a new private root directory. The container has its own
  // /opt ancestry and receives only the two readonly, reviewed bind mounts.
@@ -56,6 +57,7 @@ export async function buildCompleteProfileStage(permit){
   records.set(relative,{path:relative,sha256:sha(bytes),bytes:bytes.length});write(tree+'/'+relative,bytes)
  }
  for(const r of [...snapshot.manifest.sources,...snapshot.manifest.fresh_sources,snapshot.manifest.sql,snapshot.manifest.predecessor.manifest.sql,...complete.manifest.sources,...complete.manifest.sql_sources])add(r.path,read(path.join(root,r.path),r.sha256),r.sha256)
+ if(f05)for(const entry of f05.entries)add(entry.path,entry.bytes,entry.sha256)
  add('services/pg-api/package.json',read(path.join(root,'services/pg-api/package.json'),packageSha),packageSha)
  add('services/pg-api/pnpm-lock.yaml',read(path.join(root,'services/pg-api/pnpm-lock.yaml'),lockSha),lockSha)
  const apiRequire=createRequire(path.join(root,'services/pg-api/package.json'))
@@ -95,6 +97,7 @@ export async function buildCompleteProfileStage(permit){
  const sourceBytes=Buffer.from(JSON.stringify(snapshot.manifest)),runtimeBytes=Buffer.from(JSON.stringify(manifest))
  if(sha(sourceBytes)!==sourceSha)fail('source_manifest')
  write(input+'/source-manifest.json',sourceBytes,0o600);write(input+'/runtime-manifest.json',runtimeBytes,0o600)
+ if(f05)write(input+'/plan-workflow-source-manifest.json',f05.manifest,0o600)
  const seal=dir=>{for(const name of fs.readdirSync(dir)){const file=path.join(dir,name),st=fs.lstatSync(file);if(st.isSymbolicLink())fail('stage_link');if(st.isDirectory())seal(file);else if(!st.isFile()||st.nlink!==1||(st.mode&0o7777)!==0o444)fail('stage_file')}fs.chmodSync(dir,0o555)}
  seal(tree)
  const result=Object.freeze({input,harness,tools,nonce,profileSha:complete.source_sha256,sourceManifestSha:sha(sourceBytes),runtimeManifestSha:sha(runtimeBytes),runtimeFiles:runtimeFiles.length});stages.add(result);return result
@@ -119,7 +122,8 @@ export async function loadVerifiedCompleteProfileStage(permit,stage){
  const handle=runtime.loadDescriptivePatchOperatorPg(capability);runtime.assertDescriptivePatchOperatorRuntime(capability)
  const completeSource=await import(pathToFileURL(tree+'/services/pg-api/src/pg18-complete-profile-source.mjs').href),complete=await completeSource.captureCompleteProfileSources()
  completeSource.assertCompleteProfileDeployment(complete,stage.profileSha)
- allowedSources=new Set([...allowedSources,...complete.manifest.sources.map(f=>f.path)])
- const loaded=Object.freeze({Pool:handle.Pool,from,tree,snapshot,runtime,complete,profileSha:stage.profileSha,stageInput:stage.input,stageNonce:stage.nonce,assertRuntime:()=>{runtime.assertDescriptivePatchOperatorRuntime(capability);completeSource.assertCompleteProfileDeployment(complete,stage.profileSha)}});loadedStages.add(loaded);return loaded
+ const f05Stage=await import('./pg18-complete-plan-workflow-ci-stage.mjs'),f05=f05Stage.complete069PlanWorkflowCiStageEnabled(permit)?await f05Stage.verifyComplete069PlanWorkflowCiStage(permit,tree,stage.input,complete,sha(read(stage.input+'/plan-workflow-source-manifest.json'))):null
+ allowedSources=new Set([...allowedSources,...complete.manifest.sources.map(f=>f.path),...(f05?f05.paths:[])])
+ const loaded=Object.freeze({Pool:handle.Pool,from,tree,snapshot,runtime,complete,profileSha:stage.profileSha,stageInput:stage.input,stageNonce:stage.nonce,planWorkflow:f05,assertRuntime:()=>{runtime.assertDescriptivePatchOperatorRuntime(capability);completeSource.assertCompleteProfileDeployment(complete,stage.profileSha);f05?.assert()}});loadedStages.add(loaded);return loaded
 }
 export function assertVerifiedCompleteProfileStage(loaded){if(!loadedStages.has(loaded))fail('verified_stage_reference_required');loaded.assertRuntime()}
