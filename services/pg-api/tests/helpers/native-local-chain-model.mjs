@@ -36,8 +36,8 @@ export function chainDecision(prompt,{formUrl,sourceSha}){
  if(round===4){const manifest=JSON.parse(history[2]?.observation??'null');if(manifest?.source_sha256!==sourceSha||manifest.total!=='2500.00')throw Error('native_chain_actual_manifest_not_observed');return tool('browser.browser_navigate',{url:formUrl})}
  if(round===5||round===8)return tool('browser.browser_take_screenshot',{type:'png',scale:'css'})
  function ref(label,kind){for(const item of [...history].reverse()){const text=String(item.observation??''),line=text.split('\n').find(s=>s.includes(kind+' "'+label+'"')&&/\[ref=[^\]]+\]/.test(s));const found=line&&/\[ref=([^\]]+)\]/.exec(line);if(found)return found[1]}throw Error('native_chain_actual_browser_reference_missing')}
- if(round===6)return tool('browser.browser_fill_form',{fields:[{name:'报告总额',type:'textbox',ref:ref('报告总额','textbox'),value:'2500.00'},{name:'源摘要',type:'textbox',ref:ref('源摘要','textbox'),value:sourceSha}]})
- if(round===7)return tool('browser.browser_click',{element:'提交一次报告',ref:ref('提交一次报告','button')})
+ if(round===6)return tool('browser.browser_fill_form',{fields:[{name:'报告总额',type:'textbox',target:ref('报告总额','textbox'),value:'2500.00'},{name:'源摘要',type:'textbox',target:ref('源摘要','textbox'),value:sourceSha}]})
+ if(round===7)return tool('browser.browser_click',{element:'提交一次报告',target:ref('提交一次报告','button')})
  if(round===9||round===10)return{action:'answer',answer:'实际本机源表总额 2500.00；Excel、Word 与 JSON 清单已回读核对，原表保持不变。隔离网页已返回一次提交回执，截图已送入本次模型请求。'}
  throw Error('native_chain_unexpected_model_round')
 }

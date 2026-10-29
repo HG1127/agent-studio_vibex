@@ -1,6 +1,6 @@
 // Reviewed source provenance only. Does not replace any original runtime catalog/LOGIN audit.
 export const agentCreateJourneyGenuineSources=Object.freeze({
-  "package.json": "67dd12fe4e1658043be37635640fd8d368cc9a0c0a117744fbb5715427eae66e",
+  "package.json": "98895cd6fb8cc446cc75ed96d99fa86cdb5ba7c67b09fa6bf1db18d3056c913b",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",

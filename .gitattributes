@@ -869,3 +869,7 @@ services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs text eol=lf
 services/pg-api/tests/pg18-complete-review-worker-source.test.mjs text eol=lf
 services/pg-api/tests/pg18-complete-service-case-counter.test.mjs text eol=lf
 services/pg-api/tests/pg18-full069-worker-live.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+ops/build-pg18-full069-worker-live-review-bundle.mjs text eol=lf
+tests/pg18-full069-worker-live-review-bundle.test.mjs text eol=lf
