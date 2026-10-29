@@ -1,7 +1,7 @@
 {
   "format": "pg18_migration_execution_registry_v1",
-  "updated_UTC": "2026-10-29T03:46:09.497318+00:00",
-  "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
+  "updated_UTC": "2026-10-29T04:23:17.828Z",
+  "source_head": "9c46d7350482796c1676b73bc583ab512fcb7ab2",
   "deadline_Asia_Shanghai": "2026-10-30T18:30:00+08:00",
   "is_authority": false,
   "production_GO": false,
@@ -56,7 +56,12 @@
         "actual_API59": true,
         "actual_frontend6": true
       },
-      "actual_provider_Worker_Native_HTTP_employee_browser_acceptance": false
+      "actual_provider_Worker_Native_HTTP_employee_browser_acceptance": false,
+      "runtime16_after_base": {
+        "actual_API59": true,
+        "pure_guards_and_composition": 16,
+        "actual_runtime_browser": false
+      }
     },
     "quality": {
       "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
@@ -87,7 +92,7 @@
   "current_packages": {
     "database": "F08 singleuse internal sharing SQL065/service/API/employeeoperation; new actual DB faults preempt.",
     "runtime": "W-CANCEL actual currentfailure; explicitfullprofile unifiedinstaller using existing050/059/060, then real startup/restore/24h.",
-    "employee-ui": "F05employee24 frozen/imported; finish actual Native/server/privateWorker/Broker service composition and genuine/browser acceptance.",
+    "employee-ui": "F02/F22five-stepfirstcreate and existingresource/navigation UX; actualF05runtime/browserfaultspreempt.",
     "integration": "Canonical exactreview/pins/source upload and isolatedCI; acceptedF07database/API/browser andF05database components, full31scope andfinaltargetgates retained."
   },
   "queued_packages": {
@@ -228,7 +233,7 @@
       "baseline_pointer": "/features/4",
       "baseline_conclusion": "确认现有行为缺口，范围仅现有“方案→图”的员工动作；不能把它误写成Workflow V2整体未实现，也不扩张独立子工作流。",
       "scope_status": "confirmed_existing",
-      "implementation": "employee_sources_integrated_runtime_composition_pending",
+      "implementation": "implemented_in_candidate_runtime_browser_validation_pending",
       "isolated_validation": "passed_database_component_employee_flow_pending",
       "evidence_key": "F05",
       "current_note": "12 foundationfiles and53 purechecks/APIcompiler; no acceptedSQL064/actualdispatch/canvas-save flow yet.",
@@ -663,5 +668,5 @@
     }
   ],
   "provenance_resolution": "docs/PG18_FEATURE_PROVENANCE_20261029.json",
-  "integration_candidate_note": "Employee24 source is locally integrated after this accepted base; Native/service runtime composition and same-candidate acceptance remain pending."
+  "integration_candidate_note": "F05Native/servicecomposition and actualruntime/browsergenuine proposals integrated after this base; defaultactivationoff and actualnewruntime/browsernotyetaccepted."
 }

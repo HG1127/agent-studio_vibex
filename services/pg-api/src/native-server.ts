@@ -46,6 +46,7 @@ import {AgentReviewSourceRepository} from "./agent-review-source.ts"
 import {AgentDesignLedgerRepository} from "./agent-design-ledger.ts"
 import {createAgentDesignHttpHandler} from "./agent-design-http.ts"
 import {selectNativeAgentDesignCapabilities,loadAgentDesignAuditVerifier,inspectAgentDesignApiPool,type AgentDesignAuditVerifier} from "./agent-design-runtime-policy.ts"
+import {prepareAgentPlanWorkflowNative} from "./agent-plan-workflow-composition.ts"
 import {AgentTemplateMarketRepository} from "./agent-template-market-repository.ts"
 import {createAgentTemplateMarketHttpHandler} from "./agent-template-market-http.ts"
 import {selectNativeAgentTemplateMarketCapabilities,loadAgentTemplateMarketAuditVerifier,inspectAgentTemplateMarketApiPool,type AgentTemplateMarketAuditVerifier} from "./agent-template-market-runtime-policy.ts"
@@ -449,6 +450,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     // Default-off performs no new auditor import, SQL, credential read or network.
     let agentDesignAudit:AgentDesignAuditVerifier|undefined
     if(agentDesign.available){agentDesignAudit=await loadAgentDesignAuditVerifier();await inspectAgentDesignApiPool(business,agentDesignAudit)}
+    const agentPlanWorkflow=await prepareAgentPlanWorkflowNative({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
     let templateMarketAudit:AgentTemplateMarketAuditVerifier|undefined
     if(templateMarket.available){templateMarketAudit=await loadAgentTemplateMarketAuditVerifier();await inspectAgentTemplateMarketApiPool(business,templateMarketAudit)}
     if(!listen){
@@ -497,6 +499,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
       allowAgentDesign:agentDesign.available,allowAgentDesignSubmissions:agentDesign.submissions,allowAgentDesignSaves:agentDesign.saves,
+      ...agentPlanWorkflow.metadataOptions,
       allowAgentTemplateMarket:templateMarket.available,allowAgentTemplateMarketWrites:templateMarket.writes,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
@@ -597,6 +600,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
       repository:new AgentDesignLedgerRepository(business,{audit:agentDesignAudit,allowSubmissions:agentDesign.submissions,allowSaves:agentDesign.saves}),
     }):null
+    const agentPlanWorkflowHttp=agentPlanWorkflow.createHandler(native.authenticateRequest)
     const guardedBusinessHandler=businessHandler
     const templateMarketHttp=templateMarket.available?createAgentTemplateMarketHttpHandler({
       allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
@@ -605,6 +609,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     businessHandler=async(req,res)=>{
       // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
       // and original-receipt gates, including recovery after new writes turn off.
+      if(agentPlanWorkflowHttp&&await agentPlanWorkflowHttp(req,res))return
       if(agentDesignHttp&&await agentDesignHttp(req,res))return
       if(templateMarketHttp&&await templateMarketHttp(req,res))return
       if(await companyWorkerHeartbeatsHttp(req,res))return

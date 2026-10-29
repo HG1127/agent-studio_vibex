@@ -15,7 +15,7 @@ export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/agent-template-market-http.ts": "ed5fed1c84e5c49b95eb4ccd8decc3aa24b4126a375a9f96eecce9ed08ebf421",
   "services/pg-api/src/agent-template-market-contract.ts": "345d339ad6a7499a7c64005dfa429ff1187c24c3a285a356a992f675a2c2e819",
   "services/pg-api/src/agent-template-market-result.ts": "d9d420f346dc5cc8915e77b3ce3593e2b6fdecec9988ffcbe55949f6cedb0953",
-  "services/pg-api/src/native-auth-http.mjs": "00082c16c558751b5b5eae8781440efc64f937369096d343daa63ed085e31a32"
+  "services/pg-api/src/native-auth-http.mjs": "602361e783e85c0c95faa26fb7cf127d11f300562fb73275f6aa7c6482cb9585"
 })
 
 export async function agentTemplateMarketGenuineFixture(env=process.env,{browserMode=false}={}){
