@@ -4,7 +4,7 @@ import {requireAgentTemplateMarketGenuineCi} from '../../services/pg-api/tests/h
 import {agentTemplateMarketGenuineFixture} from '../../services/pg-api/tests/helpers/agent-template-market-genuine-fixture.mjs'
 // BROWSER_SOURCE_PINS_INSERTED_BY_AUTHOR_FROM_ACTUAL_H
 export const agentTemplateMarketBrowserFrozenSources=Object.freeze({
-  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "e9c9e3877ec43c48daf81a563750e70417238dbeeced1cfd01fb030d26f749d8",
+  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "8f06a93bb52dbb29365e9f1ce22cde962d4581c3a74a8ba8277bda13e7cd2ff9",
   "src/pages/PgNativePilot/PgNativeTemplateMarketAgentSetup.tsx": "1484c40905eb35baed8c1aa8fb2770792f029100c10336a52be3b58d27977c80",
   "src/pages/PgNativePilot/PgNativeTemplateMarketPanel.tsx": "edf7af34ede2268eb4d6c8104811e3cec5303286b141b7bede0c1daf69b91abb",
   "src/lib/pgNativeTemplateMarket.ts": "0fa32da7d9537868b702010b5d3bf15b26d517425105105c16e29d9fe8e0dfd4",

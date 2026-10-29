@@ -14,7 +14,7 @@ export const agentInternalShareBrowserFrozenSources=Object.freeze({
   "src/pages/PgNativePilot/PgNativeAgentMcpToolsPanel.tsx": "5fdbd2f86dc925d583a2172e81a0c9ccf5861348bf1c0252216417d64c9be482",
   "src/pages/PgNativePilot/PgNativeAgentModelBindingPanel.tsx": "3bc4784404e4a8c804c634775d59293f56362fd77384a76bd82c0688902e03c9",
   "src/pages/PgNativePilot/PgNativeInternalSharePanel.tsx": "e4f62f87c29fce2e22cc98a4ba4efbc0b096cebd9f1caf2c08265fa243a73f5f",
-  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "e9c9e3877ec43c48daf81a563750e70417238dbeeced1cfd01fb030d26f749d8",
+  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "8f06a93bb52dbb29365e9f1ce22cde962d4581c3a74a8ba8277bda13e7cd2ff9",
   "src/pages/PgNativePilot/PgNativeTemplateMarketAgentSetup.tsx": "1484c40905eb35baed8c1aa8fb2770792f029100c10336a52be3b58d27977c80",
   "src/pages/PgNativePilot/PgNativeTemplateMarketPanel.tsx": "edf7af34ede2268eb4d6c8104811e3cec5303286b141b7bede0c1daf69b91abb",
   "services/pg-api/src/agent-run-control.ts": "fa018e968096ac539f1aeb90cd8cb01c9716d1097c9f3284d57bd338d8c439e1",

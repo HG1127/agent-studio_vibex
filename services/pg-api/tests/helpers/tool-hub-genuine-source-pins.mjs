@@ -511,7 +511,7 @@ export const toolHubGenuineSources=Object.freeze({
   "src/pages/PgNativePilot/PgNativeLocalDevicesPanel.tsx": "ab56c6035d92b833fd4b83b454100ef595526e549a66a732b23e3b87292df3e3",
   "src/pages/PgNativePilot/PgNativeMcpConnectionsPanel.tsx": "4a0df4c6cc5adc0b486216be69b29cf0164f985eb8ca33e58598d336a05dc3b6",
   "src/pages/PgNativePilot/PgNativeOfficeWorkflowPanel.tsx": "957f4eba1efc1497be3e6fd098add7c1cad54fe775c54fc3f0e0d9dcd868c1f1",
-  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "e9c9e3877ec43c48daf81a563750e70417238dbeeced1cfd01fb030d26f749d8",
+  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "8f06a93bb52dbb29365e9f1ce22cde962d4581c3a74a8ba8277bda13e7cd2ff9",
   "src/pages/PgNativePilot/PgNativePublicMcpCatalog.tsx": "12f280dd83023c0a12d0b63d2e588b8b8d192eacd1f533f81b3efc3dcbae5ff1",
   "src/pages/PgNativePilot/PgNativeRunHistoryReadonlyPanel.tsx": "f14509f93732c586cb775c303b05dea9027ecc35848e4c4513c3b502684d2dce",
   "src/pages/PgNativePilot/PgNativeRunUatPanel.tsx": "0cad3224ad0c6d20c4f8bef75ad8d622ab3fe7adf0d9618c34701c7cf7b5d23a",

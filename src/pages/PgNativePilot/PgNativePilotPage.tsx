@@ -587,7 +587,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     event.preventDefault()
     const input={
       name:modelName.trim(),provider:modelProvider,base_url:modelBaseUrl.trim(),
-      api_key:modelApiKey.trim(),models:modelModels.split(/[,，\\n;；]+/).map(x=>x.trim()).filter(Boolean),
+      api_key:modelApiKey.trim(),models:modelModels.split(/[,，\n;；]+/).map(x=>x.trim()).filter(Boolean),
       enabled:modelEnabled,
     }
     const current=modelEditing

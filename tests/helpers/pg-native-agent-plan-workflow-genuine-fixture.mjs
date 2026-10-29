@@ -4,7 +4,7 @@ import {requireAgentPlanWorkflowGenuineCi} from '../../services/pg-api/tests/hel
 import {agentPlanWorkflowRuntimeGenuineFixture} from '../../services/pg-api/tests/helpers/agent-plan-workflow-runtime-genuine-fixture.mjs'
 // BROWSER_SOURCE_PINS_INSERTED_BY_AUTHOR_FROM_ACTUAL_H
 export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
-  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "e9c9e3877ec43c48daf81a563750e70417238dbeeced1cfd01fb030d26f749d8",
+  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "8f06a93bb52dbb29365e9f1ce22cde962d4581c3a74a8ba8277bda13e7cd2ff9",
   "src/pages/PgNativePilot/PgNativeAgentPlanWorkflowPanel.tsx": "afb5dbb87aeb5938039ef892a14d62ac371571c5bf916f1c06a8d7f2ec8814c8",
   "src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx": "feaf8c020b14e819cd0103686cd9c4d2da11b2a4426940df1f49aa8765e3f733",
   "src/pages/PgNativePilot/PgNativeWorkflowNodeForm.tsx": "ae518e62ad0fb171ce186d435aeb503996ebcd7a7cea8e0a048312bd8642826d",
