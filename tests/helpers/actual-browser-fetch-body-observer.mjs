@@ -5,7 +5,7 @@ export function installActualBrowserFetchBodyObserver(config){
  const {key,basePath,maxBytes}=config
  window[key]={
   arm(path,method){
-   if(typeof path!=='string'||!path.startsWith(basePath+'/')||!['GET','POST'].includes(method))throw Error('invalid_actual_body_observation')
+   if(typeof path!=='string'||!path.startsWith(basePath+'/')||!['GET','POST','DELETE'].includes(method))throw Error('invalid_actual_body_observation')
    const id=++next;entries.set(id,{path,method,done:false});armed.push(id);return id
   },
   ready(id){return entries.get(id)?.done===true},

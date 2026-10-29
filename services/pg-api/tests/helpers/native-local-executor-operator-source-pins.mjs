@@ -61,7 +61,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md": "6a949d713b21c3b5f51d28c60b88c8c9d2fd43a281bb2c7bb4255002730bdc4c",
   "ops/templates/agentstudio-pg18-native-local-executor.conf.example": "5912497f328b7c58e29205dd4cbd62226e03660ec981541bf28edf1cf521312f",
   "ops/templates/native-local-executor-pg-hba.conf.example": "c7b549f1fb79f6023c255e05cfd0a38188f7247e9a4b19fb18dad963ab73cc52",
-  "package.json": "847a14991cc48a3c8429a0593962d33a68c7c2c8685f617b7539025113346d15",
+  "package.json": "89ddd7041e9886ea8f49035eaf668bb81b6c7a2a72ea1da33cc1ff63e01323f5",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -285,7 +285,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "services/pg-api/src/native-local-device-audit-manifest.ts": "8d0cb60d169277e276e7da83540f66177015a45fa35376ab5e834e9d0eee991c",
   "services/pg-api/src/native-local-device-audit.ts": "b001feede675315f6d216c3d3d7c21bdaf66f125a6ab8f43980f59dbdb408d9a",
   "services/pg-api/src/native-local-device-execution.ts": "3fb168d7506fc2b2835e96920ab5e36839ba9891bf0a2c6da332a5117416ea54",
-  "services/pg-api/src/native-local-device-http.ts": "9ff14f42fa1118aba622f43b5414623979fc77ac08b4b810e19f85c0f6977783",
+  "services/pg-api/src/native-local-device-http.ts": "30c7ecd224ad47b1bf20e8aa6aa72d14e96ebb44a327b75fedaa5545f6ad4582",
   "services/pg-api/src/native-local-device-repository.ts": "7be89686eae69ee74628f5b3b00a134780c007ad60e454b310e586ffff564653",
   "services/pg-api/src/native-local-device-runtime-policy.ts": "a021e1d4668ad38de0131b714f85586e37370c1be8380b5ab63ba861bcb081f9",
   "services/pg-api/src/native-local-device-validation.ts": "95ef9a26fe938d262e6d66e81a50265dd919419ab832ca748716387002b223ae",
@@ -394,5 +394,6 @@ export const localExecutorOperatorSources=Object.freeze({
   "shared/approval-delegation-contract.ts": "258990650146987fe4306abf1a21e1b27954cdac9bbf3c58fb0366563b323c26",
   "shared/native-local-device-contract.mjs": "1354c302ee2127a613b39f8f4df7d18051757a4b878b162557e59f8af586a928",
   "shared/schedule-time.mjs": "05583e81e563ffd454630fb3453039a7f54f838c2f1d6941d41481adf75b762f",
-  "shared/tool-hub-public-types.ts": "9f40bb2dd43cb24974ab439a2961cc44513ba01a80daafdaf76f8da5d7565c90"
+  "shared/tool-hub-public-types.ts": "9f40bb2dd43cb24974ab439a2961cc44513ba01a80daafdaf76f8da5d7565c90",
+  "services/pg-api/src/native-local-device-auth-error.ts": "5c8a158b965a34f99404d3c7d176c2823bbad82940991c5962db3863bdbd7776"
 })

@@ -71,7 +71,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "db/postgres/migrations/pg_v9_068_agent_public_callers.sql": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
-  "package.json": "847a14991cc48a3c8429a0593962d33a68c7c2c8685f617b7539025113346d15",
+  "package.json": "89ddd7041e9886ea8f49035eaf668bb81b6c7a2a72ea1da33cc1ff63e01323f5",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -574,7 +574,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "src/pages/PgNativePilot/useKnowledgeToolContext.ts": "e5c6a574c980e22fe008b835b98f6921110d56ad122f0c0cfd8eb76053033d11",
   "src/pages/PgNativePilot/useMcpConnections.ts": "d302a0cc618bae06fc8cadc3d9884376bdcb07059a3ad481ac35905a06cf37c2",
   "src/pages/PgNativePilot/useNativeLocalDevices.ts": "2122c7c04c71928d59f3576bede0fb4939195d922a91ca529ceff629760db55e",
-  "tests/helpers/actual-browser-fetch-body-observer.mjs": "f10b2e0233846a8cb093abecd512b4dc0bb90843f6eb1220ea182a58c38e85d7",
+  "tests/helpers/actual-browser-fetch-body-observer.mjs": "bbf84a80cf7fd39eaadc2e75e0c3393e44ecdf2f9096731863e49f7470e33f4d",
   "tests/helpers/actual-public-agent-caller-body-observer.mjs": "ed41baf3d59e65b3aff9f80b714d7ccdb5789779bc42f581dd5023f852108daf",
   "tests/pg-native-agent-caller-genuine.config.mjs": "7aa79ef8f02e5093eb6fed7ac25b3b1aef5069c43ec4a341c438f809afd609ee",
   "tests/pg-native-agent-caller-genuine.spec.mjs": "3e688c488d669077bf250c4ebf7a2de3fa73959d3c83b7fe989069bc492e96c2",
@@ -603,7 +603,8 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/native-local-executor-operator-plan.d.mts": "890ca7e6e0b2f3d4addc55a5307249407db48c7ddcdd4abfcba7a5763e380180",
   "services/pg-api/src/native-local-executor-operator-plan.mjs": "df49c83e97be6e04b122aaaac42439731f7c7bf3ece50653c7342d752e0d9754",
   "services/pg-api/src/native-local-executor-service-preflight-cli.mjs": "c7de574a8647e96684b81ce9f9a78b42b50d9e78e0b152ad7dddd3a28697a8d8",
-  "services/pg-api/src/native-local-executor-service-preflight.ts": "659777c417f89d7b53851a115948dd38a5a341a671273fda1aa54bc468a10397"
+  "services/pg-api/src/native-local-executor-service-preflight.ts": "659777c417f89d7b53851a115948dd38a5a341a671273fda1aa54bc468a10397",
+  "services/pg-api/src/native-local-device-auth-error.ts": "5c8a158b965a34f99404d3c7d176c2823bbad82940991c5962db3863bdbd7776"
 })
 export async function agentCallerGenuineFixture(env=process.env,{browserMode=false}={}){
  const target=requireAgentCallerGenuineCi(env)
