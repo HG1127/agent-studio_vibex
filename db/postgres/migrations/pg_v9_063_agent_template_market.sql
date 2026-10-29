@@ -398,5 +398,5 @@ DO $acl$ DECLARE p record;BEGIN
   END LOOP;
 END $acl$;
 GRANT EXECUTE ON FUNCTION agentstudio.agent_template_market_source(uuid),agentstudio.agent_template_market_publish_preview(jsonb),agentstudio.agent_template_market_use_preview(jsonb),agentstudio.agent_template_market_market(jsonb),agentstudio.agent_template_market_mine(),agentstudio.agent_template_market_detail(uuid),agentstudio.agent_template_market_receipt(uuid),agentstudio.agent_template_market_record(jsonb) TO agentstudio_api;
-INSERT INTO agentstudio.schema_migrations(version) VALUES('pg_v9_063');
+INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_063','Optional Native-owner reviewed Agent template publication/frozen snapshot/independent private copy/lifecycle/immutable receipt; no production activation');
 COMMIT;

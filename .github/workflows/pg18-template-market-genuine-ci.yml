@@ -63,7 +63,7 @@ jobs:
       - name: Actual API compiler and ordinary-host refusal guards
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-template-market-genuine-guard.test.mjs services/pg-api/tests/agent-template-market-database-guard.test.mjs
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-template-market-genuine-guard.test.mjs services/pg-api/tests/agent-template-market-database-guard.test.mjs services/pg-api/tests/agent-template-market-catalog-diagnostics-guard.test.mjs
       - name: Actual Native Cookie market lifecycle and one-client independent copies
         if: matrix.suite == 'flow'
         working-directory: services/pg-api
@@ -119,7 +119,7 @@ jobs:
       - name: Actual browser compiler configuration and ordinary-host refusal guards
         run: |
           pnpm exec tsc -p tsconfig.app.json --noEmit
-          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-template-market-genuine-guard.test.mjs services/pg-api/tests/agent-template-market-database-guard.test.mjs
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-template-market-genuine-guard.test.mjs services/pg-api/tests/agent-template-market-database-guard.test.mjs services/pg-api/tests/agent-template-market-catalog-diagnostics-guard.test.mjs
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual HTTPS browser through market publication copy configuration and recovery

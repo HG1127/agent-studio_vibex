@@ -5,10 +5,10 @@ import {requireAgentTemplateMarketGenuineCi} from './agent-template-market-genui
 // SOURCE_PINS_INSERTED_BY_AUTHOR_FROM_ACTUAL_REVIEWED_H
 export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_062_agent_design.sql": "bd735c5a61dab098c846c93e30a2fad636b409ded40064a8cf311e0710a1e82e",
-  "db/postgres/migrations/pg_v9_063_agent_template_market.sql": "1f142244bc6e7adb1b7d025c2c74d59c882c97539b290ae9b223abe2c648f875",
+  "db/postgres/migrations/pg_v9_063_agent_template_market.sql": "b582c1ab75780b36828f0f81c926f0bf9eb727a5b78d24be9fb838b5a9d1c80b",
   "services/pg-api/src/agent-design-audit-core.ts": "31d99e0f28c9d04402ec1b75db3714a41947c296cfba74a99d3dabcdf182a872",
   "services/pg-api/src/agent-design-audit.ts": "1efe6de5bea8e14fa4b957e050edddcfee9a595f438d636f9a4046cce0921f78",
-  "services/pg-api/src/agent-template-market-audit-core.ts": "efee8f63446f950c2c9bd1fc04c60355335975e986fb2cae0ba2b32dfff79361",
+  "services/pg-api/src/agent-template-market-audit-core.ts": "1f2c8edd622d4ade4f4198e0a7bd1c64e71be18944682b3b892fa37c87565e65",
   "services/pg-api/src/agent-template-market-audit.ts": "6fbc677dc83b845ab39ad7bb893309c8f1f2efc4be7eb41fff11d37255ff6d37",
   "services/pg-api/src/agent-template-market-runtime-policy.ts": "7ab3bb7ab746615d297d594b93910321ae580f2a1d1e0a8c668ff7bd5ab3345c",
   "services/pg-api/src/agent-template-market-repository.ts": "0627b514b7d0a797c9f66c4bb243dc2dd8d7adceb4cfb731387cb201f96d1b77",
@@ -71,7 +71,13 @@ export async function agentTemplateMarketGenuineFixture(env=process.env,{browser
     base=await baseModule.agentAssessmentTcpFixture(env)
     for(const part of['058_agent_opinion_read','059_agent_generated_acceptance','060_agent_descriptive_patch','061_company_overview','062_agent_design','063_agent_template_market'])await base.db.exec(base.sql('migrations/pg_v9_'+part+'.sql'))
     const adminPool=connect(target.user,target.password),authPool=connect('agentstudio_native_login',passwordFor('agentstudio_native_login')),auth=new authModule.NativeAuthRepository(authPool)
-    await policy.inspectAgentTemplateMarketApiPool(base.pool,audit)
+    // Failure-only diagnostics on startup's still-checked-out actual client.
+    // Runtime repositories and expected negative catalog cases keep audit itself.
+    const startupAudit=async db=>{try{return await audit(db)}catch(originalError){
+      try{const {rethrowAgentTemplateMarketAuditFailureWithDiagnostics}=await import('./agent-template-market-catalog-diagnostics.mjs');await rethrowAgentTemplateMarketAuditFailureWithDiagnostics(db,originalError,env)}
+      finally{throw originalError}
+    }}
+    await policy.inspectAgentTemplateMarketApiPool(base.pool,startupAudit)
     const repository=()=>new marketRepo.AgentTemplateMarketRepository(base.pool,{available:mutable.available,allowWrites:mutable.writes&&mutable.available,verifyCredentials:audit})
     const counts=async()=> (await base.db.query(`SELECT
       (SELECT count(*)::integer FROM agentstudio.agent_template_market_publications) AS publications,

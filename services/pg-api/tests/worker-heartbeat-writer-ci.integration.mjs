@@ -17,7 +17,7 @@ const changes=action=>kinds.map(kind=>({kind,slot_no:1,action})),row=async kind=
 async function batch(kind){const current=await row(kind),value=fixture.writer.deliveries().find(d=>d.items.some(v=>v.kind===kind&&v.generation===current.generation));assert.ok(value,'actual current completed-publication delivery required');return value}
 async function closeFixture(){if(!fixture)return;try{await fixture.close();cleanupPassed++;process.stdout.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_pass'})+'\n')}finally{fixture=null}}
 async function open(variant,proof){const actual=proof??requireWorkerHeartbeatActivationControlCi(),stages=await publishWorkerHeartbeatControlCiStages(actual);fixture=await createWorkerHeartbeatWriterCiFixture(actual,stages,variant)}
-async function stopAll(children){for(const child of children)await fixture.writer.stop(child);await until(async()=>(await fixture.writer.backends()).length===0,'actual_owned_writer_backend_absence')}
+async function stopAll(children){for(const child of children)await fixture.writer.stop(child);const priorStage=activeStage;activeStage='observe_stopped_owned_cleanup';await fixture.writer.waitStoppedCleanup(children);await until(async()=>(await fixture.writer.backends()).length===0,'actual_owned_writer_backend_absence');activeStage=priorStage}
 try{
  for(const [i,variant]of ['v1','v2_omitted','v2_off'].entries()){
   await open(variant,i===0?initialProof:undefined)
@@ -83,9 +83,9 @@ try{
  })
  await stopAll(bound.slice(1)) // Keep the actual old UID process alive for fencing.
  await check('actual_knowledge_partial_rotation_does_not_rebind_consumed_sibling_to_new_uid',async()=>{
-  const count=fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued').length;await fixture.writer.change([{kind:'knowledge_index',slot_no:1,action:'rotate'}]);assert.equal(fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued').length,count)
+  activeStage='partial_knowledge_rotation';const count=fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued').length;await fixture.writer.change([{kind:'knowledge_index',slot_no:1,action:'rotate'}]);assert.equal(fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued').length,count)
   const changed=await row('knowledge_index');assert.ok(!fixture.writer.deliveries().some(v=>v.items.some(item=>item.generation===changed.generation)))
-  await fixture.writer.change([{kind:'knowledge_index',slot_no:1,action:'rotate'},{kind:'knowledge_query',slot_no:1,action:'rotate'}]);assert.equal((await batch('knowledge_index')).boot_id,(await batch('knowledge_query')).boot_id)
+  activeStage='paired_knowledge_rotation';await fixture.writer.change([{kind:'knowledge_index',slot_no:1,action:'rotate'},{kind:'knowledge_query',slot_no:1,action:'rotate'}]);assert.equal((await batch('knowledge_index')).boot_id,(await batch('knowledge_query')).boot_id);activeStage=null
  })
  await check('actual_root_restart_preserves_consumed_uid_and_generation_even_at_sequence_zero',async()=>{
   const own=await batch('knowledge_index'),child=await fixture.writer.launch({selected:['knowledge_index'],batch:own});try{assert.equal((await fixture.writer.command(child,{op:'open_binding'})).ok,true);assert.equal((await row('knowledge_index')).sequence,'0');const issuedBefore=fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued').map(v=>JSON.stringify(v.data));await fixture.writer.restartServing();assert.equal((await fixture.writer.command(child,{op:'rebind'})).ok,false);assert.deepEqual(fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued').map(v=>JSON.stringify(v.data)),issuedBefore)}finally{await fixture.writer.stop(child)}
@@ -125,7 +125,7 @@ try{
  await check('actual_final_owned_backend_absence_and_unchanged_empty_business_queues',async()=>{await fixture.writer.final();assert.deepEqual(await fixture.writer.businessCounts(),{jobs:0,runs:0,reviews:0,queries:0});await fixture.final()})
 }catch(error){
  failed=true;process.exitCode=1;const rawCode=Object.getOwnPropertyDescriptor(error??{},'code')?.value
- const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['previous_owned_cleanup','prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply'].includes(activeStage)?activeStage:null
+ const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['previous_owned_cleanup','prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply','observe_stopped_owned_cleanup','partial_knowledge_rotation','paired_knowledge_rotation'].includes(activeStage)?activeStage:null
  process.stderr.write(JSON.stringify({event:'genuine_writer_ci_failed',case:activeCase,stage,code,completed_cases:passed,message:/^(writer_ci_|telemetry_control_ci_fixture_refused:)/.test(String(error?.message))?String(error.message).slice(0,180):'runtime_assertion_failed',production_cutover_allowed:false})+'\n')
 }
 finally{try{await closeFixture()}catch{failed=true;process.exitCode=1;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_failed'})+'\n')}process.stdout.write(JSON.stringify({event:'genuine_writer_ci_summary',passed,failed,owned_cleanups:cleanupPassed,production_cutover_allowed:false,synthetic_only:true,real_execution_required:true})+'\n')}

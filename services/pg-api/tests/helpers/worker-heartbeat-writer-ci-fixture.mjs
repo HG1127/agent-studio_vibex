@@ -584,7 +584,7 @@ function writerCiProfile(s,base){
  if(settings.groups.some(v=>v.gid===s.workspace.gid)||settings.boot_uids.includes(s.workspace.uid))fail('reserved_identity_collision')
  const passwd=fs.readFileSync('/etc/passwd','utf8').split('\n').filter(Boolean).map(line=>Number(line.split(':')[2]))
  if(settings.boot_uids.some(uid=>passwd.includes(uid)))fail('reserved_uid_already_allocated')
- s.writerSettings=settings;s.writerChildren=new Set();s.writerFiles=new Map();s.writerDirectories=new Map();s.writerMounts=[];s.writerRowLocks=new Map();s.writerRecordWitnesses=new WeakMap()
+ s.writerSettings=settings;s.writerChildren=new Set();s.writerFiles=new Map();s.writerDirectories=new Map();s.writerMounts=[];s.writerRowLocks=new Map();s.writerRecordWitnesses=new WeakMap();s.writerStoppedChildren=new WeakSet()
  const protocol=s.writerVariant==='v1'?base.protocol:'worker_heartbeat_control_profile_v2'
  s.writerProfile={...base,protocol,...(s.writerVariant==='v2_on'?{writers:settings}:s.writerVariant==='v2_off'?{writers:{enabled:false}}:{})}
  return s.writerProfile
@@ -672,7 +672,7 @@ async function writerChange(s,changes){
  const d=draft(s,s.currentPolicy.reader.login?'keep':'activate');for(const change of changes){if(!kinds.includes(change.kind)||![1,2].includes(change.slot_no)||!['activate','rotate','retire'].includes(change.action))fail('writer_fixed_change');d.kinds[kinds.indexOf(change.kind)]={kind:change.kind,instrumented:true,enabled:change.action!=='retire'};d.slots.find(v=>v.kind===change.kind&&v.slot_no===change.slot_no).action=change.action}
  const result=await apply(s,await prepare(s,d));return {result,batches:writerDeliveries(s)}
 }
-async function writerStop(s,c){await stopProcess(s,c);s.writerChildren.delete(c);if(c.mode==='entry'&&(c.exit?.code!==0||c.exit?.signal!==null))fail('writer_actual_entry_did_not_exit_gracefully')}
+async function writerStop(s,c){if(!s.writerChildren.has(c))fail('writer_ci_owned_writer_stop');await stopProcess(s,c);if(c.mode==='entry'&&(c.exit?.code!==0||c.exit?.signal!==null))fail('writer_actual_entry_did_not_exit_gracefully');s.writerStoppedChildren.add(c);s.writerChildren.delete(c)}
 async function writerNoIo(s){
  assert.equal(fs.existsSync('/run/agentstudio-telemetry-writers'),false);assert.equal(fs.existsSync(paths.store+'/worker-boots'),false)
  assert.equal(writerJournal(s).filter(v=>v.phase.startsWith('writer_')).length,0);assert.equal((await writerBackendRows(s)).length,0)
@@ -772,6 +772,42 @@ async function writerWaitChildCleanup(s,c){
  process.stdout.write(JSON.stringify({event:'genuine_writer_ci_previous_owned_cleanup',matching_bound_and_claimed_backend:true,matching_backend_ended_observed:true,actual_exact_backend_absent:true,actual_role_backend_absent:true,nonroot_uncertain_slot_untouched:true,observed_data_only:true})+'\n')
  return Object.freeze({observed_data_only:true,authority:false})
 }
+// Read-only observation after our actual child stop. OS/SQL backend absence
+// alone can precede Root's final runtime checks and cleanup-counter release.
+async function writerWaitStoppedCleanup(s,children){
+ if(!Array.isArray(children)||children.length<1||children.length>16||new Set(children).size!==children.length)fail('writer_ci_stopped_children_selection')
+ const initial=writerObservationJournal(s),expected=[]
+ for(const c of children){
+  if(!s.writerStoppedChildren.has(c)||c.exited!==true||c.kernelUidVerified!==true||!['component','entry'].includes(c.mode)||!Array.isArray(c.selected)||c.selected.length<1||c.selected.length>2)fail('writer_ci_owned_stopped_child')
+  if(!c.batch){
+   if(c.mode!=='entry'||initial.some(r=>r.phase==='writer_boot_claimed'&&r.data.uid===c.uid))fail('writer_ci_stopped_unissued_child')
+   continue
+  }
+  const staged=initial.filter(r=>r.phase==='writer_boot_staged'&&r.data.boot_id===c.batch.boot_id&&r.data.uid===c.uid)
+  if(staged.length!==1||!Array.isArray(staged[0].data.bindings))fail('writer_ci_stopped_staged_batch')
+  for(const kind of c.selected){
+   const item=c.batch.items.find(v=>v.kind===kind),role=s.binding.roles.find(r=>r.name==='studio_telemetry_tx_'+kind+'_1')
+   if(!item||!role||!uuid(item.generation)||!staged[0].data.bindings.some(v=>v.kind===kind&&v.slot_no===1&&v.generation===item.generation&&v.role_oid===role.oid))fail('writer_ci_stopped_original_generation')
+   const instance=staged[0].instance_id,claims=initial.filter(r=>r.phase==='writer_boot_claimed'&&r.instance_id===instance&&r.data.boot_id===c.batch.boot_id&&r.data.uid===c.uid&&r.data.kind===kind&&r.data.slot_no===1&&r.data.generation===item.generation&&r.data.role_oid===role.oid)
+   if(claims.length>1)fail('writer_ci_stopped_duplicate_claim')
+   const rows=initial.filter(r=>r.phase==='writer_backend_bound'&&r.instance_id===instance&&r.data.kind===kind&&r.data.slot_no===1&&r.data.generation===item.generation&&r.data.role_oid===role.oid&&r.data.database_oid===s.binding.database_oid)
+   if(rows.length!==claims.length)fail('writer_ci_stopped_claim_bound_mismatch')
+   if(!rows.length)continue
+   const record=rows[0],d=fields(record.data,['backend_id','kind','slot_no','generation','role_oid','database_oid','backend']),backend=fields(d.backend,['pid','started'])
+   if(!uuid(d.backend_id)||!Number.isInteger(backend.pid)||backend.pid<1||typeof backend.started!=='string'||!backend.started||record.sequence<=claims[0].sequence)fail('writer_ci_stopped_bound_identity')
+   expected.push({instance,...d,backend:{pid:backend.pid,started:backend.started},bound_sequence:record.sequence})
+  }
+ }
+ if(new Set(expected.map(v=>v.backend_id)).size!==expected.length)fail('writer_ci_stopped_duplicate_backend')
+ await until(async()=>{
+  const fresh=writerObservationJournal(s)
+  for(const b of expected){const ended=fresh.filter(r=>writerSameEnded(r,b));if(ended.length>1)fail('writer_ci_stopped_duplicate_end');if(!ended.length)return false;if(ended[0].sequence<=b.bound_sequence||!await writerBackendAbsent(s,b))fail('writer_ci_stopped_backend_live_after_ended')}
+  return true
+ },'writer_stopped_owned_cleanup',5000)
+ process.stdout.write(JSON.stringify({event:'genuine_writer_ci_stopped_owned_cleanup',stopped_children:children.length,matched_owned_backends:expected.length,matching_original_staged_claim_bound_and_ended:true,actual_exact_and_role_absence:true,current_generation_not_substituted:true,nonroot_uncertain_slots_untouched:true,observed_data_only:true})+'\n')
+ return Object.freeze({observed_data_only:true,authority:false})
+}
+
 function writerCancellationProgress(records,witness,action){
  const {bound,lock}=witness;if(lock.released)fail('writer_ci_cancellation_lock_released')
  const closes=records.filter(r=>r.phase==='closing'&&r.instance_id===bound.instance&&r.action_id===action),ends=records.filter(r=>writerSameEnded(r,bound))
@@ -816,6 +852,7 @@ function writerCiApi(s){return Object.freeze({
  async prepareRotate(kind){if(!kinds.includes(kind))fail('writer_fixed_kind');const d=draft(s);d.slots.find(v=>v.kind===kind&&v.slot_no===1).action='rotate';return prepare(s,d)},
  waitWriterRecord:kind=>writerWaitRecord(s,kind),
  waitChildCleanup:child=>writerWaitChildCleanup(s,child),
+ waitStoppedCleanup:children=>writerWaitStoppedCleanup(s,children),
  cancellationAbsent:(witness,prepared)=>writerCancellationAbsent(s,witness,prepared),
  assertCancellationPublished:(witness,prepared,result)=>writerAssertCancellationPublished(s,witness,prepared,result),
  async waitReady(selected,ms=130000){await until(async()=>{const rows=await writerRows(s);return selected.every(kind=>{const row=rows.find(v=>v.kind===kind&&v.slot_no===1);return row?.state==='ready'&&Number(row.sequence)>=2})},'writer_actual_ready_rows',ms);return true},
