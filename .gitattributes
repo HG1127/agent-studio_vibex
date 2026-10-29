@@ -520,3 +520,17 @@ services/pg-api/tests/worker-heartbeat-owned-backend-cleanup.test.mjs text eol=l
 # Observes actual response bytes early; test-only, no HTTP fulfillment.
 tests/helpers/actual-browser-fetch-body-observer.mjs text eol=lf
 tests/actual-browser-fetch-body-observer.test.mjs text eol=lf
+
+# Explicit complete065 fresh profile and independently owned synthetic CI.
+.github/workflows/pg18-complete-install-ci.yml text eol=lf
+ops/pg18-complete-install-ci.mjs text eol=lf
+services/pg-api/src/baota-pg18-complete-init.mjs text eol=lf
+services/pg-api/src/pg18-complete-profile-source.d.mts text eol=lf
+services/pg-api/src/pg18-complete-profile-source.mjs text eol=lf
+services/pg-api/src/pg18-complete-profile.ts text eol=lf
+services/pg-api/tests/helpers/pg18-complete-install-ci-containers.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-install-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-install-ci-stage.mjs text eol=lf
+services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-install-ci.integration.mjs text eol=lf
+services/pg-api/tests/pg18-complete-profile.test.mjs text eol=lf

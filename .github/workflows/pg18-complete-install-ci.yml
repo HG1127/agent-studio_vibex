@@ -1,0 +1,63 @@
+name: Agent Studio PG18 complete profile isolated verification
+on:
+  push:
+    branches: ['codex/pg18-*']
+    paths:
+      - 'services/pg-api/**'
+      - 'db/postgres/**'
+      - 'shared/**'
+      - 'ops/pg18-complete-install-ci.mjs'
+      - '.github/workflows/pg18-complete-install-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pg18-complete-install-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  pg18-complete-install:
+    name: PG18 / actual full fresh CLI and original API LOGIN audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports: ['127.0.0.1:5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual compiler, offline complete plan and ordinary-host refusal
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs
+      - name: Own empty PG18 clusters and actual complete065 install
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+          AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+          AGENT_STUDIO_PG18_CI_PORT: '5432'
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL: 'true'
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE: COMPLETE_065_INSTALL_SYNTHETIC_ONLY
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED: YES_NEW_DISPOSABLE_CONTAINERS_ONLY
+        run: |
+          node_path="$(command -v node)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-install-ci.mjs --run
