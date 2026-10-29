@@ -15,7 +15,7 @@ const sourcePins=Object.freeze({
  'native-current-company-admin.mjs':'83fc4c1d49f3805fd0439e3e4d6a1f093bfed8556940179220e1deeafc2ea889',
  'native-employee-auth.mjs':'96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee',
  'native-employee-governance-audit.mjs':'ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238',
- 'worker-heartbeat-activation-control-client.ts':'c3af81b5e5e95aa9e06900010ecefe9b1823fb670a98527bdc6e8666fe3c5eab',
+ 'worker-heartbeat-activation-control-client.ts':'93db0442634399213b90b0239814585b7a973fd86b0fa11156d9b8632a5c2c87',
  'worker-heartbeat-activation-control-contract.ts':'3d1a9b65a50cba9f3538256203dab134ccff3d1166a9017d7f6e4fa916d55662',
  'worker-heartbeat-contract.ts':'336cebafc1c1b54542fc6828093cb0e87d333950bb3ace1ef318ad75f2d10eba',
 })

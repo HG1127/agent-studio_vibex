@@ -83,6 +83,9 @@ export type PgNativeConfigCapabilities={
   agent_review_history_available?:boolean
   agent_generated_acceptance_available?:boolean
   agent_generated_acceptance_enabled?:boolean
+  agent_plan_workflow_available?:boolean
+  agent_plan_workflow_submissions_enabled?:boolean
+  agent_plan_workflow_saves_enabled?:boolean
   agent_design_available?:boolean
   agent_design_submissions_enabled?:boolean
   agent_design_saves_enabled?:boolean

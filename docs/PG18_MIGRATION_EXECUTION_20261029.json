@@ -1,7 +1,7 @@
 {
   "format": "pg18_migration_execution_registry_v1",
-  "updated_UTC": "2026-10-29T01:49:08.985702+00:00",
-  "source_head": "79652db479193013007e34baee03643d79fd221f",
+  "updated_UTC": "2026-10-29T03:46:09.497318+00:00",
+  "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
   "deadline_Asia_Shanghai": "2026-10-30T18:30:00+08:00",
   "is_authority": false,
   "production_GO": false,
@@ -20,7 +20,7 @@
   "completion_rule": "Each confirmed business action requires implementation, isolated validation, unified installation and target acceptance separately. A foundation, test count, green job or source inventory cannot close the action.",
   "target": {
     "platform": "existing BaoTa",
-    "actual_host_identity": "not_yet_verified",
+    "actual_host_identity": "User-provided BaoTa panel is reachable by readonlyHTTP200; actualdatabaseversion/roles/network/install state notyetverified. Targetaddress remains private.",
     "employee_UAT": "Notify user when actual candidate is ready",
     "live_operations": "No deployment/cutover allowed from this registry."
   },
@@ -34,46 +34,61 @@
       "raw_index": ".tmp/pg-migration-completion/79652db-baselines-raw-evidence.json"
     },
     "F07": {
-      "source_head": "79652db479193013007e34baee03643d79fd221f",
-      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40797264306",
+      "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40812206364",
       "actual_flow_children": 8,
-      "catalog_children_before_failure": 12,
-      "browser_passed": false,
-      "local_next_fixes": "One negative role prefix and one browser locator, no larger timeout."
+      "actual_database_children": 102,
+      "browser_stories": 1,
+      "browser_seconds": 42.7,
+      "Root_viewed_actual_PNGs": 4,
+      "raw_index": ".tmp/pg-migration-completion/62a08be-accepted-F07-F05-components.json",
+      "scope": "Complete isolated F07 flow/catalog/browser, syntheticemployees only; no unifiedinstall/target/UAT acceptance."
     },
     "F05": {
-      "source_head": "79652db479193013007e34baee03643d79fd221f",
-      "pure_checks": 53,
-      "actual_API_compiler": "5.9.3 passed",
-      "actual_SQL_or_model_or_UI_flow_passed": false
+      "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40812206366",
+      "actual_database_children": 47,
+      "actual_pure_guards": 25,
+      "actual_SQL_atomic_loop_save_rollback_erasure": true,
+      "employee24_after_base": {
+        "pure": 78,
+        "actual_React_SSR": 8,
+        "actual_API59": true,
+        "actual_frontend6": true
+      },
+      "actual_provider_Worker_Native_HTTP_employee_browser_acceptance": false
     },
     "quality": {
-      "source_head": "79652db479193013007e34baee03643d79fd221f",
-      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40797264305",
+      "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40812206341",
       "jobs_passed": 50,
       "main_test_counts": [
-        2105,
+        2132,
         5,
         18,
         4
       ],
       "actual_build_and_security_integration": true,
-      "scope": "Cannot substitute complete business/target acceptance."
+      "scope": "Accepted exact62head only; employee24andNativepinfix need new-candidate regression."
     },
     "W-CANCEL": {
-      "source_head": "79652db479193013007e34baee03643d79fd221f",
-      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40797264348",
-      "passed_new_cases": 16,
-      "required_new_cases": 26,
-      "failure": "case17 apply_mutation control_io_failed then backend-absence timeout",
-      "earlier_head": "215db6e case17 passed once; this is not stable completion."
+      "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40812206391",
+      "ordinary_guards_and_pure": [
+        9,
+        98
+      ],
+      "actual_original28_passed": 1,
+      "actual_new26_executed": false,
+      "failure": "Native unauth check expected401 returned503; runtime owner located stale exact client source pin in CI Native child after v8client change; correction pending actual validation.",
+      "prior562_only": "old28pass/new18of26 including causal cancellation+partialrotation; Rootrestart failed. Never currentstability proof."
     }
   },
   "current_packages": {
-    "database": "P-DRAFT SQL064/auditor/source and persistence with install map; actualF07catalog failures first",
-    "runtime": "W-CANCEL rootcause/minimalfix/real26, then unifiedinstallation/start/backuprestore/24h; existingF05stage4 is saved for explicit handoff",
-    "employee-ui": "P-TEMPLATE fullbrowser closure, then P-DRAFT complete employee generation->existingcanvas->separate save flow with database dependency",
-    "integration": "Onecanonical/publicinterface/unifiedcandidate/finalacceptance;5core provenance now resolved from main, laterD deltas separate"
+    "database": "F08 singleuse internal sharing SQL065/service/API/employeeoperation; new actual DB faults preempt.",
+    "runtime": "W-CANCEL actual currentfailure; explicitfullprofile unifiedinstaller using existing050/059/060, then real startup/restore/24h.",
+    "employee-ui": "F05employee24 frozen/imported; finish actual Native/server/privateWorker/Broker service composition and genuine/browser acceptance.",
+    "integration": "Canonical exactreview/pins/source upload and isolatedCI; acceptedF07database/API/browser andF05database components, full31scope andfinaltargetgates retained."
   },
   "queued_packages": {
     "P-SHARE": [
@@ -213,15 +228,16 @@
       "baseline_pointer": "/features/4",
       "baseline_conclusion": "确认现有行为缺口，范围仅现有“方案→图”的员工动作；不能把它误写成Workflow V2整体未实现，也不扩张独立子工作流。",
       "scope_status": "confirmed_existing",
-      "implementation": "partial_foundation",
-      "isolated_validation": "not_verified",
+      "implementation": "employee_sources_integrated_runtime_composition_pending",
+      "isolated_validation": "passed_database_component_employee_flow_pending",
       "evidence_key": "F05",
       "current_note": "12 foundationfiles and53 purechecks/APIcompiler; no acceptedSQL064/actualdispatch/canvas-save flow yet.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-DRAFT",
-      "accountable_owner": "employee-ui"
+      "accountable_owner": "employee-ui",
+      "validation_scope": "Actual47DBchildren at62a08be; lateremployee24source86checks/API59/frontend6 passed; actual Native/Worker/provider/browser notaccepted."
     },
     {
       "id": "F06",
@@ -247,14 +263,15 @@
       "baseline_conclusion": "确认跨D/H旧PB都可达的现有功能缺口；D页面局部修改不决定该核心行为是否存在。",
       "scope_status": "confirmed_existing",
       "implementation": "implemented",
-      "isolated_validation": "partial_failed",
+      "isolated_validation": "passed_component",
       "evidence_key": "F07",
       "current_note": "Actual8APIflowchildren passed; catalog stopped after12 due wrong negative roleprefix, localtestfixprepared; browser locatorfixprepared, actual rerun pending.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-TEMPLATE",
-      "accountable_owner": "employee-ui"
+      "accountable_owner": "integration",
+      "validation_scope": "Actual102DBchildren/8APIchildren/1browser at62a08be; unifiedinstall/target notaccepted."
     },
     {
       "id": "F08",
@@ -645,5 +662,6 @@
       "accountable_owner": "runtime"
     }
   ],
-  "provenance_resolution": "docs/PG18_FEATURE_PROVENANCE_20261029.json"
+  "provenance_resolution": "docs/PG18_FEATURE_PROVENANCE_20261029.json",
+  "integration_candidate_note": "Employee24 source is locally integrated after this accepted base; Native/service runtime composition and same-candidate acceptance remain pending."
 }

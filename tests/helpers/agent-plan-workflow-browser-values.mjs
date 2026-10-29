@@ -1,0 +1,32 @@
+// Synthetic values for pure browser tests. No database, provider or identity proof.
+import {agentPlanWorkflowPurpose as purpose,canonicalAgentPlanWorkflowValue as canonical,agentPlanWorkflowPaidIntentValue,agentPlanWorkflowSaveIntentValue} from "../../services/pg-api/src/agent-plan-workflow-contract.ts"
+import {prepareAgentPlanWorkflowInput,agentPlanWorkflowResultValue,deriveAgentPlanWorkflowDraft} from "../../services/pg-api/src/agent-plan-workflow-result.ts"
+import {agentPlanWorkflowDigest as hash,agentPlanWorkflowSubmitBody,agentPlanWorkflowSaveBody} from "../../src/lib/pgNativeAgentPlanWorkflow.ts"
+export {purpose,hash,canonical}
+export const id=n=>"00000000-0000-4000-8000-"+String(n).padStart(12,"0"),hex=n=>String(n).repeat(64)
+export const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
+export const node=(id,type,data={})=>({id,type,data:{title:id,...data},position:{x:100,y:100}})
+export async function browserValues(){
+  const source={spec_id:id(7),spec_revision:2,source_sha256:hex(1),resources_sha256:hex(2),resource_versions_sha256:hex(3)},generation_model={connection_id:id(9),connection_revision:3,model_id:"generation-only"},execution_model={connection_id:id(8),connection_revision:2,model_id:"execution-only"}
+  const source_values={source,name:"员工真实方案的合成样本",spec:{goal:"完整目标",task_scope:"完整范围",deliverables:["报告"],task_plan:["分析","整理"],done_criteria:["有依据"],tools:["web_search"],knowledge_base_ids:[],model_binding:execution_model,require_approval:true,require_plan_review:true}}
+  const selection={purpose,spec_id:source.spec_id,generation_model},choice={action:"preview",purpose,source,instruction:"保留分支",generation_model,output_token_limit:8192},built=prepareAgentPlanWorkflowInput(choice,source_values)
+  const preview={protocol:"agent_plan_workflow_prepared_v1",purpose,choice,source_values,messages:built.messages,input_sha256:await hash(built.input_value),content_sha256:await hash(built.content_value),model_versions_sha256:hex(4),owner_user_id:id(1),owner_governance_revision:5,owner_epoch:5,byte_length:new TextEncoder().encode(canonical(built.input_value)).length,authority:false}
+  const sourceResponse={protocol:"agent_plan_workflow_source_v1",purpose,source,name:source_values.name,generation_model,recorded:false},submit=agentPlanWorkflowSubmitBody(preview,id(100))
+  const graph={version:2,description:"原始模型生成分支",nodes:[node("s","start"),node("c","condition",{op:"contains",value:"x"}),node("yes","model",{prompt:"YES {{input}}",model_binding:execution_model}),node("no","model",{prompt:"NO {{input}}",model_binding:execution_model}),node("e","end")],edges:[{id:"a",source:"s",target:"c"},{id:"b",source:"c",target:"yes",sourceHandle:"true"},{id:"c",source:"c",target:"no",sourceHandle:"false"},{id:"d",source:"yes",target:"e"},{id:"e",source:"no",target:"e"}]}
+  const modelOutput={protocol:"agent_plan_workflow_model_output_v1",name:"原始模型设计",graph},date="2026-10-29T00:00:00.000Z"
+  async function receipt(intent=submit,patch={}){return {protocol:"agent_plan_workflow_receipt_v1",purpose,request_id:intent.request_id,generation_model:intent.generation_model,output_token_limit:intent.output_token_limit,source:intent.source,request_sha256:await hash(agentPlanWorkflowPaidIntentValue(intent)),input_sha256:intent.expected_input_sha256,content_sha256:preview.content_sha256,model_versions_sha256:preview.model_versions_sha256,owner_governance_revision:5,owner_epoch:5,created_at:date,state:"queued",body_erased:false,recorded:true,replayed:false,...patch}}
+  async function view(intent=submit,status="available"){
+    const states={pending:"reserved",unknown:"unknown",unavailable:"failed",erased:"erased",available:"succeeded",stale:"succeeded"},r=await receipt(intent,{state:states[status],body_erased:status==="erased"})
+    const value=agentPlanWorkflowResultValue({request_id:intent.request_id,purpose,source,input_sha256:preview.input_sha256,generation_model},modelOutput)
+    return {protocol:"agent_plan_workflow_view_v1",receipt:r,result_status:status,result:["available","stale"].includes(status)?{protocol:"agent_plan_workflow_result_data_v1",request_id:intent.request_id,result_sha256:await hash(value),value}:null}
+  }
+  async function savePreview(input){
+    const v=await view({...submit,request_id:input.generation_request_id}),draft=deriveAgentPlanWorkflowDraft(choice,source_values,modelOutput,input.edits??undefined),candidate={name:draft.name,graph:draft.graph},candidate_sha256=await hash(draft.candidate_value)
+    const binding={generation_request_id:input.generation_request_id,purpose,source,input_sha256:preview.input_sha256,result_sha256:v.result.result_sha256,model_versions_sha256:preview.model_versions_sha256,candidate_sha256}
+    return {protocol:"agent_plan_workflow_save_preview_v1",...binding,candidate,preview_sha256:await hash({protocol:"agent_plan_workflow_save_preview_binding_v1",...binding}),recorded:false}
+  }
+  async function saveReceipt(intent,patch={}){return {protocol:"agent_plan_workflow_save_receipt_v1",purpose,request_id:intent.request_id,generation_request_id:intent.generation_request_id,request_sha256:await hash(agentPlanWorkflowSaveIntentValue(intent)),source:intent.source,result_sha256:intent.expected_result_sha256,preview_sha256:intent.expected_preview_sha256,candidate_sha256:intent.expected_candidate_sha256,workflow_id:intent.request_id,workflow_revision:1,created_at:date,recorded:true,replayed:false,...patch}}
+  async function controlReceipt(intent,patch={}){return {protocol:"agent_plan_workflow_control_receipt_v1",purpose,request_id:intent.request_id,generation_request_id:intent.generation_request_id,action:intent.action,request_sha256:await hash({protocol:"agent_plan_workflow_control_intent_v1",purpose,intent,authority:false}),state:intent.action==="erase"?"erased":"cancelled",created_at:date,recorded:true,replayed:false,...patch}}
+  const result=await view(),previewInput={generation_request_id:submit.request_id,expected_result_sha256:result.result.result_sha256,edits:{name:modelOutput.name,graph}},save_preview=await savePreview(previewInput),save=agentPlanWorkflowSaveBody(save_preview,previewInput,id(101))
+  return {source,generation_model,execution_model,source_values,selection,choice,preview,sourceResponse,submit,graph,modelOutput,receipt,view,savePreview,saveReceipt,controlReceipt,previewInput,save_preview,save}
+}

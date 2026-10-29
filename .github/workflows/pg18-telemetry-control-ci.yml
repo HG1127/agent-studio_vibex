@@ -59,6 +59,7 @@ jobs:
           services/pg-api/tests/worker-heartbeat-activation-control-runtime.test.mjs
           services/pg-api/tests/worker-heartbeat-activation-registry.test.mjs
           services/pg-api/tests/worker-heartbeat-management-audit.test.mjs
+          services/pg-api/tests/native-control-ci-source-pins.test.mjs
       - name: Actual control entry refuses before effects on an ordinary machine
         run: |
           node --input-type=module -e '
