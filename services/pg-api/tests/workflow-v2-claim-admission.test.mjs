@@ -6,6 +6,7 @@ import {stripTypeScriptTypes} from 'node:module'
 import {runInNewContext} from 'node:vm'
 import {WorkflowV2Worker} from '../src/workflow-v2-worker.ts'
 import {ScheduleRuntimeWorker} from '../src/schedule-runtime-worker.ts'
+import {selectNativeLocalDeviceExecution} from '../src/native-local-device-runtime-policy.ts'
 
 for (const mode of ['workflow_native_v2', 'agent_native_v2']) {
 const spec = (name, ...args) => test(mode + ': ' + name, ...args)
@@ -249,6 +250,8 @@ function loopHarness(options = {}) {
     selectWorkflowV2ModelExecution: () => true, selectWorkflowV2ToolExecution: () => true, selectKnowledgeToolRuntime: () => true,
     selectScheduleRuntime: () => options.schedule !== false, selectAutonomousAgentExecution: () => true, selectWorkflowAgentExecution: () => false,
     selectAgentMemoryRuntime: () => false, selectAgentOutcomeMemoryWrites: () => false, selectMcpExecution: () => false,
+    selectNativeLocalDeviceExecution,
+    verifyNativeLocalDeviceSchema: () => {throw Error('unexpected_local_device_schema_in_original_claim_fixture')},
     selectKnowledgeSharing: () => true, selectPgRuntimeTarget: () => ({mode: 'baota_pg18', host: 'fake', port: 0, user: 'fake', database: 'fake'}),
     assertPgWorkerActivation() {}, assertPg18WorkerCredentialBinding() {}, assertPg18CredentialMetadata() {}, pgWorkerOfflinePlan() {return {}},
     scopedKnowledgeToolPool: identityPool, scopedKnowledgeQueryPool: identityPool, scopedEmbeddingConsentPool: identityPool, scopedEmbeddingSettingsPool: identityPool,

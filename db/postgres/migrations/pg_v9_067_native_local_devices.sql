@@ -172,7 +172,7 @@ BEGIN
   INSERT INTO agentstudio.agent_specs(id,owner_user_id,name,spec,requires_approval) VALUES(id,o,v->>'name',
    '{"goal":"将授权本地台账汇总为可核对的 Excel 表格和 Word 报告，并按任务要求录入已授权网页。","task_scope":"仅使用本次选择的本地电脑及其目录与网站范围；处理 XLSX 和 UTF-8 CSV 的分组金额汇总。不改原表、不执行源公式。网页逐项核对后单独批准提交，成功必须有实际回执。","deliverables":["summary.xlsx 汇总表","report.docx 报告","summary.json 核对清单","如指定网页则提供实际提交回执"],"tools":["local_computer"],"task_plan":["读取源表并精确汇总","以源摘要校验后新建报告文件","回读清单核对","如指定网页则填表核对并逐次批准提交","根据真实结果交付"],"done_criteria":["汇总和报告的记录数、分组、金额一致","源文件 SHA256 与报告清单一致","保留原文件且不覆盖已有输出","网页提交有成功回执；不确定时不重试"],"knowledge_base_ids":[],"require_approval":true,"require_plan_review":true}'::jsonb,true);
  ELSIF a IN('revoke','enqueue') THEN
-  IF v->'confirm' IS DISTINCT FROM 'true'::jsonb OR agentstudio.native_local_object_size(v)<>CASE WHEN a='enqueue' THEN 5 ELSE 4 END THEN RAISE EXCEPTION 'native_local_invalid_intent';END IF;
+  IF v->'confirm' IS DISTINCT FROM 'true'::jsonb OR agentstudio.native_local_object_size(v)<>(CASE WHEN a='enqueue' THEN 5 ELSE 4 END) THEN RAISE EXCEPTION 'native_local_invalid_intent';END IF;
   IF a='revoke' THEN SELECT * INTO d FROM agentstudio.native_local_devices WHERE native_local_devices.id=(v->>'id')::uuid AND owner_user_id=o FOR UPDATE;IF NOT FOUND OR d.revoked THEN RAISE EXCEPTION 'native_local_device_unavailable';END IF;
   ELSE d:=agentstudio.native_local_live((v->>'id')::uuid,o);END IF;id:=d.id;
   IF a='revoke' THEN
@@ -246,7 +246,7 @@ BEGIN
  IF agentstudio.native_local_object_size(v)<>2 OR jsonb_typeof(v->'text') IS DISTINCT FROM 'string' OR length(v->>'text')>12000 OR jsonb_typeof(v->'images') IS DISTINCT FROM 'array' OR jsonb_array_length(v->'images')>1 OR octet_length(v::text)>1450000 THEN RAISE EXCEPTION 'native_local_invalid_result';END IF;
  FOR x IN SELECT value FROM jsonb_array_elements(v->'images') LOOP
   s:=x->>'data';IF agentstudio.native_local_object_size(x)<>2 OR coalesce(x->>'mimeType','') NOT IN('image/png','image/jpeg') OR coalesce(s,'') !~ '^[A-Za-z0-9+/]+={0,2}$' OR length(s) NOT BETWEEN 16 AND 1398104 OR length(s)%4<>0 THEN RAISE EXCEPTION 'native_local_invalid_result';END IF;
-  b:=decode(s,'base64');IF octet_length(b)>1048576 OR replace(encode(b,'base64'),E'\n','')<>s OR CASE WHEN x->>'mimeType'='image/png' THEN substring(b FROM 1 FOR 8)<>decode('89504e470d0a1a0a','hex') ELSE substring(b FROM 1 FOR 3)<>decode('ffd8ff','hex') END THEN RAISE EXCEPTION 'native_local_invalid_result';END IF;
+  b:=decode(s,'base64');IF octet_length(b)>1048576 OR replace(encode(b,'base64'),E'\n','')<>s OR (CASE WHEN x->>'mimeType'='image/png' THEN substring(b FROM 1 FOR 8)<>decode('89504e470d0a1a0a','hex') ELSE substring(b FROM 1 FOR 3)<>decode('ffd8ff','hex') END) THEN RAISE EXCEPTION 'native_local_invalid_result';END IF;
  END LOOP;
 END $fn$;
 CREATE FUNCTION agentstudio.native_local_complete(p_token text,v jsonb,p_confirm boolean DEFAULT false) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$

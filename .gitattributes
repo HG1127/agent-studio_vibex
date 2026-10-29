@@ -670,3 +670,8 @@ tests/native-local-device-contract.test.mjs text eol=lf
 tests/native-local-device-render.test.mjs text eol=lf
 tests/native-local-device-sdk.test.mjs text eol=lf
 tests/native-office-workflow.test.mjs text eol=lf
+
+# Reviewed SQL067 syntax and original Writer/claim fixture repairs.
+docs/PG18_MIGRATION_EXECUTION_20261029.json text eol=lf
+services/pg-api/tests/native-local-device-sql067-source.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-final-cleanup.test.mjs text eol=lf

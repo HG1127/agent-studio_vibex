@@ -3,7 +3,7 @@
 import {requireNativeLocalDeviceGenuineCi} from './native-local-device-genuine-guard.mjs'
 // Literal reviewed Git LF sources; purpose guard runs before filesystem access.
 export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
-  "db/postgres/migrations/pg_v9_067_native_local_devices.sql": "dd57b6484448b76c7e8c90c1afaebbefa8ee12e49c758958d04c530191231e42",
+  "db/postgres/migrations/pg_v9_067_native_local_devices.sql": "003e2e5ffbe7893fe6290b65232c89d0156142ae88c2f6d98078daf6bbcddeb2",
   "local-executor/browser-server.mjs": "b05a401f8e507a8a989ee771173760111397828f1640e847cda0181f32eb7f9d",
   "local-executor/native-connection.mjs": "9739668820d790655f0670423b995635990ab1e1c3310d5fe5a63d92f6e2a862",
   "local-executor/native-run.mjs": "846a4947d4db2444f65ba28548f6b5386f639291f245f44e9fe6369b2dd806b9",
@@ -12,7 +12,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "local-executor/office.mjs": "7c3abc4f87c497ccc7dbaa84a83458fa0ac0f21e3c224be829799bfbe7110c8f",
   "local-executor/result.mjs": "9bb610ae182dbb903c00a12cefe5bcaf08acc29211c26731c344ff06b8f84e22",
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
-  "package.json": "0f945f2fbb0e8d723870f558a4843023138177ea41b72c2134e87f0b2e788a97",
+  "package.json": "990cdbf4993cbca712fba52638354ea3902a30d30cb54ae88a1806c60f1aa722",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/src/agent-human-input-policy.ts": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b",
   "services/pg-api/src/autonomous-agent-run-repository.ts": "791d148ef5b23403e27d39d60ff414f358e75abddd27d47b28f963079974de1c",
@@ -26,7 +26,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/native-credential-policy.ts": "702147e13c977c4d20ec54bf6cf7e85125ad1866983d7614daaa05a6fbde1cc2",
   "services/pg-api/src/native-local-agent-contract.ts": "76c1ed1c587bdb5d5d8e0c06b39771b1efa8d20e4de777367d8a573d49c66c5b",
   "services/pg-api/src/native-local-agent-resources.ts": "b55d540428348a8cf8f867fff283634451eafb1aafe4519aab143253e9515e5f",
-  "services/pg-api/src/native-local-device-audit-manifest.ts": "e105dc5cbeb1c8d7927ed6cf3e8b72a96672d65a94373696aa5ad13fe494eda5",
+  "services/pg-api/src/native-local-device-audit-manifest.ts": "8dc56336e2f120a8847ccea5427d20f5d97427350541f6c5fdd1d6d79aedc5d0",
   "services/pg-api/src/native-local-device-audit.ts": "68a0dc7268933fd96d00d02c4105181be91bd647b5abbd10bf5973aeb36aae47",
   "services/pg-api/src/native-local-device-execution.ts": "3fb168d7506fc2b2835e96920ab5e36839ba9891bf0a2c6da332a5117416ea54",
   "services/pg-api/src/native-local-device-http.ts": "9ff14f42fa1118aba622f43b5414623979fc77ac08b4b810e19f85c0f6977783",
@@ -37,7 +37,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "6950c0bfa97869ff1d4377f8c960849df73d7802f59935dc5785bd0998220879",
   "services/pg-api/src/pg18-complete-operator-runtime.mjs": "a2f3185a33de33fcd999d49d7ee02bcf52b742a1eab5856bc19b0daf394d32c0",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "3917e4db75d7a79c9497df0f56372656c81870bf14c9932999026e63fda3f147",
-  "services/pg-api/src/pg18-complete-profile-source.mjs": "3f6f2f702222d527c50210ea53b2a80abc2f7c8f9832ccaa68d58b28e1045f2a",
+  "services/pg-api/src/pg18-complete-profile-source.mjs": "41c7c706bc6825cdff3f2067aa4365dbc99dd10de4ff5fffcd30613e0551c2d2",
   "services/pg-api/src/pg18-complete-profile.ts": "4f2798a878d3869d015285597f334a1a21937778a6c719401af4b638a5e0f79b",
   "services/pg-api/src/run-repository.ts": "58704899b00516583d7f90d2b8570f945b958b4d37ed1e6824fa835eeaaecd39",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",

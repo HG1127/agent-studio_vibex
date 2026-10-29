@@ -307,7 +307,7 @@
     {
       "order": 51,
       "path": "db/postgres/migrations/pg_v9_067_native_local_devices.sql",
-      "Git_LF_sha256": "dd57b6484448b76c7e8c90c1afaebbefa8ee12e49c758958d04c530191231e42",
+      "Git_LF_sha256": "003e2e5ffbe7893fe6290b65232c89d0156142ae88c2f6d98078daf6bbcddeb2",
       "action": "Explicit optional Native device profile only; no LOGIN, secret, service activation or production cutover."
     }
   ],
@@ -315,5 +315,6 @@
   "new_group": "agentstudio_local_executor NOLOGIN",
   "dedicated_LOGIN_and_private_secret_provisioning": "Separate reviewed activation still pending; this map creates none.",
   "actual_original066_and_new067_catalog_audits_required": true,
-  "historical066_evidence_is_not067_acceptance": true
+  "historical066_evidence_is_not067_acceptance": true,
+  "SQL067_syntax_repair": "Only two CASE-expression parentheses; strict routine and source pins updated; actual rerun pending."
 }

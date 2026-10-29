@@ -906,7 +906,14 @@ function writerRestartObservation(phase){
 // every Writer slot stays keep, retaining its generation, UID and consumption.
 /* RESTART_REAL_READER_ROTATION_END */
 function writerRestartPrepared(value){writerRestartObservation('apply_reader_rotate');return value}
-/* WRITER_RESTART_OBSERVATION_END */function writerCiApi(s){return Object.freeze({
+/* WRITER_RESTART_OBSERVATION_END */
+// Test-only phase/code diagnostics; no backend identity, query, path, value or
+// exception text. Observations never authorize or substitute actual cleanup.
+function writerFinalInvariantObservation(phase,passed){
+ if(!['shared_knowledge_child_selection','shared_knowledge_cleanup','owned_backend_absence','issued_boot_uid_ceiling','empty_business_queues'].includes(phase)||typeof passed!=='boolean')return
+ process.stdout.write(JSON.stringify({event:'genuine_writer_ci_final_invariant_observation',phase,code:passed?'passed':'failed',observed_data_only:true})+'\n')
+}
+function writerCiApi(s){return Object.freeze({
  kinds:Object.freeze([...kinds]),variant:s.writerVariant,
  change:changes=>writerChange(s,changes),deliveries:()=>writerDeliveries(s),rows:()=>writerRows(s),backends:()=>writerBackendRows(s),journal:()=>writerJournal(s).filter(r=>r.phase.startsWith('writer_')).map(r=>({phase:r.phase,instance_id:r.instance_id,data:r.data})),
  launch:options=>launchWriter(s,options),command:(c,command,ms)=>writerCommand(s,c,command,ms),stop:c=>writerStop(s,c),noIo:()=>writerNoIo(s),
@@ -930,7 +937,7 @@ function writerRestartPrepared(value){writerRestartObservation('apply_reader_rot
   const run=args=>execFileSync('/usr/bin/nsenter',['--target',String(c.actualPid),'--mount','--','/usr/bin/mount',...args],{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},timeout:10000,stdio:['ignore','pipe','pipe'],windowsHide:true})
   run(['--bind',item.source_file,item.mounted_file]);run(['-o','remount,bind,ro,nosuid,nodev,noexec',item.mounted_file]);return true
  },
- async businessCounts(){return (await s.nativeAdmin.query("SELECT (SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs,(SELECT count(*)::integer FROM agentstudio.agent_review_requests) AS reviews,(SELECT count(*)::integer FROM agentstudio.knowledge_query_jobs) AS queries")).rows[0]},
+ async businessCounts(){const value=(await s.nativeAdmin.query("SELECT (SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs,(SELECT count(*)::integer FROM agentstudio.agent_review_requests) AS reviews,(SELECT count(*)::integer FROM agentstudio.knowledge_query_jobs) AS queries")).rows[0];writerFinalInvariantObservation('empty_business_queues',value.jobs===0&&value.runs===0&&value.reviews===0&&value.queries===0);return value},
  async entryReady(c){
   if(!s.writerChildren.has(c)||c.mode!=='entry')fail('writer_actual_entry_required')
 /* ENTRY_ROLE_FAILURE_BEGIN */try{/* ENTRY_ROLE_FAILURE_END */  if(c.selected[0]==='knowledge_index'){
@@ -939,7 +946,16 @@ function writerRestartPrepared(value){writerRestartObservation('apply_reader_rot
 /* ENTRY_ROLE_FAILURE_BEGIN */observeWriterEntryPhase(c,'ready');/* ENTRY_ROLE_FAILURE_END */  return true
 /* ENTRY_ROLE_FAILURE_BEGIN */}catch(entryReadyFailure){observeWriterEntryPhase(c,'ready_failed');throw entryReadyFailure}/* ENTRY_ROLE_FAILURE_END */ },
  async timing(c){return {kind:c.kind,kernel_uid_verified:c.kernelUidVerified===true,elapsed_ms:Math.round(performance.now()-c.launchAt),exited:c.exited,component_only:c.mode!=='entry'}},
- async final(){assert.equal((await writerBackendRows(s)).length,0);assert.ok(writerJournal(s).filter(v=>v.phase==='writer_boot_issued').length<=128);return true},
+ async final(){
+  // The fixed integration already stopped this exact two-kind child. A child
+  // exit precedes Root cleanup. Reuse the ORIGINAL read-only 5s observation,
+  // with its staged/claimed/bound instance and both original generations.
+  const children=[...s.writerStoppedChildren].filter(c=>c.mode==='entry'&&c.batch&&Array.isArray(c.selected)&&c.selected.length===2&&c.selected[0]==='knowledge_index'&&c.selected[1]==='knowledge_query')
+  writerFinalInvariantObservation('shared_knowledge_child_selection',children.length===1);assert.equal(children.length,1)
+  try{await writerWaitStoppedCleanup(s,children);writerFinalInvariantObservation('shared_knowledge_cleanup',true)}catch(error){writerFinalInvariantObservation('shared_knowledge_cleanup',false);throw error}
+  const backends=await writerBackendRows(s);writerFinalInvariantObservation('owned_backend_absence',backends.length===0);assert.equal(backends.length,0)
+  const issued=writerJournal(s).filter(v=>v.phase==='writer_boot_issued');writerFinalInvariantObservation('issued_boot_uid_ceiling',issued.length<=128);assert.ok(issued.length<=128);return true
+ },
  })}
 async function writerBusinessSetup(s){
  if(s.writerBusiness)return true

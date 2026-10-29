@@ -1,7 +1,7 @@
 {
   "format": "pg18_migration_execution_registry_v1",
-  "updated_UTC": "2026-10-29T08:22:30.971753+00:00",
-  "source_head": "97f960a789a0f536df1cd9fe99f3d5e4e52a4933",
+  "updated_UTC": "2026-10-29T12:01:01.997Z",
+  "source_head": "c76a49ab998bf4fc48bf7cd936218653d0a287e8",
   "deadline_Asia_Shanghai": "2026-10-30T18:30:00+08:00",
   "is_authority": false,
   "production_GO": false,
@@ -89,17 +89,18 @@
       }
     },
     "quality": {
-      "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
-      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40812206341",
+      "source_head": "834437aa7a08df41fdfb2ab8a578c0d600320f7a",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40860285567",
       "jobs_passed": 50,
       "main_test_counts": [
-        2132,
+        2411,
         5,
         18,
         4
       ],
+      "main_raw_sha256": "3196b967e997d106708fd266b8c033913f428996d424b9f001f0f0ee8abec79d",
       "actual_build_and_security_integration": true,
-      "scope": "Accepted exact62head only; employee24andNativepinfix need new-candidate regression."
+      "scope": "Exact834437a historical evidence, not currentc76 Native-device acceptance."
     },
     "W-CANCEL": {
       "source_head": "62a08be34fe9bf2e777408c0d6ad113c0df48a52",
@@ -201,6 +202,17 @@
       "first_failure": "case23 six real entries then original30s reporter→Reader preparation control_busy",
       "candidate": "Only passive finalized ready observation plus exact actual SQL row scheduling barrier; original Reader lease and5s/8s budgets unchanged.",
       "new_actual_pass_claim": false
+    },
+    "F27_834437a": {
+      "source_head": "834437aa7a08df41fdfb2ab8a578c0d600320f7a",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40860285634",
+      "all4_jobs_success": true,
+      "actual_database_tests": 58,
+      "actual_database_pure": 38,
+      "actual_database_raw_sha256": "c57e4ab8c15bfb9ddbd1dcd246afbad965bbb92baec54b3d917c513d1344bea3",
+      "independent_F29_tests": 6,
+      "independent_F29_raw_sha256": "5c2b7b1070007f857b432fdf788874427b937706694985befaf7e0fd7c5d6c24",
+      "F29_full_employee_browser_pending": true
     }
   },
   "current_packages": {
@@ -785,5 +797,36 @@
     "B": "F16–19 unifiedtooltrial SQL069; F31v2/v14delivered",
     "C": "F20/F21 deviceOffice SQL067; F02/F22cachev2delivered",
     "Root": "Review/integrate exactsources, optional066 fullinstall/restore, actualallCI and finalwhole31scope acceptance"
+  },
+  "current_candidate": {
+    "head": "c76a49ab998bf4fc48bf7cd936218653d0a287e8",
+    "profile": "complete067",
+    "ordered_SQL_sources": 51,
+    "local_validation": {
+      "selected_pure_SSR": 65,
+      "original_source_package_checks": 2,
+      "API59": 0,
+      "frontend6": 0,
+      "frozen059_source": "c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb",
+      "frozen060_source": "bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67"
+    },
+    "genuine_SQL067_and_full_install": "Failed SQLSTATE42601 in initial actual CI. Fix and independent actual rerun required; historical066 is not067 acceptance.",
+    "Worker_regression": "Four original CLI VM cases ReferenceError for new pure selector, blocking all9 jobs before actual phases. Harness-only fix prepared; runtime and assertions unchanged.",
+    "executor_dispatch": {
+      "run": 40869051530,
+      "run_executor": true,
+      "status": "actual_results_pending"
+    },
+    "source_coverage": "Native local devices/Office source integrated; full Worker→Broker→CLI/model/image/browser and F02 journey still outstanding. F11/F12 Caller and F16–19 Tool source frozen, not yet integrated.",
+    "production_GO": false
+  },
+  "deadline_status": {
+    "latest_qualifying_start_Asia_Shanghai": "2026-10-29T18:30:00+08:00",
+    "latest_start_missed": true,
+    "deadline_can_be_met": false,
+    "qualifying_continuous_Worker_hours": 0,
+    "qualifying_final_candidate_started": false,
+    "user_informed": true,
+    "prior_candidate_hours_cannot_be_combined": true
   }
 }
