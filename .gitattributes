@@ -812,3 +812,6 @@ services/pg-api/tests/native-local-device-business-route.test.mjs text eol=lf
 services/pg-api/tests/tool-hub-genuine-regressions.test.mjs text eol=lf
 tests/pg-native-browser/workflow-canvas.spec.mjs text eol=lf
 tests/pg18-local-executor-review-bundle.test.mjs text eol=lf
+
+# Reviewed actual186e1f3 failure repairs.
+tests/pg-native-tool-hub-catalog-namespace.test.mjs text eol=lf

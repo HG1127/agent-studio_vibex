@@ -1,6 +1,20 @@
 // Actual dedicated PG18 TCP/Native Cookie/independent public Bearer fixture.
 // No dependencies, pool, file or listener before this feature's pure gate.
 import {requireAgentCallerGenuineCi,agentCallerGenuineBrowserJob} from './agent-caller-genuine-guard.mjs'
+// Drop a committed ACK after real response bytes reach the HTTP writer. A
+// pre-header reset on a reused connection can be transparently retried by the
+// browser. Keep only the first byte of the actual JSON and omit its EOF, so
+// both browser and Node callers must treat the original outcome as unknown.
+export function dropAgentCallerCommittedAck(res){
+ const end=res.end
+ res.end=function(...args){
+  if(this.statusCode!==200)return end.apply(this,args)
+  const chunk=args[0],bytes=typeof chunk==='string'?Buffer.from(chunk,typeof args[1]==='string'?args[1]:'utf8'):chunk
+  if(!Buffer.isBuffer(bytes)||bytes.length<2)throw Error('agent_caller_committed_ACK_requires_actual_body')
+  this.write(bytes.subarray(0,1),()=>this.destroy())
+  return this
+ }
+}
 // Filled only from the exact Root-reviewed closure, never a DB authority stub.
 export const agentCallerGenuineFrozenSources=Object.freeze({
   ".github/workflows/pg18-agent-caller-genuine-ci.yml": "49f6c07dde63d6c8043a157fc4e44c3cfc88eb74b6dbcb24cc8c0edd8d8faf6d",
@@ -57,7 +71,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "db/postgres/migrations/pg_v9_068_agent_public_callers.sql": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
-  "package.json": "efd3b3d4385287a51a491bed2c98b139c71c60a08d8380259812289fba70ea90",
+  "package.json": "847a14991cc48a3c8429a0593962d33a68c7c2c8685f617b7539025113346d15",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -392,7 +406,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/tests/agent-caller-client.test.mjs": "8f35fe4bab8f77b4b69edefb6615dade0688af38a9473c9c83e6b498ea2c8704",
   "services/pg-api/tests/agent-caller-contract.test.mjs": "f6d43846dd85aa0efdff6621c7826cda4f9d36ca46f8b2f569947d0f9c9f47b0",
   "services/pg-api/tests/agent-caller-database-pg18.test.mjs": "699490e2412210ac8a2b5648da37963bdee7cee64240b111e2383c884bb5e6af",
-  "services/pg-api/tests/agent-caller-genuine-guard.test.mjs": "ef2c0f68777bf63ba4e922e086fa45cccc587d2d3f485ac0004b6a80e3b8e082",
+  "services/pg-api/tests/agent-caller-genuine-guard.test.mjs": "88f41203e61e48d1a4e1d02457dd88edf33108f30aa40efa6e40c4529a8dac45",
   "services/pg-api/tests/agent-caller-genuine-pg18.test.mjs": "12d5634615305d86b7c55ef7018f35d2ef6c5256ebd1a108e757e7dc036ccb9f",
   "services/pg-api/tests/agent-caller-http.test.mjs": "8208c40123123ecf2b3c41d6bd4d244a78d5dad56b56032c1d3b9f2527576fe5",
   "services/pg-api/tests/agent-caller-owner-session.test.mjs": "4802e4be9dfc3ef80eacd99162b45516603e4112b55b21c1f2a62939afced0c2",
@@ -584,7 +598,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "shared/tool-hub-public-types.ts": "9f40bb2dd43cb24974ab439a2961cc44513ba01a80daafdaf76f8da5d7565c90",
   "src/lib/pgNativeToolHub.ts": "0b92d87f31a810030d5fb6789f2323ed6b6a4717f24779d18622fcf41b741c27",
   "src/lib/pgNativeToolHubSession.ts": "a631541855c13758549a2ce3c644af48030204542a284b5c9c0bdfb748016acc",
-  "src/pages/PgNativePilot/PgNativePublicMcpCatalog.tsx": "12f280dd83023c0a12d0b63d2e588b8b8d192eacd1f533f81b3efc3dcbae5ff1",
+  "src/pages/PgNativePilot/PgNativePublicMcpCatalog.tsx": "80612891e9bf6f8bcd12663eee39165c8680efa62f19a85baeca0eb43ce6c6f5",
   "src/pages/PgNativePilot/PgNativeToolHubPanel.tsx": "3a2183b8902bf7ffef096a029ca4e80ea37a9c9266ea10d00e509ce349599c91",
   "services/pg-api/src/native-local-executor-operator-plan.d.mts": "890ca7e6e0b2f3d4addc55a5307249407db48c7ddcdd4abfcba7a5763e380180",
   "services/pg-api/src/native-local-executor-operator-plan.mjs": "df49c83e97be6e04b122aaaac42439731f7c7bf3ece50653c7342d752e0d9754",
@@ -628,7 +642,7 @@ export async function agentCallerGenuineFixture(env=process.env,{browserMode=fal
     const native=nativeModule.createNativeAuthHttpHandler({auth,allowedOrigin,allowConfigurationWrites:mutable.writes,allowEmployeeGovernance:true,allowAutonomousAgentSubmission:mutable.runs,allowAgentCallers:mutable.available,allowAgentCallerWrites:mutable.writes,allowAgentCallerRuns:mutable.runs,businessHandler:async(r,s)=>{if(await owned()(r,s))return;await generic(r,s)}})
     const owned=()=>httpModule.createAgentCallerOwnerHttp({repository:repository(),authenticateRequest:native.authenticateRequest,allowedOrigin,allowWrites:mutable.writes,allowAdmission:mutable.runs}),publicHttp=()=>httpModule.createAgentCallerPublicHttp({repository:repository()})
     generic=genericModule.createHandler({allowedOrigin,authenticateRequest:native.authenticateRequest,verifyToken:async()=>{throw Error('caller_Native_cookie_only')},repository:new agentModule.AgentSpecRepository(base.pool,{hideCallerSources:true}),autonomousAgentRunRepository:base.owned,modelConnectionRepository:base.models,toolConnectionRepository:new toolsModule.ToolConnectionRepository(base.pool,base.key),workflowRepository:new workflowModule.WorkflowRepository(base.pool),knowledgeRepository:new knowledgeModule.KnowledgeBaseRepository(base.pool)})
-    const drop=mutable.dropNext;if(drop&&req.method===drop.method&&req.url===drop.path){mutable.dropNext=null;const end=res.end;res.end=function(...args){if(this.statusCode===200){this.destroy();return this}return end.apply(this,args)}}
+    const drop=mutable.dropNext;if(drop&&req.method===drop.method&&req.url===drop.path){mutable.dropNext=null;dropAgentCallerCommittedAck(res)}
     if(mutable.available&&await publicHttp()(req,res))return;await native.handler(req,res)
    })().catch(()=>res.destroy())})
    await new Promise((resolve,reject)=>{nativeServer.once('error',reject);nativeServer.listen(0,'127.0.0.1',resolve)});nativeOrigin='https://localhost:'+nativeServer.address().port;allowedOrigin=browserMode?'https://localhost:17443':nativeOrigin;await login('alice');await login('bob');readyResolve();await finish
