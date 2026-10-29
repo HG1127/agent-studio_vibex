@@ -1,19 +1,19 @@
-// Explicit fresh-only complete065 assembly. No existing schema is upgraded,
+// Explicit fresh-only complete066 assembly. No existing schema is upgraded,
 // repaired or deleted. Only the original fresh initializer owns its transaction.
 import type {SqlClient} from './contracts.ts'
 import {installFreshRuntime,freshRuntimeReceiptBody} from './pg18-fresh-runtime-install.ts'
-import {verifyAgentInternalShareCredentials} from './agent-internal-share-audit.ts'
+import {verifyApprovalDelegationCredentials} from './approval-delegation-audit.ts'
 import {checkedServiceLoginReceipt,serviceLogins} from './pg18-service-login-policy.mjs'
 import {assertCompleteProfileSnapshot,completeProfileName,completeProfileReceipt,completeProfileReceiptBody,type CompleteProfileSnapshot} from './pg18-complete-profile-source.mjs'
 
-function fail(code:string):never{throw Error('complete065_'+code)}
+function fail(code:string):never{throw Error('complete066_'+code)}
 const baselineRoles=['agentstudio_api','agentstudio_worker','agentstudio_stage_login','agentstudio_stage_worker','agentstudio_model_broker']
 const allowedLogins=new Set(['agentstudio_native_login',...Object.values(serviceLogins).map(s=>s.login)])
 export const completeProfileLocksSql='SELECT pg_try_advisory_xact_lock(61824,271828) AND pg_try_advisory_xact_lock(61824,20261024) AS locked'
 export const completeProfileTargetSql="SELECT current_database() AS database,session_user::text AS login,current_user::text AS actor,host(inet_server_addr()) AS host,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,NOT pg_is_in_recovery() AS primary,(pg_control_system()).system_identifier::text AS system_identifier,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,(SELECT rolsuper FROM pg_roles WHERE rolname=session_user) AS super,pg_backend_pid() AS pid,(SELECT backend_start::text FROM pg_stat_activity WHERE pid=pg_backend_pid()) AS backend_start"
 export type CompleteProfileTarget=Readonly<{system_identifier:string;database_oid:string}>
 export type CompleteProfilePool=Readonly<{connect():Promise<SqlClient&{release(destroy?:boolean):void}>}>
-export type CompleteProfileState=Readonly<{state:'pending'|'empty'|'incomplete_or_foreign'|'schema_installed_inert'|'schema_installed_services_prepared';profile:'complete065';source_sha256:string;target:CompleteProfileTarget;structure_and_receipt_verified:boolean;full_catalog_audit_verified:false;services_started:false;automatic_retry_authorized:false;production_cutover_allowed:false}>
+export type CompleteProfileState=Readonly<{state:'pending'|'empty'|'incomplete_or_foreign'|'schema_installed_inert'|'schema_installed_services_prepared';profile:'complete066';source_sha256:string;target:CompleteProfileTarget;structure_and_receipt_verified:boolean;full_catalog_audit_verified:false;services_started:false;automatic_retry_authorized:false;production_cutover_allowed:false}>
 async function target(db:SqlClient,expected?:CompleteProfileTarget):Promise<CompleteProfileTarget>{
  const r=(await db.query<Record<string,unknown>>(completeProfileTargetSql)).rows[0]
  if(!r||r.database!=='agent_studio'||r.login!=='postgres'||r.actor!=='postgres'||r.host!=='127.0.0.1'||r.port!==5333||typeof r.version!=='number'||r.version<180000||r.version>=190000||r.primary!==true||r.super!==true||typeof r.system_identifier!=='string'||!/^[1-9][0-9]{0,19}$/.test(r.system_identifier)||typeof r.database_oid!=='string'||!/^[1-9][0-9]{0,19}$/.test(r.database_oid)||!Number.isSafeInteger(r.pid)||typeof r.backend_start!=='string')fail('target_refused')
@@ -94,9 +94,9 @@ export async function verifyCompleteProfile(admin:CompleteProfilePool,api:Comple
   const r=(await db.query<{login:string;actor:string;database:string;database_oid:string;host:string;port:number;version:number;safe:boolean}>("SELECT session_user::text AS login,current_user::text AS actor,current_database() AS database,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,host(inet_server_addr()) AS host,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AS safe FROM pg_roles r WHERE rolname=session_user")).rows[0]
   if(!r||r.login!=='agentstudio_stage_login'||r.actor!==r.login||r.database!=='agent_studio'||r.database_oid!==before.target.database_oid||r.host!=='127.0.0.1'||r.port!==5333||r.version<180000||r.version>=190000||r.safe!==true)fail('actual_api_login_required')
   await db.query('SET LOCAL ROLE agentstudio_api')
-  // Actual065->064->063->062->061->060->059 and the prior058 chain. Missing module,
+  // Actual066->065->064->063->062->061->060->059 and the prior058 chain. Missing module,
   // unsafe session or false/throwing auditor cannot be substituted with success.
-  if(await verifyAgentInternalShareCredentials(db)!==true)fail('full_catalog_audit_failed')
+  if(await verifyApprovalDelegationCredentials(db)!==true)fail('full_catalog_audit_failed')
   assertCompleteProfileSnapshot(snapshot,expectedSource)
  }finally{if(begun)await db.query('ROLLBACK').catch(()=>{destroy=true});db.release(destroy)}
  const after=await inspectCompleteProfile(admin,snapshot,expectedSource,before.target)

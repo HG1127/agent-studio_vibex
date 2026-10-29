@@ -3,7 +3,7 @@ import {createPgNativeAgentDesignSession, emptyAgentDesignView, type AgentDesign
 import type {PgNativeAgentDesignApi} from "../../lib/pgNativeAgentDesign.ts"
 import {parseAgentDesignEditableFields, type AgentDesignEditableFields} from "../../../services/pg-api/src/agent-design-value-contract.ts"
 export type AgentDesignModelChoice = {connection_id: string; connection_revision: number; model_id: string; label: string}
-type Props = {api?: PgNativeAgentDesignApi; employeeId: string; active: boolean; available?: boolean; submissions?: boolean; saves?: boolean; models: AgentDesignModelChoice[]; sources?: {spec_id: string; name: string}[]; selectedSpecId?: string; onExpired: () => void}
+type Props = {api?: PgNativeAgentDesignApi; employeeId: string; active: boolean; available?: boolean; submissions?: boolean; saves?: boolean; models: AgentDesignModelChoice[]; sources?: {spec_id: string; name: string}[]; selectedSpecId?: string; onSaved?: (specId:string)=>void; onExpired: () => void}
 type Binding = {api: PgNativeAgentDesignApi; employeeId: string; model: PgNativeAgentDesignSession}
 const descriptions = [{key: "name", label: "助手名称", max: 120}, {key: "goal", label: "目标", max: 3000}, {key: "task_scope", label: "任务范围", max: 4000},
   {key: "deliverables", label: "交付物（每行一项）", max: 15029}, {key: "task_plan", label: "任务计划（每行一步）", max: 15029}, {key: "done_criteria", label: "完成标准（每行一项）", max: 15029}] as const
@@ -11,7 +11,7 @@ type Draft = Record<typeof descriptions[number]["key"], string>
 function draft(fields: AgentDesignEditableFields): Draft {return Object.fromEntries(descriptions.map(({key}) => [key, Array.isArray(fields[key]) ? fields[key].join("\n") : fields[key]])) as Draft}
 function fields(value: Draft) {return parseAgentDesignEditableFields({...value, ...Object.fromEntries(["deliverables", "task_plan", "done_criteria"].map(k => [k, value[k as keyof Draft].split("\n").filter(line => line.trim())]))})}
 type PresentationProps = Omit<Props, "api" | "onExpired"> & {view: AgentDesignSessionView; bound: boolean; session?: PgNativeAgentDesignSession}
-export function PgNativeAgentDesignPresentation({employeeId, active, available, submissions, saves, models, sources, selectedSpecId, view, bound, session}: PresentationProps) {
+export function PgNativeAgentDesignPresentation({employeeId, active, available, submissions, saves, models, sources, selectedSpecId, onSaved, view, bound, session}: PresentationProps) {
   const [purpose, setPurpose] = useState<"generate" | "revise">("generate"), [instruction, setInstruction] = useState(""), [selectedModel, setSelectedModel] = useState(""), [cap, setCap] = useState<4096 | 8192 | 16384>(4096)
   const [selectedSource, setSelectedSource] = useState("")
   const revisionId = selectedSpecId ?? (sources?.some(s => s.spec_id === selectedSource) ? selectedSource : undefined)
@@ -45,6 +45,7 @@ export function PgNativeAgentDesignPresentation({employeeId, active, available, 
         <button type="button" disabled={locked} onClick={() => {try {session?.editFields(fields(edit)); void session?.previewSave()} catch {setEditError("请检查名称、目标及列表长度；列表最多 30 项，每项最多 500 字。")}}} className="rounded-lg border px-4 py-2">预览保存内容</button></div> : null}
       {view.savePreview ? <div className="rounded-xl bg-slate-50 p-4"><p>将{view.savePreview.purpose === "generate" ? "创建新助手" : "更新原助手"}：{view.savePreview.candidate.name}</p><p className="my-2 text-sm">本次仅保存名称、目标、范围、交付物、计划和完成标准。</p><button type="button" disabled={locked || !saves || !view.saves} onClick={() => {void session?.save()}} className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-40">确认仅保存方案</button></div> : null}
       {view.saveReceipt ? <p role="status">已保存方案「{view.fields?.name ?? "助手"}」，版本 {view.saveReceipt.after_revision}。可返回助手列表查看。</p> : null}
+      {view.saveReceipt&&onSaved?<button type="button" disabled={locked} onClick={()=>onSaved(view.saveReceipt!.spec_id)} className="rounded-lg border px-4 py-2">在创建向导中配置已保存助手</button>:null}
       {view.busy ? <p role="status">正在核对本次操作…</p> : null}{view.error || editError ? <p role="alert" className="text-sm text-rose-800">{editError || view.error}</p> : null}
     </>}
   </section>

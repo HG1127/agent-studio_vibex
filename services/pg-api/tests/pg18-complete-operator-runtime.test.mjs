@@ -2,7 +2,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {isCompleteProfileInitializerDriverRequest,assertCompleteProfileOperatorRuntimeEnvironment as environment,assertCompleteProfileOperatorRuntimeMetadata as metadata,assertCompleteProfileOperatorRuntimeInventory as inventory,assertCompleteProfileOperatorRuntimeCacheRecord as cache,assertCompleteProfileOperatorRuntime as verified,loadCompleteProfileOperatorPg as load,resolveCompleteProfileOperatorRuntimeModule as resolve} from '../src/pg18-complete-operator-runtime.mjs'
-const original='services/pg-api/src/baota-pg18-fresh-init.mjs',refused=/complete065_runtime_refused/
+const original='services/pg-api/src/baota-pg18-fresh-init.mjs',refused=/complete066_runtime_refused/
 test('only original initializer exact pg import is a driver request; classification never grants a capability',()=>{
  assert.equal(isCompleteProfileInitializerDriverRequest(original,'pg',['node','import','module-sync','node-addons']),true)
  for(const [from,specifier,conditions]of [[original,'pg',[]],[original,'pg',['require']],[original,'pg',['import','require']],[original,'pg',['import','foreign']],[original,'pg/lib/index.js',['import']],[original,'pg/esm/index.mjs',['import']],[original+'?x','pg',['import']],['services/pg-api/src/baota-pg18-complete-init.mjs','pg',['import']],['file:///'+original,'pg',['import']],[original,'pg',null]])assert.equal(isCompleteProfileInitializerDriverRequest(from,specifier,conditions),false)

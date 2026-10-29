@@ -7,6 +7,11 @@ import {createWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import type {SqlPool,SqlClient} from "./contracts.ts"
 import {randomUUID} from "node:crypto"
+import {safeAgentRunControlRequest,agentRunControlStateHash,agentRunControlFingerprint,checkedAgentRunControlReceipt,assertAgentRunResumeApproval,type AgentRunControlAction} from "./agent-run-control.ts"
+import {checkedWorkflowV2StoredState,workflowV2ExecutionRequest} from "./workflow-v2-run-repository.ts"
+import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
+import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
+import {agentHumanContext} from "./agent-human-input-policy.ts"
 import {prepareOwnedAgentMemoryContext,insertAgentMemoryContextReceipt} from "./agent-memory-context-policy.ts"
 import {agentMemoryContextHash} from "./agent-memory-context.ts"
 import {outcomeMemoryOption} from "./agent-memory-outcome-contract.ts"
@@ -72,6 +77,64 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     await auditWorkflowV2(db,owner,run.id,"workflow.v2_submit",{spec_revision:request.expected_revision,graph_sha256:machine.graph_sha256,max_steps,
       ...(checkpoint.memory_context?{memory_context_sha256:agentMemoryContextHash(checkpoint.memory_context,memoryScope),memory_items:checkpoint.memory_context.memories.length}:{})})
     return {...await this.assemble(db,owner,run,false),...(consent?{outcome_memory:consent}:{})}
+  }
+
+  async changeRunControl(identity:Identity,id:string,action:AgentRunControlAction,raw:unknown){return this.runControl(identity,id,action,raw,false)}
+  async confirmRunControl(identity:Identity,id:string,action:AgentRunControlAction,raw:unknown){return this.runControl(identity,id,action,raw,true)}
+  private async runControl(identity:Identity,id:string,action:AgentRunControlAction,raw:unknown,confirmOnly:boolean){
+    if(!isUuid(id)||!['pause','resume'].includes(action))throw new HttpError(400,'invalid_agent_run_control')
+    id=id.toLowerCase();const request=safeAgentRunControlRequest(raw)
+    return withActor(this.pool,identity,async(db,owner)=>{
+      await assertOwnedAdmissionContext(db,owner)
+      await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))',[owner+':agent_run_control:'+request.operation_id])
+      const jobs=(await db.query<{id:string;status:string;lease_token:string|null;attempts:number;max_attempts:number}>(
+        "SELECT id,status,lease_token,attempts,max_attempts FROM agentstudio.jobs WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND kind='run_tick' AND payload->>'phase'='agent_native_v2' FOR UPDATE",[id,owner])).rows
+      const row=(await db.query<WorkflowV2RunRow>('SELECT '+workflowV2RunColumns+" FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='agent' AND checkpoint->>'execution_mode'='agent_native_v2' FOR UPDATE",[id,owner])).rows[0]
+      if(jobs.length!==1||!row)throw new HttpError(404,'agent_run_not_found')
+      const receipts=(await db.query<{metadata:unknown}>("SELECT metadata FROM agentstudio.audit_events WHERE owner_user_id=$1::uuid AND actor_user_id=$1::uuid AND action='agent.v2_run_control' AND metadata->>'operation_id'=$2::text ORDER BY occurred_at LIMIT 2",[owner,request.operation_id])).rows
+      if(receipts.length>1)throw new HttpError(409,'agent_run_control_operation_conflict')
+      if(receipts.length){const receipt=checkedAgentRunControlReceipt(receipts[0]!.metadata,id,action,request)
+        return {...await this.assemble(db,owner,row,true),run_control_confirmation:receipt,control_confirmed:true}
+      }
+      // Confirmation never applies a missing operation, changes a lease or
+      // repeats an external call, including after a lost commit acknowledgement.
+      if(confirmOnly)return {...await this.assemble(db,owner,row,false),run_control_confirmation:null,control_confirmed:false}
+      if(agentRunControlStateHash(row)!==request.expected_state_sha256)throw new HttpError(409,'agent_run_control_state_changed')
+      const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction),job=jobs[0]!
+      const effects=(await db.query<{status:string}>("SELECT status FROM agentstudio.external_effects WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('started','unknown') FOR UPDATE",[id,owner])).rows
+      const inFlight=effects.some(effect=>effect.status==='started'),unknown=effects.some(effect=>effect.status==='unknown')
+      let status:string
+      if(action==='pause'){
+        if(!['queued','running','awaiting_approval','awaiting_input'].includes(row.status)||state.manual_pause)throw new HttpError(409,'agent_run_not_pauseable')
+        state.manual_pause={operation_id:request.operation_id,return_status:row.status==='awaiting_approval'?'awaiting_approval':row.status==='awaiting_input'?'awaiting_input':'queued'}
+        state.stage='agent_v2_paused';status='paused'
+        // Retain an existing started call's ORIGINAL lease so only its original
+        // Worker can store its result. Closing admission is not a physical undo.
+        if(!inFlight)await db.query("UPDATE agentstudio.jobs SET status='queued',lease_owner=NULL,lease_token=NULL,lease_until=NULL,lease_version=lease_version+1,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.id,owner])
+      }else{
+        if(row.status!=='paused'||!state.manual_pause)throw new HttpError(409,'agent_run_not_manually_paused')
+        if(inFlight||unknown)throw new HttpError(409,'agent_run_effect_unresolved')
+        if(job.status!=='queued'||job.lease_token!==null||Number(job.attempts)>=Number(job.max_attempts))throw new HttpError(409,'agent_run_queue_unavailable')
+        const active=(await db.query<{status:string}>('SELECT status FROM agentstudio.users WHERE id=$1::uuid FOR SHARE',[owner])).rows[0]
+        if(active?.status!=='active')throw new HttpError(403,'employee_disabled')
+        if(state.memory_context&&!this.allowMemory||state.human_agent_keys?.length&&!this.allowHumanInput||await new AgentMemoryOutcomeRepository(this.pool).hasOwned(db,owner,id)&&(!this.allowOutcomeMemory||!this.allowHumanInput))throw new HttpError(409,'agent_run_resume_features_disabled')
+        await this.checkMcpAdmission(db,owner,state.graph)
+        await verifyWorkflowV2Snapshot(db,owner,row,state)
+        if(!await currentKnowledgeObservations(db,id))throw new HttpError(409,'knowledge_observations_unavailable')
+        const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending,pending=workflowV2ExecutionRequest(state)
+        if(state.manual_pause.return_status==='awaiting_approval'&&!pending||state.manual_pause.return_status==='awaiting_input'&&!agentHumanContext(row,state)?.pending_input)throw new HttpError(409,'agent_run_control_state_changed')
+        for(const required of [state.agent_state?parent:null,pending]){
+          if(!required)continue
+          const approval=(await db.query<{status:string;reason_code:string;knowledge_charge:boolean|null}>("SELECT a.status,a.reason_code,(to_jsonb(a)->>'knowledge_query_charge_acknowledged')::boolean AS knowledge_charge FROM agentstudio.approvals a WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR SHARE",[id,owner,required.step_key])).rows[0]
+          assertAgentRunResumeApproval(required,approval,{parent:Boolean(state.agent_state&&required===parent),waiting:state.manual_pause.return_status==='awaiting_approval'&&required===pending})
+        }
+        status=state.manual_pause.return_status;delete state.manual_pause;state.stage='agent_v2_'+status
+      }
+      const next=(await db.query<WorkflowV2RunRow>("UPDATE agentstudio.runs SET status=$3::text,checkpoint=$4::jsonb,last_error_code=$5::text,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid RETURNING "+workflowV2RunColumns,[id,owner,status,JSON.stringify(state),action==='pause'?(unknown?'workflow_v2_effect_outcome_unknown':'agent_run_paused_by_owner'):''])).rows[0]!
+      const receipt={operation_id:request.operation_id,action,run_id:id,request_sha256:agentRunControlFingerprint(id,action,request),outcome_status:status}
+      await auditWorkflowV2(db,owner,id,'workflow.v2_run_control',receipt)
+      return {...await this.assemble(db,owner,next,false),run_control_confirmation:receipt,control_confirmed:true}
+    })
   }
 
 }

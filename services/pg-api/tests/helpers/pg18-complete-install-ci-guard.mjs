@@ -21,7 +21,7 @@ function common(env){
  if(env.RUNNER_OS!=='Linux'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.GITHUB_REPOSITORY!=='HG1127/agent-studio_vibex'||
   env.GITHUB_WORKFLOW!==workflow||env.GITHUB_JOB!==job||!['push','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME)||
   !positive(env.GITHUB_RUN_ID)||!positive(env.GITHUB_RUN_ATTEMPT)||env[prefix+'EPHEMERAL']!=='true'||
-  env[prefix+'PURPOSE']!=='COMPLETE_065_INSTALL_SYNTHETIC_ONLY'||env[prefix+'WRITE_APPROVED']!=='YES_NEW_DISPOSABLE_CONTAINERS_ONLY')refuse('environment')
+  env[prefix+'PURPOSE']!=='COMPLETE_066_INSTALL_SYNTHETIC_ONLY'||env[prefix+'WRITE_APPROVED']!=='YES_NEW_DISPOSABLE_CONTAINERS_ONLY')refuse('environment')
  for(const key of Object.keys(env))if(key.startsWith(prefix)&&!keys.includes(key.slice(prefix.length))||
   /^AGENT_STUDIO_DESCRIPTIVE_INSTALL_CI_|^AGENT_STUDIO_GENERATED_OPERATOR_CI_|^AGENT_STUDIO_GENERATED_059_|^AGENT_STUDIO_DESCRIPTIVE_PATCH_060_/.test(key)||
   ['NODE_OPTIONS','NODE_PATH','NODE_COMPILE_CACHE','NODE_V8_COVERAGE','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','SSL_CERT_FILE','SSL_CERT_DIR','OPENSSL_CONF','OPENSSL_MODULES','LD_PRELOAD','LD_LIBRARY_PATH','DYLD_INSERT_LIBRARIES','DYLD_LIBRARY_PATH','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy','DOCKER_HOST','DOCKER_CONTEXT'].includes(key))refuse('ambient_configuration')

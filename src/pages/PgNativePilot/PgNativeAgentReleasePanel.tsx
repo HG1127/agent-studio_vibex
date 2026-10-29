@@ -37,9 +37,9 @@ function SnapshotView({item}:{item:Detail}){
     </details>
   </section>
 }
-export default function PgNativeAgentReleasePanel({api,agents,connections,active,canWrite,canAccept,onUpdated,onExpired,onOpenRun}:{
+export default function PgNativeAgentReleasePanel({api,agents,connections,active,canWrite,canAccept,onUpdated,onExpired,onOpenRun,agentSelectionRequest}:{
   api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[];active:boolean;canWrite:boolean;canAccept:boolean;
-  onUpdated:()=>Promise<void>;onExpired:()=>void;onOpenRun:(id:string)=>void
+  onUpdated:()=>Promise<void>;onExpired:()=>void;onOpenRun:(id:string)=>void;agentSelectionRequest?:{id:string;selection:number}|null
 }){
   const [selected,setSelected]=useState(""),[workspace,setWorkspace]=useState<Workspace|null>(null),[loading,setLoading]=useState(false)
   const [preview,setPreview]=useState<Detail|null>(null),[review,setReview]=useState<Review|null>(null),[checked,setChecked]=useState(false),[reason,setReason]=useState("")
@@ -72,6 +72,13 @@ export default function PgNativeAgentReleasePanel({api,agents,connections,active
     reads.current++;details.current++;tests.current++;current.current=id;setSelected(id);setWorkspace(null);setPreview(null);setReview(null)
     setChecked(false);setReason("");setNote("");setRunId("");setAcceptance(null);setLinkTest(false);setModelValue("");setStartChecked(false);setError("");setNotice("")
   }
+  const deliveredAgent=useRef("")
+  useEffect(()=>{
+    if(!active||!agentSelectionRequest||busy||loading||pending||locked.current||intent.current||review||note||instruction||reason||checked||modelValue||startChecked||runId||linkTest||rounds!==8||!agents.some(a=>a.id===agentSelectionRequest.id))return
+    const key=agentSelectionRequest.id+":"+agentSelectionRequest.selection
+    if(deliveredAgent.current===key)return
+    deliveredAgent.current=key;choose(agentSelectionRequest.id)
+  },[active,agentSelectionRequest,busy,loading,pending,review,note,instruction,reason,checked,modelValue,startChecked,runId,linkTest,rounds,agents])
   const inspect=async(version:Version)=>{
     if(!selected||!activeRef.current)return
     const scope=epoch.current,ticket=++details.current;setPreview(null)

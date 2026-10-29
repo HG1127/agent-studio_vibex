@@ -13,7 +13,7 @@ type Api={
   getAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
   decideAutonomousAgentNode(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<PgNativeAutonomousAgentResult>
   cancelAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
-}&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge"|"respondAutonomousAgent"|"confirmAutonomousAgentResponse">>
+}&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge"|"respondAutonomousAgent"|"confirmAutonomousAgentResponse"|"controlAutonomousAgentRun"|"confirmAutonomousAgentRunControl">>
 export type AutonomousDraft={agentId:string;revision:number;instruction:string;maxSteps:number;requirePlanReview?:boolean;rememberOutcome?:boolean}
 export type AutonomousDetail=PgNativeAutonomousAgentResult&{knowledge?:KnowledgeToolContext}
 export type AutonomousView=DurableRunView<AutonomousDetail,PgNativeAutonomousAgentSummary,AutonomousDraft>
@@ -96,6 +96,7 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
     },
     submit:body=>body.rememberOutcome!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome):body.requirePlanReview===undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps):api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview),
     decide:(...args)=>api.decideAutonomousAgentNode(...args),cancel:id=>api.cancelAutonomousAgentRun(id),
+    ...(api.controlAutonomousAgentRun&&api.confirmAutonomousAgentRunControl?{controlRun:(id,action,request)=>api.controlAutonomousAgentRun!(id,action,request),confirmRunControl:(id,action,request)=>api.confirmAutonomousAgentRunControl!(id,action,request)}:{}),
     ...(api.respondAutonomousAgent?{respond:(id,choice)=>api.respondAutonomousAgent!(id,choice)}:{}),
     ...(api.confirmAutonomousAgentResponse?{confirmHumanResponse:(id,choice)=>api.confirmAutonomousAgentResponse!(id,choice)}:{}),
   },{...options,describe:autonomousError,submittedNotice:"多轮任务已提交，等待逐步审批。",

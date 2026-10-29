@@ -1,0 +1,132 @@
+name: Agent Studio PG18 same-run control isolated verification
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/pg18-*']
+    paths:
+      - '.github/workflows/pg18-agent-run-control-ci.yml'
+      - 'services/pg-api/src/**'
+      - 'services/pg-api/tests/agent-run-control*'
+      - 'services/pg-api/tests/helpers/agent-run-control*'
+      - 'src/lib/pgNative*'
+      - 'src/pages/PgNativePilot/**'
+      - 'tests/pg-native-browser/agent-run-control*'
+      - 'db/postgres/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'services/pg-api/pnpm-lock.yaml'
+permissions:
+  contents: read
+jobs:
+  run-control-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install frozen code dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Current-source state models, employee session, SSR and strict CI guards
+        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-run-control-state-model.test.mjs services/pg-api/tests/agent-run-control-genuine-guard.test.mjs
+  pg18-agent-run-control-db:
+    needs: run-control-regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+      AGENT_STUDIO_F31_RUN_CONTROL_CI: SYNTHETIC_SAME_RUN_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install frozen dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual Native Cookie and minimal Worker against this new empty PG18 service
+        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-run-control-tcp.integration.mjs
+  pg18-agent-run-control-browser:
+    needs: run-control-regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+      AGENT_STUDIO_NATIVE_BROWSER_CI: SYNTHETIC_GITHUB_ONLY
+      AGENT_STUDIO_F31_RUN_CONTROL_CI: SYNTHETIC_SAME_RUN_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install frozen dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+          pnpm exec playwright install --with-deps chromium
+      - name: Actual employee UI and readonly lost-ACK recovery against this separate empty PG18 service
+        run: pnpm exec playwright test --config tests/pg-native-browser/playwright.config.mjs tests/pg-native-browser/agent-run-control-pg18.spec.mjs --workers=1
+      - name: Retain synthetic control screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f31-pg18-control-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/pg-migration-completion/ci-browser-results/**/F31-real-pg-same-run-controls.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 3

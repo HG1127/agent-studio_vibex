@@ -158,11 +158,31 @@ function writerControlFailureObservation(raw,stream){
   return {event:'worker_heartbeat_control_failure_observation',site:v.site,kind:v.kind,observed_data_only:true}
  }catch{return null}
 }
-/* WRITER_FAILURE_OBSERVATION_END */function closedControllerOutput(s,c,chunk,stream){
+/* WRITER_FAILURE_OBSERVATION_END *//* WRITER_READY_FINALIZATION_BEGIN */
+// Only this fixture's owned cold Controller stderr may populate scheduling
+// observations. This never supplies a lease, snapshot, capability or SQL proof.
+function writerReadyFinalizationObservation(s,raw,stream){
+ try{if(stream!=='stderr')return null
+  const v=fields(raw,['event','instance_id','kind','generation','sequence','observed_data_only'])
+  if(v.event!=='worker_heartbeat_writer_ready_finalized_observation'||v.observed_data_only!==true||!uuid(v.instance_id)||v.instance_id!==s.instance||!kinds.includes(v.kind)||!uuid(v.generation)||!Number.isSafeInteger(v.sequence)||v.sequence<2)return null
+  return {event:v.event,instance_id:v.instance_id,kind:v.kind,generation:v.generation,sequence:v.sequence,observed_data_only:true}
+ }catch{return null}
+}
+function rememberWriterReadyFinalization(s,v){
+ const key=v.kind+':'+v.generation,previous=s.writerReadyFinalizations?.get(key)
+ if(previous?.instance_id===v.instance_id&&previous.sequence>v.sequence)return
+ ;(s.writerReadyFinalizations??=new Map()).set(key,v)
+}
+function writerReadyRowFinalized(s,row){
+ if(row?.state!=='ready'||Number(row.sequence)<2)return false
+ const v=s.writerReadyFinalizations?.get(row.kind+':'+row.generation)
+ return Boolean(v&&v.instance_id===s.instance&&v.kind===row.kind&&v.generation===row.generation&&String(v.sequence)===row.sequence)
+}
+/* WRITER_READY_FINALIZATION_END */function closedControllerOutput(s,c,chunk,stream){
  c[stream+'Bytes']+=chunk.length;if(c[stream+'Bytes']>32768){c.p.kill('SIGTERM');return}
  let text=(c[stream+'Partial']??'')+chunk.toString('utf8');if(Buffer.byteLength(text)>4096)text=text.slice(-4096)
  const lines=text.split('\n');c[stream+'Partial']=lines.pop()
- for(const line of lines){/* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
+ for(const line of lines){/* WRITER_READY_FINALIZATION_BEGIN */try{const observation=writerReadyFinalizationObservation(s,s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){rememberWriterReadyFinalization(s,observation);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_END *//* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
 }
 async function startController(s){
  // Service has one fixed verb. It is a separate cold process, never import-run.
@@ -892,7 +912,7 @@ function writerRestartPrepared(value){writerRestartObservation('apply_reader_rot
  waitStoppedCleanup:children=>writerWaitStoppedCleanup(s,children),
  cancellationAbsent:(witness,prepared)=>writerCancellationAbsent(s,witness,prepared),
  assertCancellationPublished:(witness,prepared,result)=>writerAssertCancellationPublished(s,witness,prepared,result),
- async waitReady(selected,ms=130000){await until(async()=>{const rows=await writerRows(s);return selected.every(kind=>{const row=rows.find(v=>v.kind===kind&&v.slot_no===1);return row?.state==='ready'&&Number(row.sequence)>=2})},'writer_actual_ready_rows',ms);return true},
+ async waitReady(selected,ms=130000){await until(async()=>{const rows=await writerRows(s);return selected.every(kind=>{const row=rows.find(v=>v.kind===kind&&v.slot_no===1);return writerReadyRowFinalized(s,row)})},'writer_actual_ready_rows',ms);return true},
  async kernelAccess({selected,batch,groups,native=false,extraBatches=[]}){const child=await launchWriter(s,{selected,mode:'access',batch,access:groups,native,extraBatches});await until(()=>child.messages.some(v=>v.event==='kernel_access'),'writer_real_access_result',10000);const result=child.messages.find(v=>v.event==='kernel_access');assert.equal(result.uid,child.uid);await writerStop(s,child);return result},
  async restartServing(){/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('stop_owned_controller');/* WRITER_RESTART_OBSERVATION_END */await stopProcess(s,s.control);/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('remove_control_sockets');/* WRITER_RESTART_OBSERVATION_END */await removeSockets(s);/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('remove_writer_sockets');/* WRITER_RESTART_OBSERVATION_END */await writerRemoveSockets(s);/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('cold_start_controller');/* WRITER_RESTART_OBSERVATION_END */await startController(s);/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('inspect_closed');/* WRITER_RESTART_OBSERVATION_END */const status=await rpc(s,{op:'inspect'});if(status.phase!=='closed')fail('writer_restart_closed');/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('prepare_reader_rotate');/* WRITER_RESTART_OBSERVATION_END */await apply(s,/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartPrepared(/* WRITER_RESTART_OBSERVATION_END */await prepare(s,draft(s,'rotate'))/* WRITER_RESTART_OBSERVATION_BEGIN */)/* WRITER_RESTART_OBSERVATION_END */);/* WRITER_RESTART_OBSERVATION_BEGIN */writerRestartObservation('inspect_final');/* WRITER_RESTART_OBSERVATION_END */const resumed=await rpc(s,{op:'inspect'});if(resumed.phase!=='serving'||resumed.read_gate!=='open')fail('writer_restart_serving_required');return resumed},
  async businessSetup(){return writerBusinessSetup(s)},

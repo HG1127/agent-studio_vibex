@@ -192,7 +192,7 @@ export function createHandler(deps:AppDependencies) {
       const workflowV2Submit=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/native-runs$/.exec(path)
       const workflowNodeDebug=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/model-node-debug$/.exec(path)
       const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|outputs|output-history|respond|respond-confirm|human-history))?)?$/.exec(path)
-      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm|human-history))?)?$/.exec(path)
+      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm|human-history|pause|resume|pause-confirm|resume-confirm))?)?$/.exec(path)
       const autonomousAgentSubmit=/^\/api\/v2\/agent-specs\/([0-9a-fA-F-]{36})\/autonomous-runs$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
@@ -1046,6 +1046,12 @@ export function createHandler(deps:AppDependencies) {
         if(action==="decision"){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
           return send(res,200,{...await repo.decide(identity,id,await readBody(req,1024)),worker_started_by_api:false})
+        }
+        if(autonomousAgentRoute&&['pause','resume','pause-confirm','resume-confirm'].includes(action??'')){
+          if(method!=='POST')throw new HttpError(405,'method_not_allowed')
+          if(!deps.authenticateRequest)throw new HttpError(403,'native_employee_identity_required')
+          const control=deps.autonomousAgentRunRepository!,verb=action!.startsWith('pause')?'pause':'resume',body=await readBody(req,1024)
+          return send(res,200,{...await(action!.endsWith('-confirm')?control.confirmRunControl(identity,id!,verb,body):control.changeRunControl(identity,id!,verb,body)),worker_started_by_api:false})
         }
         if(action==="cancel"){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")

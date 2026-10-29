@@ -6,6 +6,7 @@ import {readyAgentMcpTools} from "@/lib/pgNativeMcpConnection"
 import {useMcpConnections} from "./useMcpConnections"
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomousModel} from "@/lib/pgNativeAutonomousAgentSession"
 import {watchPgNativeOriginalTaskController,pgNativeOriginalTasksBlocked,createOwnTaskTargetDelivery,type OwnTaskRunTarget} from "@/lib/pgNativeOwnTaskNavigation"
+import PgNativeAgentRunControl from "./PgNativeAgentRunControl"
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
 import PgNativeAgentOutcomeMemoryPanel from "./PgNativeAgentOutcomeMemoryPanel"
@@ -16,9 +17,9 @@ import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
 const noRoleChange=()=>{}
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,ownerId="",tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,reviewAvailable=false,reviewEnabled=false,reviewHistoryAvailable=false,generatedAvailable=false,generatedEnabled=false,descriptivePatchAvailable=false,descriptivePatchEnabled=false,optimizationAvailable=false,optimizationEnabled=false,onRoleChanged=noRoleChange,active,enabled,onExpired,target,runTarget,onTargetSettled}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,ownerId="",tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,reviewAvailable=false,reviewEnabled=false,reviewHistoryAvailable=false,generatedAvailable=false,generatedEnabled=false,descriptivePatchAvailable=false,descriptivePatchEnabled=false,optimizationAvailable=false,optimizationEnabled=false,onRoleChanged=noRoleChange,active,enabled,onExpired,target,runTarget,onTargetSettled,agentSelectionRequest}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  ownerId?:string;tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;reviewAvailable?:boolean;reviewEnabled?:boolean;reviewHistoryAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;descriptivePatchAvailable?:boolean;descriptivePatchEnabled?:boolean;optimizationAvailable?:boolean;optimizationEnabled?:boolean;onRoleChanged?:()=>void;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
+  ownerId?:string;tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;reviewAvailable?:boolean;reviewEnabled?:boolean;reviewHistoryAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;descriptivePatchAvailable?:boolean;descriptivePatchEnabled?:boolean;optimizationAvailable?:boolean;optimizationEnabled?:boolean;onRoleChanged?:()=>void;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void;agentSelectionRequest?:{id:string;selection:number}|null
 }){
   const mcps=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyAutonomousView)
@@ -61,6 +62,13 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
   },[active,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,view.detail,view.error])
   const eligible=agents.filter(agent=>readyAutonomousModel(agent,connections)&&readyAgentHttpTools(agent,tools)&&
     (!agent.spec.mcp_tools?.length||mcpEnabled)&&readyAgentMcpTools(agent,mcps.connections)),chosen=eligible.find(agent=>agent.id===agentId)
+  const deliveredAgent=useRef("")
+  useEffect(()=>{
+    if(!active||!agentSelectionRequest||runTarget||target||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||view.detail||instruction||maxSteps!==3||planReview!=="inherit"||rememberOutcome||agentId&&agentId!==agentSelectionRequest.id||pgNativeOriginalTasksBlocked(api)||!eligible.some(a=>a.id===agentSelectionRequest.id))return
+    const key=agentSelectionRequest.id+":"+agentSelectionRequest.selection
+    if(deliveredAgent.current===key)return
+    deliveredAgent.current=key;setAgentId(agentSelectionRequest.id)
+  },[active,agentSelectionRequest,runTarget,target,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,view.detail,instruction,maxSteps,planReview,rememberOutcome,agentId,eligible,api])
   const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)
   const submit=async(event:FormEvent)=>{
     event.preventDefault()
@@ -137,10 +145,11 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
     <PgNativeAgentReviewPanel api={api} ownerId={ownerId} specId={view.detail?.run.agent_spec_id??null} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} connections={connections} active={active} available={reviewAvailable} submitEnabled={reviewEnabled} historyAvailable={reviewHistoryAvailable} generatedAvailable={generatedAvailable} generatedEnabled={generatedEnabled} descriptivePatchAvailable={descriptivePatchAvailable} descriptivePatchEnabled={descriptivePatchEnabled} onAccepted={onRoleChanged} onExpired={onExpired}/>
     <PgNativeAgentOptimizationPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={optimizationAvailable} acceptEnabled={optimizationEnabled} onExpired={onExpired} onChanged={onRoleChanged}/>
     <PgNativeAgentOutcomeMemoryPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={outcomeAvailable} onExpired={onExpired}/>
-    <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
+    <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingRunControl)}
       onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
       onConfirm={()=>{if(active)void model.current?.retryHumanResponse()}}/>
     {humanAvailable&&<PgNativeAgentHumanHistoryPanel api={api} runId={view.detail?.run.id??null} mode="agent" active={active} onExpired={onExpired}/>}
+    <PgNativeAgentRunControl view={view} enabled={active&&enabled} onControl={action=>{if(active&&enabled)void model.current?.controlRun(action)}} onConfirm={()=>{if(active)void model.current?.confirmRunControl()}}/>
     <PgNativeAutonomousAgentDetail key={view.detail?.run.id??"none"} view={view} agents={agents} connections={connections} toolConnections={tools} mcpConnections={mcps.connections} mcpEnabled={mcpEnabled} enabled={active&&enabled}
       onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}

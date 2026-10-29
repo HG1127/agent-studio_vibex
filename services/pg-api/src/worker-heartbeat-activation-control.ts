@@ -632,11 +632,23 @@ async function openRootWriterBackend(s:State,reference:WriterSlotReference):Prom
   }catch{b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
  })();b.work=work;return work
 }
-async function recordRootWriterReport(s:State,handle:WriterBackendReference,raw:WorkerHeartbeatReport):Promise<Omit<WriterAck,'next_permit'>>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootFailureSite='record_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
+/* WRITER_READY_FINALIZATION_BEGIN */
+// Passive completion data only: the Reader still obtains its original lease.
+// Only a real ready report with all post-SQL guards complete reaches this site.
+// One event per owned backend bounds output across long-running heartbeats.
+const rootWriterReadyFinalizedObserved=new WeakSet<RootWriterBackend>()
+function observeRootWriterReadyFinalization(s:State,b:RootWriterBackend,report:WorkerHeartbeatReport):void{
+ try{if(report.state!=='ready'||report.sequence<2||!Number.isSafeInteger(report.sequence)||s.writerOperation||rootWriterReadyFinalizedObserved.has(b)||!controlUuid(s.instance)||!controlUuid(b.slot.generation)||!workerHeartbeatKinds.includes(b.slot.kind))return
+  rootWriterReadyFinalizedObserved.add(b)
+  process.stderr.write(JSON.stringify({event:'worker_heartbeat_writer_ready_finalized_observation',instance_id:s.instance,kind:b.slot.kind,generation:b.slot.generation,sequence:report.sequence,observed_data_only:true})+'\n')
+ }catch{/* Diagnostics cannot replace the original record result or failure. */}
+}
+/* WRITER_READY_FINALIZATION_END */async function recordRootWriterReport(s:State,handle:WriterBackendReference,raw:WorkerHeartbeatReport):Promise<Omit<WriterAck,'next_permit'>>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootFailureSite='record_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
  const b=rootWriterBackends.get(handle);if(!b||b.s!==s||b.closed||b.uncertain)writerFail('writer_closed')
  const report=parseWriterReport(raw);if(report.generation!==b.slot.generation)writerFail('writer_closed')
  const op=rootWriterBegin(s,b.slot,b)
  const work=(async()=>{
+  /* WRITER_READY_FINALIZATION_BEGIN */let readyFinalized=false;/* WRITER_READY_FINALIZATION_END */
   try{
    /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_identity_before';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterIdentity(op,b);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_selection_before';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterSelected(op)
    // No await/caller callback separates the final guard and this writer-role
@@ -645,8 +657,8 @@ async function recordRootWriterReport(s:State,handle:WriterBackendReference,raw:
    if(rows.length!==1)writerFail('writer_uncertain');const value=controlObject(rows[0]?.value,['accepted','sequence','observed_at'])
    if(value.accepted!==true||value.sequence!==report.sequence)writerFail('writer_uncertain')
    const ack=Object.freeze({accepted:true as const,sequence:report.sequence,observed_at:writerUtc(value.observed_at)})
-   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_selection_after';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterSelected(op,report,ack);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_identity_after';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterIdentity(op,b);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_final_guard';/* WRITER_FAILURE_OBSERVATION_END */rootWriterOperationCheck(op);return ack
-  }catch/* WRITER_FAILURE_OBSERVATION_BEGIN */(rootRecordFailure)/* WRITER_FAILURE_OBSERVATION_END */{/* WRITER_FAILURE_OBSERVATION_BEGIN */try{observeRootControlFailure(rootFailureSite,rootRecordFailure)}catch{}/* WRITER_FAILURE_OBSERVATION_END */b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_selection_after';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterSelected(op,report,ack);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_identity_after';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterIdentity(op,b);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_final_guard';/* WRITER_FAILURE_OBSERVATION_END */rootWriterOperationCheck(op);/* WRITER_READY_FINALIZATION_BEGIN */readyFinalized=true;/* WRITER_READY_FINALIZATION_END */return ack
+  }catch/* WRITER_FAILURE_OBSERVATION_BEGIN */(rootRecordFailure)/* WRITER_FAILURE_OBSERVATION_END */{/* WRITER_FAILURE_OBSERVATION_BEGIN */try{observeRootControlFailure(rootFailureSite,rootRecordFailure)}catch{}/* WRITER_FAILURE_OBSERVATION_END */b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false;/* WRITER_READY_FINALIZATION_BEGIN */if(readyFinalized)observeRootWriterReadyFinalization(s,b,report);/* WRITER_READY_FINALIZATION_END */}
  })();b.work=work;return work
 /* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){try{observeRootControlFailure(rootFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */}
 function persistRootWriterEvent(s:State,phase:WriterJournalPhase,data:unknown){

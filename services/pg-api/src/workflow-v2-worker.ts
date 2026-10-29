@@ -370,12 +370,14 @@ export class WorkflowV2Worker{
       state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:request.step_key,input_sha256:request.input_sha256,output})
       delete state.agent_dispatch
       await stepRows(db,job,[{step_key:request.step_key,node_id:request.node_id,node_type:request.kind,status:"succeeded",output,agent_context:request.agent_context}])
+      if(state.manual_pause){await this.persist(db,job,state,"paused","agent_run_paused_by_owner");await acknowledge(db,job,this.workerId,"queued");return {status:"paused",run_id:job.run_id}}
       await this.persist(db,job,state,"queued","")
       await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_step_succeeded",{step_key:request.step_key,input_sha256:request.input_sha256})
       await acknowledge(db,job,this.workerId,"queued")
       return {status:"progressed",run_id:job.run_id}
     }
     state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:request.step_key,input_sha256:request.input_sha256,output})
+    if(state.manual_pause){await this.persist(db,job,state,"paused","agent_run_paused_by_owner");await acknowledge(db,job,this.workerId,"queued");return {status:"paused",run_id:job.run_id}}
     const next=advanceWorkflowV2Checkpoint(state.graph,state.machine);state.machine=next.checkpoint
     await stepRows(db,job,next.events)
     const status=next.view.status==="failed"?"failed":next.view.status==="succeeded"?"succeeded":"queued"
@@ -401,6 +403,7 @@ export class WorkflowV2Worker{
       state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:request.step_key,input_sha256:request.input_sha256,output:"",outcome:"failed",code:error})
       delete state.agent_dispatch
     }
+    if(state.manual_pause&&request.agent_context){await this.persist(db,job,state,"paused","agent_run_paused_by_owner");await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_failed",{step_key:request.step_key,input_sha256:request.input_sha256,error_code:error});await acknowledge(db,job,this.workerId,"queued");return {status:"paused",run_id:job.run_id}}
     await this.persist(db,job,state,request.agent_context?"queued":"failed",request.agent_context?"":error)
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_failed",{step_key:request.step_key,input_sha256:request.input_sha256,error_code:error})
     await acknowledge(db,job,this.workerId,request.agent_context?"queued":"failed");return {status:request.agent_context?"progressed":"failed",run_id:job.run_id}
@@ -422,7 +425,7 @@ export class WorkflowV2Worker{
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='started'",[job.run_id,job.owner_user_id])
     await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\""+this.root.stage+"paused\"'::jsonb),"+
       "last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
-      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id])
+      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND (status IN ('queued','running') OR status='paused' AND checkpoint ? 'manual_pause')",[job.run_id,job.owner_user_id])
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_ambiguous",{})
   }
   private async reconcileExpired():Promise<WorkflowV2Tick|null>{return tx(this.pool,async db=>{

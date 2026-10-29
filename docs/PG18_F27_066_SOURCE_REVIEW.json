@@ -1,0 +1,67 @@
+{
+  "format": "F27_066_complete_business_source_review_v1",
+  "feature": "Existing Owner exact one-current-Agent-step grant/revoke and current manager approve/reject through verified Native identity; not collaboration proposals.",
+  "new_SQL_sha256": "1333d4d6d5a5249c2cd85f9792d2f4fda8a3642c0f8e97fb4b801b53564cfd57",
+  "scope": {
+    "kinds": [
+      "agent"
+    ],
+    "modes": [
+      "single model",
+      "agent_native_v2 parent and model/tool current child"
+    ],
+    "workflow_native_v2": false,
+    "roll_forward": false,
+    "default_off": true,
+    "broad_manager_reads": false
+  },
+  "implementation": [
+    "4 forced-RLS private grants/events/receipts/contexts;17 exact bodies;8 API RPCs; no new roles",
+    "Original Owner transaction bodies extracted on same client; original public Owner projection retained. Delegated reviewer receives only closed receipt, no Owner DTO assembly.",
+    "Verified Native both governance epochs plus actual run/job/approval/source/resource/memory/human xmin fingerprints; serialized one-use grant revision.",
+    "Begin-review server-verifies actual Owner and scopes same transaction; exact deferred receipt FK forbids partial context commit. Finish verifies original decision/actual reviewer, dual audit, original receipt and restored actor.",
+    "Lost ACK keeps original request privately; original confirm precedes new-write/role gates, no automatic mutation retry.",
+    "Safe bounded manager metadata omits prompts, argument values, paths, queries, headers, credentials and resource contents; Owner knowingly supplies note.",
+    "Employee Owner grant/revoke, manager approve/reject, separate existing paid-KB consent, safe role/session generation fencing; stale-source Owner can still revoke.",
+    "Real hosted PG18 flow/database and HTTPS employee browser entries plus strict ordinary-host refusal; original nonprovider Worker admits and continues only the current steps."
+  ],
+  "catalog": {
+    "actual_original_client": true,
+    "parent_chain": "066→065→064→063→062→061→060→059 unchanged predecessor bodies",
+    "new_deferred_constraint_exact": true,
+    "forced_RLS": true,
+    "table_or_column_grants": false
+  },
+  "runtime_opt_in": [
+    "AGENT_STUDIO_PG18_APPROVAL_DELEGATIONS_AVAILABLE=true",
+    "AGENT_STUDIO_PG18_APPROVAL_DELEGATIONS_WRITES_ENABLED=true",
+    "AGENT_STUDIO_PG18_APPROVAL_DELEGATIONS_APPROVED=APPROVE_DISPOSABLE_PG18_NATIVE_EXACT_STEP_APPROVAL_DELEGATIONS_ONLY"
+  ],
+  "additional_original_gates": "Model requires configurationWrites+runApprovalUat. Autonomous requires configurationWrites+autonomousAgentUat; original MCP/knowledge/human gates passed unchanged.",
+  "CI_pin_counts": {
+    "API": 92,
+    "browser": 22
+  },
+  "ordered_install_sources": 50,
+  "not_executed_by_author": [
+    "SQL",
+    "PGlite",
+    "real Worker",
+    "provider",
+    "browser",
+    "Git",
+    "CI",
+    "production or company data"
+  ],
+  "Root_remaining": [
+    "Integrate exact source anchors preserving concurrent work, refresh listed affected source pins",
+    "Select explicit unified066 profile; actual flow/database/browser CI and existing related regression checks",
+    "Unified fresh/upgrade/idempotency plus target employee UAT, network/ACL/backups and required long-running Worker evidence"
+  ],
+  "production_GO": false,
+  "own066_CHECK_parser": "Exact copied predecessor AST grammar with only own066 ->> extraction support; both operands retained, comments/trailing/unknown operators refused. Predecessor001..065 auditors and SQL unchanged.",
+  "pure_tests_passed": 35,
+  "current_Root_navigation": "One approvalDelegations destination in existing Run Center; Root grouped search/sidebar component unchanged.",
+  "review_note_count": "Same existing immutable collaboration_utf16_length function as choice validation:8..500 UTF16 units, including surrogate pairs.",
+  "current_expiry_revalidation": "owner_actor rechecks expires_at against real clock_timestamp every proof, including finish_review after original Owner mutation; crossing expiry rolls entire caller transaction back."
+}

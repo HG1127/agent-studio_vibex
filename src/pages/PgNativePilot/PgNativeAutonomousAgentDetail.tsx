@@ -28,13 +28,13 @@ export default function PgNativeAutonomousAgentDetail({view,agents,connections,t
   const connection=http?toolConnections.find(tool=>tool.id===http.connection_id):undefined
   const mcp=pending?.configuration.mcp_binding as {connection_id?:string}|undefined
   const mcpConnection=mcp?mcpConnections.find(row=>row.id===mcp.connection_id):undefined
-  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)||Boolean(view.pendingHumanResponse)
+  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(mutation)||Boolean(view.pendingHumanResponse)||Boolean(view.pendingRunControl)
   return <article aria-label="多轮任务详情" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">
     <h3 className="font-semibold">多轮任务 · {autonomousStates[detail.run.status]??"状态未知"}</h3>
     <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{detail.run.instruction}</p>
     <p className="text-xs text-slate-500">最多 {Number(detail.run.checkpoint.max_steps)||"—"} 轮模型规划，每轮工具操作单独审批。</p>
     {detail.run.status==="queued"&&<p role="status" className="text-sm text-slate-500">任务已排队，等待后台处理。可刷新查看进度。</p>}
-    {detail.run.status==="paused"&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">执行结果需要管理员核对，任务已暂停。请勿重复提交或重放操作。</p>}
+    {detail.run.status==="paused"&&!detail.run_control?.manually_paused&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">执行结果需要管理员核对，任务已暂停。请勿重复提交或重放操作。</p>}
     {detail.run.status==="failed"&&<p role="status" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
       {detail.run.last_error_code==="workflow_agent_max_steps"?"已达到本次任务的轮数上限，请核对已有结果后调整任务。":"本次任务未能完成，请核对配置和执行记录。"}
     </p>}

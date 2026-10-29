@@ -333,11 +333,11 @@ export function permitNativePg18BusinessUatRequest(
   }
   if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||new RegExp(
     "^/api/v2/agent-autonomous-runs/"+uuid+"(?:/(?:steps|human-history))?$").test(pathname)))return true
-  if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/cancel$").test(pathname))return true
+  if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:cancel|pause-confirm|resume-confirm)$").test(pathname))return true
   if(method==="POST"&&new RegExp("^/api/v2/(?:agent-autonomous-runs|workflow-v2-runs)/"+uuid+"/respond-confirm$").test(pathname))return true
   if(policy.configurationWrites===true&&policy.autonomousAgentUat===true&&method==="POST"&&(
     new RegExp("^/api/v2/agent-specs/"+uuid+"/autonomous-runs$").test(pathname)||
-    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:decision|respond)$").test(pathname)))return true
+    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:decision|respond|pause|resume)$").test(pathname)))return true
   // Existing safe Start/End Workflow run history is owner-scoped READ ONLY.
   if(method==="GET"&&(pathname==="/api/v2/workflow-v2-runs"||new RegExp(
     "^/api/v2/workflow-v2-runs/"+uuid+"(?:/(?:steps|outputs|output-history|human-history))?$").test(pathname)))return true

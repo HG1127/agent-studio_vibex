@@ -1,7 +1,7 @@
 {
   "format": "pg18_migration_execution_registry_v1",
-  "updated_UTC": "2026-10-29T06:33:39.077Z",
-  "source_head": "5b46f5b1979f37cde7bf4cc7e58b96e199ef33b7",
+  "updated_UTC": "2026-10-29T08:22:30.971753+00:00",
+  "source_head": "97f960a789a0f536df1cd9fe99f3d5e4e52a4933",
   "deadline_Asia_Shanghai": "2026-10-30T18:30:00+08:00",
   "is_authority": false,
   "production_GO": false,
@@ -169,6 +169,38 @@
       "ordinary_pass": 2257,
       "ordinary_total": 2258,
       "first_failure": "Preflight source package rejected newly imported shared/agent-internal-share-contract.ts. Exact single data-contract path added to existing closed shared allowlist; original two source-package tests pass. Current complete quality rerun required."
+    },
+    "complete065_install_restore": {
+      "source_head": "97f960a789a0f536df1cd9fe99f3d5e4e52a4933",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40836952513",
+      "job": 123323848281,
+      "actual_scenarios": 10,
+      "sql_sources": 49,
+      "migration_versions": 53,
+      "restored_table_images": 116,
+      "roles_memberships_and_source_preserved": true,
+      "independent_actual_API_login_full_catalog_audit": true,
+      "raw_sha256": "69a97265efa729e9f338165feb3fa1f34e871fddeb4ba7ce39bd83da6d7e286f",
+      "scope": "Actual disposable synthetic installation+independent restore through065; current066 must be revalidated separately."
+    },
+    "F08_current97": {
+      "source_head": "97f960a789a0f536df1cd9fe99f3d5e4e52a4933",
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40836952530",
+      "all3jobs_success": true,
+      "actual_flow_children": 13,
+      "browser_stories": 1,
+      "browser_seconds": 18.1,
+      "actual_copy_resource_configuration_and_receipt_recovery_and_scope_privacy": true,
+      "flow_raw_sha256": "c8acaefd9e5a08bd29d96568f9c351a15605de32f335e5f5564c94e023597971",
+      "browser_raw_sha256": "e2c1bdd39f27100076aa252cdbbce5be35e4aa9c46805b0f3d936135c6096852"
+    },
+    "telemetry_v14_candidate": {
+      "latest_actual_source_head": "97f960a789a0f536df1cd9fe99f3d5e4e52a4933",
+      "original28_passed": true,
+      "new26_actual_passed": 22,
+      "first_failure": "case23 six real entries then original30s reporter→Reader preparation control_busy",
+      "candidate": "Only passive finalized ready observation plus exact actual SQL row scheduling barrier; original Reader lease and5s/8s budgets unchanged.",
+      "new_actual_pass_claim": false
     }
   },
   "current_packages": {
@@ -212,19 +244,16 @@
     ]
   },
   "unified_candidate": {
-    "status": "incomplete",
-    "default_fresh050": "preserved",
-    "optional051_063": "existingsource must be mapped into one reviewed ordered profile, no scattered manual-only finaldelivery",
-    "optional064": "notyetaccepted",
-    "required_outputs": [
-      "exact orderedSQL and sourceversions",
-      "leastprivilege roles/configuration map",
-      "existing service/Worker startup map",
-      "one reproducible approved freshisolated install-to-employee scenario",
-      "backuprestore and full8090rollback steps",
-      "stable exactversion24hWorker evidence",
-      "employeeUAT and targetsignoff"
-    ]
+    "explicit_profile": "complete066",
+    "ordered_schema_sources": 50,
+    "default050_unchanged": true,
+    "trusted059_060_unchanged": true,
+    "latest_actually_verified_profile": "complete065 at97f960a",
+    "current066_actual_install_and_restore": "pending",
+    "existing_schema_upgrade_or_replay": false,
+    "qualifying_24h_started": false,
+    "target_UAT": "not_verified",
+    "production_GO": false
   },
   "deadline_checkpoints_Asia_Shanghai": {
     "2026-10-29T12:00": "Scope5 provenance/remaining package owners/unifiedinstall plan and feasibility",
@@ -266,9 +295,9 @@
       "baseline_pointer": "/features/1",
       "baseline_conclusion": "D当前确实可达，但导航/AgentCreatePage/agentCreateJourney不在D当前索引，且没有验证其属于3cdf HEAD或本目标已接受历史。先把引导体验与F01已存在核心行为分开。",
       "scope_status": "confirmed_existing_core_from_main_history",
-      "implementation": "needs_Native_operation_closure",
-      "isolated_validation": "not_verified",
-      "current_note": "Core behavior is established in currentremote main; original scope retained. Dnewer deltas require separate source review, not whole-tree copy.",
+      "implementation": "reviewed_Native_candidate_integrated",
+      "isolated_validation": "39_pure_SDK_SSR_and_actual_compiler_pass_genuine_guide_pending",
+      "current_note": "Original first-create plan/resource/trial/release and existing navigation source retained; no automatic run or fee. Revoked/missing active Agent clears retained context. Full first-create employee story remains required.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -316,7 +345,7 @@
       "baseline_conclusion": "确认现有行为缺口，范围仅现有“方案→图”的员工动作；不能把它误写成Workflow V2整体未实现，也不扩张独立子工作流。",
       "scope_status": "confirmed_existing",
       "implementation": "implemented_in_candidate_runtime_browser_validation_pending",
-      "isolated_validation": "passed_database_component_employee_flow_pending",
+      "isolated_validation": "accepted_on_97f960a_current_shared_source_revalidation_required",
       "evidence_key": "F05",
       "current_note": "ActualSQL47 and runtime7 children passed; browser reaches saved realWorkflow. Minimal same-login receipt retention correction locally48checks; unchanged fullbrowser rerun pending.",
       "unified_installation": "not_verified",
@@ -350,7 +379,7 @@
       "baseline_conclusion": "确认跨D/H旧PB都可达的现有功能缺口；D页面局部修改不决定该核心行为是否存在。",
       "scope_status": "confirmed_existing",
       "implementation": "implemented",
-      "isolated_validation": "passed_component",
+      "isolated_validation": "accepted_on_97f960a_current_shared_source_revalidation_required",
       "evidence_key": "F07",
       "current_note": "Actual8APIflowchildren passed; catalog stopped after12 due wrong negative roleprefix, localtestfixprepared; browser locatorfixprepared, actual rerun pending.",
       "unified_installation": "not_verified",
@@ -368,7 +397,7 @@
       "baseline_conclusion": "确认核心现有功能缺口；不要重做已验收员工share_enabled治理。",
       "scope_status": "confirmed_existing",
       "implementation": "implemented_in_candidate_actual_validation_pending",
-      "isolated_validation": "not_verified",
+      "isolated_validation": "accepted_on_97f960a_current_shared_source_revalidation_required",
       "current_note": "Actual065 database50children passed5b. Complete employee flow reached5children before DTO assertion mismatch; browser actualpreview rendered before CDP observation failure. Minimal test corrections integrated; full flow/browser/unified/target acceptance pending.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
@@ -417,12 +446,12 @@
       "scope_status": "confirmed_existing",
       "implementation": "gap_in_source_baseline_requires_current_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Parallel implementation underway in separate frozen candidate; exact published-version caller/keys/embed/fee/receipt contract and genuine validation remain required.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-PUBLIC-CALL",
-      "accountable_owner": "runtime"
+      "accountable_owner": "database_caller_domain"
     },
     {
       "id": "F12",
@@ -433,12 +462,12 @@
       "scope_status": "confirmed_existing",
       "implementation": "gap_in_source_baseline_requires_current_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Parallel implementation underway in separate frozen candidate; exact published-version caller/keys/embed/fee/receipt contract and genuine validation remain required.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-PUBLIC-CALL",
-      "accountable_owner": "runtime"
+      "accountable_owner": "database_caller_domain"
     },
     {
       "id": "F13",
@@ -497,12 +526,12 @@
       "scope_status": "confirmed_existing",
       "implementation": "gap_in_source_baseline_requires_current_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Parallel unified Owner tool-trial/read projection work underway; existing Smithery/probes/steps cannot substitute this baseline.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-TOOLS",
-      "accountable_owner": "employee-ui"
+      "accountable_owner": "runtime_tool_trial_domain"
     },
     {
       "id": "F17",
@@ -513,12 +542,12 @@
       "scope_status": "confirmed_existing",
       "implementation": "gap_in_source_baseline_requires_current_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Parallel unified Owner tool-trial/read projection work underway; existing Smithery/probes/steps cannot substitute this baseline.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-TOOLS",
-      "accountable_owner": "employee-ui"
+      "accountable_owner": "runtime_tool_trial_domain"
     },
     {
       "id": "F18",
@@ -529,12 +558,12 @@
       "scope_status": "confirmed_existing",
       "implementation": "gap_in_source_baseline_requires_current_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Parallel unified Owner tool-trial/read projection work underway; existing Smithery/probes/steps cannot substitute this baseline.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-TOOLS",
-      "accountable_owner": "employee-ui"
+      "accountable_owner": "runtime_tool_trial_domain"
     },
     {
       "id": "F19",
@@ -545,12 +574,12 @@
       "scope_status": "confirmed_existing",
       "implementation": "gap_in_source_baseline_requires_current_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Parallel unified Owner tool-trial/read projection work underway; existing Smithery/probes/steps cannot substitute this baseline.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-TOOLS",
-      "accountable_owner": "employee-ui"
+      "accountable_owner": "runtime_tool_trial_domain"
     },
     {
       "id": "F20",
@@ -561,12 +590,12 @@
       "scope_status": "confirmed_existing_core_from_main_history",
       "implementation": "needs_Native_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "Core behavior is established in currentremote main; original scope retained. Dnewer deltas require separate source review, not whole-tree copy.",
+      "current_note": "Parallel device/Office full operation chain underway in separate frozen candidate; no real local execution or target deployment authorized.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-DEVICE-OFFICE",
-      "accountable_owner": "runtime",
+      "accountable_owner": "device_office_domain",
       "provenance_evidence": "docs/PG18_FEATURE_PROVENANCE_20261029.json#F20"
     },
     {
@@ -578,12 +607,12 @@
       "scope_status": "confirmed_existing_core_from_main_history",
       "implementation": "needs_Native_operation_closure",
       "isolated_validation": "not_verified",
-      "current_note": "Core behavior is established in currentremote main; original scope retained. Dnewer deltas require separate source review, not whole-tree copy.",
+      "current_note": "Parallel device/Office full operation chain underway in separate frozen candidate; no real local execution or target deployment authorized.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
       "business_package": "P-DEVICE-OFFICE",
-      "accountable_owner": "runtime",
+      "accountable_owner": "device_office_domain",
       "provenance_evidence": "docs/PG18_FEATURE_PROVENANCE_20261029.json#F21"
     },
     {
@@ -593,9 +622,9 @@
       "baseline_pointer": "/features/21",
       "baseline_conclusion": "D索引/工作树不同；需区分原有可用性修复与新增体验。H PB缺AdminGate不直接证明服务端权限漏洞。",
       "scope_status": "confirmed_existing_core_from_main_history",
-      "implementation": "reuse_existing_scope_and_controls_verify_remaining_UX",
-      "isolated_validation": "not_verified",
-      "current_note": "Core behavior is established in currentremote main; original scope retained. Dnewer deltas require separate source review, not whole-tree copy.",
+      "implementation": "reviewed_Native_candidate_integrated",
+      "isolated_validation": "39_pure_SDK_SSR_and_actual_compiler_pass_genuine_guide_pending",
+      "current_note": "Original first-create plan/resource/trial/release and existing navigation source retained; no automatic run or fee. Revoked/missing active Agent clears retained context. Full first-create employee story remains required.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -674,9 +703,9 @@
       "baseline_pointer": "/features/26",
       "baseline_conclusion": "确认H旧PB同样可达、独立于D新AdminGate的功能缺口。",
       "scope_status": "confirmed_existing",
-      "implementation": "gap_in_source_baseline_requires_current_operation_closure",
-      "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "implementation": "reviewed_optional066_candidate_integrated",
+      "isolated_validation": "35_pure_and_actual_compilers_pass_genuine_066_pending",
+      "current_note": "Exact current-step Owner grant/revoke and active administrator review reuse original Owner decision transaction; dual identity audit, immutable original receipt, current-expiry recheck and atomic rollback.17 routine bodies/4forcedRLS private tables; no new role or broad manager run access.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -739,9 +768,9 @@
       "baseline_pointer": "/features/30",
       "baseline_conclusion": "确认现有可达子动作缺口；只补安全的同一任务暂停/恢复，不重做整个Agent运行器。对已开始外部效果保持unknown/不重放，不能承诺物理中止。",
       "scope_status": "confirmed_existing",
-      "implementation": "gap_in_source_baseline_requires_current_operation_closure",
-      "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "implementation": "reviewed_same_autonomous_run_control_candidate_integrated",
+      "isolated_validation": "21_portable_current_source_tests_pass_genuine_PG_browser_pending",
+      "current_note": "Original run/checkpoint/jobs preserved; started call keeps original lease/result, unknown bars resume; explicit original UUID receipt confirmation and paid approval/current source checks. No physical interruption claim.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -750,5 +779,11 @@
     }
   ],
   "provenance_resolution": "docs/PG18_FEATURE_PROVENANCE_20261029.json",
-  "integration_candidate_note": "After5b: exact owned-backend cleanup fix, original signed Reader rotation for restart fixture, two genuine browser body observers and exact F08 DTO/persisted-row assertions integrated. No default activation/SQL/Native change. Full genuine rerun pending."
+  "integration_candidate_note": "Base head97f960a plus reviewed creation/navigation, same-run control,066 delegated approval and telemetry finalization candidate. Actual genuine and full combined validation pending for this increment; source_head identifies base, not a claim of future commit acceptance.",
+  "candidate_workowners": {
+    "A": "F11/F12 caller/embed SQL068; F27expiryv3delivered",
+    "B": "F16–19 unifiedtooltrial SQL069; F31v2/v14delivered",
+    "C": "F20/F21 deviceOffice SQL067; F02/F22cachev2delivered",
+    "Root": "Review/integrate exactsources, optional066 fullinstall/restore, actualallCI and finalwhole31scope acceptance"
+  }
 }
