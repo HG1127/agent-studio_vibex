@@ -208,7 +208,17 @@ function revoke(l:Lease){
  // The lease stays in s.leases until actual I/O and backend cleanup settle.
  void cleanupLease(l).catch(()=>{})
 }
-export async function prepareWorkerHeartbeatControlRead(control:Control,p:ReaderPeer):Promise<ReadLease>{
+/* READER_FAILURE_OBSERVATION_BEGIN */
+// Original Reader failure before existing cleanup/mapping. Closed scalars only.
+function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
+ try{if(phase!=='prepare'&&phase!=='finish')return
+  const raw=error&&(typeof error==='object'||typeof error==='function')?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined
+  const code=["lease_expired","lease_revoked","registry_mismatch","reader_capacity","reader_timeout","reader_cleanup_unknown","control_closed","control_io_failed","source_runtime_refused","binding_changed","untrusted_reference","control_busy"].includes(raw)?raw:null,kind=rootFailureObservationKind(error)
+  if(!rootFailureObservationKinds.includes(kind))return
+  process.stderr.write(JSON.stringify({event:'worker_heartbeat_reader_failure_observation',phase,code,kind,observed_data_only:true})+'\n')
+ }catch{/* Failure of observation cannot replace the original error. */}
+}
+/* READER_FAILURE_OBSERVATION_END */export async function prepareWorkerHeartbeatControlRead(control:Control,p:ReaderPeer):Promise<ReadLease>{
  const s=state(control),owner=peer(s,p,'reader');runtimeCheck(s)
  if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(rootWriterBusy(s))controlFail('control_busy');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
  const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request:owner.request??randomUUID(),epoch:s.epoch,deadline:performance.now()+controlLimits.leaseMs,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
@@ -226,7 +236,7 @@ export async function prepareWorkerHeartbeatControlRead(control:Control,p:Reader
   const rows=(await readerQuery(l,'SELECT studio_telemetry.snapshot() AS value')).rows;if(rows.length!==1)controlFail('registry_mismatch')
   const snapshot=parseWorkerHeartbeatSnapshot(rows[0]?.value);await readerQuery(l,'ROLLBACK');l.transaction=false;leaseCheck(l,'preparing');l.snapshot=snapshot;l.phase='pending'
  })()
- try{await l.work;return handle}catch(error){revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
+ try{await l.work;return handle}catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('prepare',error)}catch{}/* READER_FAILURE_OBSERVATION_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 export async function finalizeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,handle:ReadLease):Promise<FinishedRead>{
  const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference')
@@ -236,7 +246,7 @@ export async function finalizeWorkerHeartbeatControlRead(control:Control,p:Reade
   leaseCheck(l,'finalizing')
   if(l.client&&!l.released){if(l.clientError)l.client.off('error',l.clientError);l.client.release();l.released=true}if(l.queryPending||l.transaction)controlFail('reader_cleanup_unknown');l.clean=true
   const finished=empty<FinishedRead>();l.phase='finished';l.finished=finished;finishedStates.set(finished,l);return finished
- }catch(error){revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
+ }catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('finish',error)}catch{}/* READER_FAILURE_OBSERVATION_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 export function consumeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,finished:FinishedRead):WorkerHeartbeatSnapshot{
  const s=state(control),owner=peer(s,p,'reader'),l=finishedStates.get(finished);if(!l||l.s!==s||l.peer!==owner||!l.snapshot||!l.clean)controlFail('untrusted_reference')

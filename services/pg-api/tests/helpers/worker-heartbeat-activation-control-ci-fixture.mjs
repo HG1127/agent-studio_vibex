@@ -147,11 +147,20 @@ async function configure(s){
 }
 function signed(s,file,payload){write(file,JSON.stringify({payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),s.signingKey).toString('base64')})+'\n')}
 async function rpc(s,command){return s.client.sendWorkerHeartbeatOperatorCommand(command)}
-function closedControllerOutput(s,c,chunk,stream){
+/* READER_FAILURE_OBSERVATION_BEGIN */
+function readerControlFailureObservation(raw,stream){
+ try{
+  if(stream!=='stderr')return null
+  const v=fields(raw,['event','phase','code','kind','observed_data_only'])
+  if(v.event!=='worker_heartbeat_reader_failure_observation'||!['prepare','finish'].includes(v.phase)||!(v.code===null||["lease_expired","lease_revoked","registry_mismatch","reader_capacity","reader_timeout","reader_cleanup_unknown","control_closed","control_io_failed","source_runtime_refused","binding_changed","untrusted_reference","control_busy"].includes(v.code))||!["source_refused","runtime_refused","control_error","writer_closed","writer_uncertain","writer_busy","writer_not_enrolled","query_cancelled","query_lock_timeout","query_client_timeout","query_client_closed","filesystem_io","transport_io","abort","type_error","range_error","syntax_error","other"].includes(v.kind)||v.observed_data_only!==true)return null
+  return {event:v.event,phase:v.phase,code:v.code,kind:v.kind,observed_data_only:true}
+ }catch{return null}
+}
+/* READER_FAILURE_OBSERVATION_END */function closedControllerOutput(s,c,chunk,stream){
  c[stream+'Bytes']+=chunk.length;if(c[stream+'Bytes']>32768){c.p.kill('SIGTERM');return}
  let text=(c[stream+'Partial']??'')+chunk.toString('utf8');if(Buffer.byteLength(text)>4096)text=text.slice(-4096)
  const lines=text.split('\n');c[stream+'Partial']=lines.pop()
- for(const line of lines){try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
+ for(const line of lines){/* READER_FAILURE_OBSERVATION_BEGIN */try{const observation=readerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* READER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
 }
 async function startController(s){
  // Service has one fixed verb. It is a separate cold process, never import-run.

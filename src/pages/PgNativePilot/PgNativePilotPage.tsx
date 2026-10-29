@@ -36,6 +36,8 @@ import OwnOperationsPanel from "./OwnOperationsPanel"
 import PgNativeAgentDesignPanel from "./PgNativeAgentDesignPanel.tsx"
 import {createPgNativeAgentDesignApi} from "@/lib/pgNativeAgentDesign"
 import {createPgNativeAgentPlanWorkflowApi} from "@/lib/pgNativeAgentPlanWorkflow"
+import PgNativeInternalSharePanel from "./PgNativeInternalSharePanel.tsx"
+import {createPgNativeInternalShareApi} from "@/lib/pgNativeInternalShare"
 import PgNativeTemplateMarketPanel from "./PgNativeTemplateMarketPanel.tsx"
 import PgNativeTemplateMarketAgentSetup from "./PgNativeTemplateMarketAgentSetup.tsx"
 import {createPgNativeTemplateMarketApi} from "@/lib/pgNativeTemplateMarket"
@@ -64,7 +66,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="ownOperations"|"companyOverview"|"agents"|"templates"|"workflowDraft"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="ownOperations"|"companyOverview"|"agents"|"templates"|"internalShares"|"workflowDraft"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -93,6 +95,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const designApi=useMemo(()=>createPgNativeAgentDesignApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const agentPlanWorkflowApi=useMemo(()=>createPgNativeAgentPlanWorkflowApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const templateMarketApi=useMemo(()=>createPgNativeTemplateMarketApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
+  const internalShareApi=useMemo(()=>createPgNativeInternalShareApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const authenticatedApi=useRef(api)
   const apiMatches=authenticatedApi.current===api
   const [status,setStatus]=useState<State>("checking")
@@ -165,6 +168,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [agentDesign,setAgentDesign]=useState({available:false,submissions:false,saves:false})
   const [agentDesignOpened,setAgentDesignOpened]=useState(false)
   useEffect(()=>{if(agentDesign.available)setAgentDesignOpened(true)},[agentDesign.available])
+  const [internalShare,setInternalShare]=useState({available:false,writes:false})
+  const [internalShareOpened,setInternalShareOpened]=useState(false)
+  useEffect(()=>{if(internalShare.available)setInternalShareOpened(true)},[internalShare.available])
   const [templateMarket,setTemplateMarket]=useState({available:false,writes:false})
   const [templateMarketOpened,setTemplateMarketOpened]=useState(false)
   useEffect(()=>{if(templateMarket.available)setTemplateMarketOpened(true)},[templateMarket.available])
@@ -231,6 +237,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setAgentPlanWorkflow({available:false,submissions:false,saves:false});setAgentPlanWorkflowOpened(false);setWorkflowOpenRequest(null);workflowOpenSequence.current++
     setAgentDesign({available:false,submissions:false,saves:false});setAgentDesignOpened(false)
     setTemplateMarket({available:false,writes:false});setTemplateMarketOpened(false);setTemplateSetup(null)
+    setInternalShare({available:false,writes:false});setInternalShareOpened(false)
     templateSetupSequence.current++;templateSetupPending.current=null;setTemplateSetupOpening(false)
     setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
@@ -320,6 +327,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setAgentPlanWorkflow({available:capability?.agent_plan_workflow_available===true,submissions:capability?.agent_plan_workflow_submissions_enabled===true&&capability.config_writes_enabled===true,saves:capability?.agent_plan_workflow_saves_enabled===true&&capability.config_writes_enabled===true})
       setAgentDesign({available:capability?.agent_design_available===true,submissions:capability?.agent_design_submissions_enabled===true&&capability.config_writes_enabled===true,saves:capability?.agent_design_saves_enabled===true&&capability.config_writes_enabled===true})
       setTemplateMarket({available:capability?.agent_template_market_available===true,writes:capability?.agent_template_market_writes_enabled===true&&capability.config_writes_enabled===true})
+      setInternalShare({available:capability?.internal_share_available===true,writes:capability?.internal_share_writes_enabled===true&&capability.config_writes_enabled===true})
       setOutcomeMemory({available:capability?.agent_outcome_memory_available===true,enabled:capability?.agent_outcome_memory_admission_enabled===true&&capability.config_writes_enabled===true})
       setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
       setCollaborationAvailable(capability?.agent_collaboration_available===true)
@@ -607,6 +615,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     ...(releasesAvailable?[{key:"releases" as const,label:"版本与发布",icon:ClipboardCheck,count:null}]:[]),
     ...(agentPlanWorkflow.available?[{key:"workflowDraft" as const,label:"生成工作流草图",icon:Workflow,count:null}]:[]),
     ...(templateMarket.available?[{key:"templates" as const,label:"模板市场",icon:BookOpen,count:null}]:[]),
+    ...(internalShare.available?[{key:"internalShares" as const,label:"内部模板共享",icon:BookOpen,count:null}]:[]),
     ...(canReadSingleTask?[{key:"runAgent" as const,label:canRunOwnerModel?"运行 Agent":"Agent 原任务（只读）",icon:Bot,count:null}]:[]),
     {key:"workflows" as const,label:"Workflow",icon:Workflow,count:workflows.length},
     {key:"knowledge" as const,label:"知识库",icon:BookOpen,count:knowledge.length},
@@ -774,6 +783,10 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
             <div hidden={section!=="templates"}>{(templateMarketOpened||templateMarket.available)&&<PgNativeTemplateMarketPanel
               key={originalTaskKey+":templates"} api={templateMarketApi} employeeId={profile.id} scopeKey={originalTaskKey+":"+sessionFence.current.session()}
               active={apiMatches&&section==="templates"} available={templateMarket.available} writes={templateMarket.writes&&!loading&&!busy&&!templateSetupOpening}
+              onExpired={expireOriginalTaskSession} onChanged={refresh} onConfigureAgent={id=>{void openTemplateAgentConfiguration(id)}}/>}</div>
+            <div hidden={section!=="internalShares"}>{(internalShareOpened||internalShare.available)&&<PgNativeInternalSharePanel
+              key={originalTaskKey+":internal-shares"} api={internalShareApi} employeeId={profile.id} scopeKey={originalTaskKey+":"+sessionFence.current.session()}
+              active={apiMatches&&section==="internalShares"} available={internalShare.available} writes={internalShare.writes&&!loading&&!busy&&!templateSetupOpening}
               onExpired={expireOriginalTaskSession} onChanged={refresh} onConfigureAgent={id=>{void openTemplateAgentConfiguration(id)}}/>}</div>
             {templateSetupOpening&&<p role="status">正在读取你保存的助手副本…</p>}
             {currentTemplateSetup&&<PgNativeTemplateMarketAgentSetup key={originalTaskKey+":template-setup:"+currentTemplateSetup.sequence}

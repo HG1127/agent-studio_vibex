@@ -10,7 +10,7 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   'db/postgres/migrations/pg_v9_062_agent_design.sql':'bd735c5a61dab098c846c93e30a2fad636b409ded40064a8cf311e0710a1e82e',
   'services/pg-api/src/agent-design-audit-core.ts':'31d99e0f28c9d04402ec1b75db3714a41947c296cfba74a99d3dabcdf182a872',
   'services/pg-api/src/agent-design-audit.ts':'1efe6de5bea8e14fa4b957e050edddcfee9a595f438d636f9a4046cce0921f78',
-  'services/pg-api/src/native-auth-http.mjs':'602361e783e85c0c95faa26fb7cf127d11f300562fb73275f6aa7c6482cb9585',
+  'services/pg-api/src/native-auth-http.mjs':'f68b830df0a4cb0ec96a7aef2c459b00f2697ac4a8cf66421599e3f9fc8409fb',
   'src/pages/PgNativePilot/PgNativeAgentDesignPanel.tsx':'92fbc7a5a4ad338745a66a699783f003a72a9e768d469b836a261911d4cb969e',
   'services/pg-api/src/agent-design-value-contract.ts':'a7e6ca69da599cd6423feb300010d6297fc104b5bd11c7864aa9000c86dc2110',
   'services/pg-api/src/agent-design-contract.ts':'29a358f47c84a6be8b8385cf3b878fb78989a97b00811a9fc99327aff6008542',

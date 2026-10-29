@@ -46,6 +46,8 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentDesign?:boolean
   allowAgentDesignSubmissions?:boolean
   allowAgentDesignSaves?:boolean
+  allowInternalShare?:boolean
+  allowInternalShareWrites?:boolean
   allowAgentTemplateMarket?:boolean
   allowAgentTemplateMarketWrites?:boolean
   allowAgentDescriptivePatch?:boolean

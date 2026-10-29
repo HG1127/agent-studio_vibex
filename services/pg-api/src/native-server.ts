@@ -47,6 +47,9 @@ import {AgentDesignLedgerRepository} from "./agent-design-ledger.ts"
 import {createAgentDesignHttpHandler} from "./agent-design-http.ts"
 import {selectNativeAgentDesignCapabilities,loadAgentDesignAuditVerifier,inspectAgentDesignApiPool,type AgentDesignAuditVerifier} from "./agent-design-runtime-policy.ts"
 import {prepareAgentPlanWorkflowNative} from "./agent-plan-workflow-composition.ts"
+import {AgentInternalShareRepository} from './agent-internal-share-repository.ts'
+import {createAgentInternalShareHttp} from './agent-internal-share-http.ts'
+import {selectNativeInternalShareCapabilities,inspectInternalSharePool} from './agent-internal-share-runtime-policy.ts'
 import {AgentTemplateMarketRepository} from "./agent-template-market-repository.ts"
 import {createAgentTemplateMarketHttpHandler} from "./agent-template-market-http.ts"
 import {selectNativeAgentTemplateMarketCapabilities,loadAgentTemplateMarketAuditVerifier,inspectAgentTemplateMarketApiPool,type AgentTemplateMarketAuditVerifier} from "./agent-template-market-runtime-policy.ts"
@@ -330,6 +333,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     env,listen,cfg.allowedOrigin)
   const agentDesign=selectNativeAgentDesignCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const templateMarket=selectNativeAgentTemplateMarketCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const internalShare=selectNativeInternalShareCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
@@ -453,6 +457,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const agentPlanWorkflow=await prepareAgentPlanWorkflowNative({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
     let templateMarketAudit:AgentTemplateMarketAuditVerifier|undefined
     if(templateMarket.available){templateMarketAudit=await loadAgentTemplateMarketAuditVerifier();await inspectAgentTemplateMarketApiPool(business,templateMarketAudit)}
+    if(internalShare.available)await inspectInternalSharePool(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[])])
@@ -501,6 +506,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentDesign:agentDesign.available,allowAgentDesignSubmissions:agentDesign.submissions,allowAgentDesignSaves:agentDesign.saves,
       ...agentPlanWorkflow.metadataOptions,
       allowAgentTemplateMarket:templateMarket.available,allowAgentTemplateMarketWrites:templateMarket.writes,
+      allowInternalShare:internalShare.available,allowInternalShareWrites:internalShare.writes,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
@@ -602,6 +608,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     }):null
     const agentPlanWorkflowHttp=agentPlanWorkflow.createHandler(native.authenticateRequest)
     const guardedBusinessHandler=businessHandler
+    const internalShareHttp=internalShare.available?createAgentInternalShareHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new AgentInternalShareRepository(business,{allowWrites:internalShare.writes})}):null
     const templateMarketHttp=templateMarket.available?createAgentTemplateMarketHttpHandler({
       allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
       repository:new AgentTemplateMarketRepository(business,{available:true,allowWrites:templateMarket.writes,verifyCredentials:templateMarketAudit}),
@@ -612,6 +619,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(agentPlanWorkflowHttp&&await agentPlanWorkflowHttp(req,res))return
       if(agentDesignHttp&&await agentDesignHttp(req,res))return
       if(templateMarketHttp&&await templateMarketHttp(req,res))return
+      if(internalShareHttp&&await internalShareHttp(req,res))return
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }

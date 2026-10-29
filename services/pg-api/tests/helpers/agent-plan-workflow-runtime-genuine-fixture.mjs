@@ -11,8 +11,8 @@ export const agentPlanWorkflowRuntimeFrozenSources=Object.freeze({
   "services/pg-api/src/agent-plan-workflow-composition.ts": "e786b50d08821c958800d904f06cc9b25563e6d84136529d190f81392cf72146",
   "services/pg-api/src/agent-plan-workflow-service.ts": "4ef3076ee7fd20df225bd7e62542b25bdefa660f67f20655cf0f75d19de28bd6",
   "services/pg-api/src/agent-plan-workflow-service-config.ts": "5cac3bfad64bb5a2aa3705d830386c190aa47e9b68b1fbb25cfd702cdebd85db",
-  "services/pg-api/src/native-auth-http.mjs": "602361e783e85c0c95faa26fb7cf127d11f300562fb73275f6aa7c6482cb9585",
-  "services/pg-api/src/native-server.ts": "2fcd4eb6989c182d6fd36b03d8a3c15f9a0ae5110bfee6f3fb8d217201672e42",
+  "services/pg-api/src/native-auth-http.mjs": "f68b830df0a4cb0ec96a7aef2c459b00f2697ac4a8cf66421599e3f9fc8409fb",
+  "services/pg-api/src/native-server.ts": "7edd9f6605078109fadccbbd7a5eef547bb9568bbbe172dbf4388574f154cd5e",
   "services/pg-api/src/server.ts": "60a141847ed0838190d229ba6740f67d7efd46f808c9e4e3cda00bb05bf286b7"
 })
 export async function agentPlanWorkflowRuntimeGenuineFixture(env=process.env,{browserMode=false}={}){

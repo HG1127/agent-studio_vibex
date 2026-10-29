@@ -1,7 +1,7 @@
 {
   "format": "pg18_migration_execution_registry_v1",
-  "updated_UTC": "2026-10-29T04:23:17.828Z",
-  "source_head": "9c46d7350482796c1676b73bc583ab512fcb7ab2",
+  "updated_UTC": "2026-10-29T04:47:31.859Z",
+  "source_head": "87bab6aaed961dbc929c59564af27371d81b918a",
   "deadline_Asia_Shanghai": "2026-10-30T18:30:00+08:00",
   "is_authority": false,
   "production_GO": false,
@@ -61,6 +61,25 @@
         "actual_API59": true,
         "pure_guards_and_composition": 16,
         "actual_runtime_browser": false
+      },
+      "runtime87": {
+        "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40817782070",
+        "job": 123262829971,
+        "actual_runtime_children": 7,
+        "parent_count": 8,
+        "pure_refusals": 14,
+        "raw_sha256": "62bcf2e51e1784a63eef7f95dd45cdf988b7bb9b39209dee7ab299d98876f0ed",
+        "scope": "Actual Native capabilities, paid generation reserve before private credential SELECT, one synthetic mTLS model POST, original submit/save ACK recovery, editable saved Workflow, erase without replay. No paid real provider or target deployment."
+      },
+      "browser87": {
+        "job": 123262830250,
+        "raw_sha256": "d9fc9c45f0ee797d513bed60bdaffe4cedb059a331a90a60b578c30fc88d51c0",
+        "passed": false,
+        "last_completed": "saved_real_workflow",
+        "first_failure": "late_result_logout_fence: query-result button absent after returning from saved Workflow",
+        "Root_viewed_synthetic_PNGs": 2,
+        "minimal_source_fix": "Retain confirmed immutable receipts only within same API/employee/login epoch on workspace inactivity; explicit query of original UUID. All body/editor/fee/save reviews and logout/scope/permission fences retained; four regression checks added.",
+        "actual_browser_rerun": "pending"
       }
     },
     "quality": {
@@ -87,12 +106,30 @@
       "actual_new26_executed": false,
       "failure": "Native unauth check expected401 returned503; runtime owner located stale exact client source pin in CI Native child after v8client change; correction pending actual validation.",
       "prior562_only": "old28pass/new18of26 including causal cancellation+partialrotation; Rootrestart failed. Never currentstability proof."
+    },
+    "F08": {
+      "implementation": "Optional065/source/RPC/auditor/NativeCookie/mount/SDK/session/employeeUI and actual isolated flow/database/browser entry integrated after87",
+      "sql_sha256": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
+      "source_handoff_sha256": "4dcf6b2075f7dbf98f807f9bfcea7795e78e975444b0ee3763f2a5315d04cfc5",
+      "pure_checks": 21,
+      "actual_SQL_browser": false,
+      "scope": "One-use seven-day invitations, reviewed safe snapshot, private recipient copy, revoke and immutable original receipt recovery; existing share governance and owner checks retained, no execution transfer."
+    },
+    "Worker87": {
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40817781964",
+      "job": 123262830057,
+      "raw_sha256": "9c09321cd0ebdccd01678ed7c8598f57e4cefbe0b4488ec6aaf66f7ad43cda24",
+      "old28_passed": true,
+      "new26_passed": 16,
+      "first_failure": "case17 cleanup_wait_absence/writer_uncertain; exact backend absence not confirmed before publication; mutation rejected",
+      "latest_v10": "Remove only fourteen duplicate root package JSON decodes in the SAME full assertion and add exact closed Reader failure observations. All fresh source/FS/FD/metadata/cache checks and5s8s preserved; actual timing pass not established.",
+      "actual_remaining": "Exact original-owned backend termination/absence fix and remaining Writer26 still required"
     }
   },
   "current_packages": {
-    "database": "F08 singleuse internal sharing SQL065/service/API/employeeoperation; new actual DB faults preempt.",
-    "runtime": "W-CANCEL actual currentfailure; explicitfullprofile unifiedinstaller using existing050/059/060, then real startup/restore/24h.",
-    "employee-ui": "F02/F22five-stepfirstcreate and existingresource/navigation UX; actualF05runtime/browserfaultspreempt.",
+    "database": "F27 exact current-step delegation candidate; actual F08 genuine faults preempt.",
+    "runtime": "Resolve actual Writer26 case17 owned-backend absence, then runnable complete installer through optional065; preserve default050.",
+    "employee-ui": "F02/F22 first-create/resource/navigation; actual F05 browser faults preempt.",
     "integration": "Canonical exactreview/pins/source upload and isolatedCI; acceptedF07database/API/browser andF05database components, full31scope andfinaltargetgates retained."
   },
   "queued_packages": {
@@ -236,7 +273,7 @@
       "implementation": "implemented_in_candidate_runtime_browser_validation_pending",
       "isolated_validation": "passed_database_component_employee_flow_pending",
       "evidence_key": "F05",
-      "current_note": "12 foundationfiles and53 purechecks/APIcompiler; no acceptedSQL064/actualdispatch/canvas-save flow yet.",
+      "current_note": "ActualSQL47 and runtime7 children passed; browser reaches saved realWorkflow. Minimal same-login receipt retention correction locally48checks; unchanged fullbrowser rerun pending.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -285,9 +322,9 @@
       "baseline_pointer": "/features/7",
       "baseline_conclusion": "确认核心现有功能缺口；不要重做已验收员工share_enabled治理。",
       "scope_status": "confirmed_existing",
-      "implementation": "gap_in_source_baseline_requires_current_operation_closure",
+      "implementation": "implemented_in_candidate_actual_validation_pending",
       "isolated_validation": "not_verified",
-      "current_note": "No later accepted complete implementation is established in this registry. Source provenance and full original action remain required.",
+      "current_note": "Complete optional065 employee chain integrated;21 purechecks and actualAPI/frontend compilers passed. ActualSQL/flow/browser, unifiedinstall and target/UAT pending.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -668,5 +705,5 @@
     }
   ],
   "provenance_resolution": "docs/PG18_FEATURE_PROVENANCE_20261029.json",
-  "integration_candidate_note": "F05Native/servicecomposition and actualruntime/browsergenuine proposals integrated after this base; defaultactivationoff and actualnewruntime/browsernotyetaccepted."
+  "integration_candidate_note": "Optional065 internal-share employee chain integrated after87; real PG18/database/browser not yet executed. F05 actual runtime7 children passed87; unchanged full browser reached saved Workflow then exposed same-login receipt-clear defect. Minimal receipt retention fix preserves original UUID and full logout/permission clear; actual browser rerun pending. All feature groups and four acceptance states retained."
 }

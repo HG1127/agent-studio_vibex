@@ -489,3 +489,27 @@ tests/pg-native-agent-plan-workflow-genuine.config.mjs text eol=lf
 tests/pg-native-agent-plan-workflow-genuine.spec.mjs text eol=lf
 src/pages/PgNativePilot/PgNativeWorkflowCanvas.tsx text eol=lf
 src/lib/pgNativeWorkflowEditor.ts text eol=lf
+
+# Exact LF bytes for the optional065 internal template sharing source and evidence.
+.github/workflows/pg18-internal-share-genuine-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_065_agent_internal_share.sql text eol=lf
+docs/PG18_F08_065_INSTALL_MAP.json text eol=lf
+docs/PG18_F08_065_SOURCE_REVIEW.json text eol=lf
+services/pg-api/src/agent-internal-share-audit-core.ts text eol=lf
+services/pg-api/src/agent-internal-share-audit.ts text eol=lf
+services/pg-api/src/agent-internal-share-http.ts text eol=lf
+services/pg-api/src/agent-internal-share-repository.ts text eol=lf
+services/pg-api/src/agent-internal-share-runtime-policy.ts text eol=lf
+services/pg-api/tests/agent-internal-share-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-internal-share-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/agent-internal-share-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-internal-share-pure.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-internal-share-genuine-guard.mjs text eol=lf
+shared/agent-internal-share-contract.ts text eol=lf
+src/lib/pgNativeInternalShare.ts text eol=lf
+src/lib/pgNativeInternalShareSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativeInternalSharePanel.tsx text eol=lf
+tests/helpers/pg-native-internal-share-genuine-fixture.mjs text eol=lf
+tests/pg-native-internal-share-genuine.config.mjs text eol=lf
+tests/pg-native-internal-share-genuine.spec.mjs text eol=lf

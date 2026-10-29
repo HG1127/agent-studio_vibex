@@ -187,3 +187,43 @@ test("an edit in the actual canvas invalidates only save review while keeping th
   x.session.invalidateSavePreview();const after=x.session.snapshot();assert.equal(after.savePreview,null);assert.equal(after.saveReviewed,false);assert.equal(canonical(after.result),canonical(before));assert.equal(x.ids(),1)
   await x.session.save();assert.equal(x.ids(),1)
 })
+
+
+test("confirmed save survives a same-login workspace round trip as read handles only; next GET uses the original generation UUID",async()=>{
+  const x=await fixture();await saveReady(x);await x.session.save()
+  const original=x.session.snapshot(),count=x.calls.length,ids=x.ids()
+  x.session.setActive(false)
+  assert.equal(x.session.snapshot().receipt,null);assert.equal(x.session.snapshot().saveReceipt,null);assert.equal(x.session.snapshot().result,null)
+  x.session.setActive(true)
+  const resumed=x.session.snapshot()
+  assert.equal(resumed.receipt.request_id,original.receipt.request_id);assert.equal(resumed.saveReceipt.workflow_id,original.saveReceipt.workflow_id)
+  for(const key of ["choice","source","preview","result","fields","savePreview"])assert.equal(resumed[key],null,key)
+  assert.equal(resumed.feeReviewed,false);assert.equal(resumed.saveReviewed,false);assert.equal(x.calls.length,count)
+  await x.session.readResult()
+  assert.deepEqual(x.calls.at(-1),["view",original.receipt.request_id]);assert.equal(x.session.snapshot().result.result_status,"available")
+  assert.equal(x.session.snapshot().fields,null);assert.equal(x.ids(),ids);assert.equal(mutations(x).length,2)
+})
+
+test("a completed generation can be explicitly re-read after tab return without reusing fee approval or emitting another POST",async()=>{
+  const x=await fixture();await generated(x);const original=x.session.snapshot().receipt.request_id,count=x.calls.length
+  x.session.setActive(false);x.session.setActive(true)
+  assert.equal(x.session.snapshot().receipt.request_id,original);assert.equal(x.session.snapshot().result,null);assert.equal(x.session.snapshot().preview,null)
+  assert.equal(x.calls.length,count);await x.session.submit();assert.equal(mutations(x).length,1)
+  await x.session.readResult();assert.deepEqual(x.calls.at(-1),["view",original]);assert.equal(x.session.snapshot().result.result_status,"available")
+})
+
+test("late same-request read after tab return and logout cannot restore any confirmed receipt or result",async()=>{
+  const x=await fixture();await saveReady(x);await x.session.save();const original=x.session.snapshot().receipt.request_id
+  x.session.setActive(false);x.session.setActive(true)
+  const delayed=deferred();x.api.view=async key=>{assert.equal(key,original);return delayed.promise}
+  const work=x.session.readResult();assert.equal(x.session.snapshot().busy,true);x.session.setScope(x.api,id(2),"another-login")
+  delayed.resolve(await x.f.view({...x.f.submit,request_id:original}));await work
+  x.session.setActive(true);assert.equal(x.session.snapshot().receipt,null);assert.equal(x.session.snapshot().saveReceipt,null);assert.equal(x.session.snapshot().result,null)
+  assert.equal(x.session.matchesScope(x.api,id(2),"another-login"),false)
+})
+
+test("availability revocation clears retained confirmed handles while preserving the existing permission fence",async()=>{
+  const x=await fixture();await saveReady(x);await x.session.save();x.session.setActive(false);x.session.setActive(true)
+  x.session.setAvailability({available:false,submissions:false,saves:false});x.session.setAvailability({available:true,submissions:false,saves:false})
+  assert.equal(x.session.snapshot().receipt,null);assert.equal(x.session.snapshot().saveReceipt,null);assert.equal(x.session.snapshot().result,null)
+})

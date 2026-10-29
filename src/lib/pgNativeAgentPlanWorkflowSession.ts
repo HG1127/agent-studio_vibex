@@ -76,7 +76,18 @@ export function createPgNativeAgentPlanWorkflowSession(api:PgNativeAgentPlanWork
     subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},
     matchesScope(candidate:PgNativeAgentPlanWorkflowApi,owner:string,key:string){return !disposed&&bound&&candidate===api&&owner===employeeId&&key===scopeKey},
     setScope(candidate:PgNativeAgentPlanWorkflowApi,owner:string,key:string){if(disposed)return false;if(bound&&candidate===api&&owner===employeeId&&key===scopeKey)return true;reset();bound=false;state.active=false;state.available=false;state.submissions=false;state.saves=false;emit();return false},
-    setActive(active:boolean){if(disposed||!bound||state.active===(active===true))return;state.active=active===true;if(!state.active)reset(true);emit()},
+    setActive(active:boolean){
+      if(disposed||!bound||state.active===(active===true))return
+      state.active=active===true
+      if(!state.active){
+        // Keep only confirmed immutable read handles in this same bound login.
+        // reset still aborts late reads and clears all input/result/editor data
+        // and both reviews. Scope/permission loss retains its full-clear path.
+        const {receipt,saveReceipt,controlReceipt}=state
+        reset(true);state.receipt=receipt;state.saveReceipt=saveReceipt;state.controlReceipt=controlReceipt
+      }
+      emit()
+    },
     setAvailability(hints:{available?:boolean;submissions?:boolean;saves?:boolean}){
       if(disposed||!bound)return
       const available=hints.available===true,submissions=hints.submissions===true,saves=hints.saves===true

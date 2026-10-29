@@ -4,14 +4,14 @@ import {requireAgentPlanWorkflowGenuineCi} from '../../services/pg-api/tests/hel
 import {agentPlanWorkflowRuntimeGenuineFixture} from '../../services/pg-api/tests/helpers/agent-plan-workflow-runtime-genuine-fixture.mjs'
 // BROWSER_SOURCE_PINS_INSERTED_BY_AUTHOR_FROM_ACTUAL_H
 export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
-  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "d4d8ab243c58567fc0d52001637700a7229ebad7394c873352b4a668eda23869",
+  "src/pages/PgNativePilot/PgNativePilotPage.tsx": "31c9099dd73b761bd4bad53255975814da3115a9d4a50a0c0d35d3cf915f9306",
   "src/pages/PgNativePilot/PgNativeAgentPlanWorkflowPanel.tsx": "afb5dbb87aeb5938039ef892a14d62ac371571c5bf916f1c06a8d7f2ec8814c8",
   "src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx": "feaf8c020b14e819cd0103686cd9c4d2da11b2a4426940df1f49aa8765e3f733",
   "src/pages/PgNativePilot/PgNativeWorkflowNodeForm.tsx": "ae518e62ad0fb171ce186d435aeb503996ebcd7a7cea8e0a048312bd8642826d",
   "src/lib/pgNativeAgentPlanWorkflow.ts": "675fd2507c6cbdc7e43184372dc5aea8aef7921278590de36c629ed35a0c08e7",
-  "src/lib/pgNativeAgentPlanWorkflowSession.ts": "e5a3df709f5d456d8f4c0aac45a2680eb355947f155828ca6e24eeb7c4411522",
+  "src/lib/pgNativeAgentPlanWorkflowSession.ts": "42f186e3538d010af2a616c484d9a96a7a31c1caebf6261daa15f201631116c9",
   "src/lib/pgNativeWorkflowGeneratedDraft.ts": "6bf25416747995adc9c2bd232fc1bb799e330d4c268a8779a371d5e3c06c78a0",
-  "src/lib/pgNativePilotApi.ts": "a1c60c5ac512f854e37801dc8284b0e83599e01d7b4de2dd43c3686c763efdab",
+  "src/lib/pgNativePilotApi.ts": "ee2dd39d5d37681f02eb79c90ab31fd3cf0ab72cd2005e360a6c1c2ac20b7d92",
   "src/pages/PgNativePilot/PgNativeWorkflowCanvas.tsx": "1f271f636e47dc3e5190ecbcde8ce17e3b2355b9f3eed979b90f5fb3994033e8",
   "src/lib/pgNativeWorkflowEditor.ts": "6953b75015b6f2448ad3262e48908e5242836f752f7b7c1587bcc5bf7e17617c"
 })

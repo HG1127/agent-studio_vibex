@@ -314,6 +314,10 @@ function verifyTree(state,initial=false){
   const lock=readBound(path.join(root,'services/pg-api/pnpm-lock.yaml'),lockSha,'code')
   if(state.lockStamp)trustedStable(state.lockStamp,lock.stamp)
   if(state.lockChain)sameChain(state.lockChain,lock.chain)
+  // Root package metadata is decoded by packageInfo below in THIS assertion.
+  // Keep every original readBound/hash/stat/chain observation; only the
+  // earlier duplicate root-type JSON decode is omitted. No cross-assert cache.
+  const rootPackages=new Set(Object.keys(graph).map(name=>prefix+name+'/package.json'))
   const allowed=new Map(state.files)
   for(const [p,h] of Object.entries(parserPins))allowed.set(prefix+'typescript/'+p,{sha256:h,bytes:undefined})
   const dirs=new Set([prefix.slice(0,-1)])
@@ -332,7 +336,7 @@ function verifyTree(state,initial=false){
       else{
         const record=allowed.get(next);if(!record||seen.has(next))fail()
         const bound=readBound(actual,record.sha256,'code',record.bytes),old=state.stamps.get(next)
-        if(next.endsWith('/package.json')&&!next.startsWith(prefix+'typescript/')){
+        if(next.endsWith('/package.json')&&!next.startsWith(prefix+'typescript/')&&!rootPackages.has(next)){
           const p=json(bound.bytes)
           if(p.type!==undefined&&p.type!=='commonjs'&&(p.type!=='module'||!next.includes('/esm/')))fail()
         }
