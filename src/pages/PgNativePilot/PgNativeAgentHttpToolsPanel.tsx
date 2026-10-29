@@ -3,9 +3,9 @@ import {PgNativePilotError,type AgentHttpTool,type PgNativeAgent,type PgNativeTo
 const field="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
 const button="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium disabled:opacity-50"
 type Props={api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeToolConnection[];
-  enabled:boolean;onSaved:()=>Promise<void>;onExpired:()=>void}
+  enabled:boolean;onSaved:()=>Promise<void>;onExpired:()=>void;initialAgentId?:string}
 export default function PgNativeAgentHttpToolsPanel(props:Props){
-  const [id,setId]=useState(""),[busyFor,setBusyFor]=useState(""),[reset,setReset]=useState(0)
+  const [id,setId]=useState(()=>props.agents.find(agent=>agent.id===props.initialAgentId)?.id??""),[busyFor,setBusyFor]=useState(""),[reset,setReset]=useState(0)
   const agent=props.agents.find(item=>item.id===id)
   const formKey=agent?agent.id+":"+agent.revision+":"+reset:"",busy=Boolean(busyFor)
   return <section aria-label="Agent HTTP 工具绑定" className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-5">

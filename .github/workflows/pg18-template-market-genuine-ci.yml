@@ -1,0 +1,133 @@
+name: Agent Studio F07 Template Market genuine PG18 isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+      - 'codex/pg18-template-market-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-template-market-genuine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-template-market-genuine:
+    name: F07 / real PG18 ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [flow, database]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F07_GENUINE_CI: YES_DISPOSABLE_F07_ONLY
+      AGENT_STUDIO_F07_GENUINE_SUITE: ${{ matrix.suite }}
+      AGENT_STUDIO_PG18_AGENT_TEMPLATE_MARKET_AVAILABLE: 'true'
+      AGENT_STUDIO_PG18_AGENT_TEMPLATE_MARKET_WRITES_ENABLED: 'true'
+      AGENT_STUDIO_PG18_AGENT_TEMPLATE_MARKET_APPROVED: APPROVE_DISPOSABLE_PG18_NATIVE_AGENT_TEMPLATE_MARKET_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and ordinary-host refusal guards
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-template-market-genuine-guard.test.mjs services/pg-api/tests/agent-template-market-database-guard.test.mjs
+      - name: Actual Native Cookie market lifecycle and one-client independent copies
+        if: matrix.suite == 'flow'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-template-market-genuine-pg18.test.mjs
+      - name: Actual installed063 catalog golden protocols rollback and concurrency
+        if: matrix.suite == 'database'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-template-market-database-pg18.test.mjs
+
+  pg18-template-market-browser:
+    name: F07 / real PG18 browser publication copy resource configuration and recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F07_GENUINE_CI: YES_DISPOSABLE_F07_ONLY
+      AGENT_STUDIO_F07_GENUINE_SUITE: browser
+      AGENT_STUDIO_PG18_AGENT_TEMPLATE_MARKET_AVAILABLE: 'true'
+      AGENT_STUDIO_PG18_AGENT_TEMPLATE_MARKET_WRITES_ENABLED: 'true'
+      AGENT_STUDIO_PG18_AGENT_TEMPLATE_MARKET_APPROVED: APPROVE_DISPOSABLE_PG18_NATIVE_AGENT_TEMPLATE_MARKET_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual browser compiler configuration and ordinary-host refusal guards
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-template-market-genuine-guard.test.mjs services/pg-api/tests/agent-template-market-database-guard.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual HTTPS browser through market publication copy configuration and recovery
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-template-market-genuine.config.mjs
+      - name: Retain synthetic page images only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-template-market-genuine-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/F07-genuine-browser-results/**/*.png
+          if-no-files-found: ignore

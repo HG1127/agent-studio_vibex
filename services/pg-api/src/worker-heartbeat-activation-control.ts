@@ -235,7 +235,10 @@ export async function authorizeWorkerHeartbeatMutation(control:Control,p:Operato
  const expected=s.epoch
  const file=actionFile(id,'approval'),raw=privateRead(file),x=controlObject(signedBytes(raw,s.publicKey),['protocol','action_id','plan_sha256','source_sha256','binding_sha256','expected_epoch','actor','not_before','expires_at','scope'])
  if(x.protocol!=='worker_heartbeat_control_approval_v1'||x.action_id!==id||x.plan_sha256!==action.summary.plan_sha256||x.source_sha256!==s.profile.source_sha256||x.binding_sha256!==controlSha(JSON.stringify(s.binding))||x.expected_epoch!==s.epoch.toString()||typeof x.actor!=='string'||! /^[A-Za-z0-9_.@-]{1,128}$/.test(x.actor)||typeof x.not_before!=='string'||!Number.isFinite(Date.parse(x.not_before))||Date.parse(x.not_before)>Date.now()||x.scope!=='MUTATE_TELEMETRY_REGISTRY_ONLY')controlFail('approval_invalid')
- const expires=expiry(x.expires_at),before=await serial(s,()=>inspectRegistry(s));if(s.epoch!==expected||s.mutation||!['closed','serving'].includes(s.phase)||observedSha(s,before)!==action.summary.before_sha256||performance.now()>=expires)controlFail('plan_stale')
+ // This signed one-use intent permits closing only, not database writes.
+ // The fresh registry comparison is mandatory after owned Writer cancellation
+ // and reader cleanup in apply; serial itself still refuses any active Writer.
+ const expires=expiry(x.expires_at);if(s.epoch!==expected||s.mutation||!['closed','serving'].includes(s.phase)||performance.now()>=expires)controlFail('plan_stale')
  action.approvalSha=controlSha(raw);const token=empty<MutationPermit>();mutationStates.set(token,{s,peer:owner,action,expected:s.epoch,expires,consumed:false});append(s,'authorized',id,{approval_sha256:action.approvalSha,plan_sha256:action.summary.plan_sha256});return token
 }
 async function lockRegistry(s:State){
@@ -301,6 +304,9 @@ export async function applyWorkerHeartbeatMutation(control:Control,p:OperatorPee
  try{
   append(s,'closing',action.id,{plan_sha256:action.summary.plan_sha256});s.phase='waiting_readers';if(s.writerBroker)await pauseWorkerHeartbeatWriterBroker(s.writerBroker);await cleanReaders(s);append(s,'readers_clean',action.id,{})
   return await serial(s,async()=>{
+   if(performance.now()>=permit.expires)controlFail('approval_expired')
+   const before=await inspectRegistry(s)
+   if(!s.mutation||s.phase!=='waiting_readers'||permit.expected+1n!==s.epoch||peer(s,p,'operator')!==owner||s.actions.get(action.id)!==action||observedSha(s,before)!==action.summary.before_sha256||performance.now()>=permit.expires)controlFail('plan_stale')
    if(performance.now()>=permit.expires)controlFail('approval_expired');await target(s.raw,s.binding);s.phase='applying';await s.raw.query('BEGIN ISOLATION LEVEL READ COMMITTED');transaction=true;await s.raw.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='1000ms'; SET LOCAL statement_timeout='10000ms'");await lockRegistry(s);const lockedBefore=await observePolicy(s,s.policy);if(lockedBefore.sha!==action.summary.before_sha256)controlFail('plan_stale')
    append(s,'before_change',action.id,{plan_sha256:action.summary.plan_sha256,before_sha256:action.summary.before_sha256,after_sha256:action.summary.after_sha256,before_policy:s.policy});accessToken=access(s,s.raw,s.db,'write');const grant=dbAccesses.get(accessToken)!;grant.allLocked=true;grant.beforeChange=true;grant.expires=permit.expires;grant.epoch=s.epoch
    if(performance.now()>=permit.expires)controlFail('plan_stale')
