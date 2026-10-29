@@ -34,6 +34,11 @@ export async function runComplete069PlanWorkflowPair(argv,env=process.env){
    intent=journal.readComplete069PlanWorkflowOperation(env.AGENT_STUDIO_COMPLETE_PLAN_WORKFLOW_JOURNAL_DIR,cfg);await predecessors.verifyComplete069PlanWorkflowPredecessors(precedingPools);const observed=await core.inspectComplete069PlanWorkflowPair(admin,api,dedicated,snapshot,cfg,intent);await predecessors.verifyComplete069PlanWorkflowPredecessors(precedingPools);boundary()
    return{format:'complete069_plan_workflow_observation_v1',profile:'complete069',operation_id:cfg.operationId,source_sha256:cfg.sourceSha256,plan_workflow_source_sha256:cfg.planWorkflowSourceSha256,target:cfg.target,...observed,predecessor_logins_verified:true,prior_commit_acknowledged:false,automatic_retry_authorized:false,writes_performed:false,services_started:false,runtime_authorization:false,production_cutover_allowed:false}
   }
+  // Reject residue with the exact phase inventory before an original auditor
+  // can preempt its diagnostic. Physical target and independent secrets above
+  // remain mandatory, and all original/catalog/transaction checks still follow.
+  const {assertComplete069PlanWorkflowGlobalRoles}=await import('./pg18-complete-plan-workflow-catalog.mjs')
+  await assertComplete069PlanWorkflowGlobalRoles(lock,snapshot.complete)
   await predecessors.verifyComplete069PlanWorkflowPredecessors(precedingPools)
   const before=await core.complete069PlanWorkflowPreflight(admin,api,snapshot,cfg),others=(await lock.query("SELECT rolpassword AS verifier FROM pg_authid WHERE rolname LIKE 'agentstudio_%' AND rolpassword IS NOT NULL")).rows
   if(newSecrets.some(s=>others.some(r=>scram.matchesServiceScram(s.password,r.verifier))))fail('secret_reused')

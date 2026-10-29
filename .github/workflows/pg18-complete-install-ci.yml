@@ -45,6 +45,7 @@ jobs:
       - name: Locked API dependencies without lifecycle scripts
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Actual compiler, offline complete plan and ordinary-host refusal
+        id: source_preflight
         run: |
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs services/pg-api/tests/pg18-complete-service-plan.test.mjs services/pg-api/tests/pg18-complete-service-driver.test.mjs services/pg-api/tests/pg18-complete-service-case-counter.test.mjs services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs services/pg-api/tests/pg18-complete-review-worker-source.test.mjs services/pg-api/tests/pg18-complete-executor-plan.test.mjs services/pg-api/tests/pg18-complete-executor-source.test.mjs services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs services/pg-api/tests/pg18-complete-review-stack-source.test.mjs services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs services/pg-api/tests/pg18-complete-role-closure.test.mjs services/pg-api/tests/pg18-full069-worker-live.test.mjs services/pg-api/tests/pg18-full069-worker-path-validation.test.mjs services/pg-api/tests/pg18-full069-worker-path-ci.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-plan.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-source.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-guard.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-lock-boundary.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-chain.test.mjs services/pg-api/tests/pg18-complete-companion-sources.test.mjs
@@ -80,6 +81,7 @@ jobs:
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run
       - name: Bounded seven original Worker entries and Native HTTPS paths
+        if: ${{ !cancelled() && steps.source_preflight.outcome == 'success' }}
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
           AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY

@@ -49,9 +49,12 @@ export function checkComplete069PlanWorkflowRoleInventory(snapshotRoles,rows,{pa
  if(pairNames.some(n=>byName.has(n)!==pairPresent))fail('existing_or_partial_pair_refused')
  return{byName,logins}
 }
-export async function complete069PlanWorkflowCatalog(db,snapshot,{pairPresent=false}={}){
+export async function assertComplete069PlanWorkflowGlobalRoles(db,snapshot,{pairPresent=false}={}){
  const global=(await db.query("SELECT rolname AS name FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY rolname")).rows,expectedNames=[...new Set(['postgres',...snapshot.roles,...original.map(a=>a.login),...auxiliary.map(a=>a.login),...(pairPresent?pairNames:[])])].sort()
  if(JSON.stringify(global.map(r=>r.name))!==JSON.stringify(expectedNames))fail('global_role_inventory_refused')
+}
+export async function complete069PlanWorkflowCatalog(db,snapshot,{pairPresent=false}={}){
+ await assertComplete069PlanWorkflowGlobalRoles(db,snapshot,{pairPresent})
  const rows=(await db.query("SELECT r.rolname AS name,r.rolcanlogin AS login,r.rolconnlimit AS connection_limit,NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolinherit AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AS safe,a.rolpassword AS verifier FROM pg_roles r JOIN pg_authid a ON a.oid=r.oid WHERE r.rolname LIKE 'agentstudio_%' ORDER BY r.rolname")).rows
  const{byName,logins}=checkComplete069PlanWorkflowRoleInventory(snapshot.roles,rows,{pairPresent})
  const expected=[]
