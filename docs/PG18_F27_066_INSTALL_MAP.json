@@ -301,7 +301,7 @@
     {
       "order": 50,
       "path": "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql",
-      "Git_LF_sha256": "1333d4d6d5a5249c2cd85f9792d2f4fda8a3642c0f8e97fb4b801b53564cfd57",
+      "Git_LF_sha256": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
       "action": "New066 optional isolated exact-current-step delegation; original050/default and065 predecessors unchanged."
     }
   ],

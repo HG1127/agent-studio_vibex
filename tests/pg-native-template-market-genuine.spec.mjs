@@ -91,9 +91,21 @@ test('F07 actual template publish/copy/resource setup/lifecycle/recovery and emp
     for(const label of['选择 Agent','工具绑定 Agent','MCP 工具绑定 Agent','知识库绑定 Agent'])await expect(setup.getByRole('combobox',{name:label,exact:true})).toHaveValue(copiedId)
     mark('bind_own_execution_model')
     await setup.getByRole('combobox',{name:'选择模型连接',exact:true}).selectOption(f.resources.bob.model.id);await setup.getByRole('combobox',{name:'选择具体模型',exact:true}).selectOption('synthetic')
+    // The actual SDK first GETs the current revision, then PATCHes once, then
+    // the original onUpdated refresh GETs the saved Agent. Queue both exact
+    // observations before the click: the first real200/EOF body is a pre-write
+    // check, and only the second body can establish the saved revision.
+    const beforeBindingRead=await waitReply('/api/v2/agent-specs/'+copiedId,'GET')
     const refreshed=await waitReply('/api/v2/agent-specs/'+copiedId,'GET')
+    const bindingWrites=[],recordBindingWrite=request=>{const path=new URL(request.url()).pathname;if(request.method()==='PATCH'&&[('/api/v2/agent-specs/'+copiedId),('/__pg_native/api/v2/agent-specs/'+copiedId)].includes(path))bindingWrites.push(request.postData())}
+    page.on('request',recordBindingWrite)
     mark('confirm_actual_bound_revision')
-    await setup.getByRole('button',{name:'验证并保存绑定',exact:true}).click();const actualRefresh=await checkedReply(refreshed);expect(actualRefresh.item.revision).toBe(copied.revision+1);expect(actualRefresh.item.spec.model_binding).toEqual(f.resources.bob.binding)
+    try{
+      await setup.getByRole('button',{name:'验证并保存绑定',exact:true}).click()
+      const actualBeforeBinding=await checkedReply(beforeBindingRead);expect(actualBeforeBinding.item.id).toBe(copiedId);expect(actualBeforeBinding.item.revision).toBe(copied.revision);expect(Object.hasOwn(actualBeforeBinding.item.spec,'model_binding')).toBe(false)
+      const actualRefresh=await checkedReply(refreshed);expect(actualRefresh.item.id).toBe(copiedId);expect(actualRefresh.item.revision).toBe(copied.revision+1);expect(actualRefresh.item.spec.model_binding).toEqual(f.resources.bob.binding)
+      expect(bindingWrites).toHaveLength(1);const actualBindingWrite=JSON.parse(bindingWrites[0]);expect(actualBindingWrite.expected_revision).toBe(copied.revision);expect(actualBindingWrite.spec.model_binding).toEqual(f.resources.bob.binding)
+    }finally{page.off('request',recordBindingWrite)}
     const bound=await f.agents.get(await f.identityFor('bob'),copiedId);expect(bound.revision).toBe(copied.revision+1);expect(bound.spec.model_binding).toEqual(f.resources.bob.binding);expect(bound.spec.model_binding.connection_id).not.toBe(f.resources.alice.model.id)
     for(const label of['选择 Agent','工具绑定 Agent','MCP 工具绑定 Agent','知识库绑定 Agent'])await expect(setup.getByRole('combobox',{name:label,exact:true})).toHaveValue(copiedId)
     await page.screenshot({path:testInfo.outputPath('f07-actual-copy-resource-configuration.png'),fullPage:true});await setup.getByRole('button',{name:'返回全部助手配置',exact:true}).click()

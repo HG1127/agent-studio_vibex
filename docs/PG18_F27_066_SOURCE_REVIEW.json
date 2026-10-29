@@ -1,7 +1,7 @@
 {
   "format": "F27_066_complete_business_source_review_v1",
   "feature": "Existing Owner exact one-current-Agent-step grant/revoke and current manager approve/reject through verified Native identity; not collaboration proposals.",
-  "new_SQL_sha256": "1333d4d6d5a5249c2cd85f9792d2f4fda8a3642c0f8e97fb4b801b53564cfd57",
+  "new_SQL_sha256": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "scope": {
     "kinds": [
       "agent"

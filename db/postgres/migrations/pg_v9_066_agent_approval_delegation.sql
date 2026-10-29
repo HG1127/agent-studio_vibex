@@ -105,7 +105,7 @@ BEGIN
  IF jsonb_typeof($1) IS DISTINCT FROM 'object' OR agentstudio.agent_design_uuid($1->'request_id') IS NOT TRUE OR agentstudio.agent_design_uuid($1->'run_id') IS NOT TRUE
   OR jsonb_typeof($1->'expected_grant_revision') IS DISTINCT FROM 'number' OR $1->>'expected_grant_revision' !~ '^[0-9]{1,16}$' THEN RETURN false;END IF;
  v_action:=$1->>'action';
- IF ($1->>'expected_grant_revision')::numeric NOT BETWEEN CASE WHEN v_action='grant' THEN 0 ELSE 1 END AND 9007199254740988 THEN RETURN false;END IF;
+ IF ($1->>'expected_grant_revision')::numeric NOT BETWEEN (CASE WHEN v_action='grant' THEN 0 ELSE 1 END) AND 9007199254740988 THEN RETURN false;END IF;
  IF v_action='revoke' THEN RETURN agentstudio.agent_template_market_keys($1,ARRAY['action','request_id','run_id','expected_grant_revision']) IS TRUE;END IF;
  IF $1->'confirm' IS DISTINCT FROM 'true'::jsonb OR jsonb_typeof($1->'step_key') IS DISTINCT FROM 'string' OR $1->>'step_key' !~ '^(model|wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100})$'
   OR agentstudio.agent_plan_workflow_sha($1->'input_sha256') IS NOT TRUE OR agentstudio.agent_plan_workflow_sha($1->'run_source_sha256') IS NOT TRUE
