@@ -23,6 +23,20 @@ const assessmentAssets=[
   "ops/agent-assessment-pg-hba.conf.example",
   "ops/agent-assessment-operator-plan.txt",
 ]
+// Explicit server-side Executor operator/preflight only; never a desktop client
+// or an activation switch. Each asset is a fixed reviewed path, not a glob.
+const localExecutorOperatorSources=[
+  "services/pg-api/src/native-local-executor-service-preflight-cli.mjs",
+  "services/pg-api/src/native-local-executor-service-preflight.ts",
+  "services/pg-api/src/native-local-executor-operator-plan.mjs",
+  "services/pg-api/src/native-local-executor-operator-plan.d.mts",
+]
+const localExecutorOperatorAssets=[
+  "ops/templates/agentstudio-pg18-native-local-executor.conf.example",
+  "ops/templates/native-local-executor-pg-hba.conf.example",
+  "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md",
+  "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_PLAN.json",
+]
 const hash=raw=>createHash("sha256").update(raw).digest("hex")
 // All child programs share one environment boundary, including tar. Ambient
 // NODE_OPTIONS, test harness flags and TAR_OPTIONS are never forwarded.
@@ -85,7 +99,7 @@ function checkFile(file){
      fs.lstatSync(file).isSymbolicLink())refuse("non_regular_source")
   return fs.readFileSync(file)
 }
-function build(output,includeKnowledgeIndex=false,includeAssessment=false){
+function build(output,includeKnowledgeIndex=false,includeAssessment=false,includeLocalExecutorOperator=false){
   if(typeof output!=="string"||!path.isAbsolute(output)||output.includes("\0"))
     refuse("absolute_output_directory_required")
   const pathNormalized=path.resolve(output)
@@ -105,6 +119,10 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
     includeSource("services/pg-api/src/agent-assessment-service.ts")
     for(const asset of assessmentAssets)included.add(asset)
   }
+  if(includeLocalExecutorOperator){
+    for(const source of localExecutorOperatorSources)includeSource(source)
+    for(const asset of localExecutorOperatorAssets)included.add(asset)
+  }
   for(const module of foundExternals){
     if(!(module in thirdParty))refuse("unapproved_runtime_dependency:"+module)
   }
@@ -112,7 +130,7 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
     if(!(required in thirdParty))refuse("incomplete_package")
   const date=new Date().toISOString().replace(/[-:]/g,"").replace(/\..*/,"")
   const archive=path.join(pathNormalized,
-    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+"_preflight_v1_"+date+".tar.gz")
+    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+(includeLocalExecutorOperator?"_local_executor_operator":"")+"_preflight_v1_"+date+".tar.gz")
   if(fs.existsSync(archive))refuse("archive_already_exists")
   const staging=fs.mkdtempSync(path.join(pathNormalized,
     "native-api-review-staging-"))
@@ -122,7 +140,7 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
       if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||includeKnowledgeIndex&&[
         "ops/templates/agentstudio-pg18-knowledge-index.service.example",
         "ops/templates/agentstudio-pg18-knowledge-index-broker.service.example",
-      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)){
+      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)||includeLocalExecutorOperator&&localExecutorOperatorAssets.includes(relativePath)){
         files[relativePath]=checkFile(path.join(repo,relativePath))
         continue
       }
@@ -151,6 +169,14 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
         "Review offline plan/help: node --experimental-strip-types services/pg-api/src/agent-assessment-service.ts --plan (or --help)",
         "Optional056/057 and dedicated logins require separate review/provisioning. This archive applies no SQL or HBA changes.",
         "The login SQL.example deliberately ends ROLLBACK; neither preflight nor serve is authorized by this source package.",
+      ]:[]),
+      ...(includeLocalExecutorOperator?[
+        "Includes four server-side Executor operator/preflight modules and four exact review assets; no desktop client or secret is bundled.",
+        "Executor offline plan: node services/pg-api/src/native-local-executor-service-preflight-cli.mjs --plan",
+        "The optional feature remains disabled. This archive creates no LOGIN, activates no account, copies no secret, and changes no HBA/unit.",
+        "Read docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md before separately authorized preparation.",
+        "The drop-in references the final reviewed runtime directory; this extraction directory is a source-review directory, not an installed service.",
+        "The existing Native --preflight does not attest optional Executor readiness. The independent same-unit service preflight remains read-only.",
       ]:[]),
       "Use a NEW directory /opt/agentstudio-pg18-api-preflight-v1.",
       "Target: PostgreSQL 18 at 127.0.0.1:5333, agent_studio only.",
@@ -253,6 +279,20 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
         for(const rel of ["agent-assessment-service.ts","agent-assessment-service-config.ts","agent-assessment-worker.ts","agent-assessment-client.ts","agent-assessment-broker.ts","agent-assessment-role.ts","agent-assessment-audit.ts","agent-assessment-audit-core.ts","agent-review-source.ts","model-broker-actor.ts","model-connection-crypto.ts"])
           if(!manifestPaths.includes("services/pg-api/src/"+rel))refuse("incomplete_assessment_runtime_closure")
       }
+      if(includeLocalExecutorOperator){
+        for(const source of [...localExecutorOperatorSources,...localExecutorOperatorAssets])
+          if(!manifestPaths.includes(source))refuse("incomplete_local_executor_operator_closure")
+        const env={...childEnvironment,DATABASE_URL:"postgres://forbidden-prod",CREDENTIALS_DIRECTORY:"/never/read/source-review",AGENT_STUDIO_PG18_LOCAL_DEVICES_AVAILABLE:"true",AGENT_STUDIO_PG18_LOCAL_DEVICES_WRITES_ENABLED:"true",AGENT_STUDIO_PG18_LOCAL_DEVICES_APPROVED:"REVIEW_REQUIRED"}
+        const run=args=>spawnSync(process.execPath,["--max-old-space-size=64","services/pg-api/src/native-local-executor-service-preflight-cli.mjs",...args],{cwd:verify,encoding:"utf8",timeout:18000,env})
+        const probe=run(["--plan"])
+        if(probe.status!==0||probe.stderr!=="")refuse("isolated_local_executor_operator_plan_failed")
+        const plan=JSON.parse(probe.stdout.trim())
+        if(plan.format!=="native_local_executor_operator_plan_v1"||plan.abi?.login!=="agentstudio_local_executor_login"||plan.service_preflight_read_only!==true||["network_used","secrets_read","writes_performed","services_started","production_cutover_allowed","activation_via_this_cli_supported"].some(key=>plan[key]!==false))refuse("local_executor_operator_plan_not_safe")
+        for(const args of [[],["--apply"],["--activate"],["--service-preflight"]]){
+          const result=run(args)
+          if(result.status!==1||result.stdout!==""||result.stderr!=="native_local_executor_preflight_refused\n")refuse("local_executor_operator_unapproved_not_refused")
+        }
+      }
     }finally{fs.rmSync(verify,{recursive:true,force:true})}
     return {
       archive,sha256:hash(fs.readFileSync(archive)),
@@ -266,6 +306,7 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
       contains_secrets:false,
       ...(includeKnowledgeIndex?{knowledge_index_service_included:true,index_default_plan_only:true}:{}),
       ...(includeAssessment?{assessment_service_source_included:true,assessment_default_enabled:false,assessment_offline_plan_verified:true,assessment_unapproved_modes_refused:true}:{}),
+      ...(includeLocalExecutorOperator?{local_executor_operator_source_included:true,local_executor_default_enabled:false,local_executor_offline_plan_verified:true,local_executor_unapproved_modes_refused:true,local_executor_activation_authorized:false}:{}),
     }
   }finally{fs.rmSync(staging,{recursive:true,force:true})}
 }
@@ -273,9 +314,9 @@ if(process.argv[1]&&path.resolve(process.argv[1])===
   fileURLToPath(import.meta.url)){
   try{
     const flags=process.argv.slice(4)
-    if(![4,5,6].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment"].includes(flag)))
+    if(![4,5,6,7].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment","--with-local-executor-operator"].includes(flag)))
       refuse("exact_output_arguments_required")
-    process.stdout.write(JSON.stringify(build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment")))+"\n")
+    process.stdout.write(JSON.stringify(build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment"),flags.includes("--with-local-executor-operator")))+"\n")
   }catch(e){
     process.stderr.write("PG18_NATIVE_API_BUNDLE_REFUSED:"+
       (e instanceof Error?e.message:"unknown")+"\n")

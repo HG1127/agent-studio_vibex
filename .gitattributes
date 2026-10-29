@@ -805,3 +805,10 @@ services/pg-api/tests/native-local-executor-operator-plan.test.mjs text eol=lf
 services/pg-api/tests/native-local-executor-preflight.test.mjs text eol=lf
 services/pg-api/tests/tool-hub-ci-cold-logins.test.mjs text eol=lf
 tests/pg-native-browser/playwright.legacy-regression.config.mjs text eol=lf
+
+# Reviewed actual186e1f3 failure repairs.
+services/pg-api/tests/helpers/native-local-device-business-route.mjs text eol=lf
+services/pg-api/tests/native-local-device-business-route.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-genuine-regressions.test.mjs text eol=lf
+tests/pg-native-browser/workflow-canvas.spec.mjs text eol=lf
+tests/pg18-local-executor-review-bundle.test.mjs text eol=lf

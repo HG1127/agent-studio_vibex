@@ -46,12 +46,21 @@ export async function toolHubGenuineFixture(env=process.env,{browserMode=false}=
   const provider=async(material,prompt)=>{network.model++;assert.equal(material.model_id,'synthetic');if(prompt.includes('workflow_agent_v2')){const reply=mutable.agentReplies.shift();assert.ok(reply,'explicit synthetic Agent provider reply required');return JSON.stringify(reply)}assert.ok(prompt.includes('io.github.synthetic/weather'));assert.ok(prompt.includes('{{input}}'));return JSON.stringify([{server_name:'io.github.synthetic/weather',zh_title:'合成天气目录',zh_desc:'用于隔离验证的公共天气说明'}])}
   const modelBroker=new modelDispatchModule.WorkflowV2ModelDispatch(brokerApi,base.key,provider,brokerPool,{allowAutonomousExecution:true,allowAgentExecution:true,agentExecutor:provider})
   const toolDispatch=toolDispatchModule.verifiedWorkflowV2ToolDispatch(new toolDispatchModule.WorkflowV2ToolLeaseIdentity(identityPool),toolBroker),modelDispatch=modelDispatchModule.verifiedWorkflowV2ModelDispatch(new modelDispatchModule.WorkflowV2ModelLeaseIdentity(identityPool),modelBroker)
+  // Each original private handler remains fixed to one execution mode. The
+  // separate disposable Agent listener has its own genuine CA/certificates.
+  const privateHandlerFactory=executionMode=>{
+   assert.ok(executionMode==='workflow_native_v2'||executionMode==='agent_native_v2')
+   return options=>{const tool=toolHandlerModule.createWorkflowV2ToolInternalHandler({...options,executionMode,dispatch:toolDispatch}),model=modelHandlerModule.createWorkflowV2ModelInternalHandler({...options,executionMode,dispatch:modelDispatch});return async(req,res)=>{if(req.url===toolContract.workflowV2ToolRoute){if(mutable.losePrivateToolAck){const original=res.end;res.end=function(...args){if(this.statusCode===200){mutable.losePrivateToolAck=false;this.destroy();return this}return original.apply(this,args)}}return tool(req,res)}return model(req,res)}}
+  }
   tlsLife=tlsModule.withDisposableBoundModelTls(async()=>{throw Error('tool_hub_unknown_private_route')},async tls=>{
    serverTls=tls.serverTls;assert.ok(serverTls)
    const toolExecutor=toolClientModule.workflowV2ToolEffectExecutor(tls),modelExecutor=modelClientModule.workflowV2ModelEffectExecutor(tls)
    const executor={supports:request=>request.kind==='tool'||request.kind==='model',execute:(request,lease)=>(request.kind==='tool'?toolExecutor:modelExecutor).execute(request,lease)}
    worker=new workerModule.WorkflowV2Worker(workerPool,'f16_19_actual_worker',{executor,agentExecutionApproved:true})
-   agentWorker=new workerModule.WorkflowV2Worker(workerPool,'f16_19_actual_agent',{executor,agentExecutionApproved:true,executionMode:'agent_native_v2'})
+   return tlsModule.withDisposableBoundModelTls(async()=>{throw Error('tool_hub_unknown_private_route')},async agentTls=>{
+    const agentToolExecutor=toolClientModule.workflowV2ToolEffectExecutor(agentTls),agentModelExecutor=modelClientModule.workflowV2ModelEffectExecutor(agentTls)
+    const agentExecutor={supports:request=>request.kind==='tool'||request.kind==='model',execute:(request,lease)=>(request.kind==='tool'?agentToolExecutor:agentModelExecutor).execute(request,lease)}
+    agentWorker=new workerModule.WorkflowV2Worker(workerPool,'f16_19_actual_agent',{executor:agentExecutor,agentExecutionApproved:true,executionMode:'agent_native_v2'})
    let nativeHandler
    server=https.createServer({...serverTls,minVersion:'TLSv1.2'},(req,res)=>{if(!nativeHandler){res.writeHead(503);res.end();return}void nativeHandler(req,res).catch(()=>res.destroy())});await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)})
    nativeOrigin='https://localhost:'+server.address().port;allowedOrigin=browserMode?'https://localhost:17443':nativeOrigin
@@ -63,7 +72,8 @@ export async function toolHubGenuineFixture(env=process.env,{browserMode=false}=
    }})
    nativeHandler=async(req,res)=>{const drop=mutable.dropNext;if(drop&&req.method===drop.method&&req.url===drop.path){mutable.dropNext=null;const original=res.end;res.end=function(...args){if([200,201].includes(this.statusCode)){this.destroy();return this}return original.apply(this,args)}}await native.handler(req,res)}
    await login('alice');await login('bob');readyResolve();await tlsEnd
-  },{includeServerTls:true,handlerFactory:options=>{const tool=toolHandlerModule.createWorkflowV2ToolInternalHandler({...options,dispatch:toolDispatch}),model=modelHandlerModule.createWorkflowV2ModelInternalHandler({...options,dispatch:modelDispatch});return async(req,res)=>{if(req.url===toolContract.workflowV2ToolRoute){if(mutable.losePrivateToolAck){const original=res.end;res.end=function(...args){if(this.statusCode===200){mutable.losePrivateToolAck=false;this.destroy();return this}return original.apply(this,args)}}return tool(req,res)}return model(req,res)}}}).catch(error=>{readyReject(error);throw error});void tlsLife.catch(()=>{});await bounded(ready,60000)
+   },{handlerFactory:privateHandlerFactory('agent_native_v2')})
+  },{includeServerTls:true,handlerFactory:privateHandlerFactory('workflow_native_v2')}).catch(error=>{readyReject(error);throw error});void tlsLife.catch(()=>{});await bounded(ready,60000)
   const identityFor=async who=>{const value=await auth.verifySession(cookies.get(who)?.split('=',2)[1]);assert.ok(value);return value}
   const counts=async()=> (await base.db.query('SELECT (SELECT count(*)::integer FROM agentstudio.toolhub_trials) trials,(SELECT count(*)::integer FROM agentstudio.workflows) workflows,(SELECT count(*)::integer FROM agentstudio.runs) runs,(SELECT count(*)::integer FROM agentstudio.jobs) jobs,(SELECT count(*)::integer FROM agentstudio.external_effects) effects')).rows[0]
   const drive=async(id,statuses=['awaiting_approval','succeeded','failed','paused'])=>{for(let i=0;i<12;i++){const detail=await runs.get(await identityFor('alice'),id);if(statuses.includes(detail.run.status))return detail;await worker.tick()}throw Error('tool_hub_actual_worker_did_not_reach_expected_stage')}

@@ -50,3 +50,27 @@ test('real emitted embed JS parses and iframe HTML cannot execute display string
 test('caller marker is closed and custom tools retain exact released alias and connection pins',()=>{
  const marker={protocol:'agent_caller_binding_v1',invocation_id:id(5),credential_id:id(1),generation:1,source_id:id(6)};assert.equal(checkedAgentCallerBinding(marker).generation,1);assert.throws(()=>checkedAgentCallerBinding({...marker,owner_user_id:id(9)}));const request={kind:'tool',input:'{}',configuration:{title:'http_allowed',tool_binding:{connection_id:id(7),connection_revision:1}}},spec={http_tools:[{name:'http_allowed',connection_id:id(7),connection_revision:1},{name:'http_other',connection_id:id(7),connection_revision:1}]};assert.deepEqual(agentCallerEffectClassification(request,spec),{tool_name:'http_allowed',knowledge_charge:false});assert.throws(()=>agentCallerEffectClassification({...request,configuration:{...request.configuration,title:'unselected_alias'}},spec))
 })
+
+// DOM message mechanics only. No browser, network, SQL or authority is supplied.
+function rendererActivation(){
+ const value={protocol:'agent_caller_embed_renderer_v1',id:id(1),generation:1,theme:{title:'Synthetic helper',accent:'ocean',position:'bottom_right'},origins:['https://customer.example'],agent_name:'Owner assistant',authority:false},out=renderAgentCallerFrame(value),nodes={},messages=[],handlers={};
+ for(const name of ['run','input','fee','submit','status','confirm','poll'])nodes[name]={value:'',checked:false,disabled:false,hidden:false,textContent:'',handlers:{},addEventListener(type,callback){this.handlers[type]=callback}};
+ const parent={postMessage:(value,target)=>messages.push({value,target})},context={document:{getElementById:name=>nodes[name]},window:{addEventListener:(name,fn)=>{handlers[name]=fn}},parent};
+ const boot=out.html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];new Script(boot).runInNewContext(context);
+ const click=name=>nodes[name].handlers.click?.({preventDefault(){}}),message=(data,patch={})=>handlers.message({source:parent,origin:'https://customer.example',data,...patch}),runs=()=>messages.filter(x=>x.value.type==='agent_caller_widget_run');
+ return{out,nodes,messages,parent,click,message,runs};
+}
+test('sandboxed renderer activates from the explicit button click without requiring a native form submission',()=>{
+ const f=rendererActivation(),channel=id(9);assert.match(f.out.html,/<button id="submit" type="button" disabled>/);assert.ok(agentCallerWidgetScript.includes("frame.sandbox='allow-scripts allow-same-origin'"));assert.ok(!agentCallerWidgetScript.includes('allow-forms'));assert.ok(f.out.csp.includes("form-action 'none'"));
+ f.click('submit');assert.equal(f.runs().length,0);f.message({type:'agent_caller_widget_hello',channel});assert.equal(f.messages.length,1);assert.equal(f.messages[0].value.type,'agent_caller_widget_ready');
+ f.nodes.input.value='Synthetic explicit public task';f.nodes.input.handlers.input();f.click('submit');assert.equal(f.runs().length,0);f.nodes.fee.checked=true;f.nodes.fee.handlers.change();assert.equal(f.nodes.submit.disabled,false);
+ // A sandbox without allow-forms never dispatches the native form event. The
+ // real emitted click listener must be sufficient after separate confirmation.
+ f.click('submit');assert.equal(f.runs().length,1);const sent=f.runs()[0];assert.deepEqual(JSON.parse(JSON.stringify(sent)),{value:{type:'agent_caller_widget_run',channel,input:'Synthetic explicit public task',fee_ack:agentCallerRunFee,confirm:true},target:'https://customer.example'});assert.equal(f.nodes.status.textContent,'正在提交…');assert.equal(f.nodes.fee.checked,false);assert.equal(f.nodes.submit.disabled,true);
+ f.click('submit');f.nodes.run.handlers.submit({preventDefault(){}});assert.equal(f.runs().length,1)
+})
+test('renderer click activation retains exact parent Origin/channel checks and unknown confirmation never creates another run',()=>{
+ const f=rendererActivation(),channel=id(9),hello={type:'agent_caller_widget_hello',channel};f.message(hello,{source:{}});f.message(hello,{origin:'https://wrong.example'});assert.equal(f.messages.length,0);f.message(hello);f.nodes.input.value='One approved task';f.nodes.input.handlers.input();f.nodes.fee.checked=true;f.nodes.fee.handlers.change();f.click('submit');assert.equal(f.runs().length,1);
+ const terminal={type:'agent_caller_widget_status',channel,status:'succeeded',text:'Untrusted result',unknown:false,terminal:true};for(const patch of [{source:{}},{origin:'https://wrong.example'}])f.message(terminal,patch);f.message({...terminal,channel:id(8)});assert.equal(f.nodes.status.textContent,'正在提交…');assert.equal(f.nodes.submit.disabled,true);
+ f.message({type:'agent_caller_widget_status',channel,status:'unknown',text:'Original request unknown',unknown:true,terminal:false});assert.equal(f.nodes.confirm.hidden,false);assert.equal(f.nodes.submit.disabled,true);f.click('confirm');assert.equal(f.messages.at(-1).value.type,'agent_caller_widget_confirm');assert.equal(f.messages.at(-1).target,'https://customer.example');assert.equal(f.runs().length,1)
+})

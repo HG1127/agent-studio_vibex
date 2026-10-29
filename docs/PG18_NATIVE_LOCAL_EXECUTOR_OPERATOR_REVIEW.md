@@ -33,3 +33,11 @@
 任一目标、源、HBA、私密文件或原 C 审计不符都停止，不补表权限来绕过。需要回退时，先按授权关闭设备入口并处理已有请求；保留 owner/device journal 与 unknown 状态。LOGIN NOLOGIN 不等于已有会话已退出；确需结束连接时，仅处理有明确 PID/start 身份依据的自有连接，不能全局杀会话。不要删除 C schema、权限组、旧六登录回执或公司数据，也不要把 DROP ROLE 当作通用恢复。
 
 本补充包的纯测试与合成 CI 源码不等于实际测试通过，更不等于正式安装完成。
+
+## 可选源码归档
+
+打包器默认不收录独立 Executor 入口；只有显式增加 `--with-local-executor-operator` 才纳入 CLI、只读预检、纯 operator plan、类型声明四个模块，以及本 runbook、审阅 JSON、unit/HBA 两个示例。该选项可以与原 `--with-knowledge-index`、`--with-agent-assessment` 组合；它不启用设备功能或执行 operator。
+
+审阅命令形态为 `node ops/build-pg18-native-api-preflight-bundle.mjs --output-dir <源树之外的绝对目录> --with-local-executor-operator`。生成的 tar.gz 不进入 Git。包内 SHA256SUMS 覆盖四模块、其真实静态/动态依赖和四份固定说明；打包器会解包再核验，并实际执行无依赖离线 plan 与未授权模式拒绝检查。
+
+归档的提取目录是源码审阅目录；unit drop-in 中的最终 runtime 路径需要另行核对，不能直接把示例当安装脚本。第五 DB 凭据从不进入归档，也不交给桌面 `local-executor` 客户端。旧 Native `--preflight` 不能替代独立同 unit 的只读 Executor 预检。源码归档验证不代表实际 systemd/数据库 provisioning 或员工 UAT 已完成。

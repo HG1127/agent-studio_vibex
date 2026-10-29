@@ -51,7 +51,9 @@ function parsedRow(raw:unknown):ToolTrialReceipt{
 }
 async function requireSchemaAndEmployee(db:SqlClient,owner:string){
  await assertOwnedAdmissionContext(db,owner)
- if(await verifyOwnerToolTrialCredentials(db)!==true)throw new HttpError(503,'owner_tool_trial_schema_required')
+ let schema=false
+ try{schema=await verifyOwnerToolTrialCredentials(db)}catch{}
+ if(schema!==true)throw new HttpError(503,'owner_tool_trial_schema_required')
  const rows=(await db.query<{epoch:unknown}>('SELECT agentstudio.agent_memory_outcome_epoch() AS epoch')).rows,value=rows[0]?.epoch
  if(rows.length!==1||value===null)throw new HttpError(403,'employee_disabled')
  if(!(typeof value==='string'&&/^[1-9][0-9]*$/.test(value)||typeof value==='number')||!Number.isSafeInteger(Number(value))||Number(value)<1||Number(value)>Number.MAX_SAFE_INTEGER-2)throw new HttpError(503,'tool_trial_employee_guard_unavailable')
