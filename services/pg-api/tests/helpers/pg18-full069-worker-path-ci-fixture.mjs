@@ -196,6 +196,9 @@ function processProfiles(s){
  })
 }
 function networkHash(){const outputs=['/usr/sbin/iptables-save','/usr/sbin/ip6tables-save'].map(executable=>execFileSync(executable,[],{env:cleanEnv(),encoding:'utf8',timeout:5000,maxBuffer:1048576,windowsHide:true}).split(/\r?\n/).filter(s=>s&&!s.startsWith('#')).join('\n'));return sha(outputs.join('\n---\n'))}
+function observeSelectedHostRuntime(s,stage){
+ try{const st=fs.lstatSync(s.nodePath);console.log(JSON.stringify({event:'full069_worker_path_ci_selected_host_observation',stage,regular_file:st.isFile(),symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:(st.mode&0o7777).toString(8),node_digest_matches_signed_profile:sha(fs.readFileSync(s.nodePath))===s.profile.node_sha256,network_policy_matches_signed_profile:networkHash()===s.profile.network_policy_sha256,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))}catch{console.log(JSON.stringify({event:'full069_worker_path_ci_selected_host_observation_unavailable',stage,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))}
+}
 function network(s,remove=false){
  const chain='AS_F069_'+s.loaded.stageNonce.slice(0,12),uids=[s.native.uid,...s.workers.map(v=>v.uid)],run=(binary,args)=>execFileSync(binary,['--wait','5',...args],{env:cleanEnv(),timeout:10000,maxBuffer:262144,windowsHide:true})
  if(remove){for(const rule of [...s.networkRules].reverse()){run(rule.binary,['-C','OUTPUT',...rule.args]);run(rule.binary,['-D','OUTPUT',...rule.args])}for(const binary of [...s.networkChains].reverse()){run(binary,['-F',chain]);run(binary,['-X',chain])}s.networkRules=[];s.networkChains=[];return}
@@ -231,7 +234,7 @@ export async function runOwnedFull069WorkerPathCi(permit){
   phase('owned_UID_network_rules_and_signed_warm_profile');network(s);await until(()=>Date.now()-s.tls.validFrom>=30000,'tls_not_yet_aged',35000);await liveProfile(s)
   phase('fresh_Root_short_CLI_original_seven_entries_Native_HTTPS')
   const env={...cleanEnv(),AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED:'true',AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED:'RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY',AGENT_STUDIO_FULL069_WORKER_PATH_VALIDATION_ENABLED:'true',AGENT_STUDIO_FULL069_WORKER_PATH_VALIDATION_APPROVED:'VALIDATE_DISPOSABLE_FULL069_WORKER_PATHS_ONLY'}
-  const r=await command(s,s.deployment+'/services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs',['--run-short'],env,{timeout:300000});if(r.code!==0)fail('short_cli_failed');assertPathCiResult(r.value,s.runId)
+   observeSelectedHostRuntime(s,'before_original_short_CLI');const r=await command(s,s.deployment+'/services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs',['--run-short'],env,{timeout:300000});if(r.code!==0){observeSelectedHostRuntime(s,'after_original_short_CLI_refusal');fail('short_cli_failed')}assertPathCiResult(r.value,s.runId)
   const runDirectory=fixed.liveStore+'/'+s.runId,resultBytes=privateRead(runDirectory+'/validation-result.json'),record=json(resultBytes);assertPathCiCleanup(record,s.runId);if(r.value.details?.record_sha256!==sha(resultBytes)||fs.readdirSync(runDirectory).some(v=>/^(?:start|end|samples|begin-acknowledgement|end-acknowledgement)(?:\.|-)/.test(v)))fail('short_record_or_qualifier_artifact')
   const warm=json(privateRead(runDirectory+'/validation-warm.json'));assertPathCiWarm(warm,s.runId)
   // Copy the two actual records before removing only the owned deployment roots.

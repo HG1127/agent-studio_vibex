@@ -1,6 +1,7 @@
 // Explicit Root-hosted PG18 browser story. Launch only after the genuine guard.
 // This has no page.route/mock API responses and never fills a design result.
 import {test,expect,chromium} from '@playwright/test'
+import {installActualBrowserFetchBodyObserver} from './helpers/actual-browser-fetch-body-observer.mjs'
 import {startPgNativeAgentDesignGenuineBrowserFixture} from './helpers/pg-native-agent-design-genuine-fixture.mjs'
 import {requireAgentDesignGenuineCi} from '../services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs'
 
@@ -19,6 +20,16 @@ test('F01 actual PG18 Native browser: paid design, full editing, lost original/s
     const outside=[]
     await context.route('**/*',async route=>{if(new URL(route.request().url()).origin!==f.browserOrigin){outside.push(route.request().url());await route.abort()}else await route.continue()})
     const page=await context.newPage()
+    await page.addInitScript(installActualBrowserFetchBodyObserver,{key:'__f01ActualBodyObservation',basePath:'/api/v2',maxBytes:1048576})
+    const observeBody=async suffix=>{
+      const path='/api/v2/agent-design'+suffix,ticket=await page.evaluate(path=>window.__f01ActualBodyObservation.arm(path,'POST'),path)
+      return async()=>{
+        await page.waitForFunction(ticket=>window.__f01ActualBodyObservation.ready(ticket),ticket,{timeout:20000})
+        const actual=await page.evaluate(ticket=>window.__f01ActualBodyObservation.read(ticket),ticket)
+        expect(actual.error,'complete original F01 browser fetch body').toBeUndefined();expect(actual.method).toBe('POST');expect([path,'/__pg_native'+path]).toContain(actual.actual_path);expect(actual.status,'actual F01 body must come from HTTP200').toBe(200)
+        return actual.value
+      }
+    }
     page.on('request',req=>{const path=new URL(req.url()).pathname;if(req.method()==='POST'&&/\/agent-design\/(?:submit|confirm|save|confirm-save)$/.test(path))submitted.push({path,body:req.postData()})})
     const login=async who=>{await page.getByRole('textbox',{name:'员工邮箱',exact:true}).fill(f.credentials[who].email);await page.getByLabel('密码',{exact:true}).fill(f.credentials[who].password);await page.getByRole('button',{name:'登录独立工作台',exact:true}).click();await page.getByRole('button',{name:/^Agent 配置/}).click();await expect(page.getByRole('region',{name:'自然语言设计助手',exact:true})).toBeVisible()}
     await page.goto(f.url,{waitUntil:'domcontentloaded'});await login('alice')
@@ -26,12 +37,12 @@ test('F01 actual PG18 Native browser: paid design, full editing, lost original/s
     await panel.getByRole('combobox',{name:'设计模型',exact:true}).selectOption({label:'Synthetic assessment alice · synthetic'})
     await panel.getByRole('textbox',{name:'助手需求或修改要求',exact:true}).fill('F01 genuine browser: prepare a complete synthetic role with all descriptions; retain manual save consent.')
     await expect(panel.getByRole('combobox',{name:'输出容量',exact:true})).toHaveValue('4096')
-    const [previewReply]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/api/v2/agent-design/preview')&&r.request().method()==='POST'),panel.getByRole('button',{name:'预览发送内容',exact:true}).click()])
+    const readPreview=await observeBody('/preview'),[previewReply]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/api/v2/agent-design/preview')&&r.request().method()==='POST'),panel.getByRole('button',{name:'预览发送内容',exact:true}).click()])
     // Capture a refusal immediately instead of masking its status as a timeout.
     // Only public response metadata is attached; no body, Cookie or credentials.
     await testInfo.attach('f01-preview-response-metadata',{body:JSON.stringify({status:previewReply.status(),content_type:previewReply.headers()['content-type']??'',path:new URL(previewReply.url()).pathname}),contentType:'application/json'})
     expect(previewReply.status(),'F01 preview must return HTTP 200; see preview response metadata').toBe(200)
-    const preview=await previewReply.json();expect(preview.choice.purpose).toBe('generate');expect(preview.choice.source).toBeNull();expect(preview.recorded).toBe(false)
+    const preview=await readPreview();expect(preview.choice.purpose).toBe('generate');expect(preview.choice.source).toBeNull();expect(preview.recorded).toBe(false)
     expect(f.providerRequests).toHaveLength(0);expect((await f.counts()).requests).toBe(before.requests);expect(submitted).toHaveLength(0)
     await panel.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('f01-genuine-preview-desktop.png'),fullPage:true})
     await page.setViewportSize({width:390,height:844});const box=await panel.boundingBox();expect(box).not.toBeNull();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(391);await page.screenshot({path:testInfo.outputPath('f01-genuine-preview-mobile.png'),fullPage:true});await page.setViewportSize({width:1280,height:1000})
@@ -54,7 +65,7 @@ test('F01 actual PG18 Native browser: paid design, full editing, lost original/s
     await panel.getByRole('textbox',{name:'助手需求或修改要求',exact:true}).fill('Unrelated preview invalidation; preserve all six edited result fields.')
     for(const [label,value] of edits)await expect(panel.getByRole('textbox',{name:label,exact:true})).toHaveValue(value)
     expect((await f.counts()).saves).toBe(before.saves)
-    const [savePreview]=await Promise.all([page.waitForResponse(r=>r.url()===f.browserOrigin+'/__pg_native/api/v2/agent-design/preview-save'&&r.request().method()==='POST'&&r.status()===200).then(response=>response.json()),panel.getByRole('button',{name:'预览保存内容',exact:true}).click()])
+    const readSavePreview=await observeBody('/preview-save'),[savePreviewReply]=await Promise.all([page.waitForResponse(r=>r.url()===f.browserOrigin+'/__pg_native/api/v2/agent-design/preview-save'&&r.request().method()==='POST'),panel.getByRole('button',{name:'预览保存内容',exact:true}).click()]);expect(savePreviewReply.status()).toBe(200);const savePreview=await readSavePreview()
     expect(savePreview.candidate.spec.tools).toEqual([]);expect(savePreview.candidate.spec.knowledge_base_ids).toEqual([]);expect(Object.hasOwn(savePreview.candidate.spec,'model_binding')).toBe(false)
     const expectedFields={name:edits[0][1],goal:edits[1][1],task_scope:edits[2][1],deliverables:[edits[3][1]],task_plan:[edits[4][1]],done_criteria:[edits[5][1]]};expect(savePreview.fields).toEqual(expectedFields)
     expect((await f.counts()).saves).toBe(before.saves)
