@@ -1,6 +1,6 @@
 // Literal author-reviewed SQL067 catalog pins. Rebuild only after reviewing SQL changes.
 export const nativeLocalDeviceManifest={
- "sql_sha256": "dfaecc456ffca3de765f7cbcb6f8a5327915bcc4ef0e9e9f2fea1c964e9a2404",
+ "sql_sha256": "908beb0a10c726d665968036e7f5fa01373afff61610b9db1356c52f374ef563",
  "tables": {
   "native_local_devices": {
    "fields": [
@@ -747,7 +747,7 @@ export const nativeLocalDeviceManifest={
    "returns": "jsonb",
    "language": "plpgsql",
    "volatility": "v",
-   "sha": "d08565d7c6801f9b2a5e807b19e3b6051048842b061e098990274831a13f4976",
+   "sha": "7864bb2fb07abb0fe40872f09b040c8e49db4c38e595676483a1e0c111702fd7",
    "grant": "agentstudio_api"
   },
   "native_local_run_binding": {

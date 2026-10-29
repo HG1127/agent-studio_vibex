@@ -15,6 +15,7 @@ const included=new Set([
   "services/pg-api/src/native-auth-repository.d.mts",
   "services/pg-api/src/native-auth-http.d.mts",
   "ops/baota-pg18-native-api-preflight.sh",
+  "docs/PG18_COMPLETE_069_PREPARATION.md",
 ])
 const assessmentAssets=[
   "ops/templates/agent-assessment-worker.service.example",
@@ -137,7 +138,7 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
   try{
     const files={}
     for(const relativePath of [...included].sort()){
-      if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||includeKnowledgeIndex&&[
+      if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||relativePath==="docs/PG18_COMPLETE_069_PREPARATION.md"||includeKnowledgeIndex&&[
         "ops/templates/agentstudio-pg18-knowledge-index.service.example",
         "ops/templates/agentstudio-pg18-knowledge-index-broker.service.example",
       ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)||includeLocalExecutorOperator&&localExecutorOperatorAssets.includes(relativePath)){
@@ -159,6 +160,9 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
     files["README_API_PREFLIGHT.txt"]=Buffer.from([
       "Agent Studio PG18 Native API — OPERATOR READ-ONLY PRE-FLIGHT V1",
       "This package contains source and dependency metadata only.",
+      "This is NOT the complete069 installer/preparer archive. Read docs/PG18_COMPLETE_069_PREPARATION.md before selecting a profile.",
+      "For complete069 use the independent ops/build-pg18-complete069-review-bundle.mjs source-review delivery; old050 activation/six-account/postcheck operations must not be applied to full069.",
+      "Its pinned14-package operator runtime and the business dependency tree below are different scopes; never filter an operator inventory to accept business extras.",
       "It has no passwords, .env, database records, npm lockfile or binaries.",
       ...(includeKnowledgeIndex?["Includes index/query daemon source and read-only service examples. No service is started.",
         "Index offline plan: node --experimental-strip-types services/pg-api/src/knowledge-index-service.ts --plan",

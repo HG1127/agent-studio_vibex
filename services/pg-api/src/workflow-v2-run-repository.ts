@@ -134,6 +134,17 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     run.result_text!==evidence.deliveries.wf2_00002_agent?.output)throw new HttpError(409,"agent_human_delivery_unavailable")
   return evidence
 }
+// Optional historical source denial must not poison the enclosing Owner read.
+// Only an expected HttpError makes evidence unavailable; infrastructure errors
+// still propagate after restoring the transaction to its read savepoint.
+export async function verifyWorkflowV2HistorySource(db:SqlClient,verify:()=>Promise<unknown>):Promise<boolean>{
+ await db.query('SAVEPOINT workflow_v2_history_source')
+ try{await verify();return true}catch(error){
+  await db.query('ROLLBACK TO SAVEPOINT workflow_v2_history_source')
+  if(!(error instanceof HttpError))throw error
+  return false
+ }finally{await db.query('RELEASE SAVEPOINT workflow_v2_history_source')}
+}
 export class WorkflowV2RunRepository{
   readonly pool:SqlPool
   readonly root:ReturnType<typeof durableV2Root>
@@ -169,7 +180,7 @@ export class WorkflowV2RunRepository{
     const human=agentHumanContext(row,state)
     const hasHuman=await agentHumanEvidenceExpected(db,row,state)
     let humanEvidence=false
-    if(hasHuman&&observationsCurrent)try{await verifyWorkflowV2Snapshot(db,owner,row,state);humanEvidence=true}catch(error){if(!(error instanceof HttpError))throw error}
+    if(hasHuman&&observationsCurrent)humanEvidence=await verifyWorkflowV2HistorySource(db,()=>verifyWorkflowV2Snapshot(db,owner,row,state))
     if(hasHuman&&!humanEvidence)observationsCurrent=false
     let humanCurrent=false
     if(human?.pending_input&&observationsCurrent)humanCurrent=humanEvidence

@@ -32,11 +32,17 @@ test('actual reviewed source bytes match all31 literal routine body pins and the
  assert.equal(sha(sql),manifest.sql_sha256);const found=new Map([...sql.matchAll(/CREATE FUNCTION agentstudio\.(native_local_[a-z_]+)\([\s\S]*?AS \$fn\$([\s\S]*?)\$fn\$;/g)].map(m=>[m[1],m[2]]));assert.equal(found.size,31);assert.equal(Object.keys(manifest.routines).length,31)
  for(const [name,body]of found)assert.equal(sha(body),manifest.routines[name].sha,name)
 })
-test('restoring only the old expiry alias yields the exact marker067 bytes; original marker and delimiter regressions remain pinned',()=>{
- const marker067=sql.replace("FROM agentstudio.native_local_devices live_device WHERE live_device.id=j.device_id AND live_device.version=j.device_version AND NOT live_device.revoked","FROM agentstudio.native_local_devices d WHERE d.id=j.device_id AND d.version=j.device_version AND NOT d.revoked")
+test('restoring reviewed enqueue-variable and expiry-alias corrections yields exact prior067 bytes; original regressions stay pinned',()=>{
+ const priorAgentEnqueue067=sql.replace(';new_job_id uuid;cfg jsonb',';id uuid;cfg jsonb').replace(' new_job_id:=agentstudio.native_local_insert_job',' id:=agentstudio.native_local_insert_job').replace('WHERE native_local_jobs.id=new_job_id;','WHERE native_local_jobs.id=id;')
+ const marker067=priorAgentEnqueue067.replace("FROM agentstudio.native_local_devices live_device WHERE live_device.id=j.device_id AND live_device.version=j.device_version AND NOT live_device.revoked","FROM agentstudio.native_local_devices d WHERE d.id=j.device_id AND d.version=j.device_version AND NOT d.revoked")
  assert.equal(sha(marker067),'cf392bcaecf1cc2510fe374906aa69c0f8257d7c1d4630e4bd12ffa5f6bc7397')
  const previous067=marker067.replace("CREATE FUNCTION agentstudio.native_local_executor_installed() RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$\nBEGIN\n PERFORM agentstudio.native_local_session('agentstudio_local_executor');\n RETURN EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_067');\nEND $fn$;\n",'').replace("IF f.proname IN('native_local_pair','native_local_poll','native_local_check','native_local_complete','native_local_executor_installed')","IF f.proname IN('native_local_pair','native_local_poll','native_local_check','native_local_complete')")
  assert.equal(sha(previous067),'003e2e5ffbe7893fe6290b65232c89d0156142ae88c2f6d98078daf6bbcddeb2')
  const restored=previous067.replace("<>(CASE WHEN a='enqueue' THEN 5 ELSE 4 END) THEN","<>CASE WHEN a='enqueue' THEN 5 ELSE 4 END THEN").replace("OR (CASE WHEN x->>'mimeType'='image/png' THEN substring(b FROM 1 FOR 8)<>decode('89504e470d0a1a0a','hex') ELSE substring(b FROM 1 FOR 3)<>decode('ffd8ff','hex') END) THEN","OR CASE WHEN x->>'mimeType'='image/png' THEN substring(b FROM 1 FOR 8)<>decode('89504e470d0a1a0a','hex') ELSE substring(b FROM 1 FOR 3)<>decode('ffd8ff','hex') END THEN")
  assert.equal(previous067.length-restored.length,4);assert.equal(sha(restored),'dd57b6484448b76c7e8c90c1afaebbefa8ee12e49c758958d04c530191231e42')
+})
+
+test('Agent local enqueue has no id variable shadowing the original jobs/runs id columns',()=>{
+ const body=/CREATE FUNCTION agentstudio\.native_local_agent_enqueue\([\s\S]*?AS \$fn\$([\s\S]*?)\$fn\$;/.exec(sql)[1],declaration=body.slice(0,body.indexOf('BEGIN'))
+ assert.equal(/(?:^|;)\s*id\s+uuid\b/.test(declaration),false);assert.match(declaration,/new_job_id uuid/);assert.ok(body.includes("WHERE id=(v->'claim'->>'job_id')::uuid"));assert.ok(body.includes('WHERE native_local_jobs.id=new_job_id;'))
 })

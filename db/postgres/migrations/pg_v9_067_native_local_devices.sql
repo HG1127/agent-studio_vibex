@@ -282,7 +282,7 @@ BEGIN
  RETURN jsonb_build_object('device_id',d.id,'version',d.version,'catalog',d.catalog,'catalog_sha256',agentstudio.native_local_digest(d.catalog));
 END $fn$;
 CREATE FUNCTION agentstudio.native_local_agent_enqueue(v jsonb,p_input jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
-DECLARE o uuid:=agentstudio.native_local_owner();r agentstudio.runs;q agentstudio.jobs;b agentstudio.native_local_run_devices;d agentstudio.native_local_devices;j agentstudio.native_local_jobs;id uuid;cfg jsonb;derived jsonb;round_no int;title text;
+DECLARE o uuid:=agentstudio.native_local_owner();r agentstudio.runs;q agentstudio.jobs;b agentstudio.native_local_run_devices;d agentstudio.native_local_devices;j agentstudio.native_local_jobs;new_job_id uuid;cfg jsonb;derived jsonb;round_no int;title text;
 BEGIN
  IF v->>'execution_mode'<>'agent_native_v2' OR v->>'parent_step_key' IS NULL THEN RAISE EXCEPTION 'native_local_run_denied';END IF;
  SELECT * INTO q FROM agentstudio.jobs WHERE id=(v->'claim'->>'job_id')::uuid AND run_id=(v->'claim'->>'run_id')::uuid AND owner_user_id=o
@@ -306,8 +306,8 @@ BEGIN
  d:=agentstudio.native_local_live(b.device_id,o);IF d.version<>b.device_version OR d.owner_epoch<>b.owner_epoch OR agentstudio.native_local_digest(d.catalog)<>b.catalog_sha256 THEN RAISE EXCEPTION 'native_local_catalog_changed';END IF;
  SELECT * INTO j FROM agentstudio.native_local_jobs WHERE run_id=r.id AND step_key=v->>'step_key';
  IF FOUND THEN IF j.input IS DISTINCT FROM p_input OR j.input_sha256<>v->>'input_sha256' OR j.bound_request IS DISTINCT FROM v THEN RAISE EXCEPTION 'native_local_request_conflict';END IF;RETURN agentstudio.native_local_job_view(j);END IF;
- id:=agentstudio.native_local_insert_job(o,d,p_input,r.id,v->>'step_key',v->>'input_sha256',v);
- SELECT * INTO j FROM agentstudio.native_local_jobs WHERE native_local_jobs.id=id;
+ new_job_id:=agentstudio.native_local_insert_job(o,d,p_input,r.id,v->>'step_key',v->>'input_sha256',v);
+ SELECT * INTO j FROM agentstudio.native_local_jobs WHERE native_local_jobs.id=new_job_id;
  -- Extend only this current, already approved claim to the device deadline.
  -- No new claim or automatic replay can acquire a started effect after crash.
  UPDATE agentstudio.jobs SET lease_until=greatest(lease_until,j.deadline_at+interval '5 seconds') WHERE jobs.id=q.id;

@@ -831,3 +831,13 @@ services/pg-api/tests/pg18-complete-service-ci.integration.mjs text eol=lf
 services/pg-api/tests/pg18-complete-service-driver.test.mjs text eol=lf
 services/pg-api/tests/pg18-complete-service-plan.test.mjs text eol=lf
 services/pg-api/tests/workflow-v2-local-device-startup-role.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_PREPARATION.md text eol=lf
+docs/PG18_FRESH_RUNTIME_INITIALIZATION.md text eol=lf
+docs/PG18_RUNTIME_PREPARATION_POSTCHECK.md text eol=lf
+docs/PG18_SERVICE_LOGIN_PREPARATION.md text eol=lf
+ops/build-pg18-complete069-review-bundle.mjs text eol=lf
+ops/build-pg18-runtime-init-review-bundle.mjs text eol=lf
+services/pg-api/tests/pg18-complete-role-closure.test.mjs text eol=lf
+tests/pg18-complete069-review-bundle.test.mjs text eol=lf

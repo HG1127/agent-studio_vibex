@@ -15,7 +15,7 @@
 ## 操作顺序与需要留下的证据
 
 1. 由获授权的运维人员确认隔离 PG18 目标及备份/恢复点，核对 complete069 的 SourceBundle、53 SQL、19步骤和最新 C SQL067/manifest；保留真实 API 与 Executor catalog 审计结果。本文没有目标内网地址、员工资料或秘密。
-2. 先完成原 native-auth、首位管理员和原六种 service-login 流程及回执核验。新增步骤单独记录在 root-only 外部操作日志中。旧 frozen preparation postcheck 的范围不是 Executor 证明，不能改写其期望或把过滤过的 catalog 作为旧流程通过依据。
+2. 先区分实际 profile：默认050沿用原 native-auth、首位管理员和六种 service-login 协议；complete069 使用[独立准备入口](PG18_COMPLETE_069_PREPARATION.md)，依次完成 api、native-auth、first-admin 和后继五项真实 LOGIN/catalog 核验，记录新外部 root-only intent/result。不得把旧050激活器、六账号或 postcheck 用于 full069 后过滤 ledger/catalog、补造旧回执或忽略拒绝。完成所选 profile 的全部准备后，再进入本独立 Executor 步骤；不改旧协议。
 3. 在原生 superuser 会话中保留只读目标身份（实际数据库/集群标识、主节点、PG18、源 SHA）及原始 `pg_hba_file_rules`、角色/成员/ACL 元数据。不要导出密码 verifier。先用本包独立 `inspectExecutorHba` 审阅原始有序规则，不能调用拒绝该 LOGIN 的旧六登录 verifier后忽略失败。HBA 示例仅允许固定 IPv4 loopback、固定数据库、SCRAM，拒绝该 LOGIN 的所有 socket、其他数据库与远端 IPv4/IPv6；必须在更宽规则之前。
 4. 用独立的80位小写十六进制随机密码准备 root vault 第五文件（vault 0700、文件0600、非 symlink、仓库外）。不得把秘密放入 argv、环境变量、SQL文件、版本库、工单或日志。管理员须在内存中确认它不同于已有 Native四份秘密和所有现有 service LOGIN 密码；可用原 `matchesServiceScram` 比较已有 verifier，绝不输出内容。
 5. 先核验本包直接复用的原 `executorOperatorTargetGuardSql`（只允许固定隔离服务目标的真实 postgres/PG18主节点及指定 vector），再在同一显式事务中执行审阅后的固定 `disabledExecutorReservationSql`；新 LOGIN 初始为 NOLOGIN、PASSWORD NULL。不使用 IF NOT EXISTS，不接管已有同名角色。只给本库 CONNECT 和上述单一、不可继承组关系，不给任何表/列、auth schema、pg_read_all_*、SET ROLE 到其他组、ADMIN OPTION 或默认角色配置。`executorConnectGrant` 仅接受正式固定数据库或专用 CI 数据库别名，后者仅用于独立 GitHub 合成服务。合成 CI 证明该原目标 guard拒绝其5432测试端点；它在独立 purpose guard后测试固定角色SQL，不伪装正式目标，也不声称原生产 operator 已通过。
@@ -23,6 +23,18 @@
 7. COMMIT 回包不明时保留 unknown，不自动重试 CREATE/ALTER、不换秘密或 action ID。只读确认固定角色的属性、唯一成员、实际密码对应关系和独立 TCP 登录后，再由人工确定后续动作。角色属性看起来正常不能代替实际最小 LOGIN 的原 C 审计。
 8. 将审阅后的可选 drop-in 纳入原 Native unit：仅新增第五 LoadCredential 和绝对环境路径、只读 ExecStartPre。保留现有 DynamicUser、NoNewPrivileges、ProtectSystem、ProtectHome、loopback 网络边界以及原四份凭据。root-only vault 文件不直接赋予运行时访问，使用 systemd 正规交付；root:root0440+有效 ACL 仅沿用原 `acceptsNativePg18Credential` 例外，不放宽为任意组可读。不要改 unit 名。
 9. 设备变量默认缺省。仅在相应授权后使用 C 现有 `AVAILABLE`、`WRITES_ENABLED`、`APPROVED` 三项与原配置写入/HTTPS审批；现有批准文本明确是 disposable UAT，不能解释为生产 GO。新增预检通过后仍需原 Native 全启动审计、真实员工 owner 隔离、配对/撤销、unknown 恢复及长跑验证。本文不包含 start/enable/reload 或 Worker 启动命令。
+
+## full069 之后的运行态边界
+
+独立 Executor LOGIN 加入后，fresh bootstrap catalog 会将这个额外账号拒绝；真实 Native
+登录后也可能保留合法 session 行。不能删行或过滤角色来重用 fresh-only 检查。后续就绪
+应由各实际 LOGIN 的原最小权限/catalog 检查、同 unit 凭据和真实 Native/Worker 状态共同证明。
+准备回执和离线计划不证明服务持续运行。
+
+telemetry 仍是独立数据库、固定8种 kind、16个 slot、18个角色的协议。新增业务 Executor
+LOGIN 不增加 telemetry kind/slot，不授予 telemetry CONNECT/schema/函数/表权限，亦不
+改变旧六账号记录。后续启用须单独审查同集群两库及真实身份拒绝边界，不能把 bootstrap
+或本源码补充包作为 telemetry 启用、长跑或生产签收。
 
 ## 两种凭据不能混用
 

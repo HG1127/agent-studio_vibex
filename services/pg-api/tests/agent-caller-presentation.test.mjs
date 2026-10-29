@@ -1,6 +1,9 @@
-// Pure presentation only. Synthetic rows supply no database or caller authority.
+// Pure presentation/session/transaction-boundary mechanics. Synthetic rows
+// and query-order doubles supply no database or caller authority.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {verifyWorkflowV2HistorySource} from '../src/workflow-v2-run-repository.ts'
+import {HttpError} from '../src/contracts.ts'
 import {agentCallerRecentHistory,agentCallerElapsed,agentCallerApiExamples} from '../../../src/lib/pgNativeAgentCallerPresentation.ts'
 import {createPgNativeAgentCallerSession} from '../../../src/lib/pgNativeAgentCallerSession.ts'
 import {PgNativeAgentCallerError} from '../../../src/lib/pgNativeAgentCallers.ts'
@@ -29,4 +32,17 @@ test('background history refresh never reloads fee forms or writes and stops dur
 })
 test('a real pending history response is aborted and fenced when its employee panel leaves',async()=>{
  let hold=false,release,signal;const api={workspace:async()=>emptyWorkspace(),history:async s=>{if(!hold)return emptyHistory();signal=s;return new Promise(r=>{release=r})}},session=createPgNativeAgentCallerSession(api,()=>{},()=>{});session.activate(true,true,false,false);await flush();hold=true;const pending=session.refreshHistory();session.activate(false,true,false,false);assert.equal(signal.aborted,true);release({...emptyHistory(),stats:{...emptyHistory().stats,total:999}});await pending;assert.equal(session.snapshot().active,false);assert.equal(session.snapshot().history.stats.total,0);session.dispose()
+})
+
+// This query-order double only models PostgreSQL's aborted-transaction rule;
+// it executes no SQL and supplies no positive snapshot/auditor authority.
+function historyTransaction(){let aborted=false;const calls=[];return{calls,fail(){aborted=true},db:{async query(sql){calls.push(sql);if(sql==='ROLLBACK TO SAVEPOINT workflow_v2_history_source'){aborted=false;return{rows:[]}}if(aborted)throw Error('synthetic_transaction_aborted');return{rows:[]}}}}}
+test('revoked historical source stays unavailable while rollback makes the later Owner metadata read possible',async()=>{
+ const f=historyTransaction();assert.equal(await verifyWorkflowV2HistorySource(f.db,async()=>{f.fail();throw new HttpError(409,'agent_caller_source_unavailable')}),false);await f.db.query('later_owner_metadata');assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_source','ROLLBACK TO SAVEPOINT workflow_v2_history_source','RELEASE SAVEPOINT workflow_v2_history_source','later_owner_metadata'])
+})
+test('historical source infrastructure failures keep their original identity after savepoint recovery',async()=>{
+ const f=historyTransaction(),failure=Error('synthetic_infrastructure_failure');await assert.rejects(()=>verifyWorkflowV2HistorySource(f.db,async()=>{f.fail();throw failure}),e=>e===failure);assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_source','ROLLBACK TO SAVEPOINT workflow_v2_history_source','RELEASE SAVEPOINT workflow_v2_history_source'])
+})
+test('a completed historical source check releases its savepoint without rolling back the enclosing read',async()=>{
+ const f=historyTransaction();let checks=0;assert.equal(await verifyWorkflowV2HistorySource(f.db,async()=>{checks++}),true);assert.equal(checks,1);assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_source','RELEASE SAVEPOINT workflow_v2_history_source'])
 })
