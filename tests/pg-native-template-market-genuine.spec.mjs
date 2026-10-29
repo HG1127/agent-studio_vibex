@@ -39,7 +39,7 @@ test('F07 actual template publish/copy/resource setup/lifecycle/recovery and emp
         return actual
       }}
     }
-    const checkedReply=async pending=>bounded('response_body',(async()=>{const reply=await pending.read();expect(reply.status,'actual F07 response must be200').toBe(200);return reply.value})())
+    const checkedReply=async pending=>bounded('response_body',(async()=>{const reply=await pending.read();if(reply.status!==200)console.info(JSON.stringify({event:'F07_actual_response_refused',phase,status:reply.status,error:typeof reply.value?.error==='string'&&/^[a-z][a-z0-9_]{0,80}$/.test(reply.value.error)?reply.value.error:null}));expect(reply.status,'actual F07 response must be200').toBe(200);return reply.value})())
     mark('publisher_login')
     await page.goto(f.url,{waitUntil:'domcontentloaded'});await login('alice')
     mark('publisher_source_inventory')
@@ -70,7 +70,7 @@ test('F07 actual template publish/copy/resource setup/lifecycle/recovery and emp
     mark('publisher_confirm_publish')
     await reviewed.check();const publishedReply=await waitReply('/publish');await publish.click();const published=await checkedReply(publishedReply),templateId=published.item.id
     await expect(panel().getByText('模板已发布。',{exact:true})).toBeVisible();await logout();await login('bob')
-    const locate=async()=>{await panel().getByRole('searchbox',{name:'搜索模板',exact:true}).fill('F07 Browser Shared Template');await panel().getByRole('combobox',{name:'分类',exact:true}).selectOption('research');await panel().getByRole('button',{name:'搜索',exact:true}).click();await panel().getByRole('button',{name:'查看「F07 Browser Shared Template」',exact:true}).click();await expect(panel().getByRole('region',{name:'模板详情',exact:true})).toBeVisible()}
+    const locate=async()=>{await panel().getByRole('searchbox',{name:'搜索模板',exact:true}).fill('F07 Browser Shared Template');await panel().getByRole('combobox',{name:'分类',exact:true}).selectOption('research');await panel().getByRole('button',{name:'搜索',exact:true}).click();const detailReply=await waitReply('/'+templateId,'GET');await panel().getByRole('button',{name:'查看「F07 Browser Shared Template」',exact:true}).click();const actualDetail=await checkedReply(detailReply);expect(actualDetail.item.id,'actual complete detail body must match the published template').toBe(templateId);await expect(panel().getByRole('region',{name:'模板详情',exact:true})).toBeVisible()}
     const prepareCopy=async name=>{await locate();const detail=panel().getByRole('region',{name:'模板详情',exact:true});await detail.getByRole('textbox',{name:'副本名称',exact:true}).fill(name);const reply=await waitReply('/preview-use');await detail.getByRole('button',{name:'预览我的副本',exact:true}).click();await checkedReply(reply);return detail}
     mark('copy_owner_prepare')
     let detail=await prepareCopy('F07 Bob Resource Copy'),counts=await f.counts()

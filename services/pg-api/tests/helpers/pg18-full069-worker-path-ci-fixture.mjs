@@ -46,8 +46,12 @@ function copyDeployment(s,live,control){
  const seal=dir=>{for(const name of fs.readdirSync(dir)){const f=path.join(dir,name),st=fs.lstatSync(f);if(st.isDirectory())seal(f);else if(!st.isFile()||st.isSymbolicLink()||(st.mode&0o7777)!==0o444)fail('deployment_seal')}fs.chmodSync(dir,0o555)};seal(target);s.deployment=target
 }
 function copyOwnedNode(s){
- const before=fs.lstatSync(process.execPath);if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||(before.mode&0o022)!==0||before.size<1)fail('node_input')
- const bytes=fs.readFileSync(process.execPath),after=fs.lstatSync(process.execPath);if(['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid'].some(k=>before[k]!==after[k])||bytes.length!==before.size)fail('node_input_changed')
+ const before=fs.lstatSync(process.execPath);console.log(JSON.stringify({event:'full069_worker_path_ci_Node_input',regular_file:before.isFile(),symlink:before.isSymbolicLink(),uid:before.uid,gid:before.gid,mode:(before.mode&0o7777).toString(8),links:before.nlink,bytes:before.size,qualifies_run:false,production_cutover_allowed:false}))
+ // setup-node's cache is an input to an exclusive snapshot, not the runtime
+ // authority. Its link count/write mode need not equal the owned output's.
+ if(!before.isFile()||before.isSymbolicLink()||before.size<4||before.size>268435456||(before.mode&0o111)===0||fs.realpathSync(process.execPath)!==process.execPath)fail('node_input')
+ const fd=fs.openSync(process.execPath,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);let bytes
+ try{const opened=fs.fstatSync(fd);bytes=fs.readFileSync(fd);const after=fs.fstatSync(fd),named=fs.lstatSync(process.execPath);if(['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid','nlink'].some(k=>before[k]!==opened[k]||opened[k]!==after[k]||after[k]!==named[k])||bytes.length!==before.size||!bytes.subarray(0,4).equals(Buffer.from([0x7f,0x45,0x4c,0x46])))fail('node_input_changed')}finally{fs.closeSync(fd)}
  s.nodeDirectory=directory(s,'/var/lib/agentstudio-full069-path-node-'+s.loaded.stageNonce,0o755);s.nodePath=file(s.nodeDirectory+'/node',bytes,0,0o555);fs.chmodSync(s.nodeDirectory,0o555)
  console.log(JSON.stringify({event:'full069_worker_path_ci_actual_Node_runtime',input_uid:before.uid,owned_uid:fs.lstatSync(s.nodePath).uid,mode:'555',exact_bytes_verified:sha(fs.readFileSync(s.nodePath))===sha(bytes),qualifies_run:false,production_cutover_allowed:false}))
 }
