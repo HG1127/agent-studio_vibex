@@ -16,11 +16,17 @@ concurrency:
 
 jobs:
   pg18-approval-delegation-genuine:
-    name: F27 / real PG18 ${{ matrix.suite }}
+    name: F27 / real PG18 ${{ matrix.suite }} / ${{ matrix.purpose }}
     strategy:
       fail-fast: false
       matrix:
-        suite: [flow, database]
+        include:
+          - suite: flow
+            purpose: delegation
+          - suite: database
+            purpose: delegation
+          - suite: database
+            purpose: optimization_retest
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -69,11 +75,11 @@ jobs:
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/approval-delegation-genuine-pg18.test.mjs
       - name: Actual installed066 catalog deferred context rollback and decision concurrency
-        if: matrix.suite == 'database'
+        if: matrix.suite == 'database' && matrix.purpose == 'delegation'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/approval-delegation-database-pg18.test.mjs
       - name: F29 actual accepted optimization to original owned retest and receipt recovery
-        if: matrix.suite == 'database'
+        if: matrix.suite == 'database' && matrix.purpose == 'optimization_retest'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-optimization-retest-pg18.test.mjs
 

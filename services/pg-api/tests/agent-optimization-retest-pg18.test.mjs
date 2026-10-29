@@ -1,5 +1,6 @@
-// Additional F29 acceptance in the existing owned, explicitly admitted F27
-// PG18 database job. No ordinary/local database, new service or provider call.
+// Additional F29 acceptance in a fresh matrix instance of the explicitly
+// admitted F27 database job. Its own PG18 service avoids reusing another
+// suite's data. No ordinary/local database or provider call.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
