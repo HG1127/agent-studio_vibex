@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import * as actualControlData from '../src/agent-run-control.ts'
+import * as actualResumeAdmission from '../src/agent-run-control-admission.ts'
+import {ownOperationsGuardSql as actualResumeGuardSql} from '../src/own-operations-repository.ts'
 import * as actualControlFront from '../../../src/lib/pgNativeAgentRunControl.ts'
 import {AutonomousAgentRunRepository as ActualAutonomousRepository} from '../src/autonomous-agent-run-repository.ts'
 import {WorkflowV2Worker as ActualWorkflowWorker} from '../src/workflow-v2-worker.ts'
@@ -27,7 +29,9 @@ function repoModel(options={}){
   if(sql.startsWith('SELECT metadata FROM'))return {rows:receipts.filter(v=>v.operation_id===args[1]).map(metadata=>({metadata}))}
   if(sql.startsWith('SELECT status FROM agentstudio.external_effects'))return {rows:effects.map(status=>({status}))}
   if(sql.startsWith('UPDATE agentstudio.jobs')){job={...job,status:'queued',lease_token:null,lease_version:job.lease_version+1};return {rows:[{id:job.id}]}}
-  if(sql.startsWith('SELECT status FROM agentstudio.users'))return {rows:[{status:options.disabled?'disabled':'active'}]}
+  if(sql===actualResumeGuardSql)return {rows:[{ok:!options.badResumeGuard}]}
+  if(sql==='SELECT agentstudio.agent_memory_outcome_epoch() AS epoch')return {rows:[{epoch:options.disabled?null:'1'}]}
+  if(sql.startsWith('SELECT status FROM agentstudio.users'))throw Object.assign(Error('original users row-lock privilege refusal'),{code:'42501'})
   if(sql.startsWith('SELECT status,reason_code')||sql.startsWith('SELECT a.status,a.reason_code'))return {rows:options.approval?[options.approval]:[]}
   if(sql.startsWith('UPDATE agentstudio.runs')){row={...row,status:args[2],checkpoint:JSON.parse(args[3]),last_error_code:args[4]};return {rows:[structuredClone(row)]}}
   throw Error('unexpected model SQL '+sql)
@@ -35,7 +39,7 @@ function repoModel(options={}){
  let tail=Promise.resolve()
  const withActor=async(_pool,identity,body)=>{const wait=tail;let release;tail=new Promise(done=>{release=done});await wait;const before={row:structuredClone(row),job:structuredClone(job),receipts:structuredClone(receipts)};try{return await body(db,identity.subject)}catch(error){row=before.row;job=before.job;receipts.splice(0,receipts.length,...before.receipts);throw error}finally{release()}}
  class Parent{constructor(pool,_mode,opts={}){this.pool=pool;this.allowHumanInput=opts.allowHumanInput===true}async checkMcpAdmission(){trace.push('CHECK_MCP');if(options.mcpFail)throw new contracts.HttpError(409,'mcp_execution_not_enabled')}async assemble(_db,_owner,value,replayed){return {run:structuredClone(value),replayed,run_control:{state_sha256:data.agentRunControlStateHash(value)}}}}
- const modules={'./contracts.ts':contracts,'./repository.ts':{withActor,assertOwnedAdmissionContext:async()=>trace.push('OWNED_CONTEXT')},'./workflow-v2-run-repository.ts':{WorkflowV2RunRepository:Parent,workflowV2RunColumns:'id,owner_user_id,checkpoint',checkedWorkflowV2StoredState:value=>structuredClone(value),workflowV2ExecutionRequest:()=>options.pending??null,verifyWorkflowV2Snapshot:async()=>{trace.push('VERIFY_FULL_SOURCE_RESOURCES');if(options.sourceFail)throw new contracts.HttpError(409,'agent_revision_changed')},auditWorkflowV2:async(_db,_owner,_id,_action,value)=>{trace.push('AUDIT');receipts.push(structuredClone(value))}},'./workflow-v2-machine.ts':{inspectWorkflowV2Checkpoint:()=>({pending:null})},'./autonomous-agent-graph.ts':{},'node:crypto':crypto,'./agent-run-control.ts':data,'./knowledge-observation-policy.ts':{currentKnowledgeObservations:async()=>{trace.push('VERIFY_KNOWLEDGE');return !options.knowledgeFail}},'./agent-human-input-policy.ts':{agentHumanContext:()=>options.humanPending?{pending_input:{question:'original pending question'}}:null},'./agent-memory-context-policy.ts':{},'./agent-memory-context.ts':{},'./agent-memory-outcome-contract.ts':{},'./agent-memory-outcome-repository.ts':{AgentMemoryOutcomeRepository:class{async hasOwned(){return false}}}}
+ const modules={'./contracts.ts':contracts,'./repository.ts':{withActor,assertOwnedAdmissionContext:async()=>trace.push('OWNED_CONTEXT')},'./workflow-v2-run-repository.ts':{WorkflowV2RunRepository:Parent,workflowV2RunColumns:'id,owner_user_id,checkpoint',checkedWorkflowV2StoredState:value=>structuredClone(value),workflowV2ExecutionRequest:()=>options.pending??null,verifyWorkflowV2Snapshot:async()=>{trace.push('VERIFY_FULL_SOURCE_RESOURCES');if(options.sourceFail)throw new contracts.HttpError(409,'agent_revision_changed')},auditWorkflowV2:async(_db,_owner,_id,_action,value)=>{trace.push('AUDIT');receipts.push(structuredClone(value))}},'./workflow-v2-machine.ts':{inspectWorkflowV2Checkpoint:()=>({pending:null})},'./autonomous-agent-graph.ts':{},'node:crypto':crypto,'./agent-run-control.ts':data,'./knowledge-observation-policy.ts':{currentKnowledgeObservations:async()=>{trace.push('VERIFY_KNOWLEDGE');return !options.knowledgeFail}},'./agent-run-control-admission.ts':actualResumeAdmission,'./agent-human-input-policy.ts':{agentHumanContext:()=>options.humanPending?{pending_input:{question:'original pending question'}}:null},'./agent-memory-context-policy.ts':{},'./agent-memory-context.ts':{},'./agent-memory-outcome-contract.ts':{},'./agent-memory-outcome-repository.ts':{AgentMemoryOutcomeRepository:class{async hasOwned(){return false}}}}
  const globals=Object.fromEntries(Object.entries(Object.assign({},...Object.values(modules))).filter(([name])=>name!=='default')),names=Object.keys(globals),method=ActualAutonomousRepository.prototype.runControl.toString().replace(/^async runControl\(/,'async function runControl('),probe=Function(...names,method+'\nreturn runControl')(...Object.values(globals)),repo=new ActualAutonomousRepository({},{}),body=()=>({operation_id:op,expected_state_sha256:data.agentRunControlStateHash(row)})
  repo.runControl=probe;repo.assemble=Parent.prototype.assemble;repo.checkMcpAdmission=Parent.prototype.checkMcpAdmission
  return {repo,body,trace,receipts,row:()=>row,job:()=>job,identity:{issuer:'synthetic-state-model',subject:owner},foreign:{issuer:'synthetic-state-model',subject:other}}
@@ -134,4 +138,26 @@ test('actual receipt parser requires primitive string outcome and never accepts 
  for(const outcome_status of [['paused'],hostile,1,0,null,undefined,false,new String('paused')])assert.throws(()=>data.checkedAgentRunControlReceipt({...receipt,outcome_status},runId,'pause',request),error=>error.status===409&&error.code==='agent_run_control_operation_conflict')
  assert.equal(coercions,0)
  for(const outcome_status of ['paused','queued','awaiting_approval','awaiting_input'])assert.equal(data.checkedAgentRunControlReceipt({...receipt,outcome_status},runId,'pause',request).outcome_status,outcome_status)
+})
+
+test('resume preserves the original minimal API role: audited052 employee epoch guard replaces forbidden users row lock',async()=>{
+ const model=repoModel({paused:true}),reply=await model.repo.changeRunControl(model.identity,runId,'resume',model.body());assert.equal(reply.run.status,'queued')
+ assert.equal(model.trace.filter(sql=>sql===actualResumeGuardSql).length,1);assert.equal(model.trace.filter(sql=>sql==='SELECT agentstudio.agent_memory_outcome_epoch() AS epoch').length,1)
+ assert.equal(model.trace.some(sql=>sql.startsWith('SELECT status FROM agentstudio.users')),false)
+ const bad=repoModel({paused:true,badResumeGuard:true});await assert.rejects(bad.repo.changeRunControl(bad.identity,runId,'resume',bad.body()),error=>error.code==='agent_run_resume_guard_unavailable');assert.equal(bad.row().status,'paused');assert.equal(bad.receipts.length,0)
+})
+test('actual052 resume admission rejects missing/tampered guard, disabled employee and coercible/unsafe epoch without granting table rights',async()=>{
+ for(const guard of [[],[{ok:false}],[{ok:true},{ok:true}]])await assert.rejects(actualResumeAdmission.requireAgentRunResumeEmployee({query:async sql=>({rows:sql===actualResumeGuardSql?guard:[{epoch:'1'}]})}),error=>error.code==='agent_run_resume_guard_unavailable')
+ for(const epoch of [undefined,['1'],{},false,'0','1.5',0,NaN,Infinity,Number.MAX_SAFE_INTEGER])await assert.rejects(actualResumeAdmission.requireAgentRunResumeEmployee({query:async sql=>({rows:sql===actualResumeGuardSql?[{ok:true}]:[{epoch}]})}),error=>error.code==='agent_run_resume_guard_unavailable')
+ await assert.rejects(actualResumeAdmission.requireAgentRunResumeEmployee({query:async sql=>({rows:sql===actualResumeGuardSql?[{ok:true}]:[{epoch:null}]})}),error=>error.code==='employee_disabled')
+ for(const epoch of ['1',1])await assert.doesNotReject(actualResumeAdmission.requireAgentRunResumeEmployee({query:async sql=>({rows:sql===actualResumeGuardSql?[{ok:true}]:[{epoch}]})}))
+})
+test('actual resume failure observation is closed phase/SQLSTATE data only; getters and sink errors cannot replace failure or reveal private material',()=>{
+ const file=source('services/pg-api/src/agent-run-control-admission.ts'),tree=ts.createSourceFile('admission.ts',file,ts.ScriptTarget.Latest,true),node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='observeResumeGuardFailure'),events=[]
+ assert.ok(node);const observe=load(node.getText(tree)+'\nexport {observeResumeGuardFailure}',{}, {process:{stderr:{write:text=>events.push(JSON.parse(text))}}}).observeResumeGuardFailure
+ observe('employee_epoch',{code:'42501',cookie:'private cookie',query:'private SQL',stack:'private stack'});assert.deepEqual(events[0],{event:'agent_run_resume_guard_failure_observation',phase:'employee_epoch',sqlstate:'42501',observed_data_only:true})
+ observe('guard_catalog',{code:'arbitrary private text'});assert.equal(events[1].sqlstate,null)
+ const getter={};Object.defineProperty(getter,'code',{get(){throw Error('must not invoke')}});assert.doesNotThrow(()=>observe('employee_epoch',getter));assert.equal(events[2].sqlstate,null)
+ const n=events.length;observe('private phase / Cookie',{});assert.equal(events.length,n)
+ const broken=load(node.getText(tree)+'\nexport {observeResumeGuardFailure}',{}, {process:{stderr:{write(){throw Error('sink')}}}}).observeResumeGuardFailure;assert.doesNotThrow(()=>broken('employee_epoch',{code:'42501'}))
 })

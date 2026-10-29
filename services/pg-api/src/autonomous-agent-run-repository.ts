@@ -12,6 +12,7 @@ import {checkedWorkflowV2StoredState,workflowV2ExecutionRequest} from "./workflo
 import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
 import {agentHumanContext} from "./agent-human-input-policy.ts"
+import {requireAgentRunResumeEmployee} from "./agent-run-control-admission.ts"
 import {prepareOwnedAgentMemoryContext,insertAgentMemoryContextReceipt} from "./agent-memory-context-policy.ts"
 import {agentMemoryContextHash} from "./agent-memory-context.ts"
 import {outcomeMemoryOption} from "./agent-memory-outcome-contract.ts"
@@ -115,8 +116,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
         if(row.status!=='paused'||!state.manual_pause)throw new HttpError(409,'agent_run_not_manually_paused')
         if(inFlight||unknown)throw new HttpError(409,'agent_run_effect_unresolved')
         if(job.status!=='queued'||job.lease_token!==null||Number(job.attempts)>=Number(job.max_attempts))throw new HttpError(409,'agent_run_queue_unavailable')
-        const active=(await db.query<{status:string}>('SELECT status FROM agentstudio.users WHERE id=$1::uuid FOR SHARE',[owner])).rows[0]
-        if(active?.status!=='active')throw new HttpError(403,'employee_disabled')
+        await requireAgentRunResumeEmployee(db)
         if(state.memory_context&&!this.allowMemory||state.human_agent_keys?.length&&!this.allowHumanInput||await new AgentMemoryOutcomeRepository(this.pool).hasOwned(db,owner,id)&&(!this.allowOutcomeMemory||!this.allowHumanInput))throw new HttpError(409,'agent_run_resume_features_disabled')
         await this.checkMcpAdmission(db,owner,state.graph)
         await verifyWorkflowV2Snapshot(db,owner,row,state)

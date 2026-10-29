@@ -79,7 +79,7 @@ export const approvalDelegationGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/approval-delegation-preview.ts": "763bb4f7436075f10759125ed61bb8ab7c5224e49bf32e993d8a11b75d8d483b",
   "services/pg-api/src/approval-delegation-repository.ts": "b7f8cf52060ebbdd9a81b3fd8397f10333ab2993e8523f42c40d43bbb59a1e9c",
   "services/pg-api/src/approval-delegation-runtime-policy.ts": "6ac4449a950f0e17b0fa79fc5a9f2ed0f4560efc14e63f37713d8c2fee9be8ee",
-  "services/pg-api/src/autonomous-agent-run-repository.ts": "ed429165f1fba857b986a2248c46f289aca220a01e4fe4a77ad27c278ef9968d",
+  "services/pg-api/src/autonomous-agent-run-repository.ts": "512a1f75ba19fc0f16ce9ba7bc0d2c3b5f1120f8832068e4b6e8e575f92de0f9",
   "services/pg-api/src/contracts.ts": "7aa7b9d3332e8200f2d3dd78f88c62acf4b7363b83fdfd41dfa5b04b7c887935",
   "services/pg-api/src/native-auth-http.d.mts": "c28022dc065f11aa934ef16058cf11b0051325aa81dc53ed5993a1b411f41963",
   "services/pg-api/src/native-auth-http.mjs": "9e685f0ca21bd6ada835aa69af44508b207bbc8001b765685a624722bf72fa6f",
@@ -124,7 +124,10 @@ export const approvalDelegationGenuineFrozenSources=Object.freeze({
   "src/pages/PgNativePilot/PgNativeAutonomousAgentDetail.tsx": "6e1efa93718a62501a3fb3d5f30955a6fc3b825a31460537eafba9e925ab3445",
   "src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx": "e3f8ebac7e181e783ae7e93be6f649c940f7a06abde745d697d580db9d2b90c9",
   "src/pages/PgNativePilot/PgNativePilotPage.tsx": "88abe0b779b09e5b769d591724ed428b096aecfc3ec8d196339255caa1bd1958",
-  "src/pages/PgNativePilot/PgNativeStudioNavigation.tsx": "51f73a5138a41092a3d41277cf414ad2a36d62e9f034ace8aab4f28cbc8ed8ec"
+  "src/pages/PgNativePilot/PgNativeStudioNavigation.tsx": "51f73a5138a41092a3d41277cf414ad2a36d62e9f034ace8aab4f28cbc8ed8ec",
+  "services/pg-api/src/agent-run-control-admission.ts": "e907b0bfb6b445c8077f6ee17b3e3c9d73a1b373d56d8a9b9ae205bc20950a94",
+  "services/pg-api/src/own-operations-contract.ts": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab",
+  "services/pg-api/src/own-operations-repository.ts": "e685eb185d1d92596d93decd213aacaa7bcdaf12504dce4c5bb3ccaaa5afb075"
 })
 
 export async function approvalDelegationGenuineFixture(env=process.env,{browserMode=false}={}){
@@ -220,7 +223,7 @@ export async function approvalDelegationGenuineFixture(env=process.env,{browserM
     const workerLogin='synthetic_f27_original_worker',workerPassword=passwordFor(workerLogin),activation=await import('../../src/native-activation-cli.mjs')
     await base.db.query("CREATE ROLE "+workerLogin+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+activation.makeNativeScramVerifier(workerPassword)+"'")
     workerRoleCreated=true;await base.db.query('GRANT agentstudio_worker,agentstudio_api TO '+workerLogin+' WITH INHERIT FALSE, SET TRUE')
-    const originalWorkerPool=connect(workerLogin,workerPassword),single=new (await import('../../src/run-repository.ts')).RunRepository(base.pool),prepare=new (await import('../../src/agent-worker.ts')).AgentPrepareWorker(originalWorkerPool,'F27_original_prepare'),worker=new (await import('../../src/workflow-v2-worker.ts')).WorkflowV2Worker(originalWorkerPool,'F27_original_agent',{executionMode:'agent_native_v2',agentExecutionApproved:true,humanInputApproved:true})
+    const originalWorkerPool=connect(workerLogin,workerPassword),single=new (await import('../../src/run-repository.ts')).RunRepository(base.pool,{allowBoundModelRuns:true}),prepare=new (await import('../../src/agent-worker.ts')).AgentPrepareWorker(originalWorkerPool,'F27_original_prepare'),worker=new (await import('../../src/workflow-v2-worker.ts')).WorkflowV2Worker(originalWorkerPool,'F27_original_agent',{executionMode:'agent_native_v2',agentExecutionApproved:true,humanInputApproved:true})
     const pendingRun=async(who='bob',model=false)=>{
       // Close prior fixture-owned queued parent operations through the original
       // authenticated Owner cancel method before admitting the next case. Do

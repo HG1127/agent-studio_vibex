@@ -603,3 +603,6 @@ tests/pg-native-agent-create-journey-render.test.mjs text eol=lf
 tests/pg-native-agent-create-journey.test.mjs text eol=lf
 tests/pg-native-agent-create-plan-sdk.test.mjs text eol=lf
 tests/pg-native-browser/agent-run-control-pg18.spec.mjs text eol=lf
+
+# Reviewed original052 employee guard reuse.
+services/pg-api/src/agent-run-control-admission.ts text eol=lf
