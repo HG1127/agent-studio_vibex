@@ -18,7 +18,13 @@ on:
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/agent-studio-quality.yml'
+      # F07-only integration edits run their dedicated genuine workflow.
+      - '!services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - '!tests/pg-native-template-market-genuine.spec.mjs'
   pull_request:
+    paths-ignore:
+      - 'services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - 'tests/pg-native-template-market-genuine.spec.mjs'
   workflow_dispatch:
 
 jobs:

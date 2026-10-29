@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - 'codex/pg18-worker-heartbeat-*'
+    paths-ignore:
+      - 'services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - 'tests/pg-native-template-market-genuine.spec.mjs'
   workflow_dispatch:
     inputs:
       case_scope:

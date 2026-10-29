@@ -11,7 +11,7 @@ const cases=[
   ['extra family enum',"CREATE TYPE "+p+"fixture_extra AS ENUM('synthetic')",'DROP TYPE '+p+'fixture_extra'],
   ['extra family domain','CREATE DOMAIN '+p+'fixture_extra AS integer','DROP DOMAIN '+p+'fixture_extra'],
   ['extra family schema','CREATE SCHEMA agent_template_market_fixture_extra','DROP SCHEMA agent_template_market_fixture_extra'],
-  ['extra family role','CREATE ROLE agent_template_market_fixture_extra NOLOGIN','DROP ROLE agent_template_market_fixture_extra'],
+  ['extra family role','CREATE ROLE agentstudio_template_market_fixture_extra NOLOGIN','DROP ROLE agentstudio_template_market_fixture_extra'],
   ['extra family function',"CREATE FUNCTION "+p+"fixture_extra() RETURNS boolean LANGUAGE sql IMMUTABLE AS 'SELECT true'",'DROP FUNCTION '+p+'fixture_extra()'],
   ['unapproved overload',"CREATE FUNCTION "+p+"source(text) RETURNS jsonb LANGUAGE sql IMMUTABLE AS 'SELECT null::jsonb'",'DROP FUNCTION '+p+'source(text)'],
   ['unrelated-table family constraint','ALTER TABLE agentstudio.agent_specs ADD CONSTRAINT agent_template_market_fixture_extra CHECK(true)','ALTER TABLE agentstudio.agent_specs DROP CONSTRAINT agent_template_market_fixture_extra'],

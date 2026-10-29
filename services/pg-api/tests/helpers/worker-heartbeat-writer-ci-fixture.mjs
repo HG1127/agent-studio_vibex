@@ -147,11 +147,22 @@ async function configure(s){
 }
 function signed(s,file,payload){write(file,JSON.stringify({payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),s.signingKey).toString('base64')})+'\n')}
 async function rpc(s,command){return s.client.sendWorkerHeartbeatOperatorCommand(command)}
-function closedControllerOutput(s,c,chunk,stream){
+/* WRITER_FAILURE_OBSERVATION_BEGIN */
+// Only fixed Controller failure metadata is forwarded. All arbitrary output
+// still goes through the original discard/error-code path unchanged below.
+function writerControlFailureObservation(raw,stream){
+ try{
+  if(stream!=='stderr')return null
+  const v=fields(raw,['event','site','kind','observed_data_only']),sites=Object.freeze(["authorize_entry","apply_entry","record_entry","cleanup_entry","authorize_runtime","authorize_approval","authorize_expiry","authorize_intent_journal","apply_runtime","apply_closing","apply_writer_pause","apply_readers_cleanup","apply_serial","apply_registry_read","apply_target","apply_begin","apply_all_locks","apply_locked_before","apply_material","apply_write","apply_commit","apply_after_verify","apply_retire","apply_publish","record_identity_before","record_selection_before","record_query","record_selection_after","record_identity_after","record_final_guard","cleanup_end_client","cleanup_discover","cleanup_wait_absence","cleanup_ended_journal"]),kinds=Object.freeze(["source_refused","runtime_refused","control_error","writer_closed","writer_uncertain","writer_busy","writer_not_enrolled","query_cancelled","query_lock_timeout","query_client_timeout","query_client_closed","filesystem_io","transport_io","abort","type_error","range_error","syntax_error","other"])
+  if(v.event!=='worker_heartbeat_control_failure_observation'||v.observed_data_only!==true||!sites.includes(v.site)||!kinds.includes(v.kind))return null
+  return {event:'worker_heartbeat_control_failure_observation',site:v.site,kind:v.kind,observed_data_only:true}
+ }catch{return null}
+}
+/* WRITER_FAILURE_OBSERVATION_END */function closedControllerOutput(s,c,chunk,stream){
  c[stream+'Bytes']+=chunk.length;if(c[stream+'Bytes']>32768){c.p.kill('SIGTERM');return}
  let text=(c[stream+'Partial']??'')+chunk.toString('utf8');if(Buffer.byteLength(text)>4096)text=text.slice(-4096)
  const lines=text.split('\n');c[stream+'Partial']=lines.pop()
- for(const line of lines){try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
+ for(const line of lines){/* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
 }
 async function startController(s){
  // Service has one fixed verb. It is a separate cold process, never import-run.

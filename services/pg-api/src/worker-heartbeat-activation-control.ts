@@ -96,7 +96,32 @@ async function managementCatalog(s:State,db:SqlClient,policy:unknown){
  const p=policyParts(s,policy)
  return verifyWorkerHeartbeatManagementCatalog(db,{protocol:'worker_heartbeat_management_catalog_expectations_v1',database_oid:s.binding.database_oid,database_owner_oid:s.binding.owner_oid,schema_oid:s.binding.schema_oid,operator:{oid:s.binding.operator_oid,name:s.binding.operator_login},roles:s.binding.roles.map((r,i)=>({oid:r.oid,name:r.name,login:i===0?false:i===1?p.reader.login:p.slots[i-2]!.mode==='active',inherit:false,super:false,bypass:false,create_db:false,create_role:false,replication:false,connection_limit:i===0?-1:i===1?2:1,config:null,no_expiry:true,memberships:0}))})
 }
-async function serial<T>(s:State,job:()=>Promise<T>):Promise<T>{if(rootWriterBusy(s)||s.sqlJobs>=4)controlFail('control_busy');s.sqlJobs++;const result=s.sqlTail.then(job);s.sqlTail=result.catch(()=>{});try{return await result}finally{s.sqlJobs--}}
+/* WRITER_FAILURE_OBSERVATION_BEGIN */
+// Failure observations only: no Error/row/path/SQL/role/runtime object leaves.
+const rootFailureObservationSites:readonly string[]=Object.freeze(["authorize_entry","apply_entry","record_entry","cleanup_entry","authorize_runtime","authorize_approval","authorize_expiry","authorize_intent_journal","apply_runtime","apply_closing","apply_writer_pause","apply_readers_cleanup","apply_serial","apply_registry_read","apply_target","apply_begin","apply_all_locks","apply_locked_before","apply_material","apply_write","apply_commit","apply_after_verify","apply_retire","apply_publish","record_identity_before","record_selection_before","record_query","record_selection_after","record_identity_after","record_final_guard","cleanup_end_client","cleanup_discover","cleanup_wait_absence","cleanup_ended_journal"])
+const rootFailureObservationKinds:readonly string[]=Object.freeze(["source_refused","runtime_refused","control_error","writer_closed","writer_uncertain","writer_busy","writer_not_enrolled","query_cancelled","query_lock_timeout","query_client_timeout","query_client_closed","filesystem_io","transport_io","abort","type_error","range_error","syntax_error","other"])
+function rootFailureObservationKind(error:unknown):string{
+ if(!error||(typeof error!=='object'&&typeof error!=='function'))return 'other'
+ const message=Object.getOwnPropertyDescriptor(error,'message')?.value,code=Object.getOwnPropertyDescriptor(error,'code')?.value
+ if(message==='worker_heartbeat_activation_control_source_refused')return 'source_refused'
+ if(message==='worker_heartbeat_activation_control_runtime_refused')return 'runtime_refused'
+ if(error instanceof WorkerHeartbeatControlError)return 'control_error'
+ if(['writer_closed','writer_uncertain','writer_busy','writer_not_enrolled'].includes(code))return code
+ if(code==='57014')return 'query_cancelled';if(code==='55P03')return 'query_lock_timeout'
+ if(message==='Query read timeout')return 'query_client_timeout'
+ if(message==='Client was closed and is not queryable'||message==='Client has already been connected. You cannot reuse a client.')return 'query_client_closed'
+ if(['ENOENT','EACCES','EPERM','EIO','EMFILE','ENFILE'].includes(code))return 'filesystem_io'
+ if(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','ERR_STREAM_DESTROYED'].includes(code))return 'transport_io'
+ if(code==='ABORT_ERR')return 'abort'
+ if(error instanceof TypeError)return 'type_error';if(error instanceof RangeError)return 'range_error';if(error instanceof SyntaxError)return 'syntax_error'
+ return 'other'
+}
+function observeRootControlFailure(site:string,error:unknown):void{
+ try{const kind=rootFailureObservationKind(error);if(!rootFailureObservationSites.includes(site)||!rootFailureObservationKinds.includes(kind))return
+  process.stderr.write(JSON.stringify({event:'worker_heartbeat_control_failure_observation',site,kind,observed_data_only:true})+'\n')
+ }catch{/* Observation failure cannot replace, settle or authorize anything. */}
+}
+/* WRITER_FAILURE_OBSERVATION_END */async function serial<T>(s:State,job:()=>Promise<T>):Promise<T>{if(rootWriterBusy(s)||s.sqlJobs>=4)controlFail('control_busy');s.sqlJobs++;const result=s.sqlTail.then(job);s.sqlTail=result.catch(()=>{});try{return await result}finally{s.sqlJobs--}}
 function append(s:State,phase:JournalPhase,action:string|null,data:unknown){
  const record={format:'worker_heartbeat_control_journal_v1' as const,sequence:s.journal.length,previous_sha256:s.journalHead,instance_id:s.instance,epoch:s.epoch.toString(),action_id:action,phase,data},record_sha256=controlSha(JSON.stringify(record)),full={...record,record_sha256},line=JSON.stringify(full)+'\n'
  if(!privateRead(s.journalFile,4194304).equals(Buffer.from(s.journalBytes)))controlFail('store_invalid')
@@ -230,17 +255,17 @@ export async function prepareWorkerHeartbeatMutation(control:Control,p:OperatorP
  const summary=Object.freeze({action_id:id,plan_sha256:description.plan_sha256,before_sha256:description.before_sha256,after_sha256:description.after_sha256,expected_epoch:s.epoch.toString(),requires_explicit_approval:true as const,authorizes_database_writes:false as const})
  privateWrite(actionFile(id,'prepared'),JSON.stringify({summary,before_policy:s.policy})+'\n');append(s,'plan_prepared',id,{plan_sha256:summary.plan_sha256,before_sha256:summary.before_sha256,after_sha256:summary.after_sha256});s.actions.set(id,{id,plan,summary,policy:draft.desired_policy,ack:false});return summary
 }
-export async function authorizeWorkerHeartbeatMutation(control:Control,p:OperatorPeer,id:string):Promise<MutationPermit>{
- const s=state(control),owner=peer(s,p,'operator');runtimeCheck(s);if(!controlUuid(id))controlFail('invalid_command');const action=s.actions.get(id);if(!action||action.summary.expected_epoch!==s.epoch.toString()||s.mutation||!['closed','serving'].includes(s.phase))controlFail('plan_stale')
+export async function authorizeWorkerHeartbeatMutation(control:Control,p:OperatorPeer,id:string):Promise<MutationPermit>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootFailureSite='authorize_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
+ const s=state(control),owner=peer(s,p,'operator');/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='authorize_runtime';/* WRITER_FAILURE_OBSERVATION_END */runtimeCheck(s);if(!controlUuid(id))controlFail('invalid_command');const action=s.actions.get(id);if(!action||action.summary.expected_epoch!==s.epoch.toString()||s.mutation||!['closed','serving'].includes(s.phase))controlFail('plan_stale')
  const expected=s.epoch
- const file=actionFile(id,'approval'),raw=privateRead(file),x=controlObject(signedBytes(raw,s.publicKey),['protocol','action_id','plan_sha256','source_sha256','binding_sha256','expected_epoch','actor','not_before','expires_at','scope'])
+ /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='authorize_approval';/* WRITER_FAILURE_OBSERVATION_END */const file=actionFile(id,'approval'),raw=privateRead(file),x=controlObject(signedBytes(raw,s.publicKey),['protocol','action_id','plan_sha256','source_sha256','binding_sha256','expected_epoch','actor','not_before','expires_at','scope'])
  if(x.protocol!=='worker_heartbeat_control_approval_v1'||x.action_id!==id||x.plan_sha256!==action.summary.plan_sha256||x.source_sha256!==s.profile.source_sha256||x.binding_sha256!==controlSha(JSON.stringify(s.binding))||x.expected_epoch!==s.epoch.toString()||typeof x.actor!=='string'||! /^[A-Za-z0-9_.@-]{1,128}$/.test(x.actor)||typeof x.not_before!=='string'||!Number.isFinite(Date.parse(x.not_before))||Date.parse(x.not_before)>Date.now()||x.scope!=='MUTATE_TELEMETRY_REGISTRY_ONLY')controlFail('approval_invalid')
  // This signed one-use intent permits closing only, not database writes.
  // The fresh registry comparison is mandatory after owned Writer cancellation
  // and reader cleanup in apply; serial itself still refuses any active Writer.
- const expires=expiry(x.expires_at);if(s.epoch!==expected||s.mutation||!['closed','serving'].includes(s.phase)||performance.now()>=expires)controlFail('plan_stale')
- action.approvalSha=controlSha(raw);const token=empty<MutationPermit>();mutationStates.set(token,{s,peer:owner,action,expected:s.epoch,expires,consumed:false});append(s,'authorized',id,{approval_sha256:action.approvalSha,plan_sha256:action.summary.plan_sha256});return token
-}
+ /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='authorize_expiry';/* WRITER_FAILURE_OBSERVATION_END */const expires=expiry(x.expires_at);if(s.epoch!==expected||s.mutation||!['closed','serving'].includes(s.phase)||performance.now()>=expires)controlFail('plan_stale')
+ /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='authorize_intent_journal';/* WRITER_FAILURE_OBSERVATION_END */action.approvalSha=controlSha(raw);const token=empty<MutationPermit>();mutationStates.set(token,{s,peer:owner,action,expected:s.epoch,expires,consumed:false});append(s,'authorized',id,{approval_sha256:action.approvalSha,plan_sha256:action.summary.plan_sha256});return token
+/* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){try{observeRootControlFailure(rootFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */}
 async function lockRegistry(s:State){
  for(let i=0;i<workerHeartbeatKinds.length;i++){const kind=workerHeartbeatKinds[i]!,rows=(await s.raw.query('SELECT ordinal::integer,kind FROM studio_telemetry.kind_config WHERE ordinal=$1 AND kind=$2 FOR UPDATE',[i+1,kind])).rows;if(rows.length!==1||rows[0].ordinal!==i+1||rows[0].kind!==kind)controlFail('registry_mismatch')}
  for(let i=0;i<workerHeartbeatKinds.length;i++)for(const slot of [1,2]){const kind=workerHeartbeatKinds[i]!,name='studio_telemetry_tx_'+kind+'_'+slot,rows=(await s.raw.query('SELECT kind,slot_no::integer,login_oid::text,login_name FROM studio_telemetry.slot_state WHERE kind=$1 AND slot_no=$2 FOR UPDATE',[kind,slot])).rows;if(rows.length!==1||rows[0].kind!==kind||rows[0].slot_no!==slot||rows[0].login_name!==name||rows[0].login_oid!==String(s.binding.roles.find(r=>r.name===name)?.oid))controlFail('registry_mismatch')}
@@ -296,35 +321,35 @@ async function publish(s:State,id:string,m:WorkerHeartbeatRegistryPrivateMateria
  for(const role of m.roles){const file=controlPaths.store+'/credentials/'+role.name+'.'+s.epoch.toString()+'.json';publishFile(file,JSON.stringify({protocol:'worker_heartbeat_control_credential_v1',action_id:id,epoch:s.epoch.toString(),role:role.name,oid:role.oid,password:role.password,generation:role.generation,policy_sha256:s.policySha})+'\n')}
  s.policy=m.after_policy;const observed=await inspectRegistry(s);if(observedSha(s,observed)!==s.policySha)controlFail('registry_mismatch');s.published=s.epoch;append(s,'published',id,{policy:s.policy,policy_sha256:s.policySha,material_sha256:materialSha});s.phase=s.registry.describeWorkerHeartbeatRegistry(observed).catalog_expectations?'serving':'closed'
 }
-export async function applyWorkerHeartbeatMutation(control:Control,p:OperatorPeer,token:MutationPermit):Promise<MutationOutcome>{
+export async function applyWorkerHeartbeatMutation(control:Control,p:OperatorPeer,token:MutationPermit):Promise<MutationOutcome>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootFailureSite='apply_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
  const s=state(control),owner=peer(s,p,'operator'),permit=mutationStates.get(token)
- if(!permit||permit.s!==s||permit.peer!==owner||permit.consumed)controlFail('untrusted_reference');runtimeCheck(s);if(s.mutation||permit.expected!==s.epoch||performance.now()>=permit.expires)controlFail('permit_stale')
+ if(!permit||permit.s!==s||permit.peer!==owner||permit.consumed)controlFail('untrusted_reference');/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_runtime';/* WRITER_FAILURE_OBSERVATION_END */runtimeCheck(s);if(s.mutation||permit.expected!==s.epoch||performance.now()>=permit.expires)controlFail('permit_stale')
  if(s.epoch===18446744073709551615n)controlFail('store_invalid');permit.consumed=true;s.mutation=true;s.phase='closing_reads';s.epoch++;const action=permit.action;action.epoch=s.epoch
  let transaction=false,commitSent=false,accessToken:ControlDbAccess|undefined
  try{
-  append(s,'closing',action.id,{plan_sha256:action.summary.plan_sha256});s.phase='waiting_readers';if(s.writerBroker)await pauseWorkerHeartbeatWriterBroker(s.writerBroker);await cleanReaders(s);append(s,'readers_clean',action.id,{})
-  return await serial(s,async()=>{
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_closing';/* WRITER_FAILURE_OBSERVATION_END */append(s,'closing',action.id,{plan_sha256:action.summary.plan_sha256});s.phase='waiting_readers';/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_writer_pause';/* WRITER_FAILURE_OBSERVATION_END */if(s.writerBroker)await pauseWorkerHeartbeatWriterBroker(s.writerBroker);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_readers_cleanup';/* WRITER_FAILURE_OBSERVATION_END */await cleanReaders(s);append(s,'readers_clean',action.id,{})
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_serial';/* WRITER_FAILURE_OBSERVATION_END */return await serial(s,async()=>{
    if(performance.now()>=permit.expires)controlFail('approval_expired')
-   const before=await inspectRegistry(s)
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_registry_read';/* WRITER_FAILURE_OBSERVATION_END */const before=await inspectRegistry(s)
    if(!s.mutation||s.phase!=='waiting_readers'||permit.expected+1n!==s.epoch||peer(s,p,'operator')!==owner||s.actions.get(action.id)!==action||observedSha(s,before)!==action.summary.before_sha256||performance.now()>=permit.expires)controlFail('plan_stale')
-   if(performance.now()>=permit.expires)controlFail('approval_expired');await target(s.raw,s.binding);s.phase='applying';await s.raw.query('BEGIN ISOLATION LEVEL READ COMMITTED');transaction=true;await s.raw.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='1000ms'; SET LOCAL statement_timeout='10000ms'");await lockRegistry(s);const lockedBefore=await observePolicy(s,s.policy);if(lockedBefore.sha!==action.summary.before_sha256)controlFail('plan_stale')
+   if(performance.now()>=permit.expires)controlFail('approval_expired');/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_target';/* WRITER_FAILURE_OBSERVATION_END */await target(s.raw,s.binding);s.phase='applying';/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_begin';/* WRITER_FAILURE_OBSERVATION_END */await s.raw.query('BEGIN ISOLATION LEVEL READ COMMITTED');transaction=true;await s.raw.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='1000ms'; SET LOCAL statement_timeout='10000ms'");/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_all_locks';/* WRITER_FAILURE_OBSERVATION_END */await lockRegistry(s);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_locked_before';/* WRITER_FAILURE_OBSERVATION_END */const lockedBefore=await observePolicy(s,s.policy);if(lockedBefore.sha!==action.summary.before_sha256)controlFail('plan_stale')
    append(s,'before_change',action.id,{plan_sha256:action.summary.plan_sha256,before_sha256:action.summary.before_sha256,after_sha256:action.summary.after_sha256,before_policy:s.policy});accessToken=access(s,s.raw,s.db,'write');const grant=dbAccesses.get(accessToken)!;grant.allLocked=true;grant.beforeChange=true;grant.expires=permit.expires;grant.epoch=s.epoch
    if(performance.now()>=permit.expires)controlFail('plan_stale')
-   const rawMaterial=s.registry.readWorkerHeartbeatRegistryPlanMaterial(s.db,accessToken,action.plan),m=material(s,rawMaterial,action.summary),names=m.roles.map(r=>r.name),beforePasswords=await verifierRows(s.raw,names),bytes=JSON.stringify({material:m,before_passwords:beforePasswords})+'\n',materialSha=controlSha(bytes)
-   privateWrite(materialPath(action.id),bytes);action.privateMaterial=m;append(s,'material_staged',action.id,{material_sha256:materialSha,policy:m.after_policy});await s.registry.applyLockedWorkerHeartbeatRegistryPlan(s.db,accessToken,action.plan)
-   if(performance.now()>=permit.expires)controlFail('approval_expired');append(s,'commit_pending',action.id,{material_sha256:materialSha});if(performance.now()>=permit.expires)controlFail('approval_expired');s.phase='commit_pending';commitSent=true;const result=await s.raw.query('COMMIT');transaction=false;if(result.command!=='COMMIT')controlFail('commit_unknown');action.ack=true;append(s,'commit_acknowledged',action.id,{material_sha256:materialSha});invalidateAccess(s,accessToken);accessToken=undefined;s.phase='postcheck'
-   const after=await observer(s,async raw=>{const db=facade(raw),read=access(s,raw,db,'read');try{await managementCatalog(s,db,m.after_policy);return await s.registry.verifyWorkerHeartbeatRegistryAfter(db,read,action.plan)}finally{invalidateAccess(s,read)}});if(observedSha(s,after)!==action.summary.after_sha256)controlFail('registry_mismatch');s.policySha=observedSha(s,after)
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_material';/* WRITER_FAILURE_OBSERVATION_END */const rawMaterial=s.registry.readWorkerHeartbeatRegistryPlanMaterial(s.db,accessToken,action.plan),m=material(s,rawMaterial,action.summary),names=m.roles.map(r=>r.name),beforePasswords=await verifierRows(s.raw,names),bytes=JSON.stringify({material:m,before_passwords:beforePasswords})+'\n',materialSha=controlSha(bytes)
+   privateWrite(materialPath(action.id),bytes);action.privateMaterial=m;append(s,'material_staged',action.id,{material_sha256:materialSha,policy:m.after_policy});/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_write';/* WRITER_FAILURE_OBSERVATION_END */await s.registry.applyLockedWorkerHeartbeatRegistryPlan(s.db,accessToken,action.plan)
+   if(performance.now()>=permit.expires)controlFail('approval_expired');append(s,'commit_pending',action.id,{material_sha256:materialSha});if(performance.now()>=permit.expires)controlFail('approval_expired');s.phase='commit_pending';commitSent=true;/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_commit';/* WRITER_FAILURE_OBSERVATION_END */const result=await s.raw.query('COMMIT');transaction=false;if(result.command!=='COMMIT')controlFail('commit_unknown');action.ack=true;append(s,'commit_acknowledged',action.id,{material_sha256:materialSha});invalidateAccess(s,accessToken);accessToken=undefined;s.phase='postcheck'
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_after_verify';/* WRITER_FAILURE_OBSERVATION_END */const after=await observer(s,async raw=>{const db=facade(raw),read=access(s,raw,db,'read');try{await managementCatalog(s,db,m.after_policy);return await s.registry.verifyWorkerHeartbeatRegistryAfter(db,read,action.plan)}finally{invalidateAccess(s,read)}});if(observedSha(s,after)!==action.summary.after_sha256)controlFail('registry_mismatch');s.policySha=observedSha(s,after)
    if(!passwordsMatch(m,await verifierRows(s.raw,names)))controlFail('registry_mismatch')
-   append(s,'after_verified',action.id,{policy_sha256:s.policySha});await retireConnections(s,m);append(s,'old_connections_retired',action.id,{});s.phase='publishing';await publish(s,action.id,m,materialSha)
+   append(s,'after_verified',action.id,{policy_sha256:s.policySha});/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_retire';/* WRITER_FAILURE_OBSERVATION_END */await retireConnections(s,m);append(s,'old_connections_retired',action.id,{});s.phase='publishing';/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='apply_publish';/* WRITER_FAILURE_OBSERVATION_END */await publish(s,action.id,m,materialSha)
    return Object.freeze({action_id:action.id,epoch:s.epoch.toString(),commit_acknowledged:true as const,after_verified:true as const,publication_completed:true as const,automatic_retry_authorized:false as const})
   })
  }catch(error){
-  if(accessToken)invalidateAccess(s,accessToken)
+/* WRITER_FAILURE_OBSERVATION_BEGIN */try{observeRootControlFailure(rootFailureSite,error)}catch{}/* WRITER_FAILURE_OBSERVATION_END */  if(accessToken)invalidateAccess(s,accessToken)
   if(commitSent&&!action.ack){try{append(s,'commit_unknown',action.id,{})}catch{}s.healthy=false;void s.raw.end().catch(()=>{});fault(s,'commit_unknown');controlFail('commit_unknown')}
   if(transaction)try{await s.raw.query('ROLLBACK');append(s,'rollback_known',action.id,{})}catch{try{append(s,'rollback_unknown',action.id,{})}catch{}fault(s,'rollback_unknown');controlFail('rollback_unknown')}
   fault(s,action.ack?'committed_unpublished':'registry_mismatch');throw new WorkerHeartbeatControlError(action.ack?'committed_unpublished':error instanceof WorkerHeartbeatControlError?error.code:'control_io_failed')
  }finally{s.mutation=false;s.actions.delete(action.id);if(rootWriterSettings(s))await refreshRootWriterAfterMutation(s)}
-}
+/* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){try{observeRootControlFailure(rootFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */}
 function readStaged(s:State,id:string){
  const bytes=privateRead(materialPath(id)),sha=controlSha(bytes),record=s.journal.find(r=>r.action_id===id&&r.phase==='material_staged'),head=record?.data as {material_sha256?:unknown}|undefined
  if(!head||head.material_sha256!==sha)controlFail('store_invalid')
@@ -551,19 +576,19 @@ async function verifyRootWriterSelected(op:RootWriterOperation,report?:WorkerHea
 async function closeRootWriterBackend(s:State,b:RootWriterBackend):Promise<void>{
  if(b.s!==s)writerFail('writer_not_enrolled');if(b.closing)return b.closing
  s.writerCleanups++
- b.closing=(async()=>{
+ b.closing=(async()=>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootCleanupFailureSite='cleanup_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
   // Normal activation may already be revoked; cleanup still requires this real
   // State/runtime and only this privately registered backend's own identity.
-  await rootWriterCleanupAwait(s,()=>b.raw.end())
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_end_client';/* WRITER_FAILURE_OBSERVATION_END */await rootWriterCleanupAwait(s,()=>b.raw.end())
   if(!b.backend){
-   const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string}>('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,b.slot.role_oid])).rows)
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_discover';/* WRITER_FAILURE_OBSERVATION_END */const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string}>('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,b.slot.role_oid])).rows)
    if(rows.length>1)writerFail('writer_uncertain');if(rows.length)b.backend={pid:rows[0]!.pid,started:rows[0]!.started}
   }
-  if(b.backend)await waitRootWriterBackendGone(s,b.backend)
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_wait_absence';/* WRITER_FAILURE_OBSERVATION_END */if(b.backend)await waitRootWriterBackendGone(s,b.backend)
   b.closed=true;s.writerBackends.delete(b);rootWriterBackends.delete(b.handle);rootWriterClosedBackends.set(b.handle,s)
-  if(b.backend)append(s,'writer_backend_ended',null,{backend_id:b.id,kind:b.slot.kind,slot_no:b.slot.slot_no,generation:b.slot.generation,role_oid:b.slot.role_oid,database_oid:s.binding.database_oid,backend:b.backend})
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_ended_journal';/* WRITER_FAILURE_OBSERVATION_END */if(b.backend)append(s,'writer_backend_ended',null,{backend_id:b.id,kind:b.slot.kind,slot_no:b.slot.slot_no,generation:b.slot.generation,role_oid:b.slot.role_oid,database_oid:s.binding.database_oid,backend:b.backend})
   s.writerCleanups--
- })()
+/* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){try{observeRootControlFailure(rootCleanupFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */ })()
  return b.closing
 }
 async function openRootWriterBackend(s:State,reference:WriterSlotReference):Promise<WriterBackendReference>{
@@ -580,23 +605,23 @@ async function openRootWriterBackend(s:State,reference:WriterSlotReference):Prom
   }catch{b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
  })();b.work=work;return work
 }
-async function recordRootWriterReport(s:State,handle:WriterBackendReference,raw:WorkerHeartbeatReport):Promise<Omit<WriterAck,'next_permit'>>{
+async function recordRootWriterReport(s:State,handle:WriterBackendReference,raw:WorkerHeartbeatReport):Promise<Omit<WriterAck,'next_permit'>>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootFailureSite='record_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
  const b=rootWriterBackends.get(handle);if(!b||b.s!==s||b.closed||b.uncertain)writerFail('writer_closed')
  const report=parseWriterReport(raw);if(report.generation!==b.slot.generation)writerFail('writer_closed')
  const op=rootWriterBegin(s,b.slot,b)
  const work=(async()=>{
   try{
-   await verifyRootWriterIdentity(op,b);await verifyRootWriterSelected(op)
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_identity_before';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterIdentity(op,b);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_selection_before';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterSelected(op)
    // No await/caller callback separates the final guard and this writer-role
    // query. The SU observer above never executes record.
-   const rows=(await rootWriterAwait(op,()=>b.raw.query(writerRecordSQL,[report.protocol,report.generation,report.sequence,report.state,report.reason]))).rows
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_query';/* WRITER_FAILURE_OBSERVATION_END */const rows=(await rootWriterAwait(op,()=>b.raw.query(writerRecordSQL,[report.protocol,report.generation,report.sequence,report.state,report.reason]))).rows
    if(rows.length!==1)writerFail('writer_uncertain');const value=controlObject(rows[0]?.value,['accepted','sequence','observed_at'])
    if(value.accepted!==true||value.sequence!==report.sequence)writerFail('writer_uncertain')
    const ack=Object.freeze({accepted:true as const,sequence:report.sequence,observed_at:writerUtc(value.observed_at)})
-   await verifyRootWriterSelected(op,report,ack);await verifyRootWriterIdentity(op,b);rootWriterOperationCheck(op);return ack
-  }catch{b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_selection_after';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterSelected(op,report,ack);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_identity_after';/* WRITER_FAILURE_OBSERVATION_END */await verifyRootWriterIdentity(op,b);/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='record_final_guard';/* WRITER_FAILURE_OBSERVATION_END */rootWriterOperationCheck(op);return ack
+  }catch/* WRITER_FAILURE_OBSERVATION_BEGIN */(rootRecordFailure)/* WRITER_FAILURE_OBSERVATION_END */{/* WRITER_FAILURE_OBSERVATION_BEGIN */try{observeRootControlFailure(rootFailureSite,rootRecordFailure)}catch{}/* WRITER_FAILURE_OBSERVATION_END */b.uncertain=true;await closeRootWriterBackend(s,b);writerFail('writer_uncertain')}finally{s.writerOperation=false}
  })();b.work=work;return work
-}
+/* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){try{observeRootControlFailure(rootFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */}
 function persistRootWriterEvent(s:State,phase:WriterJournalPhase,data:unknown){
  rootWriterCheck(s)
  if(phase==='writer_boot_issued'||phase==='writer_boot_staged'){

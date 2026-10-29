@@ -5,6 +5,9 @@ on:
     branches:
       - 'codex/pg18-worker-heartbeat-*'
       - 'codex/pg18-telemetry-control-*'
+    paths-ignore:
+      - 'services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - 'tests/pg-native-template-market-genuine.spec.mjs'
   workflow_dispatch:
 
 permissions:

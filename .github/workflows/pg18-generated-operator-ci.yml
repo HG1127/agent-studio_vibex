@@ -11,6 +11,8 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/pg18-generated-operator-ci.yml'
+      - '!services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - '!tests/pg-native-template-market-genuine.spec.mjs'
   workflow_dispatch:
 permissions:
   contents: read
