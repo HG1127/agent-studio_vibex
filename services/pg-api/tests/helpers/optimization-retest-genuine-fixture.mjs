@@ -406,7 +406,7 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
   "services/pg-api/tests/helpers/agent-review-ledger-fixture.mjs": "bb0506a0f2aef11f4033ee7ea919102e06930d5fee2b3af037e236f04cf0f688",
-  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "d05db6fd9db0bfb22351b6d47a938998f0d16c55f694ed2b8c178a8f4522e0cd",
+  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "7642acbfa46ddeed6c63ef8b9159aefad4136b1acbfdd3446fc2635834269fea",
   "services/pg-api/tests/helpers/approval-delegation-genuine-guard.mjs": "c48521998f2d70a8e8e282c4f27539c8f718b58fd10cfbaa3c6f1006547e9c67",
   "services/pg-api/tests/helpers/bound-model-loopback-tls.mjs": "d3932a15340329b3e3550b2a58f25ac0f7c045aedc85d01a8b560d1931ce6b4c",
   "services/pg-api/tests/helpers/native-pg18-embedded.mjs": "6d29c92a24cbc4815f869d1b11fd9c3872873ceb61b1e0002e16a42b1a3a29a5",
@@ -636,10 +636,10 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-plan-workflow-predecessor-plan.mjs": "8121e4adeb35e54b312a9b52f69c7ab7401cda2f33c43a7290fb67480f42da1f",
   "services/pg-api/src/pg18-complete-plan-workflow-predecessors.mjs": "8dcfbf2a17e9104097917ba9318f6d5251f00f20e1dd0a0d65f41a726b4f9b39",
   "services/pg-api/src/pg18-complete-plan-workflow-sources.mjs": "ce7baa677a7fae18a6238e904e1b2bf9c1825ecab1556ce4dd89459738da2876",
-  "services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs": "84084afe4bd0db60ee976450ca5101513eaea2a3debef7ad4b1eac906a808ec7",
+  "services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs": "d01d5fae09263d8b28fd0e64807f4fbca09ed04f187fe17d204972c426bd95ea",
   "services/pg-api/src/pg18-full069-worker-path-validation-contract.mjs": "7178952e2ee52b910dc67038524dd3818678ea7970c3de1b924d67a955aa8fd8",
   "services/pg-api/src/pg18-full069-worker-path-validation-guard.mjs": "3ff1a663e16e3f396f4a192f03389080c4985ab15dcedc280205986ce8f0e4e4",
-  "services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs": "ffb6892f4cf2cc6286c08ee6c01f40e6cb5c966d946f6edb0737aeecf03e9913"
+  "services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs": "04425512f6bdeba984f94785bfccadc6f45cc90f017d2253bcb887352e0b3017"
 })
 export async function optimizationRetestGenuineFixture(env=process.env){
  const target=requireOptimizationRetestGenuineCi(env)

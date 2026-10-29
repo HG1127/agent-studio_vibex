@@ -182,10 +182,10 @@ export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-plan-workflow-predecessor-plan.mjs": "8121e4adeb35e54b312a9b52f69c7ab7401cda2f33c43a7290fb67480f42da1f",
   "services/pg-api/src/pg18-complete-plan-workflow-predecessors.mjs": "8dcfbf2a17e9104097917ba9318f6d5251f00f20e1dd0a0d65f41a726b4f9b39",
   "services/pg-api/src/pg18-complete-plan-workflow-sources.mjs": "ce7baa677a7fae18a6238e904e1b2bf9c1825ecab1556ce4dd89459738da2876",
-  "services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs": "84084afe4bd0db60ee976450ca5101513eaea2a3debef7ad4b1eac906a808ec7",
+  "services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs": "d01d5fae09263d8b28fd0e64807f4fbca09ed04f187fe17d204972c426bd95ea",
   "services/pg-api/src/pg18-full069-worker-path-validation-contract.mjs": "7178952e2ee52b910dc67038524dd3818678ea7970c3de1b924d67a955aa8fd8",
   "services/pg-api/src/pg18-full069-worker-path-validation-guard.mjs": "3ff1a663e16e3f396f4a192f03389080c4985ab15dcedc280205986ce8f0e4e4",
-  "services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs": "ffb6892f4cf2cc6286c08ee6c01f40e6cb5c966d946f6edb0737aeecf03e9913"
+  "services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs": "04425512f6bdeba984f94785bfccadc6f45cc90f017d2253bcb887352e0b3017"
 })
 
 export async function agentTemplateMarketGenuineFixture(env=process.env,{browserMode=false}={}){

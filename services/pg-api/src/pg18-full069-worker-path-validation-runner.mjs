@@ -36,5 +36,5 @@ export async function runFull069WorkerPathValidation(){
   if(trust)retireLiveTrust(trust);process.off('SIGTERM',signal);process.off('SIGINT',signal)
  }
  // A guard failure before the signed run context exists yields no success DTO.
- if(!ctx)liveFail('path_validation_not_started');return pathValidationResult(ctx.profile.run_id,completed,reason,{record_sha256:recordSha})
+ if(!ctx)throw Error(reason??'full069_worker_live_path_validation_not_started');return pathValidationResult(ctx.profile.run_id,completed,reason,{record_sha256:recordSha})
 }
