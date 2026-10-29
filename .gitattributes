@@ -534,3 +534,8 @@ services/pg-api/tests/helpers/pg18-complete-install-ci-stage.mjs text eol=lf
 services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs text eol=lf
 services/pg-api/tests/pg18-complete-install-ci.integration.mjs text eol=lf
 services/pg-api/tests/pg18-complete-profile.test.mjs text eol=lf
+
+# Independent complete-profile runtime admission; old060 unchanged.
+services/pg-api/src/pg18-complete-operator-runtime.mjs text eol=lf
+services/pg-api/src/pg18-complete-operator-runtime.d.mts text eol=lf
+services/pg-api/tests/pg18-complete-operator-runtime.test.mjs text eol=lf

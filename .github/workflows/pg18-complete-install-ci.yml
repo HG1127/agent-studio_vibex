@@ -45,7 +45,7 @@ jobs:
       - name: Actual compiler, offline complete plan and ordinary-host refusal
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs
       - name: Own empty PG18 clusters and actual complete065 install
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'

@@ -38,12 +38,12 @@ function host(env,install){
 }
 async function dependencies(snapshot,expected,env){
  assertCompleteProfileDeployment(snapshot,expected)
- // Reuse the unchanged060 runtime verifier, its actual protected manifest and
- // locked package closure. This new entry does not create a new runtime trust.
- const runtime=await import('./agent-descriptive-patch-operator-runtime.mjs')
- const capability=runtime.verifyDescriptivePatchOperatorRuntime(snapshot.descriptive,snapshot.descriptive.source_sha256,{manifestFile:env[runtimePrefix+'RUNTIME_MANIFEST_FILE'],manifestSha256:env[runtimePrefix+'RUNTIME_MANIFEST_SHA256'],lockSha256:env[runtimePrefix+'RUNTIME_LOCK_SHA256']})
- const pg=runtime.loadDescriptivePatchOperatorPg(capability)
- const boundary=()=>{host(env,false);assertCompleteProfileDeployment(snapshot,expected);runtime.assertDescriptivePatchOperatorRuntime(capability)}
+ // Independent complete-profile capability binds the full source closure and
+ // the unchanged14-package inventory; old059/060 admission stays unchanged.
+ const runtime=await import('./pg18-complete-operator-runtime.mjs')
+ const capability=runtime.verifyCompleteProfileOperatorRuntime(snapshot,expected,{manifestFile:env[runtimePrefix+'RUNTIME_MANIFEST_FILE'],manifestSha256:env[runtimePrefix+'RUNTIME_MANIFEST_SHA256'],lockSha256:env[runtimePrefix+'RUNTIME_LOCK_SHA256']})
+ const pg=runtime.loadCompleteProfileOperatorPg(capability)
+ const boundary=()=>{host(env,false);assertCompleteProfileDeployment(snapshot,expected);runtime.assertCompleteProfileOperatorRuntime(capability)}
  boundary()
  return {pg,boundary}
 }
