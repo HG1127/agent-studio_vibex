@@ -187,6 +187,18 @@ async function readerQuery(l:Lease,sql:string){
  if(!l.client)controlFail('untrusted_reference');if(sql!=='ROLLBACK')leaseCheck(l,'preparing');l.queryPending=true
  try{const result=await l.client.query(sql);if(sql!=='ROLLBACK')leaseCheck(l,'preparing');return result}catch(error){l.uncertain=true;throw error}finally{l.queryPending=false}
 }
+async function readerIdentity(l:Lease):Promise<void>{
+ if(!l.client)controlFail('untrusted_reference');leaseCheck(l,'preparing');l.queryPending=true
+ try{
+  const s=l.s,identity=(await l.client.query("SELECT pg_backend_pid() AS pid,backend_start::text AS started,current_database() AS database,current_user::text AS actor,session_user::text AS login,inet_server_port() AS port FROM pg_stat_activity WHERE pid=pg_backend_pid()")).rows[0]
+  // Retain only the actual validated PID/start before the post-I/O deadline
+  // check. Expiry still rejects the read, but cleanup can prove that this own
+  // backend ended when the identity response settles after the lease expires.
+  if(!identity||identity.database!==s.binding.database||identity.actor!=='studio_telemetry_reader'||identity.login!==identity.actor||identity.port!==s.binding.server_port||!Number.isInteger(identity.pid)||typeof identity.started!=='string')controlFail('binding_changed')
+  l.backend={pid:identity.pid,started:identity.started};append(s,'reader_bound',null,{lease_id:l.id,backend:l.backend,role_oid:s.binding.roles[1]!.oid,database_oid:s.binding.database_oid})
+  leaseCheck(l,'preparing')
+ }catch(error){l.uncertain=true;throw error}finally{l.queryPending=false}
+}
 async function cleanupLease(l:Lease):Promise<void>{
  if(l.cleanup)return l.cleanup
  l.cleanup=(async()=>{
@@ -227,9 +239,7 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
   const begin=await serial(s,async()=>{leaseCheck(l,'preparing');return inspectRegistry(s,s.policy,l)});l.begin=begin;leaseCheck(l,'preparing')
   const expectations=s.registry.describeWorkerHeartbeatRegistry(begin).catalog_expectations;if(!expectations)controlFail('control_closed')
   l.client=await s.reader.connect();l.clientError=()=>{l.uncertain=true;revoke(l)};l.client.on('error',l.clientError);leaseCheck(l,'preparing')
-  const identity=(await readerQuery(l,"SELECT pg_backend_pid() AS pid,backend_start::text AS started,current_database() AS database,current_user::text AS actor,session_user::text AS login,inet_server_port() AS port FROM pg_stat_activity WHERE pid=pg_backend_pid()")).rows[0]
-  if(!identity||identity.database!==s.binding.database||identity.actor!=='studio_telemetry_reader'||identity.login!==identity.actor||identity.port!==s.binding.server_port||!Number.isInteger(identity.pid)||typeof identity.started!=='string')controlFail('binding_changed')
-  l.backend={pid:identity.pid,started:identity.started};append(s,'reader_bound',null,{lease_id:l.id,backend:l.backend,role_oid:s.binding.roles[1]!.oid,database_oid:s.binding.database_oid})
+  await readerIdentity(l)
   await readerQuery(l,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');l.transaction=true
   await readerQuery(l,"SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='3000ms'; SET LOCAL lock_timeout='1000ms'")
   await verifyWorkerHeartbeatActivatedCatalog({query:async(sql,values=[])=>{if(values.length){leaseCheck(l,'preparing');l.queryPending=true;try{const result=await l.client!.query(sql,values);leaseCheck(l,'preparing');return result}catch(error){l.uncertain=true;throw error}finally{l.queryPending=false}}return readerQuery(l,sql)},release(){controlFail('untrusted_reference')}},expectations)

@@ -1,4 +1,4 @@
-// Separate complete068 capability; the original059/060 loaders are unchanged.
+// Separate complete069 capability; the original059/060 loaders are unchanged.
 // Reuses their exact locked inventory data format, not their source authority.
 // Verification only: no install, signing, secret access, database or network.
 // Runtime code is loaded ONLY from externally pinned immutable stage files.
@@ -42,7 +42,7 @@ const graph={
 const sort=values=>values.sort((a,b)=>a<b?-1:a>b?1:0)
 function freeze(v){if(v&&typeof v==='object'){for(const child of Object.values(v))freeze(child);Object.freeze(v)}return v}
 export const completeProfileOperatorRuntimePolicy=freeze({format:'agent_descriptive_patch_operator_runtime_v1',lock_sha256:lockSha,pg_version:'8.23.1',packages:graph})
-function fail(){throw Error('complete068_runtime_refused')}
+function fail(){throw Error('complete069_runtime_refused')}
 function closed(v,keys){
   if(!v||typeof v!=='object'||Object.getPrototypeOf(v)!==Object.prototype||Reflect.ownKeys(v).length!==keys.length)fail()
   const d=Object.getOwnPropertyDescriptors(v)
@@ -170,7 +170,7 @@ function assertSource(snapshot,expected){
   assertCompleteProfileSnapshot(snapshot,expected)
   const files=new Set(snapshot.manifest.sources.map(f=>f.path)),edges=snapshot.manifest.imports
   for(const p of ['pg18-complete-operator-runtime.mjs','pg18-complete-operator-runtime.d.mts','baota-pg18-fresh-init.mjs'])if(!files.has('services/pg-api/src/'+p))fail()
-  if(snapshot.manifest.profile!=='complete068'||!edges.some(e=>e.from==='services/pg-api/src/baota-pg18-complete-init.mjs'&&e.to==='services/pg-api/src/pg18-complete-operator-runtime.mjs'))fail()
+  if(snapshot.manifest.profile!=='complete069'||!edges.some(e=>e.from==='services/pg-api/src/baota-pg18-complete-init.mjs'&&e.to==='services/pg-api/src/pg18-complete-operator-runtime.mjs'))fail()
 }
 function cachedFiles(cache){return Object.getOwnPropertyNames(cache).filter(f=>f===path.join(root,'services/pg-api/node_modules')||f.startsWith(path.join(root,'services/pg-api/node_modules')+path.sep))}
 function inspectExports(value,seen=new Map()){

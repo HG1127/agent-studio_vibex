@@ -46,7 +46,7 @@ export class NativeLocalExecutorRepository {
  async call(operation:'pair'|'pair-confirm'|'poll'|'check'|'complete'|'confirm',token:string|null,raw:unknown){
   const db=await this.pool.connect();let begun=false,committing=false;const rid=raw&&typeof raw==='object'&&Object.hasOwn(raw,'request_id')?String((raw as Record<string,unknown>).request_id):null
   try{
-   await db.query('BEGIN');begun=true;await verifyNativeLocalDeviceOriginal(db,'agentstudio_local_executor');await db.query('SET LOCAL ROLE agentstudio_local_executor');await verifyNativeLocalDeviceSchema(db)
+   await db.query('BEGIN');begun=true;await verifyNativeLocalDeviceOriginal(db,'agentstudio_local_executor');await db.query('SET LOCAL ROLE agentstudio_local_executor');await verifyNativeLocalDeviceSchema(db,'agentstudio_local_executor')
    let value:unknown
    if(operation==='pair'||operation==='pair-confirm')value=await localValue(db,'SELECT agentstudio.native_local_pair($1::jsonb,$2::boolean) AS value',[JSON.stringify(raw),operation==='pair-confirm'])
    else if(operation==='poll'){const v=localObject(raw,['catalog','claim']);value=await localValue(db,'SELECT agentstudio.native_local_poll($1::text,$2::jsonb,$3::text) AS value',[token,JSON.stringify(v.catalog),v.claim])}

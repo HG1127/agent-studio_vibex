@@ -42,7 +42,7 @@ export async function buildCompleteProfileStage(permit){
  source.assertDescriptivePatchOperatorSnapshot(snapshot,sourceSha)
  if(policy.lock_sha256!==lockSha||snapshot.manifest.predecessor.source_sha256!=='c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb'||snapshot.manifest.default_fresh_latest!=='pg_v9_050')fail('source_binding')
  const completeSource=await import(pathToFileURL(path.join(root,'services/pg-api/src/pg18-complete-profile-source.mjs')).href),complete=await completeSource.captureCompleteProfileSources()
- if(complete.manifest.profile!=='complete068'||complete.manifest.latest_migration!=='pg_v9_068'||complete.manifest.sql_sources.length!==52)fail('complete_source_binding')
+ if(complete.manifest.profile!=='complete069'||complete.manifest.latest_migration!=='pg_v9_069'||complete.manifest.sql_sources.length!==53)fail('complete_source_binding')
  completeSource.assertCompleteProfileSnapshot(complete,complete.source_sha256)
  const nonce=randomBytes(32).toString('hex'),label=proof.run+'-'+proof.attempt+'-'+nonce
  // Host staging uses a new private root directory. The container has its own

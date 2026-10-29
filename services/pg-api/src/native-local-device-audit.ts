@@ -19,9 +19,9 @@ export async function verifyNativeLocalDeviceOriginal(db:SqlClient,group:'agents
  }
  return true
 }
-export async function verifyNativeLocalDeviceSchema(db:SqlClient){
- const stamp=await one(db,"SELECT current_setting('server_version_num')::int AS version,EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_067') AS installed,(SELECT proowner::int FROM pg_catalog.pg_proc WHERE oid='agentstudio.agent_design_native(uuid)'::regprocedure) AS owner,NOT EXISTS(SELECT 1 FROM pg_catalog.pg_default_acl WHERE defaclnamespace='agentstudio'::regnamespace) AS defaults_safe")
- if(stamp.version<180000||stamp.version>=190000||stamp.installed!==true||stamp.defaults_safe!==true||!Number.isSafeInteger(stamp.owner))return unsafe()
+export async function verifyNativeLocalDeviceSchema(db:SqlClient,group:'agentstudio_api'|'agentstudio_local_executor'='agentstudio_api'){
+ const stamp=await one(db,"SELECT current_setting('server_version_num')::int AS version,(SELECT proowner::int FROM pg_catalog.pg_proc WHERE oid='agentstudio.agent_design_native(uuid)'::regprocedure) AS owner,NOT EXISTS(SELECT 1 FROM pg_catalog.pg_default_acl WHERE defaclnamespace='agentstudio'::regnamespace) AS defaults_safe")
+ if(stamp.version<180000||stamp.version>=190000||stamp.defaults_safe!==true||!Number.isSafeInteger(stamp.owner))return unsafe()
  const surface=await one(db,"SELECT (SELECT count(*)::int FROM pg_catalog.pg_type WHERE starts_with(typname,'native_local_') OR starts_with(typname,'_native_local_')) AS types,(SELECT count(*) FROM pg_catalog.pg_policy WHERE starts_with(polname,'native_local_'))+(SELECT count(*) FROM pg_catalog.pg_namespace WHERE starts_with(nspname,'native_local_'))+(SELECT count(*) FROM pg_catalog.pg_event_trigger WHERE starts_with(evtname,'native_local_'))+(SELECT count(*) FROM pg_catalog.pg_statistic_ext WHERE starts_with(stxname,'native_local_'))+(SELECT count(*) FROM pg_catalog.pg_foreign_data_wrapper WHERE starts_with(fdwname,'native_local_'))+(SELECT count(*) FROM pg_catalog.pg_foreign_server WHERE starts_with(srvname,'native_local_')) AS extras")
  if(surface.types!==8||String(surface.extras)!=='0')return unsafe()
  const owner=await one(db,'SELECT rolsuper AND NOT rolcanlogin=false AS safe FROM pg_catalog.pg_roles WHERE oid=$1::oid',[stamp.owner]);if(owner.safe!==true)return unsafe()
@@ -55,10 +55,14 @@ export async function verifyNativeLocalDeviceSchema(db:SqlClient){
  // by their catalog constraints above. No extra user trigger may intercept data.
  const triggers=await rows(db,"SELECT t.tgname::text AS name,c.relname::text AS table,p.proname::text AS function,t.tgtype::int AS type,t.tgenabled='O' AND NOT t.tgdeferrable AND NOT t.tginitdeferred AND t.tgqual IS NULL AND t.tgnargs=0 AND t.tgargs=''::bytea AND t.tgattr=''::int2vector AND t.tgoldtable IS NULL AND t.tgnewtable IS NULL AND t.tgconstraint=0 AS safe FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid WHERE NOT t.tgisinternal AND (t.tgrelid=ANY($1::oid[]) OR t.tgfoid=ANY($2::oid[]) OR starts_with(t.tgname,'native_local_')) ORDER BY t.tgname",[ids,fids])
  const mounts=[['native_local_receipts_immutable','native_local_receipts','native_local_immutable',58],['native_local_run_devices_immutable','native_local_run_devices','native_local_immutable',58],['native_local_devices_monotone','native_local_devices','native_local_monotone',27],['native_local_jobs_monotone','native_local_jobs','native_local_monotone',27],['native_local_devices_no_truncate','native_local_devices','native_local_immutable',34],['native_local_jobs_no_truncate','native_local_jobs','native_local_immutable',34]].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))
- if(triggers.some(t=>t.safe!==true)||!same(triggers.map(t=>[t.name,t.table,t.function,t.type]),mounts))return unsafe();return true
+ if(triggers.some(t=>t.safe!==true)||!same(triggers.map(t=>[t.name,t.table,t.function,t.type]),mounts))return unsafe()
+ // The executor cannot read any table. Invoke its fixed marker RPC only AFTER
+ // all31 routine bodies, exact ACLs and the complete catalog have been checked.
+ const installed=await one(db,group==='agentstudio_local_executor'?"SELECT agentstudio.native_local_executor_installed() AS installed":"SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_067') AS installed")
+ if(installed.installed!==true)return unsafe();return true
 }
 export async function inspectNativeLocalDevicePool(pool:SqlPool,group:'agentstudio_api'|'agentstudio_local_executor'){
  const db=await pool.connect();let begun=false
- try{await db.query('BEGIN READ ONLY');begun=true;await verifyNativeLocalDeviceOriginal(db,group);await db.query('SET LOCAL ROLE '+group);await verifyNativeLocalDeviceSchema(db);if(group==='agentstudio_api'){const {verifyAgentInternalShareCredentials}=await import('./agent-internal-share-audit.ts');await verifyAgentInternalShareCredentials(db)}return true}
+ try{await db.query('BEGIN READ ONLY');begun=true;await verifyNativeLocalDeviceOriginal(db,group);await db.query('SET LOCAL ROLE '+group);await verifyNativeLocalDeviceSchema(db,group);if(group==='agentstudio_api'){const {verifyAgentInternalShareCredentials}=await import('./agent-internal-share-audit.ts');await verifyAgentInternalShareCredentials(db)}return true}
  finally{try{if(begun)await db.query('ROLLBACK')}finally{db.release()}}
 }

@@ -13,6 +13,7 @@ const routes={
  releases:{group:'创建与编排',keywords:'版本 发布 验收'},
  modelConnections:{group:'资源中心',keywords:'模型 LLM API 连接'},
  toolConnections:{group:'资源中心',keywords:'工具 HTTP MCP 连接'},
+ toolHub:{group:'资源中心',keywords:'工具中心 单独 试调 调用 日志 统计 Harness MCP 目录 中文'},
  localDevices:{group:'资源中心',keywords:'本机 设备 配对 撤销 人工 工具'},
  officeWorkflow:{group:'创建与编排',keywords:'办公 Office Excel Word 表格 台账 报告 网页'},
  knowledge:{group:'资源中心',keywords:'知识库 RAG 资料'},

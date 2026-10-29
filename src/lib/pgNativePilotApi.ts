@@ -1,3 +1,4 @@
+import {createPgNativeToolHubApi} from "./pgNativeToolHub.ts"
 import {localId} from '../../shared/native-local-device-contract.mjs'
 /** Separate, local-only PostgreSQL 18 native-auth test client.
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
@@ -53,6 +54,7 @@ export type {KnowledgeEmbeddingSettings,KnowledgeEmbeddingStatus,KnowledgeEmbedd
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
   local_devices_available?:boolean;local_device_writes_enabled?:boolean
+  owner_tool_hub_available?:boolean;owner_tool_trials_enabled?:boolean;public_mcp_registry_enabled?:boolean
   own_operations_available?:boolean
   company_overview_available?:boolean
   company_worker_heartbeats_available?:boolean
@@ -305,7 +307,7 @@ const routes={
   toolConnections:"/api/v2/tool-connections",
   mcpConnections:"/api/v2/mcp-connections",
 } as const
-type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
+type Route="/api/v2/tool-hub"|`/api/v2/tool-hub/${string}`|typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
   `/api/v2/runs/${string}`|`/api/v2/agent-specs/${string}/runs`|
   `/api/v2/knowledge-bases/${string}/documents`|
   `/api/v2/knowledge-bases/${string}/search`|
@@ -611,6 +613,7 @@ export function createPgNativePilotApi(
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
     ...createPgNativeOwnOperationsApi({transport,rootPath}),
+    toolHub:createPgNativeToolHubApi({get,post}),
     previewAgentDescriptivePatch:async(raw:PgNativeDescriptivePatchPreviewInput)=>{
       const body=descriptiveInput(agentDescriptivePatchPreviewInput,raw),result=await post<unknown>("/api/v2/agent-descriptive-patches/preview",body)
       return descriptiveResponse(()=>agentDescriptivePatchPreview(result,{review_id:body.review_id,spec_id:body.spec_id,target_run_id:body.target_run_id}))

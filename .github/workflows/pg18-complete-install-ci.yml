@@ -46,7 +46,7 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs
-      - name: Own empty PG18 clusters and actual complete068 install
+      - name: Own empty PG18 clusters and actual complete069 install
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
           AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
@@ -56,7 +56,7 @@ jobs:
           AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
           AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
           AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL: 'true'
-          AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE: COMPLETE_068_INSTALL_SYNTHETIC_ONLY
+          AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE: COMPLETE_069_INSTALL_SYNTHETIC_ONLY
           AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED: YES_NEW_DISPOSABLE_CONTAINERS_ONLY
         run: |
           node_path="$(command -v node)"

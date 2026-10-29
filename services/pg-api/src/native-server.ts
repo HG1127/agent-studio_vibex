@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {createNativeEntryHttpHandler} from './native-entry-http.ts'
 import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
 import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
@@ -115,6 +116,12 @@ import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {selectNativePg18UatCapabilities}
   from "./native-config-uat-policy.ts"
+
+import {selectOwnerToolHubCapabilities} from "./tool-hub-runtime-policy.ts"
+import {inspectOwnerToolTrialSchema} from "./owner-tool-trial-audit.ts"
+import {OwnerToolTrialRepository} from "./tool-trial-repository.ts"
+import {OwnerToolInvocationRepository} from "./tool-invocation-projection.ts"
+import {createPublicMcpRegistryNetwork} from "./public-mcp-registry-network.ts"
 
 const portDefault=7403
 const here=fileURLToPath(import.meta.url)
@@ -347,6 +354,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const localDevices=selectNativeLocalDevices(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const approvalDelegation=selectApprovalDelegationCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const agentCallers=selectNativeAgentCallerCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites,capabilities.autonomousAgentUat===true)
+  const ownerToolHub=selectOwnerToolHubCapabilities(env,{listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,workflowV2ExecutionUat:capabilities.workflowV2ExecutionUat===true})
   const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
@@ -474,6 +482,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const agentPlanWorkflow=await prepareAgentPlanWorkflowNative({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
     let templateMarketAudit:AgentTemplateMarketAuditVerifier|undefined
     if(templateMarket.available){templateMarketAudit=await loadAgentTemplateMarketAuditVerifier();await inspectAgentTemplateMarketApiPool(business,templateMarketAudit)}
+    if(ownerToolHub.available&&await inspectOwnerToolTrialSchema(business)!==true)throw Error("owner_tool_trial_schema_required")
     if(internalShare.available)await inspectInternalSharePool(business)
     if(approvalDelegation.available)await inspectApprovalDelegationPool(business)
     if(agentCallers.available)await inspectAgentCallerPool(business)
@@ -494,6 +503,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     })
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+      allowOwnerToolHub:ownerToolHub.available,allowOwnerToolTrials:ownerToolHub.trials,allowPublicMcpRegistry:ownerToolHub.registry,
       allowOwnOperations:ownOperationsAvailable,
       allowCompanyOverview:companyOverviewAvailable,
       allowCompanyWorkerHeartbeats:companyWorkerHeartbeatsEnabled,
@@ -539,7 +549,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
         if(!businessHandler)throw Error("business_handler_unavailable")
         return businessHandler(req,res)
       }})
+    const originalWorkflowV2Runs=new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})
     businessHandler=createHandler({
+      ...(ownerToolHub.available?{ownerToolHub:{capabilities:ownerToolHub,trials:new OwnerToolTrialRepository(business,originalWorkflowV2Runs),invocations:new OwnerToolInvocationRepository(business),...(ownerToolHub.registry?{registryRead:createPublicMcpRegistryNetwork()}:{} )}}:{}),
       allowNativeLocalAgentSpecs:localDevices.available,
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
@@ -574,12 +586,12 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // submission additionally requires the independent generation UAT grant.
       // The public API never constructs a provider executor or private Broker.
       runRepository:createNativeRunRepository(business,capabilities),
-      workflowRepository:new WorkflowRepository(business),
+      workflowRepository:new WorkflowRepository(business,{excludeToolTrials:ownerToolHub.available}),
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
       autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      workflowV2RunRepository:originalWorkflowV2Runs,
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
       // Only a separately approved, inert Start/End-only validation run.
@@ -654,7 +666,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }
-    const localServer=createServer(async(req,res)=>{if(callerPublicHttp&&await callerPublicHttp(req,res))return;await native.handler(req,res)})
+    const entryHandler=createNativeEntryHttpHandler(native.handler,callerPublicHttp)
+    const localServer=createServer(entryHandler)
     server=localServer
     localServer.requestTimeout=15000
     localServer.headersTimeout=12000

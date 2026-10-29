@@ -91,6 +91,11 @@ BEGIN
  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','v','m','p') AND (
  has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') OR has_any_column_privilege(g,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN') OR has_table_privilege(g,c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')))) THEN RAISE EXCEPTION 'native_local_original_login_required';END IF;
 END $fn$;
+CREATE FUNCTION agentstudio.native_local_executor_installed() RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
+BEGIN
+ PERFORM agentstudio.native_local_session('agentstudio_local_executor');
+ RETURN EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_067');
+END $fn$;
 CREATE FUNCTION agentstudio.native_local_digest(v jsonb) RETURNS text LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
  SELECT agentstudio.agent_design_digest(v)
 $fn$;
@@ -347,7 +352,7 @@ BEGIN
  FOR f IN SELECT oid,proname FROM pg_proc WHERE pronamespace='agentstudio'::regnamespace AND starts_with(proname,'native_local_') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,agentstudio_api,agentstudio_worker,agentstudio_local_executor',f.oid::regprocedure);
  IF f.proname IN('native_local_list','native_local_get','native_local_receipt','native_local_record','native_local_bind','native_local_agent_enqueue','native_local_run_binding','native_local_images','native_local_admission_device','native_local_run_tasks') THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO agentstudio_api',f.oid::regprocedure);END IF;
- IF f.proname IN('native_local_pair','native_local_poll','native_local_check','native_local_complete') THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO agentstudio_local_executor',f.oid::regprocedure);END IF;
+ IF f.proname IN('native_local_pair','native_local_poll','native_local_check','native_local_complete','native_local_executor_installed') THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO agentstudio_local_executor',f.oid::regprocedure);END IF;
  IF f.proname='native_local_worker_binding' THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO agentstudio_worker',f.oid::regprocedure);END IF;
  END LOOP;
 END $grants$;

@@ -59,6 +59,9 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentTemplateMarketWrites?:boolean
   allowAgentDescriptivePatch?:boolean
   allowAgentDescriptivePatchWrites?:boolean
+  allowOwnerToolHub?:boolean
+  allowOwnerToolTrials?:boolean
+  allowPublicMcpRegistry?:boolean
   allowOwnOperations?:boolean
   allowCompanyOverview?:boolean
   allowCompanyWorkerHeartbeats?:boolean

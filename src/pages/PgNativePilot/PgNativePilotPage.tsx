@@ -27,6 +27,7 @@ import PgNativeAgentMcpToolsPanel from "./PgNativeAgentMcpToolsPanel"
 import PgNativeRunHistoryReadonlyPanel from "./PgNativeRunHistoryReadonlyPanel"
 import PgNativeWorkflowRunHistoryReadonlyPanel from "./PgNativeWorkflowRunHistoryReadonlyPanel"
 import PgNativeToolConnectionsPanel from "./PgNativeToolConnectionsPanel"
+const PgNativeToolHubPanel=lazy(()=>import("./PgNativeToolHubPanel"))
 import PgNativeMcpConnectionsPanel from "./PgNativeMcpConnectionsPanel"
 import PgNativeSmitheryPanel from "./PgNativeSmitheryPanel"
 import PgNativeKnowledgeSharingPanel from "./PgNativeKnowledgeSharingPanel"
@@ -76,7 +77,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="localDevices"|"officeWorkflow"|"createAgent"|"ownOperations"|"companyOverview"|"agents"|"templates"|"internalShares"|"approvalDelegations"|"agentCallers"|"workflowDraft"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="toolHub"|"localDevices"|"officeWorkflow"|"createAgent"|"ownOperations"|"companyOverview"|"agents"|"templates"|"internalShares"|"approvalDelegations"|"agentCallers"|"workflowDraft"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -197,6 +198,9 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [internalShare,setInternalShare]=useState({available:false,writes:false})
   const [internalShareOpened,setInternalShareOpened]=useState(false)
   useEffect(()=>{if(internalShare.available)setInternalShareOpened(true)},[internalShare.available])
+  const [ownerToolHub,setOwnerToolHub]=useState({available:false,writes:false,registry:false})
+  const [ownerToolHubOpened,setOwnerToolHubOpened]=useState(false)
+  useEffect(()=>{if(ownerToolHub.available)setOwnerToolHubOpened(true)},[ownerToolHub.available])
   const [templateMarket,setTemplateMarket]=useState({available:false,writes:false})
   const [templateMarketOpened,setTemplateMarketOpened]=useState(false)
   useEffect(()=>{if(templateMarket.available)setTemplateMarketOpened(true)},[templateMarket.available])
@@ -269,6 +273,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setApprovalDelegation({available:false,writes:false})
     setAgentCallers({available:false,writes:false,runs:false});setAgentCallersOpened(false)
     templateSetupSequence.current++;templateSetupPending.current=null;setTemplateSetupOpening(false)
+    setOwnerToolHub({available:false,writes:false,registry:false});setOwnerToolHubOpened(false)
     setDerivedMemoryOpened(false)
     setKnowledgeSemanticOpened(false);setKnowledgeSemantic({settings:false,consent:false,index:false,query:false});setKnowledgeSettingsVersion(0)
   },[])
@@ -295,6 +300,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setReadableKnowledge([])
     setConfigEditEnabled(false);setWorkflowV2Enabled(false)
     setCompanyOverviewAvailable(false);setCompanyWorkerHeartbeatsAvailable(false)
+    setOwnerToolHub(previous=>({...previous,writes:false,registry:false}))
     setGeneratedAcceptance(previous=>({...previous,enabled:false}))
     setDescriptivePatch(previous=>({...previous,enabled:false}))
     setAgentPlanWorkflow(previous=>({...previous,submissions:false,saves:false}))
@@ -330,6 +336,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setReadableKnowledge([...k,...shared.filter(base=>!k.some(own=>own.id===base.id)).map(base=>({id:base.id,name:base.name+" · "+base.owner_name+"共享 · "+(base.access_role==="editor"?"可编辑":"可查看"),description:base.description,revision:base.base_revision}))])
       setAgents(a);setWorkflows(w);setKnowledge(k);setModelConnections(m)
       setToolConnections(t)
+      setOwnerToolHub({available:capability?.owner_tool_hub_available===true,writes:capability?.owner_tool_trials_enabled===true&&capability.config_writes_enabled===true,registry:capability?.public_mcp_registry_enabled===true})
       setConfigEditEnabled(capability?.config_writes_enabled===true)
       setModelProbeEnabled(capability?.model_probe_enabled===true)
       setMcpDiscoveryEnabled(capability?.mcp_discovery_enabled===true&&capability?.config_writes_enabled===true)
@@ -664,6 +671,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       [{key:"runUat" as const,label:"运行与审批 UAT",icon:ClipboardCheck,count:null}]:[]),
     {key:"modelConnections" as const,label:"模型连接",icon:KeyRound,count:modelConnections.length},
     {key:"toolConnections" as const,label:"工具连接",icon:Wrench,count:toolConnections.length},
+    ...(ownerToolHub.available?[{key:"toolHub" as const,label:"工具中心",icon:Wrench,count:null}]:[]),
     {key:"employees" as const,label:"员工管理",icon:Users,count:null},
   ]
   const navigate=(screen:NativeStudioScreen)=>{
@@ -833,6 +841,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
                 available={agentPlanWorkflow.available} submissions={agentPlanWorkflow.submissions&&!loading&&!busy} saves={agentPlanWorkflow.saves&&!loading&&!busy} configurationWrites={configEditEnabled&&!loading&&!busy}
                 agents={agents} models={modelConnections} tools={toolConnections} bases={readableKnowledge} onExpired={expireOriginalTaskSession} onSaved={refresh} onOpenSavedWorkflow={openSavedPlanWorkflow}/>
             </Suspense>}</div>
+            <div hidden={section!=="toolHub"}>{(ownerToolHubOpened||ownerToolHub.available)&&<Suspense fallback={<p role="status">加载工具中心…</p>}><PgNativeToolHubPanel key={originalTaskKey+":tool-hub:"+sessionFence.current.session()} api={api} employeeId={profile.id} scopeKey={originalTaskKey+":"+sessionFence.current.session()} active={apiMatches&&section==="toolHub"} available={ownerToolHub.available} writes={ownerToolHub.writes&&!loading&&!busy} registry={ownerToolHub.registry} models={modelConnections} tools={toolConnections} bases={readableKnowledge} destinationBusy={originalOpening||originalBlocked||busy} onExpired={expireOriginalTaskSession} onConnections={()=>navigate("toolConnections")} onOpenOriginal={openOwnOriginal}/></Suspense>}</div>
             <div hidden={section!=="templates"}>{(templateMarketOpened||templateMarket.available)&&<PgNativeTemplateMarketPanel
               key={originalTaskKey+":templates"} api={templateMarketApi} employeeId={profile.id} scopeKey={originalTaskKey+":"+sessionFence.current.session()}
               active={apiMatches&&section==="templates"} available={templateMarket.available} writes={templateMarket.writes&&!loading&&!busy&&!templateSetupOpening}

@@ -1,0 +1,73 @@
+name: Agent Studio F02 employee creation genuine PG18 browser verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_journey:
+        description: Explicitly run real synthetic employee creation, model probe, Worker trial, acceptance and publication
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-agent-create-journey-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-agent-create-journey-browser:
+    name: F02 / actual employee creation and accepted full publication
+    if: inputs.run_journey
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F02_GENUINE_CI: YES_DISPOSABLE_F02_EMPLOYEE_JOURNEY_ONLY
+      AGENT_STUDIO_F02_GENUINE_SUITE: browser
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked root dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Exact purpose guard pure tests
+        run: node --test --test-concurrency=1 services/pg-api/tests/agent-create-journey-genuine-guard.test.mjs
+      - name: Install exact locked test Chromium version
+        run: node --experimental-strip-types services/pg-api/tests/helpers/install-agent-create-journey-chromium.mjs
+      - name: Actual employee create, resource probe/bind, trial, acceptance and publish receipt
+        run: node node_modules/@playwright/test/cli.js test --config tests/pg-native-browser/playwright.config.mjs tests/pg-native-browser/agent-create-journey-pg18.spec.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: F02-actual-employee-journey-${{ github.run_id }}
+          path: .tmp/pg-migration-completion/ci-browser-results
+          if-no-files-found: ignore
+          retention-days: 7

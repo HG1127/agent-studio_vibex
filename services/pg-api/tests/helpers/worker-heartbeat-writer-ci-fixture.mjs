@@ -913,10 +913,14 @@ function writerFinalInvariantObservation(phase,passed){
  if(!['shared_knowledge_child_selection','shared_knowledge_cleanup','owned_backend_absence','issued_boot_uid_ceiling','empty_business_queues'].includes(phase)||typeof passed!=='boolean')return
  process.stdout.write(JSON.stringify({event:'genuine_writer_ci_final_invariant_observation',phase,code:passed?'passed':'failed',observed_data_only:true})+'\n')
 }
-function writerCiApi(s){return Object.freeze({
+function writerCiApi(s){
+ // Observation references only, populated AFTER the original owned stop succeeds.
+ // The original writerStoppedChildren WeakSet remains the cleanup authority.
+ const stoppedSharedKnowledgeChildren=new Set()
+ return Object.freeze({
  kinds:Object.freeze([...kinds]),variant:s.writerVariant,
  change:changes=>writerChange(s,changes),deliveries:()=>writerDeliveries(s),rows:()=>writerRows(s),backends:()=>writerBackendRows(s),journal:()=>writerJournal(s).filter(r=>r.phase.startsWith('writer_')).map(r=>({phase:r.phase,instance_id:r.instance_id,data:r.data})),
- launch:options=>launchWriter(s,options),command:(c,command,ms)=>writerCommand(s,c,command,ms),stop:c=>writerStop(s,c),noIo:()=>writerNoIo(s),
+ launch:options=>launchWriter(s,options),command:(c,command,ms)=>writerCommand(s,c,command,ms),stop:async c=>{const result=await writerStop(s,c);if(c.mode==='entry'&&c.batch&&Array.isArray(c.selected)&&c.selected.length===2&&c.selected[0]==='knowledge_index'&&c.selected[1]==='knowledge_query')stoppedSharedKnowledgeChildren.add(c);return result},noIo:()=>writerNoIo(s),
  rowLock:(kind,slot_no=1)=>writerRowLock(s,kind,slot_no),
  async tableLock(){const db=await s.telemetry.connect();await db.query('BEGIN');await db.query('LOCK TABLE studio_telemetry.slot_state IN ACCESS EXCLUSIVE MODE');let done=false;return Object.freeze({async release(){if(done)return;done=true;try{await db.query('ROLLBACK')}finally{db.release()}}})},
  async waitBindBlocked(){await until(async()=>(await s.telemetry.query("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock' AND query LIKE 'SELECT k.instrumented,%') AS held",[s.controlBackend.pid])).rows[0].held,'writer_actual_bind_guard_blocked',10000);return true},
@@ -950,7 +954,7 @@ function writerCiApi(s){return Object.freeze({
   // The fixed integration already stopped this exact two-kind child. A child
   // exit precedes Root cleanup. Reuse the ORIGINAL read-only 5s observation,
   // with its staged/claimed/bound instance and both original generations.
-  const children=[...s.writerStoppedChildren].filter(c=>c.mode==='entry'&&c.batch&&Array.isArray(c.selected)&&c.selected.length===2&&c.selected[0]==='knowledge_index'&&c.selected[1]==='knowledge_query')
+  const children=[...stoppedSharedKnowledgeChildren].filter(c=>c.mode==='entry'&&c.batch&&Array.isArray(c.selected)&&c.selected.length===2&&c.selected[0]==='knowledge_index'&&c.selected[1]==='knowledge_query')
   writerFinalInvariantObservation('shared_knowledge_child_selection',children.length===1);assert.equal(children.length,1)
   try{await writerWaitStoppedCleanup(s,children);writerFinalInvariantObservation('shared_knowledge_cleanup',true)}catch(error){writerFinalInvariantObservation('shared_knowledge_cleanup',false);throw error}
   const backends=await writerBackendRows(s);writerFinalInvariantObservation('owned_backend_absence',backends.length===0);assert.equal(backends.length,0)

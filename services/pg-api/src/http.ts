@@ -38,7 +38,10 @@ import {parseAgentReviewHistoryUrl,parseAgentReviewHistoryPage} from "./agent-re
 import {parseAgentReviewTarget,parsePublicAgentReviewChoice,publicAgentReviewSource,publicAgentReviewPreview,publicAgentReviewReceipt,publicAgentReviewControlReceipt} from "./agent-review-public-contract.ts"
 import {parseAgentGeneratedPreviewInput,parseAgentGeneratedAcceptance,parseAgentGeneratedPreview,parseAgentGeneratedReceipt,agentGeneratedAcknowledgement,type AgentGeneratedAcceptance,type AgentGeneratedReceipt} from "./agent-generated-acceptance-contract.ts"
 
+import {ownerToolHubRoute,handleOwnerToolHubHttp,type OwnerToolHubHttpContext} from "./tool-hub-http.ts"
+
 export interface AppDependencies {
+  ownerToolHub?:OwnerToolHubHttpContext
   /** Native server only, after actual SQL067 audit; requires verified employee Cookie identity. */
   allowNativeLocalAgentSpecs?:boolean
   repository: AgentSpecRepository
@@ -226,6 +229,7 @@ export function createHandler(deps:AppDependencies) {
       const reviewItem=/^\/api\/v2\/agent-reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\/(control|control-confirm))?$/.exec(path)
       const reviewCollection=path==="/api/v2/agent-reviews"
       const reviewRoute=reviewAction||reviewItem||reviewCollection
+      const toolHubRoute=ownerToolHubRoute(path)
       const generatedBase="/api/v2/agent-generated-acceptances"
       const generatedAction=/^\/api\/v2\/agent-generated-acceptances\/(preview|accept|confirm)$/.exec(path)
       const generatedItem=/^\/api\/v2\/agent-generated-acceptances\/reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/.exec(path)
@@ -237,12 +241,13 @@ export function createHandler(deps:AppDependencies) {
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute && !generatedRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute && !generatedRoute && !toolHubRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
       if(!["GET","POST","PATCH","DELETE"].includes(method))
         throw new HttpError(405,"method_not_allowed")
+      if(toolHubRoute&&(!deps.ownerToolHub||!deps.authenticateRequest))throw new HttpError(404,"route_not_found")
       if(reviewRoute){
         if(!deps.agentReviewSourceRepository||!deps.agentReviewLedgerRepository||!deps.agentOpinionRepository)throw new HttpError(404,"route_not_found")
         if(reviewCollection&&!deps.agentReviewHistoryRepository)throw new HttpError(404,"route_not_found")
@@ -274,6 +279,7 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(toolHubRoute){await handleOwnerToolHubHttp(req,res,identity,deps.ownerToolHub!);return}
       if(generatedRoute){
         if(identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
         if(req.url!==path)throw new HttpError(400,"invalid_agent_generated_request")

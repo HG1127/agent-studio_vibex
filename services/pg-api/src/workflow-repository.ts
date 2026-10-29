@@ -76,13 +76,14 @@ async function auditGraphWrite(db:SqlClient,actor:string,row:WorkflowRow,action:
 
 export class WorkflowRepository {
   readonly pool:SqlPool
-  constructor(pool:SqlPool) {this.pool=pool}
+  readonly excludeToolTrials:boolean
+  constructor(pool:SqlPool,options:{excludeToolTrials?:boolean}={}) {this.pool=pool;this.excludeToolTrials=options.excludeToolTrials===true}
   list(identity:Identity,limit=30):Promise<WorkflowRow[]> {
     const bounded=Math.max(1,Math.min(50,Math.trunc(limit)))
     return withActor(this.pool,identity,async(db,actor)=>{
       const rows=await db.query<WorkflowRow>(
         "SELECT "+columns+" FROM agentstudio.workflows "+
-        "WHERE owner_user_id=$1::uuid ORDER BY updated_at DESC,id LIMIT $2::int",
+        "WHERE owner_user_id=$1::uuid "+(this.excludeToolTrials?"AND NOT EXISTS(SELECT 1 FROM agentstudio.toolhub_trials trial WHERE trial.owner_user_id=$1::uuid AND trial.workflow_id=agentstudio.workflows.id) ":"")+"ORDER BY updated_at DESC,id LIMIT $2::int",
         [actor,bounded])
       return rows.rows.map(normalizeWorkflow)
     })

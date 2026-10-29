@@ -60,7 +60,7 @@ jobs:
       - name: Actual compiler and pure boundary tests
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test services/pg-api/tests/agent-caller-contract.test.mjs services/pg-api/tests/agent-caller-client.test.mjs services/pg-api/tests/agent-caller-owner-session.test.mjs services/pg-api/tests/agent-caller-genuine-guard.test.mjs services/pg-api/tests/agent-caller-http.test.mjs services/pg-api/tests/agent-caller-presentation.test.mjs services/pg-api/tests/agent-caller-capability-separation.test.mjs
+          node --experimental-strip-types --test services/pg-api/tests/agent-caller-contract.test.mjs services/pg-api/tests/agent-caller-client.test.mjs services/pg-api/tests/agent-caller-owner-session.test.mjs services/pg-api/tests/agent-caller-genuine-guard.test.mjs services/pg-api/tests/agent-caller-http.test.mjs services/pg-api/tests/agent-caller-presentation.test.mjs services/pg-api/tests/agent-caller-capability-separation.test.mjs services/pg-api/tests/agent-caller-quota-recovery.test.mjs
       - name: Actual public caller and original Worker mTLS Broker pipeline
         if: matrix.suite == 'flow'
         working-directory: services/pg-api
@@ -118,7 +118,7 @@ jobs:
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual Owner UI and independent public Origin through original execution
-        run: pnpm exec playwright test --config tests/pg-native-agent-caller-genuine.config.mjs
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-agent-caller-genuine.config.mjs
       - name: Retain actual failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

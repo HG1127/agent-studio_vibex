@@ -205,6 +205,13 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  // Optional069 owns its exact Native-only routes and independent gates.
+  // GET confirmations never inherit the fresh submission switch.
+  if(pathname==="/api/v2/tool-hub"||pathname.startsWith("/api/v2/tool-hub/")){
+    if(method==="GET")return true
+    return method==="POST"&&policy.configurationWrites===true&&policy.workflowV2ExecutionUat===true&&
+      (pathname==="/api/v2/tool-hub/trials"||pathname==="/api/v2/tool-hub/trials/preview"||new RegExp("^/api/v2/tool-hub/trials/"+uuid+"/(decision|cancel)$").test(pathname))
+  }
   // Read-only owner metadata never inherits a configuration/submission gate.
   // The Native handler still verifies Cookie identity and installed schema.
   if(pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos")return method==="GET"

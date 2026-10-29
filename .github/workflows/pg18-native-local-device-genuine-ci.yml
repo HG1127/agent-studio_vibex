@@ -78,14 +78,22 @@ jobs:
         run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-protocol-pg18.test.mjs
 
   pg18-local-device-executor:
-    name: F20 F21 / actual executor ${{ matrix.case }}
+    name: F20 F21 / actual executor ${{ matrix.case }} ${{ matrix.provider }}
     if: github.event_name == 'workflow_dispatch' && inputs.run_executor
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        case: [runtime, cli]
+        include:
+          - case: runtime
+          - case: cli
+          - case: chain
+            provider: openai
+          - case: chain
+            provider: anthropic
+          - case: chain
+            provider: gemini
     services:
       postgres:
         image: pgvector/pgvector:0.8.7-pg18
@@ -101,6 +109,7 @@ jobs:
     env:
       AGENT_STUDIO_F20_F21_GENUINE_CI: YES_DISPOSABLE_F20_F21_ONLY
       AGENT_STUDIO_F20_F21_GENUINE_SUITE: executor
+      AGENT_STUDIO_F20_F21_CHAIN_PROVIDER: ${{ matrix.provider }}
       AGENT_STUDIO_PG18_LOCAL_DEVICES_AVAILABLE: 'true'
       AGENT_STUDIO_PG18_LOCAL_DEVICES_WRITES_ENABLED: 'true'
       AGENT_STUDIO_PG18_LOCAL_DEVICES_APPROVED: APPROVE_DISPOSABLE_PG18_NATIVE_LOCAL_DEVICES_ONLY
@@ -133,3 +142,10 @@ jobs:
         if: matrix.case == 'cli'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-executor-pg18.test.mjs
+      - name: Install the exact MCP Playwright Chromium only for the explicit chain cases
+        if: matrix.case == 'chain'
+        run: node --experimental-strip-types services/pg-api/tests/helpers/install-native-chain-chromium.mjs
+      - name: Original autonomous Worker, actual mTLS Broker, independent CLI and current model image wire
+        if: matrix.case == 'chain'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-chain-pg18.test.mjs
