@@ -1,0 +1,112 @@
+// New-purpose hosted synthetic continuation. All mutations go through the
+// actual root preparer CLI; direct negative mutations are confined to the
+// attested newly owned PG18 target and restored before positive proof.
+import fs from 'node:fs'
+import path from 'node:path'
+import {spawn,execFileSync} from 'node:child_process'
+import {createHash,randomBytes,randomUUID,X509Certificate} from 'node:crypto'
+import {requireCompleteProfileFixtureCi} from './pg18-complete-install-ci-guard.mjs'
+import {assertVerifiedCompleteProfileStage} from './pg18-complete-install-ci-stage.mjs'
+import {ownedCompleteProfilePool,configureOwnedCompleteReviewStackHba} from './pg18-complete-install-ci-containers.mjs'
+const sha=b=>createHash('sha256').update(b).digest('hex'),fail=c=>{throw Error('complete_service_review_stack_'+c)}
+const login='agentstudio_review_dispatch_login',group='agentstudio_review_dispatch'
+function privateFile(file,bytes,uid=0,gid=0){const fd=fs.openSync(file,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW|fs.constants.O_WRONLY,0o400);try{fs.writeFileSync(fd,bytes);fs.fchownSync(fd,uid,gid);fs.fchmodSync(fd,0o400);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}}
+async function child(file,args,env,options={},discard=false){
+ return new Promise((resolve,reject)=>{
+  const p=spawn(process.execPath,['--experimental-strip-types',file,...args],{env,stdio:['ignore','pipe','pipe'],windowsHide:true,...options});let stdout='',stderr='',bytes=0,stopping=false,killer
+  const stop=()=>{stopping=true;p.kill('SIGTERM');killer=setTimeout(()=>p.kill('SIGKILL'),5000)},timer=setTimeout(stop,150000)
+  p.stdout.on('data',b=>{bytes+=b.length;if(bytes>65536){stop();return}if(!discard)stdout+=b});p.stderr.on('data',b=>{bytes+=b.length;if(bytes>65536){stop();return}stderr+=b})
+  p.once('error',()=>{clearTimeout(timer);reject(Error('complete_service_review_stack_child_start'))});p.once('close',code=>{clearTimeout(timer);if(killer)clearTimeout(killer);if(stopping)return reject(Error('complete_service_review_stack_child_bound'));let report;try{report=stdout.trim()?JSON.parse(stdout):null}catch{return reject(Error('complete_service_review_stack_child_report'))}const refusal=/\bcomplete069_review_stack_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})\b/.exec(stderr)?.[0]??null;console.log(JSON.stringify({event:'complete069_review_stack_actual_cli_result',phase:file.endsWith('/agent-assessment-service.ts')?'original_preflight_'+args[1]:args[0]==='--inspect-operation'?'inspect_operation':'prepare',exit:Number.isSafeInteger(code)?code:null,refusal,reported_refusal:typeof report?.refusal_code==='string'&&/^complete069_review_stack_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})$/.test(report.refusal_code)?report.refusal_code:null,verified:report?.verified===true,output_deliberately_discarded:discard,production_GO:false}));resolve({code,report,refusal})})
+ })
+}
+async function originalReadOnlyStackCli(loaded,inputs){
+ assertVerifiedCompleteProfileStage(loaded)
+ const dest='/var/lib/agentstudio-complete-review-stack-preflight-'+loaded.stageNonce,workerDir='/run/credentials/agentstudio-pg18-review-worker.service',brokerDir='/run/credentials/agentstudio-pg18-review-broker.service',scratch=loaded.stageInput+'/review-preflight-tls',uid=65534,gid=65534
+ if(!/^[a-f0-9]{64}$/.test(loaded.stageNonce)||[dest,workerDir,brokerDir,scratch].some(p=>fs.existsSync(p)))fail('existing_preflight_path')
+ const roots=new Map(),remember=p=>{const s=fs.lstatSync(p);if(!s.isDirectory()||s.isSymbolicLink())fail('owned_directory');roots.set(p,{dev:s.dev,ino:s.ino})}
+ try{
+  for(const p of ['/','/var','/var/lib','/run','/run/credentials']){if(!fs.existsSync(p)&&p==='/run/credentials')fs.mkdirSync(p,{mode:0o755});const s=fs.lstatSync(p);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==0||s.gid!==0||(s.mode&0o7777)!==0o755)fail('preflight_parent')}
+  fs.mkdirSync(dest,{mode:0o755});remember(dest)
+  const copy=(from,to)=>{for(const name of fs.readdirSync(from).sort()){const a=path.join(from,name),b=path.join(to,name),s=fs.lstatSync(a);if(s.isSymbolicLink()||s.uid!==0||s.gid!==0||(s.mode&0o022)!==0)fail('preflight_source');if(s.isDirectory()){fs.mkdirSync(b,{mode:0o755});copy(a,b);fs.chmodSync(b,0o555)}else if(s.isFile()&&s.nlink===1){const bytes=fs.readFileSync(a);fs.writeFileSync(b,bytes,{flag:'wx',mode:0o444});if(sha(fs.readFileSync(b))!==sha(bytes))fail('preflight_source_copy')}else fail('preflight_source_kind')}};copy(loaded.tree,dest);fs.chmodSync(dest,0o555)
+  for(const f of loaded.complete.manifest.sources)if(sha(fs.readFileSync(dest+'/'+f.path))!==f.sha256)fail('preflight_source_binding')
+  fs.mkdirSync(scratch,{mode:0o700});remember(scratch)
+  const openssl=args=>execFileSync('/usr/bin/openssl',args,{cwd:scratch,stdio:'ignore',timeout:20000,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},windowsHide:true})
+  openssl(['req','-x509','-newkey','rsa:2048','-nodes','-sha256','-keyout','ca.key','-out','ca.pem','-days','1','-subj','/CN=Disposable full069 Review CA','-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,keyCertSign,cRLSign'])
+  for(const name of ['server','worker']){
+   openssl(['req','-new','-newkey','rsa:2048','-nodes','-keyout',name+'.key','-out',name+'.csr','-subj','/CN=Disposable full069 Review '+name])
+   fs.writeFileSync(scratch+'/'+name+'.ext',['basicConstraints=CA:FALSE','keyUsage=digitalSignature,keyEncipherment','extendedKeyUsage='+(name==='server'?'serverAuth':'clientAuth'),...(name==='server'?['subjectAltName=DNS:localhost,IP:127.0.0.1']:[])].join('\n'),{flag:'wx',mode:0o600})
+   openssl(['x509','-req','-in',name+'.csr','-CA','ca.pem','-CAkey','ca.key','-CAcreateserial','-out',name+'.pem','-days','1','-sha256','-extfile',name+'.ext'])
+  }
+  for(const credentials of [workerDir,brokerDir]){fs.mkdirSync(credentials,{mode:0o700});remember(credentials);fs.chownSync(credentials,uid,gid)}
+  const contents={worker:{'worker.secret':inputs.review_worker,'design-worker.secret':inputs.design_worker,'review-ca.pem':fs.readFileSync(scratch+'/ca.pem'),'review-worker.pem':fs.readFileSync(scratch+'/worker.pem'),'review-worker.key':fs.readFileSync(scratch+'/worker.key')},broker:{'api.secret':inputs.api,'dispatch.secret':inputs.review_dispatch,'broker.secret':inputs.model_broker,'design-dispatch.secret':inputs.design_dispatch,'model-encryption.secret':randomBytes(32).toString('hex'),'review-ca.pem':fs.readFileSync(scratch+'/ca.pem'),'review-server.pem':fs.readFileSync(scratch+'/server.pem'),'review-server.key':fs.readFileSync(scratch+'/server.key')}}
+  for(const[kind,files]of Object.entries(contents))for(const[name,bytes]of Object.entries(files))privateFile((kind==='worker'?workerDir:brokerDir)+'/'+name,bytes,uid,gid)
+  const {agentDesignExecutionApproval}=await loaded.from('services/pg-api/src/agent-design-runtime-policy.ts')
+  const {agentAssessmentApproval}=await loaded.from('services/pg-api/src/agent-assessment-contract.ts')
+  const env={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:'/nonexistent',LANG:'C.UTF-8',AGENT_STUDIO_PG18_REVIEW_EXECUTION_ENABLED:'true',AGENT_STUDIO_PG18_REVIEW_EXECUTION_APPROVED:agentAssessmentApproval,AGENT_STUDIO_PG_REVIEW_SERVICE_REVIEWED:'true',AGENT_STUDIO_PG_REVIEW_ORIGIN:'https://127.0.0.1:7459',AGENT_STUDIO_PG_REVIEW_SERVER_FINGERPRINT:new X509Certificate(fs.readFileSync(scratch+'/server.pem')).fingerprint256,AGENT_STUDIO_PG_REVIEW_CLIENT_FINGERPRINT:new X509Certificate(fs.readFileSync(scratch+'/worker.pem')).fingerprint256,AGENT_STUDIO_PG_REVIEW_WORKER_LOGIN:'agentstudio_review_worker_login',AGENT_STUDIO_PG_REVIEW_DISPATCH_LOGIN:'agentstudio_review_dispatch_login',AGENT_STUDIO_PG18_DESIGN_EXECUTION_ENABLED:'true',AGENT_STUDIO_PG18_DESIGN_EXECUTION_APPROVED:agentDesignExecutionApproval,AGENT_STUDIO_PG_PILOT_ENABLED:'true',AGENT_STUDIO_PG_BAOTA18_ENABLED:'true',AGENT_STUDIO_PG_BAOTA18_TARGET_CONFIRMED:'true',AGENT_STUDIO_PG_HOST:'127.0.0.1',AGENT_STUDIO_PG_PORT:'5333',AGENT_STUDIO_PG_DATABASE:'agent_studio',AGENT_STUDIO_PG_USER:'agentstudio_stage_login'}
+  const verified={}
+  for(const kind of ['broker','worker']){
+   const result=await child(dest+'/services/pg-api/src/agent-assessment-service.ts',['--preflight',kind],{...env,CREDENTIALS_DIRECTORY:kind==='worker'?workerDir:brokerDir},{uid,gid,cwd:dest+'/services/pg-api'})
+   if(result.code!==0||result.report?.mode!=='preflight'||result.report.service!==kind||result.report.ready!==true||result.report.read_only!==true||result.report.verified_roles!==(kind==='worker'?2:6)||result.report.design_enabled!==true||result.report.tls_material_verified!==true||result.report.encryption_key_loaded!==false||result.report.worker_started!==false||result.report.db_writes_performed!==false||result.report.port_opened!==false||result.report.external_model_calls!==false||result.report.production_cutover_allowed!==false)fail('original_design_cli_preflight')
+   verified[kind]=true
+  }
+  return verified
+ }finally{
+  for(const[p,identity]of [...roots].reverse()){const s=fs.lstatSync(p);if(!s.isDirectory()||s.isSymbolicLink()||s.dev!==identity.dev||s.ino!==identity.ino)fail('preflight_cleanup_ownership');if(p!==dest&&p!==workerDir&&p!==brokerDir&&p!==scratch)fail('preflight_cleanup_path');fs.rmSync(p,{recursive:true})}
+ }
+}
+
+// This phase has its own eight completed groups. It does not add a tenth case
+// to C's original nine-case counter, and never runs the old strict observers
+// after adding the three identities.
+export async function verifyComplete069ReviewStackCi(loaded,target,inputs){
+ requireCompleteProfileFixtureCi();assertVerifiedCompleteProfileStage(loaded)
+ if(!inputs||Object.keys(inputs).sort().join(',')!=='api,modelBroker'||!Object.values(inputs).every(v=>typeof v==='string'&&/^[a-f0-9]{80}$/.test(v))||target.kind!=='main'||target.port!==5333||target.database!=='agent_studio')fail('fixed_inputs')
+ const admin=await ownedCompleteProfilePool(target,1),defs=[['review_dispatch','agentstudio_review_dispatch_login','agentstudio_review_dispatch'],['design_worker','agentstudio_design_worker_login','agentstudio_design_worker'],['design_dispatch','agentstudio_design_dispatch_login','agentstudio_design_dispatch']],assert=(v,c)=>{if(!v)fail(c)},equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b),completed=[]
+ const groups=['guard_refusals_preserve_target','real_root_cli_and_fresh_readonly_observation','existing_operation_and_accounts_refuse_takeover','original_three_dedicated_auditors','privilege_and_global_inventory_refusals','original_nonroot_design_broker_preflight','original_nonroot_design_worker_preflight','final_all133_images_ledger_and_private_evidence']
+ const step=name=>{assert(groups[completed.length]===name,'case_order');completed.push(name);console.log(JSON.stringify({event:'complete069_review_stack_actual_case',case:name,passed:completed.length,all_services_started:false,production_GO:false}))}
+ const root=loaded.stageInput,journal=root+'/review-stack-operation-records',reviewDir=root+'/review-worker-operation-records',executorDir=root+'/executor-operation-records',parentId=dir=>{const names=fs.readdirSync(dir).filter(n=>/^[a-f0-9-]+\.intent\.json$/.test(n));assert(names.length===1,'parent_operation_required');return names[0].slice(0,-'.intent.json'.length)},reviewId=parentId(reviewDir),executorId=parentId(executorDir)
+ const passwords={api:inputs.api,model_broker:inputs.modelBroker,review_worker:fs.readFileSync(root+'/review-worker.secret','utf8'),executor:fs.readFileSync(root+'/executor.secret','utf8'),...Object.fromEntries(defs.map(([k])=>[k,randomBytes(40).toString('hex')]))},passwordFiles={model_broker:root+'/review-stack-model-broker.secret',review_worker:root+'/review-worker.secret',executor:root+'/executor.secret',...Object.fromEntries(defs.map(([k])=>[k,root+'/review-stack-'+k+'.secret']))}
+ const ledger=async()=>(await admin.query('SELECT version,description FROM agentstudio.schema_migrations ORDER BY version')).rows,roles=async()=>(await admin.query('SELECT rolname AS name,rolcanlogin AS enabled,rolpassword AS verifier FROM pg_authid WHERE rolname=ANY($1::text[]) ORDER BY rolname',[defs.map(d=>d[1])])).rows
+ const image=async()=>{const rows=[];for(const table of loaded.complete.tables){assert(/^(agentstudio|agentstudio_auth)\.[a-z_]+$/.test(table),'table');const q=table.split('.').map(s=>'"'+s+'"').join('.');rows.push([table,(await admin.query("SELECT encode(sha256(convert_to(coalesce(jsonb_agg(j ORDER BY j::text),'[]'::jsonb)::text,'UTF8')),'hex') AS hash FROM (SELECT to_jsonb(t) AS j FROM "+q+' t) s')).rows[0].hash])}return rows}
+ const pools={}
+ try{
+  assert(Object.values(passwords).every(v=>/^[a-f0-9]{80}$/.test(v))&&new Set(Object.values(passwords)).size===Object.keys(passwords).length,'independent_inputs')
+  assert((await roles()).length===0,'existing_roles');const beforeLedger=await ledger(),beforeImage=await image();assert(beforeLedger.length===57&&beforeImage.length===133,'initial_shape')
+  fs.mkdirSync(journal,{mode:0o700});for(const k of ['model_broker',...defs.map(d=>d[0])])privateFile(passwordFiles[k],passwords[k])
+  const runtime='AGENT_STUDIO_DESCRIPTIVE_PATCH_060_',prefix='AGENT_STUDIO_COMPLETE_REVIEW_STACK_',env={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:'/root',LANG:'C.UTF-8',AGENT_STUDIO_BAOTA_PG_HOST:'127.0.0.1',AGENT_STUDIO_BAOTA_PG_PORT:'5333',AGENT_STUDIO_BAOTA_PG_DATABASE:'agent_studio',AGENT_STUDIO_BAOTA_PG_ADMIN_USER:'postgres',AGENT_STUDIO_BAOTA_PG_ADMIN_PASSWORD_FILE:root+'/admin.secret',AGENT_STUDIO_BAOTA_PG_API_PASSWORD_FILE:root+'/review-api.secret',AGENT_STUDIO_COMPLETE_REVIEW_WORKER_JOURNAL_DIR:reviewDir,AGENT_STUDIO_COMPLETE_EXECUTOR_JOURNAL_DIR:executorDir,[prefix+'ENABLED']:'true',[prefix+'WRITE_APPROVED']:'PREPARE_COMPLETE069_FIXED_REVIEW_STACK_ONLY',[prefix+'JOURNAL_DIR']:journal,...Object.fromEntries(Object.entries(passwordFiles).map(([k,v])=>[prefix+k.toUpperCase()+'_PASSWORD_FILE',v])),[runtime+'RUNTIME_MANIFEST_FILE']:root+'/runtime-manifest.json',[runtime+'RUNTIME_MANIFEST_SHA256']:sha(fs.readFileSync(root+'/runtime-manifest.json')),[runtime+'RUNTIME_LOCK_SHA256']:'eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'}
+  const args=(mode,id)=>[mode,'--profile','complete069','--confirm-database','agent_studio','--expected-source-sha256',loaded.profileSha,'--expected-system-identifier',target.systemIdentifier,'--expected-database-oid',target.databaseOid,'--review-operation-id',reviewId,'--executor-operation-id',executorId,'--operation-id',id],file=loaded.tree+'/services/pg-api/src/pg18-complete-review-stack-cli.mjs',command=(mode,id=randomUUID(),patch={},discard=false)=>child(file,args(mode,id),{...env,...patch},{},discard)
+  await configureOwnedCompleteReviewStackHba(target)
+  let r=await command('--prepare',undefined,{[prefix+'WRITE_APPROVED']:'false'});assert(r.code===1&&r.refusal==='complete069_review_stack_write_not_approved','missing_approval')
+  const bad=args('--prepare',randomUUID());bad[10]=String(Number(target.databaseOid)+1);r=await child(file,bad,env);assert(r.code===1&&r.refusal==='complete069_review_stack_predecessor_complete_service_target_refused','wrong_bound_target')
+  const wrong=args('--prepare',randomUUID());wrong[6]='0'.repeat(64);r=await child(file,wrong,env);assert(r.code===1&&r.refusal==='complete069_review_stack_source_refused','wrong_source')
+  r=await command('--prepare',undefined,{[prefix+'DESIGN_WORKER_PASSWORD_FILE']:env.AGENT_STUDIO_BAOTA_PG_API_PASSWORD_FILE});assert(r.code===1&&r.refusal==='complete069_review_stack_independent_secret_required','secret_alias')
+  await configureOwnedCompleteReviewStackHba(target,'earlier-trust-negative');try{r=await command('--prepare');assert(r.code===1&&r.refusal==='complete069_review_stack_hba_refused','earlier_trust')}finally{await configureOwnedCompleteReviewStackHba(target)}
+  await admin.query('CREATE ROLE full069_unexpected NOLOGIN');try{r=await command('--prepare');assert(r.code===1&&r.refusal==='complete069_review_stack_unknown_global_role_refused','unknown_global_role')}finally{await admin.query('DROP ROLE full069_unexpected')}
+  await admin.query('CREATE ROLE agentstudio_design_worker_login NOLOGIN NOINHERIT');try{r=await command('--prepare');assert(r.code===1&&r.refusal==='complete069_review_stack_partial_role_state_refused','partial_roles')}finally{await admin.query('DROP ROLE agentstudio_design_worker_login')}
+  fs.chmodSync(journal,0o755);try{r=await command('--prepare');assert(r.code===1&&r.refusal==='complete069_review_stack_private_record_required','public_journal')}finally{fs.chmodSync(journal,0o700)}
+  assert((await roles()).length===0&&fs.readdirSync(journal).length===0&&equal(await ledger(),beforeLedger)&&equal(await image(),beforeImage),'negative_mutation');step(groups[0])
+  const id=randomUUID();r=await command('--prepare',id,{},true);assert(r.code===0&&r.report===null,'actual_prepare_lost_stdout')
+  const prepared=await roles(),record=fs.readFileSync(journal+'/'+id+'.result.json'),report=JSON.parse(record),proofs=['role_matrix_verified','old_catalog_unchanged','migration_ledger_unchanged','all_table_images_unchanged','verifiers_match_intent','prior_logins_verified','new_logins_verified','actual_api_catalog_verified']
+  assert(prepared.length===3&&prepared.every(v=>v.enabled===true)&&report.format==='complete069_review_stack_result_v1'&&report.commit_acknowledged===true&&proofs.every(k=>report[k]===true)&&report.runtime_authorization===false&&report.qualifies===false,'actual_evidence')
+  const observed=async()=>{const v=await command('--inspect-operation',id);assert(v.code===0&&proofs.every(k=>v.report?.[k]===true)&&v.report.observed_ready===true&&v.report.prior_commit_acknowledged===false&&v.report.writes_performed===false&&v.report.runtime_authorization===false,'readonly_observation');return v}
+  await observed();step(groups[1])
+  for(const replay of [id,randomUUID()]){r=await command('--prepare',replay);assert(r.code===1&&r.refusal==='complete069_review_stack_existing_roles_no_takeover'&&equal(await roles(),prepared)&&fs.readFileSync(journal+'/'+id+'.result.json').equals(record),'replay_or_takeover')};step(groups[2])
+  for(const[k,n]of defs){pools[k]=new loaded.Pool({host:'127.0.0.1',port:5333,database:'agent_studio',user:n,password:passwords[k],ssl:false,options:'',max:1,connectionTimeoutMillis:5000,statement_timeout:15000});pools[k].on('error',()=>{})}
+  const {inspectAgentAssessmentOperatorPool,inspectAgentDesignOperatorPool}=await loaded.from('services/pg-api/src/agent-assessment-service.ts'),{loadAgentDesignAuditVerifier}=await loaded.from('services/pg-api/src/agent-design-runtime-policy.ts'),audit=await loadAgentDesignAuditVerifier(),targetFor=n=>({mode:'baota_pg18',host:'127.0.0.1',port:5333,database:'agent_studio',user:n,expectedMajor:18}),probe=async()=>{await inspectAgentAssessmentOperatorPool(pools.review_dispatch,targetFor(defs[0][1]),'dispatch');await inspectAgentDesignOperatorPool(pools.design_worker,targetFor(defs[1][1]),'worker',audit);await inspectAgentDesignOperatorPool(pools.design_dispatch,targetFor(defs[2][1]),'dispatch',audit)}
+  await probe();step(groups[3])
+  for(const[k,n,g]of defs){
+   const db=await pools[k].connect();try{await db.query('BEGIN READ ONLY');let denied=false;try{await db.query('SELECT email FROM agentstudio_auth.accounts')}catch(e){denied=e.code==='42501'}assert(denied,'direct_table_denial')}finally{await db.query('ROLLBACK');db.release()}
+   await admin.query('ALTER ROLE '+n+' INHERIT');try{r=await command('--inspect-operation',id);assert(r.code===1&&r.refusal==='complete069_review_stack_role_matrix_refused','inherit_refusal')}finally{await admin.query('ALTER ROLE '+n+' NOINHERIT')}
+   await admin.query('GRANT SELECT ON agentstudio.native_local_devices TO '+n);try{r=await command('--inspect-operation',id);assert(r.code===1&&r.refusal==='complete069_review_stack_direct_privileges_refused','direct_grant_refusal')}finally{await admin.query('REVOKE SELECT ON agentstudio.native_local_devices FROM '+n)}
+  }
+  await admin.query('GRANT agentstudio_design_dispatch TO agentstudio_review_dispatch_login WITH ADMIN FALSE, INHERIT FALSE, SET TRUE');try{r=await command('--inspect-operation',id);assert(r.code===1&&r.refusal==='complete069_review_stack_membership_matrix_refused','membership_refusal')}finally{await admin.query('REVOKE agentstudio_design_dispatch FROM agentstudio_review_dispatch_login')}
+  await admin.query('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agentstudio_design_dispatch_login');try{r=await command('--inspect-operation',id);assert(r.code===1&&r.refusal==='complete069_review_stack_observed_state_changed','future_privilege_refusal')}finally{await admin.query('ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT ON TABLES FROM agentstudio_design_dispatch_login')}
+  await admin.query('CREATE ROLE full069_unexpected NOLOGIN');try{r=await command('--inspect-operation',id);assert(r.code===1&&r.refusal==='complete069_review_stack_unknown_global_role_refused','observer_unknown_global_role')}finally{await admin.query('DROP ROLE full069_unexpected')}
+  await probe();await observed();step(groups[4])
+  const preflight=await originalReadOnlyStackCli(loaded,passwords);assert(preflight.broker===true,'broker_preflight');step(groups[5]);assert(preflight.worker===true,'worker_preflight');step(groups[6])
+  await observed();assert(equal(await ledger(),beforeLedger)&&equal(await image(),beforeImage),'all133_images_or_ledger_changed')
+  for(const name of fs.readdirSync(journal)){const f=journal+'/'+name,s=fs.lstatSync(f),b=fs.readFileSync(f);assert(s.uid===0&&s.gid===0&&s.nlink===1&&!s.isSymbolicLink()&&(s.mode&0o7777)===0o600,'record_metadata');for(const v of [...Object.values(passwords),fs.readFileSync(root+'/admin.secret','utf8')])assert(!b.includes(v),'credential_leak')}
+  assert(fs.readdirSync(journal).length===2,'record_count');assertVerifiedCompleteProfileStage(loaded);step(groups[7]);assert(completed.length===groups.length,'case_count')
+  return {passed:completed.length,actual_preparation_cli:true,actual_three_dedicated_login_audits:true,original_nonroot_broker_design_preflight_verified:true,original_nonroot_worker_design_preflight_verified:true,unknown_global_roles_refused:true,all133_table_images_unchanged:true,ledger57_unchanged:true,prior_commit_acknowledged:false,actual_pg_commit_ack_loss_injected:false,all_services_started:false,runtime_authorization:false,qualifies:false,production_GO:false}
+ }finally{for(const p of [...Object.values(pools),admin])await p.end()}
+}

@@ -82,6 +82,10 @@ export async function runCompleteServiceFixture(argv,env=process.env){
    const executor=await verifyComplete069ExecutorCi(loaded,targets.main,{api:passwords.api,auth:passwords['native-auth'],modelKey:randomBytes(32).toString('hex')})
    assert.equal(executor.actual_preparation_cli,true);assert.equal(executor.actual_dedicated_login_verified,true);assert.equal(executor.original_C_preflight_verified,true);assert.equal(executor.original_nonroot_service_preflight_verified,true);assert.equal(executor.all133_table_images_unchanged,true);assert.equal(executor.runtime_authorization,false)
    console.log(JSON.stringify({event:'complete069_executor_actual_summary',...executor}))
+  const {verifyComplete069ReviewStackCi}=await import('./helpers/pg18-complete-review-stack-ci.mjs')
+  const reviewStack=await verifyComplete069ReviewStackCi(loaded,targets.main,{api:passwords.api,modelBroker:passwords.broker})
+  assert.equal(reviewStack.actual_preparation_cli,true);assert.equal(reviewStack.actual_three_dedicated_login_audits,true);assert.equal(reviewStack.original_nonroot_broker_design_preflight_verified,true);assert.equal(reviewStack.original_nonroot_worker_design_preflight_verified,true);assert.equal(reviewStack.all133_table_images_unchanged,true);assert.equal(reviewStack.runtime_authorization,false)
+  console.log(JSON.stringify({event:'complete069_review_stack_actual_summary',...reviewStack}))
   console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:caseCounter.finish(),actual_review_worker_login_verified:true,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
  }finally{await admin.end()}
 }

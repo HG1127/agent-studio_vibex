@@ -1,6 +1,6 @@
 // Reviewed source provenance only. Does not replace any original runtime catalog/LOGIN audit.
 export const agentCreateJourneyGenuineSources=Object.freeze({
-  "package.json": "f94e851ad24a5f1953346bc8c918bbc6f68efce257e6c3ffa10f9e92b276656f",
+  "package.json": "6d619cbeb1d1a112591c240c5bf8c9987ad1094e0e0f8fa1e41b0ddd2825a3bb",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -49,7 +49,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
   "services/pg-api/src/pg18-complete-operator-runtime.mjs": "d5cc238eb52cf9e4e3e5d123897d41961b62ea7c1f02144c2f277ab3cef1aa9e",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
-  "services/pg-api/src/pg18-complete-profile-source.mjs": "ec4620de0cbebcf7f9285c642f744c7e47ffbc4800169aa057f86acf696ce443",
+  "services/pg-api/src/pg18-complete-profile-source.mjs": "705d657d6c3ebc707806724a81ad49334d41f471f3532493755e4edd96201a3c",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
   "services/pg-api/src/public-mcp-registry-contract.ts": "c60e46a735a6e876be0077290a1841e6879cf869330b2a9bd2860e274d271677",
   "services/pg-api/src/public-mcp-registry-network.ts": "d67e6cd485d51edfa94d9401d6c79481a3c8d966a7ffdbf00a4227e6f6f40c52",
@@ -94,5 +94,9 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/pg18-complete-executor-cli.mjs": "31486fca2a869b38255a15f1790c983f54a8cd877bdd824516676a66f6d451bd",
   "services/pg-api/src/pg18-complete-executor-core.mjs": "544dd6cf44bed4879c7a7b5cb36adeb06d176248e2c5ae281eee4c820c1c5b14",
   "services/pg-api/src/pg18-complete-executor-journal.mjs": "ef6039d1710ba7eddc067a762917985520ceacd490045cd7f4bc31de556f5775",
-  "services/pg-api/src/pg18-complete-executor-plan.mjs": "79f9ecf9e529f06baf00698ea7bdd283f1af55b818538d06c676ab09492417bb"
+  "services/pg-api/src/pg18-complete-executor-plan.mjs": "79f9ecf9e529f06baf00698ea7bdd283f1af55b818538d06c676ab09492417bb",
+  "services/pg-api/src/pg18-complete-review-stack-cli.mjs": "ee8c465d1c936e78b0d1c5e8c7ed8b437ad8c4f23d67ca782343509a35b3b7af",
+  "services/pg-api/src/pg18-complete-review-stack-core.mjs": "bb5c6aebf8525565a9c0b50b0ebb6ceeefc52b825d34756e4c06c2a05c909dae",
+  "services/pg-api/src/pg18-complete-review-stack-journal.mjs": "cb80856ee69a6f5b5f6aafc5987ff96a925700fc83b89a9e2e9b001654560d05",
+  "services/pg-api/src/pg18-complete-review-stack-plan.mjs": "6529b4e1b72c8b1b91ff9149495fef07db647d3c76fa0b568010c4f0b8468ca0"
 })

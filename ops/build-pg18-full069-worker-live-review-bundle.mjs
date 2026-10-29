@@ -10,6 +10,7 @@ import {collectComplete069ReviewSources} from './build-pg18-complete069-review-b
 import {assertCompleteProfileSnapshot} from '../services/pg-api/src/pg18-complete-profile-source.mjs'
 import {captureFull069WorkerLiveSources,assertFull069WorkerLiveSources,liveModules} from '../services/pg-api/src/pg18-full069-worker-live-sources.mjs'
 import {full069WorkerLivePlan} from '../services/pg-api/src/pg18-full069-worker-live-cli.mjs'
+import {reviewStackPlan} from '../services/pg-api/src/pg18-complete-review-stack-plan.mjs'
 import {complete069ExecutorPlan} from '../services/pg-api/src/pg18-complete-executor-plan.mjs'
 import {complete069ReviewWorkerPlan} from '../services/pg-api/src/pg18-complete-review-worker-plan.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),maxFile=16*1024*1024
@@ -60,6 +61,7 @@ const readme=Buffer.from([
  'Offline C preparation plan: node services/pg-api/src/pg18-complete-service-cli.mjs --plan',
  'Offline Review preparation plan: node services/pg-api/src/pg18-complete-review-worker-cli.mjs --plan',
  'Offline Executor preparation plan: node services/pg-api/src/pg18-complete-executor-cli.mjs --plan',
+ 'Offline Review/Design preparation plan: node services/pg-api/src/pg18-complete-review-stack-cli.mjs --plan',
  'Offline live plan: node services/pg-api/src/pg18-full069-worker-live-cli.mjs --plan',
  'Only these offline plans are described here. No --run, installation, login preparation, target inspection, service start or dependency installation is performed by the builder.',
  'The original minimum24h qualifying window has NOT started. It still requires independent operator acknowledgements, genuine original processes, real HTTPS/SQL audits, process ownership and cleanup evidence on an explicitly approved isolated Linux host.',
@@ -91,6 +93,7 @@ export async function collectFull069WorkerLiveReviewSources(expectedSource,expec
  add('FULL069_WORKER_LIVE_PLAN.json',json(full069WorkerLivePlan()))
  add('REVIEW_WORKER_PLAN.json',json(complete069ReviewWorkerPlan()))
  add('EXECUTOR_PLAN.json',json(complete069ExecutorPlan()))
+ add('REVIEW_STACK_PLAN.json',json(reviewStackPlan()))
  add('FULL069_WORKER_LIVE_DEPENDENCY_BOUNDARY.json',json({format:'full069_worker_live_source_dependency_boundary_v1',complete_source_sha256:expectedSource,live_source_sha256:expectedLiveSource,operator_pg_runtime_bundled:false,operator_runtime_manifest_bundled:false,business_dependency_runtime_bundled:false,dependency_installation_performed:false,executor_source_examples:executorExamples,system_service_installed:false,telemetry_controller_provisioning_assets_bundled:false,source_is_runtime_capability:false,source_is_target_authorization:false,review_preparation_is_live_readiness:false,actual_24h_window_started:false,actual_24h_window_passed:false,owned_linux_validation_performed:false,production_cutover_allowed:false}))
  add('README_REVIEW_ONLY.txt',readme)
  const records=[...entries].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([path,bytes])=>({path,sha256:sha(bytes),bytes:bytes.length}))

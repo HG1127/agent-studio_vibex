@@ -153,6 +153,25 @@ export async function configureOwnedCompleteServiceHba(target,scenario='reviewed
  }finally{await pool.end()}
 }
 
+// Independent fixed Review/Design continuation; original HBA helper unchanged.
+// Only the attested newly owned main target accepts these fixed rules.
+export async function configureOwnedCompleteReviewStackHba(target,scenario='reviewed'){
+ const s=await owned(target)
+ if(s.spec.kind!=='main'||s.spec.port!==5333||!['reviewed','earlier-trust-negative'].includes(scenario))fail('review_stack_hba_target')
+ const old=['agentstudio_stage_login','agentstudio_native_login','agentstudio_stage_worker','agentstudio_bound_dispatch_login','agentstudio_model_broker_login','agentstudio_knowledge_index_worker_login','agentstudio_knowledge_index_broker_login'],next=['agentstudio_review_worker_login','agentstudio_local_executor_login','agentstudio_review_dispatch_login','agentstudio_design_worker_login','agentstudio_design_dispatch_login']
+ const reviewRules=[...next.flatMap(n=>['local all '+n+' reject','host agent_studio '+n+' 127.0.0.1/32 scram-sha-256','host all '+n+' 0.0.0.0/0 reject','host all '+n+' ::/0 reject']),'local all postgres peer',...old.map(n=>'local agent_studio '+n+' reject'),'local all all reject','host all postgres 127.0.0.1/32 scram-sha-256',...old.map(n=>'host agent_studio '+n+' 127.0.0.1/32 scram-sha-256'),'host all all 0.0.0.0/0 reject','host all all ::/0 reject']
+ if(scenario==='earlier-trust-negative')reviewRules.unshift('host all agentstudio_review_dispatch_login 127.0.0.1/32 trust')
+ command(['exec','--interactive','--user','postgres',s.id,'sh','-c','umask 077; cat > "$PGDATA/pg_hba.conf"'],{input:Buffer.from(reviewRules.join('\n')+'\n')})
+ const pool=await ownedCompleteProfilePool(target,1)
+ try{
+  const before=(await pool.query('SELECT pg_conf_load_time()::text AS loaded')).rows[0]?.loaded
+  if((await pool.query('SELECT pg_reload_conf() AS reloaded')).rows[0]?.reloaded!==true)fail('review_stack_hba_reload')
+  const until=Date.now()+5000;let changed=false
+  while(Date.now()<until){if((await pool.query('SELECT pg_conf_load_time()::text AS loaded')).rows[0]?.loaded!==before){changed=true;break}await new Promise(done=>setTimeout(done,100))}
+  if(!changed)fail('review_stack_hba_reload_timeout')
+ }finally{await pool.end()}
+}
+
 export async function restoreOwnedCompleteProfileDatabase(target,dump){
  const s=await owned(target);if(!Buffer.isBuffer(dump)||dump.length<1||dump.length>128*1024*1024)fail('archive_input')
  const maintenance=new s.loaded.Pool({host:'127.0.0.1',port:s.spec.port,database:'postgres',user:'postgres',password:s.password,max:1});maintenance.on('error',()=>{})

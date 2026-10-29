@@ -884,3 +884,15 @@ services/pg-api/tests/helpers/pg18-complete-executor-ci.mjs text eol=lf
 services/pg-api/tests/pg18-complete-executor-plan.test.mjs text eol=lf
 services/pg-api/tests/pg18-complete-executor-source.test.mjs text eol=lf
 services/pg-api/tests/worker-heartbeat-writer-kernel-handshake.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_REVIEW_DESIGN_PREPARATION.md text eol=lf
+ops/templates/agentstudio-pg18-review-broker-design.conf.example text eol=lf
+ops/templates/agentstudio-pg18-review-worker-design.conf.example text eol=lf
+services/pg-api/src/pg18-complete-review-stack-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-stack-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-stack-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-stack-plan.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-review-stack-ci.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-stack-source.test.mjs text eol=lf
