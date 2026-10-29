@@ -72,6 +72,10 @@ jobs:
         if: matrix.suite == 'database'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/approval-delegation-database-pg18.test.mjs
+      - name: F29 actual accepted optimization to original owned retest and receipt recovery
+        if: matrix.suite == 'database'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-optimization-retest-pg18.test.mjs
 
   pg18-approval-delegation-browser:
     name: F27 / real PG18 browser Owner delegation manager decision and recovery

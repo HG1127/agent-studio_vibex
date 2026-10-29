@@ -679,7 +679,14 @@ function writerEntryFailureObservation(raw,selected){
   return {event:v.event,kind:v.kind,code:v.code,observed_data_only:true}
  }catch{return null}
 }
-function observeWriterEntryPhase(c,phase){
+/* KNOWLEDGE_PAIR_HEARTBEAT_BEGIN */
+function writerKnowledgeHeartbeatFailureObservation(raw,selected){
+ try{const value=fields(raw,['event','kind','phase','code','observed_data_only'])
+  if(value.event!=='genuine_writer_ci_knowledge_heartbeat_failure'||value.observed_data_only!==true||!['knowledge_index','knowledge_query'].includes(value.kind)||value.kind!==selected[0]||!["open_index_sender","open_query_sender","prepare_reporters","start_reporters"].includes(value.phase)||value.code!==null&&!["writer_protocol_refused","writer_not_enrolled","writer_busy","writer_closed","writer_uncertain","writer_deadline","writer_io_failed"].includes(value.code))return null
+  return {event:value.event,kind:value.kind,phase:value.phase,code:value.code,observed_data_only:true}
+ }catch{return null}
+}
+/* KNOWLEDGE_PAIR_HEARTBEAT_END */function observeWriterEntryPhase(c,phase){
  try{if(c.mode!=='entry'||!kinds.includes(c.selected?.[0])||!['launch','ready','ready_failed','stopped','stop_failed'].includes(phase))return
   const exit=c.exit?.code,signal=c.exit?.signal
   process.stderr.write(JSON.stringify({event:'genuine_writer_ci_entry_phase',kind:c.selected[0],phase,exit_code:Number.isInteger(exit)&&exit>=0&&exit<=255?exit:null,signal:signal===null?'none':['SIGTERM','SIGINT','SIGKILL','SIGABRT'].includes(signal)?signal:signal===undefined?null:'other',observed_data_only:true})+'\n')
@@ -696,7 +703,7 @@ function observeWriterEntryPhase(c,phase){
  writerFile(s,file,JSON.stringify(plan)+'\n')
  const p=spawn('/usr/bin/unshare',['--mount','--propagation','private',s.stage.nodePath,'--experimental-strip-types',s.writerChild,'--launch',file],{cwd:s.writerCode,env:{...process.env},stdio:['ignore','pipe','pipe','ipc'],windowsHide:true})
  const c={p,exited:false,exit:null,messages:[],pending:new Map(),kind:selected.join('+'),launchAt:performance.now(),outputBytes:0,claimBaseline};s.children.add(c);s.writerChildren.add(c)
- p.on('error',()=>{});p.on('message',value=>{if(!value||typeof value!=='object')return;/* ENTRY_ROLE_FAILURE_BEGIN */if(mode==='entry'){try{const observation=writerEntryFailureObservation(value,selected);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}}/* ENTRY_ROLE_FAILURE_END */c.messages.push(value);if(c.messages.length>256){p.kill('SIGTERM');return}if(value.event==='component_result'){const pending=c.pending.get(value.id);if(pending){c.pending.delete(value.id);clearTimeout(pending.timer);pending.resolve(value)}}if(value.event==='kernel_child_started')c.actualPid=value.pid})
+ p.on('error',()=>{});p.on('message',value=>{if(!value||typeof value!=='object')return;/* ENTRY_ROLE_FAILURE_BEGIN */if(mode==='entry'){try{const observation=writerEntryFailureObservation(value,selected)??writerKnowledgeHeartbeatFailureObservation(value,selected);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}}/* ENTRY_ROLE_FAILURE_END */c.messages.push(value);if(c.messages.length>256){p.kill('SIGTERM');return}if(value.event==='component_result'){const pending=c.pending.get(value.id);if(pending){c.pending.delete(value.id);clearTimeout(pending.timer);pending.resolve(value)}}if(value.event==='kernel_child_started')c.actualPid=value.pid})
  for(const stream of [p.stdout,p.stderr])stream.on('data',bytes=>{c.outputBytes+=bytes.length;if(c.outputBytes>65536)p.kill('SIGTERM')})
  p.once('close',(code,signal)=>{c.exited=true;c.exit={code,signal};for(const v of c.pending.values()){clearTimeout(v.timer);v.reject(Error('writer_ci_owned_child_exit'))}c.pending.clear()})
  await until(()=>{if(c.messages.some(v=>v.event==='kernel_child_started'))return true;if(c.exited)fail('writer_launcher_exited');return false},'writer_kernel_spawn',20000)

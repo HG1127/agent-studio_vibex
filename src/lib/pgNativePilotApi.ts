@@ -2,6 +2,7 @@
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {optimizationRetestId,optimizationRetestProof,type OptimizationRetestProof} from "../../shared/agent-optimization-retest-contract.ts"
 import {createPgNativeOwnOperationsApi} from "./pgNativeOwnOperations.ts"
 import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
 import {agentReviewHistoryQuery,agentReviewHistoryPage,type PgNativeAgentReviewHistoryQuery} from "./pgNativeAgentReviewHistory.ts"
@@ -164,6 +165,7 @@ import {nativeRunControlRequest,type NativeRunControlAction,type NativeRunContro
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
   run_control?:NativeRunControlView;run_control_confirmation?:NativeRunControlReceipt|null;control_confirmed?:boolean
   outcome_memory?:PgNativeOutcomeConsent
+  optimization_retest?:OptimizationRetestProof
   execution_mode:"agent_native_v2";run:Omit<PgNativeWorkflowV2Result["run"],"kind"|"workflow_id">&{kind:"agent";workflow_id:null;agent_spec_id:string}
 }
 export type PgNativeAutonomousAgentSummary={id:string;agent_spec_id:string;status:string;instruction_preview:string;result_preview:string;
@@ -1156,21 +1158,31 @@ export function createPgNativePilotApi(
       return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
     },
-    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean)=>{
+    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean,optimization_lineage_id?:string)=>{
       if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       if(require_plan_review!==undefined&&typeof require_plan_review!=="boolean")throw new PgNativePilotError(400,"invalid_agent_plan_review")
       if(remember_outcome!==undefined&&typeof remember_outcome!=="boolean")throw new PgNativePilotError(400,"invalid_agent_memory_outcome_choice")
+      let lineage:string|undefined
+      if(optimization_lineage_id!==undefined)try{lineage=optimizationRetestId(optimization_lineage_id)}catch{throw new PgNativePilotError(400,"invalid_optimization_retest")}
       const result=agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
-        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{})}))
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{}),...(lineage?{optimization_lineage_id:lineage}:{})}))
       try{
         if(remember_outcome===true)result.outcome_memory=agentOutcomeConsent(result.outcome_memory,result.run.id,id.toLowerCase(),expected_revision)
         else if(Object.hasOwn(result,"outcome_memory"))throw Error("unexpected_outcome_consent")
       }catch{throw new PgNativePilotError(503,"unconfirmed_agent_outcome_memory_admission")}
+      try{
+        if(lineage)result.optimization_retest=optimizationRetestProof(result.optimization_retest,{run_id:result.run.id,spec_id:id,spec_revision:expected_revision,acceptance_request_id:lineage})
+        else if(Object.hasOwn(result,"optimization_retest"))throw Error("unexpected_optimization_retest")
+      }catch{throw new PgNativePilotError(503,"unconfirmed_optimization_retest_admission")}
       return result
     },
-    getAutonomousAgentRun:async(id:string)=>agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id))),
+    getAutonomousAgentRun:async(id:string)=>{
+      const result=agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id)))
+      if(Object.hasOwn(result,"optimization_retest"))try{const revision=result.run.checkpoint.spec_revision;if(typeof revision!=="number")throw Error("invalid_optimization_retest_revision");result.optimization_retest=optimizationRetestProof(result.optimization_retest,{run_id:result.run.id,spec_id:result.run.agent_spec_id,spec_revision:revision})}catch{throw new PgNativePilotError(503,"unconfirmed_optimization_retest_source")}
+      return result
+    },
     respondAutonomousAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice),
     confirmAutonomousAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice,true),
     getAutonomousAgentHumanHistory:async(id:string,after="",limit=10)=>humanHistory(routes.autonomousAgentRuns,id,after,limit),

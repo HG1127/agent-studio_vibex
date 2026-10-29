@@ -50,3 +50,20 @@ test('definite missing original receipt frees only that pending request and stil
 })
 
 test('review-note protocol counts UTF16 units consistently at its minimum and maximum',()=>{const c=choice();assert.equal(approvalDelegationIntentValue({...c,review_note:'😀😀😀😀'}).choice.review_note.length,8);assert.throws(()=>approvalDelegationIntentValue({...c,review_note:'😀😀😀a'}));assert.equal(approvalDelegationIntentValue({...c,review_note:'😀'.repeat(250)}).choice.review_note.length,500);assert.throws(()=>approvalDelegationIntentValue({...c,review_note:'😀'.repeat(251)}))})
+
+test('actual Native authentication closure preserves expired or governance-revoked session as401 before delegation business',async()=>{
+ const {createNativeAuthHttpHandler}=await import('../src/native-auth-http.mjs');let checks=0
+ const unused=()=>{throw Error('unexpected_Native_auth_operation')},native=createNativeAuthHttpHandler({allowedOrigin:origin,businessHandler:unused,auth:{login:unused,getSessionProfile:unused,revokeSession:unused,provisionEmployee:unused,verifySession:async()=>{checks++;return null}}})
+ const f=httpFixture({auth:native.authenticateRequest}),r=await f.request({path:'/api/v2/manager/approvals'})
+ assert.equal(r.status,401);assert.deepEqual(r.body,{error:'session_required'});assert.equal(checks,1);assert.equal(f.calls(),0)
+})
+test('actual Native authentication closure repeats session401 after business without disclosing the prepared response',async()=>{
+ const {createNativeAuthHttpHandler}=await import('../src/native-auth-http.mjs');let checks=0
+ const unused=()=>{throw Error('unexpected_Native_auth_operation')},native=createNativeAuthHttpHandler({allowedOrigin:origin,businessHandler:unused,auth:{login:unused,getSessionProfile:unused,revokeSession:unused,provisionEmployee:unused,verifySession:async()=>++checks===1?identity:null}})
+ const f=httpFixture({auth:native.authenticateRequest}),r=await f.request({path:'/api/v2/manager/approvals'})
+ assert.equal(r.status,401);assert.deepEqual(r.body,{error:'session_required'});assert.equal(checks,2);assert.equal(f.calls(),1);assert.equal(JSON.stringify(r.body).includes('items'),false)
+})
+test('unknown authentication exceptions remain unavailable and never reflect their private message',async()=>{
+ const failure=Object.assign(Error('private_auth_failure_details'),{status:401}),f=httpFixture({auth:async()=>{throw failure}}),r=await f.request({path:'/api/v2/manager/approvals'})
+ assert.equal(r.status,503);assert.deepEqual(r.body,{error:'approval_delegation_unavailable'});assert.equal(f.calls(),0)
+})

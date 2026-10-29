@@ -606,3 +606,13 @@ tests/pg-native-browser/agent-run-control-pg18.spec.mjs text eol=lf
 
 # Reviewed original052 employee guard reuse.
 services/pg-api/src/agent-run-control-admission.ts text eol=lf
+
+# Reviewed F29 provenance, exact Native auth refusal and shared Knowledge heartbeat pair.
+services/pg-api/src/agent-optimization-repository.ts text eol=lf
+services/pg-api/src/agent-optimization-retest-policy.ts text eol=lf
+services/pg-api/src/knowledge-worker-heartbeat-lifecycle.ts text eol=lf
+services/pg-api/tests/agent-optimization-foundation.test.mjs text eol=lf
+services/pg-api/tests/agent-optimization-retest-pg18.test.mjs text eol=lf
+services/pg-api/tests/knowledge-heartbeat-pair.test.mjs text eol=lf
+shared/agent-optimization-retest-contract.ts text eol=lf
+tests/agent-optimization-retest-contract.test.mjs text eol=lf

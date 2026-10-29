@@ -99,9 +99,9 @@ export async function startKnowledgeIndexService(env=process.env,kind:"worker"|"
     if(kind==="worker"){
       const config={approvedForIsolatedUat:true,origin:cfg.origin,reviewedServerFingerprint256:cfg.fingerprint,ca,cert,key:tlsKey}
       if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true'){
-        const {openWorkerHeartbeatWorkerLifecycle}=await import('./worker-heartbeat-worker-lifecycle.ts')
-        if(cfg.approved)indexHeartbeat=await openWorkerHeartbeatWorkerLifecycle('knowledge_index')
-        if(!controller.signal.aborted&&cfg.queryApproved)queryHeartbeat=await openWorkerHeartbeatWorkerLifecycle('knowledge_query')
+        const {openKnowledgeWorkerHeartbeatLifecycles}=await import('./knowledge-worker-heartbeat-lifecycle.ts')
+        const pair=await openKnowledgeWorkerHeartbeatLifecycles({index:cfg.approved,query:cfg.queryApproved},controller.signal)
+        indexHeartbeat=pair.index;queryHeartbeat=pair.query
       }
       const index=cfg.approved?new KnowledgeIndexWorker(runtime,createKnowledgeIndexPrivateClient(config),{approvedForIsolatedUat:true}):null
       const query=cfg.queryApproved?new KnowledgeQueryWorker(runtime,createKnowledgeQueryPrivateClient(config),{approvedForIsolatedUat:true}):null

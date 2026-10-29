@@ -17,25 +17,38 @@ import {prepareOwnedAgentMemoryContext,insertAgentMemoryContextReceipt} from "./
 import {agentMemoryContextHash} from "./agent-memory-context.ts"
 import {outcomeMemoryOption} from "./agent-memory-outcome-contract.ts"
 import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
+import {AgentOptimizationRepository} from "./agent-optimization-repository.ts"
+import {optimizationRetestId,optimizationRetestProof} from "../../../shared/agent-optimization-retest-contract.ts"
+import {storedOptimizationRetest} from "./agent-optimization-retest-policy.ts"
 function autonomousRequest(raw:unknown){
   if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
-  const {max_steps,require_plan_review,remember_outcome,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
+  const {max_steps,require_plan_review,remember_outcome,optimization_lineage_id,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
   if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>30)throw new HttpError(400,"invalid_agent_max_steps")
   if(Object.hasOwn(raw,"require_plan_review")&&typeof require_plan_review!=="boolean")throw new HttpError(400,"invalid_agent_plan_review")
-  return {request,max_steps:Number(max_steps),require_plan_review:require_plan_review as boolean|undefined,remember_outcome:outcomeMemoryOption(remember_outcome,Object.hasOwn(raw,"remember_outcome"))}
+  let lineage:string|undefined
+  if(Object.hasOwn(raw,"optimization_lineage_id"))try{lineage=optimizationRetestId(optimization_lineage_id)}catch{throw new HttpError(400,"invalid_optimization_retest")}
+  return {request,max_steps:Number(max_steps),require_plan_review:require_plan_review as boolean|undefined,remember_outcome:outcomeMemoryOption(remember_outcome,Object.hasOwn(raw,"remember_outcome")),optimization_lineage_id:lineage}
 }
 export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
   readonly allowMemory:boolean
   readonly allowOutcomeMemory:boolean
-  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean;allowOutcomeMemory?:boolean}={}){super(pool,"agent_native_v2",options);this.allowMemory=options.allowMemory===true;this.allowOutcomeMemory=options.allowOutcomeMemory===true}
+  readonly allowOptimizationRetest:boolean
+  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean;allowOutcomeMemory?:boolean;allowOptimizationRetest?:boolean}={}){super(pool,"agent_native_v2",options);this.allowMemory=options.allowMemory===true;this.allowOutcomeMemory=options.allowOutcomeMemory===true;this.allowOptimizationRetest=options.allowOptimizationRetest===true}
   override async submit(identity:Identity,id:string,raw:unknown){
+    if(autonomousRequest(raw).optimization_lineage_id&&identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
     return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))
+  }
+  protected override async assemble(db:SqlClient,owner:string,row:WorkflowV2RunRow,replayed:boolean){
+    const result=await super.assemble(db,owner,row,replayed),proof=await storedOptimizationRetest(db,owner,row)
+    return {...result,...(proof?{optimization_retest:proof}:{})}
   }
   override async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown,modelBinding?:AgentSpecInput["model_binding"]):Promise<WorkflowV2StoredState>{
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_run_request")
-    const {request,max_steps,require_plan_review,remember_outcome}=autonomousRequest(raw)
+    const {request,max_steps,require_plan_review,remember_outcome,optimization_lineage_id}=autonomousRequest(raw)
+    if(optimization_lineage_id&&(!this.allowOptimizationRetest||modelBinding!==undefined))throw new HttpError(403,"agent_optimization_retest_disabled")
     if(remember_outcome&&(!this.allowOutcomeMemory||!this.allowHumanInput))throw new HttpError(403,"agent_memory_outcome_admission_disabled")
     await assertOwnedAdmissionContext(db,owner)
+    if(optimization_lineage_id)await new AgentOptimizationRepository(this.pool).prepareRetestOwned(db,owner,id,request.expected_revision,optimization_lineage_id)
     const graph=autonomousAgentGraph(id,request.expected_revision,max_steps,modelBinding,require_plan_review),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const checkpoint:WorkflowV2StoredState={stage:"agent_v2_queued",execution_mode:"agent_native_v2",spec_revision:request.expected_revision,graph,machine}
     const spec=(await db.query("SELECT id FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
@@ -47,7 +60,8 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
   }
   override async admitOwned(db:SqlClient,owner:string,id:string,raw:unknown,plannedRunId?:string,modelBinding?:AgentSpecInput["model_binding"]){
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_spec_id")
-    const {request,max_steps,require_plan_review,remember_outcome}=autonomousRequest(raw)
+    const {request,max_steps,require_plan_review,remember_outcome,optimization_lineage_id}=autonomousRequest(raw)
+    if(optimization_lineage_id&&(plannedRunId!==undefined||modelBinding!==undefined))throw new HttpError(403,"agent_optimization_retest_disabled")
     const graph=autonomousAgentGraph(id,request.expected_revision,max_steps,modelBinding,require_plan_review),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const key=this.root.dedupe+request.idempotency_key
     await assertOwnedAdmissionContext(db,owner,plannedRunId)
@@ -56,6 +70,8 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
       "ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1::uuid AND j.kind='run_tick' "+
       "AND j.dedupe_key=$2::text AND j.payload->>'phase'='agent_native_v2'",[owner,key])).rows[0]
     if(prior){
+      const original=await storedOptimizationRetest(db,owner,prior)
+      if(original?.acceptance_request_id!==optimization_lineage_id)throw new HttpError(409,"idempotency_key_conflict")
       if(plannedRunId!==undefined&&prior.id!==plannedRunId)throw new HttpError(409,"idempotency_key_conflict")
       if(prior.kind!=="agent"||prior.agent_spec_id!==id||prior.instruction!==request.instruction||
          prior.checkpoint.execution_mode!=="agent_native_v2"||prior.checkpoint.spec_revision!==request.expected_revision||
@@ -66,6 +82,8 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     if(remember_outcome&&plannedRunId!==undefined)throw new HttpError(403,"agent_memory_outcome_schedule_scope_required")
     const checkpoint=await this.prepareOwned(db,owner,id,raw,modelBinding)
     const nextRunId=plannedRunId??randomUUID(),memoryScope={owner_user_id:owner,spec_id:id,spec_revision:request.expected_revision,instruction:request.instruction}
+    const accepted=optimization_lineage_id?await new AgentOptimizationRepository(this.pool).prepareRetestOwned(db,owner,id,request.expected_revision,optimization_lineage_id):undefined
+    const retest=accepted?optimizationRetestProof({protocol:'agent_optimization_retest_v1',run_id:nextRunId,acceptance_request_id:accepted.request_id,source_run_id:accepted.run_id,spec_id:id,spec_revision:accepted.after_spec_revision,source_sha256:accepted.after_spec_sha256,feedback_id:accepted.feedback_id,feedback_sha256:accepted.feedback_sha256,after_revision_id:accepted.after_revision_id},{run_id:nextRunId,spec_id:id,spec_revision:request.expected_revision,acceptance_request_id:optimization_lineage_id}):undefined
     if(this.allowMemory)checkpoint.memory_context=await prepareOwnedAgentMemoryContext(db,this.pool,memoryScope,nextRunId)
     const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs(id,owner_user_id,kind,agent_spec_id,status,instruction,checkpoint) "+
       "VALUES(coalesce($5::uuid,gen_random_uuid()),$1::uuid,'agent',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,
@@ -76,7 +94,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
       "VALUES($1::uuid,$2::uuid,'run_tick',$3::text,$4::jsonb,30)",[owner,run.id,key,
       JSON.stringify({phase:"agent_native_v2",agent_spec_id:id,spec_revision:request.expected_revision,graph_sha256:machine.graph_sha256})])
     await auditWorkflowV2(db,owner,run.id,"workflow.v2_submit",{spec_revision:request.expected_revision,graph_sha256:machine.graph_sha256,max_steps,
-      ...(checkpoint.memory_context?{memory_context_sha256:agentMemoryContextHash(checkpoint.memory_context,memoryScope),memory_items:checkpoint.memory_context.memories.length}:{})})
+      ...(checkpoint.memory_context?{memory_context_sha256:agentMemoryContextHash(checkpoint.memory_context,memoryScope),memory_items:checkpoint.memory_context.memories.length}:{}),...(retest?{optimization_retest:retest}:{})})
     return {...await this.assemble(db,owner,run,false),...(consent?{outcome_memory:consent}:{})}
   }
 

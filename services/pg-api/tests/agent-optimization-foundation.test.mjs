@@ -42,6 +42,36 @@ const acceptance=(v,patch={})=>({...v,action:'accept',request_id:randomUUID(),co
 const counts=async f=>(await f.db.query('SELECT (SELECT count(*) FROM agentstudio.agent_optimization_intents)::integer AS intents,(SELECT count(*) FROM agentstudio.agent_optimization_links)::integer AS links,(SELECT count(*) FROM agentstudio.agent_collaboration_revisions)::integer AS history,(SELECT count(*) FROM agentstudio.jobs)::integer AS jobs,(SELECT count(*) FROM agentstudio.external_effects)::integer AS effects')).rows[0]
 async function erase(f,s){const state=await f.feedback.status(f.identities.alice,s.runId);return f.feedback.change(f.identities.alice,{action:'erase_feedback',request_id:randomUUID(),spec_id:s.specId,run_id:s.runId,expected_revision:state.revision,expected_feedback_sha256:state.current.feedback_sha256,confirm:true})}
 
+test('F29 explicit Native retest atomically links the original accepted receipt and never resubmits a lost original',async()=>{
+ const f=await fixture()
+ try{
+  const s=await source(f),choice=acceptance(await draft(f,s)),before=await counts(f),accepted=await f.opt.accept(f.identities.alice,choice),afterAcceptance=await counts(f)
+  assert.equal(afterAcceptance.jobs,before.jobs);assert.equal(afterAcceptance.effects,before.effects)
+  const runs=new AutonomousAgentRunRepository(f.pool,{allowHumanInput:true,allowOptimizationRetest:true})
+  const raw={expected_revision:accepted.after_spec_revision,max_steps:1,instruction:'Explicit synthetic F29 retest task',idempotency_key:'f29-retest-'+randomUUID(),optimization_lineage_id:accepted.request_id}
+  await assert.rejects(f.owned.submit(f.identities.alice,s.specId,raw),e=>e.status===403&&e.code==='agent_optimization_retest_disabled')
+  await assert.rejects(runs.submit({...f.identities.alice,issuer:'urn:synthetic:another'},s.specId,raw),e=>e.status===403&&e.code==='native_employee_identity_required')
+  await assert.rejects(runs.submit(f.identities.bob,s.specId,raw),e=>e.status===404)
+  const first=await runs.submit(f.identities.alice,s.specId,raw),proof=first.optimization_retest
+  assert.equal(first.run.status,'queued');assert.notEqual(first.run.id,s.runId)
+  assert.deepEqual(proof,{protocol:'agent_optimization_retest_v1',run_id:first.run.id,acceptance_request_id:accepted.request_id,source_run_id:s.runId,spec_id:s.specId,spec_revision:accepted.after_spec_revision,source_sha256:accepted.after_spec_sha256,feedback_id:accepted.feedback_id,feedback_sha256:accepted.feedback_sha256,after_revision_id:accepted.after_revision_id})
+  assert.deepEqual((await runs.get(f.identities.alice,first.run.id)).optimization_retest,proof)
+  assert.equal(await runs.get(f.identities.bob,first.run.id),null)
+  const replay=await runs.submit(f.identities.alice,s.specId,raw);assert.equal(replay.run.id,first.run.id);assert.equal(replay.replayed,true)
+  const {optimization_lineage_id:_,...without}=raw
+  await assert.rejects(runs.submit(f.identities.alice,s.specId,without),e=>e.status===409&&e.code==='idempotency_key_conflict')
+  await assert.rejects(runs.submit(f.identities.alice,s.specId,{...raw,optimization_lineage_id:randomUUID()}),e=>e.status===409&&e.code==='idempotency_key_conflict')
+  const after=await counts(f);assert.equal(after.jobs,afterAcceptance.jobs+1);assert.equal(after.effects,afterAcceptance.effects)
+  const rollbackKey='f29-rollback-'+randomUUID()
+  await assert.rejects(withActor(f.pool,f.identities.alice,async(db,owner)=>{await runs.admitOwned(db,owner,s.specId,{...raw,idempotency_key:rollbackKey});throw Error('synthetic_F29_original_transaction_rollback')}),/synthetic_F29_original_transaction_rollback/)
+  assert.deepEqual(await counts(f),after)
+  await erase(f,s)
+  await assert.rejects(runs.submit(f.identities.alice,s.specId,{...raw,idempotency_key:'f29-changed-'+randomUUID()}),e=>e.status===409&&e.code==='agent_optimization_feedback_changed')
+  assert.equal((await runs.submit(f.identities.alice,s.specId,raw)).run.id,first.run.id)
+  assert.equal((await counts(f)).jobs,after.jobs)
+ }finally{await f.close()}
+})
+
 test('optional055 strictly audits two immutable provenance tables, computed intent metadata, actual role trigger and all predecessor guards',async()=>{
   const f=await fixture({installed:false})
   try{

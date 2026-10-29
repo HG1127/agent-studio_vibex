@@ -17,7 +17,12 @@ async function read(req:IncomingMessage){
 export function createApprovalDelegationHttp({repository:r,authenticateRequest,allowedOrigin}:Dependencies){
  const paths=['/api/v2/approval-delegations','/api/v2/approval-delegations/confirm','/api/v2/manager/approvals','/api/v2/manager/decision']
  const related=(s:string)=>s==='/api/v2/approval-delegations'||s.startsWith('/api/v2/approval-delegations/')||s==='/api/v2/manager'||s.startsWith('/api/v2/manager/')
- async function identity(req:IncomingMessage){const i=await authenticateRequest(req);if(i?.issuer!=='urn:agentstudio:local:v1'||typeof i.subject!=='string'||!i.subject||i.subject.length>255)throw new HttpError(403,'native_employee_identity_required');return{issuer:i.issuer,subject:i.subject}}
+ async function identity(req:IncomingMessage){let i:Identity;try{i=await authenticateRequest(req)}catch(error){
+  // The original Native closure uses Error(status401), not HttpError, when
+  // governance has invalidated a previously well-formed session cookie.
+  if(error instanceof Error&&'status' in error&&error.status===401&&error.message==='session_required')throw new HttpError(401,'session_required')
+  throw error
+ };if(i?.issuer!=='urn:agentstudio:local:v1'||typeof i.subject!=='string'||!i.subject||i.subject.length>255)throw new HttpError(403,'native_employee_identity_required');return{issuer:i.issuer,subject:i.subject}}
  return async(req:IncomingMessage,res:ServerResponse):Promise<boolean>=>{
   const raw=req.url??'';let url:URL|undefined,decoded='';try{url=new URL(raw,'https://internal.invalid');decoded=decodeURIComponent(url.pathname)}catch{}
   if(![raw.split(/[?#]/,1)[0]??'',url?.pathname??'',decoded].some(related))return false

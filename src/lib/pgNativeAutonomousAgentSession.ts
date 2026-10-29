@@ -1,5 +1,6 @@
 import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
 import {verifyOwnTaskRun} from "./pgNativeOwnTaskNavigation.ts"
+import {optimizationRetestId} from "../../shared/agent-optimization-retest-contract.ts"
 import {declaredAgentHttpTool,readyAgentHttpTools} from "./pgNativeAgentHttpTools.ts"
 import {declaredAgentMcpTool,readyAgentMcpTools} from "./pgNativeMcpConnection.ts"
 import {optionalKnowledgeToolContext,knowledgeBindingCurrent,knowledgePendingMatches,knowledgeToolScopeCurrent,usesPaidKnowledge,type KnowledgeToolContext} from "./pgNativeKnowledgeTool.ts"
@@ -8,13 +9,13 @@ import type {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/
 import {PgNativePilotError,type PgNativeAutonomousAgentResult,type PgNativeAutonomousAgentSummary,type PgNativeAgent,type PgNativeModelConnection,
   type PgNativeWorkflowV2Pending,type PgNativeToolConnection,type PgNativeMcpConnection,type PgNativeAgentModelBinding} from "./pgNativePilotApi.ts"
 type Api={
-  submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number,requirePlanReview?:boolean,rememberOutcome?:boolean):Promise<PgNativeAutonomousAgentResult>
+  submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number,requirePlanReview?:boolean,rememberOutcome?:boolean,optimizationLineageId?:string):Promise<PgNativeAutonomousAgentResult>
   listAutonomousAgentRuns():Promise<PgNativeAutonomousAgentSummary[]>
   getAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
   decideAutonomousAgentNode(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<PgNativeAutonomousAgentResult>
   cancelAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
 }&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge"|"respondAutonomousAgent"|"confirmAutonomousAgentResponse"|"controlAutonomousAgentRun"|"confirmAutonomousAgentRunControl">>
-export type AutonomousDraft={agentId:string;revision:number;instruction:string;maxSteps:number;requirePlanReview?:boolean;rememberOutcome?:boolean}
+export type AutonomousDraft={agentId:string;revision:number;instruction:string;maxSteps:number;requirePlanReview?:boolean;rememberOutcome?:boolean;optimizationLineageId?:string}
 export type AutonomousDetail=PgNativeAutonomousAgentResult&{knowledge?:KnowledgeToolContext}
 export type AutonomousView=DurableRunView<AutonomousDetail,PgNativeAutonomousAgentSummary,AutonomousDraft>
 export const emptyAutonomousView:AutonomousView=emptyDurableRunView()
@@ -94,7 +95,7 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
       const knowledge=api.getConfigCapabilities&&api.getKnowledgeEmbeddingConsent&&api.listKnowledge&&api.listSharedKnowledge?await optionalKnowledgeToolContext({getConfigCapabilities:api.getConfigCapabilities,getKnowledgeEmbeddingConsent:api.getKnowledgeEmbeddingConsent,listKnowledge:api.listKnowledge,listSharedKnowledge:api.listSharedKnowledge}):{enabled:false,consent:null}
       return {...detail,knowledge}
     },
-    submit:body=>body.rememberOutcome!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome):body.requirePlanReview===undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps):api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview),
+    submit:body=>body.optimizationLineageId!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome,body.optimizationLineageId):body.rememberOutcome!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome):body.requirePlanReview===undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps):api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview),
     decide:(...args)=>api.decideAutonomousAgentNode(...args),cancel:id=>api.cancelAutonomousAgentRun(id),
     ...(api.controlAutonomousAgentRun&&api.confirmAutonomousAgentRunControl?{controlRun:(id,action,request)=>api.controlAutonomousAgentRun!(id,action,request),confirmRunControl:(id,action,request)=>api.confirmAutonomousAgentRunControl!(id,action,request)}:{}),
     ...(api.respondAutonomousAgent?{respond:(id,choice)=>api.respondAutonomousAgent!(id,choice)}:{}),
@@ -109,7 +110,8 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
          !Number.isSafeInteger(draft.maxSteps)||draft.maxSteps<1||draft.maxSteps>30)throw Error("invalid_autonomous_draft")
       if(draft.requirePlanReview!==undefined&&typeof draft.requirePlanReview!=="boolean")throw Error("invalid_agent_plan_review")
       if(draft.rememberOutcome!==undefined&&typeof draft.rememberOutcome!=="boolean")throw Error("invalid_agent_memory_outcome_choice")
-      return {agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps,...(draft.requirePlanReview!==undefined?{requirePlanReview:draft.requirePlanReview}:{}),...(draft.rememberOutcome!==undefined?{rememberOutcome:draft.rememberOutcome}:{})}
+      const lineage=draft.optimizationLineageId===undefined?undefined:optimizationRetestId(draft.optimizationLineageId)
+      return {agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps,...(draft.requirePlanReview!==undefined?{requirePlanReview:draft.requirePlanReview}:{}),...(draft.rememberOutcome!==undefined?{rememberOutcome:draft.rememberOutcome}:{}),...(lineage?{optimizationLineageId:lineage}:{})}
     },
     acceptDetail:result=>result.execution_mode==="agent_native_v2"&&result.run.kind==="agent"&&result.run.workflow_id===null&&uuid.test(result.run.agent_spec_id),
     acceptSubmit:(result,body)=>result.run.agent_spec_id===body.agentId&&result.run.instruction===body.instruction&&

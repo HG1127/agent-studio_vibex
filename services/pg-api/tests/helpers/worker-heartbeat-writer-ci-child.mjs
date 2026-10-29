@@ -27,7 +27,15 @@ function writerEntryOutputObservation(kind,stream,line){
   return {event:'genuine_writer_ci_entry_failure',kind,code,observed_data_only:true}
  }catch{return null}
 }
-/* ENTRY_ROLE_FAILURE_END */async function launch(){
+/* ENTRY_ROLE_FAILURE_END *//* KNOWLEDGE_PAIR_HEARTBEAT_BEGIN */
+function knowledgeHeartbeatOutputObservation(kind,stream,line){
+ try{if(stream!=='stderr'||!['knowledge_index','knowledge_query'].includes(kind)||typeof line!=='string'||line.length>4096)return null
+  const value=JSON.parse(line)
+  if(!value||Object.getPrototypeOf(value)!==Object.prototype||Object.keys(value).sort().join(',')!=='code,event,observed_data_only,phase'||value.event!=='knowledge_heartbeat_failure_observation'||value.observed_data_only!==true||!["open_index_sender","open_query_sender","prepare_reporters","start_reporters"].includes(value.phase)||value.code!==null&&!["writer_protocol_refused","writer_not_enrolled","writer_busy","writer_closed","writer_uncertain","writer_deadline","writer_io_failed"].includes(value.code))return null
+  return {event:'genuine_writer_ci_knowledge_heartbeat_failure',kind,phase:value.phase,code:value.code,observed_data_only:true}
+ }catch{return null}
+}
+/* KNOWLEDGE_PAIR_HEARTBEAT_END */async function launch(){
  // This is the unchanged real hosted-process fixture gate, not a replacement
  // Root controller capability. It precedes plan reads, mounts or UID changes.
  const {requireWorkerHeartbeatActivationControlCi,workerHeartbeatActivationControlCiDescriptor}=await import('./worker-heartbeat-activation-control-ci-guard.mjs')
@@ -56,7 +64,7 @@ function writerEntryOutputObservation(kind,stream,line){
  if(!Number.isSafeInteger(p.gid)||p.gid<=0)refuse()
  const options=['--reuid='+p.uid,'--regid='+p.gid,...(p.groups.length?['--groups='+p.groups.join(',')]:['--clear-groups']),'--no-new-privs','--inh-caps=-all','--ambient-caps=-all','--bounding-set=-all',process.execPath,'--experimental-strip-types',...args]
  const child=spawn('/usr/bin/setpriv',options,{cwd:root,env,stdio:['pipe','pipe','pipe','ipc'],windowsHide:true})
- let bytes=0,stdout='',stderr='';const capture=stream=>chunk=>{bytes+=chunk.length;if(bytes>65536){child.kill('SIGTERM');return}if(stream==='stdout'){stdout+=chunk.toString('utf8');const lines=stdout.split('\n');stdout=lines.pop();for(const line of lines)try{const v=JSON.parse(line);if(v.ready===true||v.state==='ready'||v.mode==='plan')emit({event:'entry_metadata',ready:v.ready===true||v.state==='ready',plan:v.mode==='plan',worker_started:v.worker_started===true,production_cutover_allowed:v.production_cutover_allowed})}catch{}}else if(p.mode==='entry'){stderr+=chunk.toString('utf8');const lines=stderr.split('\n');stderr=lines.pop();for(const line of lines){const observation=writerEntryOutputObservation(selected,stream,line);if(observation)emit(observation)}}}
+ let bytes=0,stdout='',stderr='';const capture=stream=>chunk=>{bytes+=chunk.length;if(bytes>65536){child.kill('SIGTERM');return}if(stream==='stdout'){stdout+=chunk.toString('utf8');const lines=stdout.split('\n');stdout=lines.pop();for(const line of lines)try{const v=JSON.parse(line);if(v.ready===true||v.state==='ready'||v.mode==='plan')emit({event:'entry_metadata',ready:v.ready===true||v.state==='ready',plan:v.mode==='plan',worker_started:v.worker_started===true,production_cutover_allowed:v.production_cutover_allowed})}catch{}}else if(p.mode==='entry'){stderr+=chunk.toString('utf8');const lines=stderr.split('\n');stderr=lines.pop();for(const line of lines){const observation=knowledgeHeartbeatOutputObservation(selected,stream,line)??writerEntryOutputObservation(selected,stream,line);if(observation)emit(observation)}}}
  child.stdout.on('data',capture('stdout'));child.stderr.on('data',capture('stderr'));child.on('message',m=>emit(m));process.on('message',m=>child.send?.(m));child.on('error',()=>emit({event:'child_failed'}))
  for(const signal of ['SIGTERM','SIGINT','SIGUSR1'])process.on(signal,()=>child.kill(signal))
  child.once('spawn',()=>{emit({event:'kernel_child_started',pid:child.pid,uid:p.uid,groups:p.groups,mode:p.mode});if(p.mode==='component'||p.mode==='access')child.send({mode:p.mode,kinds:p.kinds,access:p.access})})

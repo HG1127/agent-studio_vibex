@@ -32,12 +32,12 @@ test('V2 mode maps autonomous separately and closes both actual Worker and optio
 test('knowledge service binds only enabled actual Worker components and closes both manual-tick gates at first stop',()=>{
  const source=text('knowledge-index-service.ts'),branch=source.indexOf('if(kind==="worker"){'),broker=source.indexOf('const transport=createKnowledgeEmbeddingTransport',branch)
  const mounted=source.slice(branch,broker)
- assert.match(mounted,/if\(cfg\.approved\)indexHeartbeat=await/);assert.match(mounted,/if\(!controller\.signal\.aborted&&cfg\.queryApproved\)queryHeartbeat=await/)
+ assert.match(mounted,/openKnowledgeWorkerHeartbeatLifecycles\(\{index:cfg\.approved,query:cfg\.queryApproved\},controller\.signal\)/);assert.match(mounted,/indexHeartbeat=pair\.index;queryHeartbeat=pair\.query/)
  assert.match(mounted,/closeWorkerClaims=\(\)=>\{index\?\.closeNewClaims\(\);query\?\.closeNewClaims\(\)\}/)
  assert.ok(mounted.indexOf('if(controller.signal.aborted){stop();return')<mounted.indexOf('startupChecksComplete()'))
- assert.ok(source.indexOf('if(mode==="preflight")return')<source.indexOf('openWorkerHeartbeatWorkerLifecycle'))
+ assert.ok(source.indexOf('if(mode==="preflight")return')<source.indexOf('openKnowledgeWorkerHeartbeatLifecycles'))
  assert.match(source,/const stop=\(\)=>\{closeWorkerClaims\?\.\(\);if\(claimsClosed\?\.\(\)\)/)
- assert.doesNotMatch(source.slice(broker),/openWorkerHeartbeatWorkerLifecycle/)
+ assert.doesNotMatch(source.slice(broker),/openKnowledgeWorkerHeartbeatLifecycles/)
 })
 test('assessment first-signal hook invokes synchronous actual close before its promise cleanup, retaining repeated-signal latch',async()=>{
  // Invoke the exact hook body only, with event/timer bookkeeping. This proves

@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState,type FormEvent} from "react"
 import {Loader2,Play,RefreshCcw} from "lucide-react"
 import type {createPgNativePilotApi,PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection} from "@/lib/pgNativePilotApi"
+import type {PgNativeOptimizationHistory} from "@/lib/pgNativeAgentOptimization"
 import {readyAgentHttpTools} from "@/lib/pgNativeAgentHttpTools"
 import {readyAgentMcpTools} from "@/lib/pgNativeMcpConnection"
 import {useMcpConnections} from "./useMcpConnections"
@@ -28,6 +29,8 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
   const [maxSteps,setMaxSteps]=useState(3)
   const [planReview,setPlanReview]=useState("inherit")
   const [rememberOutcome,setRememberOutcome]=useState(false)
+  const [retestChoice,setRetestChoice]=useState<{scope:string;id:string}|null>(null)
+  const [retestHistory,setRetestHistory]=useState<{api:typeof api;scope:string;items:PgNativeOptimizationHistory['items'];error:boolean}|null>(null)
   useEffect(()=>{if(!outcomeEnabled)setRememberOutcome(false)},[outcomeEnabled])
   const model=useRef<Controller|null>(null)
   const openedTarget=useRef("")
@@ -62,6 +65,18 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
   },[active,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,view.detail,view.error])
   const eligible=agents.filter(agent=>readyAutonomousModel(agent,connections)&&readyAgentHttpTools(agent,tools)&&
     (!agent.spec.mcp_tools?.length||mcpEnabled)&&readyAgentMcpTools(agent,mcps.connections)),chosen=eligible.find(agent=>agent.id===agentId)
+  const retestSpecId=chosen?.id??'',retestScope=retestSpecId?ownerId+':'+retestSpecId+':'+chosen!.revision:''
+  useEffect(()=>{
+    let current=true;setRetestHistory(null)
+    if(active&&optimizationEnabled&&retestSpecId)void api.getAgentOptimizations(retestSpecId).then(history=>{
+      if(current)setRetestHistory({api,scope:retestScope,items:history.items.filter(item=>item.role_current&&item.feedback_unchanged),error:false})
+    }).catch(cause=>{if(current){setRetestHistory({api,scope:retestScope,items:[],error:true});if(cause&&typeof cause==='object'&&'status'in cause&&cause.status===401)onExpired()}})
+    return()=>{current=false}
+  },[api,active,optimizationEnabled,retestSpecId,retestScope,onExpired])
+  useEffect(()=>{setRetestChoice(null)},[api,ownerId,active])
+  const retestItems=retestHistory?.api===api&&retestHistory.scope===retestScope?retestHistory.items:[]
+  const validRetest=optimizationEnabled&&retestChoice?.scope===retestScope&&retestItems.some(item=>item.request_id===retestChoice.id)
+  const invalidRetest=Boolean(retestChoice&&!validRetest)
   const deliveredAgent=useRef("")
   useEffect(()=>{
     if(!active||!agentSelectionRequest||runTarget||target||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||view.detail||instruction||maxSteps!==3||planReview!=="inherit"||rememberOutcome||agentId&&agentId!==agentSelectionRequest.id||pgNativeOriginalTasksBlocked(api)||!eligible.some(a=>a.id===agentSelectionRequest.id))return
@@ -72,15 +87,16 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
   const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)
   const submit=async(event:FormEvent)=>{
     event.preventDefault()
-    if(!active||!enabled||view.busy||view.pendingMutation||view.pendingHumanResponse||!view.pendingSubmit&&!chosen)return
+    if(!active||!enabled||view.busy||view.pendingMutation||view.pendingHumanResponse||!view.pendingSubmit&&(!chosen||invalidRetest))return
     const controller=model.current
     if(!controller)return
-    await controller.submit({agentId,revision:chosen?.revision??0,instruction,maxSteps,...(humanAvailable&&planReview!=="inherit"?{requirePlanReview:planReview==="required"}:{}),...(outcomeEnabled&&rememberOutcome?{rememberOutcome:true}:{})})
+    await controller.submit({agentId,revision:chosen?.revision??0,instruction,maxSteps,...(humanAvailable&&planReview!=="inherit"?{requirePlanReview:planReview==="required"}:{}),...(outcomeEnabled&&rememberOutcome?{rememberOutcome:true}:{}),...(validRetest&&retestChoice?{optimizationLineageId:retestChoice.id}:{})})
     if(model.current===controller&&!controller.snapshot().pendingSubmit&&controller.snapshot().notice)setInstruction("")
   }
   return <section aria-label="多轮 Agent" className="space-y-5">
     {view.error&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{view.error}</p>}
     {view.notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{view.notice}</p>}
+    {view.detail?.optimization_retest&&<div aria-label="优化复测来源" className="space-y-1 break-all rounded-xl bg-slate-50 p-3 text-xs"><p>复测角色版本：{view.detail.optimization_retest.spec_revision}</p><p>原任务：{view.detail.optimization_retest.source_run_id}</p><p>优化接受编号：{view.detail.optimization_retest.acceptance_request_id}</p></div>}
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="flex items-center gap-2 font-semibold"><Play size={18} aria-hidden="true"/>新建多轮任务</h2>
       <p className="mt-2 text-sm leading-6 text-slate-500">Agent 可根据工具结果继续规划，最多进行 30 轮模型调用。每个步骤都需要你核对并批准。</p>
@@ -93,10 +109,23 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
         <fieldset disabled={!enabled||locked} className="space-y-3">
           <legend className="sr-only">新建多轮任务字段</legend>
           <label className="block text-sm font-medium">多轮 Agent 角色
-            <select required aria-label="多轮 Agent 角色" className={field} value={view.pendingSubmit?.agentId??agentId} onChange={event=>setAgentId(event.target.value)}>
+            <select required aria-label="多轮 Agent 角色" className={field} value={view.pendingSubmit?.agentId??agentId} onChange={event=>{setAgentId(event.target.value);setRetestChoice(null)}}>
               <option value="">请选择</option>{eligible.map(agent=><option key={agent.id} value={agent.id}>{agent.name} · {agent.spec.model_binding?.model_id}</option>)}
             </select>
           </label>
+          {(optimizationAvailable||view.pendingSubmit?.optimizationLineageId||retestChoice)&&<div className="space-y-2 rounded-xl bg-slate-50 p-3">
+            {view.pendingSubmit?.optimizationLineageId?<p className="break-all text-xs">此次复测的原接受编号：{view.pendingSubmit.optimizationLineageId}</p>:<>
+              <label className="block text-sm font-medium">关联已接受的角色优化
+                <select aria-label="关联已接受的角色优化" className={field} value={validRetest?retestChoice!.id:''} disabled={!optimizationEnabled||locked||!retestHistory||retestHistory.api!==api||retestHistory.scope!==retestScope||retestHistory.error} onChange={event=>setRetestChoice(event.target.value?{scope:retestScope,id:event.target.value}:null)}>
+                  <option value="">普通新任务</option>{retestItems.map(item=><option key={item.request_id} value={item.request_id}>版本 {item.after_spec_revision} · 接受编号 {item.request_id}</option>)}
+                </select>
+              </label>
+              <p className="text-xs leading-5 text-slate-500">仅可关联当前角色版本和未变更的反馈。提交后创建新任务，仍按原步骤审批。</p>
+              {retestHistory?.error&&<p role="status" className="text-xs text-amber-900">优化接受记录暂无法核对。</p>}
+              {invalidRetest&&<p role="alert" className="text-xs text-amber-900">原关联暂不可用，请重新选择或清除后提交。</p>}
+              {retestChoice&&<button type="button" className={autonomousSecondary} disabled={locked} onClick={()=>setRetestChoice(null)}>清除复测关联</button>}
+            </>}
+          </div>}
           <label className="block text-sm font-medium">多轮任务要求
             <textarea required aria-label="多轮任务要求" rows={4} maxLength={2000} className={field} value={view.pendingSubmit?.instruction??instruction}
               onChange={event=>setInstruction(event.target.value)} placeholder="描述任务、期望结果及需要遵守的边界"/>
@@ -121,7 +150,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
           </div>}
         </fieldset>
         {view.pendingSubmit&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">上次提交结果尚未确认。角色、任务和轮数已保留，确认时会使用原请求。</p>}
-        <button type="submit" className={autonomousButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)||!view.pendingSubmit&&(!chosen||!instruction.trim())}>
+        <button type="submit" className={autonomousButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)||!view.pendingSubmit&&(!chosen||!instruction.trim()||invalidRetest)}>
           {view.busy?<Loader2 size={16} className="animate-spin" aria-hidden="true"/>:<Play size={16} aria-hidden="true"/>}
           {view.pendingSubmit?"确认上次多轮提交":"提交多轮任务"}
         </button>
