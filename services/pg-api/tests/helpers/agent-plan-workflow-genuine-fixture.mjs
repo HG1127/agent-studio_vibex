@@ -3,8 +3,8 @@
 import {requireAgentPlanWorkflowGenuineCi} from './agent-plan-workflow-genuine-guard.mjs'
 // F05_SOURCE_PINS_BEGIN
 export const agentPlanWorkflowFrozenSources=Object.freeze({
-  "db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql": "61d1c9b4fb4ca44b656ad95873a5336cb9c0ee9e92da82f269c4a32a1b70e4f5",
-  "services/pg-api/src/agent-plan-workflow-audit-core.ts": "d11e2c5a957a69c561cf81edbffaa372351d479cd7763bf49268d70b5f155d62",
+  "db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql": "dbb01ca01ff50def0275d3bb14544313c19a263128012831a86a1573cb8ff9ba",
+  "services/pg-api/src/agent-plan-workflow-audit-core.ts": "96385b5f918ce0dccc7850aeed38cc65aad5811dbeedeb2291bc6a94d8203b42",
   "services/pg-api/src/agent-plan-workflow-audit.ts": "e36302d24fb1cd13599eb551f6604dea0681d9de01a16939f3942ad7b5f6dbf1",
   "services/pg-api/src/agent-plan-workflow-predecessor-062-audit-core.ts": "761c136844c59b3824f78bc57e9f8a9a3ec7f2c69bd65ee545406046b4ae8566",
   "services/pg-api/src/agent-plan-workflow-predecessor-061-audit-core.ts": "7e41e4f9662db2fd021587cb930b76e01974e3ff0acf10b6f3c3e41df991542b",

@@ -112,7 +112,7 @@ export default function PgNativeTemplateMarketPanel(props: PgNativeTemplateMarke
   useEffect(() => {
     if (!model) return
     model.setAvailability({available, writes}); model.setActive(active)
-    if (active && available && model.snapshot().marketStatus === "idle") void model.refresh()
+    if (active && available && model.snapshot().marketStatus === "idle") void model.refresh({preserveNotice: true})
   }, [model, active, available, writes])
   const view = active && model ? model.snapshot() : emptyTemplateMarketView(employeeId, scopeKey)
   return <PgNativeTemplateMarketPresentation key={employeeId + ":" + scopeKey + ":" + String(Boolean(model))} {...props} view={view} bound={Boolean(model)} session={model}/>

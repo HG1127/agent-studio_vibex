@@ -167,3 +167,35 @@ test("401/403 cleared scope is emitted to subscribers before an external parent 
     unsubscribe()
   }
 })
+
+test("automatic inventory refresh retains the confirmed operation after parent write availability changes", async () => {
+  for (const operation of ["publish", "use", "delete"]) {
+    const f = fixture()
+    if (operation === "publish") {await preparedPublish(f); f.session.setReviewed(true); await f.session.publish()}
+    else if (operation === "use") {await preparedCopy(f); await f.session.copy()}
+    else {await f.session.openLifecycle(id(2), "delete"); f.session.setLifecycleConfirmed(true); await f.session.commitLifecycle()}
+    const confirmed = f.session.snapshot()
+    assert.ok(confirmed.notice); assert.equal(confirmed.receipt.operation, operation)
+    f.session.setAvailability({available: true, writes: false}); f.session.setAvailability({available: true, writes: true})
+    await f.session.refresh({preserveNotice: true})
+    assert.equal(f.session.snapshot().notice, confirmed.notice); assert.deepEqual(f.session.snapshot().receipt, confirmed.receipt)
+    assert.equal(f.session.snapshot().marketStatus, "ready")
+    assert.equal(f.calls.filter(call => call[0] === "mutate").length, 1)
+    await f.session.refresh(); assert.equal(f.session.snapshot().notice, "", "a new explicit action clears the old notice")
+  }
+})
+
+test("preserving a confirmed notice cannot retain it after authentication or access changes", async () => {
+  for (const status of [401, 403]) {
+    let denied = false
+    const f = fixture({market: async () => {if (denied) throw new PgNativeTemplateMarketError(status, "denied", true); return {ok: true, items: []}}})
+    await preparedPublish(f); f.session.setReviewed(true); await f.session.publish(); assert.ok(f.session.snapshot().notice)
+    denied = true; await f.session.refresh({preserveNotice: true})
+    assert.equal(f.session.snapshot().notice, ""); assert.equal(f.session.snapshot().receipt, null); assert.equal(f.session.snapshot().available, false)
+  }
+  const wait = deferred(), f = fixture({market: () => wait.promise})
+  await preparedPublish(f); f.session.setReviewed(true); await f.session.publish()
+  const pending = f.session.refresh({preserveNotice: true}); f.session.setActive(false); f.session.setActive(true)
+  wait.resolve({ok: true, items: []}); await pending
+  assert.equal(f.session.snapshot().notice, ""); assert.equal(f.session.snapshot().receipt, null)
+})

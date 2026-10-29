@@ -6,9 +6,9 @@ import {agentTemplateMarketGenuineFixture} from '../../services/pg-api/tests/hel
 export const agentTemplateMarketBrowserFrozenSources=Object.freeze({
   "src/pages/PgNativePilot/PgNativePilotPage.tsx": "09b3f240c73fa30379f9ed5653763e41c860388020336ef9ccb3f31fc8fa9d87",
   "src/pages/PgNativePilot/PgNativeTemplateMarketAgentSetup.tsx": "1484c40905eb35baed8c1aa8fb2770792f029100c10336a52be3b58d27977c80",
-  "src/pages/PgNativePilot/PgNativeTemplateMarketPanel.tsx": "979724b650999ed48141e7a01866057c3e0ee3b77121d2e6ec37b3a7ea644e4a",
+  "src/pages/PgNativePilot/PgNativeTemplateMarketPanel.tsx": "edf7af34ede2268eb4d6c8104811e3cec5303286b141b7bede0c1daf69b91abb",
   "src/lib/pgNativeTemplateMarket.ts": "0fa32da7d9537868b702010b5d3bf15b26d517425105105c16e29d9fe8e0dfd4",
-  "src/lib/pgNativeTemplateMarketSession.ts": "e7306b0868a1769a2835ccc0d25d63fc978898977068cd40937753590dc6a4ea",
+  "src/lib/pgNativeTemplateMarketSession.ts": "8f6227c66288df695ec5dfd048d5fc418b83fc5438215c36cc218503a6e08e06",
   "src/lib/pgNativePilotApi.ts": "41b4402dee8eaacc7bdcff1b749c970d62c13d2416aff3ba73151efcdafcd793",
   "src/pages/PgNativePilot/PgNativeAgentModelBindingPanel.tsx": "3bc4784404e4a8c804c634775d59293f56362fd77384a76bd82c0688902e03c9",
   "src/pages/PgNativePilot/PgNativeAgentHttpToolsPanel.tsx": "0ea640a8336933efcf6426bdcf4a9d4742afb608fc28af59dd3c6edc1b30497a",

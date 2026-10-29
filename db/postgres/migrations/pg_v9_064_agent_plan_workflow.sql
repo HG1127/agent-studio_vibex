@@ -577,8 +577,8 @@ BEGIN
     FOREACH v_key IN ARRAY ARRAY['id','source','target'] LOOP
       IF jsonb_typeof(v_edge->v_key) IS DISTINCT FROM 'string' OR (v_edge->>v_key) !~ '^[A-Za-z0-9_-]{1,80}$' THEN RETURN false; END IF;
     END LOOP;
-    IF (v_edge->>'id')=ANY(v_edge_ids) OR v_pairs @> jsonb_build_array(jsonb_build_array(v_edge->'source',v_edge->'target',v_edge->'sourceHandle')) OR v_edge->'source'=v_edge->'target' OR NOT((v_edge->>'source')=ANY(v_ids)) OR NOT((v_edge->>'target')=ANY(v_ids)) OR v_edge->>'target'=v_start OR (v_edge?'sourceHandle' AND (jsonb_typeof(v_edge->'sourceHandle') IS DISTINCT FROM 'string' OR v_edge->>'sourceHandle' NOT IN('true','false','done'))) THEN RETURN false; END IF;
-    v_edge_ids:=array_append(v_edge_ids,v_edge->>'id');v_pairs:=v_pairs||jsonb_build_array(jsonb_build_array(v_edge->'source',v_edge->'target',v_edge->'sourceHandle'));
+    IF (v_edge->>'id')=ANY(v_edge_ids) OR v_pairs @> jsonb_build_array(jsonb_build_object('source',v_edge->'source','target',v_edge->'target','sourceHandle',v_edge->'sourceHandle')) OR v_edge->'source'=v_edge->'target' OR NOT((v_edge->>'source')=ANY(v_ids)) OR NOT((v_edge->>'target')=ANY(v_ids)) OR v_edge->>'target'=v_start OR (v_edge?'sourceHandle' AND (jsonb_typeof(v_edge->'sourceHandle') IS DISTINCT FROM 'string' OR v_edge->>'sourceHandle' NOT IN('true','false','done'))) THEN RETURN false; END IF;
+    v_edge_ids:=array_append(v_edge_ids,v_edge->>'id');v_pairs:=v_pairs||jsonb_build_array(jsonb_build_object('source',v_edge->'source','target',v_edge->'target','sourceHandle',v_edge->'sourceHandle'));
   END LOOP;
   FOR v_node IN SELECT n.value FROM jsonb_array_elements($1->'nodes') AS n(value) LOOP
     v_id:=v_node->>'id';v_type:=v_node->>'type';

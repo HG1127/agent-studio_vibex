@@ -376,11 +376,24 @@ export async function runAgentTemplateMarketDatabaseSuite(t,f,env=process.env){
       const sourceIdentity=await f.identityFor('alice'),{require_approval:_approval,...updated}=owned.agent.spec
       await f.agents.update(sourceIdentity,owned.agent.id,'F07 later changed source',h.contracts.safeAgentSpec({...updated,goal:'New source text must never replace published snapshot'}),owned.agent.revision)
       const republished=await lifecycle(owned,'republish'),detail=await api('bob',db=>call(db,'detail',[owned.pin.template_id]));assert.deepEqual(detail.spec,owned.preview.snapshot.spec)
-      // Remove only this synthetic fixture source to exercise an absent source
-      // condition, without claiming an employee deletion endpoint exists.
-      await commitAdmin(db=>db.query('DELETE FROM agentstudio.agent_specs WHERE id=$1 AND owner_user_id=$2',[owned.agent.id,f.users.alice]))
-      assert.equal(await f.agents.get(sourceIdentity,owned.agent.id),null)
-      const detached=await api('bob',db=>call(db,'detail',[owned.pin.template_id]));assert.deepEqual(detached.spec,owned.preview.snapshot.spec)
+      // The actual045 UPDATE trigger retained before/after history above.
+      // Its FK intentionally protects that source; preserve and assert it.
+      const retainedSource=await f.agents.get(sourceIdentity,owned.agent.id),retainedHistory=await admin(async db=>(await db.query('SELECT to_jsonb(r) AS row FROM agentstudio.agent_collaboration_revisions r WHERE spec_id=$1 AND owner_user_id=$2 ORDER BY id',[owned.agent.id,f.users.alice])).rows)
+      assert.ok(retainedSource);assert.ok(retainedHistory.length>0)
+      await assert.rejects(()=>commitAdmin(db=>db.query('DELETE FROM agentstudio.agent_specs WHERE id=$1 AND owner_user_id=$2',[owned.agent.id,f.users.alice])),e=>e.code==='23503'&&e.constraint==='agent_collaboration_revisions_spec_id_owner_user_id_fkey')
+      assert.deepEqual(await f.agents.get(sourceIdentity,owned.agent.id),retainedSource)
+      assert.deepEqual(await admin(async db=>(await db.query('SELECT to_jsonb(r) AS row FROM agentstudio.agent_collaboration_revisions r WHERE spec_id=$1 AND owner_user_id=$2 ORDER BY id',[owned.agent.id,f.users.alice])).rows),retainedHistory)
+      // A separate, never-edited source has no045 history dependency. Its real
+      // deletion supplies the absent-source fixture without erasing history,
+      // disabling a FK, or inventing an employee deletion endpoint.
+      const absentSource=await publish({name:'F07 frozen snapshot without live source'})
+      assert.equal(await admin(async db=>(await db.query('SELECT count(*)::integer AS n FROM agentstudio.agent_collaboration_revisions WHERE spec_id=$1 AND owner_user_id=$2',[absentSource.agent.id,f.users.alice])).rows[0].n),0)
+      await commitAdmin(db=>db.query('DELETE FROM agentstudio.agent_specs WHERE id=$1 AND owner_user_id=$2',[absentSource.agent.id,f.users.alice]))
+      assert.equal(await f.agents.get(sourceIdentity,absentSource.agent.id),null)
+      const detached=await api('bob',db=>call(db,'detail',[absentSource.pin.template_id]));assert.deepEqual(detached.spec,absentSource.preview.snapshot.spec)
+      await lifecycle(absentSource,'unpublish');await lifecycle(absentSource,'republish')
+      assert.deepEqual((await api('bob',db=>call(db,'detail',[absentSource.pin.template_id]))).spec,absentSource.preview.snapshot.spec)
+      await lifecycle(absentSource,'delete')
       const beforeDeleteAgent=await f.agents.get(await f.identityFor('bob'),originalCopy.id),history=await admin(async db=>(await db.query('SELECT to_jsonb(r) AS row FROM agentstudio.agent_collaboration_revisions r WHERE spec_id=$1',[originalCopy.id])).rows)
       const deleted=await lifecycle(owned,'delete')
       const scrub=await admin(async db=>(await db.query('SELECT to_jsonb(p) AS publication,(SELECT count(*)::integer FROM agentstudio.agent_template_market_snapshots s WHERE s.template_id=p.id) AS bodies,(SELECT count(*)::integer FROM agentstudio.agent_template_market_tombstones t WHERE t.template_id=p.id AND t.revision=p.revision AND t.snapshot_sha256=p.snapshot_sha256) AS tombstones FROM agentstudio.agent_template_market_publications p WHERE id=$1',[owned.pin.template_id])).rows[0])

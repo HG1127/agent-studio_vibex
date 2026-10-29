@@ -300,7 +300,7 @@
     {
       "order": 48,
       "path": "db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql",
-      "sha256": "61d1c9b4fb4ca44b656ad95873a5336cb9c0ee9e92da82f269c4a32a1b70e4f5",
+      "sha256": "dbb01ca01ff50def0275d3bb14544313c19a263128012831a86a1573cb8ff9ba",
       "action": "new reviewed064 after063"
     }
   ],

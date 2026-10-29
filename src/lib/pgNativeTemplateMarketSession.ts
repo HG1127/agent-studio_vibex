@@ -49,9 +49,9 @@ export function createPgNativeTemplateMarketSession(api: PgNativeTemplateMarketA
   const current = (signal: AbortSignal) => visible() && !signal.aborted && abort?.signal === signal
   const notify = (callback?: () => void) => {try {void Promise.resolve(callback?.()).catch(() => {})} catch {}}
   const invalidateDrafts = () => {state.publishPreview = null; state.publishDraft.reviewed = false; state.usePreview = null; state.lifecycle = null}
-  async function run(work: (signal: AbortSignal) => Promise<void>, mutation = false) {
+  async function run(work: (signal: AbortSignal) => Promise<void>, mutation = false, preserveNotice = false) {
     if (!visible() || state.busy) return
-    const turn = ++ticket, controller = new AbortController(); abort = controller; state.busy = true; state.error = ""; state.notice = ""; emit()
+    const turn = ++ticket, controller = new AbortController(); abort = controller; state.busy = true; state.error = ""; if (!preserveNotice) state.notice = ""; emit()
     try {await work(controller.signal)} catch (error) {
       if (disposed || turn !== ticket) return
       const status = field(error, "status")
@@ -78,7 +78,7 @@ export function createPgNativeTemplateMarketSession(api: PgNativeTemplateMarketA
     if (!writable()) return
     await run(async signal => {pending = freeze(structuredClone(intent)); syncPending(); state.receipt = null; emit(); const receipt = await api.mutate(pending, signal); if (current(signal)) acceptReceipt(receipt, intent, signal)}, true)
   }
-  async function refresh() {
+  async function refresh(preserveNotice = false) {
     await run(async signal => {
       if (state.tab === "market") {
         state.marketStatus = "loading"; state.market = []; emit()
@@ -89,7 +89,7 @@ export function createPgNativeTemplateMarketSession(api: PgNativeTemplateMarketA
         const page = parseAgentTemplateMarketMinePage(await api.mine(signal)); if (!current(signal)) return
         state.mine = page.items; state.mineStatus = "ready"
       }
-    })
+    }, false, preserveNotice)
   }
   async function loadSources() {
     if (!writable() || !state.publishOpen) return
@@ -117,7 +117,7 @@ export function createPgNativeTemplateMarketSession(api: PgNativeTemplateMarketA
       if (!writes) {invalidateDrafts(); state.publishOpen = false; state.publishDraft = draft(); state.sources = []; state.sourcesStatus = "idle"}
       state.available = available; state.writes = writes; syncPending(); emit()
     },
-    async refresh() {await refresh()},
+    async refresh(options?: {preserveNotice?: boolean}) {await refresh(options?.preserveNotice === true)},
     async selectTab(tab: "market" | "mine") {if (!visible() || state.busy || tab !== "market" && tab !== "mine") return; state.tab = tab; state.detail = null; state.usePreview = null; state.lifecycle = null; emit(); await refresh()},
     setQuery(raw: unknown) {if (!visible() || state.busy) return; state.query = parseAgentTemplateMarketQuery(raw); state.market = []; state.marketStatus = "idle"; emit()},
     async openPublish() {if (!writable()) return; state.publishOpen = true; state.publishDraft = draft(); state.publishPreview = null; state.lifecycle = null; emit(); await loadSources()},

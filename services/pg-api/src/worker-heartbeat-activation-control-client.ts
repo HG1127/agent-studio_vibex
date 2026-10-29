@@ -57,8 +57,15 @@ export async function finishWorkerHeartbeatSnapshot(handle:ReaderClient,token:Pe
 export function consumeWorkerHeartbeatSnapshot(handle:ReaderClient,token:CompletedRead):WorkerHeartbeatSnapshot{const c=channel(handle),r=completedReads.get(token);if(!r||r.channel!==c||r.used)controlFail('untrusted_reference');r.used=true;completedReads.delete(token);return r.snapshot}
 export async function cancelWorkerHeartbeatSnapshot(handle:ReaderClient,token:PendingRead):Promise<void>{const c=clients.get(handle),p=pendingReads.get(token);if(!c||!p||p.channel!==c)controlFail('untrusted_reference');if(p.used)return;p.used=true;if(!c.open||performance.now()>=c.deadline){c.open=false;c.socket.destroy();return}const request=randomUUID();try{response(await exchange(c,{protocol:'worker_heartbeat_control_v1',request_id:request,op:'cancel_read',pending_id:p.id,instance_id:p.instance,epoch:p.epoch}),request)}finally{c.open=false;c.socket.destroy()}}
 export async function closeWorkerHeartbeatReadControl(handle:ReaderClient):Promise<void>{const c=clients.get(handle);if(!c)controlFail('untrusted_reference');c.open=false;c.socket.destroy();clients.delete(handle)}
-export async function sendWorkerHeartbeatOperatorCommand(raw:ControlCommand):Promise<ControlStatus|PlanSummary|MutationOutcome|RecoveryReport>{
+/* WRITER_RESTART_OBSERVATION_BEGIN */
+// Operator-only phase metadata: no error properties, payload or path is read.
+function observeOperatorClientFailure(site:string,error:unknown):void{
+ try{if(!['operator_client_connect','operator_client_exchange','operator_client_response'].includes(site))return
+  process.stderr.write(JSON.stringify({event:'worker_heartbeat_control_failure_observation',site,kind:error instanceof WorkerHeartbeatControlError?'control_error':'other',observed_data_only:true})+'\n')
+ }catch{/* A failed diagnostic cannot replace the original error. */}
+}
+/* WRITER_RESTART_OBSERVATION_END */export async function sendWorkerHeartbeatOperatorCommand(raw:ControlCommand):Promise<ControlStatus|PlanSummary|MutationOutcome|RecoveryReport>{/* WRITER_RESTART_OBSERVATION_BEGIN */let operatorFailurePhase='operator_client_connect';const operatorReplyObserved=(value:unknown)=>{operatorFailurePhase='operator_client_response';return value};try{/* WRITER_RESTART_OBSERVATION_END */
  const command=parseWorkerHeartbeatControlCommand(raw);if(process.platform!=='linux'||process.getuid?.()!==0)controlFail('untrusted_reference')
  const c=await connect('operator',performance.now()+controlLimits.operationMs),request=randomUUID()
- try{return controlFreeze(response(await exchange(c,{protocol:'worker_heartbeat_control_operator_v1',request_id:request,command}),request)) as ControlStatus|PlanSummary|MutationOutcome|RecoveryReport}finally{c.open=false;c.socket.destroy()}
-}
+ try{/* WRITER_RESTART_OBSERVATION_BEGIN */operatorFailurePhase='operator_client_exchange';/* WRITER_RESTART_OBSERVATION_END */return controlFreeze(response(/* WRITER_RESTART_OBSERVATION_BEGIN */operatorReplyObserved(/* WRITER_RESTART_OBSERVATION_END */await exchange(c,{protocol:'worker_heartbeat_control_operator_v1',request_id:request,command})/* WRITER_RESTART_OBSERVATION_BEGIN */)/* WRITER_RESTART_OBSERVATION_END */,request)) as ControlStatus|PlanSummary|MutationOutcome|RecoveryReport}finally{c.open=false;c.socket.destroy()}
+/* WRITER_RESTART_OBSERVATION_BEGIN */}catch(operatorFailure){try{observeOperatorClientFailure(operatorFailurePhase,operatorFailure)}catch{}throw operatorFailure}/* WRITER_RESTART_OBSERVATION_END */}

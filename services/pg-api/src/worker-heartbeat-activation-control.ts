@@ -98,7 +98,7 @@ async function managementCatalog(s:State,db:SqlClient,policy:unknown){
 }
 /* WRITER_FAILURE_OBSERVATION_BEGIN */
 // Failure observations only: no Error/row/path/SQL/role/runtime object leaves.
-const rootFailureObservationSites:readonly string[]=Object.freeze(["authorize_entry","apply_entry","record_entry","cleanup_entry","authorize_runtime","authorize_approval","authorize_expiry","authorize_intent_journal","apply_runtime","apply_closing","apply_writer_pause","apply_readers_cleanup","apply_serial","apply_registry_read","apply_target","apply_begin","apply_all_locks","apply_locked_before","apply_material","apply_write","apply_commit","apply_after_verify","apply_retire","apply_publish","record_identity_before","record_selection_before","record_query","record_selection_after","record_identity_after","record_final_guard","cleanup_end_client","cleanup_discover","cleanup_wait_absence","cleanup_ended_journal"])
+const rootFailureObservationSites:readonly string[]=Object.freeze(["authorize_entry","apply_entry","record_entry","cleanup_entry","authorize_runtime","authorize_approval","authorize_expiry","authorize_intent_journal","apply_runtime","apply_closing","apply_writer_pause","apply_readers_cleanup","apply_serial","apply_registry_read","apply_target","apply_begin","apply_all_locks","apply_locked_before","apply_material","apply_write","apply_commit","apply_after_verify","apply_retire","apply_publish","record_identity_before","record_selection_before","record_query","record_selection_after","record_identity_after","record_final_guard","cleanup_end_client","cleanup_discover","cleanup_wait_absence","cleanup_ended_journal"/* WRITER_RESTART_OBSERVATION_BEGIN */,"open_controller","operator_dispatch_inspect","operator_dispatch_prepare","operator_accept_closed","operator_accept_capacity","operator_client_connect","operator_client_exchange","operator_client_response"/* WRITER_RESTART_OBSERVATION_END */])
 const rootFailureObservationKinds:readonly string[]=Object.freeze(["source_refused","runtime_refused","control_error","writer_closed","writer_uncertain","writer_busy","writer_not_enrolled","query_cancelled","query_lock_timeout","query_client_timeout","query_client_closed","filesystem_io","transport_io","abort","type_error","range_error","syntax_error","other"])
 function rootFailureObservationKind(error:unknown):string{
  if(!error||(typeof error!=='object'&&typeof error!=='function'))return 'other'
@@ -160,7 +160,7 @@ export async function openWorkerHeartbeatActivationControl():Promise<Control>{
   if(pending.size)s.phase='recovery_required';else{s.phase='auditing';const observed=await serial(s,()=>inspectRegistry(s));s.policySha=observedSha(s,observed);const p=policyParts(s,s.policy);if(p.reader.login&&!passwordsMatch({roles:[{name:'studio_telemetry_reader',oid:s.binding.roles[1]!.oid,password:s.readerPassword,verifier_sha256:p.reader.verifier_sha256 as string,generation:null}]},await verifierRows(s.raw,['studio_telemetry_reader'])))controlFail('binding_changed');if(profile.mode==='serve'){s.published=s.epoch;append(s,'published',null,{policy:s.policy,policy_sha256:s.policySha});s.phase=registry.describeWorkerHeartbeatRegistry(observed).catalog_expectations?'serving':'closed'}else s.phase='closed'}
   if(rootWriterSettings(s)){await reconcileRootWriters(s);if(s.phase==='serving')s.writerBroker=await openWorkerHeartbeatWriterBroker(handle)}
   return handle
- }catch(error){if(connected)await raw.end().catch(()=>{});throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
+ }catch(error){/* WRITER_RESTART_OBSERVATION_BEGIN */try{observeRootControlFailure('open_controller',error)}catch{}/* WRITER_RESTART_OBSERVATION_END */if(connected)await raw.end().catch(()=>{});throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 async function observer<T>(s:State,body:(raw:Client)=>Promise<T>):Promise<T>{
  s.runtime.assertWorkerHeartbeatActivationControlRuntime(s.runtimeCap)
@@ -245,7 +245,7 @@ export function consumeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,f
 export async function cancelWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,handle:ReadLease):Promise<void>{const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference');revoke(l);await cleanupLease(l)}
 function actionFile(id:string,suffix:string){if(!controlUuid(id)||!['draft','approval','material','prepared','resume'].includes(suffix))controlFail('invalid_command');return (suffix==='draft'||suffix==='approval'||suffix==='resume'?controlPaths.config+'/'+suffix+'s':controlPaths.store+'/plans')+'/'+id+'.json'}
 function expiry(v:unknown):number{if(typeof v!=='string'||! /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v))controlFail('approval_invalid');const stamp=Date.parse(v);if(!Number.isFinite(stamp)||stamp<=Date.now()||stamp-Date.now()>600000)controlFail('approval_expired');return performance.now()+Math.min(stamp-Date.now(),60000)}
-export async function prepareWorkerHeartbeatMutation(control:Control,p:OperatorPeer,id:string):Promise<PlanSummary>{
+export async function prepareWorkerHeartbeatMutation(control:Control,p:OperatorPeer,id:string):Promise<PlanSummary>{/* WRITER_RESTART_OBSERVATION_BEGIN */try{/* WRITER_RESTART_OBSERVATION_END */
  const s=state(control);peer(s,p,'operator');runtimeCheck(s);if(!controlUuid(id))controlFail('invalid_command');if(s.mutation||!['closed','serving'].includes(s.phase)||s.actions.has(id)||s.journal.some(r=>r.action_id===id))controlFail('control_busy')
  const expected=s.epoch
  const draft=controlObject(signed(actionFile(id,'draft'),s.publicKey),['protocol','action_id','expected_epoch','before_sha256','desired_policy','expires_at']);if(draft.protocol!=='worker_heartbeat_control_draft_v1'||draft.action_id!==id||draft.expected_epoch!==s.epoch.toString()||!controlHex(draft.before_sha256))controlFail('approval_invalid');expiry(draft.expires_at)
@@ -254,7 +254,7 @@ export async function prepareWorkerHeartbeatMutation(control:Control,p:OperatorP
  if(!controlHex(description.plan_sha256)||description.before_sha256!==observedSha(s,before)||!controlHex(description.after_sha256))controlFail('registry_mismatch')
  const summary=Object.freeze({action_id:id,plan_sha256:description.plan_sha256,before_sha256:description.before_sha256,after_sha256:description.after_sha256,expected_epoch:s.epoch.toString(),requires_explicit_approval:true as const,authorizes_database_writes:false as const})
  privateWrite(actionFile(id,'prepared'),JSON.stringify({summary,before_policy:s.policy})+'\n');append(s,'plan_prepared',id,{plan_sha256:summary.plan_sha256,before_sha256:summary.before_sha256,after_sha256:summary.after_sha256});s.actions.set(id,{id,plan,summary,policy:draft.desired_policy,ack:false});return summary
-}
+/* WRITER_RESTART_OBSERVATION_BEGIN */}catch(prepareFailure){try{observeRootControlFailure('operator_dispatch_prepare',prepareFailure)}catch{}throw prepareFailure}/* WRITER_RESTART_OBSERVATION_END */}
 export async function authorizeWorkerHeartbeatMutation(control:Control,p:OperatorPeer,id:string):Promise<MutationPermit>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootFailureSite='authorize_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
  const s=state(control),owner=peer(s,p,'operator');/* WRITER_FAILURE_OBSERVATION_BEGIN */rootFailureSite='authorize_runtime';/* WRITER_FAILURE_OBSERVATION_END */runtimeCheck(s);if(!controlUuid(id))controlFail('invalid_command');const action=s.actions.get(id);if(!action||action.summary.expected_epoch!==s.epoch.toString()||s.mutation||!['closed','serving'].includes(s.phase))controlFail('plan_stale')
  const expected=s.epoch
@@ -426,7 +426,7 @@ export async function resumeWorkerHeartbeatPublication(control:Control,p:Operato
 function frame(value:unknown){const bytes=Buffer.from(JSON.stringify(value));if(bytes.length<1||bytes.length>controlLimits.frameBytes)controlFail('invalid_command');const head=Buffer.alloc(4);head.writeUInt32BE(bytes.length);return Buffer.concat([head,bytes])}
 async function operatorCommand(s:State,handle:OperatorPeer,raw:unknown){
  const command=parseWorkerHeartbeatControlCommand(raw)
- switch(command.op){
+/* WRITER_RESTART_OBSERVATION_BEGIN */try{/* WRITER_RESTART_OBSERVATION_END */ switch(command.op){
   case 'inspect':return inspectWorkerHeartbeatActivationControl(s.handle)
   case 'prepare':return prepareWorkerHeartbeatMutation(s.handle,handle,command.action_id)
   case 'apply':return applyWorkerHeartbeatMutation(s.handle,handle,await authorizeWorkerHeartbeatMutation(s.handle,handle,command.action_id))
@@ -434,12 +434,12 @@ async function operatorCommand(s:State,handle:OperatorPeer,raw:unknown){
   case 'resume_publication':return resumeWorkerHeartbeatPublication(s.handle,handle,command.action_id,command.recovered_action_id)
   case 'stop':s.phase='stopping';return inspectWorkerHeartbeatActivationControl(s.handle)
  }
-}
+/* WRITER_RESTART_OBSERVATION_BEGIN */}catch(operatorFailure){try{if(command.op==='inspect')observeRootControlFailure('operator_dispatch_inspect',operatorFailure)}catch{}throw operatorFailure}/* WRITER_RESTART_OBSERVATION_END */}
 function accept(s:State,socket:net.Socket,kind:'operator'|'reader'){
  // Kernel-enforced fixed pathname permissions are the peer boundary: operator
  // root-only 0600, reader root/native-group 0660 below root-owned 0750 directory.
  // Handles are minted only for actual sockets accepted by these own servers.
- if(s.phase==='stopping'||s.phase==='stopped'||[...s.peers].filter(p=>p.kind===kind).length>=(kind==='reader'?2:2)){socket.destroy();return}
+ if(s.phase==='stopping'||s.phase==='stopped'||[...s.peers].filter(p=>p.kind===kind).length>=(kind==='reader'?2:2)){/* WRITER_RESTART_OBSERVATION_BEGIN */try{if(kind==='operator')observeRootControlFailure(s.phase==='stopping'||s.phase==='stopped'?'operator_accept_closed':'operator_accept_capacity',null)}catch{}/* WRITER_RESTART_OBSERVATION_END */socket.destroy();return}
  const handle=empty<ReaderPeer|OperatorPeer>(),owner:Peer={s,socket,kind,open:true,request:null,leases:new Set()};peerStates.set(handle,owner);s.peers.add(owner)
  let buffer=Buffer.alloc(0),busy=false,requests=0,stopRequested=false
  const timer=setTimeout(()=>socket.destroy(),kind==='reader'?controlLimits.nativeBudgetMs:controlLimits.operationMs)
