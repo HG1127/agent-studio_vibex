@@ -45,3 +45,10 @@ test('Owner closed writes still allow original confirmation but refuse a new bud
 test('Owner read entry requires the original Cookie and rejects Bearer or arbitrary Owner identity before authentication',async()=>{
  for(const patch of[{cookie:undefined},{authorization:'Bearer '+key},{'x-agentstudio-owner-id':id(9)}]){let auths=0;const h=createAgentCallerOwnerHttp({repository:{},allowedOrigin:origin,authenticateRequest:async()=>{auths++;return identity}}),r=await invoke(h,ownerRoot+'/agents',{headers:{...ownerHeaders(),...patch}});assert.ok([401,403].includes(r.status));assert.equal(auths,0)}
 })
+
+test('renderer denial keeps exact authorization401 distinct from missing404, source409 and unknown503',async()=>{
+ for(const [failure,status,code]of [[new HttpError(401,'agent_caller_authorization_required'),401,'agent_caller_authorization_required'],[new HttpError(404,'agent_caller_not_found'),404,'agent_caller_not_found'],[new HttpError(409,'agent_caller_source_unavailable'),409,'agent_caller_source_unavailable'],[Error('synthetic-private-database-detail'),503,'agent_caller_outcome_unknown']]){
+  let reads=0;const repository={embed:async received=>{assert.equal(received,id(8));reads++;throw failure}},handler=createAgentCallerPublicHttp({repository}),result=await invoke(handler,'/embed/'+id(8))
+  assert.equal(reads,1);assert.equal(result.status,status);assert.deepEqual(result.body,{error:code});assert.equal(result.headers['Cache-Control'],'no-store');assert.equal(result.headers['X-Frame-Options'],'DENY');assert.equal(result.headers['Content-Type'],'application/json; charset=utf-8');assert.equal(result.headers['Access-Control-Allow-Origin'],undefined);assert.equal(JSON.stringify(result).includes('synthetic-private-database-detail'),false)
+ }
+})

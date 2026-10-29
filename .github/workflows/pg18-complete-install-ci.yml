@@ -7,6 +7,7 @@ on:
       - 'db/postgres/**'
       - 'shared/**'
       - 'ops/pg18-complete-install-ci.mjs'
+      - 'ops/pg18-complete-service-ci.mjs'
       - '.github/workflows/pg18-complete-install-ci.yml'
   workflow_dispatch:
 permissions:
@@ -45,9 +46,9 @@ jobs:
       - name: Actual compiler, offline complete plan and ordinary-host refusal
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs services/pg-api/tests/pg18-complete-service-plan.test.mjs services/pg-api/tests/pg18-complete-service-driver.test.mjs
       - name: Own empty PG18 clusters and actual complete069 install
-        env:
+        env: &complete069SyntheticAdmission
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
           AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
           AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
@@ -61,3 +62,8 @@ jobs:
         run: |
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-install-ci.mjs --run
+      - name: Fresh full069 fixed service preparation and original first-admin CLI
+        env: *complete069SyntheticAdmission
+        run: |
+          node_path="$(command -v node)"
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run

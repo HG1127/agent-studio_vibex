@@ -17,7 +17,7 @@ test('original Autonomous Worker -> real private mTLS Broker -> independent CLI 
  })
  await f.approve(id);const done=await f.drive(id)
  await t.test('original Worker replacements finish only after actual per-step and human approvals',async()=>{
-  assert.equal(done.run.status,'succeeded',done.run.last_error_code);assert.match(done.run.result_text,/2500\.00/);assert.equal(done.human_input_evidence_current,true);assert.equal(f.failures.length,0,JSON.stringify(f.failures));assert.equal(f.receipts.length,1)
+  assert.equal(done.run.status,'succeeded',JSON.stringify(f.diagnostics()));assert.match(done.run.result_text,/2500\.00/);assert.equal(done.human_input_evidence_current,true);assert.equal(f.failures.length,0,JSON.stringify(f.failures));assert.equal(f.receipts.length,1)
   const posts=f.providerEvents.filter(e=>e.phase==='generate');assert.deepEqual(posts.map(e=>e.round),[1,2,3,4,5,6,7,8,9,10]);assert.equal(new Set(posts.map(e=>e.step_key)).size,10);assert.equal(f.credentialEvents.length,10);assert.equal(f.privateEvents.filter(e=>e.kind==='model').length,10);assert.equal(f.privateEvents.filter(e=>e.kind==='tool').length,8)
   const history=await f.request('alice','/api/v2/agent-autonomous-runs/'+id+'/human-history');assert.equal(history.status,200);assert.ok(history.body.items.some(r=>r.kind==='plan_review'&&r.decision==='approve'))
   const approval=(await f.db.query('SELECT status,reason_code FROM agentstudio.approvals WHERE run_id=$1',[id])).rows;assert.equal(approval.length,19);assert.equal(approval.every(a=>a.status==='approved'&&/^wf2:[a-f0-9]{64}$/.test(a.reason_code)),true)

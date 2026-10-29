@@ -129,6 +129,26 @@ export async function ownedCompleteProfileRuntimePool(target,login,password){
   trace.phase='runtime_pool_error_handler';pool.on('error',()=>{});return pool
  }catch(error){try{process.stderr.write(JSON.stringify(completeProfileRuntimePoolDiagnostic(trace.phase,error))+'\n')}catch{}throw error}
 }
+
+// Only the newly owned disposable main container. No production HBA path or
+// caller-supplied rule is accepted; this does not alter the original guards.
+export async function configureOwnedCompleteServiceHba(target,scenario='reviewed'){
+ const s=await owned(target)
+ if(s.spec.kind!=='main'||s.spec.port!==5333||!['reviewed','earlier-trust-negative'].includes(scenario))fail('service_hba_target')
+ const logins=['agentstudio_stage_login','agentstudio_native_login','agentstudio_stage_worker','agentstudio_bound_dispatch_login','agentstudio_model_broker_login','agentstudio_knowledge_index_worker_login','agentstudio_knowledge_index_broker_login']
+ const lines=['local all postgres peer',...logins.map(n=>'local agent_studio '+n+' reject'),'local all all reject','host all postgres 127.0.0.1/32 scram-sha-256',...logins.map(n=>'host agent_studio '+n+' 127.0.0.1/32 scram-sha-256'),'host all all 0.0.0.0/0 reject','host all all ::/0 reject']
+ if(scenario==='earlier-trust-negative')lines.unshift('host all all 127.0.0.1/32 trust')
+ command(['exec','--interactive','--user','postgres',s.id,'sh','-c','umask 077; cat > "$PGDATA/pg_hba.conf"'],{input:Buffer.from(lines.join('\n')+'\n')})
+ const pool=await ownedCompleteProfilePool(target,1)
+ try{
+  const before=(await pool.query('SELECT pg_conf_load_time()::text AS loaded')).rows[0]?.loaded
+  if((await pool.query('SELECT pg_reload_conf() AS reloaded')).rows[0]?.reloaded!==true)fail('service_hba_reload')
+  const until=Date.now()+5000;let changed=false
+  while(Date.now()<until){if((await pool.query('SELECT pg_conf_load_time()::text AS loaded')).rows[0]?.loaded!==before){changed=true;break}await new Promise(done=>setTimeout(done,100))}
+  if(!changed)fail('service_hba_reload_timeout')
+ }finally{await pool.end()}
+}
+
 export async function restoreOwnedCompleteProfileDatabase(target,dump){
  const s=await owned(target);if(!Buffer.isBuffer(dump)||dump.length<1||dump.length>128*1024*1024)fail('archive_input')
  const maintenance=new s.loaded.Pool({host:'127.0.0.1',port:s.spec.port,database:'postgres',user:'postgres',password:s.password,max:1});maintenance.on('error',()=>{})

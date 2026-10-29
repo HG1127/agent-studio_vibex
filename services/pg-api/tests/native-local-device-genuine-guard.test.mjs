@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {sanitizeNativeChainDiagnostic,combineNativeChainFailure} from './helpers/native-local-device-chain-fixture.mjs'
 import {requireNativeLocalDeviceGenuineCi,nativeLocalDeviceGenuineWorkflow,nativeLocalDeviceEmployeeBrowserWorkflow} from './helpers/native-local-device-genuine-guard.mjs'
 const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:nativeLocalDeviceGenuineWorkflow,GITHUB_RUN_ID:'987654',GITHUB_JOB:'pg18-local-device-genuine',AGENT_STUDIO_F20_F21_GENUINE_CI:'YES_DISPOSABLE_F20_F21_ONLY',AGENT_STUDIO_F20_F21_GENUINE_SUITE:'database',AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-987654'}
 test('pure guard accepts only declared purpose/job/suite data, without constructing a driver or pool',()=>{for(const [job,suite]of[['pg18-local-device-genuine','database'],['pg18-local-device-genuine','flow'],['pg18-local-device-executor','executor'],['pg18-local-device-browser','browser']]){const target=requireNativeLocalDeviceGenuineCi({...env,GITHUB_JOB:job,AGENT_STUDIO_F20_F21_GENUINE_SUITE:suite},'linux',1001);assert.equal(target.host,'127.0.0.1');assert.equal(target.port,5432);assert.equal(target.database,'agentstudio_pg18_ci')}})
@@ -10,4 +11,18 @@ test('separate employee workflow admits only the exact browser job/suite while r
  const browser={...env,GITHUB_WORKFLOW:nativeLocalDeviceEmployeeBrowserWorkflow,GITHUB_JOB:'pg18-local-device-browser',AGENT_STUDIO_F20_F21_GENUINE_SUITE:'browser'}
  assert.equal(requireNativeLocalDeviceGenuineCi(browser,'linux',1001).database,'agentstudio_pg18_ci')
  for(const patch of [{GITHUB_JOB:'pg18-local-device-executor',AGENT_STUDIO_F20_F21_GENUINE_SUITE:'executor'},{GITHUB_JOB:'pg18-local-device-genuine',AGENT_STUDIO_F20_F21_GENUINE_SUITE:'flow'},{AGENT_STUDIO_F20_F21_GENUINE_SUITE:'database'},{NODE_EXTRA_CA_CERTS:'untrusted'},{DATABASE_URL:'postgresql://production.invalid'}])assert.throws(()=>requireNativeLocalDeviceGenuineCi({...browser,...patch},'linux',1001))
+})
+
+test('chain diagnostics discard every unlisted value and never inspect error messages, bodies or getters',()=>{
+ const secret='SYNTHETIC_PRIVATE_KEY_SQL_BODY_PROMPT_ARGS_UUID_TOKEN_SENTINEL',raw={provider:secret,phase:secret.repeat(10000),failure_phase:secret,sql:secret,message:secret,key:secret,body:secret,prompt:secret,args:[secret],uuid:secret,token:secret,counts:{[secret]:999999}};let accessed=0
+ Object.defineProperty(raw,'error',{get(){accessed++;throw Error(secret)}});Object.defineProperty(raw.counts,'provider_peer',{get(){accessed++;throw Error(secret)}})
+ const clean=sanitizeNativeChainDiagnostic(raw),encoded=JSON.stringify(clean);assert.equal(accessed,0);assert.equal(encoded.includes(secret),false);assert.equal(clean.provider,'unobserved');assert.equal(clean.phase,'unobserved');assert.equal(clean.failure_phase,'unobserved');assert.equal(clean.counts.provider_peer,0);assert.ok(Buffer.byteLength(encoded)<=2048)
+})
+test('chain diagnostic enums remain exact and finite counters are truncated within a fixed2048-byte schema',()=>{
+ const names=Object.keys(sanitizeNativeChainDiagnostic(null).counts),counts=Object.fromEntries(names.map(name=>[name,Number.MAX_VALUE]));Object.assign(counts,{credential_proof:-1,provider_decode:Infinity,request_error:NaN,private_model_enter:3.9,provider_key:'9999'})
+ const clean=sanitizeNativeChainDiagnostic({provider:'openai',phase:'private_model_returned',failure_phase:'provider_decode',counts});assert.equal(clean.provider,'openai');assert.equal(clean.phase,'private_model_returned');assert.equal(clean.failure_phase,'provider_decode');assert.equal(clean.counts.credential_proof,0);assert.equal(clean.counts.provider_decode,0);assert.equal(clean.counts.request_error,0);assert.equal(clean.counts.private_model_enter,3);assert.equal(clean.counts.provider_key,0);assert.equal(clean.counts.provider_images,9999);assert.ok(Buffer.byteLength(JSON.stringify(clean))<=2048);assert.deepEqual(sanitizeNativeChainDiagnostic(clean),clean)
+})
+test('chain cleanup failure preserves primary and cleanup identities and the original cause',()=>{
+ const primary=Error('synthetic-primary'),cleanup=new AggregateError([Error('synthetic-cleanup')],'synthetic-cleanup-group'),result=combineNativeChainFailure(primary,cleanup)
+ assert.ok(result instanceof AggregateError);assert.equal(result.message,'native_chain_primary_and_cleanup_failed');assert.equal(result.cause,primary);assert.deepEqual(result.errors,[primary,cleanup]);assert.equal(combineNativeChainFailure(undefined,cleanup).errors[0],undefined)
 })

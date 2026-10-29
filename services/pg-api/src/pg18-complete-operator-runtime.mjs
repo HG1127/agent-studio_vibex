@@ -347,6 +347,12 @@ export function isCompleteProfileInitializerDriverRequest(from,specifier,conditi
   const allowed=['node','import','module-sync','node-addons','default']
   return from==='services/pg-api/src/baota-pg18-fresh-init.mjs'&&specifier==='pg'&&Array.isArray(conditions)&&conditions.includes('import')&&conditions.every(value=>allowed.includes(value))
 }
+// Separate first-admin classification. Its admission below additionally needs
+// the reviewed full069 preparer's exact source edge and the loaded capability.
+export function isCompleteProfileFirstAdminDriverRequest(from,specifier,conditions){
+  const allowed=['node','import','module-sync','node-addons','default']
+  return from==='services/pg-api/src/native-first-admin-cli.mjs'&&specifier==='pg'&&Array.isArray(conditions)&&conditions.includes('import')&&conditions.every(value=>allowed.includes(value))
+}
 export function loadCompleteProfileOperatorPg(capability){
   assertCompleteProfileOperatorRuntime(capability)
   const state=capabilities.get(capability)
@@ -369,7 +375,10 @@ export function loadCompleteProfileOperatorPg(capability){
             // that source-bound import to the ALREADY loaded verified CJS pg
             // entry. No ESM package wrapper, injected Pool, source replacement,
             // cache deletion or arbitrary external package import is allowed.
-            if(!state.loaded||!isCompleteProfileInitializerDriverRequest(from,specifier,Array.from(context.conditions??[])))fail()
+            const conditions=Array.from(context.conditions??[])
+            const originalInitializer=isCompleteProfileInitializerDriverRequest(from,specifier,conditions)
+            const originalFirstAdmin=isCompleteProfileFirstAdminDriverRequest(from,specifier,conditions)&&state.snapshot.manifest.imports.some(e=>e.from==='services/pg-api/src/pg18-complete-service-cli.mjs'&&e.to==='services/pg-api/src/native-first-admin-cli.mjs')
+            if(!state.loaded||!originalInitializer&&!originalFirstAdmin)fail()
             assertSource(state.snapshot,state.expected)
             return {url:pathToFileURL(state.entry).href,format:'commonjs',shortCircuit:true}
           }

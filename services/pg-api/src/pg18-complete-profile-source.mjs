@@ -44,14 +44,20 @@ export async function captureCompleteProfileSources(){
  // Closed reviewed raw/LF variants are accepted only at capture. Every later
  // assertion re-reads the exact selected RAW hash; no normalization or refresh.
  const selectedSql=completeProfileSqlPins.map(pin=>{const actual=sha(bytes(pin.path));if(!pin.accepted_sha256s.includes(actual))fail();return {path:pin.path,sha256:actual}})
- const entries=new Map(),edges=[],externals=new Set(),pending=['services/pg-api/src/baota-pg18-complete-init.mjs','services/pg-api/src/pg18-complete-profile.ts','services/pg-api/src/pg18-complete-profile-source.mjs','services/pg-api/src/pg18-complete-profile-source.d.mts','services/pg-api/src/pg18-complete-operator-runtime.mjs','services/pg-api/src/pg18-complete-operator-runtime.d.mts','shared/native-local-device-contract.d.mts',...descriptive.manifest.sources.map(f=>f.path)]
+ const entries=new Map(),edges=[],externals=new Set(),pending=['services/pg-api/src/native-server.ts','services/pg-api/src/pg18-complete-service-cli.mjs','services/pg-api/src/baota-pg18-complete-init.mjs','services/pg-api/src/pg18-complete-profile.ts','services/pg-api/src/pg18-complete-profile-source.mjs','services/pg-api/src/pg18-complete-profile-source.d.mts','services/pg-api/src/pg18-complete-operator-runtime.mjs','services/pg-api/src/pg18-complete-operator-runtime.d.mts','shared/native-local-device-contract.d.mts',...descriptive.manifest.sources.map(f=>f.path)]
  while(pending.length){
   const relative=pending.pop();if(entries.has(relative))continue
   const raw=bytes(relative),text=utf8(raw),tree=ts.createSourceFile(relative,text,ts.ScriptTarget.Latest,true,relative.endsWith('.mjs')?ts.ScriptKind.JS:ts.ScriptKind.TS)
   if(tree.parseDiagnostics.length)fail();entries.set(relative,{path:relative,sha256:sha(raw)})
   const add=value=>{if(!ts.isStringLiteralLike(value))fail();const spec=value.text
    if(spec.startsWith('.')){const next=path.posix.normalize(path.posix.join(path.posix.dirname(relative),spec));edges.push({from:relative,to:next});pending.push(next)}
-   else if(spec.startsWith('node:')&&isBuiltin(spec)||['pg','typescript'].includes(spec))externals.add(spec);else fail()
+   else if(spec.startsWith('node:')&&isBuiltin(spec)||['pg','typescript'].includes(spec))externals.add(spec)
+   // The native entry's erased document type edge binds the original parser
+   // source as well. These three exact declarations do not expand the pinned
+   // 14-package PG operator runtime; readonly Native auth smoke never parses
+   // a document or claims to package its optional extraction dependencies.
+   else if(relative==='services/pg-api/src/document-parser.ts'&&['jszip','pdfjs-dist/legacy/build/pdf.mjs','mammoth'].includes(spec))externals.add(spec)
+   else fail()
   }
   const visit=node=>{
    if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier)add(node.moduleSpecifier)

@@ -23,3 +23,4 @@ export function resolveCompleteProfileOperatorRuntimeModule(manifest:CompletePro
 export function loadCompleteProfileOperatorPg(capability:CompleteProfileOperatorRuntimeCapability):Readonly<{Pool:typeof Pool}>
 
 export function isCompleteProfileInitializerDriverRequest(from:unknown,specifier:unknown,conditions:unknown):boolean
+export function isCompleteProfileFirstAdminDriverRequest(from:unknown,specifier:unknown,conditions:unknown):boolean

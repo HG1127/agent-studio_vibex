@@ -2,8 +2,8 @@
 // endpoint. No direct executor response or synthetic positive audit is used.
 export const chainProviders={
  openai:{host:'api.openai.com',base:'https://api.openai.com/v1',post:'/v1/chat/completions',probe:'/v1/models'},
- anthropic:{host:'api.anthropic.com',base:'https://api.anthropic.com',post:'/v1/messages',probe:'/v1/models'},
- gemini:{host:'generativelanguage.googleapis.com',base:'https://generativelanguage.googleapis.com',post:'/v1beta/models/synthetic-native:generateContent',probe:'/v1beta/models'},
+ anthropic:{host:'api.anthropic.com',base:'https://api.anthropic.com/v1',post:'/v1/messages',probe:'/v1/models'},
+ gemini:{host:'generativelanguage.googleapis.com',base:'https://generativelanguage.googleapis.com/v1beta',post:'/v1beta/models/synthetic-native:generateContent',probe:'/v1beta/models'},
 }
 export function decodeChainModelWire(provider,body){
  let text,images=[]

@@ -86,7 +86,7 @@ export function runV2WorkerCli(autonomous=false){
     const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
-      if(localDeviceExecutionApproved){const db=await adapter.connect();try{await db.query("BEGIN READ ONLY");await db.query("SET LOCAL ROLE agentstudio_worker");await verifyNativeLocalDeviceSchema(db)}finally{try{await db.query("ROLLBACK")}finally{db.release()}}}
+      if(localDeviceExecutionApproved){const db=await adapter.connect();try{await db.query("BEGIN READ ONLY");await db.query("SET LOCAL ROLE agentstudio_api");await verifyNativeLocalDeviceSchema(db)}finally{try{await db.query("ROLLBACK")}finally{db.release()}}}
       await verifyWorkflowSampleLineageSchema(adapter)
       if(scheduleApproved)await verifyScheduleRuntimeSchema(adapter)
       if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)

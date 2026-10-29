@@ -819,3 +819,15 @@ tests/pg-native-tool-hub-catalog-namespace.test.mjs text eol=lf
 # Reviewed Native session and Caller observation regression sources.
 services/pg-api/src/native-local-device-auth-error.ts text eol=lf
 services/pg-api/tests/native-local-device-auth-error.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+ops/pg18-complete-service-ci.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-plan.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-native-entry-smoke.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-ci.integration.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-driver.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-plan.test.mjs text eol=lf
+services/pg-api/tests/workflow-v2-local-device-startup-role.test.mjs text eol=lf
