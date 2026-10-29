@@ -406,7 +406,7 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
   "services/pg-api/tests/helpers/agent-review-ledger-fixture.mjs": "bb0506a0f2aef11f4033ee7ea919102e06930d5fee2b3af037e236f04cf0f688",
-  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "fdc472ca1ba9f15226f468cd7da5fd2bd5ace23753ef50c8810efcd6053388e9",
+  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "bd633be00ba1a77e1214303b684efbc2e3acb28393b09b619d6281ff0f6aacbb",
   "services/pg-api/tests/helpers/approval-delegation-genuine-guard.mjs": "c48521998f2d70a8e8e282c4f27539c8f718b58fd10cfbaa3c6f1006547e9c67",
   "services/pg-api/tests/helpers/bound-model-loopback-tls.mjs": "d3932a15340329b3e3550b2a58f25ac0f7c045aedc85d01a8b560d1931ce6b4c",
   "services/pg-api/tests/helpers/native-pg18-embedded.mjs": "6d29c92a24cbc4815f869d1b11fd9c3872873ceb61b1e0002e16a42b1a3a29a5",
@@ -619,7 +619,7 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "d821eb1f6eef98e0eba0c50115ab6759a4562d9dd26e0853c9f2cb9be898f91b",
   "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "777e552f04da25376d0f085ba20471cabd277060025d437d05eda19c35152373",
   "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "2ae2876e04739bc17a611572f49f0efc37c6cbfcb27cf1cb3b7ecec10332bddc",
-  "services/pg-api/src/pg18-complete-executor-cli.mjs": "104d8cca8d0ba5c739a0dd497b9a785792f5014036c2e696f719466cfdf753a9",
+  "services/pg-api/src/pg18-complete-executor-cli.mjs": "31486fca2a869b38255a15f1790c983f54a8cd877bdd824516676a66f6d451bd",
   "services/pg-api/src/pg18-complete-executor-core.mjs": "2d772585f25504be49e23000a77d1de0ef4e8f7523b83135c514d889f1ef6423",
   "services/pg-api/src/pg18-complete-executor-journal.mjs": "ef6039d1710ba7eddc067a762917985520ceacd490045cd7f4bc31de556f5775",
   "services/pg-api/src/pg18-complete-executor-plan.mjs": "79f9ecf9e529f06baf00698ea7bdd283f1af55b818538d06c676ab09492417bb"

@@ -25,8 +25,9 @@ export async function runComplete069Executor(argv,env=process.env){
  const adminSecret=credential(env.AGENT_STUDIO_BAOTA_PG_ADMIN_PASSWORD_FILE),apiSecret=credential(env.AGENT_STUDIO_BAOTA_PG_API_PASSWORD_FILE),executorSecret=credential(env.AGENT_STUDIO_COMPLETE_EXECUTOR_PASSWORD_FILE),reviewSecret=credential(env.AGENT_STUDIO_COMPLETE_REVIEW_WORKER_PASSWORD_FILE),secrets=[adminSecret,apiSecret,executorSecret,reviewSecret]
  if(new Set(secrets.map(v=>v.password)).size!==4||new Set(secrets.map(v=>v.device+':'+v.inode)).size!==4)fail('independent_secret_required')
  scram.validateServiceLoginPassword(executorSecret.password)
- const reviewCfg={...cfg,operationId:cfg.reviewOperationId},readReview=()=>reviewJournal.readComplete069ReviewWorkerOperation(env.AGENT_STUDIO_COMPLETE_REVIEW_WORKER_JOURNAL_DIR,reviewCfg),reviewIntent=readReview(),reviewIntentSha=createHash('sha256').update(JSON.stringify(reviewIntent)).digest('hex')
- const boundary=()=>{if(createHash('sha256').update(JSON.stringify(readReview())).digest('hex')!==reviewIntentSha)fail('review_intent_changed');host(env,cfg.mode==='prepare');source.assertCompleteProfileDeployment(snapshot,cfg.sourceSha256);runtime.assertCompleteProfileOperatorRuntime(cap);for(const x of secrets){const now=credential(x.real);if(now.device!==x.device||now.inode!==x.inode||now.password!==x.password)fail('secret_changed')}}
+ const reviewCfg={...cfg,operationId:cfg.reviewOperationId},readReview=()=>reviewJournal.readComplete069ReviewWorkerOperation(env.AGENT_STUDIO_COMPLETE_REVIEW_WORKER_JOURNAL_DIR,reviewCfg)
+ let reviewIntent,reviewIntentSha=null
+ const boundary=()=>{if(reviewIntentSha!==null&&createHash('sha256').update(JSON.stringify(readReview())).digest('hex')!==reviewIntentSha)fail('review_intent_changed');host(env,cfg.mode==='prepare');source.assertCompleteProfileDeployment(snapshot,cfg.sourceSha256);runtime.assertCompleteProfileOperatorRuntime(cap);for(const x of secrets){const now=credential(x.real);if(now.device!==x.device||now.inode!==x.inode||now.password!==x.password)fail('secret_changed')}}
  const options=(user,password)=>({host:'127.0.0.1',port:5333,database:'agent_studio',user,password,ssl:false,options:'',max:user==='postgres'?4:1,connectionTimeoutMillis:5000,statement_timeout:45000,query_timeout:50000,idleTimeoutMillis:1000,application_name:'agentstudio-complete069-executor-prepare'})
  const admin=new Pool(options('postgres',adminSecret.password)),api=new Pool(options('agentstudio_stage_login',apiSecret.password)),dedicated=new Pool(options(abi.login,executorSecret.password)),review=new Pool(options('agentstudio_review_worker_login',reviewSecret.password))
  for(const p of [admin,api,dedicated,review])p.on('error',()=>{})
@@ -34,6 +35,7 @@ export async function runComplete069Executor(argv,env=process.env){
  let lock,intent,locked=false
  try{
   boundary();lock=await admin.connect();await original.completeServiceTarget(lock,cfg.target)
+   reviewIntent=readReview();reviewIntentSha=createHash('sha256').update(JSON.stringify(reviewIntent)).digest('hex');boundary()
   if((await lock.query('SELECT pg_try_advisory_lock(61824,20261029) AND pg_try_advisory_lock(61824,20261030) AS locked')).rows[0]?.locked!==true)fail('preparation_lock_busy')
   locked=true
   if(cfg.mode==='inspect-operation'){

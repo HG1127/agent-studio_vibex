@@ -17,6 +17,7 @@ test('the genuine full069 closure includes the new preparer and original Executo
 test('host/source/runtime gates precede opening PG, durable intent precedes fixed DDL and original C proves the real pool',()=>{
  const cli=ast('../src/pg18-complete-executor-cli.mjs'),run=fn(cli,'runComplete069Executor'),load=calls(run,cli,'runtime.loadCompleteProfileOperatorPg')[0]
  assert.ok(calls(run,cli,'host')[0].getStart(cli)<load.getStart(cli));assert.ok(calls(run,cli,'source.assertCompleteProfileDeployment')[0].getStart(cli)<load.getStart(cli))
+ const target=calls(run,cli,'original.completeServiceTarget')[0],record=calls(run,cli,'readReview').filter(n=>n.getStart(cli)>target.getStart(cli))[0];assert.ok(record&&target.getStart(cli)<record.getStart(cli))
  const core=ast('../src/pg18-complete-executor-core.mjs'),prepare=fn(core,'prepareComplete069Executor'),intent=calls(prepare,core,'start')[0],ddl=calls(prepare,core,'db.query').find(n=>n.arguments[0]?.getText(core)==='reservation')
  assert.ok(intent.getStart(core)<ddl.getStart(core));assert.equal(calls(fn(core,'verifyComplete069ExecutorLogin'),core,'inspectNativeLocalExecutorPreflight').length,1)
  assert.equal(calls(prepare,core,'completeServiceCatalog').length,0)
