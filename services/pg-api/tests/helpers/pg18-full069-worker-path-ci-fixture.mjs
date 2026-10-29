@@ -6,6 +6,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url'
 import {spawn,execFileSync} from 'node:child_process'
 import {createHash,randomBytes,randomUUID,generateKeyPairSync,sign,X509Certificate} from 'node:crypto'
 import {performance} from 'node:perf_hooks'
+import {createRequire} from 'node:module'
 import {setTimeout as delay} from 'node:timers/promises'
 import {completeProfileCiBinding} from './pg18-complete-install-ci-guard.mjs'
 import {completeProfileStageDescriptor,loadVerifiedCompleteProfileStage,assertVerifiedCompleteProfileStage} from './pg18-complete-install-ci-stage.mjs'
@@ -81,6 +82,40 @@ async function prepareReview(s){
  }finally{const original=s.directories.get(credentialDirectory),st=fs.lstatSync(credentialDirectory);if(st.dev!==original.dev||st.ino!==original.ino||!st.isDirectory()||st.isSymbolicLink())fail('preflight_cleanup_identity');fs.rmSync(credentialDirectory,{recursive:true});s.directories.delete(credentialDirectory)}
  s.review={operation_id:id};for(const[name,source]of Object.entries({intent:s.reviewJournal+'/'+id+'.intent.json',result:s.reviewJournal+'/'+id+'.result.json',observation,preflight:s.preflightFile})){s.review[name+'_file']=source;s.review[name+'_sha256']=sha(privateRead(source))}
 }
+async function publishControlRuntime(s){
+ assertVerifiedCompleteProfileStage(s.loaded)
+ const runtime=await import(pathToFileURL(s.deployment+'/services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs').href),source=await import(pathToFileURL(s.deployment+'/services/pg-api/src/worker-heartbeat-activation-control-source.mjs').href),policy=runtime.workerHeartbeatActivationControlRuntimePolicy
+ if(policy.format!=='worker_heartbeat_activation_control_runtime_v1'||policy.lock_sha256!==pins.lock||policy.pg_version!=='8.23.1'||Object.keys(policy.packages).length!==14)fail('control_runtime_policy')
+ const read=name=>{const st=fs.lstatSync(name);if(!st.isFile()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||st.nlink!==1||(st.mode&0o7777)!==0o444||st.size<1||st.size>16777216)fail('control_runtime_file');const bytes=fs.readFileSync(name),last=fs.lstatSync(name);if(['dev','ino','size','mtimeMs','ctimeMs'].some(k=>st[k]!==last[k]))fail('control_runtime_changed');return bytes},api=s.deployment+'/services/pg-api',modules=api+'/node_modules',found=new Map(),pending=[{name:'pg',require:createRequire(api+'/package.json')}]
+ if(sha(read(api+'/package.json'))!=='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'||sha(read(api+'/pnpm-lock.yaml'))!==pins.lock)fail('control_runtime_package_lock')
+ while(pending.length){
+  const {name,require}=pending.pop(),expected=policy.packages[name];if(!expected)fail('control_runtime_dependency')
+  const entry=fs.realpathSync(require.resolve(name));let dir=path.dirname(entry)
+  while(true){const meta=dir+'/package.json';if(fs.existsSync(meta)&&JSON.parse(read(meta)).name===name)break;const next=path.dirname(dir);if(next===dir)fail('control_runtime_metadata');dir=next}
+  dir=fs.realpathSync(dir);if(dir!==modules+'/'+name)fail('control_runtime_scope');if(found.has(name)){if(found.get(name)!==dir)fail('control_runtime_ambiguous');continue}
+  const pkg=JSON.parse(read(dir+'/package.json')),deps={...pkg.dependencies,...pkg.optionalDependencies,...pkg.peerDependencies};if(name==='pg')delete deps['pg-native']
+  if(pkg.name!==name||pkg.version!==expected.version||Object.keys(deps).sort().join('\0')!==[...expected.dependencies].sort().join('\0'))fail('control_runtime_graph')
+  found.set(name,dir);const child=createRequire(dir+'/package.json');for(const dependency of expected.dependencies)pending.push({name:dependency,require:child})
+ }
+ if(found.size!==14)fail('control_runtime_dependency_count')
+ const files=[];for(const[name,dir]of [...found].sort(([a],[b])=>a<b?-1:a>b?1:0)){
+  const walk=relative=>{for(const leaf of fs.readdirSync(path.join(dir,relative)).sort()){const next=relative?relative+'/'+leaf:leaf,fileName=path.join(dir,next),st=fs.lstatSync(fileName);if(st.isSymbolicLink()||st.uid!==0||st.gid!==0)fail('control_runtime_file');if(st.isDirectory()){if((st.mode&0o7777)!==0o555)fail('control_runtime_directory');walk(next);continue}if(!/^[A-Za-z0-9_./-]+$/.test(next)||next.split('/').some(p=>!p||p==='.'||p==='..'||p==='node_modules')||/\.(?:node|wasm|dll|exe|so|dylib|pem|key)$/i.test(next)||fs.realpathSync(fileName)!==fileName)fail('control_runtime_file');const bytes=read(fileName);files.push({path:'services/pg-api/node_modules/'+name+'/'+next,sha256:sha(bytes),bytes:bytes.length})}};walk('')
+ }
+ if(files.length!==138)fail('control_runtime_inventory');files.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0)
+ // A fresh manifest comes from the genuine Control policy and actual protected
+ // package bytes. The original operator manifest is never parsed or retagged.
+ const manifest={format:policy.format,lock_sha256:pins.lock,pg_version:policy.pg_version,packages:Object.keys(policy.packages).sort().map(name=>({name,version:policy.packages[name].version})),files},bytes=Buffer.from(JSON.stringify(manifest)),manifestFile=fixed.config+'/runtime-manifest.json'
+ file(manifestFile,bytes);s.controlRuntimeSha=sha(bytes)
+ const snapshot=await source.captureWorkerHeartbeatActivationControlSources();source.assertWorkerHeartbeatActivationControlSources(snapshot,s.controlSource.source_sha256)
+ runtime.verifyWorkerHeartbeatActivationControlRuntime(snapshot,s.controlSource.source_sha256,{manifestFile,manifestSha256:s.controlRuntimeSha,lockSha256:pins.lock})
+ assertVerifiedCompleteProfileStage(s.loaded)
+ console.log(JSON.stringify({event:'full069_worker_path_ci_actual_Control_runtime',independently_collected:true,original_Control_verifier_passed:true,operator_manifest_changed:false,packages:14,files:138,qualifies_run:false,production_cutover_allowed:false}))
+}
+function pathFailureDiagnostic(error,controller){
+ const message=Object.getOwnPropertyDescriptor(error??{},'message')?.value,code=Object.getOwnPropertyDescriptor(error??{},'code')?.value,allowed=['source_runtime_refused','binding_changed','store_invalid','not_enrolled','control_io_failed','singleton_busy','approval_invalid','invalid_command'];let controllerError=null
+ for(const line of Buffer.concat(controller?.output??[]).toString('utf8').split(/\r?\n/)){try{const v=JSON.parse(line);if(Object.keys(v).sort().join(',')==='automatic_retry_authorized,error'&&v.automatic_retry_authorized===false&&allowed.includes(v.error))controllerError=v.error}catch{}}
+ return {event:'full069_worker_path_ci_primary_failure',refusal:typeof message==='string'&&/^full069_path_ci_refused:[a-z_]+$/.test(message)?message:'operation_failed',sqlstate:typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)?code:null,controller_error:controllerError,controller_exit:controller?.closed?controller.exit?.code:null,controller_signal:controller?.closed?controller.exit?.signal:null,qualifies_run:false,production_cutover_allowed:false}
+}
 async function telemetry(s){
  // Original private target ownership is checked immediately before this new,
  // fixture-owned telemetry database and HBA operation. No external target input.
@@ -109,9 +144,9 @@ async function telemetry(s){
  for(const dir of[fixed.config,fixed.store,fixed.credentials,fixed.liveConfig,fixed.liveStore])directory(s,dir)
  for(const dir of[fixed.config+'/drafts',fixed.config+'/approvals',fixed.config+'/resumes',fixed.store+'/plans',fixed.store+'/credentials'])directory(s,dir)
  directory(s,fixed.sockets,0o750,61001);if(fs.existsSync(fixed.writerSockets))fail('writer_sockets_preexist')
- file(fixed.config+'/approval-public.pem',Buffer.from(s.signer.publicKey.export({type:'spki',format:'pem'})));file(fixed.config+'/source-manifest.json',Buffer.from(JSON.stringify(s.controlSource.manifest)));file(fixed.config+'/runtime-manifest.json',privateRead(s.loaded.stageInput+'/runtime-manifest.json'))
+ file(fixed.config+'/approval-public.pem',Buffer.from(s.signer.publicKey.export({type:'spki',format:'pem'})));file(fixed.config+'/source-manifest.json',Buffer.from(JSON.stringify(s.controlSource.manifest)));await publishControlRuntime(s)
  const readerPassword=randomBytes(40).toString('hex');file(fixed.credentials+'/operator-password',Buffer.from(s.adminPassword));file(fixed.credentials+'/reader-password',Buffer.from(readerPassword))
- const profile={protocol:'worker_heartbeat_control_profile_v2',mode:'closed',source_sha256:s.controlSource.source_sha256,source_manifest_sha256:s.controlSource.source_sha256,runtime_manifest_sha256:s.runtimeSha,admin_password_sha256:sha(s.adminPassword),reader_password_sha256:sha(readerPassword),native_gid:61001,binding:s.binding,policy:s.policy,writers:s.writers};s.telemetryProfileSha=signed(s,fixed.config+'/profile.json',profile)
+ const profile={protocol:'worker_heartbeat_control_profile_v2',mode:'closed',source_sha256:s.controlSource.source_sha256,source_manifest_sha256:s.controlSource.source_sha256,runtime_manifest_sha256:s.controlRuntimeSha,admin_password_sha256:sha(s.adminPassword),reader_password_sha256:sha(readerPassword),native_gid:61001,binding:s.binding,policy:s.policy,writers:s.writers};s.telemetryProfileSha=signed(s,fixed.config+'/profile.json',profile)
  const genesis={format:'worker_heartbeat_control_journal_v1',sequence:0,previous_sha256:'0'.repeat(64),instance_id:randomUUID(),epoch:'0',action_id:null,phase:'boot',data:{protocol:'worker_heartbeat_control_enrollment_v1',binding_sha256:sha(JSON.stringify(s.binding)),source_sha256:s.controlSource.source_sha256,initial_policy_json_sha256:sha(JSON.stringify(s.policy))}};file(fixed.store+'/journal.jsonl',Buffer.from(JSON.stringify({...genesis,record_sha256:sha(JSON.stringify(genesis))})+'\n'))
  s.controller=start(s,s.deployment+'/services/pg-api/src/worker-heartbeat-activation-control-service.ts',['serve'],{...cleanEnv(),AGENT_STUDIO_TELEMETRY_CONTROL_ENABLED:'true'})
  const client=await import(pathToFileURL(s.deployment+'/services/pg-api/src/worker-heartbeat-activation-control-client.ts').href);s.rpc=client.sendWorkerHeartbeatOperatorCommand
@@ -196,7 +231,7 @@ export async function runOwnedFull069WorkerPathCi(permit){
   const backends=(await s.telemetry.query("SELECT count(*)::integer AS count FROM pg_stat_activity WHERE datid=$1::oid AND (starts_with(usename,'studio_telemetry_tx_') OR usename='studio_telemetry_reader')",[s.binding.database_oid])).rows[0].count,queues=(await s.admin.query('SELECT (SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs,(SELECT count(*)::integer FROM agentstudio.agent_review_requests) AS reviews,(SELECT count(*)::integer FROM agentstudio.knowledge_query_jobs) AS queries')).rows[0]
   if(backends!==0||Object.values(queues).some(v=>v!==0)||s.failed)fail('final_backend_or_queue')
   summary={format:'pg18_full069_worker_path_ci_result_v1',actual_complete069:true,actual_original_nonroot_entries:7,actual_heartbeat_kinds:8,shared_original_Knowledge_entry:true,actual_Native_HTTPS:true,actual_original_30s_reporter_increment:true,exact_owned_stop_verified:true,scoped_telemetry_backends:backends,queues,controller_graceful_stop:true,executor_enabled:false,full_final_feature_LOGIN_inventory_verified:false,source_sha256:s.profile.source_sha256,complete_source_sha256:loaded.profileSha,validation_result_file:resultFile,validation_result_sha256:sha(resultBytes),validation_warm_file:warmFile,validation_warm_sha256:sha(privateRead(warmFile)),qualifies_run:false,qualifying_window_started:false,BEGIN_or_END_receipt_issued:false,production_cutover_allowed:false};success=true
- }finally{
+  }catch(error){console.log(JSON.stringify(pathFailureDiagnostic(error,s.controller)));throw error}finally{
   const errors=[];try{if(s.controller){const stopped=await stop(s.controller);if(!stopped.graceful)fail('controller_cleanup')}}catch(error){errors.push(error)}
   try{if(s.telemetry)await s.telemetry.end()}catch(error){errors.push(error)}try{await admin.end()}catch(error){errors.push(error)}
   try{if(s.networkRules.length||s.networkChains.length)network(s,true)}catch(error){errors.push(error)}
