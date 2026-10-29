@@ -513,3 +513,10 @@ src/pages/PgNativePilot/PgNativeInternalSharePanel.tsx text eol=lf
 tests/helpers/pg-native-internal-share-genuine-fixture.mjs text eol=lf
 tests/pg-native-internal-share-genuine.config.mjs text eol=lf
 tests/pg-native-internal-share-genuine.spec.mjs text eol=lf
+
+# Pure exact-owned backend cleanup regression; no host or DB authority.
+services/pg-api/tests/worker-heartbeat-owned-backend-cleanup.test.mjs text eol=lf
+
+# Observes actual response bytes early; test-only, no HTTP fulfillment.
+tests/helpers/actual-browser-fetch-body-observer.mjs text eol=lf
+tests/actual-browser-fetch-body-observer.test.mjs text eol=lf

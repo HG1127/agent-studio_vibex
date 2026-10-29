@@ -1,7 +1,7 @@
 {
   "format": "pg18_migration_execution_registry_v1",
-  "updated_UTC": "2026-10-29T04:47:31.859Z",
-  "source_head": "87bab6aaed961dbc929c59564af27371d81b918a",
+  "updated_UTC": "2026-10-29T06:33:39.077Z",
+  "source_head": "5b46f5b1979f37cde7bf4cc7e58b96e199ef33b7",
   "deadline_Asia_Shanghai": "2026-10-30T18:30:00+08:00",
   "is_authority": false,
   "production_GO": false,
@@ -80,6 +80,12 @@
         "Root_viewed_synthetic_PNGs": 2,
         "minimal_source_fix": "Retain confirmed immutable receipts only within same API/employee/login epoch on workspace inactivity; explicit query of original UUID. All body/editor/fee/save reviews and logout/scope/permission fences retained; four regression checks added.",
         "actual_browser_rerun": "pending"
+      },
+      "browser5b": {
+        "job": 123269407685,
+        "first_failure": "Chromium CDP second body read failed in input_preview; actual UI displayed preview and unchecked fee gate. Test-only clone observation now captures exact same original GET/POST; actual logout/receiptfix not reached on5b.",
+        "raw_sha256": "4c76c14e5e3c361a477ccb47713485a92c475194a2d4a4624badcb0be5059a85",
+        "actual_browser_passed": false
       }
     },
     "quality": {
@@ -113,7 +119,28 @@
       "source_handoff_sha256": "4dcf6b2075f7dbf98f807f9bfcea7795e78e975444b0ee3763f2a5315d04cfc5",
       "pure_checks": 21,
       "actual_SQL_browser": false,
-      "scope": "One-use seven-day invitations, reviewed safe snapshot, private recipient copy, revoke and immutable original receipt recovery; existing share governance and owner checks retained, no execution transfer."
+      "scope": "One-use seven-day invitations, reviewed safe snapshot, private recipient copy, revoke and immutable original receipt recovery; existing share governance and owner checks retained, no execution transfer.",
+      "actual_database5b": {
+        "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40819818875",
+        "job": 123269407777,
+        "actual_children": 50,
+        "parent_count": 51,
+        "pure": 21,
+        "raw_sha256": "e7f3c14410b9b251d9621890c5b263d7ee2bed7f6fe22c26430fb0a1bc464cef",
+        "all_bad_counts_zero": true,
+        "scope": "Actual065 catalog/auditor/RLS/ACL and SHA, atomic create/redeem rollback, immutable evidence, seven-day expiry and two-recipient concurrency; not complete employee/browser acceptance."
+      },
+      "actual_flow5b": {
+        "job": 123269408060,
+        "actual_children_passed": 5,
+        "first_failure": "Test read top-level requires_approval absent from existing DTO; corrected to spec.require_approval plus actual stored private/nullteam/requiresapproval row assertion.",
+        "raw_sha256": "eab9a46273624a1291f1f8ff955c299cb569f1080eb042fc1e5a3ddce8200631"
+      },
+      "actual_browser5b": {
+        "job": 123269408125,
+        "first_failure": "Chromium CDP second body read failed after actual thirdpreview rendered. Test observes the same original real browser fetch via bounded clone; complete original UI/receipt/copy/session assertions retained. Actual rerun pending.",
+        "raw_sha256": "f3b200ca3d333c670685006d6bd0fa36f07a496216896e8c3afc7b36dc7b7843"
+      }
     },
     "Worker87": {
       "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40817781964",
@@ -124,6 +151,24 @@
       "first_failure": "case17 cleanup_wait_absence/writer_uncertain; exact backend absence not confirmed before publication; mutation rejected",
       "latest_v10": "Remove only fourteen duplicate root package JSON decodes in the SAME full assertion and add exact closed Reader failure observations. All fresh source/FS/FD/metadata/cache checks and5s8s preserved; actual timing pass not established.",
       "actual_remaining": "Exact original-owned backend termination/absence fix and remaining Writer26 still required"
+    },
+    "Worker5b": {
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40819818661",
+      "job": 123269407073,
+      "raw_sha256": "7a3ee9f505b4b94b97c8ae1fbbac12d49995d98ce98248afa4190b3d3ba03e14",
+      "old28_passed": true,
+      "new26_passed": 18,
+      "first_failure": "case19 restart fixture submitted all-keep no-op, which original registry correctly rejects. Fixture now rotates only Reader through original signed prepare/apply while retaining every Writer generation/UID/consumption; final serving/open required.",
+      "owned_cleanup_fix": "Only original privately verified PID/start/database/role/session/application identity can be signalled; retain actual2s absence, sticky cleanup occupancy and all5s8s source/FS/cache guards.",
+      "new_actual_pass_claimed": false
+    },
+    "quality5b": {
+      "run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40819818765",
+      "job": 123269408358,
+      "raw_sha256": "63bdf6321090577f76fce5f01daa0e712e88247f9a9413fe9a07dcce92ff4d00",
+      "ordinary_pass": 2257,
+      "ordinary_total": 2258,
+      "first_failure": "Preflight source package rejected newly imported shared/agent-internal-share-contract.ts. Exact single data-contract path added to existing closed shared allowlist; original two source-package tests pass. Current complete quality rerun required."
     }
   },
   "current_packages": {
@@ -324,7 +369,7 @@
       "scope_status": "confirmed_existing",
       "implementation": "implemented_in_candidate_actual_validation_pending",
       "isolated_validation": "not_verified",
-      "current_note": "Complete optional065 employee chain integrated;21 purechecks and actualAPI/frontend compilers passed. ActualSQL/flow/browser, unifiedinstall and target/UAT pending.",
+      "current_note": "Actual065 database50children passed5b. Complete employee flow reached5children before DTO assertion mismatch; browser actualpreview rendered before CDP observation failure. Minimal test corrections integrated; full flow/browser/unified/target acceptance pending.",
       "unified_installation": "not_verified",
       "target_acceptance": "not_verified",
       "business_closed": false,
@@ -705,5 +750,5 @@
     }
   ],
   "provenance_resolution": "docs/PG18_FEATURE_PROVENANCE_20261029.json",
-  "integration_candidate_note": "Optional065 internal-share employee chain integrated after87; real PG18/database/browser not yet executed. F05 actual runtime7 children passed87; unchanged full browser reached saved Workflow then exposed same-login receipt-clear defect. Minimal receipt retention fix preserves original UUID and full logout/permission clear; actual browser rerun pending. All feature groups and four acceptance states retained."
+  "integration_candidate_note": "After5b: exact owned-backend cleanup fix, original signed Reader rotation for restart fixture, two genuine browser body observers and exact F08 DTO/persisted-row assertions integrated. No default activation/SQL/Native change. Full genuine rerun pending."
 }

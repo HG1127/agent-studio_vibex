@@ -98,7 +98,7 @@ async function managementCatalog(s:State,db:SqlClient,policy:unknown){
 }
 /* WRITER_FAILURE_OBSERVATION_BEGIN */
 // Failure observations only: no Error/row/path/SQL/role/runtime object leaves.
-const rootFailureObservationSites:readonly string[]=Object.freeze(["authorize_entry","apply_entry","record_entry","cleanup_entry","authorize_runtime","authorize_approval","authorize_expiry","authorize_intent_journal","apply_runtime","apply_closing","apply_writer_pause","apply_readers_cleanup","apply_serial","apply_registry_read","apply_target","apply_begin","apply_all_locks","apply_locked_before","apply_material","apply_write","apply_commit","apply_after_verify","apply_retire","apply_publish","record_identity_before","record_selection_before","record_query","record_selection_after","record_identity_after","record_final_guard","cleanup_end_client","cleanup_discover","cleanup_wait_absence","cleanup_ended_journal"/* WRITER_RESTART_OBSERVATION_BEGIN */,"open_controller","operator_dispatch_inspect","operator_dispatch_prepare","operator_accept_closed","operator_accept_capacity","operator_client_connect","operator_client_exchange","operator_client_response"/* WRITER_RESTART_OBSERVATION_END */])
+const rootFailureObservationSites:readonly string[]=Object.freeze(["authorize_entry","apply_entry","record_entry","cleanup_entry","authorize_runtime","authorize_approval","authorize_expiry","authorize_intent_journal","apply_runtime","apply_closing","apply_writer_pause","apply_readers_cleanup","apply_serial","apply_registry_read","apply_target","apply_begin","apply_all_locks","apply_locked_before","apply_material","apply_write","apply_commit","apply_after_verify","apply_retire","apply_publish","record_identity_before","record_selection_before","record_query","record_selection_after","record_identity_after","record_final_guard","cleanup_end_client","cleanup_discover","cleanup_wait_absence","cleanup_ended_journal"/* WRITER_RESTART_OBSERVATION_BEGIN */,"open_controller","operator_dispatch_inspect","operator_dispatch_prepare","operator_accept_closed","operator_accept_capacity","operator_client_connect","operator_client_exchange","operator_client_response"/* WRITER_RESTART_OBSERVATION_END *//* OWNED_WRITER_TERMINATION_BEGIN */,"cleanup_terminate_owned"/* OWNED_WRITER_TERMINATION_END */])
 const rootFailureObservationKinds:readonly string[]=Object.freeze(["source_refused","runtime_refused","control_error","writer_closed","writer_uncertain","writer_busy","writer_not_enrolled","query_cancelled","query_lock_timeout","query_client_timeout","query_client_closed","filesystem_io","transport_io","abort","type_error","range_error","syntax_error","other"])
 function rootFailureObservationKind(error:unknown):string{
  if(!error||(typeof error!=='object'&&typeof error!=='function'))return 'other'
@@ -506,7 +506,7 @@ export async function closeWorkerHeartbeatActivationControl(control:Control):Pro
 
 // Root writer authority. Only this real State creates backend references.
 type RootWriterSlot={s:State;reference:WriterSlotReference;kind:WorkerHeartbeatKind;slot_no:1|2;generation:string;role_oid:number;role_name:string;password:string;verifier_sha256:string;action_id:string;publication_epoch:string}
-type RootWriterBackend={s:State;handle:WriterBackendReference;slot:RootWriterSlot;raw:Client;backend?:Backend;id:string;closed:boolean;uncertain:boolean;work?:Promise<unknown>;closing?:Promise<void>}
+type RootWriterBackend={s:State;handle:WriterBackendReference;slot:RootWriterSlot;raw:Client;backend?:Backend;/* OWNED_WRITER_TERMINATION_BEGIN */ownedIdentity?:Readonly<Backend&{database_oid:number;role_oid:number;login:string;application_name:string}>;/* OWNED_WRITER_TERMINATION_END */id:string;closed:boolean;uncertain:boolean;work?:Promise<unknown>;closing?:Promise<void>}
 type RootWriterOperation={s:State;slot:RootWriterSlot;epoch:bigint;deadline:number;backend?:RootWriterBackend}
 const rootWriterSlots=new WeakMap<object,RootWriterSlot>(),rootWriterBackends=new WeakMap<object,RootWriterBackend>(),rootWriterClosedBackends=new WeakMap<object,State>()
 async function refreshRootWriterAfterMutation(s:State){
@@ -514,7 +514,7 @@ async function refreshRootWriterAfterMutation(s:State){
  try{if(s.writerBroker)await refreshWorkerHeartbeatWriterBroker(s.writerBroker);else{s.writerBroker=await openWorkerHeartbeatWriterBroker(s.handle);if(s.writerBroker&&s.servers.size)await serveWorkerHeartbeatWriterBroker(s.writerBroker)}}catch{/* Writer enrollment remains closed; no synthetic ready or retry. */}
 }
 const writerRecordSQL='SELECT studio_telemetry.record($1::text,$2::text,$3::bigint,$4::text,$5::text) AS value'
-const writerIdentitySQL="SELECT current_database() AS database,d.oid::text AS database_oid,session_user::text AS login,current_user::text AS actor,r.oid::text AS role_oid,r.rolcanlogin AS login_enabled,r.rolinherit AS inherit,r.rolsuper AS super,r.rolbypassrls AS bypass,r.rolcreatedb AS create_db,r.rolcreaterole AS create_role,r.rolreplication AS replication,r.rolconnlimit AS connection_limit,r.rolconfig AS config,r.rolvaliduntil::text AS expires,NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS no_memberships,host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,NOT pg_is_in_recovery() AS primary,pg_backend_pid() AS pid,a.backend_start::text AS backend_start FROM pg_database d JOIN pg_roles r ON r.rolname=session_user JOIN pg_stat_activity a ON a.pid=pg_backend_pid() WHERE d.datname=current_database()"
+const writerIdentitySQL="SELECT current_database() AS database,d.oid::text AS database_oid,session_user::text AS login,current_user::text AS actor,r.oid::text AS role_oid,r.rolcanlogin AS login_enabled,r.rolinherit AS inherit,r.rolsuper AS super,r.rolbypassrls AS bypass,r.rolcreatedb AS create_db,r.rolcreaterole AS create_role,r.rolreplication AS replication,r.rolconnlimit AS connection_limit,r.rolconfig AS config,r.rolvaliduntil::text AS expires,NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS no_memberships,host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,current_setting('server_encoding') AS encoding,NOT pg_is_in_recovery() AS primary,pg_backend_pid() AS pid,a.backend_start::text AS backend_start,a.application_name AS application_name FROM pg_database d JOIN pg_roles r ON r.rolname=session_user JOIN pg_stat_activity a ON a.pid=pg_backend_pid() WHERE d.datname=current_database()"
 const writerSelectedSQL="SELECT k.instrumented,k.enabled AS kind_enabled,s.kind,s.slot_no::integer,s.login_oid::text,s.login_name,s.enabled,s.generation::text,s.last_sequence::text,s.state,s.reason,CASE WHEN s.observed_at IS NULL THEN NULL ELSE to_char(s.observed_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') END AS observed_at FROM studio_telemetry.kind_config k JOIN studio_telemetry.slot_state s ON s.kind=k.kind WHERE s.kind=$1 AND s.slot_no=$2"
 function rootWriterCleanupCheck(s:State){host();s.runtime.assertWorkerHeartbeatActivationControlRuntime(s.runtimeCap)}
 async function rootWriterCleanupAwait<T>(s:State,job:()=>Promise<T>):Promise<T>{rootWriterCleanupCheck(s);const result=await job();rootWriterCleanupCheck(s);return result}
@@ -573,7 +573,12 @@ function currentRootWriterSlots(s:State):readonly WriterPublishedSlot[]{
 async function verifyRootWriterIdentity(op:RootWriterOperation,b:RootWriterBackend){
  const r=(await rootWriterAwait(op,()=>b.raw.query(writerIdentitySQL))).rows[0],slot=op.slot,target=op.s.binding
  if(!r||r.database!==target.database||r.database_oid!==String(target.database_oid)||r.login!==slot.role_name||r.actor!==slot.role_name||r.role_oid!==String(slot.role_oid)||r.login_enabled!==true||r.inherit!==false||r.super!==false||r.bypass!==false||r.create_db!==false||r.create_role!==false||r.replication!==false||r.connection_limit!==1||r.config!==null||r.expires!==null||r.no_memberships!==true||r.address!==target.server_addr||r.port!==target.server_port||r.version<180000||r.version>=190000||r.encoding!=='UTF8'||r.primary!==true||!Number.isInteger(r.pid)||r.pid<1||typeof r.backend_start!=='string')writerFail('writer_not_enrolled')
- const identity={pid:r.pid as number,started:r.backend_start as string};if(b.backend&&(b.backend.pid!==identity.pid||b.backend.started!==identity.started))writerFail('writer_not_enrolled');return identity
+ const identity={pid:r.pid as number,started:r.backend_start as string};if(b.backend&&(b.backend.pid!==identity.pid||b.backend.started!==identity.started))writerFail('writer_not_enrolled');/* OWNED_WRITER_TERMINATION_BEGIN */
+ if(typeof r.application_name!=='string')writerFail('writer_not_enrolled')
+ const owned={pid:identity.pid,started:identity.started,database_oid:target.database_oid,role_oid:slot.role_oid,login:slot.role_name,application_name:r.application_name}
+ if(b.ownedIdentity&&(['pid','started','database_oid','role_oid','login','application_name'] as const).some(key=>b.ownedIdentity![key]!==owned[key]))writerFail('writer_not_enrolled')
+ b.ownedIdentity??=Object.freeze(owned)
+ /* OWNED_WRITER_TERMINATION_END */return identity
 }
 async function verifyRootWriterSelected(op:RootWriterOperation,report?:WorkerHeartbeatReport,ack?:{sequence:number;observed_at:string}){
  await rootWriterAwait(op,()=>target(op.s.raw,op.s.binding))
@@ -585,12 +590,24 @@ async function verifyRootWriterSelected(op:RootWriterOperation,report?:WorkerHea
 }
 async function closeRootWriterBackend(s:State,b:RootWriterBackend):Promise<void>{
  if(b.s!==s)writerFail('writer_not_enrolled');if(b.closing)return b.closing
- s.writerCleanups++
+/* OWNED_WRITER_TERMINATION_BEGIN */ // Only an actual earlier identity query can supply termination authority.
+ const bound=b.backend,verified=b.ownedIdentity
+ const ownedBackend=bound&&verified&&verified.pid===bound.pid&&verified.started===bound.started&&verified.database_oid===s.binding.database_oid&&verified.role_oid===b.slot.role_oid&&verified.login===b.slot.role_name?{...verified}:undefined
+/* OWNED_WRITER_TERMINATION_END */ s.writerCleanups++
  b.closing=(async()=>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootCleanupFailureSite='cleanup_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
   // Normal activation may already be revoked; cleanup still requires this real
   // State/runtime and only this privately registered backend's own identity.
   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_end_client';/* WRITER_FAILURE_OBSERVATION_END */await rootWriterCleanupAwait(s,()=>b.raw.end())
-  if(!b.backend){
+/* OWNED_WRITER_TERMINATION_BEGIN */
+  // Closing a socket is not confirmation that PostgreSQL stopped an active
+  // statement. Terminate only this originally verified owned PID/start/DB/role;
+  // a later role-only discovery below never supplies termination authority.
+  if(ownedBackend){
+   rootCleanupFailureSite='cleanup_terminate_owned'
+   const stopped=await rootWriterCleanupAwait(s,()=>s.raw.query<{stopped:boolean}>('SELECT pg_terminate_backend(a.pid) AS stopped FROM pg_stat_activity a JOIN pg_roles r ON r.oid=a.usesysid WHERE a.pid=$1 AND a.backend_start=$2::timestamptz AND a.datid=$3::oid AND r.oid=$4::oid AND r.rolname=$5::text AND a.usename=$5::text AND a.application_name=$6::text AND a.pid<>pg_backend_pid()',[ownedBackend.pid,ownedBackend.started,ownedBackend.database_oid,ownedBackend.role_oid,ownedBackend.login,ownedBackend.application_name]))
+   if(stopped.rows.length>1||stopped.rows.length===1&&stopped.rows[0]!.stopped!==true)writerFail('writer_uncertain')
+  }
+/* OWNED_WRITER_TERMINATION_END */  if(!b.backend){
    /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_discover';/* WRITER_FAILURE_OBSERVATION_END */const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string}>('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,b.slot.role_oid])).rows)
    if(rows.length>1)writerFail('writer_uncertain');if(rows.length)b.backend={pid:rows[0]!.pid,started:rows[0]!.started}
   }

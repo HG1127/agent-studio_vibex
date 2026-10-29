@@ -36,7 +36,7 @@ const thirdParty={
 }
 function refuse(reason){throw Error("native_preflight_bundle_refused:"+reason)}
 function validatedPath(rel){
-  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/schedule-time.mjs","shared/agent-role-limits.mjs"].includes(rel))||
+  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/agent-internal-share-contract.ts"].includes(rel))||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
     refuse("unexpected_dependency:"+(typeof rel==="string"&&/^[A-Za-z0-9._/-]{1,300}$/.test(rel)?rel:"invalid"))
