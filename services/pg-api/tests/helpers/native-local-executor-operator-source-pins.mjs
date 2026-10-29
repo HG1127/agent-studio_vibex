@@ -61,7 +61,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md": "8334c39c013d52a4842cbd47188a4ea9be3e2fab3f1a8b7ce2e16301e89d82a2",
   "ops/templates/agentstudio-pg18-native-local-executor.conf.example": "5912497f328b7c58e29205dd4cbd62226e03660ec981541bf28edf1cf521312f",
   "ops/templates/native-local-executor-pg-hba.conf.example": "c7b549f1fb79f6023c255e05cfd0a38188f7247e9a4b19fb18dad963ab73cc52",
-  "package.json": "a2bd7a3c0f3859d35223e05d4b299a71c96fb5f8bd97c3a82edf6c9835fd0e8c",
+  "package.json": "151acc78358f23f85fa6ccce5514d5740d2871940115e0840b5c6008d846df55",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -412,7 +412,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "e8627a6170eef9464e53ac07eb5753bd83a7af0525149cda0cba6a723a15bd9c",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "d821eb1f6eef98e0eba0c50115ab6759a4562d9dd26e0853c9f2cb9be898f91b",
   "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "1b386c2a16661910b50afb59d5c28277d0cc908bf5c8fc1bf55c095ce05b46f9",
-  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "2ae2876e04739bc17a611572f49f0efc37c6cbfcb27cf1cb3b7ecec10332bddc",
+  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "ebd99f846d16ae4e80796aa454ba1411991dc548920fd88f6cf882547ac099c9",
   "services/pg-api/src/pg18-complete-executor-cli.mjs": "31486fca2a869b38255a15f1790c983f54a8cd877bdd824516676a66f6d451bd",
   "services/pg-api/src/pg18-complete-executor-core.mjs": "544dd6cf44bed4879c7a7b5cb36adeb06d176248e2c5ae281eee4c820c1c5b14",
   "services/pg-api/src/pg18-complete-executor-journal.mjs": "ef6039d1710ba7eddc067a762917985520ceacd490045cd7f4bc31de556f5775",
@@ -447,5 +447,6 @@ export const localExecutorOperatorSources=Object.freeze({
   "services/pg-api/src/pg18-full069-final-sources.mjs": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f",
   "services/pg-api/src/pg18-full069-final-trust.mjs": "2cfd1d425559e6f62d24117b6942d4e35ed40aa7dfab92df64f9d7dd533ab501",
   "services/pg-api/src/pg18-full069-final-window.mjs": "0bfe2b88f46cd57d3e11da3e3b820f04b0a4c0339b05ac2f33724730b40f3e07",
-  "services/pg-api/src/pg18-full069-final14-catalog.mjs": "0f4397fc5857e9b1894b3c92044847c9b3ab44078ef0889bbd3d1036876f5708"
+  "services/pg-api/src/pg18-full069-final14-catalog.mjs": "0f4397fc5857e9b1894b3c92044847c9b3ab44078ef0889bbd3d1036876f5708",
+  "services/pg-api/src/pg18-full069-network-policy.mjs": "935ecb8899ac86b9b74a21dda680616560d690e380e78622d948fb34e1e0ba1a"
 })

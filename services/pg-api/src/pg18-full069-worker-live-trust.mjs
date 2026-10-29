@@ -4,6 +4,7 @@ import path from 'node:path'
 import {createHash,createPublicKey,verify} from 'node:crypto'
 import {getCompileCacheDir} from 'node:module'
 import {execFileSync} from 'node:child_process'
+import {full069NetworkPolicyDigest} from './pg18-full069-network-policy.mjs'
  import {parseWorkerHeartbeatControlJson,parseWorkerHeartbeatRootProfile} from './worker-heartbeat-activation-control-contract.ts'
 import {parseLiveProfile,parseCPreparationPair,closed,hex,uuid,freeze,liveFail} from './pg18-full069-worker-live-contract.mjs'
 import {captureFull069WorkerLiveSources,assertFull069WorkerLiveSources,liveRoot} from './pg18-full069-worker-live-sources.mjs'
@@ -23,7 +24,7 @@ export function readLivePrivate(file,{owner=0,mode=[0o400,0o600],max=262144}={})
 }
 function decoded(bytes,max=262144){return parseWorkerHeartbeatControlJson(bytes,max)}
 function signedFile(file,key){const bound=readLivePrivate(file),v=closed(decoded(bound.bytes),['payload','signature']);if(typeof v.signature!=='string'||!/^[A-Za-z0-9+/]{86}==$/.test(v.signature)||!verify(null,Buffer.from(JSON.stringify(v.payload)),key,Buffer.from(v.signature,'base64')))liveFail('signature');return {value:v.payload,sha256:bound.sha256}}
-function networkPolicy(){const outputs=[];for(const executable of ['/usr/sbin/iptables-save','/usr/sbin/ip6tables-save']){const text=execFileSync(executable,[],{encoding:'utf8',env:{PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8'},timeout:5000,maxBuffer:1048576,windowsHide:true});outputs.push(text.split(/\r?\n/).filter(s=>s&&!s.startsWith('#')).join('\n'))}return sha(outputs.join('\n---\n'))}
+function networkPolicy(){const outputs=[];for(const executable of ['/usr/sbin/iptables-save','/usr/sbin/ip6tables-save']){const text=execFileSync(executable,[],{encoding:'utf8',env:{PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8'},timeout:5000,maxBuffer:1048576,windowsHide:true});outputs.push(text.split(/\r?\n/).filter(s=>s&&!s.startsWith('#')).join('\n'))}return full069NetworkPolicyDigest(outputs.join('\n---\n'))}
  function cRecords(profile){return profile.C_operations.map(op=>{const expected={...op,source_sha256:profile.complete_source_sha256,target:profile.business_target},a=readLivePrivate(path.join(profile.C_journal_directory,op.operation_id+'.intent.json'),{max:16384}),b=readLivePrivate(path.join(profile.C_journal_directory,op.operation_id+'.result.json'),{max:16384});if(a.sha256!==op.intent_sha256||b.sha256!==op.result_sha256)liveFail('C_record_changed');const intent=decoded(a.bytes,16384),data=parseCPreparationPair(intent,decoded(b.bytes,16384),expected),fields=closed(intent,['format','profile','database','operator','action','operation_id','source_sha256','target','verifier_sha256','started_at']);return {data,intent_sha256:a.sha256,result_sha256:b.sha256,verifier_sha256:fields.verifier_sha256}})}
 export async function openFull069WorkerLiveTrust(write=false){
  assertLiveHost(write);trustedAncestors(livePaths.configuration+'/profile.json');const dir=fs.lstatSync(livePaths.configuration);if((dir.mode&0o7777)!==0o700)liveFail('configuration_directory')

@@ -11,6 +11,7 @@ import {completeProfileCiBinding} from './pg18-complete-install-ci-guard.mjs'
 import {completeProfileStageDescriptor,loadVerifiedCompleteProfileStage,assertVerifiedCompleteProfileStage} from './pg18-complete-install-ci-stage.mjs'
 import {attestCompleteProfileTargets,ownedCompleteProfilePool,configureOwnedCompleteServiceHba} from './pg18-complete-install-ci-containers.mjs'
 import {assertPathCiResult,assertPathCiWarm,assertPathCiCleanup,pathCiTelemetryHbaText,pathCiOriginalSevenLogins,pathCiNetworkDrift} from './pg18-full069-worker-path-ci-contract.mjs'
+import {full069NetworkPolicyDigest} from '../../src/pg18-full069-network-policy.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../..'),sha=b=>createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
 const fail=c=>{throw Error('full069_path_ci_refused:'+c)},cleanEnv=()=>({PATH:'/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',HOME:'/root',LANG:'C.UTF-8'})
 const kinds=['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment'],actions=['api','native-auth','first-admin','worker','identity','broker','index-worker','index-broker']
@@ -197,14 +198,14 @@ function processProfiles(s){
 }
 function networkText(){const outputs=['/usr/sbin/iptables-save','/usr/sbin/ip6tables-save'].map(executable=>execFileSync(executable,[],{env:cleanEnv(),encoding:'utf8',timeout:5000,maxBuffer:1048576,windowsHide:true}).split(/\r?\n/).filter(s=>s&&!s.startsWith('#')).join('\n'));return outputs.join('\n---\n')}
 function observeSelectedHostRuntime(s,stage){
- try{const st=fs.lstatSync(s.nodePath),currentNetwork=networkText();console.log(JSON.stringify({event:'full069_worker_path_ci_selected_host_observation',stage,regular_file:st.isFile(),symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:(st.mode&0o7777).toString(8),node_digest_matches_signed_profile:sha(fs.readFileSync(s.nodePath))===s.profile.node_sha256,network_policy_matches_signed_profile:sha(currentNetwork)===s.profile.network_policy_sha256,network_drift:pathCiNetworkDrift(s.networkSnapshot,currentNetwork),observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))}catch{console.log(JSON.stringify({event:'full069_worker_path_ci_selected_host_observation_unavailable',stage,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))}
+ try{const st=fs.lstatSync(s.nodePath),currentNetwork=networkText();console.log(JSON.stringify({event:'full069_worker_path_ci_selected_host_observation',stage,regular_file:st.isFile(),symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:(st.mode&0o7777).toString(8),node_digest_matches_signed_profile:sha(fs.readFileSync(s.nodePath))===s.profile.node_sha256,network_policy_matches_signed_profile:full069NetworkPolicyDigest(currentNetwork)===s.profile.network_policy_sha256,network_drift:pathCiNetworkDrift(s.networkSnapshot,currentNetwork),observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))}catch{console.log(JSON.stringify({event:'full069_worker_path_ci_selected_host_observation_unavailable',stage,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))}
 }
 function network(s,remove=false){
  const chain='AS_F069_'+s.loaded.stageNonce.slice(0,12),uids=[s.native.uid,...s.workers.map(v=>v.uid)],run=(binary,args)=>execFileSync(binary,['--wait','5',...args],{env:cleanEnv(),timeout:10000,maxBuffer:262144,windowsHide:true})
  if(remove){for(const rule of [...s.networkRules].reverse()){run(rule.binary,['-C','OUTPUT',...rule.args]);run(rule.binary,['-D','OUTPUT',...rule.args])}for(const binary of [...s.networkChains].reverse()){run(binary,['-F',chain]);run(binary,['-X',chain])}s.networkRules=[];s.networkChains=[];return}
  s.networkRules=[];s.networkChains=[]
  for(const binary of['/usr/sbin/iptables','/usr/sbin/ip6tables']){run(binary,['-N',chain]);s.networkChains.push(binary);if(binary.endsWith('/iptables'))run(binary,['-A',chain,'-d','127.0.0.0/8','-j','RETURN']);run(binary,['-A',chain,'-j','REJECT']);for(const uid of uids){const args=['-m','owner','--uid-owner',String(uid),'-m','comment','--comment','owned-full069-'+s.loaded.stageNonce,'-j',chain];run(binary,['-I','OUTPUT','1',...args]);s.networkRules.push({binary,args})}}
-  s.networkSnapshot=networkText();s.networkSha=sha(s.networkSnapshot)
+  s.networkSnapshot=networkText();s.networkSha=full069NetworkPolicyDigest(s.networkSnapshot)
 }
 async function liveProfile(s){
  const ca=file(s.work+'/native-ca.pem',s.tls.ca,0,0o400),certificate=file(s.work+'/native-server.pem',s.tls.certificate,0,0o400),key=file(s.work+'/native-server.key',s.tls.key,0,0o400)

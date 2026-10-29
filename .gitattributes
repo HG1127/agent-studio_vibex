@@ -968,3 +968,7 @@ services/pg-api/tests/pg18-full069-final-trust.test.mjs text eol=lf
 services/pg-api/tests/pg18-full069-final-window.test.mjs text eol=lf
 services/pg-api/tests/pg18-full069-final14-catalog.test.mjs text eol=lf
 tests/pg18-full069-final-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+services/pg-api/src/pg18-full069-network-policy.mjs text eol=lf
+services/pg-api/tests/pg18-full069-network-policy.test.mjs text eol=lf
