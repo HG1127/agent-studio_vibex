@@ -14,7 +14,20 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../.
 const refuse=()=>{throw Error('writer_ci_child_refused')},emit=value=>process.send?.(value)
 const credential=kind=>'/run/credentials/agentstudio-pg18-'+units[kind]+'.service/telemetry-'+kind.replaceAll('_','-')+'.boot.json'
 function safeChildEnv(env){for(const key of Object.keys(env))if(key.startsWith('NODE_')||/^PG[A-Z_]/.test(key)||/PROXY|TLS_REJECT|EXTRA_CA|DATABASE_URL/.test(key))refuse();return env}
-async function launch(){
+/* ENTRY_ROLE_FAILURE_BEGIN */
+function writerEntryOutputObservation(kind,stream,line){
+ try{
+  if(stream!=='stderr'||!kinds.includes(kind)||typeof line!=='string'||line.length>4096)return null
+  const services={"prepare":"pg-agent-prepare","model":"pg-agent-model","workflow_safe":"pg-agent-workflow","workflow_v2":"pg-workflow-v2","agent_autonomous":"pg-autonomous-agent","knowledge_index":"knowledge-index","knowledge_query":"knowledge-index","assessment":"agent-assessment"},codes=["unsafe_pg_worker_role_boundary","unsafe_worker_secret_file","unsafe_worker_secret","pg18_worker_credential_binding_required","pg18_worker_not_approved","worker_start_failed","model_worker_start_failed","workflow_worker_start_failed","workflow_v2_start_failed","worker_tick_failed","model_worker_tick_failed","workflow_worker_tick_failed","durable_v2_tick_failed","knowledge_index_service_refused","agent_assessment_service_refused"]
+  let code
+  if((kind==='knowledge_index'||kind==='knowledge_query')&&line==='knowledge_index_service_refused')code=line
+  else if(kind==='assessment'&&line==='AGENT_ASSESSMENT_SERVICE_REFUSED')code='agent_assessment_service_refused'
+  else{const value=JSON.parse(line);if(!value||Object.getPrototypeOf(value)!==Object.prototype||Object.keys(value).sort().join(',')!=='error,service'||value.service!==services[kind])return null;code=value.error}
+  if(!codes.includes(code))return null
+  return {event:'genuine_writer_ci_entry_failure',kind,code,observed_data_only:true}
+ }catch{return null}
+}
+/* ENTRY_ROLE_FAILURE_END */async function launch(){
  // This is the unchanged real hosted-process fixture gate, not a replacement
  // Root controller capability. It precedes plan reads, mounts or UID changes.
  const {requireWorkerHeartbeatActivationControlCi,workerHeartbeatActivationControlCiDescriptor}=await import('./worker-heartbeat-activation-control-ci-guard.mjs')
@@ -43,7 +56,7 @@ async function launch(){
  if(!Number.isSafeInteger(p.gid)||p.gid<=0)refuse()
  const options=['--reuid='+p.uid,'--regid='+p.gid,...(p.groups.length?['--groups='+p.groups.join(',')]:['--clear-groups']),'--no-new-privs','--inh-caps=-all','--ambient-caps=-all','--bounding-set=-all',process.execPath,'--experimental-strip-types',...args]
  const child=spawn('/usr/bin/setpriv',options,{cwd:root,env,stdio:['pipe','pipe','pipe','ipc'],windowsHide:true})
- let bytes=0,stdout='';const capture=stream=>chunk=>{bytes+=chunk.length;if(bytes>65536){child.kill('SIGTERM');return}if(stream==='stdout'){stdout+=chunk.toString('utf8');const lines=stdout.split('\n');stdout=lines.pop();for(const line of lines)try{const v=JSON.parse(line);if(v.ready===true||v.state==='ready'||v.mode==='plan')emit({event:'entry_metadata',ready:v.ready===true||v.state==='ready',plan:v.mode==='plan',worker_started:v.worker_started===true,production_cutover_allowed:v.production_cutover_allowed})}catch{}}}
+ let bytes=0,stdout='',stderr='';const capture=stream=>chunk=>{bytes+=chunk.length;if(bytes>65536){child.kill('SIGTERM');return}if(stream==='stdout'){stdout+=chunk.toString('utf8');const lines=stdout.split('\n');stdout=lines.pop();for(const line of lines)try{const v=JSON.parse(line);if(v.ready===true||v.state==='ready'||v.mode==='plan')emit({event:'entry_metadata',ready:v.ready===true||v.state==='ready',plan:v.mode==='plan',worker_started:v.worker_started===true,production_cutover_allowed:v.production_cutover_allowed})}catch{}}else if(p.mode==='entry'){stderr+=chunk.toString('utf8');const lines=stderr.split('\n');stderr=lines.pop();for(const line of lines){const observation=writerEntryOutputObservation(selected,stream,line);if(observation)emit(observation)}}}
  child.stdout.on('data',capture('stdout'));child.stderr.on('data',capture('stderr'));child.on('message',m=>emit(m));process.on('message',m=>child.send?.(m));child.on('error',()=>emit({event:'child_failed'}))
  for(const signal of ['SIGTERM','SIGINT','SIGUSR1'])process.on(signal,()=>child.kill(signal))
  child.once('spawn',()=>{emit({event:'kernel_child_started',pid:child.pid,uid:p.uid,groups:p.groups,mode:p.mode});if(p.mode==='component'||p.mode==='access')child.send({mode:p.mode,kinds:p.kinds,access:p.access})})

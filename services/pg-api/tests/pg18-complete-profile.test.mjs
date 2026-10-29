@@ -8,10 +8,16 @@ import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
 import ts from 'typescript'
 import * as sources from '../src/pg18-complete-profile-source.mjs'
-import {parseCompleteProfileArguments,runCompleteProfile} from '../src/baota-pg18-complete-init.mjs'
+import {parseCompleteProfileArguments,runCompleteProfile,completeProfileRefusalCode} from '../src/baota-pg18-complete-init.mjs'
 import {serviceLogins} from '../src/pg18-service-login-policy.mjs'
 
 const source=fileURLToPath(new URL('../src/pg18-complete-profile.ts',import.meta.url)),cli=fileURLToPath(new URL('../src/baota-pg18-complete-init.mjs',import.meta.url)),root=fileURLToPath(new URL('../../../',import.meta.url)),text=fs.readFileSync(source,'utf8'),cliText=fs.readFileSync(cli,'utf8'),hash=x=>createHash('sha256').update(x).digest('hex'),snapshot=await sources.captureCompleteProfileSources(),expected=snapshot.source_sha256
+test('refusal diagnostics expose only closed predecessor codes and SQLSTATE, never driver message or credentials',()=>{
+ assert.equal(completeProfileRefusalCode(Error('external_secret_file_required')),'complete065_predecessor_external_secret_file_required')
+ assert.equal(completeProfileRefusalCode(Object.assign(Error('secret SQL password body'),{code:'42P01'})),'complete065_sqlstate_42P01')
+ assert.equal(completeProfileRefusalCode(Error('password=private SQL text')),'complete065_operation_refused')
+ assert.equal(completeProfileRefusalCode(Object.defineProperty({},'message',{get(){throw Error('must not invoke')}})),'complete065_operation_refused')
+})
 function functionText(body,name){const tree=ts.createSourceFile('x.ts',body,ts.ScriptTarget.Latest,true),node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(node,name);return node.getText(tree)}
 function load(body,globals){const ctx=vm.createContext({exports:{},...globals});vm.runInContext(ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,ctx);return ctx}
 const target={system_identifier:'7000000000000000001',database_oid:'81'},validTarget={...target,database:'agent_studio',login:'postgres',actor:'postgres',host:'127.0.0.1',port:5333,version:180006,primary:true,super:true,pid:71,backend_start:'2026-10-29 06:00:00+00'},fakeSnapshot={source_sha256:'a'.repeat(64),fresh:{source_sha256:'b'.repeat(64)},roles:['agentstudio_api','agentstudio_extra','agentstudio_stage_login'].sort(),tables:['agentstudio.business','agentstudio.schema_migrations'].sort(),versions:['pg_v9_001','pg_v9_050','pg_v9_051','pg_v9_065'],steps:[{version:'pg_v9_051',sql:'actual_step_051'},{version:'pg_v9_065',sql:'actual_step_065'}]}

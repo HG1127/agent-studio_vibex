@@ -7,6 +7,15 @@ import {captureCompleteProfileSources,assertCompleteProfileSnapshot,assertComple
 const here=fileURLToPath(import.meta.url),runtimePrefix='AGENT_STUDIO_DESCRIPTIVE_PATCH_060_'
 const fail=code=>{throw Error('complete065_'+code)}
 const digest=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
+// Closed refusal metadata only. Never return driver messages, SQL or secrets.
+export function completeProfileRefusalCode(error){
+ const value=Object.getOwnPropertyDescriptor(error??{},'message')?.value,sqlstate=Object.getOwnPropertyDescriptor(error??{},'code')?.value
+ if(typeof value==='string'&&/^complete065_[a-z_]+$/.test(value))return value
+ const original=new Set(['unknown_schema_format','baota_init_disabled','baota_linux_only','unsafe_baota_target','ambient_pg_configuration_forbidden','external_secret_file_required','private_secret_file_required','invalid_secret_file','invalid_pg18_admin_target','pgvector_unavailable','agentstudio_schema_exists','nonempty_database','global_role_collision','schema_or_role_verification_failed','role_grants_missing','secrets_not_independent','service_role_password_not_scram','fresh_runtime_verification_failed','descriptive_patch_operator_runtime_refused','descriptive_patch_operator_source_refused','unsafe_agent_memory_privileges','unsafe_agent_memory_context_privileges','unsafe_knowledge_content_privileges','unsafe_knowledge_embedding_privileges','unsafe_knowledge_keyword_privileges','unsafe_knowledge_agent_privileges','unsafe_knowledge_lineage_privileges','unsafe_schedule_privileges','unsafe_agent_collaboration_privileges','unsafe_agent_release_privileges','unsafe_agent_human_input_privileges'])
+ if(original.has(value))return 'complete065_predecessor_'+value
+ if(typeof sqlstate==='string'&&/^[0-9A-Z]{5}$/.test(sqlstate))return 'complete065_sqlstate_'+sqlstate
+ return 'complete065_operation_refused'
+}
 export function parseCompleteProfileArguments(argv){
  if(!Array.isArray(argv)||argv.some(v=>typeof v!=='string')||argv[1]!=='--profile'||argv[2]!==completeProfileName)fail('invalid_arguments')
  if(argv.length===3&&argv[0]==='--plan')return Object.freeze({mode:'plan',profile:completeProfileName})
@@ -51,12 +60,12 @@ async function installChild(expected,target){
  const {fork}=await import('node:child_process')
  return new Promise((resolve,reject)=>{
   const child=fork(here,['--install-child','--profile',completeProfileName,'--confirm-empty-database','agent_studio','--expected-source-sha256',expected,'--expected-system-identifier',target.system_identifier,'--expected-database-oid',target.database_oid],{execArgv:['--experimental-strip-types'],env:process.env,stdio:['ignore','pipe','pipe','ipc'],windowsHide:true})
-  let committed=null,exceeded=false,output=0,killTimer
+  let committed=null,exceeded=false,output=0,killTimer,stderr=''
   const timer=setTimeout(()=>{exceeded=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),5000)},300000)
   child.once('error',error=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);reject(Error('complete065_owned_child_start_failed'))})
   child.on('message',message=>{const target=acceptedCommitMessage(message,expected);if(target){if(committed){exceeded=true;child.kill('SIGTERM')}else committed=target}})
-  for(const stream of [child.stdout,child.stderr])stream.on('data',bytes=>{output+=bytes.length;if(output>65536){exceeded=true;child.kill('SIGTERM')}})
-  child.once('close',(code,signal)=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);resolve(Object.freeze({closed:true,exit_code:code,signal,committed,exceeded}))})
+  for(const stream of [child.stdout,child.stderr])stream.on('data',bytes=>{output+=bytes.length;if(stream===child.stderr&&stderr.length<1024)stderr+=bytes.toString('utf8').slice(0,1024-stderr.length);if(output>65536){exceeded=true;child.kill('SIGTERM')}})
+  child.once('close',(code,signal)=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);const refusal=stderr.trim();resolve(Object.freeze({closed:true,exit_code:code,signal,committed,exceeded,refusal_code:/^complete065_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})$/.test(refusal)?refusal:null}))})
  })
 }
 export async function runCompleteProfile(argv,env=process.env){
@@ -108,10 +117,10 @@ export async function runCompleteProfile(argv,env=process.env){
   boundary()
   const acknowledged=child.exit_code===0&&!child.exceeded&&child.committed?.system_identifier===before.target.system_identifier&&child.committed?.database_oid===before.target.database_oid
   if(acknowledged&&!after.structure_and_receipt_verified)fail('durable_postflight_failed')
-  return {mode:'install',...after,observed_installation_state:after.state==='empty'?'rolled_back_or_not_started':after.state,invocation_commit_acknowledged:acknowledged,commit_unknown:!acknowledged,owned_child_closed:true,network_used:true,writes_performed:true,actual_login_audit_required:true,cleanup_performed:false}
+  return {mode:'install',...after,observed_installation_state:after.state==='empty'?'rolled_back_or_not_started':after.state,invocation_commit_acknowledged:acknowledged,commit_unknown:!acknowledged,owned_child_closed:true,owned_child_exit_code:Number.isSafeInteger(child.exit_code)?child.exit_code:null,owned_child_refusal_code:child.refusal_code??null,network_used:true,writes_performed:true,actual_login_audit_required:true,cleanup_performed:false}
  }finally{if(api)await api.end();await admin.end()}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===here){
  try{process.stdout.write(JSON.stringify(await runCompleteProfile(process.argv.slice(2)))+'\n')}
- catch(error){const value=Object.getOwnPropertyDescriptor(error??{},'message')?.value,code=typeof value==='string'&&/^complete065_[a-z_]+$/.test(value)?value:'complete065_operation_refused';process.stderr.write(code+'\n');process.exitCode=1;if(process.connected)process.disconnect()}
+ catch(error){process.stderr.write(completeProfileRefusalCode(error)+'\n');process.exitCode=1;if(process.connected)process.disconnect()}
 }

@@ -652,7 +652,20 @@ function writerLaunchEnv(s,selected,enabled){
  const first=selected[0],unit=writerUnits[first],env={PATH:'/usr/local/bin:/usr/bin:/bin',LANG:'C.UTF-8',CREDENTIALS_DIRECTORY:'/run/credentials/agentstudio-pg18-'+unit+'.service',...(enabled?{AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED:'true'}:{})}
  return env
 }
-async function launchWriter(s,{selected,mode='component',enabled=true,batch,access=[],native=false,extraBatches=[]}){
+/* ENTRY_ROLE_FAILURE_BEGIN */
+function writerEntryFailureObservation(raw,selected){
+ try{const v=fields(raw,['event','kind','code','observed_data_only'])
+  if(v.event!=='genuine_writer_ci_entry_failure'||v.observed_data_only!==true||v.kind!==selected[0]||!kinds.includes(v.kind)||!["unsafe_pg_worker_role_boundary","unsafe_worker_secret_file","unsafe_worker_secret","pg18_worker_credential_binding_required","pg18_worker_not_approved","worker_start_failed","model_worker_start_failed","workflow_worker_start_failed","workflow_v2_start_failed","worker_tick_failed","model_worker_tick_failed","workflow_worker_tick_failed","durable_v2_tick_failed","knowledge_index_service_refused","agent_assessment_service_refused"].includes(v.code))return null
+  return {event:v.event,kind:v.kind,code:v.code,observed_data_only:true}
+ }catch{return null}
+}
+function observeWriterEntryPhase(c,phase){
+ try{if(c.mode!=='entry'||!kinds.includes(c.selected?.[0])||!['launch','ready','ready_failed','stopped','stop_failed'].includes(phase))return
+  const exit=c.exit?.code,signal=c.exit?.signal
+  process.stderr.write(JSON.stringify({event:'genuine_writer_ci_entry_phase',kind:c.selected[0],phase,exit_code:Number.isInteger(exit)&&exit>=0&&exit<=255?exit:null,signal:signal===null?'none':['SIGTERM','SIGINT','SIGKILL','SIGABRT'].includes(signal)?signal:signal===undefined?null:'other',observed_data_only:true})+'\n')
+ }catch{/* Observation cannot replace original startup/cleanup error. */}
+}
+/* ENTRY_ROLE_FAILURE_END */async function launchWriter(s,{selected,mode='component',enabled=true,batch,access=[],native=false,extraBatches=[]}){
  if(!selected.length||selected.some(kind=>!kinds.includes(kind))||selected.length>2||selected.length===2&&!selected.every(k=>k==='knowledge_index'||k==='knowledge_query'))fail('writer_fixed_launch_selection')
  if(batch&&!writerDeliveries(s).some(value=>value.boot_id===batch.boot_id&&value.uid===batch.uid))fail('writer_actual_batch_required')
  const uid=native?s.workspace.uid:!enabled&&mode==='entry'?64000+(s.writerOffUidSerial=(s.writerOffUidSerial??0)+1):batch?.uid??s.writerSettings.boot_uids.at(-1),groups=mode==='access'?access:selected.map(kind=>s.writerSettings.groups.find(v=>v.kind===kind).gid),env=writerLaunchEnv(s,selected,enabled)
@@ -663,13 +676,13 @@ async function launchWriter(s,{selected,mode='component',enabled=true,batch,acce
  writerFile(s,file,JSON.stringify(plan)+'\n')
  const p=spawn('/usr/bin/unshare',['--mount','--propagation','private',s.stage.nodePath,'--experimental-strip-types',s.writerChild,'--launch',file],{cwd:s.writerCode,env:{...process.env},stdio:['ignore','pipe','pipe','ipc'],windowsHide:true})
  const c={p,exited:false,exit:null,messages:[],pending:new Map(),kind:selected.join('+'),launchAt:performance.now(),outputBytes:0,claimBaseline};s.children.add(c);s.writerChildren.add(c)
- p.on('error',()=>{});p.on('message',value=>{if(!value||typeof value!=='object')return;c.messages.push(value);if(c.messages.length>256){p.kill('SIGTERM');return}if(value.event==='component_result'){const pending=c.pending.get(value.id);if(pending){c.pending.delete(value.id);clearTimeout(pending.timer);pending.resolve(value)}}if(value.event==='kernel_child_started')c.actualPid=value.pid})
+ p.on('error',()=>{});p.on('message',value=>{if(!value||typeof value!=='object')return;/* ENTRY_ROLE_FAILURE_BEGIN */if(mode==='entry'){try{const observation=writerEntryFailureObservation(value,selected);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}}/* ENTRY_ROLE_FAILURE_END */c.messages.push(value);if(c.messages.length>256){p.kill('SIGTERM');return}if(value.event==='component_result'){const pending=c.pending.get(value.id);if(pending){c.pending.delete(value.id);clearTimeout(pending.timer);pending.resolve(value)}}if(value.event==='kernel_child_started')c.actualPid=value.pid})
  for(const stream of [p.stdout,p.stderr])stream.on('data',bytes=>{c.outputBytes+=bytes.length;if(c.outputBytes>65536)p.kill('SIGTERM')})
  p.once('close',(code,signal)=>{c.exited=true;c.exit={code,signal};for(const v of c.pending.values()){clearTimeout(v.timer);v.reject(Error('writer_ci_owned_child_exit'))}c.pending.clear()})
  await until(()=>{if(c.messages.some(v=>v.event==='kernel_child_started'))return true;if(c.exited)fail('writer_launcher_exited');return false},'writer_kernel_spawn',20000)
  try{const proc=fs.readFileSync('/proc/'+c.actualPid+'/status','utf8'),uids=proc.match(/^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m);if(!uids||uids.slice(1).some(v=>Number(v)!==uid))fail('writer_actual_kernel_uid');c.kernelUidVerified=true}
  catch(error){if(error.code!=='ENOENT'||!['plan','access'].includes(mode))throw error;c.kernelUidVerified=false}
- c.uid=uid;c.groups=groups;c.selected=selected;c.batch=batch;c.mode=mode
+ c.uid=uid;c.groups=groups;c.selected=selected;c.batch=batch;c.mode=mode/* ENTRY_ROLE_FAILURE_BEGIN */;observeWriterEntryPhase(c,'launch')/* ENTRY_ROLE_FAILURE_END */
  if(mode==='component')await until(()=>{if(c.exited)fail('writer_component_exited');return c.messages.some(v=>v.event==='component_ready')},'writer_component_import',30000)
  return c
 }
@@ -683,7 +696,7 @@ async function writerChange(s,changes){
  const d=draft(s,s.currentPolicy.reader.login?'keep':'activate');for(const change of changes){if(!kinds.includes(change.kind)||![1,2].includes(change.slot_no)||!['activate','rotate','retire'].includes(change.action))fail('writer_fixed_change');d.kinds[kinds.indexOf(change.kind)]={kind:change.kind,instrumented:true,enabled:change.action!=='retire'};d.slots.find(v=>v.kind===change.kind&&v.slot_no===change.slot_no).action=change.action}
  const result=await apply(s,await prepare(s,d));return {result,batches:writerDeliveries(s)}
 }
-async function writerStop(s,c){if(!s.writerChildren.has(c))fail('writer_ci_owned_writer_stop');await stopProcess(s,c);if(c.mode==='entry'&&(c.exit?.code!==0||c.exit?.signal!==null))fail('writer_actual_entry_did_not_exit_gracefully');s.writerStoppedChildren.add(c);s.writerChildren.delete(c)}
+async function writerStop(s,c){if(!s.writerChildren.has(c))fail('writer_ci_owned_writer_stop');/* ENTRY_ROLE_FAILURE_BEGIN */try{/* ENTRY_ROLE_FAILURE_END */await stopProcess(s,c);if(c.mode==='entry'&&(c.exit?.code!==0||c.exit?.signal!==null))fail('writer_actual_entry_did_not_exit_gracefully');/* ENTRY_ROLE_FAILURE_BEGIN */observeWriterEntryPhase(c,'stopped');/* ENTRY_ROLE_FAILURE_END */s.writerStoppedChildren.add(c);s.writerChildren.delete(c)/* ENTRY_ROLE_FAILURE_BEGIN */}catch(entryStopFailure){observeWriterEntryPhase(c,'stop_failed');throw entryStopFailure}/* ENTRY_ROLE_FAILURE_END */}
 async function writerNoIo(s){
  assert.equal(fs.existsSync('/run/agentstudio-telemetry-writers'),false);assert.equal(fs.existsSync(paths.store+'/worker-boots'),false)
  assert.equal(writerJournal(s).filter(v=>v.phase.startsWith('writer_')).length,0);assert.equal((await writerBackendRows(s)).length,0)
@@ -893,11 +906,11 @@ function writerRestartPrepared(value){writerRestartObservation('apply_reader_rot
  async businessCounts(){return (await s.nativeAdmin.query("SELECT (SELECT count(*)::integer FROM agentstudio.jobs) AS jobs,(SELECT count(*)::integer FROM agentstudio.runs) AS runs,(SELECT count(*)::integer FROM agentstudio.agent_review_requests) AS reviews,(SELECT count(*)::integer FROM agentstudio.knowledge_query_jobs) AS queries")).rows[0]},
  async entryReady(c){
   if(!s.writerChildren.has(c)||c.mode!=='entry')fail('writer_actual_entry_required')
-  if(c.selected[0]==='knowledge_index'){
+/* ENTRY_ROLE_FAILURE_BEGIN */try{/* ENTRY_ROLE_FAILURE_END */  if(c.selected[0]==='knowledge_index'){
    await until(async()=>{if(c.exited)fail('writer_knowledge_entry_exited');const rows=(await s.nativeAdmin.query("SELECT funcname,calls::text FROM pg_stat_user_functions WHERE schemaname='agentstudio' AND funcname=ANY($1::text[])",[['knowledge_index_claim','knowledge_query_claim']])).rows;return rows.length===2&&rows.every(row=>BigInt(row.calls)>BigInt(c.claimBaseline.find(v=>v.funcname===row.funcname)?.calls??'0'))},'writer_actual_knowledge_both_claim_hooks',45000)
   }else await until(()=>{if(c.exited)fail('writer_actual_entry_exited');return c.messages.some(v=>v.event==='entry_metadata'&&v.ready===true)},'writer_actual_entry_ready',45000)
-  return true
- },
+/* ENTRY_ROLE_FAILURE_BEGIN */observeWriterEntryPhase(c,'ready');/* ENTRY_ROLE_FAILURE_END */  return true
+/* ENTRY_ROLE_FAILURE_BEGIN */}catch(entryReadyFailure){observeWriterEntryPhase(c,'ready_failed');throw entryReadyFailure}/* ENTRY_ROLE_FAILURE_END */ },
  async timing(c){return {kind:c.kind,kernel_uid_verified:c.kernelUidVerified===true,elapsed_ms:Math.round(performance.now()-c.launchAt),exited:c.exited,component_only:c.mode!=='entry'}},
  async final(){assert.equal((await writerBackendRows(s)).length,0);assert.ok(writerJournal(s).filter(v=>v.phase==='writer_boot_issued').length<=128);return true},
  })}
@@ -913,11 +926,9 @@ async function writerBusinessSetup(s){
   await s.nativeAdmin.query((group?'CREATE':'ALTER')+' ROLE '+login+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+s.activation.makeNativeScramVerifier(password)+"'")
   if(group)await s.nativeAdmin.query('GRANT '+group+' TO '+login+' WITH ADMIN FALSE, INHERIT FALSE, SET TRUE')
  }
- // The fresh050 baseline intentionally keeps the old stage LOGIN dormant with
- // both parent memberships. This disposable entry fixture narrows it before
- // explicit activation; it does not edit that original installer or receipt.
- await s.nativeAdmin.query('REVOKE agentstudio_api FROM agentstudio_stage_worker')
- assert.equal((await s.nativeAdmin.query("SELECT pg_has_role('agentstudio_stage_worker','agentstudio_api','MEMBER') AS bad")).rows[0].bad,false)
+ // Keep the original fresh050 Worker/API memberships required by the real
+ // unchanged Worker role preflight. Only this disposable fixture enables LOGIN.
+ assert.equal((await s.nativeAdmin.query("SELECT pg_has_role('agentstudio_stage_worker','agentstudio_api','MEMBER') AS required")).rows[0].required,true)
  const tls=s.writerWork+'/tls';writerPrivateDirectory(s,tls);const run=args=>execFileSync('/usr/bin/openssl',args,{env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},timeout:10000,maxBuffer:16384,stdio:['ignore','pipe','pipe'],windowsHide:true})
  run(['req','-x509','-newkey','rsa:2048','-nodes','-keyout',tls+'/ca.key','-out',tls+'/ca.pem','-subj','/CN=writer-ci-ca','-days','1','-addext','basicConstraints=critical,CA:TRUE'])
  for(const name of ['worker','server']){const ext=tls+'/'+name+'.cnf';fs.writeFileSync(ext,'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage='+('worker'===name?'clientAuth':'serverAuth')+'\nsubjectAltName=IP:127.0.0.1\n',{mode:0o600});run(['req','-new','-newkey','rsa:2048','-nodes','-keyout',tls+'/'+name+'.key','-out',tls+'/'+name+'.csr','-subj','/CN=writer-ci-'+name]);run(['x509','-req','-in',tls+'/'+name+'.csr','-CA',tls+'/ca.pem','-CAkey',tls+'/ca.key','-CAcreateserial','-out',tls+'/'+name+'.pem','-days','1','-extfile',ext])}
