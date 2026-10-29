@@ -9,7 +9,7 @@ export async function runCompleteInstallFixture(argv,env=process.env){
  if(argv.length!==1||argv[0]!=='--run')throw Error('complete_install_fixture_arguments')
  const permit=requireCompleteProfileFixtureCi(env)
  phase('independent_stage_and_cluster_attestation')
- const [{completeProfileStageDescriptor,loadVerifiedCompleteProfileStage},{attestCompleteProfileTargets,ownedCompleteProfilePool},fs,{randomBytes},{spawn},assertModule]=await Promise.all([import('./helpers/pg18-complete-install-ci-stage.mjs'),import('./helpers/pg18-complete-install-ci-containers.mjs'),import('node:fs'),import('node:crypto'),import('node:child_process'),import('node:assert/strict')])
+ const [{completeProfileStageDescriptor,loadVerifiedCompleteProfileStage},{attestCompleteProfileTargets,ownedCompleteProfilePool,ownedCompleteProfileArchive,restoreOwnedCompleteProfileDatabase,ownedCompleteProfileRuntimePool},fs,{randomBytes,randomUUID,createHash},{spawn},assertModule]=await Promise.all([import('./helpers/pg18-complete-install-ci-stage.mjs'),import('./helpers/pg18-complete-install-ci-containers.mjs'),import('node:fs'),import('node:crypto'),import('node:child_process'),import('node:assert/strict')])
  const assert=assertModule.default,stage=completeProfileStageDescriptor(permit),loaded=await loadVerifiedCompleteProfileStage(permit,stage),targets=await attestCompleteProfileTargets(permit,loaded),admin=await ownedCompleteProfilePool(targets.main,1)
  const secret=(name,value)=>{const file=path.join(stage.input,name);const fd=fs.openSync(file,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW|fs.constants.O_WRONLY,0o400);try{fs.writeFileSync(fd,value);fs.fchmodSync(fd,0o400);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}return file}
  const apiPassword=randomBytes(40).toString('hex'),workerPassword=randomBytes(40).toString('hex'),apiFile=secret('complete-api.secret',apiPassword),workerFile=secret('complete-worker.secret',workerPassword)
@@ -47,7 +47,38 @@ export async function runCompleteInstallFixture(argv,env=process.env){
   r=await command('--verify');assert.equal(r.code,0);assert.equal(r.value.actual_api_login_verified,true);assert.equal(r.value.full_catalog_audit_verified,true);assert.equal(r.value.feature_activation_authorized,false);assert.equal(r.value.production_cutover_allowed,false);step('separate_actual_api_login_passes_full065_to059_predecessor_catalog_chain')
   phase('extra_api_membership_refusal');await admin.query('GRANT agentstudio_worker TO agentstudio_stage_login')
   r=await command('--verify');assert.equal(r.code,1);await admin.query('REVOKE agentstudio_worker FROM agentstudio_stage_login');r=await command('--verify');assert.equal(r.code,0);step('extra_api_membership_refused_then_original_exact_membership_verified')
-  console.log(JSON.stringify({event:'complete065_actual_summary',passed:8,actual_cli:true,actual_pg18:true,actual_login_audit:true,all_services_started:false,backup_restore_verified:false,employee_UAT:false,qualifying24h:false,production_GO:false}))
+  phase('actual_disposable_complete_profile_backup')
+  const rowId=randomUUID(),hash=bytes=>createHash('sha256').update(bytes).digest('hex')
+  await admin.query("INSERT INTO agentstudio.users(id,external_issuer,external_subject,display_name) VALUES($1::uuid,'synthetic:complete-restore',$1::text,'Synthetic complete restore')",[rowId])
+  const image=async pool=>{const rows=[];for(const table of loaded.complete.tables){assert.match(table,/^(agentstudio|agentstudio_auth)\.[a-z_]+$/);const name=table.split('.').map(v=>'"'+v+'"').join('.'),r=(await pool.query("SELECT encode(sha256(convert_to(coalesce(jsonb_agg(j ORDER BY j::text),'[]'::jsonb)::text,'UTF8')),'hex') AS hash FROM (SELECT to_jsonb(t) AS j FROM "+name+' t) s')).rows[0];assert.match(r.hash,/^[a-f0-9]{64}$/);rows.push([table,r.hash])}return rows}
+  const globals=async pool=>({roles:(await pool.query("SELECT rolname,rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication,rolconnlimit,rolvaliduntil,rolconfig FROM pg_roles WHERE rolname LIKE 'agentstudio_%' ORDER BY rolname")).rows,memberships:(await pool.query("SELECT m.rolname AS member,r.rolname AS role,a.admin_option,a.inherit_option,a.set_option FROM pg_auth_members a JOIN pg_roles m ON m.oid=a.member JOIN pg_roles r ON r.oid=a.roleid WHERE m.rolname LIKE 'agentstudio_%' OR r.rolname LIKE 'agentstudio_%' ORDER BY m.rolname,r.rolname")).rows})
+  const beforeImage=await image(admin),beforeGlobals=await globals(admin),dump=await ownedCompleteProfileArchive(targets.main,'dump'),roles=await ownedCompleteProfileArchive(targets.main,'globals')
+  assert.ok(dump.subarray(0,5).equals(Buffer.from('PGDMP')));assert.ok(dump.length<128*1024*1024);assert.ok(roles.length<8*1024*1024);assert.doesNotMatch(roles.toString('utf8'),/SCRAM-SHA-256\$|PASSWORD\s+'/)
+  const dumpFile=secret('complete-profile.database.dump',dump),rolesFile=secret('complete-profile.roles.sql',roles)
+  assert.equal(hash(fs.readFileSync(dumpFile)),hash(dump));assert.equal(hash(fs.readFileSync(rolesFile)),hash(roles));step('actual_custom_database_dump_and_password_free_globals_bound_to_source',{database_dump_sha256:hash(dump),globals_sha256:hash(roles),profile_source_sha256:stage.profileSha})
+  phase('independent_owned_restore_and_actual_api_catalog_audit')
+  // Both targets were independently attested before this point. Remove only
+  // the one CREATE for the independently provisioned existing postgres role;
+  // retain every original ALTER, membership and application role statement.
+  const rolesText=roles.toString('utf8');assert.equal((rolesText.match(/^CREATE ROLE postgres;$/gm)??[]).length,1)
+  await ownedCompleteProfileArchive(targets.restore,'restore_globals',Buffer.from(rolesText.replace(/^CREATE ROLE postgres;\r?\n/m,'')))
+  await restoreOwnedCompleteProfileDatabase(targets.restore,dump)
+  const restored=await ownedCompleteProfilePool(targets.restore,1)
+  let restoredApi
+  try{
+   assert.deepEqual(await image(restored),beforeImage);assert.deepEqual(await globals(restored),beforeGlobals)
+   assert.equal((await restored.query('SELECT id::text AS id FROM agentstudio.users WHERE id=$1::uuid',[rowId])).rows[0].id,rowId)
+   // Passwords are deliberately absent from globals. This synthetic fixture
+   // explicitly restores only the original independent API secret from its
+   // protected input; no password-free login is treated as authenticated.
+   assert.match(apiPassword,/^[a-f0-9]{80}$/);await restored.query("ALTER ROLE agentstudio_stage_login PASSWORD '"+apiPassword+"'")
+   restoredApi=await ownedCompleteProfileRuntimePool(targets.restore,'agentstudio_stage_login',apiPassword)
+   const db=await restoredApi.connect();try{await db.query('BEGIN READ ONLY');assert.equal((await db.query('SELECT session_user::text AS login,current_user::text AS actor')).rows[0].login,'agentstudio_stage_login');await db.query('SET LOCAL ROLE agentstudio_api');const audit=await loaded.from('services/pg-api/src/agent-internal-share-audit.ts');assert.equal(await audit.verifyAgentInternalShareCredentials(db),true)}finally{await db.query('ROLLBACK');db.release()}
+   assert.deepEqual(await image(admin),beforeImage);assert.deepEqual(await globals(admin),beforeGlobals)
+   assert.equal(hash(fs.readFileSync(dumpFile)),hash(dump));assert.equal(hash(fs.readFileSync(rolesFile)),hash(roles))
+   step('independent_actual_restore_preserves_all_table_images_globals_and_full_api_audit',{all_table_images:beforeImage.length,synthetic_rows_preserved:true,source_unchanged:true})
+  }finally{if(restoredApi)await restoredApi.end();await restored.end()}
+  console.log(JSON.stringify({event:'complete065_actual_summary',passed:10,actual_cli:true,actual_pg18:true,actual_login_audit:true,all_services_started:false,backup_restore_verified:true,employee_UAT:false,qualifying24h:false,production_GO:false}))
  }finally{await admin.end()}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===here){try{await runCompleteInstallFixture(process.argv.slice(2))}catch(error){const raw=Object.getOwnPropertyDescriptor(error??{},'message')?.value;console.error(JSON.stringify({event:'complete065_actual_failure',code:typeof raw==='string'&&/^(?:complete_[a-z0-9_:]+|unsafe_[a-z0-9_]+)$/.test(raw)?raw:'actual_assertion_or_operation_failed',production_GO:false}));process.exitCode=1}}
