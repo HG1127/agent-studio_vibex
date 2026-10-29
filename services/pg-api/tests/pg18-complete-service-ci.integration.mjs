@@ -78,6 +78,10 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const review=await verifyComplete069ReviewWorkerCi(loaded,targets.main,{api:passwords.api,stageWorker:passwords.worker})
   assert.equal(review.actual_preparation_cli,true);assert.equal(review.actual_dedicated_login_verified,true);assert.equal(review.original_nonroot_cli_preflight_verified,true);assert.equal(review.all133_table_images_unchanged,true);assert.equal(review.runtime_authorization,false)
   step('independent_review_login_actual_preparer_original_nonroot_preflight_and_all133_images_preserved')
+   const {verifyComplete069ExecutorCi}=await import('./helpers/pg18-complete-executor-ci.mjs')
+   const executor=await verifyComplete069ExecutorCi(loaded,targets.main,{api:passwords.api,auth:passwords['native-auth'],modelKey:randomBytes(32).toString('hex')})
+   assert.equal(executor.actual_preparation_cli,true);assert.equal(executor.actual_dedicated_login_verified,true);assert.equal(executor.original_C_preflight_verified,true);assert.equal(executor.original_nonroot_service_preflight_verified,true);assert.equal(executor.all133_table_images_unchanged,true);assert.equal(executor.runtime_authorization,false)
+   console.log(JSON.stringify({event:'complete069_executor_actual_summary',...executor}))
   console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:caseCounter.finish(),actual_review_worker_login_verified:true,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
  }finally{await admin.end()}
 }

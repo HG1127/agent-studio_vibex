@@ -71,7 +71,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "db/postgres/migrations/pg_v9_068_agent_public_callers.sql": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
-  "package.json": "98895cd6fb8cc446cc75ed96d99fa86cdb5ba7c67b09fa6bf1db18d3056c913b",
+  "package.json": "f94e851ad24a5f1953346bc8c918bbc6f68efce257e6c3ffa10f9e92b276656f",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -323,7 +323,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
   "services/pg-api/src/pg18-complete-operator-runtime.mjs": "d5cc238eb52cf9e4e3e5d123897d41961b62ea7c1f02144c2f277ab3cef1aa9e",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
-  "services/pg-api/src/pg18-complete-profile-source.mjs": "13da3db536bc97c102e2c0fc66a6fbc8042edae1b1744ca7509eb80858fdb857",
+  "services/pg-api/src/pg18-complete-profile-source.mjs": "ec4620de0cbebcf7f9285c642f744c7e47ffbc4800169aa057f86acf696ce443",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
   "services/pg-api/src/pg18-ephemeral-ci-guard.mjs": "71c2205c1564424b856d43ef9b4a3483b1743b7a0a463f6b3b9f7bb3c2c64458",
   "services/pg-api/src/pg18-fresh-runtime-install.ts": "9e38f9278d26b73b5894cf3618a3c17092b7fcca8e7d1b145bcedb4b9d16b0c7",
@@ -621,7 +621,11 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "ace7a40aa381653bd0194831173e2ba20a575d747559b5618c7705d128bed632",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "d821eb1f6eef98e0eba0c50115ab6759a4562d9dd26e0853c9f2cb9be898f91b",
   "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "777e552f04da25376d0f085ba20471cabd277060025d437d05eda19c35152373",
-  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "2ae2876e04739bc17a611572f49f0efc37c6cbfcb27cf1cb3b7ecec10332bddc"
+  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "2ae2876e04739bc17a611572f49f0efc37c6cbfcb27cf1cb3b7ecec10332bddc",
+  "services/pg-api/src/pg18-complete-executor-cli.mjs": "104d8cca8d0ba5c739a0dd497b9a785792f5014036c2e696f719466cfdf753a9",
+  "services/pg-api/src/pg18-complete-executor-core.mjs": "2d772585f25504be49e23000a77d1de0ef4e8f7523b83135c514d889f1ef6423",
+  "services/pg-api/src/pg18-complete-executor-journal.mjs": "ef6039d1710ba7eddc067a762917985520ceacd490045cd7f4bc31de556f5775",
+  "services/pg-api/src/pg18-complete-executor-plan.mjs": "79f9ecf9e529f06baf00698ea7bdd283f1af55b818538d06c676ab09492417bb"
 })
 export async function agentCallerGenuineFixture(env=process.env,{browserMode=false}={}){
  const target=requireAgentCallerGenuineCi(env)

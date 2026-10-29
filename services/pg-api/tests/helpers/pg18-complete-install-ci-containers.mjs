@@ -134,10 +134,12 @@ export async function ownedCompleteProfileRuntimePool(target,login,password){
 // caller-supplied rule is accepted; this does not alter the original guards.
 export async function configureOwnedCompleteServiceHba(target,scenario='reviewed'){
  const s=await owned(target)
- if(s.spec.kind!=='main'||s.spec.port!==5333||!['reviewed','earlier-trust-negative','review-worker','review-worker-earlier-trust-negative'].includes(scenario))fail('service_hba_target')
+ if(s.spec.kind!=='main'||s.spec.port!==5333||!['reviewed','earlier-trust-negative','review-worker','review-worker-earlier-trust-negative','executor','executor-earlier-trust-negative'].includes(scenario))fail('service_hba_target')
  const logins=['agentstudio_stage_login','agentstudio_native_login','agentstudio_stage_worker','agentstudio_bound_dispatch_login','agentstudio_model_broker_login','agentstudio_knowledge_index_worker_login','agentstudio_knowledge_index_broker_login']
  const lines=['local all postgres peer',...logins.map(n=>'local agent_studio '+n+' reject'),'local all all reject','host all postgres 127.0.0.1/32 scram-sha-256',...logins.map(n=>'host agent_studio '+n+' 127.0.0.1/32 scram-sha-256'),'host all all 0.0.0.0/0 reject','host all all ::/0 reject']
- if(['review-worker','review-worker-earlier-trust-negative'].includes(scenario))lines.unshift('local all agentstudio_review_worker_login reject','host agent_studio agentstudio_review_worker_login 127.0.0.1/32 scram-sha-256','host all agentstudio_review_worker_login 0.0.0.0/0 reject','host all agentstudio_review_worker_login ::/0 reject')
+ if(['review-worker','review-worker-earlier-trust-negative','executor','executor-earlier-trust-negative'].includes(scenario))lines.unshift('local all agentstudio_review_worker_login reject','host agent_studio agentstudio_review_worker_login 127.0.0.1/32 scram-sha-256','host all agentstudio_review_worker_login 0.0.0.0/0 reject','host all agentstudio_review_worker_login ::/0 reject')
+ if(['executor','executor-earlier-trust-negative'].includes(scenario))lines.unshift('local all agentstudio_local_executor_login reject','host agent_studio agentstudio_local_executor_login 127.0.0.1/32 scram-sha-256','host all agentstudio_local_executor_login 0.0.0.0/0 reject','host all agentstudio_local_executor_login ::/0 reject')
+ if(scenario==='executor-earlier-trust-negative')lines.unshift('host all agentstudio_local_executor_login 127.0.0.1/32 trust')
  if(scenario==='review-worker-earlier-trust-negative')lines.unshift('host all agentstudio_review_worker_login 127.0.0.1/32 trust')
  if(scenario==='earlier-trust-negative')lines.unshift('host all all 127.0.0.1/32 trust')
  command(['exec','--interactive','--user','postgres',s.id,'sh','-c','umask 077; cat > "$PGDATA/pg_hba.conf"'],{input:Buffer.from(lines.join('\n')+'\n')})

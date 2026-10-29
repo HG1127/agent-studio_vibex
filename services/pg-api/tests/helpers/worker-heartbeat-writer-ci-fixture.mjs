@@ -707,10 +707,12 @@ function writerKnowledgeHeartbeatFailureObservation(raw,selected){
  for(const stream of [p.stdout,p.stderr])stream.on('data',bytes=>{c.outputBytes+=bytes.length;if(c.outputBytes>65536)p.kill('SIGTERM')})
  p.once('close',(code,signal)=>{c.exited=true;c.exit={code,signal};for(const v of c.pending.values()){clearTimeout(v.timer);v.reject(Error('writer_ci_owned_child_exit'))}c.pending.clear()})
  await until(()=>{if(c.messages.some(v=>v.event==='kernel_child_started'))return true;if(c.exited)fail('writer_launcher_exited');return false},'writer_kernel_spawn',20000)
+ // The setpriv spawn event precedes its UID transition. Wait for the existing
+ // nonroot component-ready barrier before Root samples the same actual PID.
+ if(mode==='component')await until(()=>{if(c.exited)fail('writer_component_exited');return c.messages.some(v=>v.event==='component_ready')},'writer_component_import',30000)
  try{const proc=fs.readFileSync('/proc/'+c.actualPid+'/status','utf8'),uids=proc.match(/^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m);if(!uids||uids.slice(1).some(v=>Number(v)!==uid))fail('writer_actual_kernel_uid');c.kernelUidVerified=true}
  catch(error){if(error.code!=='ENOENT'||!['plan','access'].includes(mode))throw error;c.kernelUidVerified=false}
  c.uid=uid;c.groups=groups;c.selected=selected;c.batch=batch;c.mode=mode/* ENTRY_ROLE_FAILURE_BEGIN */;observeWriterEntryPhase(c,'launch')/* ENTRY_ROLE_FAILURE_END */
- if(mode==='component')await until(()=>{if(c.exited)fail('writer_component_exited');return c.messages.some(v=>v.event==='component_ready')},'writer_component_import',30000)
  return c
 }
 async function writerCommand(s,c,command,ms=15000){

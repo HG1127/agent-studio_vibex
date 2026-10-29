@@ -10,12 +10,13 @@ import {collectComplete069ReviewSources} from './build-pg18-complete069-review-b
 import {assertCompleteProfileSnapshot} from '../services/pg-api/src/pg18-complete-profile-source.mjs'
 import {captureFull069WorkerLiveSources,assertFull069WorkerLiveSources,liveModules} from '../services/pg-api/src/pg18-full069-worker-live-sources.mjs'
 import {full069WorkerLivePlan} from '../services/pg-api/src/pg18-full069-worker-live-cli.mjs'
+import {complete069ExecutorPlan} from '../services/pg-api/src/pg18-complete-executor-plan.mjs'
 import {complete069ReviewWorkerPlan} from '../services/pg-api/src/pg18-complete-review-worker-plan.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),maxFile=16*1024*1024
 const sha=b=>createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),json=v=>Buffer.from(JSON.stringify(v,null,2)+'\n')
 const fail=code=>{throw Error('full069_live_review_'+code)}
 const parserRoot='services/pg-api/node_modules/typescript/',parserFiles=new Set(['lib/typescript.js','package.json','LICENSE.txt','ThirdPartyNoticeText.txt'])
-const reviewFiles=['docs/PG18_COMPLETE_069_REVIEW_WORKER_PREPARATION.md','docs/PG18_FULL069_WORKER_LIVE_OPERATIONS.json','ops/build-pg18-complete069-review-bundle.mjs','ops/build-pg18-full069-worker-live-review-bundle.mjs','tests/pg18-full069-worker-live-review-bundle.test.mjs']
+const reviewFiles=['docs/PG18_COMPLETE_069_REVIEW_WORKER_PREPARATION.md','docs/PG18_COMPLETE_069_EXECUTOR_PREPARATION.md','docs/PG18_FULL069_WORKER_LIVE_OPERATIONS.json','ops/build-pg18-complete069-review-bundle.mjs','ops/build-pg18-full069-worker-live-review-bundle.mjs','tests/pg18-full069-worker-live-review-bundle.test.mjs']
 // The old complete archive's generated outer index is replaced, not reused as
 // an index of this larger delivery. Its underlying source/SQL bytes are kept.
 const outerIndexes=new Set(['REVIEW_MANIFEST.json','SHA256SUMS','README_REVIEW_ONLY.txt'])
@@ -51,12 +52,13 @@ const readme=Buffer.from([
  'Included: genuine current complete069 source closure, all53 original SQL sources, original API package/lock, exactly four pinned TypeScript5.9.3 parser files, and the independent full069 live source closure.',
  'Both COMPLETE_SOURCE_MANIFEST.json and FULL069_WORKER_LIVE_SOURCE_MANIFEST.json bind actual source bytes. Their hashes are review observations, not deployment targets or capability evidence.',
  'Recapture and approve complete and independent live hashes from the final installed read-only source tree after all Root integration/CI changes. Do not copy this offline hash into a running target.',
- 'Read docs/PG18_COMPLETE_069_PREPARATION.md, docs/PG18_COMPLETE_069_REVIEW_WORKER_PREPARATION.md and docs/PG18_FULL069_WORKER_LIVE_OPERATIONS.json.',
- 'Required order: fresh complete069 installation -> C eight actions api -> native-auth -> first-admin -> worker -> identity -> broker -> index-worker -> index-broker -> separate fixed Review LOGIN preparation -> separate Telemetry/Root Controller provisioning and original runtime preflights -> reviewed owned-Linux live validation.',
+ 'Read docs/PG18_COMPLETE_069_EXECUTOR_PREPARATION.md, docs/PG18_COMPLETE_069_PREPARATION.md, docs/PG18_COMPLETE_069_REVIEW_WORKER_PREPARATION.md and docs/PG18_FULL069_WORKER_LIVE_OPERATIONS.json.',
+ 'Required order: fresh complete069 installation -> C eight actions api -> native-auth -> first-admin -> worker -> identity -> broker -> index-worker -> index-broker -> separate fixed Review LOGIN preparation -> separate fixed Executor preparation -> independent Review Dispatch/Design/Plan Workflow preparation (must be completed before final qualification) -> separate Telemetry/Root Controller provisioning and original runtime preflights -> reviewed owned-Linux live validation.',
  'Preserve C intent/result records and COMMIT-unknown states. Review preparation is not live readiness. Do not rerun the fresh-only C catalog after adding Review LOGIN or synthesize old receipts.',
  'Offline source plan: node --experimental-strip-types services/pg-api/src/baota-pg18-complete-init.mjs --plan --profile complete069',
  'Offline C preparation plan: node services/pg-api/src/pg18-complete-service-cli.mjs --plan',
  'Offline Review preparation plan: node services/pg-api/src/pg18-complete-review-worker-cli.mjs --plan',
+ 'Offline Executor preparation plan: node services/pg-api/src/pg18-complete-executor-cli.mjs --plan',
  'Offline live plan: node services/pg-api/src/pg18-full069-worker-live-cli.mjs --plan',
  'Only these offline plans are described here. No --run, installation, login preparation, target inspection, service start or dependency installation is performed by the builder.',
  'The original minimum24h qualifying window has NOT started. It still requires independent operator acknowledgements, genuine original processes, real HTTPS/SQL audits, process ownership and cleanup evidence on an explicitly approved isolated Linux host.',
@@ -86,6 +88,7 @@ export async function collectFull069WorkerLiveReviewSources(expectedSource,expec
  add('FULL069_WORKER_LIVE_SOURCE_MANIFEST.json',json(live.manifest))
  add('FULL069_WORKER_LIVE_PLAN.json',json(full069WorkerLivePlan()))
  add('REVIEW_WORKER_PLAN.json',json(complete069ReviewWorkerPlan()))
+ add('EXECUTOR_PLAN.json',json(complete069ExecutorPlan()))
  add('FULL069_WORKER_LIVE_DEPENDENCY_BOUNDARY.json',json({format:'full069_worker_live_source_dependency_boundary_v1',complete_source_sha256:expectedSource,live_source_sha256:expectedLiveSource,operator_pg_runtime_bundled:false,operator_runtime_manifest_bundled:false,business_dependency_runtime_bundled:false,dependency_installation_performed:false,telemetry_controller_provisioning_assets_bundled:false,source_is_runtime_capability:false,source_is_target_authorization:false,review_preparation_is_live_readiness:false,actual_24h_window_started:false,actual_24h_window_passed:false,owned_linux_validation_performed:false,production_cutover_allowed:false}))
  add('README_REVIEW_ONLY.txt',readme)
  const records=[...entries].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([path,bytes])=>({path,sha256:sha(bytes),bytes:bytes.length}))

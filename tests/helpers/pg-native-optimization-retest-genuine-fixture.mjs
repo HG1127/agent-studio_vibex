@@ -63,7 +63,7 @@ export const optimizationRetestBrowserFrozenSources=Object.freeze({
   "local-executor/office.mjs": "7c3abc4f87c497ccc7dbaa84a83458fa0ac0f21e3c224be829799bfbe7110c8f",
   "local-executor/result.mjs": "9bb610ae182dbb903c00a12cefe5bcaf08acc29211c26731c344ff06b8f84e22",
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
-  "package.json": "98895cd6fb8cc446cc75ed96d99fa86cdb5ba7c67b09fa6bf1db18d3056c913b",
+  "package.json": "f94e851ad24a5f1953346bc8c918bbc6f68efce257e6c3ffa10f9e92b276656f",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -321,7 +321,7 @@ export const optimizationRetestBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
   "services/pg-api/src/pg18-complete-operator-runtime.mjs": "d5cc238eb52cf9e4e3e5d123897d41961b62ea7c1f02144c2f277ab3cef1aa9e",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
-  "services/pg-api/src/pg18-complete-profile-source.mjs": "13da3db536bc97c102e2c0fc66a6fbc8042edae1b1744ca7509eb80858fdb857",
+  "services/pg-api/src/pg18-complete-profile-source.mjs": "ec4620de0cbebcf7f9285c642f744c7e47ffbc4800169aa057f86acf696ce443",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
   "services/pg-api/src/pg18-ephemeral-ci-guard.mjs": "71c2205c1564424b856d43ef9b4a3483b1743b7a0a463f6b3b9f7bb3c2c64458",
   "services/pg-api/src/pg18-fresh-runtime-install.ts": "9e38f9278d26b73b5894cf3618a3c17092b7fcca8e7d1b145bcedb4b9d16b0c7",
@@ -406,7 +406,7 @@ export const optimizationRetestBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
   "services/pg-api/tests/helpers/agent-review-ledger-fixture.mjs": "bb0506a0f2aef11f4033ee7ea919102e06930d5fee2b3af037e236f04cf0f688",
-  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "fc98fc426e121f40d5a464bb58cfd46add033639f159416c504a3c7be26e1f4b",
+  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "fdc472ca1ba9f15226f468cd7da5fd2bd5ace23753ef50c8810efcd6053388e9",
   "services/pg-api/tests/helpers/approval-delegation-genuine-guard.mjs": "c48521998f2d70a8e8e282c4f27539c8f718b58fd10cfbaa3c6f1006547e9c67",
   "services/pg-api/tests/helpers/bound-model-loopback-tls.mjs": "d3932a15340329b3e3550b2a58f25ac0f7c045aedc85d01a8b560d1931ce6b4c",
   "services/pg-api/tests/helpers/native-pg18-embedded.mjs": "6d29c92a24cbc4815f869d1b11fd9c3872873ceb61b1e0002e16a42b1a3a29a5",
@@ -579,7 +579,7 @@ export const optimizationRetestBrowserFrozenSources=Object.freeze({
   "tsconfig.app.json": "d8f35b70fd3e9e76215914f5d34a5dae72b08d5f8bdef84933c8bc3f1e9def6b",
   "vibex-local/vite.local.config.ts": "076cf7f862997f84626482f91475a432351ccdcfc783954bddd2ad4e0f74f015",
   "vite.config.ts": "3206dfa8e95901cf5574af20816d3b63970246f7a9a862f08272f3903d3ed625",
-  "services/pg-api/tests/helpers/optimization-retest-genuine-fixture.mjs": "52e6fd14788ff8343fcc5e332172cf0553e9aa971f4d5b58410588864fb8014d",
+  "services/pg-api/tests/helpers/optimization-retest-genuine-fixture.mjs": "08d18da6a25b4a5fcfbe31c0266cde01e9b7d71cfc9a4d96d17884cccbd6e857",
   "services/pg-api/src/native-entry-http.ts": "bb7b73918f643d0d16b615aeeb3829ac70bb6e3a23e360f6b260c34bd98d7f14",
   "services/pg-api/src/owner-tool-trial-audit-core.ts": "f482fcb22dad341d2ef6b6468c790665245f43e5037e9252deb3dc6ea37901b3",
   "services/pg-api/src/owner-tool-trial-audit.ts": "9d2c88352a9d12afc16875627f27f4602ed3866f75981191241ef3978028f863",
@@ -619,7 +619,11 @@ export const optimizationRetestBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "ace7a40aa381653bd0194831173e2ba20a575d747559b5618c7705d128bed632",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "d821eb1f6eef98e0eba0c50115ab6759a4562d9dd26e0853c9f2cb9be898f91b",
   "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "777e552f04da25376d0f085ba20471cabd277060025d437d05eda19c35152373",
-  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "2ae2876e04739bc17a611572f49f0efc37c6cbfcb27cf1cb3b7ecec10332bddc"
+  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "2ae2876e04739bc17a611572f49f0efc37c6cbfcb27cf1cb3b7ecec10332bddc",
+  "services/pg-api/src/pg18-complete-executor-cli.mjs": "104d8cca8d0ba5c739a0dd497b9a785792f5014036c2e696f719466cfdf753a9",
+  "services/pg-api/src/pg18-complete-executor-core.mjs": "2d772585f25504be49e23000a77d1de0ef4e8f7523b83135c514d889f1ef6423",
+  "services/pg-api/src/pg18-complete-executor-journal.mjs": "ef6039d1710ba7eddc067a762917985520ceacd490045cd7f4bc31de556f5775",
+  "services/pg-api/src/pg18-complete-executor-plan.mjs": "79f9ecf9e529f06baf00698ea7bdd283f1af55b818538d06c676ab09492417bb"
 })
 export async function startPgNativeOptimizationRetestGenuineFixture(env=process.env){
  requireOptimizationRetestGenuineCi(env)

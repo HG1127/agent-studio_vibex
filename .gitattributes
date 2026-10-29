@@ -873,3 +873,14 @@ services/pg-api/tests/pg18-full069-worker-live.test.mjs text eol=lf
 # Reviewed full069 preparation and genuine regression sources.
 ops/build-pg18-full069-worker-live-review-bundle.mjs text eol=lf
 tests/pg18-full069-worker-live-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_EXECUTOR_PREPARATION.md text eol=lf
+services/pg-api/src/pg18-complete-executor-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-executor-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-executor-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-executor-plan.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-executor-ci.mjs text eol=lf
+services/pg-api/tests/pg18-complete-executor-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-executor-source.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-kernel-handshake.test.mjs text eol=lf
