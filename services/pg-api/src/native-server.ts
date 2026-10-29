@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
+import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
+import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
+import {createNativeLocalDeviceHttp} from './native-local-device-http.ts'
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
 import {verifyKnowledgeEmbeddingConsentSchema} from "./knowledge-embedding-consent-privileges.ts"
@@ -200,7 +204,7 @@ function safeSecret(file:string,listen:boolean,env:NodeJS.ProcessEnv){
     const basename=path.basename(file)
     if(basename!=="api.secret"&&basename!=="native-auth.secret"&&
        basename!=="model-encryption.secret"&&
-       basename!=="model-broker.secret")reject()
+       basename!=="model-broker.secret"&&basename!=="local-executor.secret")reject()
     let canRead=false
     try{accessSync(file,constants.R_OK);canRead=true}catch{}
     try{
@@ -337,6 +341,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const agentDesign=selectNativeAgentDesignCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const templateMarket=selectNativeAgentTemplateMarketCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const internalShare=selectNativeInternalShareCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const localDevices=selectNativeLocalDevices(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const approvalDelegation=selectApprovalDelegationCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
@@ -348,7 +353,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const brokerSecret=brokerFile?safeSecret(brokerFile,listen,env):null
   const {parseModelEncryptionKey}=await import("./model-connection-crypto.ts")
   const modelEncryptionKey=parseModelEncryptionKey(modelKeySecret.password)
-  const secrets=[apiSecret,authSecret,modelKeySecret,
+  const localExecutorSecret=localDevices.available?safeSecret(files.credentialDir+"/local-executor.secret",listen,env):null
+  const secrets=[apiSecret,authSecret,modelKeySecret,...(localExecutorSecret?[localExecutorSecret]:[]),
     ...(brokerSecret?[brokerSecret]:[])]
   for(let i=0;i<secrets.length;i++)for(let j=i+1;j<secrets.length;j++)
     if(secrets[i]!.stat.dev===secrets[j]!.stat.dev&&
@@ -366,6 +372,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
+  const localExecutorPool=localExecutorSecret?new Pool({host:cfg.host,port:5333,database:cfg.database,user:"agentstudio_local_executor_login",password:localExecutorSecret.password,max:3,connectionTimeoutMillis:4000,statement_timeout:10000}):null
+  localExecutorPool?.on("error",()=>{})
   const business=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true),capabilities.knowledgeQueryRuntimeUat===true),capabilities.knowledgeToolExecutionUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
@@ -374,6 +382,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   try{
     await verifyPgRuntimeTarget(business,cfg.api)
     await verifyDatabaseRole(business)
+    if(localDevices.available){if(!localExecutorPool)throw Error("native_local_executor_credentials_required");await inspectNativeLocalDevicePool(business,"agentstudio_api");await inspectNativeLocalDevicePool(adapter(localExecutorPool),"agentstudio_local_executor")}
     const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
       // Read-only, before opening HTTP. The model secret broker must be
@@ -465,7 +474,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(approvalDelegation.available)await inspectApprovalDelegationPool(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
-        ...(brokerPool?[brokerPool.end()]:[])])
+        ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
       return {mode:"preflight",ready:true,target:"agent_studio",
         verified_roles:2,verified_active_admins:verifiedActiveAdmins,
         writes_performed:false,port_opened:false,
@@ -512,6 +521,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...agentPlanWorkflow.metadataOptions,
       allowAgentTemplateMarket:templateMarket.available,allowAgentTemplateMarketWrites:templateMarket.writes,
       allowInternalShare:internalShare.available,allowInternalShareWrites:internalShare.writes,
+      allowLocalDevices:localDevices.available,allowLocalDeviceWrites:localDevices.writes,
       allowApprovalDelegations:approvalDelegation.available,allowApprovalDelegationWrites:approvalDelegation.writes,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
@@ -524,6 +534,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
         return businessHandler(req,res)
       }})
     businessHandler=createHandler({
+      allowNativeLocalAgentSpecs:localDevices.available,
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
@@ -561,7 +572,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true}),
+      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true}),
       workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
@@ -613,6 +624,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       repository:new AgentDesignLedgerRepository(business,{audit:agentDesignAudit,allowSubmissions:agentDesign.submissions,allowSaves:agentDesign.saves}),
     }):null
     const agentPlanWorkflowHttp=agentPlanWorkflow.createHandler(native.authenticateRequest)
+    const localDevicesHttp=localDevices.available&&localExecutorPool?createNativeLocalDeviceHttp({repository:new NativeLocalDeviceRepository(business,{allowWrites:localDevices.writes}),executor:new NativeLocalExecutorRepository(adapter(localExecutorPool)),authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:localDevices.writes}):null
     const guardedBusinessHandler=businessHandler
     const approvalDelegationHttp=approvalDelegation.available?createApprovalDelegationHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new ApprovalDelegationRepository(business,{allowWrites:approvalDelegation.writes,allowModelDecisions:capabilities.configurationWrites&&capabilities.runApprovalUat,allowAutonomousDecisions:capabilities.configurationWrites&&capabilities.autonomousAgentUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}):null
     const internalShareHttp=internalShare.available?createAgentInternalShareHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new AgentInternalShareRepository(business,{allowWrites:internalShare.writes})}):null
@@ -623,6 +635,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     businessHandler=async(req,res)=>{
       // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
       // and original-receipt gates, including recovery after new writes turn off.
+      if(localDevicesHttp&&await localDevicesHttp(req,res))return
       if(agentPlanWorkflowHttp&&await agentPlanWorkflowHttp(req,res))return
       if(agentDesignHttp&&await agentDesignHttp(req,res))return
       if(templateMarketHttp&&await templateMarketHttp(req,res))return
@@ -660,7 +673,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       shuttingDown=true
       localServer.close(()=>{
         void Promise.all([businessPool.end(),authPool.end(),
-          ...(brokerPool?[brokerPool.end()]:[])])
+          ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
           .then(()=>{process.exitCode=0})
       })
     }
@@ -670,7 +683,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   }catch(error){
     if(server?.listening)server.close()
     await Promise.allSettled([businessPool.end(),authPool.end(),
-      ...(brokerPool?[brokerPool.end()]:[])])
+      ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
     throw error
   }
 }

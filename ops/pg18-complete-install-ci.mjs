@@ -3,7 +3,7 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {requireCompleteProfileProvisionCi} from '../services/pg-api/tests/helpers/pg18-complete-install-ci-guard.mjs'
 const here=fileURLToPath(import.meta.url),root=path.resolve(path.dirname(here),'..')
-const phase=name=>console.log(JSON.stringify({event:'complete066_ci_phase',phase:name,synthetic_only:true,production_GO:false}))
+const phase=name=>console.log(JSON.stringify({event:'complete067_ci_phase',phase:name,synthetic_only:true,production_GO:false}))
 export async function runCompleteInstallCi(argv,env=process.env){
  if(argv.length!==1||argv[0]!=='--run')throw Error('complete_install_ci_refused:arguments')
  const permit=requireCompleteProfileProvisionCi(env)
@@ -32,7 +32,7 @@ export async function runCompleteInstallCi(argv,env=process.env){
    for(const [stream,dest]of [[child.stdout,process.stdout],[child.stderr,process.stderr]])stream.on('data',chunk=>{bytes+=chunk.length;if(bytes>1048576){stop();return}dest.write(chunk)})
    child.once('error',()=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);reject(Error('complete_install_ci_refused:owned_fixture_start'))});child.once('close',code=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);code===0&&!stopping&&bytes<=1048576?resolve():reject(Error('complete_install_ci_refused:owned_fixture_failed'))})
   })
-  return {profile:'complete066',actual_genuine_fixture_completed:true,synthetic_only:true,production_GO:false}
+  return {profile:'complete067',actual_genuine_fixture_completed:true,synthetic_only:true,production_GO:false}
  }finally{if(owned){phase('close_owned_clusters');await closeCompleteProfileContainers(owned.lease);phase('owned_clusters_closed')}}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===here){try{console.log(JSON.stringify(await runCompleteInstallCi(process.argv.slice(2))))}catch(error){const text=Object.getOwnPropertyDescriptor(error??{},'message')?.value;console.error(typeof text==='string'&&/^(?:complete_install_(?:ci|stage|container)_refused:[a-z_]+|descriptive_patch_operator_(?:runtime|source)_refused|refuse_non_ephemeral_pg18_ci)$/.test(text)?text:'complete_install_ci_refused:operation_failed');process.exitCode=1}}

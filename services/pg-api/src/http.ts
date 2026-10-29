@@ -1,3 +1,4 @@
+import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
 import type {AgentMemoryRepository} from "./agent-memory-repository.ts"
@@ -38,6 +39,8 @@ import {parseAgentReviewTarget,parsePublicAgentReviewChoice,publicAgentReviewSou
 import {parseAgentGeneratedPreviewInput,parseAgentGeneratedAcceptance,parseAgentGeneratedPreview,parseAgentGeneratedReceipt,agentGeneratedAcknowledgement,type AgentGeneratedAcceptance,type AgentGeneratedReceipt} from "./agent-generated-acceptance-contract.ts"
 
 export interface AppDependencies {
+  /** Native server only, after actual SQL067 audit; requires verified employee Cookie identity. */
+  allowNativeLocalAgentSpecs?:boolean
   repository: AgentSpecRepository
   agentCollaborationRepository?:AgentCollaborationRepository
   agentReleaseRepository?:AgentReleaseRepository
@@ -170,6 +173,11 @@ function allowBodyFields(data:Record<string,unknown>,permitted:string[]) {
  * No CORS, no cookies, no anonymous mode, no trust in X-Rh-User-Id.
  */
 export function createHandler(deps:AppDependencies) {
+  const agentSpec=(raw:unknown,identity:Identity)=>{
+    if(deps.allowNativeLocalAgentSpecs!==true)return safeAgentSpec(raw)
+    if(!deps.authenticateRequest||identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+    return safeNativeLocalAgentSpec(raw,true)
+  }
   return async (req:IncomingMessage,res:ServerResponse):Promise<void>=>{
     try{
       const method=req.method||""
@@ -1143,7 +1151,7 @@ export function createHandler(deps:AppDependencies) {
       if(method==="POST" && !suffix){
         const body=await readBody(req,262144)
         allowBodyFields(body,["name","spec"])
-        const item=await deps.repository.create(identity,safeName(body.name),safeAgentSpec(body.spec))
+        const item=await deps.repository.create(identity,safeName(body.name),agentSpec(body.spec,identity))
         return send(res,201,{item})
       }
       if(method==="PATCH" && suffix){
@@ -1153,7 +1161,7 @@ export function createHandler(deps:AppDependencies) {
         if(!Number.isSafeInteger(revision) || (revision as number)<1)
           throw new HttpError(400,"invalid_revision")
         const item=await deps.repository.update(identity,suffix,
-          safeName(body.name),safeAgentSpec(body.spec),revision as number)
+          safeName(body.name),agentSpec(body.spec,identity),revision as number)
         if(!item){
           const original=await deps.repository.get(identity,suffix)
           if(!original)throw new HttpError(404,"spec_not_found")

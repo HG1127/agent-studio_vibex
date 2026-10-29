@@ -1,12 +1,13 @@
 // Deterministic Workflow interpreter. Replays bounded committed transitions;
 // it never performs I/O, imports a provider/tool, or treats a request as a result.
+import type {NativeLocalEffectConfiguration} from './native-local-agent-contract.ts'
 import {createHash} from "node:crypto"
 import {renderWorkflowTemplate,workflowCondition,workflowLoopItems,WorkflowValueError} from "./workflow-v2-values.ts"
 import {HttpError,safeWorkflowGraph,type WorkflowGraph,type WorkflowNode} from "./contracts.ts"
 
 export type WorkflowEffectRequest={
   step_key:string;node_id:string;kind:"model"|"tool"|"agent";input:string
-  input_sha256:string;configuration:WorkflowNode["data"];missing:string[]
+  input_sha256:string;configuration:WorkflowNode["data"]|NativeLocalEffectConfiguration;missing:string[]
   agent_context?:{parent_step_key:string;round:number;phase:"model"|"tool"}
 }
 export type WorkflowEffectResult={step_key:string;input_sha256:string;output:string;outcome?:"rejected"}

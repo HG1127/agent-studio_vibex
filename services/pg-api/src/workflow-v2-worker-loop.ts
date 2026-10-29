@@ -1,3 +1,5 @@
+import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
+import {verifyNativeLocalDeviceSchema} from './native-local-device-audit.ts'
 import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
@@ -38,6 +40,8 @@ export function runV2WorkerCli(autonomous=false){
   const marker="APPROVE_ISOLATED_PG_WORKFLOW_V2_RUNTIME_ONLY"
   function required(name:string){const value=process.env[name]?.trim();if(!value)throw Error("missing_"+name);return value}
   async function main(mode:"serve"|"preflight"){
+    const localDeviceExecutionApproved=selectNativeLocalDeviceExecution(process.env)
+    if(localDeviceExecutionApproved&&!autonomous)throw Error("native_local_autonomous_worker_required")
     const modelEnabled=selectWorkflowV2ModelExecution(process.env)
     const toolsEnabled=selectWorkflowV2ToolExecution(process.env)
     const knowledgeToolsEnabled=selectKnowledgeToolRuntime(process.env)
@@ -79,6 +83,7 @@ export function runV2WorkerCli(autonomous=false){
     const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
     try{
       await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
+      if(localDeviceExecutionApproved){const db=await adapter.connect();try{await db.query("BEGIN READ ONLY");await db.query("SET LOCAL ROLE agentstudio_worker");await verifyNativeLocalDeviceSchema(db)}finally{try{await db.query("ROLLBACK")}finally{db.release()}}}
       await verifyWorkflowSampleLineageSchema(adapter)
       if(scheduleApproved)await verifyScheduleRuntimeSchema(adapter)
       if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
@@ -89,7 +94,7 @@ export function runV2WorkerCli(autonomous=false){
       const outcomeAvailable=await inspectAgentMemoryOutcomeSchema(adapter)
       await inspectAgentMemoryFailureSourceSchema(adapter)
       if(outcomeApproved&&(!outcomeAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
-      const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,
+      const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,localDeviceExecutionApproved,
         origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),
         ca:readBoundRuntimeCredential(kind,"dispatch-ca.pem",process.env),
         cert:readBoundRuntimeCredential(kind,autonomous?"dispatch-agent.pem":"dispatch-workflow.pem",process.env),
@@ -111,7 +116,7 @@ export function runV2WorkerCli(autonomous=false){
       // Preflight never loads either execution Worker or its claim SQL.
       const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
       const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
-      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       closeWorkerClaims=()=>worker.closeNewClaims()
       claimsClosed=()=>worker.claimAdmissionSnapshot().closed
       if(stop){closeWorkerClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}

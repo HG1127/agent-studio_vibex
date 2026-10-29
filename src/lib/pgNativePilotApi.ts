@@ -1,3 +1,4 @@
+import {localId} from '../../shared/native-local-device-contract.mjs'
 /** Separate, local-only PostgreSQL 18 native-auth test client.
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
@@ -51,6 +52,7 @@ export type {KnowledgeEmbeddingConsent,KnowledgeEmbeddingConsentChange,Knowledge
 export type {KnowledgeEmbeddingSettings,KnowledgeEmbeddingStatus,KnowledgeEmbeddingReceipt,KnowledgeEmbeddingChange} from "../../services/pg-api/src/knowledge-embedding-contracts.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
+  local_devices_available?:boolean;local_device_writes_enabled?:boolean
   own_operations_available?:boolean
   company_overview_available?:boolean
   company_worker_heartbeats_available?:boolean
@@ -163,6 +165,8 @@ export type PgNativeWorkflowV2Summary={id:string;workflow_id:string;status:strin
   step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string;debug_node_id?:string|null}
 import {nativeRunControlRequest,type NativeRunControlAction,type NativeRunControlRequest,type NativeRunControlView,type NativeRunControlReceipt} from "./pgNativeAgentRunControl.ts"
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
+  local_device_id?:string|null
+  local_tasks?:{id:string;step_key:string;status:string;error:string}[]
   run_control?:NativeRunControlView;run_control_confirmation?:NativeRunControlReceipt|null;control_confirmed?:boolean
   outcome_memory?:PgNativeOutcomeConsent
   optimization_retest?:OptimizationRetestProof
@@ -800,6 +804,9 @@ export function createPgNativePilotApi(
             typeof value.bound_model_runs_enabled!=="boolean")||
           (value.run_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.bound_model_runs_enabled===true&&value.run_submission_enabled!==true)||
+          (value.local_devices_available!==undefined&&typeof value.local_devices_available!=="boolean")||
+          (value.local_device_writes_enabled!==undefined&&typeof value.local_device_writes_enabled!=="boolean")||
+          (value.local_device_writes_enabled===true&&(value.local_devices_available!==true||value.config_writes_enabled!==true))||
          value.run_execution_enabled!==false)
         throw new PgNativePilotError(503,"invalid_native_capabilities")
       return {...value,own_operations_available:value.own_operations_available===true}
@@ -1158,7 +1165,7 @@ export function createPgNativePilotApi(
       return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
     },
-    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean,optimization_lineage_id?:string)=>{
+    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean,optimization_lineage_id?:string,local_device_id?:string)=>{
       if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
@@ -1167,7 +1174,7 @@ export function createPgNativePilotApi(
       let lineage:string|undefined
       if(optimization_lineage_id!==undefined)try{lineage=optimizationRetestId(optimization_lineage_id)}catch{throw new PgNativePilotError(400,"invalid_optimization_retest")}
       const result=agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
-        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{}),...(lineage?{optimization_lineage_id:lineage}:{})}))
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{}),...(lineage?{optimization_lineage_id:lineage}:{}),...(local_device_id!==undefined?{local_device_id:localId(local_device_id)}:{})}))
       try{
         if(remember_outcome===true)result.outcome_memory=agentOutcomeConsent(result.outcome_memory,result.run.id,id.toLowerCase(),expected_revision)
         else if(Object.hasOwn(result,"outcome_memory"))throw Error("unexpected_outcome_consent")

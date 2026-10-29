@@ -1,3 +1,6 @@
+import {createPgNativeLocalDeviceApi} from '@/lib/pgNativeLocalDevice'
+import PgNativeLocalDevicesPanel from './PgNativeLocalDevicesPanel'
+import PgNativeOfficeWorkflowPanel,{type NativeOfficeRunRequest} from './PgNativeOfficeWorkflowPanel'
 import {PgNativeEmployeeSettingsPanel} from "./PgNativeEmployeeSettingsPanel.tsx"
 import {lazy,Suspense,useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from "react"
 import {Bot,BookOpen,BriefcaseBusiness,CheckCircle2,Database,
@@ -71,7 +74,7 @@ const KB_AGENT_BINDING_DEV_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_AGENT_KB_BIND_UI_ENABLED==="true"
 const AgentKnowledgeUatPanel=KB_AGENT_BINDING_DEV_ONLY
   ?lazy(()=>import("./PgNativeAgentKnowledgeUatPanel")):null
-type Screen="createAgent"|"ownOperations"|"companyOverview"|"agents"|"templates"|"internalShares"|"approvalDelegations"|"workflowDraft"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
+type Screen="localDevices"|"officeWorkflow"|"createAgent"|"ownOperations"|"companyOverview"|"agents"|"templates"|"internalShares"|"approvalDelegations"|"workflowDraft"|"collaboration"|"releases"|"workflows"|"knowledge"|"schedules"|"employees"|"runs"|"runAgent"|"autonomousAgent"|"workflowRuns"|"workflowNativeRuns"|"runUat"|"modelConnections"|"toolConnections"
 type State="checking"|"signedout"|"signedin"|"unavailable"
 const field="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
@@ -101,6 +104,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const agentPlanWorkflowApi=useMemo(()=>createPgNativeAgentPlanWorkflowApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const templateMarketApi=useMemo(()=>createPgNativeTemplateMarketApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const internalShareApi=useMemo(()=>createPgNativeInternalShareApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
+  const localDeviceApi=useMemo(()=>createPgNativeLocalDeviceApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const approvalDelegationApi=useMemo(()=>createPgNativeApprovalDelegationApi({transport:fetch,rootPath:productionRoot?"":"/__pg_native"}),[productionRoot])
   const authenticatedApi=useRef(api)
   const apiMatches=authenticatedApi.current===api
@@ -180,6 +184,10 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
   const [agentDesignOpened,setAgentDesignOpened]=useState(false)
   useEffect(()=>{if(agentDesign.available)setAgentDesignOpened(true)},[agentDesign.available])
   const [approvalDelegation,setApprovalDelegation]=useState({available:false,writes:false})
+  const [localDevices,setLocalDevices]=useState({available:false,writes:false})
+  const [localDevicesOpened,setLocalDevicesOpened]=useState(false)
+  useEffect(()=>{if(localDevices.available)setLocalDevicesOpened(true)},[localDevices.available])
+  const [officeRequest,setOfficeRequest]=useState<NativeOfficeRunRequest|null>(null)
   const [internalShare,setInternalShare]=useState({available:false,writes:false})
   const [internalShareOpened,setInternalShareOpened]=useState(false)
   useEffect(()=>{if(internalShare.available)setInternalShareOpened(true)},[internalShare.available])
@@ -250,6 +258,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     setAgentPlanWorkflow({available:false,submissions:false,saves:false});setAgentPlanWorkflowOpened(false);setWorkflowOpenRequest(null);workflowOpenSequence.current++
     setAgentDesign({available:false,submissions:false,saves:false});setAgentDesignOpened(false)
     setTemplateMarket({available:false,writes:false});setTemplateMarketOpened(false);setTemplateSetup(null)
+    setLocalDevices({available:false,writes:false});setLocalDevicesOpened(false);setOfficeRequest(null)
     setInternalShare({available:false,writes:false});setInternalShareOpened(false)
     setApprovalDelegation({available:false,writes:false})
     templateSetupSequence.current++;templateSetupPending.current=null;setTemplateSetupOpening(false)
@@ -342,6 +351,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
       setAgentDesign({available:capability?.agent_design_available===true,submissions:capability?.agent_design_submissions_enabled===true&&capability.config_writes_enabled===true,saves:capability?.agent_design_saves_enabled===true&&capability.config_writes_enabled===true})
       setTemplateMarket({available:capability?.agent_template_market_available===true,writes:capability?.agent_template_market_writes_enabled===true&&capability.config_writes_enabled===true})
       setInternalShare({available:capability?.internal_share_available===true,writes:capability?.internal_share_writes_enabled===true&&capability.config_writes_enabled===true})
+      setLocalDevices({available:capability?.local_devices_available===true,writes:capability?.local_device_writes_enabled===true&&capability.config_writes_enabled===true})
       setApprovalDelegation({available:capability?.approval_delegations_available===true,writes:capability?.approval_delegations_writes_enabled===true&&capability.config_writes_enabled===true})
       setOutcomeMemory({available:capability?.agent_outcome_memory_available===true,enabled:capability?.agent_outcome_memory_admission_enabled===true&&capability.config_writes_enabled===true})
       setDerivedMemory({available:capability?.agent_derived_memory_available===true,enabled:capability?.agent_derived_memory_writes_enabled===true&&capability.config_writes_enabled===true})
@@ -631,6 +641,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
     ...(agentPlanWorkflow.available?[{key:"workflowDraft" as const,label:"生成工作流草图",icon:Workflow,count:null}]:[]),
     ...(templateMarket.available?[{key:"templates" as const,label:"模板市场",icon:BookOpen,count:null}]:[]),
     ...(internalShare.available?[{key:"internalShares" as const,label:"内部模板共享",icon:BookOpen,count:null}]:[]),
+    ...(localDevices.available?[{key:"localDevices" as const,label:"本机设备",icon:BookOpen,count:null},{key:"officeWorkflow" as const,label:"本地办公流程",icon:BookOpen,count:null}]:[]),
     ...(approvalDelegation.available?[{key:"approvalDelegations" as const,label:"审批委托",icon:ClipboardCheck,count:null}]:[]),
     ...(canReadSingleTask?[{key:"runAgent" as const,label:canRunOwnerModel?"运行 Agent":"Agent 原任务（只读）",icon:Bot,count:null}]:[]),
     {key:"workflows" as const,label:"Workflow",icon:Workflow,count:workflows.length},
@@ -789,7 +800,7 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               当前环境未授权提交模型任务。已有记录可在运行历史中查看。
             </p>}
             <div hidden={section!=="autonomousAgent"}>
-              <PgNativeAutonomousAgentPanel key={originalTaskKey} api={api} ownerId={profile.id} agents={agents} connections={modelConnections} tools={toolConnections} agentSelectionRequest={journeyAgentRequest}
+              <PgNativeAutonomousAgentPanel key={originalTaskKey} api={api} ownerId={profile.id} agents={agents} connections={modelConnections} tools={toolConnections} agentSelectionRequest={journeyAgentRequest} localDeviceApi={localDeviceApi} localDevicesAvailable={localDevices.available} officeRequest={officeRequest}
                 humanAvailable={humanInput.available} humanEnabled={humanInput.enabled}
                 outcomeAvailable={outcomeMemory.available} outcomeEnabled={outcomeMemory.enabled&&!loading&&!busy}
                 optimizationAvailable={optimization.available} optimizationEnabled={optimization.enabled&&!loading&&!busy} onRoleChanged={refresh}
@@ -817,6 +828,8 @@ export default function PgNativePilotPage({productionRoot=false}:{productionRoot
               key={originalTaskKey+":templates"} api={templateMarketApi} employeeId={profile.id} scopeKey={originalTaskKey+":"+sessionFence.current.session()}
               active={apiMatches&&section==="templates"} available={templateMarket.available} writes={templateMarket.writes&&!loading&&!busy&&!templateSetupOpening}
               onExpired={expireOriginalTaskSession} onChanged={refresh} onConfigureAgent={id=>{void openTemplateAgentConfiguration(id)}}/>}</div>
+            {(localDevicesOpened||localDevices.available)&&<div hidden={section!=="localDevices"}><PgNativeLocalDevicesPanel key={originalTaskKey+":local-devices"} api={localDeviceApi} active={apiMatches&&section==="localDevices"} available={localDevices.available} writes={localDevices.writes&&!loading&&!busy} onExpired={expireOriginalTaskSession}/></div>}
+            {(localDevicesOpened||localDevices.available)&&<div hidden={section!=="officeWorkflow"}><PgNativeOfficeWorkflowPanel key={originalTaskKey+":office"} api={api} devicesApi={localDeviceApi} active={apiMatches&&section==="officeWorkflow"} available={localDevices.available} writes={localDevices.writes&&!loading&&!busy} onExpired={expireOriginalTaskSession} onChanged={refresh} onConfigureAgent={id=>{void openTemplateAgentConfiguration(id)}} onPrepareRun={r=>{setOfficeRequest(old=>({...r,selection:(old?.selection??0)+1}));setSection("autonomousAgent")}}/></div>}
             <div hidden={section!=="internalShares"}>{(internalShareOpened||internalShare.available)&&<PgNativeInternalSharePanel
               key={originalTaskKey+":internal-shares"} api={internalShareApi} employeeId={profile.id} scopeKey={originalTaskKey+":"+sessionFence.current.session()}
               active={apiMatches&&section==="internalShares"} available={internalShare.available} writes={internalShare.writes&&!loading&&!busy&&!templateSetupOpening}

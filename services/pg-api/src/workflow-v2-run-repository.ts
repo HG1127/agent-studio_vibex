@@ -76,7 +76,7 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
   }catch{throw new HttpError(409,"invalid_workflow_v2_state")}
   const parent=inspectWorkflowV2Checkpoint(graph,value.machine).pending
   if(Object.hasOwn(value,"agent_state")){
-    if(!value.agent_state||parent?.kind!=="agent")throw new HttpError(409,"invalid_workflow_v2_state")
+    if(!value.agent_state||parent?.kind!=="agent"||value.agent_state.local_device&&root.kind!=="agent")throw new HttpError(409,"invalid_workflow_v2_state")
     const pending=inspectWorkflowAgentState(value.agent_state,parent).pending
     if(workflowAgentJson(value.agent_state.memory_context??null)!==workflowAgentJson(value.memory_context??null))throw new HttpError(409,"agent_memory_context_unavailable")
     if(Object.hasOwn(value,"agent_dispatch")){const dispatch=value.agent_dispatch
@@ -115,7 +115,7 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0,state.graph.nodes[1]?.data.model_binding,state.graph.nodes[1]?.data.require_plan_review)
     if(workflowAgentJson(graph)!==workflowAgentJson(state.graph))throw new HttpError(409,"invalid_v2_root")
     const agent=graph.nodes[1]!
-    const {spec}=await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]})
+    const {spec}=await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]},undefined,true)
     const required=agent.data.require_plan_review??spec.require_plan_review??false
     if(required&&state.machine.effects.some(effect=>effect.step_key==="wf2_00002_agent"&&!effect.outcome)&&!state.human_agent_keys?.includes("wf2_00002_agent"))
       throw new HttpError(409,"agent_human_archive_unavailable")
@@ -124,7 +124,7 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
   }
   await verifyWorkflowGraphResources(db,owner,state.graph)
   if(state.agent_state){const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending!
-    await verifyWorkflowAgentResources(db,owner,parent,state.agent_state)}
+    await verifyWorkflowAgentResources(db,owner,parent,state.agent_state,root.kind==="agent")}
   const evidence=await verifyAgentHumanResponses(db,run,state)
   if(root.kind==="agent"&&run.status==="succeeded"&&state.human_agent_keys?.includes("wf2_00002_agent")&&
     run.result_text!==evidence.deliveries.wf2_00002_agent?.output)throw new HttpError(409,"agent_human_delivery_unavailable")

@@ -50,6 +50,8 @@ export function createNativeAuthHttpHandler(deps:{
   allowApprovalDelegationWrites?:boolean
   allowInternalShare?:boolean
   allowInternalShareWrites?:boolean
+  allowLocalDevices?:boolean
+  allowLocalDeviceWrites?:boolean
   allowAgentTemplateMarket?:boolean
   allowAgentTemplateMarketWrites?:boolean
   allowAgentDescriptivePatch?:boolean

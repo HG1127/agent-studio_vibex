@@ -1,0 +1,135 @@
+name: Agent Studio F20 F21 Native Local Devices genuine PG18 isolated verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_executor:
+        description: Run the real independent executor cases after the five locked root dependencies are integrated
+        required: true
+        type: boolean
+        default: false
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+      - 'codex/pg18-local-device-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-native-local-device-genuine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-local-device-genuine:
+    name: F20 F21 / actual PG18 ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [flow, database]
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F20_F21_GENUINE_CI: YES_DISPOSABLE_F20_F21_ONLY
+      AGENT_STUDIO_F20_F21_GENUINE_SUITE: ${{ matrix.suite }}
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_AVAILABLE: 'true'
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_WRITES_ENABLED: 'true'
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_APPROVED: APPROVE_DISPOSABLE_PG18_NATIVE_LOCAL_DEVICES_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked API dependencies only, without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Dedicated purpose guard and syntax
+        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/native-local-device-genuine-guard.test.mjs
+      - name: Actual installed SQL067 catalog and minimum original LOGIN
+        if: matrix.suite == 'database'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-database-pg18.test.mjs
+      - name: Actual Native Cookie RPC, exclusive claims and unknown receipt recovery
+        if: matrix.suite == 'flow'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-protocol-pg18.test.mjs
+
+  pg18-local-device-executor:
+    name: F20 F21 / actual executor ${{ matrix.case }}
+    if: github.event_name == 'workflow_dispatch' && inputs.run_executor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [runtime, cli]
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F20_F21_GENUINE_CI: YES_DISPOSABLE_F20_F21_ONLY
+      AGENT_STUDIO_F20_F21_GENUINE_SUITE: executor
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_AVAILABLE: 'true'
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_WRITES_ENABLED: 'true'
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_APPROVED: APPROVE_DISPOSABLE_PG18_NATIVE_LOCAL_DEVICES_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked root runtime dependencies, no lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Locked API dependencies, no API lock changes
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual Native protocol and runtime artifacts
+        if: matrix.case == 'runtime'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-genuine-pg18.test.mjs
+      - name: Actual independent CLI process restart and Office artifacts
+        if: matrix.case == 'cli'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-local-device-executor-pg18.test.mjs

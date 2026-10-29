@@ -1,3 +1,5 @@
+import {verifyNativeLocalWorkerRole} from './native-local-agent-resources.ts'
+import {parseLocalBinding} from '../../../shared/native-local-device-contract.mjs'
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 // Durable V2 transitions. No provider/tool implementation is imported here.
 // External execution requires an explicitly installed trusted adapter; a missing
@@ -76,6 +78,7 @@ type Prepared={tick:WorkflowV2Tick}|{request:WorkflowEffectRequest;job:Job}
 export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
+  readonly localDeviceEnabled:boolean
   readonly agentEnabled:boolean
   readonly scheduleEnabled:boolean
   readonly humanEnabled:boolean
@@ -85,9 +88,10 @@ export class WorkflowV2Worker{
   readonly #claimAdmission:WorkerClaimAdmission
   readonly #claimLane:DurableV2Mode
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode;localDeviceExecutionApproved?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
+    this.localDeviceEnabled=options.localDeviceExecutionApproved===true
     this.agentEnabled=options.agentExecutionApproved===true
     this.scheduleEnabled=options.scheduleExecutionApproved===true
     this.humanEnabled=options.humanInputApproved===true
@@ -162,7 +166,7 @@ export class WorkflowV2Worker{
     try{
       output=await Promise.race([this.executor!.execute(prepared.request,{job_id:job.id,run_id:job.run_id,
         lease_token:job.lease_token,lease_version:Number(job.lease_version),worker_id:this.workerId,execution_mode:this.root.mode,signal:controller.signal}),
-      new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("workflow_effect_timeout"))},this.timeoutMs)})])
+      new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("workflow_effect_timeout"))},this.localDeviceEnabled&&this.root.mode==="agent_native_v2"&&prepared.request.configuration.tool==="local_computer"?128000:this.timeoutMs)})])
       if(typeof output!=="string"||output.length>20000||output.includes("\0"))unknown=true
     }catch(error){
       if(error instanceof WorkflowKnownEffectFailure)return this.finishKnownFailure(job,prepared.request,error.code)
@@ -170,7 +174,7 @@ export class WorkflowV2Worker{
     }finally{if(timer)clearTimeout(timer)}
     // A DB failure after the external call is intentionally NOT retried here.
     // The committed started ledger blocks reclaim; reconciliation pauses it.
-    return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,prepared.request.agent_context&&prepared.request.kind==="model"?12000:4000))
+    return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,prepared.request.agent_context&&(prepared.request.kind==="model"||prepared.request.configuration.tool==="local_computer")?12000:4000))
   }
   private async prepare(job:Job):Promise<Prepared>{return tx(this.pool,async db=>{
     const leased=await lockLease(db,job,this.workerId)
@@ -181,6 +185,10 @@ export class WorkflowV2Worker{
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='"+this.root.kind+"' FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]
     if(!row||!["queued","running"].includes(row.status))return {tick:{status:"stale",run_id:job.run_id}}
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.agent_state?.local_device){
+      if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
+      await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
+    }
     if(state.human_agent_keys?.length&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
@@ -270,7 +278,14 @@ export class WorkflowV2Worker{
         if(pending.kind==="agent"){
           if(this.agentEnabled){
             if(state.memory_context&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
-            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(state.memory_context?{memoryContext:state.memory_context}:{})})
+            let localDevice:ReturnType<typeof parseLocalBinding>|undefined
+            if(this.localDeviceEnabled&&this.root.mode==="agent_native_v2"){
+              await db.query("SET LOCAL ROLE agentstudio_worker")
+              const value=(await db.query<{value:unknown}>("SELECT agentstudio.native_local_worker_binding($1::jsonb) AS value",[JSON.stringify({job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId})])).rows[0]?.value
+              if(value!==null&&value!==undefined)localDevice=parseLocalBinding(value)
+              await actor(db,job.owner_user_id)
+            }
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(localDevice?{localDevice}:{}),...(state.memory_context?{memoryContext:state.memory_context}:{})})
             if(state.agent_state.human_protocol)state.human_agent_keys=[...new Set([...(state.human_agent_keys??[]),pending.step_key])]
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")
@@ -355,6 +370,10 @@ export class WorkflowV2Worker{
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.agent_state?.local_device){
+      if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
+      await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
+    }
     const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
     const changed=await db.query("UPDATE agentstudio.external_effects SET status=$4::text,result_reference=$5::text,updated_at=clock_timestamp() "+
@@ -392,6 +411,10 @@ export class WorkflowV2Worker{
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.agent_state?.local_device){
+      if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
+      await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
+    }
     const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
     const changed=await db.query("UPDATE agentstudio.external_effects SET status='failed',updated_at=clock_timestamp() "+

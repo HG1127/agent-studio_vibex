@@ -1,3 +1,4 @@
+import {enqueueNativeLocalTool,waitNativeLocalTool} from './native-local-device-execution.ts'
 // Private, owner-scoped Tool Broker. No caller-selected URL, headers, identity
 // or plaintext credential enters this protocol. No automatic effect retries.
 import {HttpError,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
@@ -52,12 +53,14 @@ async function workflowContext(db:SqlClient,owner:string,id:string,query:string)
 export class WorkflowV2ToolDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer;readonly executor:WorkflowToolExecutor
   readonly allowAutonomous:boolean;readonly allowAgent:boolean
+  readonly allowLocalDevices:boolean
   readonly allowMemory:boolean
   readonly knowledgeQueries:KnowledgeQueryRepository|null
-  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowKnowledgeExecution?:boolean;allowMemoryExecution?:boolean}={}){
+  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowKnowledgeExecution?:boolean;allowMemoryExecution?:boolean;allowLocalDeviceExecution?:boolean}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||!executor||!brokerPool)throw Error("workflow_tool_dispatch_dependencies_required")
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
     this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true
+    this.allowLocalDevices=options.allowLocalDeviceExecution===true
     this.allowMemory=options.allowMemoryExecution===true
     if(options.allowKnowledgeExecution===true&&(pool.knowledgeToolRuntime!==true||pool.knowledgeQueryRuntime!==true))throw Error("workflow_knowledge_tool_disabled")
     this.knowledgeQueries=options.allowKnowledgeExecution===true?new KnowledgeQueryRepository(pool,{executionSourceApproved:true,allowAgentExecution:this.allowAgent,allowAutonomousExecution:this.allowAutonomous}):null
@@ -65,10 +68,11 @@ export class WorkflowV2ToolDispatch{
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ToolRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory),plan=prepareWorkflowTool(pending)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices),plan=prepareWorkflowTool(pending)
       let output:string|undefined,connection:ToolRow|undefined,model:Pick<ModelRow,"provider"|"base_url">|undefined,mcp:Awaited<ReturnType<typeof resolveMcpBinding>>|undefined,keywordRecorded=false
       let headerRefs:HeaderRef[]=[]
-      if(plan.kind==="calculate")output=plan.output
+      if(plan.kind==="local_computer"){if(!this.allowLocalDevices||!this.allowAutonomous||request.execution_mode!=="agent_native_v2")throw new HttpError(403,"native_local_device_execution_not_approved")}
+      else if(plan.kind==="calculate")output=plan.output
       else if(plan.kind==="knowledge_search"){
         if(plan.retrieval){if(!this.knowledgeQueries)throw new WorkflowKnownEffectFailure("workflow_tool_adapter_unavailable")}
         else if(!plan.ids.length)output=await workflowContext(db,owner,request.claim.run_id,plan.query)
@@ -104,11 +108,12 @@ export class WorkflowV2ToolDispatch{
         }catch{throw new WorkflowKnownEffectFailure("workflow_tool_input_invalid")}
       }
       await reserveWorkflowEffectDispatch(db,owner,request,"tool")
+      const localJob=plan.kind==="local_computer"?await enqueueNativeLocalTool(db,request,plan.input):undefined
       if(plan.kind==="knowledge_search"&&!plan.retrieval&&plan.ids.length){
         const evidence=await gatherWorkflowKeywordEvidence(db,owner,plan.ids,plan.query,request)
         output=searchOutput(await sharedKnowledgeScopeEnabled(db)?"authorized_keyword":"owner_private_keyword",evidence.hits);keywordRecorded=evidence.recorded
       }
-      return {plan,output,connection,model,headerRefs,mcp,owner,keywordRecorded}
+      return {plan,output,connection,model,headerRefs,mcp,owner,keywordRecorded,localJob}
     })
     // Every error from here is potentially ambiguous. Only pre-reservation
     // parsing/configuration failures may be reported as deterministic failures.
@@ -116,11 +121,12 @@ export class WorkflowV2ToolDispatch{
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
     try{
       const recheck=()=>withActor(this.pool,identity,async(db,owner)=>{
-        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory)
+        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices)
       })
       const execute=async()=>{
         const plan=selected.plan
         if(selected.output!==undefined)return selected.output
+        if(plan.kind==="local_computer")return waitNativeLocalTool(this.pool,identity,request,selected.localJob!.id,controller.signal,this.allowMemory)
         if(plan.kind==="knowledge_search"&&plan.retrieval){
           await recheck()
           return executeKnowledgeTool(this.knowledgeQueries!,identity,selected.owner,request,{...plan,retrieval:plan.retrieval},controller.signal)
@@ -189,12 +195,12 @@ export class WorkflowV2ToolDispatch{
         throw Error("workflow_tool_operation_unavailable")
       }
       text=await Promise.race([execute(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{
-        controller.abort();reject(Error("workflow_tool_timeout"))},25000)})])
+        controller.abort();reject(Error("workflow_tool_timeout"))},selected.plan.kind==="local_computer"?123000:25000)})])
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_tool_result")
       // No result based on an expired earlier observation may publish, even
       // when the effect completed while the source was being revoked/edited.
       await withActor(this.pool,identity,async(db,owner)=>{
-        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory)
+        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices)
         if(selected.keywordRecorded)await requireCurrentKeywordStep(db,request)
       })
       failed=false

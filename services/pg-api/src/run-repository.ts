@@ -249,6 +249,8 @@ export class RunRepository {
           if(scope.some(base=>base.owner_user_id!==actor)&&!spec.spec.model_binding)
             throw new HttpError(409,"shared_knowledge_requires_owner_model_binding")
         }
+        if(Array.isArray(spec.spec?.tools)&&spec.spec.tools.includes("local_computer"))
+          throw new HttpError(409,"agent_local_tools_require_autonomous_runtime")
         if(Array.isArray(spec.spec?.http_tools)&&spec.spec.http_tools.length)
           throw new HttpError(409,"agent_http_tools_require_autonomous_runtime")
         if(Array.isArray(spec.spec?.mcp_tools)&&spec.spec.mcp_tools.length)
