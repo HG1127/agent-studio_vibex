@@ -1,0 +1,47 @@
+// Owned references come only from this module's spawn, never from a caller PID.
+import fs from 'node:fs'
+import {spawn} from 'node:child_process'
+import {randomUUID} from 'node:crypto'
+import {performance} from 'node:perf_hooks'
+import {setTimeout as delay} from 'node:timers/promises'
+import {liveRoot} from './pg18-full069-worker-live-sources.mjs'
+import {liveContext,writeLiveRecord,readLivePrivate} from './pg18-full069-worker-live-trust.mjs'
+import {liveEntries,freeze,closed,liveFail} from './pg18-full069-worker-live-contract.mjs'
+const groups=new WeakMap(),children=new WeakMap()
+export function readFull069KernelProcess(pid){
+ if(!Number.isInteger(pid)||pid<1)liveFail('kernel_pid');const prefix='/proc/'+pid+'/',stat=fs.readFileSync(prefix+'stat','utf8'),end=stat.lastIndexOf(')'),parts=stat.slice(end+2).split(' '),status=fs.readFileSync(prefix+'status','utf8'),field=k=>{const m=new RegExp('^'+k+':[\\t ]*([^\\r\\n]*)$','m').exec(status);if(!m)liveFail('kernel_status');return m[1].trim()},argv=fs.readFileSync(prefix+'cmdline').toString('utf8').split('\0').filter(Boolean)
+ return {pid,parent_pid:Number(parts[1]),start_ticks:parts[19],state:parts[0],uids:field('Uid').split(/\s+/).map(Number),gids:field('Gid').split(/\s+/).map(Number),groups:field('Groups').split(/\s+/).filter(Boolean).map(Number).sort((a,b)=>a-b),capabilities_zero:['CapInh','CapPrm','CapEff','CapBnd','CapAmb'].every(k=>/^0+$/.test(field(k))),no_new_privs:field('NoNewPrivs')==='1',argv,mount_namespace:fs.readlinkSync(prefix+'ns/mnt')}
+}
+function owned(handle){const s=groups.get(handle);if(!s)liveFail('untrusted_processes');return s}
+function matches(c,proc){return proc.pid===c.pid&&proc.start_ticks===c.start_ticks&&proc.parent_pid===c.outer.pid&&proc.uids.every(v=>v===c.profile.uid)&&proc.gids.every(v=>v===c.profile.gid)&&JSON.stringify(proc.groups)===JSON.stringify([...c.profile.groups].sort((a,b)=>a-b))&&proc.capabilities_zero&&proc.no_new_privs&&JSON.stringify(proc.argv)===JSON.stringify([process.execPath,'--experimental-strip-types',c.entry,...c.args])&&proc.mount_namespace!==c.parentNamespace&&!['Z','X'].includes(proc.state)}
+function sameKernel(pid,start){try{return readFull069KernelProcess(pid).start_ticks===start}catch{return false}}
+function assertExclusiveUids(s){const ctx=liveContext(s.trust),uids=new Set([ctx.profile.native.uid,...ctx.profile.workers.map(w=>w.uid)]),allowed=new Map([...s.entries.values()].filter(c=>c.pid&&c.start_ticks&&!c.stopping).map(c=>[c.pid,c.start_ticks]));for(const name of fs.readdirSync('/proc')){if(!/^[1-9][0-9]*$/.test(name))continue;let p;try{const status=fs.readFileSync('/proc/'+name+'/status','utf8'),line=/^Uid:[\t ]*([0-9\t ]+)$/m.exec(status);if(!line)liveFail('kernel_uid');if(!line[1].trim().split(/\s+/).some(v=>uids.has(Number(v))))continue;p=readFull069KernelProcess(Number(name))}catch(error){if(!fs.existsSync('/proc/'+name))continue;throw error}if(allowed.get(p.pid)!==p.start_ticks)liveFail('uid_not_exclusive')}}
+export function openFull069OwnedProcesses(trust){const s=liveContext(trust);if(!s.write||!s.store)liveFail('processes_not_approved');const handle=Object.freeze(Object.create(null));groups.set(handle,{trust,entries:new Map(),closed:false});return handle}
+export async function launchFull069OwnedProcess(handle,id){
+ const s=owned(handle),ctx=liveContext(s.trust);if(s.closed||s.entries.has(id))liveFail('duplicate_process');assertExclusiveUids(s);const native=id==='native',entry=native?{id:'native',file:'native-server.ts',args:['--serve'],kinds:[],unit:'agentstudio-pg18-native.service'}:liveEntries.find(x=>x.id===id)??liveFail('entry');const profile=native?ctx.profile.native:ctx.profile.workers[liveEntries.indexOf(entry)],args=entry.args,filename=liveRoot+'/services/pg-api/src/'+entry.file,parent=readFull069KernelProcess(process.pid),nonce=randomUUID()
+ for(const mount of profile.mounts)if(readLivePrivate(mount.source,{owner:profile.uid,mode:[0o400],max:2097152}).sha256!==mount.sha256)liveFail('mount_changed')
+ writeLiveRecord(s.trust,'child-'+id+'.json',{format:'pg18_full069_worker_live_child_v1',run_id:ctx.profile.run_id,profile_sha256:ctx.profileSha256,source_sha256:ctx.profile.source_sha256,id,parent_pid:process.pid,parent_start:parent.start_ticks,parent_mount_namespace:parent.mount_namespace,nonce})
+ const env={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8',HOME:'/nonexistent',AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED:'true',AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED:'RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY'}
+ const outer=spawn('/usr/bin/unshare',['--mount','--propagation','private',process.execPath,'--experimental-strip-types',liveRoot+'/services/pg-api/src/pg18-full069-worker-live-child.mjs','--launch',id],{cwd:liveRoot,env,stdio:['ignore','ignore','ignore','ipc'],windowsHide:true})
+ /** @type {{id:string,profile:any,entry:string,args:string[],outer:import('node:child_process').ChildProcess,pid:number|null,start_ticks:string|null,outer_start:string|null,nonce:string,parentNamespace:string,failed:boolean,exit:{code:number|null,signal:NodeJS.Signals|null}|null,stopping:boolean,nativeReady:boolean,outerClose?:Promise<unknown>,outerExited?:boolean}} */
+ const c={id,profile,entry:filename,args:[...args],outer,pid:null,start_ticks:null,outer_start:null,nonce,parentNamespace:parent.mount_namespace,failed:false,exit:null,stopping:false,nativeReady:false};s.entries.set(id,c);children.set(c,handle)
+ const outerClose=new Promise(resolve=>outer.once('close',(code,signal)=>{c.exit={code,signal};resolve(undefined)}));c.outerClose=outerClose;outer.once('error',()=>{c.failed=true});outer.once('exit',()=>{c.outerExited=true});outer.once('spawn',()=>{try{c.outer_start=readFull069KernelProcess(outer.pid).start_ticks}catch{c.failed=true}})
+ outer.on('message',message=>{try{const event=message&&typeof message==='object'?Object.getOwnPropertyDescriptor(message,'event')?.value:null;if(event==='owned_process_started'){const m=closed(message,['event','id','nonce','pid']);if(m.id!==id||m.nonce!==nonce||c.pid!==null||!Number.isInteger(m.pid)||m.pid<1)liveFail('process_channel');c.pid=m.pid}else if(event==='owned_native_listening'){const m=closed(message,['event','id','nonce']);if(!native||m.id!==id||m.nonce!==nonce)liveFail('process_channel');c.nativeReady=true}else if(event==='owned_process_failed'){c.failed=true}else liveFail('process_channel')}catch{c.failed=true}})
+ const end=performance.now()+15000;while(performance.now()<end&&!c.failed&&!c.exit){if(c.pid!==null)try{const actual=readFull069KernelProcess(c.pid);c.start_ticks??=actual.start_ticks;if(matches(c,actual)){c.outer_start=readFull069KernelProcess(outer.pid).start_ticks;return snapshot(c)}}catch{}await delay(50)}liveFail('process_launch_failed')
+}
+function snapshot(c){return freeze({id:c.id,pid:c.pid,start_ticks:c.start_ticks,supervisor_pid:c.outer.pid,supervisor_start_ticks:c.outer_start,uid:c.profile.uid,gid:c.profile.gid,kinds:c.id==='native'?[]:(liveEntries.find(v=>v.id===c.id)??liveFail('entry')).kinds,actual_original_entry:true})}
+export function observeFull069OwnedProcesses(handle,{complete=true}={}){const s=owned(handle);liveContext(s.trust);if(s.closed||complete&&s.entries.size!==8)liveFail('process_set_incomplete');assertExclusiveUids(s);const rows=[];for(const c of s.entries.values()){if(c.failed||c.exit||c.outerExited||c.stopping||!sameKernel(c.outer.pid,c.outer_start)||!matches(c,readFull069KernelProcess(c.pid))||c.id==='native'&&!c.nativeReady)liveFail('owned_process_changed');rows.push(snapshot(c))}return freeze(rows)}
+export async function waitFull069NativeListening(handle){const s=owned(handle),c=s.entries.get('native');if(!c)liveFail('native_missing');const end=performance.now()+45000;while(performance.now()<end&&!c.failed&&!c.exit){if(c.nativeReady){observeFull069OwnedProcesses(handle,{complete:false});return true}await delay(100)}liveFail('native_listen_failed')}
+async function stop(c){
+ c.stopping=true;let forced=false,unknown=false
+ if(c.exit)return {id:c.id,graceful:false,forced:false,identity_verified:false}
+ // The launch can fail before the PID event. The owned supervisor still gets a
+ // normal shutdown; it forwards only to the ChildProcess it actually created.
+ if(c.outerExited||!c.outer_start||!sameKernel(c.outer.pid,c.outer_start))unknown=true
+ else c.outer.kill('SIGTERM')
+ const wait=async ms=>{const end=performance.now()+ms;while(!c.exit&&performance.now()<end)await delay(50);return c.exit!==null}
+ if(!await wait(12000)){forced=true;if(c.pid&&c.start_ticks&&sameKernel(c.pid,c.start_ticks))try{process.kill(c.pid,'SIGKILL')}catch{unknown=true}if(!await wait(5000)){if(c.outer_start&&sameKernel(c.outer.pid,c.outer_start))c.outer.kill('SIGKILL');else unknown=true;await wait(1000)}}
+ return {id:c.id,graceful:!forced&&!unknown&&c.exit?.code===0&&c.exit?.signal===null,forced,identity_verified:!unknown,absent:c.pid&&c.start_ticks?!sameKernel(c.pid,c.start_ticks):false,supervisor_absent:c.outer_start?!sameKernel(c.outer.pid,c.outer_start):c.exit!==null}
+}
+export async function stopFull069OwnedWorkers(handle){const s=owned(handle),results=[];for(const entry of [...liveEntries].reverse()){const c=s.entries.get(entry.id);if(c)try{results.push(await stop(c))}catch{results.push({id:c.id,graceful:false,forced:false,identity_verified:false,absent:false,supervisor_absent:false})}}return freeze(results)}
+export async function stopFull069OwnedNative(handle){const s=owned(handle),c=s.entries.get('native');s.closed=true;return c?freeze(await stop(c)):null}

@@ -846,3 +846,26 @@ tests/pg18-complete069-review-bundle.test.mjs text eol=lf
 services/pg-api/src/native-first-admin-cli.mjs text eol=lf
 services/pg-api/tests/helpers/pg18-complete-service-cli-diagnostic.mjs text eol=lf
 services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_REVIEW_WORKER_PREPARATION.md text eol=lf
+docs/PG18_FULL069_WORKER_LIVE_OPERATIONS.json text eol=lf
+services/pg-api/src/pg18-complete-review-worker-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-worker-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-worker-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-worker-plan.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-child.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-cli.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-contract.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-native.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-processes.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-runner.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-runtime.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-sources.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-trust.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-review-worker-ci.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-service-case-counter.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-worker-source.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-case-counter.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-live.test.mjs text eol=lf

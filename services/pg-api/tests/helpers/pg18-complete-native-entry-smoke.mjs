@@ -15,10 +15,10 @@ const privateMode=(file,mode)=>{const s=fs.lstatSync(file);if(s.isSymbolicLink()
 export async function runOriginalNativeEntrySmoke(loaded,inputs){
  requireCompleteProfileFixtureCi();assertVerifiedCompleteProfileStage(loaded)
  if(!/^[a-f0-9]{64}$/.test(loaded.stageNonce)||!inputs||Object.keys(inputs).sort().join(',')!=='api,auth,employeePassword,modelKey'||!['api','auth'].every(k=>/^[a-f0-9]{80}$/.test(inputs[k]))||!/^[a-f0-9]{64}$/.test(inputs.modelKey)||typeof inputs.employeePassword!=='string')fail('inputs')
- const dest='/opt/agentstudio-complete-service-'+loaded.stageNonce,cert=loaded.stageInput+'/native-entry.crt',key=loaded.stageInput+'/native-entry.key'
+ const dest='/var/lib/agentstudio-complete-service-'+loaded.stageNonce,cert=loaded.stageInput+'/native-entry.crt',key=loaded.stageInput+'/native-entry.key'
  if(fs.existsSync(dest)||fs.existsSync(credentials)||fs.existsSync(key)||fs.existsSync(cert))fail('existing_runtime_or_credentials')
  // Both absolute destinations are fixed new CI-owned paths, not user input.
- privateMode('/opt',0o755)
+ for(const parent of ['/','/var','/var/lib','/run'])privateMode(parent,0o755)
  if(!fs.existsSync('/run/credentials'))fs.mkdirSync('/run/credentials',{mode:0o755})
  privateMode('/run/credentials',0o755)
  let app,proxy,createdRuntime=false,createdCredentials=false,closed=false,resolveClose,stdout='',bytes=0,listening=false,startRefused=false

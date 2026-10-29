@@ -1,0 +1,25 @@
+// Private mount-namespace supervisor. It owns one original fixed --serve entry.
+import fs from 'node:fs'
+import path from 'node:path'
+import {spawn,execFileSync} from 'node:child_process'
+import {liveRoot} from './pg18-full069-worker-live-sources.mjs'
+import {openFull069WorkerLiveTrust,liveContext,readLivePrivate,livePaths} from './pg18-full069-worker-live-trust.mjs'
+import {readFull069KernelProcess} from './pg18-full069-worker-live-processes.mjs'
+import {liveEntries,closed,liveFail} from './pg18-full069-worker-live-contract.mjs'
+import {parseWorkerHeartbeatControlJson} from './worker-heartbeat-activation-control-contract.ts'
+async function launch(){
+ if(process.argv.length!==4||process.argv[2]!=='--launch'||!process.send)liveFail('child_entry');const id=process.argv[3],entry=id==='native'?{id:'native',file:'native-server.ts',args:['--serve'],kinds:[],unit:'agentstudio-pg18-native.service'}:liveEntries.find(e=>e.id===id)??liveFail('child_entry')
+ const trust=await openFull069WorkerLiveTrust(true),ctx=liveContext(trust),file=path.join(livePaths.store,ctx.profile.run_id,'child-'+id+'.json'),p=closed(parseWorkerHeartbeatControlJson(readLivePrivate(file,{max:16384}).bytes),['format','run_id','profile_sha256','source_sha256','id','parent_pid','parent_start','parent_mount_namespace','nonce']),parent=readFull069KernelProcess(process.ppid)
+ if(p.format!=='pg18_full069_worker_live_child_v1'||p.run_id!==ctx.profile.run_id||p.profile_sha256!==ctx.profileSha256||p.source_sha256!==ctx.profile.source_sha256||p.id!==id||p.parent_pid!==process.ppid||p.parent_start!==parent.start_ticks||p.parent_mount_namespace===fs.readlinkSync('/proc/self/ns/mnt'))liveFail('child_parent')
+ const profile=id==='native'?ctx.profile.native:ctx.profile.workers[liveEntries.indexOf(entry)],execute=(command,args)=>execFileSync(command,args,{env:{PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8'},timeout:10000,stdio:'ignore',windowsHide:true})
+ execute('/usr/bin/mount',['--make-rprivate','/']);execute('/usr/bin/mount',['-t','tmpfs','-o','mode=0755,nosuid,nodev,noexec','full069-worker-live-credentials','/run/credentials']);fs.mkdirSync(profile.credential_directory,{mode:0o755})
+ for(const m of profile.mounts){const source=readLivePrivate(m.source,{owner:profile.uid,mode:[0o400],max:2097152});if(source.sha256!==m.sha256)liveFail('child_mount_changed');const target=profile.credential_directory+'/'+m.leaf;fs.writeFileSync(target,'',{flag:'wx',mode:0o600});execute('/usr/bin/mount',['--bind',m.source,target]);execute('/usr/bin/mount',['-o','remount,bind,ro,nosuid,nodev,noexec',target]);const a=fs.lstatSync(m.source),b=fs.lstatSync(target);if(a.dev!==b.dev||a.ino!==b.ino||b.uid!==profile.uid||(b.mode&0o7777)!==0o400)liveFail('child_mount')}
+ const env={PATH:'/usr/local/bin:/usr/bin:/bin',LANG:'C.UTF-8',HOME:'/nonexistent',CREDENTIALS_DIRECTORY:profile.credential_directory,...profile.environment},filename=liveRoot+'/services/pg-api/src/'+(id==='native'?'native-server.ts':entry.file),args=id==='native'?['--serve']:entry.args,child=spawn('/usr/bin/setpriv',['--reuid='+profile.uid,'--regid='+profile.gid,...(profile.groups.length?['--groups='+profile.groups.join(',')]:['--clear-groups']),'--no-new-privs','--inh-caps=-all','--ambient-caps=-all','--bounding-set=-all',process.execPath,'--experimental-strip-types',filename,...args],{cwd:liveRoot+'/services/pg-api',env,stdio:['ignore','pipe','pipe'],windowsHide:true})
+ const emit=value=>process.send?.({...value,id,nonce:p.nonce});let total=0,line='',failed=false,shuttingDown=false
+ const fail=()=>{if(failed)return;failed=true;emit({event:'owned_process_failed'});child.kill('SIGTERM')}
+ child.stdout.on('data',b=>{total+=b.length;if(total>8388608)return fail();if(id!=='native')return;line+=b.toString('utf8');if(line.length>65536)return fail();const lines=line.split('\n');line=lines.pop()??'';for(const raw of lines)try{const v=JSON.parse(raw);if(v.service==='agentstudio-pg18-native-pilot'&&v.state==='listening'&&v.bind==='127.0.0.1'&&v.port===17403&&v.workers_started===false&&v.production_cutover_allowed===false&&v.config_uat_write_enabled===false&&v.employee_uat_enabled===false)emit({event:'owned_native_listening'})}catch{}})
+ child.stderr.on('data',b=>{total+=b.length;if(total>8388608)fail()});child.once('error',fail);child.once('spawn',()=>emit({event:'owned_process_started',pid:child.pid}));process.on('SIGTERM',()=>{shuttingDown=true;child.kill('SIGTERM')});process.on('SIGINT',()=>{shuttingDown=true;child.kill('SIGINT')})
+ process.on('disconnect',()=>{if(!shuttingDown){shuttingDown=true;child.kill('SIGTERM');const timer=setTimeout(()=>child.kill('SIGKILL'),12000);timer.unref()}})
+ child.once('close',(code,signal)=>{process.exitCode=!failed&&code===0&&signal===null?0:1;process.disconnect?.()})
+}
+if(process.argv[1]?.endsWith('/pg18-full069-worker-live-child.mjs'))try{await launch()}catch{process.send?.({event:'owned_process_failed'});process.stderr.write('FULL069_WORKER_LIVE_CHILD_REFUSED\n');process.exitCode=1;process.disconnect?.()}

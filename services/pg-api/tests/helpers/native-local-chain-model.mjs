@@ -34,7 +34,7 @@ export function chainDecision(prompt,{formUrl,sourceSha}){
  if(round===2){const summary=JSON.parse(history[0]?.observation??'null');if(summary?.source_sha256!==sourceSha||summary.total!=='2500.00'||summary.row_count!==5)throw Error('native_chain_actual_summary_not_observed');return tool('office.create_report',{...table,expected_sha256:summary.source_sha256,output_directory:'native-chain-report',title:'Native independent Office report',period:'Synthetic CI'})}
  if(round===3)return tool('files.read',{root:'work',path:'native-chain-report/summary.json'})
  if(round===4){const manifest=JSON.parse(history[2]?.observation??'null');if(manifest?.source_sha256!==sourceSha||manifest.total!=='2500.00')throw Error('native_chain_actual_manifest_not_observed');return tool('browser.browser_navigate',{url:formUrl})}
- if(round===5||round===8)return tool('browser.browser_take_screenshot',{type:'png'})
+ if(round===5||round===8)return tool('browser.browser_take_screenshot',{type:'png',scale:'css'})
  function ref(label,kind){for(const item of [...history].reverse()){const text=String(item.observation??''),line=text.split('\n').find(s=>s.includes(kind+' "'+label+'"')&&/\[ref=[^\]]+\]/.test(s));const found=line&&/\[ref=([^\]]+)\]/.exec(line);if(found)return found[1]}throw Error('native_chain_actual_browser_reference_missing')}
  if(round===6)return tool('browser.browser_fill_form',{fields:[{name:'报告总额',type:'textbox',ref:ref('报告总额','textbox'),value:'2500.00'},{name:'源摘要',type:'textbox',ref:ref('源摘要','textbox'),value:sourceSha}]})
  if(round===7)return tool('browser.browser_click',{element:'提交一次报告',ref:ref('提交一次报告','button')})

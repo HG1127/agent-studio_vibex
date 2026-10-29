@@ -4,6 +4,7 @@
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {requireCompleteProfileFixtureCi} from './helpers/pg18-complete-install-ci-guard.mjs'
+import {createCompleteServiceActualCaseCounter} from './helpers/pg18-complete-service-case-counter.mjs'
 import {completeServiceActualCliDiagnostic} from './helpers/pg18-complete-service-cli-diagnostic.mjs'
 const here=fileURLToPath(import.meta.url)
 export async function runCompleteServiceFixture(argv,env=process.env){
@@ -11,7 +12,7 @@ export async function runCompleteServiceFixture(argv,env=process.env){
  const permit=requireCompleteProfileFixtureCi(env)
  const [{completeProfileStageDescriptor,loadVerifiedCompleteProfileStage},{attestCompleteProfileTargets,ownedCompleteProfilePool,configureOwnedCompleteServiceHba},fs,{randomBytes,randomUUID,createHash},{spawn},assertModule]=await Promise.all([import('./helpers/pg18-complete-install-ci-stage.mjs'),import('./helpers/pg18-complete-install-ci-containers.mjs'),import('node:fs'),import('node:crypto'),import('node:child_process'),import('node:assert/strict')])
  const assert=assertModule.default,stage=completeProfileStageDescriptor(permit),loaded=await loadVerifiedCompleteProfileStage(permit,stage),targets=await attestCompleteProfileTargets(permit,loaded),admin=await ownedCompleteProfilePool(targets.main,1)
- const step=name=>console.log(JSON.stringify({event:'complete069_service_actual_pass',case:name,production_GO:false})),sha=b=>createHash('sha256').update(b).digest('hex')
+ const caseCounter=createCompleteServiceActualCaseCounter(true),step=name=>console.log(JSON.stringify(caseCounter.pass(name))),sha=b=>createHash('sha256').update(b).digest('hex')
  const secret=(name,value)=>{const file=path.join(stage.input,name),fd=fs.openSync(file,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW|fs.constants.O_WRONLY,0o600);try{fs.writeFileSync(fd,value);fs.fchmodSync(fd,0o600);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}return file}
  const kinds=['api','native-auth','worker','identity','broker','index-worker','index-broker'],passwords=Object.fromEntries(kinds.map(k=>[k,randomBytes(40).toString('hex')])),files=Object.fromEntries(kinds.map(k=>[k,secret('prepare-'+k+'.secret',passwords[k])]))
  const employeePassword='Fresh synthetic first admin '+randomBytes(32).toString('hex'),employeeFile=secret('prepare-first-admin.secret',employeePassword),employeeProfile=secret('prepare-first-admin-profile.json',JSON.stringify({email:'full069-synthetic@example.invalid',display_name:'Synthetic full069 administrator'}))
@@ -73,7 +74,11 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const afterNative=await image();assert.deepEqual(afterNative.filter(([name])=>name!=='agentstudio_auth.sessions'),beforeImages.filter(([name])=>name!=='agentstudio_auth.sessions'))
   const sessions=(await admin.query('SELECT count(*)::int AS count,bool_and(revoked_at IS NOT NULL) AS revoked FROM agentstudio_auth.sessions')).rows[0];assert.equal(sessions.count,1);assert.equal(sessions.revoked,true)
   step('original_native_server_serve_nonroot_exact_credential_directory_real_https_admin_cookie_logout_and130_other_images')
-  console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:9,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
+  const {verifyComplete069ReviewWorkerCi}=await import('./helpers/pg18-complete-review-worker-ci.mjs')
+  const review=await verifyComplete069ReviewWorkerCi(loaded,targets.main,{api:passwords.api,stageWorker:passwords.worker})
+  assert.equal(review.actual_preparation_cli,true);assert.equal(review.actual_dedicated_login_verified,true);assert.equal(review.original_nonroot_cli_preflight_verified,true);assert.equal(review.all133_table_images_unchanged,true);assert.equal(review.runtime_authorization,false)
+  step('independent_review_login_actual_preparer_original_nonroot_preflight_and_all133_images_preserved')
+  console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:caseCounter.finish(),actual_review_worker_login_verified:true,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
  }finally{await admin.end()}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===here){try{await runCompleteServiceFixture(process.argv.slice(2))}catch(error){const raw=Object.getOwnPropertyDescriptor(error??{},'message')?.value;console.error(JSON.stringify({event:'complete069_service_actual_failure',code:typeof raw==='string'&&/^(?:complete_[a-z0-9_:]+|unsafe_[a-z0-9_]+)$/.test(raw)?raw:'actual_assertion_or_operation_failed',production_GO:false}));process.exitCode=1}}
