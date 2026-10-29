@@ -169,7 +169,8 @@ export async function run(argv,env=process.env){
     if(!pgPassword||pgPassword===password||/[\0\r\n]/.test(pgPassword))
       reject("first_admin_inputs_invalid")
   }catch{reject("first_admin_inputs_invalid")}
-  const {Pool}=await import("pg")
+  const {default:pg}=await import("pg")
+  const {Pool}=pg
   const pool=new Pool({host:"127.0.0.1",port:5333,database:"agent_studio",
     user:"agentstudio_native_login",password:pgPassword,
     connectionTimeoutMillis:4000,statement_timeout:15000,max:1})

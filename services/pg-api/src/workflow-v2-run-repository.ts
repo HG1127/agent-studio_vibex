@@ -145,6 +145,21 @@ export async function verifyWorkflowV2HistorySource(db:SqlClient,verify:()=>Prom
   return false
  }finally{await db.query('RELEASE SAVEPOINT workflow_v2_history_source')}
 }
+// The transitive evidence reader can catch a source SQL error and return false.
+// Historical assembly continues reading metadata, so restore that failed SQL
+// subtransaction on false as well as on a thrown error. Runtime policy is unchanged.
+export async function readWorkflowV2HistoryObservations(db:SqlClient,read:()=>Promise<boolean>):Promise<boolean>{
+  await db.query('SAVEPOINT workflow_v2_history_observations')
+  let current:boolean
+  try{current=await read()}catch(error){
+    await db.query('ROLLBACK TO SAVEPOINT workflow_v2_history_observations')
+    await db.query('RELEASE SAVEPOINT workflow_v2_history_observations')
+    throw error
+  }
+  if(!current)await db.query('ROLLBACK TO SAVEPOINT workflow_v2_history_observations')
+  await db.query('RELEASE SAVEPOINT workflow_v2_history_observations')
+  return current
+}
 export class WorkflowV2RunRepository{
   readonly pool:SqlPool
   readonly root:ReturnType<typeof durableV2Root>
@@ -176,7 +191,7 @@ export class WorkflowV2RunRepository{
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
     const view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
     const pending=workflowV2ExecutionRequest(state)
-    let observationsCurrent=await currentKnowledgeObservations(db,row.id,pending?.step_key)
+    let observationsCurrent=await readWorkflowV2HistoryObservations(db,()=>currentKnowledgeObservations(db,row.id,pending?.step_key))
     const human=agentHumanContext(row,state)
     const hasHuman=await agentHumanEvidenceExpected(db,row,state)
     let humanEvidence=false

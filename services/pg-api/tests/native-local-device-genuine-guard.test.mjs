@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {sanitizeNativeChainDiagnostic,combineNativeChainFailure} from './helpers/native-local-device-chain-fixture.mjs'
+import {sanitizeNativeChainDiagnostic,combineNativeChainFailure,nativeChainDispatchFailureCode,nativeChainLocalStatusCounts} from './helpers/native-local-device-chain-fixture.mjs'
 import {requireNativeLocalDeviceGenuineCi,nativeLocalDeviceGenuineWorkflow,nativeLocalDeviceEmployeeBrowserWorkflow} from './helpers/native-local-device-genuine-guard.mjs'
 const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:nativeLocalDeviceGenuineWorkflow,GITHUB_RUN_ID:'987654',GITHUB_JOB:'pg18-local-device-genuine',AGENT_STUDIO_F20_F21_GENUINE_CI:'YES_DISPOSABLE_F20_F21_ONLY',AGENT_STUDIO_F20_F21_GENUINE_SUITE:'database',AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-987654'}
 test('pure guard accepts only declared purpose/job/suite data, without constructing a driver or pool',()=>{for(const [job,suite]of[['pg18-local-device-genuine','database'],['pg18-local-device-genuine','flow'],['pg18-local-device-executor','executor'],['pg18-local-device-browser','browser']]){const target=requireNativeLocalDeviceGenuineCi({...env,GITHUB_JOB:job,AGENT_STUDIO_F20_F21_GENUINE_SUITE:suite},'linux',1001);assert.equal(target.host,'127.0.0.1');assert.equal(target.port,5432);assert.equal(target.database,'agentstudio_pg18_ci')}})
@@ -25,4 +25,18 @@ test('chain diagnostic enums remain exact and finite counters are truncated with
 test('chain cleanup failure preserves primary and cleanup identities and the original cause',()=>{
  const primary=Error('synthetic-primary'),cleanup=new AggregateError([Error('synthetic-cleanup')],'synthetic-cleanup-group'),result=combineNativeChainFailure(primary,cleanup)
  assert.ok(result instanceof AggregateError);assert.equal(result.message,'native_chain_primary_and_cleanup_failed');assert.equal(result.cause,primary);assert.deepEqual(result.errors,[primary,cleanup]);assert.equal(combineNativeChainFailure(undefined,cleanup).errors[0],undefined)
+})
+
+test('dispatch diagnostic reads only a closed own code and cannot expose messages or getter values',()=>{
+ const secret='SYNTHETIC_BODY_KEY_SQL_TOKEN_SENTINEL';let accessed=0
+ for(const code of ['invalid_native_local_device_value','workflow_tool_outcome_unknown','42702'])assert.equal(nativeChainDispatchFailureCode({code,message:secret}),code)
+ assert.equal(nativeChainDispatchFailureCode({code:secret,message:secret}),'unobserved');assert.equal(nativeChainDispatchFailureCode(Object.create({code:'42702'})),'unobserved')
+ const error={};Object.defineProperty(error,'code',{get(){accessed++;return '42702'}});Object.defineProperty(error,'message',{get(){accessed++;throw Error(secret)}});assert.equal(nativeChainDispatchFailureCode(error),'unobserved');assert.equal(accessed,0)
+ const clean=sanitizeNativeChainDiagnostic({dispatch_code:secret,local_statuses:{queued:Infinity,succeeded:999999,message:secret}});assert.equal(clean.dispatch_code,'unobserved');assert.equal(clean.local_statuses.queued,0);assert.equal(clean.local_statuses.succeeded,9999);assert.equal(JSON.stringify(clean).includes(secret),false);assert.ok(Buffer.byteLength(JSON.stringify(clean))<=2048)
+})
+test('existing Owner task replies provide only bounded local status counts without IDs, values or extra reads',()=>{
+ const tasks=[{status:'succeeded',id:'PRIVATE_ID',input:'PRIVATE_INPUT'},{status:'succeeded'},{status:'queued'},{status:'unknown'},{status:'PRIVATE_TOKEN'}];let accessed=0
+ Object.defineProperty(tasks,'5',{get(){accessed++;throw Error('PRIVATE_GETTER')}})
+ const counts=nativeChainLocalStatusCounts(tasks);assert.deepEqual(counts,{queued:1,running:0,succeeded:2,cancelled:0,expired:0,unknown:1});assert.equal(accessed,0);assert.equal(JSON.stringify(counts).includes('PRIVATE'),false)
+ assert.deepEqual(nativeChainLocalStatusCounts(new Array(31).fill({status:'queued'})),{queued:0,running:0,succeeded:0,cancelled:0,expired:0,unknown:0})
 })

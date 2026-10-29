@@ -4,6 +4,7 @@
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {requireCompleteProfileFixtureCi} from './helpers/pg18-complete-install-ci-guard.mjs'
+import {completeServiceActualCliDiagnostic} from './helpers/pg18-complete-service-cli-diagnostic.mjs'
 const here=fileURLToPath(import.meta.url)
 export async function runCompleteServiceFixture(argv,env=process.env){
  if(argv.length!==1||argv[0]!=='--run')throw Error('complete_service_fixture_arguments')
@@ -20,7 +21,7 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const child=spawn(process.execPath,['--experimental-strip-types',loaded.tree+'/services/pg-api/src/'+file,...args],{env:{...settings,...override},stdio:['ignore','pipe','pipe'],windowsHide:true});let out='',err='',bytes=0,stopping=false,killer
   const stop=()=>{stopping=true;child.kill('SIGTERM');killer=setTimeout(()=>child.kill('SIGKILL'),5000)},timer=setTimeout(stop,180000)
   child.stdout.on('data',b=>{bytes+=b.length;if(bytes>1048576){stop();return}if(!discardOutput)out+=b});child.stderr.on('data',b=>{bytes+=b.length;if(bytes>1048576){stop();return}err+=b})
-  child.once('error',()=>{clearTimeout(timer);reject(Error('complete_service_actual_child_start'))});child.once('close',code=>{clearTimeout(timer);if(killer)clearTimeout(killer);if(stopping)return reject(Error('complete_service_actual_child_bound'));let value;try{value=out.trim()?JSON.parse(out):null}catch{return reject(Error('complete_service_actual_child_shape'))}resolve({code,value,refusal:/\bcomplete_service_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})\b/.exec(err)?.[0]??null,output_deliberately_discarded:discardOutput})})
+  child.once('error',()=>{clearTimeout(timer);reject(Error('complete_service_actual_child_start'))});child.once('close',code=>{clearTimeout(timer);if(killer)clearTimeout(killer);if(stopping)return reject(Error('complete_service_actual_child_bound'));let value;try{value=out.trim()?JSON.parse(out):null}catch{return reject(Error('complete_service_actual_child_shape'))}const result={code,value,refusal:/\bcomplete_service_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})\b/.exec(err)?.[0]??null,output_deliberately_discarded:discardOutput};console.log(JSON.stringify(completeServiceActualCliDiagnostic(file,args,result)));resolve(result)})
  })
  const args=(mode,action,id=randomUUID())=>[mode,'--profile','complete069','--action',action,'--confirm-database','agent_studio','--expected-source-sha256',stage.profileSha,'--expected-system-identifier',targets.main.systemIdentifier,'--expected-database-oid',targets.main.databaseOid,'--operation-id',id]
  const command=(mode,action,id,override={},discard=false)=>execute('pg18-complete-service-cli.mjs',args(mode,action,id),{AGENT_STUDIO_COMPLETE_SERVICE_PASSWORD_FILE:files[action==='first-admin'?'native-auth':action],...override},discard)

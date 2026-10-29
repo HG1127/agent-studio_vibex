@@ -841,3 +841,8 @@ ops/build-pg18-complete069-review-bundle.mjs text eol=lf
 ops/build-pg18-runtime-init-review-bundle.mjs text eol=lf
 services/pg-api/tests/pg18-complete-role-closure.test.mjs text eol=lf
 tests/pg18-complete069-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+services/pg-api/src/native-first-admin-cli.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-service-cli-diagnostic.mjs text eol=lf
+services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs text eol=lf

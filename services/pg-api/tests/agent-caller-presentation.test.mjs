@@ -2,7 +2,7 @@
 // and query-order doubles supply no database or caller authority.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {verifyWorkflowV2HistorySource} from '../src/workflow-v2-run-repository.ts'
+import {verifyWorkflowV2HistorySource,readWorkflowV2HistoryObservations} from '../src/workflow-v2-run-repository.ts'
 import {HttpError} from '../src/contracts.ts'
 import {agentCallerRecentHistory,agentCallerElapsed,agentCallerApiExamples} from '../../../src/lib/pgNativeAgentCallerPresentation.ts'
 import {createPgNativeAgentCallerSession} from '../../../src/lib/pgNativeAgentCallerSession.ts'
@@ -45,4 +45,15 @@ test('historical source infrastructure failures keep their original identity aft
 })
 test('a completed historical source check releases its savepoint without rolling back the enclosing read',async()=>{
  const f=historyTransaction();let checks=0;assert.equal(await verifyWorkflowV2HistorySource(f.db,async()=>{checks++}),true);assert.equal(checks,1);assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_source','RELEASE SAVEPOINT workflow_v2_history_source'])
+})
+
+function earlierHistoryTransaction(){let aborted=false;const calls=[];return{calls,fail(){aborted=true},db:{async query(sql){calls.push(sql);if(sql==='ROLLBACK TO SAVEPOINT workflow_v2_history_observations'){aborted=false;return{rows:[]}}if(aborted)throw Error('synthetic_transaction_aborted');return{rows:[]}}}}}
+test('earlier transitive reader returning false after catching SQL denial restores later Owner metadata reads',async()=>{
+ const f=earlierHistoryTransaction();assert.equal(await readWorkflowV2HistoryObservations(f.db,async()=>{f.fail();return false}),false);await f.db.query('later_owner_history_read');assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_observations','ROLLBACK TO SAVEPOINT workflow_v2_history_observations','RELEASE SAVEPOINT workflow_v2_history_observations','later_owner_history_read'])
+})
+test('earlier history read propagates every thrown auth/infrastructure error unchanged after recovery',async()=>{
+ for(const error of [new HttpError(401,'session_required'),new HttpError(403,'forbidden'),new HttpError(409,'source_denied'),Error('synthetic_infrastructure_failure')]){const f=earlierHistoryTransaction();await assert.rejects(()=>readWorkflowV2HistoryObservations(f.db,async()=>{f.fail();throw error}),e=>e===error);assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_observations','ROLLBACK TO SAVEPOINT workflow_v2_history_observations','RELEASE SAVEPOINT workflow_v2_history_observations'])}
+})
+test('current earlier evidence returns true and releases without rolling back the enclosing read',async()=>{
+ const f=earlierHistoryTransaction();assert.equal(await readWorkflowV2HistoryObservations(f.db,async()=>true),true);assert.deepEqual(f.calls,['SAVEPOINT workflow_v2_history_observations','RELEASE SAVEPOINT workflow_v2_history_observations'])
 })

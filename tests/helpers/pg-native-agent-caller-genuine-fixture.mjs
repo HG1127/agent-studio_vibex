@@ -57,7 +57,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "db/postgres/migrations/pg_v9_068_agent_public_callers.sql": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
-  "package.json": "2b72f48188ad21c6a5836842ebed21d25056d493d4d4dd8716601b56a94f6b2e",
+  "package.json": "bd593572b6f0e9ceea236e2afe9ed9a07916419de8387c6b5d2e99c1989ca389",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -378,7 +378,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/workflow-v2-output-contract.ts": "eda56a03d46d4e2590ed691404d1dc310ba612ebd2ede95afaa62ceb8a75b85f",
   "services/pg-api/src/workflow-v2-output-projection.ts": "9a4f2ad3e96fe59286cd0632df28c0c8ed75bb0e1fe58ab2fa8f5f5c737f826d",
   "services/pg-api/src/workflow-v2-preview.ts": "c4e5945193223f865b3e29e0efc1bf14f925f25e8d0a209e18a95ea67ffd4640",
-  "services/pg-api/src/workflow-v2-run-repository.ts": "cb898eec3136af09718654635db4382cae41fdb816bb3d1ccb1231897680cc43",
+  "services/pg-api/src/workflow-v2-run-repository.ts": "0cd4ba90b942d30aacc5fcd5e4ae0067163b0c8def563c0b34212f4cdcd360cd",
   "services/pg-api/src/workflow-v2-tool-client.ts": "596b491c687d688c6859b28dfcc978387c7d6d7d37d8b603f15fbbdf47f7b1e9",
   "services/pg-api/src/workflow-v2-tool-contract.ts": "798b0f5bfad21366e81339f2b037bf3911d9ebf2fd243699eae0126cfa774e14",
   "services/pg-api/src/workflow-v2-tool-dispatch.ts": "529cb64942c5f3570da92f25f2d705ec552a2bd1b10439151963244b7abf25ed",
@@ -396,9 +396,9 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/agent-caller-genuine-pg18.test.mjs": "12d5634615305d86b7c55ef7018f35d2ef6c5256ebd1a108e757e7dc036ccb9f",
   "services/pg-api/tests/agent-caller-http.test.mjs": "470e3a72e7e8d2a064bc49d9410ced4cc0a7dc3c006fdc9424e1813c44a1a471",
   "services/pg-api/tests/agent-caller-owner-session.test.mjs": "4802e4be9dfc3ef80eacd99162b45516603e4112b55b21c1f2a62939afced0c2",
-  "services/pg-api/tests/agent-caller-presentation.test.mjs": "7c2234a12578edeb3c764a763431544ea8a3ccfdeed5935e9355b5a54cdd9f3e",
+  "services/pg-api/tests/agent-caller-presentation.test.mjs": "850024c62727a60c8ea4000a22caa0d272dd9283b05a055bc42d2b7a5dff6e6c",
   "services/pg-api/tests/helpers/agent-assessment-fixture.mjs": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a",
-  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "e25bcc1af94ed901a2a741945ee837167629809767bdca1e9cbdf68b882330e6",
+  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "c9d4636634b1a440f440d21879151a0094a44f097ffbe52c7db299e7b5bfdbab",
   "services/pg-api/tests/helpers/agent-caller-genuine-guard.mjs": "e165765978d53a4ab5da154df1fd6edffba07036e1fe8af6457a0d8943738cef",
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
@@ -595,7 +595,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-service-cli.mjs": "a6544177365130529f86329b96afa90b82b5f4131b55747e9f954a5a05cca0ac",
   "services/pg-api/src/pg18-complete-service-core.mjs": "e4f4241f623b219f963dc262d03ec8de92c05113af8c5b8f1ea91417015438cf",
   "services/pg-api/src/pg18-complete-service-journal.mjs": "df447edc97f535b223af6fd8ea618974adfef581f7b53013f53081cf53f44e75",
-  "services/pg-api/src/pg18-complete-service-plan.mjs": "8f730ce5bd18045c7a905c5be4afaae49994fa1e92f9dbc9e742affbe32d85de"
+  "services/pg-api/src/pg18-complete-service-plan.mjs": "afcd8e83edd5ac68beb44f85d31fcfca5a66415fb6274e41fdd2ba2a18991c05"
 })
 export async function startPgNativeAgentCallerGenuineBrowserFixture(env=process.env){
  requireAgentCallerGenuineCi(env);if(env.GITHUB_JOB!==agentCallerGenuineBrowserJob||env.AGENT_STUDIO_F11_F12_GENUINE_SUITE!=='browser')throw Error('agent_caller_browser_job_required')
