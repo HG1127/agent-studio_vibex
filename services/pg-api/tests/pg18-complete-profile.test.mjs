@@ -12,6 +12,10 @@ import {parseCompleteProfileArguments,runCompleteProfile,completeProfileRefusalC
 import {serviceLogins} from '../src/pg18-service-login-policy.mjs'
 
 const source=fileURLToPath(new URL('../src/pg18-complete-profile.ts',import.meta.url)),cli=fileURLToPath(new URL('../src/baota-pg18-complete-init.mjs',import.meta.url)),root=fileURLToPath(new URL('../../../',import.meta.url)),text=fs.readFileSync(source,'utf8'),cliText=fs.readFileSync(cli,'utf8'),hash=x=>createHash('sha256').update(x).digest('hex'),snapshot=await sources.captureCompleteProfileSources(),expected=snapshot.source_sha256
+test('complete closure includes its independent loader declarations and original initializer before admission',()=>{
+ for(const name of ['pg18-complete-operator-runtime.mjs','pg18-complete-operator-runtime.d.mts','baota-pg18-fresh-init.mjs'])assert.ok(snapshot.manifest.sources.some(r=>r.path==='services/pg-api/src/'+name))
+ assert.ok(snapshot.manifest.imports.some(e=>e.from==='services/pg-api/src/baota-pg18-complete-init.mjs'&&e.to==='services/pg-api/src/pg18-complete-operator-runtime.mjs'))
+})
 test('refusal diagnostics expose only closed predecessor codes and SQLSTATE, never driver message or credentials',()=>{
  assert.equal(completeProfileRefusalCode(Error('external_secret_file_required')),'complete065_predecessor_external_secret_file_required')
  assert.equal(completeProfileRefusalCode(Object.assign(Error('secret SQL password body'),{code:'42P01'})),'complete065_sqlstate_42P01')
