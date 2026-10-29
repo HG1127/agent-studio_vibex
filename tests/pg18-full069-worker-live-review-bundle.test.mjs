@@ -50,6 +50,8 @@ test('genuine complete and live captures merge exact bytes with independent inde
   for(const name of ['pg18-complete-executor-cli.mjs','pg18-complete-executor-core.mjs','pg18-complete-executor-plan.mjs','pg18-complete-executor-journal.mjs','native-local-executor-service-preflight-cli.mjs'])assert.ok(read('services/pg-api/src/'+name),name)
   assert.equal(hash(read('docs/PG18_COMPLETE_069_EXECUTOR_PREPARATION.md')),hash(fs.readFileSync(path.join(root,'docs/PG18_COMPLETE_069_EXECUTOR_PREPARATION.md'))))
   const executorPlan=JSON.parse(read('EXECUTOR_PLAN.json'));assert.equal(executorPlan.abi.login,'agentstudio_local_executor_login');assert.equal(executorPlan.runtime_authorization,false)
+  const examples=['ops/templates/native-local-executor-pg-hba.conf.example','ops/templates/agentstudio-pg18-native-local-executor.conf.example'];assert.deepEqual(liveBoundary.executor_source_examples,examples);assert.equal(liveBoundary.system_service_installed,false)
+  for(const name of examples)assert.equal(hash(read(name)),hash(fs.readFileSync(path.join(root,name))),name)
  await assert.rejects(collectFull069WorkerLiveReviewSources(complete.source_sha256,'0'.repeat(64)),/source_binding/)
 })
 test('real archive has exact extracted inventory, refuses overwrite and runs all five real plans with driver, process and network blocked',async()=>{

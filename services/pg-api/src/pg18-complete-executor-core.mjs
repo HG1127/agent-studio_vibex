@@ -6,8 +6,12 @@ import {completeServiceTarget,completeServiceLedger} from './pg18-complete-servi
 import {verifyCompleteProfile,completeProfileLocksSql} from './pg18-complete-profile.ts'
 import {assertCompleteProfileSnapshot} from './pg18-complete-profile-source.mjs'
 import {serviceLoginKinds,serviceLogins} from './pg18-service-login-policy.mjs'
-import {inspectComplete069ReviewWorker} from './pg18-complete-review-worker-core.mjs'
+import {inspectComplete069ReviewWorker,complete069ReviewWorkerState,verifyComplete069ReviewWorkerLogin} from './pg18-complete-review-worker-core.mjs'
 import {inspectNativeLocalExecutorPreflight} from './native-local-executor-service-preflight.ts'
+import {verifyApprovalDelegationCredentials} from './approval-delegation-audit.ts'
+import {verifyNativeLocalDeviceSchema} from './native-local-device-audit.ts'
+import {verifyAgentCallerCredentials} from './agent-caller-audit.ts'
+import {verifyOwnerToolTrialCredentials} from './owner-tool-trial-audit.ts'
 import {complete069ExecutorAbi as abi,complete069ExecutorTargetGuardSql as targetGuard,complete069ExecutorReservationSql as reservation,complete069ExecutorActivationSql as activation,inspectComplete069ExecutorHba} from './pg18-complete-executor-plan.mjs'
 const fail=code=>{throw Error('complete069_executor_'+code)},sha=v=>createHash('sha256').update(v).digest('hex')
 const quote=v=>{if(!/^(?:agentstudio|agentstudio_auth)\.[a-z_]+$/.test(v))fail('source_refused');return v.split('.').map(s=>'"'+s+'"').join('.')}
@@ -71,6 +75,15 @@ export async function complete069ExecutorPreflight(admin,api,review,snapshot,cfg
   return {baseline:await complete069ExecutorBaseline(db),ledger:await ledger(db,snapshot),image:await complete069ExecutorImage(db,snapshot),reviewIntentSha256:sha(JSON.stringify(reviewIntent))}
  }finally{if(begun)await db.query('ROLLBACK');db.release()}
 }
+async function lockedActualApi(api,target){
+ const db=await api.connect();let begun=false
+ try{await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');begun=true
+  const r=(await db.query("SELECT session_user::text AS login,current_user::text AS actor,current_database() AS database,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,host(inet_server_addr()) AS host,inet_server_port() AS port")).rows[0]
+  if(r?.login!=='agentstudio_stage_login'||r.actor!==r.login||r.database!=='agent_studio'||r.database_oid!==target.database_oid||r.host!=='127.0.0.1'||r.port!==5333)fail('actual_api_login_required')
+  await db.query('SET LOCAL ROLE agentstudio_api')
+  if(await verifyApprovalDelegationCredentials(db)!==true||await verifyNativeLocalDeviceSchema(db)!==true||await verifyAgentCallerCredentials(db)!==true||await verifyOwnerToolTrialCredentials(db)!==true)fail('actual_api_catalog_refused')
+ }finally{if(begun)await db.query('ROLLBACK');db.release()}
+}
 export async function prepareComplete069Executor(admin,api,review,snapshot,cfg,reviewIntent,verifier,before,start){
  const db=await admin.connect();let begun=false
  try{await db.query('BEGIN');begun=true;await db.query("SET LOCAL search_path=pg_catalog,public; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='45s'")
@@ -80,8 +93,14 @@ export async function prepareComplete069Executor(admin,api,review,snapshot,cfg,r
   if(await ledger(db,snapshot)!==before.ledger||await complete069ExecutorImage(db,snapshot)!==before.image)fail('predecessor_state_changed')
   await globalNames(db,snapshot,false)
   if((await complete069ExecutorState(db,before.baseline)).present)fail('existing_role_no_takeover')
-  const observed=await inspectComplete069ReviewWorker(admin,api,review,snapshot,{...cfg,operationId:cfg.reviewOperationId},reviewIntent)
-  if(observed.actual_login_verified!==true||observed.actual_api_catalog_verified!==true||sha(JSON.stringify(reviewIntent))!==before.reviewIntentSha256)fail('review_predecessor_refused')
+  // The original complete-profile inspector acquires these SAME schema locks
+  // on its own admin connection. Under our held locks use the original live
+  // Review state/login and independent API auditors directly; the complete
+  // profile inspector still runs unchanged before this transaction and after
+  // its COMMIT. No lock is released or positive auditor substituted here.
+  const observed=await complete069ReviewWorkerState(db,reviewIntent.baseline_catalog_sha256)
+  if(reviewIntent.operation_id!==cfg.reviewOperationId||observed.present!==true||sha(observed.verifier)!==reviewIntent.verifier_sha256||sha(JSON.stringify(reviewIntent))!==before.reviewIntentSha256)fail('review_predecessor_refused')
+  await verifyComplete069ReviewWorkerLogin(review);await lockedActualApi(api,cfg.target)
   await freshState(db,snapshot)
   const enable=activation(verifier);await start(sha(verifier),before)
   await db.query(reservation);await db.query(enable)
