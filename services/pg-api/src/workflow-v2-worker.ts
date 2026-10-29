@@ -1,5 +1,6 @@
 import {verifyNativeLocalWorkerRole} from './native-local-agent-resources.ts'
 import {parseLocalBinding} from '../../../shared/native-local-device-contract.mjs'
+import {reserveAgentCallerStep,approveReservedAgentCallerStep} from './agent-caller-runtime-policy.ts'
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 // Durable V2 transitions. No provider/tool implementation is imported here.
 // External execution requires an explicitly installed trusted adapter; a missing
@@ -79,6 +80,7 @@ export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
   readonly localDeviceEnabled:boolean
+  readonly callerEnabled:boolean
   readonly agentEnabled:boolean
   readonly scheduleEnabled:boolean
   readonly humanEnabled:boolean
@@ -88,10 +90,11 @@ export class WorkflowV2Worker{
   readonly #claimAdmission:WorkerClaimAdmission
   readonly #claimLane:DurableV2Mode
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode;localDeviceExecutionApproved?:boolean}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;agentCallerExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode;localDeviceExecutionApproved?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
     this.localDeviceEnabled=options.localDeviceExecutionApproved===true
+    this.callerEnabled=options.agentCallerExecutionApproved===true
     this.agentEnabled=options.agentExecutionApproved===true
     this.scheduleEnabled=options.scheduleExecutionApproved===true
     this.humanEnabled=options.humanInputApproved===true
@@ -193,6 +196,8 @@ export class WorkflowV2Worker{
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
+    const callerRun=Boolean(state.caller_binding)
+    if(callerRun&&!this.callerEnabled){await this.persist(db,job,state,"paused","agent_caller_execution_disabled");await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}}
     if(this.root.kind==="agent"&&await this.outcomes.hasOwned(db,job.owner_user_id,job.run_id)&&(!this.outcomeEnabled||!this.humanEnabled)){
       await this.persist(db,job,state,"paused","agent_memory_outcome_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
       return {tick:{status:"paused",run_id:job.run_id}}
@@ -248,9 +253,18 @@ export class WorkflowV2Worker{
           }
           pending=agent.pending!
         }
+        if(callerRun){
+          // Persist this deterministic transition before sealing its exact
+          // checkpoint hash. The existing live job/run lock remains held.
+          await db.query("UPDATE agentstudio.runs SET checkpoint=$3::jsonb,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.run_id,job.owner_user_id,JSON.stringify(state)])
+          if(!await reserveAgentCallerStep(db,job.owner_user_id,job.run_id,state,job,pending,state.agent_state?.spec))throw new HttpError(409,"agent_caller_budget_or_source_unavailable")
+          // This also runs for already approved rows. A manual Owner approval
+          // cannot bypass the caller generation, source or daily step budget.
+          await approveReservedAgentCallerStep(db,job.owner_user_id,job.run_id,pending,state.agent_state?.spec)
+        }
         let approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
           "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[job.run_id,job.owner_user_id,pending.step_key])).rows[0]
-        if(!approval&&await scheduleAutomaticEffect(db,job.owner_user_id,job.run_id,pending))approval={status:"approved",reason_code:"wf2:"+pending.input_sha256}
+        if(!callerRun&&!approval&&await scheduleAutomaticEffect(db,job.owner_user_id,job.run_id,pending))approval={status:"approved",reason_code:"wf2:"+pending.input_sha256}
         if(!approval){
           await db.query("INSERT INTO agentstudio.approvals(owner_user_id,run_id,step_key,requested_by,reason_code) "+
             "VALUES($1::uuid,$2::uuid,$3::text,$1::uuid,$4::text)",[job.owner_user_id,job.run_id,pending.step_key,"wf2:"+pending.input_sha256])

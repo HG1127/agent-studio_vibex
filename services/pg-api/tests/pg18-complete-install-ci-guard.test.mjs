@@ -18,6 +18,6 @@ test('actual stage and container factories reject before source capture, directo
 test('both actual new entries refuse ordinary invocation before dynamic fixture work',()=>{
  for(const file of ['ops/pg18-complete-install-ci.mjs','services/pg-api/tests/pg18-complete-install-ci.integration.mjs']){
   const result=spawnSync(process.execPath,['--experimental-strip-types',file,'--run'],{env:{PATH:process.env.PATH,CI:'false',GITHUB_ACTIONS:'false'},encoding:'utf8',timeout:15000})
-  assert.equal(result.error,undefined);assert.equal(result.status,1);assert.equal(result.stdout,'');assert.doesNotMatch(result.stderr,/ECONNREFUSED|Cannot find|ERR_MODULE_NOT_FOUND/);assert.match(result.stderr,/complete_install_ci_refused:host|complete067_actual_failure/)
+  assert.equal(result.error,undefined);assert.equal(result.status,1);assert.equal(result.stdout,'');assert.doesNotMatch(result.stderr,/ECONNREFUSED|Cannot find|ERR_MODULE_NOT_FOUND/);assert.match(result.stderr,/complete_install_ci_refused:host|complete068_actual_failure/)
  }
 })

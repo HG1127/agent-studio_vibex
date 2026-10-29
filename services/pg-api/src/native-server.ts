@@ -3,6 +3,9 @@ import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
 import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
 import {createNativeLocalDeviceHttp} from './native-local-device-http.ts'
+import {AgentCallerRepository} from './agent-caller-repository.ts'
+import {createAgentCallerOwnerHttp,createAgentCallerPublicHttp} from './agent-caller-http.ts'
+import {selectNativeAgentCallerCapabilities,inspectAgentCallerPool} from './agent-caller-native-policy.ts'
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
 import {verifyKnowledgeEmbeddingConsentSchema} from "./knowledge-embedding-consent-privileges.ts"
@@ -343,6 +346,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const internalShare=selectNativeInternalShareCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const localDevices=selectNativeLocalDevices(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const approvalDelegation=selectApprovalDelegationCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const agentCallers=selectNativeAgentCallerCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites,capabilities.autonomousAgentUat===true)
   const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
@@ -472,6 +476,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(templateMarket.available){templateMarketAudit=await loadAgentTemplateMarketAuditVerifier();await inspectAgentTemplateMarketApiPool(business,templateMarketAudit)}
     if(internalShare.available)await inspectInternalSharePool(business)
     if(approvalDelegation.available)await inspectApprovalDelegationPool(business)
+    if(agentCallers.available)await inspectAgentCallerPool(business)
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
@@ -523,6 +528,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowInternalShare:internalShare.available,allowInternalShareWrites:internalShare.writes,
       allowLocalDevices:localDevices.available,allowLocalDeviceWrites:localDevices.writes,
       allowApprovalDelegations:approvalDelegation.available,allowApprovalDelegationWrites:approvalDelegation.writes,
+      allowAgentCallers:agentCallers.available,allowAgentCallerWrites:agentCallers.writes,allowAgentCallerRuns:agentCallers.runs,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
@@ -538,7 +544,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
-      repository:new AgentSpecRepository(business),
+      repository:new AgentSpecRepository(business,{hideCallerSources:true}),
       ...(generatedAcceptanceAvailable?{agentGeneratedAcceptanceRepository:new AgentGeneratedAcceptanceRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentGeneratedAcceptanceUat===true})}:{}),
       ...(reviewAvailable?{agentReviewSourceRepository:new AgentReviewSourceRepository(business),
         agentReviewLedgerRepository:new AgentReviewLedgerRepository(business,{allowSubmissions:capabilities.configurationWrites===true&&capabilities.agentReviewSubmissionUat===true}),
@@ -625,6 +631,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
     }):null
     const agentPlanWorkflowHttp=agentPlanWorkflow.createHandler(native.authenticateRequest)
     const localDevicesHttp=localDevices.available&&localExecutorPool?createNativeLocalDeviceHttp({repository:new NativeLocalDeviceRepository(business,{allowWrites:localDevices.writes}),executor:new NativeLocalExecutorRepository(adapter(localExecutorPool)),authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:localDevices.writes}):null
+    const callerRepository=agentCallers.available?new AgentCallerRepository(business,{enabled:true,allowAdmission:agentCallers.runs,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}):null
+    const callerOwnerHttp=callerRepository?createAgentCallerOwnerHttp({repository:callerRepository,authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:agentCallers.writes,allowAdmission:agentCallers.runs}):null
+    const callerPublicHttp=callerRepository?createAgentCallerPublicHttp({repository:callerRepository}):null
     const guardedBusinessHandler=businessHandler
     const approvalDelegationHttp=approvalDelegation.available?createApprovalDelegationHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new ApprovalDelegationRepository(business,{allowWrites:approvalDelegation.writes,allowModelDecisions:capabilities.configurationWrites&&capabilities.runApprovalUat,allowAutonomousDecisions:capabilities.configurationWrites&&capabilities.autonomousAgentUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}):null
     const internalShareHttp=internalShare.available?createAgentInternalShareHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new AgentInternalShareRepository(business,{allowWrites:internalShare.writes})}):null
@@ -641,10 +650,11 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(templateMarketHttp&&await templateMarketHttp(req,res))return
       if(internalShareHttp&&await internalShareHttp(req,res))return
       if(approvalDelegationHttp&&await approvalDelegationHttp(req,res))return
+      if(callerOwnerHttp&&await callerOwnerHttp(req,res))return
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }
-    const localServer=createServer(native.handler)
+    const localServer=createServer(async(req,res)=>{if(callerPublicHttp&&await callerPublicHttp(req,res))return;await native.handler(req,res)})
     server=localServer
     localServer.requestTimeout=15000
     localServer.headersTimeout=12000

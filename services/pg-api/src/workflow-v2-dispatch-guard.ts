@@ -1,4 +1,5 @@
 import {localCanonical,parseLocalBinding} from '../../../shared/native-local-device-contract.mjs'
+import {verifyAgentCallerDispatch} from './agent-caller-runtime-policy.ts'
 import {durableV2Root} from "./durable-v2-root.ts"
 // Shared private Broker fence. Called only after a separate identity lookup
 // and mTLS authentication; never mounted by the public Native HTTP server.
@@ -12,7 +13,7 @@ import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
 export type WorkflowDispatchKind="model"|"tool"
 const functions={model:"workflow_model_lease_identity",tool:"workflow_tool_lease_identity"} as const
 function changed(kind:WorkflowDispatchKind):never{throw new HttpError(409,"workflow_"+kind+"_state_changed")}
-export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,request:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,allowAgent=false,allowAutonomous=false,allowMemory=false,allowNativeLocal=false){
+export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,request:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,allowAgent=false,allowAutonomous=false,allowMemory=false,allowNativeLocal=false,allowCallers=false){
   const root=durableV2Root(request.execution_mode??"workflow_native_v2")
   if(root.kind==="agent"&&(!allowAutonomous||!request.parent_step_key))changed(kind)
   const c=request.claim
@@ -60,6 +61,7 @@ export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,reques
   // Completed semantic observations can enter later model/HTTP/MCP inputs or
   // Agent summaries. Check their current private receipts before any new effect;
   // do not replace the already approved input with newly fetched text.
+  if(state.caller_binding){if(!allowCallers)throw new HttpError(409,"agent_caller_execution_disabled");await verifyAgentCallerDispatch(db,c.run_id,pending,state.agent_state?.spec)}
   if(!await currentKnowledgeObservations(db,c.run_id,request.step_key))changed(kind)
   return {...pending,node_debug:Boolean(state.node_debug)}
 }

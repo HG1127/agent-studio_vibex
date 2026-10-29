@@ -92,6 +92,9 @@ export type PgNativeConfigCapabilities={
   agent_design_available?:boolean
   agent_design_submissions_enabled?:boolean
   agent_design_saves_enabled?:boolean
+  agent_callers_available?:boolean
+  agent_callers_writes_enabled?:boolean
+  agent_callers_runs_enabled?:boolean
   approval_delegations_available?:boolean
   approval_delegations_writes_enabled?:boolean
   internal_share_available?:boolean
@@ -761,6 +764,11 @@ export function createPgNativePilotApi(
           (value.agent_design_submissions_enabled!==undefined&&typeof value.agent_design_submissions_enabled!=="boolean")||
           (value.agent_design_saves_enabled!==undefined&&typeof value.agent_design_saves_enabled!=="boolean")||
           ((value.agent_design_submissions_enabled===true||value.agent_design_saves_enabled===true)&&(value.agent_design_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_callers_available!==undefined&&typeof value.agent_callers_available!=="boolean")||
+          (value.agent_callers_writes_enabled!==undefined&&typeof value.agent_callers_writes_enabled!=="boolean")||
+          (value.agent_callers_runs_enabled!==undefined&&typeof value.agent_callers_runs_enabled!=="boolean")||
+          (value.agent_callers_writes_enabled===true&&(value.agent_callers_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_callers_runs_enabled===true&&(value.agent_callers_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
           (value.approval_delegations_available!==undefined&&typeof value.approval_delegations_available!=="boolean")||
           (value.approval_delegations_writes_enabled!==undefined&&typeof value.approval_delegations_writes_enabled!=="boolean")||
           (value.approval_delegations_writes_enabled===true&&(value.approval_delegations_available!==true||value.config_writes_enabled!==true))||

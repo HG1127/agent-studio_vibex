@@ -813,6 +813,7 @@ export const nativeLocalDeviceManifest={
  },
  "dependencies": {
   "agent_design_sort_key": {
+   "config": ["search_path=pg_catalog, pg_temp"],
    "args": "text",
    "returns": "integer[]",
    "language": "plpgsql",
@@ -822,6 +823,7 @@ export const nativeLocalDeviceManifest={
    "sha": "b2387fe445d43eed8e1267340b2a74acc21b9e0082fce36abc90abe95ff1692d"
   },
   "agent_design_number": {
+   "config": ["search_path=pg_catalog, pg_temp", "extra_float_digits=3"],
    "args": "numeric",
    "returns": "text",
    "language": "plpgsql",
@@ -831,6 +833,7 @@ export const nativeLocalDeviceManifest={
    "sha": "479b0ef8963be176c3225aa1e287c4a97a74e9d40306274ea7a07b3b9d4ea9ca"
   },
   "agent_design_index_key": {
+   "config": ["search_path=pg_catalog, pg_temp"],
    "args": "text",
    "returns": "bigint",
    "language": "sql",
@@ -840,6 +843,7 @@ export const nativeLocalDeviceManifest={
    "sha": "c7f680b7167ad122630adaba380a01b4c1430292b24e81a0959ffcc69e3dae01"
   },
   "agent_design_compact": {
+   "config": ["search_path=pg_catalog, pg_temp"],
    "args": "jsonb",
    "returns": "text",
    "language": "plpgsql",
@@ -849,6 +853,7 @@ export const nativeLocalDeviceManifest={
    "sha": "1e34079e018fd40d5dc9d618c1786f48f40b180e20bb53a69ecb7702b494b3f3"
   },
   "agent_design_digest": {
+   "config": ["search_path=pg_catalog, pg_temp"],
    "args": "jsonb",
    "returns": "text",
    "language": "sql",
@@ -858,6 +863,7 @@ export const nativeLocalDeviceManifest={
    "sha": "00a6b69003296912cda5b8110dce22e43b34ee848d120c2a4d629abbba6847cc"
   },
   "agent_design_native": {
+   "config": ["search_path=pg_catalog, pg_temp"],
    "args": "uuid",
    "returns": "jsonb",
    "language": "plpgsql",

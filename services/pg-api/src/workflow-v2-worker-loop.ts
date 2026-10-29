@@ -1,5 +1,6 @@
 import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
 import {verifyNativeLocalDeviceSchema} from './native-local-device-audit.ts'
+import {selectAgentCallerExecution} from './agent-caller-execution-opt-in.ts'
 import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
@@ -48,6 +49,8 @@ export function runV2WorkerCli(autonomous=false){
     const scheduleApproved=selectScheduleRuntime(process.env),scheduleEnabled=!autonomous&&scheduleApproved
     if(scheduleEnabled&&!selectAutonomousAgentExecution(process.env))throw Error("schedule_autonomous_worker_not_approved")
     if(knowledgeToolsEnabled&&!toolsEnabled)throw Error("workflow_knowledge_tool_adapter_disabled")
+    const callerApproved=selectAgentCallerExecution(process.env)
+    if(callerApproved&&!autonomous)throw Error("agent_caller_autonomous_worker_required")
     const agentsEnabled=autonomous?selectAutonomousAgentExecution(process.env):selectWorkflowAgentExecution(process.env)
     const memoryApproved=selectAgentMemoryRuntime(process.env)
     const outcomeApproved=selectAgentOutcomeMemoryWrites(process.env)
@@ -116,7 +119,7 @@ export function runV2WorkerCli(autonomous=false){
       // Preflight never loads either execution Worker or its claim SQL.
       const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
       const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
-      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       closeWorkerClaims=()=>worker.closeNewClaims()
       claimsClosed=()=>worker.claimAdmissionSnapshot().closed
       if(stop){closeWorkerClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}

@@ -1,3 +1,4 @@
+import {checkedAgentCallerBinding,verifyAgentCallerSource,type AgentCallerBinding} from './agent-caller-runtime-policy.ts'
 import {ownedStepDecisionActor,auditDelegatedOwnedStep} from './owned-step-decision-context.ts'
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import {workflowAgentJson} from "./workflow-v2-agent-machine.ts"
@@ -24,6 +25,7 @@ import {parseAgentMemoryContext,type AgentMemoryContext} from "./agent-memory-co
 import {verifyCurrentAgentMemoryContext} from "./agent-memory-context-policy.ts"
 import {checkedAgentRunPause,agentRunControlStateHash,type AgentRunPause} from "./agent-run-control.ts"
 export type WorkflowV2StoredState={
+  caller_binding?:AgentCallerBinding
   manual_pause?:AgentRunPause
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
   graph:WorkflowGraph;machine:WorkflowV2Checkpoint
@@ -53,11 +55,12 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
   let root:ReturnType<typeof durableV2Root>
   try{root=durableV2Root(value.execution_mode)}catch{throw new HttpError(409,"invalid_workflow_v2_state")}
   const required=["stage","execution_mode",root.revision,"graph","machine"]
-  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug","human_agent_keys","memory_context","manual_pause"].includes(key))||
+  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug","human_agent_keys","memory_context","manual_pause","caller_binding"].includes(key))||
      typeof value.stage!=="string"||!new RegExp("^"+root.stage+"[a-z_]{1,60}$").test(value.stage)||
      !Number.isSafeInteger(value[root.revision])||Number(value[root.revision])<1||
      !value.machine||value.machine.instruction!==instruction)throw new HttpError(409,"invalid_workflow_v2_state")
   if(Object.hasOwn(value,"manual_pause")){if(root.kind!=="agent")throw new HttpError(409,"invalid_agent_run_pause");value.manual_pause=checkedAgentRunPause(value.manual_pause)}
+  if(Object.hasOwn(value,"caller_binding")){if(root.kind!=="agent"||value.memory_context||value.node_debug)throw new HttpError(409,"agent_caller_source_unavailable");value.caller_binding=checkedAgentCallerBinding(value.caller_binding)}
   const graph=safeWorkflowGraph(value.graph)
   if(Object.hasOwn(value,"memory_context")){
     const ref=graph.nodes[1]?.data.agent_binding
@@ -103,6 +106,7 @@ export async function auditWorkflowV2(db:SqlClient,owner:string,runId:string,act
 }
 export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState){
   if(isUuid(run.id))await verifyScheduleRunSource(db,run.id)
+  await verifyAgentCallerSource(db,owner,run,state)
   const root=durableV2Root(state.execution_mode)
   if(run.kind!==root.kind||!run[root.id]||run[root.id==="workflow_id"?"agent_spec_id":"workflow_id"])throw new HttpError(409,"invalid_v2_root")
   const current=(await db.query<{revision:number|string;graph?:unknown}>("SELECT revision"+(state.node_debug?",graph":"")+" FROM agentstudio."+root.table+

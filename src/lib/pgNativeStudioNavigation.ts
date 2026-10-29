@@ -19,6 +19,7 @@ const routes={
  runAgent:{group:'运行中心',keywords:'运行 Agent 试跑 原任务'},
  autonomousAgent:{group:'运行中心',keywords:'多轮 Agent 试跑 审批'},
  approvalDelegations:{group:'运行中心',keywords:'审批 委托 负责人 管理员 当前步骤 撤销'},
+ agentCallers:{group:'运行中心',keywords:'API 网页 嵌入 凭证 调用 密钥 预算 Origin 发布'},
  runs:{group:'运行中心',keywords:'Agent 运行 历史 记录'},
  workflowNativeRuns:{group:'运行中心',keywords:'Workflow 运行 审批'},
  workflowRuns:{group:'运行中心',keywords:'Workflow 运行 历史 记录'},
