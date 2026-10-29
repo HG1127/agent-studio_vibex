@@ -29,6 +29,14 @@ export async function toolHubGenuineFixture(env=process.env,{browserMode=false}=
   base=await baseModule.agentAssessmentTcpFixture(env)
   for(const migration of ['058_agent_opinion_read','059_agent_generated_acceptance','060_agent_descriptive_patch','061_company_overview','062_agent_design','063_agent_template_market','064_agent_plan_workflow','065_agent_internal_share','069_owner_tool_trials'])await base.db.exec(base.sql('migrations/pg_v9_'+migration+'.sql'))
   for(const [login,role]of [['agentstudio_bound_dispatch_login','agentstudio_bound_dispatch'],['agentstudio_model_broker_login','agentstudio_model_broker']]){assert.match(login,/^[a-z_]+$/);await base.db.query('CREATE ROLE '+login+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+activationModule.makeNativeScramVerifier(passwordFor(login))+"'");await base.db.query('GRANT '+role+' TO '+login+' WITH INHERIT FALSE, SET TRUE')}
+  // The original fresh installer leaves these exact two existing accounts
+  // NOLOGIN. Enable only the owned synthetic CI logins; retain every original
+  // membership and run the unchanged Broker/Worker privilege audits below.
+  for(const login of ['agentstudio_stage_login','agentstudio_stage_worker']){
+   const verifier=activationModule.makeNativeScramVerifier(passwordFor(login))
+   assert.match(verifier,/^SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/)
+   await base.db.query('ALTER ROLE '+login+" LOGIN PASSWORD '"+verifier+"'")
+  }
   const workerPool=pool('agentstudio_stage_worker'),identityPool=pool('agentstudio_bound_dispatch_login'),brokerPool=pool('agentstudio_model_broker_login'),brokerApi=pool('agentstudio_stage_login'),authPool=pool('agentstudio_native_login')
   for(const [kind,client]of [['api',brokerApi],['identity',identityPool],['broker',brokerPool]]){await preflightModule.verifyBoundDispatchPrivileges(client,kind);for(const effect of ['tool','model'])await preflightModule.verifyWorkflowEffectIdentityPrivileges(client,kind,effect)}
   assert.equal(await auditModule.inspectOwnerToolTrialSchema(base.pool),true)

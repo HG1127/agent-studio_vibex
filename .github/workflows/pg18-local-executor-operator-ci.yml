@@ -1,0 +1,57 @@
+name: Agent Studio Native Local Executor operator isolated PG18 verification
+on:
+  push:
+    branches: ["codex/pg18-worker-heartbeat-20261028"]
+    paths:
+      - ".github/workflows/pg18-local-executor-operator-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pg18-local-executor-operator-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  AGENT_STUDIO_EXECUTOR_OPERATOR_CI: YES_DISPOSABLE_EXECUTOR_OPERATOR_ONLY
+  AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+  AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+  AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+  AGENT_STUDIO_PG18_CI_PORT: '5432'
+  AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+  AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+  AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+jobs:
+  pg18-local-executor-operator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Original API compiler and independent pure operator/refusal tests
+        run: |
+          pnpm --dir services/pg-api check
+          node --test --test-concurrency=1 services/pg-api/tests/native-local-executor-operator-plan.test.mjs services/pg-api/tests/native-local-executor-preflight.test.mjs services/pg-api/tests/native-local-executor-operator-ci-guard.test.mjs
+      - name: Actual synthetic PG18 disabled reservation, minimum LOGIN and original C readonly audits
+        run: node --test --test-concurrency=1 services/pg-api/tests/native-local-executor-operator-pg18.test.mjs

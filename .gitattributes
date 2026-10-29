@@ -782,3 +782,26 @@ tests/pg-native-optimization-retest-genuine.config.mjs text eol=lf
 tests/pg-native-optimization-retest-genuine.spec.mjs text eol=lf
 tests/pg-native-tool-hub-genuine.config.mjs text eol=lf
 tests/pg-native-tool-hub-genuine.spec.mjs text eol=lf
+
+# Reviewed actual186e1f3 failure repairs.
+.github/workflows/pg18-employee-ui-ci.yml text eol=lf
+.github/workflows/pg18-local-executor-operator-ci.yml text eol=lf
+.github/workflows/pocketbase-standalone-e2e-parallel-ci.yml text eol=lf
+docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_PLAN.json text eol=lf
+docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md text eol=lf
+ops/templates/agentstudio-pg18-native-local-executor.conf.example text eol=lf
+ops/templates/native-local-executor-pg-hba.conf.example text eol=lf
+services/pg-api/src/native-local-executor-operator-plan.d.mts text eol=lf
+services/pg-api/src/native-local-executor-operator-plan.mjs text eol=lf
+services/pg-api/src/native-local-executor-service-preflight-cli.mjs text eol=lf
+services/pg-api/src/native-local-executor-service-preflight.ts text eol=lf
+services/pg-api/tests/helpers/native-local-cli-failure-codes.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-executor-operator-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-executor-operator-source-pins.mjs text eol=lf
+services/pg-api/tests/native-local-connection.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-operator-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-operator-pg18.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-operator-plan.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-preflight.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-ci-cold-logins.test.mjs text eol=lf
+tests/pg-native-browser/playwright.legacy-regression.config.mjs text eol=lf

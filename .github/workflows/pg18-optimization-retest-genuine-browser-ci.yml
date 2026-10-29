@@ -65,8 +65,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Real employee acceptance and explicit new retest with original UUID recovery
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-optimization-retest-genuine.config.mjs
-      - name: Preserve actual failure evidence
-        if: failure()
+      - name: Preserve actual browser evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: f29-actual-employee-optimization-retest-browser

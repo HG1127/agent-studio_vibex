@@ -1,6 +1,10 @@
 name: Agent Studio F02 employee creation genuine PG18 browser verification
 
 on:
+  push:
+    branches: ["codex/pg18-worker-heartbeat-20261028"]
+    paths:
+      - ".github/workflows/pg18-agent-create-journey-genuine-ci.yml"
   workflow_dispatch:
     inputs:
       run_journey:
@@ -19,7 +23,7 @@ concurrency:
 jobs:
   pg18-agent-create-journey-browser:
     name: F02 / actual employee creation and accepted full publication
-    if: inputs.run_journey
+    if: inputs.run_journey || (github.event_name == 'push' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:

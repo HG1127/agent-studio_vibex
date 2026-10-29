@@ -305,7 +305,7 @@
     {
       "order": 51,
       "path": "db/postgres/migrations/pg_v9_067_native_local_devices.sql",
-      "Git_LF_sha256": "cf392bcaecf1cc2510fe374906aa69c0f8257d7c1d4630e4bd12ffa5f6bc7397",
+      "Git_LF_sha256": "dfaecc456ffca3de765f7cbcb6f8a5327915bcc4ef0e9e9f2fea1c964e9a2404",
       "action": "Explicit optional Native device profile only; no LOGIN, secret, service activation or production cutover."
     },
     {

@@ -7,7 +7,7 @@ test('actual SQL067 catalog, original LOGIN, privilege, immutable and predecesso
  const {nativeLocalDeviceGenuineFixture}=await import('./helpers/native-local-device-genuine-fixture.mjs'),f=await nativeLocalDeviceGenuineFixture();t.after(()=>f.close())
  const inspect=()=>f.audit.inspectNativeLocalDevicePool(f.pool,'agentstudio_api')
  const inspectExecutor=()=>f.audit.inspectNativeLocalDevicePool(f.executorPool,'agentstudio_local_executor')
- let executorToken
+ let executorToken,executorDeviceId
  const rpc=()=>f.executor(executorToken,'poll',{catalog:[],claim:randomBytes(32).toString('hex')})
  async function executorQuery(sql,role=true,pool=f.executorPool){const db=await pool.connect();try{await db.query('BEGIN READ ONLY');if(role)await db.query('SET LOCAL ROLE '+(pool===f.executorPool?'agentstudio_local_executor':'agentstudio_api'));return(await db.query(sql)).rows}finally{await db.query('ROLLBACK');db.release()}}
  async function rejectedCatalog(){await assert.rejects(inspect);await assert.rejects(inspectExecutor);assert.equal((await rpc()).status,503)}
@@ -15,8 +15,21 @@ test('actual SQL067 catalog, original LOGIN, privilege, immutable and predecesso
  await t.test('actual installed catalog and independent executor LOGIN pass their own auditors',async()=>{assert.equal(await inspect(),true);assert.equal(await f.audit.inspectNativeLocalDevicePool(f.executorPool,'agentstudio_local_executor'),true)})
  await t.test('independent executor passes its complete per-RPC audit and real pairing/poll path without table access',async()=>{
   await f.login('alice');const created=await f.request('alice','/api/v2/local-devices',{action:'create',request_id:randomUUID(),name:'Synthetic catalog-bound executor'})
-  assert.equal(created.status,200);executorToken=randomBytes(32).toString('hex')
+  assert.equal(created.status,200);executorDeviceId=created.body.receipt.id;executorToken=randomBytes(32).toString('hex')
   assert.equal((await f.executor(null,'pair',{request_id:randomUUID(),pairing_code:created.body.pairing_code,device_token:executorToken})).status,200)
+  await restoredCatalog()
+ })
+ await t.test('actual expiry cancels queued and running jobs after a catalog change without claiming or executing either again',async()=>{
+  const catalog=[{name:'synthetic.expiry_probe',description:'CI protocol catalog only; no local implementation or effect',inputSchema:{type:'object',additionalProperties:false,properties:{label:{type:'string'}},required:['label']}}]
+  for(const state of ['queued','running']){
+   assert.equal((await f.executor(executorToken,'poll',{catalog,claim:randomBytes(32).toString('hex')})).status,200)
+   const made=await f.request('alice','/api/v2/local-devices',{action:'enqueue',request_id:randomUUID(),id:executorDeviceId,input:{tool:'synthetic.expiry_probe',arguments:{label:state}},confirm:true});assert.equal(made.status,200)
+   if(state==='running'){const claimed=await f.executor(executorToken,'poll',{catalog,claim:randomBytes(32).toString('hex')});assert.equal(claimed.status,200);assert.equal(claimed.body.job.id,made.body.receipt.id)}
+   const changed=[{...catalog[0],description:'Changed synthetic catalog; old jobs must be cancelled'}],polled=await f.executor(executorToken,'poll',{catalog:changed,claim:randomBytes(32).toString('hex')});assert.equal(polled.status,200);assert.equal(polled.body.job,null)
+   const actual=await f.request('alice','/api/v2/local-devices/jobs/'+made.body.receipt.id);assert.equal(actual.status,200);assert.equal(actual.body.status,'cancelled');assert.equal(actual.body.error,'catalog_changed')
+   const row=(await f.db.query('SELECT status,error,result,claim_hash IS NOT NULL AS was_claimed FROM agentstudio.native_local_jobs WHERE id=$1',[made.body.receipt.id])).rows[0];assert.equal(row.status,'cancelled');assert.equal(row.error,'catalog_changed');assert.equal(row.result,null);assert.equal(row.was_claimed,state==='running')
+   const replay=await f.executor(executorToken,'poll',{catalog:changed,claim:randomBytes(32).toString('hex')});assert.equal(replay.status,200);assert.equal(replay.body.job,null)
+  }
   await restoredCatalog()
  })
  await t.test('fixed no-argument marker RPC reads the actual installed row and grants no direct schema_migrations access',async()=>{
@@ -41,7 +54,7 @@ test('actual SQL067 catalog, original LOGIN, privilege, immutable and predecesso
  })
  await t.test('marker RPC itself rejects an unsafe original LOGIN even after SET ROLE',async()=>{
   await f.db.exec('ALTER ROLE synthetic_local_executor INHERIT')
-  try{await assert.rejects(()=>executorQuery('SELECT agentstudio.native_local_executor_installed()'),/native_local_original_login_required/);await rejectedCatalog()}
+  try{await assert.rejects(()=>executorQuery('SELECT agentstudio.native_local_executor_installed()'),/native_local_original_login_required/);assert.equal(await inspect(),true);await assert.rejects(inspectExecutor);assert.equal((await rpc()).status,503)}
   finally{await f.db.exec('ALTER ROLE synthetic_local_executor NOINHERIT')}
   await restoredCatalog()
  })

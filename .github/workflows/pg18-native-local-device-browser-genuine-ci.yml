@@ -1,6 +1,10 @@
 name: Agent Studio F20 F21 Native Local Devices genuine employee browser verification
 
 on:
+  push:
+    branches: ["codex/pg18-worker-heartbeat-20261028"]
+    paths:
+      - ".github/workflows/pg18-native-local-device-browser-genuine-ci.yml"
   workflow_dispatch:
     inputs:
       run_executor:
@@ -24,7 +28,7 @@ concurrency:
 jobs:
   pg18-local-device-browser:
     name: F20 F21 / actual employee browser and independent Office chain
-    if: inputs.run_executor && inputs.run_browser
+    if: inputs.run_executor && inputs.run_browser || (github.event_name == 'push' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:

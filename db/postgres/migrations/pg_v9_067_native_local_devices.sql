@@ -128,7 +128,7 @@ DECLARE d agentstudio.native_local_devices;n jsonb;
 BEGIN
  SELECT * INTO d FROM agentstudio.native_local_devices WHERE id=p_device;IF NOT FOUND THEN RETURN;END IF;n:=agentstudio.agent_design_native(d.owner_user_id);
  UPDATE agentstudio.native_local_jobs SET status='cancelled',error='owner_epoch_changed' WHERE device_id=p_device AND status IN('queued','running') AND d.owner_epoch<>(n->>'epoch')::bigint;
- UPDATE agentstudio.native_local_jobs j SET status='cancelled',error='catalog_changed' WHERE device_id=p_device AND status IN('queued','running') AND NOT EXISTS(SELECT 1 FROM agentstudio.native_local_devices d WHERE d.id=j.device_id AND d.version=j.device_version AND NOT d.revoked);
+ UPDATE agentstudio.native_local_jobs j SET status='cancelled',error='catalog_changed' WHERE device_id=p_device AND status IN('queued','running') AND NOT EXISTS(SELECT 1 FROM agentstudio.native_local_devices live_device WHERE live_device.id=j.device_id AND live_device.version=j.device_version AND NOT live_device.revoked);
  UPDATE agentstudio.native_local_jobs j SET status=CASE WHEN status='queued' THEN 'expired' ELSE 'unknown' END,error='deadline_expired'
  WHERE device_id=p_device AND status IN('queued','running') AND deadline_at<=clock_timestamp();
  UPDATE agentstudio.native_local_jobs j SET status='cancelled',error='run_inactive' WHERE device_id=p_device AND status IN('queued','running') AND run_id IS NOT NULL

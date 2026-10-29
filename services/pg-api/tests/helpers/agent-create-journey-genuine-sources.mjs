@@ -1,6 +1,6 @@
 // Reviewed source provenance only. Does not replace any original runtime catalog/LOGIN audit.
 export const agentCreateJourneyGenuineSources=Object.freeze({
-  "package.json": "b45371b595f9047d63afa0381532150303e253bbbd45452339dd0576da38889e",
+  "package.json": "e5540fd9264c161f9e3ed089749d6cb4aa4701e8891d04ecfddf9124f965e135",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -40,7 +40,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "tests/pg-native-browser/playwright.config.mjs": "19abcd13e34aa90732a294cfd42a81de65db1ce9b625fc99c6c86f14ebd29a38",
   "services/pg-api/src/baota-pg18-complete-init.mjs": "00d6626138aff0039864a8c544e34f44109c2164281834fd923b11c39b927d3a",
   "services/pg-api/src/native-auth-http.d.mts": "455046bbc72a9723f8143a4076b7b311d9914bb9fcfe5e61e5f84f944667d31a",
-  "services/pg-api/src/native-local-device-audit-manifest.ts": "0aa7c3165026b3d046fd5170079f9082ccf73b8ee317d497ae5d1b76db73c7cc",
+  "services/pg-api/src/native-local-device-audit-manifest.ts": "8d0cb60d169277e276e7da83540f66177015a45fa35376ab5e834e9d0eee991c",
   "services/pg-api/src/native-local-device-audit.ts": "b001feede675315f6d216c3d3d7c21bdaf66f125a6ab8f43980f59dbdb408d9a",
   "services/pg-api/src/native-local-device-repository.ts": "7be89686eae69ee74628f5b3b00a134780c007ad60e454b310e586ffff564653",
   "services/pg-api/src/native-server.ts": "36bcfda573b72890b8fb1329de08884d0e85b4cc062a1d34a5f766e5c79704ba",
@@ -49,7 +49,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "6950c0bfa97869ff1d4377f8c960849df73d7802f59935dc5785bd0998220879",
   "services/pg-api/src/pg18-complete-operator-runtime.mjs": "8ecc7ffe1b7eacf6e3e0bc14686d388e440f5b1b00f61e818ab4de8a112c9edd",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
-  "services/pg-api/src/pg18-complete-profile-source.mjs": "5ba9a56eb386bda745753b9fc49176902f4584ba8944027217b817657448d7a4",
+  "services/pg-api/src/pg18-complete-profile-source.mjs": "50fc43715e3936a67b2806ad18dbbaf714da8f6f5ad768694c69475a99d9551d",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
   "services/pg-api/src/public-mcp-registry-contract.ts": "c60e46a735a6e876be0077290a1841e6879cf869330b2a9bd2860e274d271677",
   "services/pg-api/src/public-mcp-registry-network.ts": "d67e6cd485d51edfa94d9401d6c79481a3c8d966a7ffdbf00a4227e6f6f40c52",
@@ -68,5 +68,9 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "src/lib/pgNativeToolHub.ts": "0b92d87f31a810030d5fb6789f2323ed6b6a4717f24779d18622fcf41b741c27",
   "src/lib/pgNativeToolHubSession.ts": "a631541855c13758549a2ce3c644af48030204542a284b5c9c0bdfb748016acc",
   "src/pages/PgNativePilot/PgNativePublicMcpCatalog.tsx": "12f280dd83023c0a12d0b63d2e588b8b8d192eacd1f533f81b3efc3dcbae5ff1",
-  "src/pages/PgNativePilot/PgNativeToolHubPanel.tsx": "3a2183b8902bf7ffef096a029ca4e80ea37a9c9266ea10d00e509ce349599c91"
+  "src/pages/PgNativePilot/PgNativeToolHubPanel.tsx": "3a2183b8902bf7ffef096a029ca4e80ea37a9c9266ea10d00e509ce349599c91",
+  "services/pg-api/src/native-local-executor-operator-plan.d.mts": "890ca7e6e0b2f3d4addc55a5307249407db48c7ddcdd4abfcba7a5763e380180",
+  "services/pg-api/src/native-local-executor-operator-plan.mjs": "df49c83e97be6e04b122aaaac42439731f7c7bf3ece50653c7342d752e0d9754",
+  "services/pg-api/src/native-local-executor-service-preflight-cli.mjs": "c7de574a8647e96684b81ce9f9a78b42b50d9e78e0b152ad7dddd3a28697a8d8",
+  "services/pg-api/src/native-local-executor-service-preflight.ts": "659777c417f89d7b53851a115948dd38a5a341a671273fda1aa54bc468a10397"
 })

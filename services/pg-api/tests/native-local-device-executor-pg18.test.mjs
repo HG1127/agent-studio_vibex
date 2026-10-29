@@ -3,6 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {requireNativeLocalDeviceGenuineCi} from './helpers/native-local-device-genuine-guard.mjs'
+import {nativeLocalCliFailureCodes} from './helpers/native-local-cli-failure-codes.mjs'
 requireNativeLocalDeviceGenuineCi()
 test('independent CLI durable pair/claim/completion journal and actual Office artifacts',async t=>{
  const [fs,path,os,url,crypto,cp,timers,{nativeLocalDeviceGenuineFixture}]=await Promise.all([import('node:fs/promises'),import('node:path'),import('node:os'),import('node:url'),import('node:crypto'),import('node:child_process'),import('node:timers/promises'),import('./helpers/native-local-device-genuine-fixture.mjs')])
@@ -16,7 +17,7 @@ test('independent CLI durable pair/claim/completion journal and actual Office ar
  childEnv.NODE_EXTRA_CA_CERTS=caPath
  function start(command,input){const child=cp.spawn(process.execPath,[path.join(repo,'local-executor/native-run.mjs'),command,configPath],{cwd:repo,env:childEnv,stdio:['pipe','pipe','pipe'],windowsHide:true});children.add(child);let out='',error='';child.stdout.on('data',v=>{out+=v.toString('utf8');if(out.length>65536)child.kill('SIGTERM')});child.stderr.on('data',v=>{error+=v.toString('utf8');if(error.length>65536)child.kill('SIGTERM')});const exited=new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>{children.delete(child);resolve({code,signal})})});if(input!==undefined)child.stdin.end(input);else child.stdin.end();return{child,exited,output:()=>({out,error})}}
  async function bounded(p,ms=30000){let timer;try{return await Promise.race([p,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('native_local_cli_fixture_timeout')),ms)})])}finally{clearTimeout(timer)}}
- async function command(name,input,expect=0){const job=start(name,input),result=await bounded(job.exited);assert.equal(result.code,expect,name+' command failed; stdout/stderr intentionally not copied into protocol evidence');return job}
+ async function command(name,input,expect=0){const job=start(name,input),result=await bounded(job.exited);assert.equal(result.code,expect,name+' command failed; bounded codes='+JSON.stringify(nativeLocalCliFailureCodes(job.output().error)));return job}
  async function eventually(read,accept,ms=40000){const end=Date.now()+ms;let last;while(Date.now()<end){last=await read();if(accept(last))return last;await timers.setTimeout(150)}throw Error('native_local_cli_actual_state_not_observed')}
  const owner=async(body,path='/api/v2/local-devices')=>{const r=await f.request('alice',path,body);assert.equal(r.status,200,JSON.stringify(r.body));return r.body}
  async function readJob(id){return owner(undefined,'/api/v2/local-devices/jobs/'+id)}
@@ -25,6 +26,7 @@ test('independent CLI durable pair/claim/completion journal and actual Office ar
  await t.test('real pair ACK loss keeps original token on disk and explicit pair-confirm recovers same binding',async()=>{
   const created=await owner({action:'create',request_id:crypto.randomUUID(),name:'Actual independent CI executor'});device=created.receipt.id;f.mutable.dropNext={method:'POST',path:'/api/public/native-local-executor/pair'}
   const pairing=start('pair',created.pairing_code+'\n'),result=await bounded(pairing.exited);assert.notEqual(result.code,0);const pending=JSON.parse(await fs.readFile(credentialPath,'utf8'));assert.equal(pending.stage,'pair_pending');assert.match(pending.device_token,/^[a-f0-9]{64}$/)
+  const committed=(await f.db.query('SELECT token_hash,pair_request_id::text,pair_hash IS NULL AS code_consumed FROM agentstudio.native_local_devices WHERE id=$1',[device])).rows[0];assert.equal(committed.pair_request_id,pending.request_id);assert.equal(committed.code_consumed,true);assert.equal(committed.token_hash===crypto.createHash('sha256').update('native-local-device-v1:'+pending.device_token).digest('hex'),true,'the actual original pair must commit before its ACK is lost')
   const before=await f.counts();await command('pair-confirm');auth=JSON.parse(await fs.readFile(credentialPath,'utf8'));assert.equal(auth.stage,'paired');assert.equal(auth.id,device);assert.equal(auth.device_token,pending.device_token);assert.equal(Object.hasOwn(auth,'pairing_code'),false);assert.deepEqual(await f.counts(),before)
  })
  await t.test('actual CLI heartbeat publishes its real catalog and preserves secret boundaries',async()=>{
