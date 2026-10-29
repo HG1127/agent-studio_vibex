@@ -6,7 +6,6 @@ import {pathToFileURL,fileURLToPath} from 'node:url'
 import {spawn,execFileSync} from 'node:child_process'
 import {createHash,randomBytes,randomUUID,generateKeyPairSync,sign,X509Certificate} from 'node:crypto'
 import {performance} from 'node:perf_hooks'
-import {createRequire} from 'node:module'
 import {setTimeout as delay} from 'node:timers/promises'
 import {completeProfileCiBinding} from './pg18-complete-install-ci-guard.mjs'
 import {completeProfileStageDescriptor,loadVerifiedCompleteProfileStage,assertVerifiedCompleteProfileStage} from './pg18-complete-install-ci-stage.mjs'
@@ -86,16 +85,16 @@ async function publishControlRuntime(s){
  assertVerifiedCompleteProfileStage(s.loaded)
  const runtime=await import(pathToFileURL(s.deployment+'/services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs').href),source=await import(pathToFileURL(s.deployment+'/services/pg-api/src/worker-heartbeat-activation-control-source.mjs').href),policy=runtime.workerHeartbeatActivationControlRuntimePolicy
  if(policy.format!=='worker_heartbeat_activation_control_runtime_v1'||policy.lock_sha256!==pins.lock||policy.pg_version!=='8.23.1'||Object.keys(policy.packages).length!==14)fail('control_runtime_policy')
- const read=name=>{const st=fs.lstatSync(name);if(!st.isFile()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||st.nlink!==1||(st.mode&0o7777)!==0o444||st.size<1||st.size>16777216)fail('control_runtime_file');const bytes=fs.readFileSync(name),last=fs.lstatSync(name);if(['dev','ino','size','mtimeMs','ctimeMs'].some(k=>st[k]!==last[k]))fail('control_runtime_changed');return bytes},api=s.deployment+'/services/pg-api',modules=api+'/node_modules',found=new Map(),pending=[{name:'pg',require:createRequire(api+'/package.json')}]
+ const read=name=>{const st=fs.lstatSync(name);if(!st.isFile()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||st.nlink!==1||(st.mode&0o7777)!==0o444||st.size<1||st.size>16777216)fail('control_runtime_file');const bytes=fs.readFileSync(name),last=fs.lstatSync(name);if(['dev','ino','size','mtimeMs','ctimeMs'].some(k=>st[k]!==last[k]))fail('control_runtime_changed');return bytes},api=s.deployment+'/services/pg-api',modules=api+'/node_modules',found=new Map(),pending=['pg']
  if(sha(read(api+'/package.json'))!=='90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'||sha(read(api+'/pnpm-lock.yaml'))!==pins.lock)fail('control_runtime_package_lock')
  while(pending.length){
-  const {name,require}=pending.pop(),expected=policy.packages[name];if(!expected)fail('control_runtime_dependency')
-  const entry=fs.realpathSync(require.resolve(name));let dir=path.dirname(entry)
-  while(true){const meta=dir+'/package.json';if(fs.existsSync(meta)&&JSON.parse(read(meta)).name===name)break;const next=path.dirname(dir);if(next===dir)fail('control_runtime_metadata');dir=next}
-  dir=fs.realpathSync(dir);if(dir!==modules+'/'+name)fail('control_runtime_scope');if(found.has(name)){if(found.get(name)!==dir)fail('control_runtime_ambiguous');continue}
+  const name=pending.pop(),expected=policy.packages[name];if(!expected)fail('control_runtime_dependency')
+  // Walk the original fixed flat deployment, without requesting a second pg
+  // resolution through the already locked operator loader in this process.
+  const dir=modules+'/'+name,st=fs.lstatSync(dir);if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o7777)!==0o555||fs.realpathSync(dir)!==dir)fail('control_runtime_scope');if(found.has(name))continue
   const pkg=JSON.parse(read(dir+'/package.json')),deps={...pkg.dependencies,...pkg.optionalDependencies,...pkg.peerDependencies};if(name==='pg')delete deps['pg-native']
   if(pkg.name!==name||pkg.version!==expected.version||Object.keys(deps).sort().join('\0')!==[...expected.dependencies].sort().join('\0'))fail('control_runtime_graph')
-  found.set(name,dir);const child=createRequire(dir+'/package.json');for(const dependency of expected.dependencies)pending.push({name:dependency,require:child})
+  found.set(name,dir);for(const dependency of expected.dependencies)pending.push(dependency)
  }
  if(found.size!==14)fail('control_runtime_dependency_count')
  const files=[];for(const[name,dir]of [...found].sort(([a],[b])=>a<b?-1:a>b?1:0)){
@@ -114,7 +113,7 @@ async function publishControlRuntime(s){
 function pathFailureDiagnostic(error,controller){
  const message=Object.getOwnPropertyDescriptor(error??{},'message')?.value,code=Object.getOwnPropertyDescriptor(error??{},'code')?.value,allowed=['source_runtime_refused','binding_changed','store_invalid','not_enrolled','control_io_failed','singleton_busy','approval_invalid','invalid_command'];let controllerError=null
  for(const line of Buffer.concat(controller?.output??[]).toString('utf8').split(/\r?\n/)){try{const v=JSON.parse(line);if(Object.keys(v).sort().join(',')==='automatic_retry_authorized,error'&&v.automatic_retry_authorized===false&&allowed.includes(v.error))controllerError=v.error}catch{}}
- return {event:'full069_worker_path_ci_primary_failure',refusal:typeof message==='string'&&/^full069_path_ci_refused:[a-z_]+$/.test(message)?message:'operation_failed',sqlstate:typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)?code:null,controller_error:controllerError,controller_exit:controller?.closed?controller.exit?.code:null,controller_signal:controller?.closed?controller.exit?.signal:null,qualifies_run:false,production_cutover_allowed:false}
+ return {event:'full069_worker_path_ci_primary_failure',refusal:typeof message==='string'&&(/^full069_path_ci_refused:[a-z_]+$/.test(message)||['descriptive_patch_operator_runtime_refused','worker_heartbeat_activation_control_runtime_refused'].includes(message))?message:'operation_failed',sqlstate:typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)?code:null,error_code:['ERR_MODULE_NOT_FOUND','ERR_PACKAGE_PATH_NOT_EXPORTED','ERR_UNSUPPORTED_DIR_IMPORT','ERR_REQUIRE_ESM','ERR_INVALID_ARG_TYPE','ENOENT','EACCES','EPERM'].includes(code)?code:null,controller_error:controllerError,controller_exit:controller?.closed?controller.exit?.code:null,controller_signal:controller?.closed?controller.exit?.signal:null,qualifies_run:false,production_cutover_allowed:false}
 }
 async function telemetry(s){
  // Original private target ownership is checked immediately before this new,
