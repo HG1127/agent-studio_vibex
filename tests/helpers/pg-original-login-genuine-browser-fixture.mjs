@@ -1,12 +1,15 @@
 import {requireOriginalLoginBrowserCi,originalLoginPath,originalLoginRequestPolicy} from './pg-original-login-browser-guard.mjs'
 import {originalLoginReviewedSources} from './pg-original-login-reviewed-sources.mjs'
+import {requireOriginalLoginHome071Ci} from '../../services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs'
 
 // Import is side-effect free. Never call this on the local authoring host.
 export async function startOriginalLoginGenuineBrowserFixture(env=process.env){
   const approved=requireOriginalLoginBrowserCi(env) // BEFORE files/PG/TLS/browser.
-  const [fs,path,url,https,crypto,genuine]=await Promise.all([
+  const homePermit=requireOriginalLoginHome071Ci(env) // Independent 070/071 purpose before effects.
+  const [fs,path,url,https,crypto,genuine,homeBackend]=await Promise.all([
     import('node:fs'),import('node:path'),import('node:url'),import('node:https'),import('node:crypto'),
     import('../../services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs'),
+    import('../../services/pg-api/tests/helpers/original-login-home071-genuine-fixture.mjs'),
   ])
   genuine.requireAgentDesignGenuineCi(env)
   const repo=fs.realpathSync(url.fileURLToPath(new URL('../../',import.meta.url)))
@@ -32,7 +35,7 @@ export async function startOriginalLoginGenuineBrowserFixture(env=process.env){
   if(fs.lstatSync(expectedBuild).isSymbolicLink()||!fs.statSync(expectedBuild).isDirectory()||
     fs.realpathSync(expectedBuild)!==expectedBuild)throw Error('original_login_build_directory_required')
   const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex')
-  const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
+  const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8',
     '.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg',
     '.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.avif':'image/avif','.ico':'image/x-icon',
     '.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.wasm':'application/wasm'}
@@ -99,7 +102,9 @@ export async function startOriginalLoginGenuineBrowserFixture(env=process.env){
     if(errors.length)throw new AggregateError(errors,'original_login_fixture_cleanup_failed')
   }
   try{
-    fixture=await genuine.agentDesignGenuineFixture(env,{browserMode:true})
+    fixture=await homeBackend.originalLoginHome071GenuineFixture(env)
+    if(fixture.browserHomeProfile?.profile!==homePermit.profile||fixture.browserHomeProfile.head!==homePermit.head)
+      throw Error('original_login_home071_profile_mismatch')
     const upstream=new URL(fixture.nativeOrigin)
     if(fixture.allowedOrigin!==approved.origin||upstream.protocol!=='https:'||upstream.hostname!=='localhost'||
       !upstream.port||upstream.username||upstream.password||upstream.pathname!=='/'||upstream.search||upstream.hash)
@@ -182,7 +187,7 @@ export async function startOriginalLoginGenuineBrowserFixture(env=process.env){
       })
     }
     return {url:approved.origin+'/login',origin:approved.origin,spki,credentials:fixture.credentials,users:fixture.users,
-      provenance,observations,setMeUnavailable:value=>{if(typeof value!=='boolean')throw Error('original_login_invalid_outage_toggle');meUnavailable=value},
+      provenance,backendProfile:fixture.browserHomeProfile,observations,setMeUnavailable:value=>{if(typeof value!=='boolean')throw Error('original_login_invalid_outage_toggle');meUnavailable=value},
       setLogoutUnavailable:value=>{if(typeof value!=='boolean')throw Error('original_login_invalid_outage_toggle');logoutUnavailable=value},
       probeRevokedCookie,counts:()=>fixture.counts(),providerRequests:fixture.providerRequests,
       credentialReads:()=>fixture.credentialReads(),assertNoProviderErrors:()=>fixture.assertNoProviderErrors(),close}

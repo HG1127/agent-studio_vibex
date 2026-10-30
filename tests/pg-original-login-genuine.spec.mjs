@@ -2,9 +2,11 @@ import {test,expect,chromium} from '@playwright/test'
 import {requireOriginalLoginBrowserCi} from './helpers/pg-original-login-browser-guard.mjs'
 import {startOriginalLoginGenuineBrowserFixture} from './helpers/pg-original-login-genuine-browser-fixture.mjs'
 import {installOriginalLegacyBlockObserver} from './helpers/pg-original-login-legacy-observer.mjs'
+import {requireOriginalLoginHome071Ci} from '../services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs'
 
 test('original Login/App: actual PG18 Cookie roles, logout revocation, transient recovery and local return paths',async({},testInfo)=>{
   requireOriginalLoginBrowserCi() // FIRST effectful gate: hosted synthetic CI only.
+  requireOriginalLoginHome071Ci() // Independent successor admission before effects.
   const fs=await import('node:fs/promises')
   const f=await startOriginalLoginGenuineBrowserFixture()
   let browser,context,page,primary,before,after,legacyBlocks,authStepsCompleted=false
@@ -63,6 +65,12 @@ test('original Login/App: actual PG18 Cookie roles, logout revocation, transient
     expect(await f.probeRevokedCookie(issued.value),'actual server session revoked, not merely browser clear').toBe(401)
   }
   try{
+    expect(f.backendProfile).toMatchObject({format:'agentstudio.original-login-home071.fixture.v1',
+      profile:'original-login-home071',head:process.env.GITHUB_SHA,catalog_profile:'original-agent-catalog071',
+      fresh_F01_service_required:true,predecessor_source_and_catalog_verified:true,
+      complete069_original_initializer_verified:false,optional070_verified:true,optional071_verified:true,
+      own_operations_schema_verified:true,configuration_writes:false,Native_server_process_entry_verified:false,
+      monitor073_installed:false,production_GO:false})
     before=await f.counts()
     expect(f.spki).toMatch(/^[A-Za-z0-9+/]{43}=$/)
     browser=await chromium.launch({headless:true,args:['--ignore-certificate-errors-spki-list='+f.spki]})
@@ -151,11 +159,11 @@ test('original Login/App: actual PG18 Cookie roles, logout revocation, transient
     await legacyBlocks.flush(page)
     expect.soft(legacyBlocks.snapshot(),
       'Home/backend migration gap: local PB blocks count even with zero PB network traffic').toEqual({event_count_capped_129:0,codes:[],overflow:false})
-    // Deliberate final gates. The current unmigrated Home must fail here.
+    // Every remaining Home/backend migration gap remains a real failure here.
     expect.soft(f.observations.legacy_backend_requests,
       'Home/backend migration gap: no PB/OIDC request may be hidden or substituted').toEqual([])
     expect.soft(f.observations.unexpected_api_failures,
-      'Home070 needs actual Native wiring; no fake DTO or ignored refusal').toEqual([])
+      'Home/backend must use actual Native handlers; no fake DTO or ignored refusal').toEqual([])
     expect.soft(f.observations.blocked_requests,'unknown API/assets must not silently become SPA success').toEqual([])
   }catch(error){primary=error}
   finally{
@@ -169,7 +177,7 @@ test('original Login/App: actual PG18 Cookie roles, logout revocation, transient
     await clean('genuine_fixture_close',()=>f.close())
     const observation={scope:'hosted synthetic original Login/App authentication only',
       auth_steps_completed:authStepsCompleted,browser_story_has_failures:Boolean(primary||testInfo.errors.length||cleanupFailures.length),
-      actual_build:f.provenance,roles:roleChecks,http:f.observations,blocked_origins:outside,
+      actual_build:f.provenance,actual_backend:f.backendProfile,roles:roleChecks,http:f.observations,blocked_origins:outside,
       local_legacy_backend_blocks:legacyBlocks?.snapshot()??null,
       business_counts_before:before??null,business_counts_after:after??null,
       provider_requests:f.providerRequests.length,cleanup_failures:cleanupFailures.map(item=>item.label),

@@ -144,7 +144,7 @@ jobs:
           node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
       - name: Original Login host negative policy tests
         if: matrix.story == 'original-login'
-        run: node --test tests/pg-original-login-browser-policy.test.mjs
+        run: node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs
       - name: Build original employee UI into its separate output
         if: matrix.story == 'original-login'
         run: node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
@@ -159,6 +159,10 @@ jobs:
         if: matrix.story == 'original-login'
         env:
           AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-login-genuine.config.mjs
       - name: Retain synthetic page images only
         if: always() && matrix.story == 'design'

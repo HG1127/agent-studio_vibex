@@ -5998,9 +5998,9 @@
     "pure_optional070_backend_checks": 76,
     "pure_optional071_catalog_checks": 61,
     "pure_backend_resources_checks": 28,
-    "pure_host_admission_and_browser_policy_checks": 40,
+    "pure_host_admission_and_browser_policy_checks": 54,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 335,
+    "combined_pure_checks": 349,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6036,7 +6036,26 @@
       "root_cause": "NULL column ACL was replaced with SQL empty ACL before aclexplode",
       "raw_log_sha256": "a33d4c6d36827088252e73a919064ed9aa75936576f34fecc4ae29267c975697"
     },
-    "column_ACL_source_repair": "Preserve native NULL column ACL; retain all effective privilege and grantability checks; genuine070/071 default-column assertions added; actual rerun pending"
+    "column_ACL_source_repair": "Preserve native NULL column ACL; retain all effective privilege and grantability checks; genuine070/071 default-column assertions added; actual rerun pending",
+    "original_login_browser_source_update": "Explicit mjs MIME only; independent original-login-home071 admission; exact070/071 install and actual schema audits; real Home/Catalog/owner inbox handlers; original error/PB-event gates retained; actual browser rerun pending",
+    "verified_backend_parent": {
+      "head": "cc987e22f0d32995a6245db0aefc7323834dfb1d",
+      "run": 41021107149,
+      "home070": {
+        "job": 123948386383,
+        "numbered_cases": 19,
+        "test_nodes": 20,
+        "passed": true
+      },
+      "home071": {
+        "job": 123948386261,
+        "numbered_cases": 18,
+        "test_nodes": 19,
+        "passed": true
+      },
+      "original_page_accepted": 0
+    },
+    "current_candidate_genuine_rerun_pending": true
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

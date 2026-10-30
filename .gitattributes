@@ -1121,3 +1121,8 @@ tests/pg-original-home-inboxes.test.mjs text eol=lf
 tests/pg-original-login-browser-policy.test.mjs text eol=lf
 tests/pg-original-login-genuine.config.mjs text eol=lf
 tests/pg-original-login-genuine.spec.mjs text eol=lf
+
+# Independent original Login/Home071 hosted browser verification.
+services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/original-login-home071-genuine-fixture.mjs text eol=lf
+tests/pg-original-login-home071-policy.test.mjs text eol=lf
