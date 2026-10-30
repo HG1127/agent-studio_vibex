@@ -2,6 +2,7 @@ import type {AgentSpec} from '../pages/Home/presets'
 import {parseOriginalHomeAuthoring,type OriginalHomeAuthoring} from '../../shared/original-home-authoring.ts'
 import {normalizeOriginalHomeExecutionSpec,OriginalHomeApiError,type OriginalHomeAgent,type OriginalHomeAgentUpdate} from './originalHomeAgentApi.ts'
 import {normalizeOriginalHomeBindingOptions,type OriginalHomeBindingOptions} from './originalHomeResources.ts'
+import {normalizeOriginalHomeDesignMetadata,type OriginalHomeDesignMetadata} from '../../shared/original-home-design-metadata.ts'
 
 /** Local editing data only. A stored UUID/revision never authenticates a request. */
 export type NativeHomeEditingContext=Readonly<{
@@ -63,7 +64,7 @@ export function originalHomeAgentForEditor(row:OriginalHomeAgent){
   const visible:AgentSpec={goal:spec.goal as string,task_scope:spec.task_scope as string,deliverables:[...spec.deliverables as string[]],tools:requirements,task_plan:[...spec.task_plan as string[]],done_criteria:[...spec.done_criteria as string[]],knowledge_base_ids:[...spec.knowledge_base_ids as string[]],require_approval:true,...(spec.require_plan_review===undefined?{}:{require_plan_review:spec.require_plan_review as boolean})}
   return {id:row.id,rh_user_id:row.owner_user_id,name:row.name,spec:visible,source:context.authoring?.source??'unknown',template_key:context.authoring?.template_key??'',created:row.created_at,updated:row.updated_at,native_pg:context}
 }
-export function originalHomeEditorWrite(input:{name:string;spec:AgentSpec;source:'create'|'template';templateKey:string;context?:NativeHomeEditingContext|null;asCopy?:boolean;bindings?:OriginalHomeBindingOptions;builtinSelections?:string[]}):OriginalHomeAgentUpdate{
+export function originalHomeEditorWrite(input:{name:string;spec:AgentSpec;source:'create'|'template';templateKey:string;context?:NativeHomeEditingContext|null;asCopy?:boolean;bindings?:OriginalHomeBindingOptions;builtinSelections?:string[];designMetadata?:OriginalHomeDesignMetadata|null}):OriginalHomeAgentUpdate{
   const visible=values(input.spec)
   for(const key of Object.keys(visible)){
     if(unsupportedFields.includes(key)){
@@ -84,8 +85,9 @@ export function originalHomeEditorWrite(input:{name:string;spec:AgentSpec;source
   const http=[...selected.http,...priorHttp.filter(v=>!selected.http.some(s=>s.name===v.name))],mcp=[...selected.mcp,...priorMcp.filter(v=>!selected.mcp.some(s=>s.name===v.name))]
   const boundNames=new Set([...http,...mcp].map(t=>t.name))
   const explicitBuiltins=normalizeOriginalHomeBuiltinSelections(input.builtinSelections??[])
+  const designRequirements=input.designMetadata?normalizeOriginalHomeDesignMetadata(input.designMetadata).tool_requirements:[]
   const previousTools=Array.isArray(prior.tools)?prior.tools as string[]:[],previousRequirements=context?.authoring?.tool_requirements??previousTools
-  const tools=[...new Set(visibleTools.filter(name=>isOriginalHomeBuiltinTool(name)&&(!context||previousTools.includes(name)||!previousRequirements.includes(name)||explicitBuiltins.includes(name))||boundNames.has(name)||name==='local_computer'&&previousTools.includes(name)))]
+  const tools=[...new Set(visibleTools.filter(name=>isOriginalHomeBuiltinTool(name)&&(!designRequirements.includes(name)||previousTools.includes(name)||explicitBuiltins.includes(name))&&(!context||previousTools.includes(name)||!previousRequirements.includes(name)||explicitBuiltins.includes(name))||boundNames.has(name)||name==='local_computer'&&previousTools.includes(name)))]
   // Retain original metadata text/order/duplicates. Execution-only names are
   // projected for the picker and must not inflate its independent20-item DTO.
   const originalRequirements=context?.authoring?.tool_requirements??[]

@@ -5995,14 +5995,14 @@
   "current_preparation": {
     "original_login_adapter": "Original Login/App/account-menu hosted story passed on9b42e39 with actual Native Cookie/CSRF, Alice/Bob roles, acknowledgement-loss recovery and all original zero gates; no full original menu/Home acceptance.",
     "original_home_transport": "Current original Home and catalog integrated with full immutable spec bindings, CAS, employee concurrency precondition, recovery and unknown-write isolation; reviewed async read fences and independent metadata/binding intent fixes integrated",
-    "original_UI_isolated_build": "Actual normal PB and opt-in original index/main/App builds passed with100 assets each; normal output has0 PG resource matches after static backend selection. Original business page acceptance remains pending.",
+    "original_UI_isolated_build": "Actual new normal PB and opt-in original index/main/App builds pass with101 resources each; normal PG matches0. Current frontendTS6/API TS5 pass; original Home authoring hosted acceptance remains pending.",
     "pure_auth_home_contract_checks": 110,
     "pure_optional070_backend_checks": 76,
     "pure_optional071_catalog_checks": 61,
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 593,
+    "combined_pure_checks": 661,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6016,7 +6016,7 @@
     "current_UI_carry_scope": "Reviewed36-file current employee UI carry plus original ErrorBoundary/AuthGate/AdminGate guards; not full-page business acceptance",
     "source_closure_reseal_pending": false,
     "remaining_home_dependencies": [
-      "natural-language generation/revision",
+      "natural-language generate/revise original-browser acceptance; unsaved/dirty revision, multimodel selection and persistent save linkage",
       "ordinary Agent delete",
       "quality/capability execution semantics",
       "original knowledge-selection capacity",
@@ -6026,7 +6026,7 @@
     ],
     "production_GO": false,
     "original_home_async_source_fixes_merged": true,
-    "original_home_public_hook_members": 56,
+    "original_home_public_hook_members": 61,
     "original_home_pure_hooks_are_not_real_React_or_browser_acceptance": true,
     "original_home_hidden_source_dependency_failclosed": true,
     "hosted_optional070_first_execution": {
@@ -6276,7 +6276,7 @@
       "qualifies_run": false
     },
     "unchanged_UI_typecheck_build_baseline": "Frontend/shared and API TypeScript source unchanged sincee002475 checks; only pure comparator MJS and guarded test fixtures change. Preserve actual100-asset build evidence and0 normal PG resources as that unchanged-UI baseline, not as new genuine page acceptance.",
-    "pure_final14_runtime_open_observation_checks": 8,
+    "pure_final14_runtime_open_observation_checks": 11,
     "pure_owned_process_observation_checks": 20,
     "full069_runtime_open_observation": "Record-only WeakMap keyed by the exact original thrown object. Real opaque runtime checks annotate a fixed stage and optionally one of the existing fourteen account keys; inner service diagnostics are not overwritten by the outer catch. No raw error/SQL/credential/PID is read or output. The original error object is rethrown; actual output remains inside the original exact fixture/UID/argv/Node/approval gates. Five new pure checks and25 existing path checks pass; real cause pending.",
     "verified_9b42_original_stories": {
@@ -6341,7 +6341,7 @@
       "qualifies_run": false,
       "production_GO": false
     },
-    "pure_original_internal_overview_host_policy_checks": 16,
+    "pure_original_internal_overview_host_policy_checks": 25,
     "original_internal_overview_host_source": "Independent fresh original071 browser matrix leg preserves original App/AdminGate and actual GITHUB_JOB. Synthetic Bob is promoted through actual Native employee management; owner eight counters/actions/recent limits/filters, genuine completed delayed reply and actual dependency revoke503/restore, Cookie Bob/expected Alice409, full business row image equality and original zero gates are required. Native TLS/8s unchanged. Only two fixed safe PNGs may be saved after success and cleanup; genuine hosted story pending.",
     "full069_final14_acl_negative_observation": "Record-only WeakMap keyed by identical actual error; fixed phases and existing negative-case names plus own five-character SQLSTATE only. Exact gates bound CLI emission. Original error,13 real mutation/rollback cases,8s deadline, whole ACL rows/authority and cleanup retained. Three new pure tests pass; actual cause remains pending.",
     "native_bundle_explicit_original_contract_source_fix": {
@@ -6383,6 +6383,46 @@
       "original_expected_receipts_and_zero_gates_unchanged": true,
       "whole_story_passed": false,
       "raw_log_sha256": "e9301c0fb0eeae3b1187b23e6a8fb0447cb0b7f24bbbbf31d9ea19878556ac5e"
+    },
+    "original_home_natural_authoring_source": "Original Home controls use F01 preview/explicit confirm/exact intent recovery with actual Cookie and editor-revision fences. Completed result first enters durable owner local draft. Model tools stay descriptive until explicit resource choice;070/071 manual save remains. Unsaved/dirty revision, multimodel selection and durable F01-to-manual-save link remain open; genuine original Home story pending.",
+    "original_home_natural_authoring_source_merged": true,
+    "original_home_natural_authoring_actual_browser_accepted": false,
+    "current_source_checks": {
+      "pure": 661,
+      "final14_framing_related_pure": 36,
+      "worker_startup_related_pure": 39,
+      "frontend_TS6": true,
+      "API_TS5": true,
+      "normal_assets": 101,
+      "original_PG_assets": 101,
+      "normal_PG_resource_matches": 0,
+      "local_SQL": false,
+      "local_business_Worker": false,
+      "local_browser": false,
+      "production_GO": false
+    },
+    "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
+    "full069_parent_diagnostic_framing_fix": "Only standalone original refusal lines select primary; exact diagnostic event names cannot override it. Parent separately parses one closed runtime-open or ACL-negative observation. Unknown keys/phases/accounts, authority, secrets, oversize and duplicate records refuse. Original supervisor/cleanup unchanged;36 related pure checks pass; actual next-head rerun pending.",
+    "latest_1b33_original_overview_failure": {
+      "head": "1b33ff384efabe53f584dd1db8eba25598360903",
+      "run": 41057326210,
+      "job": 124068033154,
+      "error": "CDP response body unavailable after actual dependency503; later steps not executed",
+      "raw_log_sha256": "9f2984d317ba711c50beb8d1df9d4a27e0fb3b4bf6a0dc0d1b2aeb66af3c2555",
+      "passed": false
+    },
+    "pure_original_worker_startup_diagnostic_checks": 14,
+    "original_overview_dependency_body_observation_fix": "Only the armed actual upstream personal503 may consume one expected failure after its complete exact canonical body matches within4096 bytes. Real status/headers/bytes are forwarded unchanged. Invalid body/overflow/interruption/proxy503/wrong employee remain failure; Native8s, original actual dependency restore/409/late-reply/full row images and all zero gates retained. Browser inspects actual status plus safe upstream body-contract boolean, not cancelled CDP body.25 pure policy tests pass; hosted rerun pending.",
+    "latest_1b33_full069_failure": {
+      "head": "1b33ff384efabe53f584dd1db8eba25598360903",
+      "run": 41057326272,
+      "final14_job": 124068032831,
+      "observed_actor_phase": "runtime_open",
+      "parent_failure_code_was_diagnostic_event": true,
+      "actual_underlying_phase_and_cause_known": false,
+      "parent_framing_repair_source_merged": true,
+      "qualifies_run": false,
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

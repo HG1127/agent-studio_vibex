@@ -17,7 +17,10 @@ test('prepare/model/safe startup readiness follows actual Worker construction an
   const source=text(file),open=source.indexOf('.openWorkerHeartbeatWorkerLifecycle('),constructed=source.indexOf('new '+constructor),ready=source.indexOf('heartbeat?.startupChecksComplete()')
   assert.ok(open>0&&open<constructed&&constructed<ready);assert.ok(source.indexOf('if('+stopped+'){closeNewClaims();return}')<ready)
   assert.match(source,/worker\.closeNewClaims\(\);if\(worker\.claimAdmissionSnapshot\(\)\.closed\)heartbeat\?\.newClaimsClosed\(\)/)
-  assert.match(source,/finally\{heartbeat\?\.close\(\);await pool\.end\(\)\}/)
+   const tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true);let cleanup
+   const visit=node=>{if(ts.isTryStatement(node)&&node.finallyBlock?.getText(tree).includes('heartbeat?.close()'))cleanup=node.finallyBlock;ts.forEachChild(node,visit)};visit(tree);assert.ok(cleanup)
+   const operations=cleanup.statements.map(node=>node.getText(tree).replace(/;$/,'')).filter(text=>!['const priorStartupStage=startupStage',"startupStage='pool_cleanup'",'startupStage=priorStartupStage'].includes(text))
+   assert.deepEqual(operations,['heartbeat?.close()','await pool.end()'])
   assert.ok(source.includes('heartbeat?.loopUnavailable()'))
  }
 })

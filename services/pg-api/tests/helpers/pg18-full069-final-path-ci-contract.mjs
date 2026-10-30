@@ -1,7 +1,7 @@
 // Independent bounded CI DATA. It cannot start or shorten a qualifying run.
 import {isNativeError} from 'node:util/types'
 import {closed,freeze,hex,uuid,target,liveLimits,liveEntries} from '../../src/pg18-full069-worker-live-contract.mjs'
-import {finalCompanions} from '../../src/pg18-full069-final-login-contract.mjs'
+import {finalCompanions,finalBusinessLogins} from '../../src/pg18-full069-final-login-contract.mjs'
 export const finalPathCiPurpose='YES_DISPOSABLE_FULL069_FINAL14_ALL13_PATHS_ONLY'
 export const finalPathCiLimits=freeze({hold_ms:30000,warm_ms:130000,permit_ms:1800000,sample_budget_ms:15000,original_minimum_ms:liveLimits.minimumMs})
 export const finalPathCiFail=c=>{throw Error('full069_final_path_ci_'+c)}
@@ -32,4 +32,27 @@ export function parseFinalPathCiActorFailures(stderr){
   if(records.length>1)return Object.freeze([])
  }
  return Object.freeze(records)
+}
+
+const runtimeFailurePhases=new Set(['context','operator_runtime','pool_setup','physical','business_audits','service_target','service_login','service_auditor','service_stable','complete_catalog','telemetry_state','business_state','root_budget','final_stable']),aclFailurePhases=new Set(['admission','operator_runtime','credential','pool_setup','connect','begin','context','baseline','savepoint','mutation','observed_rows','refusal','rollback','restored_rows','final_stable']),aclFailureCases=new Set(['missing_original_public_temp','missing_F05_worker_connect','missing_F05_dispatch_connect','F05_worker_grant_option','F05_dispatch_grant_option','extra_business_public_connect','extra_business_public_create','extra_source_group_connect','extra_telemetry_public_connect','extra_telemetry_public_temp','cross_database_F05_connect','extra_template0_public_temp','extra_template1_public_temp'])
+/** Closed child diagnostics are separate DATA, never a primary refusal code. */
+export function parseFinalPathCiRuntimeFailures(stderr){
+ const records=[]
+ if(typeof stderr!=='string'||Buffer.byteLength(stderr)>524288||stderr.includes('\0'))return Object.freeze(records)
+ for(const line of stderr.split(/\r?\n/)){
+  if(line.length>1024)continue
+  let v;try{v=JSON.parse(line)}catch{continue}
+  if(!v||Array.isArray(v)||Object.getPrototypeOf(v)!==Object.prototype||v.observed_data_only!==true||v.runtime_authorization!==false||v.qualifies_run!==false||v.production_GO!==false)continue
+  const keys=Object.keys(v).sort().join(',')
+  if(v.event==='full069_final14_runtime_open_observation'&&keys==='entry_key,event,observed_data_only,phase,production_GO,qualifies_run,runtime_authorization'&&runtimeFailurePhases.has(v.phase)&&(v.entry_key===null||finalBusinessLogins.some(a=>a.key===v.entry_key)))records.push(Object.freeze({event:v.event,phase:v.phase,entry_key:v.entry_key,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))
+  else if(v.event==='full069_final14_database_acl_negative_observation'&&keys==='event,negative_case,observed_data_only,phase,production_GO,qualifies_run,runtime_authorization,sqlstate'&&aclFailurePhases.has(v.phase)&&(v.negative_case===null||aclFailureCases.has(v.negative_case))&&(v.sqlstate===null||typeof v.sqlstate==='string'&&/^[0-9A-Z]{5}$/.test(v.sqlstate)))records.push(Object.freeze({event:v.event,phase:v.phase,negative_case:v.negative_case,sqlstate:v.sqlstate,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))
+  if(records.length>1)return Object.freeze([])
+ }
+ return Object.freeze(records)
+}
+export function finalPathCiPrimaryFailureCode(stderr){
+ const fallback='full069_final_path_ci_actual_child_failed'
+ if(typeof stderr!=='string'||Buffer.byteLength(stderr)>524288||stderr.includes('\0'))return fallback
+ const rows=stderr.split(/\r?\n/).filter(line=>/^full069_(?:final(?:14)?|worker_live)_[a-z0-9_]{1,140}$/.test(line)&&!['full069_final14_runtime_open_observation','full069_final14_database_acl_negative_observation'].includes(line))
+ return rows.at(-1)??fallback
 }

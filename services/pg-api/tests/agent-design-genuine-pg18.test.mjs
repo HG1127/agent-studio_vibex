@@ -27,6 +27,17 @@ test('F01 real PG18 vertical design, independent save, source authority and one-
       }
       const db=await f.workerPool.connect();try{await db.query('BEGIN');await db.query('SET LOCAL ROLE agentstudio_design_worker');await assert.rejects(()=>db.query('SELECT agentstudio.agent_design_reserve($1::uuid,$2::uuid,1,$3::uuid)',[randomUUID(),randomUUID(),randomUUID()]),e=>e.code==='42501')}finally{await db.query('ROLLBACK').catch(()=>{});db.release()}
     })
+    await runCase('actual CookieBob plus original-Home expectedAlice refuses six write and confirmation paths before any ledger change',async()=>{
+      const p=await f.createDesign('bob','generate'),before=await f.counts(),posts=f.providerRequests.length,reads=f.credentialReads()
+      const hash='a'.repeat(64),control={action:'cancel',request_id:randomUUID(),design_request_id:p.request_id,confirm:true}
+      const intent={action:'save',request_id:randomUUID(),design_request_id:p.request_id,expected_preview_sha256:hash,expected_result_sha256:hash,expected_source_sha256:hash,expected_candidate_sha256:hash,confirm:true,save_acknowledgement:'APPROVE_EXACT_AGENT_DESIGN_SAVE_ONLY_V1'}
+      const preview={action:'preview_save',design_request_id:p.request_id,expected_result_sha256:hash,fields:{name:'Negative case only',goal:'Never written',task_scope:'No mutation',deliverables:[],task_plan:[],done_criteria:[]}}
+      for(const [route,body]of [['submit',p.body],['confirm',p.body],['control',control],['confirm-control',control],['save',{intent,preview}],['confirm-save',intent]]){
+        const response=await f.request('bob','/api/v2/agent-design/'+route,body,{headers:{'X-AgentStudio-Expected-Employee':f.users.alice}})
+        assert.equal(response.status,409);assert.equal(response.body.error,'agent_design_employee_changed')
+        assert.deepEqual(await f.counts(),before);assert.equal(f.providerRequests.length,posts);assert.equal(f.credentialReads(),reads)
+      }
+    })
     await runCase('real Native Cookie preview -> explicit fee -> metadata claim -> mTLS reserve -> actual key -> one TLS POST -> full result -> editable atomic save',async()=>{
       const before=await f.counts(),p=await f.createDesign('alice','generate');assert.equal((await f.counts()).requests,before.requests);assert.equal(f.providerRequests.length,0)
       generated=p;await f.submit(p);const repeat=await f.request('alice','/api/v2/agent-design/submit',p.body);assert.equal(repeat.status,200);assert.equal(repeat.body.replayed,true)

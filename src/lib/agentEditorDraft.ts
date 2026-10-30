@@ -2,6 +2,7 @@ import type { AgentSpec } from "../pages/Home/presets"
 import { normalizeAgentQualityChecks, QUALITY_CHECK_LIMIT } from "./agentQualityChecks.ts"
 import {normalizeNativeHomeEditingContext,normalizeOriginalHomeBuiltinSelections,type NativeHomeEditingContext} from './originalHomeAgentEditor.ts'
 import {normalizeOriginalHomeBindingOptions,type OriginalHomeBindingOptions} from './originalHomeResources.ts'
+import {normalizeOriginalHomeDesignMetadata,type OriginalHomeDesignMetadata} from '../../shared/original-home-design-metadata.ts'
 
 /**
  * Ephemeral draft in the current tab's sessionStorage, scoped by verified
@@ -29,6 +30,7 @@ export type AgentEditorDraft = {
   nativeOutcomeUnknown?:true
   nativeBindings?:OriginalHomeBindingOptions
   nativeBuiltinSelections?:string[]
+  nativeDesign?:OriginalHomeDesignMetadata
 }
 
 const text = (value: unknown, max: number) =>
@@ -144,6 +146,12 @@ export function normalizeAgentDraft(
     try{nativeBuiltinSelections=normalizeOriginalHomeBuiltinSelections(raw.nativeBuiltinSelections)}catch{return null}
     if(nativeBuiltinSelections.some(v=>!spec.tools.includes(v)))return null
   }
+  let nativeDesign:OriginalHomeDesignMetadata|undefined
+  if(raw.nativeDesign!==undefined){
+    if(!nativePg||!spec)return null
+    try{nativeDesign=normalizeOriginalHomeDesignMetadata(raw.nativeDesign)}catch{return null}
+    if(nativeDesign.tool_requirements.some(v=>!spec.tools.includes(v)))return null
+  }
   return {
     version: 1,
     ownerId,
@@ -161,6 +169,7 @@ export function normalizeAgentDraft(
     ...(raw.nativeOutcomeUnknown===true?{nativeOutcomeUnknown:true as const}:{}),
     ...(nativeBindings?{nativeBindings}:{}),
     ...(nativeBuiltinSelections?{nativeBuiltinSelections}:{}),
+    ...(nativeDesign?{nativeDesign}:{}),
   }
 }
 

@@ -38,6 +38,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           onToggleKnowledgeBase={p.toggleKnowledgeBase} onToggleTool={p.handleToggleSpecTool}
           reviseInput={p.reviseInput} onReviseInputChange={p.setReviseInput}
           onRevise={p.handleRevise} isRevising={p.isRevising}
+          reviseActionLabel={p.nativeReviseActionLabel} revisePending={p.nativeRevisePending} reviseBlocked={p.nativeReviseBlocked} reviseNotice={p.nativeReviseNotice}
           onSave={p.handleSave} isSaving={p.isSaving} dirty={p.specDirty}
           saveConflict={p.saveConflict} onSaveAsCopy={p.handleSaveAsCopy}
           savedMsg={p.savedMsg} savedSpecId={p.savedSpecId}
@@ -131,6 +132,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             onReviseInputChange={p.setReviseInput}
             onRevise={p.handleRevise}
             isRevising={p.isRevising}
+            reviseActionLabel={p.nativeReviseActionLabel} revisePending={p.nativeRevisePending} reviseBlocked={p.nativeReviseBlocked} reviseNotice={p.nativeReviseNotice}
             onSave={p.handleSave}
             dirty={p.specDirty}
             saveConflict={p.saveConflict}
@@ -155,7 +157,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
               <CreateComposer userInput={p.userInput}
                 onUserInputChange={p.setUserInput}
                 onCreate={p.handleCreate}
-                isGenerating={p.isGenerating} authoringPreview={p.authoringPreview}/>
+                isGenerating={p.isGenerating} authoringPreview={p.authoringPreview} nativeDesign={p.nativeDesignComposer}/>
             </div>
           </details>
           <details id="templates" className="group min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-5">

@@ -61,7 +61,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md": "8334c39c013d52a4842cbd47188a4ea9be3e2fab3f1a8b7ce2e16301e89d82a2",
   "ops/templates/agentstudio-pg18-native-local-executor.conf.example": "5912497f328b7c58e29205dd4cbd62226e03660ec981541bf28edf1cf521312f",
   "ops/templates/native-local-executor-pg-hba.conf.example": "c7b549f1fb79f6023c255e05cfd0a38188f7247e9a4b19fb18dad963ab73cc52",
-  "package.json": "400aab6a1b9a89fa1a1a34e3cf61639ca6a2b2331b032f8f6c2f59d0ef5e82a5",
+  "package.json": "5a2451c5b6f18d95016582a7929262666a491ff28398af54a9d454897561b7aa",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -89,9 +89,9 @@ export const localExecutorOperatorSources=Object.freeze({
   "services/pg-api/src/agent-design-audit-core.ts": "31d99e0f28c9d04402ec1b75db3714a41947c296cfba74a99d3dabcdf182a872",
   "services/pg-api/src/agent-design-audit.ts": "1efe6de5bea8e14fa4b957e050edddcfee9a595f438d636f9a4046cce0921f78",
   "services/pg-api/src/agent-design-contract.ts": "29a358f47c84a6be8b8385cf3b878fb78989a97b00811a9fc99327aff6008542",
-  "services/pg-api/src/agent-design-http.ts": "bf3c37db5d5d228eb8e98cd5aea80872aa7b1bffd74c93cbc8dcd20199f92ebe",
+  "services/pg-api/src/agent-design-http.ts": "a66a620ebcfa9b52705940d7db4bfd556cbcf46eeb8954f53b7b6d89e7e8f837",
   "services/pg-api/src/agent-design-input.ts": "8b109396006cd0b928b2e3542fb2154f855f7fd5723b4e4c9ee4bfc9cbf0c4c4",
-  "services/pg-api/src/agent-design-ledger.ts": "d97fc4223a9311008a343c67bc11d88cb0c4da1f6341d3c97472b518c5a61a47",
+  "services/pg-api/src/agent-design-ledger.ts": "e2104df39284a2a4e616513f2a6bbe86d8a051a77e6f679b20228667daea0391",
   "services/pg-api/src/agent-design-predecessor-audit-core.ts": "5edd52d341068256567775b9234abe0a3bf39194ca51ac6b40933062d6e4c988",
   "services/pg-api/src/agent-design-result.ts": "7aa2505b5279d2742db6b445493626f82d0b987b6174d64514c718ca7458c5cc",
   "services/pg-api/src/agent-design-rpc-contract.ts": "57bbccd6657dbc680fa47d917efc6fb8b5dcadead37c4e91cd06e1bc3783e823",
@@ -481,5 +481,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "services/pg-api/src/original-internal-overview-http.ts": "2d6c058c37d5a23c471ad1874e30b82eed25eb5172c08155a867d6d1d789c0d3",
   "services/pg-api/src/original-internal-overview-read.ts": "810f10a8a2363046e6bdae3389870239cf81d47f14d91a702ddc1d2d6baef22e",
   "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969",
-  "services/pg-api/src/pg18-full069-owned-process-observation.mjs": "5dba240e189237ef4eb7633950f6085c24bc776a9791b3086fabfa8a42729685"
+  "services/pg-api/src/pg18-full069-owned-process-observation.mjs": "aec459c8d2c350fb1dd69e46b8cdff7c8967928dfe43bb804dd7e74725ad0d5a",
+  "services/pg-api/src/pg18-full069-worker-startup-observation.d.mts": "1240a3dc22506ef7fe7170e162bace3a27737d344690d106bc4d3ef188f2cab9",
+  "services/pg-api/src/pg18-full069-worker-startup-observation.mjs": "4651d93764b378018a2b81cdccb83eceeabb76772c411a2f085e2d73093d3d06"
 })

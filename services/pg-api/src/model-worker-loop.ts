@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {reportWorkerStartupFailure} from './pg18-full069-worker-startup-observation.mjs'
 import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {verifyKnowledgeRuntimeSchema,verifyKnowledgeAgentSchema,verifyWorkflowSampleLineageSchema} from "./knowledge-content-privileges.ts"
@@ -37,6 +38,7 @@ function connection(){
     throw Error("unsafe_worker_secret")
   return {...target,password}
 }
+let startupStage='entry'
 async function main(preflight=false){
   // PG18 --preflight runs the same audited module as the isolated MODEL
   // one-shot review; no provider/AgentModelWorker is imported in this mode.
@@ -45,12 +47,12 @@ async function main(preflight=false){
     await runPg18NativeWorkerReadonlyPreflight("model")
     return
   }
-  if(!preflight)assertPgWorkerActivation(process.env,process.argv.slice(2))
-  assertPg18WorkerCredentialBinding(process.env,"model")
+  startupStage='activation';if(!preflight)assertPgWorkerActivation(process.env,process.argv.slice(2))
+  startupStage='credential_binding';assertPg18WorkerCredentialBinding(process.env,"model")
   if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true"||
      (!preflight&&process.env.AGENT_STUDIO_PG_MODEL_WORKER_ENABLED!=="true"))
     throw Error("model_worker_disabled")
-  const config=connection()
+  startupStage='credential_read';const config=connection()
   // Defer the driver until credential and target validation. Offline --plan
   // does not load any DB, provider, Worker or task SQL modules.
   let stop=false
@@ -59,8 +61,8 @@ async function main(preflight=false){
   const requestStop=()=>{stop=true;closeNewClaims?.()}
   process.once("SIGTERM",requestStop)
   process.once("SIGINT",requestStop)
-  const {Pool}=await import("pg")
-  const pool=new Pool({host:config.host,port:config.port,
+  startupStage='pg_import';const {Pool}=await import("pg")
+  startupStage='pool_create';const pool=new Pool({host:config.host,port:config.port,
     user:config.user,database:config.database,password:config.password,
     max:2,connectionTimeoutMillis:4000,
     statement_timeout:8000,idleTimeoutMillis:10000})
@@ -75,12 +77,12 @@ async function main(preflight=false){
     }
   }}
   try{
-    await verifyPgRuntimeTarget(adapter,config)
+    startupStage='target_audit';await verifyPgRuntimeTarget(adapter,config)
     // Shared read-only role preflight rejects extra privilege and leaked
     // native-auth membership before constructing any model provider.
-    await verifyPgWorkerRoleBoundary(adapter,config)
-    if(config.mode==="baota_pg18"){await verifyKnowledgeAgentSchema(adapter);await verifyWorkflowSampleLineageSchema(adapter)}
-      if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
+    startupStage='worker_role_audit';await verifyPgWorkerRoleBoundary(adapter,config)
+    startupStage='knowledge_agent_audit';if(config.mode==="baota_pg18"){await verifyKnowledgeAgentSchema(adapter);await verifyWorkflowSampleLineageSchema(adapter)}
+      startupStage='knowledge_runtime_audit';if(adapter.knowledgeSharing)await verifyKnowledgeRuntimeSchema(adapter,true)
     if(preflight){
       process.stdout.write(JSON.stringify({
         mode:"preflight",worker:"model",target:config.database,
@@ -90,10 +92,10 @@ async function main(preflight=false){
       })+"\n")
       return
     }
-    if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('model')
+    startupStage='heartbeat_open';if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('model')
     // Do not configure the provider until the exact DB endpoint and role pass.
     // Neither a model provider nor claim SQL is loaded in read-only preflight.
-    const [{AgentModelWorker},{createStagingOpenAIProvider},transport]=await Promise.all([
+    startupStage='worker_import';const [{AgentModelWorker},{createStagingOpenAIProvider},transport]=await Promise.all([
       import("./model-worker.ts"),import("./model-provider.ts"),
       import("./bound-model-worker-runtime.ts")
     ])
@@ -103,7 +105,7 @@ async function main(preflight=false){
     const dispatch=bound?transport.createApprovedBoundModelWorkerDispatch(process.env):undefined
     const provider=bound?{async generate(){throw Error("model_binding_required")}}:
       createStagingOpenAIProvider()
-    const worker=new AgentModelWorker(adapter,
+    startupStage='worker_construct';const worker=new AgentModelWorker(adapter,
       "agent-model-"+randomUUID().slice(0,8),provider,
       dispatch?{boundModelDispatch:dispatch,boundExecutionApproved:true,boundOnly:true}:{})
     closeNewClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
@@ -111,7 +113,7 @@ async function main(preflight=false){
     heartbeat?.startupChecksComplete()
     process.stdout.write(JSON.stringify({service:"pg-agent-model",
       state:"ready",mode:bound?"approved_owner_bound_text_only":"approved_text_only"})+"\n")
-    while(!stop){
+    startupStage='loop_run';while(!stop){
       try{
         const result=await worker.tick()
         if(result.status!=="idle")process.stdout.write(JSON.stringify({
@@ -124,7 +126,7 @@ async function main(preflight=false){
         await sleep(2000)
       }
     }
-  }finally{heartbeat?.close();await pool.end()}
+  }finally{const priorStartupStage=startupStage;startupStage='pool_cleanup';heartbeat?.close();await pool.end();startupStage=priorStartupStage}
 }
 const launchArgs=process.argv.slice(2)
 if(launchArgs.length===1&&launchArgs[0]==="--plan"){
@@ -132,6 +134,7 @@ if(launchArgs.length===1&&launchArgs[0]==="--plan"){
 }else if(launchArgs.length===1&&
          ["--serve","--preflight"].includes(launchArgs[0]!)){
   void main(launchArgs[0]==="--preflight").catch((error:unknown)=>{
+    try{reportWorkerStartupFailure(startupStage,error)}catch{}
     const m=error instanceof Error?error.message:""
     const allowed=/^(model_worker_disabled|missing_[A-Z0-9_]+|unsafe_[a-z_]+|invalid_model_id|pg18_worker_not_approved)$/
     process.stderr.write(JSON.stringify({service:"pg-agent-model",

@@ -1,9 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {PassThrough} from 'node:stream'
+import {EventEmitter} from 'node:events'
 import fs from 'node:fs'
 import {createRequire,registerHooks} from 'node:module'
 import {requireOriginalOverviewBrowserCi as guard,originalOverviewPurpose,originalOverviewPath as route,originalOverviewRequestPolicy as policy,originalOverviewArtifacts} from './helpers/pg-original-internal-overview-browser-guard.mjs'
-import {startOriginalOverviewGenuineBrowserFixture as host} from './helpers/pg-original-internal-overview-genuine-browser-fixture.mjs'
+import {startOriginalOverviewGenuineBrowserFixture as host,originalOverviewDependencyBodyMatches as bodyMatches,pipeOriginalOverviewDependencyError as pipeDependency} from './helpers/pg-original-internal-overview-genuine-browser-fixture.mjs'
 import {originalOverviewBackendFixture as backend} from './helpers/pg-original-internal-overview-backend-fixture.mjs'
 const env={GITHUB_ACTIONS:'true',CI:'true',GITHUB_RUN_ID:'123',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:'Agent Studio F01 Agent Design genuine PG18 isolated verification',GITHUB_JOB:'pg18-agent-design-browser',GITHUB_SHA:'a'.repeat(40),GITHUB_REF:'refs/heads/codex/pg18-worker-heartbeat-test',AGENT_STUDIO_F01_GENUINE_CI:'YES_DISPOSABLE_F01_ONLY',AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI:'YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY',AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI:'YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY',AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE:'original-login-home071',AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY:'original-login',AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD:'a'.repeat(40),AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-123',AGENT_STUDIO_ORIGINAL_OVERVIEW_CI:originalOverviewPurpose,AGENT_STUDIO_ORIGINAL_OVERVIEW_PROFILE:'original-personal-overview071',AGENT_STUDIO_ORIGINAL_OVERVIEW_STORY:'internal-overview',AGENT_STUDIO_ORIGINAL_OVERVIEW_EXPECTED_HEAD:'a'.repeat(40)}
 const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8'),hostText=read('tests/helpers/pg-original-internal-overview-genuine-browser-fixture.mjs'),specText=read('tests/pg-original-internal-overview-genuine.spec.mjs'),ts=createRequire(import.meta.url)('typescript'),ast=ts.createSourceFile('host.mjs',hostText,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
@@ -23,8 +25,73 @@ function recordSink(expected,employee='alice'){
  const sink=make((key,value)=>events.push({key,value}),{pathname:route},true,employee,{path:route,method:'GET'},expected);return {...sink,events}
 }
 test('a proxy-created503 cannot consume the expected genuine dependency failure',()=>{const sink=recordSink({status:503,employee:'alice'});sink.record(503,false);assert.equal(sink.pending().status,503);assert.equal(sink.events.filter(e=>e.key==='expected_failures').length,0);assert.equal(sink.events.filter(e=>e.key==='unexpected_api_failures').length,1)})
-test('only the actual matching upstream status and expected employee consume the one-use observation',()=>{const actual=recordSink({status:503,employee:'alice'});actual.record(503,true);assert.equal(actual.pending(),null);assert.equal(actual.events.filter(e=>e.key==='expected_failures').length,1);actual.record(503,true);assert.equal(actual.events.filter(e=>e.key==='expected_failures').length,1);for(const [status,employee]of [[409,'alice'],[503,'bob']]){const wrong=recordSink({status:503,employee:'alice'},employee);wrong.record(status,true);assert.notEqual(wrong.pending(),null);assert.equal(wrong.events.filter(e=>e.key==='unexpected_api_failures').length,1)}})
+test('only the actual matching upstream status and expected employee consume the one-use observation',()=>{const actual=recordSink({status:503,employee:'alice'});actual.record(503,true,true);assert.equal(actual.pending(),null);assert.equal(actual.events.filter(e=>e.key==='expected_failures').length,1);actual.record(503,true);assert.equal(actual.events.filter(e=>e.key==='expected_failures').length,1);for(const [status,employee]of [[409,'alice'],[503,'bob']]){const wrong=recordSink({status:503,employee:'alice'},employee);wrong.record(status,true);assert.notEqual(wrong.pending(),null);assert.equal(wrong.events.filter(e=>e.key==='unexpected_api_failures').length,1)}})
 test('Native forwarding retains CA verification8s and original Cookie Origin CSRF headers',()=>{assert.ok(hostText.includes('signal:AbortSignal.timeout(8000)'));assert.ok(hostText.includes('rejectUnauthorized:true'));assert.ok(hostText.includes("const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))"));assert.doesNotMatch(hostText,/rejectUnauthorized:\s*false|NODE_TLS_REJECT_UNAUTHORIZED|x-rh-user-id['"]\s*:/);assert.ok(hostText.includes('JSON.parse(bytes.toString(\'utf8\')).employee_id!==fixture.users[selectedHold.employee]'));assert.ok(hostText.includes('setTimeout(()=>{observations.held_reply_timed_out++'));assert.ok(hostText.includes('},6000)'))})
 test('synthetic setup preserves AdminGate through the actual employee API and real dependency revoke restore',()=>{const b=read('tests/helpers/pg-original-internal-overview-backend-fixture.mjs');assert.ok(b.includes("f.request('alice','/api/native-auth/employees/change'"));assert.ok(b.includes('expected_revision:bob.revision,is_admin:true'));assert.ok(b.includes('REVOKE EXECUTE ON FUNCTION agentstudio.agent_memory_outcome_epoch() FROM agentstudio_api'));assert.ok(b.includes('GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_outcome_epoch() TO agentstudio_api'));assert.ok(b.includes('f.raw(\'/api/v2/original-ui/internal-overview\''));assert.doesNotMatch(b,/tick\(|new Pool|PGlite|set_config\('agentstudio.actor_id'/)})
 test('story checks actual owner values limits filters unknown fields and real logout switch without business DTO mocks',()=>{for(const token of ['dto.counters).toEqual(f.expected[who])','dto.recent_runs.map(r=>r.id)','dto.action_items.length','历史标题未记录','后台 Worker 状态未知','await logout(alice.identity)','const bob=await login(\'bob\')','held.release()','context.request.get(f.origin+originalOverviewPath','expect(mismatch.status()).toBe(409)','个人任务总览暂时不可用，数据未知。'])assert.ok(specText.includes(token),token);assert.doesNotMatch(specText,/route\.fulfill|addCookies|localStorage|sessionStorage|window\..*identity|PgNativeCompanyOverviewPanel/);assert.ok(specText.indexOf('await clean(\'fixture_close\'')<specText.indexOf("await clean('final_zero_gates'"))})
 test('artifact uploads use exactly three fixed filenames and screenshots are saved only after all cleanup gates',()=>{assert.deepEqual(originalOverviewArtifacts,['original-internal-overview-alice.png','original-internal-overview-bob.png','original-internal-overview-observation.json']);const w=read('.github/workflows/pg18-agent-design-genuine-ci.yml'),tail=w.slice(w.indexOf('      # Independent matrix leg'));assert.ok(tail.includes('story')&&tail.includes("matrix.story == 'internal-overview'"));assert.doesNotMatch(tail,/\*|\.zip|\.har|trace|video/);for(const name of originalOverviewArtifacts)assert.ok(tail.includes('.tmp/original-internal-overview-genuine-artifacts/'+name));assert.ok(specText.includes('if(!primary&&!cleanup.length&&stepsCompleted)'));assert.ok(specText.includes('await main().screenshot({type:\'png\'})'));assert.ok(specText.includes('for(const bytes of images.values())bytes.fill(0)'));assert.ok(specText.includes('qualifying_24h:0,production_GO:false'))})
+
+// v64: exercise the actual bounded upstream reader using memory streams only.
+const dependencyBytes=()=>Buffer.from('{"error":"original_internal_overview_unavailable"}','utf8')
+test('dependency observation accepts only the exact fixed Native error bytes',()=>{
+ assert.equal(bodyMatches(dependencyBytes()),true)
+ for(const value of [undefined,null,'',{},Buffer.alloc(0),Buffer.alloc(4097),Buffer.from('{"error":"other"}'),Buffer.from('{"error":"original_internal_overview_unavailable","extra":true}'),Buffer.from('{"error":"other","error":"original_internal_overview_unavailable"}'),Buffer.from(dependencyBytes().toString()+'\n'),Buffer.concat([dependencyBytes(),Buffer.from([0xff])])])assert.equal(bodyMatches(value),false)
+})
+test('actual upstream bytes are checked before503 headers then forwarded unchanged until the sink callback',async()=>{
+ const response=new PassThrough(),headers=Object.freeze({'content-type':'application/json','content-length':String(dependencyBytes().length),'cache-control':'no-store'}),calls=[],original=dependencyBytes(),part1=original.subarray(0,11),part2=original.subarray(11)
+ let forwarded,finished
+ const res={destroyed:false,writeHead(status,h){assert.equal(h,headers);calls.push(['head',status])},end(bytes,done){forwarded=bytes;finished=done;calls.push(['end',bytes.length])}}
+ pipeDependency(response,res,503,headers,valid=>calls.push(['observed',valid]),()=>assert.fail('unexpected failure'))
+ response.write(part1);response.write(part2);assert.deepEqual(calls,[])
+ const ended=new Promise(resolve=>response.once('end',resolve));response.end();await ended
+ assert.deepEqual(calls,[['observed',true],['head',503],['end',original.length]]);assert.deepEqual(forwarded,original);assert.notEqual(forwarded,original);assert.equal(typeof finished,'function')
+ finished();assert.ok(forwarded.every(byte=>byte===0));assert.deepEqual(original,dependencyBytes())
+})
+test('a closed downstream still checks complete real bytes and never writes a substitute reply',async()=>{
+ const response=new PassThrough(),observed=[],original=dependencyBytes(),res={destroyed:true,writeHead(){assert.fail('closed sink write')},end(){assert.fail('closed sink substitute')}}
+ pipeDependency(response,res,503,{},valid=>observed.push(valid),()=>assert.fail('unexpected failure'))
+ response.write(original);assert.deepEqual(observed,[]);const ended=new Promise(resolve=>response.once('end',resolve));response.end();await ended
+ assert.deepEqual(observed,[true]);assert.deepEqual(original,dependencyBytes())
+})
+test('a wrong real503 body is forwarded exactly but leaves the expected failure armed',async()=>{
+ const response=new PassThrough(),sink=recordSink({status:503,employee:'alice'}),original=Buffer.from('{"error":"unexpected_dependency_error"}'),headers={'content-type':'application/json'};let sent,finished
+ const res={destroyed:false,writeHead(status,h){assert.equal(status,503);assert.equal(h,headers)},end(bytes,done){sent=bytes;finished=done}}
+ pipeDependency(response,res,503,headers,valid=>sink.record(503,true,valid),()=>assert.fail('unexpected failure'))
+ const ended=new Promise(resolve=>response.once('end',resolve));response.end(original);await ended
+ assert.deepEqual(sent,original);assert.equal(sink.pending().status,503);assert.equal(sink.events.filter(e=>e.key==='expected_failures').length,0);assert.equal(sink.events.filter(e=>e.key==='unexpected_api_failures').length,1);finished();assert.ok(sent.every(byte=>byte===0))
+})
+test('the4096 byte cap refuses overflow once without observing or sending partial bytes',()=>{
+ const response=new EventEmitter(),first=Buffer.alloc(4096,7);let failed=0,destroyed=0
+ response.destroy=()=>{destroyed++;response.emit('aborted');response.emit('error',Error('synthetic transport failure'))}
+ const res={destroyed:false,writeHead(){assert.fail('overflow headers')},end(){assert.fail('overflow body')}}
+ pipeDependency(response,res,503,{},()=>assert.fail('overflow observation'),()=>failed++)
+ response.emit('data',first);assert.equal(failed,0);response.emit('data',Buffer.alloc(1));response.emit('end');response.emit('aborted');response.emit('data',dependencyBytes())
+ assert.equal(failed,1);assert.equal(destroyed,1);assert.ok(first.every(byte=>byte===7))
+})
+test('upstream error or abort cannot turn incomplete bytes into an expected503',()=>{
+ for(const event of ['error','aborted']){
+  const response=new EventEmitter(),sink=recordSink({status:503,employee:'alice'});let failed=0
+  const res={destroyed:false,writeHead(){assert.fail('failed upstream headers')},end(){assert.fail('failed upstream body')}}
+  pipeDependency(response,res,503,{},valid=>sink.record(503,true,valid),()=>{failed++;sink.record(503,true,false)})
+  response.emit('data',dependencyBytes());response.emit(event,Error('synthetic transport failure'));response.emit('aborted');response.emit('end')
+  assert.equal(failed,1);assert.equal(sink.pending().status,503);assert.equal(sink.events.filter(e=>e.key==='expected_failures').length,0)
+ }
+})
+test('503 requires both genuine upstream provenance and body proof while409 retains its original rule',()=>{
+ for(const [actual,valid]of [[false,false],[false,true],[true,false]]){
+  const sink=recordSink({status:503,employee:'alice'});sink.record(503,actual,valid);assert.equal(sink.pending().status,503);assert.equal(sink.events.filter(e=>e.key==='expected_failures').length,0)
+ }
+ const genuine=recordSink({status:503,employee:'alice'});genuine.record(503,true,true);assert.equal(genuine.pending(),null);const proof=genuine.events.find(e=>e.key==='expected_failures').value;assert.equal(proof.body_contract_valid,true);assert.deepEqual(Object.keys(proof).sort(),['actual_upstream_response','body_contract_valid','method','path','status'])
+ const conflict=recordSink({status:409,employee:'alice'});conflict.record(409,true);assert.equal(conflict.pending(),null);assert.equal(Object.hasOwn(conflict.events.find(e=>e.key==='expected_failures').value,'body_contract_valid'),false)
+})
+test('only the armed actual503 response enters the bounded reader before any headers are sent',()=>{
+ assert.ok(hostText.includes('dependencyResponse=personal&&status===503&&expectedStatus?.status===503&&expectedStatus.employee===employee'))
+ const begin=hostText.indexOf('if(dependencyResponse){'),end=hostText.indexOf('record(status,true)',begin),branch=hostText.slice(begin,end)
+ assert.ok(branch.includes('pipeOriginalOverviewDependencyError(response,res,status,responseHeaders'));assert.ok(branch.includes('upstreamEnded=true;record(status,true,valid)'));assert.ok(branch.includes('record(status,true,false);failed()'));assert.ok(branch.endsWith('return}\n            '));assert.doesNotMatch(branch,/writeHead|JSON\.parse|reply\(/)
+ assert.ok(hostText.includes('if(!selectedHold){res.writeHead(status,responseHeaders)'));assert.ok(hostText.includes('signal:AbortSignal.timeout(8000)'))
+})
+test('the503 story uses the upstream boolean and retains unknown recovery row images and final zero gates',()=>{
+ const branch=specText.slice(specText.indexOf("f.expectNextStatus(503,'alice')"),specText.indexOf('}finally{await f.setDependencyAvailable(true)}'))
+ assert.ok(branch.includes('expect(response.status()).toBe(503)'));assert.ok(branch.includes('body_contract_valid:true'));assert.doesNotMatch(branch,/response\.(json|body|text)\(/)
+ for(const token of ['个人任务总览暂时不可用，数据未知。',"locator('strong')).toHaveCount(0)","name:'最近运行',exact:true})).toHaveCount(0)","name:'重试',exact:true",'checkDto(\'alice\',recoveryDto)',"business_rows_after_browser_close",'expect(after).toEqual(before)','expect(baseAfter).toEqual(baseBefore)',"expected_failures.find(r=>r.status===503)?.body_contract_valid).toBe(true)","[[503,'alice',true],[409,'alice',true]]",'expect(f.providerRequests.length).toBe(0)','expect(f.credentialReads()).toBe(0)',"['legacy_backend_requests','unexpected_api_failures','blocked_requests']",'qualifying_24h:0,production_GO:false'])assert.ok(specText.includes(token),token)
+})

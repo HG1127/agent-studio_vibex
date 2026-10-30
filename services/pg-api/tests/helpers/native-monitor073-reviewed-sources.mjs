@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "8d1e725c22381c2e4091279dced4784f03d07cf6183cca22a64cc6ff57bfff10",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "87b713c5c86f3560b9a9c03e621b2c42358d0b777ee8cdb7168a9c2895ba7847",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -65,6 +65,10 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/original-internal-overview-http.ts": "2d6c058c37d5a23c471ad1874e30b82eed25eb5172c08155a867d6d1d789c0d3",
   "services/pg-api/src/original-internal-overview-read.ts": "810f10a8a2363046e6bdae3389870239cf81d47f14d91a702ddc1d2d6baef22e",
   "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969",
-  "services/pg-api/src/pg18-full069-owned-process-observation.mjs": "5dba240e189237ef4eb7633950f6085c24bc776a9791b3086fabfa8a42729685",
-  "services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs": "9e7ed52b568861c6bbcdd5534fc490b4c5bbd8f1931f3cf68e1a6a0992ed56b0"
+  "services/pg-api/src/pg18-full069-owned-process-observation.mjs": "aec459c8d2c350fb1dd69e46b8cdff7c8967928dfe43bb804dd7e74725ad0d5a",
+  "services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs": "9e7ed52b568861c6bbcdd5534fc490b4c5bbd8f1931f3cf68e1a6a0992ed56b0",
+  "services/pg-api/src/agent-design-http.ts": "a66a620ebcfa9b52705940d7db4bfd556cbcf46eeb8954f53b7b6d89e7e8f837",
+  "services/pg-api/src/agent-design-ledger.ts": "e2104df39284a2a4e616513f2a6bbe86d8a051a77e6f679b20228667daea0391",
+  "services/pg-api/src/pg18-full069-worker-startup-observation.d.mts": "1240a3dc22506ef7fe7170e162bace3a27737d344690d106bc4d3ef188f2cab9",
+  "services/pg-api/src/pg18-full069-worker-startup-observation.mjs": "4651d93764b378018a2b81cdccb83eceeabb76772c411a2f085e2d73093d3d06"
 })

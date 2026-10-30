@@ -54,6 +54,10 @@ type SpecEditorCardProps = {
   onReviseInputChange: (value: string) => void
   onRevise: () => void
   isRevising: boolean
+  reviseActionLabel?:string
+  revisePending?:boolean
+  reviseBlocked?:boolean
+  reviseNotice?:string
   onSave: () => void
   dirty?: boolean
   saveConflict?: boolean
@@ -485,15 +489,15 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
               placeholder="例如：增加一步来源核验，将交付物改为报告大纲"
               className="h-11 min-w-0 flex-1 rounded-lg border-border bg-card text-sm"/>
             <Button type="button" variant="outline" onClick={p.onRevise}
-              disabled={p.isRevising || !p.reviseInput.trim()}
+              disabled={p.isRevising || p.reviseBlocked || !p.reviseInput.trim()&&!p.revisePending}
               className="h-11 shrink-0 rounded-lg border-primary/40 px-4 text-primary hover:bg-primary/10">
               {p.isRevising?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:
                 <Wand2 className="mr-2 h-4 w-4"/>}
-              {p.isRevising?"修订中…":"应用修改建议"}
+              {p.isRevising?"修订中…":p.reviseActionLabel||"应用修改建议"}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            AI 修订会使用你已连接的模型，可能产生费用；请检查修订结果后保存。
+            {p.reviseNotice||'AI 修订会使用你已连接的模型，可能产生费用；请检查修订结果后保存。'}
           </p>
         </details>}
         {!p.compactActions && p.savedMsg && (

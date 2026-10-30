@@ -1207,3 +1207,14 @@ tests/helpers/pg-original-internal-overview-reviewed-sources.mjs text eol=lf
 tests/pg-original-internal-overview-browser-policy.test.mjs text eol=lf
 tests/pg-original-internal-overview-genuine.config.mjs text eol=lf
 tests/pg-original-internal-overview-genuine.spec.mjs text eol=lf
+
+# Original Home model-request bridge and closed startup observations.
+services/pg-api/src/pg18-full069-worker-startup-observation.d.mts text eol=lf
+services/pg-api/src/pg18-full069-worker-startup-observation.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-startup-observation.test.mjs text eol=lf
+shared/original-home-design-metadata.ts text eol=lf
+src/lib/originalHomeDesign.ts text eol=lf
+tests/helpers/original-home-design-unit-data.mjs text eol=lf
+tests/original-home-design-employee-condition.test.mjs text eol=lf
+tests/original-home-design-hook.test.mjs text eol=lf
+tests/original-home-design.test.mjs text eol=lf

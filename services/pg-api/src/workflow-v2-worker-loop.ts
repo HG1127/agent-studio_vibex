@@ -1,3 +1,4 @@
+import {reportWorkerStartupFailure} from './pg18-full069-worker-startup-observation.mjs'
 import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
 import {verifyNativeLocalDeviceSchema} from './native-local-device-audit.ts'
 import {selectAgentCallerExecution} from './agent-caller-execution-opt-in.ts'
@@ -37,11 +38,12 @@ import {selectMcpExecution} from "./mcp-call.ts"
 import {verifyScheduleRuntimeSchema} from "./schedule-runtime-audit.ts"
 import type {SqlPool} from "./contracts.ts"
 export function runV2WorkerCli(autonomous=false){
+  let startupStage='entry'
   const kind=autonomous?"agent":"workflow"
   const marker="APPROVE_ISOLATED_PG_WORKFLOW_V2_RUNTIME_ONLY"
   function required(name:string){const value=process.env[name]?.trim();if(!value)throw Error("missing_"+name);return value}
   async function main(mode:"serve"|"preflight"){
-    const localDeviceExecutionApproved=selectNativeLocalDeviceExecution(process.env)
+    startupStage='activation';const localDeviceExecutionApproved=selectNativeLocalDeviceExecution(process.env)
     if(localDeviceExecutionApproved&&!autonomous)throw Error("native_local_autonomous_worker_required")
     const modelEnabled=selectWorkflowV2ModelExecution(process.env)
     const toolsEnabled=selectWorkflowV2ToolExecution(process.env)
@@ -64,8 +66,8 @@ export function runV2WorkerCli(autonomous=false){
          (!autonomous&&(process.env.AGENT_STUDIO_PG_WORKFLOW_V2_WORKER_ENABLED!=="true"||
          process.env.AGENT_STUDIO_PG_WORKFLOW_V2_WORKER_APPROVED!==marker)))throw Error("workflow_v2_worker_not_approved")
     }
-    assertPg18WorkerCredentialBinding(process.env,kind)
-    const target=selectPgRuntimeTarget(process.env,"worker")
+    startupStage='credential_binding';assertPg18WorkerCredentialBinding(process.env,kind)
+    startupStage='credential_read';const target=selectPgRuntimeTarget(process.env,"worker")
     if(target.mode!=="baota_pg18")throw Error("workflow_v2_pg18_target_required")
     const file=required("AGENT_STUDIO_PG_WORKER_PASSWORD_FILE"),stat=lstatSync(file)
     let canRead=false;try{accessSync(file,constants.R_OK);canRead=true}catch{}
@@ -78,26 +80,26 @@ export function runV2WorkerCli(autonomous=false){
     let closeWorkerClaims:(()=>void)|undefined,closeScheduleClaims:(()=>void)|undefined
     const requestStop=()=>{stop=true;closeWorkerClaims?.();closeScheduleClaims?.();if(claimsClosed?.())heartbeat?.newClaimsClosed()}
     process.once("SIGTERM",requestStop);process.once("SIGINT",requestStop)
-    const {Pool}=await import("pg")
-    const pool=new Pool({host:target.host,port:target.port,user:target.user,database:target.database,password,max:2,
+    startupStage='pg_import';const {Pool}=await import("pg")
+    startupStage='pool_create';const pool=new Pool({host:target.host,port:target.port,user:target.user,database:target.database,password,max:2,
       connectionTimeoutMillis:4000,statement_timeout:8000,idleTimeoutMillis:10000})
     const rawAdapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),async connect(){const db=await pool.connect();return {
       async query<Row>(sql:string,values:unknown[]=[]){return {rows:(await db.query(sql,values)).rows as Row[]}},release(){db.release()}}}}
     const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
     try{
-      await verifyPgRuntimeTarget(adapter,target);await verifyPgWorkerRoleBoundary(adapter,target)
+      startupStage='target_audit';await verifyPgRuntimeTarget(adapter,target);startupStage='worker_role_audit';await verifyPgWorkerRoleBoundary(adapter,target)
       if(localDeviceExecutionApproved){const db=await adapter.connect();try{await db.query("BEGIN READ ONLY");await db.query("SET LOCAL ROLE agentstudio_api");await verifyNativeLocalDeviceSchema(db)}finally{try{await db.query("ROLLBACK")}finally{db.release()}}}
-      await verifyWorkflowSampleLineageSchema(adapter)
-      if(scheduleApproved)await verifyScheduleRuntimeSchema(adapter)
-      if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
-      if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
-      const humanInputAvailable=await inspectAgentHumanInputSchema(adapter)
-      const memoryAvailable=await inspectAgentMemorySchema(adapter),memoryContextAvailable=await inspectAgentMemoryContextSchema(adapter)
+      startupStage='workflow_lineage_audit';await verifyWorkflowSampleLineageSchema(adapter)
+      startupStage='schedule_audit';if(scheduleApproved)await verifyScheduleRuntimeSchema(adapter)
+      startupStage='knowledge_runtime_audit';if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
+      startupStage='knowledge_tool_audit';if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
+      startupStage='human_input_audit';const humanInputAvailable=await inspectAgentHumanInputSchema(adapter)
+      startupStage='memory_schema_audit';const memoryAvailable=await inspectAgentMemorySchema(adapter),memoryContextAvailable=await inspectAgentMemoryContextSchema(adapter)
       if(memoryApproved&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
-      const outcomeAvailable=await inspectAgentMemoryOutcomeSchema(adapter)
-      await inspectAgentMemoryFailureSourceSchema(adapter)
+      startupStage='outcome_schema_audit';const outcomeAvailable=await inspectAgentMemoryOutcomeSchema(adapter)
+      startupStage='failure_source_audit';await inspectAgentMemoryFailureSourceSchema(adapter)
       if(outcomeApproved&&(!outcomeAvailable||!humanInputAvailable))throw Error("agent_memory_outcome_schema_required")
-      const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,localDeviceExecutionApproved,
+      startupStage='dispatch_credentials';const config=modelEnabled||toolsEnabled?{approvedForIsolatedUat:true,localDeviceExecutionApproved,
         origin:"https://127.0.0.1:7453",reviewedServerFingerprint256:required("AGENT_STUDIO_PG_BOUND_DISPATCH_SERVER_FINGERPRINT"),
         ca:readBoundRuntimeCredential(kind,"dispatch-ca.pem",process.env),
         cert:readBoundRuntimeCredential(kind,autonomous?"dispatch-agent.pem":"dispatch-workflow.pem",process.env),
@@ -115,11 +117,11 @@ export function runV2WorkerCli(autonomous=false){
           ...(memoryApproved?{memory_schema_verified:true,memory_execution_enabled:autonomous}:{}),
           ...(outcomeApproved?{outcome_memory_schema_verified:true,outcome_memory_execution_enabled:autonomous}:{}),production_cutover_allowed:false})+"\n");return
       }
-      if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle(autonomous?'agent_autonomous':'workflow_v2')
+      startupStage='heartbeat_open';if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle(autonomous?'agent_autonomous':'workflow_v2')
       // Preflight never loads either execution Worker or its claim SQL.
-      const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
+      startupStage='worker_import';const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
       const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
-      const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      startupStage='worker_construct';const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       closeWorkerClaims=()=>worker.closeNewClaims()
       claimsClosed=()=>worker.claimAdmissionSnapshot().closed
       if(stop){closeWorkerClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}
@@ -130,7 +132,7 @@ export function runV2WorkerCli(autonomous=false){
       heartbeat?.startupChecksComplete()
       process.stdout.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",state:"ready",effect_executor_installed:adapters.length>0,
         scheduler_started:Boolean(scheduler),production_cutover_allowed:false})+"\n")
-      while(!stop){
+      startupStage='loop_run';while(!stop){
         try{if(scheduler){const dispatched=await scheduler.tick();if(dispatched.status!=="idle")process.stdout.write(JSON.stringify({service:"pg-scheduler",state:dispatched.status})+"\n")}
           if(stop)break
           const result=await worker.tick()
@@ -138,7 +140,7 @@ export function runV2WorkerCli(autonomous=false){
           if(!stop)await sleep(result.status==="idle"?900:100)
         }catch{heartbeat?.loopUnavailable();process.stderr.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",error:"durable_v2_tick_failed"})+"\n");if(!stop)await sleep(1500)}
       }
-    }finally{heartbeat?.close();await pool.end()}
+    }finally{const priorStartupStage=startupStage;startupStage='pool_cleanup';heartbeat?.close();await pool.end();startupStage=priorStartupStage}
   }
   const args=process.argv.slice(2)
   if(args.length===1&&args[0]==="--plan"){
@@ -146,6 +148,7 @@ export function runV2WorkerCli(autonomous=false){
       effect_executor_installed:false,separate_approval_required:true,production_cutover_allowed:false})+"\n")
   }else if(args.length===1&&(args[0]==="--preflight"||args[0]==="--serve")){
     void main(args[0]==="--serve"?"serve":"preflight").catch(error=>{
+      try{reportWorkerStartupFailure(startupStage,error)}catch{}
       const message=error instanceof Error?error.message:""
       const safe=/^(missing_[A-Z0-9_]+|unsafe_[a-z_]+|pg18_worker_not_approved|workflow_v2_worker_not_approved|workflow_v2_pg18_target_required|pg18_worker_credential_binding_required)$/
       process.stderr.write(JSON.stringify({service:autonomous?"pg-autonomous-agent":"pg-workflow-v2",error:safe.test(message)?message:"workflow_v2_start_failed"})+"\n")

@@ -31,6 +31,18 @@ async function read(req: IncomingMessage, max: number) {
 }
 async function empty(req: IncomingMessage) {if (req.headers["transfer-encoding"] !== undefined || req.headers["content-length"] !== undefined && req.headers["content-length"] !== "0") return invalid(); for await (const b of req) if (Buffer.byteLength(b) > 0) return invalid()}
 function parseInput<T>(fn: () => T): T {try {return fn()} catch {return invalid()}}
+function expectedDesignEmployee(req: IncomingMessage): string | undefined {
+  const value = req.headers["x-agentstudio-expected-employee"]
+  if (value === undefined) return undefined
+  if (typeof value !== "string" || !Array.isArray(req.rawHeaders) || req.rawHeaders.length % 2 !== 0) return invalid()
+  let count = 0
+  for (let i = 0; i < req.rawHeaders.length; i += 2) if (req.rawHeaders[i]?.toLowerCase() === "x-agentstudio-expected-employee") {
+    if (req.rawHeaders[i + 1] !== value) return invalid()
+    count++
+  }
+  if (count !== 1) return invalid()
+  return parseInput(() => designId(value))
+}
 /** false means another route family; the authenticated server composes it. */
 export function createAgentDesignHttpHandler({repository: r, authenticateRequest, allowedOrigin}: Dependencies) {
   if (!r || typeof authenticateRequest !== "function") throw Error("agent_design_http_dependencies_required")
@@ -60,6 +72,8 @@ export function createAgentDesignHttpHandler({repository: r, authenticateRequest
         throw error
       }
       requireAgentDesignNative(identity)
+      const expectedEmployee = expectedDesignEmployee(req)
+      if (expectedEmployee !== undefined && (item || !["submit", "confirm", "control", "confirm-control", "save", "confirm-save"].includes(action![1]!))) return invalid()
       if (item) {
         await empty(req); const id = parseInput(() => designId(item[2]))
         const itemValue = item[1] === "sources" ? await r.source.reference(identity, id) : await r.view(identity, id)
@@ -71,16 +85,16 @@ export function createAgentDesignHttpHandler({repository: r, authenticateRequest
         if (name === "preview") {const v = parseInput(() => parseAgentDesignChoice(body)); value = await r.preview(identity, v); decode = () => parseAgentDesignPreview(value)}
         else if (name === "submit" || name === "confirm") {
           const v = parseInput(() => parseAgentDesignSubmission(body)), {request_sha256: _h, ...intent} = v
-          value = await r[name](identity, intent); decode = () => {const result = parseAgentDesignReceipt(value); if (result.request_id !== v.request_id || result.request_sha256 !== v.request_sha256 || result.input_sha256 !== v.expected_input_sha256 || name === "confirm" && result.replayed !== true) throw Error(); return result}
+          value = await r[name](identity, intent, expectedEmployee); decode = () => {const result = parseAgentDesignReceipt(value); if (result.request_id !== v.request_id || result.request_sha256 !== v.request_sha256 || result.input_sha256 !== v.expected_input_sha256 || name === "confirm" && result.replayed !== true) throw Error(); return result}
         } else if (name === "control" || name === "confirm-control") {
           const v = parseInput(() => parseAgentDesignControl(body)), {request_sha256: _h, ...intent} = v
-          value = await r.control(identity, intent, name === "confirm-control"); decode = () => {const result = parseAgentDesignControlReceipt(value); if (result.request_id !== v.request_id || result.design_request_id !== v.design_request_id || result.request_sha256 !== v.request_sha256 || result.action !== v.action || name === "confirm-control" && !result.replayed) throw Error(); return result}
+          value = await r.control(identity, intent, name === "confirm-control", expectedEmployee); decode = () => {const result = parseAgentDesignControlReceipt(value); if (result.request_id !== v.request_id || result.design_request_id !== v.design_request_id || result.request_sha256 !== v.request_sha256 || result.action !== v.action || name === "confirm-control" && !result.replayed) throw Error(); return result}
         } else if (name === "preview-save") {const v = parseInput(() => parseAgentDesignSavePreviewInput(body)); value = await r.previewSave(identity, v); decode = () => {const result = parseAgentDesignSavePreview(value); if (result.design_request_id !== v.design_request_id || result.result_sha256 !== v.expected_result_sha256) throw Error(); return result}}
         else {
           const wrapper = name === "save" ? parseInput(() => O(body, ["intent", "preview"])) : {intent: body, preview: null}
           const v = parseInput(() => parseAgentDesignSaveIntent(wrapper.intent)), {request_sha256: _h, ...intent} = v
           if (name === "save") parseInput(() => parseAgentDesignSavePreviewInput(wrapper.preview))
-          value = await r.save(identity, intent, wrapper.preview, name === "confirm-save"); decode = () => {const result = parseAgentDesignSaveReceipt(value); if (result.request_id !== v.request_id || result.design_request_id !== v.design_request_id || result.request_sha256 !== v.request_sha256 || result.preview_sha256 !== v.expected_preview_sha256 || result.result_sha256 !== v.expected_result_sha256 || result.source_sha256 !== v.expected_source_sha256 || result.candidate_sha256 !== v.expected_candidate_sha256 || name === "confirm-save" && !result.replayed) throw Error(); return result}
+          value = await r.save(identity, intent, wrapper.preview, name === "confirm-save", expectedEmployee); decode = () => {const result = parseAgentDesignSaveReceipt(value); if (result.request_id !== v.request_id || result.design_request_id !== v.design_request_id || result.request_sha256 !== v.request_sha256 || result.preview_sha256 !== v.expected_preview_sha256 || result.result_sha256 !== v.expected_result_sha256 || result.source_sha256 !== v.expected_source_sha256 || result.candidate_sha256 !== v.expected_candidate_sha256 || name === "confirm-save" && !result.replayed) throw Error(); return result}
         }
         response(res, 200, projection(decode))
       }

@@ -25,6 +25,8 @@ function submit(raw: unknown) {
   if (v.action !== "submit" || confirm !== true || fee_acknowledgement !== fees[c.purpose]) throw Error("invalid_agent_design_request")
   return {...v, purpose: c.purpose, request_id: designId(request_id), expected_input_sha256: designSha(expected_input_sha256)}
 }
+/** Closed local recovery data; restoring it only permits exact read-only confirmation. */
+export function agentDesignOriginalSubmission(raw: unknown) {return submit(agentDesignJsonValue(raw))}
 function control(raw: unknown) {const v = O(raw, ["action", "request_id", "design_request_id", "confirm"]); if (v.action !== "cancel" && v.action !== "erase" || v.confirm !== true || v.request_id === v.design_request_id) throw Error(); return {...v, action: v.action as "cancel" | "erase", request_id: designId(v.request_id), design_request_id: designId(v.design_request_id)}}
 function saveIntent(raw: unknown) {
   const v = O(raw, ["action", "request_id", "design_request_id", "expected_preview_sha256", "expected_result_sha256", "expected_source_sha256", "expected_candidate_sha256", "confirm", "save_acknowledgement"])
@@ -32,10 +34,11 @@ function saveIntent(raw: unknown) {
   return {...v, request_id: designId(v.request_id), design_request_id: designId(v.design_request_id), expected_preview_sha256: designSha(v.expected_preview_sha256), expected_result_sha256: designSha(v.expected_result_sha256), expected_source_sha256: designSha(v.expected_source_sha256), expected_candidate_sha256: designSha(v.expected_candidate_sha256)}
 }
 function savePreview(raw: unknown) {const v = O(raw, ["action", "design_request_id", "expected_result_sha256", "fields"]); if (v.action !== "preview_save") throw Error(); return {...v, design_request_id: designId(v.design_request_id), expected_result_sha256: designSha(v.expected_result_sha256), fields: parseAgentDesignEditableFields(v.fields)}}
-export function createPgNativeAgentDesignApi(config: {transport?: typeof fetch; rootPath?: "" | "/__pg_native"; timeoutMs?: number} = {}) {
+export function createPgNativeAgentDesignApi(config: {transport?: typeof fetch; rootPath?: "" | "/__pg_native"; timeoutMs?: number; expectedEmployee?: string} = {}) {
   const options = O(config), names = Object.keys(options)
-  if (names.some(n => !["transport", "rootPath", "timeoutMs"].includes(n))) throw Error("invalid_agent_design_transport")
+  if (names.some(n => !["transport", "rootPath", "timeoutMs", "expectedEmployee"].includes(n))) throw Error("invalid_agent_design_transport")
   const send = config.transport ?? fetch, root = config.rootPath ?? "/__pg_native", budget = config.timeoutMs ?? 8000
+  const expectedEmployee = config.expectedEmployee === undefined ? null : designId(config.expectedEmployee)
   if (typeof send !== "function" || root !== "" && root !== "/__pg_native" || !Number.isSafeInteger(budget) || budget < 1 || budget > 8000) throw Error("invalid_agent_design_transport")
   async function request<T>(path: string, method: "GET" | "POST", body: unknown, parse: (raw: unknown) => T, signal?: AbortSignal): Promise<T> {
     const data = body === undefined ? undefined : JSON.stringify(agentDesignJsonValue(body))
@@ -48,7 +51,8 @@ export function createPgNativeAgentDesignApi(config: {transport?: typeof fetch; 
     active.addEventListener("abort", onAbort, {once: true})
     try {
       if (active.aborted) throw unknown()
-      const res = await Promise.race([send(root + "/api/v2/agent-design/" + path, {method, body: data, credentials: "same-origin", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer", signal: active, headers: {Accept: "application/json", ...(method === "POST" ? {"Content-Type": "application/json", "X-AgentStudio-Request": "1"} : {})}}), aborted])
+      const condition: Record<string,string> = expectedEmployee && ["submit", "confirm", "control", "confirm-control", "save", "confirm-save"].includes(path) ? {"X-AgentStudio-Expected-Employee": expectedEmployee} : {}
+      const res = await Promise.race([send(root + "/api/v2/agent-design/" + path, {method, body: data, credentials: "same-origin", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer", signal: active, headers: {Accept: "application/json", ...(method === "POST" ? {"Content-Type": "application/json", "X-AgentStudio-Request": "1"} : {}), ...condition}}), aborted])
       if (!(res instanceof Response) || res.redirected) return invalid()
       responseBody = res.body
       if (res.status === 401 || res.status === 403) throw new PgNativeAgentDesignError(res.status, res.status === 401 ? "session_required" : "agent_design_access_denied")
@@ -63,7 +67,10 @@ export function createPgNativeAgentDesignApi(config: {transport?: typeof fetch; 
         const bytes = new Uint8Array(size); let at = 0; for (const b of chunks) {bytes.set(b, at); at += b.byteLength}
         let raw: unknown
         try {raw = parseAgentDesignTransportJson(new TextDecoder("utf-8", {fatal: true}).decode(bytes))} catch {return invalid()}
-        if (res.status !== 200) throw new PgNativeAgentDesignError(res.status, res.status >= 500 ? "agent_design_outcome_unknown" : "agent_design_request_refused")
+        if (res.status !== 200) {
+          const changed = res.status === 409 && raw && typeof raw === "object" && Object.getOwnPropertyDescriptor(raw, "error")?.value === "agent_design_employee_changed"
+          throw new PgNativeAgentDesignError(res.status, changed ? "agent_design_employee_changed" : res.status >= 500 ? "agent_design_outcome_unknown" : "agent_design_request_refused")
+        }
         try {return parse(raw)} catch {return invalid()}
       }
       return await Promise.race([read(), aborted])

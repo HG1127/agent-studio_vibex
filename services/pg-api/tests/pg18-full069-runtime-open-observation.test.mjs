@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {createRequire} from 'node:module'
 import {finalBusinessLogins} from '../src/pg18-full069-final-login-contract.mjs'
+import {parseFinalPathCiRuntimeFailures,finalPathCiPrimaryFailureCode} from './helpers/pg18-full069-final-path-ci-contract.mjs'
 const source=fs.readFileSync(new URL('../src/pg18-full069-final-runtime.mjs',import.meta.url),'utf8'),start=source.indexOf('// Closed observation only;'),end=source.indexOf('// End closed runtime-open observation.'),code=source.slice(start,end).replace('export function full069FinalRuntimeOpenFailureObservation','function full069FinalRuntimeOpenFailureObservation')
 assert(start>=0&&end>start)
 const fresh=()=>Function('finalBusinessLogins',code+';return{remember:rememberRuntimeOpenFailure,read:full069FinalRuntimeOpenFailureObservation}')(finalBusinessLogins)
@@ -60,4 +61,23 @@ test('actual ACL outer catch rethrows the identical error while original rollbac
  assert(aclSource.includes('const deadline=performance.now()+8000'));assert(aclSource.includes("await db.query('ROLLBACK');begun=false"));assert(aclSource.includes('if(primary)throw primary'));assert(aclSource.includes('passed!==cases.length'));assert(aclSource.includes('inspectFinal14DatabaseAclRows(restored,databases,roles)'))
  const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),emission=actor.indexOf('const observation=full069Final14DatabaseAclFailureObservation(e)'),primaryThrow=actor.indexOf('}catch{};errorCode=reason(e);throw Error(errorCode)');assert(guard>=0&&emission>guard&&primaryThrow>emission)
  const body=actor.slice(guard,emission);for(const gate of ["binding.run===process.env.GITHUB_RUN_ID","process.getuid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","failurePhase==='runtime_preflight'"])assert(body.includes(gate),gate)
+})
+
+test('parent refusal parsing ignores diagnostic JSON and embedded error-like secret text',()=>{
+ const observation={event:'full069_final14_runtime_open_observation',phase:'physical',entry_key:null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false},primary='full069_final_path_ci_dependency_refused',stderr=JSON.stringify(observation)+'\nPRIVATE SQL containing full069_final14_not_the_primary\n'+primary+'\n'
+ assert.equal(finalPathCiPrimaryFailureCode(stderr),primary);assert.equal(finalPathCiPrimaryFailureCode(JSON.stringify(observation)+'\n'),'full069_final_path_ci_actual_child_failed');assert.equal(finalPathCiPrimaryFailureCode(observation.event+'\n'),'full069_final_path_ci_actual_child_failed')
+ assert.equal(finalPathCiPrimaryFailureCode('full069_final_runtime_actual_observation\n'),'full069_final_runtime_actual_observation')
+ for(const value of [null,{},'x'.repeat(524289),'\0'+primary])assert.equal(finalPathCiPrimaryFailureCode(value),'full069_final_path_ci_actual_child_failed')
+})
+test('parent forwards only one closed runtime or ACL observation without secret or authority fields',()=>{
+ const a={event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'worker',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false},b={event:'full069_final14_database_acl_negative_observation',phase:'mutation',negative_case:'extra_template0_public_temp',sqlstate:'42501',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}
+ for(const row of [a,b]){const result=parseFinalPathCiRuntimeFailures(JSON.stringify(row)+'\n');assert.deepEqual(result,[row]);assert(Object.isFrozen(result)&&Object.isFrozen(result[0]));for(const patch of [{private:'SECRET'},{production_GO:true},{runtime_authorization:true},{phase:'PRIVATE'}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify({...row,...patch})),[])}
+ for(const row of [{...a,entry_key:'PRIVATE'},{...b,negative_case:'PRIVATE'},{...b,sqlstate:'PRIVATE_SQL'},{...b,sqlstate:12345}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify(row)),[])
+ for(const value of [null,{},'x'.repeat(524289),'\0'+JSON.stringify(a),JSON.stringify(a)+'\n'+JSON.stringify(a)])assert.deepEqual(parseFinalPathCiRuntimeFailures(value),[])
+})
+test('actual bridge selects the standalone primary and emits closed observations separately',()=>{
+ const bridge=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-bridge.mjs',import.meta.url),'utf8'),ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('bridge.mjs',bridge,ts.ScriptTarget.Latest,true);let expression
+ const visit=n=>{if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='safe')expression=n.initializer.getText(tree);ts.forEachChild(n,visit)};visit(tree);assert.equal(expression,'finalPathCiPrimaryFailureCode(err)')
+ const actual=Function('err','finalPathCiPrimaryFailureCode','return '+expression),primary='full069_final_path_ci_dependency_refused';assert.equal(actual('{"event":"full069_final14_runtime_open_observation"}\n'+primary,finalPathCiPrimaryFailureCode),primary)
+ assert(bridge.includes('...parseFinalPathCiRuntimeFailures(err)'));assert(bridge.includes("if(bytes>524288)return terminate()"));assert(bridge.includes("if(!members().absent)fail('emergency_owned_group_remains')"))
 })

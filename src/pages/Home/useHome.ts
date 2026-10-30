@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { getPocketBaseUrl } from "@/lib/pb"
-import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
+import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders,verifyStudioSession,getStudioAccountInfo } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import {
   clearAgentDraft as clearStoredAgentDraft, readAgentDraft as readStoredAgentDraft, saveAgentDraft as saveStoredAgentDraft, type AgentEditorDraft,
@@ -18,6 +18,10 @@ import {ORIGINAL_PG_UI_ENABLED} from '@/lib/studioBackend'
 import {createOriginalHomeAgentApi,OriginalHomeApiError,type OriginalHomeAgent} from '@/lib/originalHomeAgentApi'
 import {originalHomeAgentForEditor,originalHomeEditorWrite,isOriginalHomeBuiltinTool,type NativeHomeEditingContext} from '@/lib/originalHomeAgentEditor'
 import type {OriginalHomeBindingOptions,OriginalHomeResourceView} from '@/lib/originalHomeResources'
+import {createPgNativeAgentDesignApi,PgNativeAgentDesignError} from '@/lib/pgNativeAgentDesign'
+import {createPgNativePilotApi} from '@/lib/pgNativePilotApi'
+import {createOriginalHomeDesignController,originalHomeDesignEditorKey,originalHomeDesignStorageKey,type OriginalHomeDesignController,type OriginalHomeDesignView} from '@/lib/originalHomeDesign'
+import type {OriginalHomeDesignMetadata} from '../../../shared/original-home-design-metadata'
 import {
   BUILTIN_TOOL_OPTIONS,
   TEMPLATE_PRESETS,
@@ -36,6 +40,11 @@ const saveAgentDraft=(uid:string,draft:AgentEditorDraft)=>saveStoredAgentDraft(u
 const clearAgentDraft=(uid:string)=>clearStoredAgentDraft(uid,HOME_DRAFT_BACKEND)
 const NATIVE_HOME_BUILTINS=ORIGINAL_PG_UI_ENABLED?new Set(BUILTIN_TOOL_OPTIONS.filter(v=>isOriginalHomeBuiltinTool(v.id)).map(v=>v.id)):undefined
 const createNativeHomeApi=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?createOriginalHomeAgentApi:null
+const createNativeHomeDesign=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?createOriginalHomeDesignController:null
+const createNativeHomeDesignApi=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?createPgNativeAgentDesignApi:null
+const createNativeHomeDesignAccount=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?createPgNativePilotApi:null
+const nativeHomeDesignEditorKey=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?originalHomeDesignEditorKey:null
+const nativeHomeDesignStorageKey=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?originalHomeDesignStorageKey:null
 
 export type SavedSpecRow = {
   id: string
@@ -126,6 +135,9 @@ export function useHome() {
   const [nativeOutcomeUnknown,setNativeOutcomeUnknown]=useState(false)
   const [nativeBindings,setNativeBindings]=useState<OriginalHomeBindingOptions>({http:[],mcp:[]})
   const [nativeBuiltinSelections,setNativeBuiltinSelections]=useState<string[]>([])
+  const [nativeDesign,setNativeDesign]=useState<OriginalHomeDesignMetadata|null>(null)
+  const [nativeDesignView,setNativeDesignView]=useState<OriginalHomeDesignView>({busy:false,pending:false,pendingPurpose:null,preview:null,error:'',loginRequired:false,blocked:false})
+  const nativeDesignOwned=useRef<OriginalHomeDesignController|null>(null)
   const nativeCurrentBindings=useRef<OriginalHomeBindingOptions>({http:[],mcp:[]})
   const nativeResourcesFlight=useRef<Promise<OriginalHomeResourceView>|null>(null),nativeKnowledgeSequence=useRef(0)
   const readNativeResources=useCallback(()=>{
@@ -200,6 +212,7 @@ export function useHome() {
     setNativeOutcomeUnknown(false);setSaveConflict(false)
     setNativeBindings({http:[],mcp:[]})
     setNativeBuiltinSelections([])
+    setNativeDesign(null)
   },[])
 
   const currentDraft: AgentEditorDraft = useMemo(() => ({
@@ -216,12 +229,91 @@ export function useHome() {
     ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec&&nativeOutcomeUnknown?{nativeOutcomeUnknown:true as const}:{}),
     ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec?{nativeBindings:{http:nativeBindings.http.filter(v=>spec.tools.includes(v.name)),mcp:nativeBindings.mcp.filter(v=>spec.tools.includes(v.name))}}:{}),
     ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec?{nativeBuiltinSelections:nativeBuiltinSelections.filter(v=>spec.tools.includes(v))}:{}),
+    ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec&&nativeDesign?{nativeDesign:{request_id:nativeDesign.request_id,tool_requirements:nativeDesign.tool_requirements.filter(v=>spec.tools.includes(v))}}:{}),
   }), [rhUserId,userInput,spec,specDirty,specName,sourceMode,templateKey,
-    editingRecordId,serverUpdated,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections])
+    editingRecordId,serverUpdated,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections,nativeDesign])
   const draftRef = useRef<AgentEditorDraft>(currentDraft)
   useEffect(() => {
     draftRef.current = currentDraft
   }, [currentDraft])
+  const nativeDesignEditor=useRef({spec,specName,sourceMode,templateKey,editingRecordId,nativeContext,specDirty,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections,nativeDesign,draftDecisionMade,key:''})
+  nativeDesignEditor.current={spec,specName,sourceMode,templateKey,editingRecordId,nativeContext,specDirty,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections,nativeDesign,draftDecisionMade,
+    key:nativeHomeDesignEditorKey?nativeHomeDesignEditorKey({spec,specName,sourceMode,templateKey,editingRecordId,nativeContext,specDirty,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections,nativeDesign,draftDecisionMade,writeInFlight:nativeWriteInFlight.current}):''}
+  useEffect(()=>{
+    if(!nativeApi||!rhUserId||!createNativeHomeDesign||!createNativeHomeDesignApi||!createNativeHomeDesignAccount||!nativeHomeDesignStorageKey)return
+    const account=createNativeHomeDesignAccount(),key=nativeHomeDesignStorageKey(rhUserId)
+    const controller=createNativeHomeDesign({employeeId:rhUserId,api:createNativeHomeDesignApi({expectedEmployee:rhUserId}),
+      currentEmployee:()=>getStudioAccountInfo()?.id??null,
+      verifyEmployee:async()=>{const status=await verifyStudioSession(),employee=getStudioAccountInfo();if(status!=='authenticated'||!employee?.active)throw new PgNativeAgentDesignError(status==='signed_out'?401:503,'original_home_design_identity_unavailable');return employee.id},
+      capabilities:()=>account.getConfigCapabilities(),models:()=>account.listModelConnections(),
+      storage:{read:()=>sessionStorage.getItem(key),write:value=>sessionStorage.setItem(key,value)},
+      editorKey:()=>nativeDesignEditor.current.key,
+      onChange:value=>{if(nativeDesignOwned.current!==controller)return;setNativeDesignView(value);if(value.error)setErrorMsg(value.error);if(value.loginRequired)setNeedsRhLogin(true)},
+      onScopeChanged(){
+        if(nativeDesignOwned.current!==controller)return
+        void saveAgentDraft(rhUserId,draftRef.current)
+        nativeEditorIntent.current++;nativeOpenSequence.current++;nativeListSequence.current++;specRevisionRef.current++
+        connectionRequestRef.current++;connectionAbortRef.current?.abort();nativeKnowledgeSequence.current++
+        setSpec(null);setSpecName('');setUserInputState('');setReviseInput('');setSavedList([]);setSavedTotal(null)
+        setNativeContext(null);setNativeBindings({http:[],mcp:[]});setNativeBuiltinSelections([]);setNativeDesign(null);setNeedsRhLogin(true);setIsGenerating(false);setIsRevising(false)
+        setEditingRecordId('');setSavedSpecId('');setServerUpdated('');setLastSavedAt(0);setSavedMsg('');setSpecDirty(false)
+        setPendingDraft(null);setDraftDecisionMade(true);draftDecisionRef.current=true;setDraftRestoreNotice('');setCreationPreview(null)
+        setRequirementForTools('');setToolMatchNotice('');setConnectionLoadNotice('');setConnectedTools([]);setConnectedMarketTools([]);setKnowledgeBases([]);setKnowledgeBasesError('');setKnowledgeBasesLoading(false)
+      },
+      onResult(value){
+        if(!nativeMounted.current||nativeDesignOwned.current!==controller||getStudioAccountInfo()?.id!==rhUserId)return false
+        const current=nativeDesignEditor.current
+        if(!current.draftDecisionMade||current.key!==value.editor_key||current.nativeOutcomeUnknown||nativeWriteInFlight.current)return false
+        const output=value.result,descriptions={goal:output.goal,task_scope:output.task_scope,deliverables:[...output.deliverables],task_plan:[...output.task_plan],done_criteria:[...output.done_criteria]}
+        let next:AgentSpec
+        if(value.purpose==='generate')next={...descriptions,tools:[...output.tools],knowledge_base_ids:[],require_approval:true,require_plan_review:true}
+        else{
+          if(!current.spec||!current.nativeContext||current.editingRecordId!==current.nativeContext.id||current.specDirty)return false
+          const actualNames=[...((current.nativeContext.spec.tools as readonly string[]|undefined)??[]),...current.nativeBindings.http.map(v=>v.name),...current.nativeBindings.mcp.map(v=>v.name),...current.nativeBuiltinSelections]
+          next={...current.spec,...descriptions,tools:[...new Set([...actualNames,...output.tools])]}
+        }
+        if(next.tools.length>40)return false
+        const designMetadata={request_id:value.request_id,tool_requirements:[...output.tools]},newAgent=value.purpose==='generate',oldInput=draftRef.current.userInput
+        // Local recovery precedes marking the paid result applied. This does
+        // not save an Agent or write any backend record automatically.
+        const durableDraft:AgentEditorDraft={version:1,ownerId:rhUserId,editedAt:Date.now(),backend:'native_pg',
+          userInput:newAgent&&oldInput.trim()===value.instruction?'':oldInput,spec:next,specName:output.name,
+          sourceMode:newAgent?'create':current.sourceMode,templateKey:newAgent?'':current.templateKey,
+          editingRecordId:newAgent?'':current.editingRecordId,serverUpdated:newAgent?'':draftRef.current.serverUpdated,
+          ...(!newAgent&&current.nativeContext?{nativePg:current.nativeContext}:{}),
+          nativeBindings:newAgent?{http:[],mcp:[]}:current.nativeBindings,nativeBuiltinSelections:newAgent?[]:current.nativeBuiltinSelections,nativeDesign:designMetadata}
+        if(!saveAgentDraft(rhUserId,durableDraft)){setDraftPersistError(true);return false}
+        draftRef.current=durableDraft;setDraftPersistError(false)
+        nativeEditorIntent.current++;nativeOpenSequence.current++
+        setSpec(next);setSpecName(output.name);setNativeDesign(designMetadata)
+        setSavedMsg('');setSaveConflict(false);markSpecEdited()
+        setToolMatchNotice('实际模型结果已载入未保存草稿。工具名称仅作为需求建议；请逐项选择资源并审核后保存。')
+        if(value.purpose==='generate'){
+          setUserInputState(text=>text.trim()===value.instruction?'':text);setRequirementForTools(value.instruction)
+          setSavedSpecId('');setLastSavedAt(0);setServerUpdated('');setSourceMode('create');setTemplateKey('');setEditingRecordId('');setNativeContext(null);setNativeBindings({http:[],mcp:[]});setNativeBuiltinSelections([])
+        }else setReviseInput(text=>text.trim()===value.instruction?'':text)
+        scrollToSpecEditor();return true
+      },
+    })
+    nativeDesignOwned.current=controller;setNativeDesignView(controller.getView());void controller.start()
+    const check=()=>{void controller.checkScope()},visible=()=>{if(document.visibilityState==='visible')check()}
+    window.addEventListener('focus',check);window.addEventListener('pageshow',check);window.addEventListener('storage',check);document.addEventListener('visibilitychange',visible)
+    return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);window.removeEventListener('storage',check);document.removeEventListener('visibilitychange',visible);if(nativeDesignOwned.current===controller)nativeDesignOwned.current=null;controller.dispose()}
+  },[nativeApi,rhUserId,markSpecEdited])
+  const runNativeDesignAction=useCallback(async(purpose:'generate'|'revise',action:(controller:OriginalHomeDesignController)=>Promise<void>)=>{
+    const controller=nativeDesignOwned.current
+    if(!controller){setErrorMsg('原首页 PG 模型请求仍在核对员工身份，请稍后重试。');return}
+    const state=controller.getView()
+    if(state.busy)return
+    if(!state.pending&&(!draftDecisionRef.current||nativeWriteInFlight.current||nativeOutcomeUnknown)){
+      setErrorMsg(!draftDecisionRef.current?'请先选择恢复或丢弃已有草稿，再预览模型请求。':'原保存结果尚未确认，请先核对服务器中的记录；当前草稿未被替换。');return
+    }
+    if(purpose==='generate')setIsGenerating(true);else setIsRevising(true)
+    setErrorMsg('');setSavedMsg('')
+    try{await action(controller)}
+    catch{if(nativeMounted.current&&nativeDesignOwned.current===controller)setErrorMsg('原模型请求暂时无法核对，当前草稿保持不变。')}
+    finally{if(nativeMounted.current&&nativeDesignOwned.current===controller){if(purpose==='generate')setIsGenerating(false);else setIsRevising(false)}}
+  },[nativeOutcomeUnknown])
   const activeDraft = Boolean(specDirty && spec) || Boolean(userInput.trim())
   useEffect(() => {
     if (!draftDecisionMade) return
@@ -280,7 +372,7 @@ export function useHome() {
     setServerUpdated(draft.serverUpdated)
     setSavedSpecId(draft.editingRecordId)
     setLastSavedAt(Date.parse(draft.serverUpdated) || 0)
-    if(ORIGINAL_PG_UI_ENABLED){setNativeContext(draft.nativePg??null);setNativeOutcomeUnknown(draft.nativeOutcomeUnknown===true);setNativeBindings(draft.nativeBindings??{http:[],mcp:[]});setNativeBuiltinSelections(draft.nativeBuiltinSelections??[])}
+    if(ORIGINAL_PG_UI_ENABLED){setNativeContext(draft.nativePg??null);setNativeOutcomeUnknown(draft.nativeOutcomeUnknown===true);setNativeBindings(draft.nativeBindings??{http:[],mcp:[]});setNativeBuiltinSelections(draft.nativeBuiltinSelections??[]);setNativeDesign(draft.nativeDesign??null)}
     if (draft.spec) markSpecEdited()
     setDraftRestoreNotice(draft.nativeOutcomeUnknown?"上次保存结果尚未确认。草稿已保留，请先打开服务器中的记录核对；不会自动重复发送。":"已恢复当前浏览器的未提交草稿，请核对后保存到服务器。")
     setSaveConflict(false)
@@ -441,8 +533,8 @@ export function useHome() {
 
   const runGenerate = useCallback(async () => {
     const requirement = userInput
+    if(nativeApi){await runNativeDesignAction('generate',controller=>controller.submit('generate',requirement));return}
     if (!requirement.trim()||!creationPreview||creationPreview.text!==requirement) return
-    if(nativeApi){setErrorMsg('当前 PostgreSQL 的原页面需求生成接口尚未接通；原始需求已保留。');return}
     setIsGenerating(true)
     setErrorMsg("")
     setSavedMsg("")
@@ -490,31 +582,42 @@ export function useHome() {
     setTemplateKey("")
     setEditingRecordId("")
     scrollToSpecEditor()
-  }, [userInput, creationPreview, markSpecEdited, connectedTools, connectedMarketTools,nativeApi])
+  }, [userInput, creationPreview, markSpecEdited, connectedTools, connectedMarketTools,nativeApi,runNativeDesignAction])
 
   const prepareCreation=useCallback(async()=>{
-    const text=userInput;if(!text.trim())return
-    if(nativeApi){setErrorMsg('当前 PostgreSQL 的原页面需求预览接口尚未接通；原始需求已保留。');return}
+    const text=userInput
+    if(nativeApi){await runNativeDesignAction('generate',controller=>controller.prepareGenerate(text));return}
+    if(!text.trim())return
     if(captureKey.current.text!==text||!captureKey.current.key)captureKey.current={text,key:crypto.randomUUID()}
     setIsGenerating(true);setErrorMsg('')
     try{const source=await captureRequirements(text,captureKey.current.key),preview=await previewRequirements(source.request_id,{goal:'',task_scope:'',tools:[],task_plan:[]});setCreationPreview({text,requestId:source.request_id,plan:preview.plan})}
     catch{setErrorMsg('需求预览未完成。请检查登录、网络及需求长度（单次最多 12000 字符），重试不会重复保存同一请求。')}
     finally{setIsGenerating(false)}
-  },[userInput,nativeApi])
+  },[userInput,nativeApi,runNativeDesignAction])
 
   const handleCreate = useCallback(() => {
-    if (!userInput.trim() || isGenerating) return
+    if ((!userInput.trim()&&!nativeDesignView.pending) || isGenerating) return
     if (!rhUserId) {
       setNeedsRhLogin(true)
       return
     }
-    if(authoringPreview)void runGenerate();else void prepareCreation()
-  }, [userInput, isGenerating, rhUserId, runGenerate,authoringPreview,prepareCreation])
+    const preview=nativeApi?nativeDesignView.preview?.purpose==='generate'&&nativeDesignView.preview.instruction===userInput.trim():!!authoringPreview
+    if(nativeDesignView.pending||preview)void runGenerate();else void prepareCreation()
+  }, [userInput, isGenerating, rhUserId, runGenerate,authoringPreview,prepareCreation,nativeApi,nativeDesignView])
 
   const runRevise = useCallback(async () => {
     const instruction = reviseInput.trim()
+    if(nativeApi){
+      await runNativeDesignAction('revise',async controller=>{
+        const state=controller.getView()
+        if(state.pending){await controller.queryOriginal();return}
+        if(!instruction||!spec)return
+        if(specDirty||!nativeContext||nativeContext.id!==editingRecordId){setErrorMsg('现有 PG 修订只接受已保存且版本一致的本人方案。请先保留并保存当前修改，再重新打开该记录；不会静默保存或使用旧服务器版本。');return}
+        if(state.preview?.purpose==='revise'&&state.preview.instruction===instruction)await controller.submit('revise',instruction)
+        else await controller.prepareRevision({instruction,spec_id:nativeContext.id,revision:nativeContext.revision,...(nativeContext.spec.model_binding?{model_binding:nativeContext.spec.model_binding}:{})})
+      });return
+    }
     if (!instruction || !spec) return
-    if(nativeApi){setErrorMsg('当前 PostgreSQL 的原页面需求修订接口尚未接通；修改要求已保留。');return}
     setIsRevising(true)
     setErrorMsg("")
     setSavedMsg("")
@@ -563,16 +666,16 @@ export function useHome() {
     setSpecName(parsed.displayName || specName)
     markSpecEdited()
     setReviseInput("")
-  }, [reviseInput, spec, specName, markSpecEdited, requirementForTools, connectedTools, connectedMarketTools,nativeApi])
+  }, [reviseInput, spec, specName, markSpecEdited, requirementForTools, connectedTools, connectedMarketTools,nativeApi,runNativeDesignAction,specDirty,nativeContext,editingRecordId])
 
   const handleRevise = useCallback(() => {
-    if (!reviseInput.trim() || !spec || isRevising) return
+    if ((!reviseInput.trim()&&!nativeDesignView.pending) || !spec || isRevising) return
     if (!rhUserId) {
       setNeedsRhLogin(true)
       return
     }
     void runRevise()
-  }, [reviseInput, spec, isRevising, rhUserId, runRevise])
+  }, [reviseInput, spec, isRevising, rhUserId, runRevise,nativeDesignView.pending])
 
   const saveCurrentSpec = useCallback(async (asCopy: boolean) => {
     if (!spec || isSaving) return
@@ -603,7 +706,7 @@ export function useHome() {
       if(nativeApi){
         nativeWriteInFlight.current=true
         const name=asCopy?(specName.trim()||'未命名助手')+'（副本）':specName.trim()||'未命名助手'
-        const write=originalHomeEditorWrite({name,spec,source:sourceMode,templateKey,context:nativeContext,asCopy,bindings:nativeBindings,builtinSelections:nativeBuiltinSelections})
+        const write=originalHomeEditorWrite({name,spec,source:sourceMode,templateKey,context:nativeContext,asCopy,bindings:nativeBindings,builtinSelections:nativeBuiltinSelections,designMetadata:nativeDesign})
         if(!target&&!write.authoring)throw new OriginalHomeApiError(400,'original_home_authoring_missing')
         nativeSent=true;setNativeOutcomeUnknown(true);setSpecDirty(true)
         draftRef.current={...draftRef.current,spec,specName,sourceMode,templateKey,editingRecordId,serverUpdated,backend:'native_pg',nativePg:nativeContext??undefined,nativeBindings:{http:nativeBindings.http.filter(v=>spec.tools.includes(v.name)),mcp:nativeBindings.mcp.filter(v=>spec.tools.includes(v.name))},nativeBuiltinSelections:nativeBuiltinSelections.filter(v=>spec.tools.includes(v)),nativeOutcomeUnknown:true}
@@ -661,7 +764,7 @@ export function useHome() {
       setLastSavedAt(Date.parse(row.updated) || Date.now())
       const noFurtherEdits = startedRevision === specRevisionRef.current
       setSpecDirty(!noFurtherEdits)
-      if(nativeApi&&noFurtherEdits)draftRef.current={...draftRef.current,spec:null,specName:'',editingRecordId:'',serverUpdated:'',nativePg:undefined,nativeBindings:undefined,nativeBuiltinSelections:undefined,nativeOutcomeUnknown:undefined}
+      if(nativeApi&&noFurtherEdits){setNativeDesign(null);draftRef.current={...draftRef.current,spec:null,specName:'',editingRecordId:'',serverUpdated:'',nativePg:undefined,nativeBindings:undefined,nativeBuiltinSelections:undefined,nativeOutcomeUnknown:undefined,nativeDesign:undefined}}
       if (asCopy && noFurtherEdits) setSpecName(row.name)
       setSavedMsg(noFurtherEdits
         ? asCopy ? "已另存为独立 Agent，原版本未被覆盖。" :
@@ -689,7 +792,7 @@ export function useHome() {
       nativeWriteInFlight.current=false
       setIsSaving(false)
     }
-  }, [spec,isSaving,rhUserId,editingRecordId,serverUpdated,specName,sourceMode,templateKey,loadSavedList,nativeApi,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections])
+  }, [spec,isSaving,rhUserId,editingRecordId,serverUpdated,specName,sourceMode,templateKey,loadSavedList,nativeApi,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections,nativeDesign])
 
   const handleSave = useCallback(async () => saveCurrentSpec(false), [saveCurrentSpec])
   const handleSaveAsCopy = useCallback(async () => saveCurrentSpec(true), [saveCurrentSpec])
@@ -701,6 +804,7 @@ export function useHome() {
     setNativeContext(null);setNativeOutcomeUnknown(false);returnSpecRef.current=''
     setNativeBindings({http:[],mcp:[]})
     setNativeBuiltinSelections([])
+    setNativeDesign(null)
     setUserInput("")
     setSpec(preset.spec)
     setSpecName(preset.defaultName)
@@ -790,6 +894,7 @@ export function useHome() {
     setNativeContext(null);setNativeOutcomeUnknown(false);returnSpecRef.current=''
     setNativeBindings({http:[],mcp:[]})
     setNativeBuiltinSelections([])
+    setNativeDesign(null)
     clearAgentDraft(rhUserId)
     setSpec(null)
     setSpecName("")
@@ -934,6 +1039,11 @@ export function useHome() {
     handleCreate,
     isGenerating,
     authoringPreview,
+    nativeDesignComposer:nativeApi?{preview:nativeDesignView.preview?.purpose==='generate'&&nativeDesignView.preview.instruction===userInput.trim()?nativeDesignView.preview:null,pending:nativeDesignView.pending,blocked:nativeDesignView.blocked||nativeDesignView.busy}:undefined,
+    nativeRevisePending:!!nativeApi&&nativeDesignView.pending,
+    nativeReviseBlocked:!!nativeApi&&(nativeDesignView.blocked||nativeDesignView.busy),
+    nativeReviseActionLabel:nativeApi?nativeDesignView.pending?'查询原模型请求':nativeDesignView.preview?.purpose==='revise'&&nativeDesignView.preview.instruction===reviseInput.trim()?'按已核对要求修改':'预览修改请求':undefined,
+    nativeReviseNotice:nativeApi?(nativeDesignView.preview?.purpose==='revise'&&nativeDesignView.preview.instruction===reviseInput.trim()?`已核对服务器来源版本；模型连接：${nativeDesignView.preview.model_name}，模型：${nativeDesignView.preview.model_id}，最多 ${nativeDesignView.preview.output_token_limit} 输出 token。再次点击确认修改才发起模型请求，可能产生费用。`:'请先保存并重新打开本人方案。预览不调用模型；确认修改会使用明确的本人模型并可能产生费用。'):undefined,
     spec,
     specName,
     setSpecName: (value:string) => {

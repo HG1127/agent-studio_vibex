@@ -24,7 +24,7 @@ test('typing a new requirement while an Agent GET waits preserves the new input 
 test('an older GET rejection cannot replace the message for a newer requirement',async t=>{
  const pending=deferred(),h=await harness(t,{api:{get:()=>pending.promise}})
  const opening=h.output.handleOpenSaved({id:ids.b});h.output.setUserInput('新需求');await h.flush();h.output.handleCreate();await h.flush()
- const message=h.output.errorMsg;assert(message.includes('需求预览接口尚未接通'))
+ const message=h.output.errorMsg;assert(message.includes('当前 PG 需求设计尚未开放'))
  pending.reject(Error('old get failed'));await opening;await h.flush();assert.equal(h.output.errorMsg,message);assert.equal(h.output.userInput,'新需求')
 })
 test('a later chosen Agent wins over the earlier initial deep-link GET',async t=>{

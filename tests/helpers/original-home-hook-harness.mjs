@@ -2,20 +2,22 @@ import fs from 'node:fs'
 import {registerHooks} from 'node:module'
 import {createHash} from 'node:crypto'
 export {OriginalHomeApiError} from '../../src/lib/originalHomeAgentApi.ts'
+export {PgNativeAgentDesignError} from '../../src/lib/pgNativeAgentDesign.ts'
 
 // Pure hook/control-flow port. No DOM renderer, React scheduler, HTTP server,
 // PostgreSQL, provider, browser or application bootstrap runs in this harness.
 // Only imports and import.meta.env are supplied; the actual useHome function
 // and its callbacks/effects are loaded unchanged by Node's type stripping.
-let active=null,loaded
+let active=null,loaded,mountedHarness=null
 const harnessURL=import.meta.url,sutURL=new URL('../../src/pages/Home/useHome.ts',import.meta.url).href
 const actual=new Map([
  ['@/lib/agentEditorDraft','../../src/lib/agentEditorDraft.ts'],
  ['@/lib/originalHomeAgentEditor','../../src/lib/originalHomeAgentEditor.ts'],
+ ['@/lib/originalHomeDesign','../../src/lib/originalHomeDesign.ts'],
  ['@/lib/agentToolMatcher','../../src/lib/agentToolMatcher.ts'],
  ['./presets','../../src/pages/Home/presets.ts'],
 ])
-const ports=new Set(['react','react-router-dom','@/lib/llm','@/lib/pb','@/lib/studioAuth','@/lib/anonUid','@/lib/unsavedNavigation','@/lib/knowledgeBases','@/lib/currentAgentConnectionSnapshot','@/lib/localDevices','@/lib/authoringRequirements','@/lib/studioBackend','@/lib/originalHomeAgentApi'])
+const ports=new Set(['react','react-router-dom','@/lib/llm','@/lib/pb','@/lib/studioAuth','@/lib/anonUid','@/lib/unsavedNavigation','@/lib/knowledgeBases','@/lib/currentAgentConnectionSnapshot','@/lib/localDevices','@/lib/authoringRequirements','@/lib/studioBackend','@/lib/originalHomeAgentApi','@/lib/pgNativeAgentDesign','@/lib/pgNativePilotApi'])
 registerHooks({
  resolve(specifier,context,next){
   if(context.parentURL===sutURL){
@@ -44,6 +46,11 @@ export function useSearchParams(){return[current().query,()=>{throw Error('unexp
 export const ORIGINAL_PG_UI_ENABLED=true,LOCAL_ANON_UID='not-used-in-native'
 export function decodeRhToken(){return{sub:current().owner,nickName:'Pure employee'}}
 export function createOriginalHomeAgentApi(){return current().api}
+// Explicit terminal DATA ports. These are never a real Native identity proof.
+export function getStudioAccountInfo(){return mountedHarness?{id:mountedHarness.currentEmployee,active:true,role:'employee',display_name:'Pure employee'}:null}
+export async function verifyStudioSession(){if(mountedHarness?.verifyError)throw mountedHarness.verifyError;return mountedHarness?'authenticated':'signed_out'}
+export function createPgNativeAgentDesignApi(config){if(!mountedHarness)throw Error('design factory outside pure fixture');mountedHarness.calls.push({name:'design_factory',args:[config]});return mountedHarness.designApi}
+export function createPgNativePilotApi(){const h=mountedHarness;if(!h)throw Error('account factory outside pure fixture');return{getConfigCapabilities:async()=>h.designCapabilities,listModelConnections:async()=>h.designModels}}
 export function registerUnsavedWorkCheck(){return()=>{}}
 export function redirectToRhLogin(){throw Error('unexpected navigation')}
 export function vibexAuthHeaders(){throw Error('unexpected legacy headers')}
@@ -62,6 +69,8 @@ const emptyResources=()=>({connectedHttp:[],verifiedMarket:[],knowledgeBases:[],
 export async function createHomeHarness(options={}){
  loaded??=import(sutURL);const {useHome}=await loaded
  const h={owner:options.owner??employee,query:new URLSearchParams(options.query??''),cells:[],cursor:0,effects:[],dirty:true,output:null,calls:[],timers:new Map(),storage:new Map(options.storage??[]),listeners:new Map(),disposed:false}
+ mountedHarness=h;h.currentEmployee=h.owner;h.designCapabilities=options.designCapabilities??{agent_design_available:false};h.designModels=options.designModels??[]
+ h.designApi=Object.fromEntries(['source','preview','submit','view','control','previewSave','save'].map(name=>[name,(...args)=>{h.calls.push({name:'design_'+name,args});try{if(!options.designApi?.[name])throw Error('unprovided pure design port');return Promise.resolve(options.designApi[name](...args))}catch(error){return Promise.reject(error)}}]))
  let nextTimer=0
  const records=new Map((options.records??[wire(ids.a),wire(ids.b),wire(ids.c)]).map(r=>[r.id,r]))
  const defaults={
@@ -71,13 +80,13 @@ export async function createHomeHarness(options={}){
   update:(id,revision,draft)=>wire(id,{name:draft.name,spec:draft.spec,authoring:draft.authoring??records.get(id)?.authoring??null,revision:revision+1}),
  }
  h.api=Object.fromEntries(Object.keys(defaults).map(name=>[name,(...args)=>{h.calls.push({name,args});try{return Promise.resolve((options.api?.[name]??defaults[name])(...args))}catch(error){return Promise.reject(error)}}]))
- const globals={window:{confirm:()=>true,setTimeout:(callback,delay)=>{const id=++nextTimer;h.timers.set(id,{callback,delay});return id},clearTimeout:id=>h.timers.delete(id),addEventListener:(type,callback)=>{if(!h.listeners.has(type))h.listeners.set(type,new Set());h.listeners.get(type).add(callback)},removeEventListener:(type,callback)=>h.listeners.get(type)?.delete(callback)},document:{visibilityState:'visible',getElementById:()=>null},requestAnimationFrame:callback=>{callback(0);return 0},sessionStorage:{getItem:key=>h.storage.get(key)??null,setItem:(key,value)=>h.storage.set(key,value),removeItem:key=>h.storage.delete(key)}}
+ const globals={window:{confirm:()=>true,setTimeout:(callback,delay)=>{const id=++nextTimer;h.timers.set(id,{callback,delay});return id},clearTimeout:id=>h.timers.delete(id),addEventListener:(type,callback)=>{if(!h.listeners.has(type))h.listeners.set(type,new Set());h.listeners.get(type).add(callback)},removeEventListener:(type,callback)=>h.listeners.get(type)?.delete(callback)},document:{visibilityState:'visible',getElementById:()=>null,addEventListener:(type,callback)=>{if(!h.listeners.has(type))h.listeners.set(type,new Set());h.listeners.get(type).add(callback)},removeEventListener:(type,callback)=>h.listeners.get(type)?.delete(callback)},requestAnimationFrame:callback=>{callback(0);return 0},sessionStorage:{getItem:key=>h.storage.get(key)??null,setItem:(key,value)=>h.storage.set(key,value),removeItem:key=>h.storage.delete(key)}}
  const original=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]))
  for(const [key,value] of Object.entries(globals))Object.defineProperty(globalThis,key,{configurable:true,writable:true,value})
  h.render=()=>{if(h.disposed)throw Error('render after disposal');h.cursor=0;h.dirty=false;active=h;try{h.output=useHome()}finally{active=null}}
  h.flush=async()=>{for(let i=0;i<40;i++){if(h.dirty)h.render();while(h.effects.length)h.effects.shift()();await Promise.resolve()}return h.output}
  h.runTimers=async(delay=450)=>{await h.flush();for(const [id,timer] of [...h.timers])if(timer.delay===delay&&h.timers.delete(id))timer.callback();return h.flush()}
  h.emit=async(type)=>{for(const callback of [...h.listeners.get(type)??[]])callback();return h.flush()}
- h.dispose=()=>{if(h.disposed)return;h.disposed=true;for(const c of h.cells)if(c.kind==='effect')c.cleanup?.();for(const [key,d] of original)if(d)Object.defineProperty(globalThis,key,d);else delete globalThis[key]}
+ h.dispose=()=>{if(h.disposed)return;h.disposed=true;if(mountedHarness===h)mountedHarness=null;for(const c of h.cells)if(c.kind==='effect')c.cleanup?.();for(const [key,d] of original)if(d)Object.defineProperty(globalThis,key,d);else delete globalThis[key]}
  await h.flush();return h
 }

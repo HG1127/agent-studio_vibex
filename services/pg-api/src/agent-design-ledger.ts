@@ -22,9 +22,14 @@ export class AgentDesignLedgerRepository {
     this.source = new AgentDesignSourceRepository(pool, options.audit)
     this.submitting = options.allowSubmissions === true; this.saving = options.allowSaves === true
   }
-  private async actor<T>(identity: Identity, body: (db: SqlClient, owner: string) => Promise<T>): Promise<T> {
+  private async actor<T>(identity: Identity, body: (db: SqlClient, owner: string) => Promise<T>, expectedEmployee?: string): Promise<T> {
     requireAgentDesignNative(identity)
-    return withActor(this.pool, identity, async (db, owner) => {await this.source.contextOnClient(identity, db, owner); return body(db, owner)})
+    return withActor(this.pool, identity, async (db, owner) => {
+      await this.source.contextOnClient(identity, db, owner)
+      // A concurrency condition only. Native Cookie plus withActor still owns identity.
+      if (expectedEmployee !== undefined && agentDesignId(expectedEmployee) !== owner) throw new HttpError(409, "agent_design_employee_changed")
+      return body(db, owner)
+    })
   }
   private async lock(db: SqlClient, owner: string, requestId: string) {
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,620))", [owner + ":design:" + requestId])
@@ -51,11 +56,11 @@ export class AgentDesignLedgerRepository {
         fields_sent: JSON.parse(p.messages[1]!.content) as unknown, recorded: false as const}
     })
   }
-  async confirm(identity: Identity, raw: unknown) {
+  async confirm(identity: Identity, raw: unknown, expectedEmployee?: string) {
     const value = parseAgentDesignSubmission(raw)
-    return this.actor(identity, async db => {const old = await this.receipt(db, value.request_id); if (!old) throw new HttpError(404, "agent_design_receipt_not_found"); this.matches(old, value); return {...old, replayed: true}})
+    return this.actor(identity, async db => {const old = await this.receipt(db, value.request_id); if (!old) throw new HttpError(404, "agent_design_receipt_not_found"); this.matches(old, value); return {...old, replayed: true}}, expectedEmployee)
   }
-  async submit(identity: Identity, raw: unknown) {
+  async submit(identity: Identity, raw: unknown, expectedEmployee?: string) {
     const value = parseAgentDesignSubmission(raw)
     return this.actor(identity, async (db, owner) => {
       await this.lock(db, owner, value.request_id)
@@ -72,7 +77,7 @@ export class AgentDesignLedgerRepository {
       this.matches(row, value)
       if (row.content_sha256 !== p.content_sha256 || row.source_sha256 !== p.source_sha256 || row.resources_sha256 !== p.resources_sha256 || row.owner_epoch !== p.owner_epoch || row.owner_governance_revision !== p.owner_governance_revision) return projection()
       return {...row, replayed: false}
-    })
+    }, expectedEmployee)
   }
   private async result(db: SqlClient, r: AgentDesignReceipt) {
     const raw = (await db.query<{value: unknown}>("SELECT agentstudio.agent_design_read_result($1::uuid) AS value", [r.request_id])).rows[0]?.value
@@ -109,7 +114,7 @@ export class AgentDesignLedgerRepository {
     if (raw === null) return null
     const r = parseAgentDesignControlReceipt(raw); if (r.request_id !== id) return projection(); return r
   }
-  async control(identity: Identity, raw: unknown, confirmOnly = false) {
+  async control(identity: Identity, raw: unknown, confirmOnly = false, expectedEmployee?: string) {
     const value = parseAgentDesignControl(raw)
     return this.actor(identity, async (db, owner) => {
       await this.receiptLock(db, owner, "control", value.request_id)
@@ -121,7 +126,7 @@ export class AgentDesignLedgerRepository {
       const {request_sha256: _hash, ...intent} = value
       if ((await db.query<{value: unknown}>("SELECT agentstudio.agent_design_control($1::jsonb) AS value", [JSON.stringify(intent)])).rows[0]?.value !== value.request_id) return projection()
       const row = await this.controlReceipt(db, value.request_id); if (!row) return projection(); matches(row); return {...row, replayed: false}
-    })
+    }, expectedEmployee)
   }
   private async savePreviewOnClient(identity: Identity, db: SqlClient, owner: string, raw: unknown, mode: "share" | "update" = "share"): Promise<AgentDesignSavePreview> {
     const v = parseAgentDesignSavePreviewInput(raw)
@@ -144,7 +149,7 @@ export class AgentDesignLedgerRepository {
     if (raw === null) return null
     const r = parseAgentDesignSaveReceipt(raw); if (r.request_id !== id) return projection(); return r
   }
-  async save(identity: Identity, rawIntent: unknown, rawPreview: unknown, confirmOnly = false) {
+  async save(identity: Identity, rawIntent: unknown, rawPreview: unknown, confirmOnly = false, expectedEmployee?: string) {
     const value = parseAgentDesignSaveIntent(rawIntent)
     return this.actor(identity, async (db, owner) => {
       await this.receiptLock(db, owner, "save", value.request_id)
@@ -162,6 +167,6 @@ export class AgentDesignLedgerRepository {
       const id = await recordAgentDesignSaveOnClient(db, owner, intent, p)
       if (id !== value.request_id) return projection()
       const row = await this.saveReceipt(db, value.request_id); if (!row) return projection(); matches(row); return {...row, replayed: false}
-    })
+    }, expectedEmployee)
   }
 }

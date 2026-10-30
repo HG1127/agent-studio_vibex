@@ -108,22 +108,24 @@ export async function startOriginalOverviewGenuineBrowserFixture(env=process.env
           const selectedHold=personal&&hold&&!hold.claimed&&employee===hold.employee?hold:null
           if(selectedHold)selectedHold.claimed=true
           let recorded=false,upstreamEnded=false
-          const record=(status,actualUpstream=false)=>{
+          const record=(status,actualUpstream=false,dependencyBodyValid=false)=>{
             if(recorded)return;recorded=true
             if(personal)remember('personal_http',{...observation,status})
             if(policy.pathname.startsWith('/__pg_native/api/native-auth/'))remember('auth_http',{...observation,status})
             if(status<200||status>=300){
-              const matched=actualUpstream&&personal&&expectedStatus?.status===status&&expectedStatus.employee===employee
-              if(matched){remember('expected_failures',{...observation,status,actual_upstream_response:actualUpstream});expectedStatus=null}
+              const matched=actualUpstream&&personal&&expectedStatus?.status===status&&expectedStatus.employee===employee&&(status!==503||dependencyBodyValid===true)
+              if(matched){remember('expected_failures',{...observation,status,actual_upstream_response:actualUpstream,...(status===503?{body_contract_valid:dependencyBodyValid}:{})});expectedStatus=null}
               else if(!(policy.pathname==='/__pg_native/api/native-auth/me'&&status===401))remember('unexpected_api_failures',{...observation,status})
             }
           }
           const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))
           // Preserve real Cookie, Origin, CSRF and expected-employee headers.
           const target=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:req.url.replace(/^\/__pg_native(?=\/|$)/,''),method:req.method,headers,agent,ca:tls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:AbortSignal.timeout(8000)},response=>{
-            const status=response.statusCode??502;record(status,true)
+            const status=response.statusCode??502,dependencyResponse=personal&&status===503&&expectedStatus?.status===503&&expectedStatus.employee===employee
             const responseHeaders=Object.fromEntries(Object.entries(response.headers).filter(([name])=>!hop.has(name.toLowerCase())))
             const failed=()=>{remember('unexpected_api_failures',{...observation,status:502});res.destroy()}
+            if(dependencyResponse){pipeOriginalOverviewDependencyError(response,res,status,responseHeaders,valid=>{upstreamEnded=true;record(status,true,valid)},()=>{record(status,true,false);failed()});return}
+            record(status,true)
             response.once('error',failed);response.once('aborted',failed)
             if(!selectedHold){res.writeHead(status,responseHeaders);response.once('end',()=>{upstreamEnded=true});response.pipe(res);return}
             const chunks=[];let size=0
@@ -168,4 +170,15 @@ export async function startOriginalOverviewGenuineBrowserFixture(env=process.env
       provenance,backendProfile:actual,observations,holdNextAliceReply,expectNextStatus,pendingExpectedStatus:()=>expectedStatus!==null,
       setDependencyAvailable:fixture.setDependencyAvailable,businessSnapshot:fixture.businessSnapshot,assertRestored:fixture.assertRestored,counts:fixture.counts,providerRequests:fixture.providerRequests,credentialReads:fixture.credentialReads,assertNoProviderErrors:fixture.assertNoProviderErrors,close}
   }catch(error){try{await close()}catch(cleanup){throw new AggregateError([error,cleanup],'original_overview_host_start_cleanup_failed')}throw error}
+}
+
+// The current fixed Native writer uses JSON.stringify on this exact error.
+// Match the actual bounded canonical bytes, never a CDP-cached response body.
+export function originalOverviewDependencyBodyMatches(bytes){return Buffer.isBuffer(bytes)&&bytes.length<=4096&&bytes.equals(Buffer.from('{"error":"original_internal_overview_unavailable"}','utf8'))}
+export function pipeOriginalOverviewDependencyError(response,res,status,responseHeaders,observe,failed){
+ let size=0,done=false;const chunks=[]
+ const fail=()=>{if(done)return;done=true;for(const b of chunks)b.fill(0);failed()}
+ response.on('data',chunk=>{if(done)return;size+=chunk.length;if(size>4096){fail();response.destroy();return}chunks.push(Buffer.from(chunk))})
+ response.once('error',fail);response.once('aborted',fail)
+ response.once('end',()=>{if(done)return;done=true;const bytes=Buffer.concat(chunks);for(const b of chunks)b.fill(0);const valid=originalOverviewDependencyBodyMatches(bytes);observe(valid);if(!res.destroyed){res.writeHead(status,responseHeaders);res.end(bytes,()=>bytes.fill(0))}else bytes.fill(0)})
 }
