@@ -1,6 +1,6 @@
 {
   "format": "agentstudio_original_employee_UI_PG_action_map_v1",
-  "snapshot_UTC": "2026-10-30T18:05:54.615076+00:00",
+  "snapshot_UTC": "2026-10-30T18:35:40.425500+00:00",
   "authority": "AGENTS.md: Migration delivery strategy — user clarification 2026-10-30",
   "delivery_baseline": "Preserve the current original employee UI; migrate backend/auth/client/hooks/DTO/status only. Native workbench is verification/reference.",
   "source_scope": {
@@ -6050,7 +6050,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1115,
+    "combined_pure_checks": 1144,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -7050,6 +7050,108 @@
       "PNG_buffer_written_only_after_whole_story_zero_gates_and_cleanup": true,
       "initial_F08_latency_cause_not_proven": true,
       "genuine_original_story_pending": true
+    },
+    "original_queued_run_hosted_source": {
+      "independent_stories": [
+        "original-agent-run-queued",
+        "original-run-detail-queued"
+      ],
+      "original_seven_stories_retained": true,
+      "new_source_targets": 16,
+      "new_create_only_files": 15,
+      "actual_original_page_acceptance": false,
+      "actual_fresh_PG18_Native_Cookie_and_original_global_selector_required": true,
+      "four_actual_queued_engines": true,
+      "actual_complete_61_model_selector": true,
+      "exact_owner_CAS_control_receipts_and_real_ACL_revocation": true,
+      "no_Worker_execution_no_new_provider_probes": true,
+      "inherited_F01_synthetic_readiness_probes": 2,
+      "fixed_safe_PNG_only_after_all_zero_and_owned_cleanup": true,
+      "gaps": [
+        "Queued/control/privacy stories only; real execution and nonempty output are separate",
+        "No full event/history/temporary override or original parent human-input UI acceptance",
+        "Safe Agent admission lacks a separate submit audit",
+        "Cancellation terminal read is not exact operation receipt proof"
+      ]
+    },
+    "verified_472de31_partial_evidence": {
+      "head": "472de318856a0de78abebab32faeb3cfe6583f45",
+      "quality": {
+        "run": 41104233880,
+        "successful_jobs_observed": 50,
+        "total_jobs": 50,
+        "root_required_check_still_running_at_snapshot": false,
+        "full_quality_accepted": true,
+        "root_tests_passed": 4137,
+        "root_tests_total": 4137,
+        "required_pnpm_check_passed": true,
+        "job": 124229230900,
+        "job_log_sha256": "d0accfce0c970249e885674cd4fc76bbe379781e902341442afdfcf25c3d8a1f"
+      },
+      "PB19": {
+        "run": 41104427754,
+        "job": 124230019969,
+        "passed": 19,
+        "total": 19,
+        "workers": 2,
+        "seconds": 72.9
+      },
+      "F01": {
+        "run": 41104233192,
+        "passed_jobs": 11,
+        "total_jobs": 13,
+        "original_Home_and_login_and_overview_and_draft_stories_passed": true,
+        "metadata_job": 124229226010,
+        "metadata_whole_story_passed": false,
+        "metadata_exact_requestfailed8s_timed_out": true,
+        "model_completed_response_disconnects": 1,
+        "metadata_four_preceding_steps_completed": true,
+        "monitor_job": 124229225783,
+        "monitor_failed_after_navigation_discarded_response_body": true
+      },
+      "F08": {
+        "run": 41104233874,
+        "job": 124229227205,
+        "passed": false,
+        "required_receipts": 5,
+        "asserted_receipts": 4,
+        "actual_later_server_commit_ms": 558,
+        "actual_later_server_response_ms": 561,
+        "outer_proxy_reset_elapsed_ms": 76,
+        "outer_deadline_expired": false,
+        "outer_client_response_closed": true,
+        "pending_warning_is_published_before_actual_POST_settles": true,
+        "new_source_waits_for_exact_actual_requestfailed_and_drop_count_before_ledger": true,
+        "genuine_rerun_pending": true
+      },
+      "complete069": {
+        "run": 41104233561,
+        "legacy_job": 124229226237,
+        "passed": false,
+        "short_reason": "full069_worker_live_native_heartbeat_unavailable",
+        "all_eight_kernel_identity_predicates_true_before_cleanup": true,
+        "assessment_not_observed_self_exit_before_cleanup": true,
+        "telemetry_backends_zero": true,
+        "Readers_zero": true,
+        "four_business_queues_empty": true,
+        "final14_job": 124229226644,
+        "final14_phase": "runtime_open",
+        "final14_entry": "review_worker",
+        "final14_failure_code": "connection_timeout",
+        "actual13_ACL_negative_acceptance": false
+      },
+      "telemetry": {
+        "run": 41104233376,
+        "job": 124229225552,
+        "passed": false,
+        "actual_cases_passed": 20,
+        "actual_owned_cleanups_passed": 4,
+        "failure_case": "component_concurrent_eight_bind_attempts_have_known_refusals_no_retry_and_no_backend_leak",
+        "cause_not_yet_proven": true
+      },
+      "model_disconnect_followup": "Actual whole upstream response was lost once, but no Chromium retry count proof. A separately frozen prefix-body disconnect candidate remains unapplied in this batch.",
+      "monitor_response_followup": "Read both actual response bodies immediately on arrival before login navigation retires them; existing owner/counters preserved. Success images now buffered until final cleanup zero gates.",
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

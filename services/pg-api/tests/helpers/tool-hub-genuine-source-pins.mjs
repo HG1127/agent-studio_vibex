@@ -55,7 +55,7 @@ export const toolHubGenuineSources=Object.freeze({
   "db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql": "dbb01ca01ff50def0275d3bb14544313c19a263128012831a86a1573cb8ff9ba",
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_069_owner_tool_trials.sql": "c1e73e944a30e8aa7ab5e49ae4164b1936633f0d6a50b447c3af44557f30cf4c",
-  "package.json": "e297c9dee920b7fe81b7daabe7a5922cd5d694e85b6494b7f183782225eb09ac",
+  "package.json": "49ce2d69ebe223f15e1b99921fe6f525c9aebafc6ed159f1ce424d9b33744ccd",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",

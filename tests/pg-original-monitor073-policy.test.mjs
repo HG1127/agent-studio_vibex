@@ -13,6 +13,20 @@ test('073 browser never grants an ordinary process or old profile alone a runtim
 })
 
 import fs from 'node:fs'
+test('actual login callback starts reading both real response bodies before navigation can retire them',async()=>{
+ const {default:ts}=await import('typescript'),text=fs.readFileSync(new URL('./pg-original-monitor073-genuine.spec.mjs',import.meta.url),'utf8'),tree=ts.createSourceFile('story.mjs',text,ts.ScriptTarget.Latest,true),matches=[]
+ function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='login')matches.push(n.initializer);ts.forEachChild(n,visit)}visit(tree);assert.equal(matches.length,1)
+ let retired=false;const calls=[],listeners=new Map(),wire=path=>new Promise(resolve=>listeners.set(path,resolve)),body=(name,value)=>({json(){assert.equal(retired,false,'a navigation retired the actual response body');calls.push(name);return Promise.resolve(value)}})
+ const monitorPath='/__pg_native/api/v2/original-ui/monitor-inbox',page={goto:async()=>{},getByLabel:()=>({fill:async()=>{}}),getByRole:(_,options)=>({fill:async()=>{},click:async()=>{assert(listeners.has('/__pg_native/api/native-auth/me')&&listeners.has(monitorPath));listeners.get('/__pg_native/api/native-auth/me')(body('me',{user:{id:'alice'}}));listeners.get(monitorPath)(body('inbox',{employee_id:'alice',items:[{}]}));await Promise.resolve();retired=true}})},f={origin:'https://localhost:17443',credentials:{alice:{email:'synthetic@example.invalid',password:'synthetic'}},users:{alice:'alice'},syntheticMonitorIds:{alice:['owned'],bob:['foreign']}}
+ const expect=value=>({toBe:expected=>assert.equal(value,expected),toBeGreaterThan:n=>assert(value>n),toBeVisible:async()=>{},toHaveCount:async()=>{}}),section=()=>({getByRole:()=>({evaluateAll:async()=>['/?check=owned']})})
+ const login=Function('page','wire','f','expect','section','monitorPath','return ('+matches[0].getText(tree)+')')(page,wire,f,expect,section,monitorPath)
+ assert.deepEqual(await login('alice'),{id:'alice'});assert.deepEqual(calls,['me','inbox']);assert.equal(retired,true)
+})
+test('monitor success images require completed story, final cleanup zero gates and fixed bounded buffers',()=>{
+ const text=fs.readFileSync(new URL('./pg-original-monitor073-genuine.spec.mjs',import.meta.url),'utf8')
+ const zero=text.indexOf("await clean('final_zero_after_cleanup'"),gate=text.indexOf('if(stepsCompleted&&!primary&&!testInfo.errors.length&&!cleanup.length)',zero),write=text.indexOf("await clean('fixed_success_image_write'",gate)
+ assert(zero>0&&gate>zero&&write>gate);assert(text.includes('bytes.length<=8388608'));assert(text.includes('image.bytes.fill(0)'));assert(text.includes('bytes.length>1048576'));assert(!text.includes("synthetic_failure_image"));assert(!text.includes('screenshot({path:'))
+})
 const purpose=Object.freeze({
  GITHUB_ACTIONS:'true',CI:'true',GITHUB_RUN_ID:'123',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',
  GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',

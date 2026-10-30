@@ -1342,3 +1342,20 @@ tests/original-agent-run-v2-privacy-pure.test.mjs text eol=lf
 tests/original-run-detail-native-pure.test.mjs text eol=lf
 tests/original-run-presentation-boundary.test.mjs text eol=lf
 tests/original-run-transport-static-regex.test.mjs text eol=lf
+
+# Original employee run/detail and exact hosted source controls.
+tests/helpers/pg-original-run-queued-artifacts.mjs text eol=lf
+tests/helpers/pg-original-run-queued-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-actions.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-run-queued-negative-reads.mjs text eol=lf
+tests/helpers/pg-original-run-queued-proofs.mjs text eol=lf
+tests/helpers/pg-original-run-queued-reviewed-check.mjs text eol=lf
+tests/pg-original-agent-run-queued-genuine.config.mjs text eol=lf
+tests/pg-original-agent-run-queued-genuine.spec.mjs text eol=lf
+tests/pg-original-run-detail-queued-genuine.config.mjs text eol=lf
+tests/pg-original-run-detail-queued-genuine.spec.mjs text eol=lf
+tests/pg-original-run-queued-host-source-pure.test.mjs text eol=lf
+tests/pg-original-run-queued-policy.test.mjs text eol=lf

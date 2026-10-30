@@ -77,8 +77,15 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
   })
   await test.step('original revoke records a genuine receipt and removes the active original action',async()=>{await create();await revokeOnlyActive()})
   await test.step('actual post-record disconnect uses original refresh to confirm same intent without redisplaying code',async()=>{
-   await review();f.dropNextActualCreateReply()
+   await review()
+   // The original controller publishes its pending warning before POST settles.
+   // Wait for the actual lost response before reading the committed ledger.
+   const failedCreate=page.waitForEvent('requestfailed',{predicate:request=>{const url=new URL(request.url());return url.origin===f.origin&&url.pathname==='/__pg_native/api/v2/internal-templates'&&request.method()==='POST'},timeout:8000})
+   void failedCreate.catch(()=>{})
+   f.dropNextActualCreateReply()
    await page.getByRole('button',{name:'确认并生成分享码',exact:true}).click()
+   expect(Boolean((await failedCreate).failure()?.errorText)).toBe(true)
+   expect(f.observations.controlled_after_record_disconnects).toBe(1)
    await expect(page.getByRole('alert')).toContainText('本次结果尚未确认')
    await expect(page.getByRole('button',{name:'确认并生成分享码',exact:true})).toHaveCount(0)
    await expect(page.getByRole('button',{name:'预览实际分享内容',exact:true})).toBeDisabled()

@@ -70,6 +70,14 @@ test('create requires original preview and checkbox, binds exact revision/hash a
  assert.equal(m.get().created.share_code,sharedCode);assert.equal(m.get().created.expires_ms,604801000);assert.equal(m.get().preview,null)
  await m.controller.handleCopy();assert.deepEqual(m.copies,[sharedCode]);m.controller.setCreated(null);assert.equal(m.get().created,null);m.dispose()
 })
+test('original pending warning is visible while POST is still in flight and cannot prove a committed disconnect',async()=>{
+ const m=model(),gate=deferred();await m.start();await m.reviewed();m.recordGate(gate);m.recordMode('lost')
+ let settled=false;const running=m.controller.handleCreate().finally(()=>{settled=true});await flush()
+ assert.equal(settled,false);assert.equal(m.get().busy,true);assert.match(m.get().error,/本次结果尚未确认/);assert.equal(m.get().created,null)
+ assert.equal(m.calls.filter(c=>c.body?.action==='create').length,1);await m.controller.handleRefresh();assert.equal(m.calls.some(c=>c.url.endsWith('/confirm')),false)
+ gate.resolve();await running;assert.equal(settled,true);assert.equal(m.get().busy,false);assert.match(m.get().error,/本次结果尚未确认/)
+ await m.controller.handleRefresh();assert.equal(m.calls.filter(c=>c.body?.action==='create').length,1);assert.equal(m.calls.filter(c=>c.url.endsWith('/confirm')).length,1);assert.equal(m.get().created,null);m.dispose()
+})
 test('actual snapshot hash tampering never becomes an original-page preview or a write',async()=>{
  const m=model({badPreview:true});await m.start();await m.controller.handlePreview();assert.equal(m.get().preview,null);assert(m.get().error)
  m.controller.setReviewed(true);await m.controller.handleCreate();assert.equal(m.calls.some(c=>c.body?.action==='create'),false);m.dispose()

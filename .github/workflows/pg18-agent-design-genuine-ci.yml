@@ -124,6 +124,10 @@ jobs:
       fail-fast: false
       matrix:
         story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections, original-model-draft-discovery]
+        # Add two independent fresh-service purposes without changing old story rows.
+        include:
+          - story: original-agent-run-queued
+          - story: original-run-detail-queued
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -186,6 +190,11 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test tests/pg-original-model-draft-discovery-browser-policy.test.mjs tests/pg-original-model-draft-discovery-host-source-pure.test.mjs tests/model-draft-discovery-provider-pure.test.mjs tests/model-draft-probe-http-pure.test.mjs tests/model-draft-probe-repository-pure.test.mjs tests/original-model-draft-probe-hook-pure.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original queued AgentRun and RunDetail pure guards and original index build
+        if: matrix.story == 'original-agent-run-queued' || matrix.story == 'original-run-detail-queued'
+        run: |
+          node --experimental-strip-types --test tests/pg-original-run-queued-policy.test.mjs tests/pg-original-run-queued-host-source-pure.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -265,6 +274,74 @@ jobs:
             .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-alice-metadata.png
             .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-bob-unknown.png
             .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent original-agent-run-queued actual Native Cookie owner read control privacy
+        if: matrix.story == 'original-agent-run-queued'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_EXECUTION_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+          AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_FEEDBACK_ONLY
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY
+          AGENT_STUDIO_ORIGINAL_AGENT_RUN_QUEUED_CI: YES_DISPOSABLE_ORIGINAL_AGENT_RUN_QUEUED_ONLY
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_STORY: original-agent-run-queued
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-agent-run-queued-genuine.config.mjs
+      - name: Retain only fixed successful original-agent-run-queued images after full core story and cleanup
+        if: always() && matrix.story == 'original-agent-run-queued'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-agent-run-queued-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-agent-run-queued-genuine-browser-results/**/original-agent-run-queued-alice-restored.png
+            .tmp/original-agent-run-queued-genuine-browser-results/**/original-agent-run-queued-bob-acl-hidden.png
+            .tmp/original-agent-run-queued-genuine-browser-results/**/original-run-queued-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent original-run-detail-queued actual Native Cookie owner read control privacy
+        if: matrix.story == 'original-run-detail-queued'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_EXECUTION_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+          AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_FEEDBACK_ONLY
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY
+          AGENT_STUDIO_ORIGINAL_RUN_DETAIL_QUEUED_CI: YES_DISPOSABLE_ORIGINAL_RUN_DETAIL_QUEUED_ONLY
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_STORY: original-run-detail-queued
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-run-detail-queued-genuine.config.mjs
+      - name: Retain only fixed successful original-run-detail-queued images after full core story and cleanup
+        if: always() && matrix.story == 'original-run-detail-queued'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-run-detail-queued-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-run-detail-queued-genuine-browser-results/**/original-run-detail-queued-alice-receipt.png
+            .tmp/original-run-detail-queued-genuine-browser-results/**/original-run-detail-queued-bob-owned.png
+            .tmp/original-run-detail-queued-genuine-browser-results/**/original-run-queued-observation.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Retain synthetic page images only

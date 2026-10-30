@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "6d16e3204fc98669a0bbe45890f6a3511043ab3bbfb8feb2ac5e96c2b50527bf",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "691e30d4c1af9e9a64b74a7fef84bb5fdf9e7d2882a2292693d72fe3ab87e42c",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -60,8 +60,8 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "tests/helpers/pg-original-monitor073-genuine-browser-fixture.mjs": "c12d59a248bc8d6423b79cb36da0cb08a846c90ce34f0c7c643e7fbbd9b0964a",
   "tests/helpers/pg-original-monitor073-host-policy.mjs": "a44c7c2fc39c8b8d7be2a4b1443a38b1db26595ff269e84db92f6f6affe49f53",
   "tests/pg-original-monitor073-genuine.config.mjs": "771874601affded82fc2210b5f94a2dfb34eb6d3bf4e91105d0d51e07bc5fdf7",
-  "tests/pg-original-monitor073-genuine.spec.mjs": "08ec1cff6c134a585553bd4a79be833d5ee86b95cfeaa72334a05ee1b3ab0832",
-  "tests/pg-original-monitor073-policy.test.mjs": "4d13334dd5300df37a377c975baa4c3bab54d56139542abb65972201422d25ad",
+  "tests/pg-original-monitor073-genuine.spec.mjs": "f7c7bd2b955f56d38951191e6448785b08eafb858820c897a51632d49a75c0dc",
+  "tests/pg-original-monitor073-policy.test.mjs": "2d096ca32e56a272b1f2e328a1ff9342377b3c01b0ac3f8c69f89b7739bc465a",
   "services/pg-api/src/original-internal-overview-http.ts": "2d6c058c37d5a23c471ad1874e30b82eed25eb5172c08155a867d6d1d789c0d3",
   "services/pg-api/src/original-internal-overview-read.ts": "810f10a8a2363046e6bdae3389870239cf81d47f14d91a702ddc1d2d6baef22e",
   "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969",

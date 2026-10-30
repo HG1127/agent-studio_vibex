@@ -192,6 +192,13 @@ test('original proxy timing distinguishes client abort/close from own deadline w
  assert.equal(p.observations.controlled_after_record_disconnects,0);assert.equal(p.observations.unexpected_api_failures.length,1)
  const t=p.observations.write_timings[0];assert.equal(t.source,'proxy_transport_error');assert(Number.isSafeInteger(t.elapsed_ms)&&t.elapsed_ms>=0&&t.elapsed_ms<=60000);assert.equal(t.proxy_deadline_expired,false);assert.equal(t.client_request_aborted,true);assert.equal(t.client_response_closed,true);assert.equal(t.qualifies_run,false)
 })
+test('lost ACK story waits for the actual exact POST failure before asserting a committed receipt',()=>{
+ const text=read('tests/pg-original-internal-share-genuine.spec.mjs'),ast=ts.createSourceFile('story.mjs',text,ts.ScriptTarget.Latest,true),found=[]
+ function scan(n){if(ts.isCallExpression(n)&&n.expression.getText(ast)==='page.waitForEvent'&&n.arguments[0]?.text==='requestfailed')found.push(n);ts.forEachChild(n,scan)}scan(ast);assert.equal(found.length,1)
+ const call=found[0].getText(ast);for(const s of ["url.origin===f.origin","url.pathname==='/__pg_native/api/v2/internal-templates'","request.method()==='POST'",'timeout:8000'])assert(call.includes(s))
+ const armed=text.indexOf('const failedCreate='),trigger=text.indexOf('f.dropNextActualCreateReply()',armed),wait=text.indexOf('await failedCreate',trigger),actualDrop=text.indexOf('f.observations.controlled_after_record_disconnects',wait),ledger=text.indexOf('const ledger=await f.counts()',actualDrop)
+ assert(armed>=0&&armed<trigger&&trigger<wait&&wait<actualDrop&&actualDrop<ledger);assert(text.slice(ledger,ledger+110).includes('toBe(5)'))
+})
 test('transport timing is closed bounded getter-free observation and cannot authorize or inspect request/secret contents',()=>{
  let touched=0;const state={elapsed_ms:8001,proxy_deadline_expired:true,client_request_aborted:false,client_response_closed:true,get secret(){touched++;throw Error('PRIVATE')}};const t=originalShareProxyTiming('proxy_transport_error',state);assert.deepEqual(t,{source:'proxy_transport_error',elapsed_ms:8001,proxy_deadline_expired:true,client_request_aborted:false,client_response_closed:true,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false});assert(Object.isFrozen(t));assert.equal(touched,0);for(const value of [-1,60001,NaN,Infinity,'8000',null])assert.equal(originalShareProxyTiming('proxy_transport_error',{elapsed_ms:value}),null);assert.equal(originalShareProxyTiming('foreign',{elapsed_ms:1}),null);assert.equal(originalShareProxyTiming('proxy_transport_error',{get elapsed_ms(){touched++;return 1}}),null);assert.equal(touched,0)
 })
