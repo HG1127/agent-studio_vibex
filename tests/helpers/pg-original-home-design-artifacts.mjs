@@ -18,3 +18,10 @@ export function originalHomeDesignObservationBytes(observation){
  if(bytes.length>1048576)throw Error('original_home_design_observation_oversize')
  return bytes
 }
+/** Creation has a070 audit;045 history records the before/after of an update. */
+export function originalHomeDesignManualAuditProof(audit,operation){
+ if(!['create','update'].includes(operation)||!audit||!audit.actual||!Number.isSafeInteger(audit.actual.revision)||audit.actual.revision<1||!Array.isArray(audit.events)||!Array.isArray(audit.history))throw Error('original_home_design_audit_shape')
+ const actual=audit.actual
+ return Object.freeze({configuration_audit_recorded:audit.events.some(row=>row.action==='agent.original_home.'+operation&&row.result==='succeeded'&&row.owner_user_id===actual.owner_user_id&&row.actor_user_id===actual.owner_user_id&&row.target_kind==='agent_spec'&&row.target_id===actual.id&&row.metadata?.format==='agentstudio.home-authoring.v1'&&row.metadata.spec_revision===actual.revision),
+  edit_history_contract_valid:operation==='create'?audit.history.length===0:audit.history.some(row=>row.spec_revision===String(actual.revision)&&row.safe_spec?.goal===actual.spec.goal)})
+}

@@ -23,6 +23,8 @@ import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
 import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import { KnowledgeBaseRepository, safeDescription, safeKnowledgeQuery, safeTextDocumentInput } from "./knowledge-repository.ts"
 import {ModelConnectionRepository,safeModelConnectionInput} from "./model-connection-repository.ts"
+import {optionalExpectedOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
+import {parseAgentDesignTransportJson} from "./agent-design-value-contract.ts"
 import {ToolConnectionRepository,safeToolConnectionInput} from "./tool-connection-repository.ts"
 import type {McpConnectionRepository} from "./mcp-connection-repository.ts"
 import type {McpMaterial} from "./mcp-discovery.ts"
@@ -726,6 +728,7 @@ export function createHandler(deps:AppDependencies) {
       if(modelConnectionsRoute){
         const repo=deps.modelConnectionRepository
         if(!repo)throw new HttpError(503,"model_connections_disabled")
+        const expectedEmployee=method==="GET"?undefined:optionalExpectedOriginalUiEmployee(req)
         const probeRoute=path.endsWith("/probe")
         const suffix=path.startsWith("/api/v2/model-connections/")
           ?path.slice("/api/v2/model-connections/".length,
@@ -742,7 +745,7 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(revision)||(revision as number)<1)
             throw new HttpError(400,"invalid_revision")
           const item=await repo.testConnection(identity,suffix,revision as number,
-            deps.modelConnectionProbe)
+            deps.modelConnectionProbe,expectedEmployee)
           return send(res,200,{item,mode:"read_only_provider_models_probe"})
         }
         if(method==="GET"){
@@ -761,7 +764,7 @@ export function createHandler(deps:AppDependencies) {
           const body=await readBody(req)
           allowBodyFields(body,["name","provider","base_url","api_key","models","enabled"])
           const input=safeModelConnectionInput(body,true)
-          return send(res,201,{item:await repo.create(identity,input)})
+          return send(res,201,{item:await repo.create(identity,input,expectedEmployee)})
         }
         if(method==="PATCH"&&suffix){
           const body=await readBody(req)
@@ -771,7 +774,7 @@ export function createHandler(deps:AppDependencies) {
             throw new HttpError(400,"invalid_revision")
           const {expected_revision:_ignored,...fields}=body
           const input=safeModelConnectionInput(fields,false)
-          const item=await repo.update(identity,suffix,input,revision as number)
+          const item=await repo.update(identity,suffix,input,revision as number,expectedEmployee)
           if(!item){
             const previous=await repo.get(identity,suffix)
             if(!previous)throw new HttpError(404,"model_connection_not_found")
@@ -780,7 +783,24 @@ export function createHandler(deps:AppDependencies) {
           return send(res,200,{item})
         }
         if(method==="DELETE"&&suffix){
-          if(!await repo.delete(identity,suffix))
+          let expectedRevision:number|undefined
+          if(expectedEmployee!==undefined){
+            const type=req.headers["content-type"],length=req.headers["content-length"],transfer=req.headers["transfer-encoding"]
+            if(typeof type!=="string"||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(type)||req.headers["content-encoding"]!==undefined)throw new HttpError(415,"json_content_type_required")
+            if(length!==undefined&&(typeof length!=="string"||!/^(0|[1-9][0-9]*)$/.test(length)||!Number.isSafeInteger(Number(length))))throw new HttpError(400,"invalid_json")
+            if(length!==undefined&&Number(length)>512)throw new HttpError(413,"request_too_large")
+            if(transfer!==undefined&&(transfer!=="chunked"||length!==undefined))throw new HttpError(400,"invalid_json")
+            let size=0;const chunks:Buffer[]=[]
+            for await(const chunk of req){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=bytes.length;if(size>512)throw new HttpError(413,"request_too_large");chunks.push(bytes)}
+            if(length!==undefined&&Number(length)!==size)throw new HttpError(400,"invalid_json")
+            let value:unknown
+            try{value=parseAgentDesignTransportJson(new TextDecoder("utf-8",{fatal:true,ignoreBOM:true}).decode(Buffer.concat(chunks)))}catch{throw new HttpError(400,"invalid_json")}
+            if(!value||typeof value!=="object"||Array.isArray(value))throw new HttpError(400,"invalid_json")
+            const body=value as Record<string,unknown>;allowBodyFields(body,["expected_revision"])
+            if(!Number.isSafeInteger(body.expected_revision)||(body.expected_revision as number)<1)throw new HttpError(400,"invalid_revision")
+            expectedRevision=body.expected_revision as number
+          }
+          if(!await repo.delete(identity,suffix,expectedRevision,expectedEmployee))
             throw new HttpError(404,"model_connection_not_found")
           return send(res,200,{ok:true,id:suffix})
         }

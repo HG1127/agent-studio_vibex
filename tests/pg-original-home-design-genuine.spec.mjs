@@ -2,7 +2,7 @@ import {test,expect,chromium} from '@playwright/test'
 import {requireOriginalHomeDesignBrowserCi} from './helpers/pg-original-home-design-browser-guard.mjs'
 import {startOriginalHomeDesignBrowserFixture} from './helpers/pg-original-home-design-browser-fixture.mjs'
 import {installOriginalLegacyBlockObserver} from './helpers/pg-original-login-legacy-observer.mjs'
-import {originalHomeDesignDomSafety,originalHomeDesignImageBuffer,originalHomeDesignObservationBytes} from './helpers/pg-original-home-design-artifacts.mjs'
+import {originalHomeDesignDomSafety,originalHomeDesignImageBuffer,originalHomeDesignObservationBytes,originalHomeDesignManualAuditProof} from './helpers/pg-original-home-design-artifacts.mjs'
 
 test('original Home: genuine generation, exact unknown intent recovery, manual070071 save, revision and late-account fences',async({},testInfo)=>{
  const permit=requireOriginalHomeDesignBrowserCi() // Before fixture/SQL/TLS/browser.
@@ -105,7 +105,8 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
    expect(audit.actual.name).toBe('Original Home synthetic generated manual save');expect(audit.actual.spec.goal).toBe('Original Home employee edited generated goal')
    expect(audit.actual.spec.tools).toEqual(['knowledge_search']);expect(audit.actual.spec.knowledge_base_ids).toEqual([f.homeKnowledge.alice.id]);expect(audit.actual.spec.model_binding).toBeUndefined();expect(audit.actual.spec.http_tools??[]).toEqual([]);expect(audit.actual.spec.mcp_tools??[]).toEqual([])
    expect(audit.actual.spec.require_approval).toBe(true);expect(audit.actual.spec.require_plan_review).toBe(true);expect(audit.authoring.tool_requirements).toEqual(f.output().tools)
-   expect(audit.history.some(row=>row.spec_revision===audit.actual.revision&&row.safe_spec.goal===audit.actual.spec.goal)).toBe(true)
+    expect(originalHomeDesignManualAuditProof(audit,'create')).toEqual({configuration_audit_recorded:true,edit_history_contract_valid:true})
+    expect((await f.counts()).history).toBe(before.history)
    expect(await f.agent('bob',generatedId)).toBeNull();expect((await f.counts()).saves).toBe(before.saves);expect((await f.counts()).agents).toBe(before.agents+1)
    await image('original-home-design-generated.png',page);steps.original_manual070071_save=true
   })
@@ -137,7 +138,7 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
    const audit=await f.manualSaveAudit('alice',prior.id)
    expect(audit.actual.revision).toBe(prior.revision+1);expect(audit.actual.spec.goal).toBe('Original Home employee edited revised goal')
    for(const field of ['model_binding','http_tools','mcp_tools','knowledge_base_ids','tools','require_approval','require_plan_review'])expect(audit.actual.spec[field]).toEqual(prior.spec[field])
-   expect(audit.authoring.tool_requirements).toContain(f.output().tools[0]);expect(audit.history.some(row=>row.spec_revision===audit.actual.revision&&row.safe_spec.goal===audit.actual.spec.goal)).toBe(true)
+    expect(audit.authoring.tool_requirements).toContain(f.output().tools[0]);expect(originalHomeDesignManualAuditProof(audit,'update')).toEqual({configuration_audit_recorded:true,edit_history_contract_valid:true})
    const unchanged=await f.counts(),reads=f.credentialReads(),posts=f.providerRequests.length
    const stale=await f.request('alice','/api/v2/original-ui/agent-specs/'+prior.id,'PATCH',revisionPatch,f.users.alice)
    expect(stale.status).toBe(409);expect(await f.counts()).toEqual(unchanged);expect((await f.agent('alice',prior.id)).revision).toBe(audit.actual.revision)

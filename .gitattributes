@@ -1237,3 +1237,8 @@ tests/original-home-legacy-design-save.test.mjs text eol=lf
 tests/pg-original-home-design-browser-policy.test.mjs text eol=lf
 tests/pg-original-home-design-genuine.config.mjs text eol=lf
 tests/pg-original-home-design-genuine.spec.mjs text eol=lf
+
+# Original Home hosted flow, legacy revision regression, and Worker SQL assets.
+services/pg-api/src/model-connection-repository.ts text eol=lf
+services/pg-api/tests/native-original-model-connections-owner-cas.test.mjs text eol=lf
+services/pg-api/tests/native-original-model-protocol.test.mjs text eol=lf

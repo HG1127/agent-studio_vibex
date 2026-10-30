@@ -7,7 +7,8 @@ import {performance} from 'node:perf_hooks'
 import {assertFinalPathCiHost,assertFinalPathCiStable} from './pg18-full069-final-path-ci-guard.mjs'
 import {finalContext,assertFinalStable} from '../../src/pg18-full069-final-trust.mjs'
 import {readLivePrivate} from '../../src/pg18-full069-worker-live-trust.mjs'
-import {verifyCompleteProfileOperatorRuntime,loadCompleteProfileOperatorPg} from '../../src/pg18-complete-operator-runtime.mjs'
+import {loadCompleteProfileOperatorPg} from '../../src/pg18-complete-operator-runtime.mjs'
+import {full069FinalRuntimeOperatorCapability} from '../../src/pg18-full069-final-runtime.mjs'
 import {final14CatalogSelects} from '../../src/pg18-full069-final14-catalog.mjs'
 import {inspectFinal14DatabaseAclRows} from '../../src/pg18-full069-final14-database-acl.mjs'
 const fail=()=>{throw Error('full069_final_path_ci_database_acl_negative')}
@@ -37,11 +38,11 @@ const cases=Object.freeze([
  ['extra_template0_public_temp','GRANT TEMPORARY ON DATABASE template0 TO PUBLIC'],
  ['extra_template1_public_temp','GRANT TEMPORARY ON DATABASE template1 TO PUBLIC'],
 ])
-export async function runActualFinal14DatabaseAclNegatives(trust,guard){
+export async function runActualFinal14DatabaseAclNegatives(trust,guard,runtime){
  let phase='admission',negativeCase=null
  try{
  assertFinalPathCiHost();assertFinalPathCiStable(guard);const ctx=finalContext(trust);assertFinalStable(trust)
-  phase='operator_runtime';const base=ctx.base,cap=verifyCompleteProfileOperatorRuntime(ctx.source.complete,base.profile.complete_source_sha256,{manifestFile:base.profile.runtime_manifest_file,manifestSha256:base.profile.runtime_manifest_sha256,lockSha256:base.profile.runtime_lock_sha256}),{Pool}=loadCompleteProfileOperatorPg(cap)
+  phase='operator_runtime';const base=ctx.base,cap=full069FinalRuntimeOperatorCapability(runtime,trust),{Pool}=loadCompleteProfileOperatorPg(cap)
   phase='credential';const bytes=readLivePrivate(base.profile.credentials.admin,{max:4096}).bytes,password=bytes.toString('utf8').replace(/\r?\n$/,'')
  if(!Buffer.from(bytes.toString('utf8')).equals(bytes)||password.length<32||password.length>512||/[^!-~]/.test(password))fail()
   phase='pool_setup';const pool=new Pool({host:'127.0.0.1',port:5333,database:'agent_studio',user:'postgres',password,ssl:false,options:'',max:1,connectionTimeoutMillis:2000,idleTimeoutMillis:2000,statement_timeout:3000,query_timeout:4000});let db,begun=false,failed=false,primary=null,cleanup=null,passed=0

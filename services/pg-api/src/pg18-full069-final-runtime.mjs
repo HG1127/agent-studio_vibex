@@ -42,6 +42,9 @@ export function full069FinalRuntimeOpenFailureObservation(error){
 // End closed runtime-open observation.
 const target=Object.freeze({mode:'baota_pg18',host:'127.0.0.1',database:'agent_studio',port:5333,user:'agentstudio_stage_worker',expectedMajor:18})
 function state(handle){const s=states.get(handle);if(!s||s.closed)fail('untrusted_runtime');finalContext(s.trust);assertCompleteProfileOperatorRuntime(s.capability);return s}
+// The hosted ACL probe shares this genuine one-claim operator capability.
+// A different trust, closed runtime or caller-made handle cannot obtain it.
+export function full069FinalRuntimeOperatorCapability(handle,trust){const s=state(handle);if(s.trust!==trust)fail('operator_trust_binding');assertFinalStable(trust);return s.capability}
 function secret(file){const b=readLivePrivate(file,{max:4096}).bytes,text=b.toString('utf8'),value=text.replace(/\r?\n$/,'');if(!Buffer.from(text).equals(b)||value.length<32||value.length>512||/[^!-~]/.test(value))fail('secret_format');return value}
 async function read(pool,work){const db=await pool.connect();let begun=false,destroy=false;try{await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');begun=true;await db.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='1000ms'; SET LOCAL statement_timeout='8000ms'");return await work(db)}finally{if(begun)try{await db.query('ROLLBACK')}catch{destroy=true}db.release(destroy)}}
 export function readFull069FinalRootJournal(){

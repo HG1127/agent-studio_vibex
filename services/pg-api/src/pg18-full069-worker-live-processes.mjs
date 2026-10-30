@@ -50,8 +50,11 @@ export async function stopFull069OwnedNative(handle){const s=owned(handle),c=s.e
 
 // Observation of private spawn references only. Cannot authorize, signal,
 // weaken matches(), replace a PID or declare an exited process healthy.
-export function observeFull069OwnedProcessFailure(handle){
- const s=owned(handle);liveContext(s.trust)
+function ownedFailureSnapshot(s,phase){
  const rows=[...s.entries.values()].map(c=>{let kernel=null;try{if(c.pid)kernel=readFull069KernelProcess(c.pid)}catch{};return {entry:c.id,channel_failed:c.failed===true,supervisor_exited:c.outerExited===true,supervisor_exit_code:Number.isInteger(c.exit?.code)&&c.exit.code>=0&&c.exit.code<=255?c.exit.code:null,supervisor_exit_signal:ownedProcessSignalObservation(c.exit?.signal),application_exit:c.exitObservation??null,kernel_readable:kernel!==null,kernel_checks:kernel?ownedKernelProcessChecks(c,kernel,process.execPath):null}})
- return parseOwnedProcessFailureObservation({format:'full069_owned_process_failure_observation_v1',phase:'before_cleanup',entries:rows,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
+ return parseOwnedProcessFailureObservation({format:'full069_owned_process_failure_observation_v1',phase,entries:rows,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
 }
+export function observeFull069OwnedProcessFailure(handle){const s=owned(handle);liveContext(s.trust);return ownedFailureSnapshot(s,'before_cleanup')}
+// Awaiting the original owned stops may deliver an already-pending exit IPC.
+// Keep it separate: it cannot replace the pre-cleanup identity observation.
+export function observeFull069OwnedProcessExitAfterStop(handle){const s=owned(handle);liveContext(s.trust);if([...s.entries.values()].some(c=>!c.stopping))liveFail('observation_stop_pending');return ownedFailureSnapshot(s,'after_owned_stop')}

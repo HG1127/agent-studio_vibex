@@ -1,6 +1,7 @@
 import {isIP} from "node:net"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import {assertOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
 import {encryptModelSecret,parseModelEncryptionKey} from "./model-connection-crypto.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
 import {withModelBrokerActor} from "./model-broker-actor.ts"
@@ -116,7 +117,14 @@ function safeRow(row:StoredRow):ModelConnectionRow{
 }
 const publicColumns="id,owner_user_id,name,provider,base_url,api_key_tail,enabled,status,"+
   "last_latency_ms,last_checked_at,models,last_error,revision,created_at,updated_at"
+type ModelConnectionAuditAction="model.connection_create"|"model.connection_update"|"model.connection_enable"|"model.connection_disable"|"model.connection_delete"
+async function auditModelConnection(db:SqlClient,actor:string,id:string,action:ModelConnectionAuditAction,revision:number):Promise<void>{
+  await db.query("INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) "+
+    "VALUES($1::uuid,$1::uuid,$2::text,'model_connection',$3::text,'succeeded',$4::jsonb)",
+    [actor,action,id,JSON.stringify({revision})])
+}
 export class ModelConnectionRepository{
+  readonly originalUiProtocol="native_model_connections_owner_cas_v1" as const
   readonly pool:SqlPool
   readonly brokerPool:SqlPool
   readonly encryptionKey:Buffer
@@ -151,11 +159,12 @@ export class ModelConnectionRepository{
       return result.rows[0]?safeRow(result.rows[0]):null
     })
   }
-  create(identity:Identity,input:ModelConnectionInput):Promise<ModelConnectionRow>{
+  create(identity:Identity,input:ModelConnectionInput,expectedEmployee?:string):Promise<ModelConnectionRow>{
     const apiKey=input.api_key
     if(!apiKey)throw new HttpError(400,"model_api_key_required")
-    const secret=encryptModelSecret(apiKey,this.encryptionKey)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
+      const secret=encryptModelSecret(apiKey,this.encryptionKey)
       const result=await db.query<StoredRow>(
         "INSERT INTO agentstudio.model_connections "+
         "(owner_user_id,name,provider,base_url,api_key_ciphertext,api_key_nonce,"+
@@ -166,21 +175,23 @@ export class ModelConnectionRepository{
          secret.nonce,secret.tag,apiKey.slice(-4),input.enabled,
          JSON.stringify(input.models)])
       if(!result.rows[0])throw Error("model_connection_insert_missing")
-      return safeRow(result.rows[0])
+      const saved=safeRow(result.rows[0])
+      await auditModelConnection(db,actor,saved.id,"model.connection_create",saved.revision)
+      return saved
     })
   }
-  update(identity:Identity,id:string,input:ModelConnectionInput,revision:number):
-    Promise<ModelConnectionRow|null>{
+  update(identity:Identity,id:string,input:ModelConnectionInput,revision:number,expectedEmployee?:string):Promise<ModelConnectionRow|null>{
     if(!isUuid(id))throw new HttpError(400,"invalid_model_connection_id")
-    if(!Number.isSafeInteger(revision)||revision<1)
-      throw new HttpError(400,"invalid_revision")
-    const secret=input.api_key?encryptModelSecret(input.api_key,this.encryptionKey):null
+    if(!Number.isSafeInteger(revision)||revision<1)throw new HttpError(400,"invalid_revision")
     return withActor(this.pool,identity,async(db,actor)=>{
-      // PostgreSQL UPDATE ... COALESCE(secret, old_secret) would require
-      // SELECT on ciphertext, re-opening the Worker->API privilege leak.
-      // Never reference encrypted columns at all for metadata-only edits.
-      const columns=secret?
-        "api_key_ciphertext=$6::bytea,api_key_nonce=$7::bytea,"+
+      assertOriginalUiEmployee(actor,expectedEmployee)
+      const current=(await db.query<{revision:number|string;enabled:boolean}>(
+        "SELECT revision,enabled FROM agentstudio.model_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[id,actor])).rows[0]
+      if(!current){if(expectedEmployee!==undefined)throw new HttpError(404,"model_connection_not_found");return null}
+      if(Number(current.revision)!==revision){if(expectedEmployee!==undefined)throw new HttpError(409,"revision_conflict");return null}
+      const secret=input.api_key?encryptModelSecret(input.api_key,this.encryptionKey):null
+      // Metadata-only changes never SELECT or reference encrypted columns.
+      const columns=secret?"api_key_ciphertext=$6::bytea,api_key_nonce=$7::bytea,"+
         "api_key_tag=$8::bytea,api_key_tail=$9::text,":""
       const offset=secret?10:6
       const result=await db.query<StoredRow>(
@@ -192,19 +203,31 @@ export class ModelConnectionRepository{
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid "+
         "AND revision=$"+(offset+2)+"::bigint RETURNING "+publicColumns,
         [...[id,actor,input.name,input.provider,input.base_url],
-         ...(secret?[secret.ciphertext,secret.nonce,secret.tag,
-           input.api_key!.slice(-4)]:[]),
+         ...(secret?[secret.ciphertext,secret.nonce,secret.tag,input.api_key!.slice(-4)]:[]),
          input.enabled,JSON.stringify(input.models),revision])
-      return result.rows[0]?safeRow(result.rows[0]):null
+      if(!result.rows[0]){if(expectedEmployee!==undefined)throw new HttpError(409,"revision_conflict");return null}
+      const saved=safeRow(result.rows[0]),action:ModelConnectionAuditAction=current.enabled===saved.enabled?"model.connection_update":saved.enabled?"model.connection_enable":"model.connection_disable"
+      await auditModelConnection(db,actor,saved.id,action,saved.revision)
+      return saved
     })
   }
-  delete(identity:Identity,id:string):Promise<boolean>{
+  delete(identity:Identity,id:string,expectedRevision?:number,expectedEmployee?:string):Promise<boolean>{
     if(!isUuid(id))throw new HttpError(400,"invalid_model_connection_id")
+    if(expectedRevision!==undefined&&(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)||expectedEmployee!==undefined&&expectedRevision===undefined)throw new HttpError(400,"invalid_revision")
     return withActor(this.pool,identity,async(db,actor)=>{
-      const result=await db.query<{id:string}>(
-        "DELETE FROM agentstudio.model_connections "+
-        "WHERE id=$1::uuid AND owner_user_id=$2::uuid RETURNING id",[id,actor])
-      return result.rows.length===1
+      assertOriginalUiEmployee(actor,expectedEmployee)
+      const current=(await db.query<{revision:number|string}>(
+        "SELECT revision FROM agentstudio.model_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[id,actor])).rows[0]
+      if(!current){if(expectedEmployee!==undefined)throw new HttpError(404,"model_connection_not_found");return false}
+      const revision=Number(current.revision)
+      if(!Number.isSafeInteger(revision)||revision<1)throw Error("invalid_model_connection_revision")
+      if(expectedRevision!==undefined&&revision!==expectedRevision)throw new HttpError(409,"revision_conflict")
+      const result=await db.query<{id:string}>("DELETE FROM agentstudio.model_connections "+
+        "WHERE id=$1::uuid AND owner_user_id=$2::uuid"+(expectedRevision===undefined?"":" AND revision=$3::bigint")+" RETURNING id",
+        expectedRevision===undefined?[id,actor]:[id,actor,expectedRevision])
+      if(result.rows.length!==1){if(expectedEmployee!==undefined)throw new HttpError(409,"revision_conflict");return false}
+      await auditModelConnection(db,actor,result.rows[0]!.id,"model.connection_delete",revision)
+      return true
     })
   }
   // A model-list probe is deliberately separate from Agent execution.
@@ -213,7 +236,7 @@ export class ModelConnectionRepository{
   // metadata if the exact configuration revision is still current.
   async testConnection(
     identity:Identity,id:string,expectedRevision:number,
-    probe:(input:ProviderProbeInput)=>Promise<ProviderProbeResult>,
+    probe:(input:ProviderProbeInput)=>Promise<ProviderProbeResult>,expectedEmployee?:string,
   ):Promise<ModelConnectionRow>{
     if(!isUuid(id))throw new HttpError(400,"invalid_model_connection_id")
     if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
@@ -224,6 +247,7 @@ export class ModelConnectionRepository{
     try{
     const material=await withModelBrokerActor(
       this.brokerPool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const results=await db.query<{
         provider:ModelProvider;base_url:string;revision:string|number
         last_checked_at:string|null;api_key_ciphertext:Uint8Array
@@ -257,6 +281,7 @@ export class ModelConnectionRepository{
       ?Math.max(0,Math.min(600000,outcome.latency_ms)):0
     const status=outcome.status==="ok"?"ok":"error"
     return await withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<StoredRow>(
         "UPDATE agentstudio.model_connections "+
         "SET status=$4::text,last_latency_ms=$5::int,last_error=$6::text,"+

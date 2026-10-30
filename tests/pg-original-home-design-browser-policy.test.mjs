@@ -7,7 +7,7 @@ import {createRequire,registerHooks} from 'node:module'
 import {PassThrough} from 'node:stream'
 import {requireOriginalHomeDesignBrowserCi,originalHomeDesignPurpose} from './helpers/pg-original-home-design-browser-guard.mjs'
 import {originalHomeDesignPolicy,originalHomeDesignPath} from './helpers/pg-original-home-design-browser-policy.mjs'
-import {originalHomeDesignDomSafety,originalHomeDesignImageBuffer,originalHomeDesignImageNames,originalHomeDesignObservationBytes} from './helpers/pg-original-home-design-artifacts.mjs'
+import {originalHomeDesignDomSafety,originalHomeDesignImageBuffer,originalHomeDesignImageNames,originalHomeDesignObservationBytes,originalHomeDesignManualAuditProof} from './helpers/pg-original-home-design-artifacts.mjs'
 import {startOriginalHomeDesignBrowserFixture} from './helpers/pg-original-home-design-browser-fixture.mjs'
 import {originalHomeDesignBackendFixture} from './helpers/pg-original-home-design-backend-fixture.mjs'
 import {verifyOriginalHomeDesignReviewedSources} from './helpers/pg-original-home-design-reviewed-check.mjs'
@@ -102,6 +102,18 @@ test('observation artifact refuses oversized UTF8 bytes before writing and retai
  assert.deepEqual(JSON.parse(originalHomeDesignObservationBytes(row).toString('utf8')),row)
  for(const text of ['x'.repeat(1048576),'测'.repeat(349526)])assert.throws(()=>originalHomeDesignObservationBytes({text}),/^Error: original_home_design_observation_oversize$/)
  assert(story.includes('originalHomeDesignObservationBytes(observation)'))
+})
+const auditSample=(operation,revision=1)=>{const actual={id:'owner-spec',owner_user_id:'owner',revision,spec:{goal:'employee actual saved goal'}};return{actual,events:[{owner_user_id:'owner',actor_user_id:'owner',action:'agent.original_home.'+operation,target_kind:'agent_spec',target_id:'owner-spec',result:'succeeded',metadata:{format:'agentstudio.home-authoring.v1',spec_revision:revision}}],history:operation==='create'?[]:[{spec_revision:String(revision),safe_spec:{goal:actual.spec.goal}}]}}
+test('manual creation requires its actual owner070 audit and no update-only045 history',()=>{
+ const actual=auditSample('create');assert.deepEqual(originalHomeDesignManualAuditProof(actual,'create'),{configuration_audit_recorded:true,edit_history_contract_valid:true})
+ for(const patch of [{events:[]},{events:[{...actual.events[0],actor_user_id:'foreign'}]},{events:[{...actual.events[0],target_id:'foreign'}]},{events:[{...actual.events[0],result:'failed'}]},{events:[{...actual.events[0],metadata:{...actual.events[0].metadata,spec_revision:2}}]}])assert.equal(originalHomeDesignManualAuditProof({...actual,...patch},'create').configuration_audit_recorded,false)
+ assert.equal(originalHomeDesignManualAuditProof({...actual,history:[{spec_revision:'1',safe_spec:actual.actual.spec}]},'create').edit_history_contract_valid,false)
+})
+test('manual revision requires a same-owner audit and exact text bigint revision/description history',()=>{
+ const actual=auditSample('update',2);assert.deepEqual(originalHomeDesignManualAuditProof(actual,'update'),{configuration_audit_recorded:true,edit_history_contract_valid:true})
+ for(const history of [[],[{spec_revision:2,safe_spec:actual.actual.spec}],[{spec_revision:'1',safe_spec:actual.actual.spec}],[{spec_revision:'02',safe_spec:actual.actual.spec}],[{spec_revision:'2',safe_spec:{goal:'old goal'}}]])assert.equal(originalHomeDesignManualAuditProof({...actual,history},'update').edit_history_contract_valid,false)
+ assert.equal(originalHomeDesignManualAuditProof({...actual,events:auditSample('create',2).events},'update').configuration_audit_recorded,false)
+ const frozen=read('db/postgres/migrations/pg_v9_045_agent_collaboration.sql');assert(frozen.includes('CREATE TRIGGER native_agent_collaboration_history AFTER UPDATE OF name,spec'));assert(backend.includes('spec_revision::text AS spec_revision'));assert(story.includes("originalHomeDesignManualAuditProof(audit,'create')"));assert(story.includes("originalHomeDesignManualAuditProof(audit,'update')"));assert(story.includes('expect(after.history).toBe(before.history+2)'))
 })
 test('original UI selectors and real F01 Worker output remain the source of the story, with every migration zero gate',()=>{
  for(const s of ['#hero','#spec-editor','预览模型请求','按已核对需求生成草案','查询原模型请求','可选 · 让 AI 帮我调整方案','预览修改请求','按已核对要求修改','保存到我的助手'])assert(story.includes(s),s)

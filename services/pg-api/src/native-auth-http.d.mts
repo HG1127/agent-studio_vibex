@@ -8,6 +8,7 @@ export function createNativeAuthHttpHandler(deps:{
   businessHandler:HttpHandler
   allowConfigurationWrites?:boolean
   allowModelProbe?:boolean
+  allowOriginalModelConnections?:boolean
   allowMcpDiscovery?:boolean
   allowMcpToolExecution?:boolean
   allowSmitheryManagement?:boolean

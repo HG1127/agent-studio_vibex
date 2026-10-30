@@ -119,7 +119,7 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowOriginalModelConnections=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
     allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,allowAgentReleases=false,allowAgentHumanInput=false,allowAgentMemory=false,allowAgentMemoryRuntime=false,allowAgentDerivedMemory=false,allowAgentDerivedMemoryWrites=false,allowAgentOutcomeMemory=false,allowAgentOutcomeMemoryAdmission=false,allowAgentFeedback=false,allowAgentFeedbackSubmission=false,allowAgentFeedbackLessons=false,allowAgentOptimization=false,allowAgentOptimizationAcceptance=false,
@@ -209,6 +209,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           ...(allowCompanyWorkerHeartbeats===true&&profile.is_admin===true?{company_worker_heartbeats_available:true}:{}),
           ...(allowEmployeeGovernance===true?{employee_governance_available:true,employee_governance_enabled:allowConfigurationWrites===true}:{}),
           config_writes_enabled:allowConfigurationWrites===true,
+          ...(allowOriginalModelConnections===true?{original_model_connections_protocol:'native_model_connections_owner_cas_v1'}:{}),
           ...(allowOwnerToolHub===true?{owner_tool_hub_available:true,owner_tool_trials_enabled:allowConfigurationWrites===true&&allowWorkflowV2Submission===true&&allowOwnerToolTrials===true,public_mcp_registry_enabled:allowPublicMcpRegistry===true}:{}),
           ...(allowAgentReview===true?{agent_review_available:true,agent_review_submission_enabled:allowConfigurationWrites===true&&allowAgentReviewSubmission===true}:{}),
           ...(allowAgentReview===true&&allowAgentReviewHistory===true?{agent_review_history_available:true}:{}),

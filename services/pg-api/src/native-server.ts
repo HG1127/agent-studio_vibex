@@ -515,6 +515,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const companyWorkerHeartbeatsHttp=createNativeCompanyWorkerHeartbeatsHttpHandler({
       component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
     })
+    const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
       allowOwnerToolHub:ownerToolHub.available,allowOwnerToolTrials:ownerToolHub.trials,allowPublicMcpRegistry:ownerToolHub.registry,
@@ -524,6 +525,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
+      allowOriginalModelConnections:Object.getOwnPropertyDescriptor(modelConnections,'originalUiProtocol')?.value==='native_model_connections_owner_cas_v1',
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
       allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
@@ -583,9 +585,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
       ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
         allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
-      modelConnectionRepository:new ModelConnectionRepository(
-        business,modelEncryptionKey,
-        brokerPool?adapter(brokerPool):business),
+      modelConnectionRepository:modelConnections,
       toolConnectionRepository:new ToolConnectionRepository(
         business,modelEncryptionKey),
       mcpConnectionRepository:new McpConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),

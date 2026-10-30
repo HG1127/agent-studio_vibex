@@ -88,6 +88,21 @@ test('runtime classification never executes message getters, proxy traps or coer
  for(const value of [error,proxy,{message:'Query read timeout'},{message:{toString(){invoked++;throw Error('private')}}}]){f.remember(value,'service_target');assert.equal(f.read(value).failure_code,null)}
  assert.equal(invoked,0)
 })
+test('ACL probe obtains only the existing original operator capability bound to the same opaque runtime and trust',()=>{
+ const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true),fn=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='full069FinalRuntimeOperatorCapability');assert(fn)
+ const handle=Object.freeze({}),trust=Object.freeze({}),cap=Object.freeze({data_only_unit_marker:true}),primary=Error('stable failure'),events=[]
+ const run=Function('state','assertFinalStable','fail','return function('+fn.parameters.map(n=>n.getText(tree)).join(',')+')'+fn.body.getText(tree))(h=>{assert.equal(h,handle);events.push('original_runtime_state');return{trust,capability:cap}},t=>{assert.equal(t,trust);events.push('original_final_stable')},c=>{throw Error(c)})
+ assert.equal(run(handle,trust),cap);assert.deepEqual(events,['original_runtime_state','original_final_stable']);assert.throws(()=>run(handle,{}),/operator_trust_binding/)
+ const rejected=Function('state','assertFinalStable','fail','return function('+fn.parameters.map(n=>n.getText(tree)).join(',')+')'+fn.body.getText(tree))(()=>{throw primary},()=>assert.fail('untrusted handle must not reach stable'),()=>assert.fail('untrusted state'))
+ assert.throws(()=>rejected({},trust),error=>error===primary)
+ const stateFn=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='state');assert(stateFn.body.getText(tree).includes('states.get(handle)'));assert(stateFn.body.getText(tree).includes('s.closed'));assert(stateFn.body.getText(tree).includes('assertCompleteProfileOperatorRuntime(s.capability)'))
+})
+test('actual ACL prefix reuses the genuine capability without a second one-claim loader verification',()=>{
+ assert(!aclSource.includes('verifyCompleteProfileOperatorRuntime'));assert(aclSource.includes('full069FinalRuntimeOperatorCapability(runtime,trust)'));assert(aclSource.includes('loadCompleteProfileOperatorPg(cap)'))
+ const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8');assert(actor.includes('runtime=await openFull069FinalRuntime(trust)'));assert(actor.includes('await runActualFinal14DatabaseAclNegatives(trust,guard,runtime)'))
+ const loader=fs.readFileSync(new URL('../src/pg18-complete-operator-runtime.mjs',import.meta.url),'utf8');assert(loader.includes('if(claimed.has(root))fail()'));assert(loader.includes('const state=capabilities.get(capability);if(!state||state.failed||claimed.get(root)!==state)fail()'));assert.equal((aclSource.match(/\['(?:missing_|F05_|extra_|cross_database_)/g)||[]).length,13)
+ assert(aclSource.includes('const deadline=performance.now()+8000'));assert(aclSource.includes("await db.query('ROLLBACK');begun=false"))
+})
 test('actual bridge selects the standalone primary and emits closed observations separately',()=>{
  const bridge=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-bridge.mjs',import.meta.url),'utf8'),ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('bridge.mjs',bridge,ts.ScriptTarget.Latest,true);let expression
  const visit=n=>{if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='safe')expression=n.initializer.getText(tree);ts.forEachChild(n,visit)};visit(tree);assert.equal(expression,'finalPathCiPrimaryFailureCode(err)')

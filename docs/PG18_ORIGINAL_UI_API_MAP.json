@@ -6002,7 +6002,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 711,
+    "combined_pure_checks": 745,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6388,7 +6388,7 @@
     "original_home_natural_authoring_source_merged": true,
     "original_home_natural_authoring_actual_browser_accepted": false,
     "current_source_checks": {
-      "pure": 711,
+      "pure": 745,
       "final14_framing_related_pure": 38,
       "worker_startup_related_pure": 39,
       "frontend_TS6": true,
@@ -6400,7 +6400,11 @@
       "local_business_Worker": false,
       "local_browser": false,
       "production_GO": false,
-      "worker_assets_and_host_related_pure": 68
+      "worker_assets_and_host_related_pure": 68,
+      "model_owner_and_protocol_pure": 26,
+      "latest_targeted_pure": 104,
+      "frontend_and_shared_source_unchanged": true,
+      "frontend_TS6_and_actual_build_baseline_head": "aa475fcb371534ec632766654dfcac32a5fa11ed"
     },
     "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
     "full069_parent_diagnostic_framing_fix": "Only standalone original refusal lines select primary; exact diagnostic event names cannot override it. Parent separately parses one closed runtime-open or ACL-negative observation. Unknown keys/phases/accounts, authority, secrets, oversize and duplicate records refuse. Original supervisor/cleanup unchanged;36 related pure checks pass; actual next-head rerun pending.",
@@ -6479,7 +6483,104 @@
       "share_raw_sha256": "440e545e49d6cf6752afcc30bd741f41048d00b6346ae5c4cdbc85164b9dcdb1",
       "qualifies_run": false,
       "production_GO": false
-    }
+    },
+    "verified_aa475fc_original_overview_story": {
+      "run": 41066764791,
+      "job": 124100071994,
+      "actual_story_passed": true,
+      "observation_sha256": "30ccded4655246c94397473ade99eaf85f1c61165a8ac4b06d4669a54f1ca0d0",
+      "full_business_row_images_unchanged": true,
+      "base_ledgers_unchanged": true,
+      "actual_503_and_409": true,
+      "actual_late_result_and_Cookie_switch": true,
+      "zero_gates_and_cleanup_passed": true,
+      "images": [
+        {
+          "name": "original-internal-overview-alice.png",
+          "bytes": 271881,
+          "sha256": "e3d1bb534b7a5ca9abb829765addcc02e1139da3e7eae02bb603a48f36f2f76e",
+          "visually_reviewed_synthetic_original_page": true,
+          "password_Cookie_once_code_absent": true
+        },
+        {
+          "name": "original-internal-overview-bob.png",
+          "bytes": 129197,
+          "sha256": "3064091f88de51931eb838e6e39223600aedf9351fcfec97ce388f75fa9922eb",
+          "visually_reviewed_synthetic_original_page": true,
+          "password_Cookie_once_code_absent": true
+        }
+      ],
+      "linked_pages_or_Worker_accepted": false
+    },
+    "original_internal_overview_actual_browser_story_passed": true,
+    "verified_aa475fc_quality": {
+      "head": "aa475fcb371534ec632766654dfcac32a5fa11ed",
+      "run": 41066764981,
+      "passed_jobs": 50,
+      "total_jobs": 50,
+      "root_job": 124100073197,
+      "root_tests": 3776,
+      "root_passed": 3776,
+      "root_raw_sha256": "6769fbfd85ff4269a1ce5798a984bff1d999bd3876e77ee14c61e160524838f9",
+      "PB19_run": 41067206593,
+      "PB19_job": 124101637908,
+      "PB19_passed": 19,
+      "PB19_workers": 2,
+      "PB19_raw_sha256": "e802b159fec625178ae311e3d8ae8ebcb6b3eb385a211198d998832077abdda3",
+      "does_not_accept_new_candidate": true,
+      "production_GO": false
+    },
+    "aa475fc_Home_partial_failure": {
+      "job": 124100071423,
+      "story_passed": false,
+      "generation_and_exact_unknown_intent_recovery_passed": true,
+      "synthetic_provider_posts": 1,
+      "actual_paid_calls": 0,
+      "controlled_committed_submit_reply_loss": 1,
+      "failure": "test incorrectly required edited history for INSERT;045 is AFTER UPDATE only",
+      "observation_sha256": "c9c17267c7534b998d4f6b164e6f8c83ecf628c3ed327a1b28dd449a351f3f3c"
+    },
+    "Home_creation_audit_test_repair": "Frozen045 history trigger is AFTER UPDATE OF name,spec, never INSERT. Original browser creation now requires actual same-owner070 create audit and zero edit history; revision requires actual owner update audit and canonical text bigint revision matching the saved description. Original total history+2 and every ledger/zero gate retained.21 host pure checks pass; real rerun pending.",
+    "aa475fc_full069_observation": {
+      "run": 41066764741,
+      "legacy_job": 124100070819,
+      "legacy_raw_sha256": "9653e36a5e78853b3e10e1c2025b58a633dd5afadc338a8c18081a13fbbb0402",
+      "prior_five_ENOENT_exits_not_observed": true,
+      "five_original_workers_kernel_predicates_before_cleanup_all_true": true,
+      "assessment_kernel_readable": false,
+      "assessment_exit_not_yet_delivered_in_before_cleanup_snapshot": true,
+      "cleaned_telemetry_backends": 0,
+      "cleaned_readers_in_flight": 0,
+      "four_queues_empty": true,
+      "legacy_whole_run_passed": false,
+      "final14_job": 124100071352,
+      "final14_runtime_open_passed": true,
+      "final14_failure_phase": "runtime_preflight/operator_runtime",
+      "final14_case": null,
+      "final14_raw_sha256": "ca8b3d8a89de6d05a2850060b6fc5b99c078d0c8f3b00c928084a5ab8678abe9",
+      "qualifies_run": false,
+      "production_GO": false
+    },
+    "final14_original_capability_reuse_fix": "Actual ACL helper called verifyCompleteProfileOperatorRuntime again after original runtime already claimed it, and the unchanged one-claim guard refused. Helper now receives the same opaque runtime; private state and identical trust are verified before obtaining its original genuine capability. Original load/assert revalidates it; no caller Pool, new claim, loader relaxation,13-negative change or8s change.40 related checks pass; genuine rerun pending.",
+    "legacy_post_owned_stop_exit_observation": "Retain original before-cleanup identity failure and independently record already-pending exit IPC after the original owned stop awaits. Fixed after_owned_stop phase cannot replace before_cleanup, authorize or qualify. Assessment recognizes only exact existing Worker-ready report or literal service-refused marker, without message/stack/path/credential output. Stop, signals, waits, budgets and primary failure unchanged; actual cause pending.",
+    "aa475fc_share_boundary": {
+      "run": 41066764971,
+      "job": 124100072244,
+      "story_passed": false,
+      "actual_boundary": {
+        "source": "proxy_transport_error",
+        "node_error_code": "ECONNRESET",
+        "upstream_status": null,
+        "after_business_completed": false,
+        "drop_selected": true,
+        "actual_drop_completed": false,
+        "controlled_drop_consumed": false
+      },
+      "observation_sha256": "d19d351ee30dc7a76da0858d20957d368bb93837792317cb1b2d643a6655befe",
+      "root_cause_in_real_request_not_yet_proven": true
+    },
+    "share_same_request_committed_create_drop_fix": "Actual boundary was ECONNRESET before observed afterBusiness completion, with no upstream HTTP status or actual drop completion. Browser drop wrapper previously selected every POST to the shared preview/create route. It now consumes the arm only for a completed create in that same request; late preview200 is forwarded exactly and retains the arm. Source callbacks reproduce the preview/create race. Actual root cause and new real story remain pending; expected receipts5/final7 and8s remain.",
+    "original_model_connections_backend_source": "Strict optional raw expected-employee condition after actual Cookie/withActor or broker mapping, before any config write/secret SELECT/probe; original header-free reference callers retained. DELETE requires closed512-byte expected_revision for original callers and locks actual owner revision. Create/update/enable-disable/delete write fixed actor-attributed safe audit events in the same transaction. Native advertises exact owner_cas_v1 only from the same actual repository own marker used by HTTP.26 pure checks and API TS5 pass. Original page client/host prepared separately; no real model-page SQL/browser/provider acceptance, draft probe/receipt recovery/paging still open."
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,
