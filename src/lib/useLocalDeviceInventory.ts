@@ -38,8 +38,8 @@ export function useLocalDeviceInventory(){
     void poll()
     const timer=window.setInterval(()=>void poll(),15000)
     const focus=()=>void poll()
-    window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus)
-    return()=>{controller.abort();sequence.current++;window.clearInterval(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus)}
+    window.addEventListener('focus',focus);window.addEventListener('studio-desktop-devices-changed',focus);document.addEventListener('visibilitychange',focus)
+    return()=>{controller.abort();sequence.current++;window.clearInterval(timer);window.removeEventListener('focus',focus);window.removeEventListener('studio-desktop-devices-changed',focus);document.removeEventListener('visibilitychange',focus)}
   },[owner,refresh])
   const scoped=owner&&snapshot.owner===owner?snapshot:null
   return {devices:scoped&&!scoped.error?scoped.items:[],lastKnownDevices:scoped?.items||[],loaded:scoped?.loaded||false,error:!owner?'请先登录，再查看本人设备':scoped?.error||'',

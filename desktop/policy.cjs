@@ -34,7 +34,8 @@ function rendererPermission(permission,url,origins,isMainFrame=true) {
   return isMainFrame!==false && ['clipboard-sanitized-write','fullscreen'].includes(permission) && origins.some(origin=>ownUrl(url,origin))
 }
 function workbenchSender(event,contents,origin) {
-  return !!contents&&!contents.isDestroyed()&&event.sender===contents&&event.senderFrame===contents.mainFrame&&ownUrl(event.senderFrame?.url,origin)
+  if(!contents||contents.isDestroyed()||event.sender!==contents||event.senderFrame!==contents.mainFrame||!ownUrl(event.senderFrame?.url,origin))return false
+  try{const route=decodeURIComponent(new URL(event.senderFrame.url).pathname);return !route.startsWith('/__')&&!path.posix.extname(route)}catch{return false}
 }
 function embeddedManagerUrl(value) {
   const url=new URL(value),parts=url.hash.slice(1).split('&'),token=parts.shift()

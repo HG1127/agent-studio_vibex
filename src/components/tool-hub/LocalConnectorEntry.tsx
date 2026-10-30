@@ -2,12 +2,14 @@ import {useState} from 'react'
 import {Copy,FolderOpen} from 'lucide-react'
 import {localConnectorLocation} from '@/lib/localConnectorLocation'
 import {ConnectorDownload} from './ConnectorDownload'
+import {desktopConnectionBridge} from '@/lib/desktopConnectionBridge'
 declare const __STUDIO_LOCAL_CONNECTOR_DIRECTORY__:string
 export function LocalConnectorEntry({showDownload=true}:{showDownload?:boolean}={}){
   const [notice,setNotice]=useState('')
   const directory=typeof __STUDIO_LOCAL_CONNECTOR_DIRECTORY__==='string'?__STUDIO_LOCAL_CONNECTOR_DIRECTORY__:''
   const local=localConnectorLocation(directory,window.location.hostname,import.meta.env.DEV)
   const copy=async(text:string,label:string)=>{try{await navigator.clipboard.writeText(text);setNotice(label)}catch{setNotice('复制不可用，请手动选中并复制。')}}
+  if(desktopConnectionBridge())return showDownload?<ConnectorDownload/>:null
   return <div className="space-y-3">{showDownload&&<ConnectorDownload/>}<details><summary className="cursor-pointer text-xs font-semibold text-muted-foreground">开发者：使用已有项目启动器</summary><section aria-label="找到本机连接启动文件" className="min-w-0 space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs leading-6">
     <p className="flex items-center gap-2 font-semibold text-foreground"><FolderOpen className="h-4 w-4 shrink-0 text-primary"/>打开与本页同版本的连接组件</p>
     {local?<><p>这是当前本机开发预览的准确目录。复制到文件资源管理器地址栏，再双击 <strong>start-connect.cmd</strong>。</p>

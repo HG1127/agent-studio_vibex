@@ -19,7 +19,7 @@ if(runtimeRoot){
     app.setPath('temp',temp);app.commandLine.appendSwitch('disk-cache-dir',path.join(runtimeRoot,'web-cache'))
   }catch{storageError=Error('程序目录不可写，请重新安装到自己可写的文件夹。')}
 }
-let main,settingsWindow,connectionWindow,tray,child,services,settings,quitting=false,starting
+let main,settingsWindow,tray,child,services,settings,quitting=false,starting
 const pairingRequests=new Map()
 function reveal(window){if(!window||window.isDestroyed())return;if(window.isMinimized())window.restore();window.show();window.focus()}
 const settingsUrl=pathToFileURL(path.join(__dirname,'ui','settings.html')).href
@@ -88,7 +88,6 @@ ipcMain.handle('desktop:connect',async(event,input)=>{
   const next=serverOrigin(input.server)
   if(next!==settings.server||input.resetPort===true){
     if(main&&!main.isDestroyed())main.destroy();main=null
-    if(connectionWindow&&!connectionWindow.isDestroyed())connectionWindow.destroy();connectionWindow=null
     await stopServices()
     await session.fromPartition('persist:agent-studio').clearStorageData()
     settings={server:next,port:0}
@@ -103,36 +102,46 @@ ipcMain.handle('desktop:open-connection',async event=>{trustedWorkbench(event);a
 ipcMain.handle('desktop:prepare-pairing',async(event,ticket)=>{
   trustedWorkbench(event)
   if(Buffer.byteLength(JSON.stringify(ticket) || '')>20000)throw Error('配对凭证过大')
-  const requestId=randomUUID()
-  await new Promise((resolve,reject)=>{
-    const timeout=setTimeout(()=>{pairingRequests.delete(requestId);reject(Error('本机准备超时；请核查已有设备，勿重复登记。'))},20000)
-    pairingRequests.set(requestId,{resolve,reject,timeout})
-    child.send({type:'prepare-pairing',requestId,ticket},error=>{if(error){clearTimeout(timeout);pairingRequests.delete(requestId);reject(Error('本机连接组件已停止'))}})
-  })
+  await computerRequest('prepare',{ticket})
   trustedWorkbench(event)
-  await showConnection()
   return {ok:true}
 })
+ipcMain.handle('desktop:computer',async(event,action,input)=>{
+  trustedWorkbench(event)
+  if(typeof action!=='string'||action.length>40||Buffer.byteLength(JSON.stringify(input)||'')>30000)throw Error('invalid_computer_request')
+  const value=await computerRequest(action,input)
+  trustedWorkbench(event)
+  return value
+})
+function computerRequest(action,input){
+  if(!child?.connected)throw Error('本机连接组件已停止，请退出并重新打开软件。')
+  const requestId=randomUUID()
+  return new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>{pairingRequests.delete(requestId);reject(Error('本机处理尚未确认，请核查当前状态，不要重复提交。'))},['folder','file','permissions.pick'].includes(action)?250000:35000)
+    pairingRequests.set(requestId,{resolve,reject,timeout})
+    child.send({type:'computer-request',requestId,action,input},error=>{if(error){clearTimeout(timeout);pairingRequests.delete(requestId);reject(Error('本机连接组件已停止'))}})
+  })
+}
 async function startServices() {
   if(services)return services
   if(starting)return starting
   starting=(async()=>{
-    const base=app.isPackaged?process.resourcesPath:path.join(__dirname,'..','.tmp','desktop-dev-resources')
+    const base=app.isPackaged?process.resourcesPath:path.join(__dirname,'..','.tmp','desktop-dev-resources-'+info.version)
     const root=path.join(base,'connector')
-    const config={serverOrigin:settings.server,port:settings.port,webRoot:path.join(base,'web'),...(testHome?{profileHome:path.join(testHome,'isolated-connections')}: {})}
+    const config={serverOrigin:settings.server,port:settings.port,webRoot:path.join(base,'web'),preferencesFile:path.join(app.getPath('userData'),'local-computer.json'),...(testHome?{profileHome:path.join(testHome,'isolated-connections')}: {})}
     child=fork(path.join(root,'app','desktop','services.mjs'),[JSON.stringify(config)],{execPath:path.join(root,'runtime','node.exe'),execArgv:['--use-system-ca'],env:childEnvironment(),silent:true,windowsHide:true})
     child.stdout?.resume();child.stderr?.resume()
     services=await new Promise((resolve,reject)=>{
       const timeout=setTimeout(()=>reject(Error('本机组件启动超时，请检查安装目录或服务器设置。')),20000)
       child.once('error',()=>{clearTimeout(timeout);reject(Error('无法启动本机运行时，请重新解压或安装完整程序。'))})
       child.on('message',m=>{
-        if(m?.type==='pairing-result'&&pairingRequests.has(m.requestId)){
+        if(m?.type==='computer-result'&&pairingRequests.has(m.requestId)){
           const request=pairingRequests.get(m.requestId);pairingRequests.delete(m.requestId);clearTimeout(request.timeout)
-          if(m.ok)request.resolve();else request.reject(Error(m.error||'本机准备失败'))
+          if(m.ok)request.resolve(m.value);else request.reject(Error(m.error||'本机准备失败'))
         }
         if(m?.type==='ready'&&/^http:\/\/127\.0\.0\.1:\d+$/.test(m.origin)&&/^http:\/\/127\.0\.0\.1:\d+$/.test(m.managerOrigin)&&m.managerUrl?.startsWith(m.managerOrigin+'/#')){clearTimeout(timeout);resolve(m)}
         if(m?.type==='error'){clearTimeout(timeout);reject(Error(m.message))}
-        if(m?.type==='permissions'&&services&&ownUrl(m.url,services.managerOrigin))void showConnection(m.url)
+        if(m?.type==='computer-attention'&&services)void showConnection({deviceId:m.deviceId,panel:m.panel}).then(()=>{if(m.panel==='confirmation')void reportConfirmationSmoke()})
       })
       child.once('exit',()=>{clearTimeout(timeout);reject(Error('本机组件已停止'));services=null})
     })
@@ -153,26 +162,52 @@ async function showStudio() {
     main.webContents.setZoomFactor(0.9)
     const report=option('--desktop-smoke-report')
     if(report&&testHome){
-      const nativePairingAvailable=await main.webContents.executeJavaScript("window.studioDesktop?.version===1 && typeof window.studioDesktop.prepareConnection==='function' && typeof window.studioDesktop.openConnection==='function'")
+      // Disposable fixture only: the production server and real employee
+      // accounts are excluded from this packaged-app test hook.
+      let fixture
+      try{fixture=JSON.parse(await fs.readFile(path.join(testHome,'smoke-auth.json'),'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}
+      if(fixture){
+        if(!option('--desktop-test-server')||!/^http:\/\/127\.0\.0\.1:\d+$/.test(settings.server)||fixture.record?.email!=='desktop-smoke@example.test')throw Error('isolated_fixture_required')
+        await main.webContents.executeJavaScript('sessionStorage.setItem("agent_studio_employee_auth",'+JSON.stringify(JSON.stringify(fixture))+')')
+        await main.loadURL(local.origin+'/tool-hub')
+      }
+      const nativePairingAvailable=await main.webContents.executeJavaScript("window.studioDesktop?.version===2 && typeof window.studioDesktop.computer==='function' && typeof window.studioDesktop.openConnection==='function'")
       if(!nativePairingAvailable)throw Error('native_pairing_preload_missing')
       const opened=await main.webContents.executeJavaScript("window.studioDesktop.openConnection().then(value=>({ok:value.ok}),error=>({ok:false,error:String(error.message)}))")
       if(!opened.ok)throw Error('native_manager_open: '+opened.error)
       const nativeManagerOpened=opened.ok
-      const embeddedManager=await connectionWindow.webContents.executeJavaScript("document.getElementById('ticket')?.closest('label')?.hidden===true")
-      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
+      let embeddedManager=false
+      for(let i=0;i<50;i++){embeddedManager=await main.webContents.executeJavaScript("!!document.querySelector('[data-desktop-computer-center]')");if(embeddedManager)break;await new Promise(r=>setTimeout(r,100))}
+      const singleWindow=BrowserWindow.getAllWindows().length===1
+      let nativeConnected=false,nativeStatusVisible=false
+      if(fixture){
+        for(let i=0;i<100;i++){
+          nativeConnected=await main.webContents.executeJavaScript("window.studioDesktop.computer('state').then(s=>s.profiles.some(p=>p.state==='online'&&p.running)).catch(()=>false)")
+          if(nativeConnected)break;await new Promise(r=>setTimeout(r,300))
+        }
+        for(let i=0;i<25;i++){
+          nativeStatusVisible=await main.webContents.executeJavaScript("(()=>{const text=document.querySelector('[data-desktop-computer-center]')?.textContent||'';return text.includes('桌面内置验收电脑')&&text.includes('已在线')})()")
+          if(nativeStatusVisible)break;await new Promise(r=>setTimeout(r,300))
+        }
+      }
+      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,singleWindow,nativeConnected,nativeStatusVisible,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
   } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
 }
-async function showConnection(url) {
-  const local=await startServices()
-  const navigate=!!url
-  url=embeddedManagerUrl(url||local.managerUrl)
-  if(connectionWindow&&!connectionWindow.isDestroyed()){if(navigate)await connectionWindow.loadURL(url);reveal(connectionWindow);return}
-  connectionWindow=new BrowserWindow({width:1120,height:850,minWidth:780,minHeight:600,title:'Agent Studio · 本机电脑与权限',webPreferences})
-  guardWindow(connectionWindow,value=>ownUrl(value,local.managerOrigin))
-  connectionWindow.on('closed',()=>{connectionWindow=null})
-  await connectionWindow.loadURL(url||local.managerUrl)
-  connectionWindow.show();connectionWindow.focus()
+async function showConnection(intent={}) {
+  await showStudio()
+  main.webContents.send('desktop:connection-requested',intent)
+  reveal(main)
+}
+async function reportConfirmationSmoke(){
+  if(!testHome||!option('--desktop-smoke-report')||!/^http:\/\/127\.0\.0\.1:\d+$/.test(option('--desktop-test-server')||''))return
+  let inMainWindow=false
+  for(let i=0;i<30;i++){
+    if(!main||main.isDestroyed())return
+    inMainWindow=await main.webContents.executeJavaScript("document.querySelector('[data-desktop-computer-center]')?.textContent.includes('请确认本机授权变更')===true")
+    if(inMainWindow)break;await new Promise(r=>setTimeout(r,200))
+  }
+  await fs.writeFile(path.join(testHome,'confirmation-smoke.json'),JSON.stringify({inMainWindow,singleWindow:BrowserWindow.getAllWindows().length===1}))
 }
 async function stopServices() {
   for(const request of pairingRequests.values()){clearTimeout(request.timeout);request.reject(Error('本机组件已停止'))}pairingRequests.clear()

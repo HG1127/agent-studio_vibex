@@ -32,6 +32,7 @@ export async function createGateway({webRoot, serverOrigin, port=0}) {
       headers['x-forwarded-proto'] = upstream.protocol.slice(0,-1)
       const target = new URL(url.pathname + url.search, upstream)
       const proxy = (target.protocol === 'https:' ? https : http).request(target, {method:req.method,headers}, reply => {
+        if(res.destroyed){reply.destroy();return}
         // Never forward credentials through a redirect to a different endpoint.
         if (reply.statusCode >= 300 && reply.statusCode < 400 && reply.headers.location) {
           reply.resume();res.writeHead(502);return res.end('Server redirect blocked; configure the final HTTPS workbench address.')
@@ -40,7 +41,7 @@ export async function createGateway({webRoot, serverOrigin, port=0}) {
         res.writeHead(reply.statusCode || 502)
         pipeline(reply,res,()=>{})
       })
-      proxy.on('error',()=>{if(!res.headersSent)res.writeHead(502,{'Content-Type':'application/json'});res.end(JSON.stringify({message:'无法连接工作台服务器，请检查地址、网络及证书信任。'}))})
+      proxy.on('error',()=>{if(res.destroyed)return;if(!res.headersSent)res.writeHead(502,{'Content-Type':'application/json'});res.end(JSON.stringify({message:'无法连接工作台服务器，请检查地址、网络及证书信任。'}))})
       req.once('aborted',()=>proxy.destroy())
       res.once('close',()=>{if(!res.writableFinished)proxy.destroy()})
       pipeline(req,proxy,()=>{})

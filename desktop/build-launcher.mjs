@@ -27,7 +27,9 @@ if(!compiler){
   process.env.ELECTRON_BUILDER_CACHE ||= cacheHome
   const require=createRequire(import.meta.url),builderRequire=createRequire(require.resolve('electron-builder/package.json'))
   const toolset=builderRequire('app-builder-lib/out/toolsets/windows')
-  const resolved=await toolset.getMakeNsisPath('3.0.4.1');compiler=resolved.path;compilerEnvironment=resolved.env
+  // The pinned builder selects its checksum-verified legacy 3.0.4.1 bundle
+  // with null. A numeric version here selects the separate modern bundle API.
+  const resolved=await toolset.getMakeNsisPath(null);compiler=resolved.path;compilerEnvironment=resolved.env
 }
 let size=0
 const files=[]

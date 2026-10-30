@@ -9,6 +9,7 @@ import {connection,executeClaim} from './connection.mjs'
 import {acquireConnectionLock} from './workspace.mjs'
 import {createWorkbenchControl} from './workbench-control.mjs'
 import {connectorFailureCode,connectorFailureMessage} from './connection-feedback.mjs'
+import {confirmManaged} from './managed-confirmation.mjs'
 
 /** One worker owns one config lock. Adapters are injected by imported test code,
  * never by environment flags, downloaded tickets, models or server requests. */
@@ -25,7 +26,7 @@ export async function runConnection(configPath,{signal,adapters={},runtimeFactor
   const auth=JSON.parse(await fs.readFile(credentials,'utf8'))
   if(auth.server!==config.server)throw Error('credential_server_mismatch')
   const api=connection(config.server,auth.token)
-  const controls=createWorkbenchControl({configFile:configPath,api,...adapters,onActivity:()=>report('online')})
+  const controls=createWorkbenchControl({configFile:configPath,api,...(process.env.STUDIO_LOCAL_EMBEDDED==='1'?{confirm:confirmManaged}:{}),...adapters,onActivity:()=>report('online')})
   // Keep only the exact completion receipt in memory. Retrying it never executes a control again.
   let pendingCompletion=null
   async function finishPendingCompletion(){

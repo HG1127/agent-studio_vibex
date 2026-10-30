@@ -9,6 +9,8 @@ import {parseLocalDeviceInventory} from '@/lib/localDeviceInventory'
 import {connectionSetupProgress} from '@/lib/localConnectionProgress'
 import {ConnectorDownload} from './ConnectorDownload'
 import {desktopConnectionBridge} from '@/lib/desktopConnectionBridge'
+import {syncDesktopSession} from '@/lib/desktopComputer'
+import {DesktopPairingReview} from './DesktopPairingReview'
 import {connectionOrigins,connectionServer,validateConnectionTicket,deviceConnectionState,connectionCapabilitiesReady,type LocalConnectionMode,type LocalConnectionTicket} from '@/lib/localConnectionSetup'
 
 const primary='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50'
@@ -82,7 +84,7 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
       const next=validateConnectionTicket({format:'agent-studio-connect-v1',server,name:name.trim(),mode,origins,
         pairing:{id:pairing.id,code:pairing.pairing_code,expiresAt:pairing.expires_ms}})
       setTicket(next);setDevice(null);setBindingObserved(false);setNow(Date.now());setDesktopPrepared(false)
-      if(desktop){await desktop.prepareConnection(next);if(alive.current)setDesktopPrepared(true)}else download(next)
+      if(desktop){await syncDesktopSession();await desktop.prepareConnection(next);if(alive.current)setDesktopPrepared(true)}else download(next)
     }catch(e){if(alive.current)setError(String((e as Error).message||'连接文件未生成，请重试'))}
     finally{requestBusy.current=false;if(alive.current)setBusy(false)}
   }
@@ -90,9 +92,10 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
     if(!desktop||!activeOwner||busy||requestBusy.current)return
     requestBusy.current=true;setBusy(true);setError('')
     try{
-      if(ticket&&!paired&&!desktopPrepared){await desktop.prepareConnection(ticket);if(alive.current)setDesktopPrepared(true)}
+      if(ticket&&!paired&&!desktopPrepared){await syncDesktopSession();await desktop.prepareConnection(ticket);if(alive.current)setDesktopPrepared(true)}
+      else if(ticket&&!paired)document.querySelector('[data-desktop-pairing-review]')?.scrollIntoView({behavior:'smooth',block:'center'})
       else await desktop.openConnection()
-    }catch(e){if(alive.current)setError(String((e as Error).message||'本机授权窗口未能打开，请核查连接状态。'))}
+    }catch(e){if(alive.current)setError(String((e as Error).message||'本机授权区域未能打开，请核查连接状态。'))}
     finally{requestBusy.current=false;if(alive.current)setBusy(false)}
   }
   const close=async()=>{
@@ -117,20 +120,20 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>我在自己的电脑上操作，并同意以上访问范围。</span></label>
         {inputError&&<p role="alert" className="text-xs text-destructive">{inputError}</p>}
       </>:ready?<div role="status" className="rounded-2xl border border-primary/30 bg-primary/5 p-6"><CheckCircle2 className="h-8 w-8 text-primary"/><h3 className="mt-3 font-semibold">{device?.name} 已在线</h3><p className="mt-2 text-sm text-muted-foreground">已收到本机心跳与所选能力清单。连接成功不等于任务已经执行；接下来选择任务并批准具体操作。</p><p className="mt-3 text-xs text-muted-foreground">以后无需重新配对，在本地恢复连接即可。</p></div>:<>
-        {desktop?<section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4"><h3 className="font-semibold">在应用内确认授权</h3><p className="text-sm leading-6 text-muted-foreground">本机授权窗口已准备好当前设备。核对服务器和网站，选择具体文件或文件夹，再勾选本人确认并点击“确认连接并启动”。授权确认前不会绑定设备或执行任务。</p><button type="button" className={secondary} disabled={busy||!activeOwner||expired&&!paired} onClick={()=>void openNative()}>打开本机授权窗口</button></section>:<section className="space-y-3 rounded-xl border border-border p-4"><h3 className="font-semibold">在本机导入连接文件并确认</h3><p className="text-sm leading-6 text-muted-foreground">双击独立便携包中的 <strong>Start-Connector.cmd</strong>，应打开“Agent Studio · 电脑连接器”本机窗口。在顶部选择刚下载的 <strong>JSON 连接文件</strong>，核对账号、授权网站和文件夹，再勾选本人确认并点击“确认连接并启动”。CMD 仅代表程序已启动，必须完成此步骤才会绑定新设备。</p><p className="text-xs text-muted-foreground">如果本机窗口没有出现，请先检查任务栏 Chrome；重新下载更新版连接器即可修复旧版可能只打开工作台、不显示连接文件入口的问题。保持 CMD 进程运行；关闭后连接会离线。</p></section>}        <div role="status" className="flex items-start gap-3 rounded-xl bg-secondary/40 p-4">
+        {desktop?<DesktopPairingReview/>:<section className="space-y-3 rounded-xl border border-border p-4"><h3 className="font-semibold">在本机导入连接文件并确认</h3><p className="text-sm leading-6 text-muted-foreground">双击独立便携包中的 <strong>Start-Connector.cmd</strong>，应打开“Agent Studio · 电脑连接器”本机窗口。在顶部选择刚下载的 <strong>JSON 连接文件</strong>，核对账号、授权网站和文件夹，再勾选本人确认并点击“确认连接并启动”。CMD 仅代表程序已启动，必须完成此步骤才会绑定新设备。</p><p className="text-xs text-muted-foreground">如果本机窗口没有出现，请先检查任务栏 Chrome；重新下载更新版连接器即可修复旧版可能只打开工作台、不显示连接文件入口的问题。保持 CMD 进程运行；关闭后连接会离线。</p></section>}        <div role="status" className="flex items-start gap-3 rounded-xl bg-secondary/40 p-4">
           {device?.revoked||pollError||expired&&!paired?<ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground"/>:<Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-primary"/>}
-          <div className="min-w-0"><p className="text-sm font-semibold">{device?.revoked?'此设备连接已撤销':pollError?'当前无法核实上线状态':device&&deviceConnectionState(device,now)==='online'?'已收到心跳，等待所选能力就绪':paired?'配对已完成，等待连接器启动':expired?'连接文件已过期，尚未核实上线':preparation?.label||(desktop?'等待在本机授权窗口确认':'等待本机导入连接文件并确认授权')}</p>
+          <div className="min-w-0"><p className="text-sm font-semibold">{device?.revoked?'此设备连接已撤销':pollError?'当前无法核实上线状态':device&&deviceConnectionState(device,now)==='online'?'已收到心跳，等待所选能力就绪':paired?'配对已完成，等待连接器启动':expired?'连接文件已过期，尚未核实上线':preparation?.label||(desktop?'等待在本机授权区域确认':'等待本机导入连接文件并确认授权')}</p>
           <p className="mt-2 text-xs leading-6 text-muted-foreground">{device?.revoked?'请返回设备列表核对，不能恢复已撤销授权。':paired?'一次性凭证已使用，不需要重新下载或配对。'+(desktop?'请保持应用运行；':'请保留本机终端；')+'已保存连接可从双击入口恢复，网页仍在等待真实心跳。':!expired?(desktop?'授权凭证剩余 ':'连接文件剩余 ')+Math.max(0,Math.ceil((ticket.pairing.expiresAt-now)/1000))+' 秒有效；仅限本人，勿转发。':'仅为尚未配对的当前记录更新凭证，不会新建重复设备；若本机显示已配对，请先核实状态。'}</p>
           {preparation&&<p data-setup-progress role="status" className="mt-2 text-xs leading-6 text-muted-foreground">{preparation.detail}</p>}
-          {paired&&!device?.revoked&&<details className="mt-2 text-xs"><summary className="cursor-pointer font-semibold text-primary">已有本机配置？恢复原连接</summary><p className="mt-2 leading-6">在便携连接器本机窗口的“我的已保存连接”中选择此设备并点击“恢复连接”。已绑定设备不用重新导入连接文件，不需要任何开发命令。</p></details>}
+          {paired&&!device?.revoked&&<details className="mt-2 text-xs"><summary className="cursor-pointer font-semibold text-primary">已有本机配置？恢复原连接</summary><p className="mt-2 leading-6">在当前连接管理入口选择此设备并点击“恢复连接”。已绑定设备不用重新导入连接文件，不需要任何开发命令。</p></details>}
           </div></div>
         {pollError&&<p role="alert" className="text-sm text-destructive">{pollError}。未将未知状态标为已连接。</p>}
-        {desktop?<details className="text-xs leading-6 text-muted-foreground"><summary className="cursor-pointer">没有上线？检查这里</summary><p>从上方重新打开本机授权窗口，核对当前设备并完成确认。凭证过期时仅更新当前登记；已配对设备直接恢复原连接。浏览器功能需要已安装的 Google Chrome。</p><p className="break-all">当前服务器：{ticket.server}</p><p>退出应用会停止连接；关闭工作台窗口后仍可从托盘恢复。</p></details>:<details className="text-xs leading-6 text-muted-foreground"><summary className="cursor-pointer">没有上线？检查这里</summary><p>请确认已经完整解压便携包、Chrome 已打开本机连接器窗口、连接文件尚未过期，且已经在本机选择 JSON 文件、核对授权范围并点击确认。新连接默认 Google Chrome；未安装时请先安装，系统不会自动退回 Edge。</p><p className="break-all">当前服务器：{ticket.server}</p>{/localhost|127\.0\.0\.1|\[::1\]/.test(new URL(ticket.server).hostname)&&<p>这是本机预览地址，只能在同一台电脑使用。另一台电脑需通过可达的 HTTPS 系统地址重新生成连接文件。</p>}<p>需要登录网站时，在连接器的独立浏览器中登录；不会读取你日常浏览器的密码和 Cookie。</p><p>旧设备已在线时直接返回列表使用。便携包自带运行环境，不需要安装 Node.js、pnpm 或项目源码；首次连接必须在本机确认。仅有 CMD 启动提示不代表配对成功。</p></details>}
+        {desktop?<details className="text-xs leading-6 text-muted-foreground"><summary className="cursor-pointer">没有上线？检查这里</summary><p>从上方重新查看本机连接与授权，核对当前设备并完成确认。凭证过期时仅更新当前登记；已配对设备直接恢复原连接。浏览器功能需要已安装的 Google Chrome。</p><p className="break-all">当前服务器：{ticket.server}</p><p>退出应用会停止连接；关闭工作台窗口后仍可从托盘恢复。</p></details>:<details className="text-xs leading-6 text-muted-foreground"><summary className="cursor-pointer">没有上线？检查这里</summary><p>请确认已经完整解压便携包、Chrome 已打开本机连接器窗口、连接文件尚未过期，且已经在本机选择 JSON 文件、核对授权范围并点击确认。新连接默认 Google Chrome；未安装时请先安装，系统不会自动退回 Edge。</p><p className="break-all">当前服务器：{ticket.server}</p>{/localhost|127\.0\.0\.1|\[::1\]/.test(new URL(ticket.server).hostname)&&<p>这是本机预览地址，只能在同一台电脑使用。另一台电脑需通过可达的 HTTPS 系统地址重新生成连接文件。</p>}<p>需要登录网站时，在连接器的独立浏览器中登录；不会读取你日常浏览器的密码和 Cookie。</p><p>旧设备已在线时直接返回列表使用。便携包自带运行环境，不需要安装 Node.js、pnpm 或项目源码；首次连接必须在本机确认。仅有 CMD 启动提示不代表配对成功。</p></details>}
       </>}
       {error&&<p role="alert" className="rounded-xl bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
     </div>
     <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-card p-4"><button type="button" className={secondary} disabled={busy} onClick={()=>void close()}>{ready?'关闭':'稍后继续'}</button>
-      {ready&&device?<button type="button" className={primary} onClick={()=>onConnected(device)}>{successLabel}</button>:!ticket?<button type="button" className={primary} disabled={busy||!activeOwner||!componentReady||!consent||!name.trim()||!!inputError||(mode!=='files'&&!origins.length)} onClick={()=>void generate()}>{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Download className="h-4 w-4"/>}{desktop?(continueTarget?'更新此设备授权':'授权并连接本机'):(continueTarget?'更新此设备的连接文件':'生成并下载连接文件')}</button>:paired||device?.revoked?null:expired?<button type="button" className={primary} disabled={busy||!activeOwner||!!pollError} onClick={()=>void generate()}>{desktop?'更新授权凭证':'重新生成连接文件'}</button>:desktop?<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>void openNative()}>打开本机授权窗口</button>:<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>download(ticket)}><Download className="h-4 w-4"/>重新下载</button>}
+      {ready&&device?<button type="button" className={primary} onClick={()=>onConnected(device)}>{successLabel}</button>:!ticket?<button type="button" className={primary} disabled={busy||!activeOwner||!componentReady||!consent||!name.trim()||!!inputError||(mode!=='files'&&!origins.length)} onClick={()=>void generate()}>{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Download className="h-4 w-4"/>}{desktop?(continueTarget?'更新此设备授权':'授权并连接本机'):(continueTarget?'更新此设备的连接文件':'生成并下载连接文件')}</button>:paired||device?.revoked?null:expired?<button type="button" className={primary} disabled={busy||!activeOwner||!!pollError} onClick={()=>void generate()}>{desktop?'更新授权凭证':'重新生成连接文件'}</button>:desktop?<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>void openNative()}>查看本机连接与授权</button>:<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>download(ticket)}><Download className="h-4 w-4"/>重新下载</button>}
     </footer>
   </DialogContent></Dialog>
 }

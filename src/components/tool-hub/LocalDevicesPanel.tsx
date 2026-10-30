@@ -10,6 +10,7 @@ import {DeviceRecoveryHint} from './DeviceRecoveryHint'
 import {ComputerWorkspace} from './ComputerWorkspace'
 import {ConnectComputerButton} from './ConnectComputerButton'
 import {LocalConnectorEntry} from './LocalConnectorEntry'
+import {desktopConnectionBridge} from '@/lib/desktopConnectionBridge'
 
 /** End-user device workspace. Raw tool arguments and manual pairing codes are
  * deliberately absent, not merely collapsed. Binding remains in the ticket. */
@@ -46,7 +47,7 @@ function OwnedLocalDevices(){
       <div><h2 id="local-devices-heading" className="font-semibold">我的电脑与浏览器</h2><p className="mt-1 text-sm text-muted-foreground">选择电脑，在系统内浏览、编辑和管理文件，使用浏览器并核对执行结果。</p></div>
       <div className="flex flex-wrap gap-2"><ConnectComputerButton label="连接新电脑 / 浏览器" onConnected={d=>{if(!authorized())return;setSelected(d.id);setShowDeviceList(false);void refresh()}}/><button type="button" className="min-h-10 rounded-xl border border-border px-3 text-xs" disabled={busy||refreshing} onClick={()=>void refresh()}>刷新设备</button></div>
     </div>
-    <p className="rounded-xl bg-primary/5 px-4 py-3 text-xs leading-5 text-muted-foreground">日常入口就在这里：选择设备 → 文件 / 浏览器 → 查看结果。连接器只需在电脑上保持运行，不必来回打开外部管理页。</p>
+    <p className="rounded-xl bg-primary/5 px-4 py-3 text-xs leading-5 text-muted-foreground">{desktopConnectionBridge()?'本机组件随软件启动。连接状态和授权可从右下角“本机电脑”管理，日常文件与浏览器操作直接在这里完成。':'日常入口就在这里：选择设备 → 文件 / 浏览器 → 查看结果。连接器只需在电脑上保持运行，不必来回打开外部管理页。'}</p>
     {selectedDevice&&<div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-4 py-3"><p className="text-sm"><strong>{selectedDevice.name}</strong><span className="ml-2 text-xs text-muted-foreground">#{selectedDevice.id.slice(-6)} · {inventoryError?'状态未核实':deviceConnectionGuidance(selectedDevice,now).label}</span></p><button type="button" className="min-h-9 rounded-lg border border-border px-3 text-xs text-primary" disabled={commonBusy||busy} onClick={()=>setShowDeviceList(v=>!v)}>{showDeviceList?'收起设备清单':'切换 / 管理设备'}</button></div>}
     {selectedDevice&&inventoryError&&<div role="alert" aria-label="当前设备状态异常" className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm"><p className="font-semibold text-destructive">当前设备状态尚未核实，操作已暂停。</p><p className="mt-1 text-xs text-muted-foreground">{inventoryError} 原设备、已保存授权和页面草稿没有因此被删除；不要重复配对。</p><button type="button" disabled={refreshing} className="mt-2 min-h-9 text-xs font-semibold text-primary" onClick={()=>void refresh()}>重新核实当前设备</button></div>}
     <section aria-label="本人设备清单" hidden={!!selectedDevice&&!showDeviceList} className="space-y-2">

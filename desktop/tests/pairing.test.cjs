@@ -4,6 +4,8 @@ test('native bridge rejects settings, popup, subframe, foreign-origin and destro
  const origin='http://127.0.0.1:25700',frame={url:origin+'/tool-hub'},contents={mainFrame:frame,isDestroyed:()=>false}
  const event={sender:contents,senderFrame:frame}
  assert.equal(workbenchSender(event,contents,origin),true)
+ for(const route of ['/__pb/api/files/report.html','/__pb/api/files/report','/assets/untrusted%2Ehtml']){frame.url=origin+route;assert.equal(workbenchSender(event,contents,origin),false)}
+ frame.url=origin+'/tool-hub?view=devices';assert.equal(workbenchSender(event,contents,origin),true)
  assert.equal(workbenchSender({...event,sender:{}},contents,origin),false)
  assert.equal(workbenchSender({...event,senderFrame:{url:frame.url}},contents,origin),false)
  frame.url='file:///settings.html';assert.equal(workbenchSender(event,contents,origin),false)
@@ -13,7 +15,7 @@ test('native bridge rejects settings, popup, subframe, foreign-origin and destro
 test('bundled service accepts an immediate private pairing handoff and still leaves consent pending',async()=>{
  const {fork}=require('node:child_process'),http=require('node:http')
  const home=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-ipc-'))
- const site=http.createServer((_req,res)=>{res.setHeader('Content-Type','application/json');res.end('{}')})
+ const site=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='isolated-employee-session-token'){res.writeHead(401);res.end('{}');return}res.end(JSON.stringify(req.url.endsWith('/api/studio/me')?{user:{id:'fixture-owner',active:true}}:{items:[{id:'c'.repeat(24),revoked:false,paired:false}]}))})
  await new Promise(r=>site.listen(0,'127.0.0.1',r));const serverOrigin='http://127.0.0.1:'+site.address().port
  const child=fork(path.join(__dirname,'../services.mjs'),[JSON.stringify({profileHome:home,webRoot:path.join(__dirname,'../../dist'),serverOrigin})],{silent:true,windowsHide:true})
  child.stdout.resume();child.stderr.resume()
@@ -24,9 +26,12 @@ test('bundled service accepts an immediate private pairing handoff and still lea
    child.on('message',m=>{
     if(m.type==='ready'){
      ready=m
-     child.send({type:'prepare-pairing',requestId:'isolated-fixture',ticket:{format:'agent-studio-connect-v1',server:serverOrigin+'/__pb',name:'Immediate IPC fixture',mode:'files',origins:[],pairing:{id:'c'.repeat(24),code:'d'.repeat(48),expiresAt:Date.now()+280000}}})
+     child.send({type:'computer-request',action:'session',requestId:'isolated-session',input:{token:'isolated-employee-session-token'}})
     }
-    if(m.type==='pairing-result'){clearTimeout(timeout);try{assert.equal(m.ok,true);assert.equal(m.requestId,'isolated-fixture');resolve()}catch(e){reject(e)}}
+    if(m.type==='computer-result'&&m.requestId==='isolated-session'){
+     child.send({type:'computer-request',action:'prepare',requestId:'isolated-fixture',input:{ticket:{format:'agent-studio-connect-v1',server:serverOrigin+'/__pb',name:'Immediate IPC fixture',mode:'files',origins:[],pairing:{id:'c'.repeat(24),code:'d'.repeat(48),expiresAt:Date.now()+280000}}}})
+    }
+    if(m.type==='computer-result'&&m.requestId==='isolated-fixture'){clearTimeout(timeout);try{assert.equal(m.ok,true);assert.equal(m.requestId,'isolated-fixture');resolve()}catch(e){reject(e)}}
    })
    child.once('error',reject)
   })

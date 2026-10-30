@@ -1,5 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),http=require('node:http')
 const {serverOrigin,childEnvironment,readSettings,saveSettings}=require('../policy.cjs')
+test('cancelled renderer requests do not stop the desktop proxy',async()=>{
+ const {createGateway}=await import('../gateway.mjs')
+ const upstream=http.createServer((req,res)=>{if(req.url.endsWith('/slow'))setTimeout(()=>{if(!res.destroyed)res.end('late')},100);else res.end('alive')})
+ await new Promise(r=>upstream.listen(0,'127.0.0.1',r));const gateway=await createGateway({serverOrigin:'http://127.0.0.1:'+upstream.address().port,webRoot:__dirname})
+ try{
+  const controller=new AbortController(),pending=fetch(gateway.origin+'/__pb/slow',{signal:controller.signal});controller.abort();await assert.rejects(pending)
+  await new Promise(r=>setTimeout(r,150));assert.equal(await(await fetch(gateway.origin+'/__pb/health')).text(),'alive')
+ }finally{await gateway.close();upstream.closeAllConnections();await new Promise(r=>upstream.close(r))}
+})
 test('copy and fullscreen work only for owned main frames; sensitive permissions stay denied',()=>{
   const {rendererPermission}=require('../policy.cjs'),origins=['http://127.0.0.1:24567']
   assert.equal(rendererPermission('clipboard-sanitized-write',origins[0]+'/agent-run',origins),true)

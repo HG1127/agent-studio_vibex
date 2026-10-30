@@ -24,7 +24,7 @@ export function managerError(error){
  const map={picker_busy:'另一选择窗口仍在处理，请先取消或完成。',picker_cancelled:'本次选择已取消，原授权未改变。',picker_expired:'连接文件在选择期间已过期，未采用迟到的选择。请在工作台继续这条设备登记并更新连接文件。',picker_timeout:'系统选择窗口等待过久，已结束本次选择。请重试或使用默认专用工作文件夹；原授权未改变。',permission_scope_limit:'最多添加 20 个具体文件或文件夹，请移除不需要的项目。',invalid_permission_file:'请选择真实的本地文件，不能填写网络路径。',invalid_permission_grant:'单个文件只能只读；需要生成报告请另外授权输出文件夹。',file_picker_unavailable:'系统文件选择窗口未能打开，请检查本机桌面会话。',file_not_authorized:'该文件未授权，只能读取明确选中的文件。',edit_target_required:'请先选择要修改的已有连接；不会沿用另一台设备的目录选择。',file_scope_disabled:'此连接仅使用浏览器，不能在这里开放文件权限。',chrome_not_installed:'需要先安装 Google Chrome。本程序不会安装软件或改用其他浏览器。',review_changed:'本机选择已变化，请重新核对并确认。',local_config_changed:'连接配置已变化，请刷新列表后重新确认。',connection_running_or_locked:'原连接仍在运行，请先停止，不要重复启动。',device_already_paired_use_resume:'已有本机配置，请恢复原连接，不要重复导入。',workspace_too_broad_or_private:'请选具体工作子文件夹，不能选择整盘、用户主目录或凭证目录。',workspace_link_or_not_directory:'请选真实本地文件夹，不支持链接目录。',workspace_must_be_local_absolute:'请选择本地文件夹，不支持网络共享目录。',browser_not_enabled:'当前连接没有启用浏览器，不能扩大权限。',folder_picker_unavailable:'系统文件夹窗口不可用，请检查本机桌面会话。',invalid_request:'请求不受支持，未进行操作。',connection_not_confirmed:'未确认，没有绑定或执行。',too_large:'连接文件过大，请选工作台生成的文件。',ENOENT:'未找到原连接配置，请先核查，不要反复绑定。'}
  return map[error?.code]||map[error?.message]||connectionFailureHint(error)||(/过期|凭证|连接文件|授权网站|网站地址|HTTPS|请选择/.test(String(error?.message))?String(error.message).slice(0,240):'本次操作未确认，请核查连接状态；不会自动重试。')
 }
-export async function createConnectorManager({home=os.homedir(),picker=pickLocalFolder,checkBrowser=verifyChromeInstalled,prepare=prepareGuidedConnection,startChild,clock=Date.now,filePicker=pickPermissionFile,openWindow=launchPermissionWindow,progressReporter}={}){
+export async function createConnectorManager({home=os.homedir(),picker=pickLocalFolder,checkBrowser=verifyChromeInstalled,prepare=prepareGuidedConnection,startChild,clock=Date.now,filePicker=pickPermissionFile,openWindow=launchPermissionWindow,progressReporter,confirmReview}={}){
   const token=randomBytes(32).toString('hex'),children=new Map(),attempts=new Map(),launching=new Set(),uiReadyWaiters=new Set()
   let origin='',pending=null,selectedFolder=null,selectedKind='folder',readOnly=true,revision=randomBytes(12).toString('hex'),editing=null,permissions=null,busy=false,closed=false,uiReady=false
   const markUiReady=()=>{if(uiReady)return;uiReady=true;for(const ready of uiReadyWaiters)ready(true);uiReadyWaiters.clear()}
@@ -122,7 +122,7 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
     const profile=await readGuidedProfile(id,{home})
     if(profile.browserEnabled&&profile.browserChannel==='chrome')await checkBrowser()
     if(closed||entry.stopRequested){entry.stopRequested=true;entry.state='stopped';return}
-    child=startChild?await startChild(profile):fork(path.join(own,'run.mjs'),['run',profile.configFile],{execPath:process.execPath,execArgv:[],silent:true,windowsHide:true,env:{...process.env,NODE_OPTIONS:'',NODE_PATH:'',STUDIO_LOCAL_MANAGER:'1'}})
+    child=startChild?await startChild(profile):fork(path.join(own,'run.mjs'),['run',profile.configFile],{execPath:process.execPath,execArgv:[],silent:true,windowsHide:true,env:{...process.env,NODE_OPTIONS:'',NODE_PATH:'',STUDIO_LOCAL_MANAGER:'1',STUDIO_LOCAL_EMBEDDED:confirmReview?'1':''}})
     entry.child=child;children.set(id,entry)
    }catch(error){if(entry.stopRequested||closed){entry.state='stopped';return}entry.state='failed';entry.reasonCode=connectorFailureCode(error);throw error}
    finally{launching.delete(id)}
@@ -135,6 +135,15 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
     }
     if(message?.type==='studio-control-updated')entry.restartAfterControl=true
    })
+  const reviews=new Map()
+  child.once('close',()=>{for(const controller of reviews.values())controller.abort();reviews.clear()})
+  child.on('message',message=>{
+    if(message?.type==='studio-review-cancel'){reviews.get(message.requestId)?.abort();return}
+    if(message?.type!=='studio-review'||!confirmReview)return
+    if(!current()||entry.stopRequested||!/^[a-f0-9]{32}$/.test(message.requestId||'')||reviews.has(message.requestId)||reviews.size>=1||typeof message.review?.message!=='string'||message.review.message.length>24000||!Number.isFinite(message.expiresAt)||message.expiresAt<=Date.now()||message.expiresAt>Date.now()+91000)return
+    const controller=new AbortController();reviews.set(message.requestId,controller)
+    void Promise.resolve().then(()=>confirmReview({deviceId:id,review:message.review,expiresAt:message.expiresAt},controller.signal)).then(ok=>{if(child.connected&&current()&&!entry.stopRequested)child.send({type:'studio-review-result',requestId:message.requestId,ok:ok===true},()=>{})},()=>{if(child.connected)child.send({type:'studio-review-result',requestId:message.requestId,ok:false},()=>{})}).finally(()=>{reviews.delete(message.requestId)})
+  })
   child.on('message',message=>{
     if(message?.type!=='studio-open-permissions')return
     const reply=ok=>{if(child.connected)try{child.send({type:'studio-open-permissions-result',requestId:message.requestId,ok},()=>{})}catch{}}
@@ -298,7 +307,10 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
   await Promise.all([...children.values()].map(entry=>new Promise(resolve=>{const {child}=entry;entry.stopRequested=true;entry.restartAfterControl=false;entry.reasonCode=null;const timer=setTimeout(resolve,6000);child.once('close',()=>{clearTimeout(timer);resolve()});try{if(child.connected)child.send({type:'studio-local-stop'},()=>{});else child.kill('SIGTERM')}catch{clearTimeout(timer);resolve()}})))
   server.closeIdleConnections();await new Promise(resolve=>server.close(resolve))
  }
-  return {origin,token,close,waitForUiReady,waitForConnection,resumeSaved:async(id,fingerprint)=>{const p=await readGuidedProfile(id,{home});if(p.fingerprint!==fingerprint)throw Error('local_config_changed');await launch(id)}}
+  return {origin,token,close,waitForUiReady,waitForConnection,state,
+   clearDesktopDrafts:async()=>{if(selection){const active=selection;cancelSelection(active,'account_changed');await active.done}while(busy&&!closed)await new Promise(r=>setTimeout(r,25));progress.stop();clearReview();permissions=null;editing=null},
+   stopSaved:async id=>{const entry=attempts.get(id);if(!entry)return;entry.stopRequested=true;entry.restartAfterControl=false;if(entry.restartTimer){clearTimeout(entry.restartTimer);entry.restartTimer=null}if(entry.child&&!entry.exited){await new Promise(resolve=>{const timer=setTimeout(()=>{try{entry.child.kill()}catch{}resolve()},6500);entry.child.once('close',()=>{clearTimeout(timer);resolve()});try{if(entry.child.connected)entry.child.send({type:'studio-local-stop'},()=>{});else entry.child.kill('SIGTERM')}catch{clearTimeout(timer);resolve()}})}},
+   resumeSaved:async(id,fingerprint)=>{const p=await readGuidedProfile(id,{home});if(p.fingerprint!==fingerprint)throw Error('local_config_changed');await launch(id)}}
 }
 /** Daily startup should stay out of the way: a single saved connection is
  * resumed in the background. Pairing/settings UI is opened only for first use,
