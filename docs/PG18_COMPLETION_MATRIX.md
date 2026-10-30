@@ -15,7 +15,7 @@
 
 当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，覆盖原有20页、30组操作；页面数量不是验收完成量。最终入口继续使用原 `index.html -> main.tsx -> App.tsx`。首页、目录、草稿、登录及账户菜单已有PG适配源码；未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
 
-本地允许范围内的纯回归800项全部通过，其中原模型连接页53项和独立Native指纹检查2项已纳入。当前原模型页前端TypeScript6通过；普通构建101资源且PG资源匹配0，显式原PG构建102资源。API后端沿用9679a48已通过的TypeScript5基线，本批无后端产品修改。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
+本地允许范围内的纯回归872项全部通过，本批新增草稿测试/发现39项、原模型故事主错误保留1项及Worker闭集诊断32项。前端TypeScript6、API TypeScript5通过；普通构建101资源且PG资源匹配0，显式原PG构建102资源。实际源码收集核对Native355文件与完整069的389文件/原53项SQL输入，未生成或执行服务交付物。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
 
 已合流原团队共享页的业务Hook，保留原JSX、导航、布局和PB分支；写入及确认固定发送发起时员工ID，服务端先验证实际Cookie和owner，再在任何台账写入前比较。焦点恢复会先验证Cookie，即使旧读取或写回仍未返回也隔离旧账号。独立原页host/E2E复用fresh F08，包含创建、兑换、撤销、真实写后断线与原回执恢复、换账号迟到响应；Native代理保持8秒，全部PB/网络/身份及收费调用零门禁保留，安全成功截图仅写合成CI私有artifact。原页故事仍待执行。
 
@@ -88,6 +88,16 @@
 同提交[原分享](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666868/job/124124025433)仍为实际回执4/要求5，ECONNRESET、无上游状态、业务后完成未观察到且注入仍待触发；受控丢回复计数0，根因继续分析，没有改判成功。[完整Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666965)新观察确认assessment自行exit1、未请求停机且固定stderr类别为service_refused；final14现越过先前重复领取阶段，到warm_sample因Native heartbeat不可用失败，均未通过。[遥测控制](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666794)在139项纯检查中因一处独立认证源码指纹陈旧而失败，未进入控制器；当前仅同步该指纹，九个封存门禁均保留并加入本地检查。公开调用参考故事另有iframe轮询按钮不可见/不稳定失败，原因待查。
 
 以上结果只属于各精确提交；源码、纯检查和构建不等于原页真实验收。完整原20页0、完整实时监控0、员工UAT0、合格24小时0，生产仍NO-GO。默认050、冻结059/060、完整069与070–073 SQL及权限未改，074独立包仍待审；没有部署或连接公司数据库。
+
+`06748d9`的[完整质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078229456)50/50通过，根必需测试3863/3863；[原PB双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078695786/job/124141725994)19/19通过。[遥测控制](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078228783/job/124140070569)实际控制器/非root Native IPC通过，先前独立认证pin修复已得到真实验证。
+
+同提交[原Home完整指定故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078229059/job/124140071655)通过，实际观察和两张安全截图已核对：原生成/已提交断线后的原意图恢复、070071手动创建与修订、真实stale CAS409、外owner404、预期员工submit/confirm409、Cookie换人及已完成旧结果围栏全部通过。实际新Agent+1、edited历史+2、F01 saves/业务runs/旧effects不变；三次合成provider请求及三次实际凭据读取，无真实收费请求；PB/意外API/外部网络/伪头/清理均0。这只接受该指定故事，未补齐多模型选择、未保存/脏草稿修订、旧null作者记录新增工具建议或F01到070持久关联，完整原Home/20页与员工UAT仍未完成。
+
+[原模型页首次真实CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078229059/job/124140071586)在finally读取try内`normalAudit`时ReferenceError，可能遮蔽原始失败，未保存可接受的完整观察。现将观察变量放到共同作用域，并以实际finalizer加内存端口回归验证早期失败仍保留同一个主错误对象、不写成功PNG。没有把首次故事改判成功，真实CRUD/换号/未知写入仍待重跑。
+
+本批另接入原表单的保存前显式测试和模型发现源码：独立`native_model_draft_discovery_v1`来自真实同一Repository实例，同时要求原配置写/模型probe许可。只允许官方只读模型清单端点，完整分页后才采用结果，超量/错误/超时不采用部分清单；不保存连接、不执行生成，手工ID优先。实际事务owner/CAS检查与准入/结果审计、密钥请求作用域和账号围栏保留。HTTP额外拒绝重复JSON、编码/传输歧义和非精确路径。39项纯回归及类型/构建通过，但独立合成host仍在装配，真实SQL/原页、实际服务商DNS/TLS及自定义地址兼容未验收。已按[OpenAI官方列表接口](https://developers.openai.com/api/reference/resources/models/methods/list)、[Claude列表接口](https://platform.claude.com/docs/en/api/models/list)及[Gemini模型接口](https://ai.google.dev/api/models)核对查询形状；保留原Anthropic版本头属于兼容选择，不宣称已通过真实服务商请求。
+
+完整Worker当前仍失败。新源码只在assessment既有启动边界记录有限阶段/安全SQLSTATE或Node码，通过原nonce/entry退出IPC传送；final14将真实Native Reader负向阶段与原异常对象关联再转发，并原样重抛。未知、重复、getter/proxy及含额外字段的观察均拒绝，诊断失败不得取代主错误或授予健康/运行资格。32项纯回归通过，5秒Reader/8秒Native/原Worker预算、权限、租约、13负例、全审计、四空队列与停止门禁不改。内部分享和实际Worker原因继续定位，未认定迁移完成。
 
 以下为历史准备与隔离组件证据，不能转用于上述新候选。
 

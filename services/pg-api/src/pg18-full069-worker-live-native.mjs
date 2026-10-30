@@ -1,5 +1,7 @@
 // Fixed local TLS -> owned original NativeServer. No Reader bypass or adapter.
 import https from 'node:https'
+import {isNativeError,isProxy} from 'node:util/types'
+import {parseFull069NativeReaderPhase} from './pg18-full069-native-reader-failure-observation.mjs'
 import http from 'node:http'
 import {X509Certificate,createPrivateKey} from 'node:crypto'
 import {performance} from 'node:perf_hooks'
@@ -11,6 +13,8 @@ import {reviewFull069NativeReaderCatalogAudit} from './pg18-full069-reader-audit
 import {liveContext,readLivePrivate,assertLiveStable} from './pg18-full069-worker-live-trust.mjs'
 import {observeFull069OwnedProcesses} from './pg18-full069-worker-live-processes.mjs'
 import {closed,liveLimits,freeze,liveFail} from './pg18-full069-worker-live-contract.mjs'
+const readerFailureObservations=new WeakMap()
+export function full069OwnedNativeReaderFailureObservation(error){try{return isNativeError(error)&&!isProxy(error)?readerFailureObservations.get(error)??null:null}catch{return null}}
 const observations=new WeakSet(),states=new WeakMap(),origin='https://127.0.0.1:17443',route='/api/v2/company-worker-heartbeats',routes=new Map([['/api/native-auth/login','POST'],['/api/native-auth/logout','POST'],['/api/native-auth/me','GET'],['/api/native-auth/capabilities','GET'],[route,'GET']])
 function state(handle){const s=states.get(handle);if(!s||s.closed)liveFail('untrusted_native');assertLiveStable(s.trust);observeFull069OwnedProcesses(s.processes,{complete:false});return s}
 function tlsMaterial(ctx){const p=ctx.profile.credentials,ca=readLivePrivate(p.tls_ca,{max:131072}).bytes,cert=readLivePrivate(p.tls_certificate,{max:131072}).bytes,key=readLivePrivate(p.tls_key,{max:131072}).bytes,x509=new X509Certificate(cert);if(x509.checkIP('127.0.0.1')!=='127.0.0.1'||!x509.checkPrivateKey(createPrivateKey(key))||Date.parse(x509.validFrom)>Date.now()-30000||Date.parse(x509.validTo)<Date.now()+ctx.profile.minimum_ms+600000)liveFail('tls_validity');return {ca,cert,key}}
@@ -45,7 +49,7 @@ export async function observeFull069OwnedNative(handle,{ready=true,initial=false
  }catch(error){
   // Closed phase data survives a refused read without disclosing credentials,
   // errors or snapshots, and never changes the original failure outcome.
-  try{process.stderr.write(JSON.stringify({event:'full069_worker_live_reader_catalog_phase',phase:readerPhase,completed_native_observation:false,qualifies_run:false,production_cutover_allowed:false})+'\n')}catch{}
+  try{const data=parseFull069NativeReaderPhase({event:'full069_worker_live_reader_catalog_phase',phase:readerPhase,completed_native_observation:false,qualifies_run:false,production_cutover_allowed:false});if(isNativeError(error)&&!isProxy(error)&&!readerFailureObservations.has(error))readerFailureObservations.set(error,data);process.stderr.write(JSON.stringify(data)+'\n')}catch{}
   throw error
  }finally{
   // Never replay a read/login after a failure. A best-effort logout gets the

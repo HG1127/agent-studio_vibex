@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {reportAssessmentStartupFailure,type AssessmentStartupPhase} from './pg18-full069-assessment-startup-observation.mjs'
 import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 // Explicit standalone review service only. No default/NativeServer wiring.
 // Plan/help are offline. Preflight never constructs Worker/Broker/executor.
@@ -101,7 +102,10 @@ export function createAgentAssessmentServiceAdmission(dispatch:(proof:AgentAsses
 }
 export async function startAgentAssessmentService(kind:AgentAssessmentServiceKind,mode:"preflight"|"serve"="preflight",env:NodeJS.ProcessEnv=process.env){
   // This must precede every file read, pg import, Pool and listener creation.
-  const cfg=agentAssessmentServiceConfig(env,kind,mode),buffers:Buffer[]=[]
+  let startupPhase:AssessmentStartupPhase='configuration'
+  let cfg:ReturnType<typeof agentAssessmentServiceConfig>
+  try{cfg=agentAssessmentServiceConfig(env,kind,mode)}catch(error){reportAssessmentStartupFailure(startupPhase,error);throw error}
+  const buffers:Buffer[]=[]
   const read=(name:string)=>{const bytes=readAgentAssessmentCredential(cfg,name);buffers.push(bytes);return bytes}
   let encryptionKey:Buffer|undefined
   let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
@@ -111,16 +115,21 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
   const endPools=async()=>{const results=await Promise.allSettled(pools.map(pool=>pool.end()));if(results.some(result=>result.status==="rejected"))throw Error("agent_assessment_pool_shutdown_failed")}
   const clear=()=>{heartbeat?.close();closeClient?.();closeDesign?.();for(const bytes of buffers)bytes.fill(0);encryptionKey?.fill(0)}
   try{
+    startupPhase='credential_read'
     const passwordNames=[...(kind==="worker"?["worker.secret"]:["api.secret","dispatch.secret","broker.secret"]),...(cfg.design?[kind==="worker"?"design-worker.secret":"design-dispatch.secret"]:[])],passwords=passwordNames.map(name=>agentAssessmentDatabasePassword(read(name)))
     if(new Set(passwords).size!==passwords.length)throw Error("unsafe_agent_assessment_credential")
     // Preflight checks encryption-key metadata only, never decrypts a model
     // credential or loads the model encryption key into executable Broker.
     if(kind==="broker")inspectAgentAssessmentCredential(cfg,"model-encryption.secret")
     const ca=read("review-ca.pem"),cert=read(kind==="worker"?"review-worker.pem":"review-server.pem"),tlsKey=read(kind==="worker"?"review-worker.key":"review-server.key")
+    startupPhase='tls_validation'
     assertAgentAssessmentServiceTls(cfg,ca,cert,tlsKey)
+    startupPhase='pg_import'
     const {Pool}=await import("pg")
+    startupPhase='pool_create'
     const connect=(user:string,password:string)=>{const pool=new Pool({host:cfg.target.host,port:cfg.target.port,database:cfg.target.database,user,password,max:3,connectionTimeoutMillis:4000,idleTimeoutMillis:10000,statement_timeout:8000,...(mode==="preflight"?{options:"-c default_transaction_read_only=on"}:{})});pool.on("error",()=>{});pools.push(pool);return adapter(pool,kind==="broker"?cfg:undefined)}
     const dedicated=connect(kind==="worker"?cfg.workerLogin:cfg.dispatchLogin,passwords[kind==="worker"?0:1]!)
+    startupPhase='operator_audit'
     await inspectAgentAssessmentOperatorPool(dedicated,{...cfg.target,user:kind==="worker"?cfg.workerLogin:cfg.dispatchLogin},kind==="worker"?"worker":"dispatch")
     let business:SqlPool|undefined,secret:SqlPool|undefined
     if(kind==="broker"){
@@ -130,9 +139,12 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
     }
     let designAudit:AgentDesignAuditVerifier|undefined,designDedicated:SqlPool|undefined,designBusiness:SqlPool|undefined,designSecret:SqlPool|undefined
     if(cfg.design){
+      startupPhase='design_audit_import'
       designAudit=await loadAgentDesignAuditVerifier()
       const login=kind==="worker"?cfg.designWorkerLogin:cfg.designDispatchLogin
+      startupPhase='design_pool_create'
       designDedicated=connect(login,passwords.at(-1)!)
+      startupPhase='design_operator_audit'
       await inspectAgentDesignOperatorPool(designDedicated,{...cfg.target,user:login},kind==="worker"?"worker":"dispatch",designAudit)
       if(kind==="broker"){
         designBusiness=connect("agentstudio_stage_login",passwords[0]!);designSecret=connect("agentstudio_model_broker_login",passwords[2]!)
@@ -147,21 +159,30 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
     }
     const {agentAssessmentApproval}=await import("./agent-assessment-contract.ts"),activation={executionEnabled:true,executionApproval:agentAssessmentApproval}
     if(kind==="worker"){
+      startupPhase='worker_import'
       const [{AgentAssessmentWorker},{createAgentAssessmentMutualTlsClient}]=await Promise.all([import("./agent-assessment-worker.ts"),import("./agent-assessment-client.ts")])
+      startupPhase='client_construct'
       const client=createAgentAssessmentMutualTlsClient({...activation,origin:cfg.origin,reviewedServerFingerprint256:cfg.serverFingerprint,ca,cert,key:tlsKey})
       closeClient=client.close
+      startupPhase='heartbeat_open'
       if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('assessment')
+      startupPhase='worker_construct'
       const worker=new AgentAssessmentWorker(dedicated,randomUUID(),client,activation)
       let designWorker:import("./agent-design-worker.ts").AgentDesignWorker|undefined,designClient:import("./agent-design-client.ts").AgentDesignMutualTlsClient|undefined
       if(cfg.design){
+        startupPhase='design_worker_import'
         const [{AgentDesignWorker},{createAgentDesignMutualTlsClient}]=await Promise.all([import("./agent-design-worker.ts"),import("./agent-design-client.ts")])
         const designActivation={executionEnabled:true,executionApproval:agentDesignExecutionApproval,audit:designAudit}
+        startupPhase='design_client_construct'
         designClient=createAgentDesignMutualTlsClient({...designActivation,origin:cfg.origin,reviewedServerFingerprint256:cfg.serverFingerprint,ca,cert,key:tlsKey})
         closeDesign=designClient.close
+        startupPhase='design_worker_construct'
         designWorker=new AgentDesignWorker(designDedicated!,randomUUID(),designClient,designActivation)
       }
       const closeWorkerClaims=()=>{worker.closeNewClaims();designWorker?.closeNewClaims();if(worker.claimAdmissionSnapshot().closed&&(!designWorker||designWorker.claimAdmissionSnapshot().closed))heartbeat?.newClaimsClosed()}
+      startupPhase='startup_publish'
       heartbeat?.startupChecksComplete()
+      startupPhase='loop_start'
       let stopping=false;const stopDelay=new AbortController()
       const designLoop=designWorker?(async()=>{while(!stopping){try{await designWorker!.tick()}catch{heartbeat?.loopUnavailable();process.stderr.write("AGENT_DESIGN_WORKER_TICK_UNAVAILABLE\n")}if(!stopping)await delay(750,undefined,{signal:stopDelay.signal}).catch(()=>undefined)}})():Promise.resolve()
       const loop=(async()=>{while(!stopping){let wait=1500;try{const result=await worker.tick();wait=result.state==="idle"?750:100;if(result.state!=="idle")process.stdout.write(JSON.stringify({service:"agent-assessment-worker",state:result.state})+"\n")}catch{heartbeat?.loopUnavailable();process.stderr.write("AGENT_ASSESSMENT_WORKER_TICK_UNAVAILABLE\n")}if(!stopping)await delay(wait,undefined,{signal:stopDelay.signal}).catch(()=>undefined)}})()
@@ -190,7 +211,7 @@ export async function startAgentAssessmentService(kind:AgentAssessmentServiceKin
     shutdown=()=>closing??(closing=(async()=>{admission.close();try{await admission.drain(server)}finally{try{await bounded(endPools(),5000)}finally{clear()}}})())
     await new Promise<void>((resolve,reject)=>{server.once("error",reject);server.listen(cfg.port,"127.0.0.1",resolve)})
     return {mode,service:kind,ready:true,bind:"127.0.0.1",port:cfg.port,requires_mutual_tls:true,execution_enabled:true,production_cutover_allowed:false,close:shutdown}
-  }catch(error){if(shutdown)await shutdown().catch(()=>undefined);else{await bounded(endPools(),5000).catch(()=>undefined);clear()}throw error}
+  }catch(error){reportAssessmentStartupFailure(startupPhase,error);if(shutdown)await shutdown().catch(()=>undefined);else{await bounded(endPools(),5000).catch(()=>undefined);try{clear()}catch{}}throw error}
 }
 type ShutdownControl={signals:{on(event:"SIGTERM"|"SIGINT",listener:()=>void):unknown;off(event:"SIGTERM"|"SIGINT",listener:()=>void):unknown};timer:(callback:()=>void,ms:number)=>ReturnType<typeof setTimeout>;clear:(timer:ReturnType<typeof setTimeout>)=>void;exit:()=>void;reportFailure:()=>void}
 export function attachAgentAssessmentShutdown(close:()=>Promise<void>,control:ShutdownControl={signals:process,timer:setTimeout,clear:clearTimeout,exit:()=>process.exit(1),reportFailure:()=>{process.stderr.write("AGENT_ASSESSMENT_SHUTDOWN_INCOMPLETE\n")}}):void{
@@ -217,4 +238,4 @@ export async function runAgentAssessmentServiceCli(args:string[],env:NodeJS.Proc
   process.stdout.write(JSON.stringify(report)+"\n")
   if(close)attachAgentAssessmentShutdown(close)
 }
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))void runAgentAssessmentServiceCli(process.argv.slice(2)).catch(()=>{process.stderr.write("AGENT_ASSESSMENT_SERVICE_REFUSED\n");process.exitCode=1})
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))void runAgentAssessmentServiceCli(process.argv.slice(2)).catch(error=>{reportAssessmentStartupFailure('cli_entry',error);process.stderr.write("AGENT_ASSESSMENT_SERVICE_REFUSED\n");process.exitCode=1})

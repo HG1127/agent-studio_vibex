@@ -6003,7 +6003,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 800,
+    "combined_pure_checks": 872,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6389,7 +6389,7 @@
     "original_home_natural_authoring_source_merged": true,
     "original_home_natural_authoring_actual_browser_accepted": false,
     "current_source_checks": {
-      "pure": 800,
+      "pure": 872,
       "final14_framing_related_pure": 38,
       "worker_startup_related_pure": 39,
       "frontend_TS6": true,
@@ -6407,7 +6407,10 @@
       "frontend_and_shared_source_unchanged": false,
       "frontend_TS6_and_actual_build_baseline_head": null,
       "actual_normal_assets": 101,
-      "actual_original_PG_assets": 102
+      "actual_original_PG_assets": 102,
+      "Native_bundle_literal_source_closure": 355,
+      "complete069_literal_source_capture": 389,
+      "complete069_SQL_inputs_unchanged": 53
     },
     "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
     "full069_parent_diagnostic_framing_fix": "Only standalone original refusal lines select primary; exact diagnostic event names cannot override it. Parent separately parses one closed runtime-open or ACL-negative observation. Unknown keys/phases/accounts, authority, secrets, oversize and duplicate records refuse. Original supervisor/cleanup unchanged;36 related pure checks pass; actual next-head rerun pending.",
@@ -6644,6 +6647,97 @@
       "callers_run": 41073666769,
       "caller_browser_failure": "iframe poll button not stable/visible; root cause pending",
       "does_not_accept_new_candidate": true,
+      "production_GO": false
+    },
+    "verified_06748d9_actual_evidence": {
+      "head": "06748d9d2b079bb5f67702c1bf49610eb427ebe9",
+      "quality": {
+        "run": 41078229456,
+        "jobs": 50,
+        "passed_jobs": 50,
+        "root_job": 124140073493,
+        "root_tests": 3863,
+        "root_passed": 3863,
+        "raw_sha256": "5da3bcd7e8fbfe624ae86bedc77b24c242ad535bba1908b8df0fb696bbee6ea2"
+      },
+      "PB19": {
+        "run": 41078695786,
+        "job": 124141725994,
+        "passed": 19,
+        "workers": 2,
+        "raw_sha256": "f85d9179fbd4f99dbd5400bfb068fb708fc2693caca9bb9bac4559e8e72290a7"
+      },
+      "Home_story": {
+        "run": 41078229059,
+        "job": 124140071655,
+        "actual_story_passed": true,
+        "observation_sha256": "b0a36bcdde8f07cb6d603cfcea8ef2ceedf2abb934bc8b6ee443994a0849b5ee",
+        "raw_log_sha256": "cca66f31e83f2de802a7abacf14450a81c06a0bd48dc579ca45e0cf5457402aa",
+        "steps": {
+          "original_generation_and_recovery": true,
+          "original_manual070071_save": true,
+          "original_revision_and_CAS_save": true,
+          "busy_late_account_fence": true
+        },
+        "observed_zero_gates_after_cleanup": true,
+        "owner_CAS_and_foreign_refusals_verified": true,
+        "screenshots_visually_reviewed": true,
+        "images": [
+          {
+            "name": "original-home-design-generated.png",
+            "sha256": "307ceec06fa5148f9737f5f3ba209fc4a7689cf269e46b6f4dbca67a6e6a5050"
+          },
+          {
+            "name": "original-home-design-revised-saved.png",
+            "sha256": "974d21503b12df721cc86fb1906c439a2dad06bfe3ea8dccbf461388d0c47a69"
+          }
+        ],
+        "synthetic_provider_posts": 3,
+        "paid_external_provider_calls": 0,
+        "not_full_Home_or_original20_pages": true
+      },
+      "telemetry": {
+        "run": 41078228783,
+        "job": 124140070569,
+        "actual_controller_and_Native_IPC_passed": true,
+        "raw_sha256": "5d07f765972eff96203a6f27589c459eea2b3f46620d6f0765c53f4723fb0e83"
+      },
+      "model_page": {
+        "job": 124140071586,
+        "actual_story_passed": false,
+        "failure": "ReferenceError: normalAudit was declared in try, then referenced in finally; original primary may have been masked",
+        "finally_scope_and_primary_preservation_source_fixed": true,
+        "raw_sha256": "cd527bd8241d764276553d419887ad15880f89ae48fced2c8ec4e07582c427f8"
+      },
+      "production_GO": false
+    },
+    "model_draft_discovery_source": {
+      "protocol": "native_model_draft_discovery_v1",
+      "original_form_test_discovery_source_integrated": true,
+      "separate_real_repository_capability": true,
+      "requires_existing_config_and_modelProbe_grants": true,
+      "official_endpoints_only": true,
+      "metadata_writes_or_generation_during_probe": false,
+      "credentials_request_scope_only": true,
+      "same_actual_owner_CAS_and_admission_finish_audits": true,
+      "whole_inventory_or_closed_failure": true,
+      "HTTP_duplicate_JSON_encoding_transfer_and_raw_route_refused": true,
+      "new_pure_checks": 39,
+      "real_provider_DNS_TLS_compatibility_accepted": false,
+      "full_synthetic_host_assembly_pending": true,
+      "exact_configuration_receipts_complete": false,
+      "paging_source_package_pending_separate_integration": true,
+      "production_GO": false
+    },
+    "assessment_and_final14_closed_diagnostics_source": {
+      "new_pure_checks": 32,
+      "assessment_phases_safe_codes_only": true,
+      "original_nonce_entry_IPC_retained": true,
+      "Native_Reader_negative_phase_bound_to_original_error_object": true,
+      "original_error_rethrown": true,
+      "optional_diagnostic_failure_cannot_override_primary": true,
+      "budgets_identity_leases_ACL13_audits_queues_and_stops_unchanged": true,
+      "actual_cause_resolved": false,
       "production_GO": false
     }
   },

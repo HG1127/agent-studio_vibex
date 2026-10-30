@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {ModelDraftProbeRepository} from './model-draft-probe-repository.ts'
+import {createModelDraftProbeHttp} from './model-draft-probe-http.ts'
 import {createNativeEntryHttpHandler} from './native-entry-http.ts'
 import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
 import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
@@ -516,6 +518,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
     })
     const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
+    const modelDraftProbe=new ModelDraftProbeRepository(business,brokerPool?adapter(brokerPool):business,modelEncryptionKey,{configurationWrites:capabilities.configurationWrites,modelProbeUat:capabilities.modelProbeUat})
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
       allowOwnerToolHub:ownerToolHub.available,allowOwnerToolTrials:ownerToolHub.trials,allowPublicMcpRegistry:ownerToolHub.registry,
@@ -525,6 +528,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
+      originalModelDraftProbeProtocol:modelDraftProbe.enabled?Object.getOwnPropertyDescriptor(modelDraftProbe,'protocol')?.value:undefined,
       allowOriginalModelConnections:Object.getOwnPropertyDescriptor(modelConnections,'originalUiProtocol')?.value==='native_model_connections_owner_cas_v1',
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
@@ -641,6 +645,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(companyOverviewAvailable?{repository:new CompanyOverviewRepository(business)}:{}),
       businessHandler,
     })
+    const modelDraftProbeHttp=createModelDraftProbeHttp({repository:modelDraftProbe,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest})
+    const modelDraftFallback=businessHandler
+    businessHandler=async(req,res)=>{if(await modelDraftProbeHttp(req,res))return;await modelDraftFallback(req,res)}
     // The shared composition applies the original Native global route policy
     // to BOTH owner metadata and existing business handlers before dispatch.
     businessHandler=createNativeOwnOperationsBusinessHandler({

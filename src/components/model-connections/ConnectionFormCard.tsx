@@ -162,11 +162,11 @@ export function ConnectionFormCard({
             type="text"
             value={formManualModels}
             onChange={(ev) => onFormManualModelsChange(ev.target.value)}
-            placeholder={nativeMode?'填写需要保留的模型 ID；测试不会自动发现或替换清单':'如 abab6.5s-chat, MiniMax-M1 等；留空则由测试自动拉取'}
+            placeholder={nativeMode?'可先测试发现模型；留空时明确保存采用本次完整发现结果':'如 abab6.5s-chat, MiniMax-M1 等；留空则由测试自动拉取'}
             className={`${inputClass} font-mono text-xs`}
           />
           <p className="text-xs text-muted-foreground">
-            {nativeMode?'手动填写需要保留的模型 ID。连接测试只更新连接状态，不发现或替换这份清单。':'部分服务商不开放模型列表接口（测试会提示解析不出列表），手动填写后保存，试跑时同样可用；测试成功拉到列表时以拉取结果为准。'}
+            {nativeMode?'手动填写的模型 ID 优先保留。草稿测试只展示发现结果；明确保存前不会修改连接。':'部分服务商不开放模型列表接口（测试会提示解析不出列表），手动填写后保存，试跑时同样可用；测试成功拉到列表时以拉取结果为准。'}
           </p>
         </div>
 
@@ -182,7 +182,7 @@ export function ConnectionFormCard({
               <>
                 <p className="flex items-center gap-2 text-sm font-medium text-primary">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  {nativeMode?'已验证连接响应':'连通成功'} · 延迟 {formTestResult.latency_ms} ms · {nativeMode?'已配置':'拉到'} {formTestResult.models.length} 个模型
+                  {nativeMode?(formTestResult.discovery?'已读取服务商模型列表':'已验证连接响应'):'连通成功'} · 延迟 {formTestResult.latency_ms} ms · {nativeMode?(formTestResult.discovery?'发现':'已配置'):'拉到'} {formTestResult.models.length} 个模型
                 </p>
                 {formTestResult.models.length > 0 && (
                   <div className="mt-2.5 flex flex-wrap gap-1.5">

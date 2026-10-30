@@ -31,7 +31,7 @@ test('the actual open catch preserves the original thrown object and does not re
  const primary=Error('PRIVATE_PRIMARY');await assert.rejects(run(primary),error=>error===primary);assert.equal(f.read(primary).phase,'operator_runtime')
 })
 test('CI emission remains inside the existing exact fixture/UID/argv/runtime gates and preserves primary refusal',()=>{
- const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),observation=actor.indexOf('const observation=full069FinalRuntimeOpenFailureObservation(e)'),primary=actor.indexOf('}catch{};errorCode=reason(e);throw Error(errorCode)')
+ const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),observation=actor.indexOf('const observation=full069FinalRuntimeOpenFailureObservation(e)'),primary=actor.indexOf(";try{errorCode=reason(e)}catch{errorCode='full069_final_path_ci_dependency_refused'}throw e")
  assert(guard>=0&&observation>guard&&primary>observation)
  const body=actor.slice(guard,observation);for(const condition of ["binding.run===process.env.GITHUB_RUN_ID","binding.attempt===process.env.GITHUB_RUN_ATTEMPT","process.getuid?.()===0","process.getgid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","JSON.stringify(process.argv.slice(2))===JSON.stringify(argv)","failurePhase==='runtime_open'"])assert(body.includes(condition),condition)
  assert(actor.includes('if(observation)fs.writeSync(2,JSON.stringify(observation)'))
@@ -60,7 +60,7 @@ test('actual ACL outer catch rethrows the identical error while original rollbac
  const f=freshAcl(),run=Function('rememberAclFailure','return async function(primary){const phase="operator_runtime",negativeCase=null;try{throw primary}'+statement.catchClause.getText(tree)+'}')(f.remember),primary=Error('PRIVATE_PRIMARY')
  await assert.rejects(run(primary),error=>error===primary);assert.equal(f.read(primary).phase,'operator_runtime')
  assert(aclSource.includes('const deadline=performance.now()+8000'));assert(aclSource.includes("await db.query('ROLLBACK');begun=false"));assert(aclSource.includes('if(primary)throw primary'));assert(aclSource.includes('passed!==cases.length'));assert(aclSource.includes('inspectFinal14DatabaseAclRows(restored,databases,roles)'))
- const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),emission=actor.indexOf('const observation=full069Final14DatabaseAclFailureObservation(e)'),primaryThrow=actor.indexOf('}catch{};errorCode=reason(e);throw Error(errorCode)');assert(guard>=0&&emission>guard&&primaryThrow>emission)
+ const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),emission=actor.indexOf('const observation=full069Final14DatabaseAclFailureObservation(e)'),primaryThrow=actor.indexOf(";try{errorCode=reason(e)}catch{errorCode='full069_final_path_ci_dependency_refused'}throw e");assert(guard>=0&&emission>guard&&primaryThrow>emission)
  const body=actor.slice(guard,emission);for(const gate of ["binding.run===process.env.GITHUB_RUN_ID","process.getuid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","failurePhase==='runtime_preflight'"])assert(body.includes(gate),gate)
 })
 

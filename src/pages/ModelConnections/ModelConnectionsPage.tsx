@@ -25,7 +25,7 @@ const HOW_IT_WORKS = [
 
 const NATIVE_HOW_IT_WORKS=[
   {title:'保存本人配置',desc:'保存只写入本人配置和加密密钥，不测试连接、不调用模型。'},
-  {title:'保存后主动测试',desc:'仅测试已保存且未改动的配置；会使用密钥访问服务商，可能产生费用。不会自动发现新模型。'},
+  {title:'明确测试后保存',desc:'开放草稿测试时，可查询官方服务商模型列表；会使用密钥，可能产生费用。测试不会保存或生成内容。'},
   {title:'明确选择后使用',desc:'模型 ID 由你配置；保存或测试均不会启动 Agent，也不会设为默认模型。'},
 ]
 export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) {
@@ -147,7 +147,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
                     onFormBaseUrlChange={p.setFormBaseUrl}
                     onFormApiKeyChange={p.setFormApiKey}
                     onFormManualModelsChange={p.setFormManualModels}
-                    nativeMode={p.nativeMode} canTest={p.probeEnabled} nativePending={p.nativePending}
+                    nativeMode={p.nativeMode} canTest={p.formProbeEnabled} nativePending={p.nativePending}
                     saveActionLabel={p.saveActionLabel} probeNotice={p.probeNotice}
                     onTest={p.handleTestForm}
                     isTestingForm={p.isTestingForm}

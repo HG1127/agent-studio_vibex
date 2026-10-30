@@ -363,6 +363,8 @@ export function permitNativePg18BusinessUatRequest(
   if(policy.configurationWrites===true&&policy.workflowExecutionUat===true&&
      method==="POST"&&new RegExp(
        "^/api/v2/workflows/"+uuid+"/runs$").test(pathname))return true
+  // Independent draft discovery retains both original outbound grants.
+  if(method==='POST'&&policy.configurationWrites===true&&policy.modelProbeUat===true&&pathname==='/api/v2/model-connections/draft-probe')return true
   // Provider probing is an external call and is NEVER config CRUD by default.
   if(method==="POST"&&policy.configurationWrites===true&&
      policy.modelProbeUat===true&&new RegExp(

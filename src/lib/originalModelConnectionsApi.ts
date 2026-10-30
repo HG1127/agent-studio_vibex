@@ -1,3 +1,4 @@
+import {modelDraftProbeProtocol,parseModelDraftProbeInput,parseModelDraftProbeResult,type ModelDraftProbeInput} from '../../shared/model-draft-probe-contract.ts'
 import type {PgNativeModelConnection,PgNativeModelConnectionInput} from './pgNativePilotApi'
 import {hasExplicitCalendarTimestamp} from './agentQualityChecks.ts'
 
@@ -91,7 +92,7 @@ export function createOriginalModelConnectionsApi(config:{employeeId:string;tran
   const value=await request(root+'/api/native-auth/capabilities','GET',undefined,signal)
   if(value.mode!=='native_pg18'||typeof value.config_writes_enabled!=='boolean'||typeof value.model_probe_enabled!=='boolean'||value.original_model_connections_protocol!==undefined&&value.original_model_connections_protocol!==originalModelConnectionsProtocol)return fail(503,'invalid_original_model_capabilities')
   const available=value.original_model_connections_protocol===originalModelConnectionsProtocol
-  return Object.freeze({strictContract:available,writes:available&&value.config_writes_enabled===true,probe:available&&value.config_writes_enabled===true&&value.model_probe_enabled===true})
+  return Object.freeze({strictContract:available,writes:available&&value.config_writes_enabled===true,probe:available&&value.config_writes_enabled===true&&value.model_probe_enabled===true,draftProbe:available&&value.config_writes_enabled===true&&value.model_probe_enabled===true&&value.original_model_draft_probe_protocol===modelDraftProbeProtocol})
  }
  async function requireWrites(signal?:AbortSignal,probe=false){const cap=await capabilities(signal);if(!cap.writes||probe&&!cap.probe)return fail(405,probe?'provider_probe_disabled':'original_model_connections_read_only')}
  async function acknowledgement<T>(work:()=>Promise<T>):Promise<T>{try{return await work()}catch(error){if(error instanceof OriginalModelConnectionsError){if(error.responseRefused&&!error.outcomeUnknown)throw error;throw new OriginalModelConnectionsError(error.status,error.code,true)}throw new OriginalModelConnectionsError(0,'original_model_outcome_unknown',true)}}
@@ -100,6 +101,7 @@ export function createOriginalModelConnectionsApi(config:{employeeId:string;tran
   return row
  }
  return Object.freeze({capabilities,
+  async draftProbe(raw:ModelDraftProbeInput,signal?:AbortSignal){let input:ModelDraftProbeInput;try{input=parseModelDraftProbeInput(raw)}catch{throw new OriginalModelConnectionsError(400,'invalid_model_draft_probe')}const cap=await capabilities(signal);if(!cap.draftProbe)throw new OriginalModelConnectionsError(405,'model_draft_probe_disabled');const value=await request(base+'/draft-probe','POST',input,signal);try{return parseModelDraftProbeResult(value,input,employee)}catch{throw new OriginalModelConnectionsError(503,'invalid_model_draft_probe_result',true)}},
   async list(signal?:AbortSignal){const data=object(await request(base+'?limit=50','GET',undefined,signal),['items']),rows=array(data.items,50).map(value=>parseOriginalModelConnection(value,employee));if(new Set(rows.map(v=>v.id)).size!==rows.length)return fail();return rows},
   async get(id:string,signal?:AbortSignal){const selected=originalModelId(id),row=item(await request(base+'/'+selected,'GET',undefined,signal));if(row.id!==selected)return fail();return row},
   async create(raw:OriginalModelConnectionInput,signal?:AbortSignal){const input=normalizeOriginalModelInput(raw,true);await requireWrites(signal);return acknowledgement(async()=>saved(item(await request(base,'POST',input,signal)),input))},

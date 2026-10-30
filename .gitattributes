@@ -1265,3 +1265,20 @@ tests/original-model-connections-hook.test.mjs text eol=lf
 tests/pg-original-model-connections-browser-policy.test.mjs text eol=lf
 tests/pg-original-model-connections-genuine.config.mjs text eol=lf
 tests/pg-original-model-connections-genuine.spec.mjs text eol=lf
+
+# Original employee model page and fixed hosted evidence controls.
+services/pg-api/src/model-draft-discovery-provider.ts text eol=lf
+services/pg-api/src/model-draft-probe-http.ts text eol=lf
+services/pg-api/src/model-draft-probe-repository.ts text eol=lf
+services/pg-api/src/pg18-full069-assessment-startup-observation.d.mts text eol=lf
+services/pg-api/src/pg18-full069-assessment-startup-observation.mjs text eol=lf
+services/pg-api/src/pg18-full069-native-reader-failure-observation.mjs text eol=lf
+services/pg-api/tests/pg18-full069-closed-diagnostics.test.mjs text eol=lf
+shared/model-draft-probe-contract.ts text eol=lf
+tests/helpers/original-model-draft-browser-scenario.mjs text eol=lf
+tests/helpers/original-model-draft-synthetic-host-source.mjs text eol=lf
+tests/model-draft-discovery-provider-pure.test.mjs text eol=lf
+tests/model-draft-probe-http-pure.test.mjs text eol=lf
+tests/model-draft-probe-repository-pure.test.mjs text eol=lf
+tests/model-draft-synthetic-host-source-pure.test.mjs text eol=lf
+tests/original-model-draft-probe-hook-pure.test.mjs text eol=lf

@@ -119,7 +119,7 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,allowOriginalModelConnections=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowOriginalModelConnections=false,originalModelDraftProbeProtocol=undefined,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
     allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,allowAgentReleases=false,allowAgentHumanInput=false,allowAgentMemory=false,allowAgentMemoryRuntime=false,allowAgentDerivedMemory=false,allowAgentDerivedMemoryWrites=false,allowAgentOutcomeMemory=false,allowAgentOutcomeMemoryAdmission=false,allowAgentFeedback=false,allowAgentFeedbackSubmission=false,allowAgentFeedbackLessons=false,allowAgentOptimization=false,allowAgentOptimizationAcceptance=false,
@@ -232,6 +232,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           ...(allowAgentCollaboration===true?{agent_collaboration_available:true}:{}),
           ...(allowAgentReleases===true?{agent_releases_available:true,agent_release_acceptance_enabled:allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true}:{}),
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
+          ...(allowConfigurationWrites===true&&allowModelProbe===true&&originalModelDraftProbeProtocol==='native_model_draft_discovery_v1'?{original_model_draft_probe_protocol:originalModelDraftProbeProtocol}:{}),
           ...(allowConfigurationWrites===true&&allowMcpDiscovery===true?{mcp_discovery_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowMcpToolExecution===true?{mcp_tool_runs_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowSmitheryManagement===true?{smithery_management_enabled:true}:{}),

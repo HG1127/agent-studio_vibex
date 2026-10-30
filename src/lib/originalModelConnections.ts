@@ -1,3 +1,4 @@
+import {modelDraftProbeProtocol,type ModelDraftProbeInput} from '../../shared/model-draft-probe-contract.ts'
 import {OriginalModelConnectionsError,originalModelId,normalizeOriginalModelInput,type OriginalModelConnection,type OriginalModelConnectionInput,type OriginalModelConnectionsApi} from './originalModelConnectionsApi.ts'
 import type {ModelConnectionRow,ConnectionTestResult,ProviderKey} from '../pages/ModelConnections/useModelConnections'
 
@@ -7,12 +8,12 @@ export type OriginalModelConnectionsView={
  isLoggedIn:boolean;needsRhLogin:boolean;errorMsg:string;noticeMsg:string;connectionList:ModelConnectionRow[];isLoadingList:boolean
  formOpen:boolean;formMode:'add'|'edit';editingId:string;formName:string;formProvider:ProviderKey;formBaseUrl:string;formApiKey:string;formManualModels:string
  isTestingForm:boolean;formTestResult:ConnectionTestResult|null;isSaving:boolean;busyId:string;expandedId:string;pendingDeleteId:string;canSubmitForm:boolean
- nativeMode:true;writeBlocked:boolean;probeEnabled:boolean;saveActionLabel:string;nativePending:boolean;nativeUnavailable:boolean;probeNotice:string
+ nativeMode:true;writeBlocked:boolean;probeEnabled:boolean;formProbeEnabled:boolean;saveActionLabel:string;nativePending:boolean;nativeUnavailable:boolean;probeNotice:string
 }
 type Ports={api:OriginalModelConnectionsApi;employeeId:string;currentEmployee():string|null;verifyEmployee():Promise<string>;storage:{read():string|null;write(value:string):void;remove():void};onChange(view:OriginalModelConnectionsView):void;now?:()=>number;requestId?:()=>string}
 const defaults={openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com/v1',gemini:'https://generativelanguage.googleapis.com/v1beta'} as const
 export const originalModelUncertaintyKey=(employee:string)=>'agent-studio:model-connections:native-pg:v1:'+originalModelId(employee)
-export const emptyOriginalModelConnectionsView=():OriginalModelConnectionsView=>({isLoggedIn:false,needsRhLogin:false,errorMsg:'',noticeMsg:'',connectionList:[],isLoadingList:true,formOpen:false,formMode:'add',editingId:'',formName:'',formProvider:'openai',formBaseUrl:'',formApiKey:'',formManualModels:'',isTestingForm:false,formTestResult:null,isSaving:false,busyId:'',expandedId:'',pendingDeleteId:'',canSubmitForm:false,nativeMode:true,writeBlocked:true,probeEnabled:false,saveActionLabel:'保存',nativePending:false,nativeUnavailable:false,probeNotice:'仅测试已保存且未改动的配置；测试会使用已保存密钥访问服务商，可能产生费用。不会执行模型生成，也不会自动发现或替换模型清单。'})
+export const emptyOriginalModelConnectionsView=():OriginalModelConnectionsView=>({isLoggedIn:false,needsRhLogin:false,errorMsg:'',noticeMsg:'',connectionList:[],isLoadingList:true,formOpen:false,formMode:'add',editingId:'',formName:'',formProvider:'openai',formBaseUrl:'',formApiKey:'',formManualModels:'',isTestingForm:false,formTestResult:null,isSaving:false,busyId:'',expandedId:'',pendingDeleteId:'',canSubmitForm:false,nativeMode:true,writeBlocked:true,probeEnabled:false,formProbeEnabled:false,saveActionLabel:'保存',nativePending:false,nativeUnavailable:false,probeNotice:'仅测试已保存且未改动的配置；测试会使用已保存密钥访问服务商，可能产生费用。不会执行模型生成，也不会自动发现或替换模型清单。'})
 const unknownMessage='上次操作结果尚未确认。再次点击原保存按钮只读取当前配置，不会重发密钥或重复写入；读取后仍需由管理员核对原操作。'
 function pendingValue(raw:unknown,employee:string,now:number):Pending{
  if(!raw||typeof raw!=='object'||Object.getPrototypeOf(raw)!==Object.prototype||Reflect.ownKeys(raw).length!==7)return storageError()
@@ -30,13 +31,13 @@ function publicInput(row:OriginalModelConnection):OriginalModelConnectionInput{r
 /** Original page state only. Native handlers remain the identity/ACL authority. */
 export function createOriginalModelConnectionsController(ports:Ports){
  const employee=originalModelId(ports.employeeId),now=ports.now??Date.now,newId=ports.requestId??(()=>crypto.randomUUID())
- let state=emptyOriginalModelConnectionsView(),records=new Map<string,OriginalModelConnection>(),editingBaseline:OriginalModelConnection|null=null,deleteBaseline:OriginalModelConnection|null=null,cap={strictContract:false,writes:false,probe:false},pending:Pending|null=null,loaded=false,storageBroken=false,blocked=false,disposed=false,busy=false,epoch=0,readSequence=0,formSequence=0,abort:AbortController|null=null
+ let state=emptyOriginalModelConnectionsView(),records=new Map<string,OriginalModelConnection>(),editingBaseline:OriginalModelConnection|null=null,deleteBaseline:OriginalModelConnection|null=null,cap={strictContract:false,writes:false,probe:false,draftProbe:false},pending:Pending|null=null,loaded=false,storageBroken=false,blocked=false,disposed=false,busy=false,epoch=0,readSequence=0,formSequence=0,abort:AbortController|null=null
  const copy=():OriginalModelConnectionsView=>{
   const formValid=!!state.formName.trim()&&(state.formProvider!=='openai'||!!state.formBaseUrl.trim())&&(state.formMode==='edit'||!!state.formApiKey.trim())
-  return{...state,connectionList:state.connectionList.map(v=>({...v,models:[...v.models]})),formTestResult:state.formTestResult?{...state.formTestResult,models:[...state.formTestResult.models]}:null,writeBlocked:blocked||storageBroken||busy||!cap.writes||!!pending,probeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&cap.probe,canSubmitForm:!blocked&&!storageBroken&&!busy&&(pending?state.formOpen:cap.writes&&formValid),saveActionLabel:pending?'核对原操作结果':'保存',nativePending:!!pending}
+  return{...state,connectionList:state.connectionList.map(v=>({...v,models:[...v.models]})),formTestResult:state.formTestResult?{...state.formTestResult,models:[...state.formTestResult.models]}:null,writeBlocked:blocked||storageBroken||busy||!cap.writes||!!pending,probeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&cap.probe,formProbeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&(cap.draftProbe||cap.probe),probeNotice:cap.draftProbe?'点击测试只查询官方服务商模型列表，可能产生费用；草稿不会保存，也不会生成内容。发现结果只在本表单有效；模型 ID 留空时，明确保存会采用本次完整发现结果。':state.probeNotice,canSubmitForm:!blocked&&!storageBroken&&!busy&&(pending?state.formOpen:cap.writes&&formValid),saveActionLabel:pending?'核对原操作结果':'保存',nativePending:!!pending}
  }
  function publish(patch:Partial<OriginalModelConnectionsView>={}){if(disposed)return;state={...state,...patch};ports.onChange(copy())}
- function clearSensitive(){formSequence++;records.clear();editingBaseline=null;deleteBaseline=null;state={...emptyOriginalModelConnectionsView(),isLoadingList:false,needsRhLogin:true};cap={strictContract:false,writes:false,probe:false}}
+ function clearSensitive(){formSequence++;records.clear();editingBaseline=null;deleteBaseline=null;state={...emptyOriginalModelConnectionsView(),isLoadingList:false,needsRhLogin:true};cap={strictContract:false,writes:false,probe:false,draftProbe:false}}
  function loseScope(){if(blocked||disposed)return;blocked=true;epoch++;readSequence++;abort?.abort();clearSensitive();publish({errorMsg:'员工账号已变化，原账号的连接、表单和密钥已隐藏。请重新打开当前页面。'})}
  async function verify(stamp:number){let actual:string;try{actual=originalModelId(await ports.verifyEmployee())}catch(error){throw new OriginalModelConnectionsError(error instanceof OriginalModelConnectionsError&&error.status===401?401:503,'original_model_identity_unavailable')}if(disposed||stamp!==epoch)throw Error('original_model_scope_obsolete');if(actual!==employee||ports.currentEmployee()!==employee){loseScope();throw Error('original_model_scope_changed')}}
  async function invoke<T>(stamp:number,work:()=>Promise<T>,potentialEffect=false):Promise<T>{
@@ -58,6 +59,9 @@ export function createOriginalModelConnectionsController(ports:Ports){
    if(error.status===401)return '员工登录已失效，请重新登录后核对服务器配置。'
    if(error.status===403)return '当前员工没有所需的模型配置权限，配置未被当作保存成功。'
    if(error.status===409)return '服务器配置版本已变化。当前表单保持不变，请从列表重新打开最新配置后再明确保存。'
+   if(error.code==='model_draft_probe_disabled')return '当前环境未开放草稿测试或模型发现；没有发送草稿密钥。'
+   if(error.code==='draft_stored_credential_scope_changed')return '服务商或地址已改动，不能复用原连接密钥；请明确输入对应密钥后测试。'
+   if(error.code==='provider_endpoint_not_allowlisted')return '当前测试只允许对应服务商的官方地址；没有发送密钥，也没有保存草稿。'
    if(error.code==='provider_probe_disabled')return '当前环境未开放服务商连接测试，未读取密钥或访问服务商。'
    if(error.code==='original_model_connections_read_only')return '当前环境尚未开放模型配置写入，只能查看；未发送密钥或修改配置。'
    if(error.outcomeUnknown)return unknownMessage
@@ -91,7 +95,7 @@ export function createOriginalModelConnectionsController(ports:Ports){
  function formInput(requireKey:boolean,prior?:OriginalModelConnection){
   const base=state.formBaseUrl.trim()||(state.formProvider==='openai'?'':defaults[state.formProvider]),rawModels=state.formManualModels.split(/[,，\n;；]+/).map(v=>v.trim()).filter(Boolean)
   if(rawModels.length>300)throw new OriginalModelConnectionsError(400,'invalid_original_model_input')
-  const names=[...new Set(rawModels)]
+  const names=[...new Set(rawModels.length?rawModels:state.formTestResult?.discovery&&state.formTestResult.ok?state.formTestResult.models:[])]
   return normalizeOriginalModelInput({name:state.formName,provider:state.formProvider,base_url:base,models:names,enabled:prior?.enabled??true,...(state.formApiKey.trim()?{api_key:state.formApiKey}:{})},requireKey)
  }
  async function mutation(action:Action,selected:OriginalModelConnection|null,input?:OriginalModelConnectionInput,asForm=false){
@@ -126,8 +130,20 @@ export function createOriginalModelConnectionsController(ports:Ports){
   if(!state.formOpen)return;if(pending){await queryPending();return}
   try{const prior=state.formMode==='edit'?editingBaseline:undefined;if(state.formMode==='edit'&&(!prior||prior.id!==state.editingId))throw new OriginalModelConnectionsError(404,'model_connection_not_found');const input=formInput(!prior,prior??undefined);await mutation(prior?'update':'create',prior??null,input,true)}catch(error){failure(error)}
  }
+ async function testDraftForm(){
+  if(disposed||blocked||busy||pending)return
+  const stamp=epoch,sequence=formSequence,provider=state.formProvider,base=state.formBaseUrl.trim()||(provider==='openai'?'':defaults[provider]),key=state.formApiKey.trim(),prior=state.formMode==='edit'?editingBaseline:null
+  if(!key&&!prior){publish({errorMsg:'请先填写 API Key 再测试。'});return}
+  const input:ModelDraftProbeInput={protocol:modelDraftProbeProtocol,request_id:newId(),provider,base_url:base,credential:key?{kind:'draft',api_key:key}:{kind:'saved',connection_id:prior!.id,expected_revision:prior!.revision}}
+  busy=true;readSequence++;abort=new AbortController();publish({isTestingForm:true,formTestResult:null,errorMsg:'',noticeMsg:''})
+  try{const result=await invoke(stamp,()=>ports.api.draftProbe(input,abort!.signal));if(disposed||stamp!==epoch||sequence!==formSequence)return
+   const errors:Record<string,string>={provider_credential_rejected:'服务商拒绝了密钥，请核对后再明确测试。',provider_rate_limited:'服务商限制了请求频率，请稍后再明确测试。',provider_models_incomplete:'模型列表超过本次允许范围，未采用部分清单。',provider_response_too_large:'模型列表响应过大，未采用部分清单。',provider_response_invalid:'服务商未返回可验证的模型列表，未采用结果。',provider_probe_timeout:'模型列表查询超时，服务商可能已收到请求；未自动重试。'}
+   publish({formTestResult:{ok:result.ok,latency_ms:result.latency_ms,models:[...result.models],error:result.ok?'':errors[result.error_code]??'模型列表查询失败，未采用结果，也未保存配置。',discovery:true},noticeMsg:result.ok?'已读取服务商的完整模型列表。草稿和已保存连接均未修改；结果不证明模型生成能力。':'模型列表查询未完成，未采用部分清单，也未保存配置。'})
+  }catch(error){if(!disposed&&stamp===epoch&&sequence===formSequence){if(error instanceof OriginalModelConnectionsError&&error.outcomeUnknown)publish({errorMsg:'未能确认本次模型列表查询结果。服务商可能已收到请求；没有保存配置，也没有自动重试。'});else failure(error)}}finally{if(input.credential.kind==='draft')input.credential.api_key='';if(!disposed&&stamp===epoch){busy=false;abort=null;publish({isTestingForm:false})}}
+ }
  async function testForm(){
   if(pending){await queryPending();return}
+  if(cap.draftProbe){await testDraftForm();return}
   try{const prior=state.formMode==='edit'?editingBaseline:undefined
    if(!prior||state.formApiKey.trim()||JSON.stringify(formInput(false,prior))!==JSON.stringify(publicInput(prior))){publish({errorMsg:'当前环境只测试已保存且未改动的配置。请先明确保存，再重新打开连接测试；尚未支持保存前测试。'});return}
    await mutation('probe',prior,undefined,true)

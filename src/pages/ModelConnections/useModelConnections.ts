@@ -21,6 +21,7 @@ export type ModelConnectionRow = {
 }
 
 export type ConnectionTestResult = {
+  discovery?:boolean
   ok: boolean
   latency_ms: number
   models: string[]
@@ -382,7 +383,7 @@ function usePbModelConnections() {
     !isSaving
 
   return {
-    nativeMode:false as const,writeBlocked:false,probeEnabled:true,saveActionLabel:'保存',nativePending:false,nativeUnavailable:false,probeNotice:'',
+    nativeMode:false as const,writeBlocked:false,probeEnabled:true,formProbeEnabled:true,saveActionLabel:'保存',nativePending:false,nativeUnavailable:false,probeNotice:'',
     isLoggedIn: Boolean(rhUserId),
     needsRhLogin,
     onLoginClick: redirectToRhLogin,

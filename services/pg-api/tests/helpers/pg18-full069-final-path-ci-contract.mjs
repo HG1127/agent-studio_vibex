@@ -1,5 +1,6 @@
 // Independent bounded CI DATA. It cannot start or shorten a qualifying run.
 import {isNativeError} from 'node:util/types'
+export {parseFull069FinalNativeReaderFailures} from '../../src/pg18-full069-native-reader-failure-observation.mjs'
 import {closed,freeze,hex,uuid,target,liveLimits,liveEntries} from '../../src/pg18-full069-worker-live-contract.mjs'
 import {finalCompanions,finalBusinessLogins} from '../../src/pg18-full069-final-login-contract.mjs'
 export const finalPathCiPurpose='YES_DISPOSABLE_FULL069_FINAL14_ALL13_PATHS_ONLY'

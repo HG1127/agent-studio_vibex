@@ -7,7 +7,7 @@ import {originalModelConnectionsDomSafety,originalModelConnectionsImageBuffer,or
 test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, late account fence and unknown-write read-only recovery',async({},testInfo)=>{
  const permit=requireOriginalModelConnectionsBrowserCi() // Before files/SQL/TLS/browser.
  const fs=await import('node:fs/promises'),f=await startOriginalModelConnectionsBrowserFixture()
- let browser,context,page,observer,primary,before,after,completed=false,webSockets=0
+ let browser,context,page,observer,primary,before,after,normalAudit,completed=false,webSockets=0
  const images=[],holds=[],outside=[],cleanup=[],mutations=[],proofs=[],steps={}
  const keys=['synthetic-original-page-key-0005','synthetic-original-page-key-0006']
  const clean=async(label,work)=>{try{await work()}catch(error){cleanup.push({label,error})}}
@@ -46,7 +46,7 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
    expect(safety,'fixed synthetic screenshot gate exposes only booleans').toEqual({bounded:true,password_absent:true,secret_absent:true,credential_markers_absent:true});expect(images.some(row=>row.name===name)).toBe(false)
    images.push(originalModelConnectionsImageBuffer(name,await p.screenshot({fullPage:true}),safety))
   }
-  let created,normalAudit
+  let created
   await test.step('original add/edit/enable controls store actual owner encrypted configuration without a provider request',async()=>{
    await login(page,'alice');await noProbe(page)
    await expect(page.getByRole('heading',{name:f.resources.bob.model.name,exact:true})).toHaveCount(0)
