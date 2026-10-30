@@ -2,13 +2,14 @@ import { Ban, CheckCircle2, Loader2, Sparkles, XCircle } from "lucide-react"
 import type { RunDetailRow } from "@/pages/RunDetail/useRunDetail"
 
 type RunResultCardProps = {
+  nativeOutputs?: import("@/lib/pgNativePilotApi").WorkflowLatestOutputs | null
   run: RunDetailRow
   isLive: boolean
   onCopy: () => void
   copiedFlag: boolean
 }
 
-export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCardProps) {
+export function RunResultCard({ run, isLive, onCopy, copiedFlag, nativeOutputs }: RunResultCardProps) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-md">
       <div className="flex min-h-14 shrink-0 items-center gap-3">
@@ -49,7 +50,16 @@ export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCard
         )}
       </div>
 
-      {isLive ? (
+      {run.native && !run.native.sourceAvailable && <p role="status" className="mt-2 text-sm">来源或权限已变化，原结果正文暂不可用。</p>}
+      {nativeOutputs && run.native?.sourceAvailable && run.native.kind==='workflow_v2' && nativeOutputs.run.run_id===run.id && <div className="mt-3 space-y-2" aria-label="公开节点输出">
+        <h3 className="text-sm font-semibold">已核实的节点输出引用</h3>
+        {nativeOutputs.nodes.map(node=><details key={node.node_id} className="rounded-lg border p-3">
+          <summary className="cursor-pointer text-sm">{node.title} · {node.node_id} · {node.node_status}</summary>
+          {node.output_text!==undefined && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{node.output_text}</p>}
+        </details>)}
+        <p className="text-xs text-muted-foreground">这是后台公开的最近节点输出；完整输出历史分页尚未在此卡接通。</p>
+      </div>}
+      {run.native && !run.native.sourceAvailable ? null : isLive ? (
         <p className="mt-2 flex items-center gap-2 rounded-xl bg-muted px-4 py-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
           运行还没有结束，成果会在到达终态后出现在这里。

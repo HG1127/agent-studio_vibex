@@ -89,7 +89,12 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
    await observer.flush(other);await other.close();await page.reload({waitUntil:'domcontentloaded'});await settled(page);await expect(page.getByRole('heading',{name:f.resources.bob.model.name,exact:true})).toBeVisible();steps.late_actual_metadata_account_fence=true
   })
   await test.step('actual committed Bob create loses its response; same original control and reload read only and never invent a receipt',async()=>{
-   await openAdd(page,'Original page synthetic Bob unknown create',keys[1]);f.dropNextActualCreateReply();await page.getByRole('button',{name:'保存',exact:true}).click();await expect(page.getByRole('button',{name:'核对原操作结果',exact:true})).toBeEnabled();await expect(page.locator('#mc-api-key')).toHaveValue('')
+   await openAdd(page,'Original page synthetic Bob unknown create',keys[1]);f.dropNextActualCreateReply()
+   // The real fetch may remain pending until its unchanged8s Native deadline.
+   // Observe its actual failure before checking the settled recovery control.
+   const failedCreate=page.waitForEvent('requestfailed',{predicate:request=>request.method()==='POST'&&new URL(request.url()).pathname==='/__pg_native/api/v2/model-connections',timeout:8000});void failedCreate.catch(()=>{})
+   await page.getByRole('button',{name:'保存',exact:true}).click();await failedCreate
+   await expect(page.getByRole('button',{name:'核对原操作结果',exact:true})).toBeEnabled();await expect(page.locator('#mc-api-key')).toHaveValue('')
    const recorded=await f.modelCounts();expect(recorded.connections).toBe(before.connections+1);expect(mutations.filter(row=>row.method==='POST')).toHaveLength(2)
    await page.getByRole('button',{name:'核对原操作结果',exact:true}).click();await expect(page.getByRole('button',{name:'核对原操作结果',exact:true})).toBeEnabled();expect(await f.modelCounts()).toEqual(recorded)
    await page.reload({waitUntil:'domcontentloaded'});await settled(page);await page.getByRole('button',{name:'添加连接',exact:true}).first().click();await expect(page.getByRole('button',{name:'核对原操作结果',exact:true})).toBeEnabled();await expect(page.locator('#mc-api-key')).toBeDisabled();await page.getByRole('button',{name:'核对原操作结果',exact:true}).click();await expect(page.getByRole('button',{name:'核对原操作结果',exact:true})).toBeEnabled()

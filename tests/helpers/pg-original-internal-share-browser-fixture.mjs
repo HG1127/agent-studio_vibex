@@ -68,7 +68,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     source_authority:'fixed reviewed original-page hashes and unchanged F08 backend pins; exact committed head and clean source required',
     checked_sources:sourceHashes,manifest_sha256:sha(manifestBytes),index_sha256:sha(index),assets:assetHashes}
  let fixture,server,agent,closed=false,nextHold=null,nextLoss=null
- const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false}
+ const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],write_timings:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false}
  const remember=(key,value)=>{if(observations[key].length<256)observations[key].push(value);else observations.overflow=true}
  const reply=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:code}))}
  const close=async()=>{if(closed)return;closed=true;for(const gate of holds)gate.release();holds.clear();nextHold=null
@@ -102,12 +102,14 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     const selectedHold=nextHold&&nextHold.method===req.method&&nextHold.path===rule.pathname?nextHold:null
     if(selectedHold)nextHold=null
     const selectedLoss=nextLoss&&req.method==='POST'&&rule.pathname==='/__pg_native/api/v2/internal-templates'?nextLoss:null
-    let recorded=false,nativeStatus=null
-    const observeBoundary=(source,error,consumed=false)=>{if(selectedLoss)try{remember('write_boundaries',originalShareProxyBoundary(source,error,{upstream_status:nativeStatus,after_business_completed:fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1,drop_selected:fixture.mutable.dropNext===null,actual_drop_completed:fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1,controlled_drop_consumed:consumed}))}catch{}}
+    let recorded=false,nativeStatus=null,clientAborted=false,clientResponseClosed=false
+    const transportStarted=performance.now(),proxySignal=AbortSignal.timeout(8000)
+    res.once('close',()=>{if(!res.writableEnded)clientResponseClosed=true})
+    const observeBoundary=(source,error,consumed=false)=>{if(selectedLoss)try{remember('write_boundaries',originalShareProxyBoundary(source,error,{upstream_status:nativeStatus,after_business_completed:fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1,drop_selected:fixture.mutable.dropNext===null,actual_drop_completed:fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1,controlled_drop_consumed:consumed}));remember('write_timings',originalShareProxyTiming(source,{elapsed_ms:Math.min(60000,Math.max(0,Math.floor(performance.now()-transportStarted))),proxy_deadline_expired:proxySignal.aborted,client_request_aborted:clientAborted,client_response_closed:clientResponseClosed}))}catch{}}
     const record=status=>{if(recorded)return;recorded=true;if(status<200||status>=300){if(!(rule.pathname==='/__pg_native/api/native-auth/me'&&status===401))remember('unexpected_api_failures',{...sample,status})}}
     const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))
     // Preserve original Origin, Cookie and CSRF. No caller identity or DTO rewrite.
-    const proxy=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:req.url.replace(/^\/__pg_native(?=\/|$)/,''),method:req.method,headers,agent,ca:tls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:AbortSignal.timeout(8000)},response=>{
+    const proxy=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:req.url.replace(/^\/__pg_native(?=\/|$)/,''),method:req.method,headers,agent,ca:tls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:proxySignal},response=>{
      nativeStatus=response.statusCode??502;record(nativeStatus);observeBoundary('native_http_response',null)
      const responseHeaders=Object.fromEntries(Object.entries(response.headers).filter(([name])=>!hop.has(name.toLowerCase())))
      if(!selectedHold){res.writeHead(response.statusCode??502,responseHeaders);response.pipe(res);response.once('error',()=>{remember('unexpected_api_failures',{...sample,status:502});res.destroy()});return}
@@ -127,7 +129,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
      if(selectedLoss&&selectedLoss.recorded&&fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1&&fixture.mutable.dropNext===null&&nextLoss===selectedLoss&&fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1&&(nativeStatus===null||nativeStatus===200)&&originalShareProxyErrorCode(error)==='ECONNRESET'){nextLoss=null;observations.controlled_after_record_disconnects++;observeBoundary('proxy_transport_error',error,true);req.socket.destroy();return}
      observeBoundary('proxy_transport_error',error);if(recorded&&nativeStatus>=200&&nativeStatus<300)remember('unexpected_api_failures',{...sample,status:503});record(503);if(!res.headersSent&&!res.destroyed)reply(res,503,'original_internal_share_proxy_unavailable');else res.destroy()
     })
-    req.once('aborted',()=>proxy.destroy());req.pipe(proxy);return
+    req.once('aborted',()=>{clientAborted=true;proxy.destroy()});req.pipe(proxy);return
    }
    if(rule.kind==='api_denied'){remember('unexpected_api_failures',{...sample,status:405});reply(res,405,'original_internal_share_api_not_mapped');return}
    if(rule.kind==='asset'||rule.kind==='spa'){
@@ -166,4 +168,12 @@ export function originalShareProxyBoundary(source,error,state={}){
  if(source!=='native_http_response'&&source!=='proxy_transport_error')return null
  const own=key=>{try{return Object.getOwnPropertyDescriptor(state,key)?.value}catch{return undefined}},status=own('upstream_status')
  return Object.freeze({source,node_error_code:source==='proxy_transport_error'?originalShareProxyErrorCode(error):null,upstream_status:Number.isInteger(status)&&status>=100&&status<=599?status:null,after_business_completed:own('after_business_completed')===true,drop_selected:own('drop_selected')===true,actual_drop_completed:own('actual_drop_completed')===true,controlled_drop_consumed:own('controlled_drop_consumed')===true})
+}
+
+// Closed monotonic transport evidence only; never a post-commit qualification.
+export function originalShareProxyTiming(source,state={}){
+ if(source!=='native_http_response'&&source!=='proxy_transport_error')return null
+ const own=key=>{try{const d=Object.getOwnPropertyDescriptor(state,key);return d&&Object.hasOwn(d,'value')?d.value:undefined}catch{return undefined}},elapsed=own('elapsed_ms')
+ if(!Number.isSafeInteger(elapsed)||elapsed<0||elapsed>60000)return null
+ return Object.freeze({source,elapsed_ms:elapsed,proxy_deadline_expired:own('proxy_deadline_expired')===true,client_request_aborted:own('client_request_aborted')===true,client_response_closed:own('client_response_closed')===true,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
 }

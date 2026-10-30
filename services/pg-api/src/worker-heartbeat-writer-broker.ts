@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import net from 'node:net'
 import {performance} from 'node:perf_hooks'
+import {setTimeout as waitForWriterAdmission} from 'node:timers/promises'
 import {randomBytes,randomUUID,createHash,timingSafeEqual} from 'node:crypto'
 import type {Control} from './worker-heartbeat-activation-control-contract.ts'
 import {getWorkerHeartbeatWriterBridge} from './worker-heartbeat-activation-control.ts'
@@ -115,9 +116,22 @@ async function closePeer(s:Broker,p:Peer):Promise<void>{
  return p.cleanup
 }
 function reply(p:Peer,request:string,ok:boolean,value:unknown){if(p.open&&p.socket.writable)p.socket.write(writerEncode({protocol:writerProtocol,request_id:request,ok,value}))}
-async function bind(s:Broker,p:Peer,request:string,provided:string){
- s.bridge.check('serve');if(s.paused||s.bridge.busy())return writerFail('writer_busy')
- if(p.boot)return writerFail()
+async function bind(s:Broker,p:Peer,request:string,provided:string,deadline:number){
+ if(!Number.isFinite(deadline))return writerFail()
+ // This is one original bind request, not a boot/SQL retry. Wait only for
+ // pre-admission contention inside the SAME original message's five seconds.
+ // No boot secret, UID, generation or SQL slot is consumed while waiting.
+ for(;;){
+  s.bridge.check('serve')
+  if(s.closed||s.paused||!p.open)return writerFail('writer_closed')
+  if(p.boot)return writerFail()
+  const remaining=deadline-performance.now()
+  if(remaining<=0)return writerFail('writer_deadline')
+  if(!s.bridge.busy())break
+  await waitForWriterAdmission(Math.min(5,remaining))
+ }
+ // There is no await between this final admission check and bridge.open's
+ // original synchronous Root gate. All identity/nonce/OID/lease checks remain.
  const bytes=Buffer.from(provided),boot=[...s.boots.values()].find(value=>value.slot.kind===p.kind&&!value.revoked&&!value.claimed&&value.secret.length===bytes.length&&timingSafeEqual(value.secret,bytes));bytes.fill(0)
  if(!boot)return writerFail('writer_not_enrolled')
  boot.claimed=true;boot.secret.fill(0);p.boot=boot;p.binding=secret()
@@ -161,7 +175,7 @@ function accept(s:Broker,kind:WorkerHeartbeatKind,socket:net.Socket){
    try{
     s.bridge.check('cleanup');const message=parseWriterRequest(writerDecode(raw));request=message.request_id
     if(performance.now()>=deadline)return writerFail('writer_deadline')
-    if(message.op==='bind')await bind(s,p,request,message.boot_secret)
+    if(message.op==='bind')await bind(s,p,request,message.boot_secret,deadline)
     else await report(s,p,request,message.binding_id,message.permit,message.report)
    }catch(error){
     // Framing/auth failures are terminal. Known no-SQL failure can be replied

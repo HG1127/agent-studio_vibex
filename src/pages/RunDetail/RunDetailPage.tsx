@@ -58,6 +58,14 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
               </div>
             )}
 
+            {p.nativeMode && <div className="mt-4 rounded-xl border border-border bg-card p-4 text-sm" role="status">
+              <p>当前显示 Native 运行与公开步骤快照。历史名称、完整配置、原事件时间线和完整历史分页尚未提供。</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={()=>void p.handleRefreshNative()} disabled={p.nativeState?.busy || p.nativeState?.loading} className="rounded-lg border px-3 py-2">刷新当前运行</button>
+                {p.nativeState?.pending && <button type="button" onClick={()=>void p.handleConfirmNative()} disabled={p.nativeState.busy} className="rounded-lg border px-3 py-2">核对原控制结果（不重发）</button>}
+              </div>
+            </div>}
+
             {showLoading && (
               <section className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -143,15 +151,19 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
               <section className="grid items-start gap-6 py-10 lg:grid-cols-[3fr_2fr]">
                 <div className="flex flex-col gap-5">
                   <RunTimelineBody
+                    nativeRun={p.runDetail.native}
+                    onMoreNativeSteps={()=>void p.handleMoreNativeSteps()}
+                    nativeBusy={p.nativeState?.loading || p.nativeState?.busy}
                     stepGroups={p.stepGroups}
                     hasRun
                     isLive={p.isLive}
                     liveEnabled={p.liveEnabled}
                     onToggleLive={p.handleToggleLive}
                   />
-                  <RunTraceCard runId={p.runDetail.id} kind="agent" />
+                  <RunTraceCard runId={p.runDetail.id} kind={p.runDetail.native?.kind.startsWith("workflow")?"workflow":"agent"} native={p.runDetail.native} onNativeRefresh={()=>void p.handleRefreshNative()} />
                   <RunResultCard
                     run={p.runDetail}
+                    nativeOutputs={p.nativeState?.outputs ?? null}
                     isLive={p.isLive}
                     onCopy={p.handleCopyResult}
                     copiedFlag={p.copiedFlag}
@@ -169,6 +181,7 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
                   <RunEvalFeedbackCard run={p.runDetail} />
                   <SpecSnapshotCard snapshot={p.specSnapshot} run={p.runDetail} />
                   <RdActionBar
+                    controlBlocked={Boolean(p.nativeState?.pending)}
                     run={p.runDetail}
                     isLive={p.isLive}
                     controlBusy={p.controlBusy}

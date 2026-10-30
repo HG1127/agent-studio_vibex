@@ -1,6 +1,8 @@
 // Actual new-purpose F08 PG18/Native HTTPS fixture. No pool/file/socket before
 // the strict F08 wrapper. No F01-purpose impersonation, PGlite or auditor stub.
 import {withInternalShareObservation} from '../../src/agent-internal-share-observation.mjs'
+import {createInternalShareRequestLifecycle} from './agent-internal-share-request-lifecycle.mjs'
+import {isNativeError,isProxy} from 'node:util/types'
 import {requireAgentInternalShareGenuineCi} from './agent-internal-share-genuine-guard.mjs'
 
 // SOURCE_PINS_INSERTED_BY_AUTHOR_FROM_ACTUAL_REVIEWED_H
@@ -337,7 +339,7 @@ export const agentInternalShareGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/native-employee-governance-audit.mjs": "ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238",
   "services/pg-api/src/optional-credential-boundary.ts": "f019c3f541223ebb1b699dd1a795e64293ff603f396cd44aceb05e453b80633a",
   "services/pg-api/src/pg18-full069-assessment-startup-observation.d.mts": "6143fe0961e7709e28fc8bc24dfefb471fc9de38cedf1b0b05cdd06275141f54",
-  "services/pg-api/src/pg18-full069-assessment-startup-observation.mjs": "9ea74387f759f22c24e6fc37d0d03128c8f15b8723b9d10b3cffd1eb20afd5c9",
+  "services/pg-api/src/pg18-full069-assessment-startup-observation.mjs": "0fee6d247837db4ff7515c0271dd5e4d9907244fd7ae6a757b2449cb1e516154",
   "services/pg-api/src/pg18-full069-native-reader-failure-observation.mjs": "6f46b8dd1d5e44544e0d21deb2eae3d37eb79ebee7404e0f146842240fa4c2e8",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/worker-heartbeat-activation-control-contract.ts": "3d1a9b65a50cba9f3538256203dab134ccff3d1166a9017d7f6e4fa916d55662",
@@ -350,7 +352,19 @@ export const agentInternalShareGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/agent-internal-share-observation.mjs": "0b88b7d6ace039868fb85aaca7b4400a33133ab17c91d9701bee3db999c938af",
   "services/pg-api/src/model-connection-page-cursor.ts": "42350485eb767064df95b7506ec3c94fa6e0c0160c88fad032f437807f0aa02c",
   "services/pg-api/src/model-connection-pagination.ts": "224df07f1eab5f5d36d7a60f69150c4a2f3dbab328f07182a23fe6e4cc6d82dd",
-  "shared/model-connection-pagination-contract.ts": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad"
+  "shared/model-connection-pagination-contract.ts": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad",
+  "services/pg-api/src/worker-heartbeat-activated-audit-core.ts": "ba670a1722b241781f6cd28b85bbd571ff1919bac47e5f1ebca090ddfcff28b5",
+  "services/pg-api/src/worker-heartbeat-activated-audit.ts": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
+  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "89ac707c17598be2e603317ce24a3b1024b57142c0382069851bf8158f9957a5",
+  "services/pg-api/src/worker-heartbeat-activation-control-source.mjs": "67f95bf9da6285d20837471b73cd16d9c00e65ae7ad842f3b579468542449722",
+  "services/pg-api/src/worker-heartbeat-activation-registry.ts": "8d395a75f00f954b1db3127e9383ebed1fd0c235a9cf377234a43ba2a1d9c93f",
+  "services/pg-api/src/worker-heartbeat-audit-core.ts": "1f90a04ff358f9922020f6070a931c4f1aa621b945b4de927454b0fb5607b33e",
+  "services/pg-api/src/worker-heartbeat-bounded-reporter.ts": "05d83cb9fc858dde2eee5ccc2c8301db3ee0e7a0482fd5bb6380d0b7cbe1a280",
+  "services/pg-api/src/worker-heartbeat-management-audit-core.ts": "0d30a81558b3c2102d83f103e7d96ebd8664d37970505b6c2a131cede82e9bde",
+  "services/pg-api/src/worker-heartbeat-management-audit.ts": "fb13ad9bb6a1d93215f6b975c21d1806d9707d3be77ba644790eea8934325744",
+  "services/pg-api/src/worker-heartbeat-worker-binding.ts": "492a76e2f7ffa8b5646b48b8a330e0f020683de33d6a72116dac885d760a9a87",
+  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "64c9ec1cfd32c6f4afbaed044ef1b7c181805de0fc438613f8f5ae4a0e543988",
+  "services/pg-api/src/worker-heartbeat-writer-credentials.ts": "9abf06d1bc8d6c0009de6ee3550d2b91f05b65df46842ed5492b576e38452328"
 })
 
 export async function agentInternalShareGenuineFixture(env=process.env,{browserMode=false}={}){
@@ -371,8 +385,8 @@ export async function agentInternalShareGenuineFixture(env=process.env,{browserM
   const audit=marketAudit.verifyAgentInternalShareCredentials
   if(typeof audit!=='function')throw Error('agent_internal_share_actual_auditor_required')
   let base,nativeServer,lifetime,resolveLifetime,readyResolve,readyReject,serverTls,nativeOrigin,allowedOrigin,closed=false,dispatches=0
-  const extraPools=[],cookies=new Map(),events=[];let nativeRequest=0
-  const mutable={available:true,writes:true,dropNext:null,beforeAuthenticate:null,afterBusiness:null,completedAfterBusinessCreates:0,actualReplyDrops:0,nativeDiagnostics:{events:[],overflow:false}}
+  const extraPools=[],cookies=new Map(),events=[],nativeRequests=createInternalShareRequestLifecycle();let nativeRequest=0
+  const mutable={available:true,writes:true,dropNext:null,beforeAuthenticate:null,afterBusiness:null,completedAfterBusinessCreates:0,actualReplyDrops:0,nativeDiagnostics:{events:[],auth_failures:[],overflow:false}}
   const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject}),finish=new Promise(resolve=>{resolveLifetime=resolve})
   const bounded=async(promise,ms=15000)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('agent_internal_share_fixture_timeout')),ms)})])}finally{clearTimeout(timer)}}
   const connect=(login,password)=>{const pool=new pgModule.default.Pool({...target,user:login,password,max:4,statement_timeout:15000,query_timeout:20000});pool.on('error',()=>{});extraPools.push(pool);return{knowledgeSharing:true,connect:()=>pool.connect()}}
@@ -396,7 +410,7 @@ export async function agentInternalShareGenuineFixture(env=process.env,{browserM
   const close=async()=>{
     if(closed)return;closed=true
     const failures=[]
-    if(nativeServer){nativeServer.closeAllConnections();await bounded(new Promise(resolve=>nativeServer.close(resolve))).catch(error=>failures.push(error))}
+    if(nativeServer){nativeServer.closeAllConnections();await bounded((async()=>{await new Promise(resolve=>nativeServer.close(resolve));await nativeRequests.drain()})()).catch(error=>failures.push(error))}
     resolveLifetime();await bounded(lifetime??Promise.resolve()).catch(error=>failures.push(error))
     await bounded(Promise.allSettled(extraPools.map(pool=>pool.end()))).then(results=>{for(const result of results)if(result.status==='rejected')failures.push(result.reason)},error=>failures.push(error))
     try{await base?.close()}catch(error){failures.push(error)}cookies.clear()
@@ -425,13 +439,14 @@ export async function agentInternalShareGenuineFixture(env=process.env,{browserM
     lifetime=tlsModule.withDisposableBoundModelTls(async()=>{dispatches++;throw Error('unexpected_F08_model_dispatch')},async tls=>{
       assert.ok(tls.serverTls);serverTls=tls.serverTls
       let nativeHandler
-      nativeServer=https.createServer({...serverTls,minVersion:'TLSv1.2'},(req,res)=>{if(!nativeHandler){res.writeHead(503);res.end();return};void nativeHandler(req,res).catch(()=>res.destroy())})
+      nativeServer=https.createServer({...serverTls,minVersion:'TLSv1.2'},(req,res)=>{if(!nativeHandler){res.writeHead(503);res.end();return};void nativeRequests.run(()=>nativeHandler(req,res)).catch(()=>res.destroy())})
       await new Promise((resolve,reject)=>{nativeServer.once('error',reject);nativeServer.listen(0,'127.0.0.1',resolve)})
       nativeOrigin='https://localhost:'+nativeServer.address().port;allowedOrigin=browserMode?'https://localhost:17443':nativeOrigin
       const selected=policy.selectNativeInternalShareCapabilities(env,true,allowedOrigin,true)
       assert.equal(selected.available,true,'Root must explicitly opt in F08 Native available in the isolated job');assert.equal(selected.writes,true,'Root must explicitly opt in initial F08 writes')
       nativeHandler=async(req,res)=>{
-        const request=++nativeRequest,product=repository(),observed={};let completedAction=null
+        const request=++nativeRequest,product=repository(),observed={},started=performance.now();let completedAction=null,authCalls=0
+        const elapsed=()=>Math.min(60000,Math.max(0,Math.floor(performance.now()-started)))
         for(const operation of['list','preview','record','confirm'])observed[operation]=async(...args)=>{
           const value=await product[operation](...args)
           events.push({kind:'business',operation})
@@ -441,12 +456,12 @@ export async function agentInternalShareGenuineFixture(env=process.env,{browserM
         }
         let generic,family,native
         native=nativeModule.createNativeAuthHttpHandler({auth,allowedOrigin,allowConfigurationWrites:true,allowEmployeeGovernance:true,allowInternalShare:mutable.available,allowInternalShareWrites:mutable.available&&mutable.writes,businessHandler:async(incoming,outgoing)=>{if(await family(incoming,outgoing))return;return generic(incoming,outgoing)}})
-        const authenticateRequest=async incoming=>{if(mutable.beforeAuthenticate)await mutable.beforeAuthenticate({path:incoming.url,method:incoming.method});return native.authenticateRequest(incoming)}
+        const authenticateRequest=async incoming=>{const call=++authCalls;try{if(mutable.beforeAuthenticate)await mutable.beforeAuthenticate({path:incoming.url,method:incoming.method});return await native.authenticateRequest(incoming)}catch(error){try{const descriptor=isNativeError(error)&&!isProxy(error)?Object.getOwnPropertyDescriptor(error,'status'):null,status=descriptor&&Object.hasOwn(descriptor,'value')&&[401,403,503].includes(descriptor.value)?descriptor.value:null;if(mutable.nativeDiagnostics.auth_failures.length<128)mutable.nativeDiagnostics.auth_failures.push(Object.freeze({request,phase:call===1?'before':call===2?'after':'additional',elapsed_ms:elapsed(),status,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}));else mutable.nativeDiagnostics.overflow=true}catch{}throw error}}
         const activeFamily=marketHttp.createAgentInternalShareHttp({repository:observed,authenticateRequest,allowedOrigin});family=async(incoming,outgoing)=>{if(!mutable.available&&incoming.url?.startsWith('/api/v2/internal-templates')){outgoing.writeHead(404,{'Content-Type':'application/json','Cache-Control':'no-store'});outgoing.end(JSON.stringify({error:'not_found'}));return true};return activeFamily(incoming,outgoing)}
         generic=httpModule.createHandler({repository:base.agents,modelConnectionRepository:base.models,toolConnectionRepository:new toolsModule.ToolConnectionRepository(base.pool,base.key),workflowRepository:new workflowModule.WorkflowRepository(base.pool),knowledgeRepository:new knowledgeModule.KnowledgeBaseRepository(base.pool),allowedOrigin,authenticateRequest:native.authenticateRequest,verifyToken:async()=>{throw Error('F08_genuine_Native_cookie_only')}})
         const drop=mutable.dropNext
-        if(drop&&req.method===drop.method&&req.url===drop.path){if(!browserMode)mutable.dropNext=null;const original=res.end;res.end=function(...args){if(this.statusCode===200&&(!browserMode||['create','redeem','revoke'].includes(drop.action)&&completedAction===drop.action&&mutable.dropNext===drop)){if(browserMode)mutable.dropNext=null;this.destroy();if(browserMode&&this.destroyed===true)mutable.actualReplyDrops++;return this};return original.apply(this,args)}}
-        return withInternalShareObservation(data=>{if(mutable.nativeDiagnostics.events.length<1024)mutable.nativeDiagnostics.events.push(Object.freeze({request,...data}));else mutable.nativeDiagnostics.overflow=true},()=>native.handler(req,res))
+        if(drop&&req.method===drop.method&&req.url===drop.path){if(!browserMode)mutable.dropNext=null;const original=res.end;res.end=function(...args){if(this.statusCode===200&&(!browserMode||!this.destroyed&&elapsed()<8000&&['create','redeem','revoke'].includes(drop.action)&&completedAction===drop.action&&mutable.dropNext===drop)){if(browserMode)mutable.dropNext=null;this.destroy();if(browserMode&&this.destroyed===true)mutable.actualReplyDrops++;return this};return original.apply(this,args)}}
+        return withInternalShareObservation(data=>{if(mutable.nativeDiagnostics.events.length<1024)mutable.nativeDiagnostics.events.push(Object.freeze({request,elapsed_ms:elapsed(),...data}));else mutable.nativeDiagnostics.overflow=true},()=>native.handler(req,res))
       }
       await login('alice');await login('bob');readyResolve();await finish
     },{listenPort:0,includeServerTls:true}).catch(error=>{readyReject(error);throw error})

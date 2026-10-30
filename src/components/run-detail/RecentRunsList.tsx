@@ -29,13 +29,13 @@ export function RecentRunsList({ items, activeRunId, stateMeta, onSelect }: Rece
       ) : (
         <ul className="mt-4 flex flex-col gap-2">
           {items.map((row) => {
-            const meta = stateMeta[row.status] || stateMeta.failed
+            const meta = row.status === "awaiting_input" ? {label:"待我回复",badge:"bg-primary/10 text-primary"} : stateMeta[row.status] || stateMeta.failed
             const isActive = row.id === activeRunId
             return (
-              <li key={row.id}>
+              <li key={(row.nativeKind??"legacy")+":"+row.id}>
                 <button
                   type="button"
-                  onClick={() => onSelect(row.id)}
+                  onClick={() => onSelect(row.nativeKind?row.nativeKind+":"+row.id:row.id)}
                   className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary ${
                     isActive ? "border-primary bg-primary/5" : "border-border bg-background"
                   }`}
@@ -48,7 +48,7 @@ export function RecentRunsList({ items, activeRunId, stateMeta, onSelect }: Rece
                       {row.spec_name || "(方案已删除)"} · {row.instruction}
                     </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {formatRunDetailTime(row.created)} · {row.current_step}/{row.max_steps} 步 · {row.model}
+                      {formatRunDetailTime(row.created)} · {row.nativeKind?row.current_step+" 个执行步骤（最近记录）":row.current_step+"/"+row.max_steps+" 步"} · {row.model}
                       {row.source === "acceptance_test" && " · 验收测试"}
                     </span>
                   </span>

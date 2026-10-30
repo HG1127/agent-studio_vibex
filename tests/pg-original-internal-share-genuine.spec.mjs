@@ -6,8 +6,8 @@ import {installOriginalLegacyBlockObserver} from './helpers/pg-original-login-le
 test('original internal-templates: real reviewed sharing, redemption, revoke, unknown ACK and account fences',async({},testInfo)=>{
  const permit=requireOriginalInternalShareBrowserCi() // Before fixture/files/PG/TLS/browser.
  const fs=await import('node:fs/promises'),f=await startOriginalInternalShareBrowserFixture()
- let browser,context,page,observer,primary,before,after,copyAudit,foreignAudit,expectedEmployeeAudit,webSockets=0
- const outside=[],cleanup=[],holds=[]
+ let browser,context,page,observer,primary,before,after,copyAudit,foreignAudit,expectedEmployeeAudit,webSockets=0,completed=false
+ const outside=[],cleanup=[],holds=[],pages=[],images=[]
  const clean=async(label,work)=>{try{await work()}catch(error){cleanup.push({label,error})}}
  try{
   expect(f.backendProfile).toMatchObject({profile:'fresh-original-F08',head:permit.head,source_and_catalog_audited_by_original_F08:true,original_page_acceptance:false,full_Native_process_entry_verified:false,production_GO:false})
@@ -17,7 +17,7 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
   observer=await installOriginalLegacyBlockObserver(context)
   await context.route('**/*',async route=>{if(new URL(route.request().url()).origin!==f.origin){if(outside.length<128)outside.push('outside_origin');else f.observations.overflow=true;await route.abort();return}await route.continue()})
   await context.routeWebSocket('**/*',socket=>{webSockets=Math.min(129,webSockets+1);if(webSockets===129)f.observations.overflow=true;socket.close()})
-  page=await context.newPage();page.setDefaultTimeout(15000)
+  page=await context.newPage();pages.push(page);page.setDefaultTimeout(15000)
   const settled=async p=>{await expect(p.getByRole('button',{name:'刷新',exact:true})).toBeEnabled()}
   const login=async(p,who)=>{
    await p.goto(f.url)
@@ -70,7 +70,9 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
    }),{message:'synthetic screenshot must expose only safe boolean DOM observations'}).toEqual({code_absent:true,redeem_input_empty:true,password_absent:true})
    await expect(page.getByRole('alert')).toHaveCount(0)
    await expect(page.getByText('领取成功',{exact:true})).toBeVisible()
-   await page.screenshot({path:testInfo.outputPath('original-internal-share-bob-redeemed.png'),fullPage:true})
+   const redeemedImage=await page.screenshot({fullPage:true})
+   if(!Buffer.isBuffer(redeemedImage)||redeemedImage.length>8388608||!redeemedImage.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw Error('original_share_safe_image_refused')
+   images.push({name:'original-internal-share-bob-redeemed.png',bytes:redeemedImage})
    await logout(page,'bob');await login(page,'alice')
   })
   await test.step('original revoke records a genuine receipt and removes the active original action',async()=>{await create();await revokeOnlyActive()})
@@ -95,7 +97,7 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
     if(method==='GET')await page.getByRole('button',{name:'刷新',exact:true}).click()
     else await page.getByRole('button',{name:'确认并生成分享码',exact:true}).click()
     await gate.entered()
-    const switcher=await context.newPage();await switcher.goto(f.origin+'/internal-templates');await settled(switcher)
+    const switcher=await context.newPage();pages.push(switcher);await switcher.goto(f.origin+'/internal-templates');await settled(switcher)
     await logout(switcher,'alice');await login(switcher,'bob');await page.bringToFront()
     // Focus must revalidate real Cookie even while the old read/write is held.
     await expect.poll(()=>page.locator('p.font-mono').count(),{message:'once-visible code element must be absent'}).toBe(0)
@@ -104,7 +106,7 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
     gate.release();await page.getByRole('button',{name:'刷新',exact:true}).click();await settled(page)
     await expect(page.getByLabel('选择需要分享的 Agent').locator('option[value="'+f.sourceSpecId('bob')+'"]')).toHaveCount(1)
     await expect.poll(()=>page.locator('p.font-mono').count(),{message:'once-visible code element must be absent'}).toBe(0)
-    await logout(page,'bob');await login(page,'alice');await switcher.close()
+    await logout(page,'bob');await login(page,'alice');await observer.flush(switcher);await switcher.close()
    }
   })
   after=await f.counts()
@@ -114,19 +116,22 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
   expect.soft(observer.snapshot()).toEqual({event_count_capped_129:0,codes:[],overflow:false})
   expect.soft(f.observations.legacy_backend_requests).toEqual([]);expect.soft(f.observations.unexpected_api_failures).toEqual([]);expect.soft(f.observations.blocked_requests).toEqual([])
   expect(outside).toEqual([]);expect(webSockets).toBe(0);expect(f.observations.forbidden_auth_headers).toBe(0);expect(f.observations.overflow).toBe(false)
-  expect(f.observations.controlled_after_record_disconnects).toBe(1);expect(f.observations.held_actual_responses).toBe(2)
+  expect(f.observations.controlled_after_record_disconnects).toBe(1);expect(f.observations.held_actual_responses).toBe(2);completed=true
  }catch(error){primary=error}
  finally{
   for(const gate of holds)gate.release()
-  if(observer&&page&&!page.isClosed())await clean('observer_flush',()=>observer.flush(page))
+  if(observer)for(const current of pages)if(!current.isClosed())await clean('observer_flush',()=>observer.flush(current))
   if(context)await clean('browser_context',()=>context.close())
   if(browser)await clean('browser',()=>browser.close())
   await clean('owned_fixture',()=>f.close())
+  await clean('final_zero_after_cleanup',async()=>{expect(observer?.snapshot()).toEqual({event_count_capped_129:0,codes:[],overflow:false});for(const field of ['legacy_backend_requests','unexpected_api_failures','blocked_requests'])expect(f.observations[field]).toEqual([]);expect(f.observations.forbidden_auth_headers).toBe(0);expect(f.observations.overflow).toBe(false);expect(outside).toEqual([]);expect(webSockets).toBe(0)})
+  if(completed&&!primary&&!testInfo.errors.length&&!cleanup.length)for(const image of images)await clean('fixed_success_image_write',()=>fs.writeFile(testInfo.outputPath(image.name),image.bytes,{flag:'wx'}))
+  for(const image of images)image.bytes.fill(0);images.length=0;pages.length=0
   const observation={scope:'actual original internal-templates hosted story only',head:permit.head,build:f.provenance,backend:f.backendProfile,
    business_before:before??null,business_after:after??null,recipient_owner_audit:copyAudit??null,foreign_owner_refusal:foreignAudit??null,expected_employee_negative:expectedEmployeeAudit??null,
    http:f.observations,local_PB_blocks:observer?.snapshot()??null,outside_origins:outside,websocket_requests_capped_129:webSockets,failed:Boolean(primary||testInfo.errors.length||cleanup.length),cleanup_failures:cleanup.map(v=>v.label),
    all_original_pages_complete:false,employee_UAT:0,qualifying_24h:0,production_GO:false}
-  await clean('safe_observation',()=>fs.writeFile(testInfo.outputPath('original-internal-share-observation.json'),JSON.stringify(observation,null,2)))
+  await clean('safe_observation',async()=>{const bytes=Buffer.from(JSON.stringify(observation,null,2));if(bytes.length>1048576)throw Error('original_share_observation_bound');await fs.writeFile(testInfo.outputPath('original-internal-share-observation.json'),bytes,{flag:'wx'})})
  }
  if(primary&&cleanup.length)throw new AggregateError([primary,...cleanup.map(v=>v.error)],'original_share_story_and_cleanup_failed')
  if(primary)throw primary;if(cleanup.length)throw new AggregateError(cleanup.map(v=>v.error),'original_share_cleanup_failed')

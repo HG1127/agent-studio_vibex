@@ -12,7 +12,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "local-executor/office.mjs": "7c3abc4f87c497ccc7dbaa84a83458fa0ac0f21e3c224be829799bfbe7110c8f",
   "local-executor/result.mjs": "9bb610ae182dbb903c00a12cefe5bcaf08acc29211c26731c344ff06b8f84e22",
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
-  "package.json": "eac4222bcf4a0822a1c31ec954d2dc951dcfe25c4bee23cf2051f97b43b55a74",
+  "package.json": "e297c9dee920b7fe81b7daabe7a5922cd5d694e85b6494b7f183782225eb09ac",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/src/agent-human-input-policy.ts": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b",
   "services/pg-api/src/autonomous-agent-run-repository.ts": "791d148ef5b23403e27d39d60ff414f358e75abddd27d47b28f963079974de1c",
@@ -238,7 +238,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/native-employee-governance-audit.mjs": "ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238",
   "services/pg-api/src/optional-credential-boundary.ts": "f019c3f541223ebb1b699dd1a795e64293ff603f396cd44aceb05e453b80633a",
   "services/pg-api/src/pg18-full069-assessment-startup-observation.d.mts": "6143fe0961e7709e28fc8bc24dfefb471fc9de38cedf1b0b05cdd06275141f54",
-  "services/pg-api/src/pg18-full069-assessment-startup-observation.mjs": "9ea74387f759f22c24e6fc37d0d03128c8f15b8723b9d10b3cffd1eb20afd5c9",
+  "services/pg-api/src/pg18-full069-assessment-startup-observation.mjs": "0fee6d247837db4ff7515c0271dd5e4d9907244fd7ae6a757b2449cb1e516154",
   "services/pg-api/src/pg18-full069-native-reader-failure-observation.mjs": "6f46b8dd1d5e44544e0d21deb2eae3d37eb79ebee7404e0f146842240fa4c2e8",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/worker-heartbeat-activation-control-contract.ts": "3d1a9b65a50cba9f3538256203dab134ccff3d1166a9017d7f6e4fa916d55662",
@@ -251,7 +251,19 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/agent-internal-share-observation.mjs": "0b88b7d6ace039868fb85aaca7b4400a33133ab17c91d9701bee3db999c938af",
   "services/pg-api/src/model-connection-page-cursor.ts": "42350485eb767064df95b7506ec3c94fa6e0c0160c88fad032f437807f0aa02c",
   "services/pg-api/src/model-connection-pagination.ts": "224df07f1eab5f5d36d7a60f69150c4a2f3dbab328f07182a23fe6e4cc6d82dd",
-  "shared/model-connection-pagination-contract.ts": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad"
+  "shared/model-connection-pagination-contract.ts": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad",
+  "services/pg-api/src/worker-heartbeat-activated-audit-core.ts": "ba670a1722b241781f6cd28b85bbd571ff1919bac47e5f1ebca090ddfcff28b5",
+  "services/pg-api/src/worker-heartbeat-activated-audit.ts": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
+  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "89ac707c17598be2e603317ce24a3b1024b57142c0382069851bf8158f9957a5",
+  "services/pg-api/src/worker-heartbeat-activation-control-source.mjs": "67f95bf9da6285d20837471b73cd16d9c00e65ae7ad842f3b579468542449722",
+  "services/pg-api/src/worker-heartbeat-activation-registry.ts": "8d395a75f00f954b1db3127e9383ebed1fd0c235a9cf377234a43ba2a1d9c93f",
+  "services/pg-api/src/worker-heartbeat-audit-core.ts": "1f90a04ff358f9922020f6070a931c4f1aa621b945b4de927454b0fb5607b33e",
+  "services/pg-api/src/worker-heartbeat-bounded-reporter.ts": "05d83cb9fc858dde2eee5ccc2c8301db3ee0e7a0482fd5bb6380d0b7cbe1a280",
+  "services/pg-api/src/worker-heartbeat-management-audit-core.ts": "0d30a81558b3c2102d83f103e7d96ebd8664d37970505b6c2a131cede82e9bde",
+  "services/pg-api/src/worker-heartbeat-management-audit.ts": "fb13ad9bb6a1d93215f6b975c21d1806d9707d3be77ba644790eea8934325744",
+  "services/pg-api/src/worker-heartbeat-worker-binding.ts": "492a76e2f7ffa8b5646b48b8a330e0f020683de33d6a72116dac885d760a9a87",
+  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "64c9ec1cfd32c6f4afbaed044ef1b7c181805de0fc438613f8f5ae4a0e543988",
+  "services/pg-api/src/worker-heartbeat-writer-credentials.ts": "9abf06d1bc8d6c0009de6ee3550d2b91f05b65df46842ed5492b576e38452328"
 })
 export async function nativeLocalDeviceGenuineFixture(env=process.env,{browserMode=false,chainSupport=false}={}){
  const target=requireNativeLocalDeviceGenuineCi(env)

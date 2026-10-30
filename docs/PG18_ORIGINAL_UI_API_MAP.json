@@ -1,6 +1,6 @@
 {
   "format": "agentstudio_original_employee_UI_PG_action_map_v1",
-  "snapshot_UTC": "2026-10-30T16:56:56.803159+00:00",
+  "snapshot_UTC": "2026-10-30T18:05:54.615076+00:00",
   "authority": "AGENTS.md: Migration delivery strategy — user clarification 2026-10-30",
   "delivery_baseline": "Preserve the current original employee UI; migrate backend/auth/client/hooks/DTO/status only. Native workbench is verification/reference.",
   "source_scope": {
@@ -942,14 +942,25 @@
       "controllers": [
         {
           "path": "src/pages/AgentRun/useAgentRun.ts",
-          "sha256": "a7ddf7078cdf5fc5bf12c1ffca6b2b2789353200780e0288a76f74d1b29c7240",
-          "origin": "D current working tree"
+          "sha256": "c1874efa23dc69a3f88d9ff229cb76ca654d6ce9035ee53ce90b4083bde0175d",
+          "origin": "H reviewed integration"
+        },
+        {
+          "path": "src/pages/AgentRun/usePgOriginalAgentRun.ts",
+          "sha256": "684e008886000ef325537f801dbc015620abdb188cff452b749cae58d02e97c8",
+          "origin": "H reviewed integration"
+        },
+        {
+          "path": "src/lib/originalAgentRunSession.ts",
+          "sha256": "9c4d1af9aae533c21ab72e9d2962a381ba7df9671295a884381b1bef0b54c9eb",
+          "origin": "H reviewed integration"
         }
       ],
       "remaining_gaps": [
-        "模型和Agent的15位ID过滤会丢弃PG UUID",
-        "旧run_events、agent_runs.result、状态/approval DTO不能直接使用PG projection",
-        "旧重试与lost ACK恢复应映射已有同request确认，不能重复付费或重建新run"
+        "Real original-page AgentRun/RunDetail hosted stories pending",
+        "Full paid-effect fee preview/approval integration",
+        "Original temporary overrides and all original evaluation/optimization interactions",
+        "Exact admission recovery contract; no replacement submission while original outcome unknown"
       ],
       "original_page_E2E_acceptance_requirements": [
         {
@@ -985,7 +996,7 @@
           "PG_pilot_page_is_not_acceptance": true
         }
       ],
-      "status": "ORIGINAL_UI_ADAPTATION_REQUIRED",
+      "status": "ORIGINAL_UI_PARTIAL_NATIVE_SOURCE_INTEGRATED_HOSTED_ACCEPTANCE_PENDING",
       "operations": [
         {
           "id": "UI-009",
@@ -1118,8 +1129,13 @@
           ],
           "existing_PG_extra_clients": [],
           "PG_asset_status": "backend_and_client_source_reusable",
-          "original_page_PG_connection_status": "NOT_WIRED_IN_CAPTURED_SOURCE",
-          "necessary_adaptation_or_remaining_contract": "明确prepare/model/autonomous运行种类，不把submitRun的prepare路径当完整Agent完成；映射已有原步骤面板和结果",
+          "original_page_PG_connection_status": "PARTIAL_NATIVE_SOURCE_INTEGRATED_GENUINE_ORIGINAL_PAGE_PENDING",
+          "necessary_adaptation_or_remaining_contract": [
+            "Real original-page AgentRun/RunDetail hosted stories pending",
+            "Full paid-effect fee preview/approval integration",
+            "Original temporary overrides and all original evaluation/optimization interactions",
+            "Exact admission recovery contract; no replacement submission while original outcome unknown"
+          ],
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         },
@@ -1213,8 +1229,13 @@
           ],
           "existing_PG_extra_clients": [],
           "PG_asset_status": "backend_and_client_source_reusable",
-          "original_page_PG_connection_status": "NOT_WIRED_IN_CAPTURED_SOURCE",
-          "necessary_adaptation_or_remaining_contract": "使用真实run、step_key、input_sha256、request_id、expected revision及原确认回执；不用旧action字符串直接透传",
+          "original_page_PG_connection_status": "PARTIAL_NATIVE_SOURCE_INTEGRATED_GENUINE_ORIGINAL_PAGE_PENDING",
+          "necessary_adaptation_or_remaining_contract": [
+            "Real original-page AgentRun/RunDetail hosted stories pending",
+            "Full paid-effect fee preview/approval integration",
+            "Original temporary overrides and all original evaluation/optimization interactions",
+            "Exact admission recovery contract; no replacement submission while original outcome unknown"
+          ],
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         },
@@ -1343,8 +1364,13 @@
           ],
           "existing_PG_extra_clients": [],
           "PG_asset_status": "backend_and_client_source_reusable",
-          "original_page_PG_connection_status": "NOT_WIRED_IN_CAPTURED_SOURCE",
-          "necessary_adaptation_or_remaining_contract": "保留原操作意图和内容隐私；对接当前PG评价/接受receipt，禁止把历史结果当新付费授权",
+          "original_page_PG_connection_status": "PARTIAL_NATIVE_SOURCE_INTEGRATED_GENUINE_ORIGINAL_PAGE_PENDING",
+          "necessary_adaptation_or_remaining_contract": [
+            "Real original-page AgentRun/RunDetail hosted stories pending",
+            "Full paid-effect fee preview/approval integration",
+            "Original temporary overrides and all original evaluation/optimization interactions",
+            "Exact admission recovery contract; no replacement submission while original outcome unknown"
+          ],
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         }
@@ -1674,8 +1700,10 @@
         }
       ],
       "remaining_gaps": [
-        "旧updated/连接状态字段与PG revision/probe状态需映射",
-        "测试与启用分开，启用状态不能替代原服务端verified连接约束"
+        "Metadata unknown-result recovery whole story rerun",
+        "Optional075 exact configuration-write receipt review/install/hosted validation",
+        "Actual provider DNS/TLS/custom-address compatibility",
+        "Full original page/employee UAT acceptance"
       ],
       "original_page_E2E_acceptance_requirements": [
         {
@@ -1703,7 +1731,7 @@
           "PG_pilot_page_is_not_acceptance": true
         }
       ],
-      "status": "ORIGINAL_UI_METADATA_CRUD_SOURCE_INTEGRATED_BROWSER_ACCEPTANCE_PENDING",
+      "status": "ORIGINAL_UI_DRAFT_DISCOVERY_STORY_PASSED_METADATA_UNKNOWN_RECOVERY_STORY_PENDING",
       "operations": [
         {
           "id": "UI-014",
@@ -1809,7 +1837,7 @@
           "original_page_E2E_completed": false
         }
       ],
-      "current_preparation_note": "Original route/layout/cards/form and PB branch retained. PG metadata CRUD uses verified Cookie identity, expected-employee, revision CAS and actual owner audit. Unknown writes stay blocked and only read metadata; no exact receipt is invented. Draft test/discovery, >50 pagination and original-page real CI remain pending."
+      "current_preparation_note": "Exact af94d8f draft-discovery story passed with synthetic inventory and actual Cookie/owner/audits; 251-row paging, metadata CRUD/CAS/audit and account fence steps completed in a failed whole metadata story. No actual provider DNS/TLS compatibility, full metadata unknown-write recovery or full-page acceptance. Optional075 exact-receipt source remains independently frozen and unapplied."
     },
     {
       "route": "/tool-connections",
@@ -2483,18 +2511,31 @@
       "controllers": [
         {
           "path": "src/pages/RunDetail/useRunDetail.ts",
-          "sha256": "b1997911b1461cc8bc19e901ff9f1fbbfcf2288a8147d902195dd8b5311dcaac",
-          "origin": "D current working tree"
+          "sha256": "98e634c8d2a259ebc83decb0c2382ea3f7671d75a85fff523d2beeaf53ff262a",
+          "origin": "H reviewed integration"
         },
         {
           "path": "src/components/run-detail/RunTraceCard.tsx",
-          "sha256": "bff54a0588d91b11a35573e021b12201a8e1c572fb5a27825c5e1fe0cd6ebe38",
-          "origin": "D current working tree"
+          "sha256": "5a8226610566d29e97630dbc9c3f68ee66cbf90c31c102e707a35c307edc0901",
+          "origin": "H reviewed integration"
+        },
+        {
+          "path": "src/pages/RunDetail/usePgOriginalRunDetail.ts",
+          "sha256": "a33384b860107221360c3416a67e92da2f4ce526c920a0ab453185d8e0693d37",
+          "origin": "H reviewed integration"
+        },
+        {
+          "path": "src/lib/originalRunDetailSession.ts",
+          "sha256": "98bed5f4249e7f9618a41373e70272fc3eb02734cd962ec2f1624f6109b790ba",
+          "origin": "H reviewed integration"
         }
       ],
       "remaining_gaps": [
-        "旧trace聚合字段与PG受保护steps/output不同，B核对保留哪些诊断字段",
-        "状态轮询和分页/刷新恢复需要owner/session fence"
+        "Hosted original-page E2E pending",
+        "Public event stream and full recent-history pagination",
+        "Historical config/title and original full feedback/evaluation/output interactions",
+        "Safe Agent/Workflow controls and workflow-v2 pause/resume",
+        "Exact cancellation receipt; terminal observation is not cancellation causation proof"
       ],
       "original_page_E2E_acceptance_requirements": [
         {
@@ -2522,7 +2563,7 @@
           "PG_pilot_page_is_not_acceptance": true
         }
       ],
-      "status": "ORIGINAL_UI_ADAPTATION_REQUIRED",
+      "status": "ORIGINAL_UI_PARTIAL_NATIVE_SOURCE_INTEGRATED_HOSTED_ACCEPTANCE_PENDING",
       "operations": [
         {
           "id": "UI-019",
@@ -2646,8 +2687,14 @@
           ],
           "existing_PG_extra_clients": [],
           "PG_asset_status": "backend_and_client_source_reusable",
-          "original_page_PG_connection_status": "NOT_WIRED_IN_CAPTURED_SOURCE",
-          "necessary_adaptation_or_remaining_contract": "保留原时间线/详情；用kind+run_id精确路由，区分safe/V2/Agent，不把metadata待办当正文授权",
+          "original_page_PG_connection_status": "PARTIAL_NATIVE_SOURCE_INTEGRATED_GENUINE_ORIGINAL_PAGE_PENDING",
+          "necessary_adaptation_or_remaining_contract": [
+            "Hosted original-page E2E pending",
+            "Public event stream and full recent-history pagination",
+            "Historical config/title and original full feedback/evaluation/output interactions",
+            "Safe Agent/Workflow controls and workflow-v2 pause/resume",
+            "Exact cancellation receipt; terminal observation is not cancellation causation proof"
+          ],
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         }
@@ -5996,14 +6043,14 @@
   "current_preparation": {
     "original_login_adapter": "Original Login/App/account-menu hosted story passed on9b42e39 with actual Native Cookie/CSRF, Alice/Bob roles, acknowledgement-loss recovery and all original zero gates; no full original menu/Home acceptance.",
     "original_home_transport": "Current original Home and catalog integrated with full immutable spec bindings, CAS, employee concurrency precondition, recovery and unknown-write isolation; reviewed async read fences and independent metadata/binding intent fixes integrated",
-    "original_UI_isolated_build": "Actual new normal PB and opt-in original index/main/App builds pass with101 resources each; normal PG matches0. Current frontendTS6/API TS5 pass; original Home authoring hosted acceptance remains pending.",
+    "original_UI_isolated_build": "Actual current normal PB build has102 resources and zero PG matches; original index/main/App PG build has104 resources. FrontendTS6/API TS5 pass. Build isolation and pure tests do not establish original-page business acceptance.",
     "pure_auth_home_contract_checks": 110,
     "pure_optional070_backend_checks": 76,
     "pure_optional071_catalog_checks": 61,
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 977,
+    "combined_pure_checks": 1115,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6833,6 +6880,176 @@
       "actual_original_share_story_accepted": false,
       "original_failure_root_cause_proven": false,
       "original_8s_and_receipt_5_final7_zero_gates_retained": true
+    },
+    "verified_af94d8f_actual_evidence": {
+      "head": "af94d8f66519b92b3c545a65a2b7ad743bac9619",
+      "original_draft_story": {
+        "run": 41094810222,
+        "job": 124197714361,
+        "passed": true,
+        "job_log_sha256": "99de413a9043b997c8e434c163e15fb4400c553d50571573f3393a4100cd97d2",
+        "observation_sha256": "5210a0eae87b48e329de1d39596778ad790334e283cd766c00e1d91cd53f2544",
+        "images": [
+          {
+            "name": "original-model-draft-discovery-alice-after-bob.png",
+            "sha256": "363e0cdcaddae69f03b7ae59c6d68fc13fb8050e36d64c918f18844280556748",
+            "bytes": 265803,
+            "visually_reviewed_original_synthetic_page": true,
+            "password_form_and_old_Bob_result_absent": true
+          },
+          {
+            "name": "original-model-draft-discovery-alice-saved.png",
+            "sha256": "47062c7167eff5c2183db8c7bf270f4f8cc10327e5777cdb0faea41d773eb092",
+            "bytes": 257960,
+            "visually_reviewed_original_synthetic_page": true,
+            "password_form_and_old_Bob_result_absent": true
+          }
+        ],
+        "steps": {
+          "unsaved_discovery_metadata_unchanged_and_real_owner_audit": true,
+          "explicit_save_discovered_IDs_real_owner_encryption": true,
+          "actual_late_POST_and_Cookie_owner_fence": true
+        },
+        "owner_audit_after_cleanup": true,
+        "metadata_changed_only_on_explicit_save": true,
+        "synthetic_inventory_requests": 2,
+        "actual_provider_network_or_paid_compatibility_accepted": false,
+        "all_zero_gates": true
+      },
+      "model_story": {
+        "run": 41094810222,
+        "job": 124197714499,
+        "whole_story_passed": false,
+        "observation_sha256": "48ba785f57369eb801ba1816e7738b0c23fd237a20e3892ef91389e572f0f4de",
+        "job_log_sha256": "2fff810da4fd7fb187ed6d6060b89754092206d21d9d050c8059111bf4736097",
+        "completed_steps": {
+          "large_account_pagination": true,
+          "original_encrypted_metadata_save_update_switch": true,
+          "original_delete_owner_CAS_audit": true,
+          "late_actual_metadata_account_fence": true
+        },
+        "large_account_pagination": {
+          "added_rows": 251,
+          "expected_owner_rows": 252,
+          "last_page_original_name": "Synthetic assessment alice",
+          "removed_rows": 251,
+          "remaining_seed_rows": 0,
+          "actual_original_page_reads_at_least_six": true,
+          "oldest_owned_row_reached": true,
+          "all_temporary_configuration_rows_removed_before_images": true
+        },
+        "failure": "The original recovery button did not appear within the default5s assertion despite one actual committed-create disconnect. Browser timing is a hypothesis pending the exact requestfailed synchronization rerun.",
+        "actual_after_commit_disconnects": 1,
+        "unknown_recovery_accepted": false,
+        "success_images": 0
+      },
+      "full20_pages": 0,
+      "employee_UAT": 0,
+      "qualifying24h": 0,
+      "production_GO": false,
+      "quality": {
+        "run": 41094810229,
+        "jobs_passed": 50,
+        "jobs_total": 50,
+        "root_job": 124197715104,
+        "root_tests_passed": 4015,
+        "root_tests_total": 4015,
+        "required_pnpm_check_passed": true,
+        "job_log_sha256": "fb620eb18d219a573013eb72b009ea98f00101430e052a2856ef9d446853e33c"
+      },
+      "PB19": {
+        "run": 41095039217,
+        "job": 124198486156,
+        "passed": 19,
+        "total": 19,
+        "workers": 2,
+        "seconds": 73.7,
+        "job_log_sha256": "3487c9023b9b6e73f6e849e31451367662d7d80936be6180c76c23c3c668eebe"
+      },
+      "telemetry": {
+        "run": 41094810192,
+        "job": 124197713617,
+        "actual_controller_and_nonroot_Native_IPC_passed": true,
+        "job_log_sha256": "efef5de32ddd891c3472f5704805af90f24095f217a6ca34e18fddd5b01d8562"
+      },
+      "complete069": {
+        "run": 41094810181,
+        "legacy_job": 124197714083,
+        "assessment_phase": "heartbeat_open",
+        "refusal_class": "heartbeat_binding_refused",
+        "assessment_exit_code": 1,
+        "shutdown_not_requested": true,
+        "telemetry_backends_zero": false,
+        "Readers_zero": true,
+        "four_business_queues_empty": true,
+        "final14_job": 124197713441,
+        "final14_failure_phase": "warm_sample",
+        "actual_13_ACL_negatives_accepted": false,
+        "passed": false
+      },
+      "F08": {
+        "run": 41094810196,
+        "original_job": 124197713664,
+        "reference_job": 124197713758,
+        "reference_passed": true,
+        "original_passed": false,
+        "actual_receipts": 4,
+        "required_receipts": 5,
+        "outer_proxy_error": "ECONNRESET",
+        "upstream_HTTP_status": null,
+        "actual_drop_completed": false,
+        "relative_timing_not_observed_on_this_head": true,
+        "whole_story_success_PNG_accepted": false
+      }
+    },
+    "original_agent_run_source": {
+      "original_route_layout_components_preserved": true,
+      "source_integrated_not_E2E_accepted": true,
+      "UUID_revision_current_resources_and_complete_model_snapshot": true,
+      "same_owner_suspension_and_401_403_404_ACL_private_body_and_drafts_hidden": true,
+      "fresh_source_check_before_clipboard": true,
+      "unknown_submission_query_only_no_retransmit": true,
+      "gaps": [
+        "Real original-page AgentRun/RunDetail hosted stories pending",
+        "Full paid-effect fee preview/approval integration",
+        "Original temporary overrides and all original evaluation/optimization interactions",
+        "Exact admission recovery contract; no replacement submission while original outcome unknown"
+      ]
+    },
+    "original_run_detail_source": {
+      "original_route_layout_cards_preserved": true,
+      "source_integrated_not_E2E_accepted": true,
+      "four_actual_engine_getters_and_bounded_legacy_link_resolution": true,
+      "real_public_step_metadata_no_fabricated_event_history_or_historical_titles": true,
+      "owner_session_sourceACL_fences": true,
+      "pause_resume_original_request_and_state_hash_persisted_before_POST": true,
+      "absent_receipt_remains_pending_and_never_retransmits": true,
+      "cancel_unknown_uses_exact_target_GET_only": true,
+      "gaps": [
+        "Hosted original-page E2E pending",
+        "Public event stream and full recent-history pagination",
+        "Historical config/title and original full feedback/evaluation/output interactions",
+        "Safe Agent/Workflow controls and workflow-v2 pause/resume",
+        "Exact cancellation receipt; terminal observation is not cancellation causation proof"
+      ]
+    },
+    "worker_heartbeat_bind_admission_source": {
+      "same_original_five_second_message_deadline": true,
+      "root_preadmission_contention_wait_rechecks_original_binding": true,
+      "original_worker_heartbeat_error_object_preserved": true,
+      "closed_startup_error_codes_only": true,
+      "actual_cause_not_uniquely_proven": true,
+      "genuine_full069_rerun_pending": true,
+      "prior_cleanup_backend_failure_retained": true
+    },
+    "original_share_lifecycle_source": {
+      "missing_receipt_keeps_original_pending_blocks_new_write": true,
+      "actual_Native_handlers_drained_within_original_cleanup_budget_before_authPool_end": true,
+      "drop_only_actual_committed_200_before_eight_second_deadline_and_live_socket": true,
+      "closed_relative_elapsed_and_auth_status_observation": true,
+      "PNG_buffer_written_only_after_whole_story_zero_gates_and_cleanup": true,
+      "initial_F08_latency_cause_not_proven": true,
+      "genuine_original_story_pending": true
     }
   },
   "qualifying24h_hours": 0,

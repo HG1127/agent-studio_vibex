@@ -85,7 +85,7 @@ export async function openWorkerHeartbeatWorkerBinding(rawKind:WorkerHeartbeatKi
   const hello=response.value as WriterHello;if(hello.generation!==credential.generation)return writerFail('writer_not_enrolled')
   s.hello=hello;s.permit=hello.next_permit
   const handle=Object.freeze(Object.create(null)) as WorkerHeartbeatWorkerBinding;bindings.set(handle,s);return handle
- }catch{quarantine(s,false);return writerFail('writer_not_enrolled')}
+ }catch(error){quarantine(s,false);if(error instanceof WorkerHeartbeatWriterError)throw error;return writerFail('writer_not_enrolled')}
 }
 export function describeWorkerHeartbeatWorkerBinding(handle:WorkerHeartbeatWorkerBinding):Readonly<{generation:string}>{const s=state(handle);if(s.closed)return writerFail('writer_closed');return Object.freeze({generation:s.hello.generation})}
 export async function sendWorkerHeartbeatBoundReport(handle:WorkerHeartbeatWorkerBinding,raw:WorkerHeartbeatReport,rawOptions:WorkerHeartbeatSendOptions):Promise<void>{
