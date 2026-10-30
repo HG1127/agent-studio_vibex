@@ -20,9 +20,14 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pg18-complete-install:
-    name: PG18 / actual full fresh CLI and original API LOGIN audit
+    name: ${{ matrix.suite == 'legacy' && 'PG18 / actual full fresh CLI and original API LOGIN audit' || 'PG18 / actual final14 all13 complete fixture' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 106
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        suite: [legacy, final13]
     services:
       postgres:
         image: pgvector/pgvector:0.8.7-pg18
@@ -67,6 +72,7 @@ jobs:
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-install-ci.mjs --run
       - name: Fresh full069 fixed service preparation and original first-admin CLI
+        if: ${{ success() && matrix.suite == 'final13' }}
         timeout-minutes: 56
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
@@ -86,7 +92,7 @@ jobs:
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE,AGENT_STUDIO_COMPANION_CI_PURPOSE,AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run
       - name: Bounded seven original Worker entries and Native HTTPS paths
-        if: ${{ !cancelled() && steps.source_preflight.outcome == 'success' }}
+        if: ${{ matrix.suite == 'legacy' && !cancelled() && steps.source_preflight.outcome == 'success' }}
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
           AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
