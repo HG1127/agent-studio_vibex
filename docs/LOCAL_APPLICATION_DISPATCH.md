@@ -31,6 +31,8 @@ Codex 使用本机已安装 CLI 的现有登录。按照 [官方非交互接口]
 
 ## 验证与实现
 
+preview.9 / 连接器 preview.19：在 Agent 创建向导第三步选择本人电脑，再在具体能力下点击“选用工具”或“选用并分配”。系统核对应用名称、控件操作和截图授权；Codex 写任务同时核对应用与工作目录写权限。选择会保存到 Agent，设备会带入试跑；角色权限不会由模型自动授予。连接变更后需重新核验。
+
 - `pnpm check`：原有单元测试、TypeScript 和生产构建。
 - `node --test tests/local-applications.test.mjs`：持久授权/撤销、摘要变化、固定 argv、一次性观察、拒绝、批量目录上限、Codex 事件及并发控制。
 - `node --test desktop/tests/*.test.cjs`：私有 IPC 和账号隔离。

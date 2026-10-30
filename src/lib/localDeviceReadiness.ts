@@ -1,7 +1,8 @@
 import type { AgentSpec } from '../pages/Home/presets'
 import type { AgentCapabilityRequirement } from './agentCapabilityPlan'
 
-import { localDeviceToolNames, type ReadyLocalDevice } from './localDeviceConnection.ts'
+import { localDeviceToolNames,localDeviceCatalog, type ReadyLocalDevice } from './localDeviceConnection.ts'
+import {localApplicationReadiness} from './localApplicationReadiness.ts'
 export type { ReadyLocalDevice } from './localDeviceConnection.ts'
 
 /** A selected live device can supply a local capability, never grant a role new tools. */
@@ -28,11 +29,24 @@ export function localDeviceSupports(spec: AgentSpec, need: AgentCapabilityRequir
       (need.access === 'read' || has('browser.browser_click','browser.browser_type'))
   }
   if (need.kind !== 'desktop') return false
+  const application=localApplicationReadiness(need,localDeviceCatalog(device,now))
+  if(application.supported)return true
   const description = need.title + ' ' + need.purpose
   const files = /文件|目录|\bfiles?\b|directory/i.test(description)
   const launch = /启动|\blaunch/i.test(description)
   const screen = /桌面|截图|鼠标|键盘|窗口|点击|输入|desktop|screen|click|typing/i.test(description)
-  if (files && (!has('files.list', 'files.read') || need.access === 'write' && !has('files.write'))) return false
+  if(application.modern&&(!files||launch||screen||/codex|应用任务|软件任务/i.test(description)))return false
+  if(files){
+    const required=['files.list','files.read']
+    if(/定位|reveal/i.test(description))required.push('files.reveal')
+    if(/打开|\bopen\b/i.test(description))required.push('files.open')
+    if(need.access==='write'){
+      let specific=false
+      for(const [pattern,tool] of [[/编辑|修改|覆盖|写入(?:已有|现有)|\bedit\b|\bupdate\b/i,'files.update'],[/删除|移入回收|\bdelete\b|\btrash\b/i,'files.trash'],[/恢复|还原|\brestore\b/i,'files.restore'],[/移动|重命名|\bmove\b|\brename\b/i,'files.move'],[/复制|\bcopy\b/i,'files.copy'],[/新建|创建|\bcreate\b/i,'files.write']] as const){if(pattern.test(description)){specific=true;required.push(tool)}}
+      if(!specific)required.push('files.write')
+    }
+    if(!has(...required))return false
+  }
   if (launch && !has('apps.launch')) return false
   if (screen || !files && !launch) return has('desktop.Screenshot') &&
     (need.access === 'read' || has('desktop.Click', 'desktop.Type'))

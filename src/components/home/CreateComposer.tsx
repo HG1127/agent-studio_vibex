@@ -1,4 +1,5 @@
 import { Loader2, Sparkles } from "lucide-react"
+import {useId} from 'react'
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -9,12 +10,14 @@ type CreateComposerProps = {
   isGenerating: boolean
   /** The wizard makes requirement capture the primary desktop task. */
   variant?: "default" | "focus"
+  blockedReason?:string
 }
 
 export function CreateComposer({
-  userInput, onUserInputChange, onCreate, isGenerating, variant = "default",
+  userInput, onUserInputChange, onCreate, isGenerating, variant = "default",blockedReason='',
 }: CreateComposerProps) {
   const focused = variant === "focus"
+  const guardId=useId()
   return (
     <div data-agent-requirement-composer
       className={`flex min-w-0 flex-col rounded-2xl border bg-card ${focused
@@ -48,7 +51,8 @@ export function CreateComposer({
           type="button"
           size="lg"
           onClick={onCreate}
-          disabled={isGenerating || !userInput.trim()}
+          disabled={isGenerating || !userInput.trim() || !!blockedReason}
+          aria-describedby={blockedReason?guardId:undefined}
           className={`min-h-11 rounded-xl bg-primary px-6 text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary ${focused ? "w-full text-sm sm:w-auto" : ""}`}
         >
           {isGenerating ? (
@@ -64,6 +68,7 @@ export function CreateComposer({
           )}
         </Button>
       </div>
+      {blockedReason&&<p id={guardId} role="status" className="mt-3 text-xs leading-6 text-muted-foreground">{blockedReason}</p>}
     </div>
   )
 }

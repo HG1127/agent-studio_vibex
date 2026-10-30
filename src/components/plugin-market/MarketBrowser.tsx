@@ -236,6 +236,7 @@ export function MarketBrowser({
               onKeyDown={(ev) => {
                 if (ev.key === "Enter") onSubmitSearch()
               }}
+              aria-label="搜索插件"
               placeholder="搜索插件，如 github / search / memory"
               className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />

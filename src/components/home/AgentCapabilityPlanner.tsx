@@ -12,6 +12,7 @@ import { agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { AgentToolAutoConnect } from "./AgentToolAutoConnect"
 import {resourceFocusCapability} from "@/lib/agentResourceFocus"
 import {toolConnectionTestRoute} from "@/lib/toolConnectionNavigation"
+import type {ReadyLocalDevice} from '@/lib/localDeviceConnection'
 
 type Props = {
   spec: AgentSpec
@@ -25,6 +26,7 @@ type Props = {
   focusRequestToken?:number
   active?: boolean
   notice: string
+  localDevice?:ReadyLocalDevice|null
   onRematch: () => void
 }
 const STATES = {
@@ -102,8 +104,8 @@ function CapabilityPlannerWorkspace(p: Props) {
   const [editingId, setEditingId] = useState("")
   const [lastRemoved, setLastRemoved] = useState<RemovedAgentCapability | null>(null)
   const [localNotice, setLocalNotice] = useState("")
-  const rows = useMemo(() => buildAgentCapabilityPlan(p.spec, p.analysis, p.connections, p.marketTools),
-    [p.spec, p.analysis, p.connections, p.marketTools])
+  const rows = useMemo(() => buildAgentCapabilityPlan(p.spec, p.analysis, p.connections, p.marketTools,p.localDevice),
+    [p.spec, p.analysis, p.connections, p.marketTools,p.localDevice])
   useEffect(() => {
     if (p.active === false || !focusCapability) return
     // The same ability can be located repeatedly. Include the per-click token
@@ -125,7 +127,7 @@ function CapabilityPlannerWorkspace(p: Props) {
   }, [focusCapability,p.active,p.focusRequestToken,p.editorContextKey,p.returnSpecId])
   const roles = p.spec.roles || []
   const select = (need: CapabilityPlanRow, id: string) => {
-    const next = bindAgentCapability(p.spec, need.id, id, p.analysis, p.connections, p.marketTools)
+    const next = bindAgentCapability(p.spec, need.id, id, p.analysis, p.connections, p.marketTools,p.localDevice)
     if (next !== p.spec) p.onChange(next)
   }
   const edit = (id: string, changes: CapabilityRequirementChanges) => {
@@ -183,6 +185,7 @@ function CapabilityPlannerWorkspace(p: Props) {
         </span>
       </div>
       {p.notice && <p role="status" className="mt-2 text-xs text-primary">{p.notice}</p>}
+      {!!p.analysis?.excluded?.length&&<div role="status" aria-label="按需求排除的工具" className="mt-3 rounded-lg border border-amber-300/40 bg-background p-3 text-xs leading-6"><p>以下资源与原始需求中的禁止项冲突，未自动加入。修改需求后可重新匹配。</p><ul>{p.analysis.excluded.map(row=><li key={row.id}>{row.label}</li>)}</ul></div>}
       {localNotice && <p role="status" className="mt-2 text-xs text-primary">{localNotice}</p>}
     </div>
     {lastRemoved && <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-secondary/30 px-4 py-2 text-xs">
@@ -216,7 +219,7 @@ function CapabilityPlannerWorkspace(p: Props) {
             {tool.selected ? <Check className="h-3.5 w-3.5 shrink-0"/> : <Plug className="h-3.5 w-3.5 shrink-0"/>}
             <span className="min-w-0 break-words">
               <span className="block font-medium">{tool.label} · {tool.selected ? "已选用" : roles.length ? "选用并分配" : "选用工具"}</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">{tool.source === "builtin" ? "内置工具" : tool.tested ? "最近测试通过" : "尚未通过测试"}{needsRoleChoice ? " · 先选择负责角色" : ""}</span>
+              <span className="mt-0.5 block text-[11px] text-muted-foreground">{tool.source === "local" ? "本人设备在线 · 已核对具体操作授权" : tool.source === "builtin" ? "内置工具" : tool.tested ? "最近测试通过" : "尚未通过测试"}{needsRoleChoice ? " · 先选择负责角色" : ""}</span>
               {tool.needsMapping && tool.description && <span className="mt-1 block max-w-xl text-[11px] leading-relaxed text-muted-foreground">{tool.description.slice(0, 220)}</span>}
             </span>
           </button>

@@ -33,6 +33,9 @@ export default defineConfig(({command,isPreview})=>({
     },
   },
   server: {
+    // Packaging/test artifacts are not source. Watching their copied HTML can
+    // reload an employee's live form while a connector bundle is being built.
+    watch: { ignored: ['**/.tmp/**', '**/dist/**'] },
     host: '127.0.0.1',
     port: 8000,
     strictPort: true,

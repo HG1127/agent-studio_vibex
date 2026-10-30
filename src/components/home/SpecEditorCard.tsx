@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { AgentSpec, ConnectedToolOption, ListField } from "@/pages/Home/useHome"
 import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
 import type { ToolResolution } from "@/lib/agentToolMatcher"
+import type {ReadyLocalDevice} from '@/lib/localDeviceConnection'
 import { safeMarketplaceQuery, agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { AgentCapabilityPlanner } from "@/components/home/AgentCapabilityPlanner"
 import { AgentRoleDesigner } from "@/components/agents/AgentRoleDesigner"
@@ -45,6 +46,7 @@ type SpecEditorCardProps = {
   connectedTools: ConnectedToolOption[]
   connectedMarketTools: VerifiedMarketTool[]
   toolAnalysis: ToolResolution | null
+  localDevice?:ReadyLocalDevice|null
   toolMatchNotice: string
   onRematchTools: () => void
   knowledgeBases: { id: string; name: string; document_count: number }[]
@@ -411,6 +413,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           hidden={activeTab !== "resources"} inert={activeTab !== "resources"} aria-hidden={activeTab !== "resources"}
           className={activeTab === "resources" ? "grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2" : "hidden"}>
         <AgentCapabilityPlanner spec={p.spec} onChange={p.onSpecChange}
+          localDevice={p.localDevice}
           editorContextKey={editorContextKey}
           focusRequestToken={p.resourceFocusToken}
           active={activeTab === "resources"}

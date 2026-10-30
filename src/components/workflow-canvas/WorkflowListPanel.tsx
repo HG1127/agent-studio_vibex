@@ -66,6 +66,7 @@ export function WorkflowListPanel({
           </p>
           <div className="mt-1.5 flex items-center gap-1.5">
             <select
+              aria-label="生成画布使用的助手方案"
               value={genSpecId}
               onChange={(ev) => setGenSpecId(ev.target.value)}
               className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

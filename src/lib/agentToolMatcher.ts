@@ -1,5 +1,6 @@
 import type { AgentSpec, ConnectedToolOption } from "../pages/Home/presets"
 import type { VerifiedMarketTool } from "./marketToolSelection"
+import {requirementDeniesResource,toolLooksMutating,toolRequirementAliases} from './toolAutoSelection.ts'
 
 /**
  * Safe capability resolution: this creates a plan/binding from a real user's
@@ -30,6 +31,7 @@ export type ToolResolution = {
   gaps: ToolGap[]
   /** IDs chosen without external authorization or side effects. */
   safeAutoBindings: string[]
+  excluded?: {id:string;label:string;reason:string}[]
 }
 
 type Connection = ConnectedToolOption & { method?: string; status?: string }
@@ -81,9 +83,10 @@ function excerpt(text:string):string {return text.length>64?text.slice(0,64)+"�
 function compatibleAction(name:string,description:string,request:string):boolean {
   const writes=/(?:\b(?:send|write|create|update|delete|submit|fill|click|upload|export)\b|(?:^|_)(?:send|write|create|update|delete|submit|fill|click|upload|export)(?:_|$)|发送|写入|创建|修改|删除|提交|填写|点击|上传|导出)/i
   const reads=/(?:\b(?:read|search|fetch|list|get|query|extract)\b|(?:^|_)(?:read|search|fetch|list|get|query|extract)(?:_|$)|读取|检索|搜索|查询|抓取|提取)/i
-  const tool=name+" "+description
-  if(writes.test(request)&&!reads.test(request)&&!writes.test(tool))return false
-  if(reads.test(request)&&!writes.test(request)&&writes.test(tool)&&!reads.test(tool))return false
+  const tool=(name+" "+description).replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[_./:-]+/g,' ')
+  const mutating=toolLooksMutating(name,description)
+  if(writes.test(request)&&!reads.test(request)&&!mutating)return false
+  if(reads.test(request)&&!writes.test(request)&&mutating&&!reads.test(tool))return false
   return true
 }
 function explicitVendorMatch(name:string,input:string):boolean {
@@ -175,6 +178,9 @@ export function resolveAgentToolRequirements(
   const gaps:ToolGap[]=[]
   const resolvedTools:string[]=[]
   const safeAutoBindings:string[]=[]
+  const excluded:NonNullable<ToolResolution['excluded']>=[]
+  const deniedIds=new Set<string>()
+  const exclude=(id:string,label:string)=>{if(deniedIds.has(id))return;deniedIds.add(id);excluded.push({id,label,reason:'原始需求明确禁止此资源，未自动加入；请先修改需求再重新匹配。'})}
   const add=(id:string,auto:boolean)=>{
     if(unique.has(id))return
     unique.add(id)
@@ -183,6 +189,8 @@ export function resolveAgentToolRequirements(
   }
   // User-specified negative constraints take priority over a model's proposed tool list.
   const deniedByUser=(id:string)=>{
+    const capability=CAPABILITIES.find(cap=>cap.id===id)
+    if(capability&&requirementDeniesResource(requirement,[id,...capability.request,...capability.phrases]))return true
     if(id==="web_search"||id==="web_fetch")
       return /(?:不需要|无需|禁止|不要|不能|不使用|无须|不允许)(?:再|去|使用|调用|访问)?(?:联网|互联网|网页|外网|网络|浏览器)/i.test(requirement)
     if(id==="knowledge_search")
@@ -190,7 +198,7 @@ export function resolveAgentToolRequirements(
     return false
   }
   for(const capability of CAPABILITIES){
-    if(deniedByUser(capability.id))continue
+    if(deniedByUser(capability.id)){exclude(capability.id,capability.title);continue}
     const matched=fromGenerated(spec,capability.request) ||
       capability.phrases.some(term=>containsPhrase(context,term))
     if(!matched)continue
@@ -211,10 +219,11 @@ export function resolveAgentToolRequirements(
   }
   for(const tool of marketTools){
     if(!tool.id || !tool.name)continue
+    if(requirementDeniesResource(requirement,toolRequirementAliases(tool.name,tool.connectionTitle,tool.id))){exclude(tool.id,tool.label);continue}
     const matched=generated.some(term=>norm(term)===norm(tool.id)||norm(term)===norm(tool.name)) ||
       (explicitVendorMatch(tool.name,context) && compatibleAction(tool.name,tool.description,context) || semanticConnectorMatch(tool.name,tool.description,context))
     if(!matched)continue
-    const safe=tool.readOnly===true && tool.destructive!==true
+    const safe=tool.readOnly===true && tool.destructive!==true && !toolLooksMutating(tool.name,tool.description)
     recommend.push({
       id:tool.id,label:tool.label,kind:"market",
       reason:safe?"当前账号已验证该只读插件能力；调用前仍要经过执行审批":"该插件可能涉及写入或没有确认只读属性，需要用户明确选择并批准实际调用",
@@ -224,11 +233,12 @@ export function resolveAgentToolRequirements(
   }
   for(const tool of connectedHttp){
     if(!tool.name)continue
+    if(requirementDeniesResource(requirement,toolRequirementAliases(tool.name))){exclude(tool.name,tool.name);continue}
     const matched=generated.some(item=>norm(item)===norm(tool.name)) ||
       (explicitVendorMatch(tool.name,context) && compatibleAction(tool.name,tool.description,context) || semanticConnectorMatch(tool.name,tool.description,context))
     if(!matched)continue
     const safe=(tool.method||"").toUpperCase()==="GET" &&
-      ["ok","success","connected"].includes((tool.status||"").toLowerCase())
+      ["ok","success","connected"].includes((tool.status||"").toLowerCase()) && !toolLooksMutating(tool.name,tool.description)
     recommend.push({
       id:tool.name,label:tool.name,kind:"http",
       reason:safe?"已连接且经过测试的 GET 工具，可在此 Agent 中使用":"连接存在，但非只读或未验证成功；需要人工确认才能加入",
@@ -239,6 +249,8 @@ export function resolveAgentToolRequirements(
   // A general description such as 文档解析 does NOT imply we have a parser.
   const matchedIds=new Set(recommend.map(item=>norm(item.id)))
   for(const item of generated){
+    if(deniedIds.has(item)||requirementDeniesResource(requirement,toolRequirementAliases(item)))continue
+    if(marketTools.some(tool=>(tool.id===item||tool.name===item)&&deniedIds.has(tool.id)))continue
     if(matchedIds.has(norm(item)))continue
     const builtin=CAPABILITIES.find(cap=>cap.request.some(term=>norm(term)===norm(item)))
     if(builtin)continue
@@ -269,9 +281,10 @@ export function resolveAgentToolRequirements(
   // Preserve previously explicit, exact and still verified real bindings; do
   // not silently erase a human's tool choice during AI edits.
   for(const tool of explicitlySelected){
+    if(deniedIds.has(tool)||deniedByUser(tool))continue
     if(CAPABILITIES.some(cap=>cap.id===tool) ||
         connectedHttp.some(c=>c.name===tool) ||
         marketTools.some(c=>c.id===tool))add(tool,false)
   }
-  return {resolvedTools,recommendations:recommend,gaps,safeAutoBindings}
+  return {resolvedTools,recommendations:recommend,gaps,safeAutoBindings,...(excluded.length?{excluded}:{})}
 }

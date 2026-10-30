@@ -20,6 +20,10 @@ import { evaluateAgentJourney,agentPlanContentIssues } from "@/lib/agentCreateJo
 import type { ComplexAgentProof } from "@/lib/complexAgentAcceptance"
 import { agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { agentCapabilityReadiness } from "@/lib/agentCapabilityPlan"
+import {LocalDeviceSelector} from '@/components/agent-run/LocalDeviceSelector'
+import {useLocalDeviceInventory} from '@/lib/useLocalDeviceInventory'
+import {useDesktopComputer} from '@/components/tool-hub/DesktopComputerContext'
+import {localDeviceToolNames} from '@/lib/localDeviceConnection'
 
 const STAGES = [
   {id:"describe",label:"描述需求",hint:"一句话明确目标"},
@@ -48,6 +52,13 @@ function progressFromQuery(raw:string|null):number{
 export default function AgentCreateRoute() {
   const p=useHome()
   const [params,setParams]=useSearchParams()
+  const computer=useDesktopComputer()
+  const inventory=useLocalDeviceInventory()
+  const deviceId=params.get('device')??(computer?.verified?computer.state?.selectedId||'':'')
+  const device=inventory.devices.find(item=>item.id===deviceId)||null
+  const deviceReady=localDeviceToolNames(device,inventory.now).length>0
+  const toolStatusOf=useCallback((id:string)=>id==='local_computer'?(deviceReady?'ready' as const:'pending' as const):p.toolStatusOf(id),[deviceReady,p.toolStatusOf])
+  const chooseDevice=(id:string)=>{const next=new URLSearchParams(params);next.set('device',id);setParams(next,{replace:true})}
   const step=progressFromQuery(params.get("step"))
   const continueBusy=useRef(false)
   const routeStamp=useRef(params.toString())
@@ -163,12 +174,12 @@ export default function AgentCreateRoute() {
   const evaluated=useMemo(()=>evaluateAgentJourney({
     spec:p.spec,specName:p.specName,savedId:p.savedSpecId,dirty:p.specDirty,
     enabledModelCount:enabledModels,modelState,
-    toolStatusOf:p.toolStatusOf,
+    toolStatusOf,
     accessibleKnowledgeBaseIds:p.knowledgeBases.map(item=>item.id),
     run,lastSavedAt:p.lastSavedAt,
     runState:runError?"unavailable":runChecked?"ready":"checking",
-    capabilityIssues:p.spec?agentCapabilityReadiness(p.spec,p.toolAnalysis,p.connectedTools,p.connectedMarketTools):[],
-  }),[p.spec,p.specName,p.savedSpecId,p.specDirty,p.toolStatusOf,
+    capabilityIssues:p.spec?agentCapabilityReadiness(p.spec,p.toolAnalysis,p.connectedTools,p.connectedMarketTools,device):[],
+  }),[p.spec,p.specName,p.savedSpecId,p.specDirty,toolStatusOf,device,
     p.knowledgeBases,enabledModels,modelState,run,runChecked,runError,p.lastSavedAt,p.toolAnalysis,p.connectedTools,p.connectedMarketTools])
   const planReady=Boolean(p.spec && p.savedSpecId && !p.specDirty &&
     evaluated.planIssues.length===0)
@@ -211,8 +222,8 @@ export default function AgentCreateRoute() {
     onSpecNameChange:p.setSpecName,onTextChange:p.updateSpecText,
     onTogglePlanReview:p.togglePlanReview,
     onListItemChange:p.updateSpecListItem,onListItemAdd:p.addSpecListItem,
-    onListItemRemove:p.removeSpecListItem,toolStatusOf:p.toolStatusOf,
-    builtinTools:p.builtinToolOptions,connectedTools:p.connectedTools,
+    onListItemRemove:p.removeSpecListItem,toolStatusOf,localDevice:device,
+    builtinTools:[...p.builtinToolOptions,{id:'local_computer',title:'所选电脑',desc:'只使用本人已授权能力，实际操作逐次审批；角色需单独分配'}],connectedTools:p.connectedTools,
     connectedMarketTools:p.connectedMarketTools,
     toolAnalysis:p.toolAnalysis,toolMatchNotice:p.toolMatchNotice,
     onRematchTools:p.rematchAgentTools,
@@ -325,7 +336,7 @@ export default function AgentCreateRoute() {
               status={p.designModelStatus} onSelect={p.setDesignModelKey}
               onRefresh={()=>void p.refreshDesignModels()} busy={p.isGenerating}/>
             <CreateComposer variant="focus" userInput={p.userInput} onUserInputChange={p.setUserInput}
-              onCreate={p.handleCreate} isGenerating={p.isGenerating}/>
+              onCreate={p.handleCreate} isGenerating={p.isGenerating} blockedReason={p.designGenerationBlockedReason}/>
             {p.spec && <div role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <CheckCircle2 className="h-4 w-4 text-primary"/> 已生成可编辑方案：{p.specName}
@@ -350,6 +361,7 @@ export default function AgentCreateRoute() {
 
           {step===2 && <>
             <h2 className="text-base font-semibold">第三步 · 核实模型、工具和知识库访问权限</h2>
+            <LocalDeviceSelector value={deviceId} onChange={chooseDevice}/>
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary"/>模型连接</p>
@@ -385,7 +397,7 @@ export default function AgentCreateRoute() {
                 在试跑页为当前 Agent 选择模型，填写实际任务指令，观察执行时间线、审批与最终结果。
                 这里读取后端真实运行记录，不会因为点击“已完成”而伪造通过状态。
               </p>
-              {evaluated.canTry ? <Link to={`/agent-run?spec=${encodeURIComponent(p.savedSpecId)}`}
+              {evaluated.canTry ? <Link to={`/agent-run?spec=${encodeURIComponent(p.savedSpecId)}${deviceId?'&device='+encodeURIComponent(deviceId):''}`}
                 className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
                 <Play className="h-4 w-4"/> {evaluated.trial.action==="retry" && evaluated.trial.state!=="untried"?"重新试跑当前保存方案":"前往试跑当前 Agent"}
               </Link>:<p className="mt-3 text-sm text-destructive">还有前置事项待完成，暂不能试跑。</p>}

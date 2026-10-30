@@ -17,6 +17,7 @@ export type AgentToolDisplay = {
 
 /** Display metadata only. Exact catalog IDs remain the authority for a selection. */
 export function agentToolDisplay(id: string, catalog: AgentToolCatalog): AgentToolDisplay {
+  if(id==='local_computer')return {id,label:'所选电脑的已授权能力',sourceLabel:'本机连接器',accessLabel:'按具体动作审批',description:'仅限本次明确选择的本人设备和已授权应用、目录、网站。'}
   const builtin = catalog.builtinTools?.find(tool => tool.id === id)
   if (builtin) return { id, label: builtin.title, description: builtin.desc,
     sourceLabel: "内置工具", accessLabel: "读取 / 分析" }

@@ -13,6 +13,7 @@ export type DispatchContext = {
  connectedTools:readonly {name:string;description?:string;status?:string;method?:string}[]
  marketTools:readonly {id:string;name?:string;description?:string;readOnly?:boolean;destructive?:boolean}[]
  localTools:readonly string[]
+ localCatalog?:LocalCapabilityTool[]
  localDeviceOnline:boolean
 }
 const normalize=(value:string)=>value.trim().toLowerCase()
@@ -24,6 +25,9 @@ export function buildAgentTaskDispatch(instruction:string,context:DispatchContex
  const connected=context.connectedTools.filter(t=>t.status==='ok')
  const market=context.marketTools
  const local=new Set(context.localDeviceOnline?context.localTools:[])
+ const appAccess=/输入|点击|按键|编辑|保存|发送|提交|启动|打开|修改|写入|创建|新增|开发|实现|编写|重构|修复|操作|控制|\b(type|click|edit|save|send|submit|launch|open|write|create|control|implement|refactor|fix|build)\b/.test(text)?'write':'read'
+ const application=localApplicationReadiness({id:'task',title:instruction,purpose:'',kind:'desktop',access:appAccess,required:true,role_ids:[],search_terms:[],suggested_tool_ids:[]},context.localDeviceOnline?context.localCatalog||[]:[])
+ const appTask=application.matched||/codex|本地应用|本机应用|电脑软件|桌面软件|应用窗口/.test(text)
  const rows:Omit<DispatchCapability,'sequence'|'dependsOn'>[]=[]
  const builtin=(name:string)=>enabled.has(name)
  const plugin=(names:string[])=>market.some(t=>names.some(n=>normalize(t.name||'')===normalize(n)||normalize(t.id)===normalize(n)))
@@ -32,7 +36,7 @@ export function buildAgentTaskDispatch(instruction:string,context:DispatchContex
   rows.push({id,label,available,candidates,sideEffect,guidance:guidance||(available?'已匹配候选能力；实际执行仍以运行时权限校验和调用回执为准。':'缺少已验证的可用能力；不会自动连接或扩大权限。')})
  }
  const hasResearch=/搜索|调研|研究|最新|新闻|网页|来源|search|research|browse|website|latest/.test(text)
- const hasFiles=/文件|文件夹|目录|读取|编辑|保存|新建|删除|重命名|移动|pdf|word|excel|表格|文档|图片|file|folder|document|spreadsheet/.test(text)
+ const hasFiles=(appTask?/文件|文件夹|目录|pdf|word|excel|表格|文档|file|folder|document|spreadsheet/:/文件|文件夹|目录|读取|编辑|保存|新建|删除|重命名|移动|pdf|word|excel|表格|文档|图片|file|folder|document|spreadsheet/).test(text)
  const hasCalc=/计算|合计|求和|统计|百分比|公式|calculate|sum|formula|percentage/.test(text)
  const hasKnowledge=/知识库|内部资料|公司资料|内部文档|knowledge base|internal docs/.test(text)
  const hasOpen=/打开|启动|用.*软件|open|launch/.test(text)
@@ -59,7 +63,9 @@ export function buildAgentTaskDispatch(instruction:string,context:DispatchContex
   add('local-files',label,required,hasWrite||hasDelete||hasMove||hasCreate,
    '需要选中的电脑在线，目标目录必须位于已授权目录内，并单独授权这一具体动作；写入、移动和删除在执行前需确认。',available)
  }
- if(hasOpen&&!hasFiles){
+ if(appTask){
+  add('desktop-app',/codex/.test(text)?'本机 Codex 任务':'本机应用操作',/codex/.test(text)?['apps.task_start','apps.task_status','apps.task_cancel']:hasOpen&&!/输入|点击|按键|操作|控制|\b(type|click|control)\b/.test(text)?['apps.launch']:['apps.windows','apps.observe',...(appAccess==='write'?['apps.act']:[])],appAccess==='write','只使用所选电脑明确授权的应用和具体动作；窗口、任务及写入权限会重新核对，执行前仍需审批。',application.supported)
+ }else if(hasOpen&&!hasFiles){
   add('desktop-app','打开本机应用',['apps.launch'],true,'只允许连接器公开且经授权的应用操作；不执行任意 shell 或脚本。',localAll(['apps.launch']))
  }
  if(hasCalc)add('calculation','数值计算',['calculate'],false,'使用已启用的计算能力；计算结果会在运行轨迹中显示。',builtin('calculate'))
@@ -76,7 +82,7 @@ export function buildAgentTaskDispatch(instruction:string,context:DispatchContex
    /报告|report/.test(text)?/report|document|write|create/:/write|create|submit|publish/
   const writeConnections=connected.filter(t=>String(t.method||'').toUpperCase()!=='GET'&&targetPattern.test(t.name+' '+String(t.description||'')))
   const writePlugins=market.filter(t=>t.readOnly!==true&&targetPattern.test(t.id+' '+String(t.name||'')+' '+String(t.description||'')))
-  const available=writeConnections.length>0||writePlugins.length>0
+  const available=writeConnections.length>0||writePlugins.length>0||application.supported&&appAccess==='write'
   add('external-write','外部写入或提交',[...writeConnections.map(t=>t.name),...writePlugins.map(t=>t.id)],true,
    '副作用操作必须核验具体目标与参数，并在本次调用前取得本人审批；只读连接不能执行写入。无法核验时停止。',available)
  }
@@ -90,3 +96,5 @@ export function buildAgentTaskDispatch(instruction:string,context:DispatchContex
   dependsOn:index===0?[]:ordered.slice(0,index).filter(previous=>row.id==='external-write'||row.id==='calculation'&&['web','knowledge','local-files'].includes(previous.id)||row.id==='local-files'&&previous.id==='web').map(previous=>previous.id)
  }))
 }
+import {localApplicationReadiness} from './localApplicationReadiness.ts'
+import type {LocalCapabilityTool} from './localDeviceConnection'

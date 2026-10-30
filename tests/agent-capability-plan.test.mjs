@@ -13,6 +13,26 @@ const need = (patch = {}) => ({ id: "need_1", title: "读取网页", purpose: "�
 const spec = (patch = {}) => ({ goal: "完成指定任务", task_scope: "按当前任务范围工作", deliverables: ["可核验的结果"], tools: [], task_plan: [], done_criteria: ["交付满足任务要求"], capability_requirements: [], ...patch })
 const market = (patch = {}) => ({ id: "mkt__browser00000001__browser_read", name: "browser_read", label: "浏览器 · 读取页面", description: "Read the current browser page", connectionTitle: "Browser", readOnly: true, destructive: false, ...patch })
 const role = (id, tools = []) => ({ id, name: id, responsibility: "负责所分配任务", tasks: ["完成任务"], inputs: [], deliverables: ["输出"], depends_on: [], tools, done_criteria: ["核验输出"] })
+test('selecting a named MCP candidate replaces its unresolved alias without leaving a duplicate capability',()=>{
+  const tool=market({id:'mkt__abcdefghijklmno__doc_search',name:'doc_search',label:'模板库 · doc_search',description:'Read approved documents',readOnly:false})
+  const value={...spec({tools:['knowledge_search','doc_search']}),capability_requirements:undefined}
+  const resolution=resolveAgentToolRequirements('检索内部资料并调用 doc_search',value,[],[tool])
+  const rows=buildAgentCapabilityPlan(value,resolution,[],[tool]),candidate=rows.find(row=>row.suggested_tool_ids.includes(tool.id))
+  assert.ok(candidate);const bound=bindAgentCapability(value,candidate.id,tool.id,resolution,[],[tool])
+  assert.ok(bound.tools.includes(tool.id));assert.ok(!bound.tools.includes('doc_search'));assert.ok(bound.tools.includes('knowledge_search'))
+  assert.equal(bound.capability_requirements.filter(need=>need.title.includes('doc_search')).length,1)
+})
+test('legacy inferred write capabilities retain their side-effect classification',()=>{
+  const value={...spec(),capability_requirements:undefined}
+  const rows=agentCapabilityRequirements(value,{resolvedTools:[],safeAutoBindings:[],recommendations:[],gaps:[{name:'发送邮件',searchTerm:'email',reason:'未连接'}]})
+  assert.equal(rows[0].access,'write')
+})
+test('a connection display title cannot change the actual tool capability kind',()=>{
+ const tool=market({id:'mkt__abcdefghijklmno__doc_search',name:'doc_search',label:'浏览器检索插件 · doc_search',description:'Read approved documents',readOnly:false})
+ const value={...spec({tools:['doc_search']}),capability_requirements:undefined}
+ const resolution=resolveAgentToolRequirements('使用 doc_search 核对模板',value,[],[tool])
+ const rows=buildAgentCapabilityPlan(value,resolution,[],[tool]);assert.equal(rows.length,1);assert.equal(rows[0].kind,'custom');assert.ok(rows[0].candidates.some(candidate=>candidate.id===tool.id))
+})
 
 test("complex generated capability gaps are planning needs, never fake executable global grants", () => {
   const proposed = spec({ tools: ["PDF提取", "邮件发送"],

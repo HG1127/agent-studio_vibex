@@ -122,12 +122,29 @@ try{
   modelFixture=http.createServer(async(req,res)=>{let body='';for await(const b of req)body+=b;const payload=JSON.parse(body),messages=JSON.stringify(payload.messages);modelCalls++;if(messages.includes('Application acceptance fixture'))modelReceivedWindow=true;const response=modelCalls===1?{action:'tool',tool:'local_computer',tool_input:{tool:'apps.windows',arguments:{app:approved.applications.grants[0].id}}}:{action:'final',final_answer:'APPLICATION_AGENT_WINDOW_VERIFIED'};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify(response)}}]}))})
   await new Promise(r=>modelFixture.listen(0,'127.0.0.1',r));const modelOrigin='http://127.0.0.1:'+modelFixture.address().port
   const connection=(await api('/api/model-connections','POST',{name:'Application loopback fixture',provider:'openai',api_key:'local-fixture-only',base_url:modelOrigin+'/v1',models:['fixture']})).data
-  const spec=(await api('/api/agent_specs','POST',{name:'Application dispatch acceptance',spec:{goal:'查看已授权应用窗口',tools:[],task_plan:['查询应用窗口','汇报结果'],deliverables:['窗口回执'],done_criteria:['读取实际授权应用窗口']}})).data
-  const started=await api('/api/agent-runs/start','POST',{spec_id:spec.id,instruction:'仅检查专用应用窗口，不执行输入或发送消息',model:'fixture',config:{local_device_id:first,max_steps:6,tools:{},custom_model:{connection_id:connection.item.id,model_id:'fixture'}}});assert.equal(started.status,200,JSON.stringify(started.data))
-  const runId=started.data.run_id;let agentState
-  for(let n=0;n<50;n++){const tick=await api('/api/llm/agent-engine/'+runId+'/tick','POST',{});assert.equal(tick.status,200,JSON.stringify(tick.data));agentState=(await api('/api/agent_runs/'+runId)).data;if(agentState.status==='awaiting_approval')assert.equal((await api('/api/agent-runs/'+runId+'/approve','POST',{decision:'approve'})).status,200);if(['succeeded','failed','cancelled'].includes(agentState.status))break;await sleep(300)}
+  const spec=(await api('/api/agent_specs','POST',{name:'Application dispatch acceptance',spec:{goal:'查看已授权应用窗口',task_scope:'只查询专用测试程序窗口',tools:[],task_plan:['查询应用窗口','汇报结果'],deliverables:['窗口回执'],done_criteria:['读取实际授权应用窗口'],capability_requirements:[{id:'application_window',title:'Synthetic UI acceptance 读取窗口',purpose:'查询本人授权的应用窗口与控件',kind:'desktop',access:'read',required:true,role_ids:['reader'],search_terms:['Synthetic UI acceptance'],suggested_tool_ids:[]}],roles:[{id:'reader',name:'窗口核验员',responsibility:'核验应用窗口',tasks:['查询专用应用窗口'],inputs:[],deliverables:['窗口回执'],depends_on:[],tools:[],done_criteria:['读取实际窗口数据']}]}})).data
+  await page.goto(gateway.origin+'/agent-create?step=3&spec='+spec.id)
+  const devicePicker=page.getByRole('region',{name:'本次任务设备选择'})
+  await expect(devicePicker.locator('select')).toHaveValue(first,{timeout:20000})
+  const chooseApp=page.getByRole('button',{name:/所选电脑的已授权能力 · 选用并分配/})
+  await expect(chooseApp).toBeEnabled({timeout:20000});await chooseApp.click()
+  await page.getByRole('button',{name:'保存到我的助手',exact:true}).click()
+  await expect(page.getByText('已保存进「我的 Agent」，接下来可以连接资源并试跑。',{exact:true})).toBeVisible()
+  const bound=(await api('/api/agent_specs/'+spec.id)).data
+  assert.deepEqual(bound.spec.tools,['local_computer']);assert.deepEqual(bound.spec.roles[0].tools,['local_computer'])
+  await page.getByRole('button',{name:'下一步：试跑验证',exact:true}).click()
+  await page.getByRole('link',{name:'前往试跑当前 Agent',exact:true}).click()
+  await expect(page.locator('#run-quick-spec')).toHaveValue(spec.id)
+  assert.equal(new URL(page.url()).searchParams.get('device'),first)
+  await page.locator('#agent-task-instruction').fill('仅检查专用应用窗口，不执行输入或发送消息')
+  await page.getByRole('button',{name:'运行',exact:true}).click()
+  await page.getByRole('button',{name:'批准并继续执行',exact:true}).click({timeout:30000})
+  await expect(page.getByRole('document',{name:'格式化运行成果'}).getByText('APPLICATION_AGENT_WINDOW_VERIFIED',{exact:true})).toBeVisible({timeout:30000})
+  const runId=new URL(page.url()).searchParams.get('run'),agentState=(await api('/api/agent_runs/'+runId)).data
   assert.equal(agentState.status,'succeeded',JSON.stringify(agentState));assert.equal(modelReceivedWindow,true);assert.ok(modelCalls>=2)
-  pass('real Agent planning and approval dispatch apps.windows to the connector and return actual window data to a deterministic model without paid inference')
+  pass('creation wizard discovers exact app grant, explicitly binds the responsible role, carries the selected device to trial and dispatches approved apps.windows with a real native receipt')
+  await page.goto(gateway.origin+'/tool-hub?view=devices')
+  if(await toolbar.getByRole('button',{name:'管理连接',exact:true}).getAttribute('aria-expanded')!=='true')await toolbar.getByRole('button',{name:'管理连接',exact:true}).click()
   await toolbar.getByRole('button',{name:'应用授权',exact:true}).click();await expect(grants).toBeVisible();await grants.getByRole('button',{name:'清空选择',exact:true}).click();await grants.getByRole('button',{name:'暂停此连接',exact:true}).click();await grants.getByLabel('我确认长期授权以上应用及勾选的操作范围。').check();await expect(grants.getByRole('button',{name:'保存应用授权',exact:true})).toBeEnabled({timeout:15000});await grants.getByRole('button',{name:'保存应用授权',exact:true}).click();await expect(grants).toHaveCount(0)
   await toolbar.getByRole('button',{name:'连接电脑',exact:true}).click();await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:20000});assert.deepEqual((await readGuidedProfile(first,{home})).applications.grants,[])
   pass('removing selected applications revokes their persisted capabilities without changing the computer binding')

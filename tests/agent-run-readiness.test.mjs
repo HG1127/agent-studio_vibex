@@ -16,6 +16,11 @@ const savedBrowserSpec = (patch = {}) => spec({ tools: ["browser_read"], capabil
 const localDevice = (tools, patch = {}) => ({id: 'local-device', revoked: false, seen_ms: Date.now(),
   catalog: JSON.stringify(tools.map(name => ({name}))), ...patch})
 const browserTools = ['browser.browser_navigate', 'browser.browser_snapshot', 'browser.browser_take_screenshot', 'browser.browser_click', 'browser.browser_type']
+test('create-only file access cannot imply recovery permission',()=>{
+ const value=spec({capability_requirements:[need({kind:'desktop',title:'恢复文件',purpose:'从回收区还原',access:'write'})]})
+ assert.equal(agentRunReadiness(value,{localDevice:localDevice(['files.list','files.read','files.write'])}).ready,false)
+ assert.equal(agentRunReadiness(value,{localDevice:localDevice(['files.list','files.read','files.restore'])}).ready,true)
+})
 
 test('connection display rejects missing, stale, revoked, future and invalid device catalogs', () => {
   const now = Date.now()
@@ -166,4 +171,38 @@ test("only currently verified market connections can satisfy the saved exact too
     assert.equal(agentRunReadiness(value, { marketTools: getVerifiedMarketTools([marketConnection(unavailable)]) }).ready, false)
   }
   assert.equal(agentRunReadiness(value, { marketTools: [] }).ready, false, "a failed refresh cannot reuse a prior verified tool")
+})
+const applicationDevice=(write=false,images=false)=>localDevice([],{catalog:JSON.stringify([
+ 'apps.launch','apps.windows','apps.observe',...(write?['apps.act']:[]),
+].map(name=>({name,inputSchema:{properties:{app:{enum:['a'.repeat(24)]}},...(name==='apps.windows'?{'x-studio-applications':[{id:'a'.repeat(24),name:'记事本',adapter:'desktop',control:write}]}:{}),...(name==='apps.observe'?{'x-studio-application-images':images}:{})}})))})
+test('guided app window permissions satisfy the named application, without requiring a separate desktop MCP',()=>{
+ const value=spec({capability_requirements:[need({kind:'desktop',title:'在记事本窗口输入文字',purpose:'操作本人已授权的记事本',access:'write'})]})
+ assert.equal(agentRunReadiness(value,{localDevice:applicationDevice(true)}).ready,true)
+ assert.equal(agentRunReadiness(value,{localDevice:applicationDevice(false)}).ready,false)
+ const other={...value,capability_requirements:[need({kind:'desktop',title:'在微信窗口输入文字',access:'write'})]}
+ assert.equal(agentRunReadiness(other,{localDevice:applicationDevice(true)}).ready,false)
+})
+test('application observation is not a screenshot grant',()=>{
+ const value=spec({capability_requirements:[need({kind:'desktop',title:'截取记事本窗口截图',access:'read'})]})
+ assert.equal(agentRunReadiness(value,{localDevice:applicationDevice(false,false)}).ready,false)
+ assert.equal(agentRunReadiness(value,{localDevice:applicationDevice(false,true)}).ready,true)
+})
+test('creating a file cannot satisfy permission to edit an existing file',()=>{
+ const value=spec({capability_requirements:[need({kind:'desktop',title:'编辑已有文件',access:'write'})]})
+ assert.equal(agentRunReadiness(value,{localDevice:localDevice(['files.list','files.read','files.write'])}).ready,false)
+ assert.equal(agentRunReadiness(value,{localDevice:localDevice(['files.list','files.read','files.update'])}).ready,true)
+})
+test('deleting an existing file does not imply edit permission',()=>{
+ const value=spec({capability_requirements:[need({kind:'desktop',title:'删除已有文件',access:'write'})]})
+ assert.equal(agentRunReadiness(value,{localDevice:localDevice(['files.list','files.read','files.trash'])}).ready,true)
+})
+test('Codex task resources require the exact task app and separate workspace write grants',()=>{
+ const appId='b'.repeat(24)
+ const device=(allowWrite,workspaceWrite)=>localDevice([],{catalog:JSON.stringify(['apps.task_start','apps.task_status','apps.task_cancel','apps.task_list'].map(name=>({name,inputSchema:{properties:{app:{enum:[appId]}},...(name==='apps.task_start'?{'x-studio-applications':[{id:appId,name:'Codex CLI',adapter:'codex',control:false,allowWrite}],'x-studio-app-workspace-write':workspaceWrite}:{})}})))})
+ const value=spec({capability_requirements:[need({kind:'desktop',title:'调度 Codex 分析项目',access:'read'})]})
+ assert.equal(agentRunReadiness(value,{localDevice:device(false,false)}).ready,true)
+ const writer={...value,capability_requirements:[need({kind:'desktop',title:'调度 Codex 修改项目',access:'write'})]}
+ assert.equal(agentRunReadiness(writer,{localDevice:device(false,true)}).ready,false)
+ assert.equal(agentRunReadiness(writer,{localDevice:device(true,false)}).ready,false)
+ assert.equal(agentRunReadiness(writer,{localDevice:device(true,true)}).ready,true)
 })

@@ -2,6 +2,8 @@ import type { AgentSpec, ConnectedToolOption } from "../pages/Home/presets"
 import type { ToolResolution } from "./agentToolMatcher"
 import type { VerifiedMarketTool } from "./marketToolSelection"
 import { safeMarketplaceQuery } from "./toolSearchPrivacy.ts"
+import {toolLooksMutating} from './toolAutoSelection.ts'
+import {localDeviceSupports,type ReadyLocalDevice} from './localDeviceReadiness.ts'
 
 export type CapabilityKind = "web_search" | "web_fetch" | "knowledge" | "calculate" |
   "text" | "document" | "browser" | "desktop" | "integration" | "custom"
@@ -20,7 +22,7 @@ export type AgentCapabilityRequirement = {
 export type CapabilityCandidate = {
   id: string
   label: string
-  source: "builtin" | "http" | "market"
+  source: "builtin" | "http" | "market" | "local"
   tested: boolean
   selected: boolean
   readOnly: boolean
@@ -87,7 +89,7 @@ const deny = (text: string, topic: RegExp) => text.split(/[。；;\n]/).some(par
 
 export function inferCapabilityKind(title: string): CapabilityKind {
   if (/(?:browser|playwright|puppeteer|浏览器|点击网页|填写表单)/i.test(title)) return "browser"
-  if (/(?:desktop|computer.?use|本地软件|电脑软件|桌面软件|操作电脑)/i.test(title)) return "desktop"
+  if (/(?:desktop|local_computer|computer.?use|本地软件|电脑软件|桌面软件|操作电脑)/i.test(title)) return "desktop"
   if (/(?:网络搜索|网页搜索|web.?search|公开资料)/i.test(title)) return "web_search"
   if (/(?:网页正文|web.?fetch|网页抓取|网页内容提取)/i.test(title)) return "web_fetch"
   if (/(?:knowledge.?search|知识库|内部资料)/i.test(title)) return "knowledge"
@@ -112,9 +114,15 @@ export function agentCapabilityRequirements(spec: AgentSpec, resolution?: ToolRe
   }
   for (const rec of resolution?.recommendations || []) {
     const builtin = BUILTINS[rec.id]
-    add(builtin?.title || rec.label, builtin?.kind || inferCapabilityKind(rec.label), [rec.id])
+    // A connection's display title is not an execution contract. A document
+    // lookup named "Browser plugin" must not require browser-control tools.
+    const runtimeName=/^mkt__[A-Za-z0-9]{15}__(.+)$/.exec(rec.id)?.[1]||rec.id
+    add(builtin?.title || rec.label, builtin?.kind || inferCapabilityKind(runtimeName), [rec.id])
   }
-  for (const gap of resolution?.gaps || []) add(gap.name, inferCapabilityKind(gap.name))
+  for (const gap of resolution?.gaps || []) {
+    const represented=resolution?.recommendations.some(rec=>fold(rec.id)===fold(gap.name)||fold(/^mkt__[A-Za-z0-9]{15}__(.+)$/.exec(rec.id)?.[1]||'')===fold(gap.name))
+    if(!represented)add(gap.name, inferCapabilityKind(gap.name))
+  }
   const context = [spec.goal, spec.task_scope, ...spec.task_plan,
     ...(spec.roles || []).flatMap(role => [role.responsibility, ...role.tasks])].join("；")
   if (/(?:浏览器|browser|playwright|点击网页|填写表单)/i.test(context) &&
@@ -202,8 +210,9 @@ function specificDomainMatches(need:AgentCapabilityRequirement,text:string):bool
 }
 
 function compatibleCandidate(need:AgentCapabilityRequirement,tool:CapabilityCandidate,text:string):boolean {
-  if(need.access==="write" && (tool.readOnly || !writing.test(text)))return false
-  if(need.access==="read" && !tool.readOnly && writing.test(text))return false
+  const mutating=toolLooksMutating(tool.id,text)||writing.test(text)
+  if(need.access==="write" && (tool.readOnly || !mutating))return false
+  if(need.access==="read" && mutating)return false
   if(tool.source==="builtin")return BUILTINS[tool.id].kind===need.kind && need.access==="read"
   const domainSpecific=["document","browser","desktop"].includes(need.kind)
   const explicitIntegration=need.kind==="integration"||need.kind==="custom"
@@ -240,23 +249,30 @@ function compatibleCandidate(need:AgentCapabilityRequirement,tool:CapabilityCand
 }
 
 export function buildAgentCapabilityPlan(spec: AgentSpec, resolution: ToolResolution | null,
-  connections: ConnectedToolOption[] = [], market: VerifiedMarketTool[] = []): CapabilityPlanRow[] {
+  connections: ConnectedToolOption[] = [], market: VerifiedMarketTool[] = [], localDevice?:ReadyLocalDevice|null): CapabilityPlanRow[] {
   const selected = new Set(spec.tools || [])
   const catalog: CapabilityCandidate[] = [
     ...Object.entries(BUILTINS).map(([id, item]) => ({id, label: item.title,
       source: "builtin" as const, tested: true, selected: selected.has(id), readOnly: true})),
     ...connections.map(item => ({id: item.name, label: item.name, description: item.description, source: "http" as const,
       tested: ["ok", "success", "connected"].includes(String(item.status || "").toLowerCase()),
-      selected: selected.has(item.name), readOnly: item.method === "GET"})),
+      selected: selected.has(item.name), readOnly: item.method === "GET"&&!toolLooksMutating(item.name,item.description)})),
     ...market.map(item => ({id: item.id, label: item.label, description: item.description, source: "market" as const,
-      tested: true, selected: selected.has(item.id), readOnly: item.readOnly && !item.destructive})),
+      tested: true, selected: selected.has(item.id), readOnly: item.readOnly && !item.destructive&&!toolLooksMutating(item.name,item.description)})),
   ]
   const metadata = new Map<string, string>([
     ...connections.map(item => [item.name, item.name + " " + item.description] as const),
     ...market.map(item => [item.id, item.name + " " + item.description] as const),
   ])
   return agentCapabilityRequirements(spec, resolution).map(need => {
-    const candidates = catalog.filter(tool => compatibleCandidate(need,tool,metadata.get(tool.id)||""))
+    // Probe physical capability independently of role assignment. This temporary
+    // value is never saved; only bindAgentCapability's explicit choice grants it.
+    const probe={...spec,tools:[...new Set([...spec.tools,'local_computer'])],roles:spec.roles?.map(role=>({...role,tools:[...new Set([...role.tools,'local_computer'])]}))}
+    const localCandidate:CapabilityCandidate[]=localDeviceSupports(probe,need,localDevice)?[{
+      id:'local_computer',label:'所选电脑的已授权能力',source:'local',tested:true,
+      selected:spec.tools.includes('local_computer'),readOnly:need.access==='read',
+    }]:[]
+    const candidates = [...catalog.filter(tool => !resolution?.excluded?.some(row=>row.id===tool.id)&&compatibleCandidate(need,tool,metadata.get(tool.id)||"")),...localCandidate]
       .map(tool=>({...tool,needsMapping:(need.kind==="integration"||need.kind==="custom") && !need.suggested_tool_ids.includes(tool.id)}))
     const roleAssignmentsValid = (toolId:string) => need.role_ids.length
       ? need.role_ids.every(id => spec.roles?.some(role => role.id===id && role.tools.includes(toolId)))
@@ -279,8 +295,8 @@ export function buildAgentCapabilityPlan(spec: AgentSpec, resolution: ToolResolu
 }
 
 export function agentCapabilityReadiness(spec:AgentSpec, resolution:ToolResolution|null,
-  connections:ConnectedToolOption[]=[],market:VerifiedMarketTool[]=[]):string[] {
-  return buildAgentCapabilityPlan(spec,resolution,connections,market)
+  connections:ConnectedToolOption[]=[],market:VerifiedMarketTool[]=[],localDevice?:ReadyLocalDevice|null):string[] {
+  return buildAgentCapabilityPlan(spec,resolution,connections,market,localDevice)
     .filter(row=>row.required&&row.state!=="selected")
     .map(row=>`${row.title}：${row.state==="needs_test"?"请先测试连接":
       row.state==="needs_role"?"请选择负责角色，再选用并分配工具":
@@ -289,20 +305,22 @@ export function agentCapabilityReadiness(spec:AgentSpec, resolution:ToolResoluti
 
 /** Exact human choice, used by UI and regression tests. No broad role grants. */
 export function bindAgentCapability(spec:AgentSpec, needId:string, toolId:string,
-  resolution:ToolResolution|null, connections:ConnectedToolOption[]=[], market:VerifiedMarketTool[]=[]):AgentSpec {
-  const need=buildAgentCapabilityPlan(spec,resolution,connections,market).find(row=>row.id===needId)
+  resolution:ToolResolution|null, connections:ConnectedToolOption[]=[], market:VerifiedMarketTool[]=[],localDevice?:ReadyLocalDevice|null):AgentSpec {
+  const need=buildAgentCapabilityPlan(spec,resolution,connections,market,localDevice).find(row=>row.id===needId)
   const candidate=need?.candidates.find(candidate=>candidate.id===toolId)
   if(!need || !candidate)return spec
   if(spec.roles?.length && (need.role_ids.length
     ? need.role_ids.some(id=>!spec.roles?.some(role=>role.id===id))
     : !(candidate.roleAssigned && spec.tools.includes(toolId))))return spec
-  const otherRoleUsesAlias=spec.roles?.some(role=>!need.role_ids.includes(role.id)&&role.tools.includes(need.title))
+  const chosenMarket=market.find(tool=>tool.id===toolId)
+  const aliases=new Set([need.title,...(chosenMarket?[chosenMarket.name]:[])])
+  const retain=(name:string)=>!aliases.has(name)||!!BUILTINS[name]||connections.some(tool=>tool.name===name)||!!spec.roles?.some(role=>!need.role_ids.includes(role.id)&&role.tools.includes(name))
   return {...spec,
     capability_requirements:agentCapabilityRequirements(spec,resolution)
       .map(row=>row.id===needId?{...row,suggested_tool_ids:[toolId]}:row),
-    tools:[...new Set([...spec.tools.filter(tool=>tool!==need.title||otherRoleUsesAlias),toolId])],
+    tools:[...new Set([...spec.tools.filter(retain),toolId])],
     roles:spec.roles?.map(role=>need.role_ids.includes(role.id)
-      ? {...role,tools:[...new Set([...role.tools.filter(tool=>tool!==need.title),toolId])]}:role),
+      ? {...role,tools:[...new Set([...role.tools.filter(tool=>!aliases.has(tool)||!!BUILTINS[tool]),toolId])]}:role),
   }
 }
 
@@ -311,8 +329,8 @@ export function toolCatalogForDesign(connections: ConnectedToolOption[], market:
   return [
     ...Object.entries(BUILTINS).map(([id, item]) => ({id, description: item.title, readOnly: true, source: "builtin"})),
     ...connections.slice(0, 30).map(item => ({id: item.name, description: item.description.slice(0, 220),
-      readOnly: item.method === "GET", tested: ["ok", "success", "connected"].includes(item.status || ""), source: "http"})),
+      readOnly: item.method === "GET"&&!toolLooksMutating(item.name,item.description), tested: ["ok", "success", "connected"].includes(item.status || ""), source: "http"})),
     ...market.slice(0, 45).map(item => ({id: item.id, description: item.description.slice(0, 220),
-      readOnly: item.readOnly && !item.destructive, tested: true, source: "market"})),
+      readOnly: item.readOnly && !item.destructive&&!toolLooksMutating(item.name,item.description), tested: true, source: "market"})),
   ]
 }

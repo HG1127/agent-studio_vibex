@@ -2,6 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {buildAgentTaskDispatch} from '../src/lib/agentTaskDispatch.ts'
 const base={enabledBuiltins:[],connectedTools:[],marketTools:[],localTools:[],localDeviceOnline:false}
+test('native app tasks match exact app authorization, not a global launch tool',()=>{
+ const id='a'.repeat(24),localCatalog=['apps.windows','apps.observe','apps.act','apps.launch'].map(name=>({name,inputSchema:{properties:{app:{enum:[id]}},'x-studio-applications':[{id,name:'WeChat',adapter:'desktop',control:true}]}}))
+ const context={...base,localDeviceOnline:true,localTools:localCatalog.map(t=>t.name),localCatalog}
+ const rows=buildAgentTaskDispatch('在 WeChat 输入并发送已确认内容',context)
+ assert.equal(rows.find(row=>row.id==='desktop-app').available,true)
+ assert.ok(!rows.some(row=>row.id==='local-files'))
+ assert.equal(rows.find(row=>row.id==='external-write').available,true)
+ assert.equal(buildAgentTaskDispatch('打开本机应用 Codex',context).find(row=>row.id==='desktop-app').available,false)
+ assert.equal(buildAgentTaskDispatch('打开本机应用 Codex',{...context,localCatalog:[]}).find(row=>row.id==='desktop-app').available,false)
+})
 test('empty task produces no guessed calls',()=>assert.deepEqual(buildAgentTaskDispatch(' ',base),[]))
 test('web research finds only enabled or verified tools and names missing gaps',()=>{
  const plan=buildAgentTaskDispatch('请联网调研最新行业新闻并给出来源',{...base,enabledBuiltins:['web_search'],connectedTools:[{name:'browser_read',status:'untested'}]})

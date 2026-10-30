@@ -49,7 +49,7 @@ export function registerApplications({add,config,native=applicationNative,launch
  const grants=new Map(permission.grants.map(g=>[g.id,g])),observations=new Map()
  const desktop=permission.grants.filter(g=>g.adapter==='desktop'),controlled=desktop.filter(g=>g.control)
  const appSchema=list=>({type:'string',enum:list.map(g=>g.id)})
- const addTool=(name,description,properties,fn,required)=>{const s=schema(properties,required);if(name===(desktop.length?'apps.windows':'apps.task_start'))s['x-studio-applications']=permission.grants.map(g=>({id:g.id,name:g.name,adapter:g.adapter,control:g.control}));add(name,description,s,fn)}
+ const addTool=(name,description,properties,fn,required)=>{const s=schema(properties,required);if(name===(desktop.length?'apps.windows':'apps.task_start'))s['x-studio-applications']=permission.grants.map(g=>({id:g.id,name:g.name,adapter:g.adapter,control:g.control,...(g.adapter==='codex'?{allowWrite:g.allowWrite}:{})}));if(name==='apps.observe')s['x-studio-application-images']=permission.images;if(name==='apps.task_start')s['x-studio-app-workspace-write']=(config.roots||[]).some(r=>!r.allowedFiles&&r.readOnly!==true);add(name,description,s,fn)}
  const checked=async(id)=>{const g=grants.get(id);if(!g)throw Error('application_denied');const current=await inspectApplication(g.path,g);if(current.sha256!==g.sha256)throw Error('application_binary_changed');return g}
  const windows=async(g,signal)=>{const list=await native({action:'windows',path:g.path},{signal});return (Array.isArray(list)?list:[]).filter(w=>w&&w.path?.toLowerCase()===g.path.toLowerCase()&&/^\d+$/.test(w.id)).map(w=>({...w,title:String(w.title).slice(0,300)}))}
  if(desktop.length){

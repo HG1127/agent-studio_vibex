@@ -1,3 +1,4 @@
+import {toolLooksMutating} from './toolAutoSelection.ts'
 /**
  * Converts server-verified MCP marketplace connections into selectors for an Agent.
  * A marketplace selection is not itself a grant: the Agent executor rechecks
@@ -46,7 +47,7 @@ export function getVerifiedMarketTools(input: unknown): VerifiedMarketTool[] {
       result.push({
         id,name,connectionTitle:title,label:`${title} · ${name}`,
         description:String(tool?.description||"已验证的插件工具").slice(0,280),
-        readOnly:tool?.read_only===true,
+        readOnly:tool?.read_only===true&&!toolLooksMutating(name,String(tool?.description||'')),
         destructive:tool?.destructive===true,
       })
       if(result.length>=60)return result

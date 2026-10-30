@@ -834,6 +834,7 @@ export function useHome() {
     })
   }, [markSpecEdited])
 
+  const designGenerationBlockedReason=designModelStatus==='loading'?'正在核验模型连接，请稍候。':designModelStatus!=='ready'?'模型连接暂时无法核验，请刷新模型。':!chooseAgentDesignModel(designModelOptions,designModelKey)?'请先选择当前账号可用的模型连接。':''
   return {
     templates: TEMPLATE_PRESETS,
     isLoggedIn: Boolean(rhUserId),
@@ -842,6 +843,7 @@ export function useHome() {
     userInput,
     setUserInput,
     handleCreate,
+    designGenerationBlockedReason,
     designModelOptions,
     designModelStatus,
     designModelKey,

@@ -83,3 +83,44 @@ test("untested HTTP tools are suggestions rather than automatic remote writes",(
     spec(["邮件发送"]),[http],[])
   assert.ok(!result.safeAutoBindings.includes("send_report"))
 })
+test("a user-forbidden vendor cannot be auto-bound from the model or an older selection",()=>{
+  const tool=market()
+  for(const previous of [[],[tool.id]]){
+    const result=resolveAgentToolRequirements("不要联网，也禁止访问 GitHub，只读取本地资料",
+      spec(["web_search",tool.id],{goal:"Search GitHub repositories on the internet"}),[],[tool],previous)
+    assert.ok(!result.resolvedTools.includes(tool.id))
+    assert.ok(!result.safeAutoBindings.includes("web_search"))
+    assert.ok(!result.gaps.some(g=>g.name===tool.id),"a denied tool must not become a marketplace search request")
+  }
+})
+test("explicit HTTP denials and English resource denials override generated selections",()=>{
+  const tool={name:"github_search",description:"Search GitHub repositories",method:"GET",status:"ok"}
+  for(const requirement of ["禁止调用 github_search", "Do not use GitHub; summarize the supplied text"]){
+    const result=resolveAgentToolRequirements(requirement,spec([tool.name]),[tool],[],[tool.name])
+    assert.ok(!result.resolvedTools.includes(tool.name))
+    assert.ok(!result.safeAutoBindings.includes(tool.name))
+  }
+})
+test("a contradictory read-only hint never makes a send/delete action safe to auto-bind",()=>{
+  for(const name of ["gmail_send","github_delete_issue","crm.updateRecord"]){
+    const tool=market(name,{readOnly:true,destructive:false,description:"Execute the named action"})
+    const result=resolveAgentToolRequirements("处理对应业务",spec([name]),[],[tool])
+    assert.ok(!result.safeAutoBindings.includes(tool.id),name)
+    assert.ok(!result.resolvedTools.includes(tool.id),name)
+    assert.equal(result.recommendations.find(row=>row.id===tool.id)?.status,"needs_confirmation")
+  }
+})
+test("a tested GET endpoint named as a write still requires an explicit choice",()=>{
+  const tool={name:"send_report",description:"Send the report",method:"GET",status:"ok"}
+  const result=resolveAgentToolRequirements("发送报告",spec([tool.name]),[tool])
+  assert.ok(!result.safeAutoBindings.includes(tool.name))
+  assert.ok(!result.resolvedTools.includes(tool.name))
+})
+test("re-matching cannot restore explicitly forbidden builtins from an older choice",()=>{
+  const result=resolveAgentToolRequirements("不要联网搜索",spec(["web_search"]),[],[],["web_search"])
+  assert.ok(!result.resolvedTools.includes("web_search"))
+})
+test("a denied Slack clause does not suppress explicitly requested read-only GitHub",()=>{
+  const result=resolveAgentToolRequirements("不要使用 Slack；在 GitHub 查询仓库",spec(["github_search"]),[],[market()])
+  assert.ok(result.safeAutoBindings.includes(market().id))
+})

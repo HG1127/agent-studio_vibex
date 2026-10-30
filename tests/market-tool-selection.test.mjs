@@ -38,3 +38,8 @@ test("malformed API bodies and excessively large responses fail closed",()=>{
   const huge=Array.from({length:80},(_,i)=>conn({id:String(i).padStart(15,"0"),tools:[tool("x")]}))
   assert.ok(getVerifiedMarketTools(huge).length<=50)
 })
+test("write-action names override a contradictory read-only annotation",()=>{
+  const list=getVerifiedMarketTools([conn({tools:[{name:'gmail_send',description:'Send email',read_only:true,destructive:false},{name:'github_search',description:'Search repositories',read_only:true,destructive:false}]})])
+  assert.equal(list.find(t=>t.name==='gmail_send').readOnly,false)
+  assert.equal(list.find(t=>t.name==='github_search').readOnly,true)
+})

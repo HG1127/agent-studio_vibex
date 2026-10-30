@@ -150,7 +150,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       const sys=(input.messages||[]).filter(x=>x.role==="system").map(x=>x.content).join("\n")
       const user=(input.messages||[]).filter(x=>x.role==="user").map(x=>x.content).join("\n")
       let content="本次经验：优先明确需求、人工确认并制定分阶段计划。"
-      if(sys.includes("助手方案设计器") && user.includes("V17_CREATE_JOURNEY")){
+      if(sys.includes("助手方案设计器") && user.includes("V30_DENY_RESOURCES")){
+        content=JSON.stringify({name:'禁止资源冲突验收',goal:'联网检索并调用模板工具后汇总文本',task_scope:'模型错误地建议了用户禁止的资源',tools:['web_search','doc_search','summarize'],task_plan:['搜索网页','查询 doc_search','整理摘要'],deliverables:['摘要'],done_criteria:['摘要准确'],require_plan_review:false})
+      }else if(sys.includes("助手方案设计器") && user.includes("V17_CREATE_JOURNEY")){
         v17PlanCalls++
         content=JSON.stringify({
           name:"需求落地全链路Agent",
@@ -316,6 +318,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         main:!!document.querySelector('main,[data-studio-fluid-page]'),
         title:document.title,
         body:String(document.body?.innerText||"").slice(0,230),
+        mainTail:String(document.querySelector('main')?.innerText||'').slice(-1200),
+        alerts:[...document.querySelectorAll('[role=alert]')].map(x=>x.textContent?.slice(0,300)),
+        dialogs:[...document.querySelectorAll('[role=dialog]')].map(x=>x.textContent?.slice(0,300)),
         errorOverlay:!!document.querySelector('vite-error-overlay')
       })`).catch(()=>({error:"document-unreadable"}))
       console.error("CHROME_UI_SAFE_PAGE_STATE",JSON.stringify({label,page,viteLog:viteLogs.slice(-520)}))
@@ -675,9 +680,26 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       await cmd("Emulation.setDeviceMetricsOverride",{
         width:1440,height:900,deviceScaleFactor:1,mobile:false,
       })
+      if(process.env.AGENT_STUDIO_UX_DENIAL_FIRST==='1'){
+        await cmd('Page.navigate',{url:webOrigin+'/agent-create'})
+        await wait('document.querySelector("#agent-requirement")!==null','negative-scope requirement editor')
+        await evaluate('document.querySelector("#agent-requirement").focus()')
+        await cmd('Input.insertText',{text:'V30_DENY_RESOURCES：禁止使用 doc_search，也不要联网；只对我提供的文字做文本摘要。'})
+        await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("生成 Agent 方案")&&!b.disabled)','verified model available for negative-scope generation')
+        await clickText('生成 Agent 方案');await wait('document.body.innerText.includes("已生成可编辑方案")','model-proposed conflicting resource plan')
+        await clickText('进入方案编辑');await wait('document.querySelector("input[aria-label=助手名称]")?.value==="禁止资源冲突验收"','conflicting draft rendered')
+        await clickText('保存并继续：连接资源');await wait('new URLSearchParams(location.search).get("step")==="3"','negative-scope plan saved and resources opened')
+        const rows=await api('GET','/api/agent_specs?perPage=100'),denied=rows.items.find(row=>row.name==='禁止资源冲突验收')
+        assert.ok(denied);assert.deepEqual(denied.spec.tools,['summarize']);assert.equal(v17McpCalls,0)
+        await wait('Boolean(document.querySelector("[aria-label=按需求排除的工具]"))','explicit resource exclusion shown in original UI')
+        assert.equal(await evaluate('document.querySelector("[aria-label=按需求排除的工具]")?.textContent.includes("doc_search")'),true)
+        console.log('CHROME_RESOURCE_DENIAL_PASS',JSON.stringify({modelContradictionRejected:true,onlyRequestedBuiltinSaved:true,noMcpCalls:true,exclusionsVisible:true}))
+      }
       console.log("V17_STAGE_BEGIN", "knowledge-base-ui")
       // Knowledge base creation and indexing via real employee-facing UI.
       await cmd("Page.navigate",{url:webOrigin+"/knowledge-bases"})
+      await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.trim()==="新建知识库")','knowledge creator entry')
+      if(!await evaluate('Boolean(document.querySelector("#kb-name"))'))await clickText('新建知识库')
       await wait('document.querySelector("#kb-name")!==null',"V17 knowledge-base creator")
       const kbTitle="V17 需求落地验收资料库"
       await evaluate('document.querySelector("#kb-name").focus()')
@@ -707,6 +729,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       await cmd("Input.insertText",{text:requirement})
       await wait('document.querySelector("#agent-requirement")?.value.includes("V17_CREATE_JOURNEY")',
         "real user requirement typed")
+      await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("生成 Agent 方案")&&!b.disabled)','model verified before generating the positive plan')
       await clickText("生成 Agent 方案")
       await wait('document.body.innerText.includes("已生成可编辑方案")',
         "actual /api/llm/chat auto-generated AgentSpec")
@@ -716,34 +739,27 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         "review generated structured plan")
       await wait('document.querySelector("input[aria-label=助手名称]")?.value.includes("需求落地全链路Agent")',
         "correct generated Agent name")
-      assert.equal(await evaluate('document.querySelector("#spec-editor")?.textContent?.includes("知识库检索")'),true)
-      assert.equal(await evaluate('document.querySelector("#spec-editor input[type=checkbox]")!==null'),true)
+      assert.equal(await evaluate('document.querySelector("textarea[aria-label=任务范围]")?.value.includes("授权知识库")'),true)
+      await clickText('保存并继续：连接资源')
+      await wait('new URLSearchParams(location.search).get("step")==="3"','plan saved through the actual save-and-continue action')
 
       // User explicitly grants exact MCP tool; none of the other MCP tools is
       // authorized automatically. The tool identifier must be executable.
-      const chooseMcp=await evaluate("(()=>{const row=[...document.querySelectorAll('button')].find(b=>b.textContent?.includes('明确选择此工具'));if(!row)return false;row.click();return true})()")
+      const chooseMcp=await evaluate("(()=>{const row=[...document.querySelectorAll('button')].find(b=>b.textContent?.includes('doc_search')&&/选用工具|选用并分配|明确选择此工具/.test(b.textContent)&&!b.disabled);if(!row)return false;const details=row.closest('details');if(details&&!details.open)details.querySelector('summary')?.click();row.click();return true})()")
       if(!chooseMcp){
         // Backends that expose explicit readOnly metadata may already select it.
         assert.equal(await evaluate('document.body.innerText.includes("doc_search")'),true)
       }
-      await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("保存到我的助手"))',
-        "wizard save available")
+      await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("doc_search")&&b.textContent?.includes("已选用"))','exact MCP candidate explicitly selected')
       console.log("V17_STAGE_GENERATED",v17PlanCalls)
-      await clickText("保存到我的助手")
-      await wait('document.body.innerText.includes("已保存进「我的 Agent」")',
-        "saved first Agent version via UI")
       let ownerSpecs=await api("GET","/api/agent_specs?perPage=100")
       const created=ownerSpecs.items.find(row=>row.name==="需求落地全链路Agent")
       assert.ok(created?.id,"Created Agent did not reach server")
       assert.equal(created.spec.require_plan_review,true)
       assert.ok(created.spec.tools.includes("knowledge_search"))
       assert.ok(created.spec.tools.includes("calculate"))
-      assert.ok(created.spec.tools.includes(selectedToolId),
-        "Chosen actual MCP tool must be saved with full connection-qualified ID")
-      assert.ok(!created.spec.tools.includes("doc_search"),"Generic tool alias must be replaced by executable MCP ID")
       assert.ok(!created.spec.tools.includes("mkt__"+connectedMarket.connection.id+"__doc_write"))
       console.log("V17_STAGE_PLAN_SAVED",created.id,JSON.stringify(created.spec.tools))
-      await clickText("下一步：连接资源")
       await wait('new URLSearchParams(location.search).get("step")==="3"',
         "resource-check stage")
       await wait('document.body.innerText.includes("关联知识库")',"resource-binding UI")
@@ -756,6 +772,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       const bound=await api("GET","/api/agent_specs/"+created.id)
       assert.ok(bound.spec.knowledge_base_ids.includes(kb.id))
       assert.ok(bound.spec.tools.includes(selectedToolId))
+      assert.ok(!bound.spec.tools.includes('doc_search'),'Generic alias must be replaced by the exact granted MCP ID')
       console.log("V17_RESOURCE_BLOCKERS",JSON.stringify({
         serverSpecTools:bound.spec.tools,
         serverKbIds:bound.spec.knowledge_base_ids,
@@ -774,7 +791,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         "step four renders enabled direct launch after route transition")
       const launch=await evaluate('(()=>{const a=[...document.querySelectorAll("a")].find(x=>x.textContent?.includes("前往试跑当前 Agent"));if(!a)return false;a.click();return true})()')
       assert.ok(launch)
-      await wait('location.pathname==="/agent-run" && document.querySelector("#spec-select")?.value==='+JSON.stringify(created.id),
+      await wait('location.pathname==="/agent-run" && document.querySelector("#run-quick-spec")?.value==='+JSON.stringify(created.id),
         "exact newly created Agent selected for trial")
       const trialInstruction="V17_RUN_JOURNEY：请从关联知识库提取需求标准，计算 (4+6)*3，调用已授权 doc_search MCP 插件工具核对模板；先输出结构化需求草案待我批准，再交付阶段实施计划和验收清单。"
       await evaluate('document.querySelector("#agent-task-instruction").focus()')
@@ -1209,6 +1226,8 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     assert.ok(savedWithTool.spec.tools.includes(selectedToolId),"Agent spec did not persist exact MCP tool ID")
     assert.ok(!savedWithTool.spec.tools.includes(unselectedToolId),"Unselected MCP tool must not be added")
     await cmd("Page.navigate",{url:webOrigin+"/agent-run?spec="+encodeURIComponent(spec.id)})
+    await wait('document.querySelector("#run-quick-spec")?.value==='+JSON.stringify(spec.id),'chosen Agent ready')
+    await clickText('资源与设置')
     await wait('document.body.innerText.includes("浏览器检索插件 · doc_search")',"run panel shows chosen MCP tool")
     await wait('document.body.innerText.includes("已验证插件工具：2 个 · 当前方案已选 1 个")',
       "run panel reflects explicit plugin selection")
@@ -1218,8 +1237,10 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     await wait('document.querySelector("#agent-input-review")!==null',"pending human review")
     assert.equal(await evaluate('document.querySelector("#agent-input-review")?.textContent?.includes("需求方案草案")'),true)
     assert.equal(await evaluate('location.search.includes("run=")'),true)
+    await clickText('资源与设置')
     assert.equal(await evaluate("Boolean(document.querySelector('a[href^=\"/plugin-market?tool=\"]'))"),true,
       "Unavailable tool should link into the plugin marketplace")
+    await cmd('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27})
 
     await cmd("Page.reload",{ignoreCache:true})
     await sleep(550) // Let Chrome detach the old document before testing restored UI.
@@ -1290,14 +1311,14 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     // Select an unrelated Agent on the left to ensure optimization stays bound
     // to the run's original Agent ID, never the sidebar selection.
     assert.ok(await evaluate(`(()=>{
-      const el=document.querySelector("#spec-select")
+      const el=document.querySelector("#run-quick-spec")
       if(!el)return false
       const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set
       setter.call(el,${JSON.stringify(unrelated.id)})
       el.dispatchEvent(new Event("change",{bubbles:true}))
       return true
     })()`),"Could not change Agent sidebar selection")
-    await wait('document.querySelector("#spec-select")?.value==='+JSON.stringify(unrelated.id),
+    await wait('document.querySelector("#run-quick-spec")?.value==='+JSON.stringify(unrelated.id),
       "unrelated Agent selected in sidebar")
     await clickText("结果不理想")
     await evaluate('document.querySelector(\'textarea[placeholder^="补充一句话"]\').focus()')
@@ -1432,12 +1453,13 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     await cmd("Page.navigate",{url:webOrigin+"/agent-create?step=3&spec="+encodeURIComponent(autoSpec.id)})
     await wait('document.querySelector("#spec-editor input[aria-label=\\"助手名称\\"]")?.value==="自动匹配工具 Agent"',
       "agent creation wizard recovered saved draft")
-    await wait('document.body.innerText.includes("AI 需求识别 · 自动匹配工具")',
+    await wait('document.body.innerText.includes("任务需要什么能力")',
       "automatic tool plan visible in creation wizard")
     assert.equal(await evaluate('document.body.innerText.includes("文档解析")'),true,
       "unavailable document parser must remain a visible connection gap")
-    await clickText("重新匹配已连接工具")
-    await wait('document.body.innerText.includes("网页搜索")',"real builtin matching applied")
+    await clickText("重新匹配工具")
+    await wait('document.body.innerText.includes("检索公开资料")',"real builtin matching applied")
+    await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.trim()==="保存到我的助手"&&!b.disabled)','rematched draft finished loading before save')
     await clickText("保存到我的助手")
     await wait('document.body.innerText.includes("已保存进「我的 Agent」")',
       "recommended tools saved into AgentSpec")
@@ -1508,7 +1530,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         })()
       })`)
       assert.equal(check.bodyError,false,"render error at "+route)
-      assert.equal(check.globalEditor,true,"global quick-edit action missing at "+route)
+      const editorRoutes=new Set(['/','/agent-create','/agent-run','/workflow-canvas','/template-market','/internal-templates','/agent-collaboration','/integrate','/model-connections','/tool-connections','/plugin-market'])
+      assert.equal(check.globalEditor,editorRoutes.has(route),"Agent edit shortcut visibility at "+route)
+      assert.deepEqual(check.a11y,{buttons:[],fields:[]},'visible controls need accessible names at '+route)
       mobileAudit.push({route,overflow:check.overflow,view:check.viewport,label:check.label,a11y:check.a11y})
     }
     console.log("CHROME_ALL_MODULE_MOBILE_AUDIT",JSON.stringify(mobileAudit))
@@ -1546,12 +1570,12 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
 
     // Tool discovery has a real return path to the originating saved Agent.
     await cmd("Page.navigate",{url:webOrigin+"/plugin-market?tool=pdf&returnSpec="+encodeURIComponent(autoSpec.id)})
-    await wait('document.body.innerText.includes("正在为一个 Agent 连接工具")',
+    await wait('document.querySelector(\'[aria-label="继续配置 Agent"] a\')!==null',
       "resource market keeps originating Agent context")
     assert.equal(await evaluate(`[...document.querySelectorAll('a')].some(anchor=>
-      anchor.textContent?.includes('返回原 Agent 配置') &&
-      anchor.getAttribute('href')===${JSON.stringify("/agent-create?step=3&spec="+autoSpec.id)})`),true)
-    await evaluate('[...document.querySelectorAll("a")].find(anchor=>anchor.textContent?.includes("返回原 Agent 配置"))?.click()')
+      anchor.textContent?.includes('打开已保存的 Agent') &&
+      new URL(anchor.href).searchParams.get('spec')===${JSON.stringify(autoSpec.id)})`),true)
+    await evaluate('document.querySelector(\'[aria-label="继续配置 Agent"] a\')?.click()')
     await wait('location.pathname==="/agent-create" && new URLSearchParams(location.search).get("spec")==='+JSON.stringify(autoSpec.id),
       "resource market -> exact Agent creation state")
     console.log("CHROME_MARKET_RETURN_TO_AGENT_PASS",JSON.stringify({specScoped:true,step:"connect"}))
@@ -1562,13 +1586,14 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     for (const route of ["/model-connections","/tool-connections","/knowledge-bases"]) {
       await cmd("Page.navigate",{url:webOrigin+route+"?returnSpec="+autoSpec.id})
       await wait('location.pathname==='+JSON.stringify(route)+
-        ' && !!document.querySelector(\'[aria-label="返回原 Agent 资源配置"] a\')',
+        ' && !!document.querySelector(\'[aria-label="继续配置 Agent"] a\')',
         "resource return action on "+route)
-      assert.equal(await evaluate('document.querySelector(\'[aria-label="返回原 Agent 资源配置"] a\')?.getAttribute("href")'),
+      assert.equal(await evaluate('document.querySelector(\'[aria-label="继续配置 Agent"] a\')?.getAttribute("href")'),
         returnPath,"Resource link must preserve the intended Agent")
     }
     // Knowledge library: type a name in a real controlled input, submit, and
     // confirm the new library is actually returned by PocketBase.
+    await clickText('新建知识库')
     await wait('document.querySelector("#kb-name")!==null',"knowledge editor ready")
     await evaluate('document.querySelector("#kb-name").focus()')
     await cmd("Input.insertText",{text:"员工 UX 验收资料库"})

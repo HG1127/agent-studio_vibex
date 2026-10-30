@@ -12,7 +12,7 @@ import { normalizeAgentQualityChecks, type AgentQualityCheck } from "@/lib/agent
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 import { agentRunReadiness, enabledRunToolConnections } from "@/lib/agentRunReadiness"
 import {buildAgentTaskDispatch} from '@/lib/agentTaskDispatch'
-import {localDeviceToolNames} from '@/lib/localDeviceConnection'
+import {localDeviceToolNames,localDeviceCatalog} from '@/lib/localDeviceConnection'
 import { collectRoleSkills, verifyRoleSkillBindings } from "@/lib/skillRunPreflight"
 
 export type { AgentSpec, SavedSpecRow }
@@ -244,7 +244,7 @@ export function useAgentRun() {
   const [stopCondition, setStopCondition] = useState("")
   const [stopOnComplete, setStopOnComplete] = useState(true)
   const [instruction, setInstruction] = useState(() => officeTask?.instruction || "")
-  const [localDeviceId, setLocalDeviceId] = useState(() => officeTask?.deviceId || "")
+  const [localDeviceId, setLocalDeviceId] = useState(() => officeTask?.deviceId || searchParams.get('device') || "")
   const [readyLocalDevice, setReadyLocalDevice] = useState<LocalDevice | null>(null)
   useEffect(() => {
     const controller = new AbortController()
@@ -375,6 +375,7 @@ export function useAgentRun() {
     connectedTools:connectedTools.filter(tool=>selectedSpec?.spec.tools.includes(tool.name)),
     marketTools:connectedMarketTools.filter(tool=>selectedSpec?.spec.tools.includes(tool.id)),
     localTools:selectedSpec?.spec.tools.includes('local_computer')?localDeviceToolNames(readyLocalDevice?.id===localDeviceId?readyLocalDevice:null):[],
+    localCatalog:selectedSpec?.spec.tools.includes('local_computer')?localDeviceCatalog(readyLocalDevice?.id===localDeviceId?readyLocalDevice:null):[],
     localDeviceOnline:Boolean(selectedSpec?.spec.tools.includes('local_computer')&&readyLocalDevice?.id===localDeviceId&&localDeviceToolNames(readyLocalDevice).length),
   }),[instruction,enabledTools,connectedTools,connectedMarketTools,readyLocalDevice,localDeviceId,selectedSpec])
   // History review must optimize its own Agent, never whichever Agent is selected in the left sidebar.

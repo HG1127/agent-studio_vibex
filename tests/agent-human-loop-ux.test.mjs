@@ -1,121 +1,42 @@
-import test from "node:test"
-import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+// Business contracts for the human/resource loop. Live form, network and
+// persistence coverage lives in agent-review.chrome.mjs (part of the E2E gate).
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {evaluateAgentJourney} from '../src/lib/agentCreateJourney.ts'
+import {resolveAgentToolRequirements,prepareGeneratedAgentPermissions} from '../src/lib/agentToolMatcher.ts'
+import {getVerifiedMarketTools} from '../src/lib/marketToolSelection.ts'
+import {buildAgentCapabilityPlan,agentCapabilityReadiness} from '../src/lib/agentCapabilityPlan.ts'
+import {createAgentResourceHandoff,isMatchingAgentResourceHandoff} from '../src/lib/agentResourceHandoff.ts'
+import {agentResourceSetupUrl} from '../src/lib/toolSearchPrivacy.ts'
+const id='abcdefghijklmno',saved=Date.parse('2026-10-30T08:00:00Z')
+const spec={goal:'汇总已授权的内部资料',task_scope:'仅使用员工已授权资料',tools:[],task_plan:['读取资料','提交审核'],deliverables:['可核验的结论'],done_criteria:['结论有证据'],require_plan_review:true}
+const run=(status='succeeded',patch={})=>({spec_id:id,status,created:'2026-10-30T08:01:00Z',result:'已审核的研究结论',spec_snapshot:structuredClone(spec),...patch})
+const journey=(patch={})=>evaluateAgentJourney({spec,specName:'内部助手',savedId:id,dirty:false,enabledModelCount:1,modelState:'ready',toolStatusOf:()=> 'ready',accessibleKnowledgeBaseIds:[],lastSavedAt:saved,runState:'ready',...patch})
 
-const source = (path) => readFileSync(new URL("../" + path, import.meta.url), "utf8")
-
-test("engine supports an explicit user-input pause and checkpoint resume", () => {
-  const engine = source("pocketbase/pb_hooks/agent_engine.pb.js")
-  assert.match(engine, /String\(decision\.action\) === "ask_user"/)
-  assert.match(engine, /inputCp\.pending_input =/)
-  assert.match(engine, /inputRun\.set\("status", "awaiting_input"\)/)
-  assert.match(engine, /"\/api\/agent-runs\/\{id\}\/respond"/)
-  assert.match(engine, /status=\x27awaiting_input\x27/)
-  assert.match(engine, /AND rh_user_id=\{:uid\}/)
-  assert.match(engine, /cp\.pending_input = null/)
-  assert.match(engine, /run\.set\("status", "running"\)/)
-  assert.match(engine, /"input_pending"/)
-  assert.match(engine, /"input_received"/)
-  assert.match(engine, /tx\.save\(run\)/)
-  assert.match(engine, /tx\.save\(ev\)/)
+test('pending human input and tool approval remain waiting even when the model claims success',()=>{
+ for(const status of ['awaiting_input','awaiting_approval']){const value=journey({run:run(status)});assert.equal(value.trial.state,'waiting');assert.equal(value.canPublish,false);assert.equal(value.trial.action,'view')}
+ for(const status of ['running','queued']){const value=journey({run:run(status)});assert.equal(value.trial.state,'running');assert.equal(value.canPublish,false)}
 })
-
-test("frontend supplies a real user response form, polls and keeps step state", () => {
-  const hook = source("src/pages/AgentRun/useAgentRun.ts")
-  const page = source("src/pages/AgentRun/AgentRunPage.tsx")
-  const ui = source("src/components/agent-run/AgentInputCard.tsx")
-  assert.match(hook, /"awaiting_input" \| "succeeded"/)
-  assert.match(hook, /LIVE_STATES.*"awaiting_input"/)
-  assert.match(hook, /body: JSON\.stringify\(\{ answer: replyText\.trim\(\), decision \}\)/)
-  assert.match(page, /<AgentInputCard/)
-  assert.match(ui, /onSubmit\("approve"\)/)
-  assert.match(ui, /onSubmit\("revise"\)/)
-  assert.match(ui, /onSubmit\("reply"\)/)
-  assert.match(hook, /rememberRunUrl\(runId, selectedSpec\.id\)/)
-  assert.match(hook, /fetchRunRecord\(requestedRunId\)/)
+test('approval does not certify a changed plan, a missing snapshot or an unchecked refresh',()=>{
+ assert.equal(journey({run:run()}).canPublish,true)
+ for(const patch of [{spec:{...spec,require_plan_review:false}},{spec:{...spec,tools:['web_search']}},{run:run('succeeded',{spec_snapshot:null})},{dirty:true},{runState:'checking'},{runState:'unavailable'}])assert.equal(journey({run:run(),...patch}).canPublish,false)
 })
-
-test("stage plan review cannot bypass approval or lose confirmed checkpoint", () => {
-  const engine = source("pocketbase/pb_hooks/agent_engine.pb.js")
-  const editor = source("src/components/home/SpecEditorCard.tsx")
-  const hook = source("src/pages/AgentRun/useAgentRun.ts")
-  const detail = source("src/pages/RunDetail/RunDetailPage.tsx")
-  assert.match(engine, /plan_review_confirmed: cpRaw\.plan_review_confirmed === true/)
-  assert.match(engine, /plan_review_confirmed: cp\.plan_review_confirmed === true/)
-  assert.match(engine, /cfg\.require_plan_review === true && cp\.plan_review_confirmed !== true/)
-  assert.match(engine, /decision === "approve"/)
-  assert.match(engine, /decision === "revise"/)
-  assert.match(editor, /require_plan_review/)
-  assert.match(hook, /require_plan_review: requirePlanReview/)
-  assert.match(detail, /打开人工确认并继续/)
+test('successful output cannot override lost model or knowledge access',()=>{
+ assert.equal(journey({enabledModelCount:0,run:run()}).canTry,false)
+ assert.equal(journey({modelState:'unavailable',run:run()}).canPublish,false)
+ const linked={...spec,knowledge_base_ids:['revoked-kb']};assert.equal(journey({spec:linked,run:run('succeeded',{spec_snapshot:linked})}).canPublish,false)
 })
-
-test("Agent run cannot start without real model and quality assertions are revision-safe", () => {
-  const hook=source("src/pages/AgentRun/useAgentRun.ts")
-  const page=source("src/pages/AgentRun/AgentRunPage.tsx")
-  const launcher=source("src/components/agent-run/RunLauncher.tsx")
-  const quality=source("src/components/agent-run/AgentQualityChecklist.tsx")
-  assert.match(page,/p\.isCustomModel &&/)
-  assert.match(page,/disabledReason=\{/)
-  assert.match(launcher,/连接模型/)
-  assert.match(hook,/expected_updated:selected\.updated/)
-  assert.match(hook,/response\.status===409/)
-  assert.match(quality,/!versionChanged/)
-  assert.match(quality,/读取最新检查条件/)
+test('resource return signals carry only the original record and capability, and expire',()=>{
+ const signal=createAgentResourceHandoff(id,'lookup',100000);assert.ok(signal);assert.equal(isMatchingAgentResourceHandoff(signal,id,['lookup'],100001),true);assert.equal(isMatchingAgentResourceHandoff(signal,'otheragent00000',['lookup'],100001),false);assert.equal(isMatchingAgentResourceHandoff(signal,id,['other'],100001),false);assert.equal(isMatchingAgentResourceHandoff(signal,id,['lookup'],500001),false)
+ const url=agentResourceSetupUrl('/tool-connections',id,'lookup');assert.ok(url.includes(id));assert.ok(!url.includes('goal='));assert.ok(!url.includes('prompt='))
 })
-
-test("release acceptance keeps waiting vs failed vs outdated status distinct",()=>{
-  const sourceCode=source("src/components/version-release/SaveVersionCard.tsx")
-  const panel=source("src/components/version-release/AcceptanceTestCard.tsx")
-  const hook=source("src/pages/VersionRelease/useVersionRelease.ts")
-  assert.match(sourceCode,/const isPending = \[/)
-  assert.match(sourceCode,/验收测试仍在进行或等待你的确认，不属于失败/)
-  assert.match(sourceCode,/const isOutdated =/)
-  assert.match(panel,/验收测试等待你的补充/)
-  assert.match(hook,/"awaiting_approval", "awaiting_input"/)
+test('a newly unprobed or disabled tool invalidates resource readiness rather than retaining a cached green label',()=>{
+ const connection={id,title:'Documents',enabled:true,last_probe_status:'ok',tool_count:1,tools:[{name:'pdf_extract',description:'Extract PDF text',read_only:true,destructive:false}]};const tools=getVerifiedMarketTools([connection]);const need={id:'pdf',title:'读取 PDF',purpose:'提取页码证据',kind:'document',access:'read',required:true,role_ids:[],search_terms:[],suggested_tool_ids:[tools[0].id]};const plan={...spec,tools:[tools[0].id],capability_requirements:[need]};assert.deepEqual(agentCapabilityReadiness(plan,null,[],tools),[])
+ for(const next of [{...connection,enabled:false},{...connection,last_probe_status:'untested'}]){const current=getVerifiedMarketTools([next]);assert.equal(current.length,0);assert.ok(agentCapabilityReadiness(plan,null,[],current).length>0)}
 })
-
-test("connected resources return to the exact originating saved Agent", () => {
-  const wizard=source("src/pages/AgentCreate/AgentCreatePage.tsx")
-  const banner=source("src/components/site/ReturnToAgentResources.tsx")
-  for(const page of ["ModelConnections/ModelConnectionsPage","ToolConnections/ToolConnectionsPage","KnowledgeBases/KnowledgeBasesPage"]){
-    assert.match(source("src/pages/"+page+".tsx"),/<ReturnToAgentResources/)
-  }
-  assert.match(wizard,/addReturnAgentToUrl\("\/model-connections"/)
-  assert.match(wizard,/addReturnAgentToUrl\("\/tool-connections"/)
-  assert.match(wizard,/addReturnAgentToUrl\("\/knowledge-bases"/)
-  assert.match(banner,/safeAgentSpecId/)
+test('model-proposed tools cannot override denied resources or pre-grant write roles',()=>{
+ const tool={id:'mkt__abcdefghijklmno__gmail_send',name:'gmail_send',label:'Gmail',description:'Send email',connectionTitle:'Gmail',readOnly:true,destructive:false};const proposed={...spec,tools:[tool.id],roles:[{id:'sender',tools:[tool.id]}],capability_requirements:[{id:'send',kind:'integration',access:'write',required:true}]};const selection=resolveAgentToolRequirements('禁止使用 Gmail',proposed,[],[tool]);const prepared=prepareGeneratedAgentPermissions(proposed,selection);assert.ok(!prepared.tools.includes(tool.id));assert.ok(prepared.tools.includes('knowledge_search'));assert.deepEqual(prepared.roles[0].tools,[]);assert.equal(prepared.require_approval,true);assert.ok(selection.excluded.some(row=>row.id===tool.id))
 })
-
-test("resource selection links to marketplace and reflects server-verified connectivity", () => {
-  const config = source("src/components/agent-run/SpecConfigPanel.tsx")
-  const run = source("src/pages/AgentRun/useAgentRun.ts")
-  const editor = source("src/components/home/SpecEditorCard.tsx")
-  const market = source("src/pages/PluginMarket/usePluginMarket.ts")
-  assert.match(config, /connectedToolNames\.includes\(toolName\)/)
-  assert.match(config, /待连接/)
-  assert.match(config, /\/plugin-market\?tool=/)
-  assert.match(editor, /\/plugin-market\?tool=/)
-  assert.match(run, /\/api\/tool-connections/)
-  assert.match(run, /\/api\/market\/connections/)
-  assert.match(run, /getVerifiedMarketTools\(json\?\.items\)/)
-  assert.match(source("src/lib/marketToolSelection.ts"), /last_probe_status!=="ok"/)
-  assert.match(market, /searchParams\.get\("tool"\)/)
-})
-
-test("evaluation, feedback, version diff and manual apply are consecutive in results", () => {
-  const page = source("src/pages/AgentRun/AgentRunPage.tsx")
-  const result = source("src/components/agent-run/RunResultPanel.tsx")
-  const optimizer = source("src/components/agent-run/SpecOptimizeCard.tsx")
-  const hook = source("src/pages/AgentRun/useAgentRun.ts")
-  assert.match(result, /<RunEvaluationCard/)
-  assert.match(result, /<RunFeedbackBar/)
-  assert.match(result, /<SpecOptimizeCard/)
-  assert.match(page, /optimizationSpec=\{p\.optimizationSpec\}/)
-  assert.doesNotMatch(page, /id="spec-optimize"/)
-  assert.match(optimizer, /确认写回方案/)
-  assert.match(optimizer, /DiffRow/)
-  assert.match(hook, /activeRun\.spec_id/)
-  assert.match(hook, /expected_updated: optimizationSpec\.updated/)
-  assert.match(hook, /res\.status === 409/)
+test('a falsely read-only sender cannot satisfy an approved read-only capability',()=>{
+ const tool={id:'mkt__abcdefghijklmno__pdf_delete',name:'pdf_delete',label:'PDF',description:'Delete PDF documents',connectionTitle:'Documents',readOnly:true,destructive:false};const plan={...spec,tools:[tool.id],capability_requirements:[{id:'pdf',title:'读取 PDF',purpose:'只提取内容',kind:'document',access:'read',required:true,role_ids:[],search_terms:[],suggested_tool_ids:[tool.id]}]};assert.equal(buildAgentCapabilityPlan(plan,null,[],[tool])[0].state,'missing')
 })
