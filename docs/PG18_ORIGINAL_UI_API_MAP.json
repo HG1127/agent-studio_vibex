@@ -5993,7 +5993,7 @@
     }
   ],
   "current_preparation": {
-    "original_login_adapter": "Original Login/App/current account-menu JSX retained; actual Cookie/CSRF adapter, verified profile, retry and acknowledged logout source integrated; original-page hosted acceptance pending",
+    "original_login_adapter": "Original Login/App/account-menu hosted story passed on9b42e39 with actual Native Cookie/CSRF, Alice/Bob roles, acknowledgement-loss recovery and all original zero gates; no full original menu/Home acceptance.",
     "original_home_transport": "Current original Home and catalog integrated with full immutable spec bindings, CAS, employee concurrency precondition, recovery and unknown-write isolation; reviewed async read fences and independent metadata/binding intent fixes integrated",
     "original_UI_isolated_build": "Actual normal PB and opt-in original index/main/App builds passed with100 assets each; normal output has0 PG resource matches after static backend selection. Original business page acceptance remains pending.",
     "pure_auth_home_contract_checks": 110,
@@ -6021,7 +6021,7 @@
       "quality/capability execution semantics",
       "original knowledge-selection capacity",
       "original-page shared knowledge statistics interaction acceptance",
-      "monitor ledger and read acknowledgement",
+      "full monitor source ACL/capture/event/review/baseline chain",
       "run details/actions and historical naming"
     ],
     "production_GO": false,
@@ -6111,7 +6111,7 @@
     "pure_full069_final14_database_acl_checks": 19,
     "pure_monitor073_contract_and_admission_checks": 19,
     "backend_optional073_source_merged": true,
-    "backend_optional073_database_verified": false,
+    "backend_optional073_database_verified": true,
     "prior_verified_backend_parent": {
       "head": "cc987e22f0d32995a6245db0aefc7323834dfb1d",
       "run": 41021107149,
@@ -6278,7 +6278,69 @@
     "unchanged_UI_typecheck_build_baseline": "Frontend/shared and API TypeScript source unchanged sincee002475 checks; only pure comparator MJS and guarded test fixtures change. Preserve actual100-asset build evidence and0 normal PG resources as that unchanged-UI baseline, not as new genuine page acceptance.",
     "pure_final14_runtime_open_observation_checks": 5,
     "pure_owned_process_observation_checks": 20,
-    "full069_runtime_open_observation": "Record-only WeakMap keyed by the exact original thrown object. Real opaque runtime checks annotate a fixed stage and optionally one of the existing fourteen account keys; inner service diagnostics are not overwritten by the outer catch. No raw error/SQL/credential/PID is read or output. The original error object is rethrown; actual output remains inside the original exact fixture/UID/argv/Node/approval gates. Five new pure checks and25 existing path checks pass; real cause pending."
+    "full069_runtime_open_observation": "Record-only WeakMap keyed by the exact original thrown object. Real opaque runtime checks annotate a fixed stage and optionally one of the existing fourteen account keys; inner service diagnostics are not overwritten by the outer catch. No raw error/SQL/credential/PID is read or output. The original error object is rethrown; actual output remains inside the original exact fixture/UID/argv/Node/approval gates. Five new pure checks and25 existing path checks pass; real cause pending.",
+    "verified_9b42_original_stories": {
+      "head": "9b42e39d19f4e0cf40226764e7c274db5196c076",
+      "run": 41052629732,
+      "login_job": 124052190715,
+      "monitor_browser_job": 124052191084,
+      "monitor_TCP_job": 124052191155,
+      "login_observation_sha256": "4d899e7074bd361928674e9de9787bf60679524076282c880e540109de5ed163",
+      "monitor_observation_sha256": "6fb5ad0f4bab0a845903d035f9dea3b305d3fdd6f22e5a88085b32e06fae3cd2",
+      "safe_screenshots_and_observations_reviewed": true,
+      "monitor_before": {
+        "alice": {
+          "unread": 14,
+          "receipts": 0
+        },
+        "bob": {
+          "unread": 3,
+          "receipts": 0
+        }
+      },
+      "monitor_after": {
+        "alice": {
+          "unread": 13,
+          "receipts": 1
+        },
+        "bob": {
+          "unread": 3,
+          "receipts": 0
+        }
+      },
+      "full_original_home_acceptance": false,
+      "full_original_pages_accepted": 0,
+      "full_monitor_pipeline_complete": false,
+      "employee_UAT": 0,
+      "production_GO": false
+    },
+    "verified_9b42_share_partial_failure": {
+      "head": "9b42e39d19f4e0cf40226764e7c274db5196c076",
+      "run": 41052629622,
+      "job": 124052190318,
+      "observation_sha256": "0226b8300016a0b9f3b49d1180093cae307cdd40cb3df7d25ebf50eaa6ae805a",
+      "actual_Bob_owned_unbound_copy": true,
+      "six_expected_employee_negatives": true,
+      "unknown_write_alert_reached": true,
+      "whole_story_passed": false,
+      "failure": "E2E expected disabled confirm button after product correctly cleared preview and removed it",
+      "test_only_repair": "Require confirm absence and preview/redeem disabled; unchanged receipt, refresh, late-response and zero gates",
+      "genuine_rerun_pending": true
+    },
+    "full069_9b42_actual_failure": {
+      "head": "9b42e39d19f4e0cf40226764e7c274db5196c076",
+      "run": 41052629596,
+      "legacy_job": 124052190890,
+      "five_workers_exit1_before_ready": true,
+      "shutdown_requested": false,
+      "native_knowledge_assessment_kernel_predicates_all_true": true,
+      "final14_job": 124052190548,
+      "runtime_open_passed": true,
+      "failure_phase": "runtime_preflight (includes database ACL negatives)",
+      "actual_database_acl_negative_success_events": 0,
+      "qualifies_run": false,
+      "production_GO": false
+    }
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

@@ -45,6 +45,12 @@
 
 以下为历史准备与隔离组件证据，不能转用于上述新候选。
 
+`9b42e39`的[原Login/App故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052190715)、[原Home监控元数据/已读故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052191084)及[073真实TCP](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052191155)已通过。下载的观察记录和安全截图已核对：真实Alice/Bob身份与管理员差异、登录/退出断线恢复、账号切换均保留；Alice未读14→13且回执0→1，Bob未读3及回执0不变。两故事全部PB/意外API/外部网络/伪身份头/收费调用及清理失败计数均为0；业务运行台账不变。这只验证原认证故事和历史监控收件箱，不是完整Home、实时监控、原20页或员工UAT验收。
+
+同提交[原团队共享故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629622/job/124052190318)已到达真实创建、Bob兑换独立无绑定副本、外owner拒绝、撤销及写后断线；六个Bob Cookie/expected Alice负例保持台账不变。随后测试误要求结果未知时的确认按钮仍在DOM中禁用，实际原页已清除预览并隐藏该按钮。后续仅修正测试为按钮不存在、预览和兑换入口均禁用；保留全量回执/原意图刷新/账号切换及全部零门禁。完整故事仍失败，刷新恢复和迟到响应后续步骤须重跑。
+
+`9b42e39`的[legacy完整运行](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629596/job/124052190890)确认五个业务Worker在就绪前自行exit1，非清理触发；Native、knowledge、assessment在清理前的全部内核身份谓词通过。根因仍待沿原启动审计定位。其[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629596/job/124052190548)已越过runtime_open，到runtime_preflight/数据库权限负例前段失败，尚无13负例通过证据。正式切换仍 **NO-GO**。
+
 更新：2026-10-29。现有 PocketBase 仍是当前运行环境，正式切换 **NO-GO**。
 旧数据已由使用者确认为测试数据，可以采用全新初始化；这不免除功能对照、
 员工验收、备份恢复、运行环境及回滚签收。
