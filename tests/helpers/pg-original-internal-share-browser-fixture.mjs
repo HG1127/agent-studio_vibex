@@ -82,7 +82,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
  }
  try{
   // Repeats its own unchanged F08 admission and fresh PG18/source/catalog audits.
-  fixture=await agentInternalShareGenuineFixture(env)
+  fixture=await agentInternalShareGenuineFixture(env,{browserMode:true})
   const target=(await fixture.db.query("SELECT current_database() AS database,session_user::text AS login,current_setting('server_version_num')::integer AS version,NOT pg_is_in_recovery() AS primary")).rows[0]
   assert.equal(target.database,permit.target.database);assert.equal(target.login,permit.target.user);assert(target.version>=180000&&target.version<190000&&target.primary===true)
   const before=await fixture.counts();for(const key of ['invites','snapshots','receipts','consumptions','audit'])assert.equal(before[key],0,'fresh original F08 service required')

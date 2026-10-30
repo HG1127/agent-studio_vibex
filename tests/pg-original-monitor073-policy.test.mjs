@@ -65,3 +65,77 @@ test('both stories use independent073 receipt and original Login keeps all exist
  assert(workflow.includes('AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: original-login'));assert(workflow.includes('AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: monitor073'))
  assert.doesNotMatch(workflow,/GITHUB_JOB\s*[:=]/)
 })
+
+
+import {runInNewContext} from 'node:vm'
+import {createHash} from 'node:crypto'
+import {prepareNativeMonitorMetadata} from '../services/pg-api/src/native-monitor-inbox-import-plan.ts'
+import {nativeMonitorTables} from '../services/pg-api/src/native-monitor-inbox-schema.ts'
+import {nativeMonitor073SeedStatement} from '../services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs'
+const seedId=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0'),seedOld=n=>String(n).padStart(20,'0'),seedNow=1793310000000
+const seedSha=value=>createHash('sha256').update(value).digest('hex')
+function actualFixturePlan(kind,who){
+ const users={alice:seedId(100),bob:seedId(200)}
+ let exported
+ if(kind==='tcp'){
+  const source=read('services/pg-api/tests/native-monitor073-genuine-pg18.test.mjs'),start=source.indexOf('function metadata(owner,now){'),end=source.indexOf('\nasync function insertPlan',start)
+  assert(start>=0&&end>start)
+  exported=runInNewContext('('+source.slice(start,end)+')('+JSON.stringify(users[who])+','+seedNow+')',{old:seedOld,sha:seedSha})
+ }else{
+  const source=read('tests/helpers/pg-original-monitor073-backend-fixture.mjs'),marker='   const source=',start=source.indexOf(marker),end=source.indexOf('\n   const plan=',start)
+  assert(start>=0&&end>start);assert.equal(source.split(marker).length,2)
+  exported=runInNewContext('('+source.slice(start+marker.length,end).trim()+')',{old:seedOld,sha:seedSha,who,now:seedNow,f:{users}})
+ }
+ // The reviewed pure literal builder runs in a VM realm. Reconstitute plain
+ // data for the real import preparer's exact Object.prototype check.
+ return prepareNativeMonitorMetadata(JSON.parse(JSON.stringify(exported)))
+}
+test('both actual fixture metadata builders produce parameterized statements for every reviewed plan column, including sha256',()=>{
+ const tables=new Map(nativeMonitorTables.map(t=>[t.name,t])),seen=new Set();let rows=0
+ for(const kind of ['tcp','browser'])for(const who of ['alice','bob']){
+  const plan=actualFixturePlan(kind,who)
+  for(const row of plan.rows){
+   const query=nativeMonitor073SeedStatement(row),columns=tables.get(row.table).columns.map(c=>c.name)
+   assert.equal(query.text,'INSERT INTO agentstudio.'+row.table+'('+columns.join(',')+') VALUES('+columns.map((_,i)=>'$'+(i+1)).join(',')+')')
+   assert.deepEqual(query.values,columns.map(k=>row.value[k]));assert.equal(query.values.length,columns.length)
+   assert.equal(row.value.owner_user_id,who==='alice'?seedId(100):seedId(200))
+   if(row.table==='native_monitor_imports'){assert(columns.includes('source_snapshot_sha256'));assert.equal(/^[a-z_]+$/.test('source_snapshot_sha256'),false)}
+   seen.add(row.table);rows++
+  }
+ }
+ assert.deepEqual([...seen].sort(),['native_monitor_cases','native_monitor_checks','native_monitor_events','native_monitor_imports','native_monitor_monitors'])
+ assert.equal(rows,93)
+})
+test('seed statement requires the exact full column set and accepts no otherwise legal arbitrary identifier',()=>{
+ const row=actualFixturePlan('browser','alice').rows[0]
+ for(const value of [{...row.value,arbitrary_column2:1},{...row.value,source_snapshot_sha256_suffix:'x'},Object.fromEntries(Object.entries(row.value).filter(([k])=>k!=='source_snapshot_sha256'))]){
+  assert.throws(()=>nativeMonitor073SeedStatement({...row,value}),/monitor073_seed_column/)
+ }
+ const reordered={table:row.table,value:Object.fromEntries(Object.entries(row.value).reverse())}
+ assert.deepEqual(nativeMonitor073SeedStatement(reordered),nativeMonitor073SeedStatement(row))
+ const monitor=actualFixturePlan('browser','alice').rows.find(r=>r.table==='native_monitor_monitors'),{current_check_id,...missingNullable}=monitor.value
+ assert.throws(()=>nativeMonitor073SeedStatement({...monitor,value:missingNullable}),/monitor073_seed_column/)
+})
+test('seed table whitelist excludes receipts, unrelated tables and SQL/schema injection',()=>{
+ const row=actualFixturePlan('browser','alice').rows[0]
+ for(const table of ['native_monitor_reads','users','agentstudio.native_monitor_imports','native_monitor_imports;DROP TABLE users','Native_monitor_imports','native_monitor_imports2'])
+  assert.throws(()=>nativeMonitor073SeedStatement({...row,table}),/monitor073_seed_table/)
+ const attack="'); DROP TABLE agentstudio.users; --",query=nativeMonitor073SeedStatement({...row,value:{...row.value,source_snapshot_sha256:attack}})
+ assert(!query.text.includes(attack));assert(query.values.includes(attack))
+})
+test('seed validation never invokes accessors or accepts inherited/symbol columns',()=>{
+ const row=actualFixturePlan('browser','alice').rows[0];let invoked=false
+ const value={...row.value};Object.defineProperty(value,'id',{get(){invoked=true;throw Error('must not run')},enumerable:true})
+ assert.throws(()=>nativeMonitor073SeedStatement({...row,value}),/monitor073_seed_column/);assert.equal(invoked,false)
+ assert.throws(()=>nativeMonitor073SeedStatement({...row,value:Object.assign(Object.create({hidden:1}),row.value)}),/monitor073_seed_column/)
+ assert.throws(()=>nativeMonitor073SeedStatement({...row,value:{...row.value,[Symbol('hidden')]:1}}),/monitor073_seed_column/)
+})
+test('both real ingress paths use the shared whitelist after purpose guards and retain real transactions',()=>{
+ for(const [file,guard] of [['services/pg-api/tests/native-monitor073-genuine-pg18.test.mjs','const permit=requireNativeMonitor073Ci()'],['tests/helpers/pg-original-monitor073-backend-fixture.mjs','const permit=requireOriginalMonitor073BrowserCi(env)']]){
+  const body=read(file)
+  assert(body.indexOf(guard)<body.indexOf("await import("+(file.startsWith('tests/')?"'../../services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs'":"'./helpers/native-monitor073-seed-statement.mjs'")))
+  assert(body.includes('const statement=nativeMonitor073SeedStatement(row);await db.query(statement.text,statement.values)'))
+  assert(!body.includes('keys.every(k=>/^[a-z_]+$/.test(k))'))
+  for(const literal of ["f.adminPool.connect()","db.query('BEGIN')","db.query('COMMIT')","db.query('ROLLBACK')",'db.release()'])assert(body.includes(literal),file+' '+literal)
+ }
+})

@@ -165,11 +165,11 @@ export const agentPlanWorkflowFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-review-worker-core.mjs": "1d4fe8d1c1500d75699407c8cb2c51b107757446c587d080035258708d45ff8e",
   "services/pg-api/src/pg18-complete-review-worker-journal.mjs": "35013ee477521f75a8806bdabcf7cb2c134918871997fedd7798d66b0781f056",
   "services/pg-api/src/pg18-complete-review-worker-plan.mjs": "a52dfd482b10c98a7489ab185e73088fd524c2a2042fdd5ad548926d83f7531d",
-  "services/pg-api/src/pg18-full069-worker-live-child.mjs": "863b04dbee65d3890c70af0244320b2d3ba56c50e34f666a3ea384b527bbe352",
+  "services/pg-api/src/pg18-full069-worker-live-child.mjs": "209cefe0516c61c4998ebd3183e65460327a445bb185abbde2888e9ed3eb6a2b",
   "services/pg-api/src/pg18-full069-worker-live-cli.mjs": "7b87c06eb64f117a0929d33d0e9c85be56f0c975862f31b2fac644b22464b898",
   "services/pg-api/src/pg18-full069-worker-live-contract.mjs": "8c286bae8658055ae38a3413e6db6dcbf93bb745e9868abe8cafa02aebe77e4e",
   "services/pg-api/src/pg18-full069-worker-live-native.mjs": "33e90f8a20e76a6cb0a8699a0b6546445392f059b34e784f4de081b125e9f88d",
-  "services/pg-api/src/pg18-full069-worker-live-processes.mjs": "675a6c91964c0b9f42cc821ab3b7bc0de4d6bd6fde2ee676b91b9010311c3bad",
+  "services/pg-api/src/pg18-full069-worker-live-processes.mjs": "9c45e6845297dcc087bfdf612639e5305b2ccbe8e696ea885ed44ff281610699",
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "3433b16af75b26822354b19863bc78b2749083cc429dac79dcef2f6e67730d96",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "45f1d147ef840bac2b6cba27f211cba1be492be015bf6d0fb7d48b6062d36b23",
   "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "1b386c2a16661910b50afb59d5c28277d0cc908bf5c8fc1bf55c095ce05b46f9",
@@ -194,7 +194,7 @@ export const agentPlanWorkflowFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs": "d01d5fae09263d8b28fd0e64807f4fbca09ed04f187fe17d204972c426bd95ea",
   "services/pg-api/src/pg18-full069-worker-path-validation-contract.mjs": "7178952e2ee52b910dc67038524dd3818678ea7970c3de1b924d67a955aa8fd8",
   "services/pg-api/src/pg18-full069-worker-path-validation-guard.mjs": "3ff1a663e16e3f396f4a192f03389080c4985ab15dcedc280205986ce8f0e4e4",
-  "services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs": "90a331d44739bd73412929f51d5967bd75e1e448524d6faa0232abf79095b2c3",
+  "services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs": "c46d7ebcca27b910d2ee436a26db7b1a1a1067a66ca01f363eac4557934ee707",
   "services/pg-api/src/pg18-full069-final-cli.mjs": "d137ed31ee18918f798b9731850aa9f665ee26d6ca05c8cf00935579ad79b890",
   "services/pg-api/src/pg18-full069-final-client-bindings.mjs": "67b9f635f1a22a9fb728c48405ea2b5fbba83a209b1229ce25720a5f7ca4762d",
   "services/pg-api/src/pg18-full069-final-companion-child.mjs": "82d27723ef449cf81b3eb9ca55f36d04a8ef96c1b0a5fab42fb43123c5ce23e6",
@@ -204,7 +204,7 @@ export const agentPlanWorkflowFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-final-login-contract.mjs": "ecd3142f8625daf0dfca3b256ba2e11a88de248baa901bab68db7d57e2c1dd22",
   "services/pg-api/src/pg18-full069-final-records.mjs": "ce30e7238c414977ce2e1168508989ebb6fe6bca853e5f30539ac66de3ed7e62",
   "services/pg-api/src/pg18-full069-final-runner.mjs": "d2e072be19aa097e0215f488a0836f740589867f141c790330704ddbb288fb29",
-  "services/pg-api/src/pg18-full069-final-runtime.mjs": "d84197104e11431c22eac041d21ff2a695f1afbb35300f6b569e75fcf7c39b94",
+  "services/pg-api/src/pg18-full069-final-runtime.mjs": "433a8d772e8d8a409f7d6309b398c02fe1054047c4e2066e3282c7163a3c49a9",
   "services/pg-api/src/pg18-full069-final-sources.mjs": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f",
   "services/pg-api/src/pg18-full069-final-trust.mjs": "2cfd1d425559e6f62d24117b6942d4e35ed40aa7dfab92df64f9d7dd533ab501",
   "services/pg-api/src/pg18-full069-final-window.mjs": "0bfe2b88f46cd57d3e11da3e3b820f04b0a4c0339b05ac2f33724730b40f3e07",
@@ -237,11 +237,12 @@ export const agentPlanWorkflowFrozenSources=Object.freeze({
   "services/pg-api/src/native-monitor-inbox-repository.ts": "46dd016a2dedd434d9b7e5ec93b25816b03b02d5977e10d5729e5113cb023daa",
   "services/pg-api/src/native-monitor-inbox-runtime.ts": "17bd61f2d8d222a06cee4d3346288d1632f376d4ff6b4693953e64e3bd0a7f2a",
   "services/pg-api/src/native-monitor-inbox-schema.ts": "4970eee96a4a1ad2e60ebf4bbb0273736df8bb7e484699e30b295e46648e2528",
-  "services/pg-api/src/pg18-full069-final14-database-acl.mjs": "5b0fcf05a15e218a6724edbfd0eb5f9d5e6ba6a3076b68683dbd909fddafa800",
+  "services/pg-api/src/pg18-full069-final14-database-acl.mjs": "2c0b34776db5364f6878de19eda526ded1d8bd97ec46fa34d633f6527ba8112a",
   "services/pg-api/src/pg18-full069-owned-record-contract.mjs": "d8a34454c2c3cf0c072bfdbaec608899152c15113a6083e9fde12e3b582f5587",
   "services/pg-api/src/original-internal-overview-http.ts": "2d6c058c37d5a23c471ad1874e30b82eed25eb5172c08155a867d6d1d789c0d3",
   "services/pg-api/src/original-internal-overview-read.ts": "810f10a8a2363046e6bdae3389870239cf81d47f14d91a702ddc1d2d6baef22e",
-  "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969"
+  "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969",
+  "services/pg-api/src/pg18-full069-owned-process-observation.mjs": "5dba240e189237ef4eb7633950f6085c24bc776a9791b3086fabfa8a42729685"
 })
 // F05_SOURCE_PINS_END
 export async function agentPlanWorkflowGenuineFixture(env=process.env){

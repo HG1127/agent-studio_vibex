@@ -15,7 +15,7 @@
 
 当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，覆盖原有20页、30组操作；页面数量不是验收完成量。最终入口继续使用原 `index.html -> main.tsx -> App.tsx`。首页、目录、草稿、登录及账户菜单已有PG适配源码；未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
 
-本地允许范围内的纯回归当前541项通过，前端TypeScript6、API TypeScript5通过；普通PB及原界面PG两种实际构建各100个资源，普通构建PG资源匹配为0。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
+本地允许范围内的纯回归当前574项通过，前端TypeScript6、API TypeScript5通过；普通PB及原界面PG两种实际构建各100个资源，普通构建PG资源匹配为0。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
 
 已合流原团队共享页的业务Hook，保留原JSX、导航、布局和PB分支；写入及确认固定发送发起时员工ID，服务端先验证实际Cookie和owner，再在任何台账写入前比较。焦点恢复会先验证Cookie，即使旧读取或写回仍未返回也隔离旧账号。独立原页host/E2E复用fresh F08，包含创建、兑换、撤销、真实写后断线与原回执恢复、换账号迟到响应；Native代理保持8秒，全部PB/网络/身份及收费调用零门禁保留，安全成功截图仅写合成CI私有artifact。原页故事仍待执行。
 
@@ -27,11 +27,21 @@
 
 可选073仅为隔离历史监控元数据、本人分页及已读回执。`1df512a`的[真实073 TCP](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735632/job/124025955883)、原登录及原Home故事在严格约束审计失败，未进入业务步骤。后续修复按PG18 CHECK表达式首次引用次序保留精确conkey，纠正reads_valid_ck的[4,3]预期，SQL与ACL不变；新增反序/遗漏/重复及约束属性篡改拒绝回归，仍须实际复验。来源ACL、实时采集、事件生成和复核/基线属于另行074工作，完整监控验收为0。
 
-完整069已越过旧记录路径语法错误；[1df512a真实短CLI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955499)在8项准备、Review预检、原Control/HBA后拒绝owned_process_changed；[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955714)在独立受保护打包阶段拒绝，尚未执行12个真实ACL修改/回滚负例。两个失败均保留，未取得运行资格。完整53行ACL比较仍核对OID/owner/grantor/可转授和PUBLIC默认权限，参见[PG18默认权限](https://www.postgresql.org/docs/18/ddl-priv.html)；Reader5秒、Native8秒、Worker30秒加发送5秒、UID128、四空队列及实际后端清理要求不变。
+完整069已越过旧记录路径语法错误；[1df512a真实短CLI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955499)在8项准备、Review预检、原Control/HBA后拒绝owned_process_changed；[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955714)在独立受保护打包阶段拒绝，尚未执行12个真实ACL修改/回滚负例。两个失败均保留，未取得运行资格。该阶段完整ACL比较仍核对OID/owner/grantor/可转授和PUBLIC默认权限，参见[PG18默认权限](https://www.postgresql.org/docs/18/ddl-priv.html)；Reader5秒、Native8秒、Worker30秒加发送5秒、UID128、四空队列及实际后端清理要求不变。
 
 后续源码已统一final14生成端/消费端的11项固定必需文件，遗漏、别名或字节冲突仍拒绝；17项针对性纯回归通过。短CLI失败仅新增原受保护记录的布尔字段和固定entry投影，读取/解析/输出失败仍保留原错误，不输出路径、PID或凭据，也不改变身份谓词。具体失败entry与原因、final14运行及ACL负例仍须真实复验。
 
 尚缺首页自然语言生成/修改、普通删除、部分质量/能力及运行页动作、其余原菜单适配、完整监控与Worker同提交运行验证。真实宝塔目标环境、正式安装、备份恢复/回滚、长期运行和员工签收尚未完成。原完整页面验收0、合格24小时0、员工签收0，正式切换 **NO-GO**；旧PocketBase保留可恢复。
+
+`e002475`的真实073已通过结构/约束审计，随后TCP及原Login/Home在合成种子的`sha256`列检查失败。修复后的两个实际种子入口只接受已审计五表及完整列清单，值仍参数化；11项纯策略回归覆盖两个实际构造器的93行计划，SQL/ACL/业务审计不变。原团队共享故事则因host遗漏传入浏览器模式而在旧F08门禁拒绝；现显式传入`browserMode:true`，保留真实job、原guard和全部零门禁，并补实际纯admission前缀的正反调用验证。这两项均仍待真实复验，原页验收0。
+
+完整069的`e002475`已越过受保护打包冲突，完成Executor LOGIN/预检、Review8和Plan9；final14随后在`runtime_open`以依赖错误拒绝，实际ACL负例尚未执行。legacy受限诊断确认未取得warm/last观察，清理后真实遥测后端及Reader为0、四个业务队列为空；停止结果不能区分提前退出与身份比较失败，原因仍待定位，未放宽任何原进程谓词。
+
+另经[PG18 initdb官方源码](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/bin/initdb/initdb.c#L1939)核对，两个模板库的PUBLIC CREATE/TEMPORARY会被撤销；[新库创建实现](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/commands/dbcommands.c#L1395)不复制模板数据库ACL。因此本轮纠正旧比较器的模板预期为完整51行，而不是要求不存在的两个TEMPORARY授权；postgres与业务库原默认权限保留，全部实际行仍参与精确比较/哈希。新增给两个模板额外TEMP的真实拒绝用例（合计13个），必须实际修改、检测并回滚；没有为通过检查修改数据库权限。55项针对性纯目录回归通过，真实同提交运行继续待验。
+
+本批前端/共享及API TypeScript源码没有变化，复用`e002475`前后端类型检查和两种各100资源的实际构建基线；这不是新原页面验收。当前正式切换仍 **NO-GO**。
+
+后续启动诊断源码现已合流：final14仅记录实际抛出对象关联的固定阶段/服务键，保留原错误对象及真实审计顺序；只在原exact CI绑定、UID、argv、Node及批准门禁内输出。legacy仅记录实际私有ChildProcess退出/信号、封闭服务错误枚举和内核身份谓词的布尔分量，在清理前捕获、通过原受保护记录读取后投影。诊断IPC使用独立回调处理异步发送错误，不改变关键IPC或原退出结果。新增阶段观察5项、原路径25项及进程观察20项纯回归通过；API类型检查再次通过，实际进程原因和新同提交复验仍待完成。上述观察不构成运行许可、健康证明、重试权限或迁移通过。
 
 以下为历史准备与隔离组件证据，不能转用于上述新候选。
 

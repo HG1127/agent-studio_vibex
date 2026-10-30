@@ -5,7 +5,7 @@ import {full069RecordWriteFailureData} from './pg18-full069-owned-record-contrac
 import {setTimeout as delay} from 'node:timers/promises'
 import {openFull069WorkerLiveTrust,liveContext,openLiveRunStore,retireLiveTrust} from './pg18-full069-worker-live-trust.mjs'
 import {openFull069WorkerLiveRuntime,full069WorkerLivePreflight,observeFull069WorkerLiveRuntime,closeFull069WorkerLiveRuntime} from './pg18-full069-worker-live-runtime.mjs'
-import {openFull069OwnedProcesses,launchFull069OwnedProcess,waitFull069NativeListening,stopFull069OwnedWorkers,stopFull069OwnedNative} from './pg18-full069-worker-live-processes.mjs'
+import {openFull069OwnedProcesses,observeFull069OwnedProcessFailure,launchFull069OwnedProcess,waitFull069NativeListening,stopFull069OwnedWorkers,stopFull069OwnedNative} from './pg18-full069-worker-live-processes.mjs'
 import {openFull069OwnedNative,closeFull069OwnedNative} from './pg18-full069-worker-live-native.mjs'
 import {collectFull069WorkerLiveSample} from './pg18-full069-worker-live-runner.mjs'
 import {liveEntries,liveFail} from './pg18-full069-worker-live-contract.mjs'
@@ -13,7 +13,7 @@ import {assertPathValidationHost,openPathValidationGuard,assertPathValidationSta
 import {pathValidationLimits,pathValidationResult} from './pg18-full069-worker-path-validation-contract.mjs'
 const code=e=>typeof e?.message==='string'&&/^full069_worker_live_[a-z_]{1,80}$/.test(e.message)?e.message:'full069_worker_live_path_validation_dependency_refused'
 export async function runFull069WorkerPathValidation(){
- assertPathValidationHost();let trust,guard,runtime,processes,native,ctx,warm,last,preflight,workerStop=[],nativeStop,proxyStop,cleanup,reason=null,completed=false,interrupted=false,recordSha=null
+ assertPathValidationHost();let trust,guard,runtime,processes,native,ctx,warm,last,preflight,workerStop=[],nativeStop,proxyStop,cleanup,processFailure=null,reason=null,completed=false,interrupted=false,recordSha=null
  const signal=()=>{interrupted=true};process.on('SIGTERM',signal);process.on('SIGINT',signal)
  try{
   trust=await openFull069WorkerLiveTrust(true);ctx=liveContext(trust);guard=openPathValidationGuard(trust);openLiveRunStore(trust);runtime=await openFull069WorkerLiveRuntime(trust);preflight=full069WorkerLivePreflight(runtime);processes=openFull069OwnedProcesses(trust)
@@ -26,14 +26,14 @@ export async function runFull069WorkerPathValidation(){
   workerStop=await stopFull069OwnedWorkers(processes);if(workerStop.length!==7||workerStop.some(r=>!r.graceful||!r.absent||!r.supervisor_absent||!r.identity_verified||r.forced))liveFail('path_validation_worker_stop')
   const cleanupUntil=performance.now()+12000;while(true){try{cleanup=await observeFull069WorkerLiveRuntime(runtime,{ready:false,ended:true,finalAudit:true});break}catch(error){if(!['full069_worker_live_backend_end_missing','full069_worker_live_telemetry_backends_remain'].includes(code(error))||performance.now()>=cleanupUntil)throw error;await delay(100)}}
   if(cleanup.telemetry_backend_count!==0||cleanup.readers_in_flight!==0)liveFail('path_validation_backend_remains');proxyStop=await closeFull069OwnedNative(native);native=null;nativeStop=await stopFull069OwnedNative(processes);if(!proxyStop.graceful||!nativeStop?.graceful||!nativeStop.absent||!nativeStop.supervisor_absent)liveFail('path_validation_native_stop');await closeFull069WorkerLiveRuntime(runtime);runtime=null;assertPathValidationStable(guard);completed=true
- }catch(error){reason=code(error)}finally{
+ }catch(error){reason=code(error);if(processes)try{processFailure=observeFull069OwnedProcessFailure(processes)}catch{}}finally{
   if(processes&&!workerStop.length)try{workerStop=await stopFull069OwnedWorkers(processes)}catch{reason??='full069_worker_live_path_validation_cleanup'}
   if(native)try{proxyStop=await closeFull069OwnedNative(native)}catch{reason??='full069_worker_live_path_validation_cleanup'}
   if(processes&&!nativeStop)try{nativeStop=await stopFull069OwnedNative(processes)}catch{reason??='full069_worker_live_path_validation_cleanup'}
   if(runtime&&!cleanup)try{cleanup=await observeFull069WorkerLiveRuntime(runtime,{ready:false});if(cleanup.telemetry_backend_count!==0||cleanup.readers_in_flight!==0)reason??='full069_worker_live_path_validation_cleanup'}catch{reason??='full069_worker_live_path_validation_cleanup_unverified'}
   if(runtime)try{await closeFull069WorkerLiveRuntime(runtime)}catch{reason??='full069_worker_live_path_validation_pool_close'}
   if(reason)completed=false
-  if(guard&&ctx)try{recordSha=writePathValidationRecord(guard,'validation-result.json',pathValidationResult(ctx.profile.run_id,completed,reason,{source_sha256:ctx.profile.source_sha256,complete_source_sha256:ctx.profile.complete_source_sha256,warm:warm??null,last:last??null,worker_stop:workerStop,native_stop:nativeStop??null,proxy_stop:proxyStop??null,cleanup:cleanup??null}))}catch(error){completed=false;try{process.stderr.write(JSON.stringify(full069RecordWriteFailureData('legacy_short','validation_result',reason,error))+'\n')}catch{}reason??='full069_worker_live_path_validation_record_unavailable'}
+  if(guard&&ctx)try{recordSha=writePathValidationRecord(guard,'validation-result.json',pathValidationResult(ctx.profile.run_id,completed,reason,{source_sha256:ctx.profile.source_sha256,complete_source_sha256:ctx.profile.complete_source_sha256,warm:warm??null,last:last??null,worker_stop:workerStop,native_stop:nativeStop??null,proxy_stop:proxyStop??null,cleanup:cleanup??null,process_failure:processFailure}))}catch(error){completed=false;try{process.stderr.write(JSON.stringify(full069RecordWriteFailureData('legacy_short','validation_result',reason,error))+'\n')}catch{}reason??='full069_worker_live_path_validation_record_unavailable'}
   if(trust)retireLiveTrust(trust);process.off('SIGTERM',signal);process.off('SIGINT',signal)
  }
  // A guard failure before the signed run context exists yields no success DTO.

@@ -9,6 +9,7 @@ import {PassThrough} from 'node:stream'
 import {requireOriginalInternalShareBrowserCi,originalInternalSharePurpose} from './helpers/pg-original-internal-share-browser-guard.mjs'
 import {originalInternalSharePolicy,originalInternalSharePath} from './helpers/pg-original-internal-share-browser-policy.mjs'
 import {startOriginalInternalShareBrowserFixture} from './helpers/pg-original-internal-share-browser-fixture.mjs'
+import {requireAgentInternalShareGenuineCi} from '../services/pg-api/tests/helpers/agent-internal-share-genuine-guard.mjs'
 const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8'),source=read('tests/helpers/pg-original-internal-share-browser-fixture.mjs')
 const purpose={GITHUB_ACTIONS:'true',CI:'true',GITHUB_RUN_ID:'123',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:'Agent Studio F08 Internal Template Share genuine PG18 isolated verification',GITHUB_JOB:'pg18-internal-share-browser',AGENT_STUDIO_F08_GENUINE_SUITE:'browser',AGENT_STUDIO_F08_GENUINE_CI:'YES_DISPOSABLE_F08_ONLY',GITHUB_SHA:'a'.repeat(40),GITHUB_REF:'refs/heads/codex/pg18-worker-heartbeat-original-share',AGENT_STUDIO_ORIGINAL_INTERNAL_SHARE_CI:originalInternalSharePurpose,AGENT_STUDIO_ORIGINAL_INTERNAL_SHARE_STORY:'original-internal-share',AGENT_STUDIO_ORIGINAL_INTERNAL_SHARE_EXPECTED_HEAD:'a'.repeat(40),AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-123'}
 test('distinct original-page purpose composes original F08 only and never mints a runtime permit in these tests',()=>{
@@ -32,6 +33,18 @@ test('fixed routes admit exactly required original page APIs, including real cap
 })
 const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('host.mjs',source,ts.ScriptTarget.Latest,true),nodes=[]
 function visit(n){if(ts.isCallExpression(n)&&n.expression.getText(tree)==='https.createServer')nodes.push(n.arguments[1].getText(tree));ts.forEachChild(n,visit)}visit(tree);assert.equal(nodes.length,1)
+test('original host passes explicit browser mode through the unchanged actual F08 admission prefix',async()=>{
+ const calls=[];function findCall(n){if(ts.isCallExpression(n)&&n.expression.getText(tree)==='agentInternalShareGenuineFixture')calls.push(n.getText(tree));ts.forEachChild(n,findCall)}findCall(tree);assert.equal(calls.length,1)
+ const backendSource=read('services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs'),backendTree=ts.createSourceFile('backend.mjs',backendSource,ts.ScriptTarget.Latest,true),declaration=backendTree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='agentInternalShareGenuineFixture');assert(declaration?.body)
+ // Execute only the actual pure admission prefix, stopping before any imports.
+ const prefix=declaration.body.statements.slice(0,2).map(n=>n.getText(backendTree)).join('\n');assert(!prefix.includes('import('))
+ const backend=Function('requireAgentInternalShareGenuineCi','return async function('+declaration.parameters.map(n=>n.getText(backendTree)).join(',')+'){'+prefix+';return {browserMode,job:env.GITHUB_JOB,target,observed_data_only:true,qualifies_run:false}}')(env=>requireAgentInternalShareGenuineCi(env,'linux',1001))
+ const env=Object.freeze({...purpose}),invoke=Function('agentInternalShareGenuineFixture','env','return '+calls[0]),result=await invoke(backend,env)
+ assert.equal(result.browserMode,true);assert.equal(result.job,env.GITHUB_JOB);assert.equal(result.target.database,'agentstudio_pg18_ci');assert.equal(result.qualifies_run,false)
+ await assert.rejects(backend(env),/agent_internal_share_genuine_job_mode_required/)
+ await assert.rejects(invoke(backend,Object.freeze({...env,GITHUB_JOB:'pg18-internal-share-genuine'})),/refuse_non_ephemeral/)
+ assert.equal(env.GITHUB_JOB,'pg18-internal-share-browser')
+})
 function proxyModel({method='POST',path='/__pg_native/api/v2/internal-templates',hold=null,loss=null}={}){
  const options=[],budgets=[],observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0},req=new EventEmitter(),res=new EventEmitter(),proxy=new EventEmitter(),chunks=[]
  req.method=method;req.url=path;req.headers={origin:'https://localhost:17443',cookie:'PRIVATE_COOKIE','x-agentstudio-request':'1','x-agentstudio-expected-employee':'00000000-0000-4000-8000-000000000001'};req.socket={destroy(){req.socket.destroyed=true}};req.pipe=p=>{assert.equal(p,proxy);return p}
@@ -72,7 +85,7 @@ test('busy original hook focus check verifies Cookie before reconcile instead of
  useHook();const cleanup=effects[0]();order.length=0;window.dispatchEvent(new Event('focus'));await new Promise(r=>setImmediate(r));assert.deepEqual(order,['verify','reconcile:Bob','start']);cleanup()
 })
 test('host/E2E use fresh actual F08, exact checkout/fixed pins, bounded actual build and all original zero gates',()=>{
- assert(source.indexOf('requireOriginalInternalShareBrowserCi(env)')<source.indexOf("import('node:fs')"));assert(source.includes('fixture=await agentInternalShareGenuineFixture(env)'));assert(source.includes("['rev-parse','HEAD']"));assert(source.includes('Object.entries(originalInternalShareReviewedSources)'))
+ assert(source.indexOf('requireOriginalInternalShareBrowserCi(env)')<source.indexOf("import('node:fs')"));assert(source.includes('fixture=await agentInternalShareGenuineFixture(env,{browserMode:true})'));assert(source.includes("['rev-parse','HEAD']"));assert(source.includes('Object.entries(originalInternalShareReviewedSources)'))
  assert(source.includes("'.mjs':'text/javascript; charset=utf-8'"));assert(source.includes('>64*1024*1024'));assert(source.includes('fresh original F08 service required'));assert(source.includes('fixture.close()')||source.includes('fixture?.close()'))
  const story=read('tests/pg-original-internal-share-genuine.spec.mjs');for(const key of ['legacy_backend_requests','unexpected_api_failures','blocked_requests'])assert(story.includes('f.observations.'+key+').toEqual([])'))
  assert(story.includes('event_count_capped_129:0,codes:[],overflow:false'));assert(story.includes('expectedEmployeeAudit=await f.assertExpectedEmployeeRefused(code)'));assert(!story.includes('route.fulfill'));assert(!story.includes('/pg-native-pilot'))

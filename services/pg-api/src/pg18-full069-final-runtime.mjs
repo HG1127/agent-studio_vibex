@@ -23,6 +23,18 @@ import {finalBusinessLogins} from './pg18-full069-final-login-contract.mjs'
 import {finalContext,assertFinalStable} from './pg18-full069-final-trust.mjs'
 import {readFull069Final14Catalog} from './pg18-full069-final14-catalog.mjs'
 const states=new WeakMap(),sha=v=>createHash('sha256').update(v).digest('hex'),fail=c=>{throw Error('full069_final_runtime_'+c)}
+// Closed observation only; the exact original thrown object remains primary.
+const runtimeOpenFailures=new WeakMap(),runtimeOpenPhases=new Set(['context','operator_runtime','pool_setup','physical','business_audits','service_target','service_login','service_auditor','service_stable','complete_catalog','telemetry_state','business_state','root_budget','final_stable'])
+function rememberRuntimeOpenFailure(error,phase,entry=null){
+ try{
+  if(!error||!['object','function'].includes(typeof error)||!runtimeOpenPhases.has(phase)||entry!==null&&!finalBusinessLogins.some(a=>a.key===entry)||runtimeOpenFailures.has(error))return
+  runtimeOpenFailures.set(error,Object.freeze({event:'full069_final14_runtime_open_observation',phase,entry_key:entry,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))
+ }catch{/* Observation must never replace the original error. */}
+}
+export function full069FinalRuntimeOpenFailureObservation(error){
+ return error&&['object','function'].includes(typeof error)?runtimeOpenFailures.get(error)??null:null
+}
+// End closed runtime-open observation.
 const target=Object.freeze({mode:'baota_pg18',host:'127.0.0.1',database:'agent_studio',port:5333,user:'agentstudio_stage_worker',expectedMajor:18})
 function state(handle){const s=states.get(handle);if(!s||s.closed)fail('untrusted_runtime');finalContext(s.trust);assertCompleteProfileOperatorRuntime(s.capability);return s}
 function secret(file){const b=readLivePrivate(file,{max:4096}).bytes,text=b.toString('utf8'),value=text.replace(/\r?\n$/,'');if(!Buffer.from(text).equals(b)||value.length<32||value.length>512||/[^!-~]/.test(value))fail('secret_format');return value}
@@ -90,8 +102,9 @@ async function closeBusinessPools(s){const rows=finalBusinessLogins.map(a=>s.poo
 async function actualBusinessAudits(s){
  if(!s.businessOpen)fail('business_pools_closed');const audit=await loadAgentDesignAuditVerifier();assertFinalStable(s.trust)
  // Each branch owns a distinct max=1 LOGIN pool; branches never share clients.
- const results=await Promise.allSettled(finalBusinessLogins.map(async a=>{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);assertFinalStable(s.trust)
-  if(a.action&&await completeServiceActualLogin(p,a.action)!==true)fail('actual_login')
+ const results=await Promise.allSettled(finalBusinessLogins.map(async a=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);assertFinalStable(s.trust)
+  phase='service_login';if(a.action&&await completeServiceActualLogin(p,a.action)!==true)fail('actual_login')
+  phase='service_auditor'
   switch(a.key){
    case 'api':await verifyBoundDispatchRole(p,t,'api');await inspectAgentPlanWorkflowServicePool(p,'agentstudio_api');break
    case 'worker':await verifyPgWorkerRoleBoundary(p,t);break
@@ -107,15 +120,25 @@ async function actualBusinessAudits(s){
    case 'plan_workflow_worker':await inspectAgentPlanWorkflowServicePool(p,'agentstudio_plan_workflow_worker');break
    case 'plan_workflow_dispatch':await inspectAgentPlanWorkflowServicePool(p,'agentstudio_plan_workflow_dispatch');break
   }
-  assertFinalStable(s.trust)
+  phase='service_stable';assertFinalStable(s.trust)
+  }catch(error){rememberRuntimeOpenFailure(error,phase,a.key);throw error}
  }));const rejected=results.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
- const full=await verifyCompleteProfile(s.pools.admin,s.pools.api,s.snapshot.complete,s.profile.complete_source_sha256);if(full.full_catalog_audit_verified!==true||full.actual_api_login_verified!==true)fail('full069_catalog');assertFinalStable(s.trust)
+ try{const full=await verifyCompleteProfile(s.pools.admin,s.pools.api,s.snapshot.complete,s.profile.complete_source_sha256);if(full.full_catalog_audit_verified!==true||full.actual_api_login_verified!==true)fail('full069_catalog');assertFinalStable(s.trust)}catch(error){rememberRuntimeOpenFailure(error,'complete_catalog');throw error}
 }
 async function businessBackendsZero(s){return read(s.pools.admin,async db=>{const rows=(await db.query('SELECT pid,backend_start::text AS started,usename FROM pg_stat_activity WHERE datid=$1::oid AND usename=ANY($2::text[]) ORDER BY usename,pid',[s.profile.business_target.database_oid,finalBusinessLogins.map(a=>a.login)])).rows;if(rows.length!==0)fail('business_backends_remain');return {business_backend_count:0,business_audit_pools_closed:true}})}
 export async function openFull069FinalRuntime(trust){
- const c=finalContext(trust);assertFinalStable(trust);const b=c.base,capability=verifyCompleteProfileOperatorRuntime(c.source.complete,b.profile.complete_source_sha256,{manifestFile:b.profile.runtime_manifest_file,manifestSha256:b.profile.runtime_manifest_sha256,lockSha256:b.profile.runtime_lock_sha256}),{Pool}=loadCompleteProfileOperatorPg(capability)
- const s={...b,trust,bindings:c.bindings,records:c.records,controlRuntimeSha256:c.controlRuntimeSha256,snapshot:{complete:c.source.complete},capability,Pool,pools:{},businessOpen:false,closed:false,failed:false,initial:null,ledgerSha:null,catalogHashes:null,policySha:null,binding:b.rootProfile.binding,currentPolicy:null};const handle=Object.freeze(Object.create(null));states.set(handle,s)
- try{const admin=secret(b.profile.credentials.admin);s.pools.admin=makePool(s,'postgres',admin);s.pools.telemetry=makePool(s,'postgres',admin,'agent_studio_telemetry');openBusinessPools(s);await physical(s);assertFinalStable(trust);await actualBusinessAudits(s);const telemetry=await telemetryState(s),business=await businessState(s),journal=readFull069FinalRootJournal(),budget=full069RootJournalBudget(journal.bytes,b.profile.minimum_ms,{role_oid:s.binding.roles[1].oid,database_oid:s.binding.database_oid});if(telemetry.telemetry_backend_count!==0||telemetry.readers_in_flight!==0||journal.records.some(r=>['writer_boot_claimed','writer_backend_bound'].includes(r.phase)&&telemetry.bindings.some(x=>x.generation===r.data.generation)))fail('initial_claim_or_backend_present');s.ledgerSha=business.ledger_sha256;s.catalogHashes=Object.fromEntries(['roles_sha256','memberships_sha256','acl_sha256','hba_sha256'].map(k=>[k,business[k]]));s.policySha=telemetry.policy_sha256;s.initial={...business,...telemetry,root_journal_budget:budget,reader_catalog_audit:full069ReaderCatalogAuditRequirement};assertFinalStable(trust);return handle}catch(error){s.closed=true;await Promise.allSettled(Object.values(s.pools).map(p=>p.end()));throw error}
+ let phase='context',s
+ try{
+  const c=finalContext(trust);assertFinalStable(trust);const b=c.base;phase='operator_runtime'
+  const capability=verifyCompleteProfileOperatorRuntime(c.source.complete,b.profile.complete_source_sha256,{manifestFile:b.profile.runtime_manifest_file,manifestSha256:b.profile.runtime_manifest_sha256,lockSha256:b.profile.runtime_lock_sha256}),{Pool}=loadCompleteProfileOperatorPg(capability)
+  s={...b,trust,bindings:c.bindings,records:c.records,controlRuntimeSha256:c.controlRuntimeSha256,snapshot:{complete:c.source.complete},capability,Pool,pools:{},businessOpen:false,closed:false,failed:false,initial:null,ledgerSha:null,catalogHashes:null,policySha:null,binding:b.rootProfile.binding,currentPolicy:null};const handle=Object.freeze(Object.create(null));states.set(handle,s)
+  phase='pool_setup';const admin=secret(b.profile.credentials.admin);s.pools.admin=makePool(s,'postgres',admin);s.pools.telemetry=makePool(s,'postgres',admin,'agent_studio_telemetry');openBusinessPools(s)
+  phase='physical';await physical(s);assertFinalStable(trust);phase='business_audits';await actualBusinessAudits(s)
+  phase='telemetry_state';const telemetry=await telemetryState(s);phase='business_state';const business=await businessState(s)
+  phase='root_budget';const journal=readFull069FinalRootJournal(),budget=full069RootJournalBudget(journal.bytes,b.profile.minimum_ms,{role_oid:s.binding.roles[1].oid,database_oid:s.binding.database_oid})
+  if(telemetry.telemetry_backend_count!==0||telemetry.readers_in_flight!==0||journal.records.some(r=>['writer_boot_claimed','writer_backend_bound'].includes(r.phase)&&telemetry.bindings.some(x=>x.generation===r.data.generation)))fail('initial_claim_or_backend_present')
+  s.ledgerSha=business.ledger_sha256;s.catalogHashes=Object.fromEntries(['roles_sha256','memberships_sha256','acl_sha256','hba_sha256'].map(k=>[k,business[k]]));s.policySha=telemetry.policy_sha256;s.initial={...business,...telemetry,root_journal_budget:budget,reader_catalog_audit:full069ReaderCatalogAuditRequirement};phase='final_stable';assertFinalStable(trust);return handle
+ }catch(error){rememberRuntimeOpenFailure(error,phase);if(s){s.closed=true;await Promise.allSettled(Object.values(s.pools).map(p=>p.end()))}throw error}
 }
 export function full069FinalPreflight(handle){const s=state(handle);return freeze({full069_current_catalog:true,actual_service_logins:14,assessment_design_independent_logins:true,executor_independent_login:true,runtime_manifests:{operator_sha256:s.profile.runtime_manifest_sha256,control_sha256:s.controlRuntimeSha256},preparation_records:s.records.historical,...s.initial,qualifies_run:false,production_cutover_allowed:false})}
 export async function observeFull069FinalRuntime(handle,{ready=true,ended=false}={}){const s=state(handle);if(s.failed)fail('runtime_client_failed');if(!s.businessOpen)fail('business_pools_closed');assertFinalStable(s.trust);await physical(s);assertFinalStable(s.trust);await actualBusinessAudits(s);const telemetry=await telemetryState(s,ready,ended),business=await businessState(s);assertFinalStable(s.trust);return freeze({...business,...telemetry})}

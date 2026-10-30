@@ -29,7 +29,13 @@ export function inspectFinal14DatabaseAclRows(rawAcl,rawDatabases,rawRoles){
   }else if(database==='agent_studio_telemetry'){
    // Original Telemetry SQL revokes PUBLIC ALL and grants only17 LOGIN CONNECTs.
    for(const login of telemetryNames)add(database,login,'CONNECT')
-  }else for(const privilege of ['CONNECT','TEMPORARY'])add(database,'PUBLIC',privilege)
+  }else{
+   add(database,'PUBLIC','CONNECT')
+   // PG18 initdb explicitly revokes CREATE/TEMPORARY on both templates.
+   // CREATE DATABASE deliberately initializes its own ACL, so postgres keeps
+   // the database defaults; template ACLs are not copied to new databases.
+   if(database==='postgres')add(database,'PUBLIC','TEMPORARY')
+  }
  }
  // Exact whole-result comparison rejects unknown/missing/duplicate rows, wrong
  // database/role OIDs, owner/grantor changes and every GRANT OPTION. Original

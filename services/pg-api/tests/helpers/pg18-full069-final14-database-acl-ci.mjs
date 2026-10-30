@@ -23,7 +23,8 @@ const cases=Object.freeze([
  ['extra_telemetry_public_connect','GRANT CONNECT ON DATABASE agent_studio_telemetry TO PUBLIC'],
  ['extra_telemetry_public_temp','GRANT TEMPORARY ON DATABASE agent_studio_telemetry TO PUBLIC'],
  ['cross_database_F05_connect','GRANT CONNECT ON DATABASE postgres TO agentstudio_plan_workflow_worker_login'],
- ['missing_template_public_temp','REVOKE TEMPORARY ON DATABASE template1 FROM PUBLIC'],
+ ['extra_template0_public_temp','GRANT TEMPORARY ON DATABASE template0 TO PUBLIC'],
+ ['extra_template1_public_temp','GRANT TEMPORARY ON DATABASE template1 TO PUBLIC'],
 ])
 export async function runActualFinal14DatabaseAclNegatives(trust,guard){
  assertFinalPathCiHost();assertFinalPathCiStable(guard);const ctx=finalContext(trust);assertFinalStable(trust)

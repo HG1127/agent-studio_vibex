@@ -15,6 +15,7 @@ function assertSources(){
 assertSources()
 const {agentDesignGenuineFixture}=await import('./helpers/agent-design-genuine-fixture.mjs')
 const {prepareNativeMonitorMetadata}=await import('../src/native-monitor-inbox-import-plan.ts')
+const {nativeMonitor073SeedStatement}=await import('./helpers/native-monitor073-seed-statement.mjs')
 const {inspectOptionalNativeMonitorInbox}=await import('../src/native-monitor-inbox-audit.ts')
 const {prepareNativeMonitorInbox}=await import('../src/native-monitor-inbox-runtime.ts')
 const {createNativeAuthHttpHandler}=await import('../src/native-auth-http.mjs')
@@ -30,7 +31,7 @@ async function insertPlan(f,plan){
  // Test-only administrator ingress, never an employee or product import API.
  // Real deployment import requires its separately approved snapshot/crosswalk.
  const db=await f.adminPool.connect()
- try{await db.query('BEGIN');try{for(const row of plan.rows){assert.match(row.table,/^native_monitor_(imports|cases|monitors|checks|events)$/);const keys=Object.keys(row.value);assert(keys.every(k=>/^[a-z_]+$/.test(k)));await db.query('INSERT INTO agentstudio.'+row.table+'('+keys.join(',')+') VALUES('+keys.map((_,i)=>'$'+(i+1)).join(',')+')',Object.values(row.value))}await db.query('COMMIT')}
+ try{await db.query('BEGIN');try{for(const row of plan.rows){const statement=nativeMonitor073SeedStatement(row);await db.query(statement.text,statement.values)}await db.query('COMMIT')}
  catch(error){await db.query('ROLLBACK');throw error}}finally{db.release()}
 }
 async function ledger(f){const result={};for(const table of ['native_monitor_imports','native_monitor_cases','native_monitor_monitors','native_monitor_checks','native_monitor_events','native_monitor_reads','audit_events']){result[table]=(await f.db.query('SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text),\'[]\'::jsonb) AS rows FROM agentstudio.'+table+' r')).rows[0].rows}return result}

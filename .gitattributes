@@ -1192,3 +1192,9 @@ tests/original-internal-overview.test.mjs text eol=lf
 tests/pg-original-internal-share-browser-policy.test.mjs text eol=lf
 tests/pg-original-internal-share-genuine.config.mjs text eol=lf
 tests/pg-original-internal-share-genuine.spec.mjs text eol=lf
+
+# Closed startup observations and exact073 test-only seed statements.
+services/pg-api/src/pg18-full069-owned-process-observation.mjs text eol=lf
+services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs text eol=lf
+services/pg-api/tests/pg18-full069-owned-process-observation.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-runtime-open-observation.test.mjs text eol=lf

@@ -10,6 +10,7 @@ export async function originalMonitor073BackendFixture(env=process.env){
  checkSources();let f,server,agent,closed=false;const counters={reads:0,acks:0,forwarded:0},plans={}
  const close=async()=>{if(closed)return;closed=true;const errors=[];try{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}}catch(e){errors.push(e)}try{agent?.destroy()}catch(e){errors.push(e)}try{await f?.close()}catch(e){errors.push(e)}if(errors.length)throw new AggregateError(errors,'monitor073_backend_cleanup_failed')}
  try{
+  const {nativeMonitor073SeedStatement}=await import('../../services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs')
   f=await baseModule.originalLoginHome071GenuineFixture(env)
   if(f.browserHomeProfile?.profile!==permit.predecessor_profile||f.browserHomeProfile.head!==permit.head)throw Error('monitor073_actual_predecessor_mismatch')
   const before=await f.inventory();if(await audit.inspectOptionalNativeMonitorInbox(f.pool)!=='absent')throw Error('monitor073_fresh_absence_required')
@@ -20,7 +21,7 @@ export async function originalMonitor073BackendFixture(env=process.env){
   for(const who of ['alice','bob']){
    const source={format:'legacy_monitor_metadata_export_v1',source_snapshot_sha256:sha('synthetic '+who+' monitor export only'),owner_user_id:f.users[who],exported_ms:now,cases:[{id:old(1)}],monitors:[{id:old(2),case_id:old(1),revision:1,enabled:true,current_check_id:old(3),created_ms:now-100}],checks:[{id:old(3),monitor_id:old(2),case_id:old(1),monitor_revision:1,status:'needs_review',created_ms:now-5}],events:Array.from({length:who==='alice'?14:3},(_,i)=>({id:old(100+i),monitor_id:old(2),check_id:old(3),dedup_hash:sha(who+' declared historical synthetic fact '+i),kind:'additional_role',notify:true,read_ms:0,created_ms:now-20-i}))}
    const plan=importer.prepareNativeMonitorMetadata(source);plans[who]=plan
-   const db=await f.adminPool.connect();try{await db.query('BEGIN');try{for(const row of plan.rows){if(!/^native_monitor_(imports|cases|monitors|checks|events)$/.test(row.table))throw Error('monitor073_seed_table');const keys=Object.keys(row.value);if(!keys.every(k=>/^[a-z_]+$/.test(k)))throw Error('monitor073_seed_column');await db.query('INSERT INTO agentstudio.'+row.table+'('+keys.join(',')+') VALUES('+keys.map((_,i)=>'$'+(i+1)).join(',')+')',Object.values(row.value))}await db.query('COMMIT')}catch(e){await db.query('ROLLBACK');throw e}}finally{db.release()}
+   const db=await f.adminPool.connect();try{await db.query('BEGIN');try{for(const row of plan.rows){const statement=nativeMonitor073SeedStatement(row);await db.query(statement.text,statement.values)}await db.query('COMMIT')}catch(e){await db.query('ROLLBACK');throw e}}finally{db.release()}
   }
   const current=await f.inventory(),added=['native_monitor_imports','native_monitor_cases','native_monitor_monitors','native_monitor_checks','native_monitor_events','native_monitor_reads'].map(t=>'agentstudio.'+t)
   if(JSON.stringify(current.tables)!==JSON.stringify([...before.tables,...added].sort())||JSON.stringify(current.versions)!==JSON.stringify([...before.versions,'pg_v9_073'].sort())||JSON.stringify(current.roles)!==JSON.stringify(before.roles))throw Error('monitor073_actual_delta_mismatch')
