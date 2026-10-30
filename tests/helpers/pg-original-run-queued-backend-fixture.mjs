@@ -77,8 +77,8 @@ export async function originalRunQueuedBackendFixture(env=process.env){
     autonomousAgentRunRepository:new autoRun.AutonomousAgentRunRepository(f.pool,{allowHumanInput:humanAvailable,allowMemory:selectedPolicy.agentMemoryUat===true}),
     agentMemoryRepository:new memory.AgentMemoryRepository(f.pool,{allowWrites:selectedPolicy.configurationWrites}),agentFeedbackRepository:new feedback.AgentFeedbackRepository(f.pool,{allowSubmit:selectedPolicy.configurationWrites&&selectedPolicy.agentFeedbackUat===true,allowLessonStorage:selectedPolicy.agentFeedbackLessonsUat===true}),
     allowedOrigin:permit.origin,authenticateRequest:req=>native.authenticateRequest(req),verifyToken:async()=>{throw Error('original_run_queued_Native_Cookie_only')}})
-   const innerBusiness=async(req,res)=>{if(home&&await home(req,res))return;if(catalog&&await catalog(req,res))return;if(monitor&&await monitor(req,res))return;return generic(req,res)}
-   business=ownHttp.createNativeOwnOperationsBusinessHandler({repository:new own.OwnOperationsRepository(f.pool),available,policy:selectedPolicy,businessHandler:innerBusiness,allowedOrigin:permit.origin,authenticateRequest:req=>native.authenticateRequest(req)})
+   const ownBusiness=ownHttp.createNativeOwnOperationsBusinessHandler({repository:new own.OwnOperationsRepository(f.pool),available,policy:selectedPolicy,businessHandler:generic,allowedOrigin:permit.origin,authenticateRequest:req=>native.authenticateRequest(req)})
+   business=async(req,res)=>{if(home&&await home(req,res))return;if(catalog&&await catalog(req,res))return;if(monitor&&await monitor(req,res))return;return ownBusiness(req,res)}
   }
   configure()
   home=await homeRuntime.prepareNativeHomeAgentSpecs({pool:f.pool,env:{AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:'true',AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED:'true'},listen:true,allowedOrigin:permit.origin,configurationWrites:selectedPolicy.configurationWrites,allowNativeLocalAgentSpecs:false,authenticateRequest:req=>native.authenticateRequest(req)});assert(home)

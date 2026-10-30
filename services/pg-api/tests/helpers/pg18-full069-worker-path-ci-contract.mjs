@@ -53,6 +53,24 @@ export function pathCiTrustFailures(stderr){
  return Object.freeze(records)
 }
 
+// Bounded diagnostic DATA from original owned stderr; never a Reader/health proof.
+const pathCiReaderFailureKinds=new Set(['source_refused','runtime_refused','control_error','writer_closed','writer_uncertain','writer_busy','writer_not_enrolled','query_cancelled','query_lock_timeout','query_client_timeout','query_client_closed','filesystem_io','transport_io','abort','type_error','range_error','syntax_error','other'])
+const pathCiReaderFailureCodes=new Set(['lease_expired','lease_revoked','registry_mismatch','reader_capacity','reader_timeout','reader_cleanup_unknown','control_closed','control_io_failed','source_runtime_refused','binding_changed','untrusted_reference','control_busy'])
+export function pathCiReaderFailures(stderr){
+ const records=[]
+ if(typeof stderr!=='string'||Buffer.byteLength(stderr)>262144||stderr.includes('\0'))return Object.freeze(records)
+ for(const line of stderr.split(/\r?\n/)){
+  if(line.length>1024)continue
+  let v;try{v=JSON.parse(line)}catch{continue}
+  if(!v||Array.isArray(v)||Object.getPrototypeOf(v)!==Object.prototype)continue
+  const keys=Object.keys(v).sort().join(',')
+  if(v.event==='worker_heartbeat_reader_failure_observation'&&keys==='code,event,kind,observed_data_only,phase'&&v.observed_data_only===true&&['prepare','finish'].includes(v.phase)&&pathCiReaderFailureKinds.has(v.kind)&&(v.code===null||pathCiReaderFailureCodes.has(v.code)))records.push(Object.freeze({event:v.event,phase:v.phase,code:v.code,kind:v.kind,observed_data_only:true}))
+  else if(v.event==='full069_worker_live_reader_catalog_phase'&&keys==='completed_native_observation,event,phase,production_cutover_allowed,qualifies_run'&&['native_authorization','controller_reader_audit','verified_before_native_logout'].includes(v.phase)&&v.completed_native_observation===false&&v.qualifies_run===false&&v.production_cutover_allowed===false)records.push(Object.freeze({event:v.event,phase:v.phase,completed_native_observation:false,qualifies_run:false,production_cutover_allowed:false}))
+  if(records.length>16)return Object.freeze([])
+ }
+ return Object.freeze(records)
+}
+
 // Failure observation DATA only, after the fixture's original privateRead/json.
 // This grants no trust, process identity, readiness, cleanup or retry authority.
 const pathCiOwnedObservationLimits=Object.freeze({nodes:4096,depth:20,array:128,keys:64,string:8192,stringTotal:262144})

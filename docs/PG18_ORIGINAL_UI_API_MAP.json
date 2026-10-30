@@ -1,6 +1,6 @@
 {
   "format": "agentstudio_original_employee_UI_PG_action_map_v1",
-  "snapshot_UTC": "2026-10-30T18:35:40.425500+00:00",
+  "snapshot_UTC": "2026-10-30T19:23:43.680736+00:00",
   "authority": "AGENTS.md: Migration delivery strategy — user clarification 2026-10-30",
   "delivery_baseline": "Preserve the current original employee UI; migrate backend/auth/client/hooks/DTO/status only. Native workbench is verification/reference.",
   "source_scope": {
@@ -1837,7 +1837,7 @@
           "original_page_E2E_completed": false
         }
       ],
-      "current_preparation_note": "Exact af94d8f draft-discovery story passed with synthetic inventory and actual Cookie/owner/audits; 251-row paging, metadata CRUD/CAS/audit and account fence steps completed in a failed whole metadata story. No actual provider DNS/TLS compatibility, full metadata unknown-write recovery or full-page acceptance. Optional075 exact-receipt source remains independently frozen and unapplied."
+      "current_preparation_note": "Exact af94 draft story passed with synthetic inventory and verified owner/Cookie/audits. Optional075 receipt and committed-prefix-loss source are now integrated but genuine same-head CI pending. Full metadata page, actual provider DNS/TLS compatibility and full process startup with075 remain unaccepted."
     },
     {
       "route": "/tool-connections",
@@ -6050,7 +6050,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1144,
+    "combined_pure_checks": 1421,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6323,7 +6323,7 @@
       "actual_database_acl_negatives_executed": false,
       "qualifies_run": false
     },
-    "unchanged_UI_typecheck_build_baseline": "Frontend/shared and API TypeScript source unchanged sincee002475 checks; only pure comparator MJS and guarded test fixtures change. Preserve actual100-asset build evidence and0 normal PG resources as that unchanged-UI baseline, not as new genuine page acceptance.",
+    "unchanged_UI_typecheck_build_baseline": "Current075 frontend/shared/API candidate has fresh TypeScript6/5 checks and actual102-resource normal/104-resource original-PG builds. Normal PG matches0. These are source/build checks, not page or Worker acceptance.",
     "pure_final14_runtime_open_observation_checks": 11,
     "pure_owned_process_observation_checks": 20,
     "full069_runtime_open_observation": "Record-only WeakMap keyed by the exact original thrown object. Real opaque runtime checks annotate a fixed stage and optionally one of the existing fourteen account keys; inner service diagnostics are not overwritten by the outer catch. No raw error/SQL/credential/PID is read or output. The original error object is rethrown; actual output remains inside the original exact fixture/UID/argv/Node/approval gates. Five new pure checks and25 existing path checks pass; real cause pending.",
@@ -6436,13 +6436,13 @@
     "original_home_natural_authoring_source_merged": true,
     "original_home_natural_authoring_actual_browser_accepted": false,
     "current_source_checks": {
-      "pure": 977,
+      "pure": 1421,
       "final14_framing_related_pure": 38,
       "worker_startup_related_pure": 39,
       "frontend_TS6": true,
       "API_TS5": true,
-      "normal_assets": 101,
-      "original_PG_assets": 102,
+      "normal_assets": 102,
+      "original_PG_assets": 104,
       "normal_PG_resource_matches": 0,
       "local_SQL": false,
       "local_business_Worker": false,
@@ -6453,11 +6453,12 @@
       "latest_targeted_pure": 104,
       "frontend_and_shared_source_unchanged": false,
       "frontend_TS6_and_actual_build_baseline_head": null,
-      "actual_normal_assets": 101,
-      "actual_original_PG_assets": 102,
-      "Native_bundle_literal_source_closure": 359,
-      "complete069_literal_source_capture": 393,
-      "complete069_SQL_inputs_unchanged": 53
+      "actual_normal_assets": 102,
+      "actual_original_PG_assets": 104,
+      "Native_bundle_literal_source_closure": 367,
+      "complete069_literal_source_capture": 401,
+      "complete069_SQL_inputs_unchanged": 53,
+      "pure_log_sha256": "0a029ac536f1775038fb2bf28f6108b332db8d8bec413cb9f001d4545f7bbe99"
     },
     "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
     "full069_parent_diagnostic_framing_fix": "Only standalone original refusal lines select primary; exact diagnostic event names cannot override it. Parent separately parses one closed runtime-open or ACL-negative observation. Unknown keys/phases/accounts, authority, secrets, oversize and duplicate records refuse. Original supervisor/cleanup unchanged;36 related pure checks pass; actual next-head rerun pending.",
@@ -7151,6 +7152,124 @@
       },
       "model_disconnect_followup": "Actual whole upstream response was lost once, but no Chromium retry count proof. A separately frozen prefix-body disconnect candidate remains unapplied in this batch.",
       "monitor_response_followup": "Read both actual response bodies immediately on arrival before login navigation retires them; existing owner/counters preserved. Success images now buffered until final cleanup zero gates.",
+      "production_GO": false
+    },
+    "optional075_exact_model_receipt_source": {
+      "source_integrated_not_database_accepted": true,
+      "original_UI_and_PB_default_preserved": true,
+      "append_only_owner_request_receipt_and_atomic_model_audit_transaction": true,
+      "domain_separated_HMAC_and_blinded_key_commitment": true,
+      "unknown_write_queries_exact_original_request_no_secret_replay_or_list_inference": true,
+      "installed_recovery_GET_retained_when_new_writes_off": true,
+      "exact_catalog_owner_OID_and_complete21_table_column_and2_function_ACL_edges": true,
+      "Native_collector_literal_shared_contract_allowlist_added": true,
+      "default_absent_disabled": true,
+      "hosted_independent_story": "original-model-config-receipts075",
+      "genuine_hosted_075_accepted": false,
+      "full_original069_identifier_installed075_compatibility_completed": false,
+      "full_Native_process_startup_with075_accepted": false,
+      "encryption_key_rotation_supported": false,
+      "backup_requires_existing_encryption_key": true,
+      "SQL075_executed_locally": false,
+      "production_GO": false
+    },
+    "actual_committed_prefix_disconnect_source": {
+      "metadata_and075_and_F08": true,
+      "full_actual_upstream_response_and_independent_owner_ledger_proof_before_drop": true,
+      "original_headers_and_one_actual_body_byte_only": true,
+      "real_write_callback_and_socket_destroy_required_before_count": true,
+      "exact_original_request_and_create_result_correlated": true,
+      "preview_cannot_consume": true,
+      "upstream_ECONNRESET_not_controlled": true,
+      "original8s_deadline_and_F08_receipts5_final7_retained": true,
+      "Chromium_behavior_accepted": false,
+      "genuine_rerun_pending": true
+    },
+    "worker_v80_source": {
+      "source_integrated": true,
+      "strict_short_contention_all8_success_required": true,
+      "original_deadline_exhaustion_all8_closed_refusals_one_claim_required": true,
+      "actual_owned_Root_wait_observation_only_not_runtime_authority": true,
+      "exact_once_and_no_SQL_retry_and_original_budgets": true,
+      "Final14_all14_original_audits_serial_admission_with_all_settled_failure_order": true,
+      "legacy_closed_Reader_failure_and_phase_observation_only": true,
+      "actual_CI_accepted": false
+    },
+    "original_queued_dispatch_source_fix": {
+      "Home_Catalog_Monitor_handlers_dispatched_before_generic_own_operations_allowlist": true,
+      "matches_existing_original_Home_host_composition": true,
+      "actual_original_allowlist_negative_control_reproduced405": true,
+      "targeted_pure": 27,
+      "real_parent_and_detail_rerun_pending": true
+    },
+    "verified_343e537_partial_evidence": {
+      "head": "343e537237ef3a03c544d18809ffa7006781c261",
+      "quality": {
+        "run": 41108914084,
+        "job": 124245870574,
+        "passed_jobs": 50,
+        "total_jobs": 50,
+        "required_pnpm_check_passed": true,
+        "root_tests_passed": 4166,
+        "root_tests_total": 4166,
+        "job_log_sha256": "48b79c93c3b052f7a6b4dab4eba5b9b0472ba8e3f9561ec39874f31555186ecb"
+      },
+      "PB19": {
+        "run": 41108981316,
+        "job": 124246047983,
+        "passed": 19,
+        "total": 19,
+        "workers": 2,
+        "seconds": 73.3,
+        "job_log_sha256": "0bb84bb743252392c80b34fb7203f5cc3142c925cca000dc823b97a472ea358f"
+      },
+      "F01": {
+        "run": 41108914101,
+        "passed_jobs": 12,
+        "total_jobs": 15,
+        "monitor073_response_capture_fix_genuine_passed": true,
+        "monitor073_job": 124245870432,
+        "parent_job": 124245870490,
+        "detail_job": 124245870317,
+        "both_new_run_stories_failed_actual_agent_specs_GET405": true,
+        "metadata_job": 124245870531,
+        "metadata_whole_story_passed": false,
+        "metadata_exact_requestfailed8s_timeout": true
+      },
+      "F08": {
+        "run": 41108914110,
+        "original_job": 124245869646,
+        "original_passed": false,
+        "exact_requestfailed8s_timeout": true,
+        "reference_passed": true
+      },
+      "telemetry": {
+        "run": 41108914132,
+        "job": 124245869039,
+        "passed": false,
+        "actual_cases_passed": 20,
+        "owned_cleanups_passed": 4,
+        "failure_case": "component_concurrent_eight_bind_attempts_have_known_refusals_no_retry_and_no_backend_leak",
+        "old_assertion_failure_stage_and_code_unavailable": true
+      },
+      "complete069": {
+        "run": 41108914054,
+        "legacy_job": 124245869751,
+        "passed": false,
+        "short_reason": "full069_worker_live_native_heartbeat_unavailable",
+        "assessment_actual_self_exit1_shutdown_not_requested": true,
+        "assessment_phase": "heartbeat_open",
+        "assessment_error_code": "writer_deadline",
+        "telemetry_backends_zero": false,
+        "Readers_zero": true,
+        "four_business_queues_empty": true,
+        "final14_job": 124245869431,
+        "final14_phase": "warm_sample",
+        "actual13_ACL_negative_acceptance": false
+      },
+      "original_full20_pages_accepted": 0,
+      "employee_UAT": 0,
+      "qualifying24h_hours": 0,
       "production_GO": false
     }
   },

@@ -190,17 +190,22 @@ function writerReadyRowFinalized(s,row){
  const v=s.writerReadyFinalizations?.get(row.kind+':'+row.generation)
  return Boolean(v&&v.instance_id===s.instance&&v.kind===row.kind&&v.generation===row.generation&&String(v.sequence)===row.sequence)
 }
-/* WRITER_READY_FINALIZATION_END */function closedControllerOutput(s,c,chunk,stream){
+/* WRITER_READY_FINALIZATION_END */// Diagnostic barrier only from this fixture's original owned Root stderr.
+// It never grants a boot, lease, SQL operation, identity or readiness proof.
+function writerAdmissionObservation(raw,stream){
+ try{if(stream!=='stderr')return null;const v=fields(raw,['event','kind','phase','observed_data_only']);if(v.event!=='worker_heartbeat_writer_admission_observation'||v.phase!=='wait_started'||v.observed_data_only!==true||!kinds.includes(v.kind))return null;return {event:v.event,kind:v.kind,phase:v.phase,observed_data_only:true}}catch{return null}
+}
+function closedControllerOutput(s,c,chunk,stream){
  c[stream+'Bytes']+=chunk.length;if(c[stream+'Bytes']>32768){c.p.kill('SIGTERM');return}
  let text=(c[stream+'Partial']??'')+chunk.toString('utf8');if(Buffer.byteLength(text)>4096)text=text.slice(-4096)
  const lines=text.split('\n');c[stream+'Partial']=lines.pop()
- for(const line of lines){/* WRITER_READY_FINALIZATION_BEGIN */try{const observation=writerReadyFinalizationObservation(s,s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){rememberWriterReadyFinalization(s,observation);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_END *//* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
+ for(const line of lines){try{const observation=writerAdmissionObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){c.admissionWaitStarts.set(observation.kind,(c.admissionWaitStarts.get(observation.kind)??0)+1);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_BEGIN */try{const observation=writerReadyFinalizationObservation(s,s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){rememberWriterReadyFinalization(s,observation);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_END *//* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
 }
 async function startController(s){
  // Service has one fixed verb. It is a separate cold process, never import-run.
  const file=s.stage.controlRoot+'/services/pg-api/src/worker-heartbeat-activation-control-service.ts'
  const p=spawn(s.stage.nodePath,['--experimental-strip-types',file,'serve'],{cwd:s.stage.controlRoot,env:{PATH:'/usr/local/bin:/usr/bin:/bin',LANG:'C.UTF-8',AGENT_STUDIO_TELEMETRY_CONTROL_ENABLED:'true'},stdio:['ignore','pipe','pipe'],windowsHide:true})
- const c={p,exited:false,exit:null,stderrBytes:0,stdoutBytes:0,closedCodes:new Set(),pending:new Map()};s.children.add(c);s.control=c;p.on('error',()=>{});p.stdout.on('data',b=>closedControllerOutput(s,c,b,'stdout'));p.stderr.on('data',b=>closedControllerOutput(s,c,b,'stderr'));p.once('close',(code,signal)=>{c.exited=true;c.exit={code,signal}})
+ const c={p,exited:false,exit:null,stderrBytes:0,stdoutBytes:0,closedCodes:new Set(),pending:new Map(),admissionWaitStarts:new Map()};s.children.add(c);s.control=c;p.on('error',()=>{});p.stdout.on('data',b=>closedControllerOutput(s,c,b,'stdout'));p.stderr.on('data',b=>closedControllerOutput(s,c,b,'stderr'));p.once('close',(code,signal)=>{c.exited=true;c.exit={code,signal}})
  await until(async()=>{if(c.exited)fail('controller_boot_exited');if(!fs.existsSync(paths.ops)||!fs.existsSync(paths.reader))return false;const v=await rpc(s,{op:'inspect'});if(!uuid(v.instance_id)||!['closed','recovery_required'].includes(v.phase)||v.read_gate!=='closed')fail('actual_closed_boot');s.instance=v.instance_id;return true},'controller_boot_timeout',30000)
  for(const file of [paths.ops,paths.reader]){const st=fs.lstatSync(file);if(!st.isSocket()||st.uid!==0||(st.mode&0o7777)!==(file===paths.reader?0o660:0o600))fail('own_socket_identity');s.ownedSockets.set(file,stamp(st))}
  const records=read(paths.store+'/journal.jsonl').toString('utf8').trimEnd().split('\n').map(v=>s.contract.parseWorkerHeartbeatControlJson(Buffer.from(v),2097152)),boot=records.reverse().find(r=>r.phase==='boot'&&r.instance_id===s.instance&&r.data?.control_backend)
@@ -930,7 +935,7 @@ function writerFinalInvariantObservation(phase,passed){
 function writerCiApi(s){
  // Observation references only, populated AFTER the original owned stop succeeds.
  // The original writerStoppedChildren WeakSet remains the cleanup authority.
- const stoppedSharedKnowledgeChildren=new Set()
+ const stoppedSharedKnowledgeChildren=new Set(),admissionBaselines=new WeakMap()
  return Object.freeze({
  kinds:Object.freeze([...kinds]),variant:s.writerVariant,
  change:changes=>writerChange(s,changes),deliveries:()=>writerDeliveries(s),rows:()=>writerRows(s),backends:()=>writerBackendRows(s),journal:()=>writerJournal(s).filter(r=>r.phase.startsWith('writer_')).map(r=>({phase:r.phase,instance_id:r.instance_id,data:r.data})),
@@ -938,6 +943,19 @@ function writerCiApi(s){
  rowLock:(kind,slot_no=1)=>writerRowLock(s,kind,slot_no),
  async tableLock(){const db=await s.telemetry.connect();await db.query('BEGIN');await db.query('LOCK TABLE studio_telemetry.slot_state IN ACCESS EXCLUSIVE MODE');let done=false;return Object.freeze({async release(){if(done)return;done=true;try{await db.query('ROLLBACK')}finally{db.release()}}})},
  async waitBindBlocked(){await until(async()=>(await s.telemetry.query("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock' AND query LIKE 'SELECT k.instrumented,%') AS held",[s.controlBackend.pid])).rows[0].held,'writer_actual_bind_guard_blocked',10000);return true},
+ // Private baseline is scheduling observation data, never runtime authority.
+ admissionWaitBaseline(){if(!s.control||s.control.exited)fail('writer_ci_actual_controller_required');const token=Object.freeze(Object.create(null));admissionBaselines.set(token,{controller:s.control,counts:new Map(s.control.admissionWaitStarts)});return token},
+ async waitAdmissionsStarted(children,token,deadline){
+  const baseline=admissionBaselines.get(token);admissionBaselines.delete(token)
+  if(!baseline||baseline.controller!==s.control||s.control.exited||!Array.isArray(children)||children.length!==7||new Set(children).size!==7||!Number.isFinite(deadline)||deadline<=performance.now()||deadline-performance.now()>2000)fail('writer_ci_owned_admission_observation')
+  const selected=children.map(c=>{if(!s.writerChildren.has(c)||c.mode!=='component'||c.kernelUidVerified!==true||c.selected.length!==1||!c.batch)fail('writer_ci_owned_admission_child');return c.selected[0]});if(new Set(selected).size!==7)fail('writer_ci_admission_kind_selection')
+  await until(()=>{
+   if(performance.now()>=deadline||s.control!==baseline.controller||s.control.exited)fail('writer_ci_short_admission_window_exhausted')
+   for(const kind of kinds){const delta=(s.control.admissionWaitStarts.get(kind)??0)-(baseline.counts.get(kind)??0);if(delta<0||delta>(selected.includes(kind)?1:0))fail('writer_ci_duplicate_or_unselected_admission_observation')}
+   return selected.every(kind=>(s.control.admissionWaitStarts.get(kind)??0)-(baseline.counts.get(kind)??0)===1)
+  },'writer_ci_short_admission_window_exhausted',Math.max(1,deadline-performance.now()))
+  return true
+ },
  async prepareRotate(kind){if(!kinds.includes(kind))fail('writer_fixed_kind');const d=draft(s);d.slots.find(v=>v.kind===kind&&v.slot_no===1).action='rotate';return prepare(s,d)},
  waitWriterRecord:kind=>writerWaitRecord(s,kind),
  waitChildCleanup:child=>writerWaitChildCleanup(s,child),

@@ -18,6 +18,8 @@ async function batch(kind){const current=await row(kind),value=fixture.writer.de
 async function closeFixture(){if(!fixture)return;try{await fixture.close();cleanupPassed++;process.stdout.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_pass'})+'\n')}finally{fixture=null}}
 async function open(variant,proof){const actual=proof??requireWorkerHeartbeatActivationControlCi(),stages=await publishWorkerHeartbeatControlCiStages(actual);fixture=await createWorkerHeartbeatWriterCiFixture(actual,stages,variant)}
 async function stopAll(children){for(const child of children)await fixture.writer.stop(child);const priorStage=activeStage;activeStage='observe_stopped_owned_cleanup';await fixture.writer.waitStoppedCleanup(children);await until(async()=>(await fixture.writer.backends()).length===0,'actual_owned_writer_backend_absence');activeStage=priorStage}
+const concurrentInvariantPhases=new Set(['blocked_first_refused','blocked_rest_refused','blocked_codes_closed','blocked_budget_elapsed','blocked_claim_once','blocked_original_boots','blocked_owned_cleanup','short_wait_seen','short_claim_before_release','short_release_within_original_deadline','short_first_success','short_all_success','short_original_boots','short_claims_once','short_identity','short_owned_cleanup'])
+function concurrentInvariant(phase,ok){assert.ok(concurrentInvariantPhases.has(phase));process.stdout.write(JSON.stringify({event:'genuine_writer_ci_concurrent_invariant',phase,ok:ok===true,observed_data_only:true})+'\n');assert.equal(ok,true,phase)}
 try{
  for(const [i,variant]of ['v1','v2_omitted','v2_off'].entries()){
   await open(variant,i===0?initialProof:undefined)
@@ -96,10 +98,46 @@ try{
   const child=bound[0];await fixture.writer.replaceOldMountedCredential(child,'prepare',await batch('prepare'));const actual=await fixture.writer.command(child,{op:'kernel_credential'})
   assert.equal(actual.readable,false);assert.equal(actual.owner_matches,false);assert.equal(actual.mode0400,true);assert.equal(actual.readonly,true);assert.equal((await fixture.writer.command(child,{op:'rebind'})).ok,false);await fixture.writer.stop(child)
  })
- await check('component_concurrent_eight_bind_attempts_have_known_refusals_no_retry_and_no_backend_leak',async()=>{
-  const children=await Promise.all(kinds.map(async kind=>fixture.writer.launch({selected:[kind],batch:await batch(kind)}))),hold=await fixture.writer.tableLock(),claimed=fixture.writer.journal().filter(v=>v.phase==='writer_boot_claimed').length,start=performance.now();let first,rest
-  try{first=fixture.writer.command(children[0],{op:'open_binding'});await fixture.writer.waitBindBlocked();rest=await Promise.all(children.slice(1).map(c=>fixture.writer.command(c,{op:'open_binding'})));assert.ok(rest.every(v=>v.ok===false));assert.equal(fixture.writer.journal().filter(v=>v.phase==='writer_boot_claimed').length,claimed+1)}finally{await hold.release()}
-  assert.equal((await first).ok,true);process.stdout.write(JSON.stringify({event:'genuine_writer_ci_concurrent_bind_result',attempts:8,accepted:1,refused:7,elapsed_ms:Math.round(performance.now()-start),automatic_reconnect:false,launcher_must_serialize:true})+'\n');await stopAll(children)
+ // Deliberately exceed the ORIGINAL bind deadline while Root SQL is blocked.
+ // Waiting peers may not claim a boot or open SQL merely because time elapsed.
+ await check('component_blocked_eight_bind_attempts_expire_without_retry_or_extra_claim',async()=>{
+  const children=await Promise.all(kinds.map(async kind=>fixture.writer.launch({selected:[kind],batch:await batch(kind)}))),hold=await fixture.writer.tableLock(),before=fixture.writer.journal(),claimed=before.filter(v=>v.phase==='writer_boot_claimed').length,issued=before.filter(v=>v.phase==='writer_boot_issued'),start=performance.now();let first,rest,firstResult
+  try{
+   activeStage='concurrent_first_bind';first=fixture.writer.command(children[0],{op:'open_binding'});void first.catch(()=>{});await fixture.writer.waitBindBlocked()
+   activeStage='concurrent_deadline_wait';rest=await Promise.all(children.slice(1).map(c=>fixture.writer.command(c,{op:'open_binding'})));firstResult=await first
+   const claimedOnce=fixture.writer.journal().filter(v=>v.phase==='writer_boot_claimed').length===claimed+1,budgetElapsed=performance.now()-start>=4900
+   process.stdout.write(JSON.stringify({event:'genuine_writer_ci_original_concurrent_assertion_observation',phase:'before_lock_release',rest_all_refused:rest.every(v=>v.ok===false),claimed_once:claimedOnce,first_ok:firstResult.ok===true,budget_elapsed:budgetElapsed,observed_data_only:true})+'\n')
+   concurrentInvariant('blocked_first_refused',firstResult.ok===false);concurrentInvariant('blocked_rest_refused',rest.every(v=>v.ok===false))
+   concurrentInvariant('blocked_codes_closed',[firstResult,...rest].every(v=>['writer_busy','writer_closed','writer_deadline','writer_io_failed'].includes(v.code)))
+   concurrentInvariant('blocked_budget_elapsed',budgetElapsed);concurrentInvariant('blocked_claim_once',claimedOnce)
+   concurrentInvariant('blocked_original_boots',JSON.stringify(fixture.writer.journal().filter(v=>v.phase==='writer_boot_issued'))===JSON.stringify(issued))
+  }finally{activeStage='concurrent_unlock';await hold.release()}
+  activeStage='concurrent_deadline_cleanup';await stopAll(children);concurrentInvariant('blocked_owned_cleanup',true)
+  const actualResults=[firstResult,...rest];process.stdout.write(JSON.stringify({event:'genuine_writer_ci_concurrent_bind_result',attempts:actualResults.length,accepted:actualResults.filter(v=>v.ok===true).length,refused:actualResults.filter(v=>v.ok===false).length,elapsed_ms:Math.round(performance.now()-start),automatic_reconnect:false,original_send_budget_ms:5000,deliberate_lock_exceeded_deadline:true})+'\n');activeStage=null
+ })
+ await fixture.writer.change(changes('rotate'))
+ await check('component_short_contention_releases_real_lock_within_original_budget_and_all_eight_progress',async()=>{
+  const children=await Promise.all(kinds.map(async kind=>fixture.writer.launch({selected:[kind],batch:await batch(kind)}))),hold=await fixture.writer.tableLock(),before=fixture.writer.journal(),issued=before.filter(v=>v.phase==='writer_boot_issued'),claimed=before.filter(v=>v.phase==='writer_boot_claimed').length,baseline=fixture.writer.admissionWaitBaseline(),start=performance.now();let first,rest,results
+  try{
+   activeStage='short_first_blocked';first=fixture.writer.command(children[0],{op:'open_binding'});void first.catch(()=>{});await fixture.writer.waitBindBlocked()
+   activeStage='short_seven_waiting';rest=Promise.all(children.slice(1).map(c=>fixture.writer.command(c,{op:'open_binding'})));void rest.catch(()=>{})
+   // All seven ORIGINAL requests must reach Root's busy wait in a 2s setup
+   // window. Release the real lock BEFORE awaiting any bind result. The
+   // original 5s Worker/Root deadlines and all runtime gates stay unchanged.
+   concurrentInvariant('short_wait_seen',await fixture.writer.waitAdmissionsStarted(children.slice(1),baseline,start+2000))
+   concurrentInvariant('short_claim_before_release',fixture.writer.journal().filter(v=>v.phase==='writer_boot_claimed').length===claimed+1)
+   activeStage='short_release_before_result';concurrentInvariant('short_release_within_original_deadline',performance.now()-start<5000)
+  }finally{await hold.release()}
+  activeStage='short_results';results=[await first,...await rest]
+  concurrentInvariant('short_first_success',results[0].ok===true);concurrentInvariant('short_all_success',results.length===8&&results.every(v=>v.ok===true))
+  activeStage='short_identity';const after=fixture.writer.journal(),actual=await fixture.writer.backends()
+  concurrentInvariant('short_original_boots',JSON.stringify(after.filter(v=>v.phase==='writer_boot_issued'))===JSON.stringify(issued))
+  concurrentInvariant('short_claims_once',after.filter(v=>v.phase==='writer_boot_claimed').length===claimed+8)
+  let matching=actual.length===8&&new Set(actual.map(v=>v.usename)).size===8
+  for(const c of children){const kind=c.selected[0],item=c.batch.items.find(v=>v.kind===kind),claims=after.filter(v=>v.phase==='writer_boot_claimed'&&v.data.boot_id===c.batch.boot_id&&v.data.kind===kind&&v.data.uid===c.uid&&v.data.generation===item.generation),bound=after.filter(v=>v.phase==='writer_backend_bound'&&v.data.kind===kind&&v.data.generation===item.generation);matching=matching&&claims.length===1&&bound.length===1&&bound[0].instance_id===claims[0].instance_id&&bound[0].data.role_oid===claims[0].data.role_oid&&actual.some(v=>v.pid===bound[0].data.backend.pid&&v.started===bound[0].data.backend.started&&v.role_oid===bound[0].data.role_oid&&v.database_oid===bound[0].data.database_oid&&v.usename==='studio_telemetry_tx_'+kind+'_1')}
+  concurrentInvariant('short_identity',matching)
+  activeStage='short_owned_cleanup';await stopAll(children);concurrentInvariant('short_owned_cleanup',true)
+  process.stdout.write(JSON.stringify({event:'genuine_writer_ci_concurrent_bind_result',attempts:results.length,accepted:results.filter(v=>v.ok===true).length,refused:results.filter(v=>v.ok===false).length,elapsed_ms:Math.round(performance.now()-start),automatic_reconnect:false,original_send_budget_ms:5000,deliberate_lock_exceeded_deadline:false})+'\n');activeStage=null
  })
  await check('seven_actual_business_entries_default_heartbeat_off_start_and_stop_without_any_writer_binding',async()=>{
   await fixture.writer.businessSetup();const before=fixture.writer.journal().filter(v=>v.phase==='writer_boot_claimed').length,counts=await fixture.writer.businessCounts()
@@ -125,7 +163,7 @@ try{
  await check('actual_final_owned_backend_absence_and_unchanged_empty_business_queues',async()=>{await fixture.writer.final();assert.deepEqual(await fixture.writer.businessCounts(),{jobs:0,runs:0,reviews:0,queries:0});await fixture.final()})
 }catch(error){
  failed=true;process.exitCode=1;const rawCode=Object.getOwnPropertyDescriptor(error??{},'code')?.value
- const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['previous_owned_cleanup','prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply','observe_stopped_owned_cleanup','partial_knowledge_rotation','paired_knowledge_rotation'/* WRITER_RESTART_OBSERVATION_BEGIN */,"restart_select_batch","restart_launch_component","restart_bind_component","restart_verify_zero_sequence","restart_capture_issued","restart_root","restart_rebind_original","restart_compare_issued","restart_verify_uid_generation"/* WRITER_RESTART_OBSERVATION_END */].includes(activeStage)?activeStage:null
+ const code=controlErrorCodes.includes(rawCode)?rawCode:null,stage=['previous_owned_cleanup','prepare_rotation','acquire_row_lock','dispatch_record','observe_record_lock','apply_mutation','observe_backend_absence','snapshot_before_unlock','release_row_lock','await_mutation','verify_publication','snapshot_after_mutation','verify_reset_sequence','await_pending_reply','concurrent_first_bind','concurrent_deadline_wait','concurrent_unlock','concurrent_deadline_cleanup','short_first_blocked','short_seven_waiting','short_release_before_result','short_results','short_identity','short_owned_cleanup','observe_stopped_owned_cleanup','partial_knowledge_rotation','paired_knowledge_rotation'/* WRITER_RESTART_OBSERVATION_BEGIN */,"restart_select_batch","restart_launch_component","restart_bind_component","restart_verify_zero_sequence","restart_capture_issued","restart_root","restart_rebind_original","restart_compare_issued","restart_verify_uid_generation"/* WRITER_RESTART_OBSERVATION_END */].includes(activeStage)?activeStage:null
  process.stderr.write(JSON.stringify({event:'genuine_writer_ci_failed',case:activeCase,stage,code,completed_cases:passed,message:/^(writer_ci_|telemetry_control_ci_fixture_refused:)/.test(String(error?.message))?String(error.message).slice(0,180):'runtime_assertion_failed',production_cutover_allowed:false})+'\n')
 }
 finally{try{await closeFixture()}catch{failed=true;process.exitCode=1;process.stderr.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_failed'})+'\n')}process.stdout.write(JSON.stringify({event:'genuine_writer_ci_summary',passed,failed,owned_cleanups:cleanupPassed,production_cutover_allowed:false,synthetic_only:true,real_execution_required:true})+'\n')}

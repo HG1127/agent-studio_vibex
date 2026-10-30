@@ -1,7 +1,8 @@
+import type {ModelConfigOperation,ModelConfigReceipt} from '../../../shared/model-config-receipt-contract.ts'
 import {readModelConnectionPage,type ModelPageQuery} from './model-connection-pagination.ts'
 import {isIP} from "node:net"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
-import {withActor} from "./repository.ts"
+import {withActor,assertOwnedAdmissionContext} from "./repository.ts"
 import {assertOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
 import {encryptModelSecret,parseModelEncryptionKey} from "./model-connection-crypto.ts"
 import {decryptModelSecret} from "./model-connection-crypto.ts"
@@ -141,6 +142,50 @@ export class ModelConnectionRepository{
     this.brokerPool=brokerPool
     this.encryptionKey=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key)
     if(this.encryptionKey.length!==32)throw Error("invalid_model_encryption_key")
+  }
+  /** Trusted optional075 sibling: caller owns this same verified Actor transaction.
+   * Legacy methods below retain their existing transactions and responses. */
+  async writeConfigOnActor(db:SqlClient,actor:string,op:ModelConfigOperation):Promise<{item:ModelConnectionRow|null;id:string;before_revision:number|null;after_revision:number|null;outcome:ModelConfigReceipt['outcome'];audit_event_id:string}>{
+    await assertOwnedAdmissionContext(db,actor)
+    let item:ModelConnectionRow|null=null,id:string,before:number|null=null,after:number|null=null,outcome:ModelConfigReceipt['outcome'],auditAction:ModelConnectionAuditAction
+    if(op.action==='create'){
+      const input=op.input!,apiKey=input.api_key!
+      const secret=encryptModelSecret(apiKey,this.encryptionKey)
+      const result=await db.query<StoredRow>(
+        "INSERT INTO agentstudio.model_connections (owner_user_id,name,provider,base_url,api_key_ciphertext,api_key_nonce,api_key_tag,api_key_tail,enabled,models) "+
+        "VALUES($1::uuid,$2::text,$3::text,$4::text,$5::bytea,$6::bytea,$7::bytea,$8::text,$9::boolean,$10::jsonb) RETURNING "+publicColumns,
+        [actor,input.name,input.provider,input.base_url,secret.ciphertext,secret.nonce,secret.tag,apiKey.slice(-4),input.enabled,JSON.stringify(input.models)])
+      if(!result.rows[0])throw Error('model_connection_insert_missing')
+      item=safeRow(result.rows[0]);id=item.id;after=item.revision;outcome='created';auditAction='model.connection_create'
+      if(after!==1)throw Error('invalid_model_configuration_initial_revision')
+    }else{
+      id=op.connection_id!;before=op.expected_revision!
+      const current=(await db.query<{revision:string|number;enabled:boolean}>('SELECT revision,enabled FROM agentstudio.model_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE',[id,actor])).rows[0]
+      if(!current)throw new HttpError(404,'model_connection_not_found')
+      if(Number(current.revision)!==before)throw new HttpError(409,'revision_conflict')
+      if(op.action==='delete'){
+        const deleted=await db.query<{id:string}>('DELETE FROM agentstudio.model_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$3::bigint RETURNING id',[id,actor,before])
+        if(deleted.rows.length!==1)throw new HttpError(409,'revision_conflict')
+        outcome='deleted';auditAction='model.connection_delete'
+      }else{
+        const input=op.input!,secret=input.api_key?encryptModelSecret(input.api_key,this.encryptionKey):null,
+          columns=secret?'api_key_ciphertext=$6::bytea,api_key_nonce=$7::bytea,api_key_tag=$8::bytea,api_key_tail=$9::text,':'',offset=secret?10:6
+        const result=await db.query<StoredRow>('UPDATE agentstudio.model_connections SET name=$3::text,provider=$4::text,base_url=$5::text,'+columns+
+          'enabled=$'+offset+'::boolean,models=$'+(offset+1)+"::jsonb,status='untested',last_latency_ms=0,last_checked_at=NULL,last_error='',revision=revision+1,updated_at=now() "+
+          'WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$'+(offset+2)+'::bigint RETURNING '+publicColumns,
+          [id,actor,input.name,input.provider,input.base_url,...(secret?[secret.ciphertext,secret.nonce,secret.tag,input.api_key!.slice(-4)]:[]),input.enabled,JSON.stringify(input.models),before])
+        if(!result.rows[0])throw new HttpError(409,'revision_conflict')
+        item=safeRow(result.rows[0]);after=item.revision
+        if(after!==before+1)throw Error('invalid_model_configuration_revision')
+        outcome=current.enabled===item.enabled?'updated':item.enabled?'enabled':'disabled'
+        auditAction=outcome==='updated'?'model.connection_update':outcome==='enabled'?'model.connection_enable':'model.connection_disable'
+      }
+    }
+    const audit=(await db.query<{id:string}>("INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) "+
+      "VALUES($1::uuid,$1::uuid,$2::text,'model_connection',$3::text,'succeeded',$4::jsonb) RETURNING id",
+      [actor,auditAction,id,JSON.stringify({revision:after??before})])).rows[0]
+    if(!audit||!isUuid(audit.id))throw Error('model_configuration_audit_missing')
+    return{item,id,before_revision:before,after_revision:after,outcome,audit_event_id:audit.id}
   }
   listPage(identity:Identity,query:ModelPageQuery,expectedEmployee:string){
     return readModelConnectionPage({pool:this.pool,key:this.encryptionKey,identity,query,expectedEmployee,normalize:raw=>safeRow(raw as unknown as StoredRow)})

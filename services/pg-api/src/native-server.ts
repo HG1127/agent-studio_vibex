@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {prepareModelConfigReceipts075After069} from './model-config-receipt-startup075.ts'
+import {createModelConfigReceiptHttp} from './model-config-receipt-http.ts'
 import {ModelDraftProbeRepository} from './model-draft-probe-repository.ts'
 import {createModelDraftProbeHttp} from './model-draft-probe-http.ts'
 import {createNativeEntryHttpHandler} from './native-entry-http.ts'
@@ -502,6 +504,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
     const originalMonitorInbox=await prepareNativeMonitorInbox({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin})
     await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin})
+    const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
+    const modelConfigReceipts=await prepareModelConfigReceipts075After069({models:modelConnections,configurationWrites:capabilities.configurationWrites,env})
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
@@ -517,7 +521,6 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const companyWorkerHeartbeatsHttp=createNativeCompanyWorkerHeartbeatsHttpHandler({
       component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
     })
-    const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
     const modelDraftProbe=new ModelDraftProbeRepository(business,brokerPool?adapter(brokerPool):business,modelEncryptionKey,{configurationWrites:capabilities.configurationWrites,modelProbeUat:capabilities.modelProbeUat})
     let businessHandler:ReturnType<typeof createHandler>|undefined
     const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
@@ -531,6 +534,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       originalModelDraftProbeProtocol:modelDraftProbe.enabled?Object.getOwnPropertyDescriptor(modelDraftProbe,'protocol')?.value:undefined,
       allowOriginalModelConnections:Object.getOwnPropertyDescriptor(modelConnections,'originalUiProtocol')?.value==='native_model_connections_owner_cas_v1',
       originalModelPaginationProtocol:Object.getOwnPropertyDescriptor(modelConnections,'paginationProtocol')?.value,
+      originalModelConfigReceiptsProtocol:modelConfigReceipts?.protocol,allowModelConfigReceiptWrites:modelConfigReceipts?.writes===true,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
       allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
@@ -675,7 +679,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
       repository:new AgentTemplateMarketRepository(business,{available:true,allowWrites:templateMarket.writes,verifyCredentials:templateMarketAudit}),
     }):null
+    const modelConfigReceiptHttp=modelConfigReceipts?createModelConfigReceiptHttp({component:modelConfigReceipts,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest}):null
     businessHandler=async(req,res)=>{
+      if(modelConfigReceiptHttp&&await modelConfigReceiptHttp(req,res))return
       // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
       // and original-receipt gates, including recovery after new writes turn off.
       if(localDevicesHttp&&await localDevicesHttp(req,res))return

@@ -128,6 +128,7 @@ jobs:
         include:
           - story: original-agent-run-queued
           - story: original-run-detail-queued
+          - story: original-model-config-receipts075
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -195,6 +196,11 @@ jobs:
         if: matrix.story == 'original-agent-run-queued' || matrix.story == 'original-run-detail-queued'
         run: |
           node --experimental-strip-types --test tests/pg-original-run-queued-policy.test.mjs tests/pg-original-run-queued-host-source-pure.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original ModelConnections075 source policy and original UI build
+        if: matrix.story == 'original-model-config-receipts075'
+        run: |
+          node --experimental-strip-types --test tests/pg-original-model-receipts075-source-pure.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -274,6 +280,27 @@ jobs:
             .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-alice-metadata.png
             .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-bob-unknown.png
             .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Original ModelConnections075 actual committed-write receipts and account fence
+        if: matrix.story == 'original-model-config-receipts075'
+        env:
+          AGENT_STUDIO_ORIGINAL_MODEL_RECEIPTS075_CI: YES_DISPOSABLE_ORIGINAL_MODEL_CONFIG_RECEIPTS075_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_RECEIPTS075_STORY: original-model-config-receipts075
+          AGENT_STUDIO_ORIGINAL_MODEL_RECEIPTS075_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_PG18_MODEL_CONFIG_RECEIPTS_ENABLED: 'true'
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-receipts075-genuine.config.mjs
+      - name: Retain fixed safe original ModelConnections075 artifacts after cleanup
+        if: always() && matrix.story == 'original-model-config-receipts075'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-model-receipts075-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-model-receipts075-genuine-browser-results/**/original-model-receipts075-recovered.png
+            .tmp/original-model-receipts075-genuine-browser-results/**/original-model-receipts075-account-fence.png
+            .tmp/original-model-receipts075-genuine-browser-results/**/original-model-receipts075-observation.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Independent original-agent-run-queued actual Native Cookie owner read control privacy

@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import {createRequire,registerHooks,stripTypeScriptTypes} from 'node:module'
 import {EventEmitter} from 'node:events'
 import {PassThrough} from 'node:stream'
+import {dropActualCommittedModelReplyPrefix} from './helpers/pg-original-model-committed-prefix-loss.mjs'
 import {requireOriginalInternalShareBrowserCi,originalInternalSharePurpose} from './helpers/pg-original-internal-share-browser-guard.mjs'
 import {originalInternalSharePolicy,originalInternalSharePath} from './helpers/pg-original-internal-share-browser-policy.mjs'
 import {startOriginalInternalShareBrowserFixture,originalShareProxyErrorCode,originalShareProxyBoundary,originalShareProxyTiming} from './helpers/pg-original-internal-share-browser-fixture.mjs'
@@ -46,14 +47,14 @@ test('original host passes explicit browser mode through the unchanged actual F0
  assert.equal(env.GITHUB_JOB,'pg18-internal-share-browser')
 })
 function proxyModel({method='POST',path='/__pg_native/api/v2/internal-templates',hold=null,loss=null,mutable={dropNext:null,actualReplyDrops:0,completedAfterBusinessCreates:0},throwDiagnostic=false}={}){
- const options=[],budgets=[],observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],write_timings:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0},req=new EventEmitter(),res=new EventEmitter(),proxy=new EventEmitter(),chunks=[]
+ const options=[],budgets=[],observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],write_timings:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,committed_response_prefixes:[]},req=new EventEmitter(),res=new EventEmitter(),proxy=new EventEmitter(),chunks=[]
  req.method=method;req.url=path;req.headers={origin:'https://localhost:17443',cookie:'PRIVATE_COOKIE','x-agentstudio-request':'1','x-agentstudio-expected-employee':'00000000-0000-4000-8000-000000000001'};req.socket={destroy(){req.socket.destroyed=true}};proxy.destroy=()=>{proxy.destroyed=true};req.pipe=p=>{assert.equal(p,proxy);return p}
  res.writeHead=(status,headers)=>{res.status=status;res.headers=headers;res.headersSent=true;return res};res.write=chunk=>{chunks.push(Buffer.from(chunk));return true};res.end=chunk=>{if(chunk)chunks.push(Buffer.from(chunk));res.writableEnded=true};res.destroy=()=>{res.destroyed=true;res.emit('close')}
  let upstreamCallback
  const https={request(option,callback){options.push(option);upstreamCallback=callback;return proxy}},remember=(key,value)=>{if(throwDiagnostic&&key==='write_boundaries')throw Error('synthetic diagnostic failure');observations[key].push(value)},reply=(res,status,code)=>{res.writeHead(status,{});res.end(JSON.stringify({error:code}))}
  const hop=source.match(/const hop=new Set\(\[[^\n]+\]\)/)[0]
- const construct=Function('https','originalInternalSharePolicy','observations','remember','reply','upstream','agent','tls','Buffer','AbortSignal','fixture','hold','loss','originalShareProxyErrorCode','originalShareProxyBoundary','originalShareProxyTiming',`let nextHold=hold,nextLoss=loss;const holds=new Set();${hop};return ${nodes[0]}`)
- const handler=construct(https,originalInternalSharePolicy,observations,remember,reply,new URL('https://localhost:18443'),'STRICT_CA_AGENT',{ca:'CA'},Buffer,{timeout(ms){budgets.push(ms);return AbortSignal.timeout(ms)}},{mutable},hold,loss,originalShareProxyErrorCode,originalShareProxyBoundary,originalShareProxyTiming)
+ const construct=Function('https','originalInternalSharePolicy','observations','remember','reply','upstream','agent','tls','Buffer','AbortSignal','fixture','hold','loss','originalShareProxyErrorCode','originalShareProxyBoundary','originalShareProxyTiming','dropActualCommittedModelReplyPrefix','assert',`let nextHold=hold,nextLoss=loss;const holds=new Set();${hop};return ${nodes[0]}`)
+ const handler=construct(https,originalInternalSharePolicy,observations,remember,reply,new URL('https://localhost:18443'),'STRICT_CA_AGENT',{ca:'CA'},Buffer,{timeout(ms){budgets.push(ms);return AbortSignal.timeout(ms)}},{mutable},hold,loss,originalShareProxyErrorCode,originalShareProxyBoundary,originalShareProxyTiming,dropActualCommittedModelReplyPrefix,assert)
  handler(req,res)
  return{req,res,proxy,options,budgets,observations,mutable,bytes:()=>Buffer.concat(chunks),response(status=200,bytes=Buffer.from('{"actual":"upstream"}')){const stream=new PassThrough();stream.statusCode=status;stream.headers={'content-type':'application/json'};upstreamCallback(stream);stream.end(bytes);return stream}}
 }
@@ -66,10 +67,10 @@ test('actual proxy records unmapped routes/PB and real API errors instead of HTM
  const unknown=proxyModel({method:'GET',path:'/api/studio/users'});assert.equal(unknown.res.status,405);assert.equal(unknown.observations.unexpected_api_failures.length,1)
  const failed=proxyModel();failed.response(409,Buffer.from('{"error":"agent_internal_share_employee_changed"}'));await new Promise(r=>setImmediate(r));assert.equal(failed.res.status,409);assert.equal(failed.observations.unexpected_api_failures.length,1)
 })
-test('only explicitly armed original post-record loss is separated; unarmed transport loss remains failure',()=>{
- const p=proxyModel({loss:{recorded:true,after_business_before:0,drops_before:0},mutable:{dropNext:null,actualReplyDrops:1,completedAfterBusinessCreates:1}});p.proxy.emit('error',Object.assign(Error('actual armed disconnect'),{code:'ECONNRESET'}));assert.equal(p.observations.controlled_after_record_disconnects,1);assert.equal(p.req.socket.destroyed,true);assert.equal(p.bytes().length,0)
- const q=proxyModel();q.proxy.emit('error',Error('unexpected'));assert.equal(q.res.status,503);assert.equal(q.observations.unexpected_api_failures.length,1)
+test('an armed post-record flag never promotes an upstream ECONNRESET to a verified prefix loss',()=>{
+ for(const loss of [null,{recorded:true,after_business_before:0,drops_before:0}]){const p=proxyModel({loss,mutable:{dropNext:null,actualReplyDrops:1,completedAfterBusinessCreates:1}});p.proxy.emit('error',Object.assign(Error('actual transport disconnect'),{code:'ECONNRESET'}));assert.equal(p.observations.controlled_after_record_disconnects,0);assert.equal(p.observations.unexpected_api_failures.length,1);assert.equal(p.req.socket.destroyed,undefined)}
 })
+
 test('actual proxy holds exact real200 bytes until release and counts controlled cancellation',async()=>{
  let release,enter;const wait=new Promise(r=>{release=r}),entered=new Promise(r=>{enter=r}),gate={method:'GET',path:'/__pg_native/api/v2/internal-templates',wait,release,enter,reject:error=>{throw error},entered:false}
  const p=proxyModel({method:'GET',hold:gate});p.response();await entered;assert.equal(p.bytes().length,0);assert.equal(p.observations.held_actual_responses,1);release();await new Promise(r=>setImmediate(r));assert.equal(p.bytes().toString(),'{"actual":"upstream"}')
@@ -147,10 +148,10 @@ test('selected null drop and early callback flag alone never prove afterBusiness
   const p=proxyModel({loss:armed(),mutable});p.proxy.emit('error',transport('ECONNRESET'));assert.equal(p.res.status,503);assert.equal(p.observations.unexpected_api_failures.length,1);assert.equal(p.observations.controlled_after_record_disconnects,0);assert.equal(p.observations.write_boundaries[0].controlled_drop_consumed,false)
  }
 })
-test('only completed real200 destruction followed by ECONNRESET consumes the actual controlled branch',()=>{
- const p=proxyModel({loss:armed(),mutable:completed()});p.proxy.emit('error',transport('ECONNRESET'));assert.equal(p.observations.controlled_after_record_disconnects,1);assert.equal(p.req.socket.destroyed,true);assert.equal(p.bytes().length,0);assert.deepEqual(p.observations.unexpected_api_failures,[])
- assert.deepEqual(p.observations.write_boundaries,[{source:'proxy_transport_error',node_error_code:'ECONNRESET',upstream_status:null,after_business_completed:true,drop_selected:true,actual_drop_completed:true,controlled_drop_consumed:true}])
+test('completed business plus an upstream reset still lacks a complete verified HTTP200 and actual prefix write callback',()=>{
+ const p=proxyModel({loss:armed(),mutable:completed()});p.proxy.emit('error',transport('ECONNRESET'));assert.equal(p.observations.controlled_after_record_disconnects,0);assert.equal(p.req.socket.destroyed,undefined);assert.equal(p.res.status,503);assert.equal(p.observations.unexpected_api_failures.length,1);assert.equal(p.observations.write_boundaries[0].controlled_drop_consumed,false)
 })
+
 test('observed non200 upstream and late200 transport errors remain unexpected',async()=>{
  const failed=proxyModel({loss:armed(),mutable:completed()});failed.response(503);await turn();failed.proxy.emit('error',transport('ECONNRESET'));assert.equal(failed.observations.controlled_after_record_disconnects,0);assert.equal(failed.observations.unexpected_api_failures.length,1);assert.equal(failed.observations.write_boundaries.at(-1).upstream_status,503)
  const late=proxyModel({loss:armed(),mutable:completed()});late.response(200);await turn();late.proxy.emit('error',transport('EPIPE'));assert.equal(late.observations.controlled_after_record_disconnects,0);assert.equal(late.observations.unexpected_api_failures.length,1);assert.equal(late.observations.unexpected_api_failures[0].status,503)
@@ -177,7 +178,7 @@ test('actual drop counter requires200 successful destroy and destroyed true whil
  const failed={statusCode:503},bytes=Buffer.from('unchanged');assert.equal(fn.call(failed,bytes),'original-result');assert.equal(sent.self,failed);assert.equal(sent.args[0],bytes);assert.equal(mutable.actualReplyDrops,1)
  make(mutable,original).call({statusCode:200,destroy(){}},'');assert.equal(mutable.actualReplyDrops,1);const error=Object.freeze(Error('synthetic destroy failure'));assert.throws(()=>make(mutable,original).call({statusCode:200,destroy(){throw error}}),value=>value===error);assert.equal(mutable.actualReplyDrops,1)
  make(mutable,original,false).call({statusCode:200,destroy(){this.destroyed=true}},'');assert.equal(mutable.actualReplyDrops,1)
- const story=read('tests/pg-original-internal-share-genuine.spec.mjs');for(const exact of ['expect(ledger.receipts-before.receipts).toBe(5)','expect(after.receipts-before.receipts).toBe(7)','expect.soft(f.observations.unexpected_api_failures).toEqual([])','expect(f.observations.controlled_after_record_disconnects).toBe(1)','if(primary)throw primary'])assert.ok(story.includes(exact),exact);assert.ok(source.includes('proxySignal=AbortSignal.timeout(8000)')&&source.includes('signal:proxySignal'));assert.ok(source.includes("code)==='ECONNRESET'")||source.includes("ErrorCode(error)==='ECONNRESET'"))
+ const story=read('tests/pg-original-internal-share-genuine.spec.mjs');for(const exact of ['expect(ledger.receipts-before.receipts).toBe(5)','expect(after.receipts-before.receipts).toBe(7)','expect.soft(f.observations.unexpected_api_failures).toEqual([])','expect(f.observations.controlled_after_record_disconnects).toBe(1)','if(primary)throw primary'])assert.ok(story.includes(exact),exact);assert.ok(source.includes('proxySignal=AbortSignal.timeout(8000)')&&source.includes('signal:proxySignal'));assert.ok(source.includes('dropActualCommittedModelReplyPrefix({req,res,status:response.statusCode,expectedStatus:200'));assert.ok(!source.includes("ErrorCode(error)==='ECONNRESET'"))
 })
 test('a late real preview on the shared POST route cannot consume the browser post-create reply loss',async()=>{
  const drop={action:'create'},mutable={dropNext:drop,actualReplyDrops:0,completedAfterBusinessCreates:0,afterBusiness:async()=>{}},sent=[],original=function(...args){sent.push(args);return 'actual-forwarded'}

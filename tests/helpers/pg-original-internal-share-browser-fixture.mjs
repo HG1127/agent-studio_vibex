@@ -1,6 +1,8 @@
 import {requireOriginalInternalShareBrowserCi} from './pg-original-internal-share-browser-guard.mjs'
 import {originalInternalSharePath,originalInternalSharePolicy} from './pg-original-internal-share-browser-policy.mjs'
 import {originalInternalShareReviewedSources} from './pg-original-internal-share-reviewed-sources.mjs'
+import {createOriginalShareCreatePrefixLoss} from './pg-original-internal-share-create-prefix-loss.mjs'
+import {dropActualCommittedModelReplyPrefix} from './pg-original-model-committed-prefix-loss.mjs'
 // Import-safe. Ordinary hosts must fail before filesystem, PG, TLS or sockets.
 export async function startOriginalInternalShareBrowserFixture(env=process.env){
  const permit=requireOriginalInternalShareBrowserCi(env)
@@ -68,7 +70,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     source_authority:'fixed reviewed original-page hashes and unchanged F08 backend pins; exact committed head and clean source required',
     checked_sources:sourceHashes,manifest_sha256:sha(manifestBytes),index_sha256:sha(index),assets:assetHashes}
  let fixture,server,agent,closed=false,nextHold=null,nextLoss=null
- const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],write_timings:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false}
+ const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],write_timings:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,committed_response_prefixes:[],overflow:false}
  const remember=(key,value)=>{if(observations[key].length<256)observations[key].push(value);else observations.overflow=true}
  const reply=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:code}))}
  const close=async()=>{if(closed)return;closed=true;for(const gate of holds)gate.release();holds.clear();nextHold=null
@@ -92,7 +94,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
   const upstream=new URL(fixture.nativeOrigin),tls=fixture.serverTls
   assert.equal(fixture.allowedOrigin,permit.origin);assert.equal(upstream.protocol,'https:');assert.equal(upstream.hostname,'localhost');assert(upstream.port&&!upstream.username&&!upstream.password&&upstream.pathname==='/'&&!upstream.search&&!upstream.hash)
   assert(tls.ca&&tls.cert&&tls.key);agent=new https.Agent({ca:tls.ca,rejectUnauthorized:true,servername:'localhost',maxSockets:16})
-  fixture.mutable.afterBusiness=async({operation,input})=>{if(nextLoss&&operation==='record'&&input?.action==='create'){assert.equal(nextLoss.recorded,false);nextLoss.recorded=true}}
+  fixture.mutable.afterBusiness=async observation=>{if(nextLoss)await nextLoss.afterBusiness(observation)}
   const hop=new Set(['host','connection','keep-alive','transfer-encoding','upgrade','proxy-authenticate','proxy-authorization','te','trailer'])
   server=https.createServer({...tls,minVersion:'TLSv1.2'},(req,res)=>{
    const rule=originalInternalSharePolicy(req.method,req.url,req.headers.accept),sample={method:req.method,path:rule.pathname}
@@ -103,30 +105,45 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     if(selectedHold)nextHold=null
     const selectedLoss=nextLoss&&req.method==='POST'&&rule.pathname==='/__pg_native/api/v2/internal-templates'?nextLoss:null
     let recorded=false,nativeStatus=null,clientAborted=false,clientResponseClosed=false
-    const transportStarted=performance.now(),proxySignal=AbortSignal.timeout(8000)
+    const transportStarted=performance.now(),requestStarted=Date.now(),proxySignal=AbortSignal.timeout(8000)
     res.once('close',()=>{if(!res.writableEnded)clientResponseClosed=true})
-    const observeBoundary=(source,error,consumed=false)=>{if(selectedLoss)try{remember('write_boundaries',originalShareProxyBoundary(source,error,{upstream_status:nativeStatus,after_business_completed:fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1,drop_selected:fixture.mutable.dropNext===null,actual_drop_completed:fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1,controlled_drop_consumed:consumed}));remember('write_timings',originalShareProxyTiming(source,{elapsed_ms:Math.min(60000,Math.max(0,Math.floor(performance.now()-transportStarted))),proxy_deadline_expired:proxySignal.aborted,client_request_aborted:clientAborted,client_response_closed:clientResponseClosed}))}catch{}}
+    const observeBoundary=(source,error,consumed=false)=>{if(selectedLoss)try{remember('write_boundaries',originalShareProxyBoundary(source,error,{upstream_status:nativeStatus,after_business_completed:fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1,drop_selected:fixture.mutable.dropNext===null,actual_drop_completed:selectedLoss.prefix_destroyed===true,controlled_drop_consumed:consumed}));remember('write_timings',originalShareProxyTiming(source,{elapsed_ms:Math.min(60000,Math.max(0,Math.floor(performance.now()-transportStarted))),proxy_deadline_expired:proxySignal.aborted,client_request_aborted:clientAborted,client_response_closed:clientResponseClosed}))}catch{}}
     const record=status=>{if(recorded)return;recorded=true;if(status<200||status>=300){if(!(rule.pathname==='/__pg_native/api/native-auth/me'&&status===401))remember('unexpected_api_failures',{...sample,status})}}
     const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))
+    // Tee original bytes without rewriting or replaying the Native request.
+    let originalRequest=Promise.resolve(null)
+    if(selectedLoss){originalRequest=new Promise((resolve,reject)=>{const chunks=[];let used=0;req.on('data',chunk=>{used+=chunk.length;if(used>32768){reject(Error('original_share_request_capture_bound'));proxy.destroy();return}chunks.push(Buffer.from(chunk))});req.once('error',reject);req.once('aborted',()=>reject(Error('original_share_request_capture_aborted')));req.once('end',()=>{const bytes=Buffer.concat(chunks);try{resolve(selectedLoss.bindOriginalRequest(bytes,req.headers['x-agentstudio-expected-employee']))}catch(error){reject(error)}finally{bytes.fill(0);for(const chunk of chunks)chunk.fill(0)}})});void originalRequest.catch(()=>{})}
     // Preserve original Origin, Cookie and CSRF. No caller identity or DTO rewrite.
     const proxy=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:req.url.replace(/^\/__pg_native(?=\/|$)/,''),method:req.method,headers,agent,ca:tls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:proxySignal},response=>{
      nativeStatus=response.statusCode??502;record(nativeStatus);observeBoundary('native_http_response',null)
      const responseHeaders=Object.fromEntries(Object.entries(response.headers).filter(([name])=>!hop.has(name.toLowerCase())))
-     if(!selectedHold){res.writeHead(response.statusCode??502,responseHeaders);response.pipe(res);response.once('error',()=>{remember('unexpected_api_failures',{...sample,status:502});res.destroy()});return}
+     if(!selectedHold&&(!selectedLoss||response.statusCode!==200)){res.writeHead(response.statusCode??502,responseHeaders);response.pipe(res);response.once('error',()=>{remember('unexpected_api_failures',{...sample,status:502});res.destroy()});return}
      const chunks=[];let size=0
      response.on('data',chunk=>{size+=chunk.length;if(size>1048576){remember('unexpected_api_failures',{...sample,status:502});response.destroy();return}chunks.push(Buffer.from(chunk))})
-     const heldFailure=()=>{remember('unexpected_api_failures',{...sample,status:502});selectedHold.reject(Error('original_share_held_upstream_failed'));res.destroy()}
+     const heldFailure=()=>{remember('unexpected_api_failures',{...sample,status:502});selectedHold?.reject(Error('original_share_held_upstream_failed'));res.destroy()}
      response.once('error',heldFailure);response.once('aborted',heldFailure)
-     response.once('end',()=>{
-      if(response.statusCode!==200){selectedHold.reject(Error('original_share_hold_requires_actual200'));res.writeHead(response.statusCode??502,responseHeaders);res.end(Buffer.concat(chunks));return}
-      selectedHold.entered=true;observations.held_actual_responses++;selectedHold.enter({status:200})
-      let cancelled=false
-      res.once('close',()=>{if(!res.writableEnded&&!cancelled){cancelled=true;observations.controlled_held_cancellations++}})
-      void selectedHold.wait.then(()=>{holds.delete(selectedHold);if(!res.destroyed){res.writeHead(200,responseHeaders);res.end(Buffer.concat(chunks))}})
-     });return
+      response.once('end',()=>{void(async()=>{
+       const actual=Buffer.concat(chunks)
+       if(selectedLoss){const original=await originalRequest
+        if(original){
+         const detail=await dropActualCommittedModelReplyPrefix({req,res,status:response.statusCode,expectedStatus:200,headers:responseHeaders,actual,responseComplete:response.complete,requestStarted,
+          verifyCommitted:()=>selectedLoss.verifyResponse(actual,original,fixture.mutable.completedAfterBusinessCreates),
+          onWritten:()=>{assert.equal(nextLoss,selectedLoss);selectedLoss.onWritten()}})
+         assert.equal(nextLoss,selectedLoss);selectedLoss.consumeDestroyed(req.socket);nextLoss=null;observations.controlled_after_record_disconnects++;remember('committed_response_prefixes',{...detail,socket_destroyed:true});observeBoundary('native_http_response',null,true);return
+        }
+        // A real preview/other POST has no create receipt for this exact request.
+        // It cannot consume the armed fault, even if another create committed.
+        if(!selectedHold){if(!res.destroyed){res.writeHead(response.statusCode??502,responseHeaders);res.end(actual)}return}
+       }
+       if(response.statusCode!==200){selectedHold.reject(Error('original_share_hold_requires_actual200'));res.writeHead(response.statusCode??502,responseHeaders);res.end(actual);return}
+       selectedHold.entered=true;observations.held_actual_responses++;selectedHold.enter({status:200})
+       let cancelled=false
+       res.once('close',()=>{if(!res.writableEnded&&!cancelled){cancelled=true;observations.controlled_held_cancellations++}})
+       await selectedHold.wait;holds.delete(selectedHold);if(!res.destroyed){res.writeHead(200,responseHeaders);res.end(actual)}
+      })().catch(()=>{remember('unexpected_api_failures',{...sample,status:502});selectedHold?.reject(Error('original_share_actual_complete_response_refused'));res.destroy()})});return
     })
     proxy.once('error',error=>{
-     if(selectedLoss&&selectedLoss.recorded&&fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1&&fixture.mutable.dropNext===null&&nextLoss===selectedLoss&&fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1&&(nativeStatus===null||nativeStatus===200)&&originalShareProxyErrorCode(error)==='ECONNRESET'){nextLoss=null;observations.controlled_after_record_disconnects++;observeBoundary('proxy_transport_error',error,true);req.socket.destroy();return}
+     // Upstream errors, including ECONNRESET, cannot qualify a completed-prefix loss.
      observeBoundary('proxy_transport_error',error);if(recorded&&nativeStatus>=200&&nativeStatus<300)remember('unexpected_api_failures',{...sample,status:503});record(503);if(!res.headersSent&&!res.destroyed)reply(res,503,'original_internal_share_proxy_unavailable');else res.destroy()
     })
     req.once('aborted',()=>{clientAborted=true;proxy.destroy()});req.pipe(proxy);return
@@ -153,7 +170,8 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     const gate={method,path,wait,release,enter,reject,entered:false};nextHold=gate;holds.add(gate)
     return{async entered(){let timer;try{return await Promise.race([entered,new Promise((_,no)=>{timer=setTimeout(()=>no(Error('original_share_actual_response_hold_timeout')),20000)})])}finally{clearTimeout(timer)}},release(){if(nextHold===gate)nextHold=null;gate.release()}}
    },
-   dropNextActualCreateReply(){assert(!nextLoss&&!closed);nextLoss={recorded:false,after_business_before:fixture.mutable.completedAfterBusinessCreates,drops_before:fixture.mutable.actualReplyDrops};fixture.mutable.dropNext={method:'POST',path:'/api/v2/internal-templates',action:'create'}},
+   dropNextActualCreateReply(){assert(!nextLoss&&!closed);assert.equal(fixture.mutable.dropNext,null,'browser loss belongs exclusively to the outer proxy');nextLoss=createOriginalShareCreatePrefixLoss({afterBusinessBefore:fixture.mutable.completedAfterBusinessCreates,
+    async readCommitted({identity,intent,expectedEmployee}){const confirmed=await fixture.repository().confirm(identity,intent,expectedEmployee),rows=(await fixture.db.query('SELECT owner_user_id,request_id,action,request_sha256,receipt FROM agentstudio.agent_internal_share_receipts WHERE owner_user_id=$1::uuid AND request_id=$2::uuid',[expectedEmployee,intent.request_id])).rows;assert.equal(rows.length,1);assert.equal(rows[0].owner_user_id,expectedEmployee);assert.equal(rows[0].request_id,intent.request_id);assert.equal(rows[0].action,'create');assert.equal(rows[0].request_sha256,confirmed.receipt.request_sha256);assert.deepEqual(rows[0].receipt,confirmed.receipt);return confirmed}})},
    async assertForeignOwnerRefused(){const before=await fixture.counts(),response=await fixture.request('bob','/api/v2/internal-templates',{action:'preview',id:fixture.resources.alice.spec.id});assert([403,404].includes(response.status));const after=await fixture.counts();for(const key of ['invites','snapshots','receipts','consumptions','agents'])assert.equal(after[key],before[key]);return{status:response.status,actual_Cookie_owner_check:true}},
    async assertRecipientOwnsUnboundCopy(){const rows=await fixture.agents.list(identities.bob,50),copies=rows.filter(v=>!originalBobIds.has(v.id));assert.equal(copies.length,1);const actual=await fixture.agents.get(identities.bob,copies[0].id);assert(actual);assert.equal(await fixture.agents.get(identities.alice,copies[0].id),null);assert.deepEqual(actual.spec.knowledge_base_ids??[],[]);assert(!actual.spec.model_binding);assert.deepEqual(actual.spec.http_tools??[],[]);assert.deepEqual(actual.spec.mcp_tools??[],[]);assert.equal(actual.spec.require_approval,true);return{actual_owner_repository_verified:true,copy_count:1,resource_bindings_absent:true}},
    close}

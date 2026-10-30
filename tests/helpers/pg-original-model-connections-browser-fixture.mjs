@@ -1,3 +1,4 @@
+import {dropActualCommittedModelReplyPrefix} from './pg-original-model-committed-prefix-loss.mjs'
 import {requireOriginalModelConnectionsBrowserCi} from './pg-original-model-connections-browser-guard.mjs'
 import {originalModelConnectionsPath,originalModelConnectionsPolicy} from './pg-original-model-connections-browser-policy.mjs'
 import {verifyOriginalModelConnectionsReviewedSources} from './pg-original-model-connections-reviewed-check.mjs'
@@ -57,7 +58,7 @@ export async function startOriginalModelConnectionsBrowserFixture(env=process.en
     source_authority:'fixed original-UI source closure plus actual F01 and optional070-073 auditors; exact committed head and clean source required',
     checked_sources:sourceHashes,manifest_sha256:sha(manifestBytes),index_sha256:sha(index),assets:assetHashes}
  let fixture,server,agent,closed=false,nextHold=null,nextLoss=false
- const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,controlled_after_commit_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false}
+ const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,controlled_after_commit_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,committed_response_prefixes:[],overflow:false}
  const remember=(key,value)=>{if(observations[key].length<256)observations[key].push(value);else observations.overflow=true}
  const reply=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:code}))}
  const close=async()=>{if(closed)return;closed=true;for(const gate of holds)gate.release();holds.clear();nextHold=null;nextLoss=false;const errors=[]
@@ -76,7 +77,7 @@ export async function startOriginalModelConnectionsBrowserFixture(env=process.en
   agent=new https.Agent({ca:tls.ca,rejectUnauthorized:true,servername:'localhost',maxSockets:16})
   const hop=new Set(['host','connection','keep-alive','transfer-encoding','upgrade','proxy-authenticate','proxy-authorization','te','trailer'])
   server=https.createServer({...tls,minVersion:'TLSv1.2'},(req,res)=>{
-   const rule=originalModelConnectionsPolicy(req.method,req.url,req.headers.accept),sample={method:req.method,path:rule.pathname}
+   const requestStarted=Date.now(),rule=originalModelConnectionsPolicy(req.method,req.url,req.headers.accept),sample={method:req.method,path:rule.pathname}
    if(rule.kind==='legacy_denied'){remember('legacy_backend_requests',{...sample,status:501});reply(res,501,'original_ui_legacy_backend_not_migrated');return}
    if(rule.kind==='native'){
      if(['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(name=>req.headers[name]!==undefined)){observations.forbidden_auth_headers++;reply(res,400,'original_model_connections_forbidden_auth_header');return}
@@ -96,7 +97,12 @@ export async function startOriginalModelConnectionsBrowserFixture(env=process.en
      response.once('end',()=>{
       if(failed)return
       const actual=Buffer.concat(chunks)
-      if(loss){if(status!==201){remember('unexpected_api_failures',{...sample,status});if(!res.destroyed){res.writeHead(status,responseHeaders);res.end(actual)}return}observations.controlled_after_commit_disconnects++;req.socket.destroy();return}
+      if(loss){
+       if(status!==201){remember('unexpected_api_failures',{...sample,status});if(!res.destroyed){res.writeHead(status,responseHeaders);res.end(actual)}return}
+       void(async()=>{try{await dropActualCommittedModelReplyPrefix({req,res,status,expectedStatus:201,headers:responseHeaders,actual,responseComplete:response.complete===true,requestStarted,
+        async verifyCommitted(){const ack=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(actual));assert.deepEqual(Object.keys(ack),['item']);const item=ack.item,who=Object.keys(fixture.users).find(w=>fixture.users[w]===item?.owner_user_id);assert(['alice','bob'].includes(who));assert.equal(item.revision,1);assert.deepEqual(await fixture.modelFor(who,item.id),item);const audit=await fixture.modelAudit(who,item.id);assert.equal(audit.actual_owner_audit_verified,true);assert.equal(audit.count,1);assert.deepEqual(audit.entries,[{action:'model.connection_create',revision:1}]);return undefined},
+        onWritten(_proof,detail){if(observations.committed_response_prefixes.length>=16)throw Error('model_create_loss_capacity');observations.committed_response_prefixes.push(detail);observations.controlled_after_commit_disconnects++}})}catch{remember('unexpected_api_failures',{...sample,status:502});res.destroy()}finally{actual.fill(0);for(const chunk of chunks)chunk.fill(0)}})();return
+      }
       if(held){
        if(status!==200){held.reject(Error('original_model_connections_hold_requires_actual200'));if(!res.destroyed){res.writeHead(status,responseHeaders);res.end(actual)}return}
        held.entered=true;observations.held_actual_responses++;held.enter({status:200})

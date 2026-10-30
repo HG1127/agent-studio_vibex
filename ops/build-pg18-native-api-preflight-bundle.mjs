@@ -51,7 +51,7 @@ const thirdParty={
 }
 function refuse(reason){throw Error("native_preflight_bundle_refused:"+reason)}
 function validatedPath(rel){
-  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/agent-internal-share-contract.ts","shared/approval-delegation-contract.ts","shared/agent-optimization-retest-contract.ts","shared/native-local-device-contract.mjs","shared/native-local-device-contract.d.mts","shared/agent-caller-contract.ts","shared/tool-hub-public-types.ts","shared/original-home-authoring.ts","shared/original-agent-catalog.ts","shared/original-internal-overview-contract.ts","shared/model-draft-probe-contract.ts","shared/model-connection-pagination-contract.ts"].includes(rel))||
+  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/agent-internal-share-contract.ts","shared/approval-delegation-contract.ts","shared/agent-optimization-retest-contract.ts","shared/native-local-device-contract.mjs","shared/native-local-device-contract.d.mts","shared/agent-caller-contract.ts","shared/tool-hub-public-types.ts","shared/original-home-authoring.ts","shared/original-agent-catalog.ts","shared/original-internal-overview-contract.ts","shared/model-draft-probe-contract.ts","shared/model-connection-pagination-contract.ts","shared/model-config-receipt-contract.ts"].includes(rel))||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
     refuse("unexpected_dependency:"+(typeof rel==="string"&&/^[A-Za-z0-9._/-]{1,300}$/.test(rel)?rel:"invalid"))

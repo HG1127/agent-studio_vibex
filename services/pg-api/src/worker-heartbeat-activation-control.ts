@@ -231,8 +231,11 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
  }catch{/* Failure of observation cannot replace the original error. */}
 }
 /* READER_FAILURE_OBSERVATION_END */export async function prepareWorkerHeartbeatControlRead(control:Control,p:ReaderPeer):Promise<ReadLease>{
- const s=state(control),owner=peer(s,p,'reader');runtimeCheck(s)
- if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(rootWriterBusy(s))controlFail('control_busy');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
+ const {s,owner}=(()=>{try{
+  const s=state(control),owner=peer(s,p,'reader');runtimeCheck(s)
+  if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(rootWriterBusy(s))controlFail('control_busy');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
+  return {s,owner}
+ }catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}})()
  const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request:owner.request??randomUUID(),epoch:s.epoch,deadline:performance.now()+controlLimits.leaseMs,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
  leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),controlLimits.leaseMs)
  l.work=(async()=>{
@@ -249,8 +252,10 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
  try{await l.work;return handle}catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('prepare',error)}catch{}/* READER_FAILURE_OBSERVATION_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 export async function finalizeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,handle:ReadLease):Promise<FinishedRead>{
- const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference')
- leaseCheck(l,'pending');l.phase='finalizing'
+ const {s,l}=(()=>{try{
+  const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference')
+  leaseCheck(l,'pending');l.phase='finalizing';return {s,l}
+ }catch(error){try{observeRootReaderFailure('finish',error)}catch{};throw error}})()
  try{
   await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,l.begin,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
   leaseCheck(l,'finalizing')

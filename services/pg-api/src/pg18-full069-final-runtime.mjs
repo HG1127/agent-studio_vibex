@@ -109,8 +109,10 @@ function openBusinessPools(s){if(s.businessOpen)fail('business_pools_open');for(
 async function closeBusinessPools(s){const rows=finalBusinessLogins.map(a=>s.pools[a.key]).filter(Boolean),out=await Promise.allSettled(rows.map(p=>p.end()));for(const a of finalBusinessLogins)delete s.pools[a.key];s.businessOpen=false;if(out.some(r=>r.status!=='fulfilled'))fail('business_pool_close')}
 async function actualBusinessAudits(s){
  if(!s.businessOpen)fail('business_pools_closed');const audit=await loadAgentDesignAuditVerifier();assertFinalStable(s.trust)
- // Each branch owns a distinct max=1 LOGIN pool; branches never share clients.
- const results=await Promise.allSettled(finalBusinessLogins.map(async a=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);phase='service_target_stable';assertFinalStable(s.trust)
+ // Each audit keeps its distinct max=1 LOGIN pool and original timeouts.
+ // Admit one LOGIN audit at a time; still collect every failure in fixed order.
+ /** @type {PromiseSettledResult<void>[]} */const results=[]
+ for(const a of finalBusinessLogins)results.push(...await Promise.allSettled([(async()=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);phase='service_target_stable';assertFinalStable(s.trust)
   phase='service_login';if(a.action&&await completeServiceActualLogin(p,a.action)!==true)fail('actual_login')
   phase='service_auditor'
   switch(a.key){
@@ -130,7 +132,7 @@ async function actualBusinessAudits(s){
   }
   phase='service_stable';assertFinalStable(s.trust)
   }catch(error){rememberRuntimeOpenFailure(error,phase,a.key);throw error}
- }));const rejected=results.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
+ })()]));const rejected=results.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
  try{const full=await verifyCompleteProfile(s.pools.admin,s.pools.api,s.snapshot.complete,s.profile.complete_source_sha256);if(full.full_catalog_audit_verified!==true||full.actual_api_login_verified!==true)fail('full069_catalog');assertFinalStable(s.trust)}catch(error){rememberRuntimeOpenFailure(error,'complete_catalog');throw error}
 }
 async function businessBackendsZero(s){return read(s.pools.admin,async db=>{const rows=(await db.query('SELECT pid,backend_start::text AS started,usename FROM pg_stat_activity WHERE datid=$1::oid AND usename=ANY($2::text[]) ORDER BY usename,pid',[s.profile.business_target.database_oid,finalBusinessLogins.map(a=>a.login)])).rows;if(rows.length!==0)fail('business_backends_remain');return {business_backend_count:0,business_audit_pools_closed:true}})}

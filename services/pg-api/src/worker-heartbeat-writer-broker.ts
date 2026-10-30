@@ -118,6 +118,7 @@ async function closePeer(s:Broker,p:Peer):Promise<void>{
 function reply(p:Peer,request:string,ok:boolean,value:unknown){if(p.open&&p.socket.writable)p.socket.write(writerEncode({protocol:writerProtocol,request_id:request,ok,value}))}
 async function bind(s:Broker,p:Peer,request:string,provided:string,deadline:number){
  if(!Number.isFinite(deadline))return writerFail()
+ let admissionWaitObserved=false
  // This is one original bind request, not a boot/SQL retry. Wait only for
  // pre-admission contention inside the SAME original message's five seconds.
  // No boot secret, UID, generation or SQL slot is consumed while waiting.
@@ -128,6 +129,8 @@ async function bind(s:Broker,p:Peer,request:string,provided:string,deadline:numb
   const remaining=deadline-performance.now()
   if(remaining<=0)return writerFail('writer_deadline')
   if(!s.bridge.busy())break
+  // At most one closed observation per original request; no token or SQL proof.
+  if(!admissionWaitObserved){admissionWaitObserved=true;try{process.stderr.write(JSON.stringify({event:'worker_heartbeat_writer_admission_observation',kind:p.kind,phase:'wait_started',observed_data_only:true})+'\n')}catch{}}
   await waitForWriterAdmission(Math.min(5,remaining))
  }
  // There is no await between this final admission check and bridge.open's

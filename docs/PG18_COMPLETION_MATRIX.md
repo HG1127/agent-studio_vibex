@@ -11,11 +11,26 @@
 - 保留既有工作及其他会话修改；不扩展无关新能力。正式切换仍需真实员工 UAT、权限、长期 Worker、备份恢复及回滚签收。本澄清不授权部署、切库、收费调用或 Git 上传。
 
 
+
+## 当前候选：模型精确回执、实际断线与并发绑定（2026-10-31）
+
+075源码已合入原模型页面，保留原布局、交互和默认PB分支：模型写入、本人安全审计和原request_id回执同事务完成；域隔离HMAC与带盲值的密钥承诺用于核对原意图，未知写入仅GET原回执，不重发密钥或用列表猜测成功。校验实际owner/OID、完整21条表/列及2条函数显式授权边。默认缺表关闭，已安装回执在禁止新写时仍可查询。独立真实PG18故事已准备，但075尚未获得真实CI、原完整069标识器/全Native进程兼容或安装验收；密钥轮换未实现，恢复需保留既有加密密钥。
+
+模型及F08断线改为先取得完整真实成功回复并独立核对本人已提交台账，再发送原头和一个实际body字节，实际write callback及socket销毁后才计受控断线；不把上游ECONNRESET记为成功，preview不能消耗create注入。原8秒、共享回执5/最终7及全部零门禁保留，Chromium真实行为待重跑。两个原运行页失败由同一测试主机将Home代理错误包进通用OwnOps allowlist造成GET405；已按既有Home主机顺序修正并通过27项针对性检查，真实页面仍待复验。
+
+Worker v80将旧并发断言拆成真实短竞争和期限耗尽两案：前者须原期限内八次全部成功、实际绑定身份匹配并清零，后者须八次闭合拒绝且仅一次claim、无重试。Root wait_started仅为原owned进程的排程观察，不授予身份、SQL或就绪资格。Final14仍执行全部14个原审计，仅串行准入并保留固定顺序首个失败；Reader仅新增闭合诊断，原预算和安全边界保留。以上仍需同提交真实验证。
+
+`343e537`[质量CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914084)50/50通过，根必需检查4166/4166；[原PB双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108981316/job/124246047983)19/19、73.3秒通过。[F01组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914101)12/15通过，原Home073响应体修复获得真实通过；新运行父页/详情故事GET405及模型8秒requestfailed超时均保留失败。[F08原页](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914110/job/124245869646)同样8秒等待失败，参考故事通过。
+
+同提交[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914132/job/124245869039)仍在旧并发案失败，此前20案和4次owned清理通过，旧日志不能确定具体断言位置。[完整069 legacy](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914054/job/124245869751)实际assessment在heartbeat_open以writer_deadline自行exit1，未请求停机；本次清理后遥测后端未清零、Reader为0且四队列空。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914054/job/124245869431)到warm_sample后失败，尚无13个实际ACL负例通过。新旧结果严格区分。
+
+当前只完成源码、纯检查和构建准备；074/076仍为独立候选。完整原20页、员工UAT、合格24小时、目标环境正式安装及备份恢复/回滚签收均未完成，正式切换 **NO-GO**，旧PocketBase继续可恢复。
+
 ## 原员工页面适配准备（2026-10-30，原页面验收待执行）
 
 当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，覆盖原有20页、30组操作；页面数量不是验收完成量。最终入口继续使用原 `index.html -> main.tsx -> App.tsx`。首页、目录、草稿、登录及账户菜单已有PG适配源码；未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
 
-本批允许范围内纯回归1144项通过；本批仅测试/工作流源码，src/shared/API/SQL与472de31字节不变，复用其TypeScript6/5与实际普通102资源（PG匹配0）/原PG104资源构建。Native源码收集359文件，完整069源码393文件/53项SQL输入，仅做来源核对。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`；以上结果不能替代真实原页验收。
+当前候选纯回归1421/1421通过，前端TypeScript6/API TypeScript5通过；原入口实际普通构建102资源且PG匹配0，显式原PG构建104资源。Native源码收集367文件，完整069源码401文件/原53项SQL输入，仅做来源核对。新增075 SQL仅为可选源码，未本地执行，未纳入默认完整069安装。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`；以上结果不能替代真实原页验收。
 
 已合流原团队共享页的业务Hook，保留原JSX、导航、布局和PB分支；写入及确认固定发送发起时员工ID，服务端先验证实际Cookie和owner，再在任何台账写入前比较。焦点恢复会先验证Cookie，即使旧读取或写回仍未返回也隔离旧账号。独立原页host/E2E复用fresh F08，包含创建、兑换、撤销、真实写后断线与原回执恢复、换账号迟到响应；Native代理保持8秒，全部PB/网络/身份及收费调用零门禁保留，安全成功截图仅写合成CI私有artifact。原页故事仍待执行。
 
