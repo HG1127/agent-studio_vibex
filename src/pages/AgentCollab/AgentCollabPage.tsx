@@ -1,4 +1,5 @@
 import {useEffect,useState,type FormEvent} from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import {Link} from "react-router-dom"
 import {AlertCircle,CheckCircle2,GitPullRequest,RefreshCw,ShieldCheck,UsersRound} from "lucide-react"
 import {SiteShell} from "@/components/site/SiteShell"
@@ -83,7 +84,7 @@ export default function AgentCollabPage(){
  const submitGrant=async(e:FormEvent)=>{
   e.preventDefault()
   if(!detail||detail.role!=="owner"||busy)return
-  if(!window.confirm("确认授权 "+email+" "+(role==="editor"?"提交方案修改建议":"查看方案业务字段")+
+  if(!await confirmInStudio("确认授权 "+email+" "+(role==="editor"?"提交方案修改建议":"查看方案业务字段")+
     "？不会开放模型密钥、工具或私有知识库；协作者不能直接发布。"))return
   setBusy(true);setError("");setNotice("")
   try{
@@ -96,7 +97,7 @@ export default function AgentCollabPage(){
   finally{setBusy(false)}
  }
  const revoke=async(grant:Grant)=>{
-  if(!detail||busy||!window.confirm("确认撤销 "+grant.name+" 的 Agent 协作权限？"))return
+  if(!detail||busy||!await confirmInStudio("确认撤销 "+grant.name+" 的 Agent 协作权限？"))return
   setBusy(true);setError("");setNotice("")
   try{
    await api("POST","/api/studio/agent-collab/grant",{
@@ -109,7 +110,7 @@ export default function AgentCollabPage(){
  const propose=async(e:FormEvent)=>{
   e.preventDefault()
   if(!detail||detail.role!=="editor"||busy)return
-  if(!window.confirm("确认提交 Agent 方案修改提案？这不会直接覆盖所有者的正式版本，也不会改变执行权限。"))return
+  if(!await confirmInStudio("确认提交 Agent 方案修改提案？这不会直接覆盖所有者的正式版本，也不会改变执行权限。"))return
   setBusy(true);setError("");setNotice("")
   try{
    await api("POST","/api/studio/agent-collab/propose",{
@@ -121,7 +122,7 @@ export default function AgentCollabPage(){
  }
  const review=async(proposal:Proposal,decision:"accept"|"reject")=>{
   if(!detail||detail.role!=="owner"||busy)return
-  if(!window.confirm(
+  if(!await confirmInStudio(
    decision==="accept"?
     "确认合并该协作者修改到正式 Agent 方案？系统会保留当前工具、模型、知识库与执行权限。":
     "确认拒绝该协作提案？"

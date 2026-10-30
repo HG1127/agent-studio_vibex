@@ -93,10 +93,12 @@ function App() {
         <Route path="/agent-create" element={<AgentCreateRoute />} />
         <Route path="/internal-templates" element={<InternalTemplatesRoute />} />
         <Route path="/agent-collaboration" element={<AgentCollaborationRoute />} />
+        <Route path="/account" element={<StaffRoute key="personal-account" accountOnly />} />
+        <Route path="/approvals" element={<ManagerRoute key="personal-delegations" personalOnly />} />
+        <Route path="/internal-overview" element={<InternalOverviewRoute />} />
         <Route element={<AdminGate />}>
-          <Route path="/internal-overview" element={<InternalOverviewRoute />} />
-          <Route path="/staff" element={<StaffRoute />} />
-          <Route path="/manager" element={<ManagerRoute />} />
+          <Route path="/staff" element={<StaffRoute key="team-members" />} />
+          <Route path="/manager" element={<ManagerRoute key="company-management" />} />
         </Route>
         <Route path="/agent-run" element={<AgentRunRoute />} />
         <Route path="/model-connections" element={<ModelConnectionsRoute />} />

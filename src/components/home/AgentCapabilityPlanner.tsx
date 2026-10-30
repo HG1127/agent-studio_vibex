@@ -8,8 +8,10 @@ import { addAgentCapability, bindAgentCapability, buildAgentCapabilityPlan, MAX_
   removeAgentCapability, restoreAgentCapability, updateAgentCapability,
   type CapabilityCandidate, type CapabilityKind, type CapabilityPlanRow,
   type CapabilityRequirementChanges, type RemovedAgentCapability } from "@/lib/agentCapabilityPlan"
-import { agentResourceSetupUrl, safeCapabilityId } from "@/lib/toolSearchPrivacy"
+import { agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { AgentToolAutoConnect } from "./AgentToolAutoConnect"
+import {resourceFocusCapability} from "@/lib/agentResourceFocus"
+import {toolConnectionTestRoute} from "@/lib/toolConnectionNavigation"
 
 type Props = {
   spec: AgentSpec
@@ -19,6 +21,8 @@ type Props = {
   marketTools: VerifiedMarketTool[]
   returnSpecId?: string
   editorContextKey?: string | number
+  focusCapabilityId?:string
+  focusRequestToken?:number
   active?: boolean
   notice: string
   onRematch: () => void
@@ -92,7 +96,7 @@ function CapabilityRequirementEditor({row, onApply, onCancel, onDelete}: {
 
 function CapabilityPlannerWorkspace(p: Props) {
   const [params] = useSearchParams()
-  const focusCapability = safeCapabilityId(params.get("focusCapability") || "")
+  const focusCapability=resourceFocusCapability(p.focusCapabilityId,params.get("spec"),p.returnSpecId||"",params.get("focusCapability"))
   const focused = useRef("")
   const workspaceRef = useRef<HTMLElement>(null)
   const [editingId, setEditingId] = useState("")
@@ -101,14 +105,24 @@ function CapabilityPlannerWorkspace(p: Props) {
   const rows = useMemo(() => buildAgentCapabilityPlan(p.spec, p.analysis, p.connections, p.marketTools),
     [p.spec, p.analysis, p.connections, p.marketTools])
   useEffect(() => {
-    if (p.active === false || !focusCapability || focused.current === focusCapability) return
+    if (p.active === false || !focusCapability) return
+    // The same ability can be located repeatedly. Include the per-click token
+    // and editor session to prevent stale focus across Agent switches.
+    const requestKey=String(p.editorContextKey??p.returnSpecId??"draft")+":"+
+      String(p.focusRequestToken??0)+":"+focusCapability
+    if(focused.current===requestKey)return
     const workspace = workspaceRef.current
     if (!workspace || !workspace.getClientRects().length || workspace.closest('[hidden], [inert], [aria-hidden="true"]')) return
     const card = workspace.querySelector<HTMLElement>(`[data-capability-id="${focusCapability}"]`)
-    focused.current = focusCapability
-    if (card) { card.scrollIntoView({block: "nearest"}); card.focus({preventScroll: true}) }
-    else setLocalNotice("原能力需求已不在当前清单中，请查看下面的当前配置。")
-  }, [focusCapability, p.active])
+    focused.current=requestKey
+    if(card){
+      card.scrollIntoView({block:"center",behavior:"smooth"})
+      card.focus({preventScroll:true})
+      setLocalNotice("")
+    }else{
+      setLocalNotice("此能力需求已不在当前草稿中，请检查是否删除或更改。")
+    }
+  }, [focusCapability,p.active,p.focusRequestToken,p.editorContextKey,p.returnSpecId])
   const roles = p.spec.roles || []
   const select = (need: CapabilityPlanRow, id: string) => {
     const next = bindAgentCapability(p.spec, need.id, id, p.analysis, p.connections, p.marketTools)
@@ -182,9 +196,12 @@ function CapabilityPlannerWorkspace(p: Props) {
       {rows.map(row => {
         const state = STATES[row.state]
         const execution = row.kind === "browser" || row.kind === "desktop"
-        const connectUrl = agentResourceSetupUrl(execution ? `/execution-connections?capability=${row.kind}` : "/tool-connections", p.returnSpecId || "", row.id)
+        const connectUrl = agentResourceSetupUrl(row.kind==="knowledge"?"/knowledge-bases":execution ? `/execution-connections?capability=${row.kind}` : "/tool-connections", p.returnSpecId || "", row.id)
         const marketUrl = agentResourceSetupUrl(row.searchTerm ? `/plugin-market?tool=${encodeURIComponent(row.searchTerm)}` : "/plugin-market", p.returnSpecId || "", row.id)
-        const httpTestUrl = agentResourceSetupUrl("/tool-connections", p.returnSpecId || "", row.id)
+        const httpTestUrl = agentResourceSetupUrl(toolConnectionTestRoute(p.connections,
+          row.candidates.filter(candidate=>candidate.source==="http")
+            .sort((a,b)=>Number(b.selected)-Number(a.selected)||Number(a.tested)-Number(b.tested))
+            .map(candidate=>candidate.id)), p.returnSpecId || "", row.id)
         const marketManageUrl = agentResourceSetupUrl("/plugin-market", p.returnSpecId || "", row.id)
         const mappedCandidates = row.candidates.filter(tool => !tool.needsMapping)
         const newCandidates = row.candidates.filter(tool => tool.needsMapping)
@@ -247,16 +264,37 @@ function CapabilityPlannerWorkspace(p: Props) {
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">请确认工具说明符合这项需求。匹配建议不代表授权，实际调用仍按运行审批执行。</p>
             <div className="mt-3 flex flex-wrap gap-2">{newCandidates.map(candidateButton)}</div>
           </details>}
-          {row.state === "needs_test" && <p className="mt-3 text-xs leading-relaxed text-amber-700 dark:text-amber-300">连接已经登记，请完成测试，并确认已选用和分配。选用工具不等于执行环境已经就绪。</p>}
+          {row.state === "needs_test" && <section aria-label={"检测能力连接："+row.title}
+            className="mt-3 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-3 dark:border-amber-950 dark:bg-amber-950/20">
+            <p className="w-full text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+              检测结果尚不足以证明该能力可执行。先在对应连接中真实试调，再回到此处重新核验、明确选用工具和负责角色。
+            </p>
+            {row.candidates.some(tool=>tool.source==="http")&&<Link to={httpTestUrl} target="_blank" rel="noopener noreferrer"
+              className="inline-flex min-h-9 items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+              打开 HTTP 工具检测 <ExternalLink className="h-3.5 w-3.5"/>
+            </Link>}
+            {row.candidates.some(tool=>tool.source==="market")&&<Link to={marketManageUrl} target="_blank" rel="noopener noreferrer"
+              className="inline-flex min-h-9 items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+              查看 MCP 工具发现 <ExternalLink className="h-3.5 w-3.5"/>
+            </Link>}
+            {execution&&<Link to={connectUrl} target="_blank" rel="noopener noreferrer"
+              className="inline-flex min-h-9 items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+              检查{row.kind==="browser"?"浏览器":"电脑"}执行环境 <ExternalLink className="h-3.5 w-3.5"/>
+            </Link>}
+            <button type="button" onClick={p.onRematch}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/30 bg-background px-3 text-xs font-semibold text-primary hover:bg-primary/5">
+              <RefreshCw className="h-3.5 w-3.5"/>测试完成后重新核验
+            </button>
+          </section>}
           {row.state === "missing" && <div className="mt-3 flex flex-wrap items-center gap-3">
             <Link to={marketUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-primary hover:underline">
               <Search className="h-3.5 w-3.5"/>寻找市场插件<ExternalLink className="h-3 w-3"/>
             </Link>
             <Link to={connectUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-primary hover:underline">
-              {execution ? <Monitor className="h-3.5 w-3.5"/> : <Plug className="h-3.5 w-3.5"/>}{execution ? "配置执行环境" : "自定义 API / MCP 接入"}
+              {execution ? <Monitor className="h-3.5 w-3.5"/> : <Plug className="h-3.5 w-3.5"/>}{execution ? "配置执行环境" : row.kind==="knowledge" ? "连接授权知识库" : "自定义 API / MCP 接入"}
             </Link>
           </div>}
-          {row.candidates.some(tool => tool.source !== "builtin") && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+          {row.state!=="needs_test"&&row.candidates.some(tool => tool.source !== "builtin") && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
             {row.candidates.some(tool => tool.source === "http") && <Link to={httpTestUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1 text-xs font-medium text-primary hover:underline">查看 / 测试连接<ExternalLink className="h-3 w-3"/></Link>}
             {row.candidates.some(tool => tool.source === "market") && <Link to={marketManageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1 text-xs font-medium text-primary hover:underline">管理 / 测试 MCP 连接<ExternalLink className="h-3 w-3"/></Link>}
           </div>}
@@ -264,6 +302,6 @@ function CapabilityPlannerWorkspace(p: Props) {
       })}
     </div>
     {missingAnalysis.length > 0 && <AgentToolAutoConnect analysis={discoveryAnalysis} returnSpecId={p.returnSpecId}/>}
-    <p className="text-xs leading-relaxed text-muted-foreground">“已选用”表示方案绑定；运行时仍会核验账号权限、工具健康和审批。接入页在新标签打开，原草稿保留在本标签；完成后回到这里点击“重新匹配工具”。</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">“已选用”只表示当前方案已绑定；实际调用仍需权限、健康状态和审批。接入/检测在新标签进行，原草稿不离开此处；完成后可在接入页通知当前 Agent 重新核验，最终仍需人工检查角色和保存方案。</p>
   </section>
 }

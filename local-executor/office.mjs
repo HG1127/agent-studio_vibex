@@ -32,7 +32,7 @@ async function processTable(bytes, input, report, signal) {
     })
   } finally { await worker.terminate() }
 }
-export function registerOffice(add, resolveFile, rootNames) {
+export function registerOffice(add, resolveFile, rootNames, writableRoots=rootNames) {
   const properties = { root: { type: 'string', enum: rootNames }, source_path: string(1000), sheet: string(), group_by: string(), amount_column: string(),
     decimal_places: { type: 'integer', minimum: 0, maximum: 6, default: 2 } }
   const schema = extra => ({ type: 'object', additionalProperties: false, properties: { ...properties, ...extra },
@@ -76,7 +76,7 @@ export function registerOffice(add, resolveFile, rootNames) {
   }
   add('office.table_summary', '读取授权目录的 XLSX/UTF-8 CSV，全表按列分组精确求和，返回源文件 SHA256、记录数、各组及合计。最多5000行/50组/2MiB；不运行公式，不按日期筛选。先获取此结果，再创建报告。',
     schema({}), (input, signal) => execute(input, false, signal))
-  add('office.create_report', '根据同一源表生成 summary.xlsx、report.docx、summary.json 到新的输出目录。expected_sha256 必须取刚返回的汇总结果；拒绝覆盖或源文件变更。统计标签 period 不筛选日期。',
-    schema({ expected_sha256: string(64), output_directory: string(1000), title: string(), period: string(), notes: { type: 'string', maxLength: 1200 } }),
+  if(writableRoots.length)add('office.create_report', '根据同一源表生成 summary.xlsx、report.docx、summary.json 到新的输出目录。expected_sha256 必须取刚返回的汇总结果；拒绝覆盖或源文件变更。统计标签 period 不筛选日期。',
+    {...schema({ expected_sha256: string(64), output_directory: string(1000), title: string(), period: string(), notes: { type: 'string', maxLength: 1200 } }),properties:{...properties,root:{type:'string',enum:writableRoots},expected_sha256:string(64),output_directory:string(1000),title:string(),period:string(),notes:{type:'string',maxLength:1200}}},
     (input, signal) => execute(input, true, signal))
 }

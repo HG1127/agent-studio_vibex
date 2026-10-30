@@ -15,6 +15,19 @@ export type AgentJourneyStatus = {
   canPublish: boolean
   complexAcceptance: ComplexAgentAcceptance
 }
+// Content validation is independent from saved-state validation, so the wizard
+// can validate once and save + advance without relaxing any readiness gate.
+export function agentPlanContentIssues(spec:AgentSpec|null,name:string):string[]{
+  if(!spec)return ["先描述需求并生成可编辑的 Agent 方案"]
+  const issues=agentRoleReadiness(spec)
+  if(!name.trim())issues.push("请填写 Agent 名称")
+  if(!spec.goal.trim())issues.push("请说明 Agent 的明确目标")
+  if(!spec.task_scope.trim())issues.push("请说明任务范围与边界")
+  if(!spec.deliverables.some(s=>s.trim()))issues.push("请至少填写一项具体交付物")
+  if(!spec.task_plan.some(s=>s.trim()))issues.push("请至少填写一个执行步骤")
+  if(!spec.done_criteria.some(s=>s.trim()))issues.push("请至少填写一项可验证的完成标准")
+  return issues
+}
 export function evaluateAgentJourney(args:{
   spec:AgentSpec|null
   specName:string
@@ -34,17 +47,9 @@ export function evaluateAgentJourney(args:{
   const planIssues:string[]=[]
   const resourceIssues:string[]=[]
   const qualityIssues:string[]=[]
-  if(!spec){
-    planIssues.push("先描述需求并生成可编辑的 Agent 方案")
-  }else{
-    planIssues.push(...agentRoleReadiness(spec))
+  planIssues.push(...agentPlanContentIssues(spec,specName))
+  if(spec){
     resourceIssues.push(...(args.capabilityIssues||[]))
-    if(!specName.trim())planIssues.push("请填写 Agent 名称")
-    if(!spec.goal.trim())planIssues.push("请说明 Agent 的明确目标")
-    if(!spec.task_scope.trim())planIssues.push("请说明任务范围与边界")
-    if(!spec.deliverables.some(s=>s.trim()))planIssues.push("请至少填写一项具体交付物")
-    if(!spec.task_plan.some(s=>s.trim()))planIssues.push("请至少填写一个执行步骤")
-    if(!spec.done_criteria.some(s=>s.trim()))planIssues.push("请至少填写一项可验证的完成标准")
     const unconnected=[...new Set(spec.tools.map(t=>t.trim()).filter(Boolean))]
       .filter(tool=>toolStatusOf(tool)==="pending")
     if(unconnected.length)resourceIssues.push("以下工具尚未连接或授权："+unconnected.slice(0,5).join("、"))

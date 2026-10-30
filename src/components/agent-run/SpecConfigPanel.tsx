@@ -102,7 +102,9 @@ export function SpecConfigPanel({
   const disconnected = specTools.filter(name => !builtinTools.some(t=>t.id===name) &&
     !toolConnected(name)).length
 
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  // The parent drawer is opened intentionally: show actual settings immediately.
+  // Do not force users to open a second nested accordion to fix a preflight gap.
+  const [settingsOpen, setSettingsOpen] = useState(true)
   const [section, setSection] = useState("resources")
   const modelLabel = customModels.find(option => option.value === model)?.label
   const selectedBuiltinDisabled = specTools.filter(name => builtinTools.some(tool => tool.id === name) && !enabledTools.includes(name)).length
@@ -183,7 +185,7 @@ export function SpecConfigPanel({
           <button type="button" onClick={() => setSettingsOpen(false)} aria-label="收起本次运行设置" className="rounded-lg p-2 text-muted-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X className="h-4 w-4" /></button>
         </div>
         <Tabs value={section} onValueChange={setSection} className="p-4 sm:p-5">
-          <TabsList aria-label="运行设置分类" className="h-auto max-w-full justify-start gap-1 overflow-x-auto">
+          <TabsList aria-label="运行设置分类" className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl p-1 sm:grid-cols-4">
             <TabsTrigger value="resources">模型与工具</TabsTrigger>
             <TabsTrigger value="completion">完成标准与确认</TabsTrigger>
             <TabsTrigger value="budget">执行预算</TabsTrigger>
@@ -218,7 +220,7 @@ export function SpecConfigPanel({
       </div>
       </TabsContent>
       <TabsContent value="resources" forceMount className="mt-4 data-[state=inactive]:hidden">
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)]">
+      <div className="grid min-w-0 items-start gap-4">
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-secondary/20 p-4">
         <label htmlFor="model-select" className="flex items-center gap-1.5 text-sm font-medium text-card-foreground">
           <Cpu className="h-4 w-4 text-primary" />
@@ -263,7 +265,7 @@ export function SpecConfigPanel({
       </div>
 
       <section id="run-tool-permissions" aria-label="工具与连接状态" className="min-w-0 rounded-xl border border-border bg-background p-4">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
           <Wrench className="h-4 w-4 shrink-0 text-primary"/>
           工具与连接状态
           <span className={`ml-auto text-right text-[11px] font-medium ${disconnected>0?"text-amber-700 dark:text-amber-400":"text-muted-foreground"}`}>

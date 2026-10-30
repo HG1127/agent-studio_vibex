@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ArrowRight, AlertTriangle, Loader2, RefreshCcw, Save, ShieldCheck } from "lucide-react"
 import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
 import { SpecEditorCard } from "@/components/home/SpecEditorCard"
+import {AgentResourceReminder} from "@/components/site/AgentResourceReminder"
+import {useAgentResourceReminder} from "@/lib/useAgentResourceReminder"
+import {EMPTY_AGENT_RESOURCE_FOCUS,requestAgentResourceFocus,resourceFocusForAgent} from "@/lib/agentResourceFocus"
 import { BUILTIN_TOOL_OPTIONS, toolConnectionStatus,
   type AgentSpec, type ConnectedToolOption, type ListField } from "@/pages/Home/presets"
 import type { SavedSpecRow } from "@/pages/Home/useHome"
@@ -13,7 +17,7 @@ import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToo
 import { safeAgentSpecId } from "@/lib/toolSearchPrivacy"
 import { resolveAgentToolRequirements } from "@/lib/agentToolMatcher"
 import { callLlmWithFallback } from "@/lib/llm"
-import { normalizeCapabilityRequirements, toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
+import { agentCapabilityRequirements, normalizeCapabilityRequirements, toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
 import { preserveRoleSkillBindings, sanitizeAgentRoles } from "@/lib/agentRoles"
 import { readQuickAgentDraft, saveQuickAgentDraft, clearQuickAgentDraft, type QuickAgentDraft } from "@/lib/quickAgentDraft"
 
@@ -58,6 +62,9 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   const [draftStorageError,setDraftStorageError]=useState(false)
   // Updated when an owner-scoped Agent is loaded, not read from mutable refs during render.
   const [editorSessionKey,setEditorSessionKey]=useState("")
+  const [resourceFocus,setResourceFocus]=useState(EMPTY_AGENT_RESOURCE_FOCUS)
+  const scopedResourceFocus=resourceFocusForAgent(resourceFocus,record?.id||"")
+  const {reminder:resourceReminder,dismissReminder:dismissResourceReminder}=useAgentResourceReminder(record?.id||"",draft,open&&!!record&&!pendingQuickDraft&&record.rh_user_id===ownerId)
   const revision=useRef(0)
   const loadSequence=useRef(0)
   const connectedLoadSequence=useRef(0)
@@ -126,9 +133,10 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     if(httpValid){
       freshHttp=httpData.items
         .filter((item:{name?:string;enabled?:boolean})=>item.enabled===true&&item.name)
-        .map((item:{name:string;description?:string;method?:string;status?:string})=>
+        .map((item:{id?:string;name:string;description?:string;method?:string;status?:string})=>
           ({name:item.name,description:typeof item.description==="string"?item.description:"",
-            method:item.method,status:typeof item.status==="string"?item.status:"unknown"}))
+            method:item.method,status:typeof item.status==="string"?item.status:"unknown",
+            id:safeAgentSpecId(item.id||"")||undefined}))
       setConnectedTools(freshHttp)
     }else setConnectedTools(previous=>previous.map(tool=>({...tool,status:"unknown"})))
     if(marketValid){
@@ -251,14 +259,21 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
   const matchTools=async()=>{
     const basis=revision.current
     const fresh=await refreshConnected()
-    if(fresh.stale||!fresh.verified||basis!==revision.current)return
+    if(fresh.stale)return {listsChecked:false,detail:"当前存在更新的连接刷新请求；请重新核对当前员工资源。"}
+    if(!fresh.verified)return {listsChecked:false,detail:"部分 HTTP/MCP 清单无法核验，没有将未知工具标记为可用。请检查后重试。"}
+    if(basis!==revision.current)return {listsChecked:false,detail:"核验期间当前草稿发生修改，已拒绝使用过期结果，未覆盖修改。"}
     const result=resolveAgentToolRequirements("",draft,fresh.http,fresh.market,draft.tools)
-    modified()
-    setDraft(prev=>({...prev,tools:[
-      ...new Set([...prev.tools,...result.safeAutoBindings].filter(Boolean)),
-    ]}))
-    setToolNotice(result.gaps.length? `已补充安全工具，仍有 ${result.gaps.length} 项能力需要你连接。`
-      :"已核对并补充所有当前可以直接匹配的安全工具。")
+    const added=result.safeAutoBindings.filter(id=>id&&!draft.tools.includes(id))
+    if(added.length){
+      modified()
+      setDraft(prev=>({...prev,tools:[...new Set([...prev.tools,...added])]}))
+    }
+    const detail=(added.length?`已从最新清单安全匹配 ${added.length} 项候选（仅草稿，未保存）。`:
+      "已重新读取当前员工连接清单，当前没有新增候选工具。")+
+      (result.gaps.length?`还有 ${result.gaps.length} 项能力待连接或人工确认。`:
+        "仍需检查具体工具健康、角色分配与完成标准。")
+    setToolNotice(detail)
+    return {listsChecked:true,detail}
   }
   const toggleKb=(id:string,on:boolean)=>{
     modified()
@@ -449,19 +464,19 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       setNotice("AI 修改建议已生成，请先核对预览，再应用到草稿。")
     }catch{setRevisionError("AI 修订结果格式无法核验，方案未被改动。")}
   }
-  const close=()=>{
+  const close=async()=>{
     if(dirty && !persistUnsavedDraft() &&
-      !window.confirm("未能暂存草稿。直接关闭将丢失本次未保存的改动，确定关闭吗？"))return
+      !await confirmInStudio("未能暂存草稿。直接关闭将丢失本次未保存的改动，确定关闭吗？"))return
     loadSequence.current++
     setSaving(false)
     setRevising(false)
     setRevisionError("")
     onClose()
   }
-  const changeAgent=(id:string)=>{
+  const changeAgent=async(id:string)=>{
     if(id===record?.id)return
     if(dirty && !persistUnsavedDraft() &&
-      !window.confirm("草稿暂存失败，切换将丢失修改。确定切换吗？"))return
+      !await confirmInStudio("草稿暂存失败，切换将丢失修改。确定切换吗？"))return
     void loadRecord(id)
   }
 
@@ -484,6 +499,12 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
       {dirty?<span className="text-xs font-medium text-amber-600">未保存</span>:
         <span className="inline-flex items-center gap-1 text-xs text-primary"><ShieldCheck className="h-3.5 w-3.5"/>服务器版本</span>}
     </div>
+    <AgentResourceReminder key={resourceReminder?.issuedAt||"empty"}
+      reminder={resourceReminder} onDismiss={dismissResourceReminder}
+      onLocate={()=>setResourceFocus(current=>requestAgentResourceFocus(current,record?.id||"",resourceReminder?.capabilityId||""))}
+      capabilityName={resourceReminder?.capabilityId?
+        agentCapabilityRequirements(draft).find(item=>item.id===resourceReminder.capabilityId)?.title:undefined}
+      onRecheck={()=>matchTools()} />
     {pendingQuickDraft && !loading && <section aria-label="恢复快捷编辑草稿"
       className="mb-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
       <h3 className="text-sm font-semibold">发现该 Agent 在本标签页有未提交的修改</h3>
@@ -520,6 +541,8 @@ export function SavedAgentQuickEditor({open,onClose,preferredSpecId=""}:Props){
     {!loading&&record&&!pendingQuickDraft&&<>
       <SpecEditorCard
         editorContextKey={editorSessionKey}
+        resourceFocusToken={scopedResourceFocus.token}
+        focusCapabilityId={scopedResourceFocus.token>0?scopedResourceFocus.capabilityId:undefined}
         spec={draft} specName={name} sourceMode={record.source==="template"?"template":"create"}
         onSpecChange={next=>{modified();setDraft(next)}}
         onSpecNameChange={value=>{setName(value);modified()}}

@@ -67,6 +67,28 @@ test("switching resource pages preserves only bounded setup identifiers",()=>{
   assert.equal(continueAgentResourceSetupUrl("/plugin-market?tool=browser",new URLSearchParams()),"/plugin-market?tool=browser")
 })
 
+test("five execution-resource steps preserve Agent context and exact view across pages",()=>{
+  const saved="abcdefghijklmno",capability="browser_need"
+  let link=agentResourceSetupUrl("/execution-connections?capability=browser",saved,capability)
+  for(const [path,view] of [
+    ["/tool-hub?view=devices","devices"],["/tool-hub?view=debug","debug"],
+    ["/tool-hub?view=activity","activity"],["/tool-hub?view=monitor","monitor"],
+  ]){
+    link=continueAgentResourceSetupUrl(path,new URL(link,"https://studio.example").searchParams)
+    const parsed=new URL(link,"https://studio.example")
+    assert.equal(parsed.pathname,"/tool-hub")
+    assert.equal(parsed.searchParams.get("view"),view)
+    assert.equal(parsed.searchParams.get("returnSpec"),saved)
+    assert.equal(parsed.searchParams.get("returnCapability"),capability)
+    assert.equal(parsed.searchParams.get("agentSetup"),"1")
+  }
+  assert.equal(agentResourceReturnContext(new URL(link,"https://studio.example").searchParams)
+    .savedAgentUrl,"/agent-create?spec=abcdefghijklmno&step=3&focusCapability=browser_need")
+  const ordinary=continueAgentResourceSetupUrl("/tool-hub?view=activity",
+    new URLSearchParams("prompt=secret&returnUrl=https%3A%2F%2Fevil.example"))
+  assert.equal(ordinary,"/tool-hub?view=activity")
+})
+
 test("invalid setup identifiers never become return targets or interpolated fragments",()=>{
   const link=agentResourceSetupUrl("https://evil.example/", "../admin?token=secret", "#malicious?value=secret")
   assert.equal(link,"/tool-connections?agentSetup=1")

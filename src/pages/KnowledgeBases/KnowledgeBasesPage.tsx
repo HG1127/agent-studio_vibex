@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react"
-import { Link } from "react-router-dom"
+import {confirmInStudio} from "@/lib/studioDialogs"
+import { Link,useSearchParams } from "react-router-dom"
+import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog'
+import {registerUnsavedWorkCheck} from '@/lib/unsavedNavigation'
+import {knowledgeView,selectedKnowledgeId,visibleKnowledgeDocuments,type KnowledgeView} from '@/lib/knowledgeWorkspace'
 import {
   AlertCircle, BookOpen, CheckCircle2, ChevronRight, FilePlus2, FileText,
   FolderOpen, Loader2, Pencil, Plus, RefreshCw, Search, ShieldCheck, Trash2,
   UploadCloud, BrainCircuit, DatabaseZap, RotateCcw, Zap,
 } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
+import {WorkspaceEmptyState} from '@/components/site/WorkspaceEmptyState'
 import { ReturnToAgentResources } from "@/components/site/ReturnToAgentResources"
+import {agentResourceReturnContext} from '@/lib/toolSearchPrivacy'
 import { KnowledgeSharePanel } from "@/components/knowledge/KnowledgeSharePanel"
 import { SharedSemanticStatusPanel } from "@/components/knowledge/SharedSemanticStatusPanel"
 import { redirectToRhLogin } from "@/lib/studioAuth"
@@ -28,8 +34,20 @@ const prettyDate = (ms: number) => new Date(ms).toLocaleString("zh-CN", { month:
 
 export default function KnowledgeBasesPage() {
   const [bases, setBases] = useState<KnowledgeBase[]>([])
-  const [selectedId, setSelectedId] = useState("")
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([])
+  const [params,setParams]=useSearchParams()
+  const returnContext=agentResourceReturnContext(params)
+  const requestedBase=params.get('base')||''
+  const selectedId=selectedKnowledgeId(bases,requestedBase)
+  const setSelectedId=(id:string)=>setParams(previous=>{const next=new URLSearchParams(previous);if(id)next.set('base',id);else next.delete('base');return next})
+  const [documentRows, setDocuments] = useState<KnowledgeDocument[]>([])
+  const [documentsBaseId,setDocumentsBaseId]=useState(''),[documentsLoading,setDocumentsLoading]=useState(false),[documentsError,setDocumentsError]=useState('')
+  const documents=documentsBaseId===selectedId?documentRows:[]
+  const selectedRef=useRef(selectedId),documentRequest=useRef(0),searchRequest=useRef(0),alive=useRef(true)
+  selectedRef.current=selectedId
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;documentRequest.current++;searchRequest.current++}},[])
+  const [baseQuery,setBaseQuery]=useState(''),[docQuery,setDocQuery]=useState('')
+  const [formOpen,setFormOpen]=useState(false)
+  const formBaseline=useRef({id:'',name:'',description:''})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -52,6 +70,7 @@ export default function KnowledgeBasesPage() {
   const [embeddingModelName, setEmbeddingModelName] = useState("")
   const [embeddingBusy, setEmbeddingBusy] = useState(false)
   const [embeddingSettingsLoading, setEmbeddingSettingsLoading] = useState(true)
+  const embeddingLoaded=useRef(false)
   const [pasteName, setPasteName] = useState("我的笔记.txt")
   const [pasteContent, setPasteContent] = useState("")
   const uploadRef = useRef<HTMLInputElement>(null)
@@ -59,6 +78,21 @@ export default function KnowledgeBasesPage() {
   const selectedRole = selectedBase?.access_role || "owner"
   const isOwner = selectedRole === "owner"
   const canEditDocs = selectedRole === "owner" || selectedRole === "editor"
+  const view=knowledgeView(params.get('view'),isOwner)
+  const changeView=(nextView:KnowledgeView)=>setParams(previous=>{const next=new URLSearchParams(previous);next.set('view',nextView);if(selectedId)next.set('base',selectedId);return next})
+  const visibleBases=bases.filter(item=>!baseQuery.trim()||(item.name+' '+item.description).toLocaleLowerCase().includes(baseQuery.trim().toLocaleLowerCase()))
+  const filteredDocuments=visibleKnowledgeDocuments(documents,docQuery)
+  const formDirty=baseName!==formBaseline.current.name||baseDescription!==formBaseline.current.description
+  const dirtyRef=useRef(false);dirtyRef.current=(formOpen&&formDirty)||Boolean(pasteContent.trim())
+  useEffect(()=>registerUnsavedWorkCheck(()=>dirtyRef.current),[])
+  const closeBaseForm=async()=>{if(busy)return;if(formDirty&&!await confirmInStudio('还有未保存的知识库资料，确认放弃本次编辑？'))return;setFormOpen(false);setBaseName('');setBaseDescription('');setEditing(false)}
+  const newBase=()=>{formBaseline.current={id:'',name:'',description:''};setBaseName('');setBaseDescription('');setEditing(false);setError('');setFormOpen(true)}
+  const chooseBase=async(id:string)=>{
+    if(id===selectedId||busy||uploading||embeddingBusy)return
+    if(pasteContent.trim()&&!await confirmInStudio('当前有尚未导入的文本资料。切换知识库会清空输入，确认继续？'))return
+    searchRequest.current++;setSearching(false);setHits([]);setSearched(false);setSearchCoverage(null);setRetrievalReport(null)
+    setPasteContent('');setDocQuery('');setSelectedId(id);setRetrievalMode('auto');setError('');setNotice('')
+  }
   const currentIndex = isOwner && embeddingStatus?.base_id === selectedId ? embeddingStatus : null
   const availableEmbeddingOptions = embeddingOptions.filter(item => item.enabled && item.provider === "openai")
   const indexedPercent = currentIndex?.total_chunks
@@ -68,13 +102,20 @@ export default function KnowledgeBasesPage() {
   const reloadBases = useCallback(async () => {
     const items = await getKnowledgeBases()
     setBases(items)
-    setSelectedId(prev => items.some(item => item.id === prev) ? prev : (items[0]?.id || ""))
+    // Keep explicit library/view context; unavailable IDs are not silently replaced.
   }, [])
 
   const reloadDocuments = useCallback(async (baseId: string) => {
-    if (!baseId) { setDocuments([]); return }
-    const data = await knowledgeApi<DocList>("/api/knowledge-bases/documents?base_id=" + encodeURIComponent(baseId))
-    setDocuments(data.items || [])
+    if (!baseId) return
+    const request=++documentRequest.current
+    if(selectedRef.current===baseId){setDocumentsLoading(true);setDocumentsError('')}
+    try{
+      const data=await knowledgeApi<DocList>('/api/knowledge-bases/documents?base_id='+encodeURIComponent(baseId))
+      if(!Array.isArray(data.items))throw Error('文档清单格式异常')
+      if(alive.current&&request===documentRequest.current&&selectedRef.current===baseId){setDocuments(data.items);setDocumentsBaseId(baseId)}
+    }catch(err){
+      if(alive.current&&request===documentRequest.current&&selectedRef.current===baseId){setDocuments([]);setDocumentsBaseId(baseId);setDocumentsError('无法读取本库文档，请重试；这不代表知识库没有资料。')}
+    }finally{if(alive.current&&request===documentRequest.current&&selectedRef.current===baseId)setDocumentsLoading(false)}
   }, [])
 
   useEffect(() => {
@@ -82,38 +123,39 @@ export default function KnowledgeBasesPage() {
     getKnowledgeBases().then(items => {
       if (!active) return
       setBases(items)
-      setSelectedId(items[0]?.id || "")
     }).catch(err => { if (active) setError(String(err.message || err)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
 
-  useEffect(() => {
-    let active = true
-    if (!selectedId) return
-    knowledgeApi<DocList>("/api/knowledge-bases/documents?base_id=" + encodeURIComponent(selectedId))
-      .then(data => { if (active) setDocuments(data.items || []) })
-      .catch(err => { if (active) setError(String(err.message || err)) })
-    return () => { active = false }
-  }, [selectedId])
+  useEffect(()=>{
+    documentRequest.current++;searchRequest.current++
+    setHits([]);setSearched(false);setSearching(false);setRetrievalReport(null);setSearchCoverage(null)
+    setDocumentsError('')
+    if(selectedId)void reloadDocuments(selectedId)
+    else {setDocuments([]);setDocumentsBaseId('');setDocumentsLoading(false)}
+  },[selectedId,reloadDocuments])
 
   // One employee-level Embedding provider is shared by the employee's own bases.
   // Credentials stay on the server in their existing model connection.
   useEffect(() => {
+    if((view!=='settings'&&view!=='search')||embeddingLoaded.current)return
     let active = true
+    setEmbeddingSettingsLoading(true)
     void Promise.all([
       knowledgeApi<EmbeddingSettings>("/api/knowledge-bases/semantic/settings"),
       knowledgeApi<{ items: ModelConnectionForEmbedding[] }>("/api/model-connections"),
     ]).then(([settings, connections]) => {
       if (!active) return
       setEmbeddingSettings(settings)
+      embeddingLoaded.current=true
       setEmbeddingConnectionId(settings.connection_id || "")
       setEmbeddingModelName(settings.model_name || "")
       setEmbeddingOptions(connections.items || [])
     }).catch(err => { if (active) setError("语义模型配置加载失败：" + String((err as Error).message || err)) })
       .finally(() => { if (active) setEmbeddingSettingsLoading(false) })
     return () => { active = false }
-  }, [])
+  }, [view])
 
   const reloadSemanticStatus = useCallback(async (baseId: string) => {
     if (!baseId || bases.find(base => base.id === baseId)?.access_role !== "owner") {
@@ -128,22 +170,22 @@ export default function KnowledgeBasesPage() {
   // Poll only while indexing is queued. Reload once when the selected base
   // changes. UI always filters the status by base_id to avoid stale results.
   useEffect(() => {
-    if (!selectedId || !isOwner) return
+    if (!selectedId || !isOwner || view!=='settings') return
     let active = true
     void knowledgeApi<EmbeddingStatus>(
       "/api/knowledge-bases/semantic/status?base_id=" + encodeURIComponent(selectedId)
     ).then(status => { if (active) setEmbeddingStatus(status) })
       .catch(err => { if (active) setError("索引状态读取失败：" + String((err as Error).message || err)) })
     return () => { active = false }
-  }, [selectedId, isOwner])
+  }, [selectedId, isOwner,view])
 
   useEffect(() => {
-    if (!selectedId || !isOwner || !currentIndex?.queued) return
+    if (!selectedId || !isOwner || view!=='settings' || !currentIndex?.queued) return
     const interval = window.setInterval(() => {
       void reloadSemanticStatus(selectedId).catch(() => undefined)
     }, 8000)
     return () => window.clearInterval(interval)
-  }, [selectedId, isOwner, currentIndex?.queued, reloadSemanticStatus])
+  }, [selectedId, isOwner, view, currentIndex?.queued, reloadSemanticStatus])
 
   const saveEmbedding = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -154,7 +196,7 @@ export default function KnowledgeBasesPage() {
       embeddingSettings.connection_id !== embeddingConnectionId ||
       embeddingSettings.model_name !== embeddingModelName.trim()
     )
-    if (replacing && !window.confirm(
+    if (replacing && !await confirmInStudio(
       "切换 Embedding 模型将清除并重建你所有知识库的语义向量，" +
       "可能产生新的模型费用。原文及关键词索引不变。确认继续？"
     )) return
@@ -178,7 +220,7 @@ export default function KnowledgeBasesPage() {
   }
 
   const disableEmbedding = async () => {
-    if (embeddingBusy || !window.confirm("确认关闭语义检索？你的个人知识库向量将被清除，原文和关键词索引保留。")) return
+    if (embeddingBusy || !await confirmInStudio("确认关闭语义检索？你的个人知识库向量将被清除，原文和关键词索引保留。")) return
     setEmbeddingBusy(true); setError(""); setNotice("")
     try {
       await knowledgeApi("/api/knowledge-bases/semantic/settings", "POST", { action: "disable" })
@@ -191,7 +233,7 @@ export default function KnowledgeBasesPage() {
   }
 
   const rebuildEmbedding = async () => {
-    if (!selectedId || embeddingBusy || !window.confirm(
+    if (!selectedId || embeddingBusy || !await confirmInStudio(
       "重新建立此知识库的全部向量？这将产生新的 Embedding 模型调用和可能的费用。")) return
     setEmbeddingBusy(true); setError(""); setNotice("")
     try {
@@ -222,25 +264,28 @@ export default function KnowledgeBasesPage() {
     try {
       const result = await knowledgeApi<{ id: string }>("/api/knowledge-bases/manage", "POST", {
         action: editing ? "update" : "create",
-        ...(editing ? { id: selectedId } : {}),
+        ...(editing ? { id: formBaseline.current.id } : {}),
         name: baseName.trim(), description: baseDescription.trim(),
       })
       await reloadBases()
-      if (!editing) { setDocuments([]); setHits([]); setSearched(false); setSelectedId(result.id) }
+      if (!editing) {
+        setDocuments([]);setHits([]);setSearched(false);setBaseQuery('');setDocQuery('')
+        setParams(previous=>{const next=new URLSearchParams(previous);next.set('base',result.id);next.set('view','documents');return next})
+      }
       setEditing(false); setBaseName(""); setBaseDescription("")
       setNotice(editing ? "知识库信息已更新" : "知识库已创建，可导入资料")
+      setFormOpen(false)
     } catch (err) { setError(String((err as Error).message || err)) }
     finally { setBusy(false) }
   }
 
   const startEdit = () => {
     if (!selectedBase) return
-    setEditing(true); setBaseName(selectedBase.name); setBaseDescription(selectedBase.description)
-    document.getElementById("kb-form")?.scrollIntoView({ behavior:"smooth", block:"start" })
-    window.requestAnimationFrame(()=>{document.getElementById("kb-name")?.focus({preventScroll:true})})
+    formBaseline.current={id:selectedBase.id,name:selectedBase.name,description:selectedBase.description}
+    setEditing(true); setBaseName(selectedBase.name); setBaseDescription(selectedBase.description);setError('');setFormOpen(true)
   }
   const deleteBase = async () => {
-    if (!selectedBase || busy || !window.confirm("确认删除知识库「" + selectedBase.name + "」及其中所有已索引内容？此操作不可撤销。")) return
+    if (!selectedBase || busy || !await confirmInStudio("确认删除知识库「" + selectedBase.name + "」及其中所有已索引内容？此操作不可撤销。")) return
     setBusy(true); setError(""); setNotice("")
     try {
       await knowledgeApi("/api/knowledge-bases/manage", "POST", { action: "delete", id: selectedBase.id })
@@ -295,7 +340,7 @@ export default function KnowledgeBasesPage() {
   }
 
   const removeDocument = async (doc: KnowledgeDocument) => {
-    if (!selectedId || busy || !window.confirm("确认删除「" + doc.filename + "」的所有索引片段？")) return
+    if (!selectedId || busy || !await confirmInStudio("确认删除「" + doc.filename + "」的所有索引片段？")) return
     setBusy(true); setError(""); setNotice("")
     try {
       await knowledgeApi("/api/knowledge-bases/documents", "POST", {
@@ -312,24 +357,26 @@ export default function KnowledgeBasesPage() {
   const search = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!selectedId || !query.trim() || searching) return
-    setSearching(true); setError(""); setSearched(false); setSearchCoverage(null)
+    const scope=selectedId,request=++searchRequest.current
+    setSearching(true); setError(""); setSearched(false); setSearchCoverage(null);setHits([])
     try {
       const result = await knowledgeApi<KnowledgeSearchResponse>("/api/knowledge-bases/search", "POST", {
         base_ids: [selectedId], query: query.trim(), limit: 6, mode: retrievalMode,
       })
-      setHits(result.items || [])
+      if(!alive.current||scope!==selectedRef.current||request!==searchRequest.current)return
+      setHits((result.items||[]).filter(hit=>hit.base_id===scope))
       setRetrievalReport(result)
       setSearchCoverage({ limited: Boolean(result.candidate_limit_reached), scanned: Number(result.scanned_candidates || 0) })
       setSearched(true)
-    } catch (err) { setError(String((err as Error).message || err)) }
-    finally { setSearching(false) }
+    } catch (err) { if(alive.current&&scope===selectedRef.current&&request===searchRequest.current)setError(String((err as Error).message || err)) }
+    finally { if(alive.current&&scope===selectedRef.current&&request===searchRequest.current)setSearching(false) }
   }
 
   return (
     <SiteShell>
       <div className="min-h-screen flex-1 bg-background text-foreground">
         <header className="border-b border-border bg-card px-4 py-5 sm:px-6">
-          <div className="flex w-full min-w-0 items-center justify-between gap-4">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="rounded-xl bg-primary/10 p-3 text-primary"><BookOpen className="h-6 w-6" /></span>
               <div>
@@ -337,10 +384,11 @@ export default function KnowledgeBasesPage() {
                 <p className="mt-1 text-xs text-muted-foreground">上传资料 · 自动分段 · 可溯源检索 · 绑定 Agent</p>
               </div>
             </div>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={newBase} disabled={busy||uploading} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"><Plus className="h-4 w-4"/>新建知识库</button>
             <button type="button" onClick={() => void Promise.all([reloadBases(), reloadDocuments(selectedId)]).catch(err => setError(String(err)))}
               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs hover:bg-secondary">
               <RefreshCw className="h-4 w-4" />刷新
-            </button>
+            </button></div>
           </div>
         </header>
         <main className="w-full min-w-0 space-y-5 p-3 sm:p-5 lg:p-7 2xl:p-10" data-studio-fluid-page="knowledge">
@@ -368,33 +416,24 @@ export default function KnowledgeBasesPage() {
           </div>}
           {notice && <p role="status" className="flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />{notice}</p>}
           <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-            <aside className="space-y-4">
-              <section id="kb-form" className="rounded-2xl border border-border bg-card p-4">
-                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Plus className="h-4 w-4 text-primary" />{editing ? "编辑知识库" : "新建知识库"}</h2>
-                <form onSubmit={submitBase} className="space-y-3">
-                  <label className="block text-xs text-muted-foreground">知识库名称
-                    <input id="kb-name" className={"mt-1.5 " + FIELD} maxLength={100} required value={baseName}
-                      onChange={e => setBaseName(e.target.value)} placeholder="例如：公司产品文档" />
-                  </label>
-                  <label className="block text-xs text-muted-foreground">简介
-                    <textarea className={"mt-1.5 " + FIELD} rows={2} maxLength={1000} value={baseDescription}
-                      onChange={e => setBaseDescription(e.target.value)} placeholder="描述资料用途和覆盖范围" />
-                  </label>
-                  <div className="flex gap-2">
-                    <button disabled={busy || !baseName.trim()} className="flex-1 rounded-xl bg-primary px-3 py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-50">
-                      {busy ? "保存中…" : editing ? "保存修改" : "创建知识库"}
-                    </button>
-                    {editing && <button type="button" onClick={() => { setEditing(false); setBaseName(""); setBaseDescription("") }}
-                      className="rounded-xl border border-border px-3 text-xs">取消</button>}
-                  </div>
+            <aside className="min-w-0 space-y-4 xl:sticky xl:top-16">
+              <Dialog open={formOpen} onOpenChange={open=>{if(!open)void closeBaseForm()}}><DialogContent className="max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-lg overflow-y-auto rounded-2xl">
+                <DialogHeader><DialogTitle>{editing?'编辑知识库':'新建知识库'}</DialogTitle><DialogDescription>填写资料名称和用途。创建不会自动上传文件、开启付费索引或更改共享权限。</DialogDescription></DialogHeader>
+                <form id="kb-form" onSubmit={submitBase} className="space-y-4">
+                  <label htmlFor="kb-name" className="block text-xs font-medium">知识库名称<input id="kb-name" aria-label="知识库名称" autoFocus className={'mt-2 '+FIELD} maxLength={100} required value={baseName} onChange={e=>setBaseName(e.target.value)} placeholder="例如：产品研究资料"/></label>
+                  <label htmlFor="kb-description" className="block text-xs font-medium">简介<textarea id="kb-description" aria-label="简介" className={'mt-2 '+FIELD} rows={3} maxLength={1000} value={baseDescription} onChange={e=>setBaseDescription(e.target.value)} placeholder="说明资料用途及范围"/></label>
+                  {error&&<p role="alert" className="text-xs text-destructive">{error}</p>}
+                  <div className="flex justify-end gap-2 border-t border-border pt-4"><button type="button" disabled={busy} onClick={()=>void closeBaseForm()} className="min-h-10 rounded-lg border border-border px-4 text-sm">取消</button><button disabled={busy||!baseName.trim()} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">{busy?'保存中…':editing?'保存修改':'创建知识库'}</button></div>
                 </form>
-              </section>
+              </DialogContent></Dialog>
               <section className="rounded-2xl border border-border bg-card p-4">
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><FolderOpen className="h-4 w-4 text-primary" />我的及团队知识库</h2>
+                <input aria-label="搜索知识库" value={baseQuery} onChange={e=>setBaseQuery(e.target.value)} className={FIELD+' mb-3'} placeholder="搜索名称或简介"/>
+                {!loading&&bases.length>0&&!visibleBases.length&&<p className="py-4 text-xs text-muted-foreground">没有匹配的知识库。<button type="button" onClick={()=>setBaseQuery('')} className="ml-1 text-primary">清除搜索</button></p>}
                 <div className="space-y-2">
                   {loading ? <p className="py-4 text-center text-xs text-muted-foreground">正在加载…</p> :
                     bases.length === 0 ? <p className="py-6 text-center text-xs text-muted-foreground">还没有知识库，先创建一个。</p> :
-                      bases.map(item => <button key={item.id} type="button" onClick={() => { setDocuments([]); setHits([]); setSearchCoverage(null); setSearched(false); setSelectedId(item.id); setRetrievalMode("auto"); setError(""); setNotice("") }}
+                      visibleBases.map(item => <button key={item.id} type="button" aria-pressed={item.id===selectedId} disabled={busy||uploading||embeddingBusy} onClick={()=>void chooseBase(item.id)}
                         className={"flex w-full items-center justify-between gap-2 rounded-xl border p-3 text-left transition " +
                           (item.id === selectedId ? "border-primary/40 bg-primary/5" : "border-border hover:bg-secondary")}>
                         <span className="min-w-0"><strong className="block truncate text-sm">{item.name}</strong>
@@ -407,11 +446,9 @@ export default function KnowledgeBasesPage() {
             </aside>
             <div className="min-w-0 space-y-5">
               {!selectedBase ?
-                <section className="rounded-2xl border border-dashed border-border bg-card px-6 py-20 text-center">
-                  <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
-                  <h2 className="mt-4 text-base font-semibold">开始构建专属知识库</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">建立资料库后，可以直接绑定到 AI Agent 并在运行时检索。</p>
-                </section> :
+                <WorkspaceEmptyState icon={BookOpen} title={loading?'正在读取知识库…':requestedBase?'指定知识库暂不可访问':'选择或创建知识库'}
+                  description={requestedBase?'该知识库可能已删除或权限已变化；不会自动显示另一个库的资料。':'选择左侧资料库查看文档；新建后可导入资料并测试引用。'}
+                  actions={!loading?<button type="button" onClick={()=>requestedBase?setSelectedId(''):newBase()} className="min-h-10 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground">{requestedBase?'查看可访问的知识库':'新建知识库'}</button>:undefined}/> :
                 <>
                   <section className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -422,11 +459,16 @@ export default function KnowledgeBasesPage() {
                       </div>
                       {isOwner && <div className="flex gap-2">
                         <button type="button" onClick={startEdit} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs hover:bg-secondary"><Pencil className="h-3.5 w-3.5" />编辑</button>
-                        <button type="button" onClick={() => void deleteBase()} disabled={busy}
-                          className="inline-flex items-center gap-1 rounded-lg border border-destructive/20 px-3 py-2 text-xs text-destructive hover:bg-destructive/5"><Trash2 className="h-3.5 w-3.5" />删除</button>
+                        {view==='settings'&&<button type="button" onClick={() => void deleteBase()} disabled={busy||uploading}
+                          className="inline-flex items-center gap-1 rounded-lg border border-destructive/20 px-3 py-2 text-xs text-destructive hover:bg-destructive/5"><Trash2 className="h-3.5 w-3.5" />删除知识库</button>}
                       </div>}
                     </div>
-                    <div className="mt-4 grid gap-3">
+                    <nav aria-label="知识库工作视图" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {([{id:'documents',label:'文档资料',icon:FileText},{id:'search',label:'检索测试',icon:Search},{id:'sharing',label:'成员权限',icon:ShieldCheck},...(isOwner?[{id:'settings',label:'语义设置',icon:BrainCircuit}]:[])] as const).map(item=><button type="button" key={item.id} aria-pressed={view===item.id} onClick={()=>changeView(item.id as KnowledgeView)} className={'flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-semibold transition '+(view===item.id?'border-primary/40 bg-primary/10 text-primary':'border-border text-muted-foreground hover:bg-secondary')}><item.icon className="h-4 w-4 shrink-0"/>{item.label}</button>)}
+                    </nav>
+                  </section>
+                  <section hidden={view!=='documents'} aria-label="知识资料导入" className="rounded-2xl border border-border bg-card p-5">
+                    <div className="grid gap-3">
                       <button type="button" disabled={uploading || !canEditDocs} onClick={() => uploadRef.current?.click()}
                         className="flex min-h-24 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-primary/35 bg-primary/5 px-3 py-4 text-center hover:bg-primary/10 disabled:opacity-50">
                         {uploading ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <UploadCloud className="h-6 w-6 text-primary" />}
@@ -449,9 +491,9 @@ export default function KnowledgeBasesPage() {
                       </div>
                     </details>}
                   </section>
-                  {isOwner && <KnowledgeSharePanel key={selectedId} baseId={selectedId} />}
-                  {!isOwner && <SharedSemanticStatusPanel key={selectedId} baseId={selectedId} />}
-                  {isOwner && <section className="rounded-2xl border border-border bg-card p-5">
+                  {view==='sharing'&&(isOwner?<KnowledgeSharePanel key={selectedId} baseId={selectedId}/>:<section aria-label="当前知识库访问权限" className="rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold">{selectedRole==='editor'?'你可以维护资料和检索':'你拥有只读检索权限'}</h3><p className="mt-2 text-sm text-muted-foreground">权限由 {selectedBase.owner_name||'知识库所有者'} 授予。共享名单、删除知识库及修改共享权限仅由所有者管理。</p></section>)}
+                  {!isOwner&&view==='search'&&<SharedSemanticStatusPanel key={selectedId} baseId={selectedId}/>}
+                  {isOwner && <section hidden={view!=='settings'} aria-label="知识库语义设置" className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -558,10 +600,11 @@ export default function KnowledgeBasesPage() {
                       ) : <p className="mt-3 text-xs text-muted-foreground">正在获取当前知识库的索引状态…</p>}
                     </div>
                   </section>}
-                  <section className="rounded-2xl border border-border bg-card p-5">
+                  <section hidden={view!=='documents'} aria-label="知识库文档列表" className="rounded-2xl border border-border bg-card p-5">
                     <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><FileText className="h-4 w-4 text-primary" />已导入资料 <span className="text-xs font-normal text-muted-foreground">({documents.length})</span></h3>
-                    {!documents.length ? <p className="rounded-xl border border-dashed border-border py-9 text-center text-xs text-muted-foreground">暂无文档，上传或粘贴资料以建立检索索引</p> :
-                      <div className="space-y-2">{documents.map(doc => <div key={doc.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3">
+                    <input aria-label="搜索本库文档" value={docQuery} onChange={e=>setDocQuery(e.target.value)} className={FIELD+' mb-3'} placeholder="按文件名筛选本库资料"/>
+                    {documentsLoading?<p role="status" className="py-6 text-xs text-muted-foreground">正在读取当前知识库的文档…</p>:documentsError?<div role="alert" className="rounded-xl border border-destructive/20 p-4 text-xs text-destructive">{documentsError}<button type="button" onClick={()=>void reloadDocuments(selectedId)} className="ml-2 min-h-9 font-semibold text-primary">重新读取文档</button></div>:!filteredDocuments.length ? <p className="rounded-xl border border-dashed border-border py-9 text-center text-xs text-muted-foreground">{docQuery?'当前筛选没有匹配文件，请更换关键词。':'暂无文档，上传或粘贴资料以建立检索索引'}</p> :
+                      <div className="space-y-2">{filteredDocuments.map(doc => <div key={doc.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{doc.filename}</p>
                           <p className="mt-1 text-[11px] text-muted-foreground">{doc.chunk_count} 片段 · {doc.size_chars.toLocaleString()} 字符 · {prettyDate(doc.created_ms)}</p>
@@ -570,17 +613,18 @@ export default function KnowledgeBasesPage() {
                           className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/5 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>}
                       </div>)}</div>}
                   </section>
-                  <section className="rounded-2xl border border-border bg-card p-5">
-                    <div className="flex items-center justify-between gap-2">
+                  <section hidden={view!=='search'} aria-label="知识库检索测试" className="rounded-2xl border border-border bg-card p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="flex items-center gap-2 text-sm font-semibold"><Search className="h-4 w-4 text-primary" />检索调试</h3>
                       <span className="text-[11px] text-muted-foreground">关键词匹配 · Embedding 语义召回 · 来源引用</span>
                     </div>
+                    {documentsError&&<p role="alert" className="mt-3 text-xs text-destructive">{documentsError}<button type="button" onClick={()=>void reloadDocuments(selectedId)} className="ml-2 text-primary">重试</button></p>}
                     <form onSubmit={event => void search(event)} className="mt-3 space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <input aria-label="知识库检索问题" className={FIELD}
                           value={query} onChange={e => setQuery(e.target.value)}
                           maxLength={300} placeholder="输入问题，例如：哪些公司的盈利能力持续改善？" />
-                        <button disabled={searching || !query.trim() || !documents.length}
+                        <button disabled={searching || documentsLoading || !!documentsError || !query.trim() || !documents.length}
                           className="shrink-0 rounded-xl bg-primary px-4 py-2.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
                           {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : "检索"}
                         </button>
@@ -640,7 +684,7 @@ export default function KnowledgeBasesPage() {
                   </section>
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-secondary/30 p-4 text-xs text-muted-foreground">
                     <span>下一步：在「助手方案」里选择知识库并启用知识检索工具，让 Agent 运行时检索引用这些资料。</span>
-                    <Link to="/" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">前往助手设计 <ChevronRight className="h-3.5 w-3.5" /></Link>
+                    <Link to={returnContext.savedAgentUrl||'/agent-create'} className="inline-flex min-h-9 items-center gap-1 font-medium text-primary hover:underline">{returnContext.savedAgentUrl?'返回当前 Agent 选择知识库':'前往 Agent 设计'} <ChevronRight className="h-3.5 w-3.5" /></Link>
                   </div>
                 </>}
             </div>

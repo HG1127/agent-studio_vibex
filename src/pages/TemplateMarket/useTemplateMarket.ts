@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { useNavigate } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -325,10 +326,10 @@ export function useTemplateMarket() {
   const runMineAction = useCallback(
     async (row: MyPublishRow, action: "unpublish" | "republish" | "delete") => {
       if(busyMineId)return
-      if(action==="delete" && !window.confirm(
+      if(action==="delete" && !await confirmInStudio(
         "永久删除模板「"+row.name+"」？不会删除他人已经复制的 Agent，但模板无法恢复。"
       ))return
-      if(action==="unpublish" && !window.confirm(
+      if(action==="unpublish" && !await confirmInStudio(
         "将模板「"+row.name+"」从市场下架？已复制的 Agent 不受影响。"
       ))return
       setBusyMineId(row.id)

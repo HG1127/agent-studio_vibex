@@ -71,6 +71,9 @@ type SpecEditorCardProps = {
   /** Changes only when switching Agent or starting a different draft session. */
   editorContextKey?: string | number
   focus?: "all" | "plan" | "resources"
+  /** One-shot request to display the resource tab; clicking another tab clears this request. */
+  resourceFocusToken?: number
+  focusCapabilityId?: string
   onClear: () => void
   showClear?: boolean
   compactActions?: boolean
@@ -115,6 +118,7 @@ function ListRows({ field, items, numbered, onChange, onAdd, onRemove, renderSuf
           )}
           <Input
             value={item}
+            aria-label={(field==="deliverables"?"交付物":field==="task_plan"?"执行步骤":field==="done_criteria"?"完成标准":"条目")+" "+(index+1)}
             onChange={(e) => onChange(field, index, e.target.value)}
             className="h-9 rounded-lg border-border bg-card text-sm focus-visible:ring-primary"
           />
@@ -306,6 +310,7 @@ function ToolPickerBlock({
 
 export function SpecEditorCard(p: SpecEditorCardProps) {
   const [selectedTab, setSelectedTab] = useState("goal")
+  const [acknowledgedFocusToken,setAcknowledgedFocusToken]=useState(0)
   const tabId = useId()
   const editorContextKey = p.editorContextKey ?? p.savedSpecId ?? "draft"
   const tabs = [
@@ -314,8 +319,13 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
     {id:"resources",label:"工具与资料",icon:Wrench},
     {id:"criteria",label:"完成标准",icon:Flag},
   ]
-  const activeTab = p.focus === "resources" ? "resources" :
-    tabs.some(tab=>tab.id===selectedTab) ? selectedTab : "goal"
+  const activeTab = p.focus === "resources" ||
+    (Boolean(p.resourceFocusToken) && p.resourceFocusToken!==acknowledgedFocusToken) ?
+    "resources" : tabs.some(tab=>tab.id===selectedTab) ? selectedTab : "goal"
+  const chooseTab=(id:string)=>{
+    setSelectedTab(id)
+    setAcknowledgedFocusToken(p.resourceFocusToken||0)
+  }
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/25 px-4 py-4 sm:px-6">
@@ -348,13 +358,13 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
         {tabs.map((tab,index)=><button key={tab.id} type="button" role="tab"
           id={`${tabId}-tab-${tab.id}`} aria-controls={`${tabId}-panel-${tab.id}`}
           aria-selected={activeTab===tab.id} tabIndex={activeTab===tab.id?0:-1}
-          onClick={()=>setSelectedTab(tab.id)}
+          onClick={()=>chooseTab(tab.id)}
           onKeyDown={event=>{
             if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return
             event.preventDefault()
             const next=event.key==="Home"?0:event.key==="End"?tabs.length-1:
               (index+(event.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length
-            setSelectedTab(tabs[next].id)
+            chooseTab(tabs[next].id)
             document.getElementById(`${tabId}-tab-${tabs[next].id}`)?.focus()
           }}
           className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition sm:text-sm ${activeTab===tab.id?"bg-primary/10 text-primary":"text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
@@ -370,6 +380,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           <Textarea
             rows={4}
             value={p.spec.goal}
+            aria-label="Agent 目标"
             onChange={(e) => p.onTextChange("goal", e.target.value)}
             className="resize-none rounded-lg border-border bg-card text-sm focus-visible:ring-primary"
           />
@@ -378,6 +389,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           <Textarea
             rows={3}
             value={p.spec.task_scope}
+            aria-label="任务范围"
             onChange={(e) => p.onTextChange("task_scope", e.target.value)}
             className="resize-none rounded-lg border-border bg-card text-sm focus-visible:ring-primary"
           />
@@ -400,9 +412,11 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
           className={activeTab === "resources" ? "grid min-w-0 gap-4 p-4 sm:p-6 xl:grid-cols-2" : "hidden"}>
         <AgentCapabilityPlanner spec={p.spec} onChange={p.onSpecChange}
           editorContextKey={editorContextKey}
+          focusRequestToken={p.resourceFocusToken}
           active={activeTab === "resources"}
           analysis={p.toolAnalysis} connections={p.connectedTools} marketTools={p.connectedMarketTools}
           returnSpecId={p.savedSpecId} notice={p.toolMatchNotice}
+          focusCapabilityId={p.focusCapabilityId}
           onRematch={p.onRematchTools}/>
         <SectionBlock title="手动选择工具" icon={<Wrench className="h-4 w-4" />}>
           <details>

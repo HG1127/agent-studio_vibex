@@ -18,8 +18,15 @@ export function localDeviceSupports(spec: AgentSpec, need: AgentCapabilityRequir
           : !responsible.some(role => role.tools.includes('local_computer')))) return false
   } else if (need.role_ids.length) return false
   const has = (...tools: string[]) => tools.every(tool => names.has(tool))
-  if (need.kind === 'browser') return has('browser.browser_navigate', 'browser.browser_snapshot',
-    'browser.browser_take_screenshot') && (need.access === 'read' || has('browser.browser_click', 'browser.browser_type'))
+  if (need.kind === 'browser') {
+    // DOM/text browsing does not require screenshot permission. Visual tasks
+    // must explicitly have screenshot support; role grants above still apply.
+    const visual = /截图|视觉|图像|画面|screenshot|\bvisual\b|\bvision\b|\bimage\b/i.test(
+      [need.title,need.purpose,...(need.search_terms||[]),...(need.suggested_tool_ids||[])].join(' '))
+    return has('browser.browser_navigate','browser.browser_snapshot') &&
+      (!visual || has('browser.browser_take_screenshot')) &&
+      (need.access === 'read' || has('browser.browser_click','browser.browser_type'))
+  }
   if (need.kind !== 'desktop') return false
   const description = need.title + ' ' + need.purpose
   const files = /文件|目录|\bfiles?\b|directory/i.test(description)

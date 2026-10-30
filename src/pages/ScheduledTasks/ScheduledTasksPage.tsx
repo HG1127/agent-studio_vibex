@@ -1,228 +1,67 @@
-import { Link } from "react-router-dom"
-import {
-  Activity, AlertCircle, CalendarClock, CheckCircle2, ChevronRight,
-  Clock3, History, Pause, Pencil, Play, RefreshCw, ShieldCheck,
-  Trash2, X, Zap,
-} from "lucide-react"
-import { SiteShell } from "@/components/site/SiteShell"
-import { RunTraceCard } from "@/components/run-detail/RunTraceCard"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { redirectToRhLogin } from "@/lib/studioAuth"
-import { scheduleDescription } from "@/lib/scheduleTime.js"
-import { formatScheduledDate, scheduleHistoryLabel } from "./types"
-import { ScheduleEditor } from "./ScheduleEditor"
-import { useScheduledTasks } from "./useScheduledTasks"
-
-export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
-  const shown = p.items.filter(x=>p.filter==="all"||(p.filter==="active"?x.enabled:!x.enabled))
-  const entries = p.history.filter(x=>!p.historyFilter||x.schedule_id===p.historyFilter)
-  const activeCount = p.items.filter(x=>x.enabled).length
-  return <SiteShell>
-    <div className="min-h-screen flex-1 bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/90 px-4 py-4 backdrop-blur">
-        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-primary/10 p-2.5 text-primary"><CalendarClock className="h-5 w-5"/></span>
-            <div><h1 className="text-lg font-semibold">定时任务</h1>
-              <p className="text-xs text-muted-foreground">Agent / 工作流自动运行 · 可编辑的周期计划</p>
-            </div>
+import {Link} from 'react-router-dom'
+import {AlertCircle,CalendarClock,CheckCircle2,ChevronLeft,ChevronRight,Clock3,Copy,History,Pause,Pencil,Play,Plus,RefreshCw,Search,ShieldCheck,Trash2,X} from 'lucide-react'
+import {SiteShell} from '@/components/site/SiteShell'
+import {RunTraceCard} from '@/components/run-detail/RunTraceCard'
+import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog'
+import {scheduleDescription} from '@/lib/scheduleTime.js'
+import {scheduleState} from '@/lib/scheduleWorkspace'
+import {formatScheduledDate,scheduleHistoryLabel} from './types'
+import {ScheduleEditor} from './ScheduleEditor'
+import type {useScheduledTasks} from './useScheduledTasks'
+const secondary='inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-medium transition hover:bg-secondary disabled:opacity-40'
+const primary='inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40'
+const stateLabel={active:'已启用',paused:'已暂停',completed:'单次已结束'}
+export function ScheduledTasksPage(p:ReturnType<typeof useScheduledTasks>){
+  const selected=p.items.find(t=>t.id===p.historyFilter)
+  return <SiteShell><main data-studio-fluid-page="schedules" className="min-w-0 w-full space-y-5 px-4 pb-12 pt-6 lg:px-8 2xl:px-10">
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
+      <div className="flex min-w-0 items-start gap-3"><span className="rounded-xl bg-primary/10 p-3 text-primary"><CalendarClock className="h-6 w-6"/></span><div className="min-w-0"><p className="text-xs font-semibold text-primary">运行与验收 / 定时任务</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">定时任务</h1><p className="mt-2 text-sm text-muted-foreground">管理计划、核对下一次执行，并查看每次任务的真实结果。</p></div></div>
+      <div className="flex flex-wrap gap-2"><button type="button" className={primary} disabled={!!p.busyId} onClick={p.newPlan}><Plus className="h-4 w-4"/>新建计划</button><button type="button" className={secondary} disabled={p.refreshing} onClick={()=>void p.refresh()}><RefreshCw className={'h-4 w-4 '+(p.refreshing?'animate-spin':'')}/>刷新</button></div>
+    </header>
+    <nav aria-label="定时任务工作视图" className="grid max-w-xl grid-cols-2 gap-2 rounded-xl bg-secondary/40 p-1">
+      <button type="button" aria-pressed={p.view==='plans'} onClick={p.showPlans} className={secondary+(p.view==='plans'?' border-primary/30 bg-primary/5 text-primary':' border-transparent')}><CalendarClock className="h-4 w-4"/>我的计划</button>
+      <button type="button" aria-pressed={p.view==='history'} onClick={()=>p.showHistory()} className={secondary+(p.view==='history'?' border-primary/30 bg-primary/5 text-primary':' border-transparent')}><History className="h-4 w-4"/>执行历史</button>
+    </nav>
+    {p.workerAlive!==true&&<div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-secondary/30 p-4 text-xs leading-5"><span><strong>{p.workerAlive===false?'后台执行器未在线':'后台执行器状态尚未确认'}。</strong>可保存计划，但不能据此认定会准时运行。</span><Link to="/tool-hub?view=monitor" className="font-semibold text-primary hover:underline">查看运行监控 →</Link></div>}
+    {p.loadError&&<div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">{p.loadError}<button type="button" className="ml-3 min-h-9 underline" onClick={()=>void p.refresh()}>重新读取</button></div>}
+    {p.error&&!p.editorOpen&&<div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive"><span className="flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0"/>{p.error}</span><button type="button" aria-label="关闭错误提示" onClick={()=>p.setError('')}><X className="h-4 w-4"/></button></div>}
+    {p.notice&&<p role="status" className="flex items-start gap-2 rounded-xl border border-border bg-card p-3 text-sm"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary"/>{p.notice}</p>}
+    {p.view==='plans'?<section aria-label="定时计划列表" className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">我的计划 <span className="text-xs font-normal text-muted-foreground">{p.items.length} 项 · 每个账号最多 100 项</span></h2><p className="text-xs text-muted-foreground">新建、编辑按需打开；复制不会直接启用</p></div>
+      <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_170px_160px]">
+        <label className="flex min-w-0 items-center gap-2 rounded-xl border border-input bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground"/><input aria-label="搜索定时计划" value={p.query} onChange={e=>p.changeQuery({q:e.target.value,page:1})} placeholder="搜索计划名称或任务内容" className="min-h-11 min-w-0 flex-1 bg-transparent text-sm outline-none" maxLength={150}/></label>
+        <select aria-label="筛选计划状态" className="min-h-11 min-w-0 rounded-xl border border-input bg-background px-3 text-sm" value={p.filter} onChange={e=>p.changeQuery({status:e.target.value,page:1})}><option value="all">全部状态</option><option value="active">已启用</option><option value="paused">已暂停</option><option value="completed">单次已结束</option></select>
+        <select aria-label="筛选执行类型" className="min-h-11 min-w-0 rounded-xl border border-input bg-background px-3 text-sm" value={p.kindFilter} onChange={e=>p.changeQuery({kind:e.target.value,page:1})}><option value="all">全部执行类型</option><option value="agent">AI Agent</option><option value="workflow">工作流</option></select>
+      </div>
+      {p.initialLoading?<p role="status" className="py-14 text-center text-sm text-muted-foreground">正在读取本人计划…</p>:!p.pageItems.length?<div className="mt-4 rounded-xl border border-dashed border-border py-14 text-center"><CalendarClock className="mx-auto h-8 w-8 text-muted-foreground"/><p className="mt-3 text-sm">{p.loadError?'暂时无法核实计划列表':p.query||p.filter!=='all'||p.kindFilter!=='all'?'没有符合筛选的计划':'还没有定时计划'}</p>{!p.loadError&&<button type="button" onClick={()=>p.query||p.filter!=='all'||p.kindFilter!=='all'?p.changeQuery({q:null,status:null,kind:null,page:1}):p.newPlan()} className="mt-3 min-h-9 text-xs font-semibold text-primary">{p.query||p.filter!=='all'||p.kindFilter!=='all'?'清除筛选':'创建第一个计划'}</button>}</div>:
+        <div className="mt-4 grid min-w-0 items-start gap-3 xl:grid-cols-2">{p.pageItems.map(task=><article key={task.id} aria-label={'计划：'+task.name} className="min-w-0 rounded-xl border border-border bg-background p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{task.name}</h3><span className={'shrink-0 rounded-full px-2.5 py-1 text-[11px] '+(task.enabled?'bg-primary/10 text-primary':'bg-secondary text-muted-foreground')}>{stateLabel[scheduleState(task)]}</span></div>
+          <p className="mt-2 break-words text-xs text-muted-foreground">{task.target_kind==='agent'?'Agent':'工作流'} · {scheduleDescription(task)}</p><p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-muted-foreground">{task.instruction}</p>
+          <div className="mt-3 rounded-lg bg-secondary/50 p-3 text-xs"><p className="flex flex-wrap items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-primary"/>{task.enabled?'下次触发':'未启用，不会自动运行'}{task.enabled&&<strong className="font-medium">{formatScheduledDate(task.next_at_ms)}</strong>}</p><p className="mt-1 text-[11px] text-muted-foreground">时间规则使用 {task.time_zone}；此处日期按浏览器时区显示</p></div>
+          <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={()=>p.showHistory(task.id)} className={secondary+' text-primary'}><History className="h-3.5 w-3.5"/>执行记录</button><button type="button" aria-label={'编辑定时计划：'+task.name} disabled={!!p.busyId||!!p.loadError} onClick={()=>p.edit(task)} className={secondary}><Pencil className="h-3.5 w-3.5"/>编辑</button><button type="button" aria-label={'复制定时计划：'+task.name} onClick={()=>p.duplicate(task)} disabled={!!p.busyId||!!p.loadError} className={secondary}><Copy className="h-3.5 w-3.5"/>复制</button>
+            <details className="relative"><summary className={secondary+' cursor-pointer list-none'} aria-label={'更多操作：'+task.name}>更多操作</summary><div className="absolute bottom-full right-0 z-10 mb-2 flex w-44 flex-col gap-1 rounded-xl border border-border bg-card p-2 shadow-lg">
+              <button type="button" disabled={!!p.busyId||!task.enabled||!!p.loadError} onClick={()=>void p.action(task,'run_now')} className={secondary}><Play className="h-3.5 w-3.5"/>立即运行一次</button>
+              <button type="button" disabled={!!p.busyId||!!p.loadError||scheduleState(task)==='completed'} onClick={()=>void p.action(task,'toggle')} className={secondary}><Pause className="h-3.5 w-3.5"/>{task.enabled?'暂停计划':'启用计划'}</button>
+              <button type="button" disabled={!!p.busyId||!!p.loadError} onClick={()=>void p.action(task,'delete')} className={secondary+' text-destructive'}><Trash2 className="h-3.5 w-3.5"/>删除计划</button>
+            </div></details>
           </div>
-          <button type="button" onClick={()=>void p.refresh()}
-            className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs hover:bg-secondary">
-            <RefreshCw className="h-4 w-4"/>刷新
-          </button>
-        </div>
-      </header>
-      <main className="w-full min-w-0 space-y-5 px-3 py-5 sm:px-5 lg:px-7 2xl:px-10">
-        <details className="rounded-xl border border-border bg-card p-3">
-          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
-            计划概览 · {activeCount} 项已启用
-          </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {[
-              {label:"全部计划",value:p.items.length,icon:CalendarClock},
-              {label:"已启用",value:activeCount,icon:Activity},
-              {label:"最近执行记录",value:p.history.length,icon:History},
-            ].map(m=><div key={m.label} className="rounded-xl bg-secondary/35 p-3">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{m.label}</span><m.icon className="h-4 w-4"/>
-              </div>
-              <p className="mt-2 text-xl font-semibold tabular-nums">{m.value}</p>
-            </div>)}
-          </div>
-        </details>
-        {p.workerAlive===false && <div className="rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-          <strong>后台执行器未在线。</strong> 可以保存计划，但自动触发需要在服务器上运行独立 Worker；
-          请前往 <Link to="/tool-hub" className="underline">调试监控</Link> 检查。
-        </div>}
-        {p.error && <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          <span className="flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0"/>{p.error}</span>
-          {p.error.includes("登录")?
-            <button type="button" onClick={redirectToRhLogin} className="shrink-0 underline">去登录</button>:
-            <button type="button" onClick={()=>p.setError("")} aria-label="关闭错误提示"><X className="h-4 w-4"/></button>}
-        </div>}
-        {p.notice && <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm">
-          <CheckCircle2 className="h-4 w-4 text-primary"/>{p.notice}
-        </div>}
-        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-          <ScheduleEditor {...p}/>
-          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div><h2 className="text-base font-semibold">我的计划</h2>
-                <p className="mt-1 text-xs text-muted-foreground">即时触发、启停、编辑和删除</p>
-              </div>
-              <div className="flex rounded-lg bg-secondary p-1">
-                {(["all","active","disabled"] as const).map(v=><button key={v} type="button"
-                  onClick={()=>p.setFilter(v)}
-                  className={p.filter===v?"rounded-md bg-background px-2.5 py-1.5 text-xs font-semibold shadow-sm":"rounded-md px-2.5 py-1.5 text-xs text-muted-foreground"}>
-                  {v==="all"?"全部":v==="active"?"启用中":"已停用"}
-                </button>)}
-              </div>
-            </div>
-            <div className="mt-4 space-y-3">
-              {p.initialLoading?<p className="py-12 text-center text-sm text-muted-foreground">正在加载计划…</p>:
-              !shown.length?<div className="rounded-xl border border-dashed border-border px-4 py-12 text-center">
-                <CalendarClock className="mx-auto mb-3 h-8 w-8 text-muted-foreground"/>
-                <p className="text-sm font-medium">暂无符合条件的任务</p>
-                <p className="mt-2 text-xs text-muted-foreground">先在左侧创建一个定时计划。</p>
-              </div>:
-              shown.map(task=><article key={task.id} className="rounded-xl border border-border bg-background p-4 hover:border-primary/30">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold">{task.name}</span>
-                      <span className={task.enabled?"rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary":"rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground"}>
-                        {task.enabled?"已启用":task.recurrence_kind==="once"&&task.next_at_ms===0?"已执行":"已暂停"}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      {task.target_kind==="agent"?"Agent":"工作流"} · {scheduleDescription(task)}
-                    </p>
-                  </div>
-                  <button type="button" onClick={()=>{
-                    p.setHistoryFilter(task.id)
-                    document.getElementById("scheduled-history")?.scrollIntoView({behavior:"smooth"})
-                  }} className="shrink-0 text-xs text-primary hover:underline">
-                    执行记录 <ChevronRight className="inline h-3 w-3"/>
-                  </button>
-                </div>
-                <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{task.instruction}</p>
-                <div className="mt-3 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5"/>
-                    下次：<strong className="font-medium text-card-foreground">{task.enabled?formatScheduledDate(task.next_at_ms):"—"}</strong>
-                  </span>
-                  {task.last_due_ms>0&&<span className="ml-3">上次触发：{formatScheduledDate(task.last_due_ms)}</span>}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <button type="button" disabled={Boolean(p.busyId)||!task.enabled} onClick={()=>void p.action(task,"run_now")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-1.5 text-xs text-primary hover:bg-primary/20 disabled:opacity-40">
-                    <Play className="h-3.5 w-3.5"/>立即运行
-                  </button>
-                  <button type="button"
-                    disabled={Boolean(p.busyId)||(!task.enabled&&task.recurrence_kind==="once"&&task.next_at_ms===0)}
-                    onClick={()=>void p.action(task,"toggle")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary disabled:opacity-40">
-                    {task.enabled?<Pause className="h-3.5 w-3.5"/>:<Zap className="h-3.5 w-3.5"/>}
-                    {task.enabled?"暂停":"启用"}
-                  </button>
-                  <button type="button" aria-label={"编辑定时计划："+task.name} onClick={()=>p.edit(task)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary">
-                    <Pencil className="h-3.5 w-3.5"/>编辑
-                  </button>
-                  <button type="button" aria-label={"删除定时计划："+task.name} disabled={Boolean(p.busyId)} onClick={()=>void p.action(task,"delete")}
-                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-destructive/20 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/5 disabled:opacity-40">
-                    <Trash2 className="h-3.5 w-3.5"/>删除
-                  </button>
-                </div>
-              </article>)}
-            </div>
-          </section>
-        </div>
-        <section id="scheduled-history" className="scroll-mt-24 rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="flex items-center gap-2 text-base font-semibold"><History className="h-4 w-4 text-primary"/>执行历史</h2>
-              <p className="mt-1 text-xs text-muted-foreground">记录定时触发、成功、失败、跳过和人工审批状态</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <select aria-label="筛选执行历史" className="rounded-lg border border-border bg-background px-3 py-2 text-xs"
-                value={p.historyFilter} onChange={e=>p.setHistoryFilter(e.target.value)}>
-                <option value="">全部计划</option>{p.items.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              {p.historyFilter&&<button type="button" onClick={()=>p.setHistoryFilter("")} className="text-xs text-primary hover:underline">清除</button>}
-            </div>
-          </div>
-          <div className="mt-4 space-y-2">
-            {!entries.length?<p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">暂无执行记录</p>:
-              entries.map(row=><div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 text-xs">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{p.items.find(t=>t.id===row.schedule_id)?.name||"已删除的计划"}</span>
-                    <span className={["failed","failed_start","invalid_schedule"].includes(row.status)?"rounded-full bg-destructive/10 px-2 py-0.5 text-destructive":"rounded-full bg-secondary px-2 py-0.5 text-muted-foreground"}>
-                      {scheduleHistoryLabel(row.status)}
-                    </span>
-                  </p>
-                  <p className="text-muted-foreground">计划触发：{formatScheduledDate(row.scheduled_for_ms)} · 发起尝试 {row.attempts} 次</p>
-                  {row.error&&<p className="break-words text-destructive">{row.error}</p>}
-                </div>
-                {row.status==="failed_start" && p.items.some(t=>t.id===row.schedule_id) &&
-                  <button type="button" disabled={Boolean(p.busyId)} onClick={()=>void p.retryFailedLaunch(row)}
-                    className="shrink-0 rounded-lg border border-primary/30 px-2.5 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-40">
-                    重试启动
-                  </button>}
-                {row.run_id && (
-                  <button type="button" onClick={() => void p.viewRun(row)}
-                    className="shrink-0 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10">
-                    查看执行结果
-                  </button>
-                )}
-                {row.run_id&&<button type="button" title={row.run_id}
-                  onClick={()=>void navigator.clipboard.writeText(row.run_id)
-                    .then(()=>p.setNotice("已复制运行 ID："+row.run_id)).catch(()=>p.setError("复制失败"))}
-                  className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary">
-                  复制运行 ID
-                </button>}
-              </div>)}
-          </div>
-        </section>
-        <Dialog open={Boolean(p.runPreview)} onOpenChange={open => { if (!open) p.setRunPreview(null) }}>
-          <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>定时任务执行结果 · {p.runPreview?.name || "历史计划"}</DialogTitle>
-              <DialogDescription>运行 ID：{p.runPreview?.id || "—"}</DialogDescription>
-            </DialogHeader>
-            {p.runPreview?.loading ? (
-              <p role="status" className="py-8 text-center text-sm text-muted-foreground">正在读取执行详情…</p>
-            ) : p.runPreview ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span>{p.runPreview.kind === "workflow" ? "工作流" : "Agent"}</span>
-                  <span>状态：{scheduleHistoryLabel(p.runPreview.status)}</span>
-                  <span>事件：{p.runPreview.events} 条</span>
-                  {p.runPreview.kind === "agent" && <Link to={"/run-detail?run=" + encodeURIComponent(p.runPreview.id)}
-                    className="ml-auto text-primary underline">打开完整 Agent 记录</Link>}
-                </div>
-                {p.runPreview.error && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{p.runPreview.error}</p>}
-                <section>
-                  <h3 className="mb-2 text-sm font-semibold">最终输出</h3>
-                  <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-secondary/40 p-4 font-sans text-sm leading-relaxed">
-                    {p.runPreview.result || "尚无最终输出。任务可能仍在执行或等待审批。"}
-                  </pre>
-                </section>
-                {(p.runPreview.kind === "agent" || p.runPreview.kind === "workflow") &&
-                  <RunTraceCard kind={p.runPreview.kind} runId={p.runPreview.id} />}
-                {!!p.runPreview.result && <button type="button"
-                  onClick={() => { if (p.runPreview) void navigator.clipboard.writeText(p.runPreview.result).then(() => p.setNotice("结果已复制")).catch(() => p.setError("复制失败")) }}
-                  className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-secondary">复制最终输出</button>}
-              </div>
-            ) : null}
-          </DialogContent>
-        </Dialog>
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
-          <ShieldCheck className="h-4 w-4 text-primary"/>
-          <span>任务按当前用户隔离；同一触发时段自动去重。第三方写操作请先进行人工验证。</span>
-          <Link to="/tool-hub" className="ml-auto text-primary hover:underline">查看后台状态 →</Link>
-        </div>
-      </main>
-    </div>
-  </SiteShell>
+        </article>)}</div>}
+      <footer className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground"><span>筛选到 {p.shown.length} 项 · 每页 10 项（账号内计划列表）</span><div className="flex items-center gap-2"><button type="button" className={secondary} disabled={p.page<=1} onClick={()=>p.changeQuery({page:p.page-1})}><ChevronLeft className="h-4 w-4"/>上一页</button><span>{p.page} / {p.listPages}</span><button type="button" className={secondary} disabled={p.page>=p.listPages} onClick={()=>p.changeQuery({page:p.page+1})}>下一页<ChevronRight className="h-4 w-4"/></button></div></footer>
+    </section>:<section aria-label="计划执行历史" className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h2 className="break-words text-base font-semibold">{p.historyFilter?(selected?.name||'指定计划的历史记录'):'全部计划执行历史'}</h2><p className="mt-1 text-xs text-muted-foreground">服务端按当前账号和所选计划查询，每页 20 条，不只过滤最近一页。</p></div><button type="button" className={secondary} onClick={p.showPlans}><ChevronLeft className="h-4 w-4"/>返回计划列表</button></div>
+      <label className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">选择计划<select aria-label="筛选执行历史" value={p.historyFilter} onChange={e=>p.showHistory(e.target.value)} className="min-h-10 min-w-0 max-w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">全部计划</option>{p.historyFilter&&!selected&&<option value={p.historyFilter}>已删除或不可访问的指定计划</option>}{p.items.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      {p.initialLoading?<p role="status" className="py-12 text-center text-sm text-muted-foreground">正在读取此计划的执行记录…</p>:p.loadError?<p className="py-12 text-center text-sm text-muted-foreground">执行记录尚未核实，请重新读取。</p>:!p.history.length?<p className="my-5 rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">此筛选下暂无执行记录；保存计划不代表已经执行。</p>:
+        <div className="mt-4 divide-y divide-border">{p.history.map(row=><article key={row.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-4 text-xs"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong>{p.items.find(t=>t.id===row.schedule_id)?.name||'已删除的计划'}</strong><span className={'rounded-full px-2 py-1 '+(['failed','failed_start','invalid_schedule'].includes(row.status)?'bg-destructive/10 text-destructive':'bg-secondary text-muted-foreground')}>{scheduleHistoryLabel(row.status)}</span></div><p className="mt-2 text-muted-foreground">计划触发：{formatScheduledDate(row.scheduled_for_ms)} · 发起尝试 {row.attempts} 次</p>{row.error&&<p className="mt-2 break-words text-destructive">{row.error}</p>}</div>
+          <div className="flex flex-wrap gap-2">{row.status==='failed_start'&&p.items.some(t=>t.id===row.schedule_id)&&<button type="button" className={secondary} disabled={!!p.busyId} onClick={()=>void p.retryFailedLaunch(row)}>核对后重试启动</button>}{row.run_id&&<button type="button" className={secondary+' text-primary'} onClick={()=>void p.viewRun(row)}>查看执行结果<ChevronRight className="h-3.5 w-3.5"/></button>}</div>
+        </article>)}</div>}
+      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground"><span>{p.initialLoading?'读取中…':'共 '+p.historyTotal+' 条记录'}</span><div className="flex items-center gap-2"><button type="button" className={secondary} disabled={p.initialLoading||p.historyPage<=1} onClick={()=>p.changeQuery({historyPage:p.historyPage-1})}><ChevronLeft className="h-4 w-4"/>上一页</button><span>{p.historyPage} / {p.historyPages}</span><button type="button" className={secondary} disabled={p.initialLoading||p.historyPage>=p.historyPages} onClick={()=>p.changeQuery({historyPage:p.historyPage+1})}>下一页<ChevronRight className="h-4 w-4"/></button></div></footer>
+    </section>}
+    <Dialog open={p.editorOpen} onOpenChange={open=>{if(!open)void p.closeEditor()}}><DialogContent className="flex max-h-[92dvh] w-[calc(100vw-1rem)] max-w-[900px] min-w-0 flex-col gap-0 overflow-hidden rounded-2xl p-0">
+      <DialogHeader className="shrink-0 border-b border-border px-5 py-5 pr-12 sm:px-7"><DialogTitle>{p.editingId?'编辑定时计划':'新建定时计划'}</DialogTitle><DialogDescription>明确任务和时间后保存。编辑保持原启停状态，只有明确启用才会按计划触发。</DialogDescription></DialogHeader><ScheduleEditor {...p}/>
+    </DialogContent></Dialog>
+    <Dialog open={Boolean(p.runPreview)} onOpenChange={open=>{if(!open)p.closeRun()}}><DialogContent className="max-h-[90dvh] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-2xl"><DialogHeader><DialogTitle>定时任务执行结果 · {p.runPreview?.name||'历史计划'}</DialogTitle><DialogDescription className="break-all">运行 ID：{p.runPreview?.id||'—'}</DialogDescription></DialogHeader>
+      {p.runPreview?.loading?<p role="status" className="py-8 text-center text-sm">正在读取实际运行详情…</p>:p.runPreview&&<div className="min-w-0 space-y-4"><div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground"><span>状态：{scheduleHistoryLabel(p.runPreview.status)}</span><span>事件：{p.runPreview.events} 条</span>{p.runPreview.kind==='agent'&&<Link to={'/agent-run?run='+encodeURIComponent(p.runPreview.id)} className="text-primary underline">打开所属 Agent 运行</Link>}</div>{p.runPreview.error&&<p role="alert" className="break-words rounded-xl bg-destructive/5 p-3 text-sm text-destructive">{p.runPreview.error}</p>}<section><h3 className="text-sm font-semibold">交付结果</h3><pre className="mt-2 max-h-[45dvh] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-secondary/30 p-4 font-sans text-sm leading-6">{p.runPreview.result||'尚无最终输出。任务可能尚未启动、仍在执行或等待审批。'}</pre></section>{!p.runPreview.error&&(p.runPreview.kind==='agent'||p.runPreview.kind==='workflow')&&<RunTraceCard kind={p.runPreview.kind} runId={p.runPreview.id}/>}</div>}
+    </DialogContent></Dialog>
+    <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0 text-primary"/>仅查看当前账号计划与执行历史。记录分页和权限检查在服务器完成；重试和敏感操作仍需明确确认。</p>
+  </main></SiteShell>
 }

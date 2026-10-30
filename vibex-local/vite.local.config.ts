@@ -1,4 +1,5 @@
 import path from 'node:path'
+import {existsSync} from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -22,7 +23,9 @@ const pgPilotProxy = {
   rewrite: (url: string) => url.replace(/^\/__pg(?=\/|$)/, ''),
 }
 
-export default defineConfig({
+export default defineConfig(({command,isPreview})=>({
+  // Dev-only loopback guidance: never ship the developer's disk path in dist.
+  define:{__STUDIO_LOCAL_CONNECTOR_DIRECTORY__:JSON.stringify(command==='serve'&&!isPreview&&['start-connect.cmd','connect.mjs','setup.mjs','profiles.mjs'].every(file=>existsSync(path.resolve(__dirname,'../local-executor',file)))?path.resolve(__dirname,'../local-executor'):'')},
   plugins: [react()],
   resolve: {
     alias: {
@@ -44,4 +47,4 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/__pb': pbProxy, '/__pg': pgPilotProxy },
   },
-})
+}))

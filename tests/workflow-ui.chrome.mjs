@@ -319,6 +319,27 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
         (lastError ? " (browser exception: "+String(lastError.message).slice(0,130)+")" : ""))
     }
 
+    // Application-branded confirmation helper. Only tab-close/reload still
+    // uses the browser's own native beforeunload dialog.
+    const respondStudioConfirm=async (approved,reason)=>{
+      await waitFor('document.querySelector(\'[data-studio-dialog="true"]\')!==null',
+        reason||"branded confirmation")
+      const action=await evaluate('(() => {'+
+        'const modal=document.querySelector(\'[data-studio-dialog="true"]\');'+
+        'const buttons=[...modal.querySelectorAll("button")];'+
+        'const texts=buttons.map(b=>b.textContent?.trim()||"");'+
+        'const approved='+JSON.stringify(Boolean(approved))+';'+
+        'const labels=approved?["放弃修改并离开","确认操作","确认继续","确认","知道了"]:'+
+          '["继续编辑","取消"];'+
+        'const button=buttons.find(b=>labels.includes(b.textContent?.trim()))||null;'+
+        'if(!button)return {clicked:false,texts};'+
+        'const label=button.textContent?.trim();button.click();return {clicked:true,label,texts}'+
+      '})()')
+      assert.equal(action?.clicked,true,"expected branded dialog action: "+JSON.stringify(action))
+      console.log("BRANDED_DIALOG_ACTION",JSON.stringify({reason,approved,label:action.label}))
+      await waitFor('document.querySelector(\'[data-studio-dialog="true"]\')===null',
+        "confirmation closed")
+    }
     // Test-only network metadata. Do not record auth values or request bodies.
     await command("Page.addScriptToEvaluateOnNewDocument",{source:`
       (() => {
@@ -364,7 +385,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       await waitFor('document.querySelectorAll(".react-flow__node").length >= 1',"authenticated editor")
     } catch (error) {
       const diagnostic=await evaluate(`(async () => {
-        const stored=localStorage.getItem("agent_studio_employee_auth")||""
+        const stored=(sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||""
         let payload=null
         try{payload=JSON.parse(stored)}catch{}
         const headers=payload?.token ? {Authorization:payload.token} : {}
@@ -390,10 +411,173 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       console.error("BROWSER_UI_SAFE_DIAGNOSTIC",JSON.stringify(diagnostic))
       throw error
     }
+
+
+    if(process.env.STUDIO_CHROME_UX_ONLY==="1"){
+      // Isolated real Chromium layout test, with a disposable employee account.
+      const route=async(path,selector,reason)=>{
+        await command("Page.navigate",{url:webOrigin+path})
+        await waitFor("document.querySelector("+JSON.stringify(selector)+")!==null",reason)
+      }
+      const viewport=async(width)=>{
+        await command("Emulation.setDeviceMetricsOverride",{
+          width,height:width<500?844:900,deviceScaleFactor:1,mobile:width<900
+        })
+        await sleep(250)
+      }
+      const layout=async(label)=>{
+        const m=await evaluate("({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})")
+        assert.ok(m.scroll<=m.width+4,label+" horizontal overflow: "+JSON.stringify(m))
+      }
+      await viewport(390)
+      await route("/execution-connections",'nav[aria-label="执行资源操作流程"]',"connections workflow")
+      assert.equal(await evaluate('document.querySelectorAll(\'nav[aria-label="执行资源操作流程"] a\').length'),5)
+      await layout("connections 390px")
+      await route("/tool-hub?view=devices","#local-devices-heading","local computer workspace")
+      assert.equal(await evaluate('document.querySelector(\'section[aria-label="工具调用记录"]\')===null'),true)
+      await layout("devices 390px")
+      await route("/tool-hub?view=activity",'section[aria-label="工具调用记录"]',"tool history workspace")
+      assert.equal(await evaluate('!!document.querySelector(\'select[aria-label="筛选调用状态"]\') && !!document.querySelector(\'select[aria-label="筛选调用来源"]\')'),true)
+      assert.equal(await evaluate('document.querySelector("#local-devices-heading")===null'),true)
+      await layout("invocation list 390px")
+      await route("/tool-hub?view=monitor",'nav[aria-label="执行资源操作流程"]',"monitor workspace")
+      await waitFor('document.body.textContent?.includes("执行引擎能力面板")',"worker monitor")
+      assert.equal(await evaluate('document.querySelector("#local-devices-heading")===null'),true)
+      await layout("monitor 390px")
+      await viewport(1780)
+      await route("/skills",'[data-studio-fluid-page="skills"]',"fluid skill center")
+      const skills=await evaluate('(() => {const e=document.querySelector(\'[data-studio-fluid-page="skills"]\');return {width:Math.round(e.getBoundingClientRect().width),viewport:innerWidth,columns:getComputedStyle(e.querySelector("div.grid")).gridTemplateColumns}})()')
+      assert.ok(skills.width>=skills.viewport-390,"Skills must fill work area: "+JSON.stringify(skills))
+      assert.ok(skills.columns.split(" ").length>=2,"Skills list and editor need separate columns")
+      await layout("skills desktop")
+      await viewport(1440)
+      await route("/agent-run",'button[aria-label="打开本次 Agent 配置"]',"run center")
+      assert.equal(await evaluate('document.querySelector("[data-run-settings-drawer]")===null'),true,
+        "no narrow persistent right panel")
+      await evaluate('document.querySelector(\'button[aria-label="打开本次 Agent 配置"]\').click()')
+      await waitFor('document.querySelector("[data-run-settings-modal] [role=dialog]")!==null',"side workspace")
+      const drawer=await evaluate('(() => {const e=document.querySelector("[data-run-settings-drawer]");return {width:Math.round(e.getBoundingClientRect().width),client:e.clientWidth,scroll:e.scrollWidth,modal:e.getAttribute("aria-modal")}})()')
+      assert.ok(drawer.width>=720 && drawer.width<=900,"config must be readable: "+JSON.stringify(drawer))
+      assert.ok(drawer.scroll<=drawer.client+4,"config drawer must not overflow")
+      assert.equal(drawer.modal,"true")
+      await waitFor('(() => {const tabs=document.querySelector(\'[aria-label="运行设置分类"]\');return !!tabs && tabs.getClientRects().length>0})()',
+        "run settings categories visible without opening a second nested accordion")
+      const tabs=await evaluate('(() => {const e=document.querySelector(\'[aria-label="运行设置分类"]\');return {client:e.clientWidth,scroll:e.scrollWidth,count:e.querySelectorAll("[role=tab]").length}})()')
+      assert.equal(tabs.count,4)
+      assert.ok(tabs.scroll<=tabs.client+4,"configuration tabs must not horizontally scroll")
+      await viewport(390)
+      const mobile=await evaluate('(() => {const e=document.querySelector("[data-run-settings-drawer]");return {width:Math.round(e.getBoundingClientRect().width),client:e.clientWidth,scroll:e.scrollWidth}})()')
+      assert.ok(mobile.width<=392&&mobile.scroll<=mobile.client+4,
+        "mobile settings should fit: "+JSON.stringify(mobile))
+      await evaluate('document.querySelector(\'[data-run-settings-drawer] button[aria-label="关闭配置面板"]\').click()')
+      await waitFor('document.querySelector("[data-run-settings-modal]")===null',"close settings")
+      console.log("STUDIO_UX_WORKSPACE_CHROME_PASS",JSON.stringify({
+        executionNavigation:5,stepsIsolated:true,logFilters:true,skillsFullWidth:true,
+        modalWidth:drawer.width,mobileWidth:mobile.width
+      }))
+      return
+    }
+    if(process.env.STUDIO_CHROME_QUALITY_ONLY==="1"){
+      // Isolated authenticated browser contract: quality editing must not
+      // depend on the full workflow or AI design model smoke.
+      const response=await fetch(pbOrigin+"/api/agent_specs",{
+        method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:credentials.token},
+        body:JSON.stringify({name:"隔离质量断言验收 Agent",
+          spec:{goal:"核验公司公开资料",task_scope:"仅使用公开或授权材料",
+            deliverables:["研究摘要"],tools:["calculate"],
+            task_plan:["检索","验证","汇总"],done_criteria:["来源可核验"]}}),
+      })
+      assert.ok(response.ok,"isolated Agent save: HTTP "+response.status)
+      const agent=await response.json()
+      assert.ok(agent.id,"saved Agent must have an id")
+      await command("Page.navigate",{url:webOrigin+"/agent-run?spec="+encodeURIComponent(agent.id)})
+      await waitFor('document.querySelector("#run-quick-spec")?.value==='+JSON.stringify(agent.id),
+        "run center must load exact owned Agent")
+      assert.equal(await evaluate('(() => {const tab=[...document.querySelectorAll("[role=tab]")].find(x=>x.textContent?.includes("验收条件"));if(!tab)return false;tab.focus();return document.activeElement===tab})()'),
+        true,"quality tab must accept keyboard focus")
+      await command("Input.dispatchKeyEvent",{type:"rawKeyDown",key:"Enter",code:"Enter",windowsVirtualKeyCode:13})
+      await command("Input.dispatchKeyEvent",{type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13})
+      const paneExpr='[...document.querySelectorAll("section[aria-label]")].find(x=>x.getAttribute("aria-label")==="可验证的运行质量断言")'
+      await waitFor('(() => {const tab=[...document.querySelectorAll("[role=tab]")].find(x=>x.textContent?.includes("验收条件"));const pane='+paneExpr+';return tab?.getAttribute("data-state")==="active" && !!pane && pane.getClientRects().length>0})()',
+        "keyboard activation must visibly reveal quality section")
+      assert.equal(await evaluate('(() => {const pane='+paneExpr+';const add=[...pane.querySelectorAll("button")].find(b=>b.textContent?.trim()==="添加断言");if(!add||add.disabled)return false;add.click();return true})()'),
+        true,"quality assertion can be added")
+      await waitFor('('+paneExpr+')?.querySelector("input[placeholder]")!==null',"editable assertion field")
+      assert.equal(await evaluate('(() => {const input=('+paneExpr+')?.querySelector("input[placeholder]");input?.focus();return document.activeElement===input})()'),
+        true,"visible quality assertion receives focus")
+      await command("Input.insertText",{text:"核心结论"})
+      await waitFor('(() => {const pane='+paneExpr+';const input=pane?.querySelector("input[placeholder]");const save=[...(pane?.querySelectorAll("button")||[])].find(b=>b.textContent?.includes("保存检查条件"));return input?.value==="核心结论" && !!save && !save.disabled})()',
+        "controlled quality field enables saving")
+      await evaluate('(() => {const pane='+paneExpr+';[...pane.querySelectorAll("button")].find(b=>b.textContent?.includes("保存检查条件"))?.click()})()')
+      await waitFor('document.body.textContent?.includes("质量断言已保存到 Agent 方案")',
+        "quality save acknowledged by real API")
+      const check=await fetch(pbOrigin+"/api/agent_specs/"+agent.id,{
+        headers:{Authorization:credentials.token},
+      })
+      assert.ok(check.ok,"owned Agent remains readable")
+      const saved=await check.json()
+      assert.deepEqual(saved.spec?.quality_checks,[{type:"contains",expected:"核心结论"}])
+      assert.equal(mockModelCalls.length,0,"quality setup must not call paid models")
+      console.log("CHROME_FOCUSED_QUALITY_TAB_PASS",JSON.stringify({
+        savedAgent:true,keyboardNavigation:true,ownerScopedSave:true,qualityChecks:1,modelCalls:0,
+      }))
+      return
+    }
+    if(process.env.STUDIO_CHROME_DIALOG_ONLY==="1"){
+      let nativeConfirms=0
+      client.onDialog=()=>{
+        nativeConfirms++
+        void command("Page.handleJavaScriptDialog",{accept:false})
+      }
+      const brand='document.querySelector(\'[role="dialog"][aria-label="当前修改尚未保存"]\')!==null'
+      const clickCancel='[...document.querySelectorAll(\'[role="dialog"] button\')].find(b=>b.textContent?.trim()==="继续编辑")?.click()'
+      const clickApprove='[...document.querySelectorAll(\'[role="dialog"] button\')].find(b=>b.textContent?.trim()==="放弃修改并离开")?.click()'
+      // Use a real SPA link: the history index must be available for Back.
+      await waitFor('document.querySelector(\'aside[aria-label="Agent Studio 主导航"] a[href="/agent-create"]\')!==null',"Agent creation navigation ready")
+      await evaluate('document.querySelector(\'aside[aria-label="Agent Studio 主导航"] a[href="/agent-create"]\').click()')
+      await waitFor('location.pathname==="/agent-create" && document.querySelector("#agent-requirement")!==null',"entered editor")
+      await evaluate('document.querySelector("#agent-requirement").focus()')
+      await command("Input.insertText",{text:"品牌化弹窗保留未保存草稿"})
+      await waitFor('document.querySelector("#agent-requirement")?.value==="品牌化弹窗保留未保存草稿"',"unsaved input")
+      await evaluate('document.querySelector(\'aside[aria-label="Agent Studio 主导航"] a[href="/"]\').click()')
+      await waitFor(brand,"branded unsaved warning on sidebar")
+      await waitFor('document.activeElement?.textContent?.includes("继续编辑")',"safe Cancel default focus")
+      await evaluate(clickCancel)
+      await waitFor('!('+brand+')',"cancel sidebar closes dialog")
+      assert.equal(await evaluate("location.pathname"),"/agent-create")
+      assert.equal(await evaluate('document.querySelector("#agent-requirement")?.value'),"品牌化弹窗保留未保存草稿")
+      await command("Input.dispatchKeyEvent",{type:"rawKeyDown",key:"k",code:"KeyK",windowsVirtualKeyCode:75,modifiers:2})
+      await command("Input.dispatchKeyEvent",{type:"keyUp",key:"k",code:"KeyK",windowsVirtualKeyCode:75})
+      await waitFor('document.querySelector(\'input[aria-label="搜索页面和功能"]\')!==null',"command palette")
+      await evaluate('document.querySelector(\'input[aria-label="搜索页面和功能"]\').focus()')
+      await command("Input.insertText",{text:"知识库"})
+      await waitFor('[...document.querySelectorAll(\'[role=listbox] [role=option]\')].some(x=>x.textContent?.includes("知识库"))',"command result")
+      await evaluate('[...document.querySelectorAll(\'[role=listbox] [role=option]\')].find(x=>x.textContent?.includes("知识库"))?.click()')
+      await waitFor(brand,"branded warning on command navigation")
+      await evaluate(clickCancel)
+      await waitFor('!('+brand+')',"command navigation canceled")
+      assert.equal(await evaluate("location.pathname"),"/agent-create")
+      await command("Input.dispatchKeyEvent",{type:"rawKeyDown",key:"Escape",code:"Escape",windowsVirtualKeyCode:27})
+      await command("Input.dispatchKeyEvent",{type:"keyUp",key:"Escape",code:"Escape",windowsVirtualKeyCode:27})
+      await evaluate("history.back()")
+      await waitFor(brand,"Back branded warning")
+      await evaluate(clickCancel)
+      await waitFor('!('+brand+') && location.pathname==="/agent-create"',"canceled Back stays")
+      assert.equal(await evaluate('document.querySelector("#agent-requirement")?.value'),"品牌化弹窗保留未保存草稿")
+      await evaluate("history.back()")
+      await waitFor(brand,"second Back branded warning")
+      await evaluate(clickApprove)
+      await waitFor('location.pathname==="/workflow-canvas"',"confirmed Back navigates once")
+      assert.equal(nativeConfirms,0,"SPA navigation may not trigger browser native confirmation")
+      console.log("STUDIO_BRANDED_DIALOG_SMOKE_PASS",JSON.stringify({
+        cancelledSidebar:true,cancelledCommand:true,cancelledBack:true,
+        approvedBack:true,safeDefaultFocus:true,nativeConfirmCount:nativeConfirms}))
+      return
+    }
     if(process.env.STUDIO_CHROME_NAV_ONLY==="1"){
       await command("Emulation.setDeviceMetricsOverride",{width:390,height:844,deviceScaleFactor:1,mobile:true})
-      await command("Page.navigate",{url:webOrigin+"/agent-create"})
-      await waitFor('document.querySelector("#agent-requirement")!==null',"standalone navigation input")
+      await waitFor('document.querySelector(\'nav[aria-label="移动端主要工作空间"] a[href="/model-connections"]\')!==null',"model route navigation available")
       const nav=(href)=>`(() => {
         const a=document.querySelector('nav[aria-label="移动端主要工作空间"] a[href="${href}"]')
         if(!a)return false
@@ -413,22 +597,21 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
         "input persisted in focus smoke")
       const before=await evaluate('({path:location.pathname,history:history.state,len:history.length})')
       let dialogs=0
-      client.onDialog=()=>{dialogs++;void command("Page.handleJavaScriptDialog",{accept:false})}
       const sidebar=await evaluate(nav("/"))
-      await sleep(180)
+      await respondStudioConfirm(false,"sidebar unsaved navigation")
+      dialogs++
       const cancelledClick=await evaluate('({path:location.pathname,history:history.state,len:history.length})')
       await evaluate("history.back()")
-      await sleep(850)
+      await respondStudioConfirm(false,"browser Back unsaved navigation")
+      dialogs++
       const after=await evaluate('({path:location.pathname,history:history.state,len:history.length,input:document.querySelector("#agent-requirement")?.value||"",content:document.body.textContent?.slice(0,180)})')
       console.log("FOCUSED_BROWSER_HISTORY_DIAGNOSTIC",JSON.stringify({before,sidebar,cancelledClick,dialogs,after}))
       assert.equal(after.path,"/agent-create","browser Back cancel should return to editor route")
       assert.equal(dialogs,2)
       assert.equal(after.input,"导航历史保护测试")
-      client.onDialog=()=>{
-        dialogs++
-        void command("Page.handleJavaScriptDialog",{accept:true})
-      }
       await evaluate("history.back()")
+      await respondStudioConfirm(true,"accept browser Back")
+      dialogs++
       await waitFor('location.pathname==="/model-connections"',
         "accepted Back should navigate away")
       await waitFor(`Object.keys(sessionStorage).some(k=>k.includes("agent-draft:v1:"))`,
@@ -448,6 +631,8 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       await waitFor('document.querySelector("#agent-requirement")?.value==="导航历史保护测试"',
         "restored draft matches the original input")
       assert.ok(await evaluate(nav("/")))
+      await respondStudioConfirm(true,"accept sidebar leave")
+      dialogs++
       await waitFor('location.pathname==="/"',"accept sidebar leave")
       await evaluate("history.back()")
       await waitFor('location.pathname==="/agent-create"',
@@ -463,11 +648,9 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       })()`))
       await waitFor('document.querySelector("#agent-requirement")?.value==="导航历史保护测试"',
         "restore draft before forward guard")
-      client.onDialog=()=>{
-        dialogs++
-        void command("Page.handleJavaScriptDialog",{accept:false})
-      }
       await evaluate("history.forward()")
+      await respondStudioConfirm(false,"cancel browser Forward")
+      dialogs++
       await waitFor('location.pathname==="/agent-create"',
         "cancelled Forward restores editor URL")
       await sleep(320)
@@ -490,10 +673,6 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
         code:"Backspace",windowsVirtualKeyCode:8})
       await waitFor('document.querySelector("#agent-requirement")?.value===""',
         "requirement cleared before workflow navigation")
-      client.onDialog=()=>{
-        dialogs++
-        void command("Page.handleJavaScriptDialog",{accept:true})
-      }
       await evaluate('document.querySelector(\'button[aria-label="打开全部导航"]\').click()')
       await waitFor(`document.querySelector('[role="dialog"][aria-label="全部工作空间与功能"]')!==null`,
         "mobile navigation drawer visible")
@@ -520,12 +699,9 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       await waitFor('document.body.textContent?.includes("未保存更改")',
         "workflow unsaved state displayed")
       let workflowCancelled=0
-      client.onDialog=()=>{
-        workflowCancelled++
-        void command("Page.handleJavaScriptDialog",{accept:false})
-      }
       await evaluate("history.back()")
-      await sleep(550)
+      await respondStudioConfirm(false,"workflow unsaved browser Back")
+      workflowCancelled++
       assert.equal(await evaluate("location.pathname"),"/workflow-canvas",
         "rejected Back must keep Workflow route")
       assert.equal(await evaluate('document.querySelectorAll(".react-flow__node").length'),3,
@@ -679,10 +855,6 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       return !!b && !b.disabled
     })()`,"authorized model node live-test enabled")
     let debugConfirmations=0
-    client.onDialog=()=>{
-      debugConfirmations++
-      void command("Page.handleJavaScriptDialog",{accept:true})
-    }
     assert.equal(await evaluate(`(() => {
       const b=[...document.querySelectorAll('[data-workflow-node-preview] button')]
         .find(x=>x.textContent?.includes("确认费用并试运行当前模型"))
@@ -690,10 +862,11 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       b.click()
       return true
     })()`),true)
+    await respondStudioConfirm(true,"explicit paid model node debug consent")
+    debugConfirmations++
     await waitFor(`document.querySelector('[data-workflow-node-preview]')
       ?.textContent?.includes("node-debug-local-mock-success")`,
       "approved model single-node debug result")
-    client.onDialog=null
     assert.equal(debugConfirmations,1,"live model debugging must require explicit cost confirmation")
     assert.equal(mockModelCalls.length,1,"one debug click must issue only one provider call")
     assert.equal(mockModelCalls[0].model,"mock-browser")
@@ -853,26 +1026,21 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       JSON.stringify({nodes:5,edges:countBeforeConnect+1,undoRedoAtomic:true}))
     // Workflow editing shares the unsaved-route guard with Agent creation.
     // A rejected workspace switch must preserve every node and connection.
-    const originalWorkflowDialog=client.onDialog
     let workflowNavigationRejects=0
-    client.onDialog=()=>{
-      workflowNavigationRejects++
-      void command("Page.handleJavaScriptDialog",{accept:false})
-    }
     assert.equal(await evaluate(`(() => {
       const a=document.querySelector('aside[aria-label="Agent Studio 主导航"] a[href="/"]')
       if(!a)return false
       a.click()
       return true
     })()`),true)
-    await sleep(145)
+    await respondStudioConfirm(false,"workflow unsaved sidebar navigation")
+    workflowNavigationRejects++
     assert.equal(await evaluate("location.pathname"),"/workflow-canvas",
       "cancelled navigation must keep the Workflow editor open")
     assert.equal(workflowNavigationRejects,1,
       "unsaved Workflow must request confirmation once")
     assert.equal(await evaluate('document.querySelectorAll(".react-flow__node").length'),5)
     assert.equal(await evaluate('document.querySelectorAll(".react-flow__edge").length'),countBeforeConnect+1)
-    client.onDialog=originalWorkflowDialog
     console.log("CHROME_WORKFLOW_UNSAVED_NAV_PASS",
       JSON.stringify({cancelled:true,nodesRetained:5}))
 
@@ -1305,7 +1473,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     assert.equal(savedWarning,false,
       "successful save must clear unsaved-navigation warning")
     const originalGraph=await evaluate(`(async () => {
-      const stored=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}")
+      const stored=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}")
       const headers={Authorization:stored.token}
       const listing=await fetch("/__pb/api/workflow-studio/list",{headers}).then(r=>r.json())
       const id=listing.items?.[0]?.id
@@ -1342,10 +1510,6 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       }
     })()`)
     let exportApprovals=0
-    client.onDialog=()=>{
-      exportApprovals++
-      void command("Page.handleJavaScriptDialog",{accept:true})
-    }
     assert.equal(await evaluate(`(() => {
       const b=[...document.querySelectorAll("button")]
         .find(x=>x.textContent?.trim()==="导出 JSON")
@@ -1353,8 +1517,9 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       b.click()
       return true
     })()`),true)
+    await respondStudioConfirm(true,"sensitive workflow export warning")
+    exportApprovals++
     await waitFor('!!window.__workflowExportBlob',"export JSON blob")
-    client.onDialog=null
     assert.equal(exportApprovals,1,"sensitive-data export warning must ask for confirmation")
     const portableText=await evaluate('window.__workflowExportBlob.text()')
     const portable=JSON.parse(portableText)
@@ -1384,7 +1549,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await waitFor('document.querySelectorAll(".react-flow__edge").length===7',
       "imported edges rendered")
     const imported=await evaluate(`(async () => {
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const headers={Authorization:token}
       const list=await fetch("/__pb/api/workflow-studio/list",{headers}).then(r=>r.json())
       const owned=list.items||[]
@@ -1412,7 +1577,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
 
     // Malformed imports must show an error and must never create an extra flow.
     const beforeInvalid=await evaluate(`(async () => {
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const res=await fetch("/__pb/api/workflow-studio/list",{headers:{Authorization:token}})
       return (await res.json()).items?.length||0
     })()`)
@@ -1432,7 +1597,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await waitFor(`document.body.textContent?.includes("不支持的工作流格式或版本")`,
       "rejected invalid JSON version")
     const afterInvalid=await evaluate(`(async () => {
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const res=await fetch("/__pb/api/workflow-studio/list",{headers:{Authorization:token}})
       return (await res.json()).items?.length||0
     })()`)
@@ -1462,7 +1627,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
         "draft title updated")
     }
     const readImportedName=async()=>await evaluate(`(async()=>{
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const url="/__pb/api/workflow-studio/get?id="+${JSON.stringify(imported.id)}
       const r=await fetch(url,{headers:{Authorization:token}}).then(r=>r.json())
       return r.workflow?.name||""
@@ -1692,6 +1857,17 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await command("Page.navigate",{url:webOrigin+"/agent-create"})
     await waitFor(`document.querySelectorAll('ol[aria-label="Agent 创建步骤"] button').length===5`,
       "Agent create wizard has five steps")
+    // When a full-document navigation is unexpectedly blocked or redirected,
+    // emit a bounded, non-secret diagnostic rather than treating it as missing UI.
+    // No tokens, request headers, draft text or model credentials are logged.
+    const agentWizardDiagnostics=await evaluate(`({
+      route:location.pathname,
+      title:document.title,
+      isLogin:!!document.querySelector("input[type=password]"),
+      stepCount:document.querySelectorAll('ol[aria-label="Agent 创建步骤"] button').length,
+      shellPresent:!!document.querySelector('[data-studio-fluid-page="agent-create"]'),
+    })`)
+    console.log("CHROME_AGENT_WIZARD_ROUTE",JSON.stringify(agentWizardDiagnostics))
     // Verify the wizard truly occupies its *available* viewport on desktop,
     // not a fixed 1152px centered island, and remains horizontally scroll-free.
     const wizardViewports=[]
@@ -1780,12 +1956,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await command("Input.insertText",{text:"未生成方案的需求也需要保护"})
     await waitFor(`document.querySelector("#agent-requirement")?.value==="未生成方案的需求也需要保护"`,
       "unsubmitted requirement typed")
-    const priorHistoryHandler=client.onDialog
     let requirementRejects=0
-    client.onDialog=()=>{
-      requirementRejects++
-      void command("Page.handleJavaScriptDialog",{accept:false})
-    }
     assert.equal(await evaluate(`(() => {
       const link=[...document.querySelectorAll(
         'nav[aria-label="移动端主要工作空间"] a'
@@ -1794,18 +1965,19 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       link.click()
       return true
     })()`),true)
-    await sleep(170)
+    await respondStudioConfirm(false,"unsaved requirement sidebar")
+    requirementRejects++
     assert.equal(await evaluate("location.pathname"),"/agent-create")
     assert.equal(requirementRejects,1,"unsaved requirement sidebar guard must appear")
     await evaluate("history.back()")
-    await sleep(390)
+    await respondStudioConfirm(false,"unsaved requirement browser Back")
+    requirementRejects++
     await waitFor('location.pathname==="/agent-create"',
       "cancel browser history navigation and restore URL")
     assert.equal(requirementRejects,2,
       "browser back must request confirmation once, not redirect silently")
     assert.equal(await evaluate('document.querySelector("#agent-requirement")?.value'),
       "未生成方案的需求也需要保护")
-    client.onDialog=priorHistoryHandler
     // Clean up so the separate draft-recovery tests start with an empty editor.
     await evaluate('document.querySelector("#agent-requirement").focus()')
     await command("Input.dispatchKeyEvent",{type:"rawKeyDown",key:"a",code:"KeyA",
@@ -1879,6 +2051,15 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await command("Input.dispatchKeyEvent",{type:"keyUp",key:"a",code:"KeyA",
       windowsVirtualKeyCode:65})
     await command("Input.insertText",{text:"用公开数据对企业做研究并生成带来源的简报"})
+    // CDP text injection returns before the React controlled input and model
+    // picker are necessarily ready. Verify both prerequisites before clicking.
+    await waitFor(`document.querySelector("#agent-requirement")?.value==="用公开数据对企业做研究并生成带来源的简报"`,
+      "Agent design requirement settled in controlled field")
+    await waitFor(`(() => {
+      const model=document.querySelector('select[aria-label="Agent 规划模型"]')
+      return !!model && !model.disabled && !!model.value &&
+        document.querySelector('[aria-label="Agent 规划模型"]')?.textContent?.includes("mock-browser")
+    })()`, "isolated Agent planning model ready and selected")
     assert.equal(await evaluate(`(() => {
       const b=[...document.querySelectorAll("button")]
         .find(x=>x.textContent?.trim()==="生成 Agent 方案")
@@ -1895,16 +2076,11 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       b.click()
       return true
     })()`),true)
-    await waitFor('document.body.textContent?.includes("第二步 · 审核目标")',
+    await waitFor('document.body.textContent?.includes("第二步 · 设计目标、角色分工与完成标准")',
       "wizard step 2 plan editor")
     // Unsaved Agent edits must intercept BOTH React Router sidebar links and
     // direct command-palette navigation. Cancel keeps the current editor.
-    const previousDialogHandler=client.onDialog
     let cancelledNavigationDialogs=0
-    client.onDialog=()=>{
-      cancelledNavigationDialogs++
-      void command("Page.handleJavaScriptDialog",{accept:false})
-    }
     assert.equal(await evaluate(`(() => {
       const home=[...document.querySelectorAll(
         'nav[aria-label="移动端主要工作空间"] a'
@@ -1913,7 +2089,8 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       home.click()
       return true
     })()`),true)
-    await sleep(150)
+    await respondStudioConfirm(false,"unsaved editor sidebar")
+    cancelledNavigationDialogs++
     assert.equal(await evaluate("location.pathname"),"/agent-create",
       "cancel navigation must retain the editor route")
     assert.equal(cancelledNavigationDialogs,1,
@@ -1937,7 +2114,8 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
         .find(el=>el.textContent?.includes("知识库"))
       option?.click()
     })()`)
-    await sleep(130)
+    await respondStudioConfirm(false,"unsaved editor command palette")
+    cancelledNavigationDialogs++
     assert.equal(await evaluate("location.pathname"),"/agent-create",
       "cancelled command navigation must retain current Agent")
     assert.equal(cancelledNavigationDialogs,2)
@@ -1945,7 +2123,6 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       code:"Escape",windowsVirtualKeyCode:27})
     await command("Input.dispatchKeyEvent",{type:"keyUp",key:"Escape",
       code:"Escape",windowsVirtualKeyCode:27})
-    client.onDialog=previousDialogHandler
     console.log("CHROME_STUDIO_UNSAVED_SPA_GUARD_PASS",
       JSON.stringify({sidebarCancelled:true,commandCancelled:true,editorPreserved:true}))
     assert.equal(await evaluate(`(() => {
@@ -1958,7 +2135,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await waitFor('document.body.textContent?.includes("已保存进")',
       "wizard first Agent spec saved")
     const createdAgent=await evaluate(`(async()=>{
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const res=await fetch("/__pb/api/agent_specs",{headers:{Authorization:token}})
       const data=await res.json()
       const row=(data.items||[]).find(r=>r.name==="浏览器验收 Agent")
@@ -1991,14 +2168,35 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       "publish stage must remain locked with no succeeded run")
     const trialLink=await evaluate(`[...document.querySelectorAll("a")]
       .find(a=>a.textContent?.includes("前往试跑当前 Agent"))?.getAttribute("href")||""`)
-    assert.ok(trialLink.includes(createdAgent.id))
+    assert.ok(trialLink.includes(createdAgent.id),
+      "first trial link must reference the just-saved Agent: "+JSON.stringify({trialLink,agentId:createdAgent.id}))
     await evaluate(`[...document.querySelectorAll("a")]
       .find(a=>a.textContent?.includes("前往试跑当前 Agent")).click()`)
-    await waitFor('document.body.textContent?.includes("配置与试跑")',
-      "wizard hands off to authenticated Agent run")
+    await waitFor('document.querySelector(\'[aria-label="当前 Agent 与本次工作"]\')!==null',
+      "wizard hands off to task-first authenticated Agent run")
     await waitFor(`[...document.querySelectorAll("a")]
       .some(a=>a.textContent?.includes("返回创建向导"))`,
       "run page loads selected Agent before showing return to wizard")
+    await evaluate('document.querySelector(\'button[aria-label="打开本次 Agent 配置"]\')?.click()')
+    await waitFor('document.querySelector(\'[aria-label="Agent 配置与资源"]\')!==null',"open resource settings drawer")
+    // Quality checks are in a separate tab. Radix forceMount leaves inactive
+    // inputs in the DOM, but they cannot be focused until the tab is selected.
+    await evaluate('document.querySelector(\'button[aria-label="关闭配置面板"]\')?.click()')
+    assert.equal(await evaluate(`(() => {
+      const tab=[...document.querySelectorAll('[role="tab"]')]
+        .find(t=>t.textContent?.includes("验收条件"))
+      if(!tab)return false
+      tab.focus();return document.activeElement===tab
+    })()`),true,"quality acceptance tab must be keyboard-focusable")
+    // Radix Tabs activates via pointer-down or keyboard, not a synthetic .click().
+    await command("Input.dispatchKeyEvent",{type:"rawKeyDown",key:"Enter",code:"Enter",windowsVirtualKeyCode:13})
+    await command("Input.dispatchKeyEvent",{type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13})
+    await waitFor(`(() => {
+      const tab=[...document.querySelectorAll('[role="tab"]')]
+        .find(t=>t.textContent?.includes("验收条件"))
+      const pane=document.querySelector('section[aria-label="可验证的运行质量断言"]')
+      return tab?.getAttribute("data-state")==="active" && !!pane && pane.getClientRects().length>0
+    })()`, "quality tab activated and checklist visible")
     // A user-defined quality assertion must persist in the owned Agent spec,
     // but it must NOT pretend the model was verified before a real run.
     await waitFor('document.querySelector(\'section[aria-label="可验证的运行质量断言"]\')!==null',
@@ -2015,6 +2213,15 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       "editable quality assertion")
     await evaluate(`document.querySelector('section[aria-label="可验证的运行质量断言"] input[placeholder^="例如"]').focus()`)
     await command("Input.insertText",{text:"核心结论"})
+    // Chrome Input.insertText can resolve before React commits the controlled
+    // field update. Wait for the real save guard instead of racing a disabled CTA.
+    await waitFor(`(() => {
+      const pane=document.querySelector('section[aria-label="可验证的运行质量断言"]')
+      const input=pane?.querySelector('input[placeholder^="例如"]')
+      const save=[...(pane?.querySelectorAll("button")||[])]
+        .find(b=>b.textContent?.includes("保存检查条件"))
+      return input?.value==="核心结论" && !!save && !save.disabled
+    })()`, "quality assertion committed to controlled input and ready to save")
     assert.equal(await evaluate(`(() => {
       const button=[...document.querySelectorAll('section[aria-label="可验证的运行质量断言"] button')]
         .find(b=>b.textContent?.includes("保存检查条件"))
@@ -2025,7 +2232,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await waitFor('document.body.textContent?.includes("质量断言已保存到 Agent 方案")',
       "owner-scoped quality checks saved")
     const savedChecks=await evaluate(`(async()=>{
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const url="/__pb/api/agent_specs/"+${JSON.stringify(createdAgent.id)}
       const resp=await fetch(url,{headers:{Authorization:token}})
       const json=await resp.json()
@@ -2037,6 +2244,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       JSON.stringify({rulesSaved:savedChecks.length,ownerScoped:true,
         noAutomaticQualityPass:true}))
 
+    await evaluate('document.querySelector(\'button[aria-label="关闭配置面板"]\')?.click()')
     await evaluate(`[...document.querySelectorAll("a")]
       .find(a=>a.textContent?.includes("返回创建向导")).click()`)
     await waitFor('document.body.textContent?.includes("第四步 · 在真实执行引擎")',
@@ -2106,7 +2314,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       return !!link&&link.href.startsWith("https://auth.smithery.ai/")
     })()`),true)
     const pendingUi=await evaluate(`(async () => {
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const reply=await fetch("/__pb/api/market/connections",{headers:{Authorization:token}})
       const data=await reply.json()
       const row=(data.items||[]).find(item=>item.server_name==="github")
@@ -2125,7 +2333,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
       ?.textContent?.includes("已通过工具发现")`,
       "Smithery tool discovery enabled")
     const readyUi=await evaluate(`(async () => {
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const reply=await fetch("/__pb/api/market/connections",{headers:{Authorization:token}})
       const data=await reply.json()
       const row=(data.items||[]).find(item=>item.server_name==="github")
@@ -2292,7 +2500,7 @@ test("independent-workflow-browser desktop + mobile smoke", {timeout:135000}, as
     await waitFor(`document.querySelector('#spec-editor button')!==null`,
       "unsaved editor remains present")
     const deletedOwnerRecord=await evaluate(`(async()=>{
-      const token=JSON.parse(localStorage.getItem("agent_studio_employee_auth")||"{}").token
+      const token=JSON.parse((sessionStorage.getItem("agent_studio_employee_auth")||localStorage.getItem("agent_studio_employee_auth"))||"{}").token
       const response=await fetch("/__pb/api/agent_specs/"+${JSON.stringify(createdAgent.id)},
         {headers:{Authorization:token}})
       return response.status

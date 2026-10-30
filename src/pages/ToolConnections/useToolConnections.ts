@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { useSearchParams } from "react-router-dom"
 import { OPEN_METEO_EXAMPLE, inspectToolRequest, isOpenMeteoForecast } from "@/lib/toolConnectionUx"
 import { executionConnectionPreset } from "@/lib/executionCapabilities"
@@ -185,10 +186,10 @@ export function useToolConnections() {
     setErrorMsg("")
   }, [resetFormState])
 
-  const useWeatherExample = useCallback(() => {
+  const useWeatherExample = useCallback(async () => {
     if (formMode !== "add") return
     if ((formName.trim() || formDesc.trim() || formUrl.trim() || formBody.trim() || testInput.trim()) &&
-      !window.confirm("天气示例将替换当前未保存的工具配置，是否继续？")) return
+      !await confirmInStudio("天气示例将替换当前未保存的工具配置，是否继续？")) return
     setFormName(OPEN_METEO_EXAMPLE.name)
     setFormDesc(OPEN_METEO_EXAMPLE.description)
     setFormUrl(OPEN_METEO_EXAMPLE.url)

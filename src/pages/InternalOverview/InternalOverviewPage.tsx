@@ -120,9 +120,9 @@ export default function InternalOverviewPage() {
       if (!response.ok) {
         if (response.status === 401 || response.status === 412) {
           setAuthRequired(true)
-          throw new Error("登录状态已过期，请重新登录后查看内部任务总览")
+          throw new Error("登录状态已过期，请重新登录后查看我的任务与待办")
         }
-        throw new Error(json.error || "内部任务总览暂时不可用")
+        throw new Error(json.error || "我的任务与待办暂时不可用")
       }
       if (!json.counters || !Array.isArray(json.action_items) || !Array.isArray(json.recent_runs)) {
         throw new Error("服务器返回的任务数据不完整")
@@ -147,7 +147,7 @@ export default function InternalOverviewPage() {
   const stats = [
     { title: "待我回复", value: c?.awaiting_input ?? 0, icon: ClipboardCheck, href: "/agent-run" },
     { title: "待审批", value: c?.awaiting_approval ?? 0, icon: ClipboardCheck, href: "/agent-run" },
-    { title: "外部写入待核验", value: c?.writes_need_review ?? 0, icon: ShieldAlert, href: "/tool-hub" },
+    { title: "外部写入待核验", value: c?.writes_need_review ?? 0, icon: ShieldAlert, href: "/tool-hub?view=activity" },
     { title: "已超期计划", value: c?.schedules_overdue ?? 0, icon: CalendarClock, href: "/scheduled-tasks" },
     { title: "近 7 天失败", value: c?.failed_7d ?? 0, icon: AlertCircle, href: "/agent-run" },
     { title: "正在运行", value: c?.running ?? 0, icon: Activity, href: "/agent-run" },
@@ -164,7 +164,7 @@ export default function InternalOverviewPage() {
                 <ClipboardCheck className="h-6 w-6" />
               </span>
               <div>
-                <h1 className="text-xl font-semibold">内部任务总览</h1>
+                <h1 className="text-xl font-semibold">我的任务与待办</h1>
                 <p className="mt-1 text-xs text-muted-foreground">
                   当天工作从这里开始 · 当前账号视角 · 不包含其他员工的私人运行记录
                 </p>
@@ -192,7 +192,7 @@ export default function InternalOverviewPage() {
           ) : overview ? (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>数据更新于 {displayTime(overview.generated_at_ms)} · 失败任务统计周期：最近 {overview.sampling.failed_window_days} 天</span>
+                <span>仅本人任务 · 数据更新于 {displayTime(overview.generated_at_ms)} · 失败任务统计周期：最近 {overview.sampling.failed_window_days} 天</span>
                 <span>{overview.worker.alive
                   ? "后台 Worker 正常响应"
                   : overview.worker.configured ? "后台 Worker 暂未响应" : "尚未配置自动执行 Worker"}</span>
@@ -216,7 +216,7 @@ export default function InternalOverviewPage() {
                 <p>
                   后台执行器{overview.worker.configured ? "目前未响应" : "尚未配置"}。
                   Agent 可以保存配置，但自动执行任务需要长期运行的 Worker。
-                  <Link to="/tool-hub" className="ml-1 underline">查看运行监控</Link>
+                  <Link to="/tool-hub?view=monitor" className="ml-1 underline">查看运行监控</Link>
                 </p>
               </div>}
 

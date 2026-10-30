@@ -43,7 +43,7 @@ test("every PocketBase integration test uses the guarded headless launcher", () 
   assert.ok(files.length >= 9)
   // The local executor's standalone MCP test does not start PocketBase at all;
   // its separate Agent-engine integration MUST use the guarded launcher.
-  const pureMcpWithoutPocketBase = new Set(["local-executor.integration.mjs"])
+  const pureMcpWithoutPocketBase = new Set(["local-executor.integration.mjs", "browser-navigation.integration.mjs"])
   for (const name of files) {
     const content = fs.readFileSync(path.join(dir, name), "utf8")
     if (!pureMcpWithoutPocketBase.has(name)) {

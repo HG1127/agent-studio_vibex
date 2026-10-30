@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
-import { LOCAL_ANON_UID } from "@/lib/anonUid"
+import {useRunArchive} from '@/lib/useRunArchive'
 import {
   RUN_STATE_META,
   formatHarnessStats,
@@ -91,7 +91,7 @@ export function useRunDetail() {
   const [searchParams, setSearchParams] = useSearchParams()
   const runIdParam = searchParams.get("run") || ""
 
-  const [rhUserId, setRhUserId] = useState("")
+  const rhUserId=decodeRhToken()?.sub||''
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
 
@@ -100,85 +100,43 @@ export function useRunDetail() {
   const [specSnapshot, setSpecSnapshot] = useState<RunSnapshot>(null)
   const [loadState, setLoadState] = useState<RunDetailLoadState>("idle")
 
-  const [recentRuns, setRecentRuns] = useState<RecentRunRow[]>([])
+  const archive=useRunArchive(rhUserId,!runIdParam||loadState==='not_found'||loadState==='error')
+  const identity=useRef({owner:rhUserId,run:runIdParam})
+  identity.current={owner:rhUserId,run:runIdParam}
+  const detailSequence=useRef(0)
   const [liveEnabled, setLiveEnabled] = useState(true)
   const [controlBusy, setControlBusy] = useState<"" | "pause" | "resume" | "cancel">("")
   const [copiedFlag, setCopiedFlag] = useState(false)
 
   const pollBusyRef = useRef(false)
 
-  useEffect(() => {
-    const payload = decodeRhToken()
-    setRhUserId(payload?.sub ? String(payload.sub) : LOCAL_ANON_UID)
-  }, [])
-
-  const fetchDetail = useCallback(
-    async (runId: string, isPoll: boolean) => {
-      const res = await fetch(`${base}/api/agent-runs/${encodeURIComponent(runId)}/detail`, {
-        headers: { ...vibexAuthHeaders() },
-      })
-      if (res.status === 401 || res.status === 412) {
-        setNeedsRhLogin(true)
-        return
-      }
-      if (res.status === 404) {
-        if (!isPoll) {
-          setRunDetail(null)
-          setRunEvents([])
-          setSpecSnapshot(null)
-          setLoadState("not_found")
-        }
-        return
-      }
-      if (!res.ok) {
-        if (!isPoll) {
-          setErrorMsg("加载运行详情失败，请稍后重试")
-          setLoadState("error")
-        }
-        return
-      }
-      const data = await res.json()
-      const run = data?.run as RunDetailRow | undefined
-      if (run?.id) {
-        setRunDetail(run)
-        setLoadState("ready")
-      }
-      setRunEvents(Array.isArray(data?.events) ? (data.events as RunEventRow[]) : [])
-      setSpecSnapshot((data?.spec_snapshot as RunSnapshot) || null)
-    },
-    [base],
-  )
-
-  const loadRecent = useCallback(async () => {
-    try {
-      const res = await fetch(`${base}/api/agent-runs/recent?limit=5`, {
-        headers: { ...vibexAuthHeaders() },
-      })
-      if (res.status === 401 || res.status === 412) {
-        setNeedsRhLogin(true)
-        return
-      }
-      if (!res.ok) return
-      const data = await res.json()
-      setRecentRuns(Array.isArray(data?.items) ? (data.items as RecentRunRow[]) : [])
-    } catch {
-      // 最近运行加载失败不阻塞详情主流程
-    }
-  }, [base])
-
-  useEffect(() => {
-    if (!rhUserId) return
-    void loadRecent()
-    if (!runIdParam) {
-      setRunDetail(null)
-      setRunEvents([])
-      setSpecSnapshot(null)
-      setLoadState("idle")
-      return
-    }
-    setLoadState("loading")
-    void fetchDetail(runIdParam, false)
-  }, [rhUserId, runIdParam, fetchDetail, loadRecent])
+  const fetchDetail=useCallback(async(runId:string,isPoll:boolean,signal?:AbortSignal)=>{
+    const owner=decodeRhToken()?.sub||''
+    if(!owner||!runId)return
+    if(!/^[A-Za-z0-9]{15}$/.test(runId)){setLoadState('not_found');return}
+    const seq=++detailSequence.current
+    const current=()=>seq===detailSequence.current&&!signal?.aborted&&identity.current.owner===owner&&identity.current.run===runId&&decodeRhToken()?.sub===owner
+    try{
+      const res=await fetch(`${base}/api/agent-runs/${encodeURIComponent(runId)}/detail`,{headers:{...vibexAuthHeaders()},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(12000)]):AbortSignal.timeout(12000)})
+      if(!current())return
+      if(res.status===401||res.status===412){setNeedsRhLogin(true);setRunDetail(null);setLoadState('error');return}
+      if(res.status===404){setRunDetail(null);setRunEvents([]);setSpecSnapshot(null);setLoadState('not_found');return}
+      if(!res.ok)throw Error('加载运行详情失败，请重试')
+      const data=await res.json()
+      if(!current())return
+      if(!data?.run||data.run.id!==runId)throw Error('运行详情格式异常，未展示未经核实的数据')
+      setRunDetail(data.run as RunDetailRow);setRunEvents(Array.isArray(data.events)?data.events:[])
+      setSpecSnapshot((data.spec_snapshot as RunSnapshot)||null);setLoadState('ready');setNeedsRhLogin(false)
+    }catch(e){if(current()){setErrorMsg(e instanceof Error?e.message:'网络异常，请重新加载运行详情');if(!isPoll)setLoadState('error')}}
+  },[base])
+  useEffect(()=>{
+    const controller=new AbortController()
+    setRunDetail(null);setRunEvents([]);setSpecSnapshot(null);setErrorMsg('');setCopiedFlag(false)
+    if(!rhUserId||!runIdParam){setLoadState('idle');return()=>{controller.abort();detailSequence.current++}}
+    setLoadState('loading');void fetchDetail(runIdParam,false,controller.signal)
+    return()=>{controller.abort();detailSequence.current++}
+  },[rhUserId,runIdParam,fetchDetail])
+  const reloadDetail=useCallback(()=>fetchDetail(runIdParam,false),[fetchDetail,runIdParam])
 
   const pollDetailOnce = useCallback(
     async (runId: string) => {
@@ -202,7 +160,7 @@ export function useRunDetail() {
     if (!runDetail || !isLive || !liveEnabled) return
     const runId = runDetail.id
     const timer = window.setInterval(() => {
-      void pollDetailOnce(runId)
+      if(document.visibilityState==='visible')void pollDetailOnce(runId)
     }, POLL_INTERVAL_MS)
     return () => window.clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,28 +193,29 @@ export function useRunDetail() {
           return
         }
         await fetchDetail(runDetail.id, true)
-        if (action === "cancel") void loadRecent()
+        // The archive refreshes when it becomes visible; no hidden list polling.
       } catch {
         setErrorMsg("网络异常，操作失败，请重试")
       } finally {
         setControlBusy("")
       }
     },
-    [runDetail, controlBusy, base, fetchDetail, loadRecent],
+    [runDetail, controlBusy, base, fetchDetail],
   )
 
   const handleSelectRecent = useCallback(
     (runId: string) => {
       setErrorMsg("")
       setLiveEnabled(true)
-      setSearchParams({ run: runId })
+      setSearchParams(previous=>{const next=new URLSearchParams(previous);next.set('run',runId);return next})
+      window.scrollTo({top:0})
     },
     [setSearchParams],
   )
 
   const handleBackToRecent = useCallback(() => {
     setErrorMsg("")
-    setSearchParams({})
+    setSearchParams(previous=>{const next=new URLSearchParams(previous);next.delete('run');return next})
   }, [setSearchParams])
 
   const dismissError = useCallback(() => setErrorMsg(""), [])
@@ -353,7 +312,8 @@ export function useRunDetail() {
     runEvents,
     specSnapshot,
     loadState,
-    recentRuns,
+    archive,
+    reloadDetail,
     isLive,
     liveEnabled,
     handleToggleLive,

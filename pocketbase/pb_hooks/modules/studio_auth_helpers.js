@@ -14,7 +14,8 @@ function jsonUser(rec) {
     id:String(rec.id),email:String(rec.getString("email")||""),
     display_name:String(rec.getString("display_name")||""),
     role:String(rec.getString("role")||"employee"),
-    active:rec.getBool("active"),share_enabled:rec.getBool("share_enabled")
+    active:rec.getBool("active"),share_enabled:rec.getBool("share_enabled"),
+    updated:String(rec.get("updated")||""),created:String(rec.get("created")||"")
   }
 }
 function config() {
@@ -36,4 +37,10 @@ function trustedWorker(e) {
   for(var i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^supplied.charCodeAt(i)
   return diff===0
 }
-module.exports={currentUser:currentUser,jsonUser:jsonUser,config:config,path:path,trustedWorker:trustedWorker}
+function validPassword(value){
+  // The installed PocketBase password field uses bcrypt and caps UTF-8 input.
+  // No arbitrary minimum length: only non-blank and the hashing engine bound.
+  if(typeof value!=="string"||!value.trim())return false
+  try{return encodeURIComponent(value).replace(/%[A-Fa-f0-9]{2}/g,"x").length<=71}catch(_){return false}
+}
+module.exports={currentUser:currentUser,jsonUser:jsonUser,config:config,path:path,trustedWorker:trustedWorker,validPassword:validPassword}

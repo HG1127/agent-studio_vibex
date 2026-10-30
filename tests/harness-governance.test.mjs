@@ -4,11 +4,13 @@ import fs from "node:fs"
 import vm from "node:vm"
 import { adaptHarnessData, filterRuns, HARNESS_SOURCES, isHarnessAuthFailure, runDetailHref, sourceFailure } from "../src/lib/harnessData.ts"
 import { HarnessAuthError, requestHarnessSource } from "../src/lib/harnessRequest.ts"
-import { searchStudioRoutes, workspaceForPath } from "../src/lib/studioNavigation.ts"
+import { routesForRole, workspaceForPath } from "../src/lib/studioNavigation.ts"
 
-test("Harness is an employee-accessible second-level route in the run center", () => {
-  assert.equal(workspaceForPath("/harness", "employee").label, "运行与验收")
-  assert.equal(searchStudioRoutes("Harness", "employee")[0].to, "/harness")
+test("Harness advanced diagnostics remain reachable without a duplicate sidebar module", () => {
+  assert.equal(workspaceForPath("/harness", "employee")?.label, "运行与验收")
+  assert.equal(routesForRole("employee").some(route=>route.to==="/harness"),false)
+  const toolHub=fs.readFileSync("src/pages/ToolHub/ToolHubPage.tsx","utf8")
+  assert.match(toolHub,/to="\/harness"/,"advanced diagnostics remain reachable from the unified monitor")
 })
 test("refresh transport issues real bounded GETs with auth, no cache, cancellation and no owner header", async () => {
   const controller = new AbortController()

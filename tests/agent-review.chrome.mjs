@@ -1582,40 +1582,25 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     await clickText("编辑")
     await wait('document.activeElement?.id==="kb-name"',"knowledge edit auto focuses the form")
     assert.equal(await evaluate('document.querySelector("#kb-name")?.value'),"员工 UX 验收资料库")
-    // Scheduler: new schedule form identifies real owned Agent & model, then
-    // creates a schedule before the list action sends focus back into editor.
+    // Schedules are list-first; use named controls rather than positional selects.
     await cmd("Page.navigate",{url:webOrigin+"/scheduled-tasks"})
-    await wait('document.querySelector("#schedule-editor input[id=schedule-plan-name]")!==null',
-      "scheduled form ready")
-    await wait('document.querySelector("#schedule-editor select")!==null',"schedule options loaded")
+    await wait('Boolean(document.querySelector(\'[data-studio-fluid-page="schedules"]\'))',"schedule list")
+    await clickText("新建计划")
+    await wait('document.querySelector("#schedule-plan-name")!==null',"on-demand schedule editor")
     const scheduleTargets=await api("GET","/api/agent_specs?perPage=200")
-    assert.ok(scheduleTargets.items.some(row=>row.id===spec.id),
-      "The schedule target must be present in the current user's authoritative Agent list")
-    await wait(`[...document.querySelectorAll('#schedule-editor form select')][1] &&
-      [...document.querySelectorAll('#schedule-editor form select')][1].querySelector(
-        'option[value="${spec.id}"]')!==null`,"scheduler target options loaded")
-    await wait(`[...document.querySelectorAll('#schedule-editor form select')][2]?.querySelector(
-      'option[value="${connection.item.id}"]')!==null`,"scheduler model connection options loaded")
+    assert.ok(scheduleTargets.items.some(row=>row.id===spec.id))
     await evaluate('document.querySelector("#schedule-plan-name").focus()')
     await cmd("Input.insertText",{text:"UX 行为验收定时计划"})
-    for (const [position,value] of [[1,spec.id],[2,connection.item.id],[3,"review-ui-model"]]) {
-      if(position===3) await wait(`[...document.querySelectorAll(\'#schedule-editor form select\')][3]?.querySelector(\'option[value="${connection.item.id}"]\')!==null || [...document.querySelectorAll(\'#schedule-editor form select\')][3]?.querySelector(\'option[value="review-ui-model"]\')!==null`, "model choices loaded")
-      const success=await evaluate(`(()=>{
-        const el=[...document.querySelectorAll('#schedule-editor form select')][${position}]
-        if(!el)return false
-        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(el,${JSON.stringify(value)})
-        el.dispatchEvent(new Event('change',{bubbles:true}))
-        return true
-      })()`)
-      assert.ok(success)
-      await wait(`document.querySelectorAll('#schedule-editor form select')[${position}]?.value===${JSON.stringify(value)}`,
-        "schedule select "+position)
+    for(const [label,value]of [["执行对象",spec.id],["模型连接",connection.item.id],["使用模型","review-ui-model"]]){
+      const selector='#schedule-editor select[aria-label="'+label+'"]'
+      await wait('Boolean(document.querySelector('+JSON.stringify(selector)+')?.querySelector('+JSON.stringify('option[value="'+value+'"]')+'))',"schedule options "+label)
+      assert.ok(await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)return false;Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('change',{bubbles:true}));return true})()`))
+      await wait('document.querySelector('+JSON.stringify(selector)+')?.value==='+JSON.stringify(value),"schedule selected "+label)
     }
     await evaluate('document.querySelector("#schedule-editor textarea").focus()')
     await cmd("Input.insertText",{text:"整理内部知识需求，生成可核验来源的简报"})
-    await wait('document.querySelector("#schedule-editor textarea")?.value.includes("整理内部知识需求")',
-      "schedule instruction")
-    await clickText("创建定时任务")
+    await wait('document.querySelector("#schedule-editor textarea")?.value.includes("整理内部知识需求")',"schedule instruction")
+    await clickText("保存为暂停计划")
     await wait('document.body.innerText.includes("计划保存成功")',"scheduled task backend create")
     const scheduleResult=await api("GET","/api/schedules")
     const createdPlan=scheduleResult.items.find(row=>row.name==="UX 行为验收定时计划")

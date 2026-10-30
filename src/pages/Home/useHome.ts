@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -12,6 +13,8 @@ import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 import { resolveAgentToolRequirements, chooseVerifiedAgentTool, prepareGeneratedAgentPermissions } from "@/lib/agentToolMatcher"
 import { toolCatalogForDesign } from "@/lib/agentCapabilityPlan"
+import {safeAgentSpecId} from "@/lib/toolSearchPrivacy"
+import {useAgentResourceReminder} from "@/lib/useAgentResourceReminder"
 import { preserveRoleSkillBindings } from "@/lib/agentRoles"
 import { AGENT_DESIGN_SYSTEM_PROMPT, agentDesignTokenBudget, parseAgentDesignResponse } from "@/lib/agentDesignProtocol"
 import { availableAgentDesignModels, chooseAgentDesignModel, type AgentDesignModelOption } from "@/lib/agentDesignModelSelection"
@@ -98,6 +101,7 @@ export function useHome() {
   const [revisionError, setRevisionError] = useState("")
   const [savedMsg, setSavedMsg] = useState("")
   const [savedSpecId, setSavedSpecId] = useState("")
+  const {reminder:resourceReminder,dismissReminder:dismissResourceReminder}=useAgentResourceReminder(savedSpecId,spec)
   const [specDirty, setSpecDirty] = useState(false)
   const [revisionProposal, setRevisionProposal] = useState<{name:string;spec:AgentSpec;basis:number}|null>(null)
   const [lastSavedAt, setLastSavedAt] = useState(0)
@@ -275,10 +279,11 @@ export function useHome() {
         typeof (item as {id?:unknown}).id==="string" &&
         typeof (item as {enabled?:unknown}).enabled==="boolean"))
     if(httpValid){
-      const items=httpData.items as {name:string;description?:string;enabled:boolean;method?:string;status?:string}[]
+      const items=httpData.items as {id?:string;name:string;description?:string;enabled:boolean;method?:string;status?:string}[]
       http=items.filter(item=>item.enabled===true&&item.name)
         .map(item=>({name:item.name,description:typeof item.description==="string"?item.description:"",
-          method:item.method,status:typeof item.status==="string"?item.status:"unknown"}))
+          method:item.method,status:typeof item.status==="string"?item.status:"unknown",
+          id:safeAgentSpecId(item.id||"")||undefined}))
       setConnectedTools(http)
     }else setConnectedTools(previous=>previous.map(tool=>({...tool,status:"unknown"})))
     if(marketValid){
@@ -622,6 +627,9 @@ export function useHome() {
         : "保存期间又进行了修改，新的改动仍未保存，请再次保存。")
       if (noFurtherEdits && !draftRef.current.userInput.trim()) clearAgentDraft(rhUserId)
       await loadSavedList(rhUserId)
+      // Only advance the wizard when the server saved this exact still-current
+      // draft, not a different Agent or edits made while the save was in flight.
+      return {id:row.id,current:isCurrentContext()&&startedRevision===specRevisionRef.current}
     } catch {
       if(isCurrentContext())setErrorMsg("网络异常：当前改动仍保留，恢复网络后可重新保存。")
     } finally {
@@ -631,8 +639,8 @@ export function useHome() {
 
   const handleSave = useCallback(async () => saveCurrentSpec(false), [saveCurrentSpec])
   const handleSaveAsCopy = useCallback(async () => saveCurrentSpec(true), [saveCurrentSpec])
-  const handleLoadTemplate = useCallback((preset: TemplatePreset) => {
-    if ((specDirty || userInput.trim()) && !window.confirm(
+  const handleLoadTemplate = useCallback(async (preset: TemplatePreset) => {
+    if ((specDirty || userInput.trim()) && !await confirmInStudio(
       "当前存在未保存的 Agent 方案或新需求。切换模板将舍弃这些内容，是否继续？"
     )) return
     invalidateSpecContext()
@@ -652,8 +660,8 @@ export function useHome() {
     scrollToSpecEditor()
   }, [markSpecEdited,specDirty,userInput,invalidateSpecContext])
 
-  const handleOpenSaved = useCallback((row: SavedSpecRow) => {
-    if ((specDirty || userInput.trim()) && !window.confirm(
+  const handleOpenSaved = useCallback(async (row: SavedSpecRow) => {
+    if ((specDirty || userInput.trim()) && !await confirmInStudio(
       "当前存在未保存的 Agent 方案或新需求。打开其他 Agent 将舍弃这些内容，是否继续？"
     )) return
     invalidateSpecContext()
@@ -709,8 +717,8 @@ export function useHome() {
     [editingRecordId, loadSavedList, rhUserId, markSpecEdited, invalidateSpecContext],
   )
 
-  const handleClearSpec = useCallback(() => {
-    if ((specDirty || userInput.trim()) && !window.confirm(
+  const handleClearSpec = useCallback(async () => {
+    if ((specDirty || userInput.trim()) && !await confirmInStudio(
       "当前编辑的 Agent 或新需求尚未保存，确定清空吗？"
     )) return
     invalidateSpecContext()
@@ -780,10 +788,12 @@ export function useHome() {
     : null,[requirementForTools,spec,connectedTools,connectedMarketTools])
 
   const rematchAgentTools = useCallback(async () => {
-    if(!spec)return
+    if(!spec)return {listsChecked:false,detail:"当前没有可核验的 Agent 方案；请先创建或选择方案。"}
     const basis=specRevisionRef.current
     const fresh=await loadConnectedTools()
-    if(fresh.stale||!fresh.verified||basis!==specRevisionRef.current)return
+    if(fresh.stale)return {listsChecked:false,detail:"已有更新的连接核验请求正在进行，请再次检查结果。"}
+    if(!fresh.verified)return {listsChecked:false,detail:"部分 HTTP/MCP 清单无法核实，未将任何未验证连接视为可用。请重试。"}
+    if(basis!==specRevisionRef.current)return {listsChecked:false,detail:"核验过程中 Agent 草稿发生修改，未用过期匹配结果覆盖草稿；请重新核验。"}
     const currentSelections=(spec.tools||[]).filter(tool=>
       fresh.http.some(conn=>conn.name===tool) || fresh.market.some(conn=>conn.id===tool))
     const result=resolveAgentToolRequirements(requirementForTools,spec,
@@ -794,9 +804,11 @@ export function useHome() {
       markSpecEdited()
       setSpec(previous=>previous?{...previous,tools:updated}:previous)
     }
-    setToolMatchNotice(result.gaps.length
-      ? `已匹配 ${result.resolvedTools.length} 项工具，还有 ${result.gaps.length} 项能力需要连接或人工确认。`
-      : `已刷新连接并匹配 ${result.resolvedTools.length} 项工具。请按能力清单确认角色分配与待连接项。`)
+    const detail=result.gaps.length
+      ? `已读取当前员工连接清单并匹配 ${result.resolvedTools.length} 项候选；还有 ${result.gaps.length} 项待测试或人工确认。`
+      : `已读取当前员工连接清单并匹配 ${result.resolvedTools.length} 项候选。请复核工具健康和角色授权后保存。`
+    setToolMatchNotice(detail)
+    return {listsChecked:true,detail}
   },[spec,requirementForTools,loadConnectedTools,markSpecEdited])
 
   // 勾选/取消勾选工具 → 写进 spec.tools（内置 id 或已连接工具名精确匹配）
@@ -858,6 +870,7 @@ export function useHome() {
     connectedTools,    toolAnalysis,
     toolMatchNotice,
     rematchAgentTools,
+    resourceReminder,dismissResourceReminder,
 
     connectedMarketTools,
     builtinToolOptions: BUILTIN_TOOL_OPTIONS,

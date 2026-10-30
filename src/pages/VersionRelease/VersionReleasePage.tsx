@@ -9,6 +9,7 @@ import { VrDiffPanel } from "@/components/version-release/VrDiffPanel"
 import { VrConfirmDialog } from "@/components/version-release/VrConfirmDialog"
 import { VrLoginGate } from "@/components/version-release/VrLoginGate"
 import { SiteShell } from "@/components/site/SiteShell"
+import {WorkspaceEmptyState} from '@/components/site/WorkspaceEmptyState'
 import { VrTopBar } from "@/components/version-release/VrTopBar"
 import type { useVersionRelease } from "./useVersionRelease"
 
@@ -24,26 +25,7 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
       </header>
 
       <main className="relative z-10 w-full min-w-0 px-3 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="release">
-        <section className="mt-4 rounded-2xl border border-border bg-card px-5 py-3.5 shadow-sm">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
-              测试通过后存版本，<span className="text-primary">放心发布每一次改动</span>
-            </h1>
-            <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-              「验收测试 → 存版本 → 发布」流水线：真实跑一遍测试指令，配置快照存成版本，随时查看、恢复或发布。
-            </p>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-                <GitBranch className="h-3.5 w-3.5 text-primary" />
-                版本快照可回退 · 发布状态自动流转
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-                <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                未测试版本会被明确标记
-              </span>
-            </div>
-        </section>
+        <p className="my-3 text-xs leading-5 text-muted-foreground">选择 Agent 查看版本记录；验收、保存和发布均需明确操作。</p>
 
         {!p.isLoggedIn && <VrLoginGate onLoginClick={p.onLoginClick} />}
 
@@ -99,7 +81,7 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
 
         {p.isLoggedIn && (
           <>
-            <section className="mt-6">
+            <section className="mt-3">
               <SpecSelector
                 specList={p.specList}
                 isLoadingSpecs={p.isLoadingSpecs}
@@ -110,7 +92,9 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
               />
             </section>
 
-            <section className="py-10">
+            {!hasSpec&&p.specList.length>0&&<div className="my-4"><WorkspaceEmptyState title="选择 Agent 查看版本" description="使用上方选择器，版本历史和发布操作会在这里显示。"/></div>}
+            {hasSpec&&<>
+            <section className="py-4">
               <div className="mb-5 flex items-baseline justify-between gap-3">
                 <h2 className="text-lg font-semibold tracking-tight text-card-foreground">发布流水线</h2>
                 <span className="text-xs text-muted-foreground">测试 → 存版本 → 发布，三步走完</span>
@@ -183,7 +167,7 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
               <VrDiffPanel versions={p.versionList} versionStatusMeta={p.versionStatusMeta} />
             </section>
 
-            <section className="pb-16">
+            <section className="pb-4">
               <PublishRecordsTable
                 publishRecords={p.publishRecords}
                 specDisplayName={p.selectedSpec?.name || ""}
@@ -191,16 +175,11 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                 formatVersionTime={p.formatVersionTime}
               />
             </section>
+            </>}
           </>
         )}
       </main>
 
-      <footer className="relative z-10 mt-4 border-t border-border py-10 text-center">
-        <p className="text-sm font-medium text-card-foreground">Agent Studio · 版本与发布</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          每次发布都有据可查，随时回退到任意历史版本。
-        </p>
-      </footer>
 
       <VrConfirmDialog
         confirmAction={p.confirmAction}

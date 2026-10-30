@@ -34,6 +34,7 @@ const website = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.end('<!doctype html><title>办公录入验收</title><form method="POST" action="/office-submit"><label>报告标题<input name="title"></label><label>统计标签<input name="period"></label><label>记录数<input name="count"></label><label>合计<input name="total"></label><button type="submit">确认录入</button></form>'); return
   }
+  if (req.url === '/drop') { req.socket.destroy(); return }
   if (req.url === '/redirect') { res.writeHead(302, { location: forbiddenUrl }); res.end(); return }
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.end('<!doctype html><html><title>Local computer test</title><body><h1>本地浏览器验证</h1><label>姓名<input aria-label="姓名" id="name"></label><button onclick="document.querySelector(\'#result\').textContent=\'Hello \'+document.querySelector(\'#name\').value">提交</button><p id="result"></p></body></html>')
@@ -95,7 +96,7 @@ try {
   const appScript = path.join(work, 'launch-fixture.mjs')
   await fs.writeFile(appScript, 'import fs from "node:fs";fs.writeFileSync(process.argv[2],"launched")')
   runtime = await createRuntime({ roots: [{ name: 'work', path: work }], office: { enabled: true },
-    browser: { enabled: true, headless: true, images: true, channel: 'msedge', allowedOrigins: [websiteUrl] },
+    browser: { enabled: true, headless: true, images: true, channel: 'chrome', allowedOrigins: [websiteUrl] },
     apps: { test_app: { command: process.execPath, args: [appScript, path.join(work, 'app-started.txt')] } } })
   assert.ok(runtime.tools.some(t => t.name === 'browser.browser_navigate'))
   for (const tool of runtime.tools.filter(t => t.name.startsWith('browser.'))) {
@@ -189,6 +190,18 @@ try {
   await assert.rejects(() => runtime.execute({ tool: 'browser.browser_evaluate', arguments: { function: '() => 1' } }), /tool_denied/)
   assert.equal(remoteRequests, 0)
   passed('real Playwright MCP browser navigation, typing, click, observation and blocked cross-origin redirect')
+  const failedNavigation=await submit('browser.browser_navigate',{url:websiteUrl+'/drop'})
+  const failedClaim=(await api('/poll',{tools:runtime.tools})).job
+  assert.equal(failedClaim.id,failedNavigation.id)
+  await executeClaim(api,runtime,failedClaim)
+  const failedReceipt=await ok('GET','/api/local-jobs/'+failedNavigation.id)
+  assert.equal(failedReceipt.status,'failed','a dropped main-frame request must never be recorded as a successful visit')
+  assert.ok(!String(failedReceipt.result||'').includes('本地浏览器验证'))
+  assert.match(failedReceipt.result,/browser_navigation_failed|browser_connection_refused|browser_navigation_timeout/,'safe navigation reason must survive the executor boundary')
+  await assert.rejects(()=>runtime.execute({tool:'browser.browser_snapshot',arguments:{}}),/^Error: browser_navigation_failed$/,'a failed browser document cannot masquerade as a healthy page snapshot')
+  const recoveredSnapshot=await perform('browser.browser_navigate',{url:websiteUrl})
+  assert.match(recoveredSnapshot,/本地浏览器验证/,'a later approved navigation must recover after the failed request')
+  passed('failed navigation yields explicit workbench diagnostics, never a fake successful page, and an approved retry recovers')
   await perform('apps.launch', { app: 'test_app' })
   for (let i = 0; i < 30; i++) { try { if (await fs.readFile(path.join(work, 'app-started.txt'), 'utf8') === 'launched') break } catch {} await pause(100) }
   assert.equal(await fs.readFile(path.join(work, 'app-started.txt'), 'utf8'), 'launched')
@@ -287,11 +300,11 @@ try {
 
   process.env.AGENT_STUDIO_PB_ORIGIN = pbOrigin
   const { preview } = await import('vite')
-  const { chromium, expect } = await import('@playwright/test')
+  const { chromium, expect } = await import('playwright/test')
   await fs.access(path.join(root, 'dist/index.html'))
   uiServer = await preview({ configFile: path.join(root, 'vibex-local/vite.local.config.ts'),
     preview: { port: 0, strictPort: false, open: false }, logLevel: 'error' })
-  uiBrowser = await chromium.launch({ channel: 'msedge', headless: true })
+  uiBrowser = await chromium.launch({ channel: 'chrome', headless: true })
   const page = await uiBrowser.newPage({ viewport: { width: 1440, height: 1100 } })
   const uiErrors = []; page.on('pageerror', e => uiErrors.push(e.message))
   const uiOrigin = 'http://127.0.0.1:' + uiServer.httpServer.address().port
@@ -299,7 +312,7 @@ try {
   await page.getByLabel('工作邮箱').fill('local@example.test')
   await page.getByLabel('密码', { exact: true }).fill('S3cure-local-test-2026')
   await page.getByRole('button', { name: '登录', exact: true }).click()
-  const panel = page.getByRole('region', { name: '我的电脑', exact: true })
+  const panel = page.getByRole('region', { name: '我的电脑与浏览器', exact: true })
   try { await expect(panel).toBeVisible({ timeout: 30000 }) }
   catch (e) {
     console.error('OFFICE_UI_DIAGNOSTIC', JSON.stringify({ url: page.url(), errors: uiErrors, text: (await page.locator('body').innerText()).slice(-3500) }))
@@ -308,26 +321,44 @@ try {
   }
   await api('/poll', { tools: runtime.tools })
   await panel.getByRole('button', { name: '刷新设备' }).click()
-  await panel.getByText('测试一次本地操作', { exact: true }).click()
-  await panel.getByLabel('选择电脑').selectOption(paired.device_id)
-  await panel.getByLabel('操作', { exact: true }).selectOption('files.read')
-  await panel.getByLabel('操作参数（JSON）').fill(JSON.stringify({ root: 'work', path: 'result.txt' }))
-  await expect(panel.getByRole('button', { name: '批准并执行' })).toBeDisabled()
-  await panel.getByLabel('我批准在所选电脑上执行这次操作').check()
-  await panel.getByRole('button', { name: '批准并执行' }).click()
-  await expect(panel.getByRole('status')).toContainText('等待电脑领取')
-  await executeClaim(api, runtime, (await api('/poll', { tools: runtime.tools })).job)
-  await expect(panel.getByRole('status')).toContainText('已完成', { timeout: 12000 })
-  await expect(panel.getByRole('status')).toContainText('写入成功')
-  await panel.getByLabel('操作', { exact: true }).selectOption('browser.browser_take_screenshot')
-  await panel.getByLabel('操作参数（JSON）').fill('{"type":"png"}')
-  await panel.getByLabel('我批准在所选电脑上执行这次操作').check()
-  await panel.getByRole('button', { name: '批准并执行' }).click()
-  await expect(panel.getByRole('status')).toContainText('等待电脑领取')
-  await executeClaim(api, runtime, (await api('/poll', { tools: runtime.tools })).job)
-  await expect(panel.getByAltText('本地操作返回的截图')).toBeVisible({ timeout: 12000 })
-  assert.ok(await panel.getByAltText('本地操作返回的截图').evaluate(img => img.naturalWidth > 0))
+  await panel.locator('[data-device-id="'+paired.device_id+'"]').getByRole('button',{name:'检查连接',exact:true}).click()
+  const workspace=panel.getByRole('region',{name:'系统内文件工作区',exact:true})
+  const tabs=panel.getByRole('tablist',{name:'电脑工作区功能',exact:true})
+  const claimFromUi=async expectedTool=>{
+    let claimed
+    await expect.poll(async()=>{if(!claimed)claimed=(await api('/poll',{tools:runtime.tools})).job;return claimed?.input?.tool||''},{timeout:12000}).toBe(expectedTool)
+    await executeClaim(api,runtime,claimed)
+  }
+  await expect(panel.getByLabel('操作参数（JSON）')).toHaveCount(0)
+  assert.equal((await api('/poll',{tools:runtime.tools})).job,null,'opening workspace never enqueues work')
+  await workspace.getByRole('button',{name:'新建文件',exact:true}).click()
+  await workspace.getByLabel('文件操作目标位置').fill('declined-ui.txt')
+  await workspace.getByLabel('新建文本内容').fill('must not be written')
+  await workspace.getByRole('button',{name:'确认新建',exact:true}).click()
+  await page.locator('[data-studio-dialog]').getByRole('button',{name:'取消',exact:true}).click()
+  assert.equal((await api('/poll',{tools:runtime.tools})).job,null,'declined plain form must not enqueue')
+  await assert.rejects(fs.access(path.join(work,'declined-ui.txt')),{code:'ENOENT'})
+  await workspace.getByRole('button',{name:'收起',exact:true}).click()
+  await page.locator('[data-studio-dialog]').getByRole('button',{name:'放弃草稿',exact:true}).click()
+  await workspace.getByRole('button',{name:'读取目录',exact:true}).click()
+  await claimFromUi('files.list')
+  await expect(workspace.getByRole('button',{name:'result.txt',exact:true})).toBeVisible({timeout:12000})
+  await workspace.getByRole('button',{name:'result.txt',exact:true}).click()
+  await workspace.getByRole('button',{name:'读取内容',exact:true}).click()
+  await claimFromUi('files.stat');await claimFromUi('files.read')
+  await expect(workspace.getByLabel('文件文本编辑器')).toHaveValue(/写入成功/,{timeout:12000})
+  await tabs.getByRole('tab',{name:'浏览器',exact:true}).click()
+  const quick=panel.getByRole('region',{name:'无需 JSON 的连接检查'})
+  const result=quick.getByRole('status',{name:'连接检查结果'})
+  await expect(quick.getByLabel('当前自动化浏览器')).toContainText('Google Chrome')
+  await quick.getByRole('button',{name:'查看当前网页截图',exact:true}).click()
+  await page.locator('[data-studio-dialog]').getByRole('button',{name:'批准这次检查',exact:true}).click()
+  await expect(result).toContainText('等待本机连接器领取')
+  await executeClaim(api,runtime,(await api('/poll',{tools:runtime.tools})).job)
+  await expect(quick.getByAltText('本地操作返回的截图')).toBeVisible({timeout:20000})
+  assert.ok(await quick.getByAltText('本地操作返回的截图').evaluate(img=>img.naturalWidth>0))
   await page.screenshot({ path: path.join(root, '.tmp/local-computer-ui.png'), fullPage: true })
+  await tabs.getByRole('tab',{name:'办公与 Agent',exact:true}).click()
   await panel.getByText('办公流程：表格汇总 → 文档报告 → 网页录入', { exact: true }).click()
   await panel.getByLabel('办公电脑').selectOption(paired.device_id)
   await panel.getByLabel('源表相对路径').fill('ledger.csv')
@@ -356,9 +387,17 @@ try {
   await page.screenshot({ path: path.join(root, '.tmp/local-office-ui.png'), fullPage: true })
   passed('real React office configuration → saved employee Agent → prefilled instruction/device without automatic execution')
   await page.goto(uiOrigin + '/agent-run?spec=' + spec.id)
+  await expect(page.getByLabel('快速选择 Agent')).toHaveValue(spec.id)
+  // This legacy Agent has no local_computer binding. Keep ad-hoc device use
+  // available behind an explicit disclosure rather than forcing it on all tasks.
+  await expect(page.getByLabel('本次可操作的电脑')).toHaveCount(0)
+  await page.getByText('为本次任务使用电脑（可选）', { exact: true }).click()
   await expect(page.getByLabel('本次可操作的电脑')).toBeVisible({ timeout: 15000 })
   await page.getByLabel('本次可操作的电脑').selectOption(paired.device_id)
   await page.goto(uiOrigin + '/agent-run?run=' + visualRun.run_id)
+  await expect(page.getByRole('region', { name: '本次任务摘要' })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByLabel('本次 Agent 运行任务指令')).toHaveCount(0)
+  await expect(page.getByLabel('本次可操作的电脑')).toHaveCount(0)
   await page.getByRole('tab', { name: /^执行过程/ }).click({ timeout: 15000 })
   await page.getByRole('button', { name: '查看本地截图', exact: true }).click({ timeout: 15000 })
   await expect(page.getByAltText('本地操作返回的截图')).toBeVisible()

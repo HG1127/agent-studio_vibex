@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { Link } from "react-router-dom"
 import {
   AlertCircle, Bot, CheckCircle2, Eye, FilePenLine,
   History, LockKeyhole, RefreshCw, Send, ShieldCheck, Trash2, UserPlus, UsersRound,
 } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
+import {WorkspaceEmptyState} from '@/components/site/WorkspaceEmptyState'
 import {AgentPlanDiff,AgentVersionHistory} from "@/components/agents/AgentVersionHistory"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
@@ -115,7 +117,7 @@ export default function AgentCollaborationPage(){
   e.preventDefault()
   if(!detail||!email.trim())return
   const chosen=email.trim()
-  if(!window.confirm("授予 "+chosen+" "+(grantRole==="viewer"?"查看方案":"提交方案修改建议")+
+  if(!await confirmInStudio("授予 "+chosen+" "+(grantRole==="viewer"?"查看方案":"提交方案修改建议")+
    "权限？协作成员不能直接执行此 Agent、获取密钥或修改工具。"))return
   const granted=await act(()=>api("POST","/api/studio/agent-collab/grant",{
     spec_id:detail.id,action:"grant",role:grantRole,recipient_email:chosen,
@@ -123,7 +125,7 @@ export default function AgentCollaborationPage(){
   if(granted)setEmail("")
  }
  const revoke=async(member:Member)=>{
-  if(!detail||!window.confirm("撤销 "+member.name+" 的协作权限？"))return
+  if(!detail||!await confirmInStudio("撤销 "+member.name+" 的协作权限？"))return
   await act(()=>api("POST","/api/studio/agent-collab/grant",{
     spec_id:detail.id,action:"revoke",member_id:member.member_id,
   }),"协作授权已撤销。")
@@ -147,7 +149,7 @@ export default function AgentCollaborationPage(){
   })){
    setError("每个板块最多30项，每项不能超过500字符。");return
   }
-  if(!window.confirm("提交当前草稿给 Agent 所有者审核？不会立即改变正式 Agent 配置。"))return
+  if(!await confirmInStudio("提交当前草稿给 Agent 所有者审核？不会立即改变正式 Agent 配置。"))return
   const proposed=await act(()=>api("POST","/api/studio/agent-collab/propose",{
     spec_id:detail.id,base_hash:detail.base_hash,proposed:parsed,comment:comment.trim(),
   }),"修改提案已提交，等待所有者审核。")
@@ -156,7 +158,7 @@ export default function AgentCollaborationPage(){
  const review=async(item:Proposal,decision:"accept"|"reject")=>{
   if(!detail)return
   const action=decision==="accept"?"正式应用该提案":"拒绝该提案"
-  if(!window.confirm("确认"+action+"？\n审核意见："+item.comment+
+  if(!await confirmInStudio("确认"+action+"？\n审核意见："+item.comment+
    "\n\n批准只更新描述和任务规划，不更改工具、模型和知识库授权。"))return
   await act(()=>api("POST","/api/studio/agent-collab/review",{
     spec_id:detail.id,proposal_id:item.id,decision,confirm:true,
@@ -203,10 +205,7 @@ export default function AgentCollaborationPage(){
         </span>
        </button>)}</div>}
     </aside>
-    {!selected?<section className={box+" py-16 text-center"}>
-      <Bot className="mx-auto h-8 w-8 text-muted-foreground"/>
-      <p className="mt-3 text-sm text-muted-foreground">选择一个 Agent 查看协作方案</p>
-    </section>:(!detail || detail.id!==selected)?<section className={box+" py-10 text-center text-sm text-muted-foreground"}>
+    {!selected?<WorkspaceEmptyState icon={Bot} title="选择一个 Agent 查看协作方案" description="从左侧列表选择；成员权限、提案和历史会在此显示。"/>:(!detail || detail.id!==selected)?<section className={box+" text-sm text-muted-foreground"}>
       正在加载授权的 Agent 方案…
     </section>:<div className="space-y-5">
      <section className={box}>

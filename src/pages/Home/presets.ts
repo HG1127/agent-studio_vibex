@@ -52,7 +52,7 @@ export const BUILTIN_TOOL_OPTIONS: { id: string; title: string; desc: string }[]
 
 // 已连接外部工具（由 useHome 登录态拉取）与内置三件套一起决定「可用」，
 // 两边都命不中的工具名维持「待连接」展示。
-export type ConnectedToolOption = { name: string; description: string; method?: string; status?: string }
+export type ConnectedToolOption = { name: string; description: string; method?: string; status?: string; /** Owner-scoped connection ID, used only for exact setup deep links. */ id?: string }
 
 export function toolConnectionStatus(
   toolName: string,

@@ -1,4 +1,5 @@
 import {useCallback,useEffect,useState,type FormEvent} from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import {CheckCircle2,ShieldCheck,UserPlus,UsersRound,Trash2} from "lucide-react"
 import {knowledgeApi} from "@/lib/knowledgeBases"
 
@@ -37,7 +38,7 @@ export function KnowledgeSharePanel({baseId}:{baseId:string}){
  const submit=async(e:FormEvent)=>{
   e.preventDefault()
   if(!email.trim()||saving)return
-  if(!window.confirm("确认授权 "+email.trim()+" 访问此知识库？\n"+
+  if(!await confirmInStudio("确认授权 "+email.trim()+" 访问此知识库？\n"+
     (role==="editor"?
       "对方可上传及删除文档；若你的知识库启用后台向量化，新增资料可能产生你的 Embedding 模型费用。":
       "对方只能阅读目录与检索片段，不可修改文档。")+
@@ -61,7 +62,7 @@ export function KnowledgeSharePanel({baseId}:{baseId:string}){
  }
  const updateSemantic=async(grant:Grant,next:boolean)=>{
   if(saving)return
-  if(next&&!window.confirm(
+  if(next&&!await confirmInStudio(
    "为 "+grant.name+" 开通团队语义检索？\n"+
    "对方只能通过自己的兼容 Embedding 模型生成查询向量，"+
    "读取您已有的文档向量；不会获得您的密钥，也不会将原文发给其 Embedding 服务。"
@@ -78,7 +79,7 @@ export function KnowledgeSharePanel({baseId}:{baseId:string}){
   finally{setSaving(false)}
  }
  const revoke=async(grant:Grant)=>{
-  if(saving||!window.confirm("确定取消 "+grant.name+" 对当前知识库的访问权限？"))return
+  if(saving||!await confirmInStudio("确定取消 "+grant.name+" 对当前知识库的访问权限？"))return
   setSaving(true);setError("");setNotice("")
   try{
    await knowledgeApi("/api/knowledge-bases/access","POST",{

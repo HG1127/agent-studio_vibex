@@ -150,8 +150,55 @@ try {
   assert.equal(otherOwner.ok,true)
   const ownerLogs=await expect("GET","/api/tool-hub/invocations","A",undefined,200)
   assert.ok(ownerLogs.items.some(item=>item.source==="debug"&&item.tool_name==="Tenant A write"))
+  assert.ok(ownerLogs.totalItems>=ownerLogs.items.length)
+  assert.equal(ownerLogs.page,1)
+  assert.equal(ownerLogs.perPage,20)
+  const single=await expect("GET","/api/tool-hub/invocations?limit=1&page=1","A",undefined,200)
+  assert.equal(single.items.length,1)
+  assert.equal(single.totalItems,ownerLogs.totalItems)
+  assert.equal(single.totalPages,Math.max(1,Math.ceil(single.totalItems/1)))
+  if(single.totalItems>1){
+    const second=await expect("GET","/api/tool-hub/invocations?limit=1&page=2","A",undefined,200)
+    assert.equal(second.items.length,1)
+    assert.notEqual(second.items[0].id,single.items[0].id,"stable server-side pagination cannot repeat page one")
+  }
+  const bySource=await expect("GET","/api/tool-hub/invocations?source=debug&limit=20","A",undefined,200)
+  assert.ok(bySource.items.length>0)
+  assert.ok(bySource.items.every(row=>row.source==="debug"))
+  const byName=await expect("GET","/api/tool-hub/invocations?q=Tenant%20A&limit=20","A",undefined,200)
+  assert.ok(byName.items.some(row=>row.tool_name==="Tenant A write"))
+  assert.ok(byName.items.every(row=>row.tool_name.toLowerCase().includes("tenant a")))
+  // Literal substring search must not treat user '%'/'_' as SQL wildcards.
+  for(const wildcard of ["%","_"]){
+    const probe=await expect("GET","/api/tool-hub/invocations?q="+encodeURIComponent(wildcard),"A",undefined,200)
+    assert.equal(probe.totalItems,0,"wildcard must be literal in total count")
+    assert.equal(probe.items.length,0,"wildcard must be literal in result page")
+  }
+  await expect("GET","/api/tool-hub/invocations","",undefined,401)
+  const onlyFailure=await expect("GET","/api/tool-hub/invocations?status=failed&limit=20","A",undefined,200)
+  assert.ok(onlyFailure.items.every(row=>row.status==="failed"))
+  assert.equal((await expect("GET","/api/tool-hub/invocations?status=invalid","A",undefined,400)).error,"invalid_invocation_status")
+  assert.equal((await expect("GET","/api/tool-hub/invocations?source=invalid","A",undefined,400)).error,"invalid_invocation_source")
+  const literal=await expect("POST","/api/tool-connections","A",{
+    name:"Progress 100% query",description:"literal substring filtering check",
+    method:"GET",url:upstreamBase+"/percent",headers:[],
+  })
+  await expect("POST","/api/tool-hub/debug","A",{
+    connection_id:literal.item.id,input:"{}",
+  })
+  const literalResults=await expect("GET","/api/tool-hub/invocations?q=%25","A",undefined,200)
+  assert.equal(literalResults.totalItems,1,"percent sign must match only the literal tool")
+  assert.equal(literalResults.items.length,1)
+  assert.equal(literalResults.items[0].tool_name,"Progress 100% query")
+  const runFilter=await expect("GET","/api/tool-hub/invocations?run_id=123456789012345","A",undefined,200)
+  assert.equal(runFilter.totalItems,0,"filter must not import unrelated debug calls")
+  assert.equal(runFilter.items.length,0)
+  assert.equal((await expect("GET","/api/tool-hub/invocations?run_id=../bad","A",undefined,400)).error,"invalid_run_id")
   const foreignLogs=await expect("GET","/api/tool-hub/invocations","B",undefined,200)
   assert.equal(foreignLogs.items.length,0)
+  const foreignPaged=await expect("GET","/api/tool-hub/invocations?page=2&limit=1&source=debug","B",undefined,200)
+  assert.equal(foreignPaged.totalItems,0)
+  assert.equal(foreignPaged.items.length,0)
   console.log("PASS ToolHub + Tool Connections: tenant isolation, GET read, per-call POST consent, tenant-scoped names")
 } finally {
   server.kill()

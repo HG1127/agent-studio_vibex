@@ -2,12 +2,12 @@
   "server": "http://127.0.0.1:7000",
   "credentialsFile": ".local-device-credentials.json",
   "office": { "enabled": false },
-  "roots": [{ "name": "work", "path": "D:\\AgentStudioWork" }],
+  "roots": [{ "name": "work", "path": "D:\\AgentStudioWork", "capabilities": { "edit": false, "move": false, "delete": false, "open": false } }],
   "browser": {
     "enabled": true,
     "headless": false,
     "images": false,
-    "channel": "msedge",
+    "channel": "chrome",
     "allowedOrigins": ["https://example.com"]
   },
   "desktop": {

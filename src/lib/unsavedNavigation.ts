@@ -35,11 +35,11 @@ function routePathname(value: string): string {
 export function isSameEditorRoute(current: string, next: string): boolean {
   if (routePathname(current) !== routePathname(next)) return false
   const pathname = routePathname(current)
-  if (!["/agent-create","/workflow-canvas","/"].includes(pathname)) return true
+  if (!["/agent-create","/workflow-canvas","/knowledge-bases","/"].includes(pathname)) return true
   try {
     const from = new URL(current,"http://agent-studio.local")
     const to = new URL(next,"http://agent-studio.local")
-    const key = pathname === "/workflow-canvas" ? "wf" : "spec"
+    const key = pathname === "/workflow-canvas" ? "wf" : pathname === "/knowledge-bases" ? "base" : "spec"
     return (from.searchParams.get(key) || "") === (to.searchParams.get(key) || "")
   } catch {
     return current === next
@@ -72,38 +72,55 @@ export function recordRenderedStudioRoute(path: string, index: unknown): void {
  */
 export function installUnsavedHistoryGuard(
   win: Window,
-  ask: (message: string) => boolean,
+  ask: (message: string) => Promise<boolean>,
 ): () => void {
   if (uninstallHistoryGuard) return uninstallHistoryGuard
-  let reversing = false
+  let reverting = false
+  let bypassConfirmed = false
+  let dialogPending = false
   let reverseClear: number | null = null
-  const resetReverse = () => {
-    reversing = false
+  const clearTimer = () => {
     if (reverseClear !== null) win.clearTimeout(reverseClear)
     reverseClear = null
   }
   const onPopState = (event: PopStateEvent) => {
-    if (reversing) {
-      resetReverse()
+    if (reverting) {
+      reverting = false
+      clearTimer()
       event.stopImmediatePropagation()
       return
     }
+    if (bypassConfirmed) {
+      bypassConfirmed = false
+      clearTimer()
+      return // Let BrowserRouter observe the single approved navigation.
+    }
     const previous = renderedHistory
+    const targetPath = win.location.pathname + win.location.search
     const offset = recoverHistoryOffset(previous.index, event.state?.idx)
-    if (offset === null) return
-    if (shouldNavigateFromUnsavedWork(
-      previous.path, win.location.pathname + win.location.search, ask,
-    )) return
+    if (offset === null || isSameEditorRoute(previous.path, targetPath) || !hasUnsavedWork()) return
+    // Browser already changed the history position. Restore it immediately,
+    // suppress Router's update, THEN await a non-blocking branded dialog.
     event.stopImmediatePropagation()
-    reversing = true
+    reverting = true
     win.history.go(offset)
-    // Reset the suppression flag if the reverse traversal cannot complete.
-    reverseClear = win.setTimeout(resetReverse, 1500)
+    clearTimer()
+    reverseClear = win.setTimeout(() => { reverting = false; reverseClear = null }, 1500)
+    if (dialogPending) return
+    dialogPending = true
+    void Promise.resolve(ask(MESSAGE)).then(approved => {
+      dialogPending = false
+      if (!approved || win.history.state?.idx !== previous.index) return
+      bypassConfirmed = true
+      win.history.go(-offset)
+      clearTimer()
+      reverseClear = win.setTimeout(() => { bypassConfirmed = false; reverseClear = null }, 1500)
+    }).catch(() => { dialogPending = false })
   }
   win.addEventListener("popstate", onPopState, true)
   const cleanup = () => {
     win.removeEventListener("popstate", onPopState, true)
-    resetReverse()
+    clearTimer()
     if (uninstallHistoryGuard === cleanup) uninstallHistoryGuard = null
   }
   uninstallHistoryGuard = cleanup
@@ -119,6 +136,49 @@ export function shouldNavigateFromUnsavedWork(
   return ask(MESSAGE)
 }
 
+
+export async function shouldNavigateFromUnsavedWorkAsync(
+  current: string,
+  next: string,
+  ask: (message: string) => Promise<boolean>,
+): Promise<boolean> {
+  if (!next || isSameEditorRoute(current, next) || !hasUnsavedWork()) return true
+  try { return await ask(MESSAGE) } catch { return false }
+}
+
+/** Intercept same-origin SPA anchors synchronously BEFORE React Router.
+ * Prompt asynchronously, then navigate exactly once if confirmed.
+ */
+export function protectInternalLinkClickAsync(
+  event: MouseEvent,
+  currentHref: string,
+  ask: (message: string) => Promise<boolean>,
+  navigate: (to: string) => void,
+): boolean {
+  if (event.defaultPrevented || event.button !== 0 ||
+      event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return true
+  const target = event.target
+  if (!(target instanceof Element)) return true
+  const anchor=target.closest<HTMLAnchorElement>("a[href]")
+  if (!anchor || anchor.hasAttribute("download") ||
+      (anchor.target && anchor.target !== "_self")) return true
+  let to=""
+  try {
+    const current=new URL(currentHref)
+    const next=new URL(anchor.href,current)
+    if (next.origin !== current.origin ||
+        isSameEditorRoute(current.pathname+current.search,next.pathname+next.search) ||
+        !hasUnsavedWork()) return true
+    to=next.pathname+next.search+next.hash
+  } catch { return true }
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+  void Promise.resolve(ask(MESSAGE)).then(approved=>{
+    if (approved) navigate(to)
+  }).catch(()=>undefined)
+  return false
+}
 /**
  * Capture native same-origin anchor clicks before React Router's delegated
  * listeners. Do not intercept external URLs, downloads, new tabs, hash jumps

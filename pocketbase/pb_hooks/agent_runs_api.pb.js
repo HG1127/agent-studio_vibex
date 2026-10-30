@@ -170,6 +170,57 @@ routerAdd("GET", "/api/agent-runs/recent", function (e) {
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
     var query = (e.requestInfo() || {}).query || {}
+    // Opt-in full archive. Existing recent/pending callers keep their contract.
+    // Standalone middleware has already stripped spoofed identity headers and
+    // injected the verified studio_users owner. Every query remains owner-scoped.
+    if (String(query.archive || "") === "1") {
+      var page = Number(query.page || 1)
+      var status = String(query.status || "all")
+      var days = String(query.days || "all")
+      var search = String(query.q || "").trim()
+      if (!Number.isInteger(page) || page < 1 || page > 10000 ||
+          ["all", "active", "attention", "succeeded", "failed", "cancelled"].indexOf(status) < 0 ||
+          ["all", "7", "30", "90"].indexOf(days) < 0 || search.length > 120 || /[\x00-\x1f]/.test(search)) {
+        return e.json(400, { error: "invalid_archive_filter", message: "运行记录筛选条件无效" })
+      }
+      var archiveSpec = String(query.spec_id || "").trim()
+      if (archiveSpec && !/^[A-Za-z0-9]{15}$/.test(archiveSpec))
+        return e.json(400, { error: "invalid_spec_id", message: "Agent 标识格式无效" })
+      var where = " WHERE rh_user_id={:uid}"
+      var params = { uid: uid }
+      if (archiveSpec) { where += " AND spec_id={:sid}"; params.sid = archiveSpec }
+      if (status === "active") where += " AND status IN ('queued','running','paused')"
+      else if (status === "attention") where += " AND status IN ('awaiting_input','awaiting_approval')"
+      else if (status !== "all") { where += " AND status={:state}"; params.state = status }
+      if (search) {
+        // Literal substring search: '%' and '_' are not wildcard operators.
+        where += " AND instr(lower(COALESCE(spec_name,'') || ' ' || COALESCE(instruction,'') || ' ' || id),lower({:search}))>0"
+        params.search = search
+      }
+      if (days !== "all") {
+        where += " AND datetime(created)>=datetime({:after})"
+        params.after = new Date(Date.now() - Number(days) * 86400000).toISOString()
+      }
+      var total = new DynamicModel({ total: 0 })
+      $app.db().newQuery("SELECT COUNT(*) AS total FROM agent_runs" + where).bind(params).one(total)
+      var totalItems = Number(total.total || 0), perPage = 20
+      var totalPages = Math.max(1, Math.ceil(totalItems / perPage))
+      page = Math.min(page, totalPages)
+      params.limit = perPage; params.offset = (page - 1) * perPage
+      var archiveRows = arrayOf(new DynamicModel({ id: "", spec_id: "", spec_name: "", instruction: "", status: "", current_step: 0, max_steps: 0, model: "", config: "", created: "" }))
+      $app.db().newQuery("SELECT id,spec_id,spec_name,instruction,status,current_step,max_steps,model,config,created FROM agent_runs" +
+        where + " ORDER BY created DESC,id DESC LIMIT {:limit} OFFSET {:offset}").bind(params).all(archiveRows)
+      var archiveItems = []
+      for (var ai = 0; ai < archiveRows.length; ai++) {
+        var row = archiveRows[ai], source = ""
+        try { source = String((JSON.parse(String(row.config || "{}")) || {}).source || "") } catch (_) {}
+        archiveItems.push({ id: String(row.id), spec_id: String(row.spec_id), spec_name: String(row.spec_name),
+          instruction: String(row.instruction).slice(0, 600), status: String(row.status), current_step: Number(row.current_step),
+          max_steps: Number(row.max_steps), model: String(row.model), source: source, created: String(row.created) })
+      }
+      return e.json(200, { ok: true, archive_version: 1, items: archiveItems, page: page, perPage: perPage,
+        totalItems: totalItems, totalPages: totalPages })
+    }
     var limit = Number(query.limit || 5)
     if (!limit || limit < 1) limit = 5
     if (limit > 20) limit = 20

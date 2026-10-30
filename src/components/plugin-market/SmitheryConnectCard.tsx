@@ -18,7 +18,8 @@ export function SmitheryConnectCard({p}:Props){
   const [category,setCategory]=useState<SmitheryCategory>("all")
   const [advanced,setAdvanced]=useState(false)
   const [replaceKey,setReplaceKey]=useState(false)
-  const [currentTab,setCurrentTab]=useState<"browse"|"connected">("browse")
+  const [chosenTab,setCurrentTab]=useState<"browse"|"connected"|null>(null)
+  const currentTab=chosenTab||(p.smitheryQuery.trim()?'browse':p.connectionRows.some(row=>row.is_smithery===true)?'connected':'browse')
   const [showOnlyVerified,setShowOnlyVerified]=useState(false)
   const dialogRef=useRef<HTMLDivElement|null>(null)
   const results=useMemo(()=>{
@@ -76,7 +77,7 @@ export function SmitheryConnectCard({p}:Props){
           <PlugZap className="h-5 w-5 text-primary"/>探索插件
         </h2>
         <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          像选择应用一样找到 MCP 工具。先查看用途与权限，再连接、授权、验证，成功后即可用于 Agent。
+          先复用已有插件，不重复填写密钥。首次连接时才授权账号；验证工具后返回 Agent 明确选用，不会自动扩大角色权限。
         </p>
       </div>
       <a href="https://smithery.ai" target="_blank" rel="noopener noreferrer"

@@ -1,4 +1,5 @@
 import {useEffect,useState} from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import {AlertCircle,CheckCircle2,GitCompareArrows,History,RotateCcw,ShieldCheck} from "lucide-react"
 import {getPocketBaseUrl} from "@/lib/pb"
 import {vibexAuthHeaders} from "@/lib/studioAuth"
@@ -105,7 +106,7 @@ export function AgentVersionHistory({specId,currentHash,current,onRestored}:{
   if(reason.trim().length<8||reason.trim().length>500){
    setError("恢复原因必须填写8～500个字符。");return
   }
-  if(!window.confirm(
+  if(!await confirmInStudio(
    "确定恢复到 "+time(target.occurred_ms)+" 的描述/任务规划？\n"+
    "仅更改目标、任务范围、计划、交付物及完成标准；"+
    "角色分工、能力需求、模型、工具与知识库授权保留当前配置。\n"+

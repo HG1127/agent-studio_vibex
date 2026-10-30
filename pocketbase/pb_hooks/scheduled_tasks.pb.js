@@ -47,6 +47,14 @@ routerAdd("GET", "/api/schedules", function (e) {
     }
     var qp = (e.requestInfo() || {}).query || {}
     var requestedId = String(qp.id || "").trim()
+    if (requestedId && !/^[A-Za-z0-9]{15}$/.test(requestedId)) return e.json(400, {error:"invalid_schedule_filter"})
+    var pageText=String(qp.history_page||"1"),limitText=String(qp.history_limit||"60")
+    if(!/^[1-9][0-9]{0,5}$/.test(pageText)||!/^[1-9][0-9]{0,2}$/.test(limitText))
+      return e.json(400,{error:"invalid_history_pagination"})
+    var historyPage=Number(pageText),historyLimit=Math.min(60,Number(limitText))
+    // The plan-list view does not need occurrence counts or detail lookups.
+    if(String(qp.include_history||'1')==='0')return e.json(200,{ok:true,items:items,history:[],
+      history_loaded:false,history_page:1,history_limit:historyLimit,history_total:0,history_pages:1,server_now_ms:new Date().getTime()})
     var occurrenceModel = {
       id: "", schedule_id: "", rh_user_id: "", scheduled_for_ms: 0,
       run_id: "", status: "", attempts: 0, error: "", created_ms: 0, updated_ms: 0,
@@ -57,7 +65,12 @@ routerAdd("GET", "/api/schedules", function (e) {
       "FROM agent_studio_schedule_occurrences WHERE rh_user_id={:uid} "
     var params = { uid: uid }
     if (requestedId) { historySql += "AND schedule_id={:sid} "; params.sid = requestedId }
-    historySql += "ORDER BY created_ms DESC LIMIT 60"
+    var count=new DynamicModel({total:0})
+    $app.db().newQuery("SELECT COUNT(*) AS total FROM agent_studio_schedule_occurrences WHERE rh_user_id={:uid} "+
+      (requestedId?"AND schedule_id={:sid}":"")).bind(params).one(count)
+    var historyTotal=Number(count.total)
+    params.limit=historyLimit;params.offset=(historyPage-1)*historyLimit
+    historySql += "ORDER BY created_ms DESC,id DESC LIMIT {:limit} OFFSET {:offset}"
     $app.db().newQuery(historySql).bind(params).all(occurrences)
     var history = []
     for (var j = 0; j < occurrences.length; j++) {
@@ -87,7 +100,9 @@ routerAdd("GET", "/api/schedules", function (e) {
         error: message, created_ms: Number(occ.created_ms),
       })
     }
-    return e.json(200, { ok: true, items: items, history: history, server_now_ms: new Date().getTime() })
+    return e.json(200, { ok: true, items: items, history: history,
+      history_page:historyPage,history_limit:historyLimit,history_total:historyTotal,
+      history_pages:Math.max(1,Math.ceil(historyTotal/historyLimit)),server_now_ms: new Date().getTime() })
   } catch (err) {
     try { $app.logger().error("schedules listing", "err", String(err)) } catch (_) {}
     return e.json(500, { error: "schedule_list_failed" })
@@ -107,19 +122,24 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
     var existing = null
     if (action !== "create") {
       if (!/^[A-Za-z0-9]{15}$/.test(id)) return e.json(400, { error: "schedule_id_required" })
-      existing = new DynamicModel({ id: "", rh_user_id: "", deleted: 0, revision: 0, enabled: 0, next_at_ms: 0 })
+      existing = new DynamicModel({ id: "", rh_user_id: "", deleted: 0, revision: 0, enabled: 0,
+        next_at_ms: 0,start_at_ms:0,recurrence_kind:"",interval_minutes:0,time_zone:"",local_time:"",weekday:0 })
       try {
         $app.db().newQuery(
-          "SELECT id,rh_user_id,deleted,revision,enabled,next_at_ms FROM agent_studio_schedules " +
+          "SELECT id,rh_user_id,deleted,revision,enabled,next_at_ms,start_at_ms,recurrence_kind,interval_minutes,time_zone,local_time,weekday FROM agent_studio_schedules " +
           "WHERE id={:id} AND rh_user_id={:uid} AND deleted=0"
         ).bind({ id: id, uid: uid }).one(existing)
       } catch (_) { existing = null }
       if (!existing) return e.json(404, { error: "schedule_not_found" })
+      if(body.expected_revision!==undefined &&
+         (!Number.isSafeInteger(body.expected_revision)||body.expected_revision!==Number(existing.revision)))
+        return e.json(409,{error:"schedule_changed",message:"此计划已被其他页面修改，请重新读取后再操作；本次未覆盖。"})
     }
     if (action === "delete") {
-      $app.db().newQuery(
-        "UPDATE agent_studio_schedules SET deleted=1,enabled=0,revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid}"
-      ).bind({ id: id, uid: uid, now: now }).execute()
+      var removed=$app.db().newQuery(
+        "UPDATE agent_studio_schedules SET deleted=1,enabled=0,revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
+      ).bind({ id: id, uid: uid, now: now,rev:Number(existing.revision) }).execute()
+      if(Number(removed.rowsAffected())!==1)return e.json(409,{error:"schedule_changed"})
       $app.db().newQuery(
         "UPDATE agent_studio_schedule_occurrences SET status='cancelled_schedule',updated_ms={:now} " +
         "WHERE schedule_id={:id} AND rh_user_id={:uid} AND status IN ('pending','retryable')"
@@ -198,6 +218,17 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
     var interval = Number(body.interval_minutes === undefined ? 60 : body.interval_minutes)
     var start = Number(body.start_at_ms)
     var next = Number(body.next_at_ms)
+    var preserveTiming=action==="update"&&body.preserve_timing===true
+    if(preserveTiming){
+      if(body.expected_revision===undefined)return e.json(400,{error:"schedule_revision_required"})
+      kind=String(existing.recurrence_kind);zone=String(existing.time_zone);time=String(existing.local_time)
+      weekday=Number(existing.weekday);interval=Number(existing.interval_minutes)
+      start=Number(existing.start_at_ms);next=Number(existing.next_at_ms)
+    }
+    if(body.enabled!==undefined&&typeof body.enabled!=="boolean")return e.json(400,{error:"invalid_enabled"})
+    // Editing never silently resumes a paused plan. Activation is a separate
+    // explicit toggle; create can opt into a paused draft without queuing work.
+    var savedEnabled=action==="create"?(body.enabled===false?0:1):Number(existing.enabled)
     var modelConn = String(body.model_connection_id || "").trim()
     var modelId = String(body.model_id || "").trim()
     var maxSteps = Number(body.max_steps === undefined ? 10 : body.max_steps)
@@ -209,9 +240,9 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
     if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return e.json(400, { error: "invalid_weekday" })
     if (!Number.isInteger(interval) || interval < 15 || interval > 10080) return e.json(400, { error: "invalid_interval" })
     if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 30) return e.json(400, { error: "invalid_max_steps" })
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(next) ||
+    if (!preserveTiming && (!Number.isSafeInteger(start) || !Number.isSafeInteger(next) ||
         start < now - 90000 || start > now + 367 * 86400000 ||
-        next < now - 90000 || next > now + 367 * 86400000 || next < start) {
+        next < now - 90000 || next > now + 367 * 86400000 || next < start)) {
       return e.json(400, { error: "invalid_schedule_time" })
     }
     var targetRecord = null
@@ -239,24 +270,26 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
         "(id,rh_user_id,name,target_kind,target_id,instruction,recurrence_kind,interval_minutes,time_zone," +
         "local_time,weekday,start_at_ms,next_at_ms,model_connection_id,model_id,max_steps,enabled,deleted,revision,created_ms,updated_ms,last_due_ms) " +
         "VALUES ({:id},{:uid},{:name},{:tk},{:tid},{:inst},{:rk},{:interval},{:zone},{:time},{:weekday}," +
-        "{:start},{:next},{:conn},{:model},{:steps},1,0,1,{:now},{:now},0)"
+        "{:start},{:next},{:conn},{:model},{:steps},{:enabled},0,1,{:now},{:now},0)"
       ).bind({ id: id, uid: uid, name: name, tk: targetKind, tid: targetId, inst: instruction,
         rk: kind, interval: interval, zone: zone, time: time, weekday: weekday,
-        start: start, next: next, conn: modelConn, model: modelId, steps: maxSteps, now: now }).execute()
-      return e.json(200, { ok: true, id: id, revision: 1 })
+        start: start, next: next, conn: modelConn, model: modelId, steps: maxSteps, now: now,enabled:savedEnabled }).execute()
+      return e.json(200, { ok: true, id: id, revision: 1,enabled:savedEnabled===1 })
     }
     var updated = $app.db().newQuery(
       "UPDATE agent_studio_schedules SET name={:name},target_kind={:tk},target_id={:tid},instruction={:inst}," +
       "recurrence_kind={:rk},interval_minutes={:interval},time_zone={:zone},local_time={:time},weekday={:weekday}," +
-      "start_at_ms={:start},next_at_ms={:next},model_connection_id={:conn},model_id={:model},max_steps={:steps}," +
-      "revision=revision+1,enabled=1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
+      "start_at_ms=CASE WHEN {:keepTiming}=1 THEN start_at_ms ELSE {:start} END," +
+      "next_at_ms=CASE WHEN {:keepTiming}=1 THEN next_at_ms ELSE {:next} END," +
+      "model_connection_id={:conn},model_id={:model},max_steps={:steps}," +
+      "revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
     ).bind({ id: id, uid: uid, name: name, tk: targetKind, tid: targetId, inst: instruction,
       rk: kind, interval: interval, zone: zone, time: time, weekday: weekday,
       start: start, next: next, conn: modelConn, model: modelId, steps: maxSteps,
-      now: now, rev: Number(existing.revision) }).execute()
+      now: now, rev: Number(existing.revision),keepTiming:preserveTiming?1:0 }).execute()
     if (Number(updated.rowsAffected()) !== 1) return e.json(409, { error: "schedule_changed" })
     // Historical pending occurrences are never silently executed with edited parameters.
-    return e.json(200, { ok: true, id: id, revision: Number(existing.revision) + 1 })
+    return e.json(200, { ok: true, id: id, revision: Number(existing.revision) + 1,enabled:savedEnabled===1 })
   } catch (err) {
     try { $app.logger().error("schedule manage error", "err", String(err)) } catch (_) {}
     return e.json(500, { error: "schedule_manage_failed" })

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { AlertCircle, ArrowRight, FileCheck2, LogIn, Rocket, SlidersHorizontal, X } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ApprovalGateCard } from "@/components/agent-run/ApprovalGateCard"
@@ -7,6 +8,9 @@ import { EvidenceLedgerPanel } from "@/components/agent-run/EvidenceLedgerPanel"
 import { AgentInputCard } from "@/components/agent-run/AgentInputCard"
 import { MemoryPanel } from "@/components/agent-run/MemoryPanel"
 import { RunStatusSummary } from "@/components/agent-run/RunStatusSummary"
+import {AgentToolExecutionTrace} from '@/components/agent-run/AgentToolExecutionTrace'
+import {StructuredExecutionPlan} from '@/components/agent-run/StructuredExecutionPlan'
+import {readExecutionPlan} from '@/lib/structuredTaskPlanView'
 import { RunTaskRail } from "@/components/agent-run/RunTaskRail"
 import { RunSettingsDrawer } from "@/components/agent-run/RunSettingsDrawer"
 import { RunLauncher } from "@/components/agent-run/RunLauncher"
@@ -16,15 +20,27 @@ import { RunTimeline } from "@/components/agent-run/RunTimeline"
 import { RunTopBar } from "@/components/agent-run/RunTopBar"
 import { SiteShell } from "@/components/site/SiteShell"
 import { SpecConfigPanel } from "@/components/agent-run/SpecConfigPanel"
+import { RunJourneyGuide } from "@/components/agent-run/RunJourneyGuide"
+import { getRunGuidance,type RunGuideAction } from "@/lib/agentRunGuidance"
 import type { useAgentRun } from "./useAgentRun"
+import {shouldShowTaskComposer,needsLocalDevice,defaultRunView} from "@/lib/taskExperience"
 
 export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
+  const executionPlan=p.activeRun?readExecutionPlan(p.activeRun):null
   const finished=Boolean(p.activeRun && ["succeeded","failed","cancelled"].includes(p.activeRun.status))
   const [runView, setRunView] = useState({ scope: "", value: "results" })
   const [settingsOpen,setSettingsOpen]=useState(false)
   const viewScope = p.activeRun?.id || ""
-  const selectedView = runView.scope === viewScope ? runView.value : "results"
+  const selectedView = runView.scope === viewScope ? runView.value : defaultRunView(p.activeRun?.status)
   const openRunView = (value: string) => setRunView({ scope: viewScope, value })
+  const handleGuideAction=(action:RunGuideAction)=>{
+    if(action==="configure"){setSettingsOpen(true);return}
+    if(action==="focus-task"){document.getElementById("agent-task-instruction")?.focus();return}
+    if(action==="focus-run"){document.getElementById("agent-run-submit")?.focus();return}
+    if(action==="respond"){document.getElementById("run-next-action")?.scrollIntoView({behavior:"smooth",block:"start"});return}
+    if(action==="results"){openRunView("results");document.getElementById("run-workspace-results")?.scrollIntoView({behavior:"smooth",block:"start"});return}
+    if(action==="trace"){openRunView("process");window.requestAnimationFrame(()=>document.getElementById("run-execution-trace")?.scrollIntoView({behavior:"smooth",block:"start"}))}
+  }
   const focusNewTask=()=>{
     if(p.isLive)return
     p.handlePrepareNewTask()
@@ -43,6 +59,16 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
     p.runReadiness.ready &&
     p.isCustomModel &&
     (!p.requirePlanReview || p.maxSteps >= 2)
+  const guide=getRunGuidance({
+    hasAgent:Boolean(p.selectedSpec),
+    hasModel:p.isCustomModel,
+    resourcesLoading:p.toolConnectionsLoading,
+    readinessIssues:p.runReadiness.issues,
+    hasTask:Boolean(p.instruction.trim()),
+    canStart:canRun,
+    isStarting:p.isStarting,
+    status:p.activeRun?.status,
+  })
 
   return (
     <SiteShell>
@@ -98,7 +124,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
         )}
 
         <section id="workbench" className="scroll-mt-20 py-4">
-          <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(215px,260px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(215px,260px)_minmax(0,1fr)_minmax(270px,340px)]">
+          <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(215px,248px)_minmax(0,1fr)]">
             <aside className="hidden min-w-0 lg:sticky lg:top-20 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start">
               <RunTaskRail runHistory={p.runHistory} activeRun={p.activeRun}
                 onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask}
@@ -115,16 +141,9 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                     <option value="">选择已保存的 Agent</option>
                     {p.specList.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {p.activeRun?.status==="awaiting_input"||p.activeRun?.status==="awaiting_approval"?
-                      "下一步：处理当前任务的人工待办":
-                      p.activeRun?.status==="succeeded"?"下一步：核对交付成果和验收结果":
-                      p.isLive?"任务正在推进；执行过程与角色交接在下方查看":
-                      "下一步：输入任务指令、确认必要资源后启动"}
-                  </p>
                 </div>
                 <button type="button" onClick={()=>setSettingsOpen(true)} aria-label="打开本次 Agent 配置"
-                  className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-secondary 2xl:hidden">
+                  className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary">
                   <SlidersHorizontal className="h-4 w-4"/>资源与设置
                   {p.runReadiness.issues.length>0&&<span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
                     {p.runReadiness.issues.length} 项待补齐
@@ -146,9 +165,14 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 onUnlink={p.handleUnlinkOptimization}
                 onRetry={p.retryOptimizationRecovery}
               />}
-              <RunLauncher
+              <RunJourneyGuide guide={guide} specId={p.selectedSpecId} onAction={handleGuideAction}/>
+              {shouldShowTaskComposer(Boolean(p.selectedSpec),Boolean(p.activeRun))&&<RunLauncher key={p.selectedSpecId}
                 localDeviceId={p.localDeviceId}
                 onLocalDeviceChange={p.setLocalDeviceId}
+                showLocalDevice={needsLocalDevice(p.selectedSpec?.spec.tools,p.localDeviceId)}
+                dispatchPlan={p.taskDispatchPlan}
+                structuredPlanning={p.structuredPlanning}
+                onStructuredPlanningChange={p.handleStructuredPlanning}
                 instruction={p.instruction}
                 onInstructionChange={p.setInstruction}
                 onRun={p.handleRun}
@@ -165,7 +189,13 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                   !p.runReadiness.ready ? "请打开「资源与设置」，查看并解决当前任务的角色、Skill 和工具预检问题" :
                   !p.instruction.trim() ? "请输入实际任务指令" :
                   p.requirePlanReview && p.maxSteps<2 ? "人工方案确认至少需要两个执行步骤" : ""}
-              />
+              />}
+              {p.activeRun&&<section aria-label="本次任务摘要" className="rounded-xl border border-border bg-card px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><p className="text-xs font-semibold text-muted-foreground">当前任务 · 运行快照不受后续配置修改影响</p><p className="mt-2 line-clamp-2 break-words text-sm">{p.activeRun.instruction}</p></div>
+                  {!p.isLive&&<button type="button" onClick={focusNewTask} className="min-h-10 shrink-0 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary">基于此 Agent 发起新任务</button>}
+                </div><details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">完整任务说明</summary><p className="mt-2 whitespace-pre-wrap break-words leading-6">{p.activeRun.instruction}</p></details>
+              </section>}
+              {executionPlan&&<StructuredExecutionPlan key={p.activeRun?.id+executionPlan.revision} plan={executionPlan}/>}
               <RunStatusSummary
                 activeRun={p.activeRun}
                 events={p.runEvents}
@@ -176,6 +206,14 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 onOpenTrace={() => openRunView("process")}
                 onOpenResults={() => openRunView("results")}
               />
+              {p.activeRun&&<AgentToolExecutionTrace events={p.runEvents} status={p.activeRun.status}/>}
+              {p.activeRun?.id && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-xs">
+                <p className="text-muted-foreground">本次运行编号：<span className="font-mono">{p.activeRun.id}</span> · 工具调用记录仅显示已发生的调用</p>
+                <Link to={"/tool-hub?view=activity&runId="+encodeURIComponent(p.activeRun.id)}
+                  className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-primary/30 px-3 font-semibold text-primary transition hover:bg-primary/10">
+                  查看本次工具调用与异常 <ArrowRight className="h-3.5 w-3.5"/>
+                </Link>
+              </div>}
               {(p.activeRun?.status === "awaiting_approval" || p.activeRun?.status === "awaiting_input") && <div id="run-next-action" className="scroll-mt-28">
               {p.activeRun?.status === "awaiting_approval" && (
                 <ApprovalGateCard
@@ -188,11 +226,13 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               )}
               {p.activeRun?.status === "awaiting_input" && (
                 <AgentInputCard question={p.pendingInput} answer={p.replyText} kind={p.pendingInputKind}
-                  onChange={p.setReplyText} busy={p.replyBusy} onSubmit={p.handleReply} />
+                  onChange={p.setReplyText} busy={p.replyBusy} onSubmit={p.handleReply}
+                  executionPlan={Boolean(executionPlan&&!executionPlan.approved)}
+                  blockedReason={executionPlan?.gaps.length?'计划还有能力缺口，不能批准执行。请提出修改意见或补齐资源后新建任务。':''} />
               )}
               </div>}
-              <Tabs value={selectedView} onValueChange={openRunView} className="min-w-0">
-                <TabsList aria-label="运行工作区" className="h-auto max-w-full justify-start gap-1 overflow-x-auto">
+              <Tabs value={selectedView} onValueChange={openRunView} className="min-w-0" id="run-workspace-results">
+                <TabsList aria-label="运行工作区" className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
                   <TabsTrigger value="results">成果与反馈</TabsTrigger>
                   <TabsTrigger value="process">执行过程{p.runEvents.length > 0 ? ` · ${p.runEvents.length}` : ""}</TabsTrigger>
                   <TabsTrigger value="quality">验收条件</TabsTrigger>

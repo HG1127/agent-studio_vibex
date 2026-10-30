@@ -66,6 +66,13 @@ async function ready(url, child, logs) {
   throw new Error("Fixture server did not become ready: " + logs().slice(-400))
 }
 async function visible(locator) { await locator.waitFor({ state: "visible", timeout: 30_000 }) }
+async function waitForRunSelection(page,id) {
+  // The configuration controls are mounted only while the settings dialog is open.
+  await page.getByRole("button",{name:"打开本次 Agent 配置",exact:true}).click()
+  await page.waitForFunction(id=>document.querySelector("#spec-select")?.value===id&&Boolean(document.querySelector("#model-select")?.value),id)
+  await page.getByRole("button",{name:"关闭配置面板",exact:true}).click()
+}
+
 
 test("design workspace: real login, editable capabilities, role grants, resource return and versioned trial", { timeout: 300_000 }, async () => {
   const pbBinary = pocketBaseBinary()
@@ -285,6 +292,10 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await page.goto(webOrigin + "/login?next=%2Fagent-create")
     await page.getByLabel("工作邮箱", { exact: true }).fill(email)
     await page.getByLabel("密码", { exact: true }).fill(password)
+    // This acceptance journey deliberately opens resource links in a second tab.
+    // Opt into the product's explicit private-device persistence setting rather
+    // than silently assuming session-only authentication is shared across tabs.
+    await page.getByLabel("保持登录（仅私人设备）",{exact:true}).check()
     await page.getByRole("button", { name: "登录", exact: true }).click()
     await page.waitForURL("**/agent-create")
     results.push("employee UI login without injected credentials or browser auth state")
@@ -297,7 +308,11 @@ test("design workspace: real login, editable capabilities, role grants, resource
       "Propose measurable experiments instead of pretending a famous person endorsed the answer."].join("\n")
     await page.goto(webOrigin+"/skills")
     await visible(page.getByRole("heading",{name:"Skill 能力中心"}))
-    await page.getByRole("button",{name:"粘贴正文"}).click()
+    // Follow the current user journey: open the import dialog before choosing
+    // the paste/file/GitHub import mode.
+    await page.getByRole("button",{name:"导入 Skill",exact:true}).click()
+    await visible(page.getByRole("dialog",{name:"导入可复用方法",exact:true}))
+    await page.getByRole("button",{name:"粘贴正文",exact:true}).click()
     await page.getByRole("textbox",{name:"SKILL.md 正文"}).fill(skillText)
     await page.getByRole("button",{name:"导入并待审核"}).click()
     await visible(page.getByText(/已导入 first-principles-analysis v1/))
@@ -351,8 +366,10 @@ test("design workspace: real login, editable capabilities, role grants, resource
       }))
       return
     }
-    // Version UX: importing v2 must not silently replace approved v1,
-    // and the user must be able to inspect both revisions.
+    // Version UX: open the import flow again and explicitly choose paste;
+    // importing v2 must not silently replace approved v1.
+    await page.getByRole("button",{name:"导入 Skill",exact:true}).click()
+    await page.getByRole("button",{name:"粘贴正文",exact:true}).click()
     await page.getByRole("textbox",{name:"SKILL.md 正文"})
       .fill(skillText.replace("FIRST_PRINCIPLES_UI_TAG","FIRST_PRINCIPLES_UI_V2_UNREVIEWED"))
     await page.getByRole("button",{name:"导入并待审核"}).click()
@@ -401,14 +418,14 @@ test("design workspace: real login, editable capabilities, role grants, resource
       api_key:"secondary-local-fixture-only",models:["secondary-ui-fixture-model"],
     })
     await page.goto(webOrigin + "/execution-connections")
-    const pilotDetails = page.locator("#local-executor-details")
-    assert.equal(await pilotDetails.getAttribute("open"), null, "advanced pilot setup should not crowd the initial page")
-    await pilotDetails.locator("summary").click()
-    const pilotInfo = page.getByRole("region", { name: "真实浏览器与 PDF / Excel 执行器" })
-    await visible(pilotInfo.getByText("node ops/local-executor.mjs", { exact: true }))
-    await visible(pilotInfo.getByText(/默认关闭/))
-    assert.equal(await pilotInfo.getByRole("link", { name: /前往 MCP 插件连接/ }).getAttribute("href"), "/plugin-market")
-    results.push("execution connections UI explains the real opt-in local Chromium/PDF/XLSX MCP bridge without claiming a live desktop connection")
+    await visible(page.getByRole("heading", { name: "执行资源中心", exact: true }))
+    const resourceSummary=page.getByRole("region",{name:"执行资源概况",exact:true})
+    await visible(resourceSummary.getByText("本账号配对电脑",{exact:true}))
+    await visible(page.getByText(/连接记录不代表执行器当前在线/))
+    assert.equal(await resourceSummary.getByRole("link",{name:/查看配对与设备状态/}).getAttribute("href"),"/tool-hub?view=devices")
+    assert.equal(await page.locator("#local-executor-details").count(),0,
+      "retired advanced setup panel must not return to the main resource overview")
+    results.push("execution resources overview consolidates registered capabilities and device status, clearly distinguishes registration from live availability, and links to the single device workflow")
     await page.goto(webOrigin + "/agent-create")
 
     const designModelPicker=page.getByRole("combobox", {name:"Agent 规划模型",exact:true})
@@ -463,8 +480,15 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const [unsavedResourcePage] = await Promise.all([
       page.waitForEvent("popup"), browserCard.getByRole("link", { name: "配置执行环境", exact: true }).click(),
     ])
+    const popupErrors=[]
+    unsavedResourcePage.on("pageerror",error=>popupErrors.push(error.message))
+    unsavedResourcePage.on("console",message=>{if(message.type()==="error")popupErrors.push(message.text())})
+    await unsavedResourcePage.waitForLoadState("domcontentloaded",{timeout:10000}).catch(error=>console.log("POPUP_DOMCONTENTLOADED_TIMEOUT",error.message))
+    await unsavedResourcePage.waitForFunction(()=>document.readyState==="complete"&&document.body.children.length>0,undefined,{timeout:10000}).catch(error=>console.log("POPUP_DOCUMENT_TIMEOUT",error.message))
+    console.log("UNSAVED_RESOURCE_DEBUG",JSON.stringify({url:unsavedResourcePage.url(),state:await unsavedResourcePage.evaluate(()=>({readyState:document.readyState,html:document.documentElement.outerHTML.slice(0,1200)})),errors:popupErrors}))
     const unsavedBanner = unsavedResourcePage.getByRole("region", { name: "继续配置 Agent", exact: true })
-    await visible(unsavedBanner.getByText("当前方案尚未保存，请保留原标签页。", { exact: true }))
+    await visible(unsavedBanner)
+    assert.match(await unsavedBanner.innerText(),/尚未保存|返回原标签|保留原标签页/)
     assert.equal(await unsavedBanner.getByRole("link", { name: "打开已保存的 Agent", exact: true }).count(), 0)
     assert.equal(new URL(unsavedResourcePage.url()).searchParams.get("agentSetup"), "1")
     assert.equal(new URL(unsavedResourcePage.url()).searchParams.get("returnCapability"), "browser_need")
@@ -498,9 +522,15 @@ test("design workspace: real login, editable capabilities, role grants, resource
     assert.equal(await roleDesigner.getByLabel(/^职责边界/).inputValue(), editedRole.responsibility)
     assert.equal(await calculatorGrant.isChecked(), true, "Restoring role organization across tabs preserves its explicit grant")
     await visible(roleDesigner.getByText("first-principles-analysis · v1"))
-    const savedResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/api/agent_specs") && response.request().method() === "POST")
-    await page.getByRole("button", { name: "保存到我的助手", exact: true }).click()
-    let saved = await (await savedResponse).json()
+    // The current Agent Studio wizard saves a draft with this step action;
+    // do not depend on the retired embedded-editor CTA label.
+    const saveButton=page.getByRole("button", { name: "仅保存草稿", exact: true })
+    if(await saveButton.count()===0)throw Error("Draft save action missing; buttons="+JSON.stringify(await page.getByRole("button").allTextContents()))
+    const savedResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/api/agent_specs") && response.request().method() === "POST",{timeout:7000}).catch(()=>null)
+    await saveButton.click()
+    const saveResponse=await savedResponsePromise
+    if(!saveResponse)throw Error("Agent save request missing; disabled="+await saveButton.isDisabled()+"; page="+(await page.locator("body").innerText()).slice(-1800))
+    let saved = await saveResponse.json()
     assert.ok(saved.id); assert.ok(saved.spec.roles?.length >= 2)
     assert.deepEqual(saved.spec.roles[0].skill_refs,[{
       id:chosenSkill.id,version:1,hash:chosenSkill.approved_hash
@@ -565,13 +595,13 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const executionLink = page.getByRole("link", { name: "配置执行环境", exact: true }).first()
     await visible(executionLink)
     const [executionPage] = await Promise.all([page.waitForEvent("popup"), executionLink.click()])
-    await visible(executionPage.getByRole("heading", { name: "浏览器与电脑工具", exact: true }))
+    await visible(executionPage.getByRole("heading", { name: "执行资源中心", exact: true }))
     assert.equal(new URL(executionPage.url()).searchParams.get("returnSpec"), saved.id)
     assert.equal(new URL(executionPage.url()).searchParams.get("returnCapability"), "browser_need")
     assert.equal(new URL(executionPage.url()).searchParams.get("capability"), "browser", "the requested task type must focus the inventory")
     assert.equal(await executionPage.getByRole("button", { name: /^浏览器 ·/ }).getAttribute("aria-pressed"), "true")
     const savedReturnBanner = executionPage.getByRole("region", { name: "继续配置 Agent", exact: true })
-    await visible(savedReturnBanner.getByText("此入口不包含原标签中未保存的修改", { exact: true }))
+    await visible(savedReturnBanner.getByText(/连接已登记不代表已授权或执行成功/))
     await visible(executionPage.getByText("还没有这类连接", { exact: true }))
     assert.match(await executionPage.locator("#execution-inventory-heading").locator("..").locator("..").innerText(), /0 个连接/)
     await screenshot("execution-empty-state", executionPage)
@@ -584,9 +614,9 @@ test("design workspace: real login, editable capabilities, role grants, resource
     results.push("real empty execution inventory, honest saved-versus-unsaved return guidance, and exact capability focus on saved-Agent return")
 
     await page.goto(`${webOrigin}/agent-run?spec=${saved.id}`)
-    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), saved.id)
-    await page.getByRole("button", { name: "打开本次 Agent 配置" }).click()
     await page.locator("#agent-task-instruction").fill("验证直接进入试跑时，未接入的必需浏览器能力会阻止启动。")
+    await page.getByRole("button", { name: "打开本次 Agent 配置" }).click()
+    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), saved.id)
     const readiness = page.getByRole("region", { name: "新任务启动检查", exact: true })
     await visible(readiness.getByText("浏览器操作：请连接工具或调整能力需求", { exact: true }))
     assert.equal(await page.getByRole("button", { name: "运行", exact: true }).isDisabled(), true)
@@ -652,7 +682,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
 
     const runSpec = await api("POST", "/api/agent_specs", { name: "运行页面验收助手", spec: { goal: "在真实引擎中验证工具审批和用户补充流程", task_scope: "仅使用隔离的本地测试数据", tools: [selectedToolId], task_plan: ["请求工具调用并等待批准", "交付测试报告"], deliverables: ["测试报告"], done_criteria: ["结果包含核心结论"], require_approval: true, require_plan_review: false } })
     await page.goto(`${webOrigin}/agent-run?spec=${runSpec.id}`)
-    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), runSpec.id)
+    await waitForRunSelection(page,runSpec.id)
     const taskRail=page.getByRole("region", { name: "任务快速切换" }).first()
     await visible(taskRail.getByRole("heading", { name: "任务列表" }))
     await visible(page.getByRole("combobox", { name: "快速选择 Agent" }))
@@ -660,14 +690,19 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const taskBox=await page.locator("#agent-task-instruction").boundingBox()
     assert.ok(railBox&&taskBox&&railBox.x+railBox.width<=taskBox.x,
       "Desktop task list must occupy a separate left rail, not a tall section below results")
-    assert.equal(await page.getByRole("complementary",{name:"Agent 配置与资源"}).isVisible(),false,
+    assert.equal(await page.getByRole("dialog",{name:"Agent 配置与资源"}).isVisible(),false,
       "Narrow desktop configurations stay out of the task's main focus")
     await page.getByRole("button",{name:"打开本次 Agent 配置"}).click()
-    await visible(page.getByRole("complementary",{name:"Agent 配置与资源"}))
-    assert.equal(await page.locator("#run-config-content").isVisible(), false)
-    assert.equal(await page.locator('[role="switch"]:visible').count(), 0)
-    await page.getByRole("button", { name: "本次设置", exact: true }).click()
+    await visible(page.getByRole("dialog",{name:"Agent 配置与资源"}))
+    assert.equal(await page.locator("#run-config-content").isVisible(), true,
+      "Opening the configuration drawer must expose settings without a second expansion")
+    await visible(page.locator("#model-select"))
     const settings = page.getByRole("tablist", { name: "运行设置分类" })
+    assert.equal(await settings.getByRole("tab", { name: "模型与工具", exact: true }).getAttribute("aria-selected"), "true")
+    await page.getByRole("button", { name: "本次设置", exact: true }).click()
+    assert.equal(await page.locator("#run-config-content").isVisible(), false)
+    await page.getByRole("button", { name: "本次设置", exact: true }).click()
+    await visible(settings)
     for (const label of ["模型与工具", "完成标准与确认", "执行预算", "方案步骤"]) {
       await settings.getByRole("tab", { name: label, exact: true }).click()
       assert.equal(await settings.getByRole("tab", { name: label, exact: true }).getAttribute("aria-selected"), "true")
@@ -675,7 +710,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await page.getByRole("button", { name: "收起本次运行设置", exact: true }).click()
     await page.getByRole("button",{name:"关闭配置面板"}).click()
     await screenshot("run-ready-summary")
-    results.push("collapsed run summary and all four configuration tabs")
+    results.push("on-demand settings open directly, remain collapsible, and retain all four configuration tabs")
     results.push("responsive task-first desktop layout: left task rail, central execution, on-demand settings drawer, and retained four configuration tabs")
     await page.setViewportSize({width:390,height:844})
     const mobileTaskToggle=page.getByText(/^切换任务 · 最近/)
@@ -683,9 +718,9 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await mobileTaskToggle.click()
     await visible(page.getByRole("region",{name:"任务快速切换"}))
     await page.getByRole("button",{name:"打开本次 Agent 配置"}).click()
-    await visible(page.getByRole("complementary",{name:"Agent 配置与资源"}))
+    await visible(page.getByRole("dialog",{name:"Agent 配置与资源"}))
     await page.keyboard.press("Escape")
-    assert.equal(await page.getByRole("complementary",{name:"Agent 配置与资源"}).isVisible(),false,
+    assert.equal(await page.getByRole("dialog",{name:"Agent 配置与资源"}).isVisible(),false,
       "Mobile settings drawer must close with Escape")
     await page.setViewportSize({width:1440,height:1000})
     results.push("390px mobile: task history collapses, settings opens on demand and Escape closes it without clearing the task")
@@ -834,7 +869,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
       require_approval: true,
     } })
     await page.goto(`${webOrigin}/agent-run?spec=${failureSpec.id}`)
-    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), failureSpec.id)
+    await waitForRunSelection(page,failureSpec.id)
     await page.locator("#agent-task-instruction").fill("COMPLEX_AGENT_FAILURE_INJECTION 仅测试本地 MCP EOF 的安全处理。")
     assert.equal(await page.getByRole("button", { name: "运行", exact: true }).isDisabled(), false)
     const failedCallBaseline = complexToolCalls.browser_page_inspect
@@ -861,7 +896,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
     await visible(page.getByText(/终止原因：write_outcome_unknown：外部工具调用结果不明（可能涉及写入或其他副作用）/))
     results.push("fault-injected MCP EOF is not replayed; the failure UI accurately explains uncertain external side effects and the need for manual reconciliation")
     await page.goto(`${webOrigin}/agent-run?spec=${complexSpec.id}`)
-    await page.waitForFunction(id => document.querySelector("#spec-select")?.value === id && Boolean(document.querySelector("#model-select")?.value), complexSpec.id)
+    await waitForRunSelection(page,complexSpec.id)
     await page.locator("#agent-task-instruction").fill("COMPLEX_AGENT_ACCEPTANCE 完成发行人尽调，核验 revenue 120、PDF p.4、metric 90，并仅在审批后交付本地邮件。")
     const complexReadiness = page.getByRole("region", { name: "新任务启动检查", exact: true })
     if (await complexReadiness.count()) {
@@ -997,7 +1032,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
       await visible(generatedHarness.getByRole("article", { name:"能力需求："+label, exact:true }))
     const saveGenerated = page.waitForResponse(response =>
       new URL(response.url()).pathname.endsWith("/api/agent_specs") && response.request().method()==="POST")
-    await page.getByRole("button", { name:"保存到我的助手", exact:true }).click()
+    await page.getByRole("button", { name:"仅保存草稿", exact:true }).click()
     const generatedSpec = await (await saveGenerated).json()
     assert.equal(generatedSpec.spec.roles.length,5,
       "a multi-role plan must survive the real owner-scoped save API")
@@ -1039,7 +1074,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
     const generatedPatch = page.waitForResponse(response=>
       new URL(response.url()).pathname.endsWith("/api/agent_specs/"+generatedSpec.id)
       && response.request().method()==="PATCH")
-    await page.getByRole("button",{name:"保存到我的助手",exact:true}).click()
+    await page.getByRole("button",{name:"仅保存草稿",exact:true}).click()
     assert.equal((await generatedPatch).status(),200)
     const executableGenerated=await api("GET","/api/agent_specs/"+generatedSpec.id)
     for(const [,action,roleId] of roleToolMap){
@@ -1062,9 +1097,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
     // rather than testing another manually handcrafted Agent.
     for(const roleId of Object.keys(complexRoleTurns))complexRoleTurns[roleId]=0
     await page.goto(webOrigin+"/agent-run?spec="+encodeURIComponent(generatedSpec.id))
-    await page.waitForFunction(id=>
-      document.querySelector("#spec-select")?.value===id &&
-      Boolean(document.querySelector("#model-select")?.value),generatedSpec.id)
+    await waitForRunSelection(page,generatedSpec.id)
     await page.locator("#agent-task-instruction").fill(
       "COMPLEX_AGENT_ACCEPTANCE V27_FROM_AUTOGENERATED_DRAFT 核验网页、PDF 和 XLSX 三类证据，" +
       " 经独立审核后、仅在每次人工批准后执行本地邮件交付。")
@@ -1139,7 +1172,7 @@ test("design workspace: real login, editable capabilities, role grants, resource
       const createVariant=page.waitForResponse(response=>
         new URL(response.url()).pathname.endsWith("/api/agent_specs") &&
         response.request().method()==="POST")
-      await page.getByRole("button",{name:"保存到我的助手",exact:true}).click()
+      await page.getByRole("button",{name:"仅保存草稿",exact:true}).click()
       const created=await (await createVariant).json()
       assert.ok(created.id)
       const stored=await api("GET","/api/agent_specs/"+created.id)

@@ -83,6 +83,8 @@ function SnapshotDetail({ row }: { row: SpecVersionRow }) {
   )
 }
 
+import {WorkspaceEmptyState} from '@/components/site/WorkspaceEmptyState'
+
 export function VersionHistoryList({
   versionList,
   isLoadingVersions,
@@ -96,7 +98,7 @@ export function VersionHistoryList({
 }: VersionHistoryListProps) {
   if (isLoadingVersions) {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card p-10 text-sm text-muted-foreground shadow-md">
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-5 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
         正在加载版本历史…
       </div>
@@ -105,12 +107,7 @@ export function VersionHistoryList({
 
   if (versionList.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center shadow-md">
-        <p className="text-sm font-medium text-card-foreground">还没有保存过版本</p>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-          完成第 1 步验收测试后，在第 2 步点「保存版本」，这里会出现可恢复、可发布的版本记录。
-        </p>
-      </div>
+      <WorkspaceEmptyState title="还没有保存过版本" description="完成验收测试后点击“保存版本”，这里会显示可恢复、可发布的历史。"/>
     )
   }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -776,7 +777,7 @@ export function usePluginMarket() {
       return
     }
     const needsWriteConfirmation = invokeTool?.read_only!==true || invokeTool?.destructive===true
-    if (needsWriteConfirmation && !window.confirm(
+    if (needsWriteConfirmation && !await confirmInStudio(
       "此 MCP 工具未被发布者明确标记为只读，可能访问账户数据或执行写操作。\n请核对授权范围和参数，确认仍要立即试调？"
     )) return
     setErrorMsg("")
@@ -948,7 +949,7 @@ export function usePluginMarket() {
   },[apiFetch,smitheryKeyInput,smitheryKeyBusy,loadConnections,loadSmitheryServers,loadSmitheryNamespaces])
 
   const removeSmitheryKey = useCallback(async () => {
-    if(!window.confirm("确定移除 Smithery Key？此账号的托管插件会立即停用，并需重新授权后才能使用。"))return
+    if(!await confirmInStudio("确定移除 Smithery Key？此账号的托管插件会立即停用，并需重新授权后才能使用。"))return
     try{
       const res=await apiFetch("/api/market/smithery/key",{method:"DELETE"})
       if(!res.ok)throw new Error("key_remove_failed")

@@ -5,6 +5,9 @@ import {
   ClipboardCheck, GitBranch, Play, RefreshCw, ShieldAlert, Sparkles, Wrench,
 } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
+import {AgentResourceReminder} from "@/components/site/AgentResourceReminder"
+import {agentCapabilityRequirements} from "@/lib/agentCapabilityPlan"
+import {EMPTY_AGENT_RESOURCE_FOCUS,requestAgentResourceFocus,resourceFocusForAgent} from "@/lib/agentResourceFocus"
 import { CreateComposer } from "@/components/home/CreateComposer"
 import { AgentDesignModelPicker } from "@/components/home/AgentDesignModelPicker"
 import { AgentDraftRecoveryNotice } from "@/components/home/AgentDraftRecoveryNotice"
@@ -13,7 +16,7 @@ import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
 import { useHome } from "@/pages/Home/useHome"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
-import { evaluateAgentJourney } from "@/lib/agentCreateJourney"
+import { evaluateAgentJourney,agentPlanContentIssues } from "@/lib/agentCreateJourney"
 import type { ComplexAgentProof } from "@/lib/complexAgentAcceptance"
 import { agentResourceSetupUrl } from "@/lib/toolSearchPrivacy"
 import { agentCapabilityReadiness } from "@/lib/agentCapabilityPlan"
@@ -46,6 +49,11 @@ export default function AgentCreateRoute() {
   const p=useHome()
   const [params,setParams]=useSearchParams()
   const step=progressFromQuery(params.get("step"))
+  const continueBusy=useRef(false)
+  const routeStamp=useRef(params.toString())
+  routeStamp.current=params.toString()
+  const wizardAlive=useRef(true)
+  useEffect(()=>{wizardAlive.current=true;return()=>{wizardAlive.current=false}},[])
   const [modelState,setModelState]=useState<ModelState>("loading")
   const [enabledModels,setEnabledModels]=useState(0)
   const modelRequest=useRef(0)
@@ -56,6 +64,12 @@ export default function AgentCreateRoute() {
   const [notice,setNotice]=useState("")
   const [resourceMessage,setResourceMessage]=useState("")
   const [localEditorOpen,setLocalEditorOpen]=useState(false)
+  const [resourceFocus,setResourceFocus]=useState(EMPTY_AGENT_RESOURCE_FOCUS)
+  const scopedResourceFocus=resourceFocusForAgent(resourceFocus,p.savedSpecId)
+  const locateResourceNeed=()=>{
+    setResourceFocus(current=>requestAgentResourceFocus(current,p.savedSpecId,p.resourceReminder?.capabilityId||""))
+    setLocalEditorOpen(true)
+  }
   useEffect(()=>{
     const openEditor=()=>setLocalEditorOpen(true)
     window.addEventListener("studio:open-current-agent-editor",openEditor)
@@ -174,6 +188,23 @@ export default function AgentCreateRoute() {
     window.scrollTo({top:0,behavior:"smooth"})
   }
 
+  const saveAndContinue=async()=>{
+    if(continueBusy.current||p.isSaving||p.isGenerating||p.isRevising)return
+    const issues=agentPlanContentIssues(p.spec,p.specName)
+    if(issues.length){setNotice(issues[0]);return}
+    if(planReady){go(2);return}
+    continueBusy.current=true
+    const origin=routeStamp.current
+    try{
+      const saved=await p.handleSave()
+      if(!saved?.current||!wizardAlive.current||origin!==routeStamp.current)return
+      const next=new URLSearchParams(params)
+      next.set("step","3");next.set("spec",saved.id)
+      setNotice("");setParams(next)
+      window.scrollTo({top:0,behavior:"smooth"})
+    }finally{continueBusy.current=false}
+  }
+
   const editorProps = p.spec ? {
     spec:p.spec,onSpecChange:p.updateFullSpec,specName:p.specName,sourceMode:p.sourceMode,
     editorContextKey:p.editorContextKey,
@@ -204,7 +235,10 @@ export default function AgentCreateRoute() {
     <AgentDraftDrawer open={localEditorOpen} onClose={()=>setLocalEditorOpen(false)}
       title="随时调整 Agent 创建方案"
       description="五个创建阶段都可以打开此窗，直接修改同一份草稿。保存后再试跑；进行中的 Agent 仍使用旧快照。">
-      {editorProps ? <SpecEditorCard {...editorProps} focus="all" showClear={false}/>:
+      {editorProps ? <SpecEditorCard {...editorProps} focus="all"
+        resourceFocusToken={scopedResourceFocus.token}
+        focusCapabilityId={scopedResourceFocus.token>0?scopedResourceFocus.capabilityId:undefined}
+        showClear={false}/>:
         <p className="rounded-xl border border-border p-5 text-sm text-muted-foreground">
           先在第一步描述需求并生成草案，随后可以随时在这个窗口调整目标、任务步骤、工具和完成标准。
         </p>}
@@ -214,6 +248,15 @@ export default function AgentCreateRoute() {
         persistError={p.draftPersistError}
         restoreNotice={p.draftRestoreNotice}
         onRestore={p.restoreDraft} onDiscard={p.discardDraft}/>
+      <AgentResourceReminder key={p.resourceReminder?.issuedAt||"empty"}
+        reminder={p.resourceReminder} onDismiss={p.dismissResourceReminder}
+        onLocate={locateResourceNeed}
+        capabilityName={p.resourceReminder?.capabilityId&&p.spec?
+          agentCapabilityRequirements(p.spec).find(item=>item.id===p.resourceReminder?.capabilityId)?.title:undefined}
+        onRecheck={async()=>{
+          const [result]=await Promise.all([p.rematchAgentTools(),refreshModels(),p.refreshKnowledgeBases()])
+          return result
+        }}/>
       <section className="rounded-2xl border border-border bg-card px-4 py-4 shadow-sm sm:px-6 sm:py-5">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="min-w-0">
@@ -300,9 +343,9 @@ export default function AgentCreateRoute() {
 
           {step===1 && <>
             <h2 className="text-base font-semibold">第二步 · 设计目标、角色分工与完成标准</h2>
-            {editorProps ? <SpecEditorCard {...editorProps} focus="plan"/>:
+            {editorProps ? <SpecEditorCard {...editorProps} focus="plan" compactActions/>:
               <p className="rounded-xl border border-border bg-card p-6 text-sm">请先在第一步生成方案。</p>}
-            <p className="text-xs text-muted-foreground">必须保存经过审阅的方案，才能进入资源连接步骤。</p>
+            <p className="text-xs text-muted-foreground">检查完方案后，点击下方“保存并继续”即可进入资源配置；不会自动试跑或发布。</p>
           </>}
 
           {step===2 && <>
@@ -321,12 +364,12 @@ export default function AgentCreateRoute() {
                   resourceMessage}
               </p>
               <Link to={agentResourceSetupUrl("/model-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
-                前往资源中心配置模型 <ArrowRight className="h-4 w-4"/>
+                {modelState==="ready"?"管理已连接模型":"去配置模型连接"} <ArrowRight className="h-4 w-4"/>
               </Link>
             </div>
             {editorProps && <SpecEditorCard {...editorProps} focus="resources"/>}
             <div className="grid gap-2 sm:grid-cols-2">
-              <Link to={agentResourceSetupUrl("/tool-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
+              <Link to={agentResourceSetupUrl("/execution-connections",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
                 <Wrench className="mr-2 inline h-4 w-4 text-primary"/>管理工具与授权
               </Link>
               <Link to={agentResourceSetupUrl("/knowledge-bases",p.savedSpecId)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-border bg-card px-4 py-3 text-sm hover:border-primary/40">
@@ -344,7 +387,7 @@ export default function AgentCreateRoute() {
               </p>
               {evaluated.canTry ? <Link to={`/agent-run?spec=${encodeURIComponent(p.savedSpecId)}`}
                 className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-                <Play className="h-4 w-4"/> {evaluated.trial.action==="retry"?"重新试跑当前保存方案":"前往试跑当前 Agent"}
+                <Play className="h-4 w-4"/> {evaluated.trial.action==="retry" && evaluated.trial.state!=="untried"?"重新试跑当前保存方案":"前往试跑当前 Agent"}
               </Link>:<p className="mt-3 text-sm text-destructive">还有前置事项待完成，暂不能试跑。</p>}
               {evaluated.trial.action==="save" && <button type="button" onClick={()=>setLocalEditorOpen(true)}
                 className="mt-3 inline-flex min-h-10 items-center rounded-lg border border-border px-3 text-sm hover:bg-secondary">
@@ -421,10 +464,12 @@ export default function AgentCreateRoute() {
               className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm hover:bg-secondary disabled:opacity-40">
               <ArrowLeft className="h-4 w-4"/>返回上一步
             </button>
-            {step<4 && <button type="button" disabled={step+1>maxStep}
-              onClick={()=>go(step+1)}
+            {step===1&&<button type="button" disabled={!p.spec||p.isSaving} onClick={()=>void p.handleSave()}
+              className="min-h-11 rounded-xl border border-border px-4 text-xs font-semibold disabled:opacity-40">仅保存草稿</button>}
+            {step<4 && <button type="button" disabled={p.isSaving||p.isGenerating||p.isRevising||(step!==1&&step+1>maxStep)||!p.spec}
+              onClick={()=>step===1?void saveAndContinue():go(step+1)}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40">
-              下一步：{STAGES[step+1].label} <ArrowRight className="h-4 w-4"/>
+              {p.isSaving?"正在保存…":step===1&&!planReady?"保存并继续：连接资源":"下一步："+STAGES[step+1].label} <ArrowRight className="h-4 w-4"/>
             </button>}
           </div>}
         </section>

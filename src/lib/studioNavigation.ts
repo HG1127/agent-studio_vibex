@@ -7,8 +7,8 @@ import type { LucideIcon } from "lucide-react"
 import {
   Bot, BookOpen, CalendarClock, ClipboardCheck, GitBranch, Home,
   LayoutGrid, Library, Network, PlayCircle, Plug, Puzzle, Rocket,
-  SearchCheck, Settings2, ShieldCheck, Sparkles, Store, UsersRound,
-  Workflow, Wrench, Monitor,
+  ShieldCheck, Sparkles, Store, UsersRound,
+  Workflow, Monitor,
 } from "lucide-react"
 
 export type StudioRoute = {
@@ -27,6 +27,8 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
     to: "/", label: "工作台", icon: Home,
     keywords: "首页 最近任务 我的Agent", children: [
       {to: "/",label: "我的工作台",icon: LayoutGrid,keywords:"首页 我的助手 最近"},
+      {to:"/internal-overview",label:"我的待办",icon:ClipboardCheck,keywords:"个人任务 待回复 待审批 失败 需要处理"},
+      {to:"/approvals",label:"我的审批委托",icon:ShieldCheck,keywords:"委托负责人 授权 撤销 审核"},
     ],
   },
   {
@@ -47,9 +49,8 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
       {to:"/model-connections",label:"模型连接",icon: Sparkles,keywords:"LLM API"},
       {to:"/knowledge-bases",label:"知识库",icon: BookOpen,keywords:"RAG 语义检索"},
       {to:"/skills",label:"Skills 能力中心",icon: BookOpen,keywords:"SKILL.md 方法 思维视角 导入 角色绑定"},
-      {to:"/tool-connections",label:"工具连接",icon: Wrench},
       {to:"/plugin-market",label:"插件市场",icon: Puzzle},
-      {to:"/execution-connections",label:"电脑与浏览器",icon:Monitor,keywords:"执行器 软件 本地 browser desktop MCP"},
+      {to:"/execution-connections",label:"执行资源中心",icon:Monitor,keywords:"浏览器 电脑 本地工具 工具连接 HTTP API 插件 测试 调用记录 运行监控 执行器 desktop browser MCP 调试"},
     ],
   },
   {
@@ -57,9 +58,7 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
     keywords: "执行 调试 监控 历史", children: [
       {to:"/agent-run",label:"Agent 试跑",icon: Rocket},
       {to:"/run-detail",label:"执行记录",icon: ClipboardCheck},
-      {to:"/harness",label:"运行监控",icon: SearchCheck,keywords:"Harness 治理 监控 心跳 队列 人工核查 历史"},
       {to:"/scheduled-tasks",label:"定时任务",icon: CalendarClock},
-      {to:"/tool-hub",label:"诊断与工具调试",icon: SearchCheck},
     ],
   },
   {
@@ -67,7 +66,6 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
     keywords: "管理员 员工 权限 审批", adminOnly:true, children: [
       {to:"/manager",label:"运行与审批",icon: ShieldCheck,adminOnly:true},
       {to:"/staff",label:"员工与权限",icon: UsersRound,adminOnly:true},
-      {to:"/internal-overview",label:"公司总览",icon: Settings2,adminOnly:true},
     ],
   },
 ]
@@ -84,7 +82,10 @@ export function routesForRole(role: StudioRole): StudioRoute[] {
 /** An unknown path may exist, but is not automatically added to employee navigation. */
 export function workspaceForPath(pathname: string, role: StudioRole): StudioWorkspace | undefined {
   return workspacesForRole(role).find(workspace =>
-    workspace.children.some(route => route.to === pathname))
+    workspace.children.some(route => route.to === pathname ||
+      ((pathname === "/tool-hub" || pathname === "/tool-connections") && route.to === "/execution-connections") ||
+      (pathname === "/harness" && route.to === "/agent-run") ||
+      (pathname === "/account" && route.to === "/")))
 }
 
 /** Cheap stable search for <= 25 routes: more exact matches come first. */

@@ -4,7 +4,13 @@ import {
   STUDIO_WORKSPACES, workspacesForRole, routesForRole,
   workspaceForPath, searchStudioRoutes,
 } from "../src/lib/studioNavigation.ts"
-import { evaluateAgentJourney } from "../src/lib/agentCreateJourney.ts"
+import { evaluateAgentJourney,agentPlanContentIssues } from "../src/lib/agentCreateJourney.ts"
+import {shouldShowTaskComposer,needsLocalDevice,defaultRunView} from "../src/lib/taskExperience.ts"
+import {getRunGuidance} from "../src/lib/agentRunGuidance.ts"
+import {invocationViewKey,isInvocationViewCurrent} from "../src/lib/invocationViewKey.ts"
+import {resolveToolHubView} from "../src/lib/toolHubView.ts"
+import {scheduleState,scheduleTimingKey,buildScheduleTiming,filterSchedules,schedulePage} from '../src/lib/scheduleWorkspace.ts'
+import {knowledgeView,selectedKnowledgeId,visibleKnowledgeDocuments} from '../src/lib/knowledgeWorkspace.ts'
 import { normalizeAgentQualityChecks, evaluateAgentQualityChecks } from "../src/lib/agentQualityChecks.ts"
 import {AGENT_DRAFT_TTL_MS,agentDraftKey,saveAgentDraft,readAgentDraft,
   clearAgentDraft,normalizeAgentDraft} from "../src/lib/agentEditorDraft.ts"
@@ -12,6 +18,51 @@ import {
   registerUnsavedWorkCheck, hasUnsavedWork, shouldNavigateFromUnsavedWork,
   recoverHistoryOffset, isSameEditorRoute,
 } from "../src/lib/unsavedNavigation.ts"
+
+test('schedule timing identity ignores name and irrelevant controls, not meaningful time changes',()=>{
+  const f={name:'A',recurrence_kind:'daily',time_zone:'Asia/Singapore',start_date:'2026-11-01',local_time:'09:00',weekday:1,interval_minutes:60}
+  assert.equal(scheduleTimingKey(f),scheduleTimingKey({...f,name:'B',weekday:5,interval_minutes:180}))
+  assert.notEqual(scheduleTimingKey(f),scheduleTimingKey({...f,local_time:'10:00'}))
+  assert.notEqual(scheduleTimingKey({...f,recurrence_kind:'interval'}),scheduleTimingKey({...f,recurrence_kind:'interval',interval_minutes:180}))
+  assert.notEqual(scheduleTimingKey({...f,recurrence_kind:'weekly'}),scheduleTimingKey({...f,recurrence_kind:'weekly',weekday:2}))
+})
+test('schedule timing preview rejects past single runs and skipped local DST times',()=>{
+  const f={recurrence_kind:'once',time_zone:'Asia/Singapore',start_date:'2026-11-01',local_time:'09:00',weekday:1,interval_minutes:60}
+  const now=Date.parse('2026-10-31T00:00:00Z')
+  assert.equal(buildScheduleTiming(f,now).nextAt,Date.parse('2026-11-01T01:00:00Z'))
+  assert.throws(()=>buildScheduleTiming(f,Date.parse('2026-11-02T00:00:00Z')),/晚于/)
+  assert.throws(()=>buildScheduleTiming({...f,time_zone:'Invalid/zone'},now),/时区/)
+  assert.throws(()=>buildScheduleTiming({...f,time_zone:'America/New_York',start_date:'2026-03-08',local_time:'02:30'},Date.parse('2026-03-07T00:00:00Z')),/夏令时/)
+})
+test('schedule list distinguishes paused from ended one-shot plans and filters without mutation',()=>{
+  const rows=[{name:'Alpha',instruction:'研究财报',target_kind:'agent',enabled:true,recurrence_kind:'daily',next_at_ms:10},
+    {name:'Beta',instruction:'系统检查',target_kind:'workflow',enabled:false,recurrence_kind:'daily',next_at_ms:10},
+    {name:'Gamma',instruction:'结束不等于成功',target_kind:'agent',enabled:false,recurrence_kind:'once',next_at_ms:0}]
+  const before=JSON.stringify(rows)
+  assert.equal(scheduleState(rows[2]),'completed')
+  assert.deepEqual(filterSchedules(rows,'ALPHA','active','agent'),[rows[0]])
+  assert.deepEqual(filterSchedules(rows,'','paused','all'),[rows[1]])
+  assert.equal(JSON.stringify(rows),before)
+})
+test('schedule URL pagination is bounded and ignores malformed pages',()=>{
+  for(const p of [null,'','0','-3','1.5','1e4','1000000','bad'])assert.equal(schedulePage(p),1)
+  assert.equal(schedulePage('3'),3)
+})
+
+test('knowledge workspace preserves the selected library and does not escalate shared settings',()=>{
+  const rows=[{id:'a'},{id:'b'}]
+  assert.equal(selectedKnowledgeId(rows,''),'a')
+  assert.equal(selectedKnowledgeId(rows,'b'),'b')
+  assert.equal(selectedKnowledgeId(rows,'private-unavailable'),'')
+  assert.equal(knowledgeView('settings',false),'documents')
+  assert.equal(knowledgeView('settings',true),'settings')
+  assert.equal(knowledgeView('sharing',false),'sharing')
+  assert.equal(knowledgeView('bogus',true),'documents')
+  const docs=[{filename:'Report-A.txt'},{filename:'资料-B.md'}]
+  assert.deepEqual(visibleKnowledgeDocuments(docs,'REPORT'),[docs[0]])
+  assert.equal(isSameEditorRoute('/knowledge-bases?base=a&view=documents','/knowledge-bases?base=a&view=search'),true)
+  assert.equal(isSameEditorRoute('/knowledge-bases?base=a','/knowledge-bases?base=b'),false)
+})
 
 const spec = {
   goal:"研究竞争格局并形成决策摘要",
@@ -28,6 +79,52 @@ const ready = {
   toolStatusOf:()=> "ready",accessibleKnowledgeBaseIds:[],
   lastSavedAt:Date.parse("2026-10-16T00:00:00Z"),
 }
+
+test("tool diagnostics subroutes have one canonical view, including old deep links",()=>{
+  for(const v of ["devices","debug","activity","monitor"])
+    assert.equal(resolveToolHubView(v),v)
+  for(const v of [null,"","bad","connections","../../admin"])
+    assert.equal(resolveToolHubView(v),"devices")
+})
+
+test("history display never projects old rows under a different filter, owner, run or page",()=>{
+  const original=invocationViewKey("employee-a","run123456789012","calculate","","","",1)
+  assert.equal(isInvocationViewCurrent(original,original),true)
+  assert.equal(isInvocationViewCurrent(original,""),false)
+  for(const changed of [
+    ["employee-b","run123456789012","calculate","","","",1],
+    ["employee-a","other_run1234567","calculate","","","",1],
+    ["employee-a","run123456789012","web_fetch","","","",1],
+    ["employee-a","run123456789012","calculate","v2","","",1],
+    ["employee-a","run123456789012","calculate","","failed","",1],
+    ["employee-a","run123456789012","calculate","","","agent_run",1],
+    ["employee-a","run123456789012","calculate","","","",2],
+  ]){
+    assert.equal(isInvocationViewCurrent(invocationViewKey(...changed),original),false)
+  }
+})
+
+test("run guidance selects a real next action without implying success means accepted quality",()=>{
+  const base={hasAgent:false,hasModel:false,resourcesLoading:false,
+    readinessIssues:[],hasTask:false,canStart:false}
+  assert.equal(getRunGuidance(base).action,"create")
+  assert.equal(getRunGuidance({...base,hasAgent:true}).action,"connect-model")
+  assert.equal(getRunGuidance({...base,hasAgent:true,hasModel:true,resourcesLoading:true}).action,"configure")
+  assert.equal(getRunGuidance({...base,hasAgent:true,hasModel:true,readinessIssues:["角色未绑定"]}).action,"configure")
+  assert.match(getRunGuidance({...base,hasAgent:true,hasModel:true,readinessIssues:["Skill 未审核"]}).detail,/Skill/)
+  assert.equal(getRunGuidance({...base,hasAgent:true,hasModel:true}).action,"focus-task")
+  assert.equal(getRunGuidance({...base,hasAgent:true,hasModel:true,hasTask:true,canStart:true}).action,"focus-run")
+  assert.equal(getRunGuidance({...base,status:"awaiting_approval"}).action,"respond")
+  assert.equal(getRunGuidance({...base,status:"awaiting_input"}).action,"respond")
+  assert.equal(getRunGuidance({...base,status:"paused"}).action,"trace")
+  assert.equal(getRunGuidance({...base,isStarting:true}).action,"wait")
+  assert.equal(getRunGuidance({...base,status:"awaiting_approval",isStarting:true}).action,"wait")
+  assert.equal(getRunGuidance({...base,status:"failed"}).action,"trace")
+  const done=getRunGuidance({...base,status:"succeeded"})
+  assert.equal(done.action,"results")
+  assert.match(done.detail,/不代表内容已通过质量验收/)
+  assert.equal(done.steps[3],true)
+})
 
 test("owner-scoped temporary Agent draft expires and excludes credential-like fields",()=>{
   const data=new Map(),original=globalThis.sessionStorage
@@ -120,18 +217,52 @@ test("navigation has five distinct main spaces and no duplicate leaf routes",()=
   assert.equal(workspaceForPath("/workflow-canvas","employee")?.label,"设计与编排")
   assert.equal(workspaceForPath("/knowledge-bases","employee")?.label,"工具与连接")
   assert.equal(workspaceForPath("/execution-connections","employee")?.label,"工具与连接")
+  assert.equal(workspaceForPath("/tool-hub","employee")?.label,"工具与连接")
+  assert.equal(workspaceForPath("/tool-connections","employee")?.label,"工具与连接")
+  assert.equal(routesForRole("employee").some(route=>route.to==="/tool-connections"),false,
+    "HTTP connection configuration remains reachable as an execution-resource drilldown")
+  assert.equal(searchStudioRoutes("工具连接","employee")[0].to,"/execution-connections")
+  assert.equal(workspaceForPath("/harness","employee")?.label,"运行与验收")
+  assert.equal(routesForRole("employee").some(route=>route.to==="/harness"),false,
+    "advanced monitor is one drilldown, not a duplicate main navigation item")
+  assert.equal(routesForRole("employee").some(route=>route.to==="/tool-hub"),false,
+    "tool diagnosis belongs inside the unified execution-resource workspace")
   assert.equal(workspaceForPath("/scheduled-tasks","employee")?.label,"运行与验收")
 })
 test("navigation hides staff and management destinations from employee UI including Ctrl+K",()=>{
   assert.equal(workspacesForRole("employee").length,4)
   const employeePaths=routesForRole("employee").map(x=>x.to)
-  for(const path of ["/staff","/manager","/internal-overview"])
+  for(const path of ["/staff","/manager"])
     assert.equal(employeePaths.includes(path),false)
   assert.equal(workspaceForPath("/staff","employee"),undefined)
+  assert.ok(employeePaths.includes("/internal-overview"),"personal task API is owner-scoped, not company-wide")
+  assert.ok(employeePaths.includes("/approvals"),"employees can delegate only their own task steps")
+  assert.equal(workspaceForPath("/account","employee")?.label,"工作台")
+  assert.equal(workspaceForPath("/internal-overview","employee")?.label,"工作台")
   assert.equal(searchStudioRoutes("员工权限","employee").some(x=>x.to==="/staff"),false)
   assert.equal(searchStudioRoutes("员工","admin").some(x=>x.to==="/staff"),true)
   assert.equal(searchStudioRoutes("工作流","employee")[0].to,"/workflow-canvas")
   assert.equal(searchStudioRoutes("Agent","employee").some(x=>x.to==="/agent-create"),true)
+})
+test("save-and-continue validates content without removing saved revision gates",()=>{
+  assert.deepEqual(agentPlanContentIssues(spec,"测试 Agent"),[])
+  assert.ok(agentPlanContentIssues({...spec,done_criteria:[]},"测试 Agent").length)
+  assert.ok(agentPlanContentIssues(spec,"").length)
+  assert.ok(agentPlanContentIssues(null,"测试 Agent").length)
+  assert.equal(evaluateAgentJourney({...ready,savedId:""}).canTry,false)
+  assert.equal(evaluateAgentJourney({...ready,dirty:true}).canTry,false)
+})
+test("task presentation hides irrelevant launch controls, not permissions",()=>{
+  assert.equal(shouldShowTaskComposer(false,false),false)
+  assert.equal(shouldShowTaskComposer(true,false),true)
+  assert.equal(shouldShowTaskComposer(true,true),false)
+  assert.equal(needsLocalDevice(["calculate"],""),false)
+  assert.equal(needsLocalDevice(["local_computer"],""),true)
+  assert.equal(needsLocalDevice([],"explicit-device"),true)
+  for(const state of ["running","queued","awaiting_input","awaiting_approval"])
+    assert.equal(defaultRunView(state),"process")
+  for(const state of [undefined,"succeeded","failed","cancelled"])
+    assert.equal(defaultRunView(state),"results")
 })
 test("journey requires editable real plan, an enabled model and a saved snapshot",()=>{
   const absent=evaluateAgentJourney({...ready,spec:null,savedId:""})

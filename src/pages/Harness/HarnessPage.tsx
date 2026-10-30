@@ -29,8 +29,8 @@ export default function HarnessPage() {
   const shown = filterRuns(runs, kind, status)
   return <SiteShell><main className="w-full min-w-0 space-y-5 p-3 sm:p-5 lg:p-7">
     <header className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="text-xs text-muted-foreground">运行中心 / Harness</p><h1 className="mt-1 text-2xl font-semibold">Harness 运行与治理</h1>
-        <p className="mt-2 text-sm text-muted-foreground">本人运行与治理快照 · 只读 · 手动刷新，不自动轮询</p></div>
+      <div><p className="text-xs text-muted-foreground">运行中心 / Harness</p><h1 className="mt-1 text-2xl font-semibold">运行历史与治理分析</h1>
+        <p className="mt-2 text-sm text-muted-foreground">本人运行与治理快照 · 只读 · 手动刷新，不自动轮询</p><Link to="/tool-hub?view=monitor" className="mt-2 inline-flex min-h-9 items-center text-xs font-semibold text-primary hover:underline">返回执行资源中心 · 实时状态与工具调用</Link></div>
       <button type="button" disabled={loading || authRequired} onClick={() => void refresh()} className="rounded-xl border border-border px-4 py-2 text-sm hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50">{loading ? "刷新中…" : "刷新全部来源"}</button>
     </header>
     {authRequired ? <section role="alert" className="rounded-xl border border-border p-5"><p>登录态失效或身份前置条件未满足（401 / 412）。已清除页面快照并停止请求，请重新验证员工账号。</p><button type="button" onClick={redirectToRhLogin} className="mt-3 underline">前往登录</button></section> : <>
@@ -50,7 +50,7 @@ export default function HarnessPage() {
           {runDetailHref(run) ? <Link className="self-center text-primary underline" to={runDetailHref(run)!}>查看运行详情</Link> : <Link className="self-center text-primary underline" to="/workflow-canvas">打开工作流编排</Link>}</li>)}</ul>
         {shown.length === 0 && <p role="status" className="text-sm text-muted-foreground">{sources.agents.data || sources.workflows.data ? "已加载历史中没有匹配记录。" : "历史尚未可用，不能判断是否为空。"}</p>}
       </section>
-      <aside className="space-y-2 rounded-xl border border-border p-4 text-sm"><h2 className="font-semibold">治理与来源入口</h2><p className="text-muted-foreground">近 7 日失败分类暂不支持：现有 recent 接口未提供结构化 failure_diagnostic，也不覆盖完整 7 日。人工核查项应由有权限人员核实实际外部结果后安全处理，避免重复执行。</p><div className="flex flex-wrap gap-4"><Link className="text-primary underline" to="/tool-hub">工具调用与诊断线索</Link><Link className="text-primary underline" to="/scheduled-tasks">本人定时任务与历史</Link><Link className="text-primary underline" to="/run-detail">Agent 执行记录与审批</Link></div></aside>
+      <aside className="space-y-2 rounded-xl border border-border p-4 text-sm"><h2 className="font-semibold">治理与来源入口</h2><p className="text-muted-foreground">近 7 日失败分类暂不支持：现有 recent 接口未提供结构化 failure_diagnostic，也不覆盖完整 7 日。人工核查项应由有权限人员核实实际外部结果后安全处理，避免重复执行。</p><div className="flex flex-wrap gap-4"><Link className="text-primary underline" to="/tool-hub?view=activity">工具调用与诊断线索</Link><Link className="text-primary underline" to="/scheduled-tasks">本人定时任务与历史</Link><Link className="text-primary underline" to="/run-detail">Agent 执行记录与审批</Link></div></aside>
     </>}
   </main></SiteShell>
 }

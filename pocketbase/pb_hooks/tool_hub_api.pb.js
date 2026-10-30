@@ -1,68 +1,105 @@
-// tool_hub_api.pb.js — 工具中心页唯一数据通路（前端 /tool-hub）
-// GET  /api/tool-hub/invocations   本人工具调用记录（≤50 条，可按 tool_name 过滤）
-// GET  /api/tool-hub/stats         本人累计运行/工具调用/重试聚合
-// GET  /api/harness/monitor        执行框架性能监控聚合（最近 100 agent_runs + 100 workflow_runs + 500 tool_invocations）
-// POST /api/tool-hub/debug         工具在线试跑（内置直调 / 外部按 connection_id 代理）
-//      同 handler 另挂 /api/llm/tool-hub/debug —— /api/llm/ 前缀让网关注入访客
-//      X-Rh-Api-Key（summarize 走平台 LLM 时访客自付），前端优先调这个路径。
-// 归属校验：未登录 401；他人连接/方案 404；5xx 一律 { error, message, fingerprint }。
-// Goja 铁律：全 var、new Date().getTime()、helper 全部内联进回调、self-contained。
-
-routerAdd("GET", "/api/tool-hub/invocations", function (e) {
+// tool_hub_api.pb.js — per-employee tool diagnostics and execution summary.
+// GET /api/tool-hub/invocations — owner-scoped, bounded server-side paging/filtering.
+// GET /api/tool-hub/stats — cumulative owner-scoped metrics.
+// GET /api/harness/monitor — bounded owner-scoped execution monitor.
+// POST /api/tool-hub/debug — approval-gated tool probe.
+// Goja runtime: var bindings, self-contained route handlers.
+routerAdd("GET", "/api/tool-hub/invocations", function(e) {
   try {
     var h = (e.requestInfo() || {}).headers || {}
-    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
-    if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
+    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] ||
+      ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
+    if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录员工账号" })
     var qp = (e.requestInfo() || {}).query || {}
-    var limit = parseInt(qp.limit, 10)
-    if (isNaN(limit) || limit < 1) limit = 20
-    if (limit > 50) limit = 50
-    var toolName = String(qp.tool_name || "").trim().slice(0, 100)
-    var filter = "rh_user_id = {:uid}"
-    var params = { uid: uid }
+    var rawLimit = String(qp.limit || "20")
+    var rawPage = String(qp.page || "1")
+    if (!/^[0-9]{1,5}$/.test(rawLimit) || !/^[0-9]{1,5}$/.test(rawPage))
+      return e.json(400, {error:"invalid_pagination"})
+    var limit = Math.max(1, Math.min(50, parseInt(rawLimit,10)))
+    var page = Math.max(1, Math.min(10000, parseInt(rawPage,10)))
+    var offset = (page - 1) * limit
+    var toolName = String(qp.tool_name || "").trim().slice(0,100)
+    var query = String(qp.q || "").trim().slice(0,100)
+    var status = String(qp.status || "").trim()
+    var source = String(qp.source || "").trim()
+    var runId = String(qp.run_id || "").trim()
+    if (status && status !== "success" && status !== "retried_success" && status !== "failed")
+      return e.json(400,{error:"invalid_invocation_status"})
+    if (source && source !== "debug" && source !== "agent_run" && source !== "workflow")
+      return e.json(400,{error:"invalid_invocation_source"})
+    if (runId && !/^[A-Za-z0-9]{15}$/.test(runId))
+      return e.json(400,{error:"invalid_run_id"})
+    // Use ONE parameterized SQL predicate for total and ordered IDs.
+    // PocketBase's "~" syntax translates '%' and '_' into SQL wildcards;
+    // combining it with a literal COUNT predicate produces contradictory pages.
+    var countWhere = "rh_user_id = {:uid}"
+    var params = {uid:uid}
     if (toolName) {
-      filter += " && tool_name = {:tname}"
+      countWhere += " AND tool_name = {:tname}"
       params.tname = toolName
     }
-    var rows = []
-    try {
-      rows = $app.findRecordsByFilter("tool_invocations", filter, "-created", limit, 0, params)
-    } catch (qErr) {
-      rows = []
+    if (query) {
+      countWhere += " AND INSTR(LOWER(tool_name), LOWER({:query})) > 0"
+      params.query = query
     }
-    var items = []
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i]
-      var retried = false
+    if (status) {
+      countWhere += " AND status = {:status}"
+      params.status = status
+    }
+    if (source) {
+      countWhere += " AND source = {:source}"
+      params.source = source
+    }
+    if(runId){
+      countWhere += " AND run_id = {:runId}"
+      params.runId=runId
+    }
+    var count = new DynamicModel({total:-1})
+    $app.db().newQuery("SELECT COUNT(*) AS total FROM tool_invocations WHERE "+countWhere)
+      .bind(params).one(count)
+    var totalItems = Number(count.total)
+    if (!isFinite(totalItems) || totalItems < 0 || Math.floor(totalItems) !== totalItems)
+      throw new Error("invalid_invocation_count")
+    var pageParams={}
+    for(var key in params)pageParams[key]=params[key]
+    pageParams.limit=limit
+    pageParams.offset=offset
+    var ids=arrayOf(new DynamicModel({id:""}))
+    $app.db().newQuery(
+      "SELECT id FROM tool_invocations WHERE "+countWhere+
+      " ORDER BY created DESC,id DESC LIMIT {:limit} OFFSET {:offset}"
+    ).bind(pageParams).all(ids)
+    var rows=[]
+    for(var ix=0;ix<ids.length;ix++){
       try {
-        retried = r.getBool("retried")
-      } catch (_) {}
-      var latency = 0
-      try {
-        latency = Number(r.get("latency_ms") || 0)
-      } catch (_) {}
+        var record=$app.findRecordById("tool_invocations",String(ids[ix].id))
+        // Defense in depth: verify ownership after resolving the record.
+        if(record && String(record.getString("rh_user_id")||"")===uid)rows.push(record)
+      }catch(_){}
+    }    var items = []
+    for (var i=0;i<rows.length;i++) {
+      var r=rows[i]
+      var retried=false,latency=0
+      try{retried=r.getBool("retried")}catch(_){}
+      try{latency=Number(r.get("latency_ms")||0)}catch(_){}
       items.push({
-        id: String(r.id),
-        tool_name: String(r.getString("tool_name") || ""),
-        tool_kind: String(r.getString("tool_kind") || ""),
-        source: String(r.getString("source") || ""),
-        run_id: String(r.getString("run_id") || ""),
-        status: String(r.getString("status") || ""),
-        latency_ms: latency,
-        input_summary: String(r.getString("input_summary") || ""),
-        output_excerpt: String(r.getString("output_excerpt") || ""),
-        error_code: String(r.getString("error_code") || ""),
-        retried: retried,
-        created: String(r.get("created") || ""),
+        id:String(r.id),tool_name:String(r.getString("tool_name")||""),
+        tool_kind:String(r.getString("tool_kind")||""),
+        source:String(r.getString("source")||""),
+        run_id:String(r.getString("run_id")||""),
+        status:String(r.getString("status")||""),
+        latency_ms:latency,input_summary:String(r.getString("input_summary")||""),
+        output_excerpt:String(r.getString("output_excerpt")||""),
+        error_code:String(r.getString("error_code")||""),
+        retried:retried,created:String(r.get("created")||""),
       })
     }
-    return e.json(200, { ok: true, items: items })
-  } catch (err) {
-    var msg = String((err && err.message) || err)
-    try {
-      $app.logger().error("tool_hub invocations error", "err", msg)
-    } catch (_) {}
-    return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
+    return e.json(200,{ok:true,items:items,page:page,perPage:limit,totalItems:totalItems,
+      totalPages:Math.max(1,Math.ceil(totalItems/limit))})
+  }catch(err){
+    var msg=String((err&&err.message)||err)
+    try{$app.logger().error("tool_hub invocations error","err",msg)}catch(_){}
+    return e.json(500,{error:"internal",message:"工具记录读取失败，请重试",fingerprint:msg.slice(0,80)})
   }
 })
 

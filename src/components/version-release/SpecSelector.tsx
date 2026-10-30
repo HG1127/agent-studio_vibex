@@ -1,5 +1,6 @@
 import { Loader2, Megaphone, PlusCircle } from "lucide-react"
 import { Link } from "react-router-dom"
+import {WorkspaceEmptyState} from '@/components/site/WorkspaceEmptyState'
 import type { SavedSpecRow, SpecVersionRow } from "@/pages/VersionRelease/useVersionRelease"
 
 type SpecSelectorProps = {
@@ -21,26 +22,12 @@ export function SpecSelector({
 }: SpecSelectorProps) {
   if (!isLoadingSpecs && specList.length === 0) {
     return (
-      <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-3xl border border-dashed border-border bg-card p-10 text-center shadow-md">
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <PlusCircle className="h-6 w-6" />
-        </span>
-        <h2 className="mt-4 text-lg font-semibold text-card-foreground">还没有已保存的助手方案</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          版本与发布围绕已保存的助手进行，先去首页创建一个助手方案吧。
-        </p>
-        <Link
-          to="/"
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90 hover:shadow-xl hover:scale-105 focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          去首页创建助手
-        </Link>
-      </section>
+      <WorkspaceEmptyState icon={PlusCircle} title="还没有已保存的助手方案" description="先创建并保存 Agent，再管理它的版本与发布。" actions={<Link to="/agent-create" className="inline-flex min-h-10 items-center rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground">创建 Agent</Link>}/>
     )
   }
 
   return (
-    <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-3xl border border-border bg-card p-5 shadow-md sm:p-6">
+    <section className="rounded-xl border border-border bg-card p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-1 items-center gap-3">
           <label htmlFor="vr-spec-select" className="shrink-0 text-sm font-medium text-card-foreground">

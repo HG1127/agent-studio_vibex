@@ -11,10 +11,19 @@ import { TemplateGallery } from "@/components/home/TemplateGallery"
 import { WorkspaceOverview } from "@/components/home/WorkspaceOverview"
 import { TopNavBar } from "@/components/home/TopNavBar"
 import { SiteShell } from "@/components/site/SiteShell"
+import {AgentResourceReminder} from "@/components/site/AgentResourceReminder"
+import {agentCapabilityRequirements} from "@/lib/agentCapabilityPlan"
+import {EMPTY_AGENT_RESOURCE_FOCUS,requestAgentResourceFocus,resourceFocusForAgent} from "@/lib/agentResourceFocus"
 import type { useHome } from "./useHome"
 
 export function HomePage(p: ReturnType<typeof useHome>) {
   const [localEditorOpen,setLocalEditorOpen]=useState(false)
+  const [resourceFocus,setResourceFocus]=useState(EMPTY_AGENT_RESOURCE_FOCUS)
+  const scopedResourceFocus=resourceFocusForAgent(resourceFocus,p.savedSpecId)
+  const locateResourceNeed=()=>{
+    setResourceFocus(current=>requestAgentResourceFocus(current,p.savedSpecId,p.resourceReminder?.capabilityId||""))
+    window.requestAnimationFrame(()=>document.getElementById("spec-editor")?.scrollIntoView({behavior:"smooth",block:"start"}))
+  }
   useEffect(()=>{
     const show=()=>setLocalEditorOpen(true)
     window.addEventListener("studio:open-current-agent-editor",show)
@@ -28,6 +37,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         description="此处直接编辑当前工作台草稿。修改与原页面实时同步，保存后可以试跑；未保存的草稿不会被静默覆盖。">
         {p.spec ? <SpecEditorCard
           editorContextKey={p.editorContextKey}
+          resourceFocusToken={scopedResourceFocus.token}
+          focusCapabilityId={scopedResourceFocus.token>0?scopedResourceFocus.capabilityId:undefined}
           spec={p.spec} onSpecChange={p.updateFullSpec} specName={p.specName} sourceMode={p.sourceMode}
           onSpecNameChange={p.setSpecName} onTextChange={p.updateSpecText}
           onTogglePlanReview={p.togglePlanReview}
@@ -64,6 +75,15 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           restoreNotice={p.draftRestoreNotice}
           onRestore={p.restoreDraft} onDiscard={p.discardDraft}/>
 
+        <AgentResourceReminder key={p.resourceReminder?.issuedAt||"empty"}
+          reminder={p.resourceReminder} onDismiss={p.dismissResourceReminder}
+          onLocate={locateResourceNeed}
+          capabilityName={p.resourceReminder?.capabilityId&&p.spec?
+            agentCapabilityRequirements(p.spec).find(item=>item.id===p.resourceReminder?.capabilityId)?.title:undefined}
+          onRecheck={async()=>{
+            const [result]=await Promise.all([p.rematchAgentTools(),p.refreshKnowledgeBases(),p.refreshDesignModels()])
+            return result
+          }}/>
         {p.needsRhLogin && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
             <span className="text-sm text-foreground">创建和保存 Agent 需要先登录员工账号。</span>
@@ -110,6 +130,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           </h2>
           <SpecEditorCard
             editorContextKey={p.editorContextKey}
+          resourceFocusToken={scopedResourceFocus.token}
+          focusCapabilityId={scopedResourceFocus.token>0?scopedResourceFocus.capabilityId:undefined}
             spec={p.spec}
             onSpecChange={p.updateFullSpec}
             specName={p.specName}

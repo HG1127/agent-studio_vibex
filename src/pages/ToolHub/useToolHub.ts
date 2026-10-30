@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
+import {invocationViewKey,isInvocationViewCurrent} from "@/lib/invocationViewKey"
+import {resolveToolHubView} from "@/lib/toolHubView"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
@@ -178,6 +181,10 @@ class AuthRequiredError extends Error {}
 
 export function useToolHub() {
   const base = getPocketBaseUrl()
+  const [searchParams,setSearchParams]=useSearchParams()
+  const view=resolveToolHubView(searchParams.get("view"))
+  const rawRunId=searchParams.get("runId")||""
+  const invocationRunId=/^[A-Za-z0-9]{15}$/.test(rawRunId)?rawRunId:""
 
   const [rhUserId] = useState(() => {
     const payload = decodeRhToken()
@@ -195,6 +202,27 @@ export function useToolHub() {
   const [isLoadingInvocations, setIsLoadingInvocations] = useState(false)
   const [invocationFilter, setInvocationFilter] = useState("")
   const [expandedInvocationId, setExpandedInvocationId] = useState("")
+  const [invocationPage,setInvocationPage]=useState(1)
+  const [invocationTotal,setInvocationTotal]=useState(0)
+  const [invocationPages,setInvocationPages]=useState(1)
+  const [invocationSearch,setInvocationSearch]=useState("")
+  const [invocationStatus,setInvocationStatus]=useState("")
+  const [invocationSource,setInvocationSource]=useState("")
+  const [invocationError,setInvocationError]=useState("")
+  const invocationRequest=useRef(0)
+  // A response is visible only when it belongs to the currently selected
+  // account, run, tool, source, status, search term and page.
+  const invocationQueryKey=invocationViewKey(rhUserId,invocationRunId,invocationFilter,
+    invocationSearch,invocationStatus,invocationSource,invocationPage)
+  const [invocationSnapshotKey,setInvocationSnapshotKey]=useState("")
+  const historyCurrent=isInvocationViewCurrent(invocationQueryKey,invocationSnapshotKey)
+  const priorRunId=useRef(invocationRunId)
+  useEffect(()=>{
+    if(priorRunId.current===invocationRunId)return
+    priorRunId.current=invocationRunId
+    setInvocationPage(1)
+    setExpandedInvocationId("")
+  },[invocationRunId])
 
   const [hubStats, setHubStats] = useState<HubStats | null>(null)
 
@@ -275,21 +303,46 @@ export function useToolHub() {
   const loadInvocations = useCallback(
     async (silent = false) => {
       if (!rhUserId) return
+      const request=++invocationRequest.current
       if (!silent) setIsLoadingInvocations(true)
       try {
-        const qs = invocationFilter ? `&tool_name=${encodeURIComponent(invocationFilter)}` : ""
-        const res = await apiFetch(`/api/tool-hub/invocations?limit=50${qs}`)
-        if (res.ok) {
-          const data = await res.json()
-          setInvocationList(Array.isArray(data?.items) ? (data.items as InvocationRow[]) : [])
+        const qs=new URLSearchParams({limit:"20",page:String(invocationPage)})
+        if(invocationFilter)qs.set("tool_name",invocationFilter)
+        if(invocationSearch)qs.set("q",invocationSearch)
+        if(invocationStatus)qs.set("status",invocationStatus)
+        if(invocationSource)qs.set("source",invocationSource)
+        if(invocationRunId)qs.set("run_id",invocationRunId)
+        const res=await apiFetch("/api/tool-hub/invocations?"+qs.toString())
+        if(!res.ok)throw Error("工具调用记录接口不可用")
+        const data=await res.json() as {items?:InvocationRow[];totalItems?:number;totalPages?:number}
+        if(!Array.isArray(data.items)||!Number.isSafeInteger(data.totalItems)||
+           !Number.isSafeInteger(data.totalPages))throw Error("工具调用记录分页响应不完整")
+        if(request!==invocationRequest.current)return
+        const lastPage=Math.max(1,data.totalPages!)
+        if(invocationPage>lastPage){
+          setInvocationPage(lastPage) // A deleted last-page record cannot strand the user.
+          return
         }
-      } catch (err) {
-        if (!(err instanceof AuthRequiredError) && !silent) setErrorMsg("调用记录加载失败，请稍后重试")
+        setInvocationList(data.items)
+        setInvocationTotal(data.totalItems!)
+        setInvocationPages(lastPage)
+        setInvocationSnapshotKey(invocationQueryKey)
+        setInvocationError("")
+      } catch(err) {
+        if(request===invocationRequest.current){
+          setInvocationList([])
+          setInvocationTotal(0)
+          setInvocationPages(1)
+          setInvocationSnapshotKey(invocationQueryKey)
+          setInvocationError(err instanceof AuthRequiredError
+            ?"登录状态已失效，需要重新登录后才能查看调用记录。"
+            :"调用记录查询失败，已隐藏旧筛选结果。请刷新重试；不能据此判断当前没有记录。")
+        }
       } finally {
-        if (!silent) setIsLoadingInvocations(false)
+        if(!silent && request===invocationRequest.current)setIsLoadingInvocations(false)
       }
     },
-    [apiFetch, invocationFilter, rhUserId],
+    [apiFetch, invocationFilter,invocationSearch,invocationStatus,invocationSource,invocationRunId,invocationPage,rhUserId,invocationQueryKey],
   )
 
   const loadStats = useCallback(async () => {
@@ -388,42 +441,50 @@ export function useToolHub() {
     }
   }, [apiFetch, rhUserId])
 
+  // Each tab owns its traffic. Merely visiting paired devices must not
+  // trigger model/tool diagnosis, history, Worker or costly aggregation.
   useEffect(() => {
     if (!rhUserId) return
     let current = true
     void Promise.resolve().then(() => {
       if (!current) return
-      void loadExternalTools()
-      void loadSpecOptions()
-      void loadInvocations()
-      void loadStats()
-      void loadMonitor()
+      if(view==="debug"){void loadExternalTools();void loadSpecOptions()}
+      if(view==="activity"||view==="monitor")void loadStats()
+      if(view==="monitor")void loadMonitor()
     })
     return () => { current = false }
-  }, [rhUserId, loadExternalTools, loadSpecOptions, loadInvocations, loadStats, loadMonitor])
+  }, [rhUserId,view,loadExternalTools,loadSpecOptions,loadStats,loadMonitor])
 
   useEffect(() => {
-    if (!rhUserId) return
+    if (!rhUserId || view!=="activity") return
+    let current = true
+    void Promise.resolve().then(() => { if (current) void loadInvocations() })
+    return () => { current = false }
+  }, [rhUserId,view,loadInvocations])
+
+  useEffect(() => {
+    if (!rhUserId || view!=="monitor") return
     let current = true
     void Promise.resolve().then(() => { if (current) void loadWorkerStatus() })
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadWorkerStatus()
     }, 15000)
     return () => { current = false; window.clearInterval(timer) }
-  }, [rhUserId, loadWorkerStatus])
+  }, [rhUserId,view,loadWorkerStatus])
 
-  // 调用记录 5s 可见轮询（页面隐藏时暂停）
+  // Only the visible first activity page needs 5s refresh. Historic pages
+  // stay stable: otherwise new calls shift records between numbered pages.
   useEffect(() => {
-    if (!rhUserId) return
+    if (!rhUserId || view!=="activity" || invocationPage!==1) return
     if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current)
     pollTimerRef.current = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadInvocations(true)
+      if (document.visibilityState === "visible")void loadInvocations(true)
     }, 5000)
     return () => {
       if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current)
       pollTimerRef.current = null
     }
-  }, [rhUserId, loadInvocations])
+  }, [rhUserId,view,loadInvocations,invocationPage])
 
   const dismissError = useCallback(() => setErrorMsg(""), [])
   const dismissNotice = useCallback(() => setNoticeMsg(""), [])
@@ -533,15 +594,15 @@ export function useToolHub() {
         retried: Boolean(data?.retried),
         status_code: Number(data?.status_code || 0),
       })
-      void loadInvocations(true)
-      void loadStats()
+      // Activity history is queried only when its tab opens, so the debug
+      // screen does not poll invisible logs or monitor statistics.
     } catch (err) {
       if (!(err instanceof AuthRequiredError)) setErrorMsg("网络异常，试跑失败，请重试")
     } finally {
       setIsDebugging(false)
       setConfirmExternalWrite(false)
     }
-  }, [activeTarget, apiFetch, buildDebugBody, confirmExternalWrite, requiresWriteConfirmation, isDebugging, loadInvocations, loadStats])
+  }, [activeTarget, apiFetch, buildDebugBody, confirmExternalWrite, requiresWriteConfirmation, isDebugging])
 
   const copyDebugOutput = useCallback(async () => {
     if (!debugResult || !debugResult.output) return
@@ -556,21 +617,48 @@ export function useToolHub() {
 
   const applyInvocationFilter = useCallback((toolName: string) => {
     setInvocationFilter((prev) => (prev === toolName ? "" : toolName))
+    setInvocationPage(1)
     setExpandedInvocationId("")
   }, [])
+  const changeInvocationPage=useCallback((page:number)=>{
+    setInvocationPage(Math.max(1,Math.min(10000,Math.floor(page))))
+    setExpandedInvocationId("")
+  },[])
+  const changeInvocationSearch=useCallback((value:string)=>{
+    setInvocationSearch(value.trim().slice(0,100));setInvocationPage(1);setExpandedInvocationId("")
+  },[])
+  const changeInvocationStatus=useCallback((value:string)=>{
+    setInvocationStatus(value);setInvocationPage(1);setExpandedInvocationId("")
+  },[])
+  const changeInvocationSource=useCallback((value:string)=>{
+    setInvocationSource(value);setInvocationPage(1);setExpandedInvocationId("")
+  },[])
+
+  const clearInvocationRunId=useCallback(()=>{
+    const next=new URLSearchParams(searchParams)
+    next.delete("runId")
+    setSearchParams(next)
+    setInvocationPage(1)
+    setExpandedInvocationId("")
+  },[searchParams,setSearchParams])
 
   const toggleInvocationRow = useCallback((rowId: string) => {
     setExpandedInvocationId((prev) => (prev === rowId ? "" : rowId))
   }, [])
 
   const refreshNow = useCallback(() => {
-    void loadInvocations()
-    void loadStats()
-    void loadExternalTools()
-    void loadMonitor()
-    setNoticeMsg("已刷新调用记录与统计")
-    void loadWorkerStatus()
-  }, [loadExternalTools, loadInvocations, loadMonitor, loadStats, loadWorkerStatus])
+    if(view==="debug"){
+      void loadExternalTools();void loadSpecOptions()
+      setNoticeMsg("已重新加载当前员工可调试的工具清单")
+    } else if(view==="activity"){
+      void loadInvocations();void loadStats()
+      setNoticeMsg("正在刷新本页调用记录和累计统计")
+    } else if(view==="monitor"){
+      void loadMonitor();void loadWorkerStatus();void loadStats()
+      setNoticeMsg("正在重新核对 Worker、队列与监控指标")
+    }
+    // Device tab owns an explicit refresh action inside LocalDevicesPanel.
+  }, [view,loadExternalTools,loadSpecOptions,loadInvocations,loadMonitor,loadStats,loadWorkerStatus])
 
   return {
     isLoggedIn: Boolean(rhUserId),
@@ -584,10 +672,17 @@ export function useToolHub() {
     externalTools,
     isLoadingExternal,
     specOptions,
-    invocationList,
-    isLoadingInvocations,
+    invocationList:historyCurrent?invocationList:[],
+    isLoadingInvocations:isLoadingInvocations||!historyCurrent,
     invocationFilter,
     applyInvocationFilter,
+    invocationPage,
+    invocationTotal:historyCurrent?invocationTotal:0,
+    invocationPages:historyCurrent?invocationPages:1,
+    invocationError:historyCurrent?invocationError:"",
+    invocationSearch,invocationStatus,invocationSource,
+    invocationRunId,clearInvocationRunId,
+    changeInvocationPage,changeInvocationSearch,changeInvocationStatus,changeInvocationSource,
     expandedInvocationId,
     toggleInvocationRow,
     hubStats,

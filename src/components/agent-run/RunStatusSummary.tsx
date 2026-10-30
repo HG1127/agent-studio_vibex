@@ -37,7 +37,7 @@ export function RunStatusSummary({ activeRun, events, isLive, controlBusy, onCon
   const budgetStopped = activeRun.status === "failed" && /budget.*exhaust|预算.*(?:耗尽|用尽|不足)|最大步数上限/i.test(activeRun.error || "")
   const usedSteps = Math.max(activeRun.current_step, 0)
   const stepLimit = Math.max(activeRun.max_steps, 1)
-  const roleProgress = projectAgentRoleProgress(activeRun)
+  const roleProgress = activeRun.checkpoint?.execution_plan ? null : projectAgentRoleProgress(activeRun)
   const recentActivity=latestRunActivity(events)
   const stopped = activeRun.status === "failed" || activeRun.status === "cancelled"
   const actionClass = "inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"

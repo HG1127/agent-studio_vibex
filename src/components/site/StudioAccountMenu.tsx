@@ -25,11 +25,14 @@ export function StudioAccountMenu() {
             <p className="font-semibold text-foreground">{profile?.display_name || "已登录"}</p>
             <p className="mt-1 break-all">{profile?.email || ""}</p>
           </div>
-          <Link to="/staff" role="menuitem" onClick={() => setOpen(false)}
+          <Link to="/account" role="menuitem" onClick={() => setOpen(false)}
             className="mt-1 flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted">
-            {profile?.role === "admin" ? <UsersRound size={16} /> : <Settings size={16} />}
-            {profile?.role === "admin" ? "员工与权限" : "修改密码"}
+            <Settings size={16} /> 我的账号与安全
           </Link>
+          {profile?.role === "admin"&&<Link to="/staff" role="menuitem" onClick={() => setOpen(false)}
+            className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted">
+            <UsersRound size={16} /> 员工与权限
+          </Link>}
           <button type="button" role="menuitem" onClick={logoutStudioAccount}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-destructive hover:bg-muted">
             <LogOut size={16} /> 退出登录

@@ -60,6 +60,8 @@ node-compile-cache/
 # Compiled local PocketBase and generated ZIP source deliverables
 vibex-local/bin/
 deliverables/
+# Generated employee connector packages and release manifest (not source)
+/public/downloads/
 *.zip
 *.7z
 *.rar
@@ -81,6 +83,8 @@ pnpm-debug.log*
 lerna-debug.log*
 tmp/
 temp/
+# Agent Studio worktree-local browser profiles and scratch files
+.tmp/
 agentstudio-ci-*/
 test-results/
 playwright-report/
@@ -96,5 +100,7 @@ Thumbs.db
 *.sw?
 
 # Per-device credentials and operator-local configuration
+# Downloaded five-minute bearer pairing tickets are never source artifacts.
+agent-studio-connect*.json
 **/.local-device-credentials.json
 local-executor/*.local.json

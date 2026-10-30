@@ -38,6 +38,20 @@ test('an explicitly selected live device satisfies browser needs without changin
   assert.equal(agentRunReadiness(value, {localDevice:localDevice(browserTools),disabledToolIds:['local_computer']}).ready,false)
 })
 
+test('text browser from guided setup is usable without granting screenshots or role access',()=>{
+  const textTools=['browser.browser_navigate','browser.browser_snapshot']
+  const value=spec({capability_requirements:[need()]})
+  assert.equal(agentRunReadiness(value,{localDevice:localDevice(textTools)}).ready,true)
+  assert.equal(agentRunReadiness(spec({capability_requirements:[need({title:'截图核验网页',purpose:'visual screenshot'})]}),{localDevice:localDevice(textTools)}).ready,false)
+  assert.equal(agentRunReadiness(spec({capability_requirements:[need({title:'截图核验网页'})]}),{localDevice:localDevice(browserTools)}).ready,true)
+  assert.equal(agentRunReadiness(spec({capability_requirements:[need({access:'write'})]}),{localDevice:localDevice(textTools)}).ready,false)
+  const withRole=spec({roles:[role('reader')],capability_requirements:[need({role_ids:['reader']})]})
+  assert.equal(agentRunReadiness(withRole,{localDevice:localDevice(textTools)}).ready,false)
+  const granted={...withRole,tools:['local_computer'],roles:[role('reader',['local_computer'])]}
+  assert.equal(agentRunReadiness(granted,{localDevice:localDevice(textTools)}).ready,true)
+  assert.equal(agentRunReadiness(granted,{localDevice:localDevice(textTools,{seen_ms:Date.now()+1000})}).ready,false)
+})
+
 test('an online local device cannot bypass owner-scoped role Skill checks', () => {
   const value = spec({capability_requirements: [need({access: 'write'})]})
   const options = {localDevice: localDevice(browserTools), skillIssues: ['Skill 版本未审核']}

@@ -12,7 +12,8 @@ export function SectionTabs() {
   const role=getStudioAccountInfo()?.role === "admin" ? "admin" : "employee"
   const workspace=workspaceForPath(pathname,role)
   if (!workspace || pathname === "/") return null
-  const current=workspace.children.find(item=>item.to===pathname)
+  const current=workspace.children.find(item=>item.to===pathname)||
+    (pathname==="/account"?{to:"/account",label:"我的账号与安全"}:undefined)
   return (
     <nav aria-label="当前位置" className="hidden h-10 shrink-0 items-center gap-2 border-b border-border bg-card/60 px-5 text-xs text-muted-foreground lg:flex">
       <Link to="/" className="hover:text-foreground">Agent Studio</Link>

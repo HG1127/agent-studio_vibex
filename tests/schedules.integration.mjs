@@ -5,6 +5,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { spawnHeadlessPocketBase } from "./helpers/headless-pocketbase.mjs"
 import { createServer } from "node:http"
+import {createServer as createNetServer} from "node:net"
 import { DatabaseSync } from "node:sqlite"
 import { nextScheduleTime } from "../src/lib/scheduleTime.js"
 
@@ -12,8 +13,25 @@ const root = process.cwd()
 const pbBin = process.env.POCKETBASE_BIN || path.join(root, "vibex-local/bin/windows/pocketbase.exe")
 assert.ok(fs.existsSync(pbBin), "PocketBase required")
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstudio-schedule-integration-"))
-const port = Number(process.env.PB_SCHEDULE_TEST_PORT || 7281)
-const modelPort = Number(process.env.PB_SCHEDULE_MODEL_PORT || 7282)
+// Allocate disposable loopback ports instead of competing with other local
+// dev servers on fixed 7281/7282. Operator overrides remain explicit.
+async function freePort() {
+  const socket=createNetServer()
+  await new Promise((resolve,reject)=>{
+    socket.once("error",reject)
+    socket.listen(0,"127.0.0.1",resolve)
+  })
+  const value=socket.address().port
+  await new Promise(resolve=>socket.close(resolve))
+  return value
+}
+const port=process.env.PB_SCHEDULE_TEST_PORT
+  ? Number(process.env.PB_SCHEDULE_TEST_PORT) : await freePort()
+let modelPort=process.env.PB_SCHEDULE_MODEL_PORT
+  ? Number(process.env.PB_SCHEDULE_MODEL_PORT) : await freePort()
+if(modelPort===port && !process.env.PB_SCHEDULE_MODEL_PORT)modelPort=await freePort()
+assert.ok(Number.isInteger(port)&&port>0&&port<65536)
+assert.ok(Number.isInteger(modelPort)&&modelPort>0&&modelPort<65536&&modelPort!==port)
 const origin = "http://127.0.0.1:" + port
 const token = "schedule-integration-test-token-32-characters"
 const env = {
@@ -316,6 +334,38 @@ try {
   assert.equal(retryHistory.history[0].status,"running")
   const retryFinished=await finish(retrySlot.run_id)
   assert.equal(retryFinished.status,"succeeded")
+  // UX contract: saving edits never resumes a paused plan or re-anchors its cadence.
+  const pausedAt=Date.now()+86400000
+  const pausedPlan=await expected('POST','/api/schedules/manage',{action:'create',name:'Paused UX fixture',
+    target_kind:'workflow',target_id:wfId,instruction:'Fixture only',recurrence_kind:'interval',interval_minutes:60,
+    time_zone:'UTC',local_time:'09:00',weekday:1,start_at_ms:pausedAt,next_at_ms:pausedAt,enabled:false},200)
+  assert.equal(pausedPlan.enabled,false)
+  assert.equal((await call('POST','/api/schedules/manage',{action:'run_now',id:pausedPlan.id})).status,409)
+  const preserved=await expected('POST','/api/schedules/manage',{action:'update',id:pausedPlan.id,expected_revision:1,
+    preserve_timing:true,name:'Renamed without activation',target_kind:'workflow',target_id:wfId,instruction:'Fixture only'},200)
+  assert.equal(preserved.enabled,false)
+  const pausedRow=(await expected('GET','/api/schedules',undefined,200)).items.find(x=>x.id===pausedPlan.id)
+  assert.equal(pausedRow.start_at_ms,pausedAt);assert.equal(pausedRow.next_at_ms,pausedAt);assert.equal(pausedRow.enabled,false)
+  assert.equal((await call('POST','/api/schedules/manage',{action:'delete',id:pausedPlan.id,expected_revision:1})).status,409)
+  assert.equal((await call('POST','/api/schedules/manage',{action:'toggle',id:pausedPlan.id,enabled:true,next_at_ms:pausedAt,expected_revision:1})).status,409)
+  // Deliberately seeded history fixtures test paging, NOT real execution success.
+  const pagingDb=new DatabaseSync(path.join(dir,'data.db'),{timeout:5000})
+  try{
+    const insert=pagingDb.prepare('INSERT INTO agent_studio_schedule_occurrences (id,schedule_id,rh_user_id,scheduled_for_ms,schedule_revision,run_id,status,attempts,locked_until_ms,next_retry_ms,error,created_ms,updated_ms) VALUES (?,?,?, ?,2,?, ?,0,0,0,?, ?,?)')
+    for(let i=0;i<65;i++)insert.run('eef0'+i.toString(16).padStart(16,'0'),pausedPlan.id,'A',pausedAt+i,'','succeeded','',pausedAt+i,pausedAt+i)
+  }finally{pagingDb.close()}
+  const firstPage=await expected('GET','/api/schedules?id='+pausedPlan.id+'&history_page=1&history_limit=20',undefined,200)
+  const lastPage=await expected('GET','/api/schedules?id='+pausedPlan.id+'&history_page=4&history_limit=20',undefined,200)
+  assert.equal(firstPage.history_total,65);assert.equal(firstPage.history_pages,4);assert.equal(firstPage.history.length,20)
+  assert.equal(lastPage.history.length,5)
+  assert.equal(lastPage.history.some(r=>firstPage.history.some(f=>f.id===r.id)),false)
+  const foreignPage=await expected('GET','/api/schedules?id='+pausedPlan.id+'&history_page=1&history_limit=20',undefined,200,'B')
+  assert.equal(foreignPage.history_total,0);assert.equal(foreignPage.history.length,0)
+  await expected('GET','/api/schedules?history_page=0',undefined,400)
+  await expected('GET','/api/schedules?id=../invalid',undefined,400)
+  await expected('POST','/api/schedules/manage',{action:'delete',id:pausedPlan.id,expected_revision:2},200)
+  assert.equal((await expected('GET','/api/schedules?id='+pausedPlan.id+'&history_limit=20',undefined,200)).history_total,65)
+  console.log('SCHEDULE_WORKSPACE_API_PASS '+JSON.stringify({preservePaused:true,preserveTiming:true,staleEditsRejected:true,paginationBeyond60:true,ownerIsolation:true}))
   console.log(JSON.stringify({status:"PASS", onceRun:history.history[0].run_id,
     recurringRunNow:runNow.run_id,agentRun:info.history[0].run_id,modelCalls,
     ownerIsolation:true,tokenAuth:true,deduplication:true,history:true,

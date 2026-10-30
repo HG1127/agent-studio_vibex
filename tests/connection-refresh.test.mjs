@@ -10,6 +10,7 @@ import { chooseAgentDesignModel } from "../src/lib/agentDesignModelSelection.ts"
 import { preserveRoleSkillBindings, sanitizeAgentRoles } from "../src/lib/agentRoles.ts"
 import { normalizeCapabilityRequirements } from "../src/lib/agentCapabilityPlan.ts"
 import { evaluateAgentJourney } from "../src/lib/agentCreateJourney.ts"
+import {safeAgentSpecId} from "../src/lib/toolSearchPrivacy.ts"
 import { agentCapabilityReadiness, toolCatalogForDesign } from "../src/lib/agentCapabilityPlan.ts"
 
 const home = "src/pages/Home/useHome.ts"
@@ -52,7 +53,7 @@ function refreshHarness(file) {
   const scope = {
     connectedLoadSequence: { current: 0 },
     request, fetch: request, getPocketBaseUrl: () => "http://fixture.invalid", vibexAuthHeaders: () => ({}),
-    getKnowledgeBases: async () => [], getVerifiedMarketTools,
+    getKnowledgeBases: async () => [], getVerifiedMarketTools, safeAgentSpecId,
     setConnectedTools: set(state, "http"), setConnectedMarketTools: set(state, "market"),
     setMarketTools: set(state, "market"), setKnowledge: set(state, "knowledge"),
     setToolMatchNotice: set(state, "notice"), setToolNotice: set(state, "notice"),
@@ -86,6 +87,19 @@ test("the create gate blocks an unknown extra HTTP tool even when structured req
 })
 
 for (const file of [home, quick]) {
+  test(`${file}: only valid saved connection IDs survive catalog refresh`,async()=>{
+    const h=refreshHarness(file),loading=h.load()
+    h.pending[0].resolve(response([
+      {...httpItem("ready_tool"),id:"abcdefghijklmno"},
+      {...httpItem("unsafe_tool"),id:"../test?access_token=private"},
+    ]))
+    h.pending[1].resolve(response([]))
+    assert.equal((await loading).verified,true)
+    assert.equal(h.state.http.find(row=>row.name==="ready_tool").id,"abcdefghijklmno")
+    assert.equal(h.state.http.find(row=>row.name==="unsafe_tool").id,undefined)
+    assert.equal(JSON.stringify(h.state.http).includes("access_token"),false)
+  })
+
   test(`${file}: an older success cannot overwrite the latest failed refresh`, async () => {
     const h = refreshHarness(file)
     const older = h.load(), newer = h.load()

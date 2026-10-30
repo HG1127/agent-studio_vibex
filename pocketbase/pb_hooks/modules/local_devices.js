@@ -39,17 +39,39 @@ function catalog(raw) {
   if (JSON.stringify(out).length > 60000) throw Error("catalog_too_large")
   return out
 }
+// File action validation is enforced on the server as well as the executor.
+// No user-provided schema can authorize a permission-management tool.
+function fileArguments(name,args,schema) {
+  var fields={stat:['path'],list:['path'],read:['path'],write:['path','text'],update:['path','text','expected_sha256'],mkdir:['path'],copy:['path','destination'],move:['path','destination','expected_sha256'],trash:['path','expected_sha256'],trash_list:[],restore:['trash_id'],open:['path'],reveal:['path']}
+  var action=name.slice(6)
+  if(!Object.prototype.hasOwnProperty.call(fields,action))throw Error('device_tool_denied')
+  var allowed=['root'].concat(fields[action])
+  if(Object.keys(args).length!==allowed.length||Object.keys(args).some(function(k){return allowed.indexOf(k)<0})||allowed.some(function(k){return typeof args[k]!=='string'}))throw Error('invalid_arguments')
+  var enums=schema&&schema.properties&&schema.properties.root&&schema.properties.root['enum']; /* Goja-safe property access */
+  if(!Array.isArray(enums)||enums.indexOf(args.root)<0)throw Error('device_tool_denied')
+  ;['path','destination'].forEach(function(k){
+    if(args[k]===undefined)return
+    if(!args[k]||args[k].length>1000||(args[k].charAt(0)==='/'||args[k].charAt(0)==='\\')||/[:\x00-\x1f\x7f]/.test(args[k])||args[k].replace(/\\/g,'/').split('/').some(function(p){return p==='..'||p!=='.'&&(p.slice(-1)==='.'||p.slice(-1)===' '||/^(?:\.agent-studio(?:-trash)?|\.env.*|\.git|\.ssh|\.aws|\.azure|\.gnupg|\.codex|\.config|\.local|\.local-device-credentials\.json|pb_data|node_modules|credentials.*|.*\.(?:db(?:-wal|-shm)?|sqlite\d*(?:-wal|-shm)?|pem|key|pfx|p12)|con(?:\..*)?|prn(?:\..*)?|aux(?:\..*)?|nul(?:\..*)?|com[0-9](?:\..*)?|lpt[0-9](?:\..*)?)$/i.test(p))}))throw Error('invalid_arguments')
+  })
+  if(args.expected_sha256!==undefined&&!/^[a-f0-9]{64}$/.test(args.expected_sha256)||args.trash_id!==undefined&&!/^[a-f0-9]{32}$/.test(args.trash_id))throw Error('invalid_arguments')
+  if(action==='open'&&!/\.(?:txt|md|csv|tsv|json|log|pdf|png|jpg|jpeg|gif|bmp|webp|docx|xlsx|pptx|odt|ods|odp)$/i.test(args.path)||['open','reveal'].indexOf(action)>=0&&/[",]/.test(args.path))throw Error('invalid_arguments')
+  if(args.text!==undefined){var bytes=encodeURIComponent(args.text).replace(/%[A-Fa-f0-9]{2}|./g,'x').length;if(bytes>(action==='update'?65536:16000))throw Error('input_too_large')}
+}
 function enqueue(app, owner, deviceId, input, key, runId) {
   var d = device(app, deviceId, owner)
   if (now() - Number(d.seen_ms) > 45000) throw Error("device_offline")
   if (!input || typeof input !== "object" || Array.isArray(input)) throw Error("invalid_input")
-  var tools = JSON.parse(d.catalog || "[]"), found = false
-  for (var i = 0; i < tools.length; i++) if (tools[i].name === input.tool) found = true
+  var tools = JSON.parse(d.catalog || "[]"), found = false, revision = "", schema = {}
+  for (var i = 0; i < tools.length; i++) if (tools[i].name === input.tool) { found = true;schema=tools[i].inputSchema||{}; revision = String(schema["x-studio-permission-revision"] || "") }
   if (!found) throw Error("device_tool_denied")
   var args = input.arguments || {}
   if (typeof args !== "object" || Array.isArray(args)) throw Error("invalid_arguments")
-  var payload = canonical({ tool: input.tool, arguments: args })
-  if (payload.length > 24000) throw Error("input_too_large")
+  if(input.tool.indexOf('files.')===0)fileArguments(input.tool,args,schema)
+  // Scope version comes from the authenticated device catalog, never caller input.
+  var envelope = { tool: input.tool, arguments: args }
+  if(revision){if(!/^[a-f0-9]{24}$/.test(revision))throw Error("invalid_permission_revision");envelope.permission_revision=revision}
+  var payload = canonical(envelope)
+  if (payload.length > (input.tool==='files.update'?400000:24000)) throw Error("input_too_large")
   var hash = $security.sha256(payload), id = $security.randomString(24)
   app.db().newQuery("INSERT INTO studio_local_jobs(id,owner,device_id,run_id,job_key,args_hash,payload,status,created_ms,deadline_ms) " +
     "VALUES({:id},{:owner},{:device},{:run},{:key},{:hash},{:payload},'queued',{:now},{:deadline}) ON CONFLICT(job_key) DO NOTHING")

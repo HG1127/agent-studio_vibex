@@ -17,6 +17,8 @@ export type ScheduleHistory = {
   run_id: string; status: string; attempts: number; error: string;
 }
 export type ScheduleForm = {
+  /** Creation only: editing preserves current enabled state; activation is explicit. */
+  enabled:boolean
   name: string; target_kind: TargetKind; target_id: string; instruction: string;
   recurrence_kind: RuleKind; time_zone: string; start_date: string;
   local_time: string; weekday: number; interval_minutes: number;
@@ -27,7 +29,7 @@ export const TIME_ZONES = [
   "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Tokyo", "Asia/Singapore", "Asia/Dubai",
   "UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Berlin",
 ]
-export const FORM_CLASS = "mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+export const FORM_CLASS = "mt-1.5 min-w-0 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
 export const LABEL_CLASS = "text-xs font-medium text-muted-foreground"
 export const formatScheduledDate = (ms: number) => ms ? new Date(ms).toLocaleString("zh-CN", { year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit" }) : "—"
 export const scheduleHistoryLabel = (s: string) => ({
@@ -42,7 +44,7 @@ export function defaultScheduleForm(): ScheduleForm {
   const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai"
   const zone = validTimeZone(browserZone) ? browserZone : "Asia/Shanghai"
   return {
-    name:"",target_kind:"agent",target_id:"",instruction:"",
+    name:"",target_kind:"agent",target_id:"",instruction:"",enabled:false,
     recurrence_kind:"daily",time_zone:zone,
     start_date:zonedDateString(Date.now()+86400000,zone),local_time:"09:00",
     weekday:1,interval_minutes:60,model_connection_id:"",model_id:"",max_steps:10,

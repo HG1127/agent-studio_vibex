@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import { AlertTriangle, CheckCircle2, Loader2, Play, RefreshCw } from "lucide-react"
 import { Link } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
@@ -68,7 +69,7 @@ export function WorkflowModelNodeLiveDebug({ model, allowedModelSelections, prev
       setMessage(error instanceof Error ? error.message : "模型配置不正确")
       return
     }
-    const approved = window.confirm(
+    const approved = await confirmInStudio(
       "确认调用当前员工已授权的模型进行一次真实节点测试？\n\n" +
       "这会将当前渲染的提示词发送到所选模型服务商，并可能产生费用。" +
       "最多请求 " + WORKFLOW_MODEL_DEBUG_MAX_TOKENS + " 个输出 token。" +

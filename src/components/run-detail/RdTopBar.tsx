@@ -6,8 +6,8 @@ export function RdTopBar() {
   return (
     <SitePageHeader
       icon={ScrollText}
-      title="运行档案"
-      badge="Agent Studio"
+      title="运行记录与详情"
+      badge=""
       actions={
         <Link
           to="/agent-run"

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import {confirmInStudio} from "@/lib/studioDialogs"
+import { Link, useSearchParams } from "react-router-dom"
 import {
   Activity, AlertCircle, CheckCircle2, ClipboardCheck, Clock3,
   RefreshCw, ShieldCheck, UsersRound, XCircle,
@@ -49,7 +50,14 @@ function formatTime(time:number){
     new Date(time).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"—"
 }
 
-export default function ManagerPage(){
+export default function ManagerPage({personalOnly=false}:{personalOnly?:boolean}){
+  const [params,setParams]=useSearchParams()
+  const requested=params.get("view")
+  const view=personalOnly?"mine":requested==="company"||requested==="mine"?requested:"inbox"
+  const [filter,setFilter]=useState("")
+  const [inboxPage,setInboxPage]=useState(1)
+  const [loadedAt,setLoadedAt]=useState(0)
+  const changeView=(value:string)=>{const next=new URLSearchParams(params);next.set("view",value);setParams(next)}
   const [me,setMe]=useState<Account["user"]|null>(null)
   const [company,setCompany]=useState<Company|null>(null)
   const [owner,setOwner]=useState<Own>({reviewers:[],pending:[]})
@@ -65,28 +73,37 @@ export default function ManagerPage(){
   useEffect(()=>{
     let mounted=true
     void (async()=>{
+      setLoading(true);setError("")
+      // Fetch only the active view. Company metrics cannot block the approval inbox.
       try{
         const account=await api<Account>("GET","/api/studio/me")
-        const own=await api<Own>("GET","/api/studio/approval-delegations")
         if(!mounted)return
-        setMe(account.user);setOwner(own)
-        if(account.user.role==="admin"){
-          const [overall,inbox]=await Promise.all([
-            api<Company>("GET","/api/studio/company/overview"),
-            api<{items:Assigned[]}>("GET","/api/studio/manager/approvals"),
-          ])
-          if(mounted){setCompany(overall);setAssigned(inbox.items||[])}
-        }else if(mounted){setCompany(null);setAssigned([])}
-        if(mounted)setError("")
+        setMe(account.user)
+        if(view==="mine"){
+          const own=await api<Own>("GET","/api/studio/approval-delegations")
+          if(!Array.isArray(own.pending)||!Array.isArray(own.reviewers))throw Error("委托数据格式异常，请重新加载")
+          if(mounted)setOwner(own)
+        }else if(account.user.role==="admin"&&!personalOnly){
+          if(view==="company"){
+            const overall=await api<Company>("GET","/api/studio/company/overview")
+            if(overall.scope!=="company_metadata_only"||!Array.isArray(overall.employees))throw Error("无法确认公司统计范围")
+            if(mounted)setCompany(overall)
+          }else{
+            const inbox=await api<{items:Assigned[]}>("GET","/api/studio/manager/approvals")
+            if(!Array.isArray(inbox.items))throw Error("审批列表格式异常，请重新加载")
+            if(mounted){setAssigned(inbox.items);setInboxPage(1)}
+          }
+        }else throw Error("当前账号无权读取公司管理数据。请使用我的委托入口。")
+        if(mounted)setLoadedAt(Date.now())
       }catch(err){if(mounted)setError(String((err as Error).message||err))}
       finally{if(mounted)setLoading(false)}
     })()
     return ()=>{mounted=false}
-  },[revision])
+  },[revision,view,personalOnly])
 
   const refresh=()=>{setLoading(true);setRevision(v=>v+1)}
   const grant=async(item:OwnPending)=>{
-    const reviewerId=selection[item.run_id]||owner.reviewers[0]?.id
+    const reviewerId=selection[item.run_id]||""
     if(!reviewerId)return
     const reviewNote=String(reviewNotes[item.run_id]||"").trim()
     if(reviewNote.length<8||reviewNote.length>500){
@@ -94,7 +111,7 @@ export default function ManagerPage(){
       return
     }
     const reviewer=owner.reviewers.find(r=>r.id===reviewerId)
-    if(!window.confirm("确认将「"+item.title+"」当前待审批步骤委托给"+reviewer?.display_name+
+    if(!await confirmInStudio("确认将「"+item.title+"」当前待审批步骤委托给"+reviewer?.display_name+
       "？仅授权此任务，24 小时内有效，负责人可批准或拒绝该步骤。"))return
     setSaving(true);setError("");setNotice("")
     try{
@@ -109,7 +126,7 @@ export default function ManagerPage(){
     finally{setSaving(false)}
   }
   const revoke=async(item:OwnPending)=>{
-    if(!window.confirm("确认撤销「"+item.title+"」的代审批授权？"))return
+    if(!await confirmInStudio("确认撤销「"+item.title+"」的代审批授权？"))return
     setSaving(true);setError("");setNotice("")
     try{
       await api("POST","/api/studio/approval-delegations",{
@@ -121,7 +138,7 @@ export default function ManagerPage(){
   }
   const decide=async(item:Assigned,decision:"approve"|"reject")=>{
     const verb=decision==="approve"?"批准继续执行":"拒绝执行"
-    if(!window.confirm(
+    if(!await confirmInStudio(
       "请核对以下员工授权的待执行步骤。\n"+
       "任务："+item.title+"\n工具："+item.tool+"\n"+
       "员工主动填写的审核说明："+item.review_note+"\n"+
@@ -139,172 +156,77 @@ export default function ManagerPage(){
     }catch(e){setError(String((e as Error).message||e))}
     finally{setSaving(false)}
   }
+  const matching=assigned.filter(item=>(item.title+" "+item.owner_name+" "+item.tool).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()))
+    .sort((a,b)=>a.expires_ms-b.expires_ms)
+  const pageCount=Math.max(1,Math.ceil(matching.length/10))
+  const currentPage=Math.min(inboxPage,pageCount)
+  const shown=matching.slice((currentPage-1)*10,currentPage*10)
   const stats=company?[
-    {label:"在职员工",value:company.totals.active},
+    {label:"启用员工",value:company.totals.active},
     {label:"执行中",value:company.totals.agent_running+company.totals.workflow_running},
-    {label:"待审批",value:company.totals.pending_approvals},
-    {label:"近7天失败",value:company.totals.failed_7d},
+    {label:"公司待审批总数",value:company.totals.pending_approvals},
+    {label:"近 7 天失败",value:company.totals.failed_7d},
     {label:"超期计划",value:company.totals.overdue_schedules},
     {label:"知识库数量",value:company.totals.knowledge_bases},
   ]:[]
-  return <SiteShell>
-    <main className="min-h-screen flex-1 bg-background p-4 text-foreground sm:p-7">
-      <div className="w-full min-w-0 space-y-5">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-semibold">
-              <ShieldCheck className="h-6 w-6 text-primary"/>公司运行与授权审批
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              负责人查看运行状态；员工按任务授权单次代审批，不转移知识库、凭据和任务所有权。
-            </p>
-          </div>
-          <button className={btn+" inline-flex items-center gap-2"} disabled={loading||saving} onClick={refresh}>
-            <RefreshCw size={15}/>刷新
-          </button>
-        </header>
-        {error&&<div role="alert" className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          <AlertCircle size={18}/>{error}
-        </div>}
-        {notice&&<div role="status" className="flex gap-2 rounded-xl border bg-secondary p-3 text-sm">
-          <CheckCircle2 size={18} className="text-primary"/>{notice}
-        </div>}
-        {assigned.length>0 && <a href="#delegated-approvals"
-          className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary transition hover:bg-primary/10">
-          <span className="flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4"/>有 {assigned.length} 项委托审批等待处理
-          </span>
-          <span className="text-xs">前往审批 →</span>
-        </a>}
-        {loading?<div role="status" className={card+" flex items-center gap-2 text-sm text-muted-foreground"}>
-          <Activity size={18} className="animate-pulse"/>正在验证权限并读取运行状态…
-        </div>:<>
-          {company&&<>
-            <section className={card}>
-              <div className="flex flex-wrap justify-between gap-2">
-                <div>
-                  <h2 className="flex items-center gap-2 font-semibold"><Activity size={17}/>公司运行健康度</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    仅汇总状态及数量，不读取员工任务指令、执行内容与敏感凭据。
-                  </p>
-                </div>
-                <span className={"text-xs "+(company.worker.alive?"text-emerald-700":"text-amber-700")}>
-                  Worker {company.worker.alive?"正常响应":company.worker.configured?"心跳暂未响应":"未配置"}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-                {stats.map(s=><div key={s.label} className="rounded-xl border bg-background p-3">
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{s.value}</p>
-                </div>)}
-              </div>
-              <details className="mt-4 rounded-lg border border-border bg-background/60 p-3">
-                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
-                  按员工查看运行统计（{company.employees.length} 人）
-                </summary>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full min-w-[720px] text-left text-xs">
-                  <thead><tr className="border-b text-muted-foreground">
-                    {["员工","状态","Agent执行中","Workflow执行中","待审批","7天失败","超期计划"].map(s=>
-                      <th key={s} className="px-2 py-3 font-medium">{s}</th>)}
-                  </tr></thead>
-                  <tbody>{company.employees.map(emp=><tr key={emp.id} className="border-b last:border-0">
-                    <td className="px-2 py-3 font-medium">{emp.display_name}</td>
-                    <td className="px-2 py-3">{emp.active?"在职":"已停用"}</td>
-                    <td className="px-2 py-3 tabular-nums">{emp.agent_running}</td>
-                    <td className="px-2 py-3 tabular-nums">{emp.workflow_running}</td>
-                    <td className="px-2 py-3 tabular-nums">{emp.pending_approvals}</td>
-                    <td className="px-2 py-3 tabular-nums">{emp.failed_7d}</td>
-                    <td className="px-2 py-3 tabular-nums">{emp.overdue_schedules}</td>
-                  </tr>)}</tbody>
-                  </table>
-                </div>
-              </details>
-              {company.truncated&&<p className="mt-2 text-xs text-amber-700">当前只统计前200名员工，请由运维升级分页后再用于全员报表。</p>}
-            </section>
-            <section id="delegated-approvals" className={card+" scroll-mt-20"}>
-              <h2 className="flex items-center gap-2 font-semibold"><ClipboardCheck size={17}/>委托给我的审批
-                <span className="text-xs font-normal text-muted-foreground">（{assigned.length}）</span></h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                仅显示员工主动授权的任务与当前步骤。批准可能触发外部写入，请核对工具与参数预览。
-              </p>
-              <div className="mt-3 space-y-3">
-                {assigned.length===0?<p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  当前没有获得员工授权的待审批事项。
-                </p>:assigned.map(item=><article key={item.run_id} className="rounded-xl border p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div><h3 className="font-medium">{item.title}</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        来自 {item.owner_name} · 工具 {item.tool} · 第 {item.step_index} 步 · 截止 {formatTime(item.expires_ms)}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" aria-label={"拒绝待审批调用："+item.title} className={btn+" inline-flex items-center gap-1"} disabled={saving}
-                        onClick={()=>void decide(item,"reject")}><XCircle size={14}/>拒绝</button>
-                      <button type="button" aria-label={"批准待审批调用："+item.title} className="inline-flex min-h-10 items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-40"
-                        disabled={saving} onClick={()=>void decide(item,"approve")}>
-                        <CheckCircle2 size={14}/>批准
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-relaxed">
-                    <strong>员工说明：</strong>{item.review_note}
-                  </p>
-                  <details className="mt-3 rounded-lg bg-secondary/40 px-3 py-2">
-                    <summary className="cursor-pointer text-xs font-medium">查看参数元信息（已隐藏实际字段值）</summary>
-                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">{item.input_preview||"（无参数）"}</pre>
-                  </details>
-                </article>)}
-              </div>
-            </section>
-          </>}
-          <section className={card}>
-            <h2 className="flex items-center gap-2 font-semibold"><UsersRound size={18}/>委托负责人审批我的任务</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              员工仍是任务所有者。代审批只对一个等待审核的 Agent 步骤生效，当前有效期24小时；
-              任何人无法仅凭链接或用户ID接管你的 Agent 和资料。
-            </p>
-            <div className="mt-4 space-y-3">
-              {owner.pending.length===0?<p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                暂无待审批的 Agent 运行。<Link to="/agent-run" className="ml-1 text-primary underline">查看运行任务</Link>
-              </p>:owner.pending.map(item=><div key={item.run_id}
-                className="flex flex-wrap items-center gap-3 rounded-xl border p-3 text-sm">
-                <div className="min-w-[200px] flex-1">
-                  <p className="font-medium">{item.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    步骤 {item.step_index} · {item.tool}
-                    {item.reviewer_id?" · 已授权至 "+formatTime(item.expires_ms):""}
-                  </p>
-                </div>
-                {item.reviewer_id?<button className={btn} disabled={saving} onClick={()=>void revoke(item)}>撤销授权</button>:
-                  owner.reviewers.length===0?<p className="text-xs text-muted-foreground">暂无其他有效管理员</p>:
-                  <div className="flex min-w-[230px] max-w-lg flex-1 flex-col gap-2">
-                    <select aria-label={"选择 "+item.title+" 的负责人"} className="rounded-lg border bg-background px-2 py-2 text-xs"
-                      value={selection[item.run_id]||owner.reviewers[0]?.id}
-                      onChange={e=>setSelection(old=>({...old,[item.run_id]:e.target.value}))}>
-                      {owner.reviewers.map(r=><option key={r.id} value={r.id}>{r.display_name}</option>)}
-                    </select>
-                    <label className="min-w-0 flex-1 text-xs">
-                      <span className="text-muted-foreground">提交给负责人的审核说明（不得含机密内容）</span>
-                      <textarea rows={2} maxLength={500} required
-                        aria-label={"审核说明 "+item.title}
-                        value={reviewNotes[item.run_id]||""}
-                        onChange={e=>setReviewNotes(old=>({...old,[item.run_id]:e.target.value}))}
-                        placeholder="例如：仅批准读取公开公司财报并核对统计口径，不得对外发送客户资料"
-                        className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-2 py-2 text-xs"/>
-                    </label>
-                    <button className="rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-40"
-                      disabled={saving} onClick={()=>void grant(item)}>授权24小时</button>
-                  </div>}
-              </div>)}
-            </div>
-          </section>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <Clock3 size={15}/>授予/撤销/批准/拒绝均由服务端记录审计。审批完成后由原运行器继续执行。
-            {me?.role==="admin"&&<Link to="/staff" className="text-primary underline">员工与权限</Link>}
-          </div>
-        </>}
+  return <SiteShell><main data-studio-fluid-page="manager" className="w-full min-w-0 space-y-5 px-4 pb-12 pt-6 lg:px-8 2xl:px-10">
+    <header className="flex flex-wrap items-start justify-between gap-4">
+      <div><p className="text-xs font-semibold text-primary">{personalOnly?"我的工作":"组织管理"}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{personalOnly?"我的审批委托":"运行与审批"}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{personalOnly?"只处理你本人任务的单次委托；不会转移任务所有权或资料权限。":"先处理被明确授权给你的审批；公司运行统计与自己的委托分开查看。"}</p>
       </div>
-    </main>
-  </SiteShell>
+      <button type="button" className={btn+" inline-flex min-h-10 items-center gap-2"} disabled={loading||saving} onClick={refresh}>
+        <RefreshCw size={15} className={loading?"animate-spin":""}/>刷新当前视图
+      </button>
+    </header>
+    {!personalOnly&&<nav aria-label="管理工作区" className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-1.5">
+      {[{key:"inbox",label:"待我审批",icon:ClipboardCheck},{key:"company",label:"公司运行",icon:Activity},{key:"mine",label:"我的委托",icon:UsersRound}].map(item=><button key={item.key} type="button"
+        disabled={saving} aria-pressed={view===item.key} onClick={()=>changeView(item.key)}
+        className={"inline-flex min-h-11 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition disabled:opacity-50 "+(view===item.key?"bg-primary text-primary-foreground":"text-muted-foreground hover:bg-secondary")}>
+        <item.icon className="h-4 w-4"/>{item.label}
+      </button>)}
+    </nav>}
+    {notice&&<p role="status" className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary"/>{notice}</p>}
+    {error&&<div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive">
+      <AlertCircle className="h-4 w-4 shrink-0"/><p className="min-w-0 flex-1">{error}。已隐藏旧数据，不能据此判断没有待办。</p><button type="button" className={btn} onClick={refresh}>重试</button>
+    </div>}
+    {loading?<div role="status" className={card+" flex items-center gap-2 text-sm text-muted-foreground"}><RefreshCw className="h-4 w-4 animate-spin"/>正在核对权限并读取当前视图…</div>:!error&&<>
+      {view==="inbox"&&me?.role==="admin"&&!personalOnly&&<section id="delegated-approvals" aria-label="待我审批" className={card+" min-w-0"}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 className="text-base font-semibold">已授权给我的待办 <span className="ml-2 text-sm font-normal text-muted-foreground">{assigned.length} 项</span></h2>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">按截止时间排序；仅展示员工主动委托的当前步骤，不等于公司的全部待审批任务。</p></div>
+          <label className="flex w-full items-center gap-2 rounded-xl border border-input px-3 sm:max-w-xs"><span className="sr-only">搜索审批任务、员工或工具</span><input aria-label="搜索审批任务、员工或工具" value={filter} onChange={e=>{setFilter(e.target.value);setInboxPage(1)}} placeholder="搜索任务、员工或工具" className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"/></label>
+        </div>
+        {!shown.length?<div className="mt-4 rounded-xl border border-dashed p-8 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-primary"/><p className="mt-3 text-sm font-medium">{filter?"没有匹配的审批":"目前没有委托给你的审批"}</p><p className="mt-2 text-xs text-muted-foreground">{filter?"调整关键词，不会更改任何授权。":"公司存在待审批任务，并不代表你已获得处理权限。"}</p>{filter&&<button type="button" className={btn+" mt-4"} onClick={()=>setFilter("")}>清除搜索</button>}</div>:
+          <div className="mt-4 space-y-3">{shown.map(item=><article key={item.run_id+":"+item.step_index} className="min-w-0 rounded-xl border border-border p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-sm font-semibold">{item.title}</h3><p className="mt-1 break-words text-xs text-muted-foreground">来自 {item.owner_name} · 工具 {item.tool} · 第 {item.step_index} 步</p></div><span className="text-xs text-amber-700">截止 {formatTime(item.expires_ms)}</span></div>
+            <p className="mt-3 rounded-lg bg-secondary/40 p-3 text-xs leading-6"><strong>员工审核说明：</strong>{item.review_note}</p>
+            <details className="mt-3 rounded-lg border border-border px-3 py-2"><summary className="cursor-pointer text-xs font-medium">参数元信息与授权边界</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">{item.input_preview||"（无参数）"}</pre><p className="mt-2 text-xs text-muted-foreground">批准可能触发外部写入；只作用于当前步骤，实际字段值未向你公开。</p></details>
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              {item.expires_ms<=Date.now()&&<span className="mr-auto text-xs text-destructive">授权已过期，请员工重新委托</span>}
+              <button type="button" aria-label={"拒绝待审批调用："+item.title} disabled={saving||item.expires_ms<=Date.now()} className={btn+" inline-flex min-h-10 items-center gap-1"} onClick={()=>void decide(item,"reject")}><XCircle size={14}/>拒绝</button>
+              <button type="button" aria-label={"批准待审批调用："+item.title} disabled={saving||item.expires_ms<=Date.now()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-40" onClick={()=>void decide(item,"approve")}><ShieldCheck size={14}/>审核并批准</button>
+            </div>
+          </article>)}</div>}
+        {matching.length>10&&<footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-xs text-muted-foreground"><span>已加载的授权待办中，每页展示 10 项</span><div className="flex items-center gap-3"><button type="button" className={btn} disabled={currentPage<=1||saving} onClick={()=>setInboxPage(currentPage-1)}>上一页</button><span>{currentPage} / {pageCount}</span><button type="button" className={btn} disabled={currentPage>=pageCount||saving} onClick={()=>setInboxPage(currentPage+1)}>下一页</button></div></footer>}
+      </section>}
+      {view==="company"&&company&&!personalOnly&&<section aria-label="公司运行统计" className={card+" min-w-0"}>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold">公司运行健康度</h2><p className="mt-1 text-xs leading-6 text-muted-foreground">公司范围，仅汇总状态与数量，不读取员工任务内容和凭据。待审批总数不等于本人可处理数量。</p></div><Link to="/tool-hub?view=monitor" className="inline-flex min-h-9 items-center rounded-lg border border-border px-3 text-xs font-semibold text-primary">检查执行器状态</Link></div>
+        <p className={"mt-3 text-xs "+(company.worker.alive?"text-emerald-700":"text-amber-700")}>Worker {company.worker.alive?"正常响应":company.worker.configured?"心跳暂未响应":"未配置"} · 统计仅代表本次读取</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">{stats.map(item=><div key={item.label} className="rounded-xl border border-border bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">{item.label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{item.value}</p></div>)}</div>
+        <details className="mt-5 rounded-xl border border-border p-3"><summary className="cursor-pointer text-sm font-medium">按员工查看聚合状态（{company.employees.length} 人）</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{company.employees.map(emp=><article key={emp.id} className="min-w-0 rounded-lg border border-border p-3"><p className="break-words text-sm font-semibold">{emp.display_name}<span className="ml-2 text-xs font-normal text-muted-foreground">{emp.active?"已启用":"已停用"}</span></p><dl className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground"><div>执行中 <strong className="text-foreground">{emp.agent_running+emp.workflow_running}</strong></div><div>待审批 <strong className="text-foreground">{emp.pending_approvals}</strong></div><div>7 天失败 <strong className="text-foreground">{emp.failed_7d}</strong></div><div>超期计划 <strong className="text-foreground">{emp.overdue_schedules}</strong></div></dl></article>)}</div></details>
+        {company.truncated&&<p role="status" className="mt-3 text-xs text-amber-700">当前只包含前 200 名员工，不能作为全公司完整报表。</p>}
+      </section>}
+      {view==="mine"&&<section aria-label="我的审批委托" className={card}>
+        <h2 className="text-base font-semibold">委托负责人审批我的任务</h2><p className="mt-1 text-xs leading-6 text-muted-foreground">选择具体负责人并说明允许执行的边界。只授权当前步骤，24 小时有效，可随时撤销。</p>
+        {!owner.pending.length?<div className="mt-4 rounded-xl border border-dashed p-8 text-center"><p className="text-sm">目前没有等待审批的本人任务</p><Link to="/agent-run" className="mt-3 inline-flex min-h-10 items-center rounded-lg border border-border px-4 text-xs font-semibold text-primary">查看我的运行</Link></div>:
+          <div className="mt-4 space-y-4">{owner.pending.map(item=><article key={item.run_id} className="min-w-0 rounded-xl border border-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-sm font-semibold">{item.title}</h3><p className="mt-1 break-words text-xs text-muted-foreground">步骤 {item.step_index} · {item.tool}</p></div><Link to={"/agent-run?run="+encodeURIComponent(item.run_id)+"#run-next-action"} className="text-xs font-semibold text-primary">回到原任务</Link></div>
+            {item.reviewer_id?<div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">已委托 · 有效至 {formatTime(item.expires_ms)}</p><button type="button" disabled={saving} className={btn} onClick={()=>void revoke(item)}>撤销授权</button></div>:
+              !owner.reviewers.length?<p className="mt-3 text-xs text-muted-foreground">暂无其他有效管理员；仍可返回原任务亲自核验。</p>:
+              <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-[minmax(180px,0.6fr)_minmax(0,1fr)]"><label className="text-xs font-medium">审批负责人<select aria-label={"选择 "+item.title+" 的负责人"} value={selection[item.run_id]||""} onChange={e=>setSelection(old=>({...old,[item.run_id]:e.target.value}))} className="mt-2 min-h-11 w-full min-w-0 rounded-lg border bg-background px-3 text-sm"><option value="">请选择负责人</option>{owner.reviewers.map(r=><option key={r.id} value={r.id}>{r.display_name}</option>)}</select></label><label className="text-xs font-medium">审核说明（请勿包含机密或凭据）<textarea aria-label={"审核说明 "+item.title} rows={3} maxLength={500} value={reviewNotes[item.run_id]||""} onChange={e=>setReviewNotes(old=>({...old,[item.run_id]:e.target.value}))} placeholder="说明允许执行的动作、目的及限制" className="mt-2 w-full rounded-lg border bg-background p-3 text-sm"/></label><div className="md:col-span-2 flex justify-end"><button type="button" disabled={saving||!selection[item.run_id]||(reviewNotes[item.run_id]||"").trim().length<8} onClick={()=>void grant(item)} className="min-h-10 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-40">确认委托 24 小时</button></div></div>}
+          </article>)}</div>}
+      </section>}
+      <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5"/>当前视图更新于 {formatTime(loadedAt)} · 授权与决策由服务端复核并记录审计{!personalOnly&&<Link to="/staff" className="ml-auto text-primary">管理成员权限</Link>}</p>
+    </>}
+  </main></SiteShell>
 }

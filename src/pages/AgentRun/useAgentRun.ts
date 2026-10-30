@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { localApi, type LocalDevice } from "@/lib/localDevices"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { officeRunHandoff } from '@/lib/localOfficeWorkflow'
@@ -11,6 +11,8 @@ import { PROVIDER_META, normalizeProvider } from "@/pages/ModelConnections/useMo
 import { normalizeAgentQualityChecks, type AgentQualityCheck } from "@/lib/agentQualityChecks"
 import { getVerifiedMarketTools, type VerifiedMarketTool } from "@/lib/marketToolSelection"
 import { agentRunReadiness, enabledRunToolConnections } from "@/lib/agentRunReadiness"
+import {buildAgentTaskDispatch} from '@/lib/agentTaskDispatch'
+import {localDeviceToolNames} from '@/lib/localDeviceConnection'
 import { collectRoleSkills, verifyRoleSkillBindings } from "@/lib/skillRunPreflight"
 
 export type { AgentSpec, SavedSpecRow }
@@ -245,8 +247,6 @@ export function useAgentRun() {
   const [localDeviceId, setLocalDeviceId] = useState(() => officeTask?.deviceId || "")
   const [readyLocalDevice, setReadyLocalDevice] = useState<LocalDevice | null>(null)
   useEffect(() => {
-    setReadyLocalDevice(null)
-    if (!localDeviceId) return
     const controller = new AbortController()
     let busy = false
     const refresh = async () => {
@@ -258,8 +258,12 @@ export function useAgentRun() {
       } catch { if (!controller.signal.aborted) setReadyLocalDevice(null) }
       finally { busy = false }
     }
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 15000)
+    void Promise.resolve().then(()=>{
+      if(controller.signal.aborted)return
+      setReadyLocalDevice(null)
+      if(localDeviceId)void refresh()
+    })
+    const timer = window.setInterval(() => { if(localDeviceId)void refresh() }, 15000)
     return () => { controller.abort(); window.clearInterval(timer) }
   }, [localDeviceId])
 
@@ -278,6 +282,11 @@ export function useAgentRun() {
   // 审批门 + 方案记忆（harness 增强批次）
   const [requireApproval, setRequireApproval] = useState(false)
   const [requirePlanReview, setRequirePlanReview] = useState(false)
+  const [structuredPlanning, setStructuredPlanning] = useState(false)
+  const handleStructuredPlanning = useCallback((enabled:boolean)=>{
+    setStructuredPlanning(enabled)
+    if(enabled)setMaxSteps(previous=>Math.max(previous,18))
+  },[])
   const [approvalBusy, setApprovalBusy] = useState<"" | "approve" | "reject">("")
   const [replyText, setReplyText] = useState("")
   const [replyBusy, setReplyBusy] = useState(false)
@@ -361,21 +370,26 @@ export function useAgentRun() {
     localDevice: readyLocalDevice?.id === localDeviceId ? readyLocalDevice : null,
     skillIssues,
   }), [selectedSpec?.spec, connectedTools, connectedMarketTools, enabledTools, readyLocalDevice, localDeviceId, skillIssues])
+  const taskDispatchPlan=useMemo(()=>buildAgentTaskDispatch(instruction,{
+    enabledBuiltins:enabledTools.filter(id=>selectedSpec?.spec.tools.includes(id)),
+    connectedTools:connectedTools.filter(tool=>selectedSpec?.spec.tools.includes(tool.name)),
+    marketTools:connectedMarketTools.filter(tool=>selectedSpec?.spec.tools.includes(tool.id)),
+    localTools:selectedSpec?.spec.tools.includes('local_computer')?localDeviceToolNames(readyLocalDevice?.id===localDeviceId?readyLocalDevice:null):[],
+    localDeviceOnline:Boolean(selectedSpec?.spec.tools.includes('local_computer')&&readyLocalDevice?.id===localDeviceId&&localDeviceToolNames(readyLocalDevice).length),
+  }),[instruction,enabledTools,connectedTools,connectedMarketTools,readyLocalDevice,localDeviceId,selectedSpec])
   // History review must optimize its own Agent, never whichever Agent is selected in the left sidebar.
   const optimizationSpec = activeRun ? specList.find(row => row.id === activeRun.spec_id) || null : null
   // Only the server can confirm a saved optimization audit still matches
   // the CURRENT full AgentSpec. Refresh/relogin do not erase audit provenance,
   // but the employee must explicitly opt in before associating the next run.
   useEffect(()=>{
-    if(!rhUserId||!selectedSpecId){
+    const abort=new AbortController()
+    void(async()=>{
+      await Promise.resolve()
+      if(abort.signal.aborted)return
       setRecoverableOptimization(null)
       setRecoveryError("")
-      return
-    }
-    const abort=new AbortController()
-    setRecoverableOptimization(null)
-    setRecoveryError("")
-    void(async()=>{
+      if(!rhUserId||!selectedSpecId)return
       try{
         const response=await fetch(base+"/api/agent-specs/"+
           encodeURIComponent(selectedSpecId)+"/optimization-lineage",{
@@ -410,7 +424,7 @@ export function useAgentRun() {
     setAcceptedOptimizationLineage(null)
   },[])
 
-  optimizeRunIdRef.current = activeRun?.id || ""
+  useLayoutEffect(()=>{optimizeRunIdRef.current=activeRun?.id || ""},[activeRun?.id])
 
   // 首页「去配置和试跑」跳转带 ?spec=<id>，方案列表加载后自动选中
   useEffect(() => {
@@ -572,10 +586,10 @@ export function useAgentRun() {
 
   useEffect(() => {
     if (!rhUserId) return
-    void refreshToolConnections()
+    const timer=window.setTimeout(()=>void refreshToolConnections(),0)
     const onFocus = () => { void refreshToolConnections() }
     window.addEventListener("focus", onFocus)
-    return () => window.removeEventListener("focus", onFocus)
+    return () => {window.clearTimeout(timer);window.removeEventListener("focus", onFocus);toolConnectionRequestRef.current++}
   }, [rhUserId, refreshToolConnections])
 
   const handleSelectSpec = useCallback(
@@ -714,8 +728,10 @@ export function useAgentRun() {
   useEffect(() => {
     if (!requestedRunId || !rhUserId) return
     let cancelled = false
-    void Promise.all([fetchRunRecord(requestedRunId), fetchRunEvents(requestedRunId)])
-      .then(([run, events]) => {
+    void Promise.resolve().then(()=>{
+      if(cancelled)throw Error('run_view_changed')
+      return Promise.all([fetchRunRecord(requestedRunId), fetchRunEvents(requestedRunId)])
+    }).then(([run, events]) => {
         if (cancelled) return
         if (!run) {
           setErrorMsg("无法恢复运行记录：任务不存在或当前账号无权查看。")
@@ -800,6 +816,7 @@ export function useAgentRun() {
           stop_on_complete: stopOnComplete,
           require_approval: requireApproval,
           require_plan_review: requirePlanReview,
+          ...(structuredPlanning ? {task_planning:"reviewed_v1"} : {}),
           ...(acceptedOptimizationLineage?.specId===selectedSpec.id
             ? {optimization_lineage_id:acceptedOptimizationLineage.id}:{}),
           tools: toolsConfig,
@@ -865,6 +882,7 @@ export function useAgentRun() {
     stopOnComplete,
     requireApproval,
     fetchRunRecord,    requirePlanReview,
+    structuredPlanning,
 
     loadRunHistory,
     rhUserId,
@@ -1016,7 +1034,8 @@ export function useAgentRun() {
       const res = await fetch(`${base}/api/agent-runs/${encodeURIComponent(activeRun.id)}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-        body: JSON.stringify({ answer: replyText.trim(), decision }),
+        body: JSON.stringify({ answer: replyText.trim(), decision,
+          ...(activeRun.checkpoint?.plan_revision ? {plan_revision:activeRun.checkpoint.plan_revision} : {}) }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
@@ -1040,7 +1059,11 @@ export function useAgentRun() {
   const pendingInputKind: "plan_review" | "clarification" = pendingInputData?.kind === "plan_review" ? "plan_review" : "clarification"
 
   // 切换运行或进入下一次澄清时清空旧草稿；同一次待审关卡刷新不会擦除输入。
-  useEffect(() => { setReplyText("") }, [activeRun?.id, pendingInput])
+  useEffect(() => {
+    let current=true
+    void Promise.resolve().then(()=>{if(current)setReplyText("")})
+    return()=>{current=false}
+  }, [activeRun?.id, pendingInput])
 
   // Human-defined binary assertions are part of the owned AgentSpec JSON.
   // Existing backend PATCH checks owner, audits revisions and invalidates
@@ -1504,6 +1527,9 @@ export function useAgentRun() {
     setModel,
     connectedToolNames,
     runReadiness,
+    taskDispatchPlan,
+    structuredPlanning,
+    handleStructuredPlanning,
     marketToolCount,
     toolConnectionsLoading,
     toolConnectionsError,

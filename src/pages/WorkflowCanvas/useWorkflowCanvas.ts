@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {confirmInStudio} from "@/lib/studioDialogs"
 import {
   addEdge,
   applyEdgeChanges,
@@ -1221,12 +1222,12 @@ export function useWorkflowCanvas() {
     setErrorMsg("")
   }, [pushHistory])
 
-  const exportActiveFlow = useCallback(() => {
+  const exportActiveFlow = useCallback(async () => {
     if (!activeWorkflowId) { setErrorMsg("请先保存工作流"); return }
     try {
       const payload = exportWorkflowJson(flowName || "未命名工作流", flowDesc,
         { nodes: nodesRef.current, edges: edgesRef.current })
-      if (!window.confirm("导出包含工作流提示词与参数内容（不含模型密钥或绑定 ID）。请先确认文本中未手写凭据或敏感资料；是否导出？")) return
+      if (!await confirmInStudio("导出包含工作流提示词与参数内容（不含模型密钥或绑定 ID）。请先确认文本中未手写凭据或敏感资料；是否导出？")) return
       const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }))
       const a = document.createElement("a")
       a.href = url
@@ -1242,7 +1243,7 @@ export function useWorkflowCanvas() {
 
   const importFlowFile = useCallback(async (file: File) => {
     if (file.size > 512 * 1024) { setErrorMsg("导入文件最大512KB"); return }
-    if (dirtyFlag && !window.confirm("当前工作流还有未保存修改。导入将切换至新工作流，确定继续？")) return
+    if (dirtyFlag && !await confirmInStudio("当前工作流还有未保存修改。导入将切换至新工作流，确定继续？")) return
     try {
       const parsed = parseWorkflowJson(await file.text())
       // New graph IDs, never accept IDs or access bindings from the exporting user's system.
