@@ -12,14 +12,14 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "local-executor/office.mjs": "7c3abc4f87c497ccc7dbaa84a83458fa0ac0f21e3c224be829799bfbe7110c8f",
   "local-executor/result.mjs": "9bb610ae182dbb903c00a12cefe5bcaf08acc29211c26731c344ff06b8f84e22",
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
-  "package.json": "cc9592c4bc188fa864c3c04ee87a16cb9ab1a2a0ab401e385d1d013a68f60bda",
+  "package.json": "858b12dd47296d8bafacf1aa35f20cfcf96462783ba74cc75eb6934af6d555a2",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/src/agent-human-input-policy.ts": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b",
   "services/pg-api/src/autonomous-agent-run-repository.ts": "791d148ef5b23403e27d39d60ff414f358e75abddd27d47b28f963079974de1c",
   "services/pg-api/src/baota-pg18-complete-init.mjs": "00d6626138aff0039864a8c544e34f44109c2164281834fd923b11c39b927d3a",
   "services/pg-api/src/bound-dispatch-server.ts": "71ab49b6d5068d8639b01fda1bf5468932017014e71d150ccfcb27355431cacf",
   "services/pg-api/src/contracts.ts": "7aa7b9d3332e8200f2d3dd78f88c62acf4b7363b83fdfd41dfa5b04b7c887935",
-  "services/pg-api/src/http.ts": "3824816b96ef1e110b7ecfaba74363204cac7cec4a0cab21f2315c3e9b145d68",
+  "services/pg-api/src/http.ts": "f8917b95ed22c9a8539b4daaa139766f79fbbf4f0f1448d7600b2f8d479c9dc7",
   "services/pg-api/src/model-connection-executor.ts": "8f239d7f9e00d267fe4fb3e6d552d8c3761e445ce4c3d4f70d79fef6621aa1aa",
   "services/pg-api/src/native-auth-http.d.mts": "0bc183a1f297846af2f7a309b3027211d44b9f10d55ab0ad42bcdcdec89ffa83",
   "services/pg-api/src/native-auth-http.mjs": "63c23109534dd06f6bad43bd05a57111cd41fcc101c4d54fe7c5127d0f08ae8f",
@@ -58,7 +58,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "src/lib/pgNativeAutonomousAgentSession.ts": "b6c29648b7f08cb92c18749ab4f504fdfd33ae84edc67edc3706dad45ada81a5",
   "src/lib/pgNativeLocalDevice.ts": "255d079248f20b54f3c000f23cdb49ef7b99a12589039b218b9c585aa4b0fe31",
   "src/lib/pgNativeOfficeWorkflow.ts": "3f7e42d7dae05e20e7a1a8f14f7ebb8f442f79167f47bd7fa7883fafe3f1ea62",
-  "src/lib/pgNativePilotApi.ts": "4552085614b117ebaced46a45769f3c45eacbf9629ad3d5a8a06c1b7acbe6ff7",
+  "src/lib/pgNativePilotApi.ts": "3c0ff262b427c2ab4a50212d57658ef2e4daa21ac8efd4561015d65bdb95aed2",
   "src/lib/pgNativeStudioNavigation.ts": "15cb618ced257a35bc644de565e67a8955e59b798d476ff580da0a088fccff17",
   "src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx": "2c2599e194292288d3a3bda23432cc8d1bdbbcd237f41e042b39ca64202b2e05",
   "src/pages/PgNativePilot/PgNativeLocalDevicesPanel.tsx": "ab56c6035d92b833fd4b83b454100ef595526e549a66a732b23e3b87292df3e3",
@@ -82,7 +82,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "src/lib/pgPublicAgentCaller.ts": "e735ccf9a1b47f9ca3cb28d94e269b6b3724de18ecca604c4b3ed5f4dfc6f4f0",
   "src/pages/PgNativePilot/PgNativeAgentCallerDetails.tsx": "236a56ad5c7aa9fde2f3c9839dbf8be8fa630c284fc63782381ecc27f4205b3d",
   "src/pages/PgNativePilot/PgNativeAgentCallerPanel.tsx": "4d3628fd9b00e7c56376102b9efe14211b3873c70ea275867a9c0ddaaae1a1a4",
-  "services/pg-api/src/native-config-uat-policy.ts": "1321619e4ff4f25286b59d3f6676028dea0d8c4da3f56121109b8bba4e0328e4",
+  "services/pg-api/src/native-config-uat-policy.ts": "0c6f7db6c46a81fae1e3ce07e8e78ea25f3ce19cd3b713f31e5d65227b882f1c",
   "services/pg-api/src/native-entry-http.ts": "bb7b73918f643d0d16b615aeeb3829ac70bb6e3a23e360f6b260c34bd98d7f14",
   "services/pg-api/src/owner-tool-trial-audit-core.ts": "f482fcb22dad341d2ef6b6468c790665245f43e5037e9252deb3dc6ea37901b3",
   "services/pg-api/src/owner-tool-trial-audit.ts": "9d2c88352a9d12afc16875627f27f4602ed3866f75981191241ef3978028f863",
@@ -305,7 +305,10 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/model-config-receipt-startup075.ts": "4cbb30ce16c81ece966f2558819ab1dd762f3d0e32fa7561864abaf64d3b8060",
   "services/pg-api/src/own-operations-contract.ts": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab",
   "services/pg-api/src/own-operations-repository.ts": "092699446d390974ea20cdb62c4d386d82b702dc7cc67526ab08ba5e1f816679",
-  "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206"
+  "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206",
+  "services/pg-api/src/original-tool-connections-http.ts": "df870ef7b93460db172d3eebb2d13c3f852066b12c0480719ffdc08e3c596001",
+  "services/pg-api/src/tool-connection-repository.ts": "02109efd8715742cfc997127f3c512e8be2dc0220308186a65cfb0a745d5a40a",
+  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e"
 })
 export async function nativeLocalDeviceGenuineFixture(env=process.env,{browserMode=false,chainSupport=false}={}){
  const target=requireNativeLocalDeviceGenuineCi(env)

@@ -1,3 +1,4 @@
+import {createOriginalToolConnectionsHttp} from './original-tool-connections-http.ts'
 import {parseModelConnectionPageQuery} from './model-connection-pagination.ts'
 import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
@@ -179,6 +180,7 @@ function allowBodyFields(data:Record<string,unknown>,permitted:string[]) {
  * No CORS, no cookies, no anonymous mode, no trust in X-Rh-User-Id.
  */
 export function createHandler(deps:AppDependencies) {
+  const originalTools=deps.authenticateRequest&&deps.toolConnectionRepository?createOriginalToolConnectionsHttp({repo:deps.toolConnectionRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const agentSpec=(raw:unknown,identity:Identity)=>{
     if(deps.allowNativeLocalAgentSpecs!==true)return safeAgentSpec(raw)
     if(!deps.authenticateRequest||identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
@@ -186,6 +188,7 @@ export function createHandler(deps:AppDependencies) {
   }
   return async (req:IncomingMessage,res:ServerResponse):Promise<void>=>{
     try{
+      if(originalTools&&await originalTools(req,res))return
       const method=req.method||""
       const path=new URL(req.url||"/","http://127.0.0.1").pathname
       if(path==="/healthz" && method==="GET"){

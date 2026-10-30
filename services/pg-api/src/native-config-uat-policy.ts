@@ -369,6 +369,9 @@ export function permitNativePg18BusinessUatRequest(
   if(method==="POST"&&policy.configurationWrites===true&&
      policy.modelProbeUat===true&&new RegExp(
        "^/api/v2/model-connections/"+uuid+"/probe$").test(pathname))return true
+  // Original HTTP tool metadata deletion retains the same explicit config
+  // scope; actual owner/CAS checks remain in its repository transaction.
+  if(method==='DELETE'&&policy.configurationWrites===true&&new RegExp('^/api/v2/tool-connections/'+uuid+'$').test(pathname))return true
   // Model connection deletion is permitted only under the same explicit
   // isolated configuration UAT gate; no other collection gains DELETE.
   if(method==="DELETE"&&policy.configurationWrites===true&&

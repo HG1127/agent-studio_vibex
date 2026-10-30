@@ -27,15 +27,18 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
     mutations.push({path,method:request.method(),body})
    }});return p}
   page=await preparePage()
-  const wire=(p,path,method)=>p.waitForResponse(response=>new URL(response.url()).pathname==='/__pg_native'+path&&response.request().method()===method)
+  const wire=(p,path,method,readJSON=false)=>{
+   const captured=p.waitForResponse(response=>{const url=new URL(response.url());return url.origin===f.origin&&url.pathname==='/__pg_native'+path&&response.request().method()===method}).then(async response=>({status:response.status(),body:readJSON?await response.json():null}))
+   void captured.catch(()=>{});return captured
+  }
   const modelPath='/api/v2/model-connections'
   const settled=async p=>{await expect(p.getByText('已读取本人配置；当前环境只允许查看。保存和测试均不会自动发起。',{exact:true})).toHaveCount(0);await expect(p.getByRole('heading',{name:/接入你自己的模型服务/})).toBeVisible();await expect.poll(async()=>p.getByRole('button',{name:'重新测试',exact:true}).count()).toBeGreaterThan(0)}
   const login=async(p,who)=>{
    await p.goto(f.url,{waitUntil:'domcontentloaded'});await p.getByRole('textbox',{name:'工作邮箱',exact:true}).fill(f.credentials[who].email);await p.getByLabel('密码',{exact:true}).fill(f.credentials[who].password)
-   const response=wire(p,'/api/native-auth/login','POST');await p.getByRole('button',{name:'登录',exact:true}).click();expect((await response).status()).toBe(200);await expect(p).toHaveURL(f.origin+'/model-connections');await settled(p)
+   const response=wire(p,'/api/native-auth/login','POST');await p.getByRole('button',{name:'登录',exact:true}).click();expect((await response).status).toBe(200);await expect(p).toHaveURL(f.origin+'/model-connections');await settled(p)
    const cookies=(await context.cookies(f.origin)).filter(value=>value.name==='__Host-agentstudio_session');expect(cookies.length).toBe(1);expect(cookies[0].secure&&cookies[0].httpOnly&&cookies[0].sameSite==='Strict'&&cookies[0].domain==='localhost'&&cookies[0].path==='/', 'actual Secure HttpOnly Strict host-only Cookie').toBe(true)
   }
-  const logout=async(p,who)=>{const menu=p.getByRole('menu');if(!await menu.isVisible())await p.getByRole('button',{name:new RegExp(f.profiles[who].display_name)}).click();const response=wire(p,'/api/native-auth/logout','POST');await menu.getByRole('menuitem',{name:'退出登录',exact:true}).click();expect((await response).status()).toBe(200);await expect(p).toHaveURL(f.origin+'/login')}
+  const logout=async(p,who)=>{const menu=p.getByRole('menu');if(!await menu.isVisible())await p.getByRole('button',{name:new RegExp(f.profiles[who].display_name)}).click();const response=wire(p,'/api/native-auth/logout','POST');await menu.getByRole('menuitem',{name:'退出登录',exact:true}).click();expect((await response).status).toBe(200);await expect(p).toHaveURL(f.origin+'/login')}
   const card=(p,name)=>p.getByRole('heading',{name,exact:true}).locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " rounded-2xl ")][1]')
   const openAdd=async(p,name,key)=>{await p.getByRole('button',{name:'添加连接',exact:true}).first().click();await p.locator('#mc-name').fill(name);await p.locator('#mc-base-url').fill('https://api.openai.com/v1');await p.locator('#mc-api-key').fill(key);await p.locator('#mc-manual-models').fill('synthetic-one, synthetic-two')}
   const noProbe=async p=>{expect(await p.getByRole('button',{name:'重新测试',exact:true}).evaluateAll(buttons=>buttons.every(button=>button.disabled)),'automatic story keeps provider probes closed').toBe(true);expect(mutations.filter(row=>row.path.endsWith('/probe'))).toHaveLength(0);f.assertNoModelEffects()}
@@ -58,12 +61,12 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
     before=await f.modelCounts();paginationProof={...seeded,...removed,actual_original_page_reads_at_least_six:true,oldest_owned_row_reached:true,all_temporary_configuration_rows_removed_before_images:true};steps.large_account_pagination=true
    await expect(page.getByRole('heading',{name:f.resources.bob.model.name,exact:true})).toHaveCount(0)
    await openAdd(page,'Original page synthetic Alice connection',keys[0]);await expect(page.getByRole('button',{name:'测试连接',exact:true})).toBeDisabled()
-   const createdWire=wire(page,modelPath,'POST');await page.getByRole('button',{name:'保存',exact:true}).click();const createdResponse=await createdWire;expect(createdResponse.status()).toBe(201);created=(await createdResponse.json()).item
+   const createdWire=wire(page,modelPath,'POST',true);await page.getByRole('button',{name:'保存',exact:true}).click();const createdResponse=await createdWire;expect(createdResponse.status).toBe(201);created=createdResponse.body.item
    expect(created.owner_user_id).toBe(f.users.alice);expect(created.revision).toBe(1);expect(created.status).toBe('untested');expect(created.api_key_tail).toBe('0005');expect(Object.hasOwn(created,'api_key')).toBe(false);await expect(page.locator('#mc-api-key')).toHaveCount(0)
    const actual=await f.modelFor('alice',created.id);expect(actual.id).toBe(created.id);expect(await f.modelFor('bob',created.id)).toBeNull()
    await card(page,created.name).getByRole('button',{name:'编辑',exact:true}).click();await expect(page.locator('#mc-api-key')).toHaveValue('');await page.locator('#mc-name').fill('Original page synthetic Alice edited')
-   const editWire=wire(page,modelPath+'/'+created.id,'PATCH');await page.getByRole('button',{name:'保存',exact:true}).click();const editedResponse=await editWire;expect(editedResponse.status()).toBe(200);const edited=(await editedResponse.json()).item;expect(edited.revision).toBe(2);expect(edited.api_key_tail).toBe('0005');await expect(page.locator('#mc-api-key')).toHaveCount(0)
-   const switchWire=wire(page,modelPath+'/'+created.id,'PATCH');await card(page,edited.name).getByRole('switch',{name:edited.name+'启用开关',exact:true}).click();expect((await switchWire).status()).toBe(200);await expect(card(page,edited.name).getByText('已停用',{exact:true})).toBeVisible()
+   const editWire=wire(page,modelPath+'/'+created.id,'PATCH',true);await page.getByRole('button',{name:'保存',exact:true}).click();const editedResponse=await editWire;expect(editedResponse.status).toBe(200);const edited=editedResponse.body.item;expect(edited.revision).toBe(2);expect(edited.api_key_tail).toBe('0005');await expect(page.locator('#mc-api-key')).toHaveCount(0)
+   const switchWire=wire(page,modelPath+'/'+created.id,'PATCH');await card(page,edited.name).getByRole('switch',{name:edited.name+'启用开关',exact:true}).click();expect((await switchWire).status).toBe(200);await expect(card(page,edited.name).getByText('已停用',{exact:true})).toBeVisible()
    const stored=await f.modelFor('alice',created.id);expect(stored.enabled).toBe(false);expect(stored.revision).toBe(3);expect(stored.models).toEqual(['synthetic-one','synthetic-two']);expect(stored.status).toBe('untested')
    await noProbe(page);await image('original-model-connections-alice-metadata.png',page);steps.original_encrypted_metadata_save_update_switch=true
   })
@@ -75,7 +78,7 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
    const changed=await f.request('bob',modelPath,'POST',{name:'Synthetic rejected owner race',provider:'openai',base_url:'https://api.openai.com/v1',api_key:'synthetic-owner-condition-never-provider-0007',models:['synthetic'],enabled:true},f.users.alice);expect(changed.status).toBe(409);expect(changed.body.error).toBe('employee_session_changed')
    expect(await f.modelCounts()).toEqual(baseline);f.assertNoModelEffects();proofs.push({stale_CAS_status:stale.status,foreign_owner_status:foreign.status,expected_employee_status:changed.status,actual_Cookie_owner_checks:true,metadata_and_audit_counts_unchanged:true})
    const current=await f.modelFor('alice',created.id),selected=card(page,current.name);await selected.getByRole('button',{name:'删除',exact:true}).click()
-   const deleteWire=wire(page,modelPath+'/'+created.id,'DELETE');await selected.getByRole('button',{name:'确认删除',exact:true}).click();expect((await deleteWire).status()).toBe(200);await expect(page.getByRole('heading',{name:current.name,exact:true})).toHaveCount(0)
+   const deleteWire=wire(page,modelPath+'/'+created.id,'DELETE');await selected.getByRole('button',{name:'确认删除',exact:true}).click();expect((await deleteWire).status).toBe(200);await expect(page.getByRole('heading',{name:current.name,exact:true})).toHaveCount(0)
    expect(await f.modelFor('alice',created.id)).toBeNull();normalAudit=await f.modelAudit('alice',created.id);expect(normalAudit.count).toBe(4);expect(normalAudit.actual_owner_audit_verified&&normalAudit.sensitive_fields_absent).toBe(true)
    expect(normalAudit.entries).toEqual([{action:'model.connection_create',revision:1},{action:'model.connection_delete',revision:3},{action:'model.connection_disable',revision:3},{action:'model.connection_update',revision:2}])
    expect((await f.modelCounts()).connections).toBe(before.connections);steps.original_delete_owner_CAS_audit=true

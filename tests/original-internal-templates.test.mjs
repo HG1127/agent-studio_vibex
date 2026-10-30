@@ -46,6 +46,11 @@ function model(options={}){
   }
   lastIntent=body;const value=await reply(body),gate=recordGate;recordGate=null;if(gate)await gate.promise
   if(recordMode==='lost')throw TypeError('synthetic response disconnect')
+   if(recordMode==='prefix'){
+    const actual=new TextEncoder().encode(JSON.stringify(value));let sent=false
+    const stream=new ReadableStream({pull(controller){if(!sent){sent=true;controller.enqueue(actual.subarray(0,1))}else controller.error(TypeError('synthetic incomplete response body'))}})
+    return new Response(stream,{status:200,headers:{'content-type':'application/json','content-length':String(actual.length)}})
+   }
   if(recordMode==='denied')return response({error:'agent_internal_share_review_required'},409)
   if(recordMode==='expired')return response({error:'session_required'},401)
   return response(value)
@@ -93,6 +98,14 @@ test('lost create ACK blocks every new intent; original refresh confirms exact o
  await m.controller.handleCreate();await m.controller.handleRedeem();await m.controller.handleRevoke(id(5));assert.equal(m.calls.filter(c=>c.body&&c.body.action!=='preview').length,writes)
  m.recordMode('ok');await m.controller.handleRefresh();const confirmation=m.calls.find(c=>c.url.endsWith('/confirm'))
  assert.deepEqual(confirmation.body.intent,original);assert.equal(m.get().created,null);assert.match(m.get().notice,/无法再次显示/);assert.equal(m.get().writeDisabled,false);m.dispose()
+})
+test('actual client receiving a successful response with an incomplete body keeps reviewed preview disabled and confirms only the original intent',async()=>{
+ const m=model();await m.start();await m.reviewed();m.recordMode('prefix');await m.controller.handleCreate();const original=m.lastIntent()
+ assert.equal(m.get().created,null);assert.equal(m.get().preview?.preview_spec.goal,'共享目标');assert.equal(m.get().reviewed,true);assert.equal(m.get().busy,false);assert.equal(m.get().writeDisabled,true);assert.match(m.get().error,/本次结果尚未确认/)
+ const requests=m.calls.length
+ await m.controller.handlePreview();await m.controller.handleCreate();await m.controller.handleRedeem();await m.controller.handleRevoke(id(5));m.controller.setReviewed(false)
+ assert.equal(m.calls.length,requests);assert.equal(m.get().reviewed,true);assert.equal(m.get().writeDisabled,true)
+ await m.controller.handleRefresh();assert.deepEqual(m.calls.find(c=>c.url.endsWith('/confirm')).body.intent,original);assert.equal(m.calls.filter(c=>c.body?.action==='create').length,1);assert.equal(m.get().created,null);assert.match(m.get().notice,/无法再次显示/);assert.equal(m.get().writeDisabled,false);m.dispose()
 })
 test('permission/read failure is explicit and cannot be presented as a successful empty list',async()=>{
  const m=model();m.listError({status:503,code:'agent_internal_share_unavailable'});await m.start();assert.equal(m.get().listReady,false);assert.match(m.get().error,/列表读取失败/);assert.equal(m.get().writeDisabled,true)

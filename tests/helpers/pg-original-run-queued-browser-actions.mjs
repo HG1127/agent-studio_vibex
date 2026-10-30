@@ -1,3 +1,4 @@
+import {observeOriginalControlDisconnect} from './pg-original-run-queued-control-faults.mjs'
 import {chromium,expect} from '@playwright/test'
 import {installOriginalLegacyBlockObserver} from './pg-original-login-legacy-observer.mjs'
 import {originalRunQueuedDomSafety,originalRunQueuedImageBuffer,originalRunQueuedObservationBytes} from './pg-original-run-queued-artifacts.mjs'
@@ -19,6 +20,7 @@ export async function originalQueuedBrowserSession(f){
  const image=async(name,p)=>{await expect(p.locator('input[type="password"]')).toHaveCount(0);const sample=await p.evaluate(()=>({text:document.body.innerText,values:[...document.querySelectorAll('input,textarea')].map(e=>e.value),passwordInputs:document.querySelectorAll('input[type="password"]').length}));const safety=originalRunQueuedDomSafety(sample,[...secrets]);expect(Object.values(safety).every(v=>v===true)).toBe(true);images.push(originalRunQueuedImageBuffer(name,await p.screenshot({fullPage:true}),safety))}
  const zeros=async()=>{for(const key of ['legacy_backend_requests','unexpected_api_failures','blocked_requests','submission_posts'])expect(f.observations[key]).toEqual([]);expect(f.observations.forbidden_auth_headers).toBe(0);expect(f.observations.partial_model_reads).toBe(0);expect(f.observations.overflow).toBe(false);expect(f.observations.gate_deadline_failures).toBe(0);expect(outside).toEqual([]);expect(webSockets).toBe(0);expect(legacy.snapshot()).toEqual({event_count_capped_129:0,codes:[],overflow:false});f.assertNoUnconsumedMisses();return await f.assertZeroExecution()}
  return{browser,context,page,wire,focus,login,logout,expectedDialog,image,images,secrets,legacy,zeros,
+  controlDisconnect:(p,path)=>observeOriginalControlDisconnect(p,{origin:f.origin,path}),
   async closePage(p){if(!p.isClosed()){await legacy.flush(p);await p.close()}},
   async close(){if(closed)return;closed=true;const errors=[];for(const p of pages)if(!p.isClosed())try{await legacy.flush(p)}catch(e){errors.push(e)}try{await context.close()}catch(e){errors.push(e)}try{await browser.close()}catch(e){errors.push(e)}if(errors.length)throw new AggregateError(errors,'original_queued_browser_cleanup_failed')},
   async writeAfterCleanup(testInfo,completed,primary,cleanup,observation){

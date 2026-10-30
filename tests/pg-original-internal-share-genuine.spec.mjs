@@ -87,7 +87,7 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
    expect(Boolean((await failedCreate).failure()?.errorText)).toBe(true)
    expect(f.observations.controlled_after_record_disconnects).toBe(1)
    await expect(page.getByRole('alert')).toContainText('本次结果尚未确认')
-   await expect(page.getByRole('button',{name:'确认并生成分享码',exact:true})).toHaveCount(0)
+   await expect(page.getByRole('button',{name:'确认并生成分享码',exact:true})).toBeDisabled()
    await expect(page.getByRole('button',{name:'预览实际分享内容',exact:true})).toBeDisabled()
    await expect(page.getByRole('button',{name:'领取并复制到我的助手',exact:true})).toBeDisabled()
    const ledger=await f.counts();expect(ledger.receipts-before.receipts).toBe(5)

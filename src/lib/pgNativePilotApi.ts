@@ -876,9 +876,9 @@ export function createPgNativePilotApi(
         toolConnectionRoute(id),{
           ...input,expected_revision:safeRevision(expected_revision)
         })).item,
-    deleteToolConnection:async(id:string)=>
-      del<{ok:true;id:string;execution_enabled:false}>(
-        toolConnectionRoute(id)),
+    deleteToolConnection:async(id:string,expected_revision?:number)=>
+      expected_revision===undefined?del<{ok:true;id:string;execution_enabled:false}>(toolConnectionRoute(id)):
+      request<{ok:true;id:string;execution_enabled:false}>(toolConnectionRoute(id),'DELETE',{expected_revision:safeRevision(expected_revision)},transport,rootPath),
     getSmitheryKey:()=>smithery("key","GET",undefined,parsePgSmitheryKey),
     saveSmitheryKey:(api_key:string,expected_revision:number,request_id:string)=>{
       try{smitheryApiKey(api_key)}catch{throw new PgNativePilotError(400,"invalid_smithery_key")}

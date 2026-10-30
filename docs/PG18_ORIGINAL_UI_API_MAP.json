@@ -1,6 +1,6 @@
 {
   "format": "agentstudio_original_employee_UI_PG_action_map_v1",
-  "snapshot_UTC": "2026-10-30T19:23:43.680736+00:00",
+  "snapshot_UTC": "2026-10-30T20:17:46.956394+00:00",
   "authority": "AGENTS.md: Migration delivery strategy — user clarification 2026-10-30",
   "delivery_baseline": "Preserve the current original employee UI; migrate backend/auth/client/hooks/DTO/status only. Native workbench is verification/reference.",
   "source_scope": {
@@ -1997,7 +1997,8 @@
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         }
-      ]
+      ],
+      "current_preparation_note": "Original metadata source is now connected through the existing Native SDK with verified owner/employee, CAS, masked headers and no unknown-write replay. List is explicitly partial50; direct tests, exact receipts, complete paging and genuine original-page acceptance remain missing."
     },
     {
       "route": "/knowledge-bases",
@@ -6050,7 +6051,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1421,
+    "combined_pure_checks": 1479,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6436,7 +6437,7 @@
     "original_home_natural_authoring_source_merged": true,
     "original_home_natural_authoring_actual_browser_accepted": false,
     "current_source_checks": {
-      "pure": 1421,
+      "pure": 1479,
       "final14_framing_related_pure": 38,
       "worker_startup_related_pure": 39,
       "frontend_TS6": true,
@@ -6455,10 +6456,10 @@
       "frontend_TS6_and_actual_build_baseline_head": null,
       "actual_normal_assets": 102,
       "actual_original_PG_assets": 104,
-      "Native_bundle_literal_source_closure": 367,
-      "complete069_literal_source_capture": 401,
+      "Native_bundle_literal_source_closure": 369,
+      "complete069_literal_source_capture": 403,
       "complete069_SQL_inputs_unchanged": 53,
-      "pure_log_sha256": "0a029ac536f1775038fb2bf28f6108b332db8d8bec413cb9f001d4545f7bbe99"
+      "pure_log_sha256": "c7e7751f54b3a22c20e77f8bfe2fbb0e087ac7da598bd886a18c4c095a17e37c"
     },
     "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
     "full069_parent_diagnostic_framing_fix": "Only standalone original refusal lines select primary; exact diagnostic event names cannot override it. Parent separately parses one closed runtime-open or ACL-negative observation. Unknown keys/phases/accounts, authority, secrets, oversize and duplicate records refuse. Original supervisor/cleanup unchanged;36 related pure checks pass; actual next-head rerun pending.",
@@ -7265,6 +7266,136 @@
         "four_business_queues_empty": true,
         "final14_job": 124245869431,
         "final14_phase": "warm_sample",
+        "actual13_ACL_negative_acceptance": false
+      },
+      "original_full20_pages_accepted": 0,
+      "employee_UAT": 0,
+      "qualifying24h_hours": 0,
+      "production_GO": false
+    },
+    "original_tool_connections_source": {
+      "original_route_layout_components_and_PB_default_preserved": true,
+      "metadata_only_source_integrated": true,
+      "actual_Native_SDK_and_strict_marker_public_DTO_owner_expected_employee": true,
+      "delete_CAS_locked_on_original_actor_transaction": true,
+      "same_existing_safe_audit_transactions_retained": true,
+      "header_secret_never_returned_and_unknown_write_never_replayed": true,
+      "late_session_and_form_revision_fences": true,
+      "list_explicitly_partial_limit50": true,
+      "direct_test_actions_refuse_without_save_queue_or_external_request": true,
+      "pure_core_checks": 26,
+      "genuine_original_page_accepted": false,
+      "remaining": [
+        "complete pagination",
+        "direct synchronous test contract",
+        "exact operation receipt",
+        "MCP/Smithery original page mapping",
+        "same-head hosted original page story"
+      ],
+      "production_GO": false
+    },
+    "original_queued_control_timing_source": {
+      "exact_actual_browser_POST_failure_before_recovery_controls": true,
+      "cancel_actual_complete200_and_independent_owner_terminal_before_original_headers1byte_drop": true,
+      "pause_actual8s_closed_proxy_then_exact_negative_and_independent_zero_owner_audit_before_one_original_dispatch": true,
+      "no_timeout_or_cleanup_dispatch_permission": true,
+      "original_request_operation_id_state_hash_and_positive_receipt_kept": true,
+      "terminal_GET_does_not_claim_cancellation_causality": true,
+      "actual_Native_default8s_abort_pure_executed": true,
+      "Root405_real_dispatch_regressions_retained": true,
+      "genuine_page_rerun_pending": true
+    },
+    "original_browser_body_capture_source": {
+      "metadata_and_draft_actual_response_JSON_read_immediately_on_arrival": true,
+      "same_actual_status_and_body_or_same_primary_error": true,
+      "auth_status_only_no_body_capture": true,
+      "no_scripted_response_DTO_or_replay": true,
+      "genuine_rerun_pending": true
+    },
+    "source_consumer_followup": {
+      "original075_checker_actual46_required_paths_and_complete_literal_closure_added": true,
+      "complete_profile_missing_pin_not_a_database_failure": true,
+      "worker_integration_reviewed_v80_d15cc0_consumer_hash_synchronized": true,
+      "original_final_cleanup_checks_added_to_curated": 10,
+      "no_removed_source_gate": true
+    },
+    "verified_c400669_partial_evidence": {
+      "head": "c4006697a15542ba29a567648bef4c2a06a53b87",
+      "quality": {
+        "run": 41115318014,
+        "job": 124267906430,
+        "successful_jobs": 49,
+        "total_jobs": 50,
+        "root_passed": 4442,
+        "root_total": 4443,
+        "root_failure": "explicit old Worker integration source pin in final-cleanup pure test",
+        "required_pnpm_check_passed": false,
+        "later_security_and_Worker_steps_skipped": true,
+        "job_log_sha256": "d586ad4ca6345325298611aa29867487f6d22563e678e9dab48c454f84df7ffc"
+      },
+      "PB19": {
+        "run": 41115506345,
+        "job": 124268568977,
+        "passed": 19,
+        "total": 19,
+        "workers": 2,
+        "seconds": 73.7
+      },
+      "F01": {
+        "run": 41115318130,
+        "passed_jobs": 11,
+        "total_jobs": 16,
+        "original_Home_login_overview_and_monitor073_stories_passed": true,
+        "optional075_job": 124267905948,
+        "optional075_failed_before_SQL_at_missing_complete_profile_source_pin": true,
+        "metadata_job": 124267905974,
+        "draft_job": 124267906022,
+        "metadata_and_draft_failed_actual_Playwright_body_read_after_response_resource_expired": true,
+        "parent_job": 124267907551,
+        "detail_job": 124267906166,
+        "both_queued_pages_progressed_beyond405_then_early_enable_assertion_before_actual_POST_settled": true,
+        "whole_queued_and_model_pages_accepted": false
+      },
+      "F08": {
+        "run": 41115318198,
+        "job": 124267905499,
+        "whole_original_story_passed": false,
+        "actual_matching_POST_requestfailed": true,
+        "controlled_complete200_disconnects": 1,
+        "actual_full_upstream_body_bytes": 535,
+        "actual_body_bytes_forwarded": 1,
+        "actual_write_callback_and_destroy_verified_before8s": true,
+        "unexpected_API_count": 0,
+        "legacy_backend_count": 0,
+        "cleanup_failures": [],
+        "failure": "unknown operation retained preview button; test wrongly required hidden instead of disabled",
+        "observation_sha256": "099a697b102253cb1dbc04d41a5edadf2773e1e46625169a403ed4c5e003876a"
+      },
+      "telemetry": {
+        "run": 41115317986,
+        "job": 124267904781,
+        "passed": false,
+        "deadline_exhaustion_actual8_refusals1_claim_and_owned_cleanup_passed": true,
+        "short_actual7_wait_starts_lock_released_before5s_first_success": true,
+        "short_all8_success": false,
+        "failure_stage": "short_results",
+        "actual_completed_cases": 21
+      },
+      "complete069": {
+        "run": 41115317922,
+        "legacy_job": 124267904790,
+        "passed": false,
+        "short_reason": "full069_worker_live_native_heartbeat_unavailable",
+        "actual_Reader_prepare_failure": "control_busy",
+        "assessment_kernel_predicates_true_no_observed_self_exit": true,
+        "legacy_telemetry_backends_zero": true,
+        "legacy_Readers_zero": true,
+        "legacy_four_business_queues_empty": true,
+        "final14_job": 124267904362,
+        "final14_phase": "warm_sample",
+        "final14_primary": "full069_worker_live_native_io",
+        "actual_reader_phase": "controller_reader_audit",
+        "final14_owned_cleanup_failure_retained": true,
         "actual13_ACL_negative_acceptance": false
       },
       "original_full20_pages_accepted": 0,

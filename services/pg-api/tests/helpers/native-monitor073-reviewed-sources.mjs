@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "611f7a988f605dd726bfc836c6233d4a5d83b11008963fa8b64bbdba31f9c47a",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "4f627883549b7cdfcb51457b723d81482e7384f9c48f5d30e312925affb3a8be",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -158,5 +158,8 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/owner-tool-trial-audit-core.ts": "f482fcb22dad341d2ef6b6468c790665245f43e5037e9252deb3dc6ea37901b3",
   "services/pg-api/src/owner-tool-trial-audit.ts": "9d2c88352a9d12afc16875627f27f4602ed3866f75981191241ef3978028f863",
   "services/pg-api/src/tool-trial-check-expression.ts": "3f7d120b0dc82d48b1aed79e8f79ab42ef2645fc9abbc831459b4c9b39ee8bae",
-  "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206"
+  "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206",
+  "services/pg-api/src/original-tool-connections-http.ts": "df870ef7b93460db172d3eebb2d13c3f852066b12c0480719ffdc08e3c596001",
+  "services/pg-api/src/tool-connection-repository.ts": "02109efd8715742cfc997127f3c512e8be2dc0220308186a65cfb0a745d5a40a",
+  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e"
 })

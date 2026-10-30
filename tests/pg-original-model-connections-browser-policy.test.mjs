@@ -93,6 +93,28 @@ test('actual story finalizer records an early failure without masking the origin
  const result=await run({writeFile:async(name,bytes)=>writes.push({name,bytes})},fixture,{snapshot:()=>({event_count_capped_129:0,codes:[],overflow:false})},expectations,originalModelConnectionsObservationBytes,primaryError)()
  assert.equal(result.primary,primaryError);assert.deepEqual(result.cleanup,[]);assert.equal(writes.length,1);assert.equal(writes[0].name,'original-model-connections-observation.json');const data=JSON.parse(writes[0].bytes);assert.equal(data.story_completed,false);assert.equal(data.normal_metadata_audit,null);assert.equal(data.production_GO,false)
 })
+function actualStoryWire(source){
+ const tree=parse('story.mjs',source);let node
+ function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='wire')node=n.initializer;ts.forEachChild(n,visit)}visit(tree);assert(node)
+ return Function('f','URL','return '+node.getText(tree))({origin:'https://localhost:9443'},URL)
+}
+for(const [kind,source]of [['metadata',story],['draft',read('tests/pg-original-model-draft-discovery-genuine.spec.mjs')]]){
+test('actual '+kind+' wire begins reading the response body before the triggering action or caller awaits it',async()=>{
+ let deliver,predicate,reads=0;const events=[],packet={item:{revision:2}},p={waitForResponse(fn){predicate=fn;return new Promise(resolve=>deliver=resolve)}}
+ const pending=actualStoryWire(source)(p,'/api/v2/model-connections/id','PATCH',true)
+ const response={url:()=> 'https://localhost:9443/__pg_native/api/v2/model-connections/id',request:()=>({method:()=> 'PATCH'}),status:()=>200,json:async()=>{reads++;events.push('actual_body_read');return packet}}
+ assert.equal(predicate(response),true);assert.equal(predicate({...response,url:()=> 'https://other.invalid/__pg_native/api/v2/model-connections/id'}),false);assert.equal(predicate({...response,request:()=>({method:()=> 'POST'})}),false)
+ deliver(response);await new Promise(resolve=>setImmediate(resolve));assert.equal(reads,1);events.push('action_completed');assert.deepEqual(await pending,{status:200,body:packet});assert.deepEqual(events,['actual_body_read','action_completed'])
+})
+test('actual '+kind+' wire preserves an early body failure and never substitutes an empty successful packet',async()=>{
+ const failure=Error('synthetic body unavailable'),p={waitForResponse:()=>Promise.resolve({status:()=>200,json:async()=>{throw failure}})},pending=actualStoryWire(source)(p,'/api/v2/model-connections/id','PATCH',true)
+ await new Promise(resolve=>setImmediate(resolve));await assert.rejects(pending,error=>error===failure)
+})
+test(kind+' auth status-only wire does not retain a login or logout response body',async()=>{
+ const p={waitForResponse:()=>Promise.resolve({status:()=>200,json:()=>assert.fail('auth body capture forbidden')})}
+ assert.deepEqual(await actualStoryWire(source)(p,'/api/native-auth/login','POST'),{status:200,body:null})
+})
+}
 test('CI uses a fresh independent matrix story, step-local purpose and fixed image/JSON allowlist',()=>{
  const workflow=read('.github/workflows/pg18-agent-design-genuine-ci.yml');assert(workflow.includes('original-model-connections, original-model-draft-discovery]'));assert(workflow.includes('tests/pg-original-model-connections-genuine.config.mjs'));assert.equal(workflow.split('AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI:').length,2);assert(workflow.includes("AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD: '${{ github.sha }}'"));assert(!/GITHUB_JOB\s*[:=]/.test(workflow))
  const from=workflow.indexOf('      - name: Retain fixed safe original ModelConnections'),end=workflow.indexOf('      - name: Retain synthetic page images only',from),block=workflow.slice(from,end);for(const name of originalModelConnectionsImageNames)assert(block.includes('/**/'+name));assert(block.includes('/**/original-model-connections-observation.json'));assert(!block.includes('/**/*.png'))

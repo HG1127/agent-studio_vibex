@@ -48,8 +48,8 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
     if(pending?.id!==detail.run.id)return
     const approval=pending.kind==="decision"?detail.approvals.find(a=>a.step_key===pending.step):undefined
     if(pending.kind==="cancel"?terminal.has(detail.run.status):approval&&["approved","rejected"].includes(approval.status)){
-      uncertain=false;update({pendingMutation:null,notice:pending.kind==="cancel"&&detail.run.status!=="cancelled"?
-        "任务已经结束，无法再取消。":pending.kind==="decision"&&approval?.status!==pending.decision?
+      uncertain=false;update({pendingMutation:null,notice:pending.kind==="cancel"?
+        "已读到任务结束；目前无法确认是否由本次取消操作引起。":pending.kind==="decision"&&approval?.status!==pending.decision?
           "此步骤已由当前账号的另一操作决定，已更新为最新状态。":"已确认上次操作。"})
     }
   }

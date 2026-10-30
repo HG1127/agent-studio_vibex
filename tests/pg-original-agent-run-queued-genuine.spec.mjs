@@ -20,8 +20,8 @@ test('actual original AgentRun queued read/cancel, complete owner models and rea
    expect(await f.runState('alice',aliceRun.id)).toMatchObject({status:'queued',step_count:0,actual_owner_verified:true});await expect(p.getByRole('button',{name:'取消',exact:true})).toBeEnabled();steps.original_parent_actual_queue_and_complete_models=true
   })
   await test.step('real cancel commits behind lost reply; second original action only reads the same task and does not resend cancellation',async()=>{
-   const dropped=f.dropNextActualCancelReply(aliceRun.id,'agent_autonomous'),dialog=b.expectedDialog(p,'confirm','取消本人任务')
-   await p.getByRole('button',{name:'取消',exact:true}).click();await dialog;expect((await dropped.entered()).actual_committed_status).toBe(200)
+   const failed=b.controlDisconnect(p,'/api/v2/agent-autonomous-runs/'+aliceRun.id+'/cancel'),dropped=f.dropNextActualCancelReply(aliceRun.id,'agent_autonomous'),dialog=b.expectedDialog(p,'confirm','取消本人任务')
+   await p.getByRole('button',{name:'取消',exact:true}).click();await dialog;expect((await dropped.entered()).actual_committed_status).toBe(200);expect(await dropped.clientClosed()).toMatchObject({actual_proxy_response_closed:true,actual_socket_destroyed:true});expect(await failed.failed()).toMatchObject({actual_requestfailed:true,same_original_request:true})
    await expect(p.getByRole('button',{name:'取消',exact:true})).toBeEnabled();const read=b.wire(p,'/api/v2/agent-autonomous-runs/'+aliceRun.id)
    await p.getByRole('button',{name:'取消',exact:true}).click();expect((await read).status()).toBe(200);await expect(p.getByText('已取消',{exact:true}).first()).toBeVisible()
    expect(f.observations.control_posts.filter(v=>v.path.endsWith('/'+aliceRun.id+'/cancel'))).toHaveLength(1);expect((await f.runState('alice',aliceRun.id)).status).toBe('cancelled');steps.original_unknown_cancel_only_reads=true

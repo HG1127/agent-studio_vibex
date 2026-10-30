@@ -1398,3 +1398,23 @@ tests/original-model-config-receipt-hook-pure.test.mjs text eol=lf
 tests/pg-original-model-receipts075-genuine.config.mjs text eol=lf
 tests/pg-original-model-receipts075-genuine.spec.mjs text eol=lf
 tests/pg-original-model-receipts075-source-pure.test.mjs text eol=lf
+
+# Original Tools metadata and exact queued-control/browser source inputs.
+ops/original-tool-connections-page-actions.json text eol=lf
+services/pg-api/src/original-tool-connections-http.ts text eol=lf
+services/pg-api/src/tool-connection-repository.ts text eol=lf
+shared/original-tool-connections-contract.ts text eol=lf
+src/lib/originalToolConnections.ts text eol=lf
+src/lib/originalToolConnectionsApi.ts text eol=lf
+src/lib/toolPresentation.ts text eol=lf
+src/pages/ToolConnections/usePgToolConnections.ts text eol=lf
+src/pages/ToolConnections/useToolConnections.ts text eol=lf
+tests/helpers/original-tool-connections-hook-harness.mjs text eol=lf
+tests/helpers/original-tool-connections-terminal-data.mjs text eol=lf
+tests/helpers/pg-original-run-queued-control-faults.mjs text eol=lf
+tests/original-tool-connections-client-controller.test.mjs text eol=lf
+tests/original-tool-connections-hook.test.mjs text eol=lf
+tests/original-tool-connections-http-policy.test.mjs text eol=lf
+tests/queued-control-host-callback-pure.test.mjs text eol=lf
+tests/queued-detail-control-controller-pure.test.mjs text eol=lf
+tests/queued-parent-control-controller-pure.test.mjs text eol=lf

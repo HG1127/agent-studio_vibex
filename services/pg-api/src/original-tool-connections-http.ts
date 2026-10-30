@@ -1,0 +1,40 @@
+import type {IncomingMessage,ServerResponse} from 'node:http'
+import {HttpError,type Identity} from './contracts.ts'
+import {verifyNativeOrigin} from './native-auth-http.mjs'
+import {optionalExpectedOriginalUiEmployee} from './native-original-ui-preconditions.ts'
+import {parseAgentDesignTransportJson} from './agent-design-value-contract.ts'
+import type {ToolConnectionRepository} from './tool-connection-repository.ts'
+import {originalToolConnectionsProtocol,originalToolId,originalToolRevision,normalizeOriginalToolInput,clearOriginalToolInput,toolObject,parseOriginalToolConnection,OriginalToolContractError,type OriginalToolInput} from '../../../shared/original-tool-connections-contract.ts'
+const collection='/api/v2/tool-connections'
+function reply(res:ServerResponse,status:number,value:unknown){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Pragma':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(JSON.stringify(value))}
+function clear(raw:unknown){if(raw&&typeof raw==='object'){const headers=(raw as {headers?:unknown}).headers;if(Array.isArray(headers))for(const h of headers)if(h&&typeof h==='object'&&Object.hasOwn(h,'value'))h.value=''}}
+async function empty(req:IncomingMessage){if(req.headers['transfer-encoding']!==undefined||req.headers['content-length']!==undefined&&req.headers['content-length']!=='0')throw new HttpError(400,'original_tool_get_body_refused');for await(const b of req)if(Buffer.byteLength(b)>0)throw new HttpError(400,'original_tool_get_body_refused')}
+async function body(req:IncomingMessage){const type=req.headers['content-type'],length=req.headers['content-length'],transfer=req.headers['transfer-encoding'];if(typeof type!=='string'||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(type)||req.headers['content-encoding']!==undefined)throw new HttpError(415,'json_content_type_required');if(length!==undefined&&(typeof length!=='string'||!/^(0|[1-9][0-9]*)$/.test(length)||Number(length)>65536))throw new HttpError(413,'request_too_large');if(transfer!==undefined&&(transfer!=='chunked'||length!==undefined))throw new HttpError(400,'invalid_original_tool_body');const chunks:Buffer[]=[];let size=0,timer:ReturnType<typeof setTimeout>|undefined;const read=async()=>{for await(const b of req){const value=Buffer.isBuffer(b)?b:Buffer.from(b);size+=value.length;if(size>65536)throw new HttpError(413,'request_too_large');chunks.push(value)}if(length!==undefined&&Number(length)!==size)throw new HttpError(400,'invalid_original_tool_body');const value=Buffer.concat(chunks);try{return parseAgentDesignTransportJson(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(value))}catch{throw new HttpError(400,'invalid_original_tool_body')}finally{value.fill(0)}};try{return await Promise.race([read(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{reject(new HttpError(408,'original_tool_body_timeout'));req.destroy()},8000)})])}finally{clearTimeout(timer);for(const c of chunks)c.fill(0)}}
+/** Called only inside the existing globally selected configuration UAT policy.
+ * It is an original-page protocol, never a new source of write permission. */
+export function createOriginalToolConnectionsHttp(options:{repo:ToolConnectionRepository;allowedOrigin:string;authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}){
+ return async(req:IncomingMessage,res:ServerResponse):Promise<boolean>=>{
+  if(req.headers['x-agentstudio-original-tools']===undefined)return false
+  const rawRoute=req.url??'',rawPath=rawRoute.split(/[?#]/,1)[0]??'';let url:URL|undefined,decoded='';try{url=new URL(rawRoute,'http://127.0.0.1');decoded=decodeURIComponent(url.pathname)}catch{}
+  const scope=(v:string)=>v===collection||v.startsWith(collection+'/');if(![rawPath,url?.pathname??'',decoded].some(v=>scope(v)||scope(v.replace(/\/+/g,'/'))))return false
+  let raw:unknown,preparedInput:OriginalToolInput|undefined
+  try{
+   const markerRaw=req.rawHeaders??[];if(req.headers['x-agentstudio-original-tools']!=='1'||markerRaw.filter((_,i)=>i%2===0&&markerRaw[i]?.toLowerCase()==='x-agentstudio-original-tools').length!==1)throw new HttpError(400,'original_tool_protocol_header_refused')
+   const method=req.method??'',id=url?.pathname.slice(collection.length+1)??'',item=!!id&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)
+   if(!url||rawRoute!==url.pathname||rawRoute.includes('%')||rawRoute.includes('//')||url.search||url.hash||rawRoute.includes('#'))throw new HttpError(400,'original_tool_route_refused')
+   if(url.pathname===collection+'/test')throw new HttpError(405,'original_tool_direct_test_unavailable')
+   if(!(method==='GET'&&(url.pathname===collection||item)||method==='POST'&&url.pathname===collection||['PATCH','DELETE'].includes(method)&&item))throw new HttpError(405,'original_tool_route_refused')
+   if(['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(k=>req.headers[k]!==undefined))throw new HttpError(400,'original_tool_identity_header_refused')
+   if(Object.getOwnPropertyDescriptor(options.repo,'originalUiProtocol')?.value!==originalToolConnectionsProtocol)throw new HttpError(503,'original_tool_contract_unavailable')
+   let identity:Identity;try{verifyNativeOrigin(req,options.allowedOrigin,method!=='GET');identity=await options.authenticateRequest(req)}catch(error){const status=(error as {status?:unknown})?.status;if(status===401||status===403)throw new HttpError(status,status===401?'session_required':'native_request_origin_denied');throw error}if(identity.issuer!=='urn:agentstudio:local:v1')throw new HttpError(403,'native_employee_identity_required');const employee=optionalExpectedOriginalUiEmployee(req);if(employee===undefined)throw new HttpError(400,'invalid_original_ui_employee_precondition')
+   const publicRow=(value:unknown)=>{try{const serialized=JSON.stringify(value);if(typeof serialized!=='string')throw Error();return parseOriginalToolConnection(JSON.parse(serialized),employee)}catch{throw new HttpError(503,'invalid_original_tool_response')}}
+   const envelope={protocol:originalToolConnectionsProtocol,execution_enabled:false}
+   if(method==='GET'){await empty(req);if(item){const row=await options.repo.get(identity,originalToolId(id),employee);if(!row)throw new HttpError(404,'tool_connection_not_found');reply(res,200,{...envelope,item:publicRow(row)})}else{const rows=await options.repo.list(identity,50,employee);if(rows.length>50)throw new HttpError(503,'invalid_original_tool_response');reply(res,200,{...envelope,items:rows.map(publicRow),complete:false,limit:50})}return true}
+   raw=await body(req)
+   if(method==='DELETE'){const value=toolObject(raw,['expected_revision']),revision=originalToolRevision(value.expected_revision);if(!await options.repo.delete(identity,originalToolId(id),revision,employee))throw new HttpError(404,'tool_connection_not_found');reply(res,200,{...envelope,ok:true,id});return true}
+   const value=toolObject(raw),keys=Object.keys(value),fields=['name','description','url','method','headers','body_template','timeout_s','enabled'];if(keys.some(k=>!fields.includes(k)&&!(method==='PATCH'&&k==='expected_revision'))||fields.some(k=>!Object.hasOwn(value,k)))throw new HttpError(400,'invalid_original_tool_input')
+   const {expected_revision:revision,...input}=value,prepared=normalizeOriginalToolInput(input);preparedInput=prepared
+   if(method==='POST'){const row=await options.repo.create(identity,prepared,employee);reply(res,201,{...envelope,item:publicRow(row)})}else{const row=await options.repo.update(identity,originalToolId(id),prepared,originalToolRevision(revision),employee);if(!row)throw new HttpError(404,'tool_connection_not_found');reply(res,200,{...envelope,item:publicRow(row)})}
+  }catch(error){const safe=error instanceof HttpError||error instanceof OriginalToolContractError;reply(res,safe?error.status:503,{error:safe?error.code:'original_tool_unavailable'})}finally{clear(raw);if(preparedInput)clearOriginalToolInput(preparedInput)}return true
+ }
+}
