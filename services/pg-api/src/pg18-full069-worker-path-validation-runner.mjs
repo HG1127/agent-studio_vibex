@@ -1,6 +1,7 @@
 // Same genuine warm-launch capabilities and exact collector as --run. This
 // independent caller never invokes runFull069WorkerLive, BEGIN, END or its clock.
 import {performance} from 'node:perf_hooks'
+import {full069RecordWriteFailureData} from './pg18-full069-owned-record-contract.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
 import {openFull069WorkerLiveTrust,liveContext,openLiveRunStore,retireLiveTrust} from './pg18-full069-worker-live-trust.mjs'
 import {openFull069WorkerLiveRuntime,full069WorkerLivePreflight,observeFull069WorkerLiveRuntime,closeFull069WorkerLiveRuntime} from './pg18-full069-worker-live-runtime.mjs'
@@ -32,7 +33,7 @@ export async function runFull069WorkerPathValidation(){
   if(runtime&&!cleanup)try{cleanup=await observeFull069WorkerLiveRuntime(runtime,{ready:false});if(cleanup.telemetry_backend_count!==0||cleanup.readers_in_flight!==0)reason??='full069_worker_live_path_validation_cleanup'}catch{reason??='full069_worker_live_path_validation_cleanup_unverified'}
   if(runtime)try{await closeFull069WorkerLiveRuntime(runtime)}catch{reason??='full069_worker_live_path_validation_pool_close'}
   if(reason)completed=false
-  if(guard&&ctx)try{recordSha=writePathValidationRecord(guard,'validation-result.json',pathValidationResult(ctx.profile.run_id,completed,reason,{source_sha256:ctx.profile.source_sha256,complete_source_sha256:ctx.profile.complete_source_sha256,warm:warm??null,last:last??null,worker_stop:workerStop,native_stop:nativeStop??null,proxy_stop:proxyStop??null,cleanup:cleanup??null}))}catch{completed=false;reason??='full069_worker_live_path_validation_record_unavailable'}
+  if(guard&&ctx)try{recordSha=writePathValidationRecord(guard,'validation-result.json',pathValidationResult(ctx.profile.run_id,completed,reason,{source_sha256:ctx.profile.source_sha256,complete_source_sha256:ctx.profile.complete_source_sha256,warm:warm??null,last:last??null,worker_stop:workerStop,native_stop:nativeStop??null,proxy_stop:proxyStop??null,cleanup:cleanup??null}))}catch(error){completed=false;try{process.stderr.write(JSON.stringify(full069RecordWriteFailureData('legacy_short','validation_result',reason,error))+'\n')}catch{}reason??='full069_worker_live_path_validation_record_unavailable'}
   if(trust)retireLiveTrust(trust);process.off('SIGTERM',signal);process.off('SIGINT',signal)
  }
  // A guard failure before the signed run context exists yields no success DTO.

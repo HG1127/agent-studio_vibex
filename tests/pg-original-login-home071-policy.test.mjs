@@ -131,12 +131,14 @@ test('source checks remain fixed and real profile observations do not authorize 
  assert(body.includes('Native_server_process_entry_verified:false'))
  assert(body.includes('monitor073_installed:false'))
  assert.doesNotMatch(body,/installed_profile_verified\s*[:=]\s*true/)
- assert(browser.includes('fixture.browserHomeProfile?.profile!==homePermit.profile'))
+ assert(browser.includes("actualProfile?.format!=='agentstudio.original-home-monitor073.metadata.fixture.v1'"))
+ assert(browser.includes('actualProfile.predecessor?.profile!==homePermit.profile'))
+ assert(browser.includes('actualProfile.predecessor.head!==homePermit.head'))
 })
 
 test('browser uses installed backend transport and the product Native composition with real owner audit',()=>{
  const body=common(),browser=host()
- assert(browser.includes('fixture=await homeBackend.originalLoginHome071GenuineFixture(env)'))
+ assert(browser.includes('fixture=await homeBackend.originalMonitor073BackendFixture(env)'))
  assert.doesNotMatch(browser,/fixture=await genuine\.agentDesignGenuineFixture/)
  assert(browser.includes('new URL(fixture.nativeOrigin)'));assert(body.includes('nativeOrigin:origin,allowedOrigin,ownOperationsSchemaVerified'))
  assert(body.includes('allowedOrigin=browserMode?permit.origin:origin'))
@@ -180,21 +182,25 @@ test('v4 local PB events, legacy network and every unexpected API error keep zer
   assert(browser.includes("remember('"+key+"'"),key)
  }
  assert(browser.includes('if(!(isMe&&status===401))'))
- assert.doesNotMatch(browser,/monitor073|agent-monitor|monitoring/) // No monitor-specific refusal exemption.
+ const statusStart=browser.indexOf('if(!(isMe&&status===401))'),statusEnd=browser.indexOf('res.writeHead',statusStart)
+ assert(statusStart>=0&&statusEnd>statusStart)
+ assert.doesNotMatch(browser.slice(statusStart,statusEnd),/monitor073|agent-monitor|monitoring/) // No monitor-specific refusal exemption.
  assert(story.includes('home_business_complete:false'));assert(story.includes('employee_UAT:0'))
  assert(story.includes('production_GO:false'));assert(story.includes('actual_backend:f.backendProfile'))
 })
 
-test('successor purpose is confined to the original-login workflow step',()=>{
+test('actual071 predecessor purpose is confined to original-login and independent073 browser steps',()=>{
  const workflow=read('.github/workflows/pg18-agent-design-genuine-ci.yml')
  const start=workflow.indexOf('      - name: Original Login App authentication through real PG18 Native HTTPS')
  const next=workflow.indexOf('      - name:',start+1),step=workflow.slice(start,next)
  assert(start>=0);assert(step.includes("if: matrix.story == 'original-login'"))
  for(const key of ['CI','PROFILE','STORY','EXPECTED_HEAD']){
   const marker='AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_'+key+':'
-  assert(step.includes(marker));assert.equal(workflow.split(marker).length,2)
+  assert(step.includes(marker));assert.equal(workflow.split(marker).length,3)
+  const monitorStart=workflow.indexOf('      - name: Original Home real073 owner rows paging read acknowledgement and employee switch')
+  assert(monitorStart>start);assert(workflow.slice(monitorStart,workflow.indexOf('      - name:',monitorStart+1)).includes(marker))
  }
  assert(step.includes("AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'"))
- assert(workflow.includes('node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs'))
+ assert(workflow.includes('node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs tests/pg-original-monitor073-policy.test.mjs'))
  assert.doesNotMatch(workflow,/GITHUB_JOB\s*[:=]/)
 })

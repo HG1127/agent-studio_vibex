@@ -1,5 +1,6 @@
 // Owned references come only from this module's spawn, never from a caller PID.
 import fs from 'node:fs'
+import {full069OwnedChildRecordName} from './pg18-full069-owned-record-contract.mjs'
 import {spawn} from 'node:child_process'
 import {randomUUID} from 'node:crypto'
 import {performance} from 'node:perf_hooks'
@@ -20,7 +21,7 @@ export function openFull069OwnedProcesses(trust){const s=liveContext(trust);if(!
 export async function launchFull069OwnedProcess(handle,id){
  const s=owned(handle),ctx=liveContext(s.trust);if(s.closed||s.entries.has(id))liveFail('duplicate_process');assertExclusiveUids(s);const native=id==='native',entry=native?{id:'native',file:'native-server.ts',args:['--serve'],kinds:[],unit:'agentstudio-pg18-native.service'}:liveEntries.find(x=>x.id===id)??liveFail('entry');const profile=native?ctx.profile.native:ctx.profile.workers[liveEntries.indexOf(entry)],args=entry.args,filename=liveRoot+'/services/pg-api/src/'+entry.file,parent=readFull069KernelProcess(process.pid),nonce=randomUUID()
  for(const mount of profile.mounts)if(readLivePrivate(mount.source,{owner:profile.uid,mode:[0o400],max:2097152}).sha256!==mount.sha256)liveFail('mount_changed')
- writeLiveRecord(s.trust,'child-'+id+'.json',{format:'pg18_full069_worker_live_child_v1',run_id:ctx.profile.run_id,profile_sha256:ctx.profileSha256,source_sha256:ctx.profile.source_sha256,id,parent_pid:process.pid,parent_start:parent.start_ticks,parent_mount_namespace:parent.mount_namespace,nonce})
+ writeLiveRecord(s.trust,full069OwnedChildRecordName(id),{format:'pg18_full069_worker_live_child_v1',run_id:ctx.profile.run_id,profile_sha256:ctx.profileSha256,source_sha256:ctx.profile.source_sha256,id,parent_pid:process.pid,parent_start:parent.start_ticks,parent_mount_namespace:parent.mount_namespace,nonce})
  const env={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8',HOME:'/nonexistent',AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED:'true',AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED:'RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY'}
  const outer=spawn('/usr/bin/unshare',['--mount','--propagation','private',process.execPath,'--experimental-strip-types',liveRoot+'/services/pg-api/src/pg18-full069-worker-live-child.mjs','--launch',id],{cwd:liveRoot,env,stdio:['ignore','ignore','ignore','ipc'],windowsHide:true})
  /** @type {{id:string,profile:any,entry:string,args:string[],outer:import('node:child_process').ChildProcess,pid:number|null,start_ticks:string|null,outer_start:string|null,nonce:string,parentNamespace:string,failed:boolean,exit:{code:number|null,signal:NodeJS.Signals|null}|null,stopping:boolean,nativeReady:boolean,outerClose?:Promise<unknown>,outerExited?:boolean}} */

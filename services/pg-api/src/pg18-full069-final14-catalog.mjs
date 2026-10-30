@@ -1,6 +1,7 @@
 // Fixed SELECT-only comparison on B's actual trusted, already RR READ ONLY
 // postgres clients. No Pool, transaction, SET ROLE, lock, effect or authority.
 import {createHash} from 'node:crypto'
+import {inspectFinal14DatabaseAclRows} from './pg18-full069-final14-database-acl.mjs'
 import {captureCompleteProfileSources,assertCompleteProfileSnapshot} from './pg18-complete-profile-source.mjs'
 import {complete069PlanWorkflowPredecessors} from './pg18-complete-plan-workflow-predecessor-plan.mjs'
 import {complete069PlanWorkflowAbi,inspectComplete069PlanWorkflowHba} from './pg18-complete-plan-workflow-plan.mjs'
@@ -131,10 +132,9 @@ export async function readFull069Final14Catalog(db,raw){
  const roleMap=new Map(c.roles.map(r=>[r.name,r]));for(const r of telemetry.binding.roles)if(roleMap.get(r.name)?.id!==String(r.oid)||roleMap.get(r.name)?.verifier_sha256!==telemetry.expected.get(r.name))fail('telemetry_verifier')
  if(c.settings.length)fail('role_settings');if(c.defaults.length||c.defaultGrantees.length)fail('future_acl');if(c.parameters.length)fail('parameter_acl')
  const dbNames=['agent_studio','agent_studio_telemetry','postgres','template0','template1'];if(!same(c.databases.map(r=>r.name).sort(),dbNames.sort())||c.databases.some(r=>!oid(r.id)||r.owner!=='postgres'||r.connection_limit!==-1||r.template!==['template0','template1'].includes(r.name)||r.allow_connections!==(r.name!=='template0'))||c.databases.find(r=>r.name==='agent_studio')?.id!==business.database_oid||c.databases.find(r=>r.name==='agent_studio_telemetry')?.id!==String(telemetry.binding.database_oid))fail('database_inventory')
- for(const login of businessNames){const grants=c.databaseAcl.filter(r=>r.grantee===login);if(grants.length!==1||grants[0].database!=='agent_studio'||grants[0].privilege!=='CONNECT'||grants[0].grantable!==false||grants[0].grantor!=='postgres')fail('database_acl')}
- const teleGrants=c.databaseAcl.filter(r=>telemetryNames.includes(r.grantee));if(teleGrants.length!==17||teleGrants.some(r=>r.grantee==='studio_telemetry_owner'||r.database!=='agent_studio_telemetry'||r.privilege!=='CONNECT'||r.grantable!==false||r.grantor!=='postgres')||new Set(teleGrants.map(r=>r.grantee)).size!==17)fail('telemetry_database_acl')
- const grantKey=r=>JSON.stringify([r.grantee,r.grantor,r.privilege,r.grantable]),ownerGrants=['CREATE','CONNECT','TEMPORARY'].map(privilege=>({grantee:'postgres',grantor:'postgres',privilege,grantable:false}))
- for(const[name,allowed]of[['agent_studio',businessNames],['agent_studio_telemetry',telemetryNames.slice(1)]]){const actual=c.databaseAcl.filter(r=>r.database===name).map(grantKey).sort(),expected=[...ownerGrants,...allowed.map(grantee=>({grantee,grantor:'postgres',privilege:'CONNECT',grantable:false}))].map(grantKey).sort();if(!same(actual,expected))fail('database_acl')}
+ // Compare every database ACL row, including the unchanged original PUBLIC
+ // TEMPORARY grant on agent_studio. No row is removed from the hash below.
+ inspectFinal14DatabaseAclRows(c.databaseAcl,c.databases,c.roles)
  if(c.objects.some(r=>businessNames.includes(r.owner))||c.ownership.some(r=>businessNames.includes(r.owner)))fail('login_ownership')
  if([...c.objectAcl,...c.otherAcl].some(r=>businessNames.includes(r.grantee)||businessNames.includes(r.grantor)))fail('direct_object_acl')
  if(c.otherAcl.some(r=>businessNames.includes(r.owner)||telemetryNames.includes(r.owner)))fail('login_ownership')

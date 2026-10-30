@@ -1,15 +1,17 @@
 import {requireOriginalLoginBrowserCi,originalLoginPath,originalLoginRequestPolicy} from './pg-original-login-browser-guard.mjs'
 import {originalLoginReviewedSources} from './pg-original-login-reviewed-sources.mjs'
 import {requireOriginalLoginHome071Ci} from '../../services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs'
+import {requireOriginalMonitor073BrowserCi} from './pg-original-monitor073-browser-guard.mjs'
 
 // Import is side-effect free. Never call this on the local authoring host.
 export async function startOriginalLoginGenuineBrowserFixture(env=process.env){
   const approved=requireOriginalLoginBrowserCi(env) // BEFORE files/PG/TLS/browser.
-  const homePermit=requireOriginalLoginHome071Ci(env) // Independent 070/071 purpose before effects.
+  const homePermit=requireOriginalLoginHome071Ci(env) // Unchanged actual070/071 predecessor purpose.
+  const monitorPermit=requireOriginalMonitor073BrowserCi(env) // Additional073 purpose before any effects.
   const [fs,path,url,https,crypto,genuine,homeBackend]=await Promise.all([
     import('node:fs'),import('node:path'),import('node:url'),import('node:https'),import('node:crypto'),
     import('../../services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs'),
-    import('../../services/pg-api/tests/helpers/original-login-home071-genuine-fixture.mjs'),
+    import('./pg-original-monitor073-backend-fixture.mjs'),
   ])
   genuine.requireAgentDesignGenuineCi(env)
   const repo=fs.realpathSync(url.fileURLToPath(new URL('../../',import.meta.url)))
@@ -102,9 +104,12 @@ export async function startOriginalLoginGenuineBrowserFixture(env=process.env){
     if(errors.length)throw new AggregateError(errors,'original_login_fixture_cleanup_failed')
   }
   try{
-    fixture=await homeBackend.originalLoginHome071GenuineFixture(env)
-    if(fixture.browserHomeProfile?.profile!==homePermit.profile||fixture.browserHomeProfile.head!==homePermit.head)
-      throw Error('original_login_home071_profile_mismatch')
+    fixture=await homeBackend.originalMonitor073BackendFixture(env)
+    const actualProfile=fixture.browserHomeProfile
+    if(actualProfile?.format!=='agentstudio.original-home-monitor073.metadata.fixture.v1'||actualProfile.profile!==monitorPermit.profile||actualProfile.head!==monitorPermit.head||actualProfile.story!==monitorPermit.story||
+      actualProfile.monitor073_catalog_verified!==true||actualProfile.monitor073_seeded_nonempty!==true||
+      actualProfile.predecessor?.profile!==homePermit.profile||actualProfile.predecessor.head!==homePermit.head)
+      throw Error('original_login_monitor073_profile_mismatch')
     const upstream=new URL(fixture.nativeOrigin)
     if(fixture.allowedOrigin!==approved.origin||upstream.protocol!=='https:'||upstream.hostname!=='localhost'||
       !upstream.port||upstream.username||upstream.password||upstream.pathname!=='/'||upstream.search||upstream.hash)

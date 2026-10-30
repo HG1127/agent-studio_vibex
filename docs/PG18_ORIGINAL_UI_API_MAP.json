@@ -5993,14 +5993,14 @@
   "current_preparation": {
     "original_login_adapter": "Original Login/App/current account-menu JSX retained; actual Cookie/CSRF adapter, verified profile, retry and acknowledged logout source integrated; original-page hosted acceptance pending",
     "original_home_transport": "Current original Home and catalog integrated with full immutable spec bindings, CAS, employee concurrency precondition, recovery and unknown-write isolation; reviewed async read fences and independent metadata/binding intent fixes integrated",
-    "original_UI_isolated_build": "Actual normal PB and opt-in original index/main/App builds passed; normal output has zero PG resource matches; PG old backend clients fail closed and emit observed migration-gap events",
+    "original_UI_isolated_build": "Actual normal PB and opt-in original index/main/App builds passed with99 assets each; normal output has0 PG resource matches. Original business page acceptance remains pending.",
     "pure_auth_home_contract_checks": 110,
     "pure_optional070_backend_checks": 76,
     "pure_optional071_catalog_checks": 61,
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 404,
+    "combined_pure_checks": 480,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6039,20 +6039,35 @@
     "column_ACL_source_repair": "Native NULL column ACL retained; all effective privileges and grantability checks preserved; actual070/071 default-column assertions passed on cc987e2 and repeated on9af867",
     "original_login_browser_source_update": "Explicit mjs MIME and independent Login/Home071 purpose reached real original Login/App; authentication substeps completed on9af867, but whole story failed on three actual monitor-inbox405 responses; all original error and PB-event gates retained",
     "verified_backend_parent": {
-      "head": "cc987e22f0d32995a6245db0aefc7323834dfb1d",
-      "run": 41021107149,
-      "home070": {
-        "job": 123948386383,
-        "numbered_cases": 19,
-        "test_nodes": 20,
-        "passed": true
-      },
-      "home071": {
-        "job": 123948386261,
-        "numbered_cases": 18,
-        "test_nodes": 19,
-        "passed": true
-      },
+      "head": "53fd7f8786ca419983956a319507b10e0124f436",
+      "run": 41028235290,
+      "suites": [
+        {
+          "suite": "home070",
+          "job": 123971405131,
+          "numbered_cases": 19,
+          "test_nodes": 20,
+          "passed": true,
+          "raw_sha256": "ccaaa60aebf122409f08c833af3e78389cfc66de7ba050037e2fd74306b0791c"
+        },
+        {
+          "suite": "home071",
+          "job": 123971404981,
+          "numbered_cases": 18,
+          "test_nodes": 19,
+          "passed": true,
+          "raw_sha256": "b76c8ae8f6fefb4488b16ff7940603c5140e568b96e8c4e555522685f7eaa6b0"
+        },
+        {
+          "suite": "home072",
+          "job": 123971405343,
+          "numbered_cases": 20,
+          "test_nodes": 21,
+          "passed": true,
+          "raw_sha256": "16dbf73d416c64daaf10ce88734bfec72d69ba73afe059d0258e892f3b07bf87"
+        }
+      ],
+      "total_numbered_cases": 57,
       "original_page_accepted": 0
     },
     "current_candidate_genuine_rerun_pending": true,
@@ -6087,7 +6102,70 @@
       "root_cause": "Pins described only032 initial grants, omitting unchanged035-039 required helper grants;070/071 owned resource cases also refused503",
       "prior_green_receipts_do_not_qualify_current_candidate": true
     },
-    "statistics_acl_source_repair": "Exact final dependency grantees derived from all unchanged001-069 SQL, including035-039 embedding/index/query/execution grants. Every required explicit EXECUTE must exist; extra grants, grant options, wrong grantors, function bodies/metadata and unsafe owners remain refused. Actual072 required/missing/extra/re-grant negatives added; real rerun pending; no SQL, roles or privileges changed."
+    "statistics_acl_source_repair": "Exact final dependency grantees derived from all unchanged001-069 SQL, including035-039 embedding/index/query/execution grants. Every required explicit EXECUTE must exist; extra grants, grant options, wrong grantors, function bodies/metadata and unsafe owners remain refused. Actual072 required/missing/extra/re-grant negatives added; real rerun pending; no SQL, roles or privileges changed.",
+    "pure_original_internal_templates_checks": 20,
+    "pure_internal_share_expected_employee_checks": 8,
+    "pure_full069_record_path_checks": 12,
+    "pure_full069_final14_database_acl_checks": 17,
+    "pure_monitor073_contract_and_admission_checks": 19,
+    "backend_optional073_source_merged": true,
+    "backend_optional073_database_verified": false,
+    "prior_verified_backend_parent": {
+      "head": "cc987e22f0d32995a6245db0aefc7323834dfb1d",
+      "run": 41021107149,
+      "home070": {
+        "job": 123948386383,
+        "numbered_cases": 19,
+        "test_nodes": 20,
+        "passed": true
+      },
+      "home071": {
+        "job": 123948386261,
+        "numbered_cases": 18,
+        "test_nodes": 19,
+        "passed": true
+      },
+      "original_page_accepted": 0
+    },
+    "verified_PocketBase_parent": {
+      "head": "53fd7f8786ca419983956a319507b10e0124f436",
+      "run": 41028243116,
+      "job": 123971433210,
+      "command": "pnpm test:e2e:parallel",
+      "summary": {
+        "status": "PASS",
+        "completed": 19,
+        "total": 19,
+        "passed": 19,
+        "failed": 0,
+        "seconds": 70.5,
+        "workers": 2
+      },
+      "raw_sha256": "6a60124a988204e0c34e666b0c41246070c227dad613c0735840cc97a9678445",
+      "qualifying24h": 0,
+      "employee_signoffs": 0,
+      "production_GO": false
+    },
+    "verified_telemetry_parent": {
+      "head": "53fd7f8786ca419983956a319507b10e0124f436",
+      "run": 41028234927,
+      "job": 123971512774,
+      "actual_control_cases": 28,
+      "actual_writer_cases": 26,
+      "writer_owned_cleanups": 4,
+      "raw_sha256": "e61799d1d13c6b3e798df376ab67105d1861149aa7228a52fc64c849f8584fa6",
+      "prior_file_changed_failure_still_recorded": true,
+      "intermittent_change_cause_resolved": false,
+      "full069_process_qualification_passed": false,
+      "qualifying24h": 0,
+      "employee_signoffs": 0,
+      "production_GO": false
+    },
+    "original_internal_templates_source": "Existing /internal-templates JSX, labels, navigation and reviewed PB business body retained. Build-time hook selects real Native F08 API/session; preview, one-use code, redeem/revoke, unknown-intent refresh and account-scoped late-response fences adapted. Source only: original-page host/browser acceptance pending.",
+    "internal_share_expected_employee": "Original-page record/confirm sends the closed-over employee UUID. Real repository compares it after Native identity/withActor owner mapping and before receipt/record SQL. Cookie Bob + expected Alice create/redeem/revoke/confirm six409 negatives added to existing fresh F08 TCP story; real execution pending. UUID is a concurrency precondition, never authentication.",
+    "original_monitor073_source": "Optional immutable historical metadata, current-owner keyset inbox and audited read receipts. Independent original-login and monitor073 purposes install/audit real073 and require nonempty owner rows while retaining the real071 predecessor. Original auth steps and every error/network/PB zero gate retained. Capture/source ACL/event production/review/baseline live chain remains separate074 work; no full monitor acceptance.",
+    "full069_record_path_source": "One fixed child-leaf mapping shared by parent/child; workflow_v2 keeps its business identity while using a leaf accepted by the unchanged path grammar. Primary/secondary record failures remain separately bounded. Actual process rerun pending.",
+    "full069_database_acl_source": "Whole final53-row comparison includes PUBLIC TEMPORARY preserved by the unchanged050 bootstrap and both required F05 CONNECTs. Owner, OID/name, grantor, grantability, extra/missing/cross-database rows remain exact; no row filtering or ACL hash omission. Twelve real uncommitted/rollback negatives added; actual rerun pending. No SQL/privilege change."
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

@@ -1,4 +1,5 @@
 import {performance} from 'node:perf_hooks'
+import {full069RecordWriteFailureData} from './pg18-full069-owned-record-contract.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
 import {createHash} from 'node:crypto'
 import {openFull069FinalTrust,finalContext,openFinalRunStore,writeFinalRecord,appendFinalSample,closeFinalSamples,verifyClosedFinalSamples,readFinalAcknowledgement,assertFinalStable,retireFinalTrust} from './pg18-full069-final-trust.mjs'
@@ -54,7 +55,7 @@ export async function runFull069Final(){
   if(processes&&!nativeStop)try{nativeStop=await stopFull069OwnedNative(processes)}catch{reason??='full069_final_run_native_cleanup'}
   if(runtime&&!cleanup)try{cleanup=await finalizeFull069FinalRuntime(runtime)}catch{reason??='full069_final_run_cleanup_unverified'}
   if(runtime)try{await closeFull069FinalRuntime(runtime)}catch{qualified=false;reason??='full069_final_run_runtime_close'}
-  if(trust&&ctx&&!qualified&&recordsAvailable)try{writeFinalRecord(trust,'final-failure.json',{format:'pg18_full069_final14_failure_v1',run_id:ctx.base.profile.run_id,reason:reason??'full069_final_run_incomplete',start_record_sha256:startSha??null,journal:journal??null,worker_stop:workerStop,companion_stop:companionStop,native_stop:nativeStop,proxy_stop:proxyStop,cleanup,qualifies_run:false,automatic_retry_authorized:false,production_cutover_allowed:false})}catch{recordsAvailable=false}
+  if(trust&&ctx&&!qualified&&recordsAvailable)try{writeFinalRecord(trust,'final-failure.json',{format:'pg18_full069_final14_failure_v1',run_id:ctx.base.profile.run_id,reason:reason??'full069_final_run_incomplete',start_record_sha256:startSha??null,journal:journal??null,worker_stop:workerStop,companion_stop:companionStop,native_stop:nativeStop,proxy_stop:proxyStop,cleanup,qualifies_run:false,automatic_retry_authorized:false,production_cutover_allowed:false})}catch(error){recordsAvailable=false;try{process.stderr.write(JSON.stringify(full069RecordWriteFailureData('final','failure_record',reason,error))+'\n')}catch{}}
   if(trust)retireFinalTrust(trust);process.off('SIGTERM',interrupt);process.off('SIGINT',interrupt)
  }
  return freeze({format:'pg18_full069_final14_result_v1',run_id:ctx?.base.profile.run_id??null,qualifying_window_started:!!startSha,qualifies_run:qualified,reason:qualified?null:reason??'full069_final_run_incomplete',start_record_sha256:startSha??null,end_record_sha256:qualified?endSha:null,records_available:recordsAvailable,minimum_duration_ms:ctx?.bindings.minimum_ms??liveLimits.minimumMs,production_cutover_allowed:false})

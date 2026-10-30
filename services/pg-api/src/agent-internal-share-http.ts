@@ -9,6 +9,12 @@ import {internalShareRoute,internalShareId,parseInternalShareIntent,parseInterna
 
 type Dependencies={repository:Pick<AgentInternalShareRepository,'list'|'preview'|'record'|'confirm'>;authenticateRequest:(req:IncomingMessage)=>Promise<Identity>;allowedOrigin:string}
 const invalid=():never=>{throw new HttpError(400,'invalid_internal_share_request')}
+function expectedEmployee(req:IncomingMessage):string|undefined{
+ const value=req.headers['x-agentstudio-expected-employee']
+ if(value===undefined)return undefined
+ if(typeof value!=='string'||(req.rawHeaders??[]).filter((_,i)=>i%2===0&&req.rawHeaders[i]!.toLowerCase()==='x-agentstudio-expected-employee').length!==1)return invalid()
+ return input(()=>internalShareId(value))
+}
 function input<T>(body:()=>T):T{try{return body()}catch{return invalid()}}
 function respond(res:ServerResponse,status:number,value:unknown,allow?:string){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',Pragma:'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cross-Origin-Resource-Policy':'same-origin','X-Frame-Options':'DENY',...(allow?{Allow:allow}:{})});res.end(JSON.stringify(value))}
 async function read(req:IncomingMessage){
@@ -35,15 +41,16 @@ export function createAgentInternalShareHttp({repository:r,authenticateRequest,a
    if(!url||raw!==url.pathname||url.search||raw.includes('#')||url.pathname.includes('%'))return invalid()
    const path=url.pathname.slice(internalShareRoute.length);if(!['','/confirm'].includes(path))return invalid()
    allow=path===''?'GET, POST':'POST';if(path===''?req.method!=='GET'&&req.method!=='POST':req.method!=='POST')throw new HttpError(405,'method_not_allowed')
-   const verified=await authenticate(req),identity:Identity={issuer:verified.issuer,subject:verified.subject};let output:unknown
+   const verified=await authenticate(req),identity:Identity={issuer:verified.issuer,subject:verified.subject},expected=expectedEmployee(req);let output:unknown
+   if(req.method==='GET'&&expected!==undefined)return invalid()
    if(req.method==='GET'){await empty(req);output=parseInternalShareList(await r.list(identity))}
    else{
     const rawBody=await read(req)
-    if(path==='/confirm'){const body=input(()=>O(rawBody,['intent'])),intent=input(()=>parseInternalShareIntent(body.intent)),reply=parseInternalShareReply(await r.confirm(identity,intent));await matchInternalShareReceipt(reply.receipt,intent);if(!reply.replayed||reply.share_code!==null)throw Error('invalid_internal_share_projection');output=reply}
+    if(path==='/confirm'){const body=input(()=>O(rawBody,['intent'])),intent=input(()=>parseInternalShareIntent(body.intent)),reply=parseInternalShareReply(await r.confirm(identity,intent,expected));await matchInternalShareReceipt(reply.receipt,intent);if(!reply.replayed||reply.share_code!==null)throw Error('invalid_internal_share_projection');output=reply}
     else{
      const action=input(()=>O(rawBody,['action'],['id','request_id','source','preview_hash','confirm_safe','acknowledgement','share_code','confirm'])).action
-     if(action==='preview'){const body=input(()=>O(rawBody,['action','id'])),id=input(()=>internalShareId(body.id)),preview=await parseInternalSharePreview(await r.preview(identity,id));if(preview.source.spec_id!==id)throw Error('invalid_internal_share_projection');output=preview}
-     else{const intent=input(()=>parseInternalShareIntent(rawBody)),reply=parseInternalShareReply(await r.record(identity,intent));await matchInternalShareReceipt(reply.receipt,intent);output=reply}
+     if(action==='preview'){if(expected!==undefined)return invalid();const body=input(()=>O(rawBody,['action','id'])),id=input(()=>internalShareId(body.id)),preview=await parseInternalSharePreview(await r.preview(identity,id));if(preview.source.spec_id!==id)throw Error('invalid_internal_share_projection');output=preview}
+     else{const intent=input(()=>parseInternalShareIntent(rawBody)),reply=parseInternalShareReply(await r.record(identity,intent,expected));await matchInternalShareReceipt(reply.receipt,intent);output=reply}
     }
    }
    if(Buffer.byteLength(JSON.stringify(output))>1048576)throw Error('invalid_internal_share_projection')

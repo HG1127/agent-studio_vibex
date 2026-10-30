@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [flow, database, home070, home071, home072]
+        suite: [flow, database, home070, home071, home072, monitor073]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -106,12 +106,24 @@ jobs:
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home072-genuine-pg18.test.mjs
 
+      - name: Monitor073 purpose guards and pure owner metadata contracts
+        if: matrix.suite == 'monitor073'
+        run: node --experimental-strip-types --test services/pg-api/tests/native-monitor073-ci-guard.test.mjs services/pg-api/tests/native-monitor-inbox-pure.test.mjs
+      - name: Actual PG18 monitor owner metadata Native HTTPS and read replay
+        if: matrix.suite == 'monitor073'
+        env:
+          AGENT_STUDIO_NATIVE_MONITOR073_CI: YES_DISPOSABLE_MONITOR073_METADATA_ONLY
+          AGENT_STUDIO_NATIVE_MONITOR073_SUITE: monitor073
+          AGENT_STUDIO_NATIVE_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-monitor073-genuine-pg18.test.mjs
+
   pg18-agent-design-browser:
     name: F01 fixture / real PG18 browser / ${{ matrix.story }}
     strategy:
       fail-fast: false
       matrix:
-        story: [design, original-login]
+        story: [design, original-login, monitor073]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -155,7 +167,7 @@ jobs:
           node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
       - name: Original Login host negative policy tests
         if: matrix.story == 'original-login'
-        run: node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs
+        run: node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs tests/pg-original-monitor073-policy.test.mjs
       - name: Build original employee UI into its separate output
         if: matrix.story == 'original-login'
         run: node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
@@ -174,6 +186,10 @@ jobs:
           AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
           AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
           AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_ORIGINAL_MONITOR073_CI: YES_DISPOSABLE_ORIGINAL_MONITOR073_METADATA_ONLY
+          AGENT_STUDIO_ORIGINAL_MONITOR073_PROFILE: original-home-monitor073-metadata
+          AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-login-genuine.config.mjs
       - name: Retain synthetic page images only
         if: always() && matrix.story == 'design'
@@ -190,5 +206,33 @@ jobs:
           path: |
             .tmp/original-login-genuine-browser-results/**/*.png
             .tmp/original-login-genuine-browser-results/**/original-login-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent Monitor073 host policy and build original employee UI
+        if: matrix.story == 'monitor073'
+        run: |
+          node --test tests/pg-original-monitor073-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original Home real073 owner rows paging read acknowledgement and employee switch
+        if: matrix.story == 'monitor073'
+        env:
+          AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_ORIGINAL_MONITOR073_CI: YES_DISPOSABLE_ORIGINAL_MONITOR073_METADATA_ONLY
+          AGENT_STUDIO_ORIGINAL_MONITOR073_PROFILE: original-home-monitor073-metadata
+          AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: monitor073
+          AGENT_STUDIO_ORIGINAL_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-monitor073-genuine.config.mjs
+      - name: Retain synthetic original Home073 metadata observations only
+        if: always() && matrix.story == 'monitor073'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-home-monitor073-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-monitor073-genuine-browser-results/**/*.png
+            .tmp/original-monitor073-genuine-browser-results/**/original-monitor073-observation.json
           if-no-files-found: ignore
           retention-days: 7

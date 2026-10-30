@@ -3,6 +3,7 @@ import {createNativeEntryHttpHandler} from './native-entry-http.ts'
 import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
 import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
 import {prepareNativeAgentCatalog} from './native-agent-catalog-runtime.ts'
+import {prepareNativeMonitorInbox} from './native-monitor-inbox-runtime.ts'
 import {inspectOriginalHomeKnowledgeStatisticsStartup} from './native-home-knowledge-stats-runtime.ts'
 import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
@@ -497,6 +498,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const originalHomeSchema=await inspectOptionalNativeHomeAuthoringSchema(business)
     if(originalHomeFlag==='true'&&originalHomeSchema!=='installed')throw Error('original_home_authoring_schema_required')
     const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
+    const originalMonitorInbox=await prepareNativeMonitorInbox({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin})
     await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin})
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
@@ -687,6 +689,11 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(originalCatalogHttp){
       const originalCatalogFallback=businessHandler
       businessHandler=async(req,res)=>{if(await originalCatalogHttp(req,res))return;await originalCatalogFallback(req,res)}
+    }
+    const originalMonitorHttp=originalMonitorInbox?.createHandler(native.authenticateRequest)??null
+    if(originalMonitorHttp){
+      const originalMonitorFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await originalMonitorHttp(req,res))return;await originalMonitorFallback(req,res)}
     }
     const entryHandler=createNativeEntryHttpHandler(native.handler,callerPublicHttp)
     const localServer=createServer(entryHandler)

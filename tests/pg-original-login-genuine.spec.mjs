@@ -3,10 +3,12 @@ import {requireOriginalLoginBrowserCi} from './helpers/pg-original-login-browser
 import {startOriginalLoginGenuineBrowserFixture} from './helpers/pg-original-login-genuine-browser-fixture.mjs'
 import {installOriginalLegacyBlockObserver} from './helpers/pg-original-login-legacy-observer.mjs'
 import {requireOriginalLoginHome071Ci} from '../services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs'
+import {requireOriginalMonitor073BrowserCi} from './helpers/pg-original-monitor073-browser-guard.mjs'
 
 test('original Login/App: actual PG18 Cookie roles, logout revocation, transient recovery and local return paths',async({},testInfo)=>{
   requireOriginalLoginBrowserCi() // FIRST effectful gate: hosted synthetic CI only.
-  requireOriginalLoginHome071Ci() // Independent successor admission before effects.
+  requireOriginalLoginHome071Ci() // Unchanged actual071 predecessor admission.
+  requireOriginalMonitor073BrowserCi() // Additional073 metadata purpose before effects.
   const fs=await import('node:fs/promises')
   const f=await startOriginalLoginGenuineBrowserFixture()
   let browser,context,page,primary,before,after,legacyBlocks,authStepsCompleted=false
@@ -65,7 +67,11 @@ test('original Login/App: actual PG18 Cookie roles, logout revocation, transient
     expect(await f.probeRevokedCookie(issued.value),'actual server session revoked, not merely browser clear').toBe(401)
   }
   try{
-    expect(f.backendProfile).toMatchObject({format:'agentstudio.original-login-home071.fixture.v1',
+    expect(f.backendProfile).toMatchObject({format:'agentstudio.original-home-monitor073.metadata.fixture.v1',
+      profile:'original-home-monitor073-metadata',story:'original-login',head:process.env.GITHUB_SHA,
+      monitor073_version:'pg_v9_073',monitor073_catalog_verified:true,monitor073_seeded_nonempty:true,
+      predecessor_profile:'original-login-home071',full_monitor_pipeline_complete:false,synthetic_only:true,production_GO:false})
+    expect(f.backendProfile.predecessor).toMatchObject({format:'agentstudio.original-login-home071.fixture.v1',
       profile:'original-login-home071',head:process.env.GITHUB_SHA,catalog_profile:'original-agent-catalog071',
       fresh_F01_service_required:true,predecessor_source_and_catalog_verified:true,
       complete069_original_initializer_verified:false,optional070_verified:true,optional071_verified:true,

@@ -1,4 +1,5 @@
 import {performance} from 'node:perf_hooks'
+import {full069RecordWriteFailureData} from './pg18-full069-owned-record-contract.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
 import {createHash} from 'node:crypto'
 import {openFull069WorkerLiveTrust,liveContext,openLiveRunStore,writeLiveRecord,appendLiveSample,closeLiveSamples,verifyClosedLiveSamples,readLiveAcknowledgement,assertLiveStable,retireLiveTrust} from './pg18-full069-worker-live-trust.mjs'
@@ -50,7 +51,7 @@ export async function runFull069WorkerLive(){
   if(processes&&!nativeStop)try{nativeStop=await stopFull069OwnedNative(processes)}catch{reason??='full069_worker_live_native_cleanup'}
   if(runtime&&!cleanup)try{cleanup=await observeFull069WorkerLiveRuntime(runtime,{ready:false});if(cleanup.telemetry_backend_count!==0||cleanup.readers_in_flight!==0)reason??='full069_worker_live_cleanup_not_zero'}catch{reason??='full069_worker_live_cleanup_unverified'}
   if(runtime)try{await closeFull069WorkerLiveRuntime(runtime)}catch{qualified=false;reason??='full069_worker_live_runtime_close'}
-  if(trust&&ctx&&!qualified&&recordsAvailable)try{writeLiveRecord(trust,'failure.json',{format:'pg18_full069_worker_live_failure_v1',run_id:ctx.profile.run_id,reason:reason??'full069_worker_live_incomplete',start_record_sha256:startSha??null,journal:journal??null,worker_stop:workerStop,native_stop:nativeStop,proxy_stop:proxyStop,cleanup,qualifies_run:false,automatic_retry_authorized:false,production_cutover_allowed:false})}catch{recordsAvailable=false}
+  if(trust&&ctx&&!qualified&&recordsAvailable)try{writeLiveRecord(trust,'failure.json',{format:'pg18_full069_worker_live_failure_v1',run_id:ctx.profile.run_id,reason:reason??'full069_worker_live_incomplete',start_record_sha256:startSha??null,journal:journal??null,worker_stop:workerStop,native_stop:nativeStop,proxy_stop:proxyStop,cleanup,qualifies_run:false,automatic_retry_authorized:false,production_cutover_allowed:false})}catch(error){recordsAvailable=false;try{process.stderr.write(JSON.stringify(full069RecordWriteFailureData('legacy_live','failure_record',reason,error))+'\n')}catch{}}
   if(trust)retireLiveTrust(trust);process.off('SIGTERM',interrupt);process.off('SIGINT',interrupt)
  }
  return freeze({format:'pg18_full069_worker_live_result_v1',run_id:ctx?.profile.run_id??null,qualifying_window_started:!!startSha,qualifies_run:qualified,reason:qualified?null:reason??'full069_worker_live_incomplete',start_record_sha256:startSha??null,end_record_sha256:qualified?endSha:null,records_available:recordsAvailable,minimum_duration_ms:ctx?.profile.minimum_ms??liveLimits.minimumMs,production_cutover_allowed:false})

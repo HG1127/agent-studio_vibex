@@ -1,5 +1,6 @@
 // Private mount-namespace supervisor. It owns one original fixed --serve entry.
 import fs from 'node:fs'
+import {full069OwnedChildRecordName} from './pg18-full069-owned-record-contract.mjs'
 import path from 'node:path'
 import {spawn,execFileSync} from 'node:child_process'
 import {liveRoot} from './pg18-full069-worker-live-sources.mjs'
@@ -9,7 +10,7 @@ import {liveEntries,closed,liveFail} from './pg18-full069-worker-live-contract.m
 import {parseWorkerHeartbeatControlJson} from './worker-heartbeat-activation-control-contract.ts'
 async function launch(){
  if(process.argv.length!==4||process.argv[2]!=='--launch'||!process.send)liveFail('child_entry');const id=process.argv[3],entry=id==='native'?{id:'native',file:'native-server.ts',args:['--serve'],kinds:[],unit:'agentstudio-pg18-native.service'}:liveEntries.find(e=>e.id===id)??liveFail('child_entry')
- const trust=await openFull069WorkerLiveTrust(true),ctx=liveContext(trust),file=path.join(livePaths.store,ctx.profile.run_id,'child-'+id+'.json'),p=closed(parseWorkerHeartbeatControlJson(readLivePrivate(file,{max:16384}).bytes),['format','run_id','profile_sha256','source_sha256','id','parent_pid','parent_start','parent_mount_namespace','nonce']),parent=readFull069KernelProcess(process.ppid)
+ const trust=await openFull069WorkerLiveTrust(true),ctx=liveContext(trust),file=path.join(livePaths.store,ctx.profile.run_id,full069OwnedChildRecordName(id)),p=closed(parseWorkerHeartbeatControlJson(readLivePrivate(file,{max:16384}).bytes),['format','run_id','profile_sha256','source_sha256','id','parent_pid','parent_start','parent_mount_namespace','nonce']),parent=readFull069KernelProcess(process.ppid)
  if(p.format!=='pg18_full069_worker_live_child_v1'||p.run_id!==ctx.profile.run_id||p.profile_sha256!==ctx.profileSha256||p.source_sha256!==ctx.profile.source_sha256||p.id!==id||p.parent_pid!==process.ppid||p.parent_start!==parent.start_ticks||p.parent_mount_namespace===fs.readlinkSync('/proc/self/ns/mnt'))liveFail('child_parent')
  const profile=id==='native'?ctx.profile.native:ctx.profile.workers[liveEntries.indexOf(entry)],execute=(command,args)=>execFileSync(command,args,{env:{PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8'},timeout:10000,stdio:'ignore',windowsHide:true})
  execute('/usr/bin/mount',['--make-rprivate','/']);execute('/usr/bin/mount',['-t','tmpfs','-o','mode=0755,nosuid,nodev,noexec','full069-worker-live-credentials','/run/credentials']);fs.mkdirSync(profile.credential_directory,{mode:0o755})
