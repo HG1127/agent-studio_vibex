@@ -157,17 +157,20 @@ async function showStudio() {
     main=new BrowserWindow({width:1440,height:940,minWidth:1000,minHeight:700,title:'Agent Studio',backgroundColor:'#f8fafc',webPreferences:{...webPreferences,preload:path.join(__dirname,'ui','workbench-preload.cjs')}})
     guardWindow(main,url=>ownUrl(url,local.origin))
     main.on('close',event=>{if(!quitting){event.preventDefault();main.hide()}})
-    await main.loadURL(local.origin)
+    const report=option('--desktop-smoke-report')
+    let fixture
+    if(report&&testHome){try{fixture=JSON.parse(await fs.readFile(path.join(testHome,'smoke-auth.json'),'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}}
+    await main.loadURL(local.origin+(fixture?'/login':''))
     reveal(main)
     main.webContents.setZoomFactor(0.9)
-    const report=option('--desktop-smoke-report')
     if(report&&testHome){
       // Disposable fixture only: the production server and real employee
       // accounts are excluded from this packaged-app test hook.
-      let fixture
-      try{fixture=JSON.parse(await fs.readFile(path.join(testHome,'smoke-auth.json'),'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}
       if(fixture){
         if(!option('--desktop-test-server')||!/^http:\/\/127\.0\.0\.1:\d+$/.test(settings.server)||fixture.record?.email!=='desktop-smoke@example.test')throw Error('isolated_fixture_required')
+        let loginReady=false
+        for(let i=0;i<100;i++){loginReady=await main.webContents.executeJavaScript("!!document.querySelector('#login-email')");if(loginReady)break;await new Promise(r=>setTimeout(r,100))}
+        if(!loginReady)throw Error('isolated_fixture_login_not_ready')
         await main.webContents.executeJavaScript('sessionStorage.setItem("agent_studio_employee_auth",'+JSON.stringify(JSON.stringify(fixture))+')')
         await main.loadURL(local.origin+'/tool-hub')
       }
@@ -192,7 +195,8 @@ async function showStudio() {
       }
       const managementInline=await main.webContents.executeJavaScript("(()=>{const panel=document.querySelector('[data-desktop-connection-management]');return !!panel&&!panel.closest('[role=dialog]')})()")
       const mainComputerSelector=await main.webContents.executeJavaScript("(()=>{const select=document.querySelector('[data-desktop-computer-toolbar] select[aria-label=选择电脑]');return !!select&&!!select.value})()")
-      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
+      const fixtureDiagnostic=fixture&&!mainComputerSelector?await main.webContents.executeJavaScript("Promise.all([Promise.resolve({url:location.pathname,text:document.body.innerText.slice(0,1800)}),window.studioDesktop.computer('state').then(s=>({ownerVerified:!!s.owner,profileCount:s.profiles.length,selectedId:s.selectedId}),e=>({error:String(e.message)}))])"):undefined
+      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,fixtureDiagnostic,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
   } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
 }
