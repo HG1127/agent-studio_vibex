@@ -4,7 +4,7 @@ import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@
 import {confirmInStudio} from '@/lib/studioDialogs'
 import {localApi,deviceTools,type LocalDevice} from '@/lib/localDevices'
 import {decodeRhToken} from '@/lib/studioAuth'
-import {getPocketBaseUrl} from '@/lib/pb'
+import {getConnectionServerUrl} from '@/lib/pb'
 import {parseLocalDeviceInventory} from '@/lib/localDeviceInventory'
 import {connectionSetupProgress} from '@/lib/localConnectionProgress'
 import {ConnectorDownload} from './ConnectorDownload'
@@ -34,7 +34,7 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
   const alive=useRef(true),requestBusy=useRef(false)
   useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[])
   let origins:string[]=[],inputError='',server=''
-  try{server=connectionServer(new URL(getPocketBaseUrl(),window.location.origin).href);origins=mode==='files'?[]:connectionOrigins(websites)}catch(e){inputError=String((e as Error).message)}
+  try{server=connectionServer(getConnectionServerUrl());origins=mode==='files'?[]:connectionOrigins(websites)}catch(e){inputError=String((e as Error).message)}
   const activeOwner=!!owner&&owner===originalOwner.current
   const ready=activeOwner&&!!device&&deviceConnectionState(device,now)==='online'&&!!ticket&&connectionCapabilitiesReady(ticket,deviceTools(device).map(t=>t.name))
   const expired=!!ticket&&now>=ticket.pairing.expiresAt

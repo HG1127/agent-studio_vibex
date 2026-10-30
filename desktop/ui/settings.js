@@ -1,0 +1,3 @@
+const input=document.getElementById('server'),button=document.getElementById('connect'),status=document.getElementById('status')
+window.desktopSettings.read().then(value=>{input.value=value.server;document.getElementById('version').textContent='版本 '+value.version+' · 源码 '+value.sourceCommit.slice(0,7)})
+button.addEventListener('click',async()=>{button.disabled=true;status.textContent='正在连接本机组件…';try{await window.desktopSettings.connect({server:input.value,resetPort:document.getElementById('reset').checked})}catch(error){status.textContent=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'')}finally{button.disabled=false}})

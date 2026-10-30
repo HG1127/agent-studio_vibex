@@ -1,0 +1,18 @@
+import {spawn} from 'node:child_process'
+import {fileURLToPath} from 'node:url'
+import path from 'node:path'
+import fs from 'node:fs/promises'
+const desktop=path.dirname(fileURLToPath(import.meta.url)),root=path.dirname(desktop)
+async function run(file,args,cwd=root){
+  const child=spawn(file,args,{cwd,stdio:'inherit',windowsHide:true,env:process.env})
+  const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',resolve)})
+  if(code!==0)throw Error('desktop_build_step_failed:'+path.basename(file)+':'+code)
+}
+await fs.access(path.join(desktop,'node_modules/electron/dist/electron.exe'))
+await run(process.execPath,[path.join(desktop,'prepare.mjs')])
+await run(process.execPath,[path.join(root,'node_modules/typescript/bin/tsc'),'-b'])
+await run(process.execPath,[path.join(root,'node_modules/vite/bin/vite.js'),'build'])
+await run(process.execPath,[path.join(root,'ops/verify-pg-pilot-prod.mjs')])
+// Keep compression memory predictable on a workstation used for other apps.
+process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL ||= '5'
+await run(process.execPath,[path.join(desktop,'node_modules/electron-builder/cli.js'),'--win','portable','--x64'],desktop)
