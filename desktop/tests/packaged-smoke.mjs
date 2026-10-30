@@ -42,6 +42,7 @@ try {
   const profileHome=path.join(dir,'profile'),connectorHome=path.join(profileHome,'isolated-connections')
   await fs.mkdir(connectorHome,{recursive:true})
   const prepared=await prepareGuidedConnection({format:'agent-studio-connect-v1',server:server+'/__pb',name:'桌面内置验收电脑',mode:'both',origins:[],pairing:{id:device.id,code:device.pairing_code,expiresAt:device.expires_ms}},{home:connectorHome,defaultReadOnly:true,confirm:async()=>true})
+  if(process.argv.includes('--native-file-actions')){const c=JSON.parse(await fs.readFile(prepared.configFile,'utf8'));c.roots[0].capabilities.open=true;await fs.writeFile(prepared.configFile,JSON.stringify(c,null,2))}
   await fs.writeFile(path.join(prepared.workspace,'desktop-fixture.txt'),'BUNDLED_DESKTOP_FILE_OK')
   await fs.writeFile(path.join(profileHome,'smoke-auth.json'),JSON.stringify(fixtureLogin),{mode:0o600})
   const reportPath=path.join(dir,'report.json')
@@ -83,6 +84,15 @@ try {
   let completed
   for(let i=0;i<100;i++){completed=await request('GET','/__pb/api/local-jobs/'+queued.data.id,null,{Authorization:login.data.token});if(['succeeded','failed'].includes(completed.data.status))break;await sleep(200)}
   assert.equal(completed.data.status,'succeeded');assert.ok(completed.data.result.includes('BUNDLED_DESKTOP_FILE_OK'))
+  let nativeFileApplications=false
+  if(process.argv.includes('--native-file-actions')){
+    for(const tool of ['files.open','files.reveal']){
+      const q=await request('POST',jobRoute,{tool,arguments:{root:'work',path:'desktop-fixture.txt'},confirm:true,request_id:randomBytes(16).toString('hex')},{Authorization:login.data.token});assert.equal(q.status,201)
+      let j;for(let i=0;i<160;i++){j=await request('GET','/__pb/api/local-jobs/'+q.data.id,null,{Authorization:login.data.token});if(['succeeded','failed'].includes(j.data.status))break;await sleep(250)}
+      assert.equal(j.data.status,'succeeded',tool+': '+j.data.result);const receipt=JSON.parse(j.data.result);assert.equal(receipt.accepted,true);assert.equal(receipt.handler,tool==='files.open'?'notepad':'explorer')
+    }
+    nativeFileApplications=true
+  }
   const originalConfig=await fs.readFile(prepared.configFile,'utf8')
   const permission=await request('GET','/__pb/api/local-devices/'+device.id+'/permissions',null,{Authorization:login.data.token})
   assert.equal(permission.data.protocol,'permissions-v2')
@@ -97,7 +107,7 @@ try {
   assert.equal(await fs.readFile(prepared.configFile,'utf8'),originalConfig,'cancelled in-app review changed local permissions')
   const manager=await fetch(report.managerOrigin+'/api/state');assert.equal(manager.status,403)
   const code=await (await fetch(report.origin+'/__desktop/runtime.js')).text();assert.ok(code.includes(server));assert.ok(!code.includes(login.data.token))
-  console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
+  console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
   if(process.argv.includes('--keep-open')){
     await fs.writeFile(path.join(root,'.tmp','desktop-active-smoke.json'),JSON.stringify({directory:dir,report,finish:path.join(dir,'finish')},null,2))
     for(let i=0;i<1800;i++){try{await fs.access(path.join(dir,'finish'));break}catch{}await sleep(1000)}

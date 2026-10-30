@@ -1,9 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
-import {workspaceAllows,workspaceActionAvailability,workspaceStat,workspaceTextVerified,workspaceTrash,workspaceTextPayload,workspaceError} from '../src/lib/computerWorkspace.ts'
+import {workspaceAllows,workspaceActionAvailability,workspaceStat,workspaceTextVerified,workspaceTrash,workspaceTextPayload,workspaceError,workspaceFileApplicationFeedback} from '../src/lib/computerWorkspace.ts'
 const hash=value=>createHash('sha256').update(value).digest('hex')
 const stat=(text,extra={})=>({root:'work',path:'doc.txt',size:Buffer.byteLength(text),sha256:hash(text),directory:false,...extra})
+test('file application feedback distinguishes verified native acceptance, text fallback and old spawn-only receipts',()=>{
+ const receipt=(action,handler)=>JSON.stringify({format:'agent-studio-file-application-v1',accepted:true,action,handler})
+ assert.match(workspaceFileApplicationFeedback(receipt('open','default'),'files.open','本机'),/Windows 已将文件/)
+ assert.match(workspaceFileApplicationFeedback(receipt('open','notepad'),'files.open','本机'),/系统记事本/)
+ assert.match(workspaceFileApplicationFeedback(receipt('reveal','explorer'),'files.reveal','本机'),/选中该文件/)
+ assert.match(workspaceFileApplicationFeedback('已请求打开','files.open','本机'),/尚未确认/)
+ assert.throws(()=>workspaceFileApplicationFeedback(receipt('open','default'),'files.reveal','本机'),/无法核实/)
+})
 test('exact root capability is required; a sibling root never inherits write access',()=>{
  const tools=[{name:'files.update',description:'edit',inputSchema:{properties:{root:{enum:['edit_scope']}}}}]
  assert.equal(workspaceAllows(tools,'files.update','work'),false)

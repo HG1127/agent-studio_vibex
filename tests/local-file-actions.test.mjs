@@ -2,7 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import {EventEmitter} from 'node:events'
 import {createHash} from 'node:crypto'
 import {createRuntime} from '../local-executor/runtime.mjs'
 import {fileCapabilities} from '../local-executor/file-capabilities.mjs'
@@ -18,7 +17,7 @@ async function fixture(options={}){
  await fs.writeFile(path.join(root,'neighbour.txt'),'neighbour')
  const invocations=[]
  const config={roots:[{name:'work',path:root,...options}],permissionRevision:revision,files:{enabled:true}}
- const runtime=await createRuntime(config,{invokeFileApplication:async(...args)=>invocations.push(args)})
+ const runtime=await createRuntime(config,{invokeFileApplication:async(...args)=>{invocations.push(args);return {format:'agent-studio-file-application-v1',accepted:true,action:args[1]?'reveal':'open',handler:args[1]?'explorer':'default'}}})
  return {root,runtime,config,invocations,
   call:(tool,args={},signal)=>runtime.execute({tool:'files.'+tool,arguments:{root:'work',...args},permission_revision:revision},signal),
   close:async()=>{await runtime.close();assert.ok(path.resolve(root).startsWith(path.resolve(base)+path.sep));await fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}}
@@ -203,17 +202,28 @@ test('open allowlist denies active types and uses a fixed literal Windows adapte
   }
   await f.call('open',{path:'source.txt'});await f.call('reveal',{path:'source.txt'});assert.equal(f.invocations.length,2)
   let called=0
-  const launch=(command,args,options)=>{
-   called++;assert.equal(command,'C:\\Windows\\explorer.exe');assert.equal(options.shell,false)
-   assert.deepEqual(args,[called===1?'C:\\fixtures\\literal & $name.txt':'/select,C:\\fixtures\\literal & $name.txt'])
-   const child=new EventEmitter();child.unref=()=>{};queueMicrotask(()=>child.emit('spawn'));return child
+  const execute=(command,args,options,callback)=>{
+   called++;assert.equal(command,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');assert.equal(options.shell,false)
+   assert.equal(args.includes('-NoProfile'),true);assert.ok(!args.join(' ').includes('$name'))
+   const payload=JSON.parse(Buffer.from(options.env.STUDIO_FILE_APPLICATION,'base64').toString('utf8'))
+   assert.equal(payload.file,'C:\\fixtures\\中文 literal & $name, value.txt');assert.equal(payload.reveal,called===2)
+   queueMicrotask(()=>callback(null,JSON.stringify({format:'agent-studio-file-application-v1',accepted:true,handler:payload.reveal?'explorer':'default',code:0})))
   }
-  for(const reveal of [false,true])await invokeFileApplication('C:\\fixtures\\literal & $name.txt',reveal,undefined,{platform:'win32',launch,windows:'C:\\Windows'})
-  await assert.rejects(invokeFileApplication('C:\\fixtures\\bad",/root.txt',false,undefined,{platform:'win32',launch}),/file_open_platform_or_path_denied/)
-  await assert.rejects(invokeFileApplication('C:\\fixtures\\script.exe',false,undefined,{platform:'win32',launch}),/file_open_platform_or_path_denied/)
-  const c=new AbortController();c.abort();await assert.rejects(invokeFileApplication('C:\\fixtures\\x.txt',false,c.signal,{platform:'win32',launch}),{name:'AbortError'})
+  for(const reveal of [false,true])assert.equal((await invokeFileApplication('C:\\fixtures\\中文 literal & $name, value.txt',reveal,undefined,{platform:'win32',execute,windows:'C:\\Windows'})).accepted,true)
+  await assert.rejects(invokeFileApplication('C:\\fixtures\\bad",/root.txt',false,undefined,{platform:'win32',execute}),/file_open_platform_or_path_denied/)
+  await assert.rejects(invokeFileApplication('C:\\fixtures\\script.exe',false,undefined,{platform:'win32',execute}),/file_open_platform_or_path_denied/)
+  const c=new AbortController();c.abort();await assert.rejects(invokeFileApplication('C:\\fixtures\\x.txt',false,c.signal,{platform:'win32',execute}),{name:'AbortError'})
   assert.equal(called,2)
+  await assert.rejects(invokeFileApplication('C:\\fixtures\\doc.pdf',false,undefined,{platform:'win32',execute,application:'notepad'}),/file_open_type_denied/)
+  await assert.rejects(invokeFileApplication('C:\\fixtures\\doc.txt',false,undefined,{platform:'win32',execute,application:'cmd.exe'}),/file_open_type_denied/)
+  await assert.rejects(invokeFileApplication('C:\\fixtures\\doc.txt',true,undefined,{platform:'win32',execute,application:'notepad'}),/file_open_type_denied/)
  }finally{await f.close()}
+})
+
+test('a spawned helper, failed Windows call, timeout or malformed receipt cannot claim a file was opened',async()=>{
+ for(const [error,stdout,expected] of [[null,'',/receipt_invalid/],[Error('exit 1'),JSON.stringify({format:'agent-studio-file-application-v1',accepted:false,code:1155}),/no_association/],[Error('exit 1'),JSON.stringify({format:'agent-studio-file-application-v1',accepted:false,code:-2147024894}),/not_found/],[Object.assign(Error('timeout'),{killed:true}),'',/timeout/],[null,JSON.stringify({format:'agent-studio-file-application-v1',accepted:true,code:5,handler:'default'}),/receipt_invalid/]]){
+  await assert.rejects(invokeFileApplication('C:\\fixtures\\doc.pdf',false,undefined,{platform:'win32',execute:(_file,_args,_options,done)=>queueMicrotask(()=>done(error,stdout))}),expected)
+ }
 })
 
 test('a partial move reports uncertainty with a retained recovery receipt and never retries',async t=>{

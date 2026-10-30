@@ -24,11 +24,13 @@ const wait=async(fn,label)=>{for(let i=0;i<160;i++){const r=await fn();if(r)retu
 const probe=http.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const pbOrigin='http://127.0.0.1:'+probe.address().port;await new Promise(r=>probe.close(r))
 let pb,workbench,gateway,manager,computer,browser,page,login,browserChecks=0,pickerCalls=0
 const errors=[],sockets=new Set(),checks=[]
+const nativeFiles=process.argv.includes('--native-file-actions'),nativeFile='AgentStudio-UI-文件调度验收.md'
+if(nativeFiles){await fs.writeFile(path.join(folder,nativeFile),'NATIVE-FILE-UI-ONLY-20261030');await fs.writeFile(path.join(folder,'do-not-execute.exe'),'INERT-REJECTION-FIXTURE')}
 const pass=name=>{checks.push(name);console.log('PASS '+name)}
 const api=async(route,method='GET',body)=>{const r=await fetch(pbOrigin+route,{method,headers:{'Content-Type':'application/json',Authorization:login?.token||'','X-Agent-Studio-Setup-Key':key},...(body!==undefined?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json().catch(()=>({}))}}
 const startManager=async()=>{
  manager=await createConnectorManager({home,picker:async()=>{pickerCalls++;return folder},checkBrowser:async()=>{browserChecks++;await verifyChromeInstalled()},confirmReview:(review,signal)=>computer.confirmReview(review,signal),openWindow:async()=>{throw Error('separate_connector_window_forbidden')}})
- computer=createDesktopComputer({serverOrigin:server,manager,preferencesFile,desktopVersion:'0.1.0-preview.6',attention:()=>{void page?.evaluate(()=>window.dispatchEvent(new Event('native-test-attention')))}})
+ computer=createDesktopComputer({serverOrigin:server,manager,preferencesFile,desktopVersion:'0.1.0-preview.7',attention:()=>{void page?.evaluate(()=>window.dispatchEvent(new Event('native-test-attention')))}})
 }
 let server
 try{
@@ -38,7 +40,7 @@ try{
  const password='Isolated-native-flow-2026!',email='native-flow@example.test'
  assert.equal((await api('/api/studio/bootstrap','POST',{email,password,display_name:'本机连接验收'})).status,201)
  login=(await api('/api/collections/studio_users/auth-with-password','POST',{identity:email,password})).data;assert.ok(login.token)
- workbench=http.createServer((req,res)=>{if(!req.url.startsWith('/__pb/')){res.writeHead(404);res.end();return}const target=http.request(pbOrigin+req.url.slice(5),{method:req.method,headers:{...req.headers,host:new URL(pbOrigin).host}},up=>{res.writeHead(up.statusCode,up.headers);pipeline(up,res,()=>{})});target.on('error',()=>{res.writeHead(502);res.end()});pipeline(req,target,()=>{})})
+ workbench=http.createServer((req,res)=>{if(!req.url.startsWith('/__pb/')){res.writeHead(404);res.end();return}const target=http.request(pbOrigin+req.url.slice(5),{method:req.method,headers:{...req.headers,host:new URL(pbOrigin).host}},up=>{if(res.destroyed){up.destroy();return}res.writeHead(up.statusCode,up.headers);pipeline(up,res,()=>{})});target.on('error',()=>{res.writeHead(502);res.end()});pipeline(req,target,()=>{})})
  workbench.on('connection',s=>{sockets.add(s);s.on('close',()=>sockets.delete(s))})
  await new Promise(r=>workbench.listen(0,'127.0.0.1',r));server='http://127.0.0.1:'+workbench.address().port
  gateway=await createGateway({webRoot:path.join(root,'dist'),serverOrigin:server})
@@ -46,6 +48,7 @@ try{
  browser=await chromium.launch({channel:'chrome',headless:true,args:['--renderer-process-limit=2','--disable-gpu']})
  const context=await browser.newContext({viewport:{width:1440,height:1050}});page=await context.newPage()
  page.on('pageerror',e=>errors.push(e.message))
+ page.on('response',async r=>{if(r.status()>=400&&/\/local-devices\//.test(r.url()))console.log('LOCAL_API_REJECTION '+r.status()+' '+(await r.text()).slice(0,400))})
  await page.exposeFunction('__nativeComputer',async(action,input)=>{try{return await computer.request(action,input)}catch(e){console.log('NATIVE_ACTION_ERROR '+action+' '+e.message);throw e}})
  await page.addInitScript(({login,server})=>{
   sessionStorage.setItem('agent_studio_employee_auth',JSON.stringify(login))
@@ -54,7 +57,7 @@ try{
  },{login,server})
  await page.goto(gateway.origin+'/tool-hub?view=devices')
  const toolbar=page.locator('[data-desktop-computer-toolbar]'),selector=toolbar.getByLabel('选择电脑')
- await expect(toolbar).toBeVisible();await expect(toolbar).toContainText('桌面版 0.1.0-preview.6')
+ await expect(toolbar).toBeVisible();await expect(toolbar).toContainText('桌面版 0.1.0-preview.7')
  const connect=async(name,first=false)=>{
   if(first)await toolbar.getByRole('button',{name:'连接本机',exact:true}).click()
   else{await toolbar.getByRole('button',{name:'管理连接',exact:true}).click();await toolbar.getByRole('button',{name:'连接其他电脑',exact:true}).click()}
@@ -94,6 +97,7 @@ try{
  await expect(editor).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0)
  await editor.getByLabel('允许访问的网站',{exact:true}).fill('https://example.com')
  await editor.getByRole('button',{name:'更新网站草稿',exact:true}).click()
+ if(nativeFiles){const openGrant=editor.getByLabel('在本机打开 / 定位',{exact:true});await openGrant.click();await expect(openGrant).toBeChecked({timeout:10000})}
  await editor.getByRole('button',{name:'暂停此连接',exact:true}).click()
  await expect(editor.getByRole('button',{name:'暂停此连接',exact:true})).toHaveCount(0,{timeout:15000})
  await editor.getByLabel('我确认以上网站、文件范围和权限。').check()
@@ -104,6 +108,25 @@ try{
  await toolbar.getByRole('button',{name:'连接电脑',exact:true}).click()
  await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:15000})
  pass('workspace permission entry expands main UI; explicitly adding a website later persists only that website')
+ if(nativeFiles){
+  await page.getByRole('tab',{name:'文件工作区',exact:true}).click()
+  const files=page.getByRole('region',{name:'系统内文件工作区'}),feedback=files.getByLabel('电脑软件执行状态')
+  await files.getByRole('button',{name:'读取目录',exact:true}).click()
+  await files.getByRole('button',{name:nativeFile,exact:true}).click()
+  await expect(files.getByRole('button',{name:'用记事本打开',exact:true})).toBeEnabled({timeout:15000})
+  await files.getByRole('button',{name:'用记事本打开',exact:true}).click()
+  await page.getByRole('button',{name:'批准本次操作',exact:true}).click()
+  await expect(feedback).toContainText('系统记事本',{timeout:30000})
+  await files.getByRole('button',{name:'在电脑中定位',exact:true}).click()
+  await page.getByRole('button',{name:'批准本次操作',exact:true}).click()
+  await expect(feedback).toContainText('资源管理器',{timeout:30000})
+  await files.getByRole('button',{name:'do-not-execute.exe',exact:true}).click()
+  await expect(files.getByRole('button',{name:'用电脑软件打开',exact:true})).toBeDisabled()
+  await expect(files.getByRole('button',{name:'在电脑中定位',exact:true})).toBeEnabled()
+  await files.getByRole('button',{name:nativeFile,exact:true}).click()
+  await page.screenshot({path:path.join(out,'file-application-feedback.png'),fullPage:true})
+  pass('real UI approval, unchanged job contract, native Notepad/Explorer acknowledgements and disabled executable opening without blocking file selection')
+ }
  // Close the expanded panel before using the second-connection entry helper.
  if(await toolbar.getByRole('button',{name:'管理连接',exact:true}).getAttribute('aria-expanded')==='true')await toolbar.getByRole('button',{name:'管理连接',exact:true}).click()
  const second=await connect('第二台本机')
@@ -120,8 +143,9 @@ try{
  assert.equal(restored.profiles.find(p=>p.id===first).running,false);assert.equal(restored.profiles.find(p=>p.id===second).running,true)
  pass('fresh connector and application reload automatically restore only the last selected local computer')
  assert.deepEqual(errors,[])
- await fs.writeFile(path.join(out,'acceptance.json'),JSON.stringify({checks,version:'0.1.0-preview.6',realBackend:true,realConnectorChild:true,productionData:false,uiErrors:errors},null,2))
+ await fs.writeFile(path.join(out,'acceptance.json'),JSON.stringify({checks,version:'0.1.0-preview.7',realBackend:true,realConnectorChild:true,productionData:false,uiErrors:errors},null,2))
  console.log('NATIVE_FLOW_ACCEPTANCE '+out)
+ if(process.argv.includes('--keep-open'))for(let i=0;i<1200;i++){try{await fs.access(path.join(out,'finish'));break}catch{}await sleep(1000)}
 }finally{
  await browser?.close();await manager?.close();await gateway?.close()
  for(const s of sockets)s.destroy()

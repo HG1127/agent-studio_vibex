@@ -3,10 +3,10 @@ import {ArrowUp,Check,Copy,FilePlus2,FolderOpen,FolderPlus,History,Loader2,Refre
 import {confirmInStudio} from '@/lib/studioDialogs'
 import {decodeRhToken} from '@/lib/studioAuth'
 import {deviceConnectionState} from '@/lib/localConnectionSetup'
-import {localApi,deviceTools,type LocalDevice,type LocalJob} from '@/lib/localDevices'
+import {localApi,LocalApiError,deviceTools,type LocalDevice,type LocalJob} from '@/lib/localDevices'
 import {localChildPath,localRelativePath,localParentPath,localRootOptions,localTextPreviewable,localToolCatalogKey} from '@/lib/localDeviceActions'
 import {localDirectorySnapshot,visibleLocalFiles,type LocalDirectorySnapshot} from '@/lib/localFileBrowser'
-import {WORKSPACE_ACTIONS,WORKSPACE_EDIT_BYTES,workspaceActionAvailability,workspaceAllows,workspaceError,workspaceStat,workspaceTextPayload,workspaceTextVerified,workspaceTrash,type WorkspaceStat,type WorkspaceTrash} from '@/lib/computerWorkspace'
+import {WORKSPACE_ACTIONS,WORKSPACE_EDIT_BYTES,workspaceActionAvailability,workspaceAllows,workspaceError,workspaceFileOpenSupported,workspaceFileApplicationFeedback,workspaceStat,workspaceTextPayload,workspaceTextVerified,workspaceTrash,type WorkspaceStat,type WorkspaceTrash} from '@/lib/computerWorkspace'
 
 type Intent={requestId:string;jobId:string;tool:string;args:Record<string,string>;root:string;catalog:string;apply?:(result:string)=>Promise<void>|void}
 type DocumentState={path:string;original:string;stat:WorkspaceStat|null;verified:boolean;catalog:string}
@@ -26,12 +26,15 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
  const [doc,setDoc]=useState<DocumentState|null>(null),[text,setText]=useState(''),[diff,setDiff]=useState(false)
  const [form,setForm]=useState<''|'file'|'folder'|'copy'|'move'>(''),[target,setTarget]=useState(''),[newText,setNewText]=useState('')
  const [busy,setBusy]=useState(false),[job,setJob]=useState<LocalJob|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState('')
+ const [applicationAction,setApplicationAction]=useState('')
  const [recover,setRecover]=useState(false),[pane,setPane]=useState<'workspace'|'trash'|'history'>('workspace'),[history,setHistory]=useState<RecordItem[]>([])
  const [trash,setTrash]=useState<{entries:WorkspaceTrash[];truncated:boolean}|null>(null),[stale,setStale]=useState(false)
  const intent=useRef<Intent|null>(null),mutex=useRef(false),alive=useRef(true),controller=useRef<AbortController|null>(null),owner=useRef(decodeRhToken()?.sub||'')
  const live=useRef({device,statusVerified,catalog})
   useLayoutEffect(()=>{live.current={device,statusVerified,catalog}},[device,statusVerified,catalog])
  const dirty=!!doc&&text!==doc.original||form==='file'&&!!newText,blocked=busy||recover,online=statusVerified&&deviceConnectionState(device)==='online'
+ const rootIds=roots.map(r=>r.id).join(',')
+ const notepadText=!!selected&&/\.(txt|md|csv|tsv|json|log)$/i.test(selected.path)&&tools.find(t=>t.name==='files.open')?.inputSchema['x-studio-text-handler']==='notepad'
  const may=(tool:string)=>workspaceAllows(tools,tool,root)
   const missingPermissions=workspaceActionAvailability(tools,root).filter(action=>!action.available&&action.reason==='permission')
  const valid=()=>alive.current&&!!owner.current&&decodeRhToken()?.sub===owner.current
@@ -40,12 +43,21 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
  const edited=!!doc&&doc.verified&&doc.catalog===catalog&&may('files.update')&&doc.path===selected?.path
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;controller.current?.abort()}},[])
  useEffect(()=>{onBusyChange?.(busy||recover||dirty);return()=>onBusyChange?.(false)},[busy,recover,dirty,onBusyChange])
+ useEffect(()=>{
+  const ids=rootIds.split(',').filter(Boolean)
+  if(!ids.length||ids.includes(root)||dirty||blocked)return
+  setRoot(ids[0]);setPath('.');setDirectory(null);setSelected(null);setDoc(null);setText('');setForm('');setApplicationAction('');setNotice('授权目录已更新，请重新读取目录。')
+ },[rootIds,root,dirty,blocked])
  useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(dirty||recover||busy){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty,recover,busy])
  const addHistory=(entry:Intent,result:LocalJob)=>setHistory(rows=>[{id:result.id,name:WORKSPACE_ACTIONS[entry.tool]||entry.tool,path:entry.args.path||entry.args.trash_id||'.',status:result.status,at:Date.now()},...rows.filter(r=>r.id!==result.id)].slice(0,20))
  const observe=async(entry:Intent,signal:AbortSignal):Promise<string>=>{
   if(!entry.jobId){
    ready()
-   const reply=await localApi<{id:string}>('/api/local-devices/'+device.id+'/jobs',{tool:entry.tool,arguments:entry.args,confirm:true,request_id:entry.requestId},signal)
+   let reply:{id:string}
+   try{reply=await localApi<{id:string}>('/api/local-devices/'+device.id+'/jobs',{tool:entry.tool,arguments:entry.args,confirm:true,request_id:entry.requestId},signal)}catch(e){
+    if(e instanceof LocalApiError&&(e.status===401||['invalid_arguments','device_tool_denied','device_offline','device_revoked','employee_inactive'].includes(e.code))){intent.current=null;setRecover(false)}
+    throw e
+   }
    if(!/^[A-Za-z0-9]{24}$/.test(reply.id))throw Error('任务编号无法核实，请恢复同一请求，避免重复操作。')
    entry.jobId=reply.id
   }
@@ -82,9 +94,9 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
   intent.current=entry
   return observe(entry,controller.current!.signal)
  }
- const perform=async(explanation:string,work:()=>Promise<unknown>,destructive=false,ask=true)=>{
+ const perform=async(explanation:string,work:()=>Promise<unknown>,destructive=false,ask=true,application='')=>{
   if(mutex.current||intent.current||!online)return
-  mutex.current=true;setBusy(true);setError('');setNotice('')
+  mutex.current=true;setBusy(true);setError('');setNotice('');setJob(null);setApplicationAction(application)
   try{
    ready()
    if(ask&&!await confirmInStudio(explanation,{title:destructive?'确认文件变更':'确认本次电脑操作',confirmLabel:destructive?'确认执行变更':'批准本次操作',destructive}))return
@@ -101,7 +113,7 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
   finally{mutex.current=false;if(alive.current)setBusy(false)}
  }
  const abandonDraft=async()=>!dirty||await confirmInStudio('当前文本修改尚未保存。放弃草稿继续？',{title:'保留未保存的修改',confirmLabel:'放弃草稿',cancelLabel:'继续编辑',destructive:true})
- const choose=async(value:{path:string;directory:boolean})=>{if(blocked||!await abandonDraft())return;setSelected(value);setDoc(null);setText('');setForm('');setDiff(false);setError('')}
+ const choose=async(value:{path:string;directory:boolean})=>{if(blocked||!await abandonDraft())return;setSelected(value);setDoc(null);setText('');setForm('');setDiff(false);setError('');setNotice('');setApplicationAction('')}
  const list=(value:string)=>void perform('读取「'+device.name+'」授权目录 '+root+'/'+value+' 的文件名。不会修改文件。',async()=>{
   if(!await abandonDraft())return
   const targetPath=localRelativePath(value)
@@ -126,7 +138,7 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
  const save=()=>{if(!doc||!edited||!dirty||!doc.stat)return;const loaded=doc;void perform('把修改保存到 '+root+'/'+loaded.path+'。将校验原文件版本，并保留修改前的恢复副本；若其他程序已改过文件则拒绝覆盖。',async()=>{
   await send('files.update',{root,path:loaded.path,text:workspaceTextPayload(text),expected_sha256:loaded.stat!.sha256},()=>changed('文件修改已收到成功回执。'))
  },true)}
- const openFile=(tool:'files.open'|'files.reveal')=>{if(!selected)return;const file=selected.path;void perform((tool==='files.open'?'用被连接电脑的默认软件打开 ':'在被连接电脑的资源管理器中定位 ')+root+'/'+file+'。窗口出现在「'+device.name+'」，不是打开另一套连接器管理页。',()=>send(tool,{root,path:file},()=>setNotice('已收到本机执行回执；窗口位于被连接电脑。并不代表已读取或修改其中内容。')))}
+ const openFile=(tool:'files.open'|'files.reveal')=>{if(!selected)return;const file=selected.path;void perform((tool==='files.reveal'?'在被连接电脑的资源管理器中定位 ':notepadText?'用被连接电脑的系统记事本打开 ':'用被连接电脑的默认软件打开 ')+root+'/'+file+'。窗口出现在「'+device.name+'」。',()=>send(tool,{root,path:file},result=>setNotice(workspaceFileApplicationFeedback(result,tool,device.name))),false,true,tool)}
  const submitForm=()=>{
   if(!form)return
   const kind=form,source=selected?.path||''
@@ -170,9 +182,13 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
      <div className="mb-3"><h4 className="break-all font-semibold">{selected?.path||'选择一个文件'}</h4><p className="mt-1 text-xs leading-5 text-muted-foreground">文件预览、编辑和变更回执都在这里。打开 Word、PDF 等会调用被连接电脑的软件。</p></div>
      {selected&&<div className="mb-4 flex flex-wrap gap-2">
       {selected.directory?<button type="button" className={btn} disabled={blocked||!online} onClick={()=>list(selected.path)}>进入文件夹</button>:<button type="button" className={btn} disabled={disable('files.read')||!textFile(selected.path)} onClick={read}>读取内容</button>}
-      {!selected.directory&&<button type="button" className={btn} disabled={disable('files.open')} onClick={()=>openFile('files.open')}>用电脑软件打开</button>}
+      {!selected.directory&&<button type="button" className={btn} disabled={disable('files.open')||!workspaceFileOpenSupported(selected.path)} onClick={()=>openFile('files.open')}>{notepadText?'用记事本打开':'用电脑软件打开'}</button>}
       <button type="button" className={btn} disabled={disable('files.reveal')||selected.directory} onClick={()=>openFile('files.reveal')}>在电脑中定位</button>
       {!selected.directory&&<><button type="button" className={btn} disabled={disable('files.copy')} onClick={()=>make('copy')}>复制</button><button type="button" className={btn} disabled={disable('files.move')} onClick={()=>make('move')}>移动 / 重命名</button><button type="button" className={btn+' text-destructive'} disabled={disable('files.trash')} onClick={remove}>移入回收区</button></>}
+     </div>}
+     {selected&&!selected.directory&&!workspaceFileOpenSupported(selected.path)&&<p role="status" className="mb-3 text-xs text-muted-foreground">此类型不允许直接打开；可以定位文件，不执行程序、脚本或快捷方式。</p>}
+     {applicationAction&&<div role={error?'alert':'status'} aria-label="电脑软件执行状态" className={'mb-4 rounded-lg border p-3 text-sm leading-6 '+(error?'border-destructive/30 bg-destructive/5 text-destructive':'border-primary/20 bg-primary/5')}>
+      <strong>{WORKSPACE_ACTIONS[applicationAction]} · {device.name}</strong><p>{busy?(job?statusNames[job.status]:'请确认本次操作，批准后将交给此电脑执行。'):error||notice||'本次请求未执行。'}</p>
      </div>}
      {form&&<div className="mb-4 space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><h5 className="text-sm font-semibold">{{file:'新建文本文件',folder:'新建文件夹',copy:'复制文件',move:'移动或重命名文件'}[form]}</h5><label className="block text-xs">{form==='copy'||form==='move'?'目标位置（相对当前授权目录）':'新名称（相对授权目录）'}<input aria-label="文件操作目标位置" className={field+' mt-1'} value={target} maxLength={500} disabled={blocked} onChange={e=>setTarget(e.target.value)}/></label>{form==='file'&&<textarea aria-label="新建文本内容" className={field} rows={6} value={newText} disabled={blocked} onChange={e=>setNewText(e.target.value)}/>}<p className="text-xs text-muted-foreground">仅处理单个文件；父文件夹必须存在，不覆盖已有同名文件。</p><button type="button" className={btn} disabled={blocked||!online||!target.trim()} onClick={submitForm}>确认{form==='file'||form==='folder'?'新建':form==='copy'?'复制':'移动 / 重命名'}</button><button type="button" className={btn+' ml-2'} disabled={blocked} onClick={async()=>{if(await abandonDraft()){setForm('');setNewText('')}}}>收起</button></div>}
      {doc&&doc.path===selected?.path?<>

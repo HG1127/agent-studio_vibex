@@ -2,7 +2,8 @@ import fs from 'node:fs/promises'
 import {constants} from 'node:fs'
 import path from 'node:path'
 import {createHash,randomBytes} from 'node:crypto'
-import {spawn} from 'node:child_process'
+import {OPEN_EXTENSIONS,invokeFileApplication} from './file-application.mjs'
+export {OPEN_EXTENSIONS,invokeFileApplication} from './file-application.mjs'
 
 export const DIGEST_LIMIT = 8 * 1024 * 1024
 export const EDIT_LIMIT = 65536
@@ -69,22 +70,6 @@ async function directory(target, create=false) {
   if(create)await fs.mkdir(target,{mode:0o700}).catch(e=>{if(e.code!=='EEXIST')throw e})
   const st=await fs.lstat(target)
   if(st.isSymbolicLink()||!st.isDirectory()||await fs.realpath(target)!==target)throw Error('invalid_recovery_vault')
-}
-
-// Fixed Windows application, literal argument vector, no shell or model-selected
-// executable. An injected adapter is only available to the native host/tests.
-export const OPEN_EXTENSIONS = new Set(['.txt','.md','.csv','.tsv','.json','.log','.pdf','.png','.jpg','.jpeg','.gif','.bmp','.webp','.docx','.xlsx','.pptx','.odt','.ods','.odp'])
-export async function invokeFileApplication(file, reveal, signal, {platform=process.platform,launch=spawn,windows=process.env.SystemRoot||'C:\\Windows'}={}) {
-  abort(signal)
-  if(platform!=='win32'||typeof reveal!=='boolean'||!path.win32.isAbsolute(file)||!/^[a-z]:\\/i.test(file)||/[\x00-\x1f\x7f",]/.test(file)||!reveal&&!OPEN_EXTENSIONS.has(path.win32.extname(file).toLowerCase())||!path.win32.isAbsolute(windows)||!/^[a-z]:\\windows$/i.test(windows))throw Error('file_open_platform_or_path_denied')
-  const command=path.win32.join(windows,'explorer.exe'),args=[reveal?'/select,'+file:file]
-  await new Promise((resolve,reject)=>{
-    abort(signal)
-    // Cancellation is checked before launch. After launch, never terminate a
-    // user's document application as a side effect of a later job cancellation.
-    const child=launch(command,args,{shell:false,windowsHide:true,stdio:'ignore'})
-    child.once('error',reject);child.once('spawn',()=>{child.unref();resolve()})
-  })
 }
 
 export function registerFileActions({add,resolveFile,roots,readOnlyRoots,capabilities,rootSchema,invoke=invokeFileApplication}) {
@@ -164,7 +149,9 @@ export function registerFileActions({add,resolveFile,roots,readOnlyRoots,capabil
   }
   function mutation(name,allowed,fields,description,run) {
     if(!allowed.length)return
-    add(name,description,schema(allowed,fields),async(args,signal)=>{
+    const input=schema(allowed,fields)
+    if(name==='files.open')input['x-studio-text-handler']='notepad'
+    add(name,description,input,async(args,signal)=>{
       if(!allowed.includes(args.root))throw Error('file_capability_denied')
       return fileScopeLock(roots.get(args.root),signal,()=>run(args,signal))
     })
@@ -247,11 +234,15 @@ export function registerFileActions({add,resolveFile,roots,readOnlyRoots,capabil
       throw e
     }finally{await entry.data.handle.close()}
   })
-  for(const reveal of [false,true])mutation('files.'+(reveal?'reveal':'open'),eligible('open'),{path:text},reveal?'在连接电脑定位已授权文件':'在连接电脑打开允许的文档/图片；工作台不渲染该文件',async(args,signal)=>{
+  for(const reveal of [false,true])mutation('files.'+(reveal?'reveal':'open'),eligible('open'),{path:text},reveal?'在连接电脑定位已授权文件':'普通文本用系统记事本打开，其他允许的文档/图片使用默认软件',async(args,signal)=>{
     const file=await target(args),st=await fs.lstat(file)
     if(!st.isFile()||st.nlink!==1)throw Error('file_size_or_type_denied')
     if(!reveal&&!OPEN_EXTENSIONS.has(path.extname(file).toLowerCase()))throw Error('file_open_type_denied')
-    await target(args);abort(signal);await invoke(file,reveal,signal)
-    return reveal?'已请求在连接电脑定位文件；未验证窗口状态。':'已请求在连接电脑打开文件；工作台内未渲染，未验证应用内部状态。'
+    // Keep the existing server-owned {root,path} contract. No caller can name
+    // an application. Text has one fixed handler, independent of file associations.
+    const application=!reveal&&['.txt','.md','.csv','.tsv','.json','.log'].includes(path.extname(file).toLowerCase())?'notepad':'default'
+    await target(args);abort(signal);const receipt=await invoke(file,reveal,signal,{application})
+    if(receipt?.accepted!==true||receipt?.action!==(reveal?'reveal':'open'))throw Error('file_application_receipt_invalid')
+    return JSON.stringify(receipt)
   })
 }

@@ -3,6 +3,7 @@ import {localRelativePath,localRootOptions} from './localDeviceActions.ts'
 
 /** Current wire receipts are bounded. Never edit a truncated preview. */
 export const WORKSPACE_EDIT_BYTES=15000
+export function workspaceFileOpenSupported(file:string){return /\.(txt|md|csv|tsv|json|log|pdf|png|jpg|jpeg|gif|bmp|webp|docx|xlsx|pptx|odt|ods|odp)$/i.test(file)}
 export type WorkspaceStat={root:string;path:string;size:number;sha256:string;directory:boolean}
 export type WorkspaceTrash={trash_id:string;path:string;size:number;created_at:string|number}
 export const WORKSPACE_ACTIONS:Record<string,string>={
@@ -10,6 +11,15 @@ export const WORKSPACE_ACTIONS:Record<string,string>={
  'files.update':'保存修改','files.mkdir':'新建文件夹','files.copy':'复制文件','files.move':'移动或重命名',
  'files.trash':'移入可恢复回收区','files.trash_list':'查看回收记录','files.restore':'恢复文件',
  'files.open':'用电脑软件打开','files.reveal':'在电脑中定位',
+}
+/** Separate a native OS acknowledgement from the old spawn-only receipt. */
+export function workspaceFileApplicationFeedback(raw:string,tool:'files.open'|'files.reveal',device:string):string{
+ let v:Record<string,unknown>|null=null
+ try{v=JSON.parse(raw)}catch{/* Version 16 and earlier returned a text-only launch receipt. */}
+ if(v?.format!=='agent-studio-file-application-v1')return '旧版连接器未提供 Windows 接收回执，尚未确认窗口是否打开。请更新连接器并恢复原连接，无需重新配对。'
+ const reveal=tool==='files.reveal'
+ if(v.accepted!==true||v.action!==(reveal?'reveal':'open')||!(reveal?v.handler==='explorer':['default','notepad'].includes(String(v.handler))))throw Error('Windows 调度回执无法核实，请先核查实际窗口，不要重复操作。')
+ return reveal?'Windows 已接受定位请求，资源管理器将在「'+device+'」显示并选中该文件。':v.handler==='notepad'?'Windows 已将文本交给「'+device+'」的系统记事本打开。':'Windows 已将文件交给「'+device+'」的默认软件打开；若窗口未在前台，请检查该电脑任务栏，普通文本也可选择记事本。'
 }
 export function workspaceAllows(tools:readonly LocalTool[],name:string,root:string){
  return localRootOptions(tools.find(t=>t.name===name)).some(r=>r.id===root)
