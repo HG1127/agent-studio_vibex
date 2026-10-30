@@ -17,6 +17,11 @@ const winner={
   created_at:"2026-10-20T00:00:00.000Z",
   updated_at:"2026-10-20T00:00:00.000Z",finished_at:null
 }
+const knowledgeSharingScopeSql="SELECT current_setting('agentstudio.knowledge_sharing_enabled',true)='true' AS enabled"
+const knowledgeAgentInstalledSql=
+  "SELECT to_regclass('agentstudio.knowledge_agent_observations') IS NOT NULL OR "+
+  "EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=$1) OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace "+
+  "WHERE n.nspname='agentstudio' AND starts_with(p.proname,'knowledge_agent_')) AS installed"
 const identity={issuer:"https://pg18-ci.synthetic.invalid",subject:"alice"}
 
 function fakeRace({secondLookup=winner,sqlError="23505"}={}){
@@ -26,9 +31,28 @@ function fakeRace({secondLookup=winner,sqlError="23505"}={}){
   const pool={
     async connect(){
       state.connections++
+      const connectionQueries=[]
       return {
         async query(sql,params=[]){
           queries.push({sql,params})
+          connectionQueries.push({sql,params})
+          if(sql===knowledgeSharingScopeSql||sql===knowledgeAgentInstalledSql){
+            const scope=connectionQueries.findIndex(v=>v.sql==="SELECT set_config('agentstudio.knowledge_sharing_enabled',$1::text,true)")
+            const role=connectionQueries.findIndex(v=>v.sql==="SET LOCAL ROLE agentstudio_api")
+            const mapped=connectionQueries.findIndex(v=>v.sql==="SELECT agentstudio.identity_user_id($1::text,$2::text) AS id")
+            const actor=connectionQueries.findIndex(v=>v.sql==="SELECT set_config('agentstudio.actor_id',$1::text,true)")
+            assert.ok(scope>=0&&scope<role&&role<mapped&&mapped<actor)
+            assert.deepEqual(connectionQueries[scope].params,["false"])
+            assert.deepEqual(connectionQueries[mapped].params,[identity.issuer,identity.subject])
+            assert.deepEqual(connectionQueries[actor].params,[owner])
+            if(sql===knowledgeSharingScopeSql){
+              assert.deepEqual(params,[])
+              return {rows:[{enabled:false}]}
+            }
+            // This pure legacy fixture has no optional knowledge-agent schema.
+            assert.deepEqual(params,["agentstudio_knowledge_agent"])
+            return {rows:[{installed:false}]}
+          }
           if(sql==="BEGIN"||sql==="SET LOCAL ROLE agentstudio_api"||
              sql.startsWith("SELECT set_config("))
             return {rows:[]}
@@ -69,6 +93,8 @@ test("unique-index collision rechecks committed winner AFTER rollback, without l
   assert.equal(f.state.connections,2)
   assert.equal(f.state.rollbacks,1)
   assert.equal(f.state.commits,1)
+  assert.equal(f.queries.filter(v=>v.sql===knowledgeSharingScopeSql).length,1)
+  assert.equal(f.queries.filter(v=>v.sql===knowledgeAgentInstalledSql).length,1)
   const firstRollback=f.queries.findIndex(v=>v.sql==="ROLLBACK")
   const lookups=f.queries.map((v,i)=>v.sql.includes("JOIN agentstudio.runs AS r")?i:-1)
     .filter(i=>i>=0)
@@ -91,6 +117,8 @@ test("different same-key payload and missing winner stay HTTP 409",async()=>{
     assert.equal(f.state.connections,2)
     assert.equal(f.state.rollbacks,1)
     assert.equal(f.state.commits,1)
+    assert.equal(f.queries.filter(v=>v.sql===knowledgeSharingScopeSql).length,1)
+    assert.equal(f.queries.filter(v=>v.sql===knowledgeAgentInstalledSql).length,other?1:0)
   }
 })
 
@@ -101,4 +129,6 @@ test("only SQLSTATE unique violations receive concurrency recovery",async()=>{
   assert.equal(f.state.connections,1)
   assert.equal(f.state.rollbacks,1)
   assert.equal(f.state.commits,0)
+  assert.equal(f.queries.filter(v=>v.sql===knowledgeSharingScopeSql).length,1)
+  assert.equal(f.queries.some(v=>v.sql===knowledgeAgentInstalledSql),false)
 })

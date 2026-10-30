@@ -13,6 +13,7 @@ import type {WorkflowV2EffectExecutor} from "./workflow-v2-worker.ts"
 
 export type BoundModelClientConfig={
   approvedForIsolatedUat:boolean
+  localDeviceExecutionApproved?:boolean
   origin:string;reviewedServerFingerprint256:string
   ca:Buffer;cert:Buffer;key:Buffer
 }
@@ -51,7 +52,7 @@ export function createWorkflowV2ToolMutualTlsClient(
           protocol:"https:",hostname:"127.0.0.1",port:Number(origin.port),
           servername:"localhost",path:workflowV2ToolRoute,method:"POST",
           ...credentials,rejectUnauthorized:true,minVersion:"TLSv1.2",
-          agent:false,signal:signal?AbortSignal.any([signal,AbortSignal.timeout(28000)]):AbortSignal.timeout(28000),
+          agent:false,signal:signal?AbortSignal.any([signal,AbortSignal.timeout(config.localDeviceExecutionApproved===true&&raw.execution_mode==="agent_native_v2"?126000:28000)]):AbortSignal.timeout(config.localDeviceExecutionApproved===true&&raw.execution_mode==="agent_native_v2"?126000:28000),
           checkServerIdentity(host,cert){
             const error=checkServerIdentity(host,cert)
             if(error)return error

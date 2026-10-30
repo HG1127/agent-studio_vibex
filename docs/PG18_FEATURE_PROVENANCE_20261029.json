@@ -1,0 +1,133 @@
+{
+  "format": "pg18_feature_provenance_resolution_v1",
+  "updated_UTC": "2026-10-29T01:49:08.980701+00:00",
+  "is_authority": false,
+  "production_GO": false,
+  "repository": "HG1127/agent-studio_vibex",
+  "remote_main": "5a31a1d6bf073cc2cc110340847cbf05346813ab",
+  "remote_API_check": {
+    "command": "gh api repos/HG1127/agent-studio_vibex/compare/5a31a1d6bf073cc2cc110340847cbf05346813ab...main",
+    "status": "identical",
+    "ahead_by": 0,
+    "behind_by": 0
+  },
+  "history_scope": "All10 reviewed source paths exist in commits ancestral to the actual current remote main. Earlier current-index absence did not establish absence from accepted project history. Core functions remain in the retain-existing-functions migration scope.",
+  "source_evidence": [
+    {
+      "id": "F02",
+      "resolution": "confirmed_existing_core_from_remote_main",
+      "evidence": [
+        {
+          "path": "src/pages/AgentCreate/AgentCreatePage.tsx",
+          "latest_change_commit": "c9337a6cda8cd5b4b50f1aa4baab105c7c9e2c93",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "8bd2c2453edda342999189f0c6ddd73c61ac2d5b4fb5e9e33e5a7e614472b6ac",
+          "current_D_equals_latest_history": false
+        },
+        {
+          "path": "src/lib/agentCreateJourney.ts",
+          "latest_change_commit": "c9337a6cda8cd5b4b50f1aa4baab105c7c9e2c93",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "985d7b11ceb538ad04df522a9ad7f1a5446ce067359a77b6c33211ac16e35d30",
+          "current_D_equals_latest_history": false
+        }
+      ],
+      "D_later_delta": "Preserve and review separately; not automatically imported or discarded.",
+      "behavioral_or_target_acceptance": false
+    },
+    {
+      "id": "F20",
+      "resolution": "confirmed_existing_core_from_remote_main",
+      "evidence": [
+        {
+          "path": "pocketbase/pb_hooks/local_devices.pb.js",
+          "latest_change_commit": "16e33c71baee3f02f5d8f88a3d81b7ea4cca74c5",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "ecb8ed28923df6f1c928b289d8c4f578ce3b7bd33711f0d92d1ef41b2e8f519d",
+          "current_D_equals_latest_history": true
+        },
+        {
+          "path": "pocketbase/pb_hooks/modules/local_devices.js",
+          "latest_change_commit": "16e33c71baee3f02f5d8f88a3d81b7ea4cca74c5",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "0a7006c0f49ef518dec42c8962cf5cc96339dacdd427077d1daae30f8972b751",
+          "current_D_equals_latest_history": false
+        },
+        {
+          "path": "src/components/tool-hub/LocalDevicesPanel.tsx",
+          "latest_change_commit": "b140cd180421cf7b730abd7a542b2c24654f470d",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "3abb7df05a5ca7a576b06452a09739e4ecb6760aa5bb78c65bae814e058edbe3",
+          "current_D_equals_latest_history": false
+        }
+      ],
+      "D_later_delta": "Preserve and review separately; not automatically imported or discarded.",
+      "behavioral_or_target_acceptance": false
+    },
+    {
+      "id": "F21",
+      "resolution": "confirmed_existing_core_from_remote_main",
+      "evidence": [
+        {
+          "path": "src/lib/localOfficeWorkflow.ts",
+          "latest_change_commit": "b140cd180421cf7b730abd7a542b2c24654f470d",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "ef7297cab980e0716ecf365dd095af01d82309677ab17347298a84beb53222a5",
+          "current_D_equals_latest_history": true
+        },
+        {
+          "path": "src/components/tool-hub/OfficeWorkflowPanel.tsx",
+          "latest_change_commit": "b140cd180421cf7b730abd7a542b2c24654f470d",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "2a7dde5b5ff7f736d8d4c63c65561066ca196ba6f4d44603b7df14996a771f21",
+          "current_D_equals_latest_history": true
+        }
+      ],
+      "D_later_delta": "Preserve and review separately; not automatically imported or discarded.",
+      "behavioral_or_target_acceptance": false
+    },
+    {
+      "id": "F22",
+      "resolution": "confirmed_existing_core_from_remote_main",
+      "evidence": [
+        {
+          "path": "src/lib/studioNavigation.ts",
+          "latest_change_commit": "4c859f94d23676b9d6115316b7e4ab709381c205",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "7e55d6fbf6004912de8ed69e44322a272db945c51f62ad2fbff47226cd34f907",
+          "current_D_equals_latest_history": false
+        },
+        {
+          "path": "src/components/site/StudioCommandPalette.tsx",
+          "latest_change_commit": "907e581bc024cce6598f12580d9b2ed978ad6a4e",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "3c85f44ad2f4f5fa9ff63ca32b2f18ed17a6cd3eb465ae9cc603817a7ff7ec73",
+          "current_D_equals_latest_history": true
+        }
+      ],
+      "D_later_delta": "Preserve and review separately; not automatically imported or discarded.",
+      "behavioral_or_target_acceptance": false
+    },
+    {
+      "id": "F29",
+      "resolution": "confirmed_existing_core_from_remote_main",
+      "evidence": [
+        {
+          "path": "pocketbase/pb_hooks/agent_optimization_lineage.pb.js",
+          "latest_change_commit": "6dfec8d4e07f500c75c651a7aa609bd97e46663e",
+          "in_remote_main_history": true,
+          "main_history_blob_LF_sha256": "5c3f410cbec5af883c6dc70a950ade551969085271ffa7f1a9ab144753c73fbd",
+          "current_D_equals_latest_history": true
+        }
+      ],
+      "D_later_delta": "Preserve and review separately; not automatically imported or discarded.",
+      "behavioral_or_target_acceptance": false
+    }
+  ],
+  "limits": [
+    "Provenance does not prove behavioral equivalence, current Native completion, UAT or target deployment.",
+    "Historical feature baseline JSON remains an immutable snapshot; execution registry records this later resolution.",
+    "Newer uncommitted D changes are not assumed equal to main and are reviewed as separate deltas.",
+    "No old source, database, binary or credential was copied by this audit."
+  ]
+}

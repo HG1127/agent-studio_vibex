@@ -1,0 +1,90 @@
+{
+  "format": "PG18_native_local_executor_independent_operator_review_v1",
+  "status": "SOURCE_REVIEW_ONLY_NOT_INSTALLED",
+  "production_GO": false,
+  "C_SQL067_Git_LF_sha256": "cf392bcaecf1cc2510fe374906aa69c0f8257d7c1d4630e4bd12ffa5f6bc7397",
+  "login": "agentstudio_local_executor_login",
+  "group": "agentstudio_local_executor",
+  "initial_state": "NOLOGIN_PASSWORD_NULL",
+  "membership": {
+    "direct_groups": 1,
+    "admin": false,
+    "inherit": false,
+    "set": true
+  },
+  "database_grants": "CONNECT_only_direct_no_CREATE",
+  "business_or_auth_table_grants": 0,
+  "private_file": "local-executor.secret",
+  "systemd_unit": "agentstudio-pg18-native.service",
+  "server_database_password_sent_to_desktop": false,
+  "legacy_six_login_protocol_extended": false,
+  "migration_receipt_inserted": false,
+  "optional_feature_defaults_changed": false,
+  "CLI_modes": [
+    "--plan",
+    "--service-preflight"
+  ],
+  "CLI_apply_supported": false,
+  "manual_target_bound_activation_separately_required": true,
+  "old_frozen_inputs_not_delivered": [
+    {
+      "target": "services/pg-api/src/pg18-fresh-runtime-source.mjs",
+      "raw_sha256": "1d91520d5ec50021b6b1bc30294b608c33dd612547eb0aced8506bc7665e5bb1",
+      "Git_LF_sha256": "1d91520d5ec50021b6b1bc30294b608c33dd612547eb0aced8506bc7665e5bb1",
+      "delivery": false
+    },
+    {
+      "target": "services/pg-api/src/pg18-fresh-runtime-install.ts",
+      "raw_sha256": "9e38f9278d26b73b5894cf3618a3c17092b7fcca8e7d1b145bcedb4b9d16b0c7",
+      "Git_LF_sha256": "9e38f9278d26b73b5894cf3618a3c17092b7fcca8e7d1b145bcedb4b9d16b0c7",
+      "delivery": false
+    },
+    {
+      "target": "services/pg-api/src/pg18-service-login-policy.mjs",
+      "raw_sha256": "7548118f8efdc549a0a0ba90fd85479a911fa65c6c529e4b0a89ef3034e3cfd3",
+      "Git_LF_sha256": "7548118f8efdc549a0a0ba90fd85479a911fa65c6c529e4b0a89ef3034e3cfd3",
+      "delivery": false
+    },
+    {
+      "target": "services/pg-api/src/pg18-service-login-inspector.ts",
+      "raw_sha256": "34c25f67b7ff2b5969b10a16ad2452f84d1e57a345cafa1d8f6111c23cc8093c",
+      "Git_LF_sha256": "7a334a19ddc13d8c4b048a8d0e4d5389cf2d3a08a55932c15fca102bc17a3b81",
+      "delivery": false
+    },
+    {
+      "target": "services/pg-api/src/native-activation-cli.mjs",
+      "raw_sha256": "68f7c46a21d904335c3cff6089f21eca786149c86b84e2e0a8ceb918c39dc514",
+      "Git_LF_sha256": "68f7c46a21d904335c3cff6089f21eca786149c86b84e2e0a8ceb918c39dc514",
+      "delivery": false
+    },
+    {
+      "target": "db/postgres/migrations/pg_v9_050_agent_memory_context.sql",
+      "raw_sha256": "d7889f7dc7be4cd6a8d6d00d2895a1c954c29da6d66d1b55ba02534e43275c89",
+      "Git_LF_sha256": "d7889f7dc7be4cd6a8d6d00d2895a1c954c29da6d66d1b55ba02534e43275c89",
+      "delivery": false
+    },
+    {
+      "target": "db/postgres/migrations/pg_v9_059_agent_generated_acceptance.sql",
+      "raw_sha256": "74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063",
+      "Git_LF_sha256": "74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063",
+      "delivery": false
+    },
+    {
+      "target": "db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql",
+      "raw_sha256": "b8aac275e692a81d2e05c8825f33bba7e5f418199e3dce97a409832f951ccbc9",
+      "Git_LF_sha256": "b8aac275e692a81d2e05c8825f33bba7e5f418199e3dce97a409832f951ccbc9",
+      "delivery": false
+    }
+  ],
+  "artifacts": [
+    "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md",
+    "ops/templates/native-local-executor-pg-hba.conf.example",
+    "ops/templates/agentstudio-pg18-native-local-executor.conf.example"
+  ],
+  "verification": {
+    "pure_checks": "recorded_in_frozen_handoff",
+    "actual_PG18_CI": "AUTHORED_NOT_EXECUTED",
+    "service_credentials_HBA_provisioning": "NOT_EXECUTED",
+    "services_deployment": "NOT_EXECUTED"
+  }
+}

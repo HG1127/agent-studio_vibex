@@ -1,3 +1,6 @@
+import {createOriginalToolConnectionsHttp} from './original-tool-connections-http.ts'
+import {parseModelConnectionPageQuery} from './model-connection-pagination.ts'
+import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
 import type {AgentMemoryRepository} from "./agent-memory-repository.ts"
@@ -22,6 +25,8 @@ import {WorkflowSafeRunRepository} from "./workflow-safe-run-repository.ts"
 import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import { KnowledgeBaseRepository, safeDescription, safeKnowledgeQuery, safeTextDocumentInput } from "./knowledge-repository.ts"
 import {ModelConnectionRepository,safeModelConnectionInput} from "./model-connection-repository.ts"
+import {optionalExpectedOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
+import {parseAgentDesignTransportJson} from "./agent-design-value-contract.ts"
 import {ToolConnectionRepository,safeToolConnectionInput} from "./tool-connection-repository.ts"
 import type {McpConnectionRepository} from "./mcp-connection-repository.ts"
 import type {McpMaterial} from "./mcp-discovery.ts"
@@ -37,7 +42,12 @@ import {parseAgentReviewHistoryUrl,parseAgentReviewHistoryPage} from "./agent-re
 import {parseAgentReviewTarget,parsePublicAgentReviewChoice,publicAgentReviewSource,publicAgentReviewPreview,publicAgentReviewReceipt,publicAgentReviewControlReceipt} from "./agent-review-public-contract.ts"
 import {parseAgentGeneratedPreviewInput,parseAgentGeneratedAcceptance,parseAgentGeneratedPreview,parseAgentGeneratedReceipt,agentGeneratedAcknowledgement,type AgentGeneratedAcceptance,type AgentGeneratedReceipt} from "./agent-generated-acceptance-contract.ts"
 
+import {ownerToolHubRoute,handleOwnerToolHubHttp,type OwnerToolHubHttpContext} from "./tool-hub-http.ts"
+
 export interface AppDependencies {
+  ownerToolHub?:OwnerToolHubHttpContext
+  /** Native server only, after actual SQL067 audit; requires verified employee Cookie identity. */
+  allowNativeLocalAgentSpecs?:boolean
   repository: AgentSpecRepository
   agentCollaborationRepository?:AgentCollaborationRepository
   agentReleaseRepository?:AgentReleaseRepository
@@ -170,8 +180,15 @@ function allowBodyFields(data:Record<string,unknown>,permitted:string[]) {
  * No CORS, no cookies, no anonymous mode, no trust in X-Rh-User-Id.
  */
 export function createHandler(deps:AppDependencies) {
+  const originalTools=deps.authenticateRequest&&deps.toolConnectionRepository?createOriginalToolConnectionsHttp({repo:deps.toolConnectionRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
+  const agentSpec=(raw:unknown,identity:Identity)=>{
+    if(deps.allowNativeLocalAgentSpecs!==true)return safeAgentSpec(raw)
+    if(!deps.authenticateRequest||identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+    return safeNativeLocalAgentSpec(raw,true)
+  }
   return async (req:IncomingMessage,res:ServerResponse):Promise<void>=>{
     try{
+      if(originalTools&&await originalTools(req,res))return
       const method=req.method||""
       const path=new URL(req.url||"/","http://127.0.0.1").pathname
       if(path==="/healthz" && method==="GET"){
@@ -192,7 +209,7 @@ export function createHandler(deps:AppDependencies) {
       const workflowV2Submit=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/native-runs$/.exec(path)
       const workflowNodeDebug=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/model-node-debug$/.exec(path)
       const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|outputs|output-history|respond|respond-confirm|human-history))?)?$/.exec(path)
-      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm|human-history))?)?$/.exec(path)
+      const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm|human-history|pause|resume|pause-confirm|resume-confirm))?)?$/.exec(path)
       const autonomousAgentSubmit=/^\/api\/v2\/agent-specs\/([0-9a-fA-F-]{36})\/autonomous-runs$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
@@ -218,6 +235,7 @@ export function createHandler(deps:AppDependencies) {
       const reviewItem=/^\/api\/v2\/agent-reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\/(control|control-confirm))?$/.exec(path)
       const reviewCollection=path==="/api/v2/agent-reviews"
       const reviewRoute=reviewAction||reviewItem||reviewCollection
+      const toolHubRoute=ownerToolHubRoute(path)
       const generatedBase="/api/v2/agent-generated-acceptances"
       const generatedAction=/^\/api\/v2\/agent-generated-acceptances\/(preview|accept|confirm)$/.exec(path)
       const generatedItem=/^\/api\/v2\/agent-generated-acceptances\/reviews\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/.exec(path)
@@ -229,12 +247,13 @@ export function createHandler(deps:AppDependencies) {
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
          !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
-         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute && !generatedRoute &&
+         !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute && !generatedRoute && !toolHubRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
         throw new HttpError(404,"route_not_found")
       if(!["GET","POST","PATCH","DELETE"].includes(method))
         throw new HttpError(405,"method_not_allowed")
+      if(toolHubRoute&&(!deps.ownerToolHub||!deps.authenticateRequest))throw new HttpError(404,"route_not_found")
       if(reviewRoute){
         if(!deps.agentReviewSourceRepository||!deps.agentReviewLedgerRepository||!deps.agentOpinionRepository)throw new HttpError(404,"route_not_found")
         if(reviewCollection&&!deps.agentReviewHistoryRepository)throw new HttpError(404,"route_not_found")
@@ -266,6 +285,7 @@ export function createHandler(deps:AppDependencies) {
       if(typeof identity?.issuer!=="string" || !identity.issuer ||
          typeof identity?.subject!=="string" || !identity.subject)
         throw new HttpError(401,"invalid_token")
+      if(toolHubRoute){await handleOwnerToolHubHttp(req,res,identity,deps.ownerToolHub!);return}
       if(generatedRoute){
         if(identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
         if(req.url!==path)throw new HttpError(400,"invalid_agent_generated_request")
@@ -712,6 +732,7 @@ export function createHandler(deps:AppDependencies) {
       if(modelConnectionsRoute){
         const repo=deps.modelConnectionRepository
         if(!repo)throw new HttpError(503,"model_connections_disabled")
+        const expectedEmployee=method==="GET"?undefined:optionalExpectedOriginalUiEmployee(req)
         const probeRoute=path.endsWith("/probe")
         const suffix=path.startsWith("/api/v2/model-connections/")
           ?path.slice("/api/v2/model-connections/".length,
@@ -728,7 +749,7 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(revision)||(revision as number)<1)
             throw new HttpError(400,"invalid_revision")
           const item=await repo.testConnection(identity,suffix,revision as number,
-            deps.modelConnectionProbe)
+            deps.modelConnectionProbe,expectedEmployee)
           return send(res,200,{item,mode:"read_only_provider_models_probe"})
         }
         if(method==="GET"){
@@ -736,6 +757,14 @@ export function createHandler(deps:AppDependencies) {
             const item=await repo.get(identity,suffix)
             if(!item)throw new HttpError(404,"model_connection_not_found")
             return send(res,200,{item})
+          }
+          const pageParams=new URL(req.url||"/","http://127.0.0.1").searchParams
+          if(pageParams.has('paging')||pageParams.has('cursor')){
+            if(!deps.authenticateRequest)throw new HttpError(403,'native_cookie_paging_required')
+            if(['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(key=>req.headers[key]!==undefined))throw new HttpError(400,'model_page_identity_header_refused')
+            const pageQuery=parseModelConnectionPageQuery(req.url||'/'),pageEmployee=optionalExpectedOriginalUiEmployee(req)
+            if(pageEmployee===undefined)throw new HttpError(400,'invalid_original_ui_employee_precondition')
+            return send(res,200,await repo.listPage(identity,pageQuery,pageEmployee))
           }
           const requested=Number(new URL(req.url||"/","http://127.0.0.1")
             .searchParams.get("limit")||30)
@@ -747,7 +776,7 @@ export function createHandler(deps:AppDependencies) {
           const body=await readBody(req)
           allowBodyFields(body,["name","provider","base_url","api_key","models","enabled"])
           const input=safeModelConnectionInput(body,true)
-          return send(res,201,{item:await repo.create(identity,input)})
+          return send(res,201,{item:await repo.create(identity,input,expectedEmployee)})
         }
         if(method==="PATCH"&&suffix){
           const body=await readBody(req)
@@ -757,7 +786,7 @@ export function createHandler(deps:AppDependencies) {
             throw new HttpError(400,"invalid_revision")
           const {expected_revision:_ignored,...fields}=body
           const input=safeModelConnectionInput(fields,false)
-          const item=await repo.update(identity,suffix,input,revision as number)
+          const item=await repo.update(identity,suffix,input,revision as number,expectedEmployee)
           if(!item){
             const previous=await repo.get(identity,suffix)
             if(!previous)throw new HttpError(404,"model_connection_not_found")
@@ -766,7 +795,24 @@ export function createHandler(deps:AppDependencies) {
           return send(res,200,{item})
         }
         if(method==="DELETE"&&suffix){
-          if(!await repo.delete(identity,suffix))
+          let expectedRevision:number|undefined
+          if(expectedEmployee!==undefined){
+            const type=req.headers["content-type"],length=req.headers["content-length"],transfer=req.headers["transfer-encoding"]
+            if(typeof type!=="string"||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(type)||req.headers["content-encoding"]!==undefined)throw new HttpError(415,"json_content_type_required")
+            if(length!==undefined&&(typeof length!=="string"||!/^(0|[1-9][0-9]*)$/.test(length)||!Number.isSafeInteger(Number(length))))throw new HttpError(400,"invalid_json")
+            if(length!==undefined&&Number(length)>512)throw new HttpError(413,"request_too_large")
+            if(transfer!==undefined&&(transfer!=="chunked"||length!==undefined))throw new HttpError(400,"invalid_json")
+            let size=0;const chunks:Buffer[]=[]
+            for await(const chunk of req){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=bytes.length;if(size>512)throw new HttpError(413,"request_too_large");chunks.push(bytes)}
+            if(length!==undefined&&Number(length)!==size)throw new HttpError(400,"invalid_json")
+            let value:unknown
+            try{value=parseAgentDesignTransportJson(new TextDecoder("utf-8",{fatal:true,ignoreBOM:true}).decode(Buffer.concat(chunks)))}catch{throw new HttpError(400,"invalid_json")}
+            if(!value||typeof value!=="object"||Array.isArray(value))throw new HttpError(400,"invalid_json")
+            const body=value as Record<string,unknown>;allowBodyFields(body,["expected_revision"])
+            if(!Number.isSafeInteger(body.expected_revision)||(body.expected_revision as number)<1)throw new HttpError(400,"invalid_revision")
+            expectedRevision=body.expected_revision as number
+          }
+          if(!await repo.delete(identity,suffix,expectedRevision,expectedEmployee))
             throw new HttpError(404,"model_connection_not_found")
           return send(res,200,{ok:true,id:suffix})
         }
@@ -1047,6 +1093,12 @@ export function createHandler(deps:AppDependencies) {
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
           return send(res,200,{...await repo.decide(identity,id,await readBody(req,1024)),worker_started_by_api:false})
         }
+        if(autonomousAgentRoute&&['pause','resume','pause-confirm','resume-confirm'].includes(action??'')){
+          if(method!=='POST')throw new HttpError(405,'method_not_allowed')
+          if(!deps.authenticateRequest)throw new HttpError(403,'native_employee_identity_required')
+          const control=deps.autonomousAgentRunRepository!,verb=action!.startsWith('pause')?'pause':'resume',body=await readBody(req,1024)
+          return send(res,200,{...await(action!.endsWith('-confirm')?control.confirmRunControl(identity,id!,verb,body):control.changeRunControl(identity,id!,verb,body)),worker_started_by_api:false})
+        }
         if(action==="cancel"){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
           allowBodyFields(await readBody(req,64),[])
@@ -1137,7 +1189,7 @@ export function createHandler(deps:AppDependencies) {
       if(method==="POST" && !suffix){
         const body=await readBody(req,262144)
         allowBodyFields(body,["name","spec"])
-        const item=await deps.repository.create(identity,safeName(body.name),safeAgentSpec(body.spec))
+        const item=await deps.repository.create(identity,safeName(body.name),agentSpec(body.spec,identity))
         return send(res,201,{item})
       }
       if(method==="PATCH" && suffix){
@@ -1147,7 +1199,7 @@ export function createHandler(deps:AppDependencies) {
         if(!Number.isSafeInteger(revision) || (revision as number)<1)
           throw new HttpError(400,"invalid_revision")
         const item=await deps.repository.update(identity,suffix,
-          safeName(body.name),safeAgentSpec(body.spec),revision as number)
+          safeName(body.name),agentSpec(body.spec,identity),revision as number)
         if(!item){
           const original=await deps.repository.get(identity,suffix)
           if(!original)throw new HttpError(404,"spec_not_found")

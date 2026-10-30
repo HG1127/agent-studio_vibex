@@ -1,5 +1,9 @@
+import {BUILTIN_TOOLS,FEEDBACK_TAGS,RUN_STATE_META,type BuiltinTool,type RunStateKey} from "../../lib/runPresentation.ts"
+export {BUILTIN_TOOLS,FEEDBACK_TAGS,RUN_STATE_META}
+export type {BuiltinTool,RunStateKey}
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import {usePgOriginalAgentRun} from "./usePgOriginalAgentRun"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
@@ -10,10 +14,11 @@ import { PROVIDER_META, normalizeProvider } from "@/pages/ModelConnections/useMo
 export type { AgentSpec, SavedSpecRow }
 
 // 与后端 agent_runs.status 完全一致（引擎只会产出这些值；awaiting_approval = 写操作等待用户批准）
-export type RunStateKey = "queued" | "running" | "paused" | "awaiting_approval" | "succeeded" | "failed" | "cancelled"
+
 
 // 字段名与 agent_runs collection 1:1（snake_case，禁止转换层）
 export type AgentRunRow = {
+  native_projection?: {kind:"owned_detail";engine:"agent_native_v2";historical_title_available:false;timeline_available:false}
   id: string
   rh_user_id: string
   spec_id: string
@@ -52,7 +57,7 @@ export type RunFeedback = {
   submitted_at: string
 }
 
-export const FEEDBACK_TAGS = ["结果不准", "太慢", "理解偏差", "格式差", "其他"]
+
 
 // 反馈驱动方案优化（POST /api/agent-specs/{id}/optimize 产物，只生成不自动写回）
 export type SpecOptimizeSuggestion = {
@@ -86,14 +91,10 @@ export type RunEventRow = {
   created: string
 }
 
-export type BuiltinTool = { id: string; title: string; desc: string }
+
 
 // 与后端执行引擎真实实现的三个内置工具一一对应（calculate / summarize / knowledge_search）
-export const BUILTIN_TOOLS: BuiltinTool[] = [
-  { id: "calculate", title: "计算器", desc: "对算术表达式真实求值，支持 + - * / % 与括号" },
-  { id: "summarize", title: "文本整理摘要", desc: "调用模型对给定文本做整理、摘要与提炼" },
-  { id: "knowledge_search", title: "知识库检索", desc: "在方案附带的知识文本中按关键词检索相关片段" },
-]
+
 
 // 自定义模型选项：value 形如 custom:<connection_id>:<model_id>，启动时解析进 run config
 export type CustomModelOption = { value: string; label: string; hint: string }
@@ -108,15 +109,7 @@ function parseCustomModelValue(value: string): { connectionId: string; modelId: 
   return { connectionId: rest.slice(0, sepIndex), modelId: rest.slice(sepIndex + 1) }
 }
 
-export const RUN_STATE_META: Record<RunStateKey, { label: string; badge: string }> = {
-  queued: { label: "排队中", badge: "bg-muted text-muted-foreground" },
-  running: { label: "运行中", badge: "bg-primary/10 text-primary" },
-  paused: { label: "已暂停", badge: "bg-muted text-muted-foreground" },
-  awaiting_approval: { label: "待批准", badge: "bg-primary/10 text-primary" },
-  succeeded: { label: "已完成", badge: "bg-primary/10 text-primary" },
-  failed: { label: "失败", badge: "bg-destructive/10 text-destructive" },
-  cancelled: { label: "已取消", badge: "bg-destructive/10 text-destructive" },
-}
+
 
 const LIVE_STATES: RunStateKey[] = ["queued", "running", "paused", "awaiting_approval"]
 const TERMINAL_STATES: RunStateKey[] = ["succeeded", "failed", "cancelled"]
@@ -197,7 +190,7 @@ export function memoryKindMetaOf(kind: string): { label: string; badgeClass: str
   return MEMORY_KIND_META[kind] || MEMORY_KIND_META.fact
 }
 
-export function useAgentRun() {
+export function usePocketBaseAgentRun() {
   const base = getPocketBaseUrl()
   const [searchParams] = useSearchParams()
 
@@ -1065,3 +1058,6 @@ export function useAgentRun() {
     dismissOptimizeError,
   }
 }
+
+// Static build selection; the PG hook never invokes the PB hook or browser tick.
+export const useAgentRun=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?usePgOriginalAgentRun:usePocketBaseAgentRun

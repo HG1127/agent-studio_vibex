@@ -1,0 +1,129 @@
+name: Agent Studio F16-19 Tool Hub genuine PG18 isolated verification
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+      - 'codex/pg18-tool-hub-*'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pg18-tool-hub-genuine-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  AGENT_STUDIO_TOOL_HUB_GENUINE_CI: YES_DISPOSABLE_F16_19_TOOL_HUB_ONLY
+  AGENT_STUDIO_PG_OWNER_TOOL_HUB_AVAILABLE: 'true'
+  AGENT_STUDIO_PG_OWNER_TOOL_HUB_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_TOOL_HUB_ONLY
+  AGENT_STUDIO_PG_OWNER_TOOL_TRIALS_ENABLED: 'true'
+  AGENT_STUDIO_PG_PUBLIC_MCP_REGISTRY_ENABLED: 'true'
+  AGENT_STUDIO_PG_PUBLIC_MCP_REGISTRY_APPROVED: APPROVE_DISPOSABLE_PG18_PUBLIC_REGISTRY_READ_ONLY
+  AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+  AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+  AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+  AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+  AGENT_STUDIO_PG_MCP_TOOLS_ENABLED: 'true'
+  AGENT_STUDIO_PG_MCP_TOOLS_APPROVED: APPROVE_DISPOSABLE_PG18_MCP_TOOLS_ONLY
+  AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+  AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+  AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+  AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+  AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+  AGENT_STUDIO_PG18_CI_PORT: '5432'
+  AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+  AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+  AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+jobs:
+  pg18-tool-hub-genuine:
+    name: F16-19 / real PG18 ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [flow, database]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE: ${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Original API compiler and pure purpose/refusal contracts
+        run: |
+          pnpm --dir services/pg-api check
+          node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-guard.test.mjs
+      - name: Actual Native Cookie, SQL069, original Worker and private Broker
+        if: matrix.suite == 'flow'
+        run: node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-pg18.test.mjs
+      - name: Actual SQL069 catalog, deparser, grants, RLS and triggers
+        if: matrix.suite == 'database'
+        run: node --test --test-concurrency=1 services/pg-api/tests/tool-hub-database-pg18.test.mjs
+  pg18-tool-hub-browser:
+    name: F16-19 / actual employee browser through original task and tool domain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE: browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Original frontend/API compilers and pure refusal guard
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm --dir services/pg-api check
+          node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-guard.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual employee Root/SDK/Panel, PG18 and original approval flow
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-tool-hub-genuine.config.mjs
+      - name: Retain synthetic UI images only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-tool-hub-genuine-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/F16-19-genuine-browser-results/**/*.png
+          if-no-files-found: ignore

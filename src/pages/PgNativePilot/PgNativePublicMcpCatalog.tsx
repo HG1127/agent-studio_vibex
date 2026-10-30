@@ -1,0 +1,35 @@
+import {useEffect,useRef,useState} from 'react'
+import {PgNativePilotError} from '@/lib/pgNativePilotApi'
+import {toolHubModelKey} from '@/lib/pgNativeToolHub'
+import type {PgNativeToolHubApi,ToolHubIntent,ToolHubRegistry,RegistryEntry} from '@/lib/pgNativeToolHub'
+import {CURATED_PLUGINS,curatedZhFor} from '../PluginMarket/curated'
+type Model={connection_id:string;connection_revision:number;model_id:string;label:string}
+const field='min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm',button='min-h-10 rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:opacity-40'
+export default function PgNativePublicMcpCatalog({api,active,enabled,canWrite,blocked,models,onPrepare,onConnections,onExpired}:{api:PgNativeToolHubApi;active:boolean;enabled:boolean;canWrite:boolean;blocked:boolean;models:Model[];onPrepare:(body:ToolHubIntent)=>void;onConnections:()=>void;onExpired:()=>void}){
+ const [query,setQuery]=useState(''),[page,setPage]=useState<ToolHubRegistry|null>(null),[detail,setDetail]=useState<RegistryEntry|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[model,setModel]=useState(''),[consent,setConsent]=useState(false)
+ const lifetime=useRef({alive:true,active:false,sequence:0,reading:false}),expired=useRef(onExpired);expired.current=onExpired
+ useEffect(()=>{const token={alive:true,active,sequence:0,reading:false};lifetime.current=token;if(!active){setPage(null);setDetail(null);setConsent(false);setError('');setBusy(false)}return()=>{token.alive=false;token.active=false;token.sequence++}},[api,active,enabled])
+ async function read(search:string,cursor='',selected?:RegistryEntry){
+  const token=lifetime.current;if(!token.alive||!token.active||!enabled||token.reading)return
+  token.reading=true;const seq=++token.sequence;setBusy(true);setError('')
+  try{const value=selected?await api.registryDetail(selected.name,selected.version):await api.registry(search,cursor);if(!token.alive||!token.active||seq!==token.sequence)return;if(selected)setDetail(value.items[0]??null);else{setPage(value);setDetail(null)}setConsent(false)}
+  catch(cause){if(token.alive&&token.active&&seq===token.sequence){if(cause instanceof PgNativePilotError&&cause.status===401)expired.current();else setError('目录读取失败，请稍后手动重试。搜索词至少 3 个字符。')}}finally{token.reading=false;if(token.alive&&seq===token.sequence)setBusy(false)}
+ }
+ const ownChinese=(item:RegistryEntry)=>page?.chinese.find(c=>c.server_name===item.name&&c.source_sha256===item.source_sha256)
+ const target=detail??page?.items[0],selectedModel=models.find(m=>toolHubModelKey(m)===model)
+ return <section aria-label="公共 MCP 目录" className="min-w-0 space-y-4 rounded-2xl border bg-white p-4 sm:p-5">
+  <h3 className="font-semibold">公共 MCP 目录</h3><p className="text-sm leading-6 text-slate-600">浏览官方目录、查看公开说明，再到工具连接中配置本人连接。目录说明和推荐文字只用于选型。</p>
+  {!enabled?<p role="status" className="text-sm text-amber-800">当前环境未开放公共目录读取。</p>:<>
+   <form className="flex flex-col gap-2 sm:flex-row" onSubmit={e=>{e.preventDefault();void read(query)}}><label className="min-w-0 flex-1"><span className="sr-only">搜索 MCP 目录</span><input type="search" className={field} value={query} maxLength={100} onChange={e=>setQuery(e.target.value)} placeholder="搜索名称或关键词（至少 3 个字符）"/></label><button className={button} disabled={busy} type="submit">搜索目录</button><button className={button} disabled={busy} type="button" onClick={()=>{setQuery('');void read('')}}>浏览最新</button></form>
+   <div className="flex flex-wrap gap-2" aria-label="内置推荐搜索">{CURATED_PLUGINS.map(item=><button type="button" key={item.term} className={button} disabled={busy} title={item.zh_desc} onClick={()=>{setQuery(item.term);void read(item.term)}}>{item.zh_title}</button>)}</div>
+   {busy&&<p role="status" className="text-sm">正在读取公开目录…</p>}
+   {page&&<p className="text-xs text-slate-500">当前目录：{page.query||'最新版本'} · {page.items.length} 条</p>}
+   {page&&!page.items.length&&<p role="status" className="text-sm text-slate-600">没有匹配条目。</p>}
+   <ul className="grid gap-3 lg:grid-cols-2">{page?.items.map(item=>{const zh=ownChinese(item),curated=curatedZhFor(item.name.slice(item.name.indexOf('/')+1),item.title);return <li key={item.name} className="min-w-0 space-y-2 rounded-xl border p-3"><h4 className="break-words font-medium">{zh?.zh_title??curated?.zh_title??item.title}</h4><p className="break-all text-xs text-slate-500">{item.name} · {item.version} · {item.status==='active'?'可用条目':'已弃用'}</p><p className="break-words text-sm leading-6">{zh?.zh_desc??curated?.zh_desc??item.description}</p>{(zh||curated)&&<p className="text-xs text-slate-500">{zh?'本人已确认的中文说明':'内置推荐说明'}</p>}<button className={button} disabled={busy} type="button" onClick={()=>void read(page.query,'',item)}>查看版本详情</button></li>})}</ul>
+   {page?.next_cursor&&<button className={button} disabled={busy} type="button" onClick={()=>void read(page.query,page.next_cursor)}>读取下一页</button>}
+   {detail&&<div className="min-w-0 space-y-3 rounded-xl bg-slate-50 p-4" aria-label="MCP 版本详情"><h4 className="break-words font-semibold">{detail.title}</h4><p className="break-all text-xs">{detail.name} · {detail.version}</p><p className="whitespace-pre-wrap break-words text-sm leading-6">{detail.description}</p><h5 className="text-sm font-medium">公开接入信息</h5>{detail.remotes.map(remote=><p key={remote.url} className="break-all font-mono text-xs">{remote.url}</p>)}{detail.packages.map((pkg,index)=><p key={index} className="break-all text-xs">{pkg.registry} · {pkg.identifier} · {pkg.version}</p>)}{!detail.remotes.length&&<p className="text-sm">此条目未提供可显示的 HTTPS 远程通道，请查阅提供方说明。</p>}<button className={button} type="button" disabled={blocked} onClick={onConnections}>配置本人 MCP 连接</button></div>}
+   {target&&<div className="space-y-3 border-t pt-4"><p className="break-words text-sm">为“{target.title}”生成中文说明：将使用本人模型，并创建需要逐步审批的任务。</p><label className="block text-sm">说明模型<select className={field} value={model} disabled={blocked||!canWrite} onChange={e=>{setModel(e.target.value);setConsent(false)}}><option value="">选择本人已验证模型</option>{models.map(item=><option key={toolHubModelKey(item)} value={toolHubModelKey(item)}>{item.label} · {item.model_id}</option>)}</select></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} disabled={blocked||!canWrite} onChange={e=>setConsent(e.target.checked)}/><span>同意本次模型调用可能产生费用，并在原任务中核对公开内容后审批。</span></label><button className={button} type="button" disabled={blocked||!canWrite||!consent||!selectedModel} onClick={()=>{if(!selectedModel||!consent)return;const {label,...binding}=selectedModel;onPrepare({purpose:'registry_translation',request_id:crypto.randomUUID(),target:{kind:'registry_translation',model_binding:binding,entries:[{name:target.name,version:target.version,source_sha256:target.source_sha256}]},effect_consent:'APPROVE_ONE_OWNER_TOOL_TRIAL_EFFECT',fee_consent:'APPROVE_ONE_OWNER_TOOL_TRIAL_POSSIBLE_CHARGES'})}}>预览本次中文说明任务</button></div>}
+  </>}
+  {error&&<p role="alert" className="text-sm text-rose-800">{error}</p>}
+ </section>
+}

@@ -1,0 +1,111 @@
+// Pure error-observation state and extracted catch only. No runtime/client/Pool.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import {createRequire} from 'node:module'
+import {isNativeError,isProxy} from 'node:util/types'
+import {finalBusinessLogins} from '../src/pg18-full069-final-login-contract.mjs'
+import {parseFinalPathCiRuntimeFailures,finalPathCiPrimaryFailureCode} from './helpers/pg18-full069-final-path-ci-contract.mjs'
+const source=fs.readFileSync(new URL('../src/pg18-full069-final-runtime.mjs',import.meta.url),'utf8'),start=source.indexOf('// Closed observation only;'),end=source.indexOf('// End closed runtime-open observation.'),code=source.slice(start,end).replace('export function full069FinalRuntimeOpenFailureObservation','function full069FinalRuntimeOpenFailureObservation')
+assert(start>=0&&end>start)
+const fresh=()=>Function('finalBusinessLogins','isNativeError','isProxy',code+';return{remember:rememberRuntimeOpenFailure,read:full069FinalRuntimeOpenFailureObservation}')(finalBusinessLogins,isNativeError,isProxy)
+test('runtime-open observations expose fixed phase/key only and grant no runtime or qualification',()=>{
+ const f=fresh(),error=Error('PRIVATE_PATH_PASSWORD_SQL_PID');Object.defineProperty(error,'secret',{value:'PRIVATE'})
+ f.remember(error,'service_auditor','api');const row=f.read(error)
+ assert.deepEqual(row,{event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'api',failure_code:null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false});assert(Object.isFrozen(row));assert(!JSON.stringify(row).includes('PRIVATE'));assert.equal(f.read(Error('same text')),null)
+})
+test('the first actual service failure phase is not overwritten by the outer open catch',()=>{
+ const f=fresh(),error=Error('primary');f.remember(error,'service_login','design_worker');f.remember(error,'business_audits');assert.equal(f.read(error).phase,'service_login');assert.equal(f.read(error).entry_key,'design_worker')
+ const other=Error('other');f.remember(other,'telemetry_state');assert.equal(f.read(other).phase,'telemetry_state');assert.equal(f.read(other).entry_key,null)
+})
+test('getter/proxy error payloads are never read and unknown phases/keys or primitives have no observation',()=>{
+ const f=fresh();let invoked=0;const proxy=new Proxy({},{get(){invoked++;throw Error('trap')},ownKeys(){invoked++;throw Error('trap')},getPrototypeOf(){invoked++;throw Error('trap')}})
+ f.remember(proxy,'physical');assert.equal(f.read(proxy).phase,'physical');assert.equal(invoked,0)
+ const getter={get message(){invoked++;throw Error('private')}};f.remember(getter,'context');assert.equal(f.read(getter).phase,'context');assert.equal(invoked,0)
+ for(const [phase,key]of [['unknown',null],['physical','private_account']]){const error={};f.remember(error,phase,key);assert.equal(f.read(error),null)}
+ for(const value of [null,undefined,1,'error',false]){f.remember(value,'physical');assert.equal(f.read(value),null)}
+})
+test('the actual open catch preserves the original thrown object and does not require a fake trust or client',async()=>{
+ const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true),declaration=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='openFull069FinalRuntime'),statement=declaration.body.statements.find(n=>ts.isTryStatement(n));assert(statement?.catchClause)
+ const f=fresh(),run=Function('rememberRuntimeOpenFailure','return async function(primary){const phase="operator_runtime",s=undefined;try{throw primary}'+statement.catchClause.getText(tree)+'}')(f.remember)
+ const primary=Error('PRIVATE_PRIMARY');await assert.rejects(run(primary),error=>error===primary);assert.equal(f.read(primary).phase,'operator_runtime')
+})
+test('CI emission remains inside the existing exact fixture/UID/argv/runtime gates and preserves primary refusal',()=>{
+ const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),observation=actor.indexOf('const observation=full069FinalRuntimeOpenFailureObservation(e)'),primary=actor.indexOf(";try{errorCode=reason(e)}catch{errorCode='full069_final_path_ci_dependency_refused'}throw e")
+ assert(guard>=0&&observation>guard&&primary>observation)
+ const body=actor.slice(guard,observation);for(const condition of ["binding.run===process.env.GITHUB_RUN_ID","binding.attempt===process.env.GITHUB_RUN_ATTEMPT","process.getuid?.()===0","process.getgid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","JSON.stringify(process.argv.slice(2))===JSON.stringify(argv)","failurePhase==='runtime_open'"])assert(body.includes(condition),condition)
+ assert(actor.includes('if(observation)fs.writeSync(2,JSON.stringify(observation)'))
+ assert(source.includes('catch(error){rememberRuntimeOpenFailure(error,phase,a.key);throw error}'));assert(source.includes('if(rejected)throw rejected.reason'))
+})
+
+const aclSource=fs.readFileSync(new URL('./helpers/pg18-full069-final14-database-acl-ci.mjs',import.meta.url),'utf8'),aclStart=aclSource.indexOf('// Closed ACL observation only;'),aclEnd=aclSource.indexOf('// End closed ACL observation.'),aclCode=aclSource.slice(aclStart,aclEnd).replace('export function full069Final14DatabaseAclFailureObservation','function full069Final14DatabaseAclFailureObservation')
+assert(aclStart>=0&&aclEnd>aclStart)
+const freshAcl=()=>Function('cases',aclCode+';return{remember:rememberAclFailure,read:full069Final14DatabaseAclFailureObservation}')([['extra_template0_public_temp','GRANT STRING NEVER EXECUTED']])
+test('ACL observation only admits actual fixed phases/cases and a five-character SQLSTATE',()=>{
+ const f=freshAcl(),error=Object.assign(Error('PRIVATE SQL PASSWORD PATH'),{code:'42501',detail:'PRIVATE'})
+ f.remember(error,'mutation','extra_template0_public_temp');const row=f.read(error)
+ assert.deepEqual(row,{event:'full069_final14_database_acl_negative_observation',phase:'mutation',negative_case:'extra_template0_public_temp',sqlstate:'42501',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false});assert(Object.isFrozen(row));assert(!JSON.stringify(row).includes('PRIVATE'))
+ f.remember(error,'final_stable');assert.equal(f.read(error).phase,'mutation')
+ for(const [phase,key]of [['PRIVATE',null],['mutation','PRIVATE']]){const e={};f.remember(e,phase,key);assert.equal(f.read(e),null)}
+})
+test('ACL diagnostic getters or descriptor traps cannot replace failure or expose private payloads',()=>{
+ const f=freshAcl();let invoked=0;const getter={get code(){invoked++;throw Error('PRIVATE')},get message(){invoked++;throw Error('PRIVATE')}}
+ f.remember(getter,'context');assert.equal(f.read(getter).sqlstate,null);assert.equal(invoked,0)
+ const proxy=new Proxy({},{getOwnPropertyDescriptor(){throw Error('PRIVATE')},get(){assert.fail('error values must not be read')}});f.remember(proxy,'connect');assert.equal(f.read(proxy).sqlstate,null)
+ for(const code of ['PRIVATE','42501 PRIVATE',12345,'enoent',null]){const e={code};f.remember(e,'connect');assert.equal(f.read(e).sqlstate,null)}
+ for(const primitive of [null,undefined,1,false,'PRIVATE']){f.remember(primitive,'admission');assert.equal(f.read(primitive),null)}
+})
+test('actual ACL outer catch rethrows the identical error while original rollback and admission gates remain',async()=>{
+ const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('acl.mjs',aclSource,ts.ScriptTarget.Latest,true),declaration=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='runActualFinal14DatabaseAclNegatives'),statement=declaration.body.statements.find(n=>ts.isTryStatement(n));assert(statement?.catchClause)
+ const f=freshAcl(),run=Function('rememberAclFailure','return async function(primary){const phase="operator_runtime",negativeCase=null;try{throw primary}'+statement.catchClause.getText(tree)+'}')(f.remember),primary=Error('PRIVATE_PRIMARY')
+ await assert.rejects(run(primary),error=>error===primary);assert.equal(f.read(primary).phase,'operator_runtime')
+ assert(aclSource.includes('const deadline=performance.now()+8000'));assert(aclSource.includes("await db.query('ROLLBACK');begun=false"));assert(aclSource.includes('if(primary)throw primary'));assert(aclSource.includes('passed!==cases.length'));assert(aclSource.includes('inspectFinal14DatabaseAclRows(restored,databases,roles)'))
+ const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),emission=actor.indexOf('const observation=full069Final14DatabaseAclFailureObservation(e)'),primaryThrow=actor.indexOf(";try{errorCode=reason(e)}catch{errorCode='full069_final_path_ci_dependency_refused'}throw e");assert(guard>=0&&emission>guard&&primaryThrow>emission)
+ const body=actor.slice(guard,emission);for(const gate of ["binding.run===process.env.GITHUB_RUN_ID","process.getuid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","failurePhase==='runtime_preflight'"])assert(body.includes(gate),gate)
+})
+
+test('parent refusal parsing ignores diagnostic JSON and embedded error-like secret text',()=>{
+ const observation={event:'full069_final14_runtime_open_observation',phase:'physical',entry_key:null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false},primary='full069_final_path_ci_dependency_refused',stderr=JSON.stringify(observation)+'\nPRIVATE SQL containing full069_final14_not_the_primary\n'+primary+'\n'
+ assert.equal(finalPathCiPrimaryFailureCode(stderr),primary);assert.equal(finalPathCiPrimaryFailureCode(JSON.stringify(observation)+'\n'),'full069_final_path_ci_actual_child_failed');assert.equal(finalPathCiPrimaryFailureCode(observation.event+'\n'),'full069_final_path_ci_actual_child_failed')
+ assert.equal(finalPathCiPrimaryFailureCode('full069_final_runtime_actual_observation\n'),'full069_final_runtime_actual_observation')
+ for(const value of [null,{},'x'.repeat(524289),'\0'+primary])assert.equal(finalPathCiPrimaryFailureCode(value),'full069_final_path_ci_actual_child_failed')
+})
+test('parent forwards only one closed runtime or ACL observation without secret or authority fields',()=>{
+ const a={event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'worker',failure_code:null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false},b={event:'full069_final14_database_acl_negative_observation',phase:'mutation',negative_case:'extra_template0_public_temp',sqlstate:'42501',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}
+ for(const row of [a,b]){const result=parseFinalPathCiRuntimeFailures(JSON.stringify(row)+'\n');assert.deepEqual(result,[row]);assert(Object.isFrozen(result)&&Object.isFrozen(result[0]));for(const patch of [{private:'SECRET'},{production_GO:true},{runtime_authorization:true},{phase:'PRIVATE'}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify({...row,...patch})),[])}
+ for(const row of [{...a,entry_key:'PRIVATE'},{...a,failure_code:'PRIVATE'},{...a,failure_code:0},{...b,negative_case:'PRIVATE'},{...b,sqlstate:'PRIVATE_SQL'},{...b,sqlstate:12345}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify(row)),[])
+ for(const value of [null,{},'x'.repeat(524289),'\0'+JSON.stringify(a),JSON.stringify(a)+'\n'+JSON.stringify(a)])assert.deepEqual(parseFinalPathCiRuntimeFailures(value),[])
+})
+
+test('runtime classification emits only exact installed-driver categories and preserves the original error',()=>{
+ const f=fresh(),cases=[['pg_runtime_target_mismatch','target_mismatch'],['timeout expired','connection_timeout'],['timeout exceeded when trying to connect','connection_timeout'],['Connection terminated due to connection timeout','connection_timeout'],['Query read timeout','query_timeout']]
+ for(const [message,failure_code]of cases){const error=Error(message);f.remember(error,'service_target','plan_workflow_dispatch');const row=f.read(error);assert.equal(row.failure_code,failure_code);assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify(row)),[row]);assert(!JSON.stringify(row).includes(message))}
+ const unknown=Error('Query read timeout PRIVATE');f.remember(unknown,'service_target_stable','plan_workflow_dispatch');assert.equal(f.read(unknown).failure_code,null);assert.equal(f.read(unknown).phase,'service_target_stable')
+})
+test('runtime classification never executes message getters, proxy traps or coercions',()=>{
+ const f=fresh();let invoked=0;const error=Error('initial');Object.defineProperty(error,'message',{get(){invoked++;throw Error('private')}})
+ const proxy=new Proxy(Error('Query read timeout'),{getOwnPropertyDescriptor(){invoked++;throw Error('private')},getPrototypeOf(){invoked++;throw Error('private')},get(){invoked++;throw Error('private')}})
+ for(const value of [error,proxy,{message:'Query read timeout'},{message:{toString(){invoked++;throw Error('private')}}}]){f.remember(value,'service_target');assert.equal(f.read(value).failure_code,null)}
+ assert.equal(invoked,0)
+})
+test('ACL probe obtains only the existing original operator capability bound to the same opaque runtime and trust',()=>{
+ const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('runtime.mjs',source,ts.ScriptTarget.Latest,true),fn=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='full069FinalRuntimeOperatorCapability');assert(fn)
+ const handle=Object.freeze({}),trust=Object.freeze({}),cap=Object.freeze({data_only_unit_marker:true}),primary=Error('stable failure'),events=[]
+ const run=Function('state','assertFinalStable','fail','return function('+fn.parameters.map(n=>n.getText(tree)).join(',')+')'+fn.body.getText(tree))(h=>{assert.equal(h,handle);events.push('original_runtime_state');return{trust,capability:cap}},t=>{assert.equal(t,trust);events.push('original_final_stable')},c=>{throw Error(c)})
+ assert.equal(run(handle,trust),cap);assert.deepEqual(events,['original_runtime_state','original_final_stable']);assert.throws(()=>run(handle,{}),/operator_trust_binding/)
+ const rejected=Function('state','assertFinalStable','fail','return function('+fn.parameters.map(n=>n.getText(tree)).join(',')+')'+fn.body.getText(tree))(()=>{throw primary},()=>assert.fail('untrusted handle must not reach stable'),()=>assert.fail('untrusted state'))
+ assert.throws(()=>rejected({},trust),error=>error===primary)
+ const stateFn=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='state');assert(stateFn.body.getText(tree).includes('states.get(handle)'));assert(stateFn.body.getText(tree).includes('s.closed'));assert(stateFn.body.getText(tree).includes('assertCompleteProfileOperatorRuntime(s.capability)'))
+})
+test('actual ACL prefix reuses the genuine capability without a second one-claim loader verification',()=>{
+ assert(!aclSource.includes('verifyCompleteProfileOperatorRuntime'));assert(aclSource.includes('full069FinalRuntimeOperatorCapability(runtime,trust)'));assert(aclSource.includes('loadCompleteProfileOperatorPg(cap)'))
+ const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8');assert(actor.includes('runtime=await openFull069FinalRuntime(trust)'));assert(actor.includes('await runActualFinal14DatabaseAclNegatives(trust,guard,runtime)'))
+ const loader=fs.readFileSync(new URL('../src/pg18-complete-operator-runtime.mjs',import.meta.url),'utf8');assert(loader.includes('if(claimed.has(root))fail()'));assert(loader.includes('const state=capabilities.get(capability);if(!state||state.failed||claimed.get(root)!==state)fail()'));assert.equal((aclSource.match(/\['(?:missing_|F05_|extra_|cross_database_)/g)||[]).length,13)
+ assert(aclSource.includes('const deadline=performance.now()+8000'));assert(aclSource.includes("await db.query('ROLLBACK');begun=false"))
+})
+test('actual bridge selects the standalone primary and emits closed observations separately',()=>{
+ const bridge=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-bridge.mjs',import.meta.url),'utf8'),ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('bridge.mjs',bridge,ts.ScriptTarget.Latest,true);let expression
+ const visit=n=>{if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='safe')expression=n.initializer.getText(tree);ts.forEachChild(n,visit)};visit(tree);assert.equal(expression,'finalPathCiPrimaryFailureCode(err)')
+ const actual=Function('err','finalPathCiPrimaryFailureCode','return '+expression),primary='full069_final_path_ci_dependency_refused';assert.equal(actual('{"event":"full069_final14_runtime_open_observation"}\n'+primary,finalPathCiPrimaryFailureCode),primary)
+ assert(bridge.includes('...parseFinalPathCiRuntimeFailures(err)'));assert(bridge.includes("if(bytes>524288)return terminate()"));assert(bridge.includes("if(!members().absent)fail('emergency_owned_group_remains')"))
+})

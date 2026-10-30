@@ -10,7 +10,7 @@ type SitePageHeaderProps = {
 
 export function SitePageHeader({ icon: Icon, title, badge = "", actions = null }: SitePageHeaderProps) {
   return (
-    <div className="mx-auto flex h-12 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+    <div className="flex h-12 w-full min-w-0 items-center justify-between gap-3 px-3 sm:px-5 lg:px-7 2xl:px-10">
       <div className="flex min-w-0 items-center gap-2">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <Icon className="h-3.5 w-3.5" />

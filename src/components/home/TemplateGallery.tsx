@@ -1,7 +1,8 @@
-import { ArrowRight, BarChart3, BookOpen, Telescope } from "lucide-react"
+import { ArrowRight, BarChart3, BookOpen, ClipboardList, Telescope } from "lucide-react"
 import type { TemplatePreset } from "@/pages/Home/useHome"
 
-const ICON_MAP = {
+const ICON_MAP = {  delivery:ClipboardList,
+
   research: Telescope,
   knowledge: BookOpen,
   data: BarChart3,
@@ -14,7 +15,7 @@ type TemplateGalleryProps = {
 
 export function TemplateGallery({ templates, onLoadTemplate }: TemplateGalleryProps) {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
       {templates.map((preset) => {
         const Icon = ICON_MAP[preset.icon]
         return (

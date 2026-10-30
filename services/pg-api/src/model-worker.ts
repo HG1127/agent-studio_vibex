@@ -14,6 +14,9 @@ import {gatherSingleAgentEvidence,sealSingleAgentEvidence,requireCurrentSingleAg
 import {boundModelFingerprint,type BoundModelClaim,type BoundModelDispatchResult}
   from "./owner-model-dispatch.ts"
 
+import {createWorkerClaimAdmission,type WorkerClaimAdmissionView,type WorkerClaimPermit}
+  from "./worker-claim-admission.ts"
+
 const sql=(name:string)=>readFileSync(
   fileURLToPath(new URL("../../../db/postgres/"+name,import.meta.url)),"utf8")
 const claimSql=sql("006_claim_agent_model.sql")
@@ -71,6 +74,7 @@ export class AgentModelWorker {
   readonly provider:ModelProvider
   readonly boundModelDispatch?:BoundDispatchGateway
   readonly boundOnly:boolean
+  readonly #claimAdmission=createWorkerClaimAdmission({lanes:["model"]})
   constructor(pool:SqlPool,workerId:string,provider:ModelProvider,
     options:{boundModelDispatch?:BoundDispatchGateway;boundExecutionApproved?:boolean;
       boundOnly?:boolean}={}){
@@ -86,20 +90,52 @@ export class AgentModelWorker {
     this.boundModelDispatch=options.boundModelDispatch
     this.boundOnly=options.boundOnly===true
   }
+  closeNewClaims():void {this.#claimAdmission.close()}
+  // Local claim transactions only; this does not prove all Worker kinds drained.
+  claimAdmissionSnapshot():WorkerClaimAdmissionView {return this.#claimAdmission.snapshot()}
   async claim(seconds=180):Promise<LeasedModelJob|null>{
     if(!Number.isInteger(seconds)||seconds<60||seconds>300)
       throw Error("invalid_model_lease")
-    return tx(this.pool,async db=>{
+    const admission=this.#claimAdmission
+    if(admission.snapshot().closed)return null
+    const db=await this.pool.connect()
+    let started=false,commitAttempted=false,dispatched=false
+    let permit:WorkerClaimPermit|null=null
+    try{
+      await db.query("BEGIN");started=true
+      await applyKnowledgeScope(db,this.pool)
       await db.query("SET LOCAL ROLE agentstudio_worker")
-      const rows=await db.query<LeasedModelJob>(claimSql,
-        [this.workerId,seconds])
-      const job=rows.rows[0]
-      if(!job)return null
-      if(!leaseValid(job,this.workerId)||
-         job.kind!=="run_tick"||job.payload?.phase!=="model")
-        throw Error("invalid_model_claim")
+      // Final synchronous gate after every connection/scope/role await.
+      // Keep the intent through row validation and transaction acknowledgement.
+      permit=admission.tryEnter("model")
+      let job:LeasedModelJob|null=null
+      if(permit){
+        const request=admission.dispatch(permit,()=>{
+          dispatched=true
+          return db.query<LeasedModelJob>(claimSql,[this.workerId,seconds])
+        })
+        if(request.started){
+          job=(await request.value).rows[0]??null
+          if(job&&(!leaseValid(job,this.workerId)||
+             job.kind!=="run_tick"||job.payload?.phase!=="model"))throw Error("invalid_model_claim")
+        }else permit=null // final gate rejected an undispatched reservation
+      }
+      commitAttempted=true
+      await db.query("COMMIT");started=false
+      if(permit)admission.confirm(permit,{outcome:"commit_confirmed"})
       return job
-    })
+    }catch(error){
+      // A lost COMMIT acknowledgement remains uncertain even if a later
+      // ROLLBACK succeeds: the server may already have committed the claim.
+      if(permit&&dispatched)admission.markUncertain(permit)
+      let rolledBack=false
+      if(started)try{await db.query("ROLLBACK");rolledBack=true}catch{}
+      if(permit){
+        if(!dispatched)admission.discardUndispatched(permit)
+        else if(!commitAttempted&&rolledBack)admission.confirm(permit,{outcome:"rollback_confirmed"})
+      }
+      throw error
+    }finally{db.release()}
   }
   // Returns only pre-approved owner-scoped input; NO network call in the
   // transaction. Started effect + running state commit atomically.

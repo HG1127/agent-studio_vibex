@@ -1,9 +1,12 @@
+import {readOriginalInternalOverview} from './original-internal-overview-read.ts'
 // Owner metadata projections. No task bodies, mutations or action authority.
 import {HttpError,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActorClient,assertOwnedAdmissionContext} from "./repository.ts"
 import {ownCountKeys,ownCategoryRanks,ownDatabaseCount,ownId,ownStamp,ownPublicStamp,ownUnavailable,
   parseOwnTodoQuery,parseOwnCursor,parseOwnRunMeta,parseOwnTodoItem,parseOwnOverview,parseOwnTodoPage,
   ownCursor,compareOwnPositions,type OwnTodoQuery,type OwnOverview,type OwnTodoPage,type OwnPosition,type OwnCounts} from "./own-operations-contract.ts"
+import {parseOriginalAgentMeta,parseOriginalAgentPendingQuery,parseOriginalAgentPendingPage,parseOriginalAgentWorkspace,
+ type OriginalAgentMeta,type OriginalAgentWorkspace,type OriginalAgentPendingPage} from './original-agent-inbox-contract.ts'
 
 // Existing052 guard is audited in place, not trusted merely by its name. No
 // direct account/password/session SELECT or additional grant is introduced.
@@ -82,6 +85,15 @@ export const ownOperationsCountsSql=ownOperationsRunCte+` SELECT
 export const ownOperationsRecentSql=ownOperationsRunCte+` SELECT id AS run_id,kind,resource_id,left(resource_name_full,120) AS resource_name,status,
  ${micro("created_at")} AS created_at_us,${micro("updated_at")} AS updated_at_us,${micro("finished_at")} AS finished_at_us
  FROM owned_runs WHERE kind IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 12`
+// Original Home is Agent-only. Counts precede every bounded list/page SELECT.
+const originalAgentCte=ownOperationsRunCte+`, agent_rows AS (SELECT * FROM owned_runs WHERE kind IN('agent_single','agent_autonomous'))`
+const originalMetaColumns=`id AS run_id,kind,resource_id,left(resource_name_full,120) AS resource_name,status,${micro('created_at')} AS created_at_us,${micro('updated_at')} AS updated_at_us`
+export const originalAgentWorkspaceCountSql=originalAgentCte+` SELECT count(*)::text AS total,count(*) FILTER(WHERE status IN('awaiting_input','awaiting_approval'))::text AS pending FROM agent_rows`
+export const originalAgentRecentSql=originalAgentCte+` SELECT ${originalMetaColumns} FROM agent_rows ORDER BY created_at DESC,id DESC LIMIT 12`
+export const originalAgentPendingSnippetSql=originalAgentCte+` SELECT ${originalMetaColumns} FROM agent_rows WHERE status IN('awaiting_input','awaiting_approval') ORDER BY updated_at DESC,id DESC LIMIT 20`
+const originalPendingWhere=` FROM agent_rows WHERE status IN('awaiting_input','awaiting_approval') AND ($2::text='all' OR status=$2::text) AND resource_name_full ILIKE $3::text ESCAPE chr(92)`
+export const originalAgentPendingCountSql=originalAgentCte+` SELECT count(*)::text AS total`+originalPendingWhere
+export const originalAgentPendingPageSql=originalAgentCte+` SELECT ${originalMetaColumns}`+originalPendingWhere+` ORDER BY updated_at DESC,id DESC LIMIT $4::integer OFFSET $5::integer`
 export const ownOperationsTodosSql=ownOperationsRunCte+`, attention AS (
  SELECT CASE status WHEN 'awaiting_approval' THEN 'approval' WHEN 'awaiting_input' THEN 'human_input' WHEN 'paused' THEN 'paused' ELSE 'failed' END AS category,
  kind,id,resource_id,resource_name_full,NULL::text AS step_key,status,updated_at AS observed_at,
@@ -110,6 +122,11 @@ function displayName(raw:unknown):string{
  if(typeof raw!=="string"||raw.length>240||raw.includes("\0")||Array.from(raw).some(c=>c.length===1&&c.charCodeAt(0)>=0xd800&&c.charCodeAt(0)<=0xdfff))return ownUnavailable()
  const value=raw.slice(0,120);return /[\ud800-\udbff]$/.test(value)?value.slice(0,-1):value
 }
+function originalMeta(raw:unknown):OriginalAgentMeta{
+ const row=exact(raw,['run_id','kind','resource_id','resource_name','status','created_at_us','updated_at_us'])
+ return parseOriginalAgentMeta({id:row.run_id,spec_id:row.resource_id,spec_name:displayName(row.resource_name),engine_kind:row.kind,status:row.status,
+  created:ownPublicStamp(ownStamp(row.created_at_us,true)),updated:ownPublicStamp(ownStamp(row.updated_at_us,true))})
+}
 export class OwnOperationsRepository{
  readonly pool:SqlPool
  constructor(pool:SqlPool){this.pool=pool}
@@ -135,11 +152,37 @@ export class OwnOperationsRepository{
    await db.query('COMMIT');begun=false;return result
   }catch(error){
    if(begun)await db.query('ROLLBACK').catch(()=>{})
-   if(error instanceof HttpError&&error.status===401)throw new HttpError(401,"session_required")
+   if(error instanceof HttpError&&error.status===409&&error.code==='original_internal_overview_employee_changed')throw error
+    if(error instanceof HttpError&&error.status===401)throw new HttpError(401,"session_required")
    if(error instanceof HttpError&&error.status===400&&["invalid_own_todo_query","invalid_own_todo_cursor"].includes(error.code))throw error
    if(error instanceof HttpError&&error.code==="employee_not_provisioned"||error&&typeof error==="object"&&"code"in error&&error.code==="P0001"&&"message"in error&&error.message==="agent_memory_native_employee_required")throw new HttpError(401,"session_required")
    return ownUnavailable()
   }finally{db.release()}
+ }
+ async originalInternalOverview(identity:Identity,expectedEmployee:string){
+   return this.actor(identity,async(db,owner,now)=>{if(owner!==expectedEmployee)throw new HttpError(409,'original_internal_overview_employee_changed');return readOriginalInternalOverview(db,owner,now)})
+  }
+  async originalAgentWorkspace(identity:Identity):Promise<OriginalAgentWorkspace>{
+  return this.actor(identity,async(db,owner,now)=>{
+   const count=(await db.query(originalAgentWorkspaceCountSql,[owner])).rows
+   if(count.length!==1)return ownUnavailable()
+   const values=exact(count[0],['total','pending']),total=ownDatabaseCount(values.total),pending=ownDatabaseCount(values.pending)
+   const recent=(await db.query(originalAgentRecentSql,[owner])).rows.map(originalMeta)
+   const snippet=(await db.query(originalAgentPendingSnippetSql,[owner])).rows.map(originalMeta)
+   return parseOriginalAgentWorkspace({protocol:'native_original_agent_workspace_v1',scope:'current_user',employee_id:owner,as_of:ownPublicStamp(now),
+    agent_run_total:total,items:recent,pending_count:pending,pending_items:snippet})
+  })
+ }
+ async originalAgentPending(identity:Identity,raw:unknown={}):Promise<OriginalAgentPendingPage>{
+  const q=parseOriginalAgentPendingQuery(raw)
+  return this.actor(identity,async(db,owner,now)=>{
+   const params=[owner,q.status,ownSearchPattern(q.q)],counts=(await db.query(originalAgentPendingCountSql,params)).rows
+   if(counts.length!==1)return ownUnavailable()
+   const total=ownDatabaseCount(exact(counts[0],['total']).total)
+   const items=(await db.query(originalAgentPendingPageSql,[...params,q.perPage,(q.page-1)*q.perPage])).rows.map(originalMeta)
+   return parseOriginalAgentPendingPage({protocol:'native_original_agent_pending_v1',scope:'current_user',employee_id:owner,as_of:ownPublicStamp(now),
+    items,totalItems:total,totalPages:Math.max(1,Math.ceil(total/q.perPage)),...q},q)
+  })
  }
  async overview(identity:Identity):Promise<OwnOverview>{
   return this.actor(identity,async(db,owner,now)=>{

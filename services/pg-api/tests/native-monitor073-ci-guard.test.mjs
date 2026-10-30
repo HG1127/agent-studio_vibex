@@ -1,0 +1,11 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {requireNativeMonitor073Ci} from './helpers/native-monitor073-ci-guard.mjs'
+const env={GITHUB_ACTIONS:'true',CI:'true',GITHUB_RUN_ID:'123',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:'Agent Studio F01 Agent Design genuine PG18 isolated verification',GITHUB_JOB:'pg18-agent-design-genuine',GITHUB_SHA:'a'.repeat(40),GITHUB_REF:'refs/heads/codex/pg18-worker-heartbeat-synthetic',AGENT_STUDIO_F01_GENUINE_CI:'YES_DISPOSABLE_F01_ONLY',AGENT_STUDIO_NATIVE_MONITOR073_CI:'YES_DISPOSABLE_MONITOR073_METADATA_ONLY',AGENT_STUDIO_NATIVE_MONITOR073_SUITE:'monitor073',AGENT_STUDIO_NATIVE_MONITOR073_EXPECTED_HEAD:'a'.repeat(40),AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-123'}
+test('monitor073 ordinary/Windows/root/self-hosted and another purpose cannot load the fixture',()=>{
+ for(const[vars,platform,uid]of [[{},'win32',0],[env,'win32',1001],[env,'linux',0],[{...env,RUNNER_ENVIRONMENT:'self-hosted'},'linux',1001]])assert.throws(()=>requireNativeMonitor073Ci(vars,platform,uid))
+ for(const key of ['AGENT_STUDIO_NATIVE_MONITOR073_CI','AGENT_STUDIO_NATIVE_MONITOR073_SUITE','AGENT_STUDIO_NATIVE_MONITOR073_EXPECTED_HEAD','GITHUB_SHA','GITHUB_JOB'])assert.throws(()=>requireNativeMonitor073Ci({...env,[key]:'wrong'},'linux',1001))
+})
+test('monitor073 refuses production, mixed profiles, proxies and ambient credentials before SQL imports',()=>{
+ for(const[key,value]of [['AGENT_STUDIO_PG18_CI_PORT','5333'],['AGENT_STUDIO_PG18_CI_HOST','192.0.2.1'],['AGENT_STUDIO_PG18_CI_DATABASE','agent_studio'],['DATABASE_URL','postgres://production.invalid/db'],['PGHOST','127.0.0.1'],['NODE_OPTIONS',''],['HTTPS_PROXY',''],['AGENT_STUDIO_ORIGINAL_HOME071_CI','YES_DISPOSABLE_ORIGINAL_CATALOG071_ONLY'],['AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI','YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY']])assert.throws(()=>requireNativeMonitor073Ci({...env,[key]:value},'linux',1001),key)
+})

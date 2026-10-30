@@ -8,6 +8,11 @@ export function createNativeAuthHttpHandler(deps:{
   businessHandler:HttpHandler
   allowConfigurationWrites?:boolean
   allowModelProbe?:boolean
+  allowOriginalModelConnections?:boolean
+  originalModelConfigReceiptsProtocol?:string
+  allowModelConfigReceiptWrites?:boolean
+  originalModelDraftProbeProtocol?:string
+  originalModelPaginationProtocol?:string
   allowMcpDiscovery?:boolean
   allowMcpToolExecution?:boolean
   allowSmitheryManagement?:boolean
@@ -43,10 +48,28 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentReviewSubmission?:boolean
   allowAgentGeneratedAcceptance?:boolean
   allowAgentGeneratedAcceptanceWrites?:boolean
+  allowAgentDesign?:boolean
+  allowAgentDesignSubmissions?:boolean
+  allowAgentDesignSaves?:boolean
+  allowAgentCallers?:boolean
+  allowAgentCallerWrites?:boolean
+  allowAgentCallerRuns?:boolean
+  allowApprovalDelegations?:boolean
+  allowApprovalDelegationWrites?:boolean
+  allowInternalShare?:boolean
+  allowInternalShareWrites?:boolean
+  allowLocalDevices?:boolean
+  allowLocalDeviceWrites?:boolean
+  allowAgentTemplateMarket?:boolean
+  allowAgentTemplateMarketWrites?:boolean
   allowAgentDescriptivePatch?:boolean
   allowAgentDescriptivePatchWrites?:boolean
+  allowOwnerToolHub?:boolean
+  allowOwnerToolTrials?:boolean
+  allowPublicMcpRegistry?:boolean
   allowOwnOperations?:boolean
   allowCompanyOverview?:boolean
+  allowCompanyWorkerHeartbeats?:boolean
   allowEmployeeGovernance?:boolean
   allowEmployeeProvisioning?:boolean
 }):{handler:HttpHandler,authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}

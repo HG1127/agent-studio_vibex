@@ -1,3 +1,5 @@
+import {originalToolConnectionsProtocol} from '../../../shared/original-tool-connections-contract.ts'
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 import {isIP} from "node:net"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor} from "./repository.ts"
@@ -87,9 +89,11 @@ function encryptedHeader(value:string,key:Buffer){
   return encryptModelSecret(JSON.stringify({value}),key)
 }
 export class ToolConnectionRepository{
+  declare readonly originalUiProtocol:typeof originalToolConnectionsProtocol
   readonly pool:SqlPool
   readonly encryptionKey:Buffer
   constructor(pool:SqlPool,key:string|Buffer){
+    Object.defineProperty(this,'originalUiProtocol',{value:originalToolConnectionsProtocol,writable:false,configurable:false,enumerable:true})
     this.pool=pool
     this.encryptionKey=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key)
     if(this.encryptionKey.length!==32)throw Error("invalid_model_encryption_key")
@@ -104,9 +108,10 @@ export class ToolConnectionRepository{
       key:x.header_name,value:"••••",
     }))}
   }
-  async list(identity:Identity,limit=30):Promise<ToolConnectionRow[]>{
+  async list(identity:Identity,limit=30,expectedEmployee?:string):Promise<ToolConnectionRow[]>{
     const bounded=Math.max(1,Math.min(50,Math.trunc(limit)))
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<StoredRow>(
         "SELECT "+publicColumns+" FROM agentstudio.tool_connections "+
         "WHERE owner_user_id=$1::uuid "+
@@ -116,9 +121,10 @@ export class ToolConnectionRepository{
       return rows
     })
   }
-  async get(identity:Identity,id:string):Promise<ToolConnectionRow|null>{
+  async get(identity:Identity,id:string,expectedEmployee?:string):Promise<ToolConnectionRow|null>{
     if(!isUuid(id))throw new HttpError(400,"invalid_tool_connection_id")
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<StoredRow>(
         "SELECT "+publicColumns+" FROM agentstudio.tool_connections "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid",
@@ -126,9 +132,10 @@ export class ToolConnectionRepository{
       return result.rows[0]?this.withHeaders(db,actor,result.rows[0]):null
     })
   }
-  async create(identity:Identity,input:ToolConnectionInput):Promise<ToolConnectionRow>{
+  async create(identity:Identity,input:ToolConnectionInput,expectedEmployee?:string):Promise<ToolConnectionRow>{
     const prepared=safeToolConnectionInput(input)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<StoredRow>(
         "INSERT INTO agentstudio.tool_connections "+
         "(owner_user_id,name,description,url,method,body_template,timeout_s,enabled) "+
@@ -158,12 +165,13 @@ export class ToolConnectionRepository{
     })
   }
   async update(identity:Identity,id:string,input:ToolConnectionInput,
-    expectedRevision:number):Promise<ToolConnectionRow|null>{
+    expectedRevision:number,expectedEmployee?:string):Promise<ToolConnectionRow|null>{
     if(!isUuid(id))throw new HttpError(400,"invalid_tool_connection_id")
     if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
       throw new HttpError(400,"invalid_revision")
     const prepared=safeToolConnectionInput(input)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<StoredRow>(
         "UPDATE agentstudio.tool_connections SET name=$3::text,description=$4::text,"+
         "url=$5::text,method=$6::text,body_template=$7::text,timeout_s=$8::int,"+
@@ -174,7 +182,10 @@ export class ToolConnectionRepository{
         [id,actor,prepared.name,prepared.description,prepared.url,prepared.method,
           prepared.body_template,prepared.timeout_s,prepared.enabled,expectedRevision])
       const row=result.rows[0]
-      if(!row)return null
+      if(!row){
+        if(expectedEmployee!==undefined&&(await db.query('SELECT id FROM agentstudio.tool_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid',[id,actor])).rows.length)throw new HttpError(409,'revision_conflict')
+        return null
+      }
       const names=prepared.headers.map(h=>h.key)
       await db.query(
         "DELETE FROM agentstudio.tool_connection_headers "+
@@ -217,9 +228,17 @@ export class ToolConnectionRepository{
       return this.withHeaders(db,actor,row)
     })
   }
-  async delete(identity:Identity,id:string):Promise<boolean>{
+  async delete(identity:Identity,id:string,expectedRevision?:number,expectedEmployee?:string):Promise<boolean>{
     if(!isUuid(id))throw new HttpError(400,"invalid_tool_connection_id")
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
+      if(expectedEmployee!==undefined&&expectedRevision===undefined)throw new HttpError(400,'invalid_revision')
+      if(expectedRevision!==undefined){
+        if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1)throw new HttpError(400,'invalid_revision')
+        const selected=(await db.query<{revision:number|string}>('SELECT revision FROM agentstudio.tool_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE',[id,actor])).rows[0]
+        if(!selected)return false
+        if(Number(selected.revision)!==expectedRevision)throw new HttpError(409,'revision_conflict')
+      }
       const result=await db.query<{id:string}>(
         "DELETE FROM agentstudio.tool_connections WHERE id=$1::uuid "+
         "AND owner_user_id=$2::uuid RETURNING id",[id,actor])

@@ -31,7 +31,7 @@ export class AgentOptimizationRepository{
     if(canonicalMcpJson(normalized)!==canonicalMcpJson(row.spec))throw new HttpError(409,"agent_optimization_role_unavailable")
     return {...row,spec:normalized,sha:hash(row.sha),revision:number(row.revision)}
   }
-  private async feedback(db:SqlClient,owner:string,v:AgentFeedbackOptimizationDraft|AgentFeedbackOptimizationAcceptance):Promise<Feedback>{
+  private async feedback(db:SqlClient,owner:string,v:Pick<AgentFeedbackOptimizationDraft,"run_id"|"spec_id"|"feedback_id"|"expected_feedback_sha256">):Promise<Feedback>{
     const run=(await db.query("SELECT id FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid AND agent_spec_id=$3::uuid AND kind='agent' AND status IN('succeeded','failed','cancelled') AND finished_at IS NOT NULL FOR SHARE",[v.run_id,owner,v.spec_id])).rows[0]
     if(!run)throw new HttpError(404,"agent_run_not_found")
     const row=(await db.query<Feedback>("SELECT r.request_id AS feedback_id,r.run_id,r.spec_id,r.feedback_sha256,r.revision AS feedback_revision,r.source_sha256 AS feedback_source_sha256,b.rating,b.tags,b.comment FROM agentstudio.agent_feedback_receipts r JOIN agentstudio.agent_feedback_bodies b ON b.owner_user_id=r.owner_user_id AND b.feedback_id=r.request_id "+
@@ -86,6 +86,19 @@ export class AgentOptimizationRepository{
       if(!row||row.request_sha256!==v.request_sha256||row.candidate_sha256!==candidate||row.before_spec_sha256!==v.expected_spec_sha256||number(row.after_spec_revision)!==v.expected_spec_revision+1||canonicalMcpJson(row.changed_keys)!==canonicalMcpJson(changed))throw new HttpError(409,"agent_optimization_receipt_unavailable")
       return this.receipt(row,false)
     })
+  }
+  // Called only inside the original owned admission transaction. No new task,
+  // model call, approval or mutable provenance row is created by this read.
+  async prepareRetestOwned(db:SqlClient,owner:string,specId:string,revision:number,requestId:string){
+    if(!isUuid(specId)||!isUuid(requestId)||!Number.isSafeInteger(revision)||revision<1)throw new HttpError(400,"invalid_optimization_retest")
+    await required(db);await epoch(db)
+    const row=(await db.query<Link>("SELECT "+columns+" FROM agentstudio.agent_optimization_links WHERE owner_user_id=$1::uuid AND request_id=$2::uuid AND spec_id=$3::uuid",[owner,requestId,specId])).rows[0]
+    if(!row)throw new HttpError(404,"agent_optimization_receipt_not_found")
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,540))",[owner+":"+row.run_id])
+    const role=await this.role(db,owner,specId)
+    if(role.revision!==revision||number(row.after_spec_revision)!==revision||row.after_spec_sha256!==role.sha)throw new HttpError(409,"agent_optimization_role_changed")
+    await this.feedback(db,owner,{run_id:row.run_id,spec_id:specId,feedback_id:row.feedback_id,expected_feedback_sha256:row.feedback_sha256})
+    return this.receipt(row,true)
   }
   async list(identity:Identity,specId:string){
     if(!isUuid(specId))throw new HttpError(400,"invalid_agent_optimization_spec");specId=specId.toLowerCase()

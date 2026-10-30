@@ -1,0 +1,57 @@
+{
+  "format": "F08_existing_business_source_review_v1",
+  "baseline_path": "C:/Users/Administrator/.codex/worktrees/pg18-worker-heartbeat/agent_studio_vibex版本/docs/PG18_FEATURE_BASELINE_20261029.json",
+  "baseline_sha256": "12ac3f51f74230f96c13a3968b7bb4c9ca8dc228ca4ad7fecaa9dd733d3079e1",
+  "feature": "F08",
+  "legacy_sources": [
+    {
+      "path": "src/pages/InternalTemplates/InternalTemplatesPage.tsx",
+      "absolute_source": "D:\\Downloads\\agent_studio_vibex版本\\src\\pages\\InternalTemplates\\InternalTemplatesPage.tsx",
+      "sha256": "253cb7a2445a237408a5407023b16d62e2ecedb308297a754fd66f86d9a031a3"
+    },
+    {
+      "path": "pocketbase/pb_hooks/internal_templates.pb.js",
+      "absolute_source": "D:\\Downloads\\agent_studio_vibex版本\\pocketbase\\pb_hooks\\internal_templates.pb.js",
+      "sha256": "93e80df89147fe700ce6962741c1be2dce81fb27ae838175d6540cd838121e8d"
+    },
+    {
+      "path": "pocketbase/pb_hooks/modules/internal_template_schema.js",
+      "absolute_source": "D:\\Downloads\\agent_studio_vibex版本\\pocketbase\\pb_hooks\\modules\\internal_template_schema.js",
+      "sha256": "d9ad2b6f2df93e898ccb82e6ceee70558c7c9561c7b9d739f4bf4e661be38182"
+    },
+    {
+      "path": "pocketbase/pb_hooks/modules/internal_template_copy.js",
+      "absolute_source": "D:\\Downloads\\agent_studio_vibex版本\\pocketbase\\pb_hooks\\modules\\internal_template_copy.js",
+      "sha256": "37b79e363e6a13cc570d6fee9efa04066f20e2784c9a8dc7ee2491cf3018f9aa"
+    },
+    {
+      "path": "tests/internal-templates.integration.mjs",
+      "absolute_source": "D:\\Downloads\\agent_studio_vibex版本\\tests\\internal-templates.integration.mjs",
+      "sha256": "2a182a64371fef664ecc8550aa1f133deb18763a9b758dcf3e1138998e4ea53a"
+    }
+  ],
+  "reused_unchanged": {
+    "employee_governance": "047 existing enabled/share_enabled/governance_revision",
+    "snapshot": "063 safe reviewed full Native descriptive contract; no additional private resource copying",
+    "source_fingerprint": "063 actual source row/xmin and existing resource fingerprint",
+    "copy": "063 private copy +045 history +065 one-use audit/receipt; no run",
+    "configuration": "Existing owned-Agent Model/HTTP/MCP/KB panels"
+  },
+  "retained_behavior": [
+    "own100 choices/own50 invites; active unused cap25",
+    "explicit source review + current source fingerprint/hash",
+    "48 ASCII code, exact168hours, one receiver, author self-refusal",
+    "raw code only first successful create reply; hash-only storage; no recovered code",
+    "owner revoke; consumed/revoked/expired/governance-changed code generic unavailable",
+    "immutable original snapshot after legitimate source edit/absence",
+    "new recipient private revision1 requires approval; recipient selects own resources"
+  ],
+  "author_execution": {
+    "SQL": false,
+    "production_mutation": false,
+    "provider": false,
+    "realWorker": false,
+    "browser": false
+  },
+  "production_GO": false
+}

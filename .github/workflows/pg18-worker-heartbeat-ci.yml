@@ -1,0 +1,116 @@
+name: Agent Studio PG18 worker heartbeat isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+    paths-ignore:
+      - 'services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - 'tests/pg-native-template-market-genuine.spec.mjs'
+  workflow_dispatch:
+    inputs:
+      case_scope:
+        description: Independent fresh-service cases to verify
+        type: choice
+        default: all
+        options:
+          - all
+          - activated-audit
+          - native-admin
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-worker-heartbeat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-worker-heartbeat-domain:
+    name: PostgreSQL 18 / ${{ matrix.case }} / genuine isolated TCP
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.case_scope == 'native-admin' && '["native-admin"]' || github.event_name == 'workflow_dispatch' && inputs.case_scope == 'activated-audit' && '["activated-audit"]' || '["dormant","prepare","telemetry-runtime","model-safe","knowledge-assessment","v2-schedule","knowledge-nonempty","activated-audit","native-admin"]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - name: Checkout reviewed candidate
+        uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and original ordinary-machine guard
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm --dir services/pg-api test:pg18:tcp:guard
+      - name: Independent telemetry guard and real entry refuse ordinary environment
+        run: |
+          node --test --test-concurrency=1 services/pg-api/tests/worker-heartbeat-ci-guard.test.mjs
+          node --input-type=module -e '
+          import {spawnSync} from "node:child_process";
+          const env={...process.env,CI:"false",GITHUB_ACTIONS:"false"};
+          delete env.NODE_OPTIONS;
+          for(const entry of ["services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs","services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs","services/pg-api/tests/worker-heartbeat-runtime-tcp.integration.mjs","services/pg-api/tests/model-safe-claim-admission-tcp.integration.mjs","services/pg-api/tests/knowledge-assessment-claim-admission-tcp.integration.mjs","services/pg-api/tests/workflow-v2-schedule-claim-admission-tcp.integration.mjs","services/pg-api/tests/knowledge-nonempty-claim-admission-tcp.integration.mjs","services/pg-api/tests/worker-heartbeat-activated-audit-tcp.integration.mjs","services/pg-api/tests/native-current-company-admin-tcp.integration.mjs"]){
+          const r=spawnSync(process.execPath,["--experimental-strip-types","--test",entry],{env,encoding:"utf8",timeout:15000});
+          const output=(r.stdout??"")+(r.stderr??"");
+          if(r.status!==1||!output.includes("refuse_non_ephemeral_pg18_ci")||/Cannot find|ERR_MODULE_NOT_FOUND|ECONNREFUSED/.test(output))throw Error("tcp_entry_did_not_refuse_before_imports");
+          process.stdout.write("TCP entry refused ordinary invocation before runtime imports.\n");}'
+      - name: Closed heartbeat protocols, local claim admission and exact SchemaFull auditor
+        run: >-
+          node --experimental-strip-types --test --test-concurrency=1
+          services/pg-api/tests/worker-heartbeat-contract.test.mjs
+          services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs
+          services/pg-api/tests/worker-claim-admission.test.mjs
+          services/pg-api/tests/agent-prepare-claim-admission.test.mjs
+          services/pg-api/tests/model-claim-admission.test.mjs
+          services/pg-api/tests/workflow-safe-claim-admission.test.mjs
+          services/pg-api/tests/workflow-v2-claim-admission.test.mjs
+          services/pg-api/tests/schedule-claim-admission.test.mjs
+          services/pg-api/tests/knowledge-index-claim-admission.test.mjs
+          services/pg-api/tests/knowledge-query-claim-admission.test.mjs
+          services/pg-api/tests/assessment-claim-admission.test.mjs
+          services/pg-api/tests/worker-heartbeat-audit.test.mjs
+          services/pg-api/tests/native-current-company-admin.test.mjs
+          services/pg-api/tests/worker-heartbeat-activated-audit.test.mjs
+      - name: Actual fresh-service TCP case beside unchanged full060/full061
+        env:
+          AGENT_STUDIO_PG18_CI_EPHEMERAL: "true"
+          AGENT_STUDIO_PG18_CI_WRITE_APPROVED: "YES_DISPOSABLE_GITHUB_ONLY"
+          AGENT_STUDIO_PG18_CI_HOST: "127.0.0.1"
+          AGENT_STUDIO_PG18_CI_PORT: "5432"
+          AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+          AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+          AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: "synthetic-agentstudio-pg18-ci-${{ github.run_id }}"
+          AGENT_STUDIO_WORKER_HEARTBEAT_CI_MODE: SYNTHETIC_DOMAIN_ONLY
+          AGENT_STUDIO_WORKER_HEARTBEAT_CI_WRITE_APPROVED: YES_DISPOSABLE_TELEMETRY_ONLY
+        run: |
+          case "${{ matrix.case }}" in
+            dormant) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs ;;
+            prepare) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs ;;
+            telemetry-runtime) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/worker-heartbeat-runtime-tcp.integration.mjs ;;
+            model-safe) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/model-safe-claim-admission-tcp.integration.mjs ;;
+            knowledge-assessment) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/knowledge-assessment-claim-admission-tcp.integration.mjs ;;
+            v2-schedule) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/workflow-v2-schedule-claim-admission-tcp.integration.mjs ;;
+            knowledge-nonempty) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/knowledge-nonempty-claim-admission-tcp.integration.mjs ;;
+            activated-audit) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/worker-heartbeat-activated-audit-tcp.integration.mjs ;;
+            native-admin) node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/native-current-company-admin-tcp.integration.mjs ;;
+            *) exit 2 ;;
+          esac

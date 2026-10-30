@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState} from "react"
 import type {createPgNativePilotApi,PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeWorkflow,WorkflowLatestOutputs} from "@/lib/pgNativePilotApi"
 import {createPgNativeWorkflowEditor,emptyWorkflowEditor} from "@/lib/pgNativeWorkflowEditor"
+import {createPgNativeWorkflowGeneratedDraftEditor,scopedPgWorkflowMcpConnections,type PgWorkflowGeneratedDraftPort} from "@/lib/pgNativeWorkflowGeneratedDraft"
 import {addPgWorkflowNode,connectPgWorkflowNodes,patchPgWorkflowNode,removePgWorkflowNode,workflowGraphIssues,workflowExecutionIssues,workflowNodeNames,
   type WorkflowGraph,type WorkflowNodeType} from "@/lib/pgNativeWorkflowGraph"
 import PgNativeWorkflowCanvas from "./PgNativeWorkflowCanvas"
@@ -16,10 +17,12 @@ import {useMcpConnections} from "./useMcpConnections"
 import {useKnowledgeToolContext} from "./useKnowledgeToolContext"
 type Controller=ReturnType<typeof createPgNativeWorkflowEditor>
 type Change={kind:"fresh";name:string}|{kind:"open";id:string}|{kind:"import";name:string;graph:WorkflowGraph}
-export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,tools,bases,active,writeEnabled,executionEnabled,onExpired,onSaved,onRun}:{
+export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,tools,bases,active,writeEnabled,executionEnabled,onExpired,onSaved,onRun,generatedDraft,openWorkflowRequest}:{
   api:ReturnType<typeof createPgNativePilotApi>;workflows:PgNativeWorkflow[];agents:PgNativeAgent[];models:PgNativeModelConnection[];tools:PgNativeToolConnection[];bases:PgNativeKnowledge[];
-  active:boolean;writeEnabled:boolean;executionEnabled:boolean;onExpired:()=>void;onSaved:()=>Promise<void>;onRun:(id:string,revision:number)=>void
+  active:boolean;writeEnabled:boolean;executionEnabled:boolean;onExpired:()=>void;onSaved:()=>Promise<void>;onRun:(id:string,revision:number)=>void;generatedDraft?:PgWorkflowGeneratedDraftPort;openWorkflowRequest?:{id:string;selection:number}|null
 }){
+  const generated=useRef(generatedDraft);generated.current=generatedDraft
+  const openSeen=useRef<{api:typeof api;key:string}|null>(null)
   const mcp=useMcpConnections(api,active,onExpired)
   const knowledgeTool=useKnowledgeToolContext(api,active,onExpired)
   const [view,setView]=useState(emptyWorkflowEditor),[name,setName]=useState("")
@@ -38,18 +41,18 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
   ui.current={active,writeEnabled,formDirty}
   const editor=useRef<Controller|null>(null)
   useEffect(()=>{
-    const controller=createPgNativeWorkflowEditor(api,onExpired);editor.current=controller;setView(controller.snapshot());clipboard.current=null;setClipboardCount(0)
+    const controller=generated.current?createPgNativeWorkflowGeneratedDraftEditor(api,onExpired,()=>generated.current!):createPgNativeWorkflowEditor(api,onExpired);editor.current=controller;setView(controller.snapshot());clipboard.current=null;setClipboardCount(0)
     const unsubscribe=controller.subscribe(()=>setView(controller.snapshot()))
     return ()=>{unsubscribe();controller.dispose();++importRead.current;clipboard.current=null;if(editor.current===controller)editor.current=null}
   },[api,onExpired])
   useEffect(()=>{
-    if(!view.dirty&&!formDirty&&!view.pending)return
+    if(generatedDraft?.confirmed||!view.dirty&&!formDirty&&!view.pending)return
     const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=""}
     window.addEventListener("beforeunload",beforeUnload)
     return ()=>window.removeEventListener("beforeunload",beforeUnload)
-  },[view.dirty,view.pending,formDirty])
+  },[view.dirty,view.pending,formDirty,generatedDraft?.confirmed])
   const draft=view.draft,graph=draft?.graph,selected=graph?.nodes.find(node=>node.id===nodeId),edge=graph?.edges.find(item=>item.id===edgeId)
-  const locked=view.busy||view.loading||Boolean(view.pending),editable=active&&writeEnabled&&!locked
+  const locked=view.busy||view.loading||Boolean(view.pending)||Boolean(generatedDraft?.disabled),editable=active&&writeEnabled&&!locked
   const selection=graph?.nodes.filter(node=>selectedIds.includes(node.id)).map(node=>node.id)??[]
   const handleSelection=useCallback((ids:string[])=>{if(!active||formDirty)return;setSelectedIds(current=>current.length===ids.length&&current.every(id=>ids.includes(id))?current:ids)},[active,formDirty])
   const issues=graph?workflowGraphIssues(graph):[],runIssues=graph?workflowExecutionIssues(graph):[]
@@ -62,6 +65,15 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
     else if(request.kind==="import")controller.importDraft(request.name,request.graph,true)
     else await editor.current?.open(request.id,true)
   }
+  const changeAction=useRef(change);changeAction.current=change
+  const pendingSave=Boolean(view.pending)
+  useEffect(()=>{
+    const request=openWorkflowRequest
+    if(!active||generatedDraft||!request||view.busy||view.loading||pendingSave)return
+    const key=request.id+":"+request.selection
+    if(openSeen.current?.api===api&&openSeen.current.key===key)return
+    openSeen.current={api,key};void changeAction.current({kind:"open",id:request.id})
+  },[api,active,openWorkflowRequest?.id,openWorkflowRequest?.selection,generatedDraft?.key,view.busy,view.loading,pendingSave])
   const alter=(work:(current:WorkflowGraph)=>WorkflowGraph)=>{
     if(!editable||!editor.current?.snapshot().draft)return
     if(formDirty){setError("请先应用或撤销当前节点配置。");return}
@@ -102,8 +114,8 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
   return <section aria-label="PG Workflow 工作台" className="space-y-4">
     {error&&<p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
     {view.error&&<p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{view.error}</p>}
-    {view.notice&&<p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{view.notice}</p>}
-    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+    {!generatedDraft&&view.notice&&<p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{view.notice}</p>}
+    {!generatedDraft&&<div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="font-semibold">我的工作流画布</h2>
       <p className="text-sm leading-6 text-slate-500">配置模型、工具、Agent、条件和循环。保存配置不会运行节点；运行和每次外部操作需要单独授权与审批。</p>
       <div className="flex flex-wrap items-end gap-3"><label className="min-w-52 flex-1 text-sm font-medium">打开工作流
@@ -121,7 +133,8 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
       <label className="block text-sm font-medium">导入 Workflow JSON<input type="file" aria-label="导入 Workflow JSON" accept="application/json,.json" disabled={!active||!writeEnabled||locked}
         className="mt-1.5 block w-full text-sm" onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void loadFile(file)}}/></label>
       {!writeEnabled&&<p role="status" className="text-sm text-amber-800">当前环境只允许查看工作流，尚未开放配置保存。</p>}
-    </div>
+    </div>}
+    {generatedDraft&&<p role="status" className="rounded-xl bg-indigo-50 p-4 text-sm">模型生成的草图已载入现有画布。编辑不会自动保存或运行；完成后先预览保存，再单独确认。</p>}
     {changing&&<div role="group" aria-label="确认切换工作流" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
       <p>当前草稿尚未保存。确认放弃本地更改并切换？</p>
       <div className="flex flex-wrap gap-2"><button type="button" className={workflowSecondary} onClick={()=>void change(changing,true)}>放弃草稿并继续</button>
@@ -136,18 +149,18 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
         <button type="button" className={workflowSecondary} disabled={!editable||formDirty||!view.undoDepth} onClick={()=>editor.current?.undo()}>撤销画布更改</button>
         <button type="button" className={workflowSecondary} disabled={!editable||formDirty||!view.redoDepth} onClick={()=>editor.current?.redo()}>重做画布更改</button>
         <button type="button" className={workflowButton} disabled={!active||!writeEnabled||view.busy||view.loading||formDirty||!view.pending&&(!view.dirty||Boolean(issues.length))} onClick={()=>void save()}>
-          {view.busy?"保存中…":view.pending?"核对并确认上次保存":"保存工作流"}
+          {view.busy?"处理中…":generatedDraft?"预览草稿保存":view.pending?"核对并确认上次保存":"保存工作流"}
         </button>
-        <button type="button" className={workflowButton} disabled={!active||!executionEnabled||locked||formDirty||view.dirty||!draft.id||Boolean(runIssues.length)} onClick={()=>onRun(draft.id,draft.revision)}>运行已保存工作流</button>
+        <button type="button" className={workflowButton} disabled={Boolean(generatedDraft)||!active||!executionEnabled||locked||formDirty||view.dirty||!draft.id||Boolean(runIssues.length)} onClick={()=>onRun(draft.id,draft.revision)}>运行已保存工作流</button>
         <label className="basis-full text-sm font-medium">工作流描述<textarea aria-label="工作流描述" rows={2} maxLength={500} disabled={!editable||formDirty} value={graph.description??""}
           className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" onChange={event=>editor.current?.edit(draft.name,{...graph,description:event.target.value})}/></label>
       </div>
       {view.pending&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm">上次保存尚未确认。原请求和版本已保留，请确认原保存结果后再编辑或切换。</p>}
       {!!issues.length&&<div role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"><p className="font-medium">保存前需要修正</p><ul className="mt-2 list-inside list-disc">{issues.map(issue=><li key={issue}>{issue}</li>)}</ul></div>}
-      <PgNativeWorkflowAuthoringTools graph={graph} name={draft.name} selected={selection.length} clipboard={clipboardCount} readEnabled={active&&!locked&&!formDirty} editEnabled={editable&&!formDirty}
+      {!generatedDraft&&<PgNativeWorkflowAuthoringTools graph={graph} name={draft.name} selected={selection.length} clipboard={clipboardCount} readEnabled={active&&!locked&&!formDirty} editEnabled={editable&&!formDirty}
         onCopy={copySelection} onPaste={()=>paste()} onDuplicate={()=>paste(selectedPgWorkflowFragment(graph,selection))} onDelete={deleteSelection}
         onSelectAll={()=>{setSelectedIds(graph.nodes.map(node=>node.id));setNodeId("");setEdgeId("")}} onClear={()=>{setSelectedIds([]);setNodeId("");setEdgeId("")}}
-        onAlign={mode=>alter(current=>alignPgWorkflowNodes(current,selection,mode))} onTemplate={kind=>{const preset=pgWorkflowTemplate(kind);void change({kind:"import",...preset})}} onError={setError}/>
+        onAlign={mode=>alter(current=>alignPgWorkflowNodes(current,selection,mode))} onTemplate={kind=>{const preset=pgWorkflowTemplate(kind);void change({kind:"import",...preset})}} onError={setError}/>}
       {draft.id&&<PgNativeWorkflowSampleSource key={draft.id} api={api} workflowId={draft.id} active={active} onExpired={onExpired} onSnapshot={receiveSamples}/>}
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3" aria-label="添加工作流节点">
         {(Object.keys(workflowNodeNames) as WorkflowNodeType[]).map(type=><button key={type} type="button" className={workflowSecondary} disabled={!editable||formDirty||type==="start"}
@@ -167,7 +180,7 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
         {selected?<div className="space-y-4">
           <button type="button" className={workflowSecondary} disabled={!active||mcp.loading} onClick={()=>void mcp.load()}>读取本人 MCP 工具供工作流选择</button>
           {mcp.error&&<p role="alert" className="text-sm text-rose-800">{mcp.error}</p>}
-          <PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases} mcps={mcp.connections}
+          <PgNativeWorkflowNodeForm key={selected.id+":"+JSON.stringify(selected.data)} node={selected} nodes={graph.nodes} agents={agents} models={models} tools={tools} bases={bases} mcps={generatedDraft?scopedPgWorkflowMcpConnections(mcp.connections,generatedDraft.policy):mcp.connections} resourcePolicy={generatedDraft?.policy}
           knowledgeContext={knowledgeTool.context} onReadKnowledge={()=>void knowledgeTool.load()} knowledgeReading={knowledgeTool.loading} knowledgeError={knowledgeTool.error}
           enabled={editable} onDirty={setFormDirty} onApply={data=>{
             if(!editable)return "当前环境未开放配置编辑。"
@@ -195,6 +208,6 @@ export default function PgNativeWorkflowWorkspace({api,workflows,agents,models,t
       {selected&&selected.type!=="start"&&<button type="button" className={workflowSecondary} disabled={!editable||formDirty} onClick={()=>{alter(current=>removePgWorkflowNode(current,selected.id));setNodeId("")}}>删除所选节点</button>}
       {!issues.length&&!!runIssues.length&&<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">结构可以保存；运行前还需补齐：{runIssues.join("；")}</p>}
     </>}
-      <PgNativeWorkflowModelDebugPanel api={api} draft={debugDraft} active={active} enabled={executionEnabled} onExpired={onExpired} source={runSamples}/>
+      <PgNativeWorkflowModelDebugPanel api={api} draft={debugDraft} active={active} enabled={executionEnabled&&!generatedDraft} onExpired={onExpired} source={runSamples}/>
   </section>
 }

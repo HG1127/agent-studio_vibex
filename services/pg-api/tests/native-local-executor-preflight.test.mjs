@@ -1,0 +1,10 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {inspectNativeLocalExecutorPreflight} from '../src/native-local-executor-service-preflight.ts'
+const target={database:'agentstudio_pg18_ci',port:5432,observed_server_address:'127.0.0.1'},valid={database:target.database,port:target.port,host:'127.0.0.1',login:'agentstudio_local_executor_login',actor:'agentstudio_local_executor_login',version:180000,primary:true,readonly:'on',connect_only:true}
+function pool(row){const sql=[],state={released:0};return {sql,state,connect:async()=>({async query(text){sql.push(text);if(text.startsWith('SELECT current_database()'))return {rows:row?[row]:[]};return {rows:[]}},release(){state.released++}})}}
+test('invalid target pair is refused before acquiring a connection',async()=>{let n=0;await assert.rejects(inspectNativeLocalExecutorPreflight({async connect(){n++;throw Error('unexpected')}},{database:'agent_studio',port:5432}),/preflight_refused/);assert.equal(n,0)})
+test('original target identity failures roll back and release without role switch or catalog success',async()=>{
+ for(const row of [null,...[{database:'other'},{port:5333},{host:'192.0.2.1'},{actor:'postgres'},{version:170000},{primary:false},{readonly:'off'},{connect_only:false}].map(x=>({...valid,...x}))]){const p=pool(row);await assert.rejects(inspectNativeLocalExecutorPreflight(p,target),/preflight_refused/);assert.equal(p.state.released,1);assert.match(p.sql[0],/^BEGIN .* READ ONLY$/);assert.equal(p.sql.at(-1),'ROLLBACK');assert.equal(p.sql.some(x=>x.startsWith('SET LOCAL ROLE')),false)}
+})
+test('a plausible target cannot substitute fabricated positive C catalog authority',async()=>{const p=pool(valid);await assert.rejects(inspectNativeLocalExecutorPreflight(p,target),/unsafe_native_local_device_schema/);assert.equal(p.state.released,1);assert.equal(p.sql.at(-1),'ROLLBACK');assert.ok(p.sql.some(s=>s.includes('pg_catalog.pg_roles')));assert.equal(p.sql.some(s=>s.includes('native_local_executor_installed()')),false)})

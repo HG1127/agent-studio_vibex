@@ -1,0 +1,449 @@
+name: Agent Studio F01 Agent Design genuine PG18 isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+      - 'codex/pg18-agent-design-*'
+    paths-ignore:
+      - 'services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - 'tests/pg-native-template-market-genuine.spec.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-agent-design-genuine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-agent-design-genuine:
+    name: F01 / real PG18 ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [flow, database, home070, home071, home072, monitor073]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F01_GENUINE_CI: YES_DISPOSABLE_F01_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and ordinary-host refusal guards
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
+      # Each matrix leg owns a fresh PostgreSQL service. Never initialize062
+      # twice on a populated fixture or substitute catalog tests for the flow.
+      - name: Actual Native Cookie through SQL062 private dispatch and synthetic TLS provider
+        if: matrix.suite == 'flow'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-design-genuine-pg18.test.mjs
+      - name: Actual installed062 catalog roles golden protocols rollback and race boundaries
+        if: matrix.suite == 'database'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-design-database-pg18.test.mjs
+      - name: Independent original Home070 and catalog071 admission guards without SQL
+        if: matrix.suite == 'home070' || matrix.suite == 'home071'
+        run: node --experimental-strip-types --test services/pg-api/tests/original-home070-ci-guard.test.mjs services/pg-api/tests/original-home071-ci-guard.test.mjs
+      # Each profile leg has its own fresh PG18 service and distinct purpose.
+      # No old069/070 receipt or filtered ledger can attest to installed071.
+      - name: Actual original Home070 schema Native sessions and owned metadata resources
+        if: matrix.suite == 'home070'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME070_CI: YES_DISPOSABLE_ORIGINAL_HOME070_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME070_SUITE: home070
+          AGENT_STUDIO_ORIGINAL_HOME070_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home070-genuine-pg18.test.mjs
+      - name: Actual independent catalog071 install paging favorites Cookie switch and owned resources
+        if: matrix.suite == 'home071'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME071_CI: YES_DISPOSABLE_ORIGINAL_CATALOG071_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME071_SUITE: home071
+          AGENT_STUDIO_ORIGINAL_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home071-genuine-pg18.test.mjs
+      - name: Independent optional072 admission and configuration guards without SQL
+        if: matrix.suite == 'home072'
+        run: node --experimental-strip-types --test services/pg-api/tests/original-home072-ci-guard.test.mjs services/pg-api/tests/native-home-knowledge-statistics.test.mjs
+      - name: Actual optional072 shared statistics Native ACL exact catalog and cleanup
+        if: matrix.suite == 'home072'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME072_CI: YES_DISPOSABLE_HOME_KNOWLEDGE072_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME072_SUITE: home072
+          AGENT_STUDIO_ORIGINAL_HOME072_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home072-genuine-pg18.test.mjs
+
+      - name: Monitor073 purpose guards and pure owner metadata contracts
+        if: matrix.suite == 'monitor073'
+        run: node --experimental-strip-types --test services/pg-api/tests/native-monitor073-ci-guard.test.mjs services/pg-api/tests/native-monitor-inbox-pure.test.mjs
+      - name: Actual PG18 monitor owner metadata Native HTTPS and read replay
+        if: matrix.suite == 'monitor073'
+        env:
+          AGENT_STUDIO_NATIVE_MONITOR073_CI: YES_DISPOSABLE_MONITOR073_METADATA_ONLY
+          AGENT_STUDIO_NATIVE_MONITOR073_SUITE: monitor073
+          AGENT_STUDIO_NATIVE_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-monitor073-genuine-pg18.test.mjs
+
+  pg18-agent-design-browser:
+    name: F01 fixture / real PG18 browser / ${{ matrix.story }}
+    strategy:
+      fail-fast: false
+      matrix:
+        story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections, original-model-draft-discovery]
+        # Add two independent fresh-service purposes without changing old story rows.
+        include:
+          - story: original-agent-run-queued
+          - story: original-run-detail-queued
+          - story: original-model-config-receipts075
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F01_GENUINE_CI: YES_DISPOSABLE_F01_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual browser compiler configuration and ordinary-host refusal guards
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
+      - name: Original Login host negative policy tests
+        if: matrix.story == 'original-login'
+        run: node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs tests/pg-original-monitor073-policy.test.mjs
+      - name: Build original employee UI into its separate output
+        if: matrix.story == 'original-login'
+        run: node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original Home natural-authoring host pure guards and original UI build
+        if: matrix.story == 'original-home-design'
+        run: |
+          node --test tests/pg-original-home-design-browser-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original ModelConnections pure callbacks and original UI build
+        if: matrix.story == 'original-model-connections'
+        run: |
+          node --experimental-strip-types --test tests/original-model-connections-api.test.mjs tests/original-model-connections-controller.test.mjs tests/original-model-connections-hook.test.mjs tests/pg-original-model-connections-browser-policy.test.mjs tests/pg-original-model-connections-config-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original model draft discovery guards and original index build
+        if: matrix.story == 'original-model-draft-discovery'
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test tests/pg-original-model-draft-discovery-browser-policy.test.mjs tests/pg-original-model-draft-discovery-host-source-pure.test.mjs tests/model-draft-discovery-provider-pure.test.mjs tests/model-draft-probe-http-pure.test.mjs tests/model-draft-probe-repository-pure.test.mjs tests/original-model-draft-probe-hook-pure.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original queued AgentRun and RunDetail pure guards and original index build
+        if: matrix.story == 'original-agent-run-queued' || matrix.story == 'original-run-detail-queued'
+        run: |
+          node --experimental-strip-types --test tests/pg-original-run-queued-policy.test.mjs tests/pg-original-run-queued-host-source-pure.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original ModelConnections075 source policy and original UI build
+        if: matrix.story == 'original-model-config-receipts075'
+        run: |
+          node --experimental-strip-types --test tests/pg-original-model-receipts075-source-pure.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual HTTPS browser through the real PG18 design and save chain
+        if: matrix.story == 'design'
+        # Invoke the installed CLI directly. The pnpm binary shim injects
+        # NODE_PATH, which the genuine fixture correctly refuses.
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-agent-design-genuine.config.mjs
+      - name: Original Login App authentication through real PG18 Native HTTPS
+        if: matrix.story == 'original-login'
+        env:
+          AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_ORIGINAL_MONITOR073_CI: YES_DISPOSABLE_ORIGINAL_MONITOR073_METADATA_ONLY
+          AGENT_STUDIO_ORIGINAL_MONITOR073_PROFILE: original-home-monitor073-metadata
+          AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-login-genuine.config.mjs
+      - name: Original Home generation revision original-request recovery and manual070071 save
+        if: matrix.story == 'original-home-design'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME_DESIGN_CI: YES_DISPOSABLE_ORIGINAL_HOME_DESIGN_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME_DESIGN_STORY: original-home-design
+          AGENT_STUDIO_ORIGINAL_HOME_DESIGN_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-home-design-genuine.config.mjs
+      - name: Retain fixed safe original Home natural-authoring artifacts after cleanup
+        if: always() && matrix.story == 'original-home-design'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-home-design-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-home-design-genuine-browser-results/**/original-home-design-generated.png
+            .tmp/original-home-design-genuine-browser-results/**/original-home-design-revised-saved.png
+            .tmp/original-home-design-genuine-browser-results/**/original-home-design-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent original unsaved draft discovery and actual Cookie late POST fence
+        if: matrix.story == 'original-model-draft-discovery'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_PROVIDER_READONLY_PROBE_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_CI: YES_DISPOSABLE_ORIGINAL_MODEL_DRAFT_DISCOVERY_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_STORY: original-model-draft-discovery
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-draft-discovery-genuine.config.mjs
+      - name: Retain fixed safe draft discovery artifacts after complete story and cleanup
+        if: always() && matrix.story == 'original-model-draft-discovery'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-model-draft-discovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-model-draft-discovery-genuine-browser-results/**/original-model-draft-discovery-alice-saved.png
+            .tmp/original-model-draft-discovery-genuine-browser-results/**/original-model-draft-discovery-alice-after-bob.png
+            .tmp/original-model-draft-discovery-genuine-browser-results/**/original-model-draft-discovery-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Original ModelConnections actual owner encrypted metadata CAS audit and unknown-write fence
+        if: matrix.story == 'original-model-connections'
+        env:
+          AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI: YES_DISPOSABLE_ORIGINAL_MODEL_CONNECTIONS_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_STORY: original-model-connections
+          AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-connections-genuine.config.mjs
+      - name: Retain fixed safe original ModelConnections artifacts after cleanup
+        if: always() && matrix.story == 'original-model-connections'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-model-connections-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-alice-metadata.png
+            .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-bob-unknown.png
+            .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Original ModelConnections075 actual committed-write receipts and account fence
+        if: matrix.story == 'original-model-config-receipts075'
+        env:
+          AGENT_STUDIO_ORIGINAL_MODEL_RECEIPTS075_CI: YES_DISPOSABLE_ORIGINAL_MODEL_CONFIG_RECEIPTS075_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_RECEIPTS075_STORY: original-model-config-receipts075
+          AGENT_STUDIO_ORIGINAL_MODEL_RECEIPTS075_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_PG18_MODEL_CONFIG_RECEIPTS_ENABLED: 'true'
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-receipts075-genuine.config.mjs
+      - name: Retain fixed safe original ModelConnections075 artifacts after cleanup
+        if: always() && matrix.story == 'original-model-config-receipts075'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-model-receipts075-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-model-receipts075-genuine-browser-results/**/original-model-receipts075-recovered.png
+            .tmp/original-model-receipts075-genuine-browser-results/**/original-model-receipts075-account-fence.png
+            .tmp/original-model-receipts075-genuine-browser-results/**/original-model-receipts075-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent original-agent-run-queued actual Native Cookie owner read control privacy
+        if: matrix.story == 'original-agent-run-queued'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_EXECUTION_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+          AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_FEEDBACK_ONLY
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY
+          AGENT_STUDIO_ORIGINAL_AGENT_RUN_QUEUED_CI: YES_DISPOSABLE_ORIGINAL_AGENT_RUN_QUEUED_ONLY
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_STORY: original-agent-run-queued
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-agent-run-queued-genuine.config.mjs
+      - name: Retain only fixed successful original-agent-run-queued images after full core story and cleanup
+        if: always() && matrix.story == 'original-agent-run-queued'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-agent-run-queued-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-agent-run-queued-genuine-browser-results/**/original-agent-run-queued-alice-restored.png
+            .tmp/original-agent-run-queued-genuine-browser-results/**/original-agent-run-queued-bob-acl-hidden.png
+            .tmp/original-agent-run-queued-genuine-browser-results/**/original-run-queued-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent original-run-detail-queued actual Native Cookie owner read control privacy
+        if: matrix.story == 'original-run-detail-queued'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_EXECUTION_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+          AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_FEEDBACK_ONLY
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY
+          AGENT_STUDIO_ORIGINAL_RUN_DETAIL_QUEUED_CI: YES_DISPOSABLE_ORIGINAL_RUN_DETAIL_QUEUED_ONLY
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_STORY: original-run-detail-queued
+          AGENT_STUDIO_ORIGINAL_RUN_QUEUED_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-run-detail-queued-genuine.config.mjs
+      - name: Retain only fixed successful original-run-detail-queued images after full core story and cleanup
+        if: always() && matrix.story == 'original-run-detail-queued'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-run-detail-queued-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-run-detail-queued-genuine-browser-results/**/original-run-detail-queued-alice-receipt.png
+            .tmp/original-run-detail-queued-genuine-browser-results/**/original-run-detail-queued-bob-owned.png
+            .tmp/original-run-detail-queued-genuine-browser-results/**/original-run-queued-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Retain synthetic page images only
+        if: always() && matrix.story == 'design'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-agent-design-genuine-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/F01-genuine-browser-results/**/*.png
+          if-no-files-found: ignore
+      - name: Retain original Login App synthetic images and bounded observations
+        if: always() && matrix.story == 'original-login'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-login-auth-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-login-genuine-browser-results/**/*.png
+            .tmp/original-login-genuine-browser-results/**/original-login-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Independent Monitor073 host policy and build original employee UI
+        if: matrix.story == 'monitor073'
+        run: |
+          node --test tests/pg-original-monitor073-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original Home real073 owner rows paging read acknowledgement and employee switch
+        if: matrix.story == 'monitor073'
+        env:
+          AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_ORIGINAL_MONITOR073_CI: YES_DISPOSABLE_ORIGINAL_MONITOR073_METADATA_ONLY
+          AGENT_STUDIO_ORIGINAL_MONITOR073_PROFILE: original-home-monitor073-metadata
+          AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: monitor073
+          AGENT_STUDIO_ORIGINAL_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-monitor073-genuine.config.mjs
+      - name: Retain synthetic original Home073 metadata observations only
+        if: always() && matrix.story == 'monitor073'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-home-monitor073-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-monitor073-genuine-browser-results/**/*.png
+            .tmp/original-monitor073-genuine-browser-results/**/original-monitor073-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      # Independent matrix leg has its own fresh PostgreSQL service. Keep the
+      # original Home071 predecessor purpose and actual GITHUB_JOB unchanged.
+      - name: Original personal overview source policy and separate employee UI build
+        if: matrix.story == 'internal-overview'
+        run: |
+          node --test tests/pg-original-internal-overview-browser-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original personal overview real owner Cookie switch and dependency story
+        if: matrix.story == 'internal-overview'
+        env:
+          AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_CI: YES_DISPOSABLE_ORIGINAL_PERSONAL_OVERVIEW_ONLY
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_PROFILE: original-personal-overview071
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_STORY: internal-overview
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-internal-overview-genuine.config.mjs
+      - name: Retain only explicitly named successful synthetic personal overview images and bounded observation
+        if: always() && matrix.story == 'internal-overview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-personal-overview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-internal-overview-genuine-artifacts/original-internal-overview-alice.png
+            .tmp/original-internal-overview-genuine-artifacts/original-internal-overview-bob.png
+            .tmp/original-internal-overview-genuine-artifacts/original-internal-overview-observation.json
+          if-no-files-found: ignore
+          retention-days: 7

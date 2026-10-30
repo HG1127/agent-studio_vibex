@@ -1,0 +1,7 @@
+# SOURCE REVIEW ONLY. Do not copy, reload or provision automatically.
+# Review effective first-match ordering with the independent Executor validator.
+# These exact-user rules must precede every broader potentially matching rule.
+host agent_studio agentstudio_local_executor_login 127.0.0.1/32 scram-sha-256
+local all agentstudio_local_executor_login reject
+host all agentstudio_local_executor_login 0.0.0.0/0 reject
+host all agentstudio_local_executor_login ::/0 reject

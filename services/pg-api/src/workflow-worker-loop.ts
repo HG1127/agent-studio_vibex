@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {reportWorkerStartupFailure} from './pg18-full069-worker-startup-observation.mjs'
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 // Separate opt-in PostgreSQL Workflow Worker. Start/End nodes only.
 // Never imports model providers, tools, arbitrary HTTP or PocketBase workers.
 import {readFileSync,lstatSync,accessSync,constants} from "node:fs"
@@ -10,7 +12,6 @@ import {verifyPgWorkerRoleBoundary} from "./worker-role-preflight.ts"
 import {assertPg18CredentialMetadata} from "./worker-credential-policy.ts"
 import {assertPgWorkerActivation,assertPg18WorkerCredentialBinding,
   pgWorkerOfflinePlan} from "./worker-activation-guard.ts"
-import {WorkflowSafeWorker} from "./workflow-safe-worker.ts"
 const approval="APPROVE_ISOLATED_PG_WORKFLOW_START_END_ONLY"
 function required(name:string):string{
   const value=process.env[name]?.trim()||""
@@ -34,18 +35,25 @@ function connection(){
   if(password.length<32||/^(.)\1+$/.test(password))throw Error("unsafe_worker_secret")
   return {...target,password}
 }
+let startupStage='entry'
 async function main(mode:"serve"|"preflight"){
   if(mode==="serve"){
-    assertPgWorkerActivation(process.env,["--serve"])
+    startupStage='activation';assertPgWorkerActivation(process.env,["--serve"])
     if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true"||
        process.env.AGENT_STUDIO_PG_WORKFLOW_WORKER_ENABLED!=="true"||
        process.env.AGENT_STUDIO_PG_WORKFLOW_WORKER_APPROVED!==approval)
       throw Error("workflow_worker_not_approved")
   }
-  assertPg18WorkerCredentialBinding(process.env,"workflow")
-  const cfg=connection()
-  const {Pool}=await import("pg")
-  const pool=new Pool({host:cfg.host,port:cfg.port,user:cfg.user,
+  startupStage='credential_binding';assertPg18WorkerCredentialBinding(process.env,"workflow")
+  startupStage='credential_read';const cfg=connection()
+  let stop=false
+  let heartbeat:WorkerHeartbeatWorkerLifecycle|null=null
+  let closeNewClaims:(()=>void)|undefined
+  const requestStop=()=>{stop=true;closeNewClaims?.()}
+  process.once("SIGTERM",requestStop)
+  process.once("SIGINT",requestStop)
+  startupStage='pg_import';const {Pool}=await import("pg")
+  startupStage='pool_create';const pool=new Pool({host:cfg.host,port:cfg.port,user:cfg.user,
     database:cfg.database,password:cfg.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000,idleTimeoutMillis:10000})
   const adapter:SqlPool={async connect():Promise<SqlClient>{
@@ -54,12 +62,9 @@ async function main(mode:"serve"|"preflight"){
       const result=await db.query(sql,params);return {rows:result.rows as Row[]}
     },release(){db.release()}}
   }}
-  let stop=false
-  process.once("SIGTERM",()=>{stop=true})
-  process.once("SIGINT",()=>{stop=true})
   try{
-    await verifyPgRuntimeTarget(adapter,cfg)
-    await verifyPgWorkerRoleBoundary(adapter,cfg)
+    startupStage='target_audit';await verifyPgRuntimeTarget(adapter,cfg)
+    startupStage='worker_role_audit';await verifyPgWorkerRoleBoundary(adapter,cfg)
     if(mode==="preflight"){
       process.stdout.write(JSON.stringify({mode:"preflight",worker:"workflow",
         target:cfg.database,database_port:cfg.port,verified_roles:true,
@@ -67,11 +72,17 @@ async function main(mode:"serve"|"preflight"){
         production_cutover_allowed:false})+"\n")
       return
     }
-    const worker=new WorkflowSafeWorker(adapter,"pg-workflow-"+randomUUID().slice(0,8))
+    startupStage='heartbeat_open';if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true')heartbeat=await (await import('./worker-heartbeat-worker-lifecycle.ts')).openWorkerHeartbeatWorkerLifecycle('workflow_safe')
+    // Read-only preflight never loads the executor or its claim SQL.
+    startupStage='worker_import';const {WorkflowSafeWorker}=await import("./workflow-safe-worker.ts")
+    startupStage='worker_construct';const worker=new WorkflowSafeWorker(adapter,"pg-workflow-"+randomUUID().slice(0,8))
+    closeNewClaims=()=>{worker.closeNewClaims();if(worker.claimAdmissionSnapshot().closed)heartbeat?.newClaimsClosed()}
+    if(stop){closeNewClaims();return}
+    heartbeat?.startupChecksComplete()
     process.stdout.write(JSON.stringify({service:"pg-agent-workflow",
       state:"ready",mode:"start_end_only",external_calls:false,
       scheduler_started:false,production_cutover_allowed:false})+"\n")
-    while(!stop){
+    startupStage='loop_run';while(!stop){
       try{
         const result=await worker.tick()
         if(result.status!=="idle")process.stdout.write(JSON.stringify({
@@ -80,12 +91,13 @@ async function main(mode:"serve"|"preflight"){
         })+"\n")
         await sleep(result.status==="idle"?900:100)
       }catch{
+        heartbeat?.loopUnavailable()
         process.stderr.write(JSON.stringify({service:"pg-agent-workflow",
           error:"workflow_worker_tick_failed"})+"\n")
         await sleep(1500)
       }
     }
-  }finally{await pool.end()}
+  }finally{const priorStartupStage=startupStage;startupStage='pool_cleanup';heartbeat?.close();await pool.end();startupStage=priorStartupStage}
 }
 const args=process.argv.slice(2)
 if(args.length===1&&args[0]==="--plan"){
@@ -101,6 +113,7 @@ if(args.length===1&&args[0]==="--plan"){
   })
 }else if(args.length===1&&args[0]==="--serve"){
   void main("serve").catch((error:unknown)=>{
+    try{reportWorkerStartupFailure(startupStage,error)}catch{}
     const m=error instanceof Error?error.message:""
     const allowed=/^(missing_[A-Z0-9_]+|unsafe_[a-z_]+|invalid_model_id|pg18_worker_not_approved|workflow_worker_not_approved|pg18_worker_credential_binding_required)$/
     process.stderr.write(JSON.stringify({service:"pg-agent-workflow",

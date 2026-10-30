@@ -1,3 +1,6 @@
+import {verifyNativeLocalWorkerRole} from './native-local-agent-resources.ts'
+import {parseLocalBinding} from '../../../shared/native-local-device-contract.mjs'
+import {reserveAgentCallerStep,approveReservedAgentCallerStep} from './agent-caller-runtime-policy.ts'
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
 // Durable V2 transitions. No provider/tool implementation is imported here.
 // External execution requires an explicitly installed trusted adapter; a missing
@@ -15,6 +18,8 @@ import {inspectWorkflowAgentState,recordWorkflowAgentResult} from "./workflow-v2
 import {initializeWorkflowAgent} from "./workflow-v2-agent-resources.ts"
 import {recordAgentMemoryFailureSource} from "./agent-memory-failure-source.ts"
 import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
+import {createWorkerClaimAdmission,type WorkerClaimAdmission,type WorkerClaimAdmissionView,type WorkerClaimPermit}
+  from "./worker-claim-admission.ts"
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:DurableV2Mode;workflow_id?:string;agent_spec_id?:string;workflow_revision?:number;spec_revision?:number;graph_sha256:string};
@@ -74,16 +79,22 @@ type Prepared={tick:WorkflowV2Tick}|{request:WorkflowEffectRequest;job:Job}
 export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
+  readonly localDeviceEnabled:boolean
+  readonly callerEnabled:boolean
   readonly agentEnabled:boolean
   readonly scheduleEnabled:boolean
   readonly humanEnabled:boolean
   readonly memoryEnabled:boolean
   readonly outcomeEnabled:boolean
   readonly outcomes:AgentMemoryOutcomeRepository
+  readonly #claimAdmission:WorkerClaimAdmission
+  readonly #claimLane:DurableV2Mode
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode}={}){
+  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;agentCallerExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode;localDeviceExecutionApproved?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
+    this.localDeviceEnabled=options.localDeviceExecutionApproved===true
+    this.callerEnabled=options.agentCallerExecutionApproved===true
     this.agentEnabled=options.agentExecutionApproved===true
     this.scheduleEnabled=options.scheduleExecutionApproved===true
     this.humanEnabled=options.humanInputApproved===true
@@ -91,19 +102,56 @@ export class WorkflowV2Worker{
     this.outcomeEnabled=options.outcomeMemoryApproved===true
     this.outcomes=new AgentMemoryOutcomeRepository(pool,{allowWriteback:this.outcomeEnabled})
     this.root=durableV2Root(options.executionMode??"workflow_native_v2")
+    this.#claimLane=this.root.mode
+    this.#claimAdmission=createWorkerClaimAdmission({lanes:[this.#claimLane]})
     this.timeoutMs=options.effectTimeoutMs??30000;this.batch=options.batchSize??8
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<10||this.timeoutMs>30000||
        !Number.isSafeInteger(this.batch)||this.batch<1||this.batch>20)throw Error("invalid_workflow_v2_worker_options")
   }
-  async claim():Promise<Job|null>{return tx(this.pool,async db=>{
-    await db.query("SET LOCAL ROLE agentstudio_worker")
-    const job=(await db.query<Job>(this.root.mode==="agent_native_v2"?agentClaimSql:claimSql,[this.workerId,60])).rows[0]
-    if(job&&!valid(job,this.workerId,this.root.mode))throw Error("invalid_workflow_v2_claim")
-    return job??null
-  })}
+  closeNewClaims():void {this.#claimAdmission.close()}
+  // Only this instance's fixed V2 mode and local claim transactions are covered.
+  claimAdmissionSnapshot():WorkerClaimAdmissionView {return this.#claimAdmission.snapshot()}
+  async claim():Promise<Job|null>{
+    const admission=this.#claimAdmission
+    if(admission.snapshot().closed)return null
+    const db=await this.pool.connect()
+    let started=false,commitAttempted=false,dispatched=false
+    let permit:WorkerClaimPermit|null=null
+    try{
+      await db.query("BEGIN");started=true
+      await applyKnowledgeScope(db,this.pool)
+      await db.query("SET LOCAL ROLE agentstudio_worker")
+      permit=admission.tryEnter(this.#claimLane)
+      let job:Job|null=null
+      if(permit){
+        const request=admission.dispatch(permit,()=>{
+          dispatched=true
+          return db.query<Job>(this.root.mode==="agent_native_v2"?agentClaimSql:claimSql,[this.workerId,60])
+        })
+        if(request.started){
+          job=(await request.value).rows[0]??null
+          if(job&&!valid(job,this.workerId,this.root.mode))throw Error("invalid_workflow_v2_claim")
+        }else permit=null
+      }
+      commitAttempted=true
+      await db.query("COMMIT");started=false
+      if(permit)admission.confirm(permit,{outcome:"commit_confirmed"})
+      return job
+    }catch(error){
+      if(permit&&dispatched)admission.markUncertain(permit)
+      let rolledBack=false
+      if(started)try{await db.query("ROLLBACK");rolledBack=true}catch{}
+      if(permit){
+        if(!dispatched)admission.discardUndispatched(permit)
+        else if(!commitAttempted&&rolledBack)admission.confirm(permit,{outcome:"rollback_confirmed"})
+      }
+      throw error
+    }finally{db.release()}
+  }
   async tick():Promise<WorkflowV2Tick>{
     const ambiguous=await this.reconcileExpired()
     if(ambiguous)return ambiguous
+    if(this.#claimAdmission.snapshot().closed)return {status:"idle"}
     const job=await this.claim();return job?this.execute(job):{status:"idle"}
   }
   async execute(job:Job):Promise<WorkflowV2Tick>{
@@ -121,7 +169,7 @@ export class WorkflowV2Worker{
     try{
       output=await Promise.race([this.executor!.execute(prepared.request,{job_id:job.id,run_id:job.run_id,
         lease_token:job.lease_token,lease_version:Number(job.lease_version),worker_id:this.workerId,execution_mode:this.root.mode,signal:controller.signal}),
-      new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("workflow_effect_timeout"))},this.timeoutMs)})])
+      new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("workflow_effect_timeout"))},this.localDeviceEnabled&&this.root.mode==="agent_native_v2"&&prepared.request.configuration.tool==="local_computer"?128000:this.timeoutMs)})])
       if(typeof output!=="string"||output.length>20000||output.includes("\0"))unknown=true
     }catch(error){
       if(error instanceof WorkflowKnownEffectFailure)return this.finishKnownFailure(job,prepared.request,error.code)
@@ -129,7 +177,7 @@ export class WorkflowV2Worker{
     }finally{if(timer)clearTimeout(timer)}
     // A DB failure after the external call is intentionally NOT retried here.
     // The committed started ledger blocks reclaim; reconciliation pauses it.
-    return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,prepared.request.agent_context&&prepared.request.kind==="model"?12000:4000))
+    return this.finish(job,prepared.request,unknown?undefined:output!.slice(0,prepared.request.agent_context&&(prepared.request.kind==="model"||prepared.request.configuration.tool==="local_computer")?12000:4000))
   }
   private async prepare(job:Job):Promise<Prepared>{return tx(this.pool,async db=>{
     const leased=await lockLease(db,job,this.workerId)
@@ -140,10 +188,16 @@ export class WorkflowV2Worker{
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='"+this.root.kind+"' FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]
     if(!row||!["queued","running"].includes(row.status))return {tick:{status:"stale",run_id:job.run_id}}
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.agent_state?.local_device){
+      if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
+      await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
+    }
     if(state.human_agent_keys?.length&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
+    const callerRun=Boolean(state.caller_binding)
+    if(callerRun&&!this.callerEnabled){await this.persist(db,job,state,"paused","agent_caller_execution_disabled");await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}}
     if(this.root.kind==="agent"&&await this.outcomes.hasOwned(db,job.owner_user_id,job.run_id)&&(!this.outcomeEnabled||!this.humanEnabled)){
       await this.persist(db,job,state,"paused","agent_memory_outcome_execution_disabled");await acknowledge(db,job,this.workerId,"failed")
       return {tick:{status:"paused",run_id:job.run_id}}
@@ -199,9 +253,18 @@ export class WorkflowV2Worker{
           }
           pending=agent.pending!
         }
+        if(callerRun){
+          // Persist this deterministic transition before sealing its exact
+          // checkpoint hash. The existing live job/run lock remains held.
+          await db.query("UPDATE agentstudio.runs SET checkpoint=$3::jsonb,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.run_id,job.owner_user_id,JSON.stringify(state)])
+          if(!await reserveAgentCallerStep(db,job.owner_user_id,job.run_id,state,job,pending,state.agent_state?.spec))throw new HttpError(409,"agent_caller_budget_or_source_unavailable")
+          // This also runs for already approved rows. A manual Owner approval
+          // cannot bypass the caller generation, source or daily step budget.
+          await approveReservedAgentCallerStep(db,job.owner_user_id,job.run_id,pending,state.agent_state?.spec)
+        }
         let approval=(await db.query<{status:string;reason_code:string}>("SELECT status,reason_code FROM agentstudio.approvals "+
           "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text FOR UPDATE",[job.run_id,job.owner_user_id,pending.step_key])).rows[0]
-        if(!approval&&await scheduleAutomaticEffect(db,job.owner_user_id,job.run_id,pending))approval={status:"approved",reason_code:"wf2:"+pending.input_sha256}
+        if(!callerRun&&!approval&&await scheduleAutomaticEffect(db,job.owner_user_id,job.run_id,pending))approval={status:"approved",reason_code:"wf2:"+pending.input_sha256}
         if(!approval){
           await db.query("INSERT INTO agentstudio.approvals(owner_user_id,run_id,step_key,requested_by,reason_code) "+
             "VALUES($1::uuid,$2::uuid,$3::text,$1::uuid,$4::text)",[job.owner_user_id,job.run_id,pending.step_key,"wf2:"+pending.input_sha256])
@@ -229,7 +292,14 @@ export class WorkflowV2Worker{
         if(pending.kind==="agent"){
           if(this.agentEnabled){
             if(state.memory_context&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
-            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(state.memory_context?{memoryContext:state.memory_context}:{})})
+            let localDevice:ReturnType<typeof parseLocalBinding>|undefined
+            if(this.localDeviceEnabled&&this.root.mode==="agent_native_v2"){
+              await db.query("SET LOCAL ROLE agentstudio_worker")
+              const value=(await db.query<{value:unknown}>("SELECT agentstudio.native_local_worker_binding($1::jsonb) AS value",[JSON.stringify({job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId})])).rows[0]?.value
+              if(value!==null&&value!==undefined)localDevice=parseLocalBinding(value)
+              await actor(db,job.owner_user_id)
+            }
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(localDevice?{localDevice}:{}),...(state.memory_context?{memoryContext:state.memory_context}:{})})
             if(state.agent_state.human_protocol)state.human_agent_keys=[...new Set([...(state.human_agent_keys??[]),pending.step_key])]
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")
@@ -314,6 +384,10 @@ export class WorkflowV2Worker{
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.agent_state?.local_device){
+      if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
+      await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
+    }
     const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
     const changed=await db.query("UPDATE agentstudio.external_effects SET status=$4::text,result_reference=$5::text,updated_at=clock_timestamp() "+
@@ -329,12 +403,14 @@ export class WorkflowV2Worker{
       state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:request.step_key,input_sha256:request.input_sha256,output})
       delete state.agent_dispatch
       await stepRows(db,job,[{step_key:request.step_key,node_id:request.node_id,node_type:request.kind,status:"succeeded",output,agent_context:request.agent_context}])
+      if(state.manual_pause){await this.persist(db,job,state,"paused","agent_run_paused_by_owner");await acknowledge(db,job,this.workerId,"queued");return {status:"paused",run_id:job.run_id}}
       await this.persist(db,job,state,"queued","")
       await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_agent_step_succeeded",{step_key:request.step_key,input_sha256:request.input_sha256})
       await acknowledge(db,job,this.workerId,"queued")
       return {status:"progressed",run_id:job.run_id}
     }
     state.machine=recordWorkflowV2EffectResult(state.graph,state.machine,{step_key:request.step_key,input_sha256:request.input_sha256,output})
+    if(state.manual_pause){await this.persist(db,job,state,"paused","agent_run_paused_by_owner");await acknowledge(db,job,this.workerId,"queued");return {status:"paused",run_id:job.run_id}}
     const next=advanceWorkflowV2Checkpoint(state.graph,state.machine);state.machine=next.checkpoint
     await stepRows(db,job,next.events)
     const status=next.view.status==="failed"?"failed":next.view.status==="succeeded"?"succeeded":"queued"
@@ -349,6 +425,10 @@ export class WorkflowV2Worker{
     const row=(await db.query<WorkflowV2RunRow>("SELECT "+workflowV2RunColumns+" FROM agentstudio.runs "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[job.run_id,job.owner_user_id])).rows[0]!
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    if(state.agent_state?.local_device){
+      if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
+      await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
+    }
     const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
     const changed=await db.query("UPDATE agentstudio.external_effects SET status='failed',updated_at=clock_timestamp() "+
@@ -360,6 +440,7 @@ export class WorkflowV2Worker{
       state.agent_state=recordWorkflowAgentResult(state.agent_state,parent,{step_key:request.step_key,input_sha256:request.input_sha256,output:"",outcome:"failed",code:error})
       delete state.agent_dispatch
     }
+    if(state.manual_pause&&request.agent_context){await this.persist(db,job,state,"paused","agent_run_paused_by_owner");await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_failed",{step_key:request.step_key,input_sha256:request.input_sha256,error_code:error});await acknowledge(db,job,this.workerId,"queued");return {status:"paused",run_id:job.run_id}}
     await this.persist(db,job,state,request.agent_context?"queued":"failed",request.agent_context?"":error)
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_effect_failed",{step_key:request.step_key,input_sha256:request.input_sha256,error_code:error})
     await acknowledge(db,job,this.workerId,request.agent_context?"queued":"failed");return {status:request.agent_context?"progressed":"failed",run_id:job.run_id}
@@ -381,7 +462,7 @@ export class WorkflowV2Worker{
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='started'",[job.run_id,job.owner_user_id])
     await db.query("UPDATE agentstudio.runs SET status='paused',checkpoint=jsonb_set(checkpoint,'{stage}','\""+this.root.stage+"paused\"'::jsonb),"+
       "last_error_code='workflow_v2_effect_outcome_unknown',updated_at=clock_timestamp() "+
-      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND status IN ('queued','running')",[job.run_id,job.owner_user_id])
+      "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND (status IN ('queued','running') OR status='paused' AND checkpoint ? 'manual_pause')",[job.run_id,job.owner_user_id])
     await auditWorkflowV2(db,job.owner_user_id,job.run_id,"workflow.v2_ambiguous",{})
   }
   private async reconcileExpired():Promise<WorkflowV2Tick|null>{return tx(this.pool,async db=>{

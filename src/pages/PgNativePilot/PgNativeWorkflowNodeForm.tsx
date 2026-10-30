@@ -1,4 +1,5 @@
 import {useState} from "react"
+import type {PgWorkflowDraftResourcePolicy} from "@/lib/pgNativeWorkflowGeneratedDraft"
 import type {PgNativeAgent,PgNativeKnowledge,PgNativeModelConnection,PgNativeToolConnection,PgNativeMcpConnection} from "@/lib/pgNativePilotApi"
 import {mcpChoices} from "@/lib/pgNativeMcpConnection"
 import {type WorkflowNode,type WorkflowNodeDataV2} from "@/lib/pgNativeWorkflowGraph"
@@ -8,9 +9,9 @@ const field="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2
 export const workflowButton="min-h-10 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
 export const workflowSecondary="min-h-10 rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
 const defaults:Record<string,string>={calculate:'{"expression":"1+1"}',summarize:'{"text":"{{input}}"}',knowledge_search:'{"query":"{{input}}"}',web_search:'{"query":"{{input}}"}',web_fetch:'{"url":"https://example.com"}'}
-export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools,bases,mcps=[],knowledgeContext=null,onReadKnowledge,knowledgeReading=false,knowledgeError="",enabled,onApply,onDirty}:{
+export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools,bases,mcps=[],knowledgeContext=null,onReadKnowledge,knowledgeReading=false,knowledgeError="",enabled,onApply,onDirty,resourcePolicy}:{
   node:WorkflowNode;nodes:WorkflowNode[];agents:PgNativeAgent[];models:PgNativeModelConnection[];tools:PgNativeToolConnection[];bases:PgNativeKnowledge[];
-  mcps?:PgNativeMcpConnection[];knowledgeContext?:KnowledgeToolContext|null;onReadKnowledge?:()=>void;knowledgeReading?:boolean;knowledgeError?:string;enabled:boolean;onApply:(data:WorkflowNodeDataV2)=>string|undefined;onDirty:(dirty:boolean)=>void
+  mcps?:PgNativeMcpConnection[];knowledgeContext?:KnowledgeToolContext|null;onReadKnowledge?:()=>void;knowledgeReading?:boolean;knowledgeError?:string;enabled:boolean;onApply:(data:WorkflowNodeDataV2)=>string|undefined;onDirty:(dirty:boolean)=>void;resourcePolicy?:PgWorkflowDraftResourcePolicy
 }){
   const [data,setData]=useState(()=>structuredClone(node.data))
   const [dirty,setDirty]=useState(false),[error,setError]=useState("")
@@ -56,7 +57,7 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
         onChange={event=>event.target.checked?change({prompt_format:"literal"}):change({},["prompt_format"])}/>按原文发送提示词（不替换变量）</label>{text("prompt","模型提示词")}</>}
       {node.type==="agent"&&<>
         <label className="block text-sm font-medium">Agent 方案<select aria-label="Agent 方案" className={field} value={agentValue}
-          onChange={event=>event.target.value?change({agent_binding:JSON.parse(event.target.value)}):change({},["agent_binding"])}>
+          onChange={event=>event.target.value?change({agent_binding:JSON.parse(event.target.value),...(resourcePolicy?.requirePlanReview?{require_plan_review:true}:{})}):change({},["agent_binding"])}>
           <option value="">请选择本人 Agent</option>
           {agentValue&&!agents.some(agent=>JSON.stringify({spec_id:agent.id,spec_revision:agent.revision})===agentValue)&&<option value={agentValue}>已绑定方案版本不可用，请重新选择</option>}
           {agents.map(agent=><option key={agent.id} value={JSON.stringify({spec_id:agent.id,spec_revision:agent.revision})}>{agent.name} · 修订 {agent.revision}</option>)}
@@ -65,7 +66,7 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
         <label className="block text-sm font-medium">Agent 方案审核<select aria-label="Agent 方案审核" className={field}
           value={data.require_plan_review===undefined?"inherit":data.require_plan_review?"required":"off"}
           onChange={event=>event.target.value==="inherit"?change({},["require_plan_review"]):change({require_plan_review:event.target.value==="required"})}>
-          <option value="inherit">沿用角色设置</option><option value="required">需要本人审核方案</option><option value="off">此节点无需方案审核</option>
+          <option value="inherit" disabled={resourcePolicy?.requirePlanReview}>沿用角色设置</option><option value="required">需要本人审核方案</option><option value="off" disabled={resourcePolicy?.requirePlanReview}>此节点无需方案审核</option>
         </select></label>
       </>}
       {node.type==="tool"&&<>
@@ -77,7 +78,7 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
           else change({tool_binding_required:true},["tool","tool_binding","mcp_binding","model_binding","knowledge_base_ids","knowledge_retrieval"])
         }}>
           <option value="">请选择工具后再运行</option>
-          <option value="calculate">计算</option><option value="summarize">摘要</option><option value="knowledge_search">知识库检索</option><option value="web_fetch">读取网页</option><option value="web_search">网页搜索</option>
+          {([["calculate","计算"],["summarize","摘要"],["knowledge_search","知识库检索"],["web_fetch","读取网页"],["web_search","网页搜索"]] as const).filter(([value])=>!resourcePolicy||resourcePolicy.builtinTools.includes(value)).map(([value,label])=><option key={value} value={value}>{label}</option>)}
           {httpValue&&!tools.some(tool=>JSON.stringify({connection_id:tool.id,connection_revision:tool.revision})===httpValue)&&<option value={toolValue}>已绑定 HTTP 版本不可用，请重新选择</option>}
           {tools.filter(tool=>tool.enabled).map(tool=><option key={tool.id} value={"http:"+JSON.stringify({connection_id:tool.id,connection_revision:tool.revision})}>{tool.name} · HTTP</option>)}
           {mcpValue&&!choices.some(choice=>JSON.stringify(choice.binding)===mcpValue)&&<option value={toolValue}>已保存的 MCP 工具；请读取连接核对版本</option>}
@@ -86,13 +87,13 @@ export default function PgNativeWorkflowNodeForm({node,nodes,agents,models,tools
         {data.tool==="summarize"&&modelSelect()}
         {data.tool==="knowledge_search"&&<fieldset className="space-y-2"><legend className="text-sm font-medium">检索知识库（最多三个）</legend>
           {bases.map(base=><label className="flex items-start gap-2 text-sm" key={base.id}><input type="checkbox" checked={data.knowledge_base_ids?.includes(base.id)??false}
-            disabled={!enabled||!data.knowledge_base_ids?.includes(base.id)&&(data.knowledge_base_ids?.length??0)>=3} onChange={event=>{const ids=event.target.checked?[...(data.knowledge_base_ids??[]),base.id]:(data.knowledge_base_ids??[]).filter(id=>id!==base.id);change({knowledge_base_ids:ids},ids.length?[]:["knowledge_retrieval"])}}/>{base.name}</label>)}
+            disabled={!enabled||!data.knowledge_base_ids?.includes(base.id)&&(data.knowledge_base_ids?.length??0)>=3} onChange={event=>{const ids=event.target.checked?[...(data.knowledge_base_ids??[]),base.id]:(data.knowledge_base_ids??[]).filter(id=>id!==base.id);change({knowledge_base_ids:ids,...(ids.length&&resourcePolicy?.knowledgeRetrieval?{knowledge_retrieval:resourcePolicy.knowledgeRetrieval}:{})},ids.length?[]:["knowledge_retrieval"])}}/>{base.name}</label>)}
           {(data.knowledge_base_ids??[]).filter(id=>!bases.some(base=>base.id===id)).map(id=><label className="flex items-start gap-2 break-all text-sm text-amber-900" key={id}>
-            <input type="checkbox" checked aria-label={"不可用知识库 "+id} onChange={()=>{const ids=(data.knowledge_base_ids??[]).filter(value=>value!==id);change({knowledge_base_ids:ids},ids.length?[]:["knowledge_retrieval"])}}/>不可用知识库 {id}，请移除或重新核对授权。</label>)}
+            <input type="checkbox" checked aria-label={"不可用知识库 "+id} onChange={()=>{const ids=(data.knowledge_base_ids??[]).filter(value=>value!==id);change({knowledge_base_ids:ids,...(ids.length&&resourcePolicy?.knowledgeRetrieval?{knowledge_retrieval:resourcePolicy.knowledgeRetrieval}:{})},ids.length?[]:["knowledge_retrieval"])}}/>不可用知识库 {id}，请移除或重新核对授权。</label>)}
           <button type="button" className={workflowSecondary} disabled={!enabled||!onReadKnowledge||knowledgeReading} onClick={onReadKnowledge}>读取本人检索配置</button>
           {knowledgeError&&<p role="alert" className="text-sm text-rose-800">{knowledgeError}</p>}
-          <PgNativeKnowledgeToolMode binding={data.knowledge_retrieval} context={knowledgeContext} hasBases={Boolean(data.knowledge_base_ids?.length)} ids={data.knowledge_base_ids} disabled={!enabled||knowledgeReading}
-            onChange={binding=>binding?change({knowledge_retrieval:binding}):change({},["knowledge_retrieval"])}/>
+          {resourcePolicy?.lockKnowledgeRetrieval?<p role="status" className="text-xs text-slate-600">来源方案的检索方式已保留，保存时会重新核对授权与版本。</p>:<PgNativeKnowledgeToolMode binding={data.knowledge_retrieval} context={knowledgeContext} hasBases={Boolean(data.knowledge_base_ids?.length)} ids={data.knowledge_base_ids} disabled={!enabled||knowledgeReading}
+            onChange={binding=>binding?change({knowledge_retrieval:binding}):change({},["knowledge_retrieval"])}/>}
         </fieldset>}
         {text("params_template","工具参数模板（JSON）")}
       </>}

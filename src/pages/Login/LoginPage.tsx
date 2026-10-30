@@ -1,13 +1,17 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { AlertCircle, ArrowRight, Bot, KeyRound, LockKeyhole, Loader2, ShieldCheck } from "lucide-react"
-import { pb, getPocketBaseUrl } from "@/lib/pb"
+import { initializeStudioAdmin, readStudioLoginSetup, shouldCheckStudioSession,
+  signInStudioAccount, studioLoginErrorMessage, verifyStudioSession } from "@/lib/studioAuth"
+import { getStudioLocalReturnPath } from "@/lib/studioLocalReturnPath"
 
 type SetupStatus = {initialized: boolean; can_setup: boolean}
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const requestedPath = params.get("next") || ""
+  const afterLogin = getStudioLocalReturnPath(requestedPath, typeof window === "undefined" ? "" : window.location.origin)
   const [setup, setSetup] = useState<SetupStatus | null>(null)
   const [statusError, setStatusError] = useState(false)
   const [email, setEmail] = useState("")
@@ -17,38 +21,34 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    if(pb.authStore.isValid) {
-      void pb.collection("studio_users").authRefresh()
-        .then(() => navigate("/", {replace:true})).catch(() => pb.authStore.clear())
-    }
-    void fetch(getPocketBaseUrl() + "/api/studio/bootstrap/status")
-      .then(async r => {
-        if (!r.ok) throw new Error("studio_status_unavailable")
-        return await r.json() as SetupStatus
-      })
-      .then(setSetup).catch(() => {setSetup(null);setStatusError(true)})
-  }, [navigate])
+    let mounted = true
+    void (async () => {
+      try {
+        const status = shouldCheckStudioSession() ? await verifyStudioSession() : "signed_out"
+        if (!mounted) return
+        if (status === "authenticated") { navigate(afterLogin, {replace:true}); return }
+        if (status === "unavailable") { setSetup(null); setStatusError(true); return }
+        const readiness = await readStudioLoginSetup(status)
+        if (mounted) { setSetup(readiness); setStatusError(false) }
+      } catch {
+        if (mounted) { setSetup(null); setStatusError(true) }
+      }
+    })()
+    return () => { mounted = false }
+  }, [navigate, afterLogin])
   const submit = async (event:FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if(busy)return
     setBusy(true);setError("")
     try {
       if(setup && !setup.initialized){
-        const response=await fetch(getPocketBaseUrl() + "/api/studio/bootstrap",{
-          method:"POST",
-          headers:{"Content-Type":"application/json","X-Agent-Studio-Setup-Key":setupKey},
-          body:JSON.stringify({email,password,display_name:name}),
-        })
-        if(!response.ok) {
-          const data=await response.json().catch(() => ({})) as {error?:string}
-          throw new Error(data.error==="already_initialized"?"已经有管理员账号，请返回登录。":"初始化失败，请核对初始化密钥、邮箱和密码。")
-        }
+        await initializeStudioAdmin({email,password,display_name:name,setup_key:setupKey})
         setSetup({initialized:true,can_setup:false})
       }
-      await pb.collection("studio_users").authWithPassword(email.trim(),password)
-      navigate(params.get("next")?.startsWith("/") && !params.get("next")?.startsWith("//") ? params.get("next")! : "/",{replace:true})
+      await signInStudioAccount(email.trim(),password)
+      navigate(afterLogin,{replace:true})
     } catch(err) {
-      setError((err as Error).message.includes("初始化失败") || (err as Error).message.includes("已经有") ? (err as Error).message : "登录失败，请检查邮箱、密码或账号是否已被停用。")
+      setError(studioLoginErrorMessage(err))
     } finally {setBusy(false)}
   }
   const isSetup=setup?.initialized === false

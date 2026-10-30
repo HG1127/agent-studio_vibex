@@ -112,7 +112,17 @@ test('actual disposable PG18 owner operations: data/RLS/Native HTTP/cursors/read
    const trace=tracePool(f.pool);await readOnly(f,()=>new OwnOperationsRepository(trace.pool).overview(f.identities.alice))
    assert.equal(trace.trace[0].sql,'BEGIN ISOLATION LEVEL REPEATABLE READ');assert.equal(trace.trace.at(-1).sql,'COMMIT')
   })
-  await t.test('three real pages traverse55 same-millisecond ties using exact microsecond+UUID tuple',async()=>{
+  await t.test('original personal overview actual owner counts, old list limits and no current-name history substitution',async()=>{
+    const a=await readOnly(f,()=>repo.originalInternalOverview(f.identities.alice,s.alice)),b=await readOnly(f,()=>repo.originalInternalOverview(f.identities.bob,s.bob))
+    assert.equal(a.counters.awaiting_approval,58);assert.equal(a.counters.running,2);assert.equal(a.counters.paused,2);assert.equal(a.counters.knowledge_bases,1);assert.equal(a.counters.schedules_active,3)
+    assert.equal(b.counters.awaiting_approval,1);assert.equal(b.counters.knowledge_bases,1);assert.ok(a.recent_runs.length<=16);assert.ok(a.action_items.length<=32)
+    assert.ok(a.recent_runs.every(r=>r.id!==id(66)&&r.title===null&&r.title_source==='not_recorded'));assert.deepEqual(a.worker,{availability:'unavailable',reason:'legacy_main_worker_not_equivalent'})
+    const rank={approval:0,review:1,overdue:2,failed:3};assert.ok(a.action_items.every((r,i)=>i===0||rank[a.action_items[i-1].category]<=rank[r.category]));assert.equal(a.action_items.filter(r=>r.category==='approval'&&r.kind==='agent').length,8)
+    await assert.rejects(readOnly(f,()=>repo.originalInternalOverview(f.identities.bob,s.alice)),e=>e.status===409&&e.code==='original_internal_overview_employee_changed')
+    const oldSpec=(await f.db.query('SELECT name FROM agentstudio.agent_specs WHERE id=$1',[s.spec])).rows[0].name,oldWorkflow=(await f.db.query('SELECT name FROM agentstudio.workflows WHERE id=$1',[s.wf])).rows[0].name
+    try{await f.db.query("UPDATE agentstudio.agent_specs SET name='CURRENT_NAME_MUST_NOT_REPLACE_HISTORY' WHERE id=$1",[s.spec]);await f.db.query("UPDATE agentstudio.workflows SET name='CURRENT_WORKFLOW_MUST_NOT_REPLACE_HISTORY' WHERE id=$1",[s.wf]);const after=await readOnly(f,()=>repo.originalInternalOverview(f.identities.alice,s.alice));assert.ok(after.recent_runs.every(r=>r.title===null));assert.doesNotMatch(JSON.stringify(after),/CURRENT_NAME|CURRENT_WORKFLOW/)}finally{await f.db.query('UPDATE agentstudio.agent_specs SET name=$2 WHERE id=$1',[s.spec,oldSpec]);await f.db.query('UPDATE agentstudio.workflows SET name=$2 WHERE id=$1',[s.wf,oldWorkflow])}
+   })
+   await t.test('three real pages traverse55 same-millisecond ties using exact microsecond+UUID tuple',async()=>{
    const q={category:'approval',kind:'agent_single',limit:20},traced=tracePool(f.pool,{explain:true}),reads=new OwnOperationsRepository(traced.pool),pages=[]
    let current=s.fixed(q)
    do{const page=await readOnly(f,()=>reads.todos(f.identities.alice,current));pages.push(page);assert.equal(page.as_of,s.anchor.slice(0,23)+'Z');if(!page.has_more)break;const cursor=parseOwnCursor(page.next_cursor,parseOwnTodoQuery(q));assert.equal(cursor.as_of,s.anchor);current={...q,before:page.next_cursor}}while(pages.length<5)
@@ -159,9 +169,12 @@ test('actual disposable PG18 owner operations: data/RLS/Native HTTP/cursors/read
    const cookies={}
    for(const who of ['alice','bob']){const response=await fetch(origin+'/api/native-auth/login',{method:'POST',headers:{Origin:origin,'X-Agentstudio-Request':'1','Content-Type':'application/json'},body:JSON.stringify({email:'assessment-'+who+'@example.test',password:who==='alice'?'SyntheticAssessmentAlice#2026':'SyntheticAssessmentBob#2026'})});assert.equal(response.status,200);cookies[who]=response.headers.get('set-cookie').split(';')[0]}
    async function get(path,cookie=cookies.alice,extra={}){return readOnly(f,async()=>{const r=await fetch(origin+path,{headers:{Origin:origin,Cookie:cookie,...extra}});const body=await r.json();assert.equal(r.headers.get('cache-control'),'no-store');assert.equal(r.headers.get('referrer-policy'),'no-referrer');assert.doesNotMatch(JSON.stringify(body),privateFields);return {status:r.status,body}})}
-   nativeRead=path=>get(path,cookies.bob)
+   nativeRead=path=>get(path,cookies.bob,path==='/api/v2/original-ui/internal-overview'?{'X-AgentStudio-Expected-Employee':s.bob}:{})
    assert.equal((await get('/api/v2/own-overview')).status,200);assert.equal((await get('/api/v2/own-todos',cookies.bob)).body.items.length,1)
-   const capabilities=await get('/api/native-auth/capabilities');assert.equal(capabilities.body.own_operations_available,true);assert.equal(capabilities.body.config_writes_enabled,false);assert.equal(capabilities.body.run_submission_enabled,false)
+   const originalPath='/api/v2/original-ui/internal-overview',ownA=await get(originalPath,cookies.alice,{'X-AgentStudio-Expected-Employee':s.alice}),ownB=await get(originalPath,cookies.bob,{'X-AgentStudio-Expected-Employee':s.bob})
+    assert.equal(ownA.status,200);assert.equal(ownB.status,200);assert.equal(ownA.body.employee_id,s.alice);assert.equal(ownB.body.employee_id,s.bob);assert.ok(ownA.body.recent_runs.every(r=>r.id!==id(66)))
+    assert.equal((await get(originalPath,cookies.bob,{'X-AgentStudio-Expected-Employee':s.alice})).status,409);assert.equal((await get(originalPath)).status,400);assert.equal((await get(originalPath,'',{'X-AgentStudio-Expected-Employee':s.alice})).status,401);assert.equal((await get(originalPath,cookies.alice,{'X-AgentStudio-Expected-Employee':s.alice,'X-Rh-User-Id':s.bob})).status,401)
+    const capabilities=await get('/api/native-auth/capabilities');assert.equal(capabilities.body.own_operations_available,true);assert.equal(capabilities.body.config_writes_enabled,false);assert.equal(capabilities.body.run_submission_enabled,false)
    const denied=await readOnly(f,async()=>{const r=await fetch(origin+'/api/v2/own-todos',{method:'POST',headers:{Origin:origin,Cookie:cookies.alice}});return {status:r.status,body:await r.json()}})
    assert.deepEqual(denied,{status:405,body:{error:'method_not_allowed'}})
    assert.deepEqual(await get('/api/v2/own-todos',''),{status:401,body:{error:'session_required'}})
@@ -169,17 +182,17 @@ test('actual disposable PG18 owner operations: data/RLS/Native HTTP/cursors/read
    assert.equal((await get('/api/v2/own-todos?owner_user_id='+s.bob)).status,400)
    assert.equal((await get('/api/v2/own-todos?category=failed&category=paused')).status,400)
    await f.db.query('UPDATE agentstudio_auth.accounts SET enabled=false WHERE user_id=$1',[s.alice])
-   assert.equal((await get('/api/v2/own-overview')).status,401);await assert.rejects(readOnly(f,()=>repo.overview(f.identities.alice)),e=>e.status===401)
+   assert.equal((await get('/api/v2/own-overview')).status,401);assert.equal((await get('/api/v2/original-ui/internal-overview',cookies.alice,{'X-AgentStudio-Expected-Employee':s.alice})).status,401);await assert.rejects(readOnly(f,()=>repo.overview(f.identities.alice)),e=>e.status===401)
    assert.equal((await get('/api/v2/own-overview',cookies.bob)).status,200)
    await f.db.query('UPDATE agentstudio_auth.accounts SET enabled=true,governance_revision=governance_revision+2 WHERE user_id=$1',[s.alice])
   })
   await t.test('real catalog dependency drift refuses409 without publishing zero counts',async()=>{
    await f.db.exec('REVOKE EXECUTE ON FUNCTION agentstudio.agent_memory_outcome_epoch() FROM agentstudio_api')
-   try{await assert.rejects(inspectOwnOperationsSchema(f.pool,true),unavailable);await assert.rejects(readOnly(f,()=>repo.overview(f.identities.bob)),unavailable);assert.deepEqual(await nativeRead('/api/v2/own-overview'),{status:409,body:{error:'own_overview_unavailable'}})}finally{await f.db.exec('GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_outcome_epoch() TO agentstudio_api')}
+   try{await assert.rejects(inspectOwnOperationsSchema(f.pool,true),unavailable);await assert.rejects(readOnly(f,()=>repo.overview(f.identities.bob)),unavailable);assert.deepEqual(await nativeRead('/api/v2/own-overview'),{status:409,body:{error:'own_overview_unavailable'}});assert.deepEqual(await nativeRead('/api/v2/original-ui/internal-overview'),{status:503,body:{error:'original_internal_overview_unavailable'}})}finally{await f.db.exec('GRANT EXECUTE ON FUNCTION agentstudio.agent_memory_outcome_epoch() TO agentstudio_api')}
    await f.db.exec('ALTER TABLE agentstudio.schedules NO FORCE ROW LEVEL SECURITY')
    try{await assert.rejects(inspectOwnOperationsSchema(f.pool,true),unavailable);await assert.rejects(readOnly(f,()=>repo.todos(f.identities.bob)),unavailable);assert.deepEqual(await nativeRead('/api/v2/own-todos'),{status:409,body:{error:'own_overview_unavailable'}})}finally{await f.db.exec('ALTER TABLE agentstudio.schedules FORCE ROW LEVEL SECURITY')}
    await f.db.exec('REVOKE SELECT ON agentstudio.schedules FROM agentstudio_api')
-   try{await assert.rejects(inspectOwnOperationsSchema(f.pool,true),unavailable);assert.deepEqual(await nativeRead('/api/v2/own-overview'),{status:409,body:{error:'own_overview_unavailable'}})}finally{await f.db.exec('GRANT SELECT ON agentstudio.schedules TO agentstudio_api')}
+   try{await assert.rejects(inspectOwnOperationsSchema(f.pool,true),unavailable);assert.deepEqual(await nativeRead('/api/v2/own-overview'),{status:409,body:{error:'own_overview_unavailable'}});assert.deepEqual(await nativeRead('/api/v2/original-ui/internal-overview'),{status:503,body:{error:'original_internal_overview_unavailable'}})}finally{await f.db.exec('GRANT SELECT ON agentstudio.schedules TO agentstudio_api')}
   })
   await t.test('independent real account disable waits on the guard lock; later reads refuse after its commit',async()=>{
    let reached,release;const hit=new Promise(resolve=>{reached=resolve}),gate=new Promise(resolve=>{release=resolve})

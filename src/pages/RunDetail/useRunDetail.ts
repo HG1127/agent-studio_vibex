@@ -1,10 +1,14 @@
+import {formatRunDetailTime,RUN_STATE_META} from '../../lib/runPresentation.ts'
+export {formatRunDetailTime}
+import {usePgOriginalRunDetail} from './usePgOriginalRunDetail.ts'
+import type {OriginalRunDetailMeta} from '../../lib/originalRunDetailProjection.ts'
+import type {OriginalRunKind} from '../../lib/originalRunDetailRoute.ts'
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import {
-  RUN_STATE_META,
   formatHarnessStats,
   type RunEvaluation,
   type RunEventRow,
@@ -13,13 +17,14 @@ import {
 } from "@/pages/AgentRun/useAgentRun"
 import type { AgentSpec } from "@/pages/Home/presets"
 
-// 字段名与 GET /api/agent-runs/{id}/detail 返回的 run 1:1（snake_case，禁止转换层）
+// PocketBase 字段保持原义；Native 仅通过独立验证后的 DTO 投影接入此视图。
 export type RunDetailRow = {
   id: string
   spec_id: string
   spec_name: string
   instruction: string
-  status: RunStateKey
+  status: RunStateKey | "awaiting_input"
+  native?: OriginalRunDetailMeta
   current_step: number
   max_steps: number
   model: string
@@ -39,7 +44,8 @@ export type RecentRunRow = {
   spec_id: string
   spec_name: string
   instruction: string
-  status: RunStateKey
+  status: RunStateKey | "awaiting_input"
+  nativeKind?: OriginalRunKind
   current_step: number
   max_steps: number
   model: string
@@ -56,20 +62,7 @@ export type StepGroup = { stepIndex: number; events: RunEventRow[] }
 const LIVE_STATES: RunStateKey[] = ["queued", "running", "paused", "awaiting_approval"]
 const POLL_INTERVAL_MS = 3000
 
-export function formatRunDetailTime(raw: string): string {
-  if (!raw) return ""
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T")
-  const parsed = new Date(normalized)
-  if (Number.isNaN(parsed.getTime())) return raw
-  return parsed.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-}
+
 
 // 时间线按 step_index 分组（后端已按 step_index,seq,created 排序，这里只做连续分段）
 export function groupEventsByStep(events: RunEventRow[]): StepGroup[] {
@@ -86,7 +79,9 @@ export function groupEventsByStep(events: RunEventRow[]): StepGroup[] {
   return groups
 }
 
-export function useRunDetail() {
+export const useRunDetail = import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED === 'true' ? usePgOriginalRunDetail : useLegacyRunDetail
+function useLegacyRunDetail(){return {...usePocketBaseRunDetail(),nativeMode:false as const,nativeState:null,handleRefreshNative:async()=>{},handleMoreNativeSteps:async()=>{},handleConfirmNative:async()=>{}}}
+export function usePocketBaseRunDetail() {
   const base = getPocketBaseUrl()
   const [searchParams, setSearchParams] = useSearchParams()
   const runIdParam = searchParams.get("run") || ""
@@ -195,7 +190,7 @@ export function useRunDetail() {
     [fetchDetail],
   )
 
-  const isLive = Boolean(runDetail && LIVE_STATES.includes(runDetail.status))
+  const isLive = Boolean(runDetail && LIVE_STATES.includes(runDetail.status as RunStateKey))
 
   // 实时刷新：仅观察（不驱动引擎 tick），3s 轮询，终态自动停，可手动关
   useEffect(() => {
@@ -295,7 +290,7 @@ export function useRunDetail() {
     lines.push(`- 运行编号：${runDetail.id}`)
     lines.push(`- 助手方案：${runDetail.spec_name || "未知"}`)
     lines.push(`- 任务指令：${runDetail.instruction || "（空）"}`)
-    lines.push(`- 状态：${RUN_STATE_META[runDetail.status]?.label || runDetail.status}`)
+    lines.push(`- 状态：${RUN_STATE_META[runDetail.status as RunStateKey]?.label || runDetail.status}`)
     lines.push(`- 模型：${modelLabel || runDetail.model || "未知"}`)
     lines.push(`- 步数：${runDetail.current_step} / ${runDetail.max_steps}`)
     lines.push(`- 开始时间：${formatRunDetailTime(runDetail.created) || "未知"}`)

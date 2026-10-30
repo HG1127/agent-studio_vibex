@@ -1,0 +1,64 @@
+{
+  "format": "pg18_full069_final14_runtime_source_review_v1",
+  "purpose": "Independent final14 qualification source entry. This file grants no service start, migration, deployment or production authorization.",
+  "entry": "node --experimental-strip-types services/pg-api/src/pg18-full069-final-cli.mjs",
+  "modes": {
+    "--plan": "Offline fixed14 business LOGIN / original7 Worker /8 heartbeat /5 companion /13 application topology. Does not load the runtime, read credentials or connect.",
+    "--inspect-final": "Actual protected profile/source/physical/current14 catalog and independent LOGIN inspection; no application launch or qualifying window.",
+    "--run-final": "Genuine protected final trust and verified14-package PG runtime; actual companion preflight/start/readiness plus original Native/seven Worker launch; independent final BEGIN and END acknowledgements; continuous minimum86400000ms with no override."
+  },
+  "profile": {
+    "path": "/etc/agentstudio/full069-worker-live/final-profile.json",
+    "envelope": "{payload,signature}; original protected Ed25519 operator public key",
+    "payload_format": "pg18_full069_final_login_bindings_v1",
+    "contract": "services/pg-api/src/pg18-full069-final-login-contract.mjs",
+    "requires_base_profile": "Original signed worker-live profile, same run ID/target/complete/live/runtime/Node/network pins, Executor enabled, exact original Native/assessment process bodies and original C8 record paths.",
+    "sources_final_contract": "Despite the v24 field name, this value is the fresh genuine full final source-union SHA, including current A catalog and C supervisor/child closure. It is not a standalone contract-file SHA or offline pin from this document.",
+    "accounts": "All14 fixed LOGINs, original per-LOGIN connection limits, distinct protected credential paths/inodes/normalized passwords, separate admin and encryption key.",
+    "preparations": "All12 original operation IDs/intents/results and required unknown-ACK observations, chronological before Telemetry; fixed parent canonical JSON SHA links for Executor/C3 and genuine F05 extension source. Historical records remain provenance only.",
+    "native": "Original Native must actually opt into available Local Devices and load its dedicated local-executor.secret; pin its original read-only Executor preflight and UID0400 account mounts.",
+    "assessment": "The same original assessment Worker must opt into Design, mount independent design-worker.secret, and have original worker preflight with verified_roles=2. The Review Broker companion independently mounts design-dispatch.secret and opts into Design.",
+    "companions": "Every fixed Bound Broker, Knowledge Broker, Review/Design Broker, F05 Worker and F05 Broker profile and preflight ref is mandatory. UID-exclusive outside the128 Writer pool, no Writer/Native Reader group, immutable UID0400 GID0 mounts and common model key for brokers. F05 origin is explicitly reviewed local HTTPS and shared by its Worker/Broker."
+  },
+  "host_gates": {
+    "AGENT_STUDIO_FULL069_WORKER_FINAL_ENABLED": "true",
+    "AGENT_STUDIO_FULL069_WORKER_FINAL_APPROVED": "RUN_DISPOSABLE_FULL069_FINAL14_QUALIFICATION_ONLY",
+    "AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED": "true",
+    "AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED": "RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY",
+    "host": "Original Root Linux Node24/no loader/cache/proxy guards and readonly deployed source/verified14-package runtime remain mandatory."
+  },
+  "current_runtime": {
+    "factory": "No caller Pool/driver/target/SQL/clock/source snapshot or positive probe. Own opaque WeakMap trust/runtime handles and internally constructed actual max=1 per-LOGIN pools.",
+    "separate_runtime_manifests": "Base runtime_manifest_file/runtime_manifest_sha256 remain the PG operator manifest. The protected Telemetry Root profile independently binds /etc/agentstudio/telemetry-control/runtime-manifest.json with worker_heartbeat_activation_control_runtime_v1 and a distinct SHA. B pins and parses that actual file with the original strict parser; the actual Controller must pass its own original full runtime verifier. Never relabel or reuse the operator manifest as a Control capability.",
+    "original_auditors": "Original completeServiceActualLogin seven actions, full API catalog, Worker role, Bound API/identity/model Broker, Knowledge worker/Broker login+schema, Review Worker/Dispatch, original loaded Design Worker/Dispatch auditor, original dedicated Executor preflight, F05 Worker/Dispatch original service pool auditor and actual PG18 physical target.",
+    "catalog": "A readFull069Final14Catalog runs separately on BOTH business and telemetry controller-owned REPEATABLE READ READ ONLY clients with search_path=pg_catalog. Shared global role/membership/HBA and14 intent-bound verifier digests must agree; separate per-database ACL hashes and their combined hash remain stable. Four fixed zero queues and migration ledger are checked. No preparation phase observer is used after successors/Telemetry.",
+    "telemetry": "Original Root management/activated catalog, actual published epoch/policy/journal chain, exactly8 fresh generation bindings,128 UID nonreuse, exact owned backend PID/start and exact ended evidence. No companion receives a synthetic heartbeat or Writer UID.",
+    "readiness": "Every C companion observation is asynchronously awaited. Current TLS readiness is required independently of pinned preflight provenance. All Native/current runtime/companion checks complete within original15000ms sample collection budget; originalNative8000ms/Reader5000ms/Worker30000ms/Send5000ms retained.",
+    "window": "Root actual PID/start, performance.timeOrigin, monotonic and wall duration both>=86400000ms; sampling30000ms, maximumgap45000ms and clockdrift1000ms. Original process/generation/source/profile/globalcatalog identities cannot change. No restart/rebind/resume or shortened mode.",
+    "cleanup": "Original seven Worker12s/5s policy and C original Review/F05 drains; exact process/supervisor identities absent, no forced stop qualifies. Native/proxy close; all14 audit pools close; actual business14 and telemetry Writer/Reader backends0 and four queues0. After independent END acknowledgement, actual14 audits re-open only controller audit pools, then close and verify0 again."
+  },
+  "acknowledgements": {
+    "directory": "/var/lib/agentstudio-full069-worker-live/<run_id>",
+    "begin": "final-begin-acknowledgement.json binds SHA of final-warm.json",
+    "end": "final-end-acknowledgement.json binds SHA of final-end-draft.json",
+    "envelope": "{payload,signature}; original operator Ed25519 public key; no key generation, signing or acceptance helper in runtime",
+    "payload_fields": ["format", "run_id", "profile_sha256", "base_profile_sha256", "source_sha256", "record_sha256", "operator", "accepted_at"],
+    "formats": ["pg18_full069_final14_begin_acknowledgement_v1", "pg18_full069_final14_end_acknowledgement_v1"],
+    "accepted_at": "Canonical UTC within120000ms of actual wall time, checked with actual run/source/final+base profiles/record/operator binding.",
+    "records": "O_EXCL/no-follow Root-owned/fsync records and append-only SHA-chained final-samples.jsonl; old receipts and short-path records cannot qualify this run."
+  },
+  "preserved": {
+    "original_C_six_kind_enum_and_receipts": true,
+    "SQL050_059_060_and_original31_routine_auditor": true,
+    "original7_entries_8kinds_128UIDs": true,
+    "claim_lease_Broker_approval_semantics": true,
+    "old_bounded_short_path": true,
+    "PB_SQLite_production": true
+  },
+  "actual_final14_database_audit_executed_locally": false,
+  "actual_companion_service_start_executed_locally": false,
+  "actual24h_started": false,
+  "qualifies_run": false,
+  "runtime_authorization": false,
+  "production_cutover_allowed": false
+}

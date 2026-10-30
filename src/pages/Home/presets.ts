@@ -1,4 +1,6 @@
-// AgentSpec 数据类型与三个内置示例模板（研究助手 / 知识库问答助手 / 数据分析助手）
+// AgentSpec 数据类型与可复用内置模板（需求落地 / 研究 / 知识库 / 数据分析）
+
+import type { AgentQualityCheck } from "../../lib/agentQualityChecks"
 
 export type AgentSpec = {
   goal: string
@@ -7,10 +9,18 @@ export type AgentSpec = {
   tools: string[]
   task_plan: string[]
   done_criteria: string[]
+  /** 人工定义并可机器验证的文本断言；不等同于事实准确性认证。 */
+  quality_checks?: AgentQualityCheck[]
   /** 服务端仅检索当前账号拥有的知识库（最多 10 个） */
   knowledge_base_ids?: string[]
   /** 写操作审批门：开启后运行中调用外部写工具/市场插件前暂停等待用户批准（默认 false） */
   require_approval?: boolean
+  /** 阶段方案确认关卡：需求草案必须经用户确认后才能继续执行落地计划。 */
+  require_plan_review?: boolean
+  /** 受控能力 ID；服务端结合自然语言要求检查，不能把提示词当作实现。 */
+  capability_requirements?: string[]
+  /** Immutable private request locator, supplied by employee capture API. */
+  _studio_authoring?: {request_id:string}
 }
 
 export type ListField = "deliverables" | "tools" | "task_plan" | "done_criteria"
@@ -20,7 +30,7 @@ export type TemplatePreset = {
   title: string
   tagline: string
   description: string
-  icon: "research" | "knowledge" | "data"
+  icon: "delivery" | "research" | "knowledge" | "data"
   defaultName: string
   spec: AgentSpec
 }
@@ -34,13 +44,17 @@ export const BUILTIN_TOOL_OPTIONS: { id: string; title: string; desc: string }[]
   { id: "calculate", title: "计算器", desc: "对算术表达式真实求值，支持 + - * / % 与括号" },
   { id: "summarize", title: "文本整理摘要", desc: "调用模型对给定文本做整理、摘要与提炼" },
   { id: "knowledge_search", title: "知识库检索", desc: "在关联知识库中检索带引用的资料片段，未关联时搜索方案文本" },
+  { id: "business_record_write", title: "正式业务记录", desc: "在运行页绑定业务任务后，保存带证据、类型和版本的记录；不执行任意 SQL" },
+  {id:"business_job_submit",title:"冻结事实集",desc:"在绑定任务内提交可恢复的冻结任务，保留正式记录版本"},
+  {id:"business_report_render",title:"事实集报告",desc:"从同一冻结事实集生成 HTML 或 Markdown 简报与完整报告"},
+  {id:"business_material_read",title:"原件文字定位",desc:"绑定任务内后台提取 PDF 文字、DOCX、XLSX，按页或单元格读取；未接入 OCR"},
   { id: "web_fetch", title: "网页抓取", desc: "抓取指定 http(s) 网页并提取正文文本" },
   { id: "web_search", title: "网页搜索", desc: "按关键词搜索网页，返回标题、链接与摘要" },
 ]
 
 // 已连接外部工具（由 useHome 登录态拉取）与内置三件套一起决定「可用」，
 // 两边都命不中的工具名维持「待连接」展示。
-export type ConnectedToolOption = { name: string; description: string }
+export type ConnectedToolOption = { name: string; description: string; method?: string; status?: string;display_name?:string }
 
 export function toolConnectionStatus(
   toolName: string,
@@ -49,10 +63,45 @@ export function toolConnectionStatus(
   const trimmed = toolName.trim()
   if (BUILTIN_TOOL_OPTIONS.some((tool) => tool.id === trimmed)) return "ready"
   if (CONFIGURED_TOOLS.includes(trimmed)) return "ready"
-  return connectedTools.some((tool) => tool.name === trimmed) ? "ready" : "pending"
+  // An enabled HTTP connector is not executable until the owner-scoped
+  // server has verified its last real probe (status=ok).
+  // Verified MCP-market tools are added by useHome with status="ok".
+  return connectedTools.some((tool) => tool.name === trimmed &&
+    tool.status?.toLowerCase() === "ok") ? "ready" : "pending"
 }
 
 export const TEMPLATE_PRESETS: TemplatePreset[] = [
+  {
+    key:"delivery",
+    title:"需求落地规划助手",
+    tagline:"先审核需求方案，再制定实施计划",
+    description:"输入原始需求，形成结构化方案并由人工审核，审核通过后继续拆解任务、资源、风险与验收标准。可按需绑定自己的知识库和 MCP 工具。",
+    icon:"delivery",
+    defaultName:"需求落地规划助手",
+    spec:{
+      goal:"将用户输入的原始需求整理成规范、可审核的需求方案，得到明确批准后再提出分阶段实施计划。",
+      task_scope:"负责：需求澄清、范围与非目标、业务价值、优先级、依赖、资源估算、风险、验收标准及迭代建议。可以读取用户本人已授权的知识库和工具；不自动修改代码、上传机密、发送消息或对外发布。",
+      deliverables:["待人工确认的结构化需求方案","分阶段实施计划及责任人建议","包含验收标准和风险的交付清单"],
+      tools:["knowledge_search","calculate"],
+      task_plan:[
+        "理解需求并识别范围、前提与待确认问题",
+        "如已绑定知识库，则检索术语规范并标注出处",
+        "识别资源依赖、估算与主要风险",
+        "提交结构化需求方案，由业务负责人明确批准或提出修改",
+        "批准后生成具体实施步骤、责任人建议及里程碑",
+        "给出可核查的验收清单，并根据结果反馈形成改进建议",
+      ],
+      done_criteria:[
+        "需求草案说明目标、边界、非目标和依赖条件",
+        "方案经明确人工确认后才生成正式实施计划",
+        "交付计划包含里程碑、责任人建议、风险和可验证验收标准",
+        "使用知识库或外部插件时须有授权和真实来源，不得编造证据",
+      ],
+      require_plan_review:true,
+      require_approval:true,
+    },
+  },
+
   {
     key: "research",
     title: "研究助手",

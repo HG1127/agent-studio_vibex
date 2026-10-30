@@ -1,3 +1,5 @@
+import {ownedNativeLocalImages} from './native-local-device-execution.ts'
+import type {LocalResult} from '../../../shared/native-local-device-contract.mjs'
 // Private Broker only. Replays the sealed database state; the Worker cannot
 // select the prompt, owner or connection. A second durable effect reservation
 // fences repeated/concurrent RPCs before any decryption or paid provider POST.
@@ -22,21 +24,25 @@ export class WorkflowV2ModelDispatch{
   readonly executor:(material:SelectedModelMaterial,prompt:string,signal:AbortSignal)=>Promise<string>
   readonly allowAutonomous:boolean;readonly allowAgent:boolean;readonly agentExecutor?:WorkflowV2ModelDispatch["executor"]
   readonly nodeDebugExecutor?:WorkflowV2ModelDispatch["executor"]
+  readonly localVisionExecutor?: (material:SelectedModelMaterial,input:{prompt:string;images:LocalResult["images"]},signal:AbortSignal)=>Promise<string>
+  readonly allowCallers:boolean
   readonly allowMemory:boolean
   constructor(pool:SqlPool,key:Buffer,executor:WorkflowV2ModelDispatch["executor"],brokerPool:SqlPool,
-    options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowMemoryExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"];nodeDebugExecutor?:WorkflowV2ModelDispatch["executor"]}={}){
+    options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowMemoryExecution?:boolean;allowCallerExecution?:boolean;agentExecutor?:WorkflowV2ModelDispatch["executor"];nodeDebugExecutor?:WorkflowV2ModelDispatch["executor"];localVisionExecutor?:WorkflowV2ModelDispatch["localVisionExecutor"]}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||typeof executor!=="function"||!brokerPool)
       throw Error("workflow_model_dispatch_dependencies_required")
     // Share the service-owned key so shutdown zeroizes this reference as well.
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
     this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true;this.agentExecutor=options.agentExecutor
+    this.localVisionExecutor=options.localVisionExecutor
     this.nodeDebugExecutor=options.nodeDebugExecutor
+    this.allowCallers=options.allowCallerExecution===true
     this.allowMemory=options.allowMemoryExecution===true
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ModelRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory,typeof this.localVisionExecutor==="function",this.allowCallers)
       if(pending.agent_context&&!this.agentExecutor)throw new HttpError(409,"workflow_agent_executor_unavailable")
       if(pending.node_debug&&!this.nodeDebugExecutor)throw new HttpError(409,"workflow_node_debug_executor_unavailable")
       const binding=pending.configuration.model_binding!
@@ -62,18 +68,19 @@ export class WorkflowV2ModelDispatch{
       })
       // Credential loading is a separate transaction. Re-check current grants
       // and the sealed lease after it, immediately before any paid request.
-      await withActor(this.pool,identity,async(db,owner)=>{
-        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory)
+      const images=await withActor(this.pool,identity,async(db,owner)=>{
+        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory,typeof this.localVisionExecutor==="function",this.allowCallers)
         if(pending.input!==selected.prompt)changed()
+        return selected.agent&&request.execution_mode==="agent_native_v2"&&this.localVisionExecutor?ownedNativeLocalImages(db,request.claim.run_id):[]
       })
       const controller=new AbortController()
       let timer:ReturnType<typeof setTimeout>|undefined
-      try{text=await Promise.race([(selected.agent?this.agentExecutor!:selected.nodeDebug?this.nodeDebugExecutor!:this.executor)(material,selected.prompt,controller.signal),new Promise<never>((_,reject)=>{
+      try{text=await Promise.race([(images.length?this.localVisionExecutor!(material,{prompt:selected.prompt,images},controller.signal):(selected.agent?this.agentExecutor!:selected.nodeDebug?this.nodeDebugExecutor!:this.executor)(material,selected.prompt,controller.signal)),new Promise<never>((_,reject)=>{
         timer=setTimeout(()=>{controller.abort();reject(Error("workflow_model_timeout"))},25000)
       })])}finally{if(timer)clearTimeout(timer)}
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_model_output")
       await withActor(this.pool,identity,async(db,owner)=>{
-        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory)
+        const pending=await verifyWorkflowEffectLease(db,owner,request,"model",this.allowAgent,this.allowAutonomous,this.allowMemory,typeof this.localVisionExecutor==="function",this.allowCallers)
         if(pending.input!==selected.prompt)changed()
       })
       failed=false

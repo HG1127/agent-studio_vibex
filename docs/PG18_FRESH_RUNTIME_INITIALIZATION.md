@@ -1,5 +1,10 @@
 # 全新 PG18 运行态初始化与迁移映射
 
+> 版本边界：本文保留默认050及其原有准备协议，不适用于 complete069。
+> full069 请先阅读[独立初始化与账号准备](PG18_COMPLETE_069_PREPARATION.md)，使用新 prepare
+> 入口及外部 root 操作记录；不得过滤 ledger/catalog、追加旧六账号伪回执，或把旧工具拒绝当通过。
+
+
 此流程用于独立 Agent Studio 的全新、空 PostgreSQL 18 数据库。旧数据已被
 确认为可丢弃的测试数据，因此不导入 SQLite 数据、旧账号、旧任务或历史归档。
 当前 PocketBase 运行环境不切换；正式迁移仍为 **NO-GO**。

@@ -4,19 +4,28 @@ import {verifyAgentAssessmentCredentials} from "./agent-assessment-audit.ts"
 import {assertAgentAssessmentSession} from "./agent-assessment-role.ts"
 import {agentAssessmentExecutionEnabled,parseAgentAssessmentClaim,parseAgentAssessmentReply,agentAssessmentProofFromClaim,type AgentAssessmentActivation,type AgentAssessmentProof,type AgentAssessmentReply} from "./agent-assessment-contract.ts"
 
+import {createWorkerClaimAdmission,type WorkerClaimAdmissionView,type WorkerClaimPermit} from "./worker-claim-admission.ts"
+import type {AgentAssessmentClaim} from "./agent-assessment-contract.ts"
+type AssessmentClaimTransactionEvent="before_commit"|"commit_confirmed"|"failure"|"rollback_confirmed"
+
 export type AgentAssessmentWorkerTick=AgentAssessmentReply|{state:"disabled"|"idle"|"busy"}
 export class AgentAssessmentWorker{
   readonly pool:SqlPool;readonly workerId:string;readonly enabled:boolean
   readonly dispatch:(proof:AgentAssessmentProof)=>Promise<AgentAssessmentReply>
   private running=false
   private readonly timeoutMs:number
+  readonly #claimAdmission=createWorkerClaimAdmission({lanes:["assessment"]})
   constructor(pool:SqlPool,workerId:string,dispatch:AgentAssessmentWorker["dispatch"],options:AgentAssessmentActivation&{dispatchTimeoutMs?:number}={}){
     if(!pool||!isUuid(workerId)||typeof dispatch!=="function")throw Error("agent_assessment_worker_dependencies_required")
     this.pool=pool;this.workerId=workerId.toLowerCase();this.dispatch=dispatch;this.enabled=agentAssessmentExecutionEnabled(options)
     this.timeoutMs=options.dispatchTimeoutMs??50000
     if(!Number.isSafeInteger(this.timeoutMs)||this.timeoutMs<1||this.timeoutMs>50000)throw Error("invalid_agent_assessment_timeout")
   }
-  private async worker<T>(body:(db:SqlClient)=>Promise<T>):Promise<T>{
+  closeNewClaims():void {this.#claimAdmission.close()}
+  // Claim transaction evidence only; source proofs, dispatch and pause are
+  // owned-work paths and do not establish a database claim outcome.
+  claimAdmissionSnapshot():WorkerClaimAdmissionView {return this.#claimAdmission.snapshot()}
+  private async worker<T>(body:(db:SqlClient)=>Promise<T>,observe?:(event:AssessmentClaimTransactionEvent)=>void):Promise<T>{
     const db=await this.pool.connect();let begun=false
     try{
       await db.query("BEGIN");begun=true
@@ -25,8 +34,42 @@ export class AgentAssessmentWorker{
       await db.query("SET LOCAL lock_timeout='3s'");await db.query("SET LOCAL statement_timeout='5s'")
       if((await db.query<{role:string}>("SELECT current_user AS role")).rows[0]?.role!=="agentstudio_review_worker")throw Error("agent_assessment_worker_role_required")
       if(!await verifyAgentAssessmentCredentials(db))throw Error("agent_assessment_schema_required")
-      const value=await body(db);await db.query("COMMIT");begun=false;return value
-    }catch(error){if(begun)await db.query("ROLLBACK").catch(()=>undefined);throw error}finally{db.release()}
+      const value=await body(db);observe?.("before_commit");await db.query("COMMIT");begun=false;observe?.("commit_confirmed");return value
+    }catch(error){
+      try{observe?.("failure")}finally{
+        if(begun)try{await db.query("ROLLBACK");observe?.("rollback_confirmed")}catch{}
+      }
+      throw error
+    }finally{db.release()}
+  }
+  private async claim():Promise<AgentAssessmentClaim|null>{
+    const admission=this.#claimAdmission
+    if(!this.enabled||admission.snapshot().closed)return null
+    let permit:WorkerClaimPermit|null=null,dispatched=false,commitAttempted=false
+    return this.worker(async db=>{
+      // Session/full credential audit, role and timeout awaits precede this gate.
+      permit=admission.tryEnter("assessment")
+      if(!permit)return null
+      const request=admission.dispatch(permit,()=>{
+        dispatched=true
+        return db.query<{value:unknown}>("SELECT agentstudio.agent_assessment_claim($1::uuid) AS value",[this.workerId])
+      })
+      if(!request.started){permit=null;return null}
+      const raw=(await request.value).rows[0]?.value
+      if(raw===null)return null
+      const claim=parseAgentAssessmentClaim(raw)
+      if(claim.worker_id!==this.workerId)throw Error("agent_assessment_claim_refused")
+      return claim
+    },event=>{
+      if(event==="before_commit")commitAttempted=true
+      if(!permit)return
+      if(event==="failure"&&dispatched)admission.markUncertain(permit)
+      if(event==="commit_confirmed"){admission.confirm(permit,{outcome:"commit_confirmed"});permit=null}
+      if(event==="rollback_confirmed"){
+        if(!dispatched){admission.discardUndispatched(permit);permit=null}
+        else if(!commitAttempted){admission.confirm(permit,{outcome:"rollback_confirmed"});permit=null}
+      }
+    })
   }
   async tick():Promise<AgentAssessmentWorkerTick>{
     if(!this.enabled)return {state:"disabled"}
@@ -35,10 +78,8 @@ export class AgentAssessmentWorker{
     try{
       // Commit claim before source verification/private RPC. Never hold a
       // worker lease/job lock while Broker waits on Native/run540 locks.
-      const raw=(await this.worker(db=>db.query<{value:unknown}>("SELECT agentstudio.agent_assessment_claim($1::uuid) AS value",[this.workerId]))).rows[0]?.value
-      if(raw===null)return {state:"idle"}
-      const claim=parseAgentAssessmentClaim(raw)
-      if(claim.worker_id!==this.workerId)throw Error("agent_assessment_claim_refused")
+      const claim=await this.claim()
+      if(!claim)return {state:"idle"}
       const proof=agentAssessmentProofFromClaim(claim)
       try{
         if(Date.parse(claim.lease_expires_at)<=Date.now())throw Error("agent_assessment_claim_expired")

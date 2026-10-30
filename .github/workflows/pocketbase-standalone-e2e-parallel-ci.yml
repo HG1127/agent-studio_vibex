@@ -1,0 +1,92 @@
+name: Agent Studio standalone PocketBase 19 parallel isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-20261028'
+    paths:
+      - '.github/workflows/pocketbase-standalone-e2e-parallel-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-pb19-parallel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  standalone-pb19-parallel:
+    name: Original 19 PocketBase SQLite E2E / two workers / disposable data
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      NODE_ENV: test
+    steps:
+      - name: Checkout this migration candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install locked root dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install the existing PocketBase 0.40.5 test binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/agentstudio-pb19-bin"
+          curl -fsSL --retry 3 \
+            https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/pocketbase_0.40.5_linux_amd64.zip \
+            -o "$RUNNER_TEMP/agentstudio-pb19-bin/pocketbase.zip"
+          unzip -q "$RUNNER_TEMP/agentstudio-pb19-bin/pocketbase.zip" pocketbase -d "$RUNNER_TEMP/agentstudio-pb19-bin"
+          chmod +x "$RUNNER_TEMP/agentstudio-pb19-bin/pocketbase"
+          "$RUNNER_TEMP/agentstudio-pb19-bin/pocketbase" --version
+          echo "POCKETBASE_BIN=$RUNNER_TEMP/agentstudio-pb19-bin/pocketbase" >> "$GITHUB_ENV"
+      - name: Run the original complete parallel suite with its default two workers
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          TMPDIR: ${{ runner.temp }}
+          AGENT_STUDIO_E2E_TEMP_ROOT: ${{ runner.temp }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/pb19-parallel-ci-evidence
+          pnpm test:e2e:parallel 2>&1 | tee .tmp/pb19-parallel-ci-evidence/parallel.log
+      - name: Verify the actual original runner summary
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import fs from 'node:fs'
+          import {createHash} from 'node:crypto'
+          const logPath='.tmp/pb19-parallel-ci-evidence/parallel.log'
+          const bytes=fs.readFileSync(logPath),log=bytes.toString('utf8')
+          assert.match(log,/Agent Studio E2E parallel \| workers=2 \| tests=19 \| isolated_temp=true/)
+          const summaries=[...log.matchAll(/^E2E_SUMMARY (.+)$/gm)]
+          assert.equal(summaries.length,1)
+          const summary=JSON.parse(summaries[0][1])
+          for(const [key,value]of Object.entries({status:'PASS',completed:19,total:19,passed:19,failed:0,workers:2}))assert.equal(summary[key],value,key)
+          assert.equal((log.match(/^PASS /gm)||[]).length,19)
+          const evidence={head:process.env.GITHUB_SHA,run_id:process.env.GITHUB_RUN_ID,run_attempt:process.env.GITHUB_RUN_ATTEMPT,command:'pnpm test:e2e:parallel',summary,raw_log_sha256:createHash('sha256').update(bytes).digest('hex'),scope:'Original disposable synthetic PocketBase/SQLite suite; no target database or employee UAT acceptance',qualifying_continuous_Worker_hours:0,production_GO:false}
+          fs.writeFileSync('.tmp/pb19-parallel-ci-evidence/summary.json',JSON.stringify(evidence,null,2)+'\n')
+          console.log(JSON.stringify(evidence))
+          NODE
+      - name: Retain only redacted runner output and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-pb19-parallel-evidence
+          path: |
+            .tmp/pb19-parallel-ci-evidence/parallel.log
+            .tmp/pb19-parallel-ci-evidence/summary.json
+          if-no-files-found: ignore

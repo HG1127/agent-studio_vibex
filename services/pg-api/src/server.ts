@@ -30,6 +30,9 @@ function loadStagingDatabaseConfig() {
   return {...target,password}
 }
 async function main(){
+  // F05 uses current Native employee Cookie identity exclusively.
+  if(Object.keys(process.env).some(key=>key.startsWith("AGENT_STUDIO_PG18_AGENT_PLAN_WORKFLOW_")&&process.env[key]!==undefined))
+    throw new Error("agent_plan_workflow_native_cookie_required")
   if(process.env.AGENT_STUDIO_PG_PILOT_ENABLED!=="true")
     throw new Error("pilot_disabled")
   const credentials=loadStagingDatabaseConfig()

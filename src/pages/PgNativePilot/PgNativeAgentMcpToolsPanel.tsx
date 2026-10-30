@@ -3,9 +3,9 @@ import {PgNativePilotError,type PgNativeAgent,type AgentMcpTool,type PgNativeMcp
 import {mcpChoices,readyMcpBinding,appendAgentMcpChoice} from "@/lib/pgNativeMcpConnection"
 import {useMcpConnections} from "./useMcpConnections"
 const button="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium disabled:opacity-50"
-export default function PgNativeAgentMcpToolsPanel({api,agents,active,enabled,onSaved,onExpired}:{api:ReturnType<typeof createPgNativePilotApi>;
-  agents:PgNativeAgent[];active:boolean;enabled:boolean;onSaved:()=>Promise<void>;onExpired:()=>void}){
-  const [id,setId]=useState(""),[busyFor,setBusyFor]=useState(""),[reset,setReset]=useState(0)
+export default function PgNativeAgentMcpToolsPanel({api,agents,active,enabled,onSaved,onExpired,initialAgentId}:{api:ReturnType<typeof createPgNativePilotApi>;
+  agents:PgNativeAgent[];active:boolean;enabled:boolean;onSaved:()=>Promise<void>;onExpired:()=>void;initialAgentId?:string}){
+  const [id,setId]=useState(()=>agents.find(agent=>agent.id===initialAgentId)?.id??""),[busyFor,setBusyFor]=useState(""),[reset,setReset]=useState(0)
   const metadata=useMcpConnections(api,active,onExpired),role=agents.find(agent=>agent.id===id),key=role?role.id+":"+role.revision+":"+reset:""
   return <section aria-label="Agent MCP 工具绑定" className="space-y-3 rounded-2xl border border-indigo-100 bg-white p-5">
     <h2 className="font-semibold">Agent MCP 工具</h2>

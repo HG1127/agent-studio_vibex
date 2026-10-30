@@ -136,3 +136,1285 @@ tests/pg-native-company-overview-session.test.mjs text eol=lf
 src/pages/PgNativePilot/CompanyOverviewPanel.tsx text eol=lf
 tests/pg-native-company-overview-render.test.mjs text eol=lf
 tests/pg-native-browser/company-overview.spec.mjs text eol=lf
+
+# Unmounted independent Worker heartbeat value protocols
+services/pg-api/src/worker-heartbeat-contract.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-contract.test.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-report-sequence.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-report-sequence.test.mjs text eol=lf
+
+# Dedicated disposable telemetry CI admission
+services/pg-api/tests/helpers/worker-heartbeat-ci-guard.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-domain-fixture.mjs text eol=lf
+
+# Independent dormant telemetry domain and actual hosted verification
+.github/workflows/pg18-worker-heartbeat-ci.yml text eol=lf
+db/postgres/telemetry/001_worker_heartbeats.sql text eol=lf
+services/pg-api/src/worker-heartbeat-audit-core.ts text eol=lf
+services/pg-api/src/worker-heartbeat-audit.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-audit.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-domain-tcp.integration.mjs text eol=lf
+
+# Process-local claim admission; real hooks are separate
+services/pg-api/src/worker-claim-admission.ts text eol=lf
+services/pg-api/tests/worker-claim-admission.test.mjs text eol=lf
+
+# Prepare claim admission final hooks and transaction acknowledgement tests
+services/pg-api/src/agent-worker.ts text eol=lf
+services/pg-api/src/worker-loop.ts text eol=lf
+services/pg-api/tests/agent-prepare-claim-admission.test.mjs text eol=lf
+
+# Model and safe workflow claim admission final hooks
+services/pg-api/src/model-worker-loop.ts text eol=lf
+services/pg-api/src/model-worker.ts text eol=lf
+services/pg-api/src/workflow-safe-worker.ts text eol=lf
+services/pg-api/src/workflow-worker-loop.ts text eol=lf
+services/pg-api/tests/model-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/workflow-safe-claim-admission.test.mjs text eol=lf
+
+# Genuine hosted-only prepare transaction admission probes
+services/pg-api/tests/agent-prepare-claim-admission-tcp.integration.mjs text eol=lf
+services/pg-api/tests/helpers/agent-prepare-claim-admission-ci.mjs text eol=lf
+
+# V2/autonomous and cohost scheduler final claim admission hooks
+services/pg-api/src/schedule-runtime-worker.ts text eol=lf
+services/pg-api/src/workflow-v2-worker-loop.ts text eol=lf
+services/pg-api/src/workflow-v2-worker.ts text eol=lf
+services/pg-api/tests/schedule-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/workflow-v2-claim-admission.test.mjs text eol=lf
+
+# Genuine independent LOGIN telemetry replay and fencing probes
+services/pg-api/tests/helpers/worker-heartbeat-runtime-ci.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-runtime-tcp.integration.mjs text eol=lf
+
+# Remaining knowledge and assessment claim transaction admission
+services/pg-api/src/agent-assessment-worker.ts text eol=lf
+services/pg-api/src/knowledge-index-role.ts text eol=lf
+services/pg-api/src/knowledge-index-worker.ts text eol=lf
+services/pg-api/src/knowledge-query-role.ts text eol=lf
+services/pg-api/src/knowledge-query-worker.ts text eol=lf
+services/pg-api/tests/assessment-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/knowledge-index-claim-admission.test.mjs text eol=lf
+services/pg-api/tests/knowledge-query-claim-admission.test.mjs text eol=lf
+
+# Genuine model and safe-workflow transaction admission probes
+services/pg-api/tests/helpers/model-safe-claim-admission-ci.mjs text eol=lf
+services/pg-api/tests/model-safe-claim-admission-tcp.integration.mjs text eol=lf
+
+# Exact pure idempotency fixture scope/catalog query projections
+services/pg-api/tests/pg18-run-idempotency-race.test.mjs text eol=lf
+
+# Genuine knowledge and assessment transaction admission probes
+services/pg-api/tests/helpers/knowledge-assessment-claim-admission-ci.mjs text eol=lf
+services/pg-api/tests/knowledge-assessment-claim-admission-tcp.integration.mjs text eol=lf
+
+# Genuine V2/autonomous and scheduler transaction admission probes
+services/pg-api/tests/helpers/workflow-v2-schedule-claim-admission-ci.mjs text eol=lf
+services/pg-api/tests/workflow-v2-schedule-claim-admission-tcp.integration.mjs text eol=lf
+
+# Genuine nonempty knowledge consent/digest/fenced claim probes
+services/pg-api/tests/helpers/knowledge-nonempty-claim-admission-ci.mjs text eol=lf
+services/pg-api/tests/knowledge-nonempty-claim-admission-tcp.integration.mjs text eol=lf
+
+# Separate catalog-only reader audit and internal Native admin context
+services/pg-api/src/native-current-company-admin.mjs text eol=lf
+services/pg-api/src/native-current-company-admin.d.mts text eol=lf
+services/pg-api/tests/native-current-company-admin.test.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-activated-audit-core.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activated-audit.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-activated-audit.test.mjs text eol=lf
+
+# Genuine activated reader catalog comparisons, separate from activation
+services/pg-api/tests/helpers/worker-heartbeat-activated-audit-ci.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activated-audit-tcp.integration.mjs text eol=lf
+
+# Genuine original Native Cookie/current-admin prepost verification
+services/pg-api/tests/helpers/native-current-company-admin-ci.mjs text eol=lf
+services/pg-api/tests/native-current-company-admin-tcp.integration.mjs text eol=lf
+
+# Dedicated owned native5333 PostgreSQL test container
+services/pg-api/tests/helpers/native-current-company-admin-container-ci.mjs text eol=lf
+
+# Controlled optional060 offline source foundation
+services/pg-api/src/agent-descriptive-patch-operator-source.mjs text eol=lf
+services/pg-api/src/agent-descriptive-patch-operator-source.d.mts text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-source.test.mjs text eol=lf
+
+# Unmounted controlled060 operation core
+services/pg-api/src/agent-descriptive-patch-operator-core.ts text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-core.test.mjs text eol=lf
+
+# Guarded controlled060 CLI foundation; currently unsealed
+services/pg-api/src/agent-descriptive-patch-operator-cli.mjs text eol=lf
+services/pg-api/src/agent-descriptive-patch-operator-cli.d.mts text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-cli.test.mjs text eol=lf
+
+# Reviewed controlled060 runtime dependency verification
+services/pg-api/src/agent-descriptive-patch-operator-runtime.d.mts text eol=lf
+services/pg-api/src/agent-descriptive-patch-operator-runtime.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-runtime.test.mjs text eol=lf
+
+# Synthetic controlled060 POSIX dependency load CI only
+.github/workflows/pg18-descriptive-operator-ci.yml text eol=lf
+ops/pg18-descriptive-operator-runtime-ci.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-runtime-ci.integration.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-runtime-ci-fixture.mjs text eol=lf
+
+# Synthetic full059 archive and controlled060 install verification
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-stage.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-containers.mjs text eol=lf
+services/pg-api/tests/helpers/agent-descriptive-patch-operator-install-ci-guard.mjs text eol=lf
+ops/pg18-descriptive-operator-install-ci.mjs text eol=lf
+services/pg-api/tests/agent-descriptive-patch-operator-install-ci.integration.mjs text eol=lf
+
+# Independent controlled060 review delivery and unmounted bounded heartbeat scheduler
+ops/build-pg18-descriptive-operator-review-bundle.mjs text eol=lf
+tests/pg18-descriptive-operator-review-bundle.test.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-bounded-reporter.ts text eol=lf
+tests/worker-heartbeat-bounded-reporter.test.mjs text eol=lf
+
+# Independent telemetry controller, actual management audit, Native composition and synthetic-only verification
+services/pg-api/src/native-company-worker-heartbeats.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-client.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-contract.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-runtime.d.mts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-service.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-source.d.mts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control-source.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-activation-control.ts text eol=lf
+services/pg-api/src/worker-heartbeat-activation-registry.ts text eol=lf
+services/pg-api/src/worker-heartbeat-management-audit-core.ts text eol=lf
+services/pg-api/src/worker-heartbeat-management-audit.ts text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-activation-control-ci-container.mjs text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-activation-control-ci-guard.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activation-control-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activation-control-contract.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activation-control-runtime.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activation-registry.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-management-audit.test.mjs text eol=lf
+tests/native-company-worker-heartbeats.test.mjs text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-activation-control-ci-stage.mjs text eol=lf
+services/pg-api/tests/helpers/native-company-worker-heartbeats-control-ci-child.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-activation-control-ci.integration.mjs text eol=lf
+.github/workflows/pg18-telemetry-control-ci.yml text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-activation-control-ci-fixture.mjs text eol=lf
+ops/pg18-fresh-cutover-gate.mjs text eol=lf
+tests/pg18-fresh-cutover-gate.test.mjs text eol=lf
+services/pg-api/src/native-company-worker-heartbeats-http.ts text eol=lf
+services/pg-api/tests/native-company-worker-heartbeats-http.test.mjs text eol=lf
+src/lib/pgNativeCompanyWorkerHeartbeats.ts text eol=lf
+src/lib/pgNativeCompanyWorkerHeartbeatsSession.ts text eol=lf
+src/pages/PgNativePilot/CompanyWorkerHeartbeatsPanel.tsx text eol=lf
+tests/pg-native-company-worker-heartbeats.test.mjs text eol=lf
+tests/pg-native-company-worker-heartbeats-session.test.mjs text eol=lf
+tests/pg-native-company-worker-heartbeats-render.test.mjs text eol=lf
+docs/PG18_FEATURE_BASELINE_20261029.json text eol=lf
+tests/pg-native-browser/company-worker-heartbeats.spec.mjs text eol=lf
+services/pg-api/src/worker-heartbeat-writer-protocol.ts text eol=lf
+services/pg-api/src/worker-heartbeat-writer-credentials.ts text eol=lf
+services/pg-api/src/worker-heartbeat-writer-broker.ts text eol=lf
+services/pg-api/src/worker-heartbeat-worker-binding.ts text eol=lf
+services/pg-api/src/worker-heartbeat-worker-sender.ts text eol=lf
+services/pg-api/src/worker-heartbeat-worker-lifecycle.ts text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-protocol.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-credentials.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-broker.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-worker-binding.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-worker-sender.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-worker-lifecycle.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-worker-entries.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-controller.test.mjs text eol=lf
+docs/PG18_WORKER_TELEMETRY_INTEGRATION.md text eol=lf
+services/pg-api/src/knowledge-index-service.ts text eol=lf
+services/pg-api/src/agent-assessment-service.ts text eol=lf
+services/pg-api/src/agent-design-value-contract.ts text eol=lf
+services/pg-api/tests/agent-design-value-contract.test.mjs text eol=lf
+services/pg-api/src/agent-design-contract.ts text eol=lf
+services/pg-api/tests/agent-design-contract.test.mjs text eol=lf
+services/pg-api/src/agent-design-input.ts text eol=lf
+services/pg-api/tests/agent-design-input.test.mjs text eol=lf
+services/pg-api/src/agent-design-result.ts text eol=lf
+services/pg-api/tests/agent-design-result.test.mjs text eol=lf
+services/pg-api/src/agent-design-rpc-contract.ts text eol=lf
+services/pg-api/tests/agent-design-rpc-contract.test.mjs text eol=lf
+services/pg-api/src/agent-design-runtime-policy.ts text eol=lf
+services/pg-api/tests/agent-design-runtime-policy.test.mjs text eol=lf
+services/pg-api/src/agent-design-source.ts text eol=lf
+services/pg-api/tests/agent-design-source.test.mjs text eol=lf
+services/pg-api/src/agent-design-ledger.ts text eol=lf
+services/pg-api/tests/agent-design-ledger.test.mjs text eol=lf
+services/pg-api/src/agent-design-worker.ts text eol=lf
+services/pg-api/tests/agent-design-worker.test.mjs text eol=lf
+services/pg-api/src/agent-design-provider.ts text eol=lf
+services/pg-api/tests/agent-design-provider.test.mjs text eol=lf
+services/pg-api/src/agent-design-broker.ts text eol=lf
+services/pg-api/tests/agent-design-broker.test.mjs text eol=lf
+services/pg-api/src/agent-design-client.ts text eol=lf
+services/pg-api/tests/agent-design-client.test.mjs text eol=lf
+services/pg-api/src/agent-design-http.ts text eol=lf
+services/pg-api/tests/agent-design-http.test.mjs text eol=lf
+src/lib/pgNativeAgentDesign.ts text eol=lf
+src/lib/pgNativeAgentDesignSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativeAgentDesignPanel.tsx text eol=lf
+tests/pg-native-agent-design.test.mjs text eol=lf
+tests/pg-native-agent-design-session.test.mjs text eol=lf
+tests/pg-native-agent-design-render.test.mjs text eol=lf
+services/pg-api/src/agent-design-audit-core.ts text eol=lf
+services/pg-api/src/agent-design-audit.ts text eol=lf
+services/pg-api/tests/agent-design-audit.test.mjs text eol=lf
+db/postgres/migrations/pg_v9_062_agent_design.sql text eol=lf
+src/lib/pgNativePilotApi.ts text eol=lf
+src/pages/PgNativePilot/PgNativePilotPage.tsx text eol=lf
+services/pg-api/src/repository.ts text eol=lf
+services/pg-api/src/agent-assessment-service-config.ts text eol=lf
+docs/PG18_AGENT_DESIGN_MIGRATION.md text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-writer-ci-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/worker-heartbeat-writer-ci-child.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-ci.integration.mjs text eol=lf
+services/pg-api/tests/agent-design-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/agent-design-genuine-guard.test.mjs text eol=lf
+tests/pg-native-agent-design-genuine.spec.mjs text eol=lf
+tests/helpers/pg-native-agent-design-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/bound-model-loopback-tls.mjs text eol=lf
+tests/pg-native-agent-design-genuine.config.mjs text eol=lf
+.github/workflows/pg18-agent-design-genuine-ci.yml text eol=lf
+services/pg-api/tests/helpers/agent-design-database-ci.mjs text eol=lf
+services/pg-api/tests/agent-design-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-design-database-guard.test.mjs text eol=lf
+services/pg-api/src/agent-template-market-contract.ts text eol=lf
+services/pg-api/src/agent-template-market-result.ts text eol=lf
+services/pg-api/tests/agent-template-market-contract.test.mjs text eol=lf
+services/pg-api/tests/agent-template-market-result.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-design-diagnostic-core.ts text eol=lf
+services/pg-api/tests/helpers/agent-design-diagnostic-company.ts text eol=lf
+services/pg-api/tests/helpers/agent-design-diagnostic-descriptive.ts text eol=lf
+services/pg-api/tests/helpers/agent-design-catalog-diagnostics.mjs text eol=lf
+services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs text eol=lf
+services/pg-api/src/agent-design-predecessor-audit-core.ts text eol=lf
+services/pg-api/tests/agent-design-predecessor-audit.test.mjs text eol=lf
+src/pages/PgNativePilot/PgNativeTemplateMarketAgentSetup.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeTemplateMarketPanel.tsx text eol=lf
+src/lib/pgNativeTemplateMarket.ts text eol=lf
+src/lib/pgNativeTemplateMarketSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativeAgentModelBindingPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentHttpToolsPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentMcpToolsPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentKnowledgePanel.tsx text eol=lf
+services/pg-api/tests/agent-template-market-genuine-pg18.test.mjs text eol=lf
+tests/helpers/pg-native-template-market-genuine-fixture.mjs text eol=lf
+tests/pg-native-template-market-genuine.spec.mjs text eol=lf
+tests/pg-native-template-market-genuine.config.mjs text eol=lf
+.github/workflows/pg18-template-market-genuine-ci.yml text eol=lf
+tests/pg-native-template-market-agent-setup.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-template-market-genuine-guard.mjs text eol=lf
+services/pg-api/tests/helpers/agent-template-market-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/agent-template-market-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-template-market-database-vectors.mjs text eol=lf
+services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs text eol=lf
+services/pg-api/tests/helpers/agent-template-market-database-ci.mjs text eol=lf
+services/pg-api/tests/agent-template-market-database-guard.test.mjs text eol=lf
+services/pg-api/tests/agent-template-market-database-pg18.test.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-contract.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-result.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-contract.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-result.test.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-source.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-source.test.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-ledger.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-ledger.test.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-rpc-contract.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-rpc-contract.test.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-runtime-policy.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-runtime-policy.test.mjs text eol=lf
+db/postgres/migrations/pg_v9_063_agent_template_market.sql text eol=lf
+services/pg-api/src/agent-template-market-audit-core.ts text eol=lf
+services/pg-api/src/agent-template-market-audit.ts text eol=lf
+services/pg-api/src/agent-template-market-http.ts text eol=lf
+services/pg-api/src/agent-template-market-repository.ts text eol=lf
+services/pg-api/src/agent-template-market-runtime-policy.ts text eol=lf
+services/pg-api/tests/helpers/agent-template-market-diagnostic-core.ts text eol=lf
+services/pg-api/tests/helpers/agent-template-market-catalog-diagnostics.mjs text eol=lf
+services/pg-api/tests/agent-template-market-catalog-diagnostics-guard.test.mjs text eol=lf
+services/pg-api/src/pg18-native-auth-ci-schema.mjs text eol=lf
+db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql text eol=lf
+services/pg-api/src/agent-plan-workflow-audit-core.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-audit.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-predecessor-062-audit-core.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-predecessor-061-audit-core.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-audit-pure.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-plan-workflow-genuine-guard.mjs text eol=lf
+services/pg-api/tests/helpers/agent-plan-workflow-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/fixtures/agent-plan-workflow-canonical-vectors.json text eol=lf
+.github/workflows/pg18-plan-workflow-genuine-ci.yml text eol=lf
+docs/PG18_F05_064_INSTALL_MAP.json text eol=lf
+src/lib/pgNativeAgentPlanWorkflow.ts text eol=lf
+src/lib/pgNativeAgentPlanWorkflowSession.ts text eol=lf
+src/lib/pgNativeWorkflowGeneratedDraft.ts text eol=lf
+src/pages/PgNativePilot/PgNativeAgentPlanWorkflowPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeWorkflowNodeForm.tsx text eol=lf
+tests/pg-native-agent-plan-workflow.test.mjs text eol=lf
+tests/pg-native-agent-plan-workflow-session.test.mjs text eol=lf
+tests/pg-native-workflow-generated-draft.test.mjs text eol=lf
+tests/pg-native-agent-plan-workflow-panel.test.mjs text eol=lf
+tests/helpers/agent-plan-workflow-browser-values.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-provider.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-broker.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-worker.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-http.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-client.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-provider.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-broker.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-worker.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-http.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-client.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-plan-workflow-broker-model.mjs text eol=lf
+services/pg-api/tests/native-control-ci-source-pins.test.mjs text eol=lf
+services/pg-api/src/agent-plan-workflow-composition.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-service-config.ts text eol=lf
+services/pg-api/src/agent-plan-workflow-service.ts text eol=lf
+services/pg-api/src/server.ts text eol=lf
+services/pg-api/tests/agent-plan-workflow-composition.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-runtime-genuine.test.mjs text eol=lf
+services/pg-api/tests/agent-plan-workflow-runtime-refusal.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-plan-workflow-runtime-genuine-fixture.mjs text eol=lf
+tests/helpers/pg-native-agent-plan-workflow-genuine-fixture.mjs text eol=lf
+tests/pg-native-agent-plan-workflow-genuine.config.mjs text eol=lf
+tests/pg-native-agent-plan-workflow-genuine.spec.mjs text eol=lf
+src/pages/PgNativePilot/PgNativeWorkflowCanvas.tsx text eol=lf
+src/lib/pgNativeWorkflowEditor.ts text eol=lf
+
+# Exact LF bytes for the optional065 internal template sharing source and evidence.
+.github/workflows/pg18-internal-share-genuine-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_065_agent_internal_share.sql text eol=lf
+docs/PG18_F08_065_INSTALL_MAP.json text eol=lf
+docs/PG18_F08_065_SOURCE_REVIEW.json text eol=lf
+services/pg-api/src/agent-internal-share-audit-core.ts text eol=lf
+services/pg-api/src/agent-internal-share-audit.ts text eol=lf
+services/pg-api/src/agent-internal-share-http.ts text eol=lf
+services/pg-api/src/agent-internal-share-repository.ts text eol=lf
+services/pg-api/src/agent-internal-share-runtime-policy.ts text eol=lf
+services/pg-api/tests/agent-internal-share-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-internal-share-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/agent-internal-share-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-internal-share-pure.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-internal-share-genuine-guard.mjs text eol=lf
+shared/agent-internal-share-contract.ts text eol=lf
+src/lib/pgNativeInternalShare.ts text eol=lf
+src/lib/pgNativeInternalShareSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativeInternalSharePanel.tsx text eol=lf
+tests/helpers/pg-native-internal-share-genuine-fixture.mjs text eol=lf
+tests/pg-native-internal-share-genuine.config.mjs text eol=lf
+tests/pg-native-internal-share-genuine.spec.mjs text eol=lf
+
+# Pure exact-owned backend cleanup regression; no host or DB authority.
+services/pg-api/tests/worker-heartbeat-owned-backend-cleanup.test.mjs text eol=lf
+
+# Observes actual response bytes early; test-only, no HTTP fulfillment.
+tests/helpers/actual-browser-fetch-body-observer.mjs text eol=lf
+tests/actual-browser-fetch-body-observer.test.mjs text eol=lf
+
+# Explicit complete065 fresh profile and independently owned synthetic CI.
+.github/workflows/pg18-complete-install-ci.yml text eol=lf
+ops/pg18-complete-install-ci.mjs text eol=lf
+services/pg-api/src/baota-pg18-complete-init.mjs text eol=lf
+services/pg-api/src/pg18-complete-profile-source.d.mts text eol=lf
+services/pg-api/src/pg18-complete-profile-source.mjs text eol=lf
+services/pg-api/src/pg18-complete-profile.ts text eol=lf
+services/pg-api/tests/helpers/pg18-complete-install-ci-containers.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-install-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-install-ci-stage.mjs text eol=lf
+services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-install-ci.integration.mjs text eol=lf
+services/pg-api/tests/pg18-complete-profile.test.mjs text eol=lf
+
+# Independent complete-profile runtime admission; old060 unchanged.
+services/pg-api/src/pg18-complete-operator-runtime.mjs text eol=lf
+services/pg-api/src/pg18-complete-operator-runtime.d.mts text eol=lf
+services/pg-api/tests/pg18-complete-operator-runtime.test.mjs text eol=lf
+
+# Optional066 exact current Agent approval delegation source/CI provenance.
+.github/workflows/pg18-approval-delegation-genuine-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql text eol=lf
+docs/PG18_F27_066_INSTALL_MAP.json text eol=lf
+docs/PG18_F27_066_SOURCE_REVIEW.json text eol=lf
+services/pg-api/src/approval-delegation-audit-core.ts text eol=lf
+services/pg-api/src/approval-delegation-audit.ts text eol=lf
+services/pg-api/src/approval-delegation-contract.ts text eol=lf
+services/pg-api/src/approval-delegation-http.ts text eol=lf
+services/pg-api/src/approval-delegation-preview.ts text eol=lf
+services/pg-api/src/approval-delegation-repository.ts text eol=lf
+services/pg-api/src/approval-delegation-runtime-policy.ts text eol=lf
+services/pg-api/src/owned-step-decision-context.ts text eol=lf
+services/pg-api/src/run-repository.ts text eol=lf
+services/pg-api/src/workflow-v2-run-repository.ts text eol=lf
+services/pg-api/tests/approval-delegation-contract.test.mjs text eol=lf
+services/pg-api/tests/approval-delegation-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/approval-delegation-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/approval-delegation-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/approval-delegation-preview.test.mjs text eol=lf
+services/pg-api/tests/approval-delegation-pure.test.mjs text eol=lf
+services/pg-api/tests/approval-delegation-shared.test.mjs text eol=lf
+services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/approval-delegation-genuine-guard.mjs text eol=lf
+shared/approval-delegation-contract.ts text eol=lf
+src/lib/pgNativeApprovalDelegationSession.ts text eol=lf
+src/lib/pgNativeApprovalDelegations.ts text eol=lf
+src/pages/PgNativePilot/PgNativeApprovalDelegationPanel.tsx text eol=lf
+tests/helpers/pg-native-approval-delegation-genuine-fixture.mjs text eol=lf
+tests/pg-native-approval-delegation-genuine.config.mjs text eol=lf
+tests/pg-native-approval-delegation-genuine.spec.mjs text eol=lf
+src/lib/pgNativeStudioNavigation.ts text eol=lf
+
+# Reviewed combined Native creation, same-run control and delegated approval candidate.
+.github/workflows/pg18-agent-run-control-ci.yml text eol=lf
+ops/build-pg18-native-api-preflight-bundle.mjs text eol=lf
+package.json text eol=lf
+services/pg-api/src/agent-run-control.ts text eol=lf
+services/pg-api/src/autonomous-agent-run-repository.ts text eol=lf
+services/pg-api/src/http.ts text eol=lf
+services/pg-api/tests/agent-run-control-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/agent-run-control-state-model.test.mjs text eol=lf
+services/pg-api/tests/agent-run-control-tcp.integration.mjs text eol=lf
+services/pg-api/tests/helpers/agent-run-control-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-run-control-genuine-guard.mjs text eol=lf
+services/pg-api/tests/helpers/agent-run-control-pg18-browser-server.mjs text eol=lf
+src/lib/pgNativeAgentCreateJourney.ts text eol=lf
+src/lib/pgNativeAgentCreateJourneyCache.ts text eol=lf
+src/lib/pgNativeAgentRunControl.ts text eol=lf
+src/lib/pgNativeAutonomousAgentSession.ts text eol=lf
+src/lib/pgNativeDurableRunSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativeAgentCreateJourney.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentReleasePanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentRunControl.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentRunPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAutonomousAgentDetail.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeStudioNavigation.tsx text eol=lf
+tests/pg-native-agent-create-journey-cache.test.mjs text eol=lf
+tests/pg-native-agent-create-journey-render.test.mjs text eol=lf
+tests/pg-native-agent-create-journey.test.mjs text eol=lf
+tests/pg-native-agent-create-plan-sdk.test.mjs text eol=lf
+tests/pg-native-browser/agent-run-control-pg18.spec.mjs text eol=lf
+
+# Reviewed original052 employee guard reuse.
+services/pg-api/src/agent-run-control-admission.ts text eol=lf
+
+# Reviewed F29 provenance, exact Native auth refusal and shared Knowledge heartbeat pair.
+services/pg-api/src/agent-optimization-repository.ts text eol=lf
+services/pg-api/src/agent-optimization-retest-policy.ts text eol=lf
+services/pg-api/src/knowledge-worker-heartbeat-lifecycle.ts text eol=lf
+services/pg-api/tests/agent-optimization-foundation.test.mjs text eol=lf
+services/pg-api/tests/agent-optimization-retest-pg18.test.mjs text eol=lf
+services/pg-api/tests/knowledge-heartbeat-pair.test.mjs text eol=lf
+shared/agent-optimization-retest-contract.ts text eol=lf
+tests/agent-optimization-retest-contract.test.mjs text eol=lf
+
+# Reviewed Native-only local devices and explicit complete067 candidate.
+.github/workflows/pg18-native-local-device-genuine-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_067_native_local_devices.sql text eol=lf
+docs/PG18_COMPLETE_067_INSTALL_MAP.json text eol=lf
+local-executor/browser-server.mjs text eol=lf
+local-executor/native-connection.mjs text eol=lf
+local-executor/native-run.mjs text eol=lf
+local-executor/office-table.mjs text eol=lf
+local-executor/office-worker.mjs text eol=lf
+local-executor/office.mjs text eol=lf
+local-executor/result.mjs text eol=lf
+local-executor/runtime.mjs text eol=lf
+services/pg-api/src/agent-human-input-policy.ts text eol=lf
+services/pg-api/src/bound-dispatch-server.ts text eol=lf
+services/pg-api/src/model-connection-executor.ts text eol=lf
+services/pg-api/src/native-credential-policy.ts text eol=lf
+services/pg-api/src/native-local-agent-contract.ts text eol=lf
+services/pg-api/src/native-local-agent-resources.ts text eol=lf
+services/pg-api/src/native-local-device-audit-manifest.ts text eol=lf
+services/pg-api/src/native-local-device-audit.ts text eol=lf
+services/pg-api/src/native-local-device-execution.ts text eol=lf
+services/pg-api/src/native-local-device-http.ts text eol=lf
+services/pg-api/src/native-local-device-repository.ts text eol=lf
+services/pg-api/src/native-local-device-runtime-policy.ts text eol=lf
+services/pg-api/src/native-local-device-validation.ts text eol=lf
+services/pg-api/src/workflow-v2-agent-machine.ts text eol=lf
+services/pg-api/src/workflow-v2-agent-resources.ts text eol=lf
+services/pg-api/src/workflow-v2-dispatch-guard.ts text eol=lf
+services/pg-api/src/workflow-v2-machine.ts text eol=lf
+services/pg-api/src/workflow-v2-model-dispatch.ts text eol=lf
+services/pg-api/src/workflow-v2-tool-client.ts text eol=lf
+services/pg-api/src/workflow-v2-tool-dispatch.ts text eol=lf
+services/pg-api/src/workflow-v2-tool-plan.ts text eol=lf
+services/pg-api/tests/helpers/native-local-device-gated-mcp.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-device-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-device-genuine-guard.mjs text eol=lf
+services/pg-api/tests/native-local-agent-compat.test.mjs text eol=lf
+services/pg-api/tests/native-local-device-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/native-local-device-executor-pg18.test.mjs text eol=lf
+services/pg-api/tests/native-local-device-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/native-local-device-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/native-local-device-protocol-pg18.test.mjs text eol=lf
+shared/native-local-device-contract.d.mts text eol=lf
+shared/native-local-device-contract.mjs text eol=lf
+src/lib/pgNativeLocalDevice.ts text eol=lf
+src/lib/pgNativeOfficeWorkflow.ts text eol=lf
+src/pages/PgNativePilot/PgNativeLocalDevicesPanel.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeOfficeWorkflowPanel.tsx text eol=lf
+src/pages/PgNativePilot/useNativeLocalDevices.ts text eol=lf
+tests/native-local-device-contract.test.mjs text eol=lf
+tests/native-local-device-render.test.mjs text eol=lf
+tests/native-local-device-sdk.test.mjs text eol=lf
+tests/native-office-workflow.test.mjs text eol=lf
+
+# Reviewed SQL067 syntax and original Writer/claim fixture repairs.
+docs/PG18_MIGRATION_EXECUTION_20261029.json text eol=lf
+services/pg-api/tests/native-local-device-sql067-source.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-final-cleanup.test.mjs text eol=lf
+
+# Reviewed independent Caller API and explicit complete068 candidate.
+.github/workflows/pg18-agent-caller-genuine-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_068_agent_public_callers.sql text eol=lf
+docs/PG18_COMPLETE_068_INSTALL_MAP.json text eol=lf
+docs/PG18_F11_F12_068_BASELINE_COVERAGE.md text eol=lf
+docs/PG18_F11_F12_068_BASELINE_PROVENANCE.json text eol=lf
+docs/PG18_F11_F12_068_CALLER_REVIEW.md text eol=lf
+docs/PG18_F11_F12_068_INSTALL_MAP.json text eol=lf
+services/pg-api/src/agent-caller-audit-core.ts text eol=lf
+services/pg-api/src/agent-caller-audit.ts text eol=lf
+services/pg-api/src/agent-caller-embed.ts text eol=lf
+services/pg-api/src/agent-caller-execution-opt-in.ts text eol=lf
+services/pg-api/src/agent-caller-http.ts text eol=lf
+services/pg-api/src/agent-caller-native-policy.ts text eol=lf
+services/pg-api/src/agent-caller-repository.ts text eol=lf
+services/pg-api/src/agent-caller-runtime-policy.ts text eol=lf
+services/pg-api/src/knowledge-query-repository.ts text eol=lf
+services/pg-api/tests/agent-caller-capability-separation.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-client.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-contract.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-http.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-owner-session.test.mjs text eol=lf
+services/pg-api/tests/agent-caller-presentation.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-caller-genuine-guard.mjs text eol=lf
+shared/agent-caller-contract.ts text eol=lf
+src/lib/pgNativeAgentCallerPresentation.ts text eol=lf
+src/lib/pgNativeAgentCallerSession.ts text eol=lf
+src/lib/pgNativeAgentCallers.ts text eol=lf
+src/lib/pgPublicAgentCaller.ts text eol=lf
+src/pages/PgNativePilot/PgNativeAgentCallerDetails.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeAgentCallerPanel.tsx text eol=lf
+tests/helpers/actual-public-agent-caller-body-observer.mjs text eol=lf
+tests/helpers/pg-native-agent-caller-genuine-fixture.mjs text eol=lf
+tests/pg-native-agent-caller-genuine.config.mjs text eol=lf
+tests/pg-native-agent-caller-genuine.spec.mjs text eol=lf
+
+# Reviewed independent Caller API and explicit complete068 candidate.
+
+# Reviewed complete069 source and isolated genuine CI candidate.
+.github/workflows/pg18-agent-create-journey-genuine-ci.yml text eol=lf
+.github/workflows/pg18-native-local-device-browser-genuine-ci.yml text eol=lf
+.github/workflows/pg18-optimization-retest-genuine-browser-ci.yml text eol=lf
+.github/workflows/pg18-tool-hub-genuine-ci.yml text eol=lf
+db/postgres/migrations/pg_v9_069_owner_tool_trials.sql text eol=lf
+docs/PG18_COMPLETE_069_INSTALL_MAP.json text eol=lf
+docs/PG18_F29_EMPLOYEE_RETEST_BROWSER_REVIEW.md text eol=lf
+services/pg-api/src/native-entry-http.ts text eol=lf
+services/pg-api/src/owner-tool-trial-audit-core.ts text eol=lf
+services/pg-api/src/owner-tool-trial-audit.ts text eol=lf
+services/pg-api/src/public-mcp-registry-contract.ts text eol=lf
+services/pg-api/src/public-mcp-registry-network.ts text eol=lf
+services/pg-api/src/public-mcp-registry.ts text eol=lf
+services/pg-api/src/registry-translation-trial.ts text eol=lf
+services/pg-api/src/tool-hub-http.ts text eol=lf
+services/pg-api/src/tool-hub-runtime-policy.ts text eol=lf
+services/pg-api/src/tool-invocation-projection.ts text eol=lf
+services/pg-api/src/tool-trial-check-expression.ts text eol=lf
+services/pg-api/src/tool-trial-contract.ts text eol=lf
+services/pg-api/src/tool-trial-repository.ts text eol=lf
+services/pg-api/src/workflow-repository.ts text eol=lf
+services/pg-api/tests/agent-caller-quota-recovery.test.mjs text eol=lf
+services/pg-api/tests/agent-create-journey-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/helpers/agent-create-journey-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/agent-create-journey-genuine-guard.mjs text eol=lf
+services/pg-api/tests/helpers/agent-create-journey-genuine-sources.mjs text eol=lf
+services/pg-api/tests/helpers/install-agent-create-journey-chromium.mjs text eol=lf
+services/pg-api/tests/helpers/install-native-chain-chromium.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-chain-cli.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-chain-model.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-device-chain-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/optimization-retest-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/optimization-retest-genuine-guard.mjs text eol=lf
+services/pg-api/tests/helpers/tool-hub-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/tool-hub-genuine-guard.mjs text eol=lf
+services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs text eol=lf
+services/pg-api/tests/native-entry-http.test.mjs text eol=lf
+services/pg-api/tests/native-local-device-chain-pg18.test.mjs text eol=lf
+services/pg-api/tests/native-server-config.test.mjs text eol=lf
+services/pg-api/tests/optimization-retest-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/own-operations-native-mount.test.mjs text eol=lf
+services/pg-api/tests/owner-tool-trial-audit-comparison.test.mjs text eol=lf
+services/pg-api/tests/tool-domain-comparison.test.mjs text eol=lf
+services/pg-api/tests/tool-domain-contract.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-client-session.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-database-pg18.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-genuine-guard.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-http-comparison.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-reader-identity-cleanup.test.mjs text eol=lf
+shared/tool-hub-public-types.ts text eol=lf
+src/lib/pgNativeToolHub.ts text eol=lf
+src/lib/pgNativeToolHubSession.ts text eol=lf
+src/pages/PgNativePilot/PgNativePublicMcpCatalog.tsx text eol=lf
+src/pages/PgNativePilot/PgNativeToolHubPanel.tsx text eol=lf
+tests/helpers/pg-native-optimization-retest-genuine-fixture.mjs text eol=lf
+tests/helpers/pg-native-tool-hub-genuine-fixture.mjs text eol=lf
+tests/pg-native-browser/agent-create-journey-pg18.spec.mjs text eol=lf
+tests/pg-native-browser/native-local-device-chain-pg18.spec.mjs text eol=lf
+tests/pg-native-optimization-retest-genuine.config.mjs text eol=lf
+tests/pg-native-optimization-retest-genuine.spec.mjs text eol=lf
+tests/pg-native-tool-hub-genuine.config.mjs text eol=lf
+tests/pg-native-tool-hub-genuine.spec.mjs text eol=lf
+
+# Reviewed actual186e1f3 failure repairs.
+.github/workflows/pg18-employee-ui-ci.yml text eol=lf
+.github/workflows/pg18-local-executor-operator-ci.yml text eol=lf
+.github/workflows/pocketbase-standalone-e2e-parallel-ci.yml text eol=lf
+docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_PLAN.json text eol=lf
+docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md text eol=lf
+ops/templates/agentstudio-pg18-native-local-executor.conf.example text eol=lf
+ops/templates/native-local-executor-pg-hba.conf.example text eol=lf
+services/pg-api/src/native-local-executor-operator-plan.d.mts text eol=lf
+services/pg-api/src/native-local-executor-operator-plan.mjs text eol=lf
+services/pg-api/src/native-local-executor-service-preflight-cli.mjs text eol=lf
+services/pg-api/src/native-local-executor-service-preflight.ts text eol=lf
+services/pg-api/tests/helpers/native-local-cli-failure-codes.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-executor-operator-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/native-local-executor-operator-source-pins.mjs text eol=lf
+services/pg-api/tests/native-local-connection.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-operator-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-operator-pg18.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-operator-plan.test.mjs text eol=lf
+services/pg-api/tests/native-local-executor-preflight.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-ci-cold-logins.test.mjs text eol=lf
+tests/pg-native-browser/playwright.legacy-regression.config.mjs text eol=lf
+
+# Reviewed actual186e1f3 failure repairs.
+services/pg-api/tests/helpers/native-local-device-business-route.mjs text eol=lf
+services/pg-api/tests/native-local-device-business-route.test.mjs text eol=lf
+services/pg-api/tests/tool-hub-genuine-regressions.test.mjs text eol=lf
+tests/pg-native-browser/workflow-canvas.spec.mjs text eol=lf
+tests/pg18-local-executor-review-bundle.test.mjs text eol=lf
+
+# Reviewed actual186e1f3 failure repairs.
+tests/pg-native-tool-hub-catalog-namespace.test.mjs text eol=lf
+
+# Reviewed Native session and Caller observation regression sources.
+services/pg-api/src/native-local-device-auth-error.ts text eol=lf
+services/pg-api/tests/native-local-device-auth-error.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+ops/pg18-complete-service-ci.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-service-plan.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-native-entry-smoke.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-ci.integration.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-driver.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-plan.test.mjs text eol=lf
+services/pg-api/tests/workflow-v2-local-device-startup-role.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_PREPARATION.md text eol=lf
+docs/PG18_FRESH_RUNTIME_INITIALIZATION.md text eol=lf
+docs/PG18_RUNTIME_PREPARATION_POSTCHECK.md text eol=lf
+docs/PG18_SERVICE_LOGIN_PREPARATION.md text eol=lf
+ops/build-pg18-complete069-review-bundle.mjs text eol=lf
+ops/build-pg18-runtime-init-review-bundle.mjs text eol=lf
+services/pg-api/tests/pg18-complete-role-closure.test.mjs text eol=lf
+tests/pg18-complete069-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+services/pg-api/src/native-first-admin-cli.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-service-cli-diagnostic.mjs text eol=lf
+services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_REVIEW_WORKER_PREPARATION.md text eol=lf
+docs/PG18_FULL069_WORKER_LIVE_OPERATIONS.json text eol=lf
+services/pg-api/src/pg18-complete-review-worker-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-worker-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-worker-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-worker-plan.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-child.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-cli.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-contract.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-native.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-processes.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-runner.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-runtime.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-sources.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-live-trust.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-review-worker-ci.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-service-case-counter.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-worker-source.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-service-case-counter.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-live.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+ops/build-pg18-full069-worker-live-review-bundle.mjs text eol=lf
+tests/pg18-full069-worker-live-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_EXECUTOR_PREPARATION.md text eol=lf
+services/pg-api/src/pg18-complete-executor-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-executor-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-executor-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-executor-plan.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-executor-ci.mjs text eol=lf
+services/pg-api/tests/pg18-complete-executor-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-executor-source.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-kernel-handshake.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_REVIEW_DESIGN_PREPARATION.md text eol=lf
+ops/templates/agentstudio-pg18-review-broker-design.conf.example text eol=lf
+ops/templates/agentstudio-pg18-review-worker-design.conf.example text eol=lf
+services/pg-api/src/pg18-complete-review-stack-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-stack-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-stack-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-review-stack-plan.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-review-stack-ci.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-review-stack-source.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_COMPLETE_069_BROKER_COMPANIONS_REVIEW.md text eol=lf
+docs/PG18_COMPLETE_069_PLAN_WORKFLOW_CI.md text eol=lf
+docs/PG18_COMPLETE_069_PLAN_WORKFLOW_PREPARATION.md text eol=lf
+docs/PG18_FULL069_WORKER_PATH_VALIDATION_WIRING.json text eol=lf
+ops/build-pg18-complete-plan-workflow-review-bundle.mjs text eol=lf
+ops/build-pg18-complete069-companion-review-bundle.mjs text eol=lf
+ops/pg18-full069-worker-path-ci.mjs text eol=lf
+ops/templates/agentstudio-pg18-plan-workflow-broker.conf.example text eol=lf
+ops/templates/agentstudio-pg18-plan-workflow-broker.service.example text eol=lf
+ops/templates/agentstudio-pg18-plan-workflow-hba.conf.example text eol=lf
+ops/templates/agentstudio-pg18-plan-workflow-predecessor-credentials.json.example text eol=lf
+ops/templates/agentstudio-pg18-plan-workflow-worker.conf.example text eol=lf
+ops/templates/agentstudio-pg18-plan-workflow-worker.service.example text eol=lf
+services/pg-api/src/pg18-complete-companion-sources.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-catalog.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-cli.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-core.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-journal.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-plan.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-predecessor-plan.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-predecessors.mjs text eol=lf
+services/pg-api/src/pg18-complete-plan-workflow-sources.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-path-validation-contract.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-path-validation-guard.mjs text eol=lf
+services/pg-api/src/pg18-full069-worker-path-validation-runner.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-plan-workflow-ci-stage.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-plan-workflow-ci.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-worker-path-ci-contract.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-worker-path-ci-fixture.mjs text eol=lf
+services/pg-api/tests/pg18-complete-companion-sources.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-plan-workflow-ci-chain.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-plan-workflow-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-plan-workflow-lock-boundary.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-plan-workflow-plan.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-plan-workflow-source.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-path-ci.integration.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-path-ci.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-path-validation.test.mjs text eol=lf
+tests/pg18-complete-plan-workflow-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_FULL069_FINAL14_INTEGRATION_PLAN.json text eol=lf
+docs/PG18_FULL069_FINAL14_RUNTIME.json text eol=lf
+docs/PG18_FULL069_FIVE_COMPANION_SUPERVISOR.md text eol=lf
+ops/build-pg18-full069-final-review-bundle.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-cli.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-client-bindings.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-companion-child.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-companion-contract.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-companion-kernel.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-companions.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-login-contract.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-records.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-runner.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-runtime.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-sources.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-trust.mjs text eol=lf
+services/pg-api/src/pg18-full069-final-window.mjs text eol=lf
+services/pg-api/src/pg18-full069-final14-catalog.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-final-companions-binding-data.mjs text eol=lf
+services/pg-api/tests/pg18-final-companions-bindings.test.mjs text eol=lf
+services/pg-api/tests/pg18-final-companions-contract.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-client-bindings.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-login-contract.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-records.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-trust.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-window.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final14-catalog.test.mjs text eol=lf
+tests/pg18-full069-final-review-bundle.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+services/pg-api/src/pg18-full069-network-policy.mjs text eol=lf
+services/pg-api/tests/pg18-full069-network-policy.test.mjs text eol=lf
+
+# Reviewed final13 CI integration sources.
+docs/PG18_FULL069_FINAL13_PATH_CI.md text eol=lf
+docs/PG18_FULL069_FIVE_COMPANION_CI_BRIDGE.md text eol=lf
+ops/pg18-full069-final-fixture-process.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-contract.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-run.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-stage.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-bootstrap-child.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-bridge.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-contract.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-profiles.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-run.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-setup-base.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-setup.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-sidecars.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-sources.mjs text eol=lf
+services/pg-api/tests/pg18-final-companions-all13-stage.test.mjs text eol=lf
+services/pg-api/tests/pg18-final-companions-ci-contract.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-path-ci.test.mjs text eol=lf
+tests/pg18-full069-final-fixture-process.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_FRESH_MIGRATION_EXECUTION.md text eol=lf
+services/pg-api/tests/pg18-full069-worker-live-trust-diagnostic.test.mjs text eol=lf
+
+# Reviewed CI-only exact Stage proof regression.
+services/pg-api/tests/pg18-complete-stage-source-proof.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-stage-diagnostic.test.mjs text eol=lf
+
+# Existing employee UI authentication and original-page migration sources.
+.gitignore text eol=lf
+AGENTS.md text eol=lf
+docs/PG18_8090_FRESH_CUTOVER.md text eol=lf
+docs/PG18_COMPLETION_MATRIX.md text eol=lf
+docs/PG18_ORIGINAL_UI_API_MAP.json text eol=lf
+shared/original-home-authoring.ts text eol=lf
+src/App.tsx text eol=lf
+src/lib/originalHomeAgentApi.ts text eol=lf
+src/lib/studioAuth.ts text eol=lf
+src/lib/studioBackend.ts text eol=lf
+src/lib/studioLocalReturnPath.ts text eol=lf
+src/lib/studioPgAuthAdapter.ts text eol=lf
+src/main.tsx text eol=lf
+src/pages/Login/LoginPage.tsx text eol=lf
+tests/original-home-agent-api.test.mjs text eol=lf
+tests/original-home-authoring.test.mjs text eol=lf
+tests/studio-auth-facade.test.mjs text eol=lf
+tests/studio-local-return-path.test.mjs text eol=lf
+tests/studio-pg-auth-adapter.test.mjs text eol=lf
+vibex-local/vite.original-pg.config.ts text eol=lf
+
+# Reviewed original employee UI and independent070/071 migration sources.
+.gitattributes text eol=lf
+db/postgres/migrations/pg_v9_070_home_authoring.sql text eol=lf
+db/postgres/migrations/pg_v9_071_agent_catalog.sql text eol=lf
+ops/pg18-original-home-knowledge-stats.proposed.sql text eol=lf
+ops/pg18-original-home070-review-plan.mjs text eol=lf
+ops/pg18-original-home071-review-plan.mjs text eol=lf
+services/pg-api/src/native-agent-catalog-audit.ts text eol=lf
+services/pg-api/src/native-agent-catalog-http.ts text eol=lf
+services/pg-api/src/native-agent-catalog-repository.ts text eol=lf
+services/pg-api/src/native-agent-catalog-runtime.ts text eol=lf
+services/pg-api/src/native-home-agent-specs-http.ts text eol=lf
+services/pg-api/src/native-home-agent-specs-repository.ts text eol=lf
+services/pg-api/src/native-home-agent-specs-runtime.ts text eol=lf
+services/pg-api/src/native-home-authoring-audit.ts text eol=lf
+services/pg-api/src/native-home-knowledge-stats-audit.ts text eol=lf
+services/pg-api/src/native-home-resources-contract.ts text eol=lf
+services/pg-api/src/native-home-resources-http.ts text eol=lf
+services/pg-api/src/native-home-resources-repository.ts text eol=lf
+services/pg-api/src/native-original-ui-preconditions.ts text eol=lf
+services/pg-api/src/original-agent-inbox-contract.ts text eol=lf
+services/pg-api/src/original-agent-inbox-http.ts text eol=lf
+services/pg-api/src/own-operations-http.ts text eol=lf
+services/pg-api/src/own-operations-repository.ts text eol=lf
+services/pg-api/tests/helpers/native-agent-catalog-cookie-switch-case.mjs text eol=lf
+services/pg-api/tests/helpers/original-home-owned-resources-case.mjs text eol=lf
+services/pg-api/tests/helpers/original-home070-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/original-home071-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/original-home071-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/native-agent-catalog-startup.test.mjs text eol=lf
+services/pg-api/tests/native-agent-catalog.test.mjs text eol=lf
+services/pg-api/tests/native-home-agent-specs.test.mjs text eol=lf
+services/pg-api/tests/native-home-authoring-startup.test.mjs text eol=lf
+services/pg-api/tests/native-home-resources.test.mjs text eol=lf
+services/pg-api/tests/native-home070-review-plan.test.mjs text eol=lf
+services/pg-api/tests/original-home070-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/original-home070-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/original-home071-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/original-home071-genuine-pg18.test.mjs text eol=lf
+shared/original-agent-catalog.ts text eol=lf
+src/components/home/AgentCatalog.tsx text eol=lf
+src/components/home/AgentDraftRecoveryNotice.tsx text eol=lf
+src/components/home/AgentPendingInbox.tsx text eol=lf
+src/components/home/AgentToolAutoConnect.tsx text eol=lf
+src/components/home/AuthoringRequirements.tsx text eol=lf
+src/components/home/CreateComposer.tsx text eol=lf
+src/components/home/MonitorInbox.tsx text eol=lf
+src/components/home/SpecEditorCard.tsx text eol=lf
+src/components/home/TemplateGallery.tsx text eol=lf
+src/components/home/WorkspaceOverview.tsx text eol=lf
+src/components/site/AgentDraftDrawer.tsx text eol=lf
+src/components/site/SavedAgentQuickEditor.tsx text eol=lf
+src/components/site/SectionTabs.tsx text eol=lf
+src/components/site/SitePageHeader.tsx text eol=lf
+src/components/site/SiteShell.tsx text eol=lf
+src/components/site/SiteSidebar.tsx text eol=lf
+src/components/site/StudioAccountMenu.tsx text eol=lf
+src/components/site/StudioCommandPalette.tsx text eol=lf
+src/components/site/StudioErrorBoundary.tsx text eol=lf
+src/lib/agentCreateJourney.ts text eol=lf
+src/lib/agentEditorDraft.ts text eol=lf
+src/lib/agentQualityChecks.ts text eol=lf
+src/lib/agentToolMatcher.ts text eol=lf
+src/lib/authoringRequirements.ts text eol=lf
+src/lib/currentAgentConnectionSnapshot.ts text eol=lf
+src/lib/localDevices.ts text eol=lf
+src/lib/marketToolSelection.ts text eol=lf
+src/lib/originalHomeAgentEditor.ts text eol=lf
+src/lib/originalHomeInboxApi.ts text eol=lf
+src/lib/originalHomeInboxData.ts text eol=lf
+src/lib/originalHomeResources.ts text eol=lf
+src/lib/pb.ts text eol=lf
+src/lib/quickAgentDraft.ts text eol=lf
+src/lib/studioNavigation.ts text eol=lf
+src/lib/toolSearchPrivacy.ts text eol=lf
+src/lib/unsavedNavigation.ts text eol=lf
+src/pages/AgentCreate/AgentCreatePage.tsx text eol=lf
+src/pages/Home/HomePage.tsx text eol=lf
+src/pages/Home/presets.ts text eol=lf
+src/pages/Home/useHome.ts text eol=lf
+tests/helpers/original-home-hook-harness.mjs text eol=lf
+tests/helpers/pg-original-login-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-login-genuine-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-login-legacy-observer.mjs text eol=lf
+tests/helpers/pg-original-login-reviewed-sources.mjs text eol=lf
+tests/original-home-agent-editor.test.mjs text eol=lf
+tests/original-home-hook.test.mjs text eol=lf
+tests/original-home-inbox-api.test.mjs text eol=lf
+tests/original-home-resources.test.mjs text eol=lf
+tests/original-pg-pocketbase-isolation.test.mjs text eol=lf
+tests/pg-original-home-inboxes.test.mjs text eol=lf
+tests/pg-original-login-browser-policy.test.mjs text eol=lf
+tests/pg-original-login-genuine.config.mjs text eol=lf
+tests/pg-original-login-genuine.spec.mjs text eol=lf
+
+# Independent original Login/Home071 hosted browser verification.
+services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/original-login-home071-genuine-fixture.mjs text eol=lf
+tests/pg-original-login-home071-policy.test.mjs text eol=lf
+
+# Optional Home072 and actual Native Reader qualification sources.
+db/postgres/migrations/pg_v9_072_home_knowledge_statistics.sql text eol=lf
+ops/pg18-original-home072-review-plan.mjs text eol=lf
+services/pg-api/src/native-home-knowledge-stats-pins.ts text eol=lf
+services/pg-api/src/native-home-knowledge-stats-runtime.ts text eol=lf
+services/pg-api/src/pg18-full069-reader-audit-phase.mjs text eol=lf
+services/pg-api/tests/helpers/original-home072-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/original-home072-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/native-home-knowledge-statistics.test.mjs text eol=lf
+services/pg-api/tests/original-home072-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/original-home072-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-reader-principal.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-file-change-observation.test.mjs text eol=lf
+
+# Original employee sharing, optional073 and bounded Worker qualification.
+db/postgres/migrations/pg_v9_073_monitor_inbox.sql text eol=lf
+services/pg-api/src/native-monitor-inbox-audit.ts text eol=lf
+services/pg-api/src/native-monitor-inbox-contract.ts text eol=lf
+services/pg-api/src/native-monitor-inbox-http.ts text eol=lf
+services/pg-api/src/native-monitor-inbox-import-plan.ts text eol=lf
+services/pg-api/src/native-monitor-inbox-repository.ts text eol=lf
+services/pg-api/src/native-monitor-inbox-runtime.ts text eol=lf
+services/pg-api/src/native-monitor-inbox-schema.ts text eol=lf
+services/pg-api/src/pg18-full069-final14-database-acl.mjs text eol=lf
+services/pg-api/src/pg18-full069-owned-record-contract.mjs text eol=lf
+services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/native-monitor073-reviewed-sources.mjs text eol=lf
+services/pg-api/tests/helpers/original-internal-share-expected-employee-case.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final14-database-acl-ci.mjs text eol=lf
+services/pg-api/tests/native-monitor-inbox-pure.test.mjs text eol=lf
+services/pg-api/tests/native-monitor073-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/native-monitor073-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final14-database-acl.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-owned-record.test.mjs text eol=lf
+src/lib/originalInternalTemplates.ts text eol=lf
+src/pages/InternalTemplates/InternalTemplatesPage.tsx text eol=lf
+src/pages/InternalTemplates/useInternalTemplates.ts text eol=lf
+tests/helpers/pg-original-monitor073-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-monitor073-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-monitor073-genuine-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-monitor073-host-policy.mjs text eol=lf
+tests/original-internal-share-expected-employee.test.mjs text eol=lf
+tests/original-internal-templates.test.mjs text eol=lf
+tests/pg-original-monitor073-genuine.config.mjs text eol=lf
+tests/pg-original-monitor073-genuine.spec.mjs text eol=lf
+tests/pg-original-monitor073-policy.test.mjs text eol=lf
+
+# Original employee sharing host, personal overview and exact073 audit.
+services/pg-api/src/original-internal-overview-http.ts text eol=lf
+services/pg-api/src/original-internal-overview-read.ts text eol=lf
+services/pg-api/tests/original-internal-overview.test.mjs text eol=lf
+services/pg-api/tests/own-operations-tcp.integration.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-path-owned-failure.test.mjs text eol=lf
+shared/original-internal-overview-contract.ts text eol=lf
+src/lib/originalInternalOverview.ts text eol=lf
+src/pages/InternalOverview/InternalOverviewPage.tsx text eol=lf
+tests/helpers/pg-original-internal-share-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-internal-share-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-internal-share-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-internal-share-reviewed-sources.mjs text eol=lf
+tests/original-internal-overview-native.test.mjs text eol=lf
+tests/original-internal-overview.test.mjs text eol=lf
+tests/pg-original-internal-share-browser-policy.test.mjs text eol=lf
+tests/pg-original-internal-share-genuine.config.mjs text eol=lf
+tests/pg-original-internal-share-genuine.spec.mjs text eol=lf
+
+# Closed startup observations and exact073 test-only seed statements.
+services/pg-api/src/pg18-full069-owned-process-observation.mjs text eol=lf
+services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs text eol=lf
+services/pg-api/tests/pg18-full069-owned-process-observation.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-runtime-open-observation.test.mjs text eol=lf
+
+# Independent original personal overview hosted-only source.
+tests/helpers/pg-original-internal-overview-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-internal-overview-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-internal-overview-genuine-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-internal-overview-reviewed-sources.mjs text eol=lf
+tests/pg-original-internal-overview-browser-policy.test.mjs text eol=lf
+tests/pg-original-internal-overview-genuine.config.mjs text eol=lf
+tests/pg-original-internal-overview-genuine.spec.mjs text eol=lf
+
+# Original Home model-request bridge and closed startup observations.
+services/pg-api/src/pg18-full069-worker-startup-observation.d.mts text eol=lf
+services/pg-api/src/pg18-full069-worker-startup-observation.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-startup-observation.test.mjs text eol=lf
+shared/original-home-design-metadata.ts text eol=lf
+src/lib/originalHomeDesign.ts text eol=lf
+tests/helpers/original-home-design-unit-data.mjs text eol=lf
+tests/original-home-design-employee-condition.test.mjs text eol=lf
+tests/original-home-design-hook.test.mjs text eol=lf
+tests/original-home-design.test.mjs text eol=lf
+
+# Original Home hosted flow, legacy revision regression, and Worker SQL assets.
+db/postgres/003_finish_job.sql text eol=lf
+db/postgres/004_retry_job.sql text eol=lf
+db/postgres/005_claim_agent_prepare.sql text eol=lf
+db/postgres/006_claim_agent_model.sql text eol=lf
+db/postgres/007_claim_workflow_safe.sql text eol=lf
+db/postgres/008_claim_workflow_v2.sql text eol=lf
+db/postgres/009_claim_autonomous_agent.sql text eol=lf
+tests/helpers/pg-original-home-design-artifacts.mjs text eol=lf
+tests/helpers/pg-original-home-design-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-home-design-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-home-design-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-home-design-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-home-design-reviewed-check.mjs text eol=lf
+tests/original-home-legacy-design-save.test.mjs text eol=lf
+tests/pg-original-home-design-browser-policy.test.mjs text eol=lf
+tests/pg-original-home-design-genuine.config.mjs text eol=lf
+tests/pg-original-home-design-genuine.spec.mjs text eol=lf
+
+# Original Home hosted flow, legacy revision regression, and Worker SQL assets.
+services/pg-api/src/model-connection-repository.ts text eol=lf
+services/pg-api/tests/native-original-model-connections-owner-cas.test.mjs text eol=lf
+services/pg-api/tests/native-original-model-protocol.test.mjs text eol=lf
+
+# Original employee model page and fixed hosted evidence controls.
+src/components/model-connections/ConnectionCard.tsx text eol=lf
+src/components/model-connections/ConnectionFormCard.tsx text eol=lf
+src/lib/originalModelConnections.ts text eol=lf
+src/lib/originalModelConnectionsApi.ts text eol=lf
+src/pages/ModelConnections/ModelConnectionsPage.tsx text eol=lf
+src/pages/ModelConnections/useModelConnections.ts text eol=lf
+src/pages/ModelConnections/usePgModelConnections.ts text eol=lf
+tests/helpers/original-model-connections-hook-harness.mjs text eol=lf
+tests/helpers/original-model-connections-unit-data.mjs text eol=lf
+tests/helpers/pg-original-model-connections-artifacts.mjs text eol=lf
+tests/helpers/pg-original-model-connections-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-connections-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-connections-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-model-connections-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-model-connections-reviewed-check.mjs text eol=lf
+tests/original-model-connections-api.test.mjs text eol=lf
+tests/original-model-connections-controller.test.mjs text eol=lf
+tests/original-model-connections-hook.test.mjs text eol=lf
+tests/pg-original-model-connections-browser-policy.test.mjs text eol=lf
+tests/pg-original-model-connections-genuine.config.mjs text eol=lf
+tests/pg-original-model-connections-genuine.spec.mjs text eol=lf
+
+# Original employee model page and fixed hosted evidence controls.
+services/pg-api/src/model-draft-discovery-provider.ts text eol=lf
+services/pg-api/src/model-draft-probe-http.ts text eol=lf
+services/pg-api/src/model-draft-probe-repository.ts text eol=lf
+services/pg-api/src/pg18-full069-assessment-startup-observation.d.mts text eol=lf
+services/pg-api/src/pg18-full069-assessment-startup-observation.mjs text eol=lf
+services/pg-api/src/pg18-full069-native-reader-failure-observation.mjs text eol=lf
+services/pg-api/tests/pg18-full069-closed-diagnostics.test.mjs text eol=lf
+shared/model-draft-probe-contract.ts text eol=lf
+tests/helpers/original-model-draft-browser-scenario.mjs text eol=lf
+tests/helpers/original-model-draft-synthetic-host-source.mjs text eol=lf
+tests/model-draft-discovery-provider-pure.test.mjs text eol=lf
+tests/model-draft-probe-http-pure.test.mjs text eol=lf
+tests/model-draft-probe-repository-pure.test.mjs text eol=lf
+tests/model-draft-synthetic-host-source-pure.test.mjs text eol=lf
+tests/original-model-draft-probe-hook-pure.test.mjs text eol=lf
+
+# Original employee model page and fixed hosted evidence controls.
+services/pg-api/src/agent-internal-share-observation.d.mts text eol=lf
+services/pg-api/src/agent-internal-share-observation.mjs text eol=lf
+services/pg-api/src/model-connection-page-cursor.ts text eol=lf
+services/pg-api/src/model-connection-pagination.ts text eol=lf
+shared/model-connection-pagination-contract.ts text eol=lf
+src/lib/originalModelConnectionPagination.ts text eol=lf
+tests/helpers/model-pagination-terminal-data.mjs text eol=lf
+tests/helpers/model-pagination-terminal-transport.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-artifacts.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-reviewed-check.mjs text eol=lf
+tests/helpers/pg-original-model-draft-discovery-sql-proofs.mjs text eol=lf
+tests/model-connection-pagination-server-pure.test.mjs text eol=lf
+tests/model-pagination-http-pure.test.mjs text eol=lf
+tests/original-model-pagination-client-pure.test.mjs text eol=lf
+tests/original-model-pagination-hook-pure.test.mjs text eol=lf
+tests/pg-original-internal-share-native-boundaries.test.mjs text eol=lf
+tests/pg-original-model-connections-config-policy.test.mjs text eol=lf
+tests/pg-original-model-draft-discovery-browser-policy.test.mjs text eol=lf
+tests/pg-original-model-draft-discovery-genuine.config.mjs text eol=lf
+tests/pg-original-model-draft-discovery-genuine.spec.mjs text eol=lf
+tests/pg-original-model-draft-discovery-host-source-pure.test.mjs text eol=lf
+
+# Original employee run/detail and exact hosted source controls.
+services/pg-api/tests/helpers/agent-internal-share-request-lifecycle.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-bind-admission.test.mjs text eol=lf
+src/components/run-detail/RdActionBar.tsx text eol=lf
+src/components/run-detail/RecentRunsList.tsx text eol=lf
+src/components/run-detail/RunEvalFeedbackCard.tsx text eol=lf
+src/components/run-detail/RunOverviewCard.tsx text eol=lf
+src/components/run-detail/RunResultCard.tsx text eol=lf
+src/components/run-detail/RunTimelineBody.tsx text eol=lf
+src/components/run-detail/RunTraceCard.tsx text eol=lf
+src/components/run-detail/SpecSnapshotCard.tsx text eol=lf
+src/lib/originalAgentRunPrivacy.ts text eol=lf
+src/lib/originalAgentRunProjection.ts text eol=lf
+src/lib/originalAgentRunSession.ts text eol=lf
+src/lib/originalAgentRunTransport.ts text eol=lf
+src/lib/originalRunDetailProjection.ts text eol=lf
+src/lib/originalRunDetailRoute.ts text eol=lf
+src/lib/originalRunDetailSession.ts text eol=lf
+src/lib/originalRunDetailTransport.ts text eol=lf
+src/lib/runPresentation.ts text eol=lf
+src/pages/AgentRun/useAgentRun.ts text eol=lf
+src/pages/AgentRun/usePgOriginalAgentRun.ts text eol=lf
+src/pages/RunDetail/RunDetailPage.tsx text eol=lf
+src/pages/RunDetail/usePgOriginalRunDetail.ts text eol=lf
+src/pages/RunDetail/useRunDetail.ts text eol=lf
+tests/f08-request-lifecycle-race-pure.test.mjs text eol=lf
+tests/helpers/original-agent-run-v2-private-hook-harness.mjs text eol=lf
+tests/original-agent-run-native-pure.test.mjs text eol=lf
+tests/original-agent-run-v2-privacy-pure.test.mjs text eol=lf
+tests/original-run-detail-native-pure.test.mjs text eol=lf
+tests/original-run-presentation-boundary.test.mjs text eol=lf
+tests/original-run-transport-static-regex.test.mjs text eol=lf
+
+# Original employee run/detail and exact hosted source controls.
+tests/helpers/pg-original-run-queued-artifacts.mjs text eol=lf
+tests/helpers/pg-original-run-queued-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-actions.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-run-queued-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-run-queued-negative-reads.mjs text eol=lf
+tests/helpers/pg-original-run-queued-proofs.mjs text eol=lf
+tests/helpers/pg-original-run-queued-reviewed-check.mjs text eol=lf
+tests/pg-original-agent-run-queued-genuine.config.mjs text eol=lf
+tests/pg-original-agent-run-queued-genuine.spec.mjs text eol=lf
+tests/pg-original-run-detail-queued-genuine.config.mjs text eol=lf
+tests/pg-original-run-detail-queued-genuine.spec.mjs text eol=lf
+tests/pg-original-run-queued-host-source-pure.test.mjs text eol=lf
+tests/pg-original-run-queued-policy.test.mjs text eol=lf
+
+# Original model receipts075 and reviewed Worker/committed-prefix source inputs.
+db/postgres/migrations/pg_v9_075_model_config_write_receipts.sql text eol=lf
+services/pg-api/src/model-config-receipt-crypto.ts text eol=lf
+services/pg-api/src/model-config-receipt-http.ts text eol=lf
+services/pg-api/src/model-config-receipt-ledger.ts text eol=lf
+services/pg-api/src/model-config-receipt-runtime.ts text eol=lf
+services/pg-api/src/model-config-receipt-schema075-pin.ts text eol=lf
+services/pg-api/src/model-config-receipt-schema075.ts text eol=lf
+services/pg-api/src/model-config-receipt-startup075.ts text eol=lf
+services/pg-api/tests/pg18-full069-admission-regression.test.mjs text eol=lf
+shared/model-config-receipt-contract.ts text eol=lf
+src/lib/originalModelConfigReceiptIntent.ts text eol=lf
+tests/f08-create-prefix-loss-pure.test.mjs text eol=lf
+tests/helpers/model-config-receipt-catalog-data.mjs text eol=lf
+tests/helpers/model-config-receipt-terminal-data.mjs text eol=lf
+tests/helpers/pg-original-internal-share-create-prefix-loss.mjs text eol=lf
+tests/helpers/pg-original-model-committed-prefix-loss.mjs text eol=lf
+tests/helpers/pg-original-model-receipts075-artifacts.mjs text eol=lf
+tests/helpers/pg-original-model-receipts075-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-receipts075-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-receipts075-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-model-receipts075-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-model-receipts075-reviewed-check.mjs text eol=lf
+tests/model-committed-prefix-loss-pure.test.mjs text eol=lf
+tests/model-config-receipt-acl075-pure.test.mjs text eol=lf
+tests/model-config-receipt-crypto-pure.test.mjs text eol=lf
+tests/model-config-receipt-function-acl075-pure.test.mjs text eol=lf
+tests/model-config-receipt-http-pure.test.mjs text eol=lf
+tests/model-config-receipt-ledger-pure.test.mjs text eol=lf
+tests/model-config-receipt-route-capability-pure.test.mjs text eol=lf
+tests/model-config-receipt-schema-pure.test.mjs text eol=lf
+tests/model-receipts075-config-admission-pure.test.mjs text eol=lf
+tests/model-receipts075-host-capability-key-pure.test.mjs text eol=lf
+tests/original-model-config-receipt-client-pure.test.mjs text eol=lf
+tests/original-model-config-receipt-hook-pure.test.mjs text eol=lf
+tests/pg-original-model-receipts075-genuine.config.mjs text eol=lf
+tests/pg-original-model-receipts075-genuine.spec.mjs text eol=lf
+tests/pg-original-model-receipts075-source-pure.test.mjs text eol=lf
+
+# Original Tools metadata and exact queued-control/browser source inputs.
+ops/original-tool-connections-page-actions.json text eol=lf
+services/pg-api/src/original-tool-connections-http.ts text eol=lf
+services/pg-api/src/tool-connection-repository.ts text eol=lf
+shared/original-tool-connections-contract.ts text eol=lf
+src/lib/originalToolConnections.ts text eol=lf
+src/lib/originalToolConnectionsApi.ts text eol=lf
+src/lib/toolPresentation.ts text eol=lf
+src/pages/ToolConnections/usePgToolConnections.ts text eol=lf
+src/pages/ToolConnections/useToolConnections.ts text eol=lf
+tests/helpers/original-tool-connections-hook-harness.mjs text eol=lf
+tests/helpers/original-tool-connections-terminal-data.mjs text eol=lf
+tests/helpers/pg-original-run-queued-control-faults.mjs text eol=lf
+tests/original-tool-connections-client-controller.test.mjs text eol=lf
+tests/original-tool-connections-hook.test.mjs text eol=lf
+tests/original-tool-connections-http-policy.test.mjs text eol=lf
+tests/queued-control-host-callback-pure.test.mjs text eol=lf
+tests/queued-detail-control-controller-pure.test.mjs text eol=lf
+tests/queued-parent-control-controller-pure.test.mjs text eol=lf

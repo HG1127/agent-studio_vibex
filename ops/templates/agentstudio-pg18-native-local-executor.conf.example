@@ -1,0 +1,13 @@
+# SOURCE REVIEW ONLY: optional drop-in for agentstudio-pg18-native.service.
+# Not installed/enabled. Do not rename the unit or widen its existing sandbox.
+# Prepare an independent root-only secret first; it is never sent to a desktop.
+[Service]
+LoadCredential=local-executor.secret:/root/.agentstudio-pg18-secrets/local-executor.secret
+Environment=AGENT_STUDIO_PG18_LOCAL_EXECUTOR_PASSWORD_FILE=/run/credentials/agentstudio-pg18-native.service/local-executor.secret
+ExecStartPre=/opt/agentstudio-node24/bin/node --experimental-strip-types /opt/agentstudio-pg18-native-api-v2/services/pg-api/src/native-local-executor-service-preflight-cli.mjs --service-preflight
+
+# The three existing C opt-in variables are deliberately NOT enabled here.
+# SelectNativeLocalDevices and the original HTTPS/configuration approval checks
+# still decide availability/writes. The existing approval literal authorizes
+# disposable UAT only and is not production authorization.
+# No ExecStart replacement, [Install], start, enable, daemon-reload or Worker.

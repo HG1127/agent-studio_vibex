@@ -7,8 +7,10 @@ import {verifyWorkflowEffectLease} from "./workflow-v2-dispatch-guard.ts"
 import {prepareWorkflowTool} from "./workflow-v2-tool-plan.ts"
 export class KnowledgeQueryRepository {
   readonly pool:SqlPool
+  readonly allowCallers:boolean
   readonly executionSourceApproved:boolean;readonly allowAgent:boolean;readonly allowAutonomous:boolean
-  constructor(pool:SqlPool,options:{executionSourceApproved?:boolean;allowAgentExecution?:boolean;allowAutonomousExecution?:boolean}={}){
+  constructor(pool:SqlPool,options:{executionSourceApproved?:boolean;allowAgentExecution?:boolean;allowAutonomousExecution?:boolean;allowCallerExecution?:boolean}={}){
+    this.allowCallers=options.allowCallerExecution===true
     this.pool=pool;this.executionSourceApproved=options.executionSourceApproved===true
     this.allowAgent=options.allowAgentExecution===true;this.allowAutonomous=options.allowAutonomousExecution===true
   }
@@ -33,7 +35,7 @@ export class KnowledgeQueryRepository {
     const x=safeKnowledgeQueryRequest(raw),verifiedSource=safeWorkflowV2ToolRequest(source),sealed=knowledgeExecutionSource(verifiedSource)
     return this.call<{item:KnowledgeQueryReceipt;replayed:boolean}>(identity,"SELECT agentstudio.knowledge_query_execution_submit($1::uuid,$2::uuid[],$3::text,$4::text,$5::integer,$6::uuid,$7::bigint,$8::bigint,$9::text,$10::jsonb) AS value",
       [x.request_id,x.base_ids,x.query,x.mode,x.limit,x.profile_id??null,x.profile_revision??null,x.consent_revision??null,x.acknowledgement??null,JSON.stringify(sealed)],async(db,actor)=>{
-        const pending=await verifyWorkflowEffectLease(db,actor,verifiedSource,"tool",this.allowAgent,this.allowAutonomous),plan=prepareWorkflowTool(pending)
+        const pending=await verifyWorkflowEffectLease(db,actor,verifiedSource,"tool",this.allowAgent,this.allowAutonomous,false,false,this.allowCallers),plan=prepareWorkflowTool(pending)
         if(plan.kind!=="knowledge_search"||plan.query!==x.query||x.limit>6||JSON.stringify([...plan.ids].map(id=>id.toLowerCase()).sort())!==JSON.stringify(x.base_ids))
           throw new HttpError(409,"knowledge_execution_request_changed")
         if(plan.retrieval&&(x.mode!==plan.retrieval.mode||x.profile_id!==plan.retrieval.profile_id||x.profile_revision!==plan.retrieval.profile_revision||x.consent_revision!==plan.retrieval.consent_revision))
