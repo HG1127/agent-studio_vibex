@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import {createHash} from 'node:crypto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {createRequire} from 'node:module'
 import {originalHome070InitializationContract} from '../../../ops/pg18-original-home070-review-plan.mjs'
 
 test('separate070 review contract cannot claim execution, installation or original-page acceptance',()=>{
@@ -17,9 +18,12 @@ test('070 SQL raw pin and original outer transaction are retained by the review 
  assert.equal((raw.toString('utf8').match(/^BEGIN;$/gm)||[]).length,1);assert.equal((raw.toString('utf8').match(/^COMMIT;$/gm)||[]).length,1)
  assert.equal(p.sql_step.preserve_original_transaction,true);assert.deepEqual(p.expected_additions.roles,[]);assert.deepEqual(p.expected_additions.logins,[])
 })
-test('Native source collector permits only the fixed070 and071 shared parser paths',()=>{
+test('Native source collector admits explicit original UI contracts and refuses unreviewed shared paths',()=>{
  const source=fs.readFileSync(new URL('../../../ops/build-pg18-native-api-preflight-bundle.mjs',import.meta.url),'utf8')
- assert(source.includes('"shared/original-home-authoring.ts","shared/original-agent-catalog.ts"].includes(rel)'))
+  const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('builder.mjs',source,ts.ScriptTarget.Latest,true),take=name=>{const node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert(node);return node.getText(tree)}
+  const validate=Function(take('refuse')+'\n'+take('validatedPath')+'\nreturn validatedPath')()
+  for(const path of ['shared/original-home-authoring.ts','shared/original-agent-catalog.ts','shared/original-internal-overview-contract.ts'])assert.equal(validate(path),path)
+  for(const path of ['shared/other-original.ts','shared/unreviewed-contract.ts','shared/../.env','/shared/original-agent-catalog.ts','shared/original-agent-catalog.ts/../private'])assert.throws(()=>validate(path),/unexpected_dependency/)
  assert(!source.includes('rel.startsWith("shared/")'))
  assert(!source.includes('pg_v9_070_home_authoring.sql'))
 })

@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        story: [design, original-login, monitor073]
+        story: [design, original-login, monitor073, internal-overview]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -234,5 +234,36 @@ jobs:
           path: |
             .tmp/original-monitor073-genuine-browser-results/**/*.png
             .tmp/original-monitor073-genuine-browser-results/**/original-monitor073-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      # Independent matrix leg has its own fresh PostgreSQL service. Keep the
+      # original Home071 predecessor purpose and actual GITHUB_JOB unchanged.
+      - name: Original personal overview source policy and separate employee UI build
+        if: matrix.story == 'internal-overview'
+        run: |
+          node --test tests/pg-original-internal-overview-browser-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original personal overview real owner Cookie switch and dependency story
+        if: matrix.story == 'internal-overview'
+        env:
+          AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_HOME071_ONLY
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_PROFILE: original-login-home071
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_STORY: original-login
+          AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_CI: YES_DISPOSABLE_ORIGINAL_PERSONAL_OVERVIEW_ONLY
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_PROFILE: original-personal-overview071
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_STORY: internal-overview
+          AGENT_STUDIO_ORIGINAL_OVERVIEW_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-internal-overview-genuine.config.mjs
+      - name: Retain only explicitly named successful synthetic personal overview images and bounded observation
+        if: always() && matrix.story == 'internal-overview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-personal-overview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-internal-overview-genuine-artifacts/original-internal-overview-alice.png
+            .tmp/original-internal-overview-genuine-artifacts/original-internal-overview-bob.png
+            .tmp/original-internal-overview-genuine-artifacts/original-internal-overview-observation.json
           if-no-files-found: ignore
           retention-days: 7

@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "8bf889aabc2f19e0c1aa82a1a97674f5d1c02f231f55c6dac0d2f81de801969d",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "e753c822a2987f6dc9122e0c3f9eb16b34ea4902cede42f7270e8b6625104ed4",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",

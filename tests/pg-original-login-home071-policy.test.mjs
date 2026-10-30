@@ -189,16 +189,18 @@ test('v4 local PB events, legacy network and every unexpected API error keep zer
  assert(story.includes('production_GO:false'));assert(story.includes('actual_backend:f.backendProfile'))
 })
 
-test('actual071 predecessor purpose is confined to original-login and independent073 browser steps',()=>{
+test('actual071 predecessor purpose is confined to original-login, independent073 and personal overview browser steps',()=>{
  const workflow=read('.github/workflows/pg18-agent-design-genuine-ci.yml')
  const start=workflow.indexOf('      - name: Original Login App authentication through real PG18 Native HTTPS')
  const next=workflow.indexOf('      - name:',start+1),step=workflow.slice(start,next)
  assert(start>=0);assert(step.includes("if: matrix.story == 'original-login'"))
  for(const key of ['CI','PROFILE','STORY','EXPECTED_HEAD']){
   const marker='AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_'+key+':'
-  assert(step.includes(marker));assert.equal(workflow.split(marker).length,3)
+  assert(step.includes(marker));assert.equal(workflow.split(marker).length,4)
   const monitorStart=workflow.indexOf('      - name: Original Home real073 owner rows paging read acknowledgement and employee switch')
   assert(monitorStart>start);assert(workflow.slice(monitorStart,workflow.indexOf('      - name:',monitorStart+1)).includes(marker))
+  const overviewStart=workflow.indexOf('      - name: Original personal overview real owner Cookie switch and dependency story'),overview=workflow.slice(overviewStart,workflow.indexOf('      - name:',overviewStart+1))
+  assert(overviewStart>monitorStart);assert(overview.includes(marker));assert(overview.includes("if: matrix.story == 'internal-overview'"));assert(overview.includes('AGENT_STUDIO_ORIGINAL_OVERVIEW_CI: YES_DISPOSABLE_ORIGINAL_PERSONAL_OVERVIEW_ONLY'));assert(overview.includes("AGENT_STUDIO_ORIGINAL_OVERVIEW_EXPECTED_HEAD: '${{ github.sha }}'"))
  }
  assert(step.includes("AGENT_STUDIO_ORIGINAL_LOGIN_HOME071_EXPECTED_HEAD: '${{ github.sha }}'"))
  assert(workflow.includes('node --test tests/pg-original-login-browser-policy.test.mjs tests/pg-original-login-home071-policy.test.mjs tests/pg-original-monitor073-policy.test.mjs'))

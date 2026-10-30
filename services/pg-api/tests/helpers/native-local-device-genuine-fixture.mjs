@@ -12,7 +12,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "local-executor/office.mjs": "7c3abc4f87c497ccc7dbaa84a83458fa0ac0f21e3c224be829799bfbe7110c8f",
   "local-executor/result.mjs": "9bb610ae182dbb903c00a12cefe5bcaf08acc29211c26731c344ff06b8f84e22",
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
-  "package.json": "469d62d68a9d603cb4c8c8b2ce658c17db41051b64ac709c8f873484369d7c18",
+  "package.json": "400aab6a1b9a89fa1a1a34e3cf61639ca6a2b2331b032f8f6c2f59d0ef5e82a5",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/src/agent-human-input-policy.ts": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b",
   "services/pg-api/src/autonomous-agent-run-repository.ts": "791d148ef5b23403e27d39d60ff414f358e75abddd27d47b28f963079974de1c",

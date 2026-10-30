@@ -1198,3 +1198,12 @@ services/pg-api/src/pg18-full069-owned-process-observation.mjs text eol=lf
 services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs text eol=lf
 services/pg-api/tests/pg18-full069-owned-process-observation.test.mjs text eol=lf
 services/pg-api/tests/pg18-full069-runtime-open-observation.test.mjs text eol=lf
+
+# Independent original personal overview hosted-only source.
+tests/helpers/pg-original-internal-overview-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-internal-overview-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-internal-overview-genuine-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-internal-overview-reviewed-sources.mjs text eol=lf
+tests/pg-original-internal-overview-browser-policy.test.mjs text eol=lf
+tests/pg-original-internal-overview-genuine.config.mjs text eol=lf
+tests/pg-original-internal-overview-genuine.spec.mjs text eol=lf

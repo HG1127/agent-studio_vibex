@@ -15,11 +15,11 @@
 
 当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，覆盖原有20页、30组操作；页面数量不是验收完成量。最终入口继续使用原 `index.html -> main.tsx -> App.tsx`。首页、目录、草稿、登录及账户菜单已有PG适配源码；未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
 
-本地允许范围内的纯回归当前574项通过，前端TypeScript6、API TypeScript5通过；普通PB及原界面PG两种实际构建各100个资源，普通构建PG资源匹配为0。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
+本地允许范围内的纯回归593项全部通过，含原个人总览host策略16项与权限负例闭合诊断3项；final14相关88项纯检查通过。前端TypeScript6、API TypeScript5及两种各100资源构建沿用未变的UI/TypeScript基线，普通构建PG资源匹配为0。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
 
 已合流原团队共享页的业务Hook，保留原JSX、导航、布局和PB分支；写入及确认固定发送发起时员工ID，服务端先验证实际Cookie和owner，再在任何台账写入前比较。焦点恢复会先验证Cookie，即使旧读取或写回仍未返回也隔离旧账号。独立原页host/E2E复用fresh F08，包含创建、兑换、撤销、真实写后断线与原回执恢复、换账号迟到响应；Native代理保持8秒，全部PB/网络/身份及收费调用零门禁保留，安全成功截图仅写合成CI私有artifact。原页故事仍待执行。
 
-原个人总览`/internal-overview`保留布局、筛选及刷新，新增本人八项真实计数、待办与近期Agent/Workflow运行读取；以实际Cookie和事务内owner核对预期员工，迟到响应不得进入新账号。历史标题未落库时明确显示未记录，不把当前资源名冒充历史标题；原main Worker健康状态缺少等价来源，明确显示未知。这些语义缺口仍未关闭，原页host与真实SQL/浏览器验收待完成。
+原个人总览`/internal-overview`保留布局、筛选及刷新，新增本人八项真实计数、待办与近期Agent/Workflow运行读取；以实际Cookie和事务内owner核对预期员工，迟到响应不得进入新账号。历史标题未落库时明确显示未记录，不把当前资源名冒充历史标题；原main Worker健康状态缺少等价来源，明确显示未知。这些语义缺口仍未关闭。独立host/E2E源码已合流，保持原AdminGate，通过真实员工管理API授予合成Bob管理员身份后，分别核对两人本人数据、完成的真实迟到响应、实际依赖撤销503/恢复及Cookie Bob/expected Alice409。每个matrix leg使用独立fresh PG18，保留8秒Native与全部零门禁；固定两张安全PNG仅在全故事、业务行快照及清理检查通过后保存。16项纯策略通过，真实原页验收仍待执行。
 
 可选070/071提供作者元数据、本人目录分页搜索收藏及真实owner资源数量；072提供严格审计后的共享知识统计。`53fd7f8`的[070/071/072真实复验](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028235290)已通过57个编号场景；其[遥测控制/Writer](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028234927/job/123971512774)通过28+26场景与清理，但此前file_changed未复现，原因仍未定。
 
@@ -43,13 +43,19 @@
 
 后续启动诊断源码现已合流：final14仅记录实际抛出对象关联的固定阶段/服务键，保留原错误对象及真实审计顺序；只在原exact CI绑定、UID、argv、Node及批准门禁内输出。legacy仅记录实际私有ChildProcess退出/信号、封闭服务错误枚举和内核身份谓词的布尔分量，在清理前捕获、通过原受保护记录读取后投影。诊断IPC使用独立回调处理异步发送错误，不改变关键IPC或原退出结果。新增阶段观察5项、原路径25项及进程观察20项纯回归通过；API类型检查再次通过，实际进程原因和新同提交复验仍待完成。上述观察不构成运行许可、健康证明、重试权限或迁移通过。
 
-以下为历史准备与隔离组件证据，不能转用于上述新候选。
-
 `9b42e39`的[原Login/App故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052190715)、[原Home监控元数据/已读故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052191084)及[073真实TCP](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052191155)已通过。下载的观察记录和安全截图已核对：真实Alice/Bob身份与管理员差异、登录/退出断线恢复、账号切换均保留；Alice未读14→13且回执0→1，Bob未读3及回执0不变。两故事全部PB/意外API/外部网络/伪身份头/收费调用及清理失败计数均为0；业务运行台账不变。这只验证原认证故事和历史监控收件箱，不是完整Home、实时监控、原20页或员工UAT验收。
 
 同提交[原团队共享故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629622/job/124052190318)已到达真实创建、Bob兑换独立无绑定副本、外owner拒绝、撤销及写后断线；六个Bob Cookie/expected Alice负例保持台账不变。随后测试误要求结果未知时的确认按钮仍在DOM中禁用，实际原页已清除预览并隐藏该按钮。后续仅修正测试为按钮不存在、预览和兑换入口均禁用；保留全量回执/原意图刷新/账号切换及全部零门禁。完整故事仍失败，刷新恢复和迟到响应后续步骤须重跑。
 
 `9b42e39`的[legacy完整运行](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629596/job/124052190890)确认五个业务Worker在就绪前自行exit1，非清理触发；Native、knowledge、assessment在清理前的全部内核身份谓词通过。根因仍待沿原启动审计定位。其[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629596/job/124052190548)已越过runtime_open，到runtime_preflight/数据库权限负例前段失败，尚无13负例通过证据。正式切换仍 **NO-GO**。
+
+后续仅为实际权限负例新增固定阶段、既有负例名与五字符SQLSTATE诊断，仍以原抛出对象关联观察并原样重抛；没有输出错误正文、SQL、路径或凭据。既有13个真实修改/回滚负例、8秒预算、精确全量ACL比较、Opaque trust及原CI输出门禁不变。新增3项纯安全回归通过；实际失败原因和完整13负例仍待新同提交运行。
+
+`9b42e39`的[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629710)为49/50作业通过；根必需检查3631项中3628通过、3项失败，原因均为Native源码包拒绝遗漏的`shared/original-internal-overview-contract.ts`。现仅将该精确契约加入既有明确清单，任意shared路径仍拒绝。用实际源码收集函数完成350个文件的组合入口依赖遍历，未执行模块、生成交付包或启动服务；实际三项打包和完整质量须同提交复验。[同提交原PocketBase19项双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41053973662/job/124056725296)通过。
+
+共享原页在`02597d0`[重跑](https://github.com/HG1127/agent-studio_vibex/actions/runs/41054656457/job/124059025969)越过按钮断言后，未知结果步骤收到意外503，实际回执4而预期5，受控写后断线计数为0；这是新失败，不能算已提交丢ACK。原预期回执5及最终7、意外API零门禁保持不变，根因待继续定位；该故事仍未通过。
+
+以下为历史准备与隔离组件证据，不能转用于上述新候选。
 
 更新：2026-10-29。现有 PocketBase 仍是当前运行环境，正式切换 **NO-GO**。
 旧数据已由使用者确认为测试数据，可以采用全新初始化；这不免除功能对照、

@@ -6002,7 +6002,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 574,
+    "combined_pure_checks": 593,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6276,7 +6276,7 @@
       "qualifies_run": false
     },
     "unchanged_UI_typecheck_build_baseline": "Frontend/shared and API TypeScript source unchanged sincee002475 checks; only pure comparator MJS and guarded test fixtures change. Preserve actual100-asset build evidence and0 normal PG resources as that unchanged-UI baseline, not as new genuine page acceptance.",
-    "pure_final14_runtime_open_observation_checks": 5,
+    "pure_final14_runtime_open_observation_checks": 8,
     "pure_owned_process_observation_checks": 20,
     "full069_runtime_open_observation": "Record-only WeakMap keyed by the exact original thrown object. Real opaque runtime checks annotate a fixed stage and optionally one of the existing fourteen account keys; inner service diagnostics are not overwritten by the outer catch. No raw error/SQL/credential/PID is read or output. The original error object is rethrown; actual output remains inside the original exact fixture/UID/argv/Node/approval gates. Five new pure checks and25 existing path checks pass; real cause pending.",
     "verified_9b42_original_stories": {
@@ -6340,6 +6340,49 @@
       "actual_database_acl_negative_success_events": 0,
       "qualifies_run": false,
       "production_GO": false
+    },
+    "pure_original_internal_overview_host_policy_checks": 16,
+    "original_internal_overview_host_source": "Independent fresh original071 browser matrix leg preserves original App/AdminGate and actual GITHUB_JOB. Synthetic Bob is promoted through actual Native employee management; owner eight counters/actions/recent limits/filters, genuine completed delayed reply and actual dependency revoke503/restore, Cookie Bob/expected Alice409, full business row image equality and original zero gates are required. Native TLS/8s unchanged. Only two fixed safe PNGs may be saved after success and cleanup; genuine hosted story pending.",
+    "full069_final14_acl_negative_observation": "Record-only WeakMap keyed by identical actual error; fixed phases and existing negative-case names plus own five-character SQLSTATE only. Exact gates bound CLI emission. Original error,13 real mutation/rollback cases,8s deadline, whole ACL rows/authority and cleanup retained. Three new pure tests pass; actual cause remains pending.",
+    "native_bundle_explicit_original_contract_source_fix": {
+      "explicit_shared_path": "shared/original-internal-overview-contract.ts",
+      "arbitrary_shared_paths_refused": true,
+      "actual_source_collector_combined_modes_files": 350,
+      "modules_executed": false,
+      "actual_package_tests_pending": true,
+      "actual_quality_rerun_pending": true
+    },
+    "verified_9b42_quality_failure": {
+      "head": "9b42e39d19f4e0cf40226764e7c274db5196c076",
+      "run": 41052629710,
+      "passed_jobs": 49,
+      "total_jobs": 50,
+      "root_job": 124052191474,
+      "root_tests": 3631,
+      "passed": 3628,
+      "failed": 3,
+      "cause": "Native source package missing exact shared original personal overview contract",
+      "raw_log_sha256": "864e44d91cbc893e7b843b0cc474252ea16f7f8b90a87e8d9f0ad4b65d22d0bc"
+    },
+    "verified_9b42_PocketBase": {
+      "run": 41053973662,
+      "job": 124056725296,
+      "passed": 19,
+      "total": 19,
+      "workers": 2,
+      "raw_log_sha256": "7800127e56ae73dcfe289f67ff2f2102f526a49af6356e6e651cc82fc3bde2a6"
+    },
+    "verified_02597_share_failure": {
+      "head": "02597d0d5a537119f29a1ea32d70a59f5f5d3279",
+      "run": 41054656457,
+      "job": 124059025969,
+      "unknown_ack_step_expected_receipts": 5,
+      "observed_receipts": 4,
+      "unexpected_POST_status": 503,
+      "controlled_after_record_disconnects": 0,
+      "original_expected_receipts_and_zero_gates_unchanged": true,
+      "whole_story_passed": false,
+      "raw_log_sha256": "e9301c0fb0eeae3b1187b23e6a8fb0447cb0b7f24bbbbf31d9ea19878556ac5e"
     }
   },
   "qualifying24h_hours": 0,
