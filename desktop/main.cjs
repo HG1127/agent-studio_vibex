@@ -117,7 +117,7 @@ function computerRequest(action,input){
   if(!child?.connected)throw Error('本机连接组件已停止，请退出并重新打开软件。')
   const requestId=randomUUID()
   return new Promise((resolve,reject)=>{
-    const timeout=setTimeout(()=>{pairingRequests.delete(requestId);reject(Error('本机处理尚未确认，请核查当前状态，不要重复提交。'))},['folder','file','permissions.pick'].includes(action)?250000:35000)
+    const timeout=setTimeout(()=>{pairingRequests.delete(requestId);reject(Error('本机处理尚未确认，请核查当前状态，不要重复提交。'))},['folder','file','permissions.pick'].includes(action)?250000:action.startsWith('applications.')?125000:35000)
     pairingRequests.set(requestId,{resolve,reject,timeout})
     child.send({type:'computer-request',requestId,action,input},error=>{if(error){clearTimeout(timeout);pairingRequests.delete(requestId);reject(Error('本机连接组件已停止'))}})
   })

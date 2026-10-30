@@ -19,12 +19,13 @@ import {permissionDraft,permissionSites,pickPermissionFile,validatePermissionFil
 import {grantCapabilities,fileCapabilities} from './file-capabilities.mjs'
 import {validPermissionEntry,permissionEntryUrl,launchPermissionWindow} from './permission-entry.mjs'
 import {createSetupReporter} from './setup-progress.mjs'
+import {applicationPermissionDraft,saveApplicationPermissions} from './application-permissions.mjs'
 const own=path.dirname(fileURLToPath(import.meta.url)),ID=/^[A-Za-z0-9]{24}$/
 export function managerError(error){
- const map={picker_busy:'另一选择窗口仍在处理，请先取消或完成。',picker_cancelled:'本次选择已取消，原授权未改变。',picker_expired:'连接文件在选择期间已过期，未采用迟到的选择。请在工作台继续这条设备登记并更新连接文件。',picker_timeout:'系统选择窗口等待过久，已结束本次选择。请重试或使用默认专用工作文件夹；原授权未改变。',permission_scope_limit:'最多添加 20 个具体文件或文件夹，请移除不需要的项目。',invalid_permission_file:'请选择真实的本地文件，不能填写网络路径。',invalid_permission_grant:'单个文件只能只读；需要生成报告请另外授权输出文件夹。',file_picker_unavailable:'系统文件选择窗口未能打开，请检查本机桌面会话。',file_not_authorized:'该文件未授权，只能读取明确选中的文件。',edit_target_required:'请先选择要修改的已有连接；不会沿用另一台设备的目录选择。',file_scope_disabled:'此连接仅使用浏览器，不能在这里开放文件权限。',chrome_not_installed:'需要先安装 Google Chrome。本程序不会安装软件或改用其他浏览器。',review_changed:'本机选择已变化，请重新核对并确认。',local_config_changed:'连接配置已变化，请刷新列表后重新确认。',connection_running_or_locked:'原连接仍在运行，请先停止，不要重复启动。',device_already_paired_use_resume:'已有本机配置，请恢复原连接，不要重复导入。',workspace_too_broad_or_private:'请选具体工作子文件夹，不能选择整盘、用户主目录或凭证目录。',workspace_link_or_not_directory:'请选真实本地文件夹，不支持链接目录。',workspace_must_be_local_absolute:'请选择本地文件夹，不支持网络共享目录。',browser_not_enabled:'当前连接没有启用浏览器，不能扩大权限。',folder_picker_unavailable:'系统文件夹窗口不可用，请检查本机桌面会话。',invalid_request:'请求不受支持，未进行操作。',connection_not_confirmed:'未确认，没有绑定或执行。',too_large:'连接文件过大，请选工作台生成的文件。',ENOENT:'未找到原连接配置，请先核查，不要反复绑定。'}
+ const map={application_protected:'此应用属于终端、凭证或本机确认界面，不能授权窗口控制。',invalid_application_grants:'应用授权不完整或超出范围，请重新选择最多 30 个应用。',application_native_unavailable:'未能读取 Windows 应用清单，请检查桌面会话后重试。',application_scope_too_large:'授权清单过大，请减少应用或目录后保存。',picker_busy:'另一选择窗口仍在处理，请先取消或完成。',picker_cancelled:'本次选择已取消，原授权未改变。',picker_expired:'连接文件在选择期间已过期，未采用迟到的选择。请在工作台继续这条设备登记并更新连接文件。',picker_timeout:'系统选择窗口等待过久，已结束本次选择。请重试或使用默认专用工作文件夹；原授权未改变。',permission_scope_limit:'最多添加 20 个具体文件或文件夹，请移除不需要的项目。',invalid_permission_file:'请选择真实的本地文件，不能填写网络路径。',invalid_permission_grant:'单个文件只能只读；需要生成报告请另外授权输出文件夹。',file_picker_unavailable:'系统文件选择窗口未能打开，请检查本机桌面会话。',file_not_authorized:'该文件未授权，只能读取明确选中的文件。',edit_target_required:'请先选择要修改的已有连接；不会沿用另一台设备的目录选择。',file_scope_disabled:'此连接仅使用浏览器，不能在这里开放文件权限。',chrome_not_installed:'需要先安装 Google Chrome。本程序不会安装软件或改用其他浏览器。',review_changed:'本机选择已变化，请重新核对并确认。',local_config_changed:'连接配置已变化，请刷新列表后重新确认。',connection_running_or_locked:'原连接仍在运行，请先停止，不要重复启动。',device_already_paired_use_resume:'已有本机配置，请恢复原连接，不要重复导入。',workspace_too_broad_or_private:'请选具体工作子文件夹，不能选择整盘、用户主目录或凭证目录。',workspace_link_or_not_directory:'请选真实本地文件夹，不支持链接目录。',workspace_must_be_local_absolute:'请选择本地文件夹，不支持网络共享目录。',browser_not_enabled:'当前连接没有启用浏览器，不能扩大权限。',folder_picker_unavailable:'系统文件夹窗口不可用，请检查本机桌面会话。',invalid_request:'请求不受支持，未进行操作。',connection_not_confirmed:'未确认，没有绑定或执行。',too_large:'连接文件过大，请选工作台生成的文件。',ENOENT:'未找到原连接配置，请先核查，不要反复绑定。'}
  return map[error?.code]||map[error?.message]||connectionFailureHint(error)||(/过期|凭证|连接文件|授权网站|网站地址|HTTPS|请选择/.test(String(error?.message))?String(error.message).slice(0,240):'本次操作未确认，请核查连接状态；不会自动重试。')
 }
-export async function createConnectorManager({home=os.homedir(),picker=pickLocalFolder,checkBrowser=verifyChromeInstalled,prepare=prepareGuidedConnection,startChild,clock=Date.now,filePicker=pickPermissionFile,openWindow=launchPermissionWindow,progressReporter,confirmReview}={}){
+export async function createConnectorManager({home=os.homedir(),picker=pickLocalFolder,checkBrowser=verifyChromeInstalled,prepare=prepareGuidedConnection,startChild,clock=Date.now,filePicker=pickPermissionFile,openWindow=launchPermissionWindow,progressReporter,confirmReview,discoverApplications}={}){
   const token=randomBytes(32).toString('hex'),children=new Map(),attempts=new Map(),launching=new Set(),uiReadyWaiters=new Set()
   let origin='',pending=null,selectedFolder=null,selectedKind='folder',readOnly=true,revision=randomBytes(12).toString('hex'),editing=null,permissions=null,busy=false,closed=false,uiReady=false
   const markUiReady=()=>{if(uiReady)return;uiReady=true;for(const ready of uiReadyWaiters)ready(true);uiReadyWaiters.clear()}
@@ -32,7 +33,7 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
   const bump=()=>revision=randomBytes(12).toString('hex')
  const clearReview=()=>{pending=null;selectedFolder=null;selectedKind='folder';readOnly=true;bump()}
  const progress=progressReporter||createSetupReporter({clock})
- let selection=null,lastSelection=null
+ let selection=null,lastSelection=null,applicationPermissions=null
  const cancelSelection=(entry,reason='cancelled')=>{
   if(entry.cancelRequested)return
   entry.cancelRequested=true;entry.reason=reason;entry.phase='cancelling';entry.controller.abort()
@@ -109,7 +110,7 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
   }
   const state=async()=>{
   const {profiles,unavailable}=await listGuidedProfiles({home})
-  return {version:CONNECTOR_VERSION,profiles:profiles.map(p=>({id:p.id,name:p.name,server:p.server,roots:p.roots,origins:p.origins,browserChannel:p.browserChannel,filesEnabled:p.filesEnabled,browserEnabled:p.browserEnabled,fingerprint:p.fingerprint,...connectionStatus(p.id)})),unavailable,
+  return {applicationPermissions:applicationPermissions?structuredClone(applicationPermissions):null,version:CONNECTOR_VERSION,profiles:profiles.map(p=>({id:p.id,name:p.name,server:p.server,roots:p.roots,origins:p.origins,browserChannel:p.browserChannel,filesEnabled:p.filesEnabled,browserEnabled:p.browserEnabled,fingerprint:p.fingerprint,applications:p.applications,...connectionStatus(p.id)})),unavailable,
    review:pending?{reviewId:revision,name:pending.name,server:pending.server,mode:pending.mode,origins:pending.origins,expiresAt:pending.pairing.expiresAt,expired:clock()>=pending.pairing.expiresAt,folder:selectedFolder||'专用工作文件夹',kind:selectedKind,readOnly}:null,selectedFolder,readOnly,reviewId:revision,editing:editing?{...editing}:null,permissions:permissions?structuredClone(permissions):null,selection:selection?{id:selection.id,kind:selection.kind,scope:selection.scope,targetId:selection.targetId,startedAt:selection.startedAt,phase:selection.phase,cancelRequested:selection.cancelRequested}:null,lastSelection,busy}
  }
   const launch=async id=>{
@@ -176,6 +177,7 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
    })
    if(closed||entry.stopRequested){entry.stopRequested=true;entry.state='stopping';if(child.connected)child.send({type:'studio-local-stop'},()=>{});else child.kill('SIGTERM')}
   }
+ const stopConnection=async id=>{const entry=attempts.get(id);if(!entry)return;entry.stopRequested=true;entry.restartAfterControl=false;if(entry.restartTimer){clearTimeout(entry.restartTimer);entry.restartTimer=null}if(entry.child&&!entry.exited){await new Promise(resolve=>{const timer=setTimeout(()=>{try{entry.child.kill()}catch{}resolve()},6500);entry.child.once('close',()=>{clearTimeout(timer);resolve()});try{if(entry.child.connected)entry.child.send({type:'studio-local-stop'},()=>{});else entry.child.kill('SIGTERM')}catch{clearTimeout(timer);resolve()}})}}
  const assets=new Map([['/',['index.html','text/html; charset=utf-8']],['/app.js',['app.js','text/javascript; charset=utf-8']],['/permission-panel.js',['permission-panel.js','text/javascript; charset=utf-8']],['/workbench-home.js',['workbench-home.js','text/javascript; charset=utf-8']],['/style.css',['style.css','text/css; charset=utf-8']]])
  const server=createServer(async(req,res)=>{
   for(const [name,value] of Object.entries({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",'Referrer-Policy':'no-referrer','Cross-Origin-Resource-Policy':'same-origin'}))res.setHeader(name,value)
@@ -199,11 +201,14 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
   busy=true
   try{
     const input=await readInput(req)
-   const allowed={'/api/permissions/open':['id','fingerprint'],'/api/permissions/sites':['id','fingerprint','reviewId','text'],'/api/permissions/pick':['id','fingerprint','reviewId','kind'],'/api/permissions/grant':['id','fingerprint','reviewId','key','remove','readOnly','capabilities'],'/api/permissions/save':['id','fingerprint','reviewId','consent'],'/api/permissions/discard':['id','fingerprint','reviewId'],'/api/prepare':['ticket'],'/api/discard':['reviewId'],'/api/edit-select':['id','fingerprint'],'/api/folder':['scope','id','fingerprint','reviewId'],'/api/file':[],'/api/access':['scope','id','fingerprint','reviewId','readOnly'],'/api/connect':['reviewId','consent'],'/api/resume':['id','fingerprint','consent'],'/api/stop':['id','consent'],'/api/folder-save':['id','fingerprint','reviewId','consent'],'/api/chrome':['id','fingerprint','consent']}
+   const allowed={'/api/applications/open':['id','fingerprint'],'/api/applications/save':['id','fingerprint','reviewId','apps','controls','writes','images','enabled','consent'],'/api/applications/close':['id','fingerprint','reviewId'],'/api/permissions/open':['id','fingerprint'],'/api/permissions/sites':['id','fingerprint','reviewId','text'],'/api/permissions/pick':['id','fingerprint','reviewId','kind'],'/api/permissions/grant':['id','fingerprint','reviewId','key','remove','readOnly','capabilities'],'/api/permissions/save':['id','fingerprint','reviewId','consent'],'/api/permissions/discard':['id','fingerprint','reviewId'],'/api/prepare':['ticket'],'/api/discard':['reviewId'],'/api/edit-select':['id','fingerprint'],'/api/folder':['scope','id','fingerprint','reviewId'],'/api/file':[],'/api/access':['scope','id','fingerprint','reviewId','readOnly'],'/api/connect':['reviewId','consent'],'/api/resume':['id','fingerprint','consent'],'/api/stop':['id','consent'],'/api/folder-save':['id','fingerprint','reviewId','consent'],'/api/chrome':['id','fingerprint','consent']}
    if(!allowed[route]||Object.keys(input).some(key=>!allowed[route].includes(key)))throw Error('invalid_request')
    if(['/api/resume','/api/stop','/api/folder-save','/api/chrome'].includes(route)&&(!ID.test(input.id||'')||input.consent!==true))throw Error('connection_not_confirmed')
    let notice=''
-   if(route==='/api/permissions/open'){
+   if(route.startsWith('/api/applications/')){
+    if(route==='/api/applications/open'){if(permissions||editing||pending)throw Error('review_changed');const next=await applicationPermissionDraft(input.id,{home,discover:discoverApplications});if(next.fingerprint!==input.fingerprint)throw Error('local_config_changed');applicationPermissions=next;notice='选择应用后长期保存授权；截图和窗口输入会发送到工作台，外部操作仍需确认。'}
+    else{if(!applicationPermissions||applicationPermissions.id!==input.id||applicationPermissions.fingerprint!==input.fingerprint||applicationPermissions.reviewId!==input.reviewId)throw Error('review_changed');if(route==='/api/applications/close')applicationPermissions=null;else{const restart=children.has(input.id);if(restart)await stopConnection(input.id);if(children.has(input.id))throw Error('connection_running_or_locked');await saveApplicationPermissions(applicationPermissions,input,{home});applicationPermissions=null;notice='应用授权已保存。恢复连接后可在应用工作区或 Agent 中使用，无需重新授权。';if(restart){try{await launch(input.id);notice='应用授权已保存，正在自动恢复连接，新能力随后生效。'}catch{notice='应用授权已保存，但连接未能恢复；请检查连接状态后重新连接。'}}}}
+   }else if(route==='/api/permissions/open'){if(applicationPermissions)throw Error('review_changed');
     const next=await permissionDraft(input.id,{home});if(next.fingerprint!==input.fingerprint)throw Error('local_config_changed')
     permissions=next;notice='可以增删网站、选择文件或文件夹。保存前请停止此连接；其他设备不受影响。'
    }else if(route.startsWith('/api/permissions/')){
@@ -308,8 +313,8 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
   server.closeIdleConnections();await new Promise(resolve=>server.close(resolve))
  }
   return {origin,token,close,waitForUiReady,waitForConnection,state,
-   clearDesktopDrafts:async()=>{if(selection){const active=selection;cancelSelection(active,'account_changed');await active.done}while(busy&&!closed)await new Promise(r=>setTimeout(r,25));progress.stop();clearReview();permissions=null;editing=null},
-   stopSaved:async id=>{const entry=attempts.get(id);if(!entry)return;entry.stopRequested=true;entry.restartAfterControl=false;if(entry.restartTimer){clearTimeout(entry.restartTimer);entry.restartTimer=null}if(entry.child&&!entry.exited){await new Promise(resolve=>{const timer=setTimeout(()=>{try{entry.child.kill()}catch{}resolve()},6500);entry.child.once('close',()=>{clearTimeout(timer);resolve()});try{if(entry.child.connected)entry.child.send({type:'studio-local-stop'},()=>{});else entry.child.kill('SIGTERM')}catch{clearTimeout(timer);resolve()}})}},
+   clearDesktopDrafts:async()=>{if(selection){const active=selection;cancelSelection(active,'account_changed');await active.done}while(busy&&!closed)await new Promise(r=>setTimeout(r,25));progress.stop();clearReview();permissions=null;editing=null;applicationPermissions=null},
+   stopSaved:stopConnection,
    resumeSaved:async(id,fingerprint)=>{const p=await readGuidedProfile(id,{home});if(p.fingerprint!==fingerprint)throw Error('local_config_changed');await launch(id)}}
 }
 /** Daily startup should stay out of the way: a single saved connection is

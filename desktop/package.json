@@ -1,6 +1,6 @@
 {
   "name": "agent-studio-desktop",
-  "version": "0.1.0-preview.7",
+  "version": "0.1.0-preview.8",
   "private": true,
   "description": "Agent Studio Windows desktop client",
   "author": "Agent Studio",
@@ -19,17 +19,51 @@
     "asar": true,
     "npmRebuild": false,
     "electronDist": "node_modules/electron/dist",
-    "directories": { "output": "../.tmp/desktop-output" },
-    "files": ["main.cjs", "policy.cjs", "ui/**", "build-info.json", "!node_modules/**/*"],
-    "extraResources": [
-      {"from":"../dist", "to":"web"},
-      {"from":"../.tmp/desktop-connector", "to":"connector"},
-      {"from":"gateway.mjs", "to":"connector/app/desktop/gateway.mjs"},
-      {"from":"services.mjs", "to":"connector/app/desktop/services.mjs"}
-      ,{"from":"pairing.mjs", "to":"connector/app/desktop/pairing.mjs"}
-      ,{"from":"computer.mjs", "to":"connector/app/desktop/computer.mjs"}
+    "directories": {
+      "output": "../.tmp/desktop-output"
+    },
+    "files": [
+      "main.cjs",
+      "policy.cjs",
+      "ui/**",
+      "build-info.json",
+      "!node_modules/**/*"
     ],
-    "win": { "target": ["portable"], "icon": "ui/icon.ico", "signAndEditExecutable": false },
-    "portable": { "artifactName": "AgentStudio-Desktop-${version}-win-x64.exe" }
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "web"
+      },
+      {
+        "from": "../.tmp/desktop-connector",
+        "to": "connector"
+      },
+      {
+        "from": "gateway.mjs",
+        "to": "connector/app/desktop/gateway.mjs"
+      },
+      {
+        "from": "services.mjs",
+        "to": "connector/app/desktop/services.mjs"
+      },
+      {
+        "from": "pairing.mjs",
+        "to": "connector/app/desktop/pairing.mjs"
+      },
+      {
+        "from": "computer.mjs",
+        "to": "connector/app/desktop/computer.mjs"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "ui/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "AgentStudio-Desktop-${version}-win-x64.exe"
+    }
   }
 }

@@ -4,6 +4,7 @@ import os from 'node:os'
 import {createHash} from 'node:crypto'
 import {connectionServer} from '../src/lib/localConnectionSetup.ts'
 import {grantCapabilities,capabilityDescription} from './file-capabilities.mjs'
+import {validateApplicationControl} from './applications.mjs'
 
 const ID=/^[A-Za-z0-9]{24}$/
 const clean=(value,fallback='')=>typeof value==='string'?value.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,'').slice(0,160):fallback
@@ -29,12 +30,13 @@ export async function readGuidedProfile(id,{home=os.homedir()}={}){
   // An advanced profile may contain executable configuration. Do not make it
   // look like an ordinary file/browser connection in this simplified launcher.
   if(c.desktop?.enabled||Object.keys(c.apps||{}).length||Object.keys(c.mcpServers||{}).length)throw Error('advanced_profile_use_manual')
+  const applications=validateApplicationControl(c.applications)
   return {id,configFile,fingerprint:createHash('sha256').update(source).digest('hex'),
     name:clean(c.deviceName)||'已保存连接 · '+id.slice(-6),server,
     filesEnabled:c.files?.enabled!==false,browserEnabled:c.browser?.enabled===true,
     browserChannel:c.browser?.executablePath?'custom':clean(c.browser?.channel)||'chrome',
     roots:c.files?.enabled===false?[]:c.roots.map(r=>({label:clean(r.label)||clean(path.basename(r.path),'工作文件夹'),path:r.path,readOnly:r.allowedFiles?true:r.readOnly===true,kind:r.allowedFiles?'file':'folder',capabilities:grantCapabilities(r.capabilities,!!r.allowedFiles||r.readOnly===true,!!r.allowedFiles),...(r.allowedFiles?{files:r.allowedFiles}:{})})),
-    origins:c.browser?.enabled===true?origins:[]}
+    origins:c.browser?.enabled===true?origins:[],applications}
 }
 export async function listGuidedProfiles({home=os.homedir()}={}){
   let directory=home

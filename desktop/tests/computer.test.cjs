@@ -32,6 +32,15 @@ test('desktop engine exposes only verified current employee profiles and restore
  await assert.rejects(f.computer.request('resume',{id:B,consent:true}),/不属于/)
  await assert.rejects(f.computer.request('arbitrary.shell',{command:'cmd.exe'}),/不支持/)
 })
+test('application drafts are employee scoped and cannot be used to switch authorization targets',async()=>{
+ const f=await fixture({profiles:[profile(A),profile(B)]});await f.computer.request('session',{token:'valid-employee-session-token'})
+ f.data.applicationPermissions={id:B,reviewId:'foreign-review',candidates:[{path:'private-path'}]}
+ assert.equal((await f.computer.request('state')).applicationPermissions,null)
+ await assert.rejects(f.computer.request('applications.open',{id:B,fingerprint:'f'.repeat(64)}),/不属于/)
+ f.data.applicationPermissions={id:A,reviewId:'owned-review'}
+ assert.equal((await f.computer.request('state')).applicationPermissions.id,A)
+ await assert.rejects(f.computer.request('select',{id:A,consent:true}),/授权编辑/)
+})
 test('pause persists across restart, explicit resume selects the automatic connection',async()=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'desktop-preference-')),file=path.join(dir,'preferences.json')
  try{

@@ -5,7 +5,7 @@ import {validateConnectionTicket} from '../src/lib/localConnectionSetup.ts'
 
 const ID=/^[A-Za-z0-9]{24}$/
 const routes={prepare:'/api/prepare',discard:'/api/discard',folder:'/api/folder',file:'/api/file',access:'/api/access',connect:'/api/connect',resume:'/api/resume',stop:'/api/stop','picker.cancel':'/api/picker/cancel',
- 'permissions.open':'/api/permissions/open','permissions.sites':'/api/permissions/sites','permissions.pick':'/api/permissions/pick','permissions.grant':'/api/permissions/grant','permissions.save':'/api/permissions/save','permissions.discard':'/api/permissions/discard'}
+ 'applications.open':'/api/applications/open','applications.save':'/api/applications/save','applications.close':'/api/applications/close','permissions.open':'/api/permissions/open','permissions.sites':'/api/permissions/sites','permissions.pick':'/api/permissions/pick','permissions.grant':'/api/permissions/grant','permissions.save':'/api/permissions/save','permissions.discard':'/api/permissions/discard'}
 /** Private desktop broker. The renderer never receives the manager capability,
  * device credentials, executable configuration, arbitrary paths or URLs. */
 export function createDesktopComputer({serverOrigin,manager,preferencesFile,desktopVersion='',fetchImpl=fetch,attention=()=>{}}){
@@ -25,10 +25,10 @@ export function createDesktopComputer({serverOrigin,manager,preferencesFile,desk
  }
  async function current(){const s=session,n=epoch;if(!s)throw Error('请先登录工作台，等待本机组件就绪。');let verified;try{verified=await authenticate(s.token)}catch(error){if([401,403].includes(error.status)&&session===s)await clear();throw error}if(epoch!==n||session!==s||verified.owner!==s.owner)throw Error('账号发生变化，请刷新后重试。');session.devices=verified.devices;return {session:s,epoch:n}}
  const check=ctx=>{if(ctx.epoch!==epoch||ctx.session!==session)throw Error('账号发生变化，本次操作已取消。')}
- async function raw(action,input={}){const response=await fetchImpl(manager.origin+routes[action],{method:'POST',headers:{'Content-Type':'application/json',Origin:manager.origin,'X-Connector-Session':manager.token},body:JSON.stringify(input),signal:AbortSignal.timeout(['folder','file','permissions.pick'].includes(action)?245000:25000)});const data=await response.json();if(!response.ok)throw Error(data.error||'本机操作未确认，请核对连接状态。');return data}
+ async function raw(action,input={}){const response=await fetchImpl(manager.origin+routes[action],{method:'POST',headers:{'Content-Type':'application/json',Origin:manager.origin,'X-Connector-Session':manager.token},body:JSON.stringify(input),signal:AbortSignal.timeout(['folder','file','permissions.pick'].includes(action)?245000:action.startsWith('applications.')?120000:25000)});const data=await response.json();if(!response.ok)throw Error(data.error||'本机操作未确认，请核对连接状态。');return data}
  const matching=(snapshot,s)=>snapshot.profiles.filter(p=>p.server===serverOrigin+'/__pb'&&s.devices.some(d=>d.id===p.id))
  const usable=s=>s.devices.filter(d=>d.paired===true||d.seen_ms>0)
- async function snapshot(ctx){check(ctx);const data=await manager.state();check(ctx);const profiles=matching(data,ctx.session);return {engine:'ready',owner:ctx.session.owner,appVersion:desktopVersion,version:data.version,profiles,selectedId:ctx.session.devices.some(d=>d.id===selectedId)?selectedId:'',devices:usable(ctx.session).map(d=>({id:d.id,name:d.name,revoked:false,seen_ms:d.seen_ms||0,catalog:d.catalog||'[]',paired:true})),review:draftDevice&&ctx.session.devices.some(d=>d.id===draftDevice)?data.review:null,permissions:profiles.some(p=>p.id===data.permissions?.id)?data.permissions:null,selection:data.selection,busy:data.busy,confirmations:[...confirmations.values()].filter(c=>profiles.some(p=>p.id===c.deviceId)).map(({id,deviceId,message,expiresAt})=>({id,deviceId,message,expiresAt}))}}
+ async function snapshot(ctx){check(ctx);const data=await manager.state();check(ctx);const profiles=matching(data,ctx.session);return {engine:'ready',owner:ctx.session.owner,appVersion:desktopVersion,version:data.version,profiles,selectedId:ctx.session.devices.some(d=>d.id===selectedId)?selectedId:'',devices:usable(ctx.session).map(d=>({id:d.id,name:d.name,revoked:false,seen_ms:d.seen_ms||0,catalog:d.catalog||'[]',paired:true})),review:draftDevice&&ctx.session.devices.some(d=>d.id===draftDevice)?data.review:null,permissions:profiles.some(p=>p.id===data.permissions?.id)?data.permissions:null,applicationPermissions:profiles.some(p=>p.id===data.applicationPermissions?.id)?data.applicationPermissions:null,selection:data.selection,busy:data.busy,confirmations:[...confirmations.values()].filter(c=>profiles.some(p=>p.id===c.deviceId)).map(({id,deviceId,message,expiresAt,kind})=>({id,deviceId,message,expiresAt,kind}))}}
  async function clear(){epoch++;const old=session;session=null;draftDevice=null;selectedId='';restored.clear();for(const review of confirmations.values())review.finish(false);await manager.clearDesktopDrafts();if(old){const data=await manager.state();await Promise.allSettled(matching(data,old).map(p=>manager.stopSaved(p.id)))}}
  async function sync(token){
   if(!token){syncRevision++;syncing=null;await clear();return {engine:'ready',owner:null,profiles:[],selectedId:'',devices:[],review:null,permissions:null,selection:null,busy:false,confirmations:[]}}
@@ -64,7 +64,7 @@ export function createDesktopComputer({serverOrigin,manager,preferencesFile,desk
   const before=await manager.state();check(ctx)
   if(action==='select'){
    if(Object.keys(input).some(k=>!['id','consent'].includes(k))||input.consent!==true||!usable(ctx.session).some(d=>d.id===input.id))throw Error('请选择当前账号已连接且未撤销的电脑。')
-   if(before.permissions||before.selection||draftDevice)throw Error('请先完成或关闭当前授权编辑，再切换电脑。')
+   if(before.permissions||before.applicationPermissions||before.selection||draftDevice)throw Error('请先完成或关闭当前授权编辑，再切换电脑。')
    const profile=matching(before,ctx.session).find(p=>p.id===input.id)
    selectedId=input.id;await remember(ctx.session.owner,{id:input.id,paused:false});check(ctx)
    if(profile&&!profile.running){restored.add(profile.id);await manager.resumeSaved(profile.id,profile.fingerprint);check(ctx)}
@@ -96,7 +96,7 @@ export function createDesktopComputer({serverOrigin,manager,preferencesFile,desk
    const abort=()=>finish(false)
    const finish=ok=>{clearTimeout(timer);signal.removeEventListener('abort',abort);confirmations.delete(id);resolve(ok===true&&epoch===n&&session?.devices.some(d=>d.id===deviceId)===true)}
    const timer=setTimeout(abort,Math.max(1,expiresAt-Date.now()))
-   confirmations.set(id,{id,deviceId,message:review.message,expiresAt,finish});signal.addEventListener('abort',abort,{once:true});attention({deviceId,panel:'confirmation'})
+   confirmations.set(id,{id,deviceId,message:review.message,kind:review.kind==='application'?'application':'permission',expiresAt,finish});signal.addEventListener('abort',abort,{once:true});attention({deviceId,panel:'confirmation'})
   })
  }
  return {request,confirmReview,clear}

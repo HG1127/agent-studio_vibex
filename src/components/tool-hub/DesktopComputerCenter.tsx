@@ -3,6 +3,7 @@ import {Link,useLocation,useNavigate} from 'react-router-dom'
 import {Monitor,ShieldCheck,ChevronDown,RefreshCw} from 'lucide-react'
 import {useDesktopComputer} from './DesktopComputerContext'
 import {ConnectComputerButton} from './ConnectComputerButton'
+import {DesktopApplications} from './DesktopApplications'
 import {DesktopPermissions} from './DesktopPermissions'
 import {DesktopPairingReview} from './DesktopPairingReview'
 import {deviceConnectionState} from '@/lib/localConnectionSetup'
@@ -20,7 +21,7 @@ export function DesktopComputerCenter(){
  const profile=state?.profiles.find(p=>p.id===state.selectedId)
  const device=state?.devices?.find(d=>d.id===state.selectedId)
  const online=verified&&(profile?profile.state==='online'&&profile.running:!!device&&deviceConnectionState(device)==='online')
- const blocked=busy||!verified,selectionBlocked=blocked||computer.selectionBlocked||!!state?.permissions||!!state?.review||!!state?.confirmations.length
+ const blocked=busy||!verified,selectionBlocked=blocked||computer.selectionBlocked||!!state?.permissions||!!state?.applicationPermissions||!!state?.review||!!state?.confirmations.length
  const run=async(action:string,input?:Record<string,unknown>)=>{setConsent(false);await act(action,input)}
  const choose=async(id:string)=>{
   const before=window.location.pathname+window.location.search
@@ -40,12 +41,13 @@ export function DesktopComputerCenter(){
   </div>
   {computer.selectionBlocked&&<p className="mt-2 text-xs text-muted-foreground">请先处理当前文件或授权草稿，再切换电脑。</p>}
   {expanded&&<div data-desktop-connection-management className="mt-4 space-y-4 rounded-xl border border-border bg-secondary/15 p-4">
-   <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">{device?.name||'本机'} · 连接与授权</h2><div className="flex gap-2"><button type="button" className={button} disabled={busy} onClick={()=>void refresh()}><RefreshCw className="mr-1 inline h-3 w-3"/>刷新</button>{profile&&<button type="button" className={button} disabled={blocked||!!state?.permissions} onClick={()=>void run('permissions.open',{id:profile.id,fingerprint:profile.fingerprint})}>管理授权</button>}</div></div>
+   <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">{device?.name||'本机'} · 连接与授权</h2><div className="flex gap-2"><button type="button" className={button} disabled={busy} onClick={()=>void refresh()}><RefreshCw className="mr-1 inline h-3 w-3"/>刷新</button>{profile&&<button type="button" className={button} disabled={blocked||!!state?.permissions||!!state?.applicationPermissions} onClick={()=>void run('permissions.open',{id:profile.id,fingerprint:profile.fingerprint})}>管理授权</button>}{profile&&<button type="button" className={button} disabled={blocked||!!state?.permissions||!!state?.applicationPermissions} onClick={()=>void run('applications.open',{id:profile.id,fingerprint:profile.fingerprint})}>应用授权</button>}</div></div>
    {profile?.message&&<p role="status" className="text-sm">{profile.message}</p>}
    {profile&&<div className="space-y-1 break-all text-xs text-muted-foreground">{profile.roots.map(root=><p key={root.path}>{root.path}（{root.readOnly?'只读':'读取与新建'}）</p>)}<p>{profile.origins.length?'允许的网站：'+profile.origins.join('、'):'尚未授权网站，可在管理授权中按需添加。'}</p></div>}
-   {confirmation&&<section key={confirmation.id} className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4"><h3 className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4"/>请确认本机授权变更</h3><p className="whitespace-pre-wrap break-all text-sm leading-6">{confirmation.message}</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>我已核对并同意本次变更。</label><div className="flex gap-2"><button type="button" className={button} disabled={blocked} onClick={()=>void run('confirm',{id:confirmation.id,consent:false})}>拒绝</button><button type="button" className={button+' bg-primary text-primary-foreground'} disabled={blocked||!consent} onClick={()=>void run('confirm',{id:confirmation.id,consent:true})}>确认应用</button></div></section>}
+   {confirmation&&<section key={confirmation.id} className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4"><h3 className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4"/>{confirmation.kind==='application'?'请确认本次应用操作':'请确认本机授权变更'}</h3><p className="whitespace-pre-wrap break-all text-sm leading-6">{confirmation.message}</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>我已核对目标、内容，并同意本次操作。</label><div className="flex gap-2"><button type="button" className={button} disabled={blocked} onClick={()=>void run('confirm',{id:confirmation.id,consent:false})}>拒绝</button><button type="button" className={button+' bg-primary text-primary-foreground'} disabled={blocked||!consent} onClick={()=>void run('confirm',{id:confirmation.id,consent:true})}>确认应用</button></div></section>}
    {state?.review&&<DesktopPairingReview/>}
    {state?.permissions&&<DesktopPermissions key={state.permissions.id} state={state} busy={blocked||state.busy} act={run}/>}
+   {state?.applicationPermissions&&<DesktopApplications key={state.applicationPermissions.reviewId} draft={state.applicationPermissions} state={state} busy={blocked||state.busy} act={run}/>}
    {state?.selection&&<button type="button" className={button} onClick={()=>void act('picker.cancel',{id:state.selection!.id})}>取消系统选择</button>}
    {state?.notice&&<p role="status" className="text-sm text-primary">{state.notice}</p>}
    {!!state?.profiles.length&&<ConnectComputerButton label="连接其他电脑" onConnected={d=>{void choose(d.id)}}/>}

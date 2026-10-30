@@ -9,6 +9,7 @@ import { registerOffice } from './office.mjs'
 import {BROWSER_EVENT_PREFIX,BROWSER_FAILURE_MESSAGES,browserFailureCode,browserObservation,browserReceipt,safeBrowserUrl} from './browser-feedback.mjs'
 import {grantCapabilities} from './file-capabilities.mjs'
 import {registerFileActions,fileScopeLock,readBoundedRegularFile} from './file-actions.mjs'
+import {registerApplications} from './applications.mjs'
 
 const ownDir = path.dirname(fileURLToPath(import.meta.url))
 const objectSchema = properties => ({ type: 'object', properties, additionalProperties: false })
@@ -33,7 +34,7 @@ function validateFileArguments(schema,args){
   }
 }
 
-export async function createRuntime(config,{openPermissions,invokeFileApplication}={}) {
+export async function createRuntime(config,{openPermissions,invokeFileApplication,applicationsAdapter}={}) {
   if (!Array.isArray(config.roots) || !config.roots.length || config.roots.length>20) throw Error('workspace_roots_required')
   const roots = new Map()
   const readOnlyRoots=new Set(),rootLabels=new Map(),fileAllowlist=new Map(),capabilities=new Map()
@@ -125,6 +126,8 @@ export async function createRuntime(config,{openPermissions,invokeFileApplicatio
   registerFileActions({add,resolveFile,roots,readOnlyRoots,capabilities,rootSchema,invoke:invokeFileApplication})
   }
   const apps = config.apps || {}
+  if(Object.keys(apps).length&&config.applications?.enabled)throw Error('mixed_application_configuration')
+  const applicationRuntime=registerApplications({add,config,...applicationsAdapter})
   if (config.files?.enabled!==false && config.office?.enabled === true) registerOffice(add, resolveFile, [...roots.keys()],writableRoots)
   if (Object.keys(apps).length) {
     for (const app of Object.values(apps)) {
@@ -313,6 +316,6 @@ export async function createRuntime(config,{openPermissions,invokeFileApplicatio
       const output = await handler(input.arguments, signal)
       return typeof output === 'string' ? output.slice(0, 12000) : output
     },
-    close: () => Promise.allSettled(clients.map(c => c.close())),
+    close: () => Promise.allSettled([applicationRuntime.close(),...clients.map(c => c.close())]),
   }
 }

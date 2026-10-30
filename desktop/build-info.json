@@ -1,1 +1,6 @@
-{"sourceCommit":"98ee9287fd224ffe2f61de6750d436b71c12f810","version":"0.1.0-preview.7","platform":"win32-x64","codeSigned":false}
+{
+  "sourceCommit": "98ee9287fd224ffe2f61de6750d436b71c12f810",
+  "version": "0.1.0-preview.8",
+  "platform": "win32-x64",
+  "codeSigned": false
+}
