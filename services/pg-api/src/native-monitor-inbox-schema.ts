@@ -468,8 +468,8 @@ export const nativeMonitorTables=[
         "name": "native_monitor_reads_valid_ck",
         "type": "c",
         "keys": [
-          "read_ms",
-          "governance_revision"
+          "governance_revision",
+          "read_ms"
         ],
         "definition": "CHECK(agentstudio.native_monitor_meta_valid(governance_revision,read_ms))"
       }

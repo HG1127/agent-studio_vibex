@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
 import {companionCiFinalPathPurpose,companionCiFinalPathHarness,companionCiPackageBindings,companionCiFinalPathEnabled,mergeCompanionCiSourceRecords as merge} from './helpers/pg18-complete-companion-ci-contract.mjs'
 import {companionCiHarnessFiles,collectCompleteCompanionCiStage,assertCompleteCompanionCiStage,inspectCompanionCiRelativeImports} from './helpers/pg18-complete-companion-ci-stage.mjs'
+import {finalPathCiHarnessFiles} from './helpers/pg18-full069-final-path-ci-sources.mjs'
 import {assertOwnedCompleteProfileCohort} from './helpers/pg18-complete-install-ci-containers.mjs'
 import {assertCompleteCompanionCiDeploymentBinding} from './helpers/pg18-complete-companion-ci-fixture.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),read=n=>fs.readFileSync(root+'/'+n,'utf8'),hash=b=>createHash('sha256').update(b).digest('hex'),clone=v=>structuredClone(v),record=(path,sha256='a'.repeat(64))=>({path,sha256}),apps=[record('services/pg-api/src/pg18-full069-final-trust.mjs')],harness=companionCiHarnessFiles.map(p=>record(p,'b'.repeat(64)))
@@ -15,8 +16,8 @@ function overlay(patch={}){const manifest={format:'full069_final13_path_ci_sourc
 test('five-only source record order and guide location remain unchanged without all13 purpose',()=>{
  const merged=merge(apps,harness);assert.deepEqual(merged.application_files,apps);assert.deepEqual(merged.harness_files,harness);assert.equal(merged.final_path_overlay,null);assert.equal(companionCiFinalPathEnabled(undefined),false);assert.throws(()=>companionCiFinalPathEnabled('true'),/final13_purpose/);assert.equal(companionCiFinalPathEnabled(companionCiFinalPathPurpose),true)
 })
-test('all13 independently seals Control SQL and10 fixed B helpers with only executable MJS in harness',()=>{
- const view=overlay(),m=merge(apps,harness,view);assert.equal(m.harness_files.length,15);assert.ok(m.harness_files.every(r=>/^services\/pg-api\/tests\/helpers\/.+\.mjs$/.test(r.path)));assert.ok(m.application_files.some(r=>r.path==='db/postgres/telemetry/001_worker_heartbeats.sql'));assert.ok(m.application_files.some(r=>r.path==='docs/PG18_FULL069_FIVE_COMPANION_CI_BRIDGE.md'));assert.equal(m.application_files.filter(r=>r.path===apps[0].path).length,1);assert.equal(m.final_path_overlay.source_sha256,view.source_sha256);assert.equal(Object.isFrozen(m.application_files[0]),true)
+test('all13 independently seals Control SQL and11 fixed B helpers with only executable MJS in harness',()=>{
+ const view=overlay(),m=merge(apps,harness,view);assert.equal(m.harness_files.length,16);assert.ok(m.harness_files.every(r=>/^services\/pg-api\/tests\/helpers\/.+\.mjs$/.test(r.path)));assert.ok(m.application_files.some(r=>r.path==='db/postgres/telemetry/001_worker_heartbeats.sql'));assert.ok(m.application_files.some(r=>r.path==='docs/PG18_FULL069_FIVE_COMPANION_CI_BRIDGE.md'));assert.equal(m.application_files.filter(r=>r.path===apps[0].path).length,1);assert.equal(m.final_path_overlay.source_sha256,view.source_sha256);assert.equal(Object.isFrozen(m.application_files[0]),true)
 })
 test('source overlap requires exact bytes across original, Control and harness categories',()=>{
  for(const view of [overlay({application_additions:[record(apps[0].path,'f'.repeat(64))]}),overlay({application_additions:[record(harness[0].path,'f'.repeat(64))]})])assert.throws(()=>merge(apps,harness,view),/overlay_(?:overlap|application)/)
@@ -76,4 +77,21 @@ test('binding requires live private state, exact references, original permit coh
 })
 test('loader paths are frozen and every cleanup checks UID absence and owned executable use even with no network rows',()=>{
  const stage=read('services/pg-api/tests/helpers/pg18-complete-companion-ci-stage.mjs'),fixture=read('services/pg-api/tests/helpers/pg18-complete-companion-ci-fixture.mjs');assert.ok(stage.includes('paths:Object.freeze(cap.manifest.application_files.map'));assert.ok(stage.includes('ci_relative_imports:closure.edges'));assert.ok(fixture.includes("fail('cleanup_running');uidAbsent();ownedNodeUnused(s);if(s.network.length)"));assert.ok(fixture.includes("fs.statSync('/proc/'+pid+'/exe')"))
+})
+
+// Independent producer list is intentionally not derived from the consumer.
+const aclCi='services/pg-api/tests/helpers/pg18-full069-final14-database-acl-ci.mjs'
+test('actual final-path producer and companion consumer seal the same eleven mandatory helpers',()=>{
+ assert.equal(finalPathCiHarnessFiles.length,11);assert.equal(new Set(finalPathCiHarnessFiles).size,11);assert.ok(finalPathCiHarnessFiles.includes(aclCi));assert.deepEqual(companionCiFinalPathHarness,finalPathCiHarnessFiles)
+ const files=finalPathCiHarnessFiles.map(p=>record(p,hash(read(p)))),view=overlay({harness_files:files}),merged=merge(apps,harness,view)
+ for(const row of files)assert.deepEqual(merged.harness_files.find(r=>r.path===row.path),row)
+ assert.equal(merged.harness_files.length,16);assert.ok(Object.isFrozen(merged.harness_files));assert.ok(Object.isFrozen(merged.harness_files.find(r=>r.path===aclCi)))
+})
+test('the original ten-helper omission and aliases cannot drop the ACL negative-case helper',()=>{
+ for(const paths of [finalPathCiHarnessFiles.filter(p=>p!==aclCi),finalPathCiHarnessFiles.map(p=>p===aclCi?'services/pg-api/tests/helpers/pg18-full069-final14-database-acl-ci-alias.mjs':p)])assert.throws(()=>merge(apps,harness,overlay({harness_files:paths.map(p=>record(p))})),/complete_companion_ci_overlay_harness/)
+})
+test('the mandatory ACL helper bytes participate in overlap rejection and cannot open a Stage',()=>{
+ const files=finalPathCiHarnessFiles.map(p=>record(p,hash(read(p)))),view=overlay({harness_files:files}),row=files.find(r=>r.path===aclCi)
+ assert.throws(()=>merge(apps,[...harness,record(aclCi,row.sha256==='f'.repeat(64)?'e'.repeat(64):'f'.repeat(64))],view),/complete_companion_ci_overlay_overlap/)
+ const data=merge(apps,harness,view);assert.throws(()=>assertCompleteCompanionCiStage(data),/stage_unsealed_reference/);assert.throws(()=>assertOwnedCompleteProfileCohort(data,{},{}))
 })

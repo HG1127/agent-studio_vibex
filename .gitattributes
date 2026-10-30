@@ -1173,3 +1173,22 @@ tests/original-internal-templates.test.mjs text eol=lf
 tests/pg-original-monitor073-genuine.config.mjs text eol=lf
 tests/pg-original-monitor073-genuine.spec.mjs text eol=lf
 tests/pg-original-monitor073-policy.test.mjs text eol=lf
+
+# Original employee sharing host, personal overview and exact073 audit.
+services/pg-api/src/original-internal-overview-http.ts text eol=lf
+services/pg-api/src/original-internal-overview-read.ts text eol=lf
+services/pg-api/tests/original-internal-overview.test.mjs text eol=lf
+services/pg-api/tests/own-operations-tcp.integration.mjs text eol=lf
+services/pg-api/tests/pg18-full069-worker-path-owned-failure.test.mjs text eol=lf
+shared/original-internal-overview-contract.ts text eol=lf
+src/lib/originalInternalOverview.ts text eol=lf
+src/pages/InternalOverview/InternalOverviewPage.tsx text eol=lf
+tests/helpers/pg-original-internal-share-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-internal-share-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-internal-share-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-internal-share-reviewed-sources.mjs text eol=lf
+tests/original-internal-overview-native.test.mjs text eol=lf
+tests/original-internal-overview.test.mjs text eol=lf
+tests/pg-original-internal-share-browser-policy.test.mjs text eol=lf
+tests/pg-original-internal-share-genuine.config.mjs text eol=lf
+tests/pg-original-internal-share-genuine.spec.mjs text eol=lf

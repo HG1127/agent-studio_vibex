@@ -13,27 +13,25 @@
 
 ## 原员工页面适配准备（2026-10-30，原页面验收待执行）
 
-当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，记录原有20页、30组操作；页面数量不是验收完成量。现有首页、目录、草稿恢复及新增建角色入口已保留。登录、账户退出、完整方案保存与版本冲突处理、分页搜索收藏、工具与知识库引用、近期运行及待处理列表已写入 PG 适配源码。普通构建仍使用 PocketBase；PG 构建保留原 `index.html -> main.tsx -> App.tsx` 入口，未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
+当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，覆盖原有20页、30组操作；页面数量不是验收完成量。最终入口继续使用原 `index.html -> main.tsx -> App.tsx`。首页、目录、草稿、登录及账户菜单已有PG适配源码；未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
 
-本地仅运行了允许的纯测试、类型检查、源码核查和前端构建：`pnpm test:original-ui-contracts` 当前480项通过，前端 TypeScript 6、API TypeScript 5及普通 PB/原页面 PG 两种构建通过。已修复迟到读取覆盖新输入或后选方案、执行引用挤占作者元数据容量、工具意图改变未标记编辑、隐藏来源校验函数缺失仍继续读取的问题，保留原56个首页公开成员；纯回归不等于真实 React/浏览器验收。可选070（首页作者元数据）与071（本人目录收藏）源码及独立合成 CI 已接线。
+本地允许范围内的纯回归当前541项通过，前端TypeScript6、API TypeScript5通过；普通PB及原界面PG两种实际构建各100个资源，普通构建PG资源匹配为0。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`。源码/纯回归/构建不能替代真实原页验收。
 
-首个保留原页面候选 `a048c5d` 的真实070作业在 [隔离运行41019917305](https://github.com/HG1127/agent-studio_vibex/actions/runs/41019917305/job/123944638788) 安装后审计失败：未设置的列 ACL 被替换为 SQL 空数组，`aclexplode` 报数组维度错误，首页接口未就绪。后继修复保留 NULL ACL 和全部有效权限/GRANT OPTION 检查，并在070/071真实用例中核验默认列权限。该失败及其连锁错误保留，不计为数据库或原页面通过。此前 Native 参考界面的通过记录不等同于原页面通过。
+已合流原团队共享页的业务Hook，保留原JSX、导航、布局和PB分支；写入及确认固定发送发起时员工ID，服务端先验证实际Cookie和owner，再在任何台账写入前比较。焦点恢复会先验证Cookie，即使旧读取或写回仍未返回也隔离旧账号。独立原页host/E2E复用fresh F08，包含创建、兑换、撤销、真实写后断线与原回执恢复、换账号迟到响应；Native代理保持8秒，全部PB/网络/身份及收费调用零门禁保留，安全成功截图仅写合成CI私有artifact。原页故事仍待执行。
 
-后继 `cc987e2` 的同提交真实 PG18 复验已通过：[070 的19个编号场景](https://github.com/HG1127/agent-studio_vibex/actions/runs/41021107149/job/123948386383)、[071 的18个编号场景](https://github.com/HG1127/agent-studio_vibex/actions/runs/41021107149/job/123948386261)，包括真实 Cookie、版本冲突、跨员工拒绝、事务回滚、确认丢失、目录分页收藏和本人资源真实计数。其原页面浏览器仍在夹具启动前因 PDF Worker 的 `.mjs` MIME 未登记而失败，原页面验收为0。后继 `9af867f` 的[真实原 Login/App 浏览器场景](https://github.com/HG1127/agent-studio_vibex/actions/runs/41023502888/job/123956111388)已越过资源加载阶段，16次真实认证请求完成登录、身份读取失败重试、退出失败重试及撤销后拒绝等子步骤；旧PB网络请求、旧PB阻断事件及外部来源请求均为0，整条故事仍因3次监控收件箱405响应失败。已目视核对真实合成登录及首页截图，不把认证子步骤计为整页验收。
+原个人总览`/internal-overview`保留布局、筛选及刷新，新增本人八项真实计数、待办与近期Agent/Workflow运行读取；以实际Cookie和事务内owner核对预期员工，迟到响应不得进入新账号。历史标题未落库时明确显示未记录，不把当前资源名冒充历史标题；原main Worker健康状态缺少等价来源，明确显示未知。这些语义缺口仍未关闭，原页host与真实SQL/浏览器验收待完成。
 
-当前候选增加独立可选072共享知识统计：仅在明确开关、原共享能力、原070/071完整审计及真实ACL均满足时读取真实数量，关闭或依赖异常明确拒绝，不隐藏有效共享记录。新增真实PG18场景尚未执行。完整069候选修正管理连接误用Reader专用审计的问题：初始化明确保留待审计状态，两个采样器必须经过原Controller受控租约内的真实Reader审计、Native HTTPS及一次性观察校验；5秒Reader租约、8秒Native预算、UID128、四个空业务队列和后端清理检查均保留。Writer日志变化仅增加固定字段诊断，原拒绝未放宽，当前真实失败仍保留。上述源码及纯回归均不等于真实同提交运行资格。
+可选070/071提供作者元数据、本人目录分页搜索收藏及真实owner资源数量；072提供严格审计后的共享知识统计。`53fd7f8`的[070/071/072真实复验](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028235290)已通过57个编号场景；其[遥测控制/Writer](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028234927/job/123971512774)通过28+26场景与清理，但此前file_changed未复现，原因仍未定。
 
-`0ef83b9` 的[首次072真实执行](https://github.com/HG1127/agent-studio_vibex/actions/runs/41027039454/job/123967494851)安装后在原ACL依赖审计失败，同时070/071最后的本人资源读取返回503。原因是新清单只记录032初始授权，遗漏035-039对原嵌入、索引、查询及执行服务的必要函数授权。后继源码按完整且不变的001-069补正精确清单，同时强制必要显式EXECUTE存在，并新增真实缺失、额外及可转授权限负例；SQL、角色与实际权限均未修改。该失败保留，修复后的070/071/072与原页仍需同提交复验。
+最近已上传`1df512a`的[070/071/072复验](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735632)再次通过；[F08真实流程](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735607/job/124025955111)15个测试节点通过，含六个Cookie Bob/expected Alice写入及确认拒绝、全量计数未变化；[原PocketBase19项双Worker回归](https://github.com/HG1127/agent-studio_vibex/actions/runs/41045033368/job/124026922004)19/19通过，73.6秒；[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735586)50作业通过，包含必需`pnpm check`及安全/Worker检查。这些结果只属于该精确提交，不能转用于当前未封存的新源码。
 
-尚未完成的首页工作包括自然语言生成/修改、普通删除、部分质量及能力语义、共享知识库统计依赖、监控收件箱和完整运行页操作。其余原菜单逐项适配、完整069运行检查中的真实 Reader 身份问题、目标安装环境、备份恢复、长期 Worker 和员工签收继续保留为阻断。当前原页面 PG 验收0、合格24小时运行0、员工签收0，正式切换 **NO-GO**。
+可选073仅为隔离历史监控元数据、本人分页及已读回执。`1df512a`的[真实073 TCP](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735632/job/124025955883)、原登录及原Home故事在严格约束审计失败，未进入业务步骤。后续修复按PG18 CHECK表达式首次引用次序保留精确conkey，纠正reads_valid_ck的[4,3]预期，SQL与ACL不变；新增反序/遗漏/重复及约束属性篡改拒绝回归，仍须实际复验。来源ACL、实时采集、事件生成和复核/基线属于另行074工作，完整监控验收为0。
 
-`53fd7f8` 的[同提交真实070/071/072复验](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028235290)通过19+18+20个编号场景，共57个，含真实共享统计及必要/额外/可转授函数权限拒绝；[原PocketBase19双Worker回归](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028243116/job/123971433210)19/19通过；[真实遥测控制与Writer](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028234927/job/123971512774)28+26场景及清理通过。该次未触发此前file_changed，旧并发变化原因仍保留未定因。质量工作流同提交50个作业通过；原Login/App仍在监控405门禁失败，完整069仍未取得运行资格。上述通过不能转用于当前未封存的新候选。
+完整069已越过旧记录路径语法错误；[1df512a真实短CLI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955499)在8项准备、Review预检、原Control/HBA后拒绝owned_process_changed；[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955714)在独立受保护打包阶段拒绝，尚未执行12个真实ACL修改/回滚负例。两个失败均保留，未取得运行资格。完整53行ACL比较仍核对OID/owner/grantor/可转授和PUBLIC默认权限，参见[PG18默认权限](https://www.postgresql.org/docs/18/ddl-priv.html)；Reader5秒、Native8秒、Worker30秒加发送5秒、UID128、四空队列及实际后端清理要求不变。
 
-当前源码已接入原团队共享页，保留布局/操作并复用真实F08 API/session。除前后身份观察外，原页write/confirm固定发送发起时员工UUID；服务端在真实Cookie身份映射后、任何业务写入前比对。新增六个真实Cookie Bob/expected Alice拒绝用例，待隔离执行。已完成前端类型及两种实际构建，原团队共享浏览器host仍在准备，页面验收仍为0。
+后续源码已统一final14生成端/消费端的11项固定必需文件，遗漏、别名或字节冲突仍拒绝；17项针对性纯回归通过。短CLI失败仅新增原受保护记录的布尔字段和固定entry投影，读取/解析/输出失败仍保留原错误，不输出路径、PID或凭据，也不改变身份谓词。具体失败entry与原因、final14运行及ACL负例仍须真实复验。
 
-可选073仅提供隔离历史元数据台账、本人分页与已读回执。原登录故事和独立监控故事显式申请073、实际安装审计并查询双方非空台账后，才返回单独073配置；原071前置证明、16认证步骤及全部PB/网络/API错误零门禁保留。来源采集、实时ACL、事件生成、复核/基线仍在074独立工作中，不能用073子故事替代完整监控。
-
-完整Worker候选已统一父/子进程固定记录文件名，保留原路径语法；另按不变原引导补齐数据库ACL的固定清单漏项。原050仅撤销PUBLIC CONNECT而保留TEMPORARY，与[PG18默认权限](https://www.postgresql.org/docs/18/ddl-priv.html)一致。比较器仍核验完整53行及OID/owner/grantor/可转授，新增12个真实修改后回滚的负例；SQL与实际权限未变。同版本真实启动/Reader/清理及24小时资格继续待验，未因源码或纯回归通过而关闭阻断。
+尚缺首页自然语言生成/修改、普通删除、部分质量/能力及运行页动作、其余原菜单适配、完整监控与Worker同提交运行验证。真实宝塔目标环境、正式安装、备份恢复/回滚、长期运行和员工签收尚未完成。原完整页面验收0、合格24小时0、员工签收0，正式切换 **NO-GO**；旧PocketBase保留可恢复。
 
 以下为历史准备与隔离组件证据，不能转用于上述新候选。
 

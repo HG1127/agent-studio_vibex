@@ -1,3 +1,4 @@
+import {types as pathCiObservationTypes} from 'node:util'
 // Closed CI result data only. No caller-provided proof becomes an authority.
 import {liveEntries} from '../../src/pg18-full069-worker-live-contract.mjs'
 import {controlErrorCodes} from '../../src/worker-heartbeat-activation-control-contract.ts'
@@ -49,4 +50,66 @@ export function pathCiTrustFailures(stderr){
   if(records.length>1)return Object.freeze([])
  }
  return Object.freeze(records)
+}
+
+// Failure observation DATA only, after the fixture's original privateRead/json.
+// This grants no trust, process identity, readiness, cleanup or retry authority.
+const pathCiOwnedObservationLimits=Object.freeze({nodes:4096,depth:20,array:128,keys:64,string:8192,stringTotal:262144})
+function pathCiBoundedObservationTree(root){
+ const seen=new WeakSet();let nodes=0,strings=0
+ const visit=(value,depth)=>{
+  if(++nodes>pathCiOwnedObservationLimits.nodes||depth>pathCiOwnedObservationLimits.depth)throw 0
+  if(value===null||typeof value==='boolean')return
+  if(typeof value==='string'){strings+=value.length;if(value.length>pathCiOwnedObservationLimits.string||strings>pathCiOwnedObservationLimits.stringTotal)throw 0;return}
+  if(typeof value==='number'){if(!Number.isFinite(value))throw 0;return}
+  if(typeof value!=='object'||pathCiObservationTypes.isProxy(value)||seen.has(value))throw 0
+  seen.add(value);const array=Array.isArray(value),prototype=Object.getPrototypeOf(value)
+  if(array?prototype!==Array.prototype:prototype!==Object.prototype&&prototype!==null)throw 0
+  const descriptors=Object.getOwnPropertyDescriptors(value),keys=Reflect.ownKeys(descriptors)
+  if(array){if(!Object.hasOwn(descriptors.length??{},'value')||!Number.isSafeInteger(descriptors.length.value)||descriptors.length.value>pathCiOwnedObservationLimits.array||keys.length!==descriptors.length.value+1)throw 0}
+  else if(keys.length>pathCiOwnedObservationLimits.keys)throw 0
+  for(const key of keys){
+   if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))throw 0
+   const descriptor=descriptors[key]
+   if(array&&key==='length')continue
+   if(!descriptor.enumerable||!Object.hasOwn(descriptor,'value')||array&&!/^(?:0|[1-9][0-9]*)$/.test(key))throw 0
+   visit(descriptor.value,depth+1)
+  }
+ }
+ visit(root,0)
+}
+function pathCiObservationClosed(value,required,optional=[]){
+ if(!value||typeof value!=='object'||Array.isArray(value))throw 0
+ const keys=Object.keys(value);if(required.some(key=>!Object.hasOwn(value,key))||keys.some(key=>!required.includes(key)&&!optional.includes(key)))throw 0
+ return value
+}
+const pathCiObservedEntryIds=Object.freeze(['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge','assessment'])
+function pathCiObservedStop(raw,native=false){
+ const row=pathCiObservationClosed(raw,['id','graceful','forced','identity_verified'],['absent','supervisor_absent'])
+ if(native?row.id!=='native':!pathCiObservedEntryIds.includes(row.id))throw 0
+ for(const key of ['graceful','forced','identity_verified','absent','supervisor_absent'])if(Object.hasOwn(row,key)&&typeof row[key]!=='boolean')throw 0
+ return Object.freeze({entry:row.id,graceful:row.graceful,forced:row.forced,identity_verified:row.identity_verified,absent:row.absent??null,supervisor_absent:row.supervisor_absent??null})
+}
+function pathCiObservedSample(value){
+ if(value===null)return false
+ const row=pathCiObservationClosed(value,['monotonic_ms','wall_ms','collected_ms','processes','native','runtime'])
+ if(!Number.isSafeInteger(row.monotonic_ms)||row.monotonic_ms<0||!Number.isSafeInteger(row.wall_ms)||row.wall_ms<0||!Number.isSafeInteger(row.collected_ms)||row.collected_ms<0||!Array.isArray(row.processes)||row.processes.length!==8||!row.native||Array.isArray(row.native)||!row.runtime||Array.isArray(row.runtime))throw 0
+ return true
+}
+export function pathCiOwnedFailureObservation(raw,expectedRunId,cliReason){
+ try{
+  if(typeof expectedRunId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(expectedRunId))return null
+  pathCiBoundedObservationTree(raw)
+  const value=pathCiObservationClosed(raw,['format','run_id','validation_completed','reason','details','qualifies_run','qualifying_window_started','BEGIN_or_END_receipt_issued','production_cutover_allowed'])
+  if(value.format!=='pg18_full069_worker_path_validation_result_v1'||value.run_id!==expectedRunId||value.validation_completed!==false||typeof value.reason!=='string'||!/^full069_worker_live_[a-z_]{1,80}$/.test(value.reason)||['qualifies_run','qualifying_window_started','BEGIN_or_END_receipt_issued','production_cutover_allowed'].some(key=>value[key]!==false))return null
+  const d=pathCiObservationClosed(value.details,['source_sha256','complete_source_sha256','warm','last','worker_stop','native_stop','proxy_stop','cleanup'])
+  if(['source_sha256','complete_source_sha256'].some(key=>typeof d[key]!=='string'||!/^[a-f0-9]{64}$/.test(d[key]))||!Array.isArray(d.worker_stop)||d.worker_stop.length>7)return null
+  const stops=d.worker_stop.map(row=>pathCiObservedStop(row)),byId=new Map(stops.map(row=>[row.entry,row]));if(byId.size!==stops.length)return null
+  const native=d.native_stop===null?null:pathCiObservedStop(d.native_stop,true)
+  let proxyGraceful=null,proxyClosed=null
+  if(d.proxy_stop!==null){const p=pathCiObservationClosed(d.proxy_stop,['graceful'],['proxy_closed','owned_proxy_only']);if(typeof p.graceful!=='boolean'||Object.hasOwn(p,'proxy_closed')&&typeof p.proxy_closed!=='boolean'||Object.hasOwn(p,'owned_proxy_only')&&p.owned_proxy_only!==true)return null;proxyGraceful=p.graceful;proxyClosed=p.proxy_closed??null}
+  let backendsZero=null,readersZero=null,queuesEmpty=null
+  if(d.cleanup!==null){const c=pathCiObservationClosed(d.cleanup,['ledger_sha256','roles_sha256','queues','policy_sha256','root_journal_head_sha256','root_journal_records','used_boot_uids','bindings','telemetry_backend_count','readers_in_flight']);if(['telemetry_backend_count','readers_in_flight','root_journal_records','used_boot_uids'].some(key=>!Number.isSafeInteger(c[key])||c[key]<0)||!Array.isArray(c.bindings)||c.bindings.length!==8)return null;const q=pathCiObservationClosed(c.queues,['jobs','runs','reviews','queries']);if(Object.values(q).some(v=>!Number.isSafeInteger(v)||v<0))return null;backendsZero=c.telemetry_backend_count===0;readersZero=c.readers_in_flight===0;queuesEmpty=Object.values(q).every(v=>v===0)}
+  return Object.freeze({event:'full069_worker_path_ci_owned_failure_observation',primary_code:'full069_path_ci_refused:short_cli_failed',reason_matches_cli:typeof cliReason==='string'&&value.reason===cliReason,validation_completed:false,warm_collected:pathCiObservedSample(d.warm),last_collected:pathCiObservedSample(d.last),worker_stop:Object.freeze(pathCiObservedEntryIds.filter(id=>byId.has(id)).map(id=>byId.get(id))),native_stop:native,proxy_graceful:proxyGraceful,proxy_closed:proxyClosed,cleanup_observed:d.cleanup!==null,telemetry_backends_zero:backendsZero,readers_in_flight_zero:readersZero,business_queues_empty:queuesEmpty,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false})
+ }catch{return null}
 }

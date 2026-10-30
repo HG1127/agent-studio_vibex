@@ -5,7 +5,7 @@ export const companionCiFail=c=>{throw Error('complete_companion_ci_'+c)}
 export const companionCiPurpose='YES_DISPOSABLE_FULL069_FIVE_COMPANIONS_ONLY'
 export const companionCiF05Purpose='YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY'
 export const companionCiFinalPathPurpose='YES_DISPOSABLE_FULL069_FINAL14_ALL13_PATHS_ONLY'
-export const companionCiFinalPathHarness=Object.freeze(['contract','guard','run','setup','setup-base','profiles','sidecars','bootstrap-child','bridge','sources'].map(n=>'services/pg-api/tests/helpers/pg18-full069-final-path-ci-'+n+'.mjs'))
+export const companionCiFinalPathHarness=Object.freeze([...['contract','guard','run','setup','setup-base','profiles','sidecars','bootstrap-child','bridge','sources'].map(n=>'services/pg-api/tests/helpers/pg18-full069-final-path-ci-'+n+'.mjs'),'services/pg-api/tests/helpers/pg18-full069-final14-database-acl-ci.mjs'])
 export const companionCiPackageBindings=freeze([{path:'services/pg-api/package.json',sha256:'90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58'},{path:'services/pg-api/pnpm-lock.yaml',sha256:'eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'}])
 export function companionCiFinalPathEnabled(value){if(value===undefined)return false;if(value!==companionCiFinalPathPurpose)companionCiFail('final13_purpose');return true}
 // Source records only. This cannot mint a stage/permit/deployment or run code.

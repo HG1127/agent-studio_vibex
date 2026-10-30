@@ -161,7 +161,7 @@ function usePgInternalTemplates(){
    onChange:value=>{if(owned.current===controller)setView(value)},
   })
   owned.current=controller;setView(controller.getView());void controller.start()
-  const check=()=>{controller.reconcile();void controller.start()},visible=()=>{if(document.visibilityState==='visible')check()}
+  const check=()=>{void verifyStudioSession().then(()=>{if(owned.current!==controller)return;controller.reconcile();void controller.start()})},visible=()=>{if(document.visibilityState==='visible')check()}
   window.addEventListener('focus',check);window.addEventListener('pageshow',check);window.addEventListener('storage',check);document.addEventListener('visibilitychange',visible)
   return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);window.removeEventListener('storage',check);document.removeEventListener('visibilitychange',visible);if(owned.current===controller)owned.current=null;controller.dispose()}
  },[])

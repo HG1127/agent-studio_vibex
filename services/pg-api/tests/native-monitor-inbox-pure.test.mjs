@@ -80,3 +80,60 @@ test('authored SQL pins seal actual function bodies, preserve optional predecess
  const ack=sql.slice(sql.indexOf('CREATE FUNCTION agentstudio.native_monitor_ack('));assert.ok(ack.indexOf('INSERT INTO agentstudio.native_monitor_reads')<ack.indexOf('UPDATE agentstudio.native_monitor_events SET read_ms'))
  assert.match(ack,/IF event_row.read_ms>0 THEN RETURN true/);assert.match(ack,/FOR SHARE OF a,u/)
 })
+
+
+// SQL-shape catalog model. CHECK conkey follows REL_18_STABLE StoreRelCheck:
+// walk expression Vars in order and keep the first occurrence, never sort.
+// No SQL engine is loaded and these tests are not installed-catalog evidence.
+function monitorCatalogModel(change=()=>{}){
+ const ddl=readFileSync(new URL('../../../db/postgres/migrations/pg_v9_073_monitor_inbox.sql',import.meta.url),'utf8'),trace=[]
+ const bodies=new Map([...ddl.matchAll(/CREATE FUNCTION agentstudio\.([a-z_]+)\(([^)]*)\)[\s\S]*?AS \$fn\$([\s\S]*?)\$fn\$;/g)].map(m=>[m[1]+'('+m[2]+')',m[3]]))
+ const constraint=(table,c)=>{
+  const line=ddl.split('\n').find(line=>line.includes('CONSTRAINT '+c.name+' '))
+  assert(line,'authored literal constraint '+c.name)
+  const definition=line.slice(line.indexOf('CONSTRAINT '+c.name+' ')+('CONSTRAINT '+c.name+' ').length).replace(/[,;]$/,'')
+  let names
+  if(c.type==='c'){
+   const expr=definition.slice('CHECK('.length,-1)
+   names=[...new Set(expr.slice(expr.indexOf('(')+1,expr.lastIndexOf(')')).split(','))]
+  }else names=definition.slice(definition.indexOf('(')+1,definition.indexOf(')')).split(',')
+  const row={name:c.name,type:c.type,keys:names.map(name=>{const n=table.columns.findIndex(col=>col.name===name)+1;assert(n>0);return n}),valid:true,enforced:true,deferrable:definition.includes(' DEFERRABLE'),deferred:definition.includes(' INITIALLY DEFERRED'),local:true,ordinary:true,no_inherit:['p','u','f'].includes(c.type),definition:definition.replace(' ON UPDATE NO ACTION ON DELETE NO ACTION','')}
+  change(table.name,row);return row
+ }
+ const db={async query(sql,p=[]){
+  trace.push({sql,params:p})
+  if(sql===nativeMonitorPresenceSql)return{rows:nativeMonitorExpectedPresence.map(value=>{const at=value.indexOf(':');return{kind:value.slice(0,at),name:value.slice(at+1)}})}
+  const table=nativeMonitorTables.find(t=>'agentstudio.'+t.name===p[0])
+  if(table){
+   if(sql.startsWith("SELECT c.relkind='r'"))return{rows:[{ok:true,api_oid:123}]}
+   if(sql.startsWith('SELECT a.attname AS name'))return{rows:table.columns.map(c=>({...c,safe:true}))}
+   if(sql.startsWith('SELECT polname AS name'))return{rows:[{name:table.name+'_owner',command:'r',permissive:true,roles:[123],using_expr:'(owner_user_id = agentstudio.actor_id())',check_expr:null}]}
+   if(sql.startsWith('SELECT conname AS name'))return{rows:[...table.constraints.map(c=>constraint(table,c)),...table.columns.flatMap((c,i)=>c.required?[{name:table.name+'_'+c.name+'_not_null',type:'n',keys:[i+1],valid:true,enforced:true,deferrable:false,deferred:false,local:true,ordinary:true,no_inherit:false,definition:'NOT NULL '+c.name}]:[])]}
+   if(sql.startsWith('SELECT ci.relname AS name'))return{rows:table.constraints.filter(c=>['p','u'].includes(c.type)).map(c=>({name:c.name,keys:[...c.keys],safe:true}))}
+   if(sql.startsWith('SELECT tgname AS name'))return{rows:[{name:table.name+'_immutable',type:table.name==='native_monitor_events'?42:58,function_name:'native_monitor_immutable',safe:true},...(table.name==='native_monitor_events'?[{name:'native_monitor_events_read_guard',type:19,function_name:'native_monitor_read_guard',safe:true}]:[])]}
+  }
+  if(sql.startsWith("SELECT p.prokind='f'")){const key=String(p[0]).replace(/^agentstudio\./,'');assert(bodies.has(key),key);return{rows:[{ok:true,source:bodies.get(key)}]}}
+  throw Error('unrecognized pure catalog query')
+ }}
+ return{db,trace}
+}
+test('PG18 CHECK metadata uses expression-first conkey and the complete strict catalog walk succeeds',async()=>{
+ const table=nativeMonitorTables.find(t=>t.name==='native_monitor_reads'),ck=table.constraints.find(c=>c.name==='native_monitor_reads_valid_ck')
+ const seen=[],f=monitorCatalogModel((table,row)=>{if(row.name==='native_monitor_reads_valid_ck')seen.push(row.keys)})
+ await verifyNativeMonitorInboxSchema(f.db)
+ assert.deepEqual(ck.keys,['governance_revision','read_ms'])
+ assert.deepEqual(seen,[[4,3]])
+ assert(f.trace.some(q=>q.params[0]==='agentstudio.native_monitor_ack(uuid,uuid)'))
+})
+test('CHECK key order is exact: reversed, omitted and repeated columns remain refused',async()=>{
+ for(const keys of [[3,4],[4],[4,3,3],[4,2]]){
+  const f=monitorCatalogModel((_table,row)=>{if(row.name==='native_monitor_reads_valid_ck')row.keys=keys})
+  await assert.rejects(()=>verifyNativeMonitorInboxSchema(f.db),/unsafe_native_monitor_inbox_schema/)
+ }
+})
+test('constraint type, validation, enforcement, locality, inheritance, deferral and expression seals stay strict',async()=>{
+ for(const patch of [{type:'f'},{valid:false},{enforced:false},{local:false},{ordinary:false},{no_inherit:true},{deferrable:true},{deferred:true},{definition:'CHECK (true)'}]){
+  const f=monitorCatalogModel((_table,row)=>{if(row.name==='native_monitor_reads_valid_ck')Object.assign(row,patch)})
+  await assert.rejects(()=>verifyNativeMonitorInboxSchema(f.db),/unsafe_native_monitor_inbox_schema/)
+ }
+})

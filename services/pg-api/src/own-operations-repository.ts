@@ -1,3 +1,4 @@
+import {readOriginalInternalOverview} from './original-internal-overview-read.ts'
 // Owner metadata projections. No task bodies, mutations or action authority.
 import {HttpError,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActorClient,assertOwnedAdmissionContext} from "./repository.ts"
@@ -151,13 +152,17 @@ export class OwnOperationsRepository{
    await db.query('COMMIT');begun=false;return result
   }catch(error){
    if(begun)await db.query('ROLLBACK').catch(()=>{})
-   if(error instanceof HttpError&&error.status===401)throw new HttpError(401,"session_required")
+   if(error instanceof HttpError&&error.status===409&&error.code==='original_internal_overview_employee_changed')throw error
+    if(error instanceof HttpError&&error.status===401)throw new HttpError(401,"session_required")
    if(error instanceof HttpError&&error.status===400&&["invalid_own_todo_query","invalid_own_todo_cursor"].includes(error.code))throw error
    if(error instanceof HttpError&&error.code==="employee_not_provisioned"||error&&typeof error==="object"&&"code"in error&&error.code==="P0001"&&"message"in error&&error.message==="agent_memory_native_employee_required")throw new HttpError(401,"session_required")
    return ownUnavailable()
   }finally{db.release()}
  }
- async originalAgentWorkspace(identity:Identity):Promise<OriginalAgentWorkspace>{
+ async originalInternalOverview(identity:Identity,expectedEmployee:string){
+   return this.actor(identity,async(db,owner,now)=>{if(owner!==expectedEmployee)throw new HttpError(409,'original_internal_overview_employee_changed');return readOriginalInternalOverview(db,owner,now)})
+  }
+  async originalAgentWorkspace(identity:Identity):Promise<OriginalAgentWorkspace>{
   return this.actor(identity,async(db,owner,now)=>{
    const count=(await db.query(originalAgentWorkspaceCountSql,[owner])).rows
    if(count.length!==1)return ownUnavailable()

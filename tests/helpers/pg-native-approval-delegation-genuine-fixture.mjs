@@ -39,7 +39,7 @@ export const approvalDelegationBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/http.ts": "918c7460a34b7603064e9c4c5c0c0f89e0ee9145f5b26c1c2bb5f3eb92576689",
   "services/pg-api/src/native-auth-http.d.mts": "455046bbc72a9723f8143a4076b7b311d9914bb9fcfe5e61e5f84f944667d31a",
   "services/pg-api/src/native-auth-http.mjs": "3e849c29ef1df06ca00437708cf32d35b5f34313792e59db40996d5e32b2cd63",
-  "services/pg-api/src/native-config-uat-policy.ts": "6a9f9f0747ef242f53b99a39438cd886d85cd6a4c6be88b00559bf2bd8b01f26",
+  "services/pg-api/src/native-config-uat-policy.ts": "206bd1b738cc864aaf609f36ed05957f14d958cae623e6a39349c53c1b24f68e",
   "services/pg-api/src/native-server.ts": "2c465065accd677b42f1a7068da4cd5dc153d382ab9498c566593fe8c4fcbca0",
   "services/pg-api/src/owned-step-decision-context.ts": "6e842015da3721caee315368706c0fdea608c020236816cd4210cf13bc025643",
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
@@ -65,7 +65,7 @@ export const approvalDelegationBrowserFrozenSources=Object.freeze({
   "src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx": "2c2599e194292288d3a3bda23432cc8d1bdbbcd237f41e042b39ca64202b2e05",
   "services/pg-api/src/agent-run-control-admission.ts": "e907b0bfb6b445c8077f6ee17b3e3c9d73a1b373d56d8a9b9ae205bc20950a94",
   "services/pg-api/src/own-operations-contract.ts": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab",
-  "services/pg-api/src/own-operations-repository.ts": "4111884cdb352cacf5414184065286766d0206a0de5076b2b5e2662fe72dbac0",
+  "services/pg-api/src/own-operations-repository.ts": "092699446d390974ea20cdb62c4d386d82b702dc7cc67526ab08ba5e1f816679",
   "services/pg-api/src/agent-optimization-repository.ts": "957b6ea18077085709e8209c276b9be523126930ee12adaca11d6ae0b8bf4068",
   "services/pg-api/src/agent-optimization-retest-policy.ts": "f14883d0e5c0fd68b1472291a16e0ad8c08c9c9c9d468bd0b9be561e95cf1998",
   "services/pg-api/src/knowledge-index-service.ts": "bb8d3345460652a9b130a4df12af4b4fa997a18044d31ca25d2d4fe2316b02a4",
@@ -224,15 +224,18 @@ export const approvalDelegationBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/native-home-knowledge-stats-pins.ts": "fa4308addaa5562cf12a37e867deffbf133458c80823a1bae42426221c82707d",
   "services/pg-api/src/native-home-knowledge-stats-runtime.ts": "249e533ed5c477abc4189c4e676948d01f3b81b5cbc31cca8b1032df3be4f353",
   "services/pg-api/src/pg18-full069-reader-audit-phase.mjs": "53419efca128b54406394687c80b3379c68f50b7f30f26765b530f9a7c3ed909",
-  "services/pg-api/src/native-monitor-inbox-audit.ts": "5082534d9874070bb98907e8857b1afa4b5e89c96b0ee0f1dab52973c3a2bf56",
+  "services/pg-api/src/native-monitor-inbox-audit.ts": "2309627303b6fe7f7237c1ce2666ddd069db740ce210edcdd84d427ec6a49cd8",
   "services/pg-api/src/native-monitor-inbox-contract.ts": "eb47468dc077794254266d865bec917f6f72530e3aebbd3e11d8e13bec3ccd19",
   "services/pg-api/src/native-monitor-inbox-http.ts": "b700ec51d8d0fed9f3849c8fddedc50dc95d252d78b4361d5b7c1258ab6e610f",
   "services/pg-api/src/native-monitor-inbox-import-plan.ts": "3072ef03ae7179676ab576caca40817985f620b6ea4c34ba9f23bb77e56a6746",
   "services/pg-api/src/native-monitor-inbox-repository.ts": "46dd016a2dedd434d9b7e5ec93b25816b03b02d5977e10d5729e5113cb023daa",
   "services/pg-api/src/native-monitor-inbox-runtime.ts": "17bd61f2d8d222a06cee4d3346288d1632f376d4ff6b4693953e64e3bd0a7f2a",
-  "services/pg-api/src/native-monitor-inbox-schema.ts": "5d86d62f99055699280777e6db78691e5e06edfbecbfb7c27652dfc768110ac3",
+  "services/pg-api/src/native-monitor-inbox-schema.ts": "4970eee96a4a1ad2e60ebf4bbb0273736df8bb7e484699e30b295e46648e2528",
   "services/pg-api/src/pg18-full069-final14-database-acl.mjs": "5b0fcf05a15e218a6724edbfd0eb5f9d5e6ba6a3076b68683dbd909fddafa800",
-  "services/pg-api/src/pg18-full069-owned-record-contract.mjs": "d8a34454c2c3cf0c072bfdbaec608899152c15113a6083e9fde12e3b582f5587"
+  "services/pg-api/src/pg18-full069-owned-record-contract.mjs": "d8a34454c2c3cf0c072bfdbaec608899152c15113a6083e9fde12e3b582f5587",
+  "services/pg-api/src/original-internal-overview-http.ts": "2d6c058c37d5a23c471ad1874e30b82eed25eb5172c08155a867d6d1d789c0d3",
+  "services/pg-api/src/original-internal-overview-read.ts": "810f10a8a2363046e6bdae3389870239cf81d47f14d91a702ddc1d2d6baef22e",
+  "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969"
 })
 export async function startPgNativeApprovalDelegationGenuineBrowserFixture(env=process.env){
   requireApprovalDelegationGenuineCi(env)

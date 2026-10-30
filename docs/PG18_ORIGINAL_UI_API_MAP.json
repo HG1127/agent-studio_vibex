@@ -3013,7 +3013,8 @@
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         }
-      ]
+      ],
+      "current_source_status": "ORIGINAL_PAGE_ADAPTER_AND_GUARDED_HOSTED_VERIFICATION_SOURCE_INTEGRATION_IN_PROGRESS_NOT_ACCEPTED"
     },
     {
       "route": "/agent-collaboration",
@@ -4068,7 +4069,8 @@
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         }
-      ]
+      ],
+      "current_source_status": "ORIGINAL_PAGE_ADAPTER_AND_GUARDED_HOSTED_VERIFICATION_SOURCE_INTEGRATION_IN_PROGRESS_NOT_ACCEPTED"
     }
   ],
   "migration_checkout_page_supplement": [
@@ -5993,14 +5995,14 @@
   "current_preparation": {
     "original_login_adapter": "Original Login/App/current account-menu JSX retained; actual Cookie/CSRF adapter, verified profile, retry and acknowledged logout source integrated; original-page hosted acceptance pending",
     "original_home_transport": "Current original Home and catalog integrated with full immutable spec bindings, CAS, employee concurrency precondition, recovery and unknown-write isolation; reviewed async read fences and independent metadata/binding intent fixes integrated",
-    "original_UI_isolated_build": "Actual normal PB and opt-in original index/main/App builds passed with99 assets each; normal output has0 PG resource matches. Original business page acceptance remains pending.",
+    "original_UI_isolated_build": "Actual normal PB and opt-in original index/main/App builds passed with100 assets each; normal output has0 PG resource matches after static backend selection. Original business page acceptance remains pending.",
     "pure_auth_home_contract_checks": 110,
     "pure_optional070_backend_checks": 76,
     "pure_optional071_catalog_checks": 61,
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 480,
+    "combined_pure_checks": 541,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6161,11 +6163,82 @@
       "employee_signoffs": 0,
       "production_GO": false
     },
-    "original_internal_templates_source": "Existing /internal-templates JSX, labels, navigation and reviewed PB business body retained. Build-time hook selects real Native F08 API/session; preview, one-use code, redeem/revoke, unknown-intent refresh and account-scoped late-response fences adapted. Source only: original-page host/browser acceptance pending.",
-    "internal_share_expected_employee": "Original-page record/confirm sends the closed-over employee UUID. Real repository compares it after Native identity/withActor owner mapping and before receipt/record SQL. Cookie Bob + expected Alice create/redeem/revoke/confirm six409 negatives added to existing fresh F08 TCP story; real execution pending. UUID is a concurrency precondition, never authentication.",
+    "original_internal_templates_source": "Existing /internal-templates JSX, labels, navigation and PB body retained. Fixed-employee record/confirm, preview, redeem/revoke, unknown-intent refresh and account-scoped late responses are adapted. Focus revalidates real Cookie before reconciling even during an outstanding request. Independent fresh F08 original-page host/story and bounded safe screenshot are integrated; genuine original-page rerun pending.",
+    "internal_share_expected_employee": "Actual F08 flow on1df512af passed all15 test nodes, including six real Cookie Bob + expected Alice record/confirm refusals with unchanged full counters. This is backend evidence only; original-page story remains pending on the next candidate.",
     "original_monitor073_source": "Optional immutable historical metadata, current-owner keyset inbox and audited read receipts. Independent original-login and monitor073 purposes install/audit real073 and require nonempty owner rows while retaining the real071 predecessor. Original auth steps and every error/network/PB zero gate retained. Capture/source ACL/event production/review/baseline live chain remains separate074 work; no full monitor acceptance.",
     "full069_record_path_source": "One fixed child-leaf mapping shared by parent/child; workflow_v2 keeps its business identity while using a leaf accepted by the unchanged path grammar. Primary/secondary record failures remain separately bounded. Actual process rerun pending.",
-    "full069_database_acl_source": "Whole final53-row comparison includes PUBLIC TEMPORARY preserved by the unchanged050 bootstrap and both required F05 CONNECTs. Owner, OID/name, grantor, grantability, extra/missing/cross-database rows remain exact; no row filtering or ACL hash omission. Twelve real uncommitted/rollback negatives added; actual rerun pending. No SQL/privilege change."
+    "full069_database_acl_source": "Whole final53-row comparison includes PUBLIC TEMPORARY preserved by the unchanged050 bootstrap and both required F05 CONNECTs. Owner, OID/name, grantor, grantability, extra/missing/cross-database rows remain exact; no row filtering or ACL hash omission. Twelve real uncommitted/rollback negatives added; actual rerun pending. No SQL/privilege change.",
+    "original_internal_overview_source": "Original personal /internal-overview layout/filter/refresh retained. New verified-Cookie GET maps actual owner-only eight counters, bounded actions and recent Agent/Workflow runs, with fixed expected-employee refusal and late-read fences. Historical titles are not replaced with current names; legacy main Worker health is explicitly unknown. Ordinary build selects the legacy reader at compile time and contains0 PG resources. Genuine original-page acceptance remains pending.",
+    "pure_original_internal_overview_new_checks": 36,
+    "pure_original_internal_share_host_policy_checks": 12,
+    "pure_monitor073_exact_constraint_order_new_checks": 3,
+    "monitor073_actual_first_failure": {
+      "head": "1df512af5c0d982b6859ba53e437519787f10d5a",
+      "run": 41044735632,
+      "TCP_job": 124025955883,
+      "original_login_job": 124025955688,
+      "original_monitor_job": 124025956030,
+      "status": "FAILED_AT_STRICT_INSTALLED_CONSTRAINT_AUDIT_BEFORE_BUSINESS_STEPS",
+      "error": "unsafe_native_monitor_inbox_schema",
+      "TCP_raw_sha256": "7912767e9061c8504943e4d7c85114a9c35a5015277cc1dbae1fbbc1348464ca",
+      "source_repair": "Preserve exact PG18 CHECK expression-first conkey; reads_valid_ck is[4,3], never sorted. SQL and ACL unchanged; strict negative catalog models added. Actual rerun pending."
+    },
+    "latest_verified_backend_parent": {
+      "head": "1df512af5c0d982b6859ba53e437519787f10d5a",
+      "F08_flow": {
+        "run": 41044735607,
+        "job": 124025955111,
+        "test_nodes": 15,
+        "actual_Cookie_Bob_expected_Alice_six_record_confirm_negatives_passed": true,
+        "raw_sha256": "84dd98a3ed63107f9f8bb357de32e9fccaa13c69ee776ce263e6d6d3ad640c55"
+      },
+      "PocketBase": {
+        "run": 41045033368,
+        "job": 124026922004,
+        "summary": {
+          "status": "PASS",
+          "completed": 19,
+          "total": 19,
+          "passed": 19,
+          "failed": 0,
+          "seconds": 73.6,
+          "workers": 2
+        },
+        "raw_sha256": "90c3130d580e5315ecd56528e377742cc8ce1c87654ac324cded0ff47b4e2a08"
+      },
+      "quality": {
+        "run": 41044735586,
+        "total_jobs": 50,
+        "passed_jobs": 50
+      },
+      "home070071072": {
+        "run": 41044735632,
+        "jobs": [
+          124025956114,
+          124025956196,
+          124025955964
+        ],
+        "all_passed": true
+      },
+      "new_candidate_must_rerun": true,
+      "original_page_accepted": 0
+    },
+    "full069_latest_actual_failure": {
+      "head": "1df512af5c0d982b6859ba53e437519787f10d5a",
+      "run": 41044735639,
+      "legacy_job": 124025955499,
+      "legacy_code": "full069_worker_live_owned_process_changed",
+      "legacy_old_record_path_failure_passed": true,
+      "final14_job": 124025955714,
+      "final14_phase": "build_protected_stage",
+      "final14_code": "complete_install_ci_refused:operation_failed",
+      "no_qualifying_window_or_BEGIN_END": true,
+      "fixes_or_diagnostics_pending": false,
+      "genuine_recheck_pending": true
+    },
+    "full069_final14_stage_source_repair": "Producer and consumer now retain the same eleven mandatory exact helper paths. Omission, alias and overlapping hash conflicts remain refused;17 targeted pure checks pass. The previous remote log recorded only outer operation_failed; the inner overlay_harness mismatch is deterministically reproduced from source. Actual hosted rerun pending.",
+    "full069_owned_process_failure_diagnostic": "Original safe privateRead/json precedes bounded observation of existing validation-result booleans and fixed entry IDs. It never prints paths/PIDs/credentials/raw error or grants readiness/retry. Read/shape/output failures preserve the original short_cli_failed; actual failed entry/cause remains unknown pending hosted rerun.",
+    "pure_owned_process_failure_diagnostic_new_checks": 10
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

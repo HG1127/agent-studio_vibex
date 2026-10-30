@@ -74,7 +74,11 @@ jobs:
         run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-internal-share-database-pg18.test.mjs
 
   pg18-internal-share-browser:
-    name: F08 / real PG18 browser publication copy resource configuration and recovery
+    name: F08 / real PG18 browser / ${{ matrix.story }}
+    strategy:
+      fail-fast: false
+      matrix:
+        story: [reference, original-internal-share]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -122,12 +126,35 @@ jobs:
           node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/agent-internal-share-genuine-guard.test.mjs services/pg-api/tests/agent-internal-share-pure.test.mjs
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Original page guards and actual adapter regressions
+        if: matrix.story == 'original-internal-share'
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/pg-original-internal-share-browser-policy.test.mjs tests/original-internal-templates.test.mjs tests/original-internal-share-expected-employee.test.mjs
+      - name: Build existing employee UI into its isolated original PG output
+        if: matrix.story == 'original-internal-share'
+        run: node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Actual HTTPS browser through market publication copy configuration and recovery
+        if: matrix.story == 'reference'
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-internal-share-genuine.config.mjs
+      - name: Actual original internal templates page through fresh F08 Cookie backend
+        if: matrix.story == 'original-internal-share'
+        env:
+          AGENT_STUDIO_ORIGINAL_INTERNAL_SHARE_CI: YES_DISPOSABLE_ORIGINAL_INTERNAL_SHARE_ONLY
+          AGENT_STUDIO_ORIGINAL_INTERNAL_SHARE_STORY: original-internal-share
+          AGENT_STUDIO_ORIGINAL_INTERNAL_SHARE_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-internal-share-genuine.config.mjs
       - name: Retain synthetic page images only
-        if: always()
+        if: always() && matrix.story == 'reference'
         uses: actions/upload-artifact@v4
         with:
           name: pg18-internal-share-genuine-browser-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/F08-genuine-browser-results/**/*.png
+          if-no-files-found: ignore
+      - name: Retain bounded observations and reviewed synthetic original-page image
+        if: always() && matrix.story == 'original-internal-share'
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-internal-share-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-internal-share-browser-results/**/original-internal-share-observation.json
+            .tmp/original-internal-share-browser-results/**/original-internal-share-bob-redeemed.png
           if-no-files-found: ignore

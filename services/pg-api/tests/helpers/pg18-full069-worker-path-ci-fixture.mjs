@@ -10,7 +10,7 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {completeProfileCiBinding} from './pg18-complete-install-ci-guard.mjs'
 import {completeProfileStageDescriptor,loadVerifiedCompleteProfileStage,assertVerifiedCompleteProfileStage} from './pg18-complete-install-ci-stage.mjs'
 import {attestCompleteProfileTargets,ownedCompleteProfilePool,configureOwnedCompleteServiceHba} from './pg18-complete-install-ci-containers.mjs'
-import {assertPathCiResult,assertPathCiWarm,assertPathCiCleanup,pathCiTelemetryHbaText,pathCiOriginalSevenLogins,pathCiNetworkDrift,pathCiTrustFailures} from './pg18-full069-worker-path-ci-contract.mjs'
+import {assertPathCiResult,assertPathCiWarm,assertPathCiCleanup,pathCiTelemetryHbaText,pathCiOriginalSevenLogins,pathCiNetworkDrift,pathCiTrustFailures,pathCiOwnedFailureObservation} from './pg18-full069-worker-path-ci-contract.mjs'
 import {full069NetworkPolicyDigest} from '../../src/pg18-full069-network-policy.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../..'),sha=b=>createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
 const fail=c=>{throw Error('full069_path_ci_refused:'+c)},cleanEnv=()=>({PATH:'/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',HOME:'/root',LANG:'C.UTF-8'})
@@ -235,7 +235,17 @@ export async function runOwnedFull069WorkerPathCi(permit){
   phase('owned_UID_network_rules_and_signed_warm_profile');network(s);await until(()=>Date.now()-s.tls.validFrom>=30000,'tls_not_yet_aged',35000);await liveProfile(s)
   phase('fresh_Root_short_CLI_original_seven_entries_Native_HTTPS')
   const env={...cleanEnv(),AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED:'true',AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED:'RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY',AGENT_STUDIO_FULL069_WORKER_PATH_VALIDATION_ENABLED:'true',AGENT_STUDIO_FULL069_WORKER_PATH_VALIDATION_APPROVED:'VALIDATE_DISPOSABLE_FULL069_WORKER_PATHS_ONLY'}
-   observeSelectedHostRuntime(s,'before_original_short_CLI');const r=await command(s,s.deployment+'/services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs',['--run-short'],env,{timeout:300000});if(r.code!==0){observeSelectedHostRuntime(s,'after_original_short_CLI_refusal');fail('short_cli_failed')}assertPathCiResult(r.value,s.runId)
+   observeSelectedHostRuntime(s,'before_original_short_CLI');const r=await command(s,s.deployment+'/services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs',['--run-short'],env,{timeout:300000});if(r.code!==0){
+    observeSelectedHostRuntime(s,'after_original_short_CLI_refusal')
+    // Observation only, after the original owned private reader and JSON parser.
+    // A missing/refused record or failed diagnostic never replaces this primary.
+    try{
+     const record=json(privateRead(fixed.liveStore+'/'+s.runId+'/validation-result.json'))
+     const observation=pathCiOwnedFailureObservation(record,s.runId,r.value?.reason)
+     if(observation)fs.writeSync(1,JSON.stringify(observation)+'\n')
+    }catch{}
+    fail('short_cli_failed')
+   }assertPathCiResult(r.value,s.runId)
   const runDirectory=fixed.liveStore+'/'+s.runId,resultBytes=privateRead(runDirectory+'/validation-result.json'),record=json(resultBytes);assertPathCiCleanup(record,s.runId);if(r.value.details?.record_sha256!==sha(resultBytes)||fs.readdirSync(runDirectory).some(v=>/^(?:start|end|samples|begin-acknowledgement|end-acknowledgement)(?:\.|-)/.test(v)))fail('short_record_or_qualifier_artifact')
   const warm=json(privateRead(runDirectory+'/validation-warm.json'));assertPathCiWarm(warm,s.runId)
   // Copy the two actual records before removing only the owned deployment roots.

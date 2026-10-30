@@ -12,7 +12,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "local-executor/office.mjs": "7c3abc4f87c497ccc7dbaa84a83458fa0ac0f21e3c224be829799bfbe7110c8f",
   "local-executor/result.mjs": "9bb610ae182dbb903c00a12cefe5bcaf08acc29211c26731c344ff06b8f84e22",
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
-  "package.json": "51d8d0d512db4aac01e114c1991ad671b81ec7e9814f710f1d967212f9449179",
+  "package.json": "588fd2c01a94d17e9d1efec730ebda1a0ee46bb7afdd0b681956540ff93fee30",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/src/agent-human-input-policy.ts": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b",
   "services/pg-api/src/autonomous-agent-run-repository.ts": "791d148ef5b23403e27d39d60ff414f358e75abddd27d47b28f963079974de1c",
@@ -82,7 +82,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "src/lib/pgPublicAgentCaller.ts": "e735ccf9a1b47f9ca3cb28d94e269b6b3724de18ecca604c4b3ed5f4dfc6f4f0",
   "src/pages/PgNativePilot/PgNativeAgentCallerDetails.tsx": "236a56ad5c7aa9fde2f3c9839dbf8be8fa630c284fc63782381ecc27f4205b3d",
   "src/pages/PgNativePilot/PgNativeAgentCallerPanel.tsx": "4d3628fd9b00e7c56376102b9efe14211b3873c70ea275867a9c0ddaaae1a1a4",
-  "services/pg-api/src/native-config-uat-policy.ts": "6a9f9f0747ef242f53b99a39438cd886d85cd6a4c6be88b00559bf2bd8b01f26",
+  "services/pg-api/src/native-config-uat-policy.ts": "206bd1b738cc864aaf609f36ed05957f14d958cae623e6a39349c53c1b24f68e",
   "services/pg-api/src/native-entry-http.ts": "bb7b73918f643d0d16b615aeeb3829ac70bb6e3a23e360f6b260c34bd98d7f14",
   "services/pg-api/src/owner-tool-trial-audit-core.ts": "f482fcb22dad341d2ef6b6468c790665245f43e5037e9252deb3dc6ea37901b3",
   "services/pg-api/src/owner-tool-trial-audit.ts": "9d2c88352a9d12afc16875627f27f4602ed3866f75981191241ef3978028f863",
@@ -182,15 +182,18 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/native-home-knowledge-stats-pins.ts": "fa4308addaa5562cf12a37e867deffbf133458c80823a1bae42426221c82707d",
   "services/pg-api/src/native-home-knowledge-stats-runtime.ts": "249e533ed5c477abc4189c4e676948d01f3b81b5cbc31cca8b1032df3be4f353",
   "services/pg-api/src/pg18-full069-reader-audit-phase.mjs": "53419efca128b54406394687c80b3379c68f50b7f30f26765b530f9a7c3ed909",
-  "services/pg-api/src/native-monitor-inbox-audit.ts": "5082534d9874070bb98907e8857b1afa4b5e89c96b0ee0f1dab52973c3a2bf56",
+  "services/pg-api/src/native-monitor-inbox-audit.ts": "2309627303b6fe7f7237c1ce2666ddd069db740ce210edcdd84d427ec6a49cd8",
   "services/pg-api/src/native-monitor-inbox-contract.ts": "eb47468dc077794254266d865bec917f6f72530e3aebbd3e11d8e13bec3ccd19",
   "services/pg-api/src/native-monitor-inbox-http.ts": "b700ec51d8d0fed9f3849c8fddedc50dc95d252d78b4361d5b7c1258ab6e610f",
   "services/pg-api/src/native-monitor-inbox-import-plan.ts": "3072ef03ae7179676ab576caca40817985f620b6ea4c34ba9f23bb77e56a6746",
   "services/pg-api/src/native-monitor-inbox-repository.ts": "46dd016a2dedd434d9b7e5ec93b25816b03b02d5977e10d5729e5113cb023daa",
   "services/pg-api/src/native-monitor-inbox-runtime.ts": "17bd61f2d8d222a06cee4d3346288d1632f376d4ff6b4693953e64e3bd0a7f2a",
-  "services/pg-api/src/native-monitor-inbox-schema.ts": "5d86d62f99055699280777e6db78691e5e06edfbecbfb7c27652dfc768110ac3",
+  "services/pg-api/src/native-monitor-inbox-schema.ts": "4970eee96a4a1ad2e60ebf4bbb0273736df8bb7e484699e30b295e46648e2528",
   "services/pg-api/src/pg18-full069-final14-database-acl.mjs": "5b0fcf05a15e218a6724edbfd0eb5f9d5e6ba6a3076b68683dbd909fddafa800",
-  "services/pg-api/src/pg18-full069-owned-record-contract.mjs": "d8a34454c2c3cf0c072bfdbaec608899152c15113a6083e9fde12e3b582f5587"
+  "services/pg-api/src/pg18-full069-owned-record-contract.mjs": "d8a34454c2c3cf0c072bfdbaec608899152c15113a6083e9fde12e3b582f5587",
+  "services/pg-api/src/original-internal-overview-http.ts": "2d6c058c37d5a23c471ad1874e30b82eed25eb5172c08155a867d6d1d789c0d3",
+  "services/pg-api/src/original-internal-overview-read.ts": "810f10a8a2363046e6bdae3389870239cf81d47f14d91a702ddc1d2d6baef22e",
+  "shared/original-internal-overview-contract.ts": "a4aad15db6aa5e91b338470ffbe692b5df98a4aae0fed0ebd791dd36dfa30969"
 })
 export async function nativeLocalDeviceGenuineFixture(env=process.env,{browserMode=false,chainSupport=false}={}){
  const target=requireNativeLocalDeviceGenuineCi(env)
