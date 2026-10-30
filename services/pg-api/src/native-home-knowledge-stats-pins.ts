@@ -8,7 +8,12 @@ export const originalHomeStatisticsFunctionPins=Object.freeze([
     "strict": false,
     "set": false,
     "args": 1,
-    "roles": [],
+    "roles": [
+      "agentstudio_knowledge_embedding",
+      "agentstudio_knowledge_execution",
+      "agentstudio_knowledge_index",
+      "agentstudio_knowledge_query"
+    ],
     "result": "boolean",
     "sha256": "82321600c04a16d96d62997203d5d863955c18743ff2578668766b5b2aad44df"
   },
@@ -21,7 +26,8 @@ export const originalHomeStatisticsFunctionPins=Object.freeze([
     "args": 1,
     "roles": [
       "agentstudio_api",
-      "agentstudio_knowledge_content"
+      "agentstudio_knowledge_content",
+      "agentstudio_knowledge_query"
     ],
     "result": "text",
     "sha256": "d403e834a01f796128a5ab6ce23ddbccf300ea5fa7b63ab0be58872ccead028d"

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import fs from 'node:fs'
+import {originalHomeStatisticsFunctionPins} from '../src/native-home-knowledge-stats-pins.ts'
 import {selectOriginalHomeKnowledgeStatistics,inspectOriginalHomeKnowledgeStatisticsStartup} from '../src/native-home-knowledge-stats-runtime.ts'
 import {originalHomeStatisticsPresenceSql,inspectOptionalOriginalHomeKnowledgeStatisticsSchema} from '../src/native-home-knowledge-stats-audit.ts'
 // Pure negative/control-flow fixtures, never catalog/ACL/installation evidence.
@@ -11,3 +13,14 @@ for(const row of [{kind:'migration',name:'pg_v9_072'},{kind:'function',name:'ori
 test('unsafe actual login shape never becomes absent readiness',async()=>{const f=absent({principal:false});await assert.rejects(inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool),error=>error.code==='original_home_knowledge_statistics_unavailable')})
 test('rollback failure on a successful absent audit discards and refuses readiness',async()=>{const f=absent({rollbackFailure:true});await assert.rejects(inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool),/original_home_statistics_schema_rollback_required/);assert.deepEqual(f.state.released,[true])})
 test('rollback failure after primary refusal retains primary and still discards',async()=>{const f=absent({principal:false,rollbackFailure:true});await assert.rejects(inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool),error=>error.code==='original_home_knowledge_statistics_unavailable');assert.deepEqual(f.state.released,[true])})
+test('old ACL function grants include all unchanged001-069 migrations, rather than only their032 definitions',()=>{
+ const root=new URL('../../../db/postgres/migrations/',import.meta.url),files=fs.readdirSync(root).filter(name=>/^pg_v9_\d{3}_.*\.sql$/.test(name)&&Number(name.slice(6,9))<=69).sort()
+ for(const pin of originalHomeStatisticsFunctionPins.filter(value=>value.signature!=='original_home_knowledge_stats(uuid)')){
+  const roles=new Set(['PUBLIC']),needle='agentstudio.'+pin.signature
+  for(const file of files){const sql=fs.readFileSync(new URL(file,root),'utf8');for(const event of sql.matchAll(/\b(GRANT EXECUTE|REVOKE (?:ALL|EXECUTE)) ON FUNCTION ([^;]+?) (TO|FROM) ([^;]+);/g)){
+   if(!event[2].replace(/\s+/g,'').split(/,(?=agentstudio\.)/).includes(needle))continue
+   for(const role of event[4].split(',').map(value=>value.trim())){assert.match(role,/^[a-z_]+$|^PUBLIC$/);if(event[1]==='GRANT EXECUTE')roles.add(role);else roles.delete(role)}
+  }}
+  assert.deepEqual([...pin.roles].sort(),[...roles].sort(),pin.signature+' exact final source grants')
+ }
+})

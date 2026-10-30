@@ -6000,7 +6000,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 403,
+    "combined_pure_checks": 404,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6056,7 +6056,7 @@
       "original_page_accepted": 0
     },
     "current_candidate_genuine_rerun_pending": true,
-    "pure_optional072_statistics_checks": 9,
+    "pure_optional072_statistics_checks": 10,
     "pure_writer_file_change_diagnostic_checks": 14,
     "pure_full069_reader_phase_checks": 18,
     "backend_optional072_source_merged": true,
@@ -6077,7 +6077,17 @@
     },
     "optional072_preparation": "Independent fresh synthetic purpose, pinned original SQL, real070/071 predecessor audits, optional shared-statistics startup and per-read ACL/function verification; same-head actual PG18 rerun pending; old proposed SQL retained as reference",
     "full069_reader_preparation": "Operator management audit remains; original Controller Reader audit is mandatory during a real leased Native HTTPS observation; both collectors require one-use actual observation provenance; actual same-head legacy/final rerun pending",
-    "writer_file_change_diagnostic": "Fixed-field observation only; original strict file refusal and all cleanup assertions retained; actual cause subtype and genuine failure remain unresolved"
+    "writer_file_change_diagnostic": "Fixed-field observation only; original strict file refusal and all cleanup assertions retained; actual cause subtype and genuine failure remain unresolved",
+    "hosted072_first_execution": {
+      "head": "0ef83b9f467163a067d81c9b80dc978df7e79b3b",
+      "run": 41027039454,
+      "job": 123967494851,
+      "status": "FAILED_AFTER_INSTALL_AT_ORIGINAL_ACL_DEPENDENCY_AUDIT",
+      "raw_log_sha256": "7d9b3be44e8b119c049dee00757add6adf9475c79dd64a28142281d345414f7b",
+      "root_cause": "Pins described only032 initial grants, omitting unchanged035-039 required helper grants;070/071 owned resource cases also refused503",
+      "prior_green_receipts_do_not_qualify_current_candidate": true
+    },
+    "statistics_acl_source_repair": "Exact final dependency grantees derived from all unchanged001-069 SQL, including035-039 embedding/index/query/execution grants. Every required explicit EXECUTE must exist; extra grants, grant options, wrong grantors, function bodies/metadata and unsafe owners remain refused. Actual072 required/missing/extra/re-grant negatives added; real rerun pending; no SQL, roles or privileges changed."
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

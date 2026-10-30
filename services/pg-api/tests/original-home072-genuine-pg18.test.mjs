@@ -46,5 +46,25 @@ test('independent072: actual PG18 shared statistics, Native ACL, exact audits an
   await t.test('16 direct Worker/Broker/PUBLIC grants and table/role changes are not introduced',async()=>{await f.withApi(async db=>{for(const role of ['agentstudio_worker','agentstudio_model_broker','agentstudio_native_auth','agentstudio_design_worker'])assert.equal((await db.query("SELECT has_function_privilege($1,'agentstudio.original_home_knowledge_stats(uuid)','EXECUTE') AS allowed",[role])).rows[0].allowed,false)});const after=await f.inventory();assert.deepEqual(after.tables,before072.tables);assert.deepEqual(after.roles,before072.roles)})
   await t.test('17 real Cookie/Origin failures and configuration-write-off do not become statistics authority',async()=>{assert.equal((await f.raw(resources,{cookie:null})).status,401);assert.equal((await f.raw(resources,{who:'bob',headers:{Authorization:'Bearer synthetic'}})).status,401);assert.equal((await f.raw(resources,{who:'bob',headers:{Origin:'https://foreign.example'}})).status,403);await f.prepare({enabled:true,writes:false,sharedStatistics:true});assert((await get('bob')).knowledge_bases.some(row=>row.id===seed.alice.base.id));await f.prepare({enabled:true,sharedStatistics:true})})
   await t.test('18 repeated successful reads leave real business counts and audits unchanged',async()=>{const before=await business();await get('alice');await get('bob');await rpc('bob',seed.alice.base.id);assert.deepEqual(await business(),before);assert.equal(await f.inspectStatistics(),'installed');assert.equal(f.providerRequests.length,0);f.assertNoProviderErrors()})
+  await t.test('19 original ACL dependencies retain the exact final032-039 grants on real PG18',async()=>{
+   const expected={
+    'knowledge_employee_active(uuid)':['agentstudio_knowledge_embedding','agentstudio_knowledge_execution','agentstudio_knowledge_index','agentstudio_knowledge_query'],
+    'knowledge_access_mode(uuid)':['agentstudio_api','agentstudio_knowledge_content','agentstudio_knowledge_query'],
+    'knowledge_shared_bases()':['agentstudio_api'],
+   }
+   for(const [signature,roles]of Object.entries(expected)){
+    const rows=(await f.db.query("SELECT grantee.rolname AS grantee,grantor.rolname AS grantor,a.privilege_type,a.is_grantable FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid=a.grantee LEFT JOIN pg_catalog.pg_roles grantor ON grantor.oid=a.grantor WHERE p.oid=$1::regprocedure AND a.grantee<>p.proowner ORDER BY grantee.rolname",['agentstudio.'+signature])).rows
+    assert.deepEqual(rows,roles.map(grantee=>({grantee,grantor:'agentstudio_knowledge_acl',privilege_type:'EXECUTE',is_grantable:false})))
+   }
+   assert.equal(await f.inspectStatistics(),'installed');await get('alice');await get('bob')
+  })
+  await t.test('20 missing, extra or re-grantable original helper privileges reject the catalog and resources',async()=>{
+   for(const [signature,role]of [['knowledge_employee_active(uuid)','agentstudio_knowledge_embedding'],['knowledge_access_mode(uuid)','agentstudio_knowledge_query'],['knowledge_shared_bases()','agentstudio_api']]){
+    const fn='agentstudio.'+signature,refused=async()=>{await rejectCatalog();assert.equal((await f.raw(resources,{who:'bob'})).status,503)}
+    await f.catalogMutation('REVOKE EXECUTE ON FUNCTION '+fn+' FROM '+role,'GRANT EXECUTE ON FUNCTION '+fn+' TO '+role,refused)
+    await f.catalogMutation('GRANT EXECUTE ON FUNCTION '+fn+' TO agentstudio_worker','REVOKE EXECUTE ON FUNCTION '+fn+' FROM agentstudio_worker',refused)
+    await f.catalogMutation('GRANT EXECUTE ON FUNCTION '+fn+' TO '+role+' WITH GRANT OPTION','REVOKE GRANT OPTION FOR EXECUTE ON FUNCTION '+fn+' FROM '+role,refused)
+   }
+  })
  }finally{await f.close()}
 })

@@ -398,7 +398,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/agent-caller-owner-session.test.mjs": "4802e4be9dfc3ef80eacd99162b45516603e4112b55b21c1f2a62939afced0c2",
   "services/pg-api/tests/agent-caller-presentation.test.mjs": "850024c62727a60c8ea4000a22caa0d272dd9283b05a055bc42d2b7a5dff6e6c",
   "services/pg-api/tests/helpers/agent-assessment-fixture.mjs": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a",
-  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "ea86b31d814de2cc27c5d50108332a42dfeedc414fa48d63063a214409f307b6",
+  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "7634142d29b75c80e953e97d4724ab136ce4e2b86d296f951575ef464d6409e9",
   "services/pg-api/tests/helpers/agent-caller-genuine-guard.mjs": "e165765978d53a4ab5da154df1fd6edffba07036e1fe8af6457a0d8943738cef",
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
@@ -653,7 +653,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/native-home-agent-specs-repository.ts": "3b2c8f3b523629756092244d75a03959305dbbf1ee16c6d15c9a3a11a86187ba",
   "services/pg-api/src/native-home-agent-specs-runtime.ts": "babb676a5632dad0bd3d474e694fdd1e182251fd03942f762ab7e66cd7c6df47",
   "services/pg-api/src/native-home-authoring-audit.ts": "0cad2d395136a9b978ed63044155bc3dc1fde638cc1246331696deb9c5f7e427",
-  "services/pg-api/src/native-home-knowledge-stats-audit.ts": "4425ea27f4c4e62ceaefc79c89589160d6c20a33da77fb2d70365ef59425f27c",
+  "services/pg-api/src/native-home-knowledge-stats-audit.ts": "ea7804b2e177223cf2bdfe45d5e78a789998086d9792930db787ca6856f30337",
   "services/pg-api/src/native-home-resources-contract.ts": "e600374afc5e79915d7f05fdf8c4178b9a629c73f215f3c36150e5ea1d25b1c1",
   "services/pg-api/src/native-home-resources-http.ts": "9f8ee1541b03d8a0596e99ca96568a42d509c8a9ec268f3ca3bd2337128aea18",
   "services/pg-api/src/native-home-resources-repository.ts": "32f202a102c979ef6c29d86348ab70f693d1d98b10b9b57feb5985349bd09120",
@@ -662,7 +662,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/original-agent-inbox-http.ts": "1073af97562f35a13bff1ba7d8cd95f46d9594ed2074968b302664a4252f86d8",
   "shared/original-agent-catalog.ts": "2aac1f4f3c3d7f7e32953066bad4cfeba52da4cf9099fd8132e8d6a62a54f871",
   "shared/original-home-authoring.ts": "78356c473b3dcf190ff65fff25265b0321d31a0bc9db67a159ee66b599f881b2",
-  "services/pg-api/src/native-home-knowledge-stats-pins.ts": "690d3673163022278df6db24c1720a99c794239943feb9c4426995b205a3c1d6",
+  "services/pg-api/src/native-home-knowledge-stats-pins.ts": "fa4308addaa5562cf12a37e867deffbf133458c80823a1bae42426221c82707d",
   "services/pg-api/src/native-home-knowledge-stats-runtime.ts": "249e533ed5c477abc4189c4e676948d01f3b81b5cbc31cca8b1032df3be4f353",
   "services/pg-api/src/pg18-full069-reader-audit-phase.mjs": "53419efca128b54406394687c80b3379c68f50b7f30f26765b530f9a7c3ed909"
 })
