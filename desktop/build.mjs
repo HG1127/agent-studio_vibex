@@ -14,5 +14,5 @@ await run(process.execPath,[path.join(root,'node_modules/typescript/bin/tsc'),'-
 await run(process.execPath,[path.join(root,'node_modules/vite/bin/vite.js'),'build'])
 await run(process.execPath,[path.join(root,'ops/verify-pg-pilot-prod.mjs')])
 // Keep compression memory predictable on a workstation used for other apps.
-process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL ||= '5'
+process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL ||= '1'
 await run(process.execPath,[path.join(desktop,'node_modules/electron-builder/cli.js'),'--win','portable','--x64'],desktop)

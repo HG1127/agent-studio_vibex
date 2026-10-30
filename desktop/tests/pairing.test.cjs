@@ -45,6 +45,10 @@ test('direct pairing prepares existing native consent UI without downloading fil
  let prepared=0
  const progressReporter={start(){},stop(){},close(){},stage(){},finish(){},snapshot(){return null}}
  const manager=await createConnectorManager({home,checkBrowser:async()=>true,prepare:async()=>{prepared++;throw Error('unexpected_binding')},progressReporter})
+ const {embeddedManagerUrl}=require('../policy.cjs')
+ const entry=embeddedManagerUrl(manager.origin+'/#'+manager.token+'&device='+'a'.repeat(24)+'&panel=files')
+ assert.equal(new URL(entry).search,'');assert.match(new URL(entry).hash,/desktop=1/)
+ assert.equal((await fetch(entry)).status,200,'manager must receive its exact static root, without query parameters')
  const origin='http://127.0.0.1:25701'
  const ticket={format:'agent-studio-connect-v1',server:origin+'/__pb',name:'Native consent fixture',mode:'files',origins:[],pairing:{id:'a'.repeat(24),code:'b'.repeat(48),expiresAt:Date.now()+280000}}
  const state=async()=>(await fetch(manager.origin+'/api/state',{headers:{'X-Connector-Session':manager.token}})).json()

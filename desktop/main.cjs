@@ -4,7 +4,7 @@ const {fork} = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const {pathToFileURL} = require('node:url')
-const {serverOrigin,ownUrl,webUrl,childEnvironment,readSettings,saveSettings,rendererPermission,workbenchSender} = require('./policy.cjs')
+const {serverOrigin,ownUrl,webUrl,childEnvironment,readSettings,saveSettings,rendererPermission,workbenchSender,embeddedManagerUrl} = require('./policy.cjs')
 const {randomUUID}=require('node:crypto')
 const info = require('./build-info.json')
 const option = name => process.argv.find(x=>x.startsWith(name+'='))?.slice(name.length+1)
@@ -40,7 +40,11 @@ app.whenReady().then(async()=>{
   if(testServer){if(!testHome||!/^http:\/\/127\.0\.0\.1:\d+$/.test(testServer))throw Error('isolated_test_configuration_required');settings={server:serverOrigin(testServer),port:0};await showStudio()}
   else if(settings.port){try{await showStudio()}catch{/* Keep settings available for a recoverable startup failure. */}}
   else showSettings()
-}).catch(error=>{dialog.showErrorBox('Agent Studio 启动失败',String(error.message).slice(0,500));app.exit(1)})
+}).catch(async error=>{
+  const report=option('--desktop-smoke-report')
+  if(testHome&&report){await fs.writeFile(path.resolve(report),JSON.stringify({started:false,error:String(error.message).slice(0,500)}));await stopServices();app.exit(1)}
+  else {dialog.showErrorBox('Agent Studio 启动失败',String(error.message).slice(0,500));app.exit(1)}
+})
 }
 function guardWindow(win,allowed) {
   win.webContents.on('will-navigate',(event,url)=>{if(!allowed(url)){event.preventDefault();void openExternal(url)}})
@@ -140,16 +144,19 @@ async function showStudio() {
     const report=option('--desktop-smoke-report')
     if(report&&testHome){
       const nativePairingAvailable=await main.webContents.executeJavaScript("window.studioDesktop?.version===1 && typeof window.studioDesktop.prepareConnection==='function' && typeof window.studioDesktop.openConnection==='function'")
-      const nativeManagerOpened=await main.webContents.executeJavaScript('window.studioDesktop.openConnection().then(value=>value.ok)')
-      const embeddedManager=await connectionWindow.webContents.executeJavaScript("document.getElementById('ticket').closest('label').hidden")
+      if(!nativePairingAvailable)throw Error('native_pairing_preload_missing')
+      const opened=await main.webContents.executeJavaScript("window.studioDesktop.openConnection().then(value=>({ok:value.ok}),error=>({ok:false,error:String(error.message)}))")
+      if(!opened.ok)throw Error('native_manager_open: '+opened.error)
+      const nativeManagerOpened=opened.ok
+      const embeddedManager=await connectionWindow.webContents.executeJavaScript("document.getElementById('ticket')?.closest('label')?.hidden===true")
       await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
-  } catch(error){await stopServices();await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
+  } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
 }
 async function showConnection(url) {
   const local=await startServices()
   const navigate=!!url
-  const target=new URL(url||local.managerUrl);target.searchParams.set('desktop','1');url=target.href
+  url=embeddedManagerUrl(url||local.managerUrl)
   if(connectionWindow&&!connectionWindow.isDestroyed()){if(navigate)await connectionWindow.loadURL(url);reveal(connectionWindow);return}
   connectionWindow=new BrowserWindow({width:1120,height:850,minWidth:780,minHeight:600,title:'Agent Studio · 本机电脑与权限',webPreferences})
   guardWindow(connectionWindow,value=>ownUrl(value,local.managerOrigin))

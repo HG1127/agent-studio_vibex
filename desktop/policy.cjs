@@ -36,4 +36,10 @@ function rendererPermission(permission,url,origins,isMainFrame=true) {
 function workbenchSender(event,contents,origin) {
   return !!contents&&!contents.isDestroyed()&&event.sender===contents&&event.senderFrame===contents.mainFrame&&ownUrl(event.senderFrame?.url,origin)
 }
-module.exports = {serverOrigin, ownUrl, webUrl, childEnvironment, readSettings, saveSettings, rendererPermission, workbenchSender}
+function embeddedManagerUrl(value) {
+  const url=new URL(value),parts=url.hash.slice(1).split('&'),token=parts.shift()
+  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.pathname!=='/'||!/^[a-f0-9]{64}$/.test(token))throw Error('invalid_manager_entry')
+  const entry=new URLSearchParams(parts.join('&'));entry.set('desktop','1')
+  url.search='';url.hash=token+'&'+entry.toString();return url.href
+}
+module.exports = {serverOrigin, ownUrl, webUrl, childEnvironment, readSettings, saveSettings, rendererPermission, workbenchSender, embeddedManagerUrl}

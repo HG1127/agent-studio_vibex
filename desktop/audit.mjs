@@ -3,6 +3,7 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
+import {createRequire} from 'node:module'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const packaged=path.resolve(process.argv[2]||path.join(root,'.tmp/desktop-output/win-unpacked'))
 const hash=async file=>createHash('sha256').update(await fs.readFile(file)).digest('hex')
@@ -17,6 +18,10 @@ const list=async directory=>{
   return files
 }
 const resources=path.join(packaged,'resources'),files=await list(resources)
+const require=createRequire(import.meta.url),builderRequire=createRequire(require.resolve('electron-builder/package.json')),libraryRequire=createRequire(builderRequire.resolve('app-builder-lib'))
+const asar=libraryRequire('@electron/asar')
+for(const name of ['main.cjs','policy.cjs','build-info.json','ui/preload.cjs','ui/workbench-preload.cjs'])assert.ok(asar.extractFile(path.join(resources,'app.asar'),name).equals(await fs.readFile(path.join(root,'desktop',name))),'packaged desktop source mismatch: '+name)
+assert.equal(await hash(path.join(root,'local-executor/ui/app.js')),await hash(path.join(resources,'connector/app/local-executor/ui/app.js')),'embedded authorization UI is stale')
 for(const file of files)assert.doesNotMatch(file,/(^|\/)(?:\.env[^/]*|pb_data|\.git|\.agent-studio)(\/|$)|\.(?:db|sqlite|sqlite3|db-wal|db-shm)$|(^|\/)agent-studio-connect[^/]*\.json$|(^|\/)\.local-device-credentials\.json$/i)
 const web=await list(path.join(root,'dist'))
 for(const file of web)assert.equal(await hash(path.join(root,'dist',file)),await hash(path.join(resources,'web',file)),'frontend source mismatch: '+file)

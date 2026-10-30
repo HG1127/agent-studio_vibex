@@ -37,9 +37,9 @@ try {
   const reportPath=path.join(dir,'report.json')
   const env={...process.env,PATH:path.join(process.env.SystemRoot,'System32')}
   for(const name of Object.keys(env))if(/^(NODE_OPTIONS|NODE_PATH|ELECTRON_RUN_AS_NODE)$/i.test(name))delete env[name]
-  client=spawn(executable,['--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
+  client=spawn(executable,[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
   for(let i=0;i<360;i++){try{report=JSON.parse(await fs.readFile(reportPath,'utf8'));break}catch{}await sleep(500)}
-  assert.equal(report?.started,true,'packaged app did not produce startup report')
+  assert.equal(report?.started,true,'packaged app startup: '+JSON.stringify(report||{}))
   assert.equal(report.nativePairingAvailable,true,'native pairing preload is unavailable')
   assert.equal(report.nativeManagerOpened,true,'workbench IPC did not open the built-in manager')
   assert.equal(report.embeddedManager,true,'desktop manager still requires JSON import')
