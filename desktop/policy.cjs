@@ -33,4 +33,7 @@ async function saveSettings(directory, settings) {
 function rendererPermission(permission,url,origins,isMainFrame=true) {
   return isMainFrame!==false && ['clipboard-sanitized-write','fullscreen'].includes(permission) && origins.some(origin=>ownUrl(url,origin))
 }
-module.exports = {serverOrigin, ownUrl, webUrl, childEnvironment, readSettings, saveSettings, rendererPermission}
+function workbenchSender(event,contents,origin) {
+  return !!contents&&!contents.isDestroyed()&&event.sender===contents&&event.senderFrame===contents.mainFrame&&ownUrl(event.senderFrame?.url,origin)
+}
+module.exports = {serverOrigin, ownUrl, webUrl, childEnvironment, readSettings, saveSettings, rendererPermission, workbenchSender}

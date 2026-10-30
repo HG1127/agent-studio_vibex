@@ -40,6 +40,9 @@ try {
   client=spawn(executable,['--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
   for(let i=0;i<360;i++){try{report=JSON.parse(await fs.readFile(reportPath,'utf8'));break}catch{}await sleep(500)}
   assert.equal(report?.started,true,'packaged app did not produce startup report')
+  assert.equal(report.nativePairingAvailable,true,'native pairing preload is unavailable')
+  assert.equal(report.nativeManagerOpened,true,'workbench IPC did not open the built-in manager')
+  assert.equal(report.embeddedManager,true,'desktop manager still requires JSON import')
   assert.equal(report.sandbox,true);assert.equal(report.nodeIntegration,false);assert.equal(report.contextIsolation,true)
   const request=async(method,route,body,headers={})=>{
     const r=await fetch(report.origin+route,{method,headers:{'Content-Type':'application/json',...headers},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json().catch(()=>({}))}

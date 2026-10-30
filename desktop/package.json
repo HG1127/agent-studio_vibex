@@ -1,6 +1,6 @@
 {
   "name": "agent-studio-desktop",
-  "version": "0.1.0-preview.1",
+  "version": "0.1.0-preview.2",
   "private": true,
   "description": "Agent Studio Windows desktop client",
   "author": "Agent Studio",
@@ -26,6 +26,7 @@
       {"from":"../.tmp/desktop-connector", "to":"connector"},
       {"from":"gateway.mjs", "to":"connector/app/desktop/gateway.mjs"},
       {"from":"services.mjs", "to":"connector/app/desktop/services.mjs"}
+      ,{"from":"pairing.mjs", "to":"connector/app/desktop/pairing.mjs"}
     ],
     "win": { "target": ["portable"], "icon": "ui/icon.ico", "signAndEditExecutable": false },
     "portable": { "artifactName": "AgentStudio-Desktop-${version}-win-x64.exe" }

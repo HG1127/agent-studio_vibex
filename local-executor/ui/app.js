@@ -6,6 +6,12 @@ const $=id=>document.getElementById(id)
 // a previously saved connection cannot hide the import/consent step.
 const newConnectionSection=$('ticket')?.closest('section'),savedConnectionSection=$('profiles')?.closest('section')
 if(newConnectionSection&&savedConnectionSection&&newConnectionSection.parentElement===savedConnectionSection.parentElement)savedConnectionSection.before(newConnectionSection)
+const embeddedDesktop=new URLSearchParams(location.search).get('desktop')==='1'
+if(embeddedDesktop&&newConnectionSection){
+ newConnectionSection.querySelector('h2').textContent='确认本机授权'
+ newConnectionSection.querySelector('p').textContent='请在工作台点击“授权并连接本机”。凭证会在应用内送达这里；核对网站与文件范围后，勾选本人确认并启动连接。'
+ $('ticket').closest('label').hidden=true
+}
 const fragmentParts=location.hash.slice(1).split('&'),fragment=fragmentParts[0]
 const entry=new URLSearchParams(fragmentParts.slice(1).join('&'))
 let requestedEntry=/^[A-Za-z0-9]{24}$/.test(entry.get('device')||'')&&['sites','files'].includes(entry.get('panel'))?{device:entry.get('device'),panel:entry.get('panel')}:null
