@@ -71,3 +71,19 @@ test('changing employee clears drafts and stops the previous employee connection
  assert.deepEqual(next.profiles.map(p=>p.id),[B]);assert.equal(next.permissions,null)
  assert.ok(f.calls.indexOf('stop:'+A)<f.calls.indexOf('resume:'+B))
 })
+test('first launch selects the most recent owned local connection, then persists explicit selection across restart',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'desktop-last-computer-')),file=path.join(dir,'preferences.json')
+ const devices=[{id:A,name:'Older',revoked:false,paired:true,seen_ms:100},{id:B,name:'Recent',revoked:false,paired:true,seen_ms:200}]
+ try{
+  const f=await fixture({profiles:[profile(A),profile(B)],devices,preferencesFile:file})
+  const first=await f.computer.request('session',{token:'valid-employee-session-token'});assert.equal(first.selectedId,B);assert.ok(f.calls.includes('resume:'+B))
+  const chosen=await f.computer.request('select',{id:A,consent:true});assert.equal(chosen.selectedId,A);assert.ok(f.calls.includes('resume:'+A))
+  const next=await fixture({profiles:[profile(A),profile(B)],devices,preferencesFile:file});const reopened=await next.computer.request('session',{token:'valid-employee-session-token'});assert.equal(reopened.selectedId,A);assert.ok(next.calls.includes('resume:'+A));assert.ok(!next.calls.includes('resume:'+B))
+ }finally{await fs.rm(dir,{recursive:true,force:true})}
+})
+test('selection cannot restore revoked, unpaired or another employee device',async()=>{
+ const f=await fixture({profiles:[profile(A)],devices:[{id:A,revoked:false,paired:true},{id:B,revoked:true,paired:true},{id:C,revoked:false,paired:false}]})
+ await f.computer.request('session',{token:'valid-employee-session-token'})
+ for(const id of [B,C,'d'.repeat(24)])await assert.rejects(f.computer.request('select',{id,consent:true}),/未撤销/)
+ await assert.rejects(f.computer.request('select',{id:A,consent:false}),/未撤销/)
+})

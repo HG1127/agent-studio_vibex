@@ -8,6 +8,7 @@ import {prepareWebsiteBatch,reconcileWebsiteDraft,websiteChanges,sameWebsiteSet,
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog'
 import {ConnectorDownload} from './ConnectorDownload'
 import type {PermissionHealth} from '@/lib/connectorExperience'
+import {useDesktopComputer} from './DesktopComputerContext'
 const action='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-primary hover:bg-secondary disabled:opacity-40'
 const primary=action+' border-primary bg-primary text-primary-foreground hover:bg-primary/90'
 function FilePermissionControls({fileOnly,readOnly,capabilities,disabled,onChange}:{fileOnly:boolean;readOnly:boolean;capabilities:FileCapabilities;disabled:boolean;onChange:(readOnly:boolean,capabilities:FileCapabilities)=>void}){
@@ -23,6 +24,8 @@ export function DeviceWorkspaceScope(props:ScopeProps){
  return <PermissionScope key={account+':'+props.device.id} {...props} account={account}/>
 }
 function PermissionScope({device,statusVerified=true,onRefresh,refreshing=false,account,onHealthChange,onBusyChange,refreshToken=0}:ScopeProps&{account:string}){
+ const desktop=useDesktopComputer()
+ const nativeProfile=desktop?.state?.profiles.find(p=>p.id===device.id)
  const [open,setOpen]=useState(false),[panel,setPanel]=useState<PermissionPanel>('sites')
  const [meta,setMeta]=useState<Permissions|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[channelError,setChannelError]=useState(false)
  const [sites,setSites]=useState<string[]>([]),[siteInput,setSiteInput]=useState(''),[draftRevision,setDraftRevision]=useState('')
@@ -76,6 +79,12 @@ function PermissionScope({device,statusVerified=true,onRefresh,refreshing=false,
   try{const v=await readPermissions(device.id);if(epoch===life.current&&sameTarget())adoptMeta(v)}catch(e){if(epoch===life.current&&sameTarget()){setChannelError(true);setError((e as Error).message)}}finally{if(epoch===life.current)setLoading(false)}
  }
  const show=async(next:PermissionPanel)=>{
+  if(desktop&&nativeProfile){
+   desktop.setExpanded(true)
+   if(!desktop.state?.permissions)await desktop.act('permissions.open',{id:nativeProfile.id,fingerprint:nativeProfile.fingerprint})
+   document.querySelector('[data-desktop-connection-management]')?.scrollIntoView({behavior:'smooth',block:'start'})
+   return
+  }
   setPanel(next);if(open)return
   setOpen(true);setError('');setLoading(true);setNow(Date.now())
   const epoch=life.current

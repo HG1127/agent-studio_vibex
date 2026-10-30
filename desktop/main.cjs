@@ -25,7 +25,7 @@ function reveal(window){if(!window||window.isDestroyed())return;if(window.isMini
 const settingsUrl=pathToFileURL(path.join(__dirname,'ui','settings.html')).href
 const webPreferences={nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,partition:'persist:agent-studio'}
 const lock=app.requestSingleInstanceLock()
-if(!lock)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'Agent Studio 已在运行',message:'已有工作台正在运行，请查看任务栏或托盘。',detail:'如果刚换了新版 EXE，请先从旧版菜单选择“退出并停止本机连接”，再打开新版。关闭工作台窗口会保留托盘进程。'})).finally(()=>app.quit())
+if(!lock)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'Agent Studio 已在运行',message:'新版 '+info.version+' 尚未启动，已有旧工作台正在运行。',detail:'如果刚换了新版 EXE，请先从旧版菜单选择“退出并停止本机连接”，再打开新版。关闭工作台窗口会保留托盘进程。'})).finally(()=>app.quit())
 else {
 app.on('second-instance',()=>{void app.whenReady().then(()=>{if(main&&!main.isDestroyed())reveal(main);else showSettings()})})
 app.on('window-all-closed',()=>{})
@@ -128,7 +128,7 @@ async function startServices() {
   starting=(async()=>{
     const base=app.isPackaged?process.resourcesPath:path.join(__dirname,'..','.tmp','desktop-dev-resources-'+info.version)
     const root=path.join(base,'connector')
-    const config={serverOrigin:settings.server,port:settings.port,webRoot:path.join(base,'web'),preferencesFile:path.join(app.getPath('userData'),'local-computer.json'),...(testHome?{profileHome:path.join(testHome,'isolated-connections')}: {})}
+    const config={serverOrigin:settings.server,desktopVersion:info.version,port:settings.port,webRoot:path.join(base,'web'),preferencesFile:path.join(app.getPath('userData'),'local-computer.json'),...(testHome?{profileHome:path.join(testHome,'isolated-connections')}: {})}
     child=fork(path.join(root,'app','desktop','services.mjs'),[JSON.stringify(config)],{execPath:path.join(root,'runtime','node.exe'),execArgv:['--use-system-ca'],env:childEnvironment(),silent:true,windowsHide:true})
     child.stdout?.resume();child.stderr?.resume()
     services=await new Promise((resolve,reject)=>{
@@ -186,11 +186,13 @@ async function showStudio() {
           if(nativeConnected)break;await new Promise(r=>setTimeout(r,300))
         }
         for(let i=0;i<25;i++){
-          nativeStatusVisible=await main.webContents.executeJavaScript("(()=>{const text=document.querySelector('[data-desktop-computer-center]')?.textContent||'';return text.includes('桌面内置验收电脑')&&text.includes('已在线')})()")
+          nativeStatusVisible=await main.webContents.executeJavaScript("(()=>{const text=document.querySelector('[data-desktop-computer-center]')?.textContent||'';return text.includes('桌面内置验收电脑')&&text.includes('已连接')})()")
           if(nativeStatusVisible)break;await new Promise(r=>setTimeout(r,300))
         }
       }
-      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,singleWindow,nativeConnected,nativeStatusVisible,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
+      const managementInline=await main.webContents.executeJavaScript("(()=>{const panel=document.querySelector('[data-desktop-connection-management]');return !!panel&&!panel.closest('[role=dialog]')})()")
+      const mainComputerSelector=await main.webContents.executeJavaScript("(()=>{const select=document.querySelector('[data-desktop-computer-toolbar] select[aria-label=选择电脑]');return !!select&&!!select.value})()")
+      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
   } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
 }

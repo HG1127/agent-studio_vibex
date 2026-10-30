@@ -11,12 +11,14 @@ import {ComputerWorkspace} from './ComputerWorkspace'
 import {ConnectComputerButton} from './ConnectComputerButton'
 import {LocalConnectorEntry} from './LocalConnectorEntry'
 import {desktopConnectionBridge} from '@/lib/desktopConnectionBridge'
+import {useDesktopComputer} from './DesktopComputerContext'
 
 /** End-user device workspace. Raw tool arguments and manual pairing codes are
  * deliberately absent, not merely collapsed. Binding remains in the ticket. */
 export function LocalDevicesPanel(){return <OwnedLocalDevices key={decodeRhToken()?.sub||''}/>}
 function OwnedLocalDevices(){
-  const [params]=useSearchParams()
+  const desktop=useDesktopComputer()
+  const [params,setParams]=useSearchParams()
   const requestedDevice=params.get('device')||'',chosenFromUrl=/^[A-Za-z0-9]{24}$/.test(requestedDevice)?requestedDevice:''
   const {devices,lastKnownDevices,loaded,error:inventoryError,refreshing,now,refresh,updatedAt}=useLocalDeviceInventory()
   const [deviceQuery,setDeviceQuery]=useState(''),[showRevoked,setShowRevoked]=useState(false)
@@ -28,9 +30,18 @@ function OwnedLocalDevices(){
   const authorized=useCallback(()=>!!owner&&decodeRhToken()?.sub===owner,[owner])
   const visibleDevices=visibleLocalDevices(devices,deviceQuery,showRevoked,now)
   // URL selection is a read-only choice among the current owner's returned inventory.
-  const selectedId=selected||chosenFromUrl
+  const selectedId=desktop?(chosenFromUrl||desktop.state?.selectedId||selected):(selected||chosenFromUrl)
   const selectedDevice=(inventoryError?lastKnownDevices:devices).find(d=>d.id===selectedId&&!d.revoked)
   const duplicateNames=new Set(devices.filter((d,i)=>!d.revoked&&devices.some((other,j)=>i!==j&&!other.revoked&&other.name===d.name)).map(d=>d.name))
+  useEffect(()=>{desktop?.setSelectionBlocked(commonBusy);return()=>desktop?.setSelectionBlocked(false)},[commonBusy,desktop?.setSelectionBlocked])
+  const choose=async(id:string,connected=false)=>{
+    if(!authorized())return
+    if(desktop&&!connected&&!await desktop.act('select',{id,consent:true}))return
+    if(!alive.current||!authorized())return
+    setSelected(id);setError('');setShowDeviceList(false)
+    if(desktop&&chosenFromUrl)setParams(previous=>{const next=new URLSearchParams(previous);next.set('device',id);return next},{replace:true})
+    if(connected)void refresh()
+  }
   const revoke=async(id:string,name:string)=>{
     if(lock.current||!authorized())return
     lock.current=true;setBusy(true);setError('')
@@ -45,9 +56,9 @@ function OwnedLocalDevices(){
   return <section className="space-y-4 rounded-2xl border border-border bg-card p-5" aria-labelledby="local-devices-heading">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 id="local-devices-heading" className="font-semibold">我的电脑与浏览器</h2><p className="mt-1 text-sm text-muted-foreground">选择电脑，在系统内浏览、编辑和管理文件，使用浏览器并核对执行结果。</p></div>
-      <div className="flex flex-wrap gap-2"><ConnectComputerButton label="连接新电脑 / 浏览器" onConnected={d=>{if(!authorized())return;setSelected(d.id);setShowDeviceList(false);void refresh()}}/><button type="button" className="min-h-10 rounded-xl border border-border px-3 text-xs" disabled={busy||refreshing} onClick={()=>void refresh()}>刷新设备</button></div>
+      <div className="flex flex-wrap gap-2"><ConnectComputerButton label="连接新电脑 / 浏览器" onConnected={d=>{void choose(d.id,true)}}/><button type="button" className="min-h-10 rounded-xl border border-border px-3 text-xs" disabled={busy||refreshing} onClick={()=>void refresh()}>刷新设备</button></div>
     </div>
-    <p className="rounded-xl bg-primary/5 px-4 py-3 text-xs leading-5 text-muted-foreground">{desktopConnectionBridge()?'本机组件随软件启动。连接状态和授权可从右下角“本机电脑”管理，日常文件与浏览器操作直接在这里完成。':'日常入口就在这里：选择设备 → 文件 / 浏览器 → 查看结果。连接器只需在电脑上保持运行，不必来回打开外部管理页。'}</p>
+    <p className="rounded-xl bg-primary/5 px-4 py-3 text-xs leading-5 text-muted-foreground">{desktopConnectionBridge()?'默认使用上方当前电脑，最近一次连接会自动恢复。连接状态、暂停和授权都可在上方直接管理。':'日常入口就在这里：选择设备 → 文件 / 浏览器 → 查看结果。连接器只需在电脑上保持运行，不必来回打开外部管理页。'}</p>
     {selectedDevice&&<div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background px-4 py-3"><p className="text-sm"><strong>{selectedDevice.name}</strong><span className="ml-2 text-xs text-muted-foreground">#{selectedDevice.id.slice(-6)} · {inventoryError?'状态未核实':deviceConnectionGuidance(selectedDevice,now).label}</span></p><button type="button" className="min-h-9 rounded-lg border border-border px-3 text-xs text-primary" disabled={commonBusy||busy} onClick={()=>setShowDeviceList(v=>!v)}>{showDeviceList?'收起设备清单':'切换 / 管理设备'}</button></div>}
     {selectedDevice&&inventoryError&&<div role="alert" aria-label="当前设备状态异常" className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm"><p className="font-semibold text-destructive">当前设备状态尚未核实，操作已暂停。</p><p className="mt-1 text-xs text-muted-foreground">{inventoryError} 原设备、已保存授权和页面草稿没有因此被删除；不要重复配对。</p><button type="button" disabled={refreshing} className="mt-2 min-h-9 text-xs font-semibold text-primary" onClick={()=>void refresh()}>重新核实当前设备</button></div>}
     <section aria-label="本人设备清单" hidden={!!selectedDevice&&!showDeviceList} className="space-y-2">
@@ -61,7 +72,7 @@ function OwnedLocalDevices(){
       {loaded&&!inventoryError&&!visibleDevices.length&&<p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{deviceQuery?'没有匹配的设备，请修改搜索。':devices.length?'没有未撤销设备，可重新连接并确认授权范围。':'还没有连接电脑，点击上方连接入口即可开始。'}</p>}
       {visibleDevices.map(d=><div key={d.id} data-device-id={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-background p-3 text-sm">
         <div className="min-w-[140px] flex-1"><strong className="break-words">{d.name}</strong><span className="ml-2 font-mono text-[10px] text-muted-foreground" title="连接标识，用于区分同名设备">#{d.id.slice(-6)}</span><span className="ml-2 text-xs">{deviceConnectionGuidance(d,now).label}</span><p className="mt-1 text-xs text-muted-foreground">{deviceTools(d).some(t=>t.name.startsWith('browser.'))?'浏览器已登记 · ':''}{deviceTools(d).some(t=>t.name.startsWith('files.'))?'文件工具已登记':'以本机实际开放能力为准'}</p></div>
-        {!d.revoked&&<button type="button" className="min-h-10 rounded-lg border border-border px-3 text-xs font-semibold text-primary" disabled={commonBusy||busy} onClick={()=>{if(d.id!==selected){setSelected(d.id);setError('')}setShowDeviceList(false)}}>{selectedId===d.id?'当前检查设备':deviceConnectionGuidance(d,now).action}</button>}
+        {!d.revoked&&<button type="button" className="min-h-10 rounded-lg border border-border px-3 text-xs font-semibold text-primary" disabled={commonBusy||busy} onClick={()=>{if(d.id!==selectedId)void choose(d.id);else setShowDeviceList(false)}}>{selectedId===d.id?'当前检查设备':deviceConnectionGuidance(d,now).action}</button>}
         {!d.revoked&&<button type="button" className="min-h-10 text-xs text-destructive" disabled={busy||commonBusy||!!inventoryError} onClick={()=>void revoke(d.id,d.name)}>撤销连接</button>}
       </div>)}
     </section>

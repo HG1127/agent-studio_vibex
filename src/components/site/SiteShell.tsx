@@ -5,6 +5,7 @@ import { SectionTabs } from "@/components/site/SectionTabs"
 const SavedAgentQuickEditor=lazy(()=>import("@/components/site/SavedAgentQuickEditor").then(m=>({default:m.SavedAgentQuickEditor})))
 import { PencilLine } from "lucide-react"
 import { StudioCommandPalette } from "@/components/site/StudioCommandPalette"
+import {DesktopComputerCenter} from '@/components/tool-hub/DesktopComputerCenter'
 import {confirmInStudio} from "@/lib/studioDialogs"
 import {
   protectInternalLinkClickAsync, recordRenderedStudioRoute,
@@ -67,6 +68,7 @@ export function SiteShell({ children }: SiteShellProps) {
       <SiteSidebar />
       <div className="flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] pt-14 lg:pb-0 lg:pt-0">
         <SectionTabs />
+        <DesktopComputerCenter />
         {children}
       </div>
       {showQuickEditor&&<button type="button" aria-label="随时调整 Agent 方案"

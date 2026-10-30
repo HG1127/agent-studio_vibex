@@ -24,7 +24,7 @@ export async function prepareGuidedConnection(input,{home=os.homedir(),confirm,c
   const config={server:ticket.server,deviceName:ticket.name,credentialsFile:'.local-device-credentials.json',
     roots:[{name:'work',path:workspace,label:singleFile?'文件：'+path.basename(target):selected?path.basename(workspace):'专用工作文件夹',readOnly,capabilities:{edit:false,move:false,delete:false,open:false},...(singleFile?{allowedFiles:[path.basename(target)]}:{})}],files:{enabled:ticket.mode!=='browser'},
     browserWorkDirectory:path.join(directory,'browser-work'),
-    office:{enabled:ticket.mode!=='browser'},browser:{enabled:ticket.mode!=='files',headless:false,
+    office:{enabled:ticket.mode!=='browser'},browser:{enabled:ticket.mode!=='files'&&ticket.origins.length>0,headless:false,
       images:false,channel:'chrome',allowedOrigins:ticket.origins},
     desktop:{enabled:false},apps:{},mcpServers:{}}
   config.permissionManagementRevision=randomBytes(12).toString('hex')
@@ -32,7 +32,7 @@ export async function prepareGuidedConnection(input,{home=os.homedir(),confirm,c
   if(typeof confirm!=='function'||!await confirm({name:ticket.name,server:ticket.server,mode:ticket.mode,origins:ticket.origins,workspace:singleFile?target:workspace,readOnly,kind:singleFile?'file':'folder'}))
     throw Error('connection_not_confirmed')
   // Report a missing Chrome installation before consuming the one-time ticket.
-  if(ticket.mode!=='files')await checkBrowser()
+  if(config.browser.enabled)await checkBrowser()
   const ensurePrivate=async target=>{
     const parts=path.relative(home,target).split(path.sep);let cursor=home
     for(const part of parts){cursor=path.join(cursor,part);await fs.mkdir(cursor,{mode:0o700}).catch(e=>{if(e.code!=='EEXIST')throw e})
@@ -45,7 +45,7 @@ export async function prepareGuidedConnection(input,{home=os.homedir(),confirm,c
   // Discover local tools BEFORE consuming the pairing code. No tool is invoked.
   const runtime=await runtimeFactory({...config,deniedPaths:[credentialsFile,configFile]})
   try{
-    if(ticket.mode!=='files'&&!runtime.tools.some(tool=>tool.name==='browser.browser_navigate'))throw Error('browser_tools_not_available')
+    if(config.browser.enabled&&!runtime.tools.some(tool=>tool.name==='browser.browser_navigate'))throw Error('browser_tools_not_available')
     if(ticket.mode!=='browser'&&!runtime.tools.some(tool=>tool.name==='files.list'))throw Error('file_tools_not_available')
   }finally{await runtime.close()}
   validateConnectionTicket(ticket,clock())

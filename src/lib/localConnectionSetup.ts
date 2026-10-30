@@ -39,7 +39,7 @@ export function validateConnectionTicket(value:unknown,now=Date.now()):LocalConn
   const sourceOrigins=row.origins as string[],origins=connectionOrigins(sourceOrigins.join('\n'))
   if(origins.length!==sourceOrigins.length||origins.some((origin,i)=>origin!==sourceOrigins[i]))
     throw Error('连接文件中的网站必须是明确的来源地址。')
-  if(row.mode==='files'?origins.length>0:origins.length===0)throw Error('请选择需要连接的用途并填写授权网站。')
+  if(row.mode==='files'&&origins.length>0)throw Error('文件连接不应包含网站授权。')
   return {format:'agent-studio-connect-v1',server:connectionServer(row.server),name:row.name.trim(),
     mode:row.mode as LocalConnectionMode,origins,pairing:{id:pair.id,code:pair.code,expiresAt:Number(pair.expiresAt)}}
 }
@@ -48,7 +48,7 @@ export function deviceConnectionState(device:{revoked:boolean;seen_ms:number},no
   if(!Number.isFinite(device.seen_ms)||device.seen_ms<=0)return 'waiting'
   return now>=device.seen_ms&&now-device.seen_ms<45000?'online':'offline'
 }
-export function connectionCapabilitiesReady(ticket:Pick<LocalConnectionTicket,'mode'>,names:readonly string[]):boolean{
-  return (ticket.mode==='files'||names.includes('browser.browser_navigate'))&&
+export function connectionCapabilitiesReady(ticket:Pick<LocalConnectionTicket,'mode'>&Partial<Pick<LocalConnectionTicket,'origins'>>,names:readonly string[]):boolean{
+  return (ticket.mode==='files'||ticket.origins?.length===0||names.includes('browser.browser_navigate'))&&
     (ticket.mode==='browser'||names.includes('files.list'))
 }

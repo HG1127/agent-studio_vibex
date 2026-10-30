@@ -235,7 +235,7 @@ export async function createConnectorManager({home=os.homedir(),picker=pickLocal
    }else if(route==='/api/prepare'){
     // A rejected replacement file cannot leave the old account's ticket armed.
     progress.stop();clearReview()
-    const ticket=validateConnectionTicket(input.ticket,clock());if(ticket.mode!=='files')await checkBrowser()
+    const ticket=validateConnectionTicket(input.ticket,clock());if(ticket.origins.length)await checkBrowser()
     pending=ticket;progress.start(ticket);notice='文件已读取，尚未绑定。请核对服务器、用途和文件夹。'
    }else if(route==='/api/discard'){
     if(input.reviewId!==revision)throw Error('review_changed')

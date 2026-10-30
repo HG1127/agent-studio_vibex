@@ -21,7 +21,19 @@ test('website inputs normalize explicit origins and never accept wildcards or em
 })
 test('ticket is an exact short-lived allowlist, not a way to import arbitrary executor config',()=>{
   assert.equal(validateConnectionTicket(ticket()).mode,'both')
-  for(const mutate of [t=>({...t,apps:{cmd:'powershell'}}),t=>({...t,roots:['C:/']}),t=>({...t,desktop:{enabled:true}}),t=>({...t,pairing:{...t.pairing,expiresAt:Date.now()-1}}),t=>({...t,pairing:{...t.pairing,code:'not-a-code'}}),t=>({...t,name:'escape\u001b[31m'}),t=>({...t,origins:['https://example.com/path']}),t=>({...t,mode:'browser',origins:[]})])assert.throws(()=>validateConnectionTicket(mutate(ticket())))
+  for(const mutate of [t=>({...t,apps:{cmd:'powershell'}}),t=>({...t,roots:['C:/']}),t=>({...t,desktop:{enabled:true}}),t=>({...t,pairing:{...t.pairing,expiresAt:Date.now()-1}}),t=>({...t,pairing:{...t.pairing,code:'not-a-code'}}),t=>({...t,name:'escape\u001b[31m'}),t=>({...t,origins:['https://example.com/path']}),t=>({...t,mode:'files'})])assert.throws(()=>validateConnectionTicket(mutate(ticket())))
+})
+test('connecting without websites creates no browser tools, performs no Chrome check, and preserves later permission management',async()=>{
+ for(const mode of ['both','browser']){
+  const home=await temp();let browserChecks=0
+  try{
+   const t=validateConnectionTicket({...ticket(mode),origins:[]})
+   const prepared=await prepareGuidedConnection(t,{home,defaultReadOnly:true,confirm:async()=>true,checkBrowser:async()=>{browserChecks++;throw Error('must_not_check_browser')},pair:async()=>({device_id:t.pairing.id,token:'t'.repeat(64)})})
+   const config=JSON.parse(await fs.readFile(prepared.configFile,'utf8'));assert.equal(config.browser.enabled,false);assert.equal(browserChecks,0)
+   const runtime=await createRuntime(config)
+   try{assert.equal(runtime.tools.some(tool=>tool.name.startsWith('browser.')),false);assert.equal(connectionCapabilitiesReady(t,runtime.tools.map(tool=>tool.name)),true);await assert.rejects(runtime.execute({tool:'browser.browser_navigate',permission_revision:config.permissionRevision,arguments:{url:'https://example.com'}}),/tool_denied/)}finally{await runtime.close()}
+  }finally{await fs.rm(home,{recursive:true,force:true})}
+ }
 })
 test('heartbeat, revocation and requested capabilities must all be real before online',()=>{
   const now=Date.now()

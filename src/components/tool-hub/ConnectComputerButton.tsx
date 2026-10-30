@@ -75,7 +75,7 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
     if(requestBusy.current||!activeOwner||paired||device?.revoked||pollError)return
     requestBusy.current=true;setBusy(true);setError('')
     try{
-      if(inputError||!componentReady||!consent||!name.trim()||(mode!=='files'&&!origins.length))throw Error(inputError||'请确认用途和授权范围。')
+      if(inputError||!componentReady||!consent||!name.trim())throw Error(inputError||'请确认用途和授权范围。')
       if(continueTarget&&(!/^[A-Za-z0-9]{24}$/.test(continueTarget.id)||continueTarget.paired!==false||continueTarget.revoked||continueTarget.seen_ms>0))
         throw Error('这条记录不能作为未配对设备继续，请先重新核对设备状态。')
       const targetId=ticket?.pairing.id||continueTarget?.id
@@ -104,17 +104,17 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
     onClose()
   }
   return <Dialog open onOpenChange={open=>{if(!open)void close()}}><DialogContent aria-label="连接电脑与浏览器向导" className="flex max-h-[92dvh] w-[calc(100vw-1.5rem)] max-w-2xl min-w-0 flex-col gap-0 overflow-hidden rounded-2xl p-0">
-    <DialogHeader className="shrink-0 border-b border-border px-5 py-5 pr-12 sm:px-6"><DialogTitle>连接电脑与浏览器</DialogTitle><DialogDescription>{desktop?'本应用已内置连接组件，选择用途后直接在应用内确认授权。':'默认 Google Chrome 独立浏览器；连接文件自动绑定账号，无需填写参数或配对码。'}</DialogDescription></DialogHeader>
+    <DialogHeader className="shrink-0 border-b border-border px-5 py-5 pr-12 sm:px-6"><DialogTitle>连接电脑与浏览器</DialogTitle><DialogDescription>{desktop?'默认连接当前电脑。网站可稍后添加；本向导会继续完成本机授权与连接。':'默认 Google Chrome 独立浏览器；连接文件自动绑定账号，无需填写参数或配对码。'}</DialogDescription></DialogHeader>
     <div className="min-h-0 space-y-5 overflow-y-auto p-5 sm:p-6">
       <ol aria-label="连接进度" className="grid grid-cols-3 gap-2 text-xs"><li className="rounded-lg bg-secondary p-2">1 · 选择用途</li><li className={'rounded-lg p-2 '+(ticket&&!paired&&!ready?'bg-primary/10 text-primary':'bg-secondary')}>2 · 本机确认启动</li><li className={'rounded-lg p-2 '+(paired||ready?'bg-primary/10 text-primary':'bg-secondary')}>3 · 自动确认上线</li></ol>
       {!activeOwner&&<p role="alert" className="text-sm text-destructive">账号状态发生变化，请关闭向导并重新登录。</p>}
       {!activeOwner?<p className="text-sm text-muted-foreground">为保护原账号的设备凭证，请关闭后重新打开连接向导。</p>:!ticket?<>
-        <ConnectorDownload/>
+        {!desktop&&<ConnectorDownload/>}
         {!desktop&&<label className="flex items-start gap-2 rounded-xl border border-border p-3 text-sm"><input type="checkbox" className="mt-1" checked={componentReady} onChange={e=>setComponentReady(e.target.checked)}/><span>我已解压连接器并打开本机管理窗口（已有可用组件也可）</span></label>}
         {continueTarget&&<p role="status" className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm leading-6">继续「{continueTarget.name}」原有登记，不新增同名设备。请重新核对本次用途和网站；{desktop?'更新授权凭证后，之前未使用的凭证将失效。':'下载新文件后，之前未使用的配对文件将失效。'}</p>}
         <div role="group" aria-label="连接用途" className="grid gap-2 sm:grid-cols-3">{([{id:'browser',name:'仅浏览器',desc:'打开授权网站',icon:Globe2},{id:'files',name:'文件与表格',desc:'选择具体工作文件夹',icon:FolderOpen},{id:'both',name:'浏览器 + 文件',desc:'一次接入两类能力',icon:Monitor}] as const).map(item=><button type="button" key={item.id} aria-pressed={mode===item.id} onClick={()=>{setMode(item.id);setConsent(false)}} className={'min-w-0 rounded-xl border p-3 text-left '+(mode===item.id?'border-primary bg-primary/5':'border-border hover:bg-secondary')}><item.icon className="h-5 w-5 text-primary"/><strong className="mt-2 block text-sm">{item.name}</strong><span className="mt-1 block text-xs text-muted-foreground">{item.desc}</span></button>)}</div>
         <label className="block text-sm font-medium">电脑名称<input className={field} value={name} maxLength={80} readOnly={!!continueTarget} onChange={e=>setName(e.target.value)}/></label>
-        {mode!=='files'&&<label className="block text-sm font-medium">允许浏览器访问的网站<textarea className={field} rows={2} value={websites} maxLength={6000} onChange={e=>{setWebsites(e.target.value);setConsent(false)}} placeholder={'例如 https://example.com\n每行一个网站'}/><span className="mt-1 block text-xs font-normal text-muted-foreground">授权整站来源（协议、域名和端口）。连接后可直接在工作台「授权管理 → 网站」中随时增删，无需重新配对。</span></label>}
+        {mode!=='files'&&<label className="block text-sm font-medium">允许浏览器访问的网站（选填，可稍后添加）<textarea className={field} rows={2} value={websites} maxLength={6000} onChange={e=>{setWebsites(e.target.value);setConsent(false)}} placeholder={'例如 https://example.com\n每行一个网站'}/><span className="mt-1 block text-xs font-normal text-muted-foreground">授权整站来源（协议、域名和端口）。可以留空，连接后再在主界面「管理连接 → 管理授权」中添加。未添加前不会开放任何网站。</span></label>}
         {origins.length>0&&<p className="break-all rounded-lg bg-secondary/40 p-3 text-xs">将授权：{origins.join('、')}</p>}
         <div className="rounded-xl border border-border bg-secondary/25 p-4 text-xs leading-6"><p className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4"/>授权范围</p><p>{mode==='browser'?'只启用独立浏览器；不开放本地文件工具。':'在本机界面可选择一个文件或工作文件夹；单文件仅只读该文件，不开放父目录。文件夹默认只读，允许新建须明确选择；后续可在「管理授权」中变更。'}</p><p>不接管日常浏览器登录、不开放整桌面、不安装后台服务。实际操作仍需批准。</p></div>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>我在自己的电脑上操作，并同意以上访问范围。</span></label>
@@ -133,7 +133,7 @@ function ConnectionWizard({mode:initialMode,successLabel,onConnected,onClose,con
       {error&&<p role="alert" className="rounded-xl bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
     </div>
     <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-card p-4"><button type="button" className={secondary} disabled={busy} onClick={()=>void close()}>{ready?'关闭':'稍后继续'}</button>
-      {ready&&device?<button type="button" className={primary} onClick={()=>onConnected(device)}>{successLabel}</button>:!ticket?<button type="button" className={primary} disabled={busy||!activeOwner||!componentReady||!consent||!name.trim()||!!inputError||(mode!=='files'&&!origins.length)} onClick={()=>void generate()}>{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Download className="h-4 w-4"/>}{desktop?(continueTarget?'更新此设备授权':'授权并连接本机'):(continueTarget?'更新此设备的连接文件':'生成并下载连接文件')}</button>:paired||device?.revoked?null:expired?<button type="button" className={primary} disabled={busy||!activeOwner||!!pollError} onClick={()=>void generate()}>{desktop?'更新授权凭证':'重新生成连接文件'}</button>:desktop?<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>void openNative()}>查看本机连接与授权</button>:<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>download(ticket)}><Download className="h-4 w-4"/>重新下载</button>}
+      {ready&&device?<button type="button" className={primary} onClick={()=>onConnected(device)}>{successLabel}</button>:!ticket?<button type="button" className={primary} disabled={busy||!activeOwner||!componentReady||!consent||!name.trim()||!!inputError} onClick={()=>void generate()}>{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Download className="h-4 w-4"/>}{desktop?(continueTarget?'更新此设备授权':'下一步：设置本机授权'):(continueTarget?'更新此设备的连接文件':'生成并下载连接文件')}</button>:paired||device?.revoked?null:expired?<button type="button" className={primary} disabled={busy||!activeOwner||!!pollError} onClick={()=>void generate()}>{desktop?'更新授权凭证':'重新生成连接文件'}</button>:desktop?<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>void openNative()}>查看本机连接与授权</button>:<button type="button" disabled={!activeOwner||busy||!!pollError} className={secondary} onClick={()=>download(ticket)}><Download className="h-4 w-4"/>重新下载</button>}
     </footer>
   </DialogContent></Dialog>
 }

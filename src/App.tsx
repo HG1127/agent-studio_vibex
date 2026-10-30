@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react"
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
 import { getStudioAccountInfo, verifyStudioSession, type StudioSessionStatus } from "@/lib/studioAuth"
 import { StudioErrorBoundary } from "@/components/site/StudioErrorBoundary"
-import { DesktopComputerCenter } from "@/components/tool-hub/DesktopComputerCenter"
+import { DesktopComputerProvider } from "@/components/tool-hub/DesktopComputerContext"
 
 // Keep the existing feature routes; gate all of them behind a verified
 // PocketBase studio_users session. There is no platform SSO.
@@ -84,8 +84,7 @@ function AdminGate() {
 
 function App() {
   const location = useLocation()
-  return <StudioErrorBoundary key={location.pathname}>
-    <DesktopComputerCenter />
+  return <DesktopComputerProvider><StudioErrorBoundary key={location.pathname}>
     <Suspense fallback={<RouteLoading />}>
     <Routes>
       {PgPilotRoute && <Route path="/pg-pilot" element={<PgPilotRoute />} />}
@@ -121,6 +120,6 @@ function App() {
       </Route>
     </Routes>
     </Suspense>
-  </StudioErrorBoundary>
+  </StudioErrorBoundary></DesktopComputerProvider>
 }
 export default App

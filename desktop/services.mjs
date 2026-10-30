@@ -20,7 +20,7 @@ process.on('message',m=>{
 try {
   gateway = await createGateway(config)
   manager = await createConnectorManager({home:config.profileHome,openWindow:async url=>{const hash=new URLSearchParams(new URL(url).hash.slice(1));send({type:'computer-attention',deviceId:hash.get('device'),panel:hash.get('panel')})},confirmReview:(review,signal)=>computer?.confirmReview(review,signal)??false})
-  computer=createDesktopComputer({serverOrigin:config.serverOrigin,manager,preferencesFile:config.preferencesFile,attention:value=>send({type:'computer-attention',...value})})
+  computer=createDesktopComputer({serverOrigin:config.serverOrigin,manager,desktopVersion:config.desktopVersion,preferencesFile:config.preferencesFile,attention:value=>send({type:'computer-attention',...value})})
   send({type:'ready',origin:gateway.origin,port:gateway.port,managerOrigin:manager.origin,managerUrl:manager.origin+'/#'+manager.token})
 } catch(error) {send({type:'error',message:error.code === 'EADDRINUSE' ? '本机端口被占用，请在设置中选择“重建本机入口”后重启。' : '本机组件启动失败，请检查安装文件和配置。'});await close();process.exitCode=1}
 process.once('disconnect',()=>void close())

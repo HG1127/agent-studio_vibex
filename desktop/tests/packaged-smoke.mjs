@@ -41,7 +41,7 @@ try {
   const device=await(await fetch(pbOrigin+'/api/local-devices',{method:'POST',headers:{'Content-Type':'application/json',Authorization:fixtureLogin.token},body:JSON.stringify({name:'桌面内置验收电脑'})})).json()
   const profileHome=path.join(dir,'profile'),connectorHome=path.join(profileHome,'isolated-connections')
   await fs.mkdir(connectorHome,{recursive:true})
-  const prepared=await prepareGuidedConnection({format:'agent-studio-connect-v1',server:server+'/__pb',name:'桌面内置验收电脑',mode:'files',origins:[],pairing:{id:device.id,code:device.pairing_code,expiresAt:device.expires_ms}},{home:connectorHome,defaultReadOnly:true,confirm:async()=>true})
+  const prepared=await prepareGuidedConnection({format:'agent-studio-connect-v1',server:server+'/__pb',name:'桌面内置验收电脑',mode:'both',origins:[],pairing:{id:device.id,code:device.pairing_code,expiresAt:device.expires_ms}},{home:connectorHome,defaultReadOnly:true,confirm:async()=>true})
   await fs.writeFile(path.join(prepared.workspace,'desktop-fixture.txt'),'BUNDLED_DESKTOP_FILE_OK')
   await fs.writeFile(path.join(profileHome,'smoke-auth.json'),JSON.stringify(fixtureLogin),{mode:0o600})
   const reportPath=path.join(dir,'report.json')
@@ -63,6 +63,8 @@ try {
   assert.equal(report.singleWindow,true,'connector opened a separate window')
   assert.equal(report.nativeConnected,true,'bundled runtime did not restore the verified employee connection')
   assert.equal(report.nativeStatusVisible,true,'connection status is missing from the main app')
+  assert.equal(report.mainComputerSelector,true,'main computer selector did not select the restored connection')
+  assert.equal(report.managementInline,true,'computer management must be inline in the main app')
   assert.equal(report.sandbox,true);assert.equal(report.nodeIntegration,false);assert.equal(report.contextIsolation,true)
   const request=async(method,route,body,headers={})=>{
     const r=await fetch(report.origin+route,{method,headers:{'Content-Type':'application/json',...headers},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json().catch(()=>({}))}
