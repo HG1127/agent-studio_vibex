@@ -246,7 +246,10 @@ test('restore cannot borrow another root or follow a replaced parent; vault data
   await fs.symlink(other.root,path.join(f.root,'nested'),'junction')
   await assert.rejects(f.call('restore',{trash_id:trashed.trash_id}),/linked_path_denied/)
   await assert.rejects(fs.stat(path.join(other.root,'item.txt')),{code:'ENOENT'})
-  await fs.rmdir(path.join(f.root,'nested'));await fs.mkdir(path.join(f.root,'nested'))
+  // nested is now a symlink/junction, not a directory. rmdir() fails with
+  // ENOTDIR on Linux; unlink() removes the link itself on supported platforms.
+  await fs.unlink(path.join(f.root,'nested'))
+  await fs.mkdir(path.join(f.root,'nested'))
   await fs.link(path.join(f.root,VAULT,trashed.trash_id,'data'),path.join(f.root,'hard-data.txt'))
   await assert.rejects(f.call('restore',{trash_id:trashed.trash_id}),/file_size_or_type_denied/)
  }finally{await f.close();await other.close()}
