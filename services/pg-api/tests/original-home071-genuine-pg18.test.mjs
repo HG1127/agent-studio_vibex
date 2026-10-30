@@ -35,6 +35,7 @@ test('original catalog071: actual fresh PG18, Native Cookies, paging, favorites 
    const after=await f.inventory();assert.deepEqual(after.tables,[...before071.tables,'agentstudio.agent_spec_favorites'].sort());assert.deepEqual(after.versions,[...f.baseline.versions,'pg_v9_070','pg_v9_071'].sort());assert.deepEqual(after.roles,before071.roles)
    assert.deepEqual((await f.db.query("SELECT p.oid::text,p.proname FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='agentstudio' ORDER BY p.oid")).rows,functions)
    const nn=(await f.db.query("SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_spec_favorites'::regclass AND contype='n' ORDER BY conname")).rows;assert.equal(nn.length,5)
+    await f.withApi(async db=>{const column=(await db.query("SELECT a.attacl IS NULL AS implicit_acl,(SELECT count(*)::integer FROM pg_catalog.aclexplode(a.attacl)) AS explicit_privileges,has_column_privilege('agentstudio_api',a.attrelid,a.attnum,'SELECT') AS readable FROM pg_catalog.pg_attribute a WHERE a.attrelid='agentstudio.agent_spec_favorites'::regclass AND a.attname='created_at'")).rows[0];assert.deepEqual(column,{implicit_acl:true,explicit_privileges:0,readable:true})})
   })
   await t.test('05 actual partial, grantability, RLS, extra index and PG18 NOT NULL corruption reject',async()=>{
    const changes=[

@@ -24,11 +24,13 @@ export async function verifyNativeHomeAuthoringSchema(db:SqlClient):Promise<void
   "(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2) AS api_oid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_roles owner ON owner.oid=c.relowner WHERE c.oid=to_regclass($1)",[table,api])).rows[0]
  if(!state)return fail()
  if(state.ok!==true||state.no_grant_option!==true||!Number.isSafeInteger(Number(state.api_oid)))fail()
- const columns=(await db.query<{name:string;type:string;notnull:boolean;default_expr:string|null;read:boolean;insert:boolean;update:boolean;reference:boolean;no_grant_option:boolean}>(
+  // aclexplode is strict: NULL attacl has no explicit column grants. Keep the
+  // effective table/column checks; a SQL '{}' ACL has the wrong array dimension.
+  const columns=(await db.query<{name:string;type:string;notnull:boolean;default_expr:string|null;read:boolean;insert:boolean;update:boolean;reference:boolean;no_grant_option:boolean}>(
   "SELECT a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS notnull,pg_catalog.pg_get_expr(d.adbin,d.adrelid) AS default_expr,"+
   "has_column_privilege($2,a.attrelid,a.attnum,'SELECT') AS read,has_column_privilege($2,a.attrelid,a.attnum,'INSERT') AS insert,"+
   "has_column_privilege($2,a.attrelid,a.attnum,'UPDATE') AS update,has_column_privilege($2,a.attrelid,a.attnum,'REFERENCES') AS reference,"+
-  "NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(a.attacl,'{}'::aclitem[])) acl JOIN pg_catalog.pg_class c ON c.oid=a.attrelid WHERE acl.grantee<>c.relowner AND acl.is_grantable) AS no_grant_option "+
+   "NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(a.attacl) acl JOIN pg_catalog.pg_class c ON c.oid=a.attrelid WHERE acl.grantee<>c.relowner AND acl.is_grantable) AS no_grant_option "+
   "FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=to_regclass($1) AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum",[table,api])).rows
  if(columns.length!==5)fail()
  for(let i=0;i<columns.length;i++){

@@ -6026,7 +6026,17 @@
     "original_home_async_source_fixes_merged": true,
     "original_home_public_hook_members": 56,
     "original_home_pure_hooks_are_not_real_React_or_browser_acceptance": true,
-    "original_home_hidden_source_dependency_failclosed": true
+    "original_home_hidden_source_dependency_failclosed": true,
+    "hosted_optional070_first_execution": {
+      "head": "a048c5debe387ad037da2c3880588b2985beb787",
+      "run": 41019917305,
+      "job": 123944638788,
+      "status": "FAILED_AFTER_SQL_INSTALL_BEFORE_FACADE_READY",
+      "error": "ACL arrays must be one-dimensional",
+      "root_cause": "NULL column ACL was replaced with SQL empty ACL before aclexplode",
+      "raw_log_sha256": "a33d4c6d36827088252e73a919064ed9aa75936576f34fecc4ae29267c975697"
+    },
+    "column_ACL_source_repair": "Preserve native NULL column ACL; retain all effective privilege and grantability checks; genuine070/071 default-column assertions added; actual rerun pending"
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

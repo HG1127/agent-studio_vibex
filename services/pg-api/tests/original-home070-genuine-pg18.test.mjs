@@ -38,6 +38,9 @@ test('original Home070: actual PG18 catalog, Native employee HTTPS, atomic full 
    assert.equal(await f.inspect(),'installed')
    const actual=(await f.db.query("SELECT count(*)::integer AS n FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='agentstudio' AND starts_with(p.proname,'home_authoring_')")).rows[0];assert.equal(actual.n,2)
    const nn=(await f.db.query("SELECT count(*)::integer AS n FROM pg_catalog.pg_constraint WHERE conrelid='agentstudio.agent_spec_authoring'::regclass AND contype='n'")).rows[0];assert.equal(nn.n,5)
+    // A NULL column ACL means no explicit column grant. Effective SELECT still
+    // comes from the audited table ACL; never replace NULL with a SQL '{}' ACL.
+    await f.withApi(async db=>{const column=(await db.query("SELECT a.attacl IS NULL AS implicit_acl,(SELECT count(*)::integer FROM pg_catalog.aclexplode(a.attacl)) AS explicit_privileges,has_column_privilege('agentstudio_api',a.attrelid,a.attnum,'SELECT') AS readable FROM pg_catalog.pg_attribute a WHERE a.attrelid='agentstudio.agent_spec_authoring'::regclass AND a.attname='created_at'")).rows[0];assert.deepEqual(column,{implicit_acl:true,explicit_privileges:0,readable:true})})
   })
   await t.test('05 complete/off audits and configurationWrites false blocks genuine writes',async()=>{
    assert.equal(await f.prepare(),null);await f.prepare({enabled:true,writes:false})

@@ -7,13 +7,13 @@ import {captureOriginalHome070ReviewPlan} from './pg18-original-home070-review-p
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),sha=raw=>createHash('sha256').update(raw).digest('hex')
 const sql={path:'db/postgres/migrations/pg_v9_071_agent_catalog.sql',sha256:'5ede3c83171fe277935398f09a87a6f27744ec6d4269a2a5494929c24548bad1'}
 const reviewed=[
- {path:'services/pg-api/src/native-agent-catalog-audit.ts',sha256:'caec22bc44c27de3ed6ebc9b600832faf00975cc21978ded26e8a7d94dcc0d3a'},
+ {path:'services/pg-api/src/native-agent-catalog-audit.ts',sha256:'54ef7c8430585bdc80c80d4a20d67a3b0426d47c8bf3fef934b37e54ec405227'},
  {path:'services/pg-api/src/native-agent-catalog-http.ts',sha256:'6f14cb0b944081b064853f99fa605dd2af195ac3fcbbad715007581620e1ddf4'},
  {path:'services/pg-api/src/native-agent-catalog-repository.ts',sha256:'a2c8feb26dabcf8aebbad02f8e9c936ce213bbe37776ff849fc5227deaaae470'},
  {path:'services/pg-api/src/native-agent-catalog-runtime.ts',sha256:'0a4897b6f1f7d47a7aef9feb9f0783ccaed94300fceb88d337b85f65a10879a7'},
  {path:'shared/original-agent-catalog.ts',sha256:'2aac1f4f3c3d7f7e32953066bad4cfeba52da4cf9099fd8132e8d6a62a54f871'},
  {path:'services/pg-api/tests/helpers/native-agent-catalog-cookie-switch-case.mjs',sha256:'8325c29558d3917e6cc9ae41690db57961ed1c0c5c2d5aacf5b97077628e7de5'},
- {path:'services/pg-api/src/native-home-authoring-audit.ts',sha256:'1eaae9ef17eb2ec434b861e0325ec38daab289fa37ee043d9dc0164107c9c56e'},
+ {path:'services/pg-api/src/native-home-authoring-audit.ts',sha256:'0cad2d395136a9b978ed63044155bc3dc1fde638cc1246331696deb9c5f7e427'},
  {path:'services/pg-api/src/native-home-agent-specs-http.ts',sha256:'9410b58364d167b83017228ae1260fb2757bb59b584650ae0ce6a0702eab9140'},
  {path:'services/pg-api/src/native-home-agent-specs-repository.ts',sha256:'3b2c8f3b523629756092244d75a03959305dbbf1ee16c6d15c9a3a11a86187ba'},
 ]

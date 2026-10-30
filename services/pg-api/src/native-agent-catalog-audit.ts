@@ -43,10 +43,12 @@ export async function verifyNativeAgentCatalogSchema(db:SqlClient):Promise<void>
   "(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2) AS api_oid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_roles owner ON owner.oid=c.relowner WHERE c.oid=to_regclass($1)",[table,api])).rows[0]
  if(!state)return fail()
  if(state.ok!==true||!Number.isSafeInteger(Number(state.api_oid))||Number(state.api_oid)<1)fail()
- const columns=(await db.query<{name:string;type:string;required:boolean;default_expr:string|null;read:boolean;insert:boolean;update:boolean;reference:boolean;acl_safe:boolean}>(
+  // NULL means no explicit column ACL; effective privileges are checked below.
+  // Do not construct a zero-dimensional SQL '{}' ACL for the strict SRF.
+  const columns=(await db.query<{name:string;type:string;required:boolean;default_expr:string|null;read:boolean;insert:boolean;update:boolean;reference:boolean;acl_safe:boolean}>(
   "SELECT a.attname AS name,pg_catalog.format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS required,pg_catalog.pg_get_expr(d.adbin,d.adrelid) AS default_expr,"+
   "has_column_privilege($2,a.attrelid,a.attnum,'SELECT') AS read,has_column_privilege($2,a.attrelid,a.attnum,'INSERT') AS insert,has_column_privilege($2,a.attrelid,a.attnum,'UPDATE') AS update,has_column_privilege($2,a.attrelid,a.attnum,'REFERENCES') AS reference,"+
-  "NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(a.attacl,'{}'::aclitem[])) x WHERE x.grantee NOT IN(c.relowner,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2)) OR x.grantee=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2) AND (x.is_grantable OR x.grantor<>c.relowner)) AS acl_safe "+
+   "NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(a.attacl) x WHERE x.grantee NOT IN(c.relowner,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2)) OR x.grantee=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$2) AND (x.is_grantable OR x.grantor<>c.relowner)) AS acl_safe "+
   "FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=to_regclass($1) AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum",[table,api])).rows
  const names=['agent_spec_id','owner_user_id','favorite','created_at','updated_at'];if(columns.length!==names.length)fail()
  for(let i=0;i<columns.length;i++){const c=columns[i]!,name=names[i]!,time=i>=3;if(c.name!==name||c.type!==(time?'timestamp with time zone':i===2?'boolean':'uuid')||c.required!==true||c.default_expr!==(time?'clock_timestamp()':i===2?'false':null)||c.read!==true||c.insert!==(i<=2)||c.update!==['favorite','updated_at'].includes(name)||c.reference!==false||c.acl_safe!==true)fail()}
