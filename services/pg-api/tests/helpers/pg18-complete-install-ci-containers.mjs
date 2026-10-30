@@ -100,6 +100,15 @@ export async function attestCompleteProfileTargets(permit,loaded){
  if(result.main.systemIdentifier===result.restore.systemIdentifier)fail('independent_system_identifiers')
  return Object.freeze(result)
 }
+// Read-only same-cohort assertion. Private original references only; no Docker,
+// connection, filesystem mutation, target DTO, callback or authority is created.
+export function assertOwnedCompleteProfileCohort(permit,loaded,target){
+ const b=completeProfileCiBinding(permit),s=targets.get(target)
+ if(!s)fail('private_target_reference_required');assertVerifiedCompleteProfileStage(loaded)
+ const input='/root/agentstudio-complete-install-input/'+b.run+'-'+b.attempt+'-'+b.nonce,keys=['kind','run','attempt','nonce','profileSha','mainId','restoreId','imageId','sourceManifestSha','runtimeManifestSha']
+ if(b.kind!=='fixture'||s.loaded!==loaded||keys.some(k=>s.b[k]!==b[k])||loaded.stageNonce!==b.nonce||loaded.stageInput!==input||loaded.tree!==input+'/tree'||loaded.profileSha!==b.profileSha||s.spec.kind!=='main'||s.spec.port!==5333||s.spec.db!=='agent_studio'||s.id!==b.mainId||target.id!==s.id||target.kind!==s.spec.kind||target.port!==s.spec.port||target.database!==s.spec.db||target.systemIdentifier!==s.system||target.databaseOid!==s.oid)fail('cohort_reference_mismatch')
+ return true
+}
 async function owned(target,trace){
  const mark=phase=>{if(trace)trace.phase=phase}
  mark('private_target_reference')

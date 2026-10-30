@@ -9,6 +9,8 @@ on:
       - 'ops/pg18-complete-install-ci.mjs'
       - 'ops/pg18-complete-service-ci.mjs'
       - 'ops/pg18-full069-worker-path-ci.mjs'
+      - 'ops/pg18-full069-final-fixture-process.mjs'
+      - 'tests/pg18-full069-final-fixture-process.test.mjs'
       - '.github/workflows/pg18-complete-install-ci.yml'
   workflow_dispatch:
 permissions:
@@ -20,7 +22,7 @@ jobs:
   pg18-complete-install:
     name: PG18 / actual full fresh CLI and original API LOGIN audit
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 106
     services:
       postgres:
         image: pgvector/pgvector:0.8.7-pg18
@@ -48,7 +50,7 @@ jobs:
         id: source_preflight
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs services/pg-api/tests/pg18-complete-service-plan.test.mjs services/pg-api/tests/pg18-complete-service-driver.test.mjs services/pg-api/tests/pg18-complete-service-case-counter.test.mjs services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs services/pg-api/tests/pg18-complete-review-worker-source.test.mjs services/pg-api/tests/pg18-complete-executor-plan.test.mjs services/pg-api/tests/pg18-complete-executor-source.test.mjs services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs services/pg-api/tests/pg18-complete-review-stack-source.test.mjs services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs services/pg-api/tests/pg18-complete-role-closure.test.mjs services/pg-api/tests/pg18-full069-worker-live.test.mjs services/pg-api/tests/pg18-full069-worker-path-validation.test.mjs services/pg-api/tests/pg18-full069-network-policy.test.mjs services/pg-api/tests/pg18-full069-worker-path-ci.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-plan.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-source.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-guard.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-lock-boundary.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-chain.test.mjs services/pg-api/tests/pg18-complete-companion-sources.test.mjs services/pg-api/tests/pg18-final-companions-bindings.test.mjs services/pg-api/tests/pg18-final-companions-contract.test.mjs services/pg-api/tests/pg18-full069-final-client-bindings.test.mjs services/pg-api/tests/pg18-full069-final-login-contract.test.mjs services/pg-api/tests/pg18-full069-final-records.test.mjs services/pg-api/tests/pg18-full069-final-trust.test.mjs services/pg-api/tests/pg18-full069-final-window.test.mjs services/pg-api/tests/pg18-full069-final14-catalog.test.mjs
+          node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/pg18-complete-profile.test.mjs services/pg-api/tests/pg18-complete-install-ci-guard.test.mjs services/pg-api/tests/pg18-complete-operator-runtime.test.mjs services/pg-api/tests/pg18-complete-service-plan.test.mjs services/pg-api/tests/pg18-complete-service-driver.test.mjs services/pg-api/tests/pg18-complete-service-case-counter.test.mjs services/pg-api/tests/pg18-complete-review-worker-plan.test.mjs services/pg-api/tests/pg18-complete-review-worker-source.test.mjs services/pg-api/tests/pg18-complete-executor-plan.test.mjs services/pg-api/tests/pg18-complete-executor-source.test.mjs services/pg-api/tests/pg18-complete-review-stack-plan.test.mjs services/pg-api/tests/pg18-complete-review-stack-source.test.mjs services/pg-api/tests/pg18-complete-first-admin-interop.test.mjs services/pg-api/tests/pg18-complete-role-closure.test.mjs services/pg-api/tests/pg18-full069-worker-live.test.mjs services/pg-api/tests/pg18-full069-worker-path-validation.test.mjs services/pg-api/tests/pg18-full069-worker-live-trust-diagnostic.test.mjs services/pg-api/tests/pg18-full069-network-policy.test.mjs services/pg-api/tests/pg18-full069-worker-path-ci.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-plan.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-source.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-guard.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-lock-boundary.test.mjs services/pg-api/tests/pg18-complete-plan-workflow-ci-chain.test.mjs services/pg-api/tests/pg18-complete-companion-sources.test.mjs services/pg-api/tests/pg18-final-companions-bindings.test.mjs services/pg-api/tests/pg18-final-companions-contract.test.mjs services/pg-api/tests/pg18-full069-final-client-bindings.test.mjs services/pg-api/tests/pg18-full069-final-login-contract.test.mjs services/pg-api/tests/pg18-full069-final-records.test.mjs services/pg-api/tests/pg18-full069-final-trust.test.mjs services/pg-api/tests/pg18-full069-final-window.test.mjs services/pg-api/tests/pg18-full069-final14-catalog.test.mjs services/pg-api/tests/pg18-final-companions-ci-contract.test.mjs services/pg-api/tests/pg18-final-companions-all13-stage.test.mjs services/pg-api/tests/pg18-full069-final-path-ci.test.mjs tests/pg18-full069-final-fixture-process.test.mjs
       - name: Own empty PG18 clusters and actual complete069 install
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
@@ -65,6 +67,7 @@ jobs:
           node_path="$(command -v node)"
           sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED "$node_path" --experimental-strip-types ops/pg18-complete-install-ci.mjs --run
       - name: Fresh full069 fixed service preparation and original first-admin CLI
+        timeout-minutes: 56
         env:
           AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
           AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
@@ -77,9 +80,11 @@ jobs:
           AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE: COMPLETE_069_INSTALL_SYNTHETIC_ONLY
           AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED: YES_NEW_DISPOSABLE_CONTAINERS_ONLY
           AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE: YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY
+          AGENT_STUDIO_COMPANION_CI_PURPOSE: YES_DISPOSABLE_FULL069_FIVE_COMPANIONS_ONLY
+          AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE: YES_DISPOSABLE_FULL069_FINAL14_ALL13_PATHS_ONLY
         run: |
           node_path="$(command -v node)"
-          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run
+          sudo -n --preserve-env=GITHUB_ACTIONS,CI,RUNNER_OS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_WORKFLOW,GITHUB_JOB,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_EVENT_NAME,AGENT_STUDIO_PG18_CI_EPHEMERAL,AGENT_STUDIO_PG18_CI_WRITE_APPROVED,AGENT_STUDIO_PG18_CI_HOST,AGENT_STUDIO_PG18_CI_PORT,AGENT_STUDIO_PG18_CI_DATABASE,AGENT_STUDIO_PG18_CI_ADMIN_USER,AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD,AGENT_STUDIO_COMPLETE_PROFILE_CI_EPHEMERAL,AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE,AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE,AGENT_STUDIO_COMPANION_CI_PURPOSE,AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE "$node_path" --experimental-strip-types ops/pg18-complete-service-ci.mjs --run
       - name: Bounded seven original Worker entries and Native HTTPS paths
         if: ${{ !cancelled() && steps.source_preflight.outcome == 'success' }}
         env:

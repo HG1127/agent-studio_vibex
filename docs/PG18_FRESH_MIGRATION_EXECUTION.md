@@ -2,6 +2,14 @@
 
 Status: **IN PROGRESS / production NO-GO**. This record tracks the current worktree, not a deployed release.
 
+## Current source integration checkpoint — 2026-10-30 (Asia/Shanghai)
+
+The combined source checkpoint is based on uploaded commit `80141107c027267d5f091420cb888018c5dcd672`. It integrates the reviewed B phase captures, C v3/v4 private deployment binding and import closure, both kernel-confirmed process-group cleanup supervisors, actual actor executable-inode binding, and fixed closed trust-failure stage diagnostics. Its37-file source suite passed373 checks and API5.9 compilation passed. The final application closure contains500 files, SHA `134a50202d88431cc2c5908d15d2e024e4d788a6b4cc3d1d1cff8d51030015ed`. Actual all13 execution, same-cohort and interruption validation remain pending for this combined candidate.
+
+At source-parent8014110, all50 quality jobs passed with2910 main tests, and13 triggered feature workflows passed including same-run control. Actual fresh install/restore and C8→Review→Executor→C3→F05 preparation passed. The original short Worker CLI now passes network policy identity before and after execution, but refuses a later dependency before publishing a trust context. Its exact operand is unknown; the new diagnostic keeps the original checks and errors. Earlier bef0ebf and87902db failures and historicalf5c93e1 evidence remain separate in the registry.
+
+No F01–F31 action is closed by these source or historical checks. Qualifying continuous Worker hours **0**, employee signoffs **0**, target authentication **unverified**, production **NO-GO**. See `current_candidate_status_evidence` in [the execution registry](PG18_MIGRATION_EXECUTION_20261029.json). Earlier entries below are historical snapshots.
+
 ## Confirmed scope
 
 The user confirmed in this chat that all existing PocketBase data is test data and need not be retained/imported. Prepare a fresh PostgreSQL 18 application with the existing business features. This removes the old-record import and reconciliation requirement. It does not waive employee authentication, owner/team authorization, approval, audit, execution safety, HTTPS UAT, or a recoverable old application. No live database has been cleared and no service has been switched.

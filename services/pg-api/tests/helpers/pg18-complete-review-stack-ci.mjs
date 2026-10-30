@@ -1,4 +1,5 @@
 // New-purpose hosted synthetic continuation. All mutations go through the
+import {finalPathCiSidecarsEnabled,captureFinalPathCiCommand} from './pg18-full069-final-path-ci-sidecars.mjs'
 // actual root preparer CLI; direct negative mutations are confined to the
 // attested newly owned PG18 target and restored before positive proof.
 import fs from 'node:fs'
@@ -11,12 +12,12 @@ import {ownedCompleteProfilePool,configureOwnedCompleteReviewStackHba} from './p
 const sha=b=>createHash('sha256').update(b).digest('hex'),fail=c=>{throw Error('complete_service_review_stack_'+c)}
 const login='agentstudio_review_dispatch_login',group='agentstudio_review_dispatch'
 function privateFile(file,bytes,uid=0,gid=0){const fd=fs.openSync(file,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW|fs.constants.O_WRONLY,0o400);try{fs.writeFileSync(fd,bytes);fs.fchownSync(fd,uid,gid);fs.fchmodSync(fd,0o400);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}}
-async function child(file,args,env,options={},discard=false){
+async function child(file,args,env,options={},discard=false){const finalPathCaptured=[];
  return new Promise((resolve,reject)=>{
   const p=spawn(process.execPath,['--experimental-strip-types',file,...args],{env,stdio:['ignore','pipe','pipe'],windowsHide:true,...options});let stdout='',stderr='',bytes=0,stopping=false,killer
   const stop=()=>{stopping=true;p.kill('SIGTERM');killer=setTimeout(()=>p.kill('SIGKILL'),5000)},timer=setTimeout(stop,150000)
-  p.stdout.on('data',b=>{bytes+=b.length;if(bytes>65536){stop();return}if(!discard)stdout+=b});p.stderr.on('data',b=>{bytes+=b.length;if(bytes>65536){stop();return}stderr+=b})
-  p.once('error',()=>{clearTimeout(timer);reject(Error('complete_service_review_stack_child_start'))});p.once('close',code=>{clearTimeout(timer);if(killer)clearTimeout(killer);if(stopping)return reject(Error('complete_service_review_stack_child_bound'));let report;try{report=stdout.trim()?JSON.parse(stdout):null}catch{return reject(Error('complete_service_review_stack_child_report'))}const refusal=/\bcomplete069_review_stack_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})\b/.exec(stderr)?.[0]??null;console.log(JSON.stringify({event:'complete069_review_stack_actual_cli_result',phase:file.endsWith('/agent-assessment-service.ts')?'original_preflight_'+args[1]:args[0]==='--inspect-operation'?'inspect_operation':'prepare',exit:Number.isSafeInteger(code)?code:null,refusal,reported_refusal:typeof report?.refusal_code==='string'&&/^complete069_review_stack_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})$/.test(report.refusal_code)?report.refusal_code:null,verified:report?.verified===true,output_deliberately_discarded:discard,production_GO:false}));resolve({code,report,refusal})})
+  p.stdout.on('data',b=>{bytes+=b.length;if(bytes>65536){stop();return}if(finalPathCiSidecarsEnabled()&&!discard)finalPathCaptured.push(Buffer.from(b));if(!discard)stdout+=b});p.stderr.on('data',b=>{bytes+=b.length;if(bytes>65536){stop();return}stderr+=b})
+  p.once('error',()=>{clearTimeout(timer);reject(Error('complete_service_review_stack_child_start'))});p.once('close',code=>{clearTimeout(timer);if(killer)clearTimeout(killer);if(stopping)return reject(Error('complete_service_review_stack_child_bound'));let report;try{report=stdout.trim()?JSON.parse(stdout):null}catch{return reject(Error('complete_service_review_stack_child_report'))}const refusal=/\bcomplete069_review_stack_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})\b/.exec(stderr)?.[0]??null;console.log(JSON.stringify({event:'complete069_review_stack_actual_cli_result',phase:file.endsWith('/agent-assessment-service.ts')?'original_preflight_'+args[1]:args[0]==='--inspect-operation'?'inspect_operation':'prepare',exit:Number.isSafeInteger(code)?code:null,refusal,reported_refusal:typeof report?.refusal_code==='string'&&/^complete069_review_stack_(?:[a-z_]+|sqlstate_[0-9A-Z]{5})$/.test(report.refusal_code)?report.refusal_code:null,verified:report?.verified===true,output_deliberately_discarded:discard,production_GO:false}));if(finalPathCiSidecarsEnabled())try{captureFinalPathCiCommand(file,args,env,code,discard?null:Buffer.concat(finalPathCaptured),discard)}catch(error){return reject(error)};resolve({code,report,refusal})})
  })
 }
 async function originalReadOnlyStackCli(loaded,inputs){

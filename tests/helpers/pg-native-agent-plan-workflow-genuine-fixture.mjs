@@ -161,7 +161,7 @@ export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "e8627a6170eef9464e53ac07eb5753bd83a7af0525149cda0cba6a723a15bd9c",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "d821eb1f6eef98e0eba0c50115ab6759a4562d9dd26e0853c9f2cb9be898f91b",
   "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "1b386c2a16661910b50afb59d5c28277d0cc908bf5c8fc1bf55c095ce05b46f9",
-  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "ebd99f846d16ae4e80796aa454ba1411991dc548920fd88f6cf882547ac099c9",
+  "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "dfaf7ef5c57ea46107c6e4297758a678e7ce21befc8ffcd0b7cb4cd0d0f31d95",
   "services/pg-api/src/pg18-complete-executor-cli.mjs": "31486fca2a869b38255a15f1790c983f54a8cd877bdd824516676a66f6d451bd",
   "services/pg-api/src/pg18-complete-executor-core.mjs": "544dd6cf44bed4879c7a7b5cb36adeb06d176248e2c5ae281eee4c820c1c5b14",
   "services/pg-api/src/pg18-complete-executor-journal.mjs": "ef6039d1710ba7eddc067a762917985520ceacd490045cd7f4bc31de556f5775",

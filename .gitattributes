@@ -972,3 +972,30 @@ tests/pg18-full069-final-review-bundle.test.mjs text eol=lf
 # Reviewed full069 preparation and genuine regression sources.
 services/pg-api/src/pg18-full069-network-policy.mjs text eol=lf
 services/pg-api/tests/pg18-full069-network-policy.test.mjs text eol=lf
+
+# Reviewed final13 CI integration sources.
+docs/PG18_FULL069_FINAL13_PATH_CI.md text eol=lf
+docs/PG18_FULL069_FIVE_COMPANION_CI_BRIDGE.md text eol=lf
+ops/pg18-full069-final-fixture-process.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-contract.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-fixture.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-run.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-complete-companion-ci-stage.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-bootstrap-child.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-bridge.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-contract.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-profiles.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-run.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-setup-base.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-setup.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-sidecars.mjs text eol=lf
+services/pg-api/tests/helpers/pg18-full069-final-path-ci-sources.mjs text eol=lf
+services/pg-api/tests/pg18-final-companions-all13-stage.test.mjs text eol=lf
+services/pg-api/tests/pg18-final-companions-ci-contract.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-final-path-ci.test.mjs text eol=lf
+tests/pg18-full069-final-fixture-process.test.mjs text eol=lf
+
+# Reviewed full069 preparation and genuine regression sources.
+docs/PG18_FRESH_MIGRATION_EXECUTION.md text eol=lf
+services/pg-api/tests/pg18-full069-worker-live-trust-diagnostic.test.mjs text eol=lf

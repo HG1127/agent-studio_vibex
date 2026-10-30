@@ -24,7 +24,7 @@ test('common complete snapshot binds original service and new preparer roots in 
  for(const name of [...complete069PlanWorkflowModules,'services/pg-api/src/agent-plan-workflow-service.ts','services/pg-api/src/agent-plan-workflow-service-config.ts'])assert.ok(snapshot.complete.manifest.sources.some(r=>r.path===name),name)
  assert.equal(snapshot.manifest.complete_source_sha256,snapshot.complete.source_sha256)
  const yaml=fs.readFileSync(new URL('../../../.github/workflows/pg18-complete-install-ci.yml',import.meta.url),'utf8'),installLine=yaml.split('\n').find(l=>l.includes('ops/pg18-complete-install-ci.mjs --run')),serviceLine=yaml.split('\n').find(l=>l.includes('ops/pg18-complete-service-ci.mjs --run'))
- assert.doesNotMatch(installLine,/AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE/);assert.match(serviceLine,/AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE /)
+ assert.doesNotMatch(installLine,/AGENT_STUDIO_(?:PLAN_WORKFLOW_PAIR|COMPANION|FINAL13_PATH)_CI_PURPOSE/);assert.match(serviceLine,/AGENT_STUDIO_COMPLETE_PROFILE_CI_WRITE_APPROVED,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE,AGENT_STUDIO_COMPANION_CI_PURPOSE,AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE /)
  assert.doesNotMatch(yaml,/^\s*<<:/m)
  const environment=name=>{
   const at=yaml.indexOf('      - name: '+name+'\n');assert.ok(at>=0,name)
@@ -32,5 +32,5 @@ test('common complete snapshot binds original service and new preparer roots in 
   const rows=block.trimEnd().split('\n').map(line=>{const m=/^          ([A-Z0-9_]+): (.+)$/.exec(line);assert.ok(m,line);return[m[1],m[2]]});assert.equal(new Set(rows.map(([key])=>key)).size,rows.length);return Object.fromEntries(rows)
  }
  const original=environment('Own empty PG18 clusters and actual complete069 install'),pair=environment('Fresh full069 fixed service preparation and original first-admin CLI')
- assert.deepEqual(pair,{...original,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE:'YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY'})
+ assert.deepEqual(pair,{...original,AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE:'YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY',AGENT_STUDIO_COMPANION_CI_PURPOSE:'YES_DISPOSABLE_FULL069_FIVE_COMPANIONS_ONLY',AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE:'YES_DISPOSABLE_FULL069_FINAL14_ALL13_PATHS_ONLY'})
 })
