@@ -999,3 +999,7 @@ tests/pg18-full069-final-fixture-process.test.mjs text eol=lf
 # Reviewed full069 preparation and genuine regression sources.
 docs/PG18_FRESH_MIGRATION_EXECUTION.md text eol=lf
 services/pg-api/tests/pg18-full069-worker-live-trust-diagnostic.test.mjs text eol=lf
+
+# Reviewed CI-only exact Stage proof regression.
+services/pg-api/tests/pg18-complete-stage-source-proof.test.mjs text eol=lf
+services/pg-api/tests/pg18-complete-stage-diagnostic.test.mjs text eol=lf

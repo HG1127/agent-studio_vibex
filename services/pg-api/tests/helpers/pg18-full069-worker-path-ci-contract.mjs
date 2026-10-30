@@ -1,5 +1,6 @@
 // Closed CI result data only. No caller-provided proof becomes an authority.
 import {liveEntries} from '../../src/pg18-full069-worker-live-contract.mjs'
+import {controlErrorCodes} from '../../src/worker-heartbeat-activation-control-contract.ts'
 export const pathCiApproval='RUN_BOUNDED_OWNED_FULL069_WORKER_PATHS_ONLY'
 export function requirePathCiApproval(env){if(env.AGENT_STUDIO_FULL069_WORKER_PATH_CI_APPROVED!==pathCiApproval)throw Error('full069_path_ci_refused:approval')}
 function result(value,runId,completed){
@@ -32,4 +33,20 @@ export function pathCiNetworkDrift(before,after){
  if([before,after].some(v=>typeof v!=='string'||Buffer.byteLength(v)>2097152||v.includes('\0')))throw Error('full069_path_ci_refused:network_observation_shape')
  const lines=value=>value.split('\n'),a=lines(before),b=lines(after),policy=value=>lines(value).map(line=>/^:[A-Za-z0-9_-]+ (?:ACCEPT|DROP|-) \[(?:0|[1-9][0-9]*):(?:0|[1-9][0-9]*)\]$/.test(line)?line.replace(/\[[0-9]+:[0-9]+\]$/,'[0:0]'):line).join('\n'),same=before===after
  return Object.freeze({exact_same:same,changed_only_chain_counters:!same&&policy(before)===policy(after),changed_line_count:Array.from({length:Math.max(a.length,b.length)},(_,i)=>a[i]!==b[i]).filter(Boolean).length,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false})
+}
+
+// Forward only closed failure-observation labels. Never copy raw child stderr.
+const trustPhases=new Set(['host_admission','configuration','operator_key','signed_profile','source_capture','source_verify','host_runtime','telemetry_read','telemetry_envelope','telemetry_root_profile','telemetry_binding','writer_scope','credential_read','C_records','handle_publish']),trustCredentials=new Set(['admin','api','native_auth','worker','identity','broker','index_worker','index_broker','review_worker','employee_profile','employee_password','tls_ca','tls_certificate','tls_key','executor']),trustClasses=new Set(['Error','TypeError','RangeError','SyntaxError','WorkerHeartbeatControlError']),trustNodeCodes=new Set(['ERR_MODULE_NOT_FOUND','ERR_PACKAGE_PATH_NOT_EXPORTED','ERR_UNSUPPORTED_DIR_IMPORT','ERR_REQUIRE_ESM','ERR_INVALID_ARG_TYPE','ERR_OSSL_EVP_UNSUPPORTED','ENOENT','EACCES','EPERM','EIO','ELOOP','EMFILE','ENFILE','ENOSPC','ETIMEDOUT','ECONNREFUSED','ECONNRESET','EPIPE'])
+export function pathCiTrustFailures(stderr){
+ const records=[]
+ if(typeof stderr!=='string'||Buffer.byteLength(stderr)>262144||stderr.includes('\0'))return Object.freeze(records)
+ for(const line of stderr.split(/\r?\n/)){
+  if(line.length>1024)continue
+  let v;try{v=JSON.parse(line)}catch{continue}
+  if(!v||Array.isArray(v)||Object.getPrototypeOf(v)!==Object.prototype||Object.keys(v).sort().join(',')!=='credential_key,error_class,error_code,event,observed_data_only,phase,production_cutover_allowed,qualifies_run'||v.event!=='full069_worker_live_trust_failure'||!trustPhases.has(v.phase)||v.observed_data_only!==true||v.qualifies_run!==false||v.production_cutover_allowed!==false)continue
+  if(v.credential_key!==null&&(v.phase!=='credential_read'||!trustCredentials.has(v.credential_key))||v.error_class!==null&&!trustClasses.has(v.error_class)||v.error_code!==null&&(v.error_class===null||typeof v.error_code!=='string'||!(v.error_class==='WorkerHeartbeatControlError'?controlErrorCodes.includes(v.error_code):trustNodeCodes.has(v.error_code))))continue
+  records.push(Object.freeze({event:v.event,phase:v.phase,credential_key:v.credential_key,error_class:v.error_class,error_code:v.error_code,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))
+  if(records.length>1)return Object.freeze([])
+ }
+ return Object.freeze(records)
 }

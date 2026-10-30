@@ -831,10 +831,10 @@
   },
   "current_candidate_status_evidence": {
     "format": "pg18_current_candidate_status_evidence_v1",
-    "snapshot_UTC": "2026-10-30T00:20:56.982002+00:00",
-    "interpretation": "Current local integration checkpoint. Source-parent commit and historical evidence are explicitly separated from unexecuted combined CI. Every earlier registry field and F01-F31 feature remains historical and unchanged. This block grants no runtime or production authority.",
+    "snapshot_UTC": "2026-10-30T01:04:19.785337+00:00",
+    "interpretation": "Prepared source-delta snapshot. Hosted evidence is bound to its exact commit; local raw-byte capture and Git-index LF pins have separate scopes. Every original registry field and F01-F31 feature remains unchanged. This grants no runtime or production authority.",
     "current_candidate": {
-      "source_parent_head": "80141107c027267d5f091420cb888018c5dcd672",
+      "source_parent_head": "7d1998813467e651afc803f76cf94e0dae470ef8",
       "profile": "complete069",
       "local_combined_source_not_yet_committed_or_pushed": true,
       "final_application_source_sha256": "134a50202d88431cc2c5908d15d2e024e4d788a6b4cc3d1d1cff8d51030015ed",
@@ -846,12 +846,18 @@
       "actor_executable_inode_binding_increment_pending": false,
       "kernel_ESRCH_required_in_both_group_supervisors": true,
       "fixed_trust_failure_stage_diagnostic_integrated": true,
-      "source_checks": 373,
-      "API59_compilation_passed": true
+      "source_checks": 407,
+      "API59_compilation_passed": true,
+      "final_application_source_sha256_scope": "unchanged local raw-byte500 capture;6194 Git LF pins verified separately",
+      "private_stage_source_proof_integrated": true,
+      "closed_CI_trust_diagnostic_forwarding_integrated": true,
+      "closed_verified_load_stage_diagnostic_integrated": true,
+      "source_test_files": 39,
+      "API500_application_bytes_changed": false
     },
     "status": {
       "whole_matrix_passed": false,
-      "current_CI_snapshot": "Source-parent8014110 quality50 and13 triggered feature workflows passed; original complete short path passed network policy identity then refused dependency before trust context was published. This local B/C final13 plus diagnostic integration has not run hosted CI. All qualifying and target gates remain open.",
+      "current_CI_snapshot": "Source-parent7d19988 quality50 and13 triggered feature workflows passed. Fresh installation/restore passed; full service preparation stopped at verified source loading, and separate original short validation still failed with a generic dependency refusal. A deterministic provision-nonce source bug and missing closed diagnostic forwarding are repaired in this unexecuted CI-only delta. Qualifying/target gates remain open.",
       "manual_genuine_full_matrix_deferred_to_combined_candidate": true,
       "qualifying_continuous_Worker_hours": 0,
       "qualifying_final_candidate_started": false,
@@ -955,6 +961,34 @@
         "trust_context_published": false,
         "dependency_operand_unknown": true,
         "complete_raw_sha256": "cefa0bb357375b6ec33a3412ffb4c19bab2b170268002a43d360188f64fcf702"
+      },
+      "source_parent_7d19988": {
+        "head": "7d1998813467e651afc803f76cf94e0dae470ef8",
+        "quality_run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40979319588",
+        "quality_jobs_passed": 50,
+        "main_node_tests": 3010,
+        "main_raw_sha256": "235cbe732ef34dad9983ea2c03b1be74323eb3624b10794468c82d9ca657ccd9",
+        "triggered_feature_workflows_passed": 13,
+        "successful_feature_jobs": 39,
+        "skipped_Executor_jobs_not_pass": 1,
+        "telemetry_run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40979319526",
+        "Reader_passed": 28,
+        "Writer_passed": 26,
+        "Writer_component_cases_included": 4,
+        "Worker_run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40979319573",
+        "Worker_nine_matrices_passed": true,
+        "Worker_actual_TCP_tests": 293,
+        "complete_run": "https://github.com/HG1127/agent-studio_vibex/actions/runs/40979319566",
+        "actual_install_restore_checks": 10,
+        "first_failed_step": 9,
+        "first_failure_phase": "load_verified_stage",
+        "hidden_failure_operand_observed": false,
+        "static_provision_nonce_mismatch_confirmed": true,
+        "old_short_path_passed": false,
+        "old_short_Node_and_network_policy_binding_passed": true,
+        "trust_diagnostic_was_discarded_by_CI_wrapper": true,
+        "all13_runtime_passed": false,
+        "qualifying24h_hours": 0
       }
     }
   }

@@ -71,7 +71,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "db/postgres/migrations/pg_v9_068_agent_public_callers.sql": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
-  "package.json": "cca818ee67ae1dfcb48cdce1739e85809703e1832e89ae4bf3be4143fd790920",
+  "package.json": "394d665beff27847a68e8ee9232d6e0fb6875cd443700cc5cc1ca7f73e90925e",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",

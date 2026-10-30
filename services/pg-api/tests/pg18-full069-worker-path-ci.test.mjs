@@ -8,6 +8,9 @@ import {runFull069WorkerPathCiFixture} from './pg18-full069-worker-path-ci.integ
 import {runFull069WorkerPathCi} from '../../../ops/pg18-full069-worker-path-ci.mjs'
 import {runOwnedFull069WorkerPathCi} from './helpers/pg18-full069-worker-path-ci-fixture.mjs'
 import {liveEntries} from '../src/pg18-full069-worker-live-contract.mjs'
+import {pathCiTrustFailures} from './helpers/pg18-full069-worker-path-ci-contract.mjs'
+import {full069WorkerLiveTrustFailureData} from '../src/pg18-full069-worker-live-trust.mjs'
+import {WorkerHeartbeatControlError,controlErrorCodes} from '../src/worker-heartbeat-activation-control-contract.ts'
 const id='11111111-1111-4111-8111-111111111111',clone=v=>JSON.parse(JSON.stringify(v))
 function record(){return {format:'pg18_full069_worker_path_validation_result_v1',run_id:id,validation_completed:true,reason:null,details:{worker_stop:liveEntries.map(entry=>({id:entry.id,graceful:true,absent:true,supervisor_absent:true,identity_verified:true,forced:false})),native_stop:{id:'native',graceful:true,absent:true,supervisor_absent:true,identity_verified:true,forced:false},proxy_stop:{graceful:true,proxy_closed:true},cleanup:{telemetry_backend_count:0,readers_in_flight:0,queues:{jobs:0,runs:0,reviews:0,queries:0}}},qualifies_run:false,qualifying_window_started:false,BEGIN_or_END_receipt_issued:false,production_cutover_allowed:false}}
 test('bounded result data requires all false qualification flags and cannot change a run identifier',()=>{const r=record();assert.equal(assertPathCiResult(r,id),r);assert.equal(assertPathCiCleanup(r,id),true);assert.throws(()=>assertPathCiResult(r,'different'),/short_result/);for(const key of['qualifies_run','qualifying_window_started','BEGIN_or_END_receipt_issued','production_cutover_allowed']){const v=clone(r);v[key]=true;assert.throws(()=>assertPathCiResult(v,id),/short_result/)}})
@@ -58,3 +61,28 @@ test('network drift cannot classify policy, UID, rule order, extra rule or rule 
  for(const after of[before.replace('OUTPUT ACCEPT','OUTPUT DROP'),before.replace('61001','61002'),before.replace('-j ACCEPT','-j DROP'),before.replace('COMMIT','-A OUTPUT -j ACCEPT\nCOMMIT'),before.split('\n').reverse().join('\n'),before.replace('--uid-owner 61001','--uid-owner 61001 -c 1 2'),before.replace(':OUTPUT ACCEPT [1:20]',':OUTPUT ACCEPT [2:40] ').replace('61001','61002')])assert.equal(pathCiNetworkDrift(before,after).changed_only_chain_counters,false)
 })
 test('network drift data refuses nontext, NUL and oversized input before analysis',()=>{for(const value of[null,{},Buffer.from('x'),'a\0b','x'.repeat(2097153)]){assert.throws(()=>pathCiNetworkDrift(value,''),/network_observation_shape/);assert.throws(()=>pathCiNetworkDrift('',value),/network_observation_shape/)}})
+
+const diagnostic=(phase='source_capture',error=new Error('private-message'),key=null)=>full069WorkerLiveTrustFailureData(phase,error,key),encoded=v=>JSON.stringify(v)+'\n'
+test('actual trust formatter observations survive the bounded CI stderr parser without authority',()=>{
+ for(const phase of ['host_admission','configuration','operator_key','signed_profile','source_capture','source_verify','host_runtime','telemetry_read','telemetry_envelope','telemetry_root_profile','telemetry_binding','writer_scope','credential_read','C_records','handle_publish']){
+  const record=diagnostic(phase),result=pathCiTrustFailures('unrelated bounded stderr\n'+encoded(record));assert.deepEqual(result,[record]);assert.ok(Object.isFrozen(result)&&Object.isFrozen(result[0]));assert.equal(result[0].observed_data_only,true);assert.equal(result[0].qualifies_run,false);assert.equal(result[0].production_cutover_allowed,false);assert.equal(JSON.stringify(result).includes('private-message'),false)
+ }
+})
+test('original control error codes are forwarded only under the exact closed control class',()=>{
+ for(const code of controlErrorCodes){const record=diagnostic('telemetry_root_profile',new WorkerHeartbeatControlError(code));assert.deepEqual(pathCiTrustFailures(encoded(record)),[record]);assert.deepEqual(pathCiTrustFailures(encoded({...record,error_class:'Error'})),[])}
+})
+test('stderr diagnostic fields cannot smuggle messages, secrets, paths or positive flags',()=>{
+ const original=diagnostic();for(const edit of [v=>v.message='secret',v=>v.path='/etc/private',v=>v.error_code='private-password',v=>v.error_class='CustomError',v=>v.phase='private-path',v=>v.event='success',v=>v.qualifies_run=true,v=>v.production_cutover_allowed=true,v=>v.observed_data_only=false,v=>delete v.error_code]){const record={...original};edit(record);assert.deepEqual(pathCiTrustFailures(encoded(record)),[])}
+})
+test('only fixed credential names can cross the credential read observation boundary',()=>{
+ for(const key of ['admin','api','native_auth','worker','identity','broker','index_worker','index_broker','review_worker','employee_profile','employee_password','tls_ca','tls_certificate','tls_key','executor']){const record=diagnostic('credential_read',new Error(),key);assert.deepEqual(pathCiTrustFailures(encoded(record)),[record]);assert.deepEqual(pathCiTrustFailures(encoded({...record,phase:'source_capture'})),[])}assert.deepEqual(pathCiTrustFailures(encoded({...diagnostic('credential_read'),credential_key:'/etc/private'})),[])
+})
+test('unknown, mismatched and nonstring diagnostic error codes never cross the parser',()=>{
+ for(const [error_class,error_code]of [[null,'ENOENT'],['WorkerHeartbeatControlError','EPIPE'],['Error','28P01'],['Error',{}],['Error',1]])assert.deepEqual(pathCiTrustFailures(encoded({...diagnostic(),error_class,error_code})),[])
+ for(const Type of [Error,TypeError,RangeError,SyntaxError]){const record=diagnostic('credential_read',Object.assign(new Type('secret'),{code:'EACCES'}),'admin');assert.deepEqual(pathCiTrustFailures(encoded(record)),[record])}
+ assert.deepEqual(pathCiTrustFailures(encoded(diagnostic('source_capture',null))),[diagnostic('source_capture',null)])
+})
+test('malformed, NUL, oversized and ambiguous stderr cannot produce a diagnostic record',()=>{
+ for(const value of [null,undefined,{},Buffer.from('x'),'\0'+encoded(diagnostic()),'x'.repeat(262145),encoded(diagnostic()).repeat(2),'[]\nnull\n1\n{}\n'])assert.deepEqual(pathCiTrustFailures(value),[])
+ const oversized=encoded({...diagnostic(),extra:'x'.repeat(1024)});assert.deepEqual(pathCiTrustFailures(oversized),[]);assert.deepEqual(pathCiTrustFailures('invalid JSON\n'+encoded(diagnostic())),[diagnostic()])
+})

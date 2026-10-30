@@ -43,7 +43,7 @@ export function completeCompanionCiStageEnabled(permit){
  assertCompleteProfileCiPermit(permit);const all13=companionCiFinalPathEnabled(process.env.AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE),value=process.env.AGENT_STUDIO_COMPANION_CI_PURPOSE;if(value===undefined){if(all13)fail('new_purpose_required');return false}
  if(value!==companionCiPurpose||process.env.AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE!==companionCiF05Purpose)fail('new_purpose_required');return true
 }
-async function capture(base,complete,deployment=false,permit){
+async function capture(base,complete,deployment=false,permit,stageSourceProof){
  const original=await import(pathToFileURL(base+'/services/pg-api/src/pg18-complete-profile-source.mjs').href)
  if(deployment)original.assertCompleteProfileDeployment(complete,complete.source_sha256);else original.assertCompleteProfileSnapshot(complete,complete.source_sha256)
  const source=await import(pathToFileURL(base+'/services/pg-api/src/pg18-full069-final-sources.mjs').href),snapshot=await source.captureFull069FinalSources();source.assertFull069FinalSources(snapshot,snapshot.source_sha256,{deployment})
@@ -54,7 +54,7 @@ async function capture(base,complete,deployment=false,permit){
  if(companionCiFinalPathEnabled(process.env.AGENT_STUDIO_FINAL13_PATH_CI_PURPOSE)){
   // Relative HOST import deliberately shares the original permit WeakSet.
   // The B helper selects the deployment source module using our private base.
-  B=await import('./pg18-full069-final-path-ci-sources.mjs');overlay=await B.captureFinalPathCiSourceOverlay(permit,base,complete,snapshot,{deployment});view=B.finalPathCiSourceOverlayView(overlay)
+  B=await import('./pg18-full069-final-path-ci-sources.mjs');overlay=await B.captureFinalPathCiSourceOverlay(permit,base,complete,snapshot,{deployment,stageSourceProof});view=B.finalPathCiSourceOverlayView(overlay)
   if(view.manifest.complete_source_sha256!==complete.source_sha256||view.manifest.final_source_sha256!==snapshot.source_sha256)fail('overlay_source_parent')
   for(const r of companionCiPackageBindings)if(sha(raw(base,r.path,deployment))!==r.sha256)fail('overlay_package_binding')
  }
@@ -68,7 +68,7 @@ export async function collectCompleteCompanionCiStage(permit,complete){
  assertCompleteProfileCiPermit(permit);if(!completeCompanionCiStageEnabled(permit)||completeProfileCiBinding(permit).kind!=='provision')fail('stage_provision_required')
  const s=await capture(root,complete,false,permit),entries=[...s.manifest.application_files,...s.manifest.harness_files].map(r=>({...r,bytes:raw(root,r.path)}));s.assert();return {entries,manifest:Buffer.from(JSON.stringify(s.manifest))}
 }
-export async function verifyCompleteCompanionCiStage(permit,tree,input,complete,expectedSha){
+export async function verifyCompleteCompanionCiStage(permit,tree,input,complete,expectedSha,stageSourceProof){
  assertCompleteProfileCiPermit(permit);if(!completeCompanionCiStageEnabled(permit))fail('new_purpose_required');const b=completeProfileCiBinding(permit),prefix='/root/agentstudio-complete-install-input/'+b.run+'-'+b.attempt+'-'
  if(typeof input!=='string'||!input.startsWith(prefix)||!/^[a-f0-9]{64}$/.test(input.slice(prefix.length))||tree!==input+'/tree'||!/^[a-f0-9]{64}$/.test(expectedSha)||b.kind==='fixture'&&input.slice(prefix.length)!==b.nonce)fail('stage_binding')
  if(b.kind==='fixture'&&process.env.AGENT_STUDIO_COMPANION_CI_SOURCE_MANIFEST_SHA256!==expectedSha)fail('independent_stage_manifest_pin')
@@ -76,7 +76,7 @@ export async function verifyCompleteCompanionCiStage(permit,tree,input,complete,
  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);let bytes
  try{const a=fs.fstatSync(fd);for(const key of ['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode'])if(a[key]!==s[key])fail('stage_manifest_changed');bytes=fs.readFileSync(fd);const z=fs.fstatSync(fd),now=fs.lstatSync(file);for(const key of ['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode'])if(a[key]!==z[key]||a[key]!==now[key])fail('stage_manifest_changed')}finally{fs.closeSync(fd)}
  if(sha(bytes)!==expectedSha)fail('stage_manifest_changed')
- const cap=await capture(tree,complete,true,permit);if(!bytes.equals(Buffer.from(JSON.stringify(cap.manifest))))fail('stage_manifest_changed')
+ const cap=await capture(tree,complete,true,permit,stageSourceProof);if(!bytes.equals(Buffer.from(JSON.stringify(cap.manifest))))fail('stage_manifest_changed')
  const handle=Object.freeze({sourceSha:expectedSha,manifest:cap.manifest,paths:Object.freeze(cap.manifest.application_files.map(r=>r.path)),assert:cap.assert});sealed.add(handle);return handle
 }
 export function assertCompleteCompanionCiStage(handle){if(!sealed.has(handle))fail('stage_unsealed_reference');handle.assert();return handle}

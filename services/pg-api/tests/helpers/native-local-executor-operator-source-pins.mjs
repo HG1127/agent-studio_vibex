@@ -61,7 +61,7 @@ export const localExecutorOperatorSources=Object.freeze({
   "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md": "8334c39c013d52a4842cbd47188a4ea9be3e2fab3f1a8b7ce2e16301e89d82a2",
   "ops/templates/agentstudio-pg18-native-local-executor.conf.example": "5912497f328b7c58e29205dd4cbd62226e03660ec981541bf28edf1cf521312f",
   "ops/templates/native-local-executor-pg-hba.conf.example": "c7b549f1fb79f6023c255e05cfd0a38188f7247e9a4b19fb18dad963ab73cc52",
-  "package.json": "cca818ee67ae1dfcb48cdce1739e85809703e1832e89ae4bf3be4143fd790920",
+  "package.json": "394d665beff27847a68e8ee9232d6e0fb6875cd443700cc5cc1ca7f73e90925e",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
