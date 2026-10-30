@@ -1,6 +1,7 @@
 // New-purpose hosted synthetic fixture. Importing this file opens nothing.
 import {requireOriginalHome070Ci} from './original-home070-ci-guard.mjs'
 import {requireOriginalHome071Ci} from './original-home071-ci-guard.mjs'
+import {requireOriginalHome072Ci} from './original-home072-ci-guard.mjs'
 import {requireOriginalLoginHome071Ci} from './original-login-home071-ci-guard.mjs'
 export async function originalHome070GenuineFixture(env=process.env){
  return openOriginalHomeFixture(env,requireOriginalHome070Ci(env),'home070')
@@ -8,6 +9,7 @@ export async function originalHome070GenuineFixture(env=process.env){
 export async function originalHome071GenuineFixture(env=process.env){
  return openOriginalHomeFixture(env,requireOriginalHome071Ci(env),'home071')
 }
+export async function originalHome072GenuineFixture(env=process.env){return openOriginalHomeFixture(env,requireOriginalHome072Ci(env),'home072')}
 export async function originalLoginHome071GenuineFixture(env=process.env){
  const permit=requireOriginalLoginHome071Ci(env)
  const f=await openOriginalHomeFixture(env,permit,'original-login-home071')
@@ -35,12 +37,12 @@ export async function originalLoginHome071GenuineFixture(env=process.env){
 }
 // No exported opener accepts a permit/profile or retargeted credentials.
 async function openOriginalHomeFixture(env,permit,suite){
- const browserMode=suite==='original-login-home071',catalogSuite=suite==='home071'||browserMode
- const [{default:assert},fs,path,url,crypto,child,https,{agentDesignGenuineFixture},source,review,authModule,runtime,audit,delegation,devices,callers,trials,http,cookieModule,catalogRuntime,catalogAudit,review071]=await Promise.all([
+ const browserMode=suite==='original-login-home071',catalogSuite=suite==='home071'||suite==='home072'||browserMode
+ const [{default:assert},fs,path,url,crypto,child,https,{agentDesignGenuineFixture},source,review,authModule,runtime,audit,delegation,devices,callers,trials,http,cookieModule,catalogRuntime,catalogAudit,review071,review072,statisticsAudit,statisticsRuntime]=await Promise.all([
   import('node:assert/strict'),import('node:fs'),import('node:path'),import('node:url'),import('node:crypto'),import('node:child_process'),import('node:https'),
   import('./agent-design-genuine-fixture.mjs'),import('../../src/pg18-complete-profile-source.mjs'),import('../../../../ops/pg18-original-home070-review-plan.mjs'),
   import('../../src/native-auth-http.mjs'),import('../../src/native-home-agent-specs-runtime.ts'),import('../../src/native-home-authoring-audit.ts'),
-  import('../../src/approval-delegation-audit.ts'),import('../../src/native-local-device-audit.ts'),import('../../src/agent-caller-audit.ts'),import('../../src/owner-tool-trial-audit.ts'),import('../../src/http.ts'),import('../../src/native-employee-auth.mjs'),import('../../src/native-agent-catalog-runtime.ts'),import('../../src/native-agent-catalog-audit.ts'),import('../../../../ops/pg18-original-home071-review-plan.mjs')])
+  import('../../src/approval-delegation-audit.ts'),import('../../src/native-local-device-audit.ts'),import('../../src/agent-caller-audit.ts'),import('../../src/owner-tool-trial-audit.ts'),import('../../src/http.ts'),import('../../src/native-employee-auth.mjs'),import('../../src/native-agent-catalog-runtime.ts'),import('../../src/native-agent-catalog-audit.ts'),import('../../../../ops/pg18-original-home071-review-plan.mjs'),import('../../../../ops/pg18-original-home072-review-plan.mjs'),import('../../src/native-home-knowledge-stats-audit.ts'),import('../../src/native-home-knowledge-stats-runtime.ts')])
  const root=path.resolve(path.dirname(url.fileURLToPath(import.meta.url)),'../../../..')
  const sha=raw=>crypto.createHash('sha256').update(raw).digest('hex')
  const checkout=()=>{assert.equal(child.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',maxBuffer:4096}).trim(),permit.head);assert.equal(child.execFileSync('git',['status','--porcelain','--untracked-files=normal'],{cwd:root,encoding:'utf8',maxBuffer:65536}).trim(),'','clean exact-head checkout required')}
@@ -49,14 +51,17 @@ async function openOriginalHomeFixture(env,permit,suite){
  assert.equal(plan.manifest.base_source_sha256,snapshot.source_sha256);assert.equal(plan.installed_profile_verified,false)
  assert.equal(plan.manifest.initialization_contract.profile,'original-home070');assert.equal(plan.manifest.initialization_contract.default_profile,'default050')
  const successor=catalogSuite?await review071.captureOriginalHome071ReviewPlan():null
- if(successor){assert.equal(successor.manifest.predecessor_source_sha256,plan.source_sha256);assert.equal(successor.manifest.profile,browserMode?permit.catalog_profile:permit.profile);assert.equal(successor.installed_profile_verified,false)}
+ const newest=suite==='home072'?await review072.captureOriginalHome072ReviewPlan():null
+ if(successor){assert.equal(successor.manifest.predecessor_source_sha256,plan.source_sha256);assert.equal(successor.manifest.profile,browserMode?permit.catalog_profile:'original-agent-catalog071');assert.equal(successor.installed_profile_verified,false)}
+ if(newest){assert.equal(newest.manifest.predecessor_source_sha256,successor.source_sha256);assert.equal(newest.manifest.profile,permit.profile);assert.equal(newest.installed_profile_verified,false)}
  const extra=['services/pg-api/tests/helpers/original-home070-ci-guard.mjs','services/pg-api/tests/helpers/original-home071-ci-guard.mjs','services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs','services/pg-api/tests/helpers/original-home071-genuine-fixture.mjs','services/pg-api/tests/helpers/original-home-owned-resources-case.mjs','services/pg-api/tests/original-home070-genuine-pg18.test.mjs','services/pg-api/tests/original-home071-genuine-pg18.test.mjs','services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs','services/pg-api/tests/helpers/agent-assessment-fixture.mjs','.github/workflows/pg18-agent-design-genuine-ci.yml']
  if(browserMode)extra.push('services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs','services/pg-api/tests/helpers/original-login-home071-genuine-fixture.mjs','tests/helpers/pg-original-login-browser-guard.mjs')
  const read=relative=>{let at=root;for(const part of relative.split('/')){assert.equal(fs.lstatSync(at).isSymbolicLink(),false);at=path.join(at,part)}const st=fs.lstatSync(at);assert(st.isFile()&&!st.isSymbolicLink()&&st.size>0&&st.size<=16*1024*1024);return fs.readFileSync(at)}
- const pins=[...plan.manifest.optional_sql_sources,...plan.manifest.review_and_native_entry_sources,...(successor?[...successor.manifest.optional_sql_sources,...successor.manifest.catalog_entry_sources]:[]),...extra.map(file=>({path:file,sha256:sha(read(file))}))]
+ extra.push('services/pg-api/tests/helpers/original-home072-ci-guard.mjs','services/pg-api/tests/helpers/original-home072-genuine-fixture.mjs','services/pg-api/tests/original-home072-genuine-pg18.test.mjs')
+ const pins=[...plan.manifest.optional_sql_sources,...plan.manifest.review_and_native_entry_sources,...(successor?[...successor.manifest.optional_sql_sources,...successor.manifest.catalog_entry_sources]:[]),...(newest?[...newest.manifest.optional_sql_sources,...newest.manifest.statistics_entry_sources]:[]),...extra.map(file=>({path:file,sha256:sha(read(file))}))]
  const assertSources=()=>{checkout();source.assertCompleteProfileSnapshot(snapshot,snapshot.source_sha256);for(const pin of pins)assert.equal(sha(read(pin.path)),pin.sha256)}
  const sql070=plan.manifest.optional_sql_sources[0];assert.equal(sql070.path,'db/postgres/migrations/pg_v9_070_home_authoring.sql')
- let f,server,handler,home,catalogHttp,origin,allowedOrigin,catalogCountGate,ownOperationsSchemaVerified=false,closed=false,installed=false,installed071=false,dropNext=false
+ let f,server,handler,home,catalogHttp,origin,allowedOrigin,catalogCountGate,ownOperationsSchemaVerified=false,closed=false,installed=false,installed071=false,installed072=false,statisticsEnabled=false,dropNext=false
  const cookies=new Map(),transport={attempts:0,lostReplies:0},baseline={}
  const withApi=async(body,{identity,readOnly=true}={})=>{
   const db=await f.pool.connect();let begun=false
@@ -73,9 +78,10 @@ async function openOriginalHomeFixture(env,permit,suite){
    return result
   }finally{try{if(begun)await db.query('ROLLBACK')}finally{db.release()}}
  }
- const prepare=async({enabled=false,writes=true}={})=>{
-  const next=await runtime.prepareNativeHomeAgentSpecs({pool:f.pool,env:enabled?{AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:'true'}:{},listen:true,allowedOrigin,configurationWrites:writes,allowNativeLocalAgentSpecs:false,authenticateRequest:handler.authenticateRequest})
-  home=next;return next
+ const prepare=async({enabled=false,writes=true,sharedStatistics=statisticsEnabled}={})=>{
+  assert.equal(typeof sharedStatistics,'boolean')
+  const next=await runtime.prepareNativeHomeAgentSpecs({pool:f.pool,env:{...(enabled?{AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:'true'}:{}),...(sharedStatistics?{AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED:'true'}:{})},listen:true,allowedOrigin,configurationWrites:writes,allowNativeLocalAgentSpecs:false,authenticateRequest:handler.authenticateRequest})
+  home=next;statisticsEnabled=sharedStatistics;return next
  }
  const prepareCatalog=async({enabled=false,writes=true}={})=>{
   assert.equal(catalogSuite,true)
@@ -100,7 +106,7 @@ async function openOriginalHomeFixture(env,permit,suite){
  const identityFor=async who=>{const token=cookies.get(who)?.split('=',2)[1];assert(token);const actual=await f.auth.verifySession(token);assert(actual&&actual.issuer==='urn:agentstudio:local:v1');return actual}
  const catalogMutation=async(change,restore,body)=>{
   assertSources();await f.db.exec(change)
-  try{return await body()}finally{await f.db.exec(restore);if(installed)assert.equal(await audit.inspectOptionalNativeHomeAuthoringSchema(f.pool),'installed');if(installed071)assert.equal(await catalogAudit.inspectOptionalNativeAgentCatalogSchema(f.pool),'installed');assertSources()}
+  try{return await body()}finally{await f.db.exec(restore);if(installed)assert.equal(await audit.inspectOptionalNativeHomeAuthoringSchema(f.pool),'installed');if(installed071)assert.equal(await catalogAudit.inspectOptionalNativeAgentCatalogSchema(f.pool),'installed');if(installed072)assert.equal(await statisticsAudit.inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool),'installed');assertSources()}
  }
  const close=async()=>{
   if(closed)return;closed=true
@@ -151,11 +157,14 @@ async function openOriginalHomeFixture(env,permit,suite){
   }
   await prepare();await login('alice');await login('bob')
   assertSources()
-  return {...f,baseline,sourceManifest:{profile:permit.profile,head:permit.head,source_sha256:(successor??plan).source_sha256,predecessor_source_sha256:successor?plan.source_sha256:null,pins},withApi,raw,login,identityFor,prepare,prepareCatalog,catalogMutation,transport,origin,nativeOrigin:origin,allowedOrigin,ownOperationsSchemaVerified,
+  return {...f,baseline,sourceManifest:{profile:permit.profile,head:permit.head,source_sha256:(newest??successor??plan).source_sha256,predecessor_source_sha256:newest?successor.source_sha256:successor?plan.source_sha256:null,pins},withApi,raw,login,identityFor,prepare,prepareCatalog,catalogMutation,transport,origin,nativeOrigin:origin,allowedOrigin,ownOperationsSchemaVerified,
    inspect:()=>audit.inspectOptionalNativeHomeAuthoringSchema(f.pool),
     inspectCatalog:()=>{assert.equal(catalogSuite,true);return catalogAudit.inspectOptionalNativeAgentCatalogSchema(f.pool)},
+   inspectStatistics:()=>{assert.equal(suite,'home072');return statisticsAudit.inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool)},
+   preflightStatistics:enabled=>statisticsRuntime.inspectOriginalHomeKnowledgeStatisticsStartup({pool:f.pool,env:enabled?{AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED:'true'}:{},allowedOrigin}),
    async install070(){assert.equal(installed,false);assertSources();const raw=read(sql070.path);assert.equal(sha(raw),sql070.sha256);await f.db.exec(raw.toString('utf8'));assert.equal(await audit.inspectOptionalNativeHomeAuthoringSchema(f.pool),'installed');installed=true;await prepare({enabled:true,writes:!browserMode});assertSources()},
     async install071(){assert.equal(catalogSuite,true);assert.equal(installed,true);assert.equal(installed071,false);assert.equal(await audit.inspectOptionalNativeHomeAuthoringSchema(f.pool),'installed');assert.equal(await catalogAudit.inspectOptionalNativeAgentCatalogSchema(f.pool),'absent');assertSources();const sql=successor.manifest.optional_sql_sources[0],raw=read(sql.path);assert.equal(sha(raw),sql.sha256);await f.db.exec(raw.toString('utf8'));assert.equal(await catalogAudit.inspectOptionalNativeAgentCatalogSchema(f.pool),'installed');installed071=true;await prepareCatalog({enabled:true,writes:!browserMode});assertSources()},
+    async install072(){assert.equal(suite,'home072');assert.equal(installed071,true);assert.equal(installed072,false);assert.equal(await catalogAudit.inspectOptionalNativeAgentCatalogSchema(f.pool),'installed');assert.equal(await statisticsAudit.inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool),'absent');assertSources();const sql=newest.manifest.optional_sql_sources[0],raw=read(sql.path);assert.equal(sha(raw),sql.sha256);await f.db.exec(raw.toString('utf8'));assert.equal(await statisticsAudit.inspectOptionalOriginalHomeKnowledgeStatisticsSchema(f.pool),'installed');installed072=true;await prepare({enabled:true,sharedStatistics:true});assertSources()},
     async profileFor(who){const response=await raw('/api/native-auth/me',{who});assert.equal(response.status,200);assert.equal(response.body.authenticated,true);assert.equal(response.body.user.id,f.users[who]);return response.body.user},
     holdNextCatalogCount(){assert.equal(catalogSuite,true);assert.equal(catalogCountGate==null,true);let counted,release;const countedPromise=new Promise(resolve=>{counted=resolve}),held=new Promise(resolve=>{release=resolve});catalogCountGate={counted,held,release,seen:false};return{counted:countedPromise,release(){catalogCountGate?.release();catalogCountGate=null}}},
    async inventory(){return{tables:(await f.db.query("SELECT n.nspname||'.'||c.relname AS name FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','p') ORDER BY n.nspname,c.relname")).rows.map(row=>row.name),versions:(await f.db.query('SELECT version FROM agentstudio.schema_migrations ORDER BY version')).rows.map(row=>row.version),roles:(await f.db.query('SELECT oid::text,rolname,rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication FROM pg_catalog.pg_roles ORDER BY rolname')).rows}},

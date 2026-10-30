@@ -1126,3 +1126,17 @@ tests/pg-original-login-genuine.spec.mjs text eol=lf
 services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs text eol=lf
 services/pg-api/tests/helpers/original-login-home071-genuine-fixture.mjs text eol=lf
 tests/pg-original-login-home071-policy.test.mjs text eol=lf
+
+# Optional Home072 and actual Native Reader qualification sources.
+db/postgres/migrations/pg_v9_072_home_knowledge_statistics.sql text eol=lf
+ops/pg18-original-home072-review-plan.mjs text eol=lf
+services/pg-api/src/native-home-knowledge-stats-pins.ts text eol=lf
+services/pg-api/src/native-home-knowledge-stats-runtime.ts text eol=lf
+services/pg-api/src/pg18-full069-reader-audit-phase.mjs text eol=lf
+services/pg-api/tests/helpers/original-home072-ci-guard.mjs text eol=lf
+services/pg-api/tests/helpers/original-home072-genuine-fixture.mjs text eol=lf
+services/pg-api/tests/native-home-knowledge-statistics.test.mjs text eol=lf
+services/pg-api/tests/original-home072-ci-guard.test.mjs text eol=lf
+services/pg-api/tests/original-home072-genuine-pg18.test.mjs text eol=lf
+services/pg-api/tests/pg18-full069-reader-principal.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-writer-file-change-observation.test.mjs text eol=lf

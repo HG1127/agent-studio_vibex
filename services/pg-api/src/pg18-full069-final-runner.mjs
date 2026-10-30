@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto'
 import {openFull069FinalTrust,finalContext,openFinalRunStore,writeFinalRecord,appendFinalSample,closeFinalSamples,verifyClosedFinalSamples,readFinalAcknowledgement,assertFinalStable,retireFinalTrust} from './pg18-full069-final-trust.mjs'
 import {openFull069FinalRuntime,full069FinalPreflight,observeFull069FinalRuntime,finalizeFull069FinalRuntime,verifyFull069FinalRuntimeAfterAcknowledgement,closeFull069FinalRuntime} from './pg18-full069-final-runtime.mjs'
 import {openFull069OwnedProcesses,launchFull069OwnedProcess,waitFull069NativeListening,observeFull069OwnedProcesses,stopFull069OwnedWorkers,stopFull069OwnedNative,readFull069KernelProcess} from './pg18-full069-worker-live-processes.mjs'
-import {openFull069OwnedNative,observeFull069OwnedNative,closeFull069OwnedNative} from './pg18-full069-worker-live-native.mjs'
+import {openFull069OwnedNative,observeFull069OwnedNative,consumeFull069OwnedNativeReaderAudit,closeFull069OwnedNative} from './pg18-full069-worker-live-native.mjs'
 import {openFull069FinalCompanions,preflightFull069FinalCompanions,startFull069FinalCompanions,observeFull069FinalCompanions,stopFull069FinalCompanions} from './pg18-full069-final-companions.mjs'
 import {liveEntries,liveLimits,freeze} from './pg18-full069-worker-live-contract.mjs'
 import {full069FinalWindowIdentity as identity,inspectFull069FinalInterval,inspectFull069FinalCompanionStops} from './pg18-full069-final-window.mjs'
@@ -15,7 +15,7 @@ async function sample(trust,runtime,processes,native,companions,{initial=false,r
  // TLS/read-only observations are independent. All finish before the immutable
  // source and both kernel process sets are rechecked. Original budgets remain.
  const currentCompanionReadiness=async()=>await observeFull069FinalCompanions(companions,{ready:true}),checks=await Promise.allSettled([observeFull069OwnedNative(native,{initial,ready}),observeFull069FinalRuntime(runtime,{ready}),currentCompanionReadiness()]);const rejected=checks.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
- const [http,data,currentCompanions]=checks.map(r=>r.value),companionAfter=await observeFull069FinalCompanions(companions,{ready:false});if(sha(observeFull069OwnedProcesses(processes))!==sha(pids))fail('observation_gap')
+ const [http,data,currentCompanions]=checks.map(r=>r.value);consumeFull069OwnedNativeReaderAudit(http);const companionAfter=await observeFull069FinalCompanions(companions,{ready:false});if(sha(observeFull069OwnedProcesses(processes))!==sha(pids))fail('observation_gap')
  const stable={processes:pids,runtime:data,profile_sha256:ctx.profileSha256,source_sha256:ctx.source.source_sha256};if(identity({...stable,companions:companionBefore})!==identity({...stable,companions:currentCompanions})||identity({...stable,companions:currentCompanions})!==identity({...stable,companions:companionAfter}))fail('companion_observation_gap')
  assertFinalStable(trust);const after=performance.now();if(after-before>15000)fail('observation_gap');return freeze({monotonic_ms:Math.floor(after),wall_ms:Date.now(),collected_ms:Math.ceil(after-before),...stable,native:http,companions:currentCompanions})
 }

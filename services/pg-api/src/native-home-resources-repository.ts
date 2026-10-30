@@ -5,7 +5,7 @@ import {parseAgentHttpTools} from './agent-http-tools.ts'
 import {parseMcpCatalog} from './mcp-catalog.ts'
 import {mcpCatalogHash} from './mcp-binding-resources.ts'
 import {parseAgentMcpTools} from './mcp-binding.ts'
-import {verifyOriginalHomeKnowledgeStats} from './native-home-knowledge-stats-audit.ts'
+import {verifyOriginalHomeKnowledgeStats,verifyOriginalHomeKnowledgeAclDependencies} from './native-home-knowledge-stats-audit.ts'
 import type {OriginalHomeResources,OriginalHomeHttpConnection,OriginalHomeMcpConnection,OriginalHomeKnowledgeBase} from './native-home-resources-contract.ts'
 type Row=Record<string,unknown>
 const fail=():never=>{throw new HttpError(503,'original_home_resources_unavailable')}
@@ -67,7 +67,8 @@ function connectForResources(pool:SqlPool):Promise<SqlClient>{
 /** No key/broker pool, probe callback, Worker, network transport or mutator. */
 export class NativeHomeResourcesRepository{
  readonly pool:SqlPool
- constructor(pool:SqlPool){this.pool=pool}
+ readonly allowSharedStatistics:boolean
+ constructor(pool:SqlPool,options:{allowSharedStatistics?:boolean}={}){this.pool=pool;this.allowSharedStatistics=options.allowSharedStatistics===true}
  async get(identity:Identity):Promise<OriginalHomeResources>{
   if(identity?.issuer!=='urn:agentstudio:local:v1'||typeof identity.subject!=='string'||!identity.subject)throw new HttpError(403,'native_employee_identity_required')
    const db=await connectForResources(this.pool);let begun=false,primary:unknown,discard=false
@@ -86,9 +87,12 @@ export class NativeHomeResourcesRepository{
   const mcpRows=bounded((await db.query<Row>('SELECT id,owner_user_id,revision,name,description,enabled,status,last_checked_at,catalog FROM agentstudio.mcp_connections WHERE owner_user_id=$1::uuid ORDER BY updated_at DESC,id LIMIT 51',[owner])).rows)
   const knowledgeRows=bounded((await db.query<Row>(originalHomeOwnedKnowledgeSql,[owner])).rows).map(row=>knowledge(row,owner,false))
   if(this.pool.knowledgeSharing===true){
+   if(this.allowSharedStatistics)await verifyOriginalHomeKnowledgeStats(db)
+   else await verifyOriginalHomeKnowledgeAclDependencies(db)
    const shared=bounded((await db.query<Row>('SELECT id,owner_user_id,name,description,access_role,semantic_allowed,base_revision FROM agentstudio.knowledge_shared_bases()')).rows,99)
    if(shared.length){
-    await verifyOriginalHomeKnowledgeStats(db)
+    if(!this.allowSharedStatistics)throw new HttpError(503,'original_home_knowledge_statistics_disabled')
+    await db.query("SELECT set_config('agentstudio.original_home_knowledge_statistics_enabled','true',true)")
     const ids=shared.map(row=>uuid(row.id));if(new Set(ids).size!==ids.length)return fail()
     const stats=(await db.query<Row>('SELECT stats.* FROM unnest($1::uuid[]) AS requested(id) CROSS JOIN LATERAL agentstudio.original_home_knowledge_stats(requested.id) AS stats',[ids])).rows
     if(stats.length!==shared.length||new Set(stats.map(row=>uuid(row.id))).size!==ids.length)return fail()

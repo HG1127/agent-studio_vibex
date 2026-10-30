@@ -166,9 +166,9 @@ test('oversized list is refused without clipping fields or claiming a partial re
 })
 test('feature defaults off after auditing actual absence; explicit reads retain an independent write gate',async()=>{
  let connects=0
- const pool={connect:async()=>{connects++;return{query:async()=>({rows:[]}),release(){}}}}
+ const pool={connect:async()=>{connects++;return{query:async sql=>({rows:sql.includes("current_user='agentstudio_api' AND session_user")?[{ok:true}]:[]}),release(){}}}}
  assert.equal(await prepareNativeHomeAgentSpecs({pool,env:{},listen:true,allowedOrigin:origin,configurationWrites:false,allowNativeLocalAgentSpecs:false,authenticateRequest:async()=>identity}),null)
- assert.equal(connects,1)
+ assert.equal(connects,2)
  assert.deepEqual(selectNativeHomeAuthoring({AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:'true'},true,origin,false),{available:true,allowWrites:false})
  for(const [flag,listen,site] of [['false',true,origin],['true',false,origin],['true',true,'http://localhost']])assert.throws(()=>selectNativeHomeAuthoring({AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:flag},listen,site,true))
 })

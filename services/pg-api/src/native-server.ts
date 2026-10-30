@@ -3,6 +3,7 @@ import {createNativeEntryHttpHandler} from './native-entry-http.ts'
 import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
 import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
 import {prepareNativeAgentCatalog} from './native-agent-catalog-runtime.ts'
+import {inspectOriginalHomeKnowledgeStatisticsStartup} from './native-home-knowledge-stats-runtime.ts'
 import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
 import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
@@ -496,6 +497,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const originalHomeSchema=await inspectOptionalNativeHomeAuthoringSchema(business)
     if(originalHomeFlag==='true'&&originalHomeSchema!=='installed')throw Error('original_home_authoring_schema_required')
     const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
+    await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin})
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])

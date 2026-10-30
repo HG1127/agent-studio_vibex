@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {prepareNativeHomeAgentSpecs} from '../src/native-home-agent-specs-runtime.ts'
 import {originalHome070PresenceSql,inspectOptionalNativeHomeAuthoringSchema} from '../src/native-home-authoring-audit.ts'
+import {originalHomeStatisticsPresenceSql} from '../src/native-home-knowledge-stats-audit.ts'
 // Catalog-shaped DATA and query-control tests only. No SQL engine, sockets,
 // real Cookie or real privilege/installation claims are provided by fixtures.
 const names=['agent_spec_id','owner_user_id','authoring','created_at','updated_at']
@@ -27,6 +28,8 @@ function fixture(rows=[]){
   if(query==='ROLLBACK'){if(state.rollbackFailure)throw Error('rollback transport failed');return{rows:[]}}
   if(query.startsWith('BEGIN ')||query==='SET LOCAL ROLE agentstudio_api'||query==='SET LOCAL search_path=pg_catalog')return{rows:[]}
   if(query===originalHome070PresenceSql){if(state.catalogFailure)throw state.catalogFailure;return{rows:state.rows}}
+  if(query===originalHomeStatisticsPresenceSql)return{rows:[]}
+  if(query.includes("current_user='agentstudio_api' AND session_user"))return{rows:[{ok:true}]}
   if(query.includes('AS api_oid'))return{rows:[{ok:!state.unsafe,api_oid:123,no_grant_option:state.tableNoGrantOption}]}
   if(query.startsWith('SELECT a.attname'))return{rows:structuredClone(state.columns)}
   if(query.startsWith('SELECT polname'))return{rows:[{name:'agent_spec_authoring_owner',command:'*',permissive:true,roles:[123],using_expr:'(owner_user_id = agentstudio.actor_id())',check_expr:'(owner_user_id = agentstudio.actor_id())'}]}
@@ -39,7 +42,7 @@ function fixture(rows=[]){
 }
 test('absent070 plus default-off performs a repeatable-read audit and mounts nothing',async()=>{
  const f=fixture();assert.equal(await prepareNativeHomeAgentSpecs(f.input),null)
- assert.equal(f.state.queries[0],'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');assert(f.state.queries.indexOf('SET LOCAL search_path=pg_catalog')<f.state.queries.indexOf(originalHome070PresenceSql));assert(f.state.queries.includes(originalHome070PresenceSql));assert.equal(f.state.queries.at(-1),'ROLLBACK');assert.equal(f.state.released,1)
+ assert.equal(f.state.queries[0],'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');assert(f.state.queries.indexOf('SET LOCAL search_path=pg_catalog')<f.state.queries.indexOf(originalHome070PresenceSql));assert(f.state.queries.includes(originalHome070PresenceSql));assert(f.state.queries.includes(originalHomeStatisticsPresenceSql));assert.equal(f.state.queries.at(-1),'ROLLBACK');assert.equal(f.state.released,2)
 })
 test('complete safe fixture is still fully audited while feature is off',async()=>{
  const f=fixture(presence);assert.equal(await prepareNativeHomeAgentSpecs(f.input),null)

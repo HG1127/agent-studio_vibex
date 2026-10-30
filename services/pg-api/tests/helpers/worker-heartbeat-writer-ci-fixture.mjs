@@ -25,10 +25,22 @@ async function until(check,phase,ms=20000){const end=performance.now()+ms;do{if(
 function fields(v,keys){if(!v||typeof v!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(v))||Reflect.ownKeys(v).length!==keys.length)fail('closed_data');const out={};for(const k of keys){const d=Object.getOwnPropertyDescriptor(v,k);if(!d?.enumerable||!('value'in d))fail('closed_data');out[k]=d.value}return out}
 function stamp(s){return {dev:s.dev,ino:s.ino,uid:s.uid,gid:s.gid,mode:s.mode}}
 function sameStamp(a,b){return ['dev','ino','uid','gid','mode'].every(k=>a[k]===b[k])}
+// Fixed-field observation only. Never expose paths, bytes, stamps or digests;
+// the original strict refusal and owned FD cleanup remain unconditional.
+function observeFileChange(file,a,z,last,bytes,pin){
+ try{const relation=value=>value===a.size?'same':value>a.size?'grew':'shrank'
+  process.stderr.write(JSON.stringify({event:'genuine_writer_ci_file_change_observation',
+   file_class:file===paths.store+'/journal.jsonl'?'controller_journal':'other_private_file',
+   descriptor_identity_changed:!sameStamp(a,z),path_identity_changed:!sameStamp(a,last),
+   descriptor_size_relation:relation(z.size),path_size_relation:relation(last.size),read_size_relation:relation(bytes.length),
+   descriptor_mtime_changed:a.mtimeMs!==z.mtimeMs,descriptor_ctime_changed:a.ctimeMs!==z.ctimeMs,
+   pinned_digest_mismatch:Boolean(pin&&sha(bytes)!==pin),observed_data_only:true})+'\n')
+ }catch{/* Observation cannot replace the original file_changed refusal. */}
+}
 function read(file,{mode=0o600,max=4194304,pin}={}){
  const a=fs.lstatSync(file);if(!a.isFile()||a.isSymbolicLink()||a.nlink!==1||a.uid!==0||a.gid!==0||(a.mode&0o7777)!==mode||a.size<1||a.size>max||fs.realpathSync(file)!==file)fail('private_file')
  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK)
- try{const b=fs.readFileSync(fd),z=fs.fstatSync(fd),last=fs.lstatSync(file);if(!sameStamp(a,z)||!sameStamp(a,last)||a.size!==z.size||a.size!==last.size||a.mtimeMs!==z.mtimeMs||a.ctimeMs!==z.ctimeMs||b.length!==a.size||pin&&sha(b)!==pin)fail('file_changed');return b}finally{fs.closeSync(fd)}
+ try{const b=fs.readFileSync(fd),z=fs.fstatSync(fd),last=fs.lstatSync(file);if(!sameStamp(a,z)||!sameStamp(a,last)||a.size!==z.size||a.size!==last.size||a.mtimeMs!==z.mtimeMs||a.ctimeMs!==z.ctimeMs||b.length!==a.size||pin&&sha(b)!==pin){observeFileChange(file,a,z,last,b,pin);fail('file_changed')}return b}finally{fs.closeSync(fd)}
 }
 function syncDir(dir){const fd=fs.openSync(dir,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW);try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}}
 function write(file,value){const bytes=Buffer.isBuffer(value)?value:Buffer.from(value),fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fchmodSync(fd,0o600);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}syncDir(path.dirname(file));if(!read(file).equals(bytes))fail('write_readback')}

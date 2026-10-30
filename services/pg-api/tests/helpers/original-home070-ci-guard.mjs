@@ -7,7 +7,7 @@ export function requireOriginalHome070Ci(env=process.env,platform=process.platfo
     env.AGENT_STUDIO_ORIGINAL_HOME070_SUITE!=='home070'||
     !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA??'')||env.AGENT_STUDIO_ORIGINAL_HOME070_EXPECTED_HEAD!==env.GITHUB_SHA||
     !/^refs\/heads\/codex\/pg18-(?:worker-heartbeat|agent-design)-[A-Za-z0-9._/-]+$/.test(env.GITHUB_REF??'')||
-    ['AGENT_STUDIO_ORIGINAL_HOME071_CI','AGENT_STUDIO_ORIGINAL_HOME071_SUITE','AGENT_STUDIO_ORIGINAL_HOME071_EXPECTED_HEAD'].some(key=>env[key]!==undefined))
+    ['071','072'].some(profile=>['CI','SUITE','EXPECTED_HEAD'].some(suffix=>env['AGENT_STUDIO_ORIGINAL_HOME'+profile+'_'+suffix]!==undefined)))
   throw Error('original_home070_ci_admission_refused')
  return Object.freeze({profile:'original-home070',head:env.GITHUB_SHA,target,synthetic_only:true,production_GO:false})
 }

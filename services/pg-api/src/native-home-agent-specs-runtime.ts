@@ -5,6 +5,7 @@ import {NativeHomeAgentSpecsRepository} from './native-home-agent-specs-reposito
 import {createNativeHomeAgentSpecsHttp} from './native-home-agent-specs-http.ts'
 import {NativeHomeResourcesRepository} from './native-home-resources-repository.ts'
 import {createNativeHomeResourcesHttp} from './native-home-resources-http.ts'
+import {inspectOriginalHomeKnowledgeStatisticsStartup} from './native-home-knowledge-stats-runtime.ts'
 
 export function selectNativeHomeAuthoring(env:NodeJS.ProcessEnv,listen:boolean,origin:string,configurationWrites:boolean):{available:boolean;allowWrites:boolean}{
  const marker=env.AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED
@@ -18,9 +19,10 @@ export async function prepareNativeHomeAgentSpecs(input:{pool:SqlPool;env:NodeJS
  // Always inspect installed optional070, including when admission is off.
  // A missing optional profile is safe only while the facade is disabled.
  const schema=await inspectOptionalNativeHomeAuthoringSchema(input.pool)
+ const statistics=await inspectOriginalHomeKnowledgeStatisticsStartup({pool:input.pool,env:input.env,allowedOrigin:input.allowedOrigin})
  if(!policy.available)return null
  if(schema!=='installed')throw Error('original_home_authoring_schema_required')
  const specs=createNativeHomeAgentSpecsHttp({repository:new NativeHomeAgentSpecsRepository(input.pool,{allowNativeLocalAgentSpecs:input.allowNativeLocalAgentSpecs}),authenticateRequest:input.authenticateRequest,allowedOrigin:input.allowedOrigin,allowWrites:policy.allowWrites})
- const resources=createNativeHomeResourcesHttp({repository:new NativeHomeResourcesRepository(input.pool),authenticateRequest:input.authenticateRequest,allowedOrigin:input.allowedOrigin})
+ const resources=createNativeHomeResourcesHttp({repository:new NativeHomeResourcesRepository(input.pool,{allowSharedStatistics:statistics.available}),authenticateRequest:input.authenticateRequest,allowedOrigin:input.allowedOrigin})
  return async(req:Parameters<typeof specs>[0],res:Parameters<typeof specs>[1])=>{if(await resources(req,res))return true;return specs(req,res)}
 }

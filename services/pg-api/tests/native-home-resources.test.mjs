@@ -4,11 +4,14 @@ import fs from 'node:fs'
 import {Readable} from 'node:stream'
 import {NativeHomeResourcesRepository} from '../src/native-home-resources-repository.ts'
 import {createNativeHomeResourcesHttp,originalHomeResourcesPath} from '../src/native-home-resources-http.ts'
+import {originalHomeStatisticsFunctionPins} from '../src/native-home-knowledge-stats-pins.ts'
 // Pure data/control-flow tests only. No query is parsed or executed by SQL.
 const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222',httpId='33333333-3333-4333-8333-333333333333',mcpId='44444444-4444-4444-8444-444444444444',baseId='55555555-5555-4555-8555-555555555555',sharedId='66666666-6666-4666-8666-666666666666'
 const identity={issuer:'urn:agentstudio:local:v1',subject:'verified-employee'},origin='https://studio.example.test',time='2026-10-30T01:02:03.000Z'
 const catalog={version:'2025-11-25',tools:[{name:'find',description:'Find public records',input_schema:{type:'object',properties:{token:{type:'string',description:'schema-never-output'}}},read_only:true,destructive:false,requires_tasks:false},{name:'taskOnly',description:'Unavailable task mode',input_schema:{type:'object'},read_only:false,destructive:false,requires_tasks:true}]}
-const sql=fs.readFileSync(new URL('../../../ops/pg18-original-home-knowledge-stats.proposed.sql',import.meta.url),'utf8'),body=sql.slice(sql.indexOf('AS $fn$')+7,sql.indexOf('$fn$;',sql.indexOf('AS $fn$')+7))
+const sql=fs.readFileSync(new URL('../../../db/postgres/migrations/pg_v9_072_home_knowledge_statistics.sql',import.meta.url),'utf8'),body=sql.slice(sql.indexOf('AS $fn$')+7,sql.indexOf('$fn$;',sql.indexOf('AS $fn$')+7))
+const oldSql=fs.readFileSync(new URL('../../../db/postgres/migrations/pg_v9_032_knowledge_access.sql',import.meta.url),'utf8')
+const functionRows=Object.fromEntries(originalHomeStatisticsFunctionPins.map(pin=>{const isMain=pin.signature==='original_home_knowledge_stats(uuid)',name=pin.signature.split('(')[0],start=oldSql.indexOf('CREATE FUNCTION agentstudio.'+name+'('),from=oldSql.indexOf('AS $function$',start)+'AS $function$'.length,source=isMain?body:oldSql.slice(from,oldSql.indexOf('$function$;',from));return['agentstudio.'+pin.signature,{ok:true,source,result:pin.result}]}))
 const connection=(id)=>({id,owner_user_id:owner,revision:'7',name:'Actual connection',description:'Actual description',enabled:true,status:'ok',last_checked_at:time,url:'https://never-output.example',headers:'header-never-output',body_template:'body-never-output'})
 const owned=()=>({id:baseId,owner_user_id:owner,revision:'3',name:'Actual owned base',description:'Metadata',created_at:time,updated_at:time,access_role:'owner',document_count:'2',chunk_count:'13'})
 function harness(options={}){
@@ -20,11 +23,13 @@ function harness(options={}){
   if(query.includes('FROM agentstudio.mcp_connections'))return{rows:state.mcp}
   if(query.includes('FROM agentstudio.knowledge_bases b'))return{rows:state.owned}
   if(query.includes('FROM agentstudio.knowledge_shared_bases()'))return{rows:state.shared}
-  if(query.includes('FROM pg_catalog.pg_proc p'))return{rows:state.catalog}
+   if(query.includes("current_user='agentstudio_api' AND session_user"))return{rows:[{ok:state.principal!==false}]}
+   if(query.startsWith("SELECT 'migration' AS kind,version AS name"))return{rows:state.presence??[{kind:'migration',name:'pg_v9_072'},{kind:'function',name:'original_home_knowledge_stats'}]}
+   if(query.includes('FROM pg_catalog.pg_proc p')){const fallback=functionRows[args[0]];if(args[0]==='agentstudio.original_home_knowledge_stats(uuid)')return{rows:state.catalog.map(row=>({...fallback,...row}))};return{rows:[state.dependencies?.[args[0]]??fallback]}}
   if(query.startsWith('SELECT stats.*'))return{rows:state.stats}
   throw Error('unexpected pure query')
  }}}}
- return{state,repository:new NativeHomeResourcesRepository(pool)}
+  return{state,repository:new NativeHomeResourcesRepository(pool,{allowSharedStatistics:state.statistics??state.sharing===true})}
 }
 const shared=()=>({id:sharedId,owner_user_id:other,name:'Actual shared base',description:'Shared metadata',access_role:'viewer',semantic_allowed:false,base_revision:'9'})
 const stats=()=>({id:sharedId,owner_user_id:other,revision:'9',created_at:time,updated_at:time,document_count:'8',chunk_count:'52',access_role:'viewer'})
@@ -65,6 +70,8 @@ test('timed-out pool admission issues no actor query and releases its late uncla
  await new Promise(resolve=>setImmediate(resolve));assert.equal(released,1);assert.equal(queried,0)
 })
 test('sharing disabled never invokes shared RPC and preserves capability off',async()=>{const h=harness({shared:[shared()]});const result=await h.repository.get(identity);assert.equal(result.knowledge_bases.length,1);assert(!h.state.queries.some(item=>item.query.includes('knowledge_shared_bases')))})
+test('072 off refuses a valid shared selection instead of hiding it or inventing zero',async()=>{const h=harness({sharing:true,statistics:false,shared:[shared()]});await assert.rejects(h.repository.get(identity),error=>error.code==='original_home_knowledge_statistics_disabled');assert(!h.state.queries.some(item=>item.query.startsWith('SELECT stats.*')))})
+test('changed original ACL dependency is refused before its metadata RPC can be called',async()=>{const h=harness({sharing:true,statistics:false,shared:[shared()],dependencies:{'agentstudio.knowledge_access_mode(uuid)':{...functionRows['agentstudio.knowledge_access_mode(uuid)'],source:'changed'}}});await assert.rejects(h.repository.get(identity),error=>error.code==='original_home_knowledge_statistics_unavailable');assert(!h.state.queries.some(item=>item.query.includes('FROM agentstudio.knowledge_shared_bases()')))})
 test('sharing enabled uses audited actual stats and returns exact ACL role/counts/times',async()=>{const h=harness({sharing:true,shared:[shared()],stats:[stats()]});const result=await h.repository.get(identity),base=result.knowledge_bases.find(item=>item.id===sharedId);assert.equal(base.owner_user_id,other);assert.equal(base.access_role,'viewer');assert.equal(base.document_count,8);assert.equal(base.chunk_count,52);assert.equal(base.semantic_allowed,false);assert.equal(base.updated_at,time)})
 test('missing shared stats dependency explicitly fails503 rather than RLS-derived zero',async()=>{const h=harness({sharing:true,shared:[shared()],catalog:[]});await assert.rejects(h.repository.get(identity),error=>error.status===503&&error.code==='original_home_knowledge_statistics_unavailable')})
 for(const row of [{ok:false,source:body},{ok:true,source:body+' '}])test('changed stats ACL or exact body refuses the shared result',async()=>{const h=harness({sharing:true,shared:[shared()],stats:[stats()],catalog:[row]});await assert.rejects(h.repository.get(identity),error=>error.code==='original_home_knowledge_statistics_unavailable')})

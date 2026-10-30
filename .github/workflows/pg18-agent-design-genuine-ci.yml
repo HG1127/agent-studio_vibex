@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [flow, database, home070, home071]
+        suite: [flow, database, home070, home071, home072]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -94,6 +94,17 @@ jobs:
           AGENT_STUDIO_ORIGINAL_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home071-genuine-pg18.test.mjs
+      - name: Independent optional072 admission and configuration guards without SQL
+        if: matrix.suite == 'home072'
+        run: node --experimental-strip-types --test services/pg-api/tests/original-home072-ci-guard.test.mjs services/pg-api/tests/native-home-knowledge-statistics.test.mjs
+      - name: Actual optional072 shared statistics Native ACL exact catalog and cleanup
+        if: matrix.suite == 'home072'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME072_CI: YES_DISPOSABLE_HOME_KNOWLEDGE072_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME072_SUITE: home072
+          AGENT_STUDIO_ORIGINAL_HOME072_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home072-genuine-pg18.test.mjs
 
   pg18-agent-design-browser:
     name: F01 fixture / real PG18 browser / ${{ matrix.story }}
