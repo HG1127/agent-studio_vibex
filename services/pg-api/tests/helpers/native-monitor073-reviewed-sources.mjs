@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "bc144964d936b121596129928711d30245ed12febc7eda39efc2e281e0a7d9b8",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "fe26ae36112ead9362c70f247490668e9b3d18b5c2de6de95c51a1b8b4729989",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "fc0552bda631758e4d882ec81610ef36937b25b6aaf05435e59ba1d33ab83714",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "d92ce08f3829e10e97501aa1c710a85ba11cf66a75f6d1036dca741fb03a7a89",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",

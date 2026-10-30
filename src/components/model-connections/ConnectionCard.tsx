@@ -16,6 +16,7 @@ import {
 } from "@/pages/ModelConnections/useModelConnections"
 
 type ConnectionCardProps = {
+  nativeMode?:boolean;canMutate?:boolean;canProbe?:boolean
   row: ModelConnectionRow
   statusMeta: Record<string, { label: string; badge: string }>
   isBusy: boolean
@@ -34,6 +35,7 @@ const actionBtnClass =
   "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
 
 export function ConnectionCard({
+  nativeMode=false,canMutate=true,canProbe=true,
   row,
   statusMeta,
   isBusy,
@@ -90,7 +92,7 @@ export function ConnectionCard({
           role="switch"
           aria-checked={row.enabled}
           aria-label={`${row.name}启用开关`}
-          disabled={isBusy}
+          disabled={isBusy || !canMutate}
           onClick={() => onToggleEnabled(row, !row.enabled)}
           className={`relative h-6 w-11 shrink-0 rounded-full transition focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60 ${
             row.enabled ? "bg-primary" : "bg-muted"
@@ -118,7 +120,7 @@ export function ConnectionCard({
           </p>
           {row.models.length === 0 ? (
             <p className="mt-2 text-xs text-muted-foreground">
-              还没有拉到模型清单，点「重新测试」获取。
+              {nativeMode?'尚未配置模型 ID，请编辑填写；重新测试不会发现模型清单。':'还没有拉到模型清单，点「重新测试」获取。'}
             </p>
           ) : (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -148,7 +150,7 @@ export function ConnectionCard({
             </button>
             <button
               type="button"
-              disabled={isBusy}
+              disabled={isBusy || !canMutate}
               onClick={onConfirmDelete}
               className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
             >
@@ -171,19 +173,20 @@ export function ConnectionCard({
           </button>
           <button
             type="button"
-            disabled={isBusy}
+            disabled={isBusy || !canProbe}
             onClick={() => onRetest(row)}
             className={actionBtnClass}
           >
             {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
             重新测试
           </button>
-          <button type="button" onClick={() => onEdit(row)} className={actionBtnClass}>
+          <button type="button" disabled={nativeMode&&isBusy} onClick={() => onEdit(row)} className={actionBtnClass}>
             <Pencil className="h-3.5 w-3.5" />
             编辑
           </button>
           <button
             type="button"
+            disabled={!canMutate}
             onClick={() => onRequestDelete(row.id)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-destructive hover:text-destructive focus-visible:ring-2 focus-visible:ring-primary"
           >

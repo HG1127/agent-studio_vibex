@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
+import {usePgModelConnections} from "./usePgModelConnections"
+const useNativeModelConnections=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?usePgModelConnections:null
 
 // 字段名与 model_connections 脱敏路由返回 1:1（snake_case，禁止转换层；api_key 永不下发）
 export type ModelConnectionRow = {
@@ -70,7 +72,7 @@ export function maskConnectionDomain(baseUrl: string): string {
 
 class AuthRequiredError extends Error {}
 
-export function useModelConnections() {
+function usePbModelConnections() {
   const base = getPocketBaseUrl()
 
   const [rhUserId, setRhUserId] = useState("")
@@ -380,6 +382,7 @@ export function useModelConnections() {
     !isSaving
 
   return {
+    nativeMode:false as const,writeBlocked:false,probeEnabled:true,saveActionLabel:'保存',nativePending:false,nativeUnavailable:false,probeNotice:'',
     isLoggedIn: Boolean(rhUserId),
     needsRhLogin,
     onLoginClick: redirectToRhLogin,
@@ -424,3 +427,6 @@ export function useModelConnections() {
     statusMeta: CONNECTION_STATUS_META,
   }
 }
+
+// Build-time selection keeps original PocketBase callbacks and layout recoverable.
+export function useModelConnections(){return useNativeModelConnections?useNativeModelConnections(CONNECTION_STATUS_META):usePbModelConnections()}

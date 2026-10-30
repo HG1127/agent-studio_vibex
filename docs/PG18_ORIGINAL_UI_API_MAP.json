@@ -1703,7 +1703,7 @@
           "PG_pilot_page_is_not_acceptance": true
         }
       ],
-      "status": "ORIGINAL_UI_ADAPTATION_REQUIRED",
+      "status": "ORIGINAL_UI_METADATA_CRUD_SOURCE_INTEGRATED_BROWSER_ACCEPTANCE_PENDING",
       "operations": [
         {
           "id": "UI-014",
@@ -1808,7 +1808,8 @@
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
         }
-      ]
+      ],
+      "current_preparation_note": "Original route/layout/cards/form and PB branch retained. PG metadata CRUD uses verified Cookie identity, expected-employee, revision CAS and actual owner audit. Unknown writes stay blocked and only read metadata; no exact receipt is invented. Draft test/discovery, >50 pagination and original-page real CI remain pending."
     },
     {
       "route": "/tool-connections",
@@ -6002,7 +6003,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 745,
+    "combined_pure_checks": 800,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6388,7 +6389,7 @@
     "original_home_natural_authoring_source_merged": true,
     "original_home_natural_authoring_actual_browser_accepted": false,
     "current_source_checks": {
-      "pure": 745,
+      "pure": 800,
       "final14_framing_related_pure": 38,
       "worker_startup_related_pure": 39,
       "frontend_TS6": true,
@@ -6403,8 +6404,10 @@
       "worker_assets_and_host_related_pure": 68,
       "model_owner_and_protocol_pure": 26,
       "latest_targeted_pure": 104,
-      "frontend_and_shared_source_unchanged": true,
-      "frontend_TS6_and_actual_build_baseline_head": "aa475fcb371534ec632766654dfcac32a5fa11ed"
+      "frontend_and_shared_source_unchanged": false,
+      "frontend_TS6_and_actual_build_baseline_head": null,
+      "actual_normal_assets": 101,
+      "actual_original_PG_assets": 102
     },
     "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
     "full069_parent_diagnostic_framing_fix": "Only standalone original refusal lines select primary; exact diagnostic event names cannot override it. Parent separately parses one closed runtime-open or ACL-negative observation. Unknown keys/phases/accounts, authority, secrets, oversize and duplicate records refuse. Original supervisor/cleanup unchanged;36 related pure checks pass; actual next-head rerun pending.",
@@ -6580,7 +6583,69 @@
       "root_cause_in_real_request_not_yet_proven": true
     },
     "share_same_request_committed_create_drop_fix": "Actual boundary was ECONNRESET before observed afterBusiness completion, with no upstream HTTP status or actual drop completion. Browser drop wrapper previously selected every POST to the shared preview/create route. It now consumes the arm only for a completed create in that same request; late preview200 is forwarded exactly and retains the arm. Source callbacks reproduce the preview/create race. Actual root cause and new real story remain pending; expected receipts5/final7 and8s remain.",
-    "original_model_connections_backend_source": "Strict optional raw expected-employee condition after actual Cookie/withActor or broker mapping, before any config write/secret SELECT/probe; original header-free reference callers retained. DELETE requires closed512-byte expected_revision for original callers and locks actual owner revision. Create/update/enable-disable/delete write fixed actor-attributed safe audit events in the same transaction. Native advertises exact owner_cas_v1 only from the same actual repository own marker used by HTTP.26 pure checks and API TS5 pass. Original page client/host prepared separately; no real model-page SQL/browser/provider acceptance, draft probe/receipt recovery/paging still open."
+    "original_model_connections_backend_source": "Strict optional raw expected-employee condition after actual Cookie/withActor or broker mapping, before any config write/secret SELECT/probe; original header-free reference callers retained. DELETE requires closed512-byte expected_revision for original callers and locks actual owner revision. Create/update/enable-disable/delete write fixed actor-attributed safe audit events in the same transaction. Native advertises exact owner_cas_v1 only from the same actual repository own marker used by HTTP.26 pure checks and API TS5 pass. Original page client/host prepared separately; no real model-page SQL/browser/provider acceptance, draft probe/receipt recovery/paging still open.",
+    "original_model_connections_original_page_source": {
+      "route": "/model-connections",
+      "original_entry": "src/pages/ModelConnections/ModelConnectionsPage.tsx",
+      "preserves_original_UI_and_PB_body": true,
+      "strict_actual_repository_protocol": "native_model_connections_owner_cas_v1",
+      "CRUD_owner_CAS_audit_source_integrated": true,
+      "account_and_editor_late_reply_fences": true,
+      "unknown_write_owner_tab_marker_no_replay": true,
+      "exact_receipt_recovery_complete": false,
+      "unsaved_form_provider_test_complete": false,
+      "model_discovery_complete": false,
+      "large_account_paging_complete": false,
+      "new_pure_checks": 53,
+      "hosted_browser_story_source_integrated": true,
+      "actual_model_page_SQL_browser_accepted": false,
+      "provider_probe_closed_in_story": true,
+      "actual_Native_process_entry_verified": false,
+      "production_GO": false
+    },
+    "current_9679a48_verified_ci": {
+      "head": "9679a48851ebdaae69620d52e7b598ab5e223d74",
+      "PB19_run": 41074829665,
+      "PB19_job": 124128115855,
+      "PB19_passed": 19,
+      "PB19_workers": 2,
+      "quality_run": 41073666775,
+      "quality_jobs_success_at_observation": 49,
+      "quality_jobs_total": 50,
+      "quality_main_pending": true,
+      "core_SQL_JWT_RLS_passed": true,
+      "F01_run": 41073666901,
+      "F01_passed_jobs": 10,
+      "F01_jobs": 11,
+      "original_Home_job": 124124025809,
+      "original_Home_failure": "test fixture audit order references nonexistent created_at; frozen audit table uses occurred_at",
+      "Home_query_source_repaired": true,
+      "Home_whole_story_accepted": false,
+      "share_run": 41073666868,
+      "original_share_job": 124124025433,
+      "original_share_receipts_observed": 4,
+      "original_share_receipts_required": 5,
+      "original_share_controlled_drop_observed": 0,
+      "original_share_boundary": "ECONNRESET with no upstream HTTP status, no observed afterBusiness completion, drop still armed",
+      "share_root_cause_resolved": false,
+      "complete_run": 41073666965,
+      "legacy_job": 124124025169,
+      "legacy_assessment_actual_exit_code": 1,
+      "legacy_assessment_shutdown_requested": false,
+      "legacy_assessment_safe_stderr_code": "assessment_service_refused",
+      "final14_job": 124124024532,
+      "final14_failure_phase": "warm_sample",
+      "final14_failure_code": "full069_worker_live_native_heartbeat_unavailable",
+      "complete_passed": false,
+      "telemetry_run": 41073666794,
+      "telemetry_failure": "one of nine independent auth source pins was stale; pure139/138/1, controller not entered",
+      "telemetry_single_pin_source_repaired": true,
+      "telemetry_nine_source_gates_retained": true,
+      "callers_run": 41073666769,
+      "caller_browser_failure": "iframe poll button not stable/visible; root cause pending",
+      "does_not_accept_new_candidate": true,
+      "production_GO": false
+    }
   },
   "qualifying24h_hours": 0,
   "employee_signoffs": 0,

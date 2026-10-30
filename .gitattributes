@@ -1242,3 +1242,26 @@ tests/pg-original-home-design-genuine.spec.mjs text eol=lf
 services/pg-api/src/model-connection-repository.ts text eol=lf
 services/pg-api/tests/native-original-model-connections-owner-cas.test.mjs text eol=lf
 services/pg-api/tests/native-original-model-protocol.test.mjs text eol=lf
+
+# Original employee model page and fixed hosted evidence controls.
+src/components/model-connections/ConnectionCard.tsx text eol=lf
+src/components/model-connections/ConnectionFormCard.tsx text eol=lf
+src/lib/originalModelConnections.ts text eol=lf
+src/lib/originalModelConnectionsApi.ts text eol=lf
+src/pages/ModelConnections/ModelConnectionsPage.tsx text eol=lf
+src/pages/ModelConnections/useModelConnections.ts text eol=lf
+src/pages/ModelConnections/usePgModelConnections.ts text eol=lf
+tests/helpers/original-model-connections-hook-harness.mjs text eol=lf
+tests/helpers/original-model-connections-unit-data.mjs text eol=lf
+tests/helpers/pg-original-model-connections-artifacts.mjs text eol=lf
+tests/helpers/pg-original-model-connections-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-connections-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-model-connections-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-model-connections-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-model-connections-reviewed-check.mjs text eol=lf
+tests/original-model-connections-api.test.mjs text eol=lf
+tests/original-model-connections-controller.test.mjs text eol=lf
+tests/original-model-connections-hook.test.mjs text eol=lf
+tests/pg-original-model-connections-browser-policy.test.mjs text eol=lf
+tests/pg-original-model-connections-genuine.config.mjs text eol=lf
+tests/pg-original-model-connections-genuine.spec.mjs text eol=lf

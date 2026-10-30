@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        story: [design, original-login, monitor073, internal-overview, original-home-design]
+        story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -176,6 +176,11 @@ jobs:
         run: |
           node --test tests/pg-original-home-design-browser-policy.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original ModelConnections pure callbacks and original UI build
+        if: matrix.story == 'original-model-connections'
+        run: |
+          node --experimental-strip-types --test tests/original-model-connections-api.test.mjs tests/original-model-connections-controller.test.mjs tests/original-model-connections-hook.test.mjs tests/pg-original-model-connections-browser-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual HTTPS browser through the real PG18 design and save chain
@@ -212,6 +217,24 @@ jobs:
             .tmp/original-home-design-genuine-browser-results/**/original-home-design-generated.png
             .tmp/original-home-design-genuine-browser-results/**/original-home-design-revised-saved.png
             .tmp/original-home-design-genuine-browser-results/**/original-home-design-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Original ModelConnections actual owner encrypted metadata CAS audit and unknown-write fence
+        if: matrix.story == 'original-model-connections'
+        env:
+          AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI: YES_DISPOSABLE_ORIGINAL_MODEL_CONNECTIONS_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_STORY: original-model-connections
+          AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-connections-genuine.config.mjs
+      - name: Retain fixed safe original ModelConnections artifacts after cleanup
+        if: always() && matrix.story == 'original-model-connections'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-model-connections-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-alice-metadata.png
+            .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-bob-unknown.png
+            .tmp/original-model-connections-genuine-browser-results/**/original-model-connections-observation.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Retain synthetic page images only

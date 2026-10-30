@@ -435,7 +435,8 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "db/postgres/006_claim_agent_model.sql": "0b464605aa968c2d9f558b68b342eb409c809013dbd4d178c9f0ca9cdec6a449",
   "db/postgres/007_claim_workflow_safe.sql": "e7dc2335d97f8235e54b4a7a5c1ac03bc156577e2e7a2bdd2e0273f33af8bafa",
   "db/postgres/008_claim_workflow_v2.sql": "fa1f62bdda742c281d74ac50b01db1697402dda710c417437553828bf14c5ef1",
-  "db/postgres/009_claim_autonomous_agent.sql": "b4188f7965c8329ea30e52eb420b799735616825887412796a402616072c4ab1"
+  "db/postgres/009_claim_autonomous_agent.sql": "b4188f7965c8329ea30e52eb420b799735616825887412796a402616072c4ab1",
+  "services/pg-api/tests/native-control-ci-source-pins.test.mjs": "34d4f2cd3fba7da9ee2e41c5df0c69ff54d587e4f0d5cddce0294995faae76f2"
 })
 export function requireAgentDesignGenuineCi(env=process.env,platform=process.platform,uid=process.getuid?.()??0){
   if(platform!=='linux'||!Number.isSafeInteger(uid)||uid<=0||env.RUNNER_OS!=='Linux'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.GITHUB_REPOSITORY!=='HG1127/agent-studio_vibex'||env.GITHUB_WORKFLOW!==workflow||!jobs.has(env.GITHUB_JOB)||env.AGENT_STUDIO_F01_GENUINE_CI!=='YES_DISPOSABLE_F01_ONLY'||Object.keys(env).some(k=>env[k]!==undefined&&['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'].includes(k)))throw Error('refuse_non_ephemeral_agent_design_genuine_ci')

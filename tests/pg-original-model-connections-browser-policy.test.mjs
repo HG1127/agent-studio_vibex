@@ -1,0 +1,88 @@
+// Pure source/admission/proxy control flow only; never opens a positive fixture.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import {createRequire,registerHooks} from 'node:module'
+import {PassThrough} from 'node:stream'
+import {requireOriginalModelConnectionsBrowserCi,originalModelConnectionsPurpose} from './helpers/pg-original-model-connections-browser-guard.mjs'
+import {originalModelConnectionsPolicy,originalModelConnectionsPath} from './helpers/pg-original-model-connections-browser-policy.mjs'
+import {startOriginalModelConnectionsBrowserFixture} from './helpers/pg-original-model-connections-browser-fixture.mjs'
+import {originalModelConnectionsBackendFixture} from './helpers/pg-original-model-connections-backend-fixture.mjs'
+import {verifyOriginalModelConnectionsReviewedSources} from './helpers/pg-original-model-connections-reviewed-check.mjs'
+import {originalModelConnectionsDomSafety,originalModelConnectionsImageBuffer,originalModelConnectionsImageNames,originalModelConnectionsObservationBytes} from './helpers/pg-original-model-connections-artifacts.mjs'
+import {requireAgentDesignGenuineCi} from '../services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs'
+const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8'),host=read('tests/helpers/pg-original-model-connections-browser-fixture.mjs'),backend=read('tests/helpers/pg-original-model-connections-backend-fixture.mjs'),story=read('tests/pg-original-model-connections-genuine.spec.mjs')
+const purpose={CI:'true',GITHUB_ACTIONS:'true',GITHUB_RUN_ID:'123',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:'Agent Studio F01 Agent Design genuine PG18 isolated verification',GITHUB_JOB:'pg18-agent-design-browser',AGENT_STUDIO_F01_GENUINE_CI:'YES_DISPOSABLE_F01_ONLY',GITHUB_SHA:'a'.repeat(40),GITHUB_REF:'refs/heads/codex/pg18-worker-heartbeat-original-models',AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI:originalModelConnectionsPurpose,AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_STORY:'original-model-connections',AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD:'a'.repeat(40),AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-123'}
+test('independent original ModelConnections purpose composes unchanged F01 guard as DATA only',()=>{
+ const p=requireOriginalModelConnectionsBrowserCi(Object.freeze({...purpose}),'linux',1001);assert.equal(p.profile,'original-model-connections070071072073');assert.equal(p.target.port,5432);assert.equal(p.production_GO,false)
+ for(const key of ['AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI','AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_STORY','AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD','GITHUB_SHA','GITHUB_REF']){const missing={...purpose};delete missing[key];assert.throws(()=>requireOriginalModelConnectionsBrowserCi(missing,'linux',1001));assert.throws(()=>requireOriginalModelConnectionsBrowserCi({...purpose,[key]:'wrong'},'linux',1001))}
+ for(const[key,value]of [['GITHUB_JOB','pg18-agent-design-genuine'],['RUNNER_ENVIRONMENT','self-hosted'],['AGENT_STUDIO_PG18_CI_PORT','5333'],['DATABASE_URL','postgres://company'],['NODE_OPTIONS',''],['HTTPS_PROXY',''],['AGENT_STUDIO_ORIGINAL_HOME_DESIGN_CI',''],['AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI','']])assert.throws(()=>requireOriginalModelConnectionsBrowserCi({...purpose,[key]:value},'linux',1001))
+ assert.throws(()=>requireOriginalModelConnectionsBrowserCi(purpose,'win32',1001));assert.throws(()=>requireOriginalModelConnectionsBrowserCi(purpose,'linux',0))
+})
+for(const[name,fn]of [['host',startOriginalModelConnectionsBrowserFixture],['backend',originalModelConnectionsBackendFixture],['fixed source checker',verifyOriginalModelConnectionsReviewedSources]])test('ordinary '+name+' refuses before filesystem/driver/socket imports',async()=>{
+ const attempted=[],hook=registerHooks({resolve(name){attempted.push(name);throw Error('positive runtime import forbidden in pure negative test')}})
+ try{await assert.rejects(fn({}),/refuse/)}finally{hook.deregister()}assert.deepEqual(attempted,[])
+})
+test('policy serves actual model metadata CRUD only and denies every provider/probe/run/legacy route',()=>{
+ const id='11111111-1111-4111-8111-111111111111',base='/__pg_native/api/v2/model-connections'
+ for(const[method,path]of [['GET',base+'?limit=50'],['POST',base],['GET',base+'/'+id],['PATCH',base+'/'+id],['DELETE',base+'/'+id],['GET','/__pg_native/api/native-auth/capabilities'],['POST','/__pg_native/api/native-auth/login']])assert.equal(originalModelConnectionsPolicy(method,path).kind,'native')
+ for(const path of [base+'/'+id+'/probe','/__pg_native/api/v2/runs','/__pg_native/api/v2/agent-design/submit','/__pg_native/api/model-connections/test'])assert.notEqual(originalModelConnectionsPolicy('POST',path).kind,'native')
+ for(const path of ['/__pb/api/model-connections','/__pg/api/v2/model-connections'])assert.equal(originalModelConnectionsPolicy('GET',path).kind,'legacy_denied')
+ for(const path of ['/assets/../x','/assets/%2fsecret','//outside','/assets/a\\b','/.env\n'])assert.equal(originalModelConnectionsPath(path),null)
+ assert.equal(originalModelConnectionsPolicy('GET','/model-connections','text/html').kind,'spa');assert.notEqual(originalModelConnectionsPolicy('GET','/pg-native-pilot','text/html').kind,'spa')
+})
+const ts=createRequire(import.meta.url)('typescript'),parse=(name,text)=>{const tree=ts.createSourceFile(name,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);assert.equal(tree.parseDiagnostics.length,0);return tree},tree=parse('host.mjs',host),callbacks=[]
+function visit(n){if(ts.isCallExpression(n)&&n.expression.getText(tree)==='https.createServer')callbacks.push(n.arguments[1].getText(tree));ts.forEachChild(n,visit)}visit(tree);assert.equal(callbacks.length,1)
+function proxyModel({method='POST',path='/__pg_native/api/v2/model-connections',loss=false,hold=null,headers={}}={}){
+ const observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,controlled_after_commit_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false},req=new PassThrough(),res=new PassThrough(),proxy=new PassThrough(),chunks=[]
+ req.method=method;req.url=path;req.headers={accept:'application/json',origin:'https://localhost:17443',cookie:'terminal-real-wire-data-only','x-agentstudio-request':'1',...headers};req.socket={destroyed:false,destroy(){this.destroyed=true}};res.writeHead=(status,h)=>{res.status=status;res.headers=h;res.headersSent=true;return res};res.on('data',chunk=>chunks.push(Buffer.from(chunk)));let options,receive
+ const https={request(o,callback){options=o;receive=callback;return proxy}},remember=(key,value)=>observations[key].push(value),reply=(r,status,error)=>{r.writeHead(status,{});r.end(JSON.stringify({error}))}
+ const load=Function('https','originalModelConnectionsPolicy','observations','remember','reply','agent','upstream','tls','hop','files','holds','let nextHold=arguments[11],nextLoss=arguments[12];return '+callbacks[0]);load(https,originalModelConnectionsPolicy,observations,remember,reply,{},new URL('https://localhost:45454'),{ca:'CA-data-only'},new Set(['host','connection']),new Map(),new Set(),hold,loss)(req,res)
+ return{req,res,proxy,options,observations,bytes:()=>Buffer.concat(chunks),async response(status=201,body='{"actual":"upstream-data-only"}'){const incoming=new PassThrough();incoming.statusCode=status;incoming.headers={'content-type':'application/json'};receive(incoming);incoming.end(Buffer.from(body));await new Promise(resolve=>setImmediate(resolve))}}
+}
+test('actual proxy preserves Cookie/Origin/CSRF/employee condition and exact DELETE body transport budget',async()=>{
+ const p=proxyModel({method:'DELETE',path:'/__pg_native/api/v2/model-connections/11111111-1111-4111-8111-111111111111',headers:{'x-agentstudio-expected-employee':'owner-data-only'}});assert.equal(p.options.method,'DELETE');assert.equal(p.options.headers.cookie,'terminal-real-wire-data-only');assert.equal(p.options.headers.origin,'https://localhost:17443');assert.equal(p.options.headers['x-agentstudio-request'],'1');assert.equal(p.options.headers['x-agentstudio-expected-employee'],'owner-data-only');assert.equal(p.options.rejectUnauthorized,true);assert.equal(p.options.servername,'localhost');assert(host.includes('AbortSignal.timeout(8000)'));await p.response(200);assert(p.bytes().length>0)
+})
+test('actual proxy drops only a complete committed201 create response and refuses a counterfeit200 loss case',async()=>{
+ const p=proxyModel({loss:true});await p.response(201);assert.equal(p.req.socket.destroyed,true);assert.equal(p.bytes().length,0);assert.equal(p.observations.controlled_after_commit_disconnects,1);assert.deepEqual(p.observations.unexpected_api_failures,[])
+ const wrong=proxyModel({loss:true});await wrong.response(200);assert.equal(wrong.req.socket.destroyed,false);assert.equal(wrong.observations.controlled_after_commit_disconnects,0);assert.equal(wrong.bytes().toString(),'{"actual":"upstream-data-only"}');assert.equal(wrong.observations.unexpected_api_failures.length,1)
+})
+test('actual proxy bounds responses, denies arbitrary auth headers and holds actual200 GET bytes until release',async()=>{
+  for(const header of ['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity']){const forbidden=proxyModel({headers:{[header]:'private-data-only'}});assert.equal(forbidden.res.status,400);assert.equal(forbidden.observations.forbidden_auth_headers,1);assert.equal(forbidden.options,undefined)}
+ const large=proxyModel();await large.response(200,'x'.repeat(1048577));assert(large.observations.unexpected_api_failures.length>0);assert.equal(large.bytes().length,0)
+ let release,enter;const wait=new Promise(resolve=>{release=resolve}),entered=new Promise(resolve=>{enter=resolve}),gate={path:'/__pg_native/api/v2/model-connections/11111111-1111-4111-8111-111111111111',wait,release,enter,reject:error=>{throw error},entered:false},held=proxyModel({method:'GET',path:gate.path,hold:gate});await held.response(200);await entered;assert.equal(held.bytes().length,0);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(held.bytes().toString(),'{"actual":"upstream-data-only"}')
+})
+test('backend uses the same actual repository protocol property, actual Cookie capability and closed provider gate',()=>{
+ assert(backend.includes("const strictModelContract=models.originalUiProtocol==='native_model_connections_owner_cas_v1'"));assert(backend.includes('allowOriginalModelConnections:strictModelContract'));assert(!backend.includes('allowOriginalModelConnections:true'));assert(backend.includes("actualCap.body.original_model_connections_protocol,'native_model_connections_owner_cas_v1'"));assert(backend.includes('allowModelProbe:false'));assert(backend.includes('modelConnectionRepository:models'))
+ for(const name of ['inspectOptionalNativeHomeAuthoringSchema','inspectOptionalNativeAgentCatalogSchema','inspectOptionalOriginalHomeKnowledgeStatisticsSchema','inspectOptionalNativeMonitorInbox','f.audit(db)','modelCredentialReads','f.providerRequests.length,0'])assert(backend.includes(name))
+ assert(!backend.includes('GITHUB_JOB='));assert(!backend.includes('originalHomeDesignBackendFixture('));assert(!backend.includes('worker.tick('))
+})
+test('independent backend passes explicit real F01 browser mode through the unchanged pure admission prefix',async()=>{
+ const b=parse('backend.mjs',backend),calls=[];function walk(n){if(ts.isCallExpression(n)&&n.expression.getText(b)==='base.agentDesignGenuineFixture')calls.push(n.getText(b));ts.forEachChild(n,walk)}walk(b);assert.equal(calls.length,1)
+ const original=read('services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs'),t=parse('f01.mjs',original),fn=t.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='agentDesignGenuineFixture'),prefix=fn.body.statements.slice(0,2).map(n=>n.getText(t)).join('\n');assert(!prefix.includes('import('))
+ const actual=Function('requireAgentDesignGenuineCi','return async function('+fn.parameters.map(n=>n.getText(t)).join(',')+'){'+prefix+';return{browserMode,target,data_only:true,qualifies_run:false}}')(env=>requireAgentDesignGenuineCi(env,'linux',1001)),answer=await Function('base','env','return '+calls[0])({agentDesignGenuineFixture:actual},Object.freeze({...purpose}));assert.equal(answer.browserMode,true);assert.equal(answer.qualifies_run,false);await assert.rejects(actual(purpose),/agent_design_genuine_job_mode_required/)
+})
+test('browser story retains all zero gates, never calls a probe, and does not count uncertainty reads as exact receipts',()=>{
+ for(const key of ['legacy_backend_requests','unexpected_api_failures','blocked_requests'])assert(story.includes('f.observations.'+key+').toEqual([])'))
+ for(const marker of ['event_count_capped_129:0,codes:[],overflow:false','expect(webSockets).toBe(0)','expect(f.observations.forbidden_auth_headers).toBe(0)','f.assertNoModelEffects()','exact_unknown_receipt_recovery_complete:false','unsaved_form_provider_test_complete:false','model_discovery_complete:false'])assert(story.includes(marker))
+ for(const bad of ['route.fulfill','addCookies(','ignoreHTTPSErrors:true','f.tick(','api.probe('])assert(!story.includes(bad))
+ assert(story.includes('normalAudit.count).toBe(4)'));assert(story.includes('after.model_audit).toBe(before.model_audit+5)'));assert(story.includes('await f.request(\'bob\''))
+ for(const action of ['model.connection_create','model.connection_delete','model.connection_disable','model.connection_update'])assert(story.includes("action:'"+action+"'"))
+ assert(backend.includes("assert.deepEqual(Object.keys(row.metadata),['revision'])"));assert(backend.includes('row.actor_user_id,f.users[who]'));assert(story.includes('expect(normalAudit.entries).toEqual('))
+})
+test('fixed successful screenshots require bounded secret-free DOM and wait until full story/owned cleanup',()=>{
+ const safe=originalModelConnectionsDomSafety({text:'synthetic metadata',values:['safe value'],passwordInputs:0},['PRIVATE_NOT_LOGGED']);assert(Object.values(safe).every(v=>v===true))
+ const unsafe=originalModelConnectionsDomSafety({text:'PRIVATE_NOT_LOGGED',values:[],passwordInputs:1},['PRIVATE_NOT_LOGGED']);assert.equal(unsafe.secret_absent,false);assert.equal(unsafe.password_absent,false);assert(!JSON.stringify(unsafe).includes('PRIVATE_NOT_LOGGED'))
+ const png=Buffer.from([137,80,78,71,13,10,26,10]);for(const name of originalModelConnectionsImageNames)assert.equal(originalModelConnectionsImageBuffer(name,png,safe).name,name);assert.throws(()=>originalModelConnectionsImageBuffer('../failure.png',png,safe));assert.throws(()=>originalModelConnectionsImageBuffer(originalModelConnectionsImageNames[0],png,unsafe))
+ const cleanup=story.indexOf("await clean('genuine_fixture_close'"),write=story.indexOf('if(success)for(const image of images)');assert(cleanup>0&&write>cleanup);assert(!story.includes('screenshot({path:'));const config=read('tests/pg-original-model-connections-genuine.config.mjs');for(const item of ["trace:'off'","video:'off'","screenshot:'off'","retries:0"])assert(config.includes(item))
+})
+test('observations are bounded and secret-free, and success images require post-cleanup zero checks',()=>{
+ assert.deepEqual(JSON.parse(originalModelConnectionsObservationBytes({scope:'synthetic',production_GO:false})),{scope:'synthetic',production_GO:false})
+ for(const text of ['x'.repeat(1048577),'Bearer private-data-only','__Host-agentstudio_session=private-data-only','synthetic-original-page-key-0005'])assert.throws(()=>originalModelConnectionsObservationBytes({text}),/observation_refused/)
+ const close=story.indexOf("await clean('genuine_fixture_close'"),zeros=story.indexOf("await clean('final_zero_after_cleanup'"),write=story.indexOf('if(success)for(const image of images)');assert(close>0&&zeros>close&&write>zeros)
+ assert(story.includes('originalModelConnectionsObservationBytes(observation)'));assert(story.includes('image.bytes.fill(0)'))
+})
+test('CI uses a fresh independent matrix story, step-local purpose and fixed image/JSON allowlist',()=>{
+ const workflow=read('.github/workflows/pg18-agent-design-genuine-ci.yml');assert(workflow.includes('original-model-connections]'));assert(workflow.includes('tests/pg-original-model-connections-genuine.config.mjs'));assert.equal(workflow.split('AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI:').length,2);assert(workflow.includes("AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD: '${{ github.sha }}'"));assert(!/GITHUB_JOB\s*[:=]/.test(workflow))
+ const from=workflow.indexOf('      - name: Retain fixed safe original ModelConnections'),end=workflow.indexOf('      - name: Retain synthetic page images only',from),block=workflow.slice(from,end);for(const name of originalModelConnectionsImageNames)assert(block.includes('/**/'+name));assert(block.includes('/**/original-model-connections-observation.json'));assert(!block.includes('/**/*.png'))
+})

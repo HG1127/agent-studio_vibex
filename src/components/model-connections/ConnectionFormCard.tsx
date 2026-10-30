@@ -6,6 +6,7 @@ import {
 } from "@/pages/ModelConnections/useModelConnections"
 
 type ConnectionFormCardProps = {
+  nativeMode?:boolean;canTest?:boolean;nativePending?:boolean;saveActionLabel?:string;probeNotice?:string
   formMode: "add" | "edit"
   formName: string
   formProvider: ProviderKey
@@ -31,6 +32,7 @@ const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-card-foreground transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 
 export function ConnectionFormCard({
+  nativeMode=false,canTest=true,nativePending=false,saveActionLabel,probeNotice,
   formMode,
   formName,
   formProvider,
@@ -124,7 +126,7 @@ export function ConnectionFormCard({
             className={`${inputClass} font-mono text-xs`}
           />
           <p className="text-xs text-muted-foreground">
-            {formProvider === "openai"
+            {nativeMode?'仅支持公开 HTTPS 地址；保存时会校验地址。':formProvider === "openai"
               ? "OpenAI 兼容接口地址，末尾斜杠可省略；仅支持 http/https。"
               : `留空即使用官方默认地址 ${PROVIDER_META[formProvider].defaultBase}，末尾斜杠可省略；仅支持 http/https。`}
           </p>
@@ -137,6 +139,7 @@ export function ConnectionFormCard({
           <input
             id="mc-api-key"
             type="password"
+            disabled={nativeMode&&(nativePending||isSaving||isTestingForm)}
             value={formApiKey}
             onChange={(ev) => onFormApiKeyChange(ev.target.value)}
             placeholder={
@@ -159,11 +162,11 @@ export function ConnectionFormCard({
             type="text"
             value={formManualModels}
             onChange={(ev) => onFormManualModelsChange(ev.target.value)}
-            placeholder="如 abab6.5s-chat, MiniMax-M1 等；留空则由测试自动拉取"
+            placeholder={nativeMode?'填写需要保留的模型 ID；测试不会自动发现或替换清单':'如 abab6.5s-chat, MiniMax-M1 等；留空则由测试自动拉取'}
             className={`${inputClass} font-mono text-xs`}
           />
           <p className="text-xs text-muted-foreground">
-            部分服务商不开放模型列表接口（测试会提示解析不出列表），手动填写后保存，试跑时同样可用；测试成功拉到列表时以拉取结果为准。
+            {nativeMode?'手动填写需要保留的模型 ID。连接测试只更新连接状态，不发现或替换这份清单。':'部分服务商不开放模型列表接口（测试会提示解析不出列表），手动填写后保存，试跑时同样可用；测试成功拉到列表时以拉取结果为准。'}
           </p>
         </div>
 
@@ -179,7 +182,7 @@ export function ConnectionFormCard({
               <>
                 <p className="flex items-center gap-2 text-sm font-medium text-primary">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  连通成功 · 延迟 {formTestResult.latency_ms} ms · 拉到 {formTestResult.models.length} 个模型
+                  {nativeMode?'已验证连接响应':'连通成功'} · 延迟 {formTestResult.latency_ms} ms · {nativeMode?'已配置':'拉到'} {formTestResult.models.length} 个模型
                 </p>
                 {formTestResult.models.length > 0 && (
                   <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -208,11 +211,12 @@ export function ConnectionFormCard({
           </div>
         )}
 
+        {nativeMode&&probeNotice&&<p className="text-xs leading-relaxed text-muted-foreground">{probeNotice}</p>}
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={onTest}
-            disabled={isTestingForm || isSaving}
+            disabled={isTestingForm || isSaving || !canTest}
             className="inline-flex items-center gap-2 rounded-xl border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isTestingForm && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -225,7 +229,7 @@ export function ConnectionFormCard({
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90 hover:shadow-xl focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isSaving ? "保存中…" : "保存"}
+            {isSaving ? "保存中…" : saveActionLabel||"保存"}
           </button>
           <button
             type="button"
