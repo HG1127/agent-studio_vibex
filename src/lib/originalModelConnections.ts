@@ -14,6 +14,7 @@ type Ports={api:OriginalModelConnectionsApi;employeeId:string;currentEmployee():
 const defaults={openai:'https://api.openai.com/v1',anthropic:'https://api.anthropic.com/v1',gemini:'https://generativelanguage.googleapis.com/v1beta'} as const
 export const originalModelUncertaintyKey=(employee:string)=>'agent-studio:model-connections:native-pg:v1:'+originalModelId(employee)
 export const emptyOriginalModelConnectionsView=():OriginalModelConnectionsView=>({isLoggedIn:false,needsRhLogin:false,errorMsg:'',noticeMsg:'',connectionList:[],isLoadingList:true,formOpen:false,formMode:'add',editingId:'',formName:'',formProvider:'openai',formBaseUrl:'',formApiKey:'',formManualModels:'',isTestingForm:false,formTestResult:null,isSaving:false,busyId:'',expandedId:'',pendingDeleteId:'',canSubmitForm:false,nativeMode:true,writeBlocked:true,probeEnabled:false,formProbeEnabled:false,saveActionLabel:'保存',nativePending:false,nativeUnavailable:false,probeNotice:'仅测试已保存且未改动的配置；测试会使用已保存密钥访问服务商，可能产生费用。不会执行模型生成，也不会自动发现或替换模型清单。'})
+const partialListMessage='当前只能读取最多50条配置，此列表不代表全部连接。'
 const unknownMessage='上次操作结果尚未确认。再次点击原保存按钮只读取当前配置，不会重发密钥或重复写入；读取后仍需由管理员核对原操作。'
 function pendingValue(raw:unknown,employee:string,now:number):Pending{
  if(!raw||typeof raw!=='object'||Object.getPrototypeOf(raw)!==Object.prototype||Reflect.ownKeys(raw).length!==7)return storageError()
@@ -32,12 +33,13 @@ function publicInput(row:OriginalModelConnection):OriginalModelConnectionInput{r
 export function createOriginalModelConnectionsController(ports:Ports){
  const employee=originalModelId(ports.employeeId),now=ports.now??Date.now,newId=ports.requestId??(()=>crypto.randomUUID())
  let state=emptyOriginalModelConnectionsView(),records=new Map<string,OriginalModelConnection>(),editingBaseline:OriginalModelConnection|null=null,deleteBaseline:OriginalModelConnection|null=null,cap={strictContract:false,writes:false,probe:false,draftProbe:false},pending:Pending|null=null,loaded=false,storageBroken=false,blocked=false,disposed=false,busy=false,epoch=0,readSequence=0,formSequence=0,abort:AbortController|null=null
+ let listComplete:boolean|null=null
  const copy=():OriginalModelConnectionsView=>{
   const formValid=!!state.formName.trim()&&(state.formProvider!=='openai'||!!state.formBaseUrl.trim())&&(state.formMode==='edit'||!!state.formApiKey.trim())
-  return{...state,connectionList:state.connectionList.map(v=>({...v,models:[...v.models]})),formTestResult:state.formTestResult?{...state.formTestResult,models:[...state.formTestResult.models]}:null,writeBlocked:blocked||storageBroken||busy||!cap.writes||!!pending,probeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&cap.probe,formProbeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&(cap.draftProbe||cap.probe),probeNotice:cap.draftProbe?'点击测试只查询官方服务商模型列表，可能产生费用；草稿不会保存，也不会生成内容。发现结果只在本表单有效；模型 ID 留空时，明确保存会采用本次完整发现结果。':state.probeNotice,canSubmitForm:!blocked&&!storageBroken&&!busy&&(pending?state.formOpen:cap.writes&&formValid),saveActionLabel:pending?'核对原操作结果':'保存',nativePending:!!pending}
+  return{...state,noticeMsg:listComplete===false&&!state.noticeMsg.includes(partialListMessage)?[state.noticeMsg,partialListMessage].filter(Boolean).join(' '):state.noticeMsg,connectionList:state.connectionList.map(v=>({...v,models:[...v.models]})),formTestResult:state.formTestResult?{...state.formTestResult,models:[...state.formTestResult.models]}:null,writeBlocked:blocked||storageBroken||busy||!cap.writes||!!pending,probeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&cap.probe,formProbeEnabled:!blocked&&!storageBroken&&!busy&&!pending&&(cap.draftProbe||cap.probe),probeNotice:cap.draftProbe?'点击测试只查询官方服务商模型列表，可能产生费用；草稿不会保存，也不会生成内容。发现结果只在本表单有效；模型 ID 留空时，明确保存会采用本次完整发现结果。':state.probeNotice,canSubmitForm:!blocked&&!storageBroken&&!busy&&(pending?state.formOpen:cap.writes&&formValid),saveActionLabel:pending?'核对原操作结果':'保存',nativePending:!!pending}
  }
  function publish(patch:Partial<OriginalModelConnectionsView>={}){if(disposed)return;state={...state,...patch};ports.onChange(copy())}
- function clearSensitive(){formSequence++;records.clear();editingBaseline=null;deleteBaseline=null;state={...emptyOriginalModelConnectionsView(),isLoadingList:false,needsRhLogin:true};cap={strictContract:false,writes:false,probe:false,draftProbe:false}}
+ function clearSensitive(){formSequence++;listComplete=null;records.clear();editingBaseline=null;deleteBaseline=null;state={...emptyOriginalModelConnectionsView(),isLoadingList:false,needsRhLogin:true};cap={strictContract:false,writes:false,probe:false,draftProbe:false}}
  function loseScope(){if(blocked||disposed)return;blocked=true;epoch++;readSequence++;abort?.abort();clearSensitive();publish({errorMsg:'员工账号已变化，原账号的连接、表单和密钥已隐藏。请重新打开当前页面。'})}
  async function verify(stamp:number){let actual:string;try{actual=originalModelId(await ports.verifyEmployee())}catch(error){throw new OriginalModelConnectionsError(error instanceof OriginalModelConnectionsError&&error.status===401?401:503,'original_model_identity_unavailable')}if(disposed||stamp!==epoch)throw Error('original_model_scope_obsolete');if(actual!==employee||ports.currentEmployee()!==employee){loseScope();throw Error('original_model_scope_changed')}}
  async function invoke<T>(stamp:number,work:()=>Promise<T>,potentialEffect=false):Promise<T>{
@@ -56,6 +58,9 @@ export function createOriginalModelConnectionsController(ports:Ports){
  function errorMessage(error:unknown){
   if(error instanceof Error&&error.message==='original_model_storage_unavailable')return '浏览器无法可靠保留上次操作状态，配置写入已停止。密钥未存入浏览器存储，请保留其他表单内容后检查。'
   if(error instanceof OriginalModelConnectionsError){
+   if(error.code==='model_connection_snapshot_changed'||error.code==='model_connection_cursor_expired')return '读取期间连接列表已变化或读取凭证过期，本次部分结果未采用；请重新刷新完整列表。'
+   if(error.code==='model_connection_list_budget_exceeded')return '完整列表读取超过时限，本次部分结果未采用；请稍后重新刷新。'
+   if(error.code==='model_connection_list_too_large')return '完整列表超过本次可处理范围，本次部分结果未采用；请联系管理员核对读取范围。'
    if(error.status===401)return '员工登录已失效，请重新登录后核对服务器配置。'
    if(error.status===403)return '当前员工没有所需的模型配置权限，配置未被当作保存成功。'
    if(error.status===409)return '服务器配置版本已变化。当前表单保持不变，请从列表重新打开最新配置后再明确保存。'
@@ -70,15 +75,15 @@ export function createOriginalModelConnectionsController(ports:Ports){
   return pending?unknownMessage:'暂时无法核验模型配置，请稍后重新读取；没有自动重试配置或服务商请求。'
  }
  function failure(error:unknown){if(disposed||blocked)return;if(error instanceof OriginalModelConnectionsError&&(error.status===401||error.code==='original_model_identity_unavailable')){readSequence++;clearSensitive();publish({errorMsg:errorMessage(error),needsRhLogin:error.status===401,nativeUnavailable:error.status!==401});return}publish({errorMsg:errorMessage(error)})}
- function install(rows:OriginalModelConnection[]){records=new Map(rows.map(v=>[v.id,v]));publish({connectionList:rows.map(display)})}
+ function install(rows:OriginalModelConnection[],complete:boolean){listComplete=complete;records=new Map(rows.map(v=>[v.id,v]));publish({connectionList:rows.map(display)})}
  async function refresh(){
   if(disposed||blocked||busy)return;const stamp=epoch,sequence=++readSequence;publish({isLoadingList:true,errorMsg:''})
-  try{await verify(stamp);let recoveryError='';try{load()}catch(error){recoveryError=errorMessage(error)}const values=await invoke(stamp,()=>Promise.all([ports.api.capabilities(),ports.api.list()]));if(disposed||stamp!==epoch||sequence!==readSequence)return;cap=values[0];install(values[1]);publish({isLoggedIn:true,needsRhLogin:false,nativeUnavailable:false,errorMsg:recoveryError,noticeMsg:pending?unknownMessage:!cap.writes?'已读取本人配置；当前环境只允许查看。保存和测试均不会自动发起。':''})}
+  try{await verify(stamp);let recoveryError='';try{load()}catch(error){recoveryError=errorMessage(error)}const values=await invoke(stamp,()=>Promise.all([ports.api.capabilities(),ports.api.listSnapshot()]));if(disposed||stamp!==epoch||sequence!==readSequence)return;cap=values[0];install(values[1].items,values[1].complete);publish({isLoggedIn:true,needsRhLogin:false,nativeUnavailable:false,errorMsg:recoveryError,noticeMsg:pending?unknownMessage+(!values[1].complete?' '+partialListMessage:''):!values[1].complete?partialListMessage:!cap.writes?'已读取本人配置；当前环境只允许查看。保存和测试均不会自动发起。':''})}
   catch(error){if(stamp===epoch&&sequence===readSequence)failure(error)}finally{if(!disposed&&stamp===epoch&&sequence===readSequence)publish({isLoadingList:false})}
  }
  async function queryPending(){
   if(!pending||busy)return;const stamp=epoch,sequence=++readSequence;publish({isLoadingList:true,errorMsg:''})
-  try{await verify(stamp);const rows=await invoke(stamp,()=>ports.api.list());if(stamp!==epoch||sequence!==readSequence)return;install(rows);publish({noticeMsg:'已重新读取服务器当前配置。读取结果不能证明上次原请求是否完成，未清除不确定状态，也未重复写入。'})}catch(error){if(stamp===epoch)failure(error)}finally{if(!disposed&&stamp===epoch&&sequence===readSequence)publish({isLoadingList:false})}
+  try{await verify(stamp);const rows=await invoke(stamp,()=>ports.api.listSnapshot());if(stamp!==epoch||sequence!==readSequence)return;install(rows.items,rows.complete);publish({noticeMsg:'已重新读取服务器当前配置。读取结果不能证明上次原请求是否完成，未清除不确定状态，也未重复写入。'+(!rows.complete?' '+partialListMessage:'')})}catch(error){if(stamp===epoch)failure(error)}finally{if(!disposed&&stamp===epoch&&sequence===readSequence)publish({isLoadingList:false})}
  }
  async function edit(row:ModelConnectionRow){
   if(disposed||blocked||busy)return;const stamp=epoch,sequence=++formSequence

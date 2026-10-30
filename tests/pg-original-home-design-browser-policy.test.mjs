@@ -133,7 +133,7 @@ test('success screenshots stay in memory until all story work and owned cleanup;
  const config=read('tests/pg-original-home-design-genuine.config.mjs');for(const option of ["trace:'off'","video:'off'","screenshot:'off'","retries:0","workers:1"])assert(config.includes(option))
 })
 test('CI adds an independent matrix service with step-local purpose and exact artifact allowlist, preserving every old story',()=>{
-  const text=read('.github/workflows/pg18-agent-design-genuine-ci.yml');assert(text.includes('story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections]'))
+  const text=read('.github/workflows/pg18-agent-design-genuine-ci.yml');assert(text.includes('story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections, original-model-draft-discovery]'))
   for(const name of ['pg-native-agent-design-genuine.config.mjs','pg-original-login-genuine.config.mjs','pg-original-monitor073-genuine.config.mjs','pg-original-internal-overview-genuine.config.mjs','pg-original-home-design-genuine.config.mjs','pg-original-model-connections-genuine.config.mjs'])assert(text.includes(name))
  assert.equal(text.split('AGENT_STUDIO_ORIGINAL_HOME_DESIGN_CI:').length,2);assert(text.includes("AGENT_STUDIO_ORIGINAL_HOME_DESIGN_EXPECTED_HEAD: '${{ github.sha }}'"));assert(!/GITHUB_JOB\s*[:=]/.test(text))
  const start=text.indexOf('      - name: Retain fixed safe original Home'),end=text.indexOf('      - name: Retain synthetic page images only',start),block=text.slice(start,end)

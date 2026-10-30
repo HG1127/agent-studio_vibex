@@ -1,3 +1,4 @@
+import {readModelConnectionPage,type ModelPageQuery} from './model-connection-pagination.ts'
 import {isIP} from "node:net"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor} from "./repository.ts"
@@ -125,6 +126,7 @@ async function auditModelConnection(db:SqlClient,actor:string,id:string,action:M
 }
 export class ModelConnectionRepository{
   readonly originalUiProtocol="native_model_connections_owner_cas_v1" as const
+  readonly paginationProtocol="native_model_connections_paging_v1" as const
   readonly pool:SqlPool
   readonly brokerPool:SqlPool
   readonly encryptionKey:Buffer
@@ -139,6 +141,9 @@ export class ModelConnectionRepository{
     this.brokerPool=brokerPool
     this.encryptionKey=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key)
     if(this.encryptionKey.length!==32)throw Error("invalid_model_encryption_key")
+  }
+  listPage(identity:Identity,query:ModelPageQuery,expectedEmployee:string){
+    return readModelConnectionPage({pool:this.pool,key:this.encryptionKey,identity,query,expectedEmployee,normalize:raw=>safeRow(raw as unknown as StoredRow)})
   }
   list(identity:Identity,limit=30):Promise<ModelConnectionRow[]>{
     const bounded=Math.max(1,Math.min(50,Math.trunc(limit)))

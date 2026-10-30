@@ -1,3 +1,4 @@
+import {parseModelConnectionPageQuery} from './model-connection-pagination.ts'
 import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
@@ -753,6 +754,14 @@ export function createHandler(deps:AppDependencies) {
             const item=await repo.get(identity,suffix)
             if(!item)throw new HttpError(404,"model_connection_not_found")
             return send(res,200,{item})
+          }
+          const pageParams=new URL(req.url||"/","http://127.0.0.1").searchParams
+          if(pageParams.has('paging')||pageParams.has('cursor')){
+            if(!deps.authenticateRequest)throw new HttpError(403,'native_cookie_paging_required')
+            if(['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(key=>req.headers[key]!==undefined))throw new HttpError(400,'model_page_identity_header_refused')
+            const pageQuery=parseModelConnectionPageQuery(req.url||'/'),pageEmployee=optionalExpectedOriginalUiEmployee(req)
+            if(pageEmployee===undefined)throw new HttpError(400,'invalid_original_ui_employee_precondition')
+            return send(res,200,await repo.listPage(identity,pageQuery,pageEmployee))
           }
           const requested=Number(new URL(req.url||"/","http://127.0.0.1")
             .searchParams.get("limit")||30)

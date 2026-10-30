@@ -1,3 +1,4 @@
+import {observeInternalShareBoundary as observe} from './agent-internal-share-observation.mjs'
 import {HttpError,type Identity,type SqlClient,type SqlPool} from './contracts.ts'
 import {withActorClient,assertOwnedAdmissionContext} from './repository.ts'
 import {requireInternalShareNative} from './agent-internal-share-runtime-policy.ts'
@@ -18,9 +19,9 @@ export class AgentInternalShareRepository{
  readonly pool:SqlPool;readonly writes:boolean
  constructor(pool:SqlPool,{allowWrites=false}:{allowWrites?:boolean}={}){this.pool=pool;this.writes=allowWrites===true}
  private async actor<T>(identity:Identity,requestId:string|null,body:(db:SqlClient)=>Promise<T>,expectedEmployee?:string):Promise<T>{
-  requireInternalShareNative(identity);const db=await this.pool.connect();let begun=false,committing=false
-  try{await db.query('BEGIN');begun=true;const value=await withActorClient(db,this.pool,identity,async(client,owner)=>{await assertOwnedAdmissionContext(client,owner);if(expectedEmployee!==undefined&&owner!==expectedEmployee)throw new HttpError(409,'agent_internal_share_employee_changed');const {verifyAgentInternalShareCredentials}=await import('./agent-internal-share-audit.ts');if(await verifyAgentInternalShareCredentials(client)!==true)throw new HttpError(503,'agent_internal_share_schema_required');return body(client)});committing=true;await db.query('COMMIT');begun=false;return value}
-  catch(e){if(begun)await db.query('ROLLBACK').catch(()=>{});if(committing)throw new InternalShareAcknowledgementUnknown(requestId);return translated(e)}finally{db.release()}
+  requireInternalShareNative(identity);observe('repo_connect','begin');const db=await this.pool.connect().catch(error=>{observe('repo_connect','failure',error);throw error});observe('repo_connect','end');let begun=false,committing=false,phase='repo_begin'
+  try{observe(phase,'begin');await db.query('BEGIN');begun=true;observe(phase,'end');phase='repo_actor';observe(phase,'begin');const value=await withActorClient(db,this.pool,identity,async(client,owner)=>{phase='repo_owner';observe(phase,'begin');await assertOwnedAdmissionContext(client,owner);if(expectedEmployee!==undefined&&owner!==expectedEmployee)throw new HttpError(409,'agent_internal_share_employee_changed');observe(phase,'end');phase='repo_audit';observe(phase,'begin');const {verifyAgentInternalShareCredentials}=await import('./agent-internal-share-audit.ts');if(await verifyAgentInternalShareCredentials(client)!==true)throw new HttpError(503,'agent_internal_share_schema_required');observe(phase,'end');phase='repo_body';observe(phase,'begin');return body(client)});observe(phase,'end');phase='repo_commit';observe(phase,'begin');committing=true;await db.query('COMMIT');begun=false;observe(phase,'end');return value}
+  catch(e){observe(phase,'failure',e);if(begun){observe('repo_rollback','begin');await db.query('ROLLBACK').then(()=>observe('repo_rollback','end'),error=>observe('repo_rollback','failure',error))};if(committing)throw new InternalShareAcknowledgementUnknown(requestId);return translated(e)}finally{db.release()}
  }
  private async value(db:SqlClient,query:string,args:unknown[]=[]){const rows=(await db.query<{value:unknown}>(query,args)).rows;if(rows.length!==1)throw Error('agent_internal_share_invalid_projection');return rows[0]!.value}
  list(identity:Identity){return this.actor(identity,null,async db=>parseInternalShareList(await this.value(db,'SELECT agentstudio.agent_internal_share_list() AS value')))}

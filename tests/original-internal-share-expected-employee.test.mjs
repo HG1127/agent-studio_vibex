@@ -7,6 +7,7 @@ import {PassThrough} from 'node:stream'
 import {stripTypeScriptTypes} from 'node:module'
 import {HttpError} from '../services/pg-api/src/contracts.ts'
 import {createAgentInternalShareHttp} from '../services/pg-api/src/agent-internal-share-http.ts'
+import {observeInternalShareBoundary as observe} from '../services/pg-api/src/agent-internal-share-observation.mjs'
 import {createPgNativeInternalShareApi,PgNativeInternalShareError} from '../src/lib/pgNativeInternalShare.ts'
 import {createOriginalInternalTemplatesController} from '../src/lib/originalInternalTemplates.ts'
 import {requireInternalShareNative} from '../services/pg-api/src/agent-internal-share-runtime-policy.ts'
@@ -19,7 +20,7 @@ function repository(){
  const withActorClient=async(client,selectedPool,verified,body)=>{assert.equal(client,db);assert.equal(selectedPool,pool);assert.deepEqual(verified,identity);events.push('actual_mapping_port_bob');return body(client,bob)}
  const admit=async(client,owner)=>{assert.equal(client,db);assert.equal(owner,bob);events.push('owned_admission_context')}
  const translated=error=>{throw error}
- const Class=Function('HttpError','requireInternalShareNative','withActorClient','assertOwnedAdmissionContext','internalShareId','parseInternalShareIntent','translated',actual+';return AgentInternalShareRepository')(HttpError,requireInternalShareNative,withActorClient,admit,internalShareId,parseInternalShareIntent,translated)
+  const Class=Function('HttpError','requireInternalShareNative','withActorClient','assertOwnedAdmissionContext','internalShareId','parseInternalShareIntent','translated','observe',actual+';return AgentInternalShareRepository')(HttpError,requireInternalShareNative,withActorClient,admit,internalShareId,parseInternalShareIntent,translated,observe)
  return{repo:new Class(pool,{allowWrites:true}),events,source}
 }
 for(const action of ['create','redeem','revoke'])test('actual '+action+' record and confirm compare expected against mapped Bob before all business SQL',async()=>{

@@ -7,7 +7,7 @@ import {originalModelConnectionsDomSafety,originalModelConnectionsImageBuffer,or
 test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, late account fence and unknown-write read-only recovery',async({},testInfo)=>{
  const permit=requireOriginalModelConnectionsBrowserCi() // Before files/SQL/TLS/browser.
  const fs=await import('node:fs/promises'),f=await startOriginalModelConnectionsBrowserFixture()
- let browser,context,page,observer,primary,before,after,normalAudit,completed=false,webSockets=0
+ let browser,context,page,observer,primary,before,after,normalAudit,paginationProof,completed=false,webSockets=0,paginationSeeded=false,pageReads=0
  const images=[],holds=[],outside=[],cleanup=[],mutations=[],proofs=[],steps={}
  const keys=['synthetic-original-page-key-0005','synthetic-original-page-key-0006']
  const clean=async(label,work)=>{try{await work()}catch(error){cleanup.push({label,error})}}
@@ -19,7 +19,7 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
   await context.route('**/*',async route=>{if(new URL(route.request().url()).origin!==f.origin){if(outside.length<128)outside.push('outside_origin');else f.observations.overflow=true;await route.abort();return}await route.continue()})
   await context.routeWebSocket('**/*',socket=>{webSockets=Math.min(129,webSockets+1);if(webSockets===129)f.observations.overflow=true;socket.close()})
   const preparePage=async()=>{const p=await context.newPage();p.setDefaultTimeout(15000);p.setDefaultNavigationTimeout(20000)
-   p.on('request',request=>{const path=new URL(request.url()).pathname;if(path.startsWith('/__pg_native/api/v2/model-connections')&&request.method()!=='GET'){
+   p.on('request',request=>{const url=new URL(request.url()),path=url.pathname;if(path==='/__pg_native/api/v2/model-connections'&&request.method()==='GET'&&url.searchParams.has('paging'))pageReads++;if(path.startsWith('/__pg_native/api/v2/model-connections')&&request.method()!=='GET'){
     if(mutations.length>=64){f.observations.overflow=true;return}
     // Only metadata-only PATCH bodies are retained privately for the CAS probe.
     // Create/password bodies, Cookie and credential headers are never recorded.
@@ -48,7 +48,14 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
   }
   let created
   await test.step('original add/edit/enable controls store actual owner encrypted configuration without a provider request',async()=>{
-   await login(page,'alice');await noProbe(page)
+   const seeded=await f.seedPaginationRows();paginationSeeded=true
+    await login(page,'alice');await noProbe(page)
+    await expect(page.getByRole('heading',{name:seeded.last_page_original_name,exact:true})).toHaveCount(1)
+    expect(pageReads).toBeGreaterThanOrEqual(6)
+    const removed=await f.cleanupPaginationRows();paginationSeeded=false;expect(removed).toEqual({removed_rows:251,remaining_seed_rows:0})
+    await page.reload({waitUntil:'domcontentloaded'});await settled(page);await noProbe(page)
+    await expect(page.getByRole('heading',{name:/^Original pagination synthetic Alice /})).toHaveCount(0)
+    before=await f.modelCounts();paginationProof={...seeded,...removed,actual_original_page_reads_at_least_six:true,oldest_owned_row_reached:true,all_temporary_configuration_rows_removed_before_images:true};steps.large_account_pagination=true
    await expect(page.getByRole('heading',{name:f.resources.bob.model.name,exact:true})).toHaveCount(0)
    await openAdd(page,'Original page synthetic Alice connection',keys[0]);await expect(page.getByRole('button',{name:'测试连接',exact:true})).toBeDisabled()
    const createdWire=wire(page,modelPath,'POST');await page.getByRole('button',{name:'保存',exact:true}).click();const createdResponse=await createdWire;expect(createdResponse.status()).toBe(201);created=(await createdResponse.json()).item
@@ -96,6 +103,7 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
  }catch(error){primary=error}
  finally{
   for(const hold of holds)hold.release()
+   if(paginationSeeded)await clean('large_account_seed_cleanup',()=>f.cleanupPaginationRows())
   if(observer&&page&&!page.isClosed())await clean('legacy_observer_flush',()=>observer.flush(page))
   if(context)await clean('browser_context_close',()=>context.close());if(browser)await clean('browser_close',()=>browser.close());await clean('genuine_fixture_close',()=>f.close())
    await clean('final_zero_after_cleanup',async()=>{
@@ -106,7 +114,7 @@ test('original ModelConnections: real encrypted metadata CRUD, owner/CAS/audit, 
    })
   const success=completed&&!primary&&!testInfo.errors.length&&!cleanup.length
   if(success)for(const image of images)await clean('fixed_success_image_write',()=>fs.writeFile(testInfo.outputPath(image.name),image.bytes,{flag:'wx'}))
-  const observation={scope:'hosted synthetic original ModelConnections metadata CRUD only; provider probe closed',story_completed:success&&!cleanup.length,steps,head:permit.head,actual_backend:f.backendProfile,actual_build:f.provenance,http:f.observations,owner_CAS_proofs:proofs,normal_metadata_audit:normalAudit??null,metadata_before:before??null,metadata_after:after??null,local_PB_blocks:observer?.snapshot()??null,outside_origins:outside.length,websocket_attempts:webSockets,page_model_credential_reads:f.pageModelCredentialReads(),F01_runtime_credential_reads:f.credentialReads(),provider_posts:f.providerRequests.length,paid_external_provider_calls:0,cleanup_failures:cleanup.map(row=>row.label),exact_unknown_receipt_recovery_complete:false,unsaved_form_provider_test_complete:false,model_discovery_complete:false,large_account_paging_complete:false,all_original_pages_complete:false,employee_UAT:0,qualifying_24h:0,production_GO:false}
+  const observation={scope:'hosted synthetic original ModelConnections metadata CRUD only; provider probe closed',story_completed:success&&!cleanup.length,steps,head:permit.head,actual_backend:f.backendProfile,actual_build:f.provenance,http:f.observations,owner_CAS_proofs:proofs,large_account_pagination:paginationProof??null,normal_metadata_audit:normalAudit??null,metadata_before:before??null,metadata_after:after??null,local_PB_blocks:observer?.snapshot()??null,outside_origins:outside.length,websocket_attempts:webSockets,page_model_credential_reads:f.pageModelCredentialReads(),F01_runtime_credential_reads:f.credentialReads(),provider_posts:f.providerRequests.length,paid_external_provider_calls:0,cleanup_failures:cleanup.map(row=>row.label),exact_unknown_receipt_recovery_complete:false,unsaved_form_provider_test_complete:false,model_discovery_complete:false,large_account_paging_complete:success&&!cleanup.length&&steps.large_account_pagination===true,all_original_pages_complete:false,employee_UAT:0,qualifying_24h:0,production_GO:false}
    await clean('bounded_observation_write',()=>fs.writeFile(testInfo.outputPath('original-model-connections-observation.json'),originalModelConnectionsObservationBytes(observation),{flag:'wx'}));for(const image of images)image.bytes.fill(0);images.length=0;mutations.length=0
  }
  if(primary&&cleanup.length)throw new AggregateError([primary,...cleanup.map(row=>row.error)],'original_model_connections_story_and_cleanup_failed');if(primary)throw primary;if(cleanup.length)throw new AggregateError(cleanup.map(row=>row.error),'original_model_connections_cleanup_failed')

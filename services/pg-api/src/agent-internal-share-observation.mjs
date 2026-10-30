@@ -1,0 +1,21 @@
+// Optional closed observation context only. Never an actor, transaction or lease.
+import {AsyncLocalStorage} from 'node:async_hooks'
+import {isNativeError,isProxy} from 'node:util/types'
+const storage=new AsyncLocalStorage()
+const phases=new Set(['native_handler','origin','identity_before','post_body','list','preview','record','confirm','projection','identity_after','response','repo_connect','repo_begin','repo_actor','repo_owner','repo_audit','repo_body','repo_commit','repo_rollback'])
+const outcomes=new Set(['begin','end','failure','timeout'])
+const sqlstates=new Set(['P0001','28P01','28000','42501','42704','42P01','42883','3F000','3D000','53300','53400','55000','57P01','08001','08006','57014','25P02','25006','XX000'])
+const nodeCodes=new Set(['ABORT_ERR','ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','EACCES','EPERM','ENOENT','ERR_STREAM_PREMATURE_CLOSE','ERR_SOCKET_CLOSED'])
+const refusals=new Set(['agent_internal_share_schema_required','agent_internal_share_unavailable','agent_internal_share_acknowledgement_unknown','agent_internal_share_employee_changed','session_required','native_employee_identity_required','native_request_origin_denied','invalid_internal_share_request','invalid_internal_share_value','request_too_large','json_content_type_required'])
+const classes=new Map([[Error.prototype,'Error'],[TypeError.prototype,'TypeError'],[RangeError.prototype,'RangeError'],[SyntaxError.prototype,'SyntaxError'],[ReferenceError.prototype,'ReferenceError']])
+export function internalShareBoundaryData(phase,outcome,error){
+ if(!phases.has(phase)||!outcomes.has(outcome))return null
+ let errorClass=null,sqlstate=null,nodeCode=null,refusal=null
+ if(outcome==='failure')try{if(isNativeError(error)&&!isProxy(error)){errorClass=classes.get(Object.getPrototypeOf(error))??'Error';const d=Object.getOwnPropertyDescriptor(error,'code'),code=d&&Object.hasOwn(d,'value')?d.value:null;if(sqlstates.has(code))sqlstate=code;if(nodeCodes.has(code))nodeCode=code;if(refusals.has(code))refusal=code}}catch{}
+ return Object.freeze({event:'agent_internal_share_native_boundary',phase,outcome,error_class:errorClass,sqlstate,node_code:nodeCode,refusal_class:refusal,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
+}
+export function parseInternalShareBoundaryData(raw){
+ const keys=['event','phase','outcome','error_class','sqlstate','node_code','refusal_class','observed_data_only','runtime_authorization','qualifies_run','production_GO'];if(!raw||typeof raw!=='object'||isProxy(raw)||Object.getPrototypeOf(raw)!==Object.prototype)throw Error('invalid_internal_share_observation');const ds=Object.getOwnPropertyDescriptors(raw);if(Reflect.ownKeys(ds).length!==keys.length||keys.some(k=>!ds[k]?.enumerable||!Object.hasOwn(ds[k],'value')))throw Error('invalid_internal_share_observation');const r=Object.fromEntries(keys.map(k=>[k,ds[k].value]));if(r.event!=='agent_internal_share_native_boundary'||!phases.has(r.phase)||!outcomes.has(r.outcome)||r.error_class!==null&&!['Error','TypeError','RangeError','SyntaxError','ReferenceError'].includes(r.error_class)||r.sqlstate!==null&&!sqlstates.has(r.sqlstate)||r.node_code!==null&&!nodeCodes.has(r.node_code)||r.refusal_class!==null&&!refusals.has(r.refusal_class)||[r.sqlstate,r.node_code,r.refusal_class].filter(v=>v!==null).length>1||r.outcome!=='failure'&&[r.error_class,r.sqlstate,r.node_code,r.refusal_class].some(v=>v!==null)||r.error_class===null&&[r.sqlstate,r.node_code,r.refusal_class].some(v=>v!==null)||r.observed_data_only!==true||['runtime_authorization','qualifies_run','production_GO'].some(k=>r[k]!==false))throw Error('invalid_internal_share_observation');return Object.freeze(r)
+}
+export function observeInternalShareBoundary(phase,outcome,error){try{const scope=storage.getStore();if(!scope||scope.count>=64)return;const data=internalShareBoundaryData(phase,outcome,error);if(data){scope.count++;scope.observer(data)}}catch{}}
+export function withInternalShareObservation(observer,operation){if(typeof operation!=='function'||isProxy(operation))throw Error('invalid_internal_share_observation_operation');if(typeof observer!=='function'||isProxy(observer))return operation();return storage.run({observer,count:0},operation)}

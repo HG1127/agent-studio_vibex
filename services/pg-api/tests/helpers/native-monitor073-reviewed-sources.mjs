@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "fe26ae36112ead9362c70f247490668e9b3d18b5c2de6de95c51a1b8b4729989",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "6d16e3204fc98669a0bbe45890f6a3511043ab3bbfb8feb2ac5e96c2b50527bf",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -25,7 +25,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/mcp-catalog.ts": "358373e672a45928ca37d9be0c8d1c50a8a928d4df6329ba111386e153ba47e9",
   "services/pg-api/src/mcp-validation.ts": "a66304822fc84700f8137c6713db31394d4195a355cd156039b0fceddce715fe",
   "services/pg-api/src/model-connection-probe.ts": "ff5b6bb27b181cc7054f97b8164598c8ee3b0f07f05bd08f829a99bba1b78ea8",
-  "services/pg-api/src/native-auth-http.mjs": "a11e2c00d86c5a677a8755663a8f5b5daa3aa382c5aa5bd5f12737a64efafa67",
+  "services/pg-api/src/native-auth-http.mjs": "d7a01d4f9b03a11b35c73c0760727646c5f8bad1ee6d0df71868fd70b6ae9747",
   "services/pg-api/src/native-employee-auth.mjs": "96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee",
   "services/pg-api/src/native-employee-governance-audit.mjs": "ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238",
   "services/pg-api/src/native-monitor-inbox-audit.ts": "2309627303b6fe7f7237c1ce2666ddd069db740ce210edcdd84d427ec6a49cd8",
@@ -35,7 +35,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/native-monitor-inbox-repository.ts": "46dd016a2dedd434d9b7e5ec93b25816b03b02d5977e10d5729e5113cb023daa",
   "services/pg-api/src/native-monitor-inbox-runtime.ts": "17bd61f2d8d222a06cee4d3346288d1632f376d4ff6b4693953e64e3bd0a7f2a",
   "services/pg-api/src/native-monitor-inbox-schema.ts": "4970eee96a4a1ad2e60ebf4bbb0273736df8bb7e484699e30b295e46648e2528",
-  "services/pg-api/src/native-server.ts": "802854116be9bd33a3fc102054b4907a6d6376dcc169c6a7bdf63ec4160f6799",
+  "services/pg-api/src/native-server.ts": "68f561844dbe866cc9428fd9080113e81d40f7c05b5254d0d17932be3c83f5f0",
   "services/pg-api/src/optional-credential-boundary.ts": "f019c3f541223ebb1b699dd1a795e64293ff603f396cd44aceb05e453b80633a",
   "services/pg-api/src/original-agent-inbox-contract.ts": "ea8aef1b3b025bee71c7cdc0e81d9d65dd50af6b343e38757c7051d747141bc2",
   "services/pg-api/src/own-operations-contract.ts": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab",
@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "067086862a4da3257baec521b6f4c78bf5107830e4a0363e79aa3e0579b5f430",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "60c014bab803d3825da3e0509e29295b102821fdc7fac1d6b05e1f3a355735f9",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -81,7 +81,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/agent-design-value-contract.ts": "a7e6ca69da599cd6423feb300010d6297fc104b5bd11c7864aa9000c86dc2110",
   "services/pg-api/src/model-broker-actor.ts": "bfcaa8d76ec028b571f2a16e92be38073f3a0ed0740833d925c4cb7f61058522",
   "services/pg-api/src/model-connection-crypto.ts": "2f00edf8254539997c8f4771cd70227d479c6bb5a42466ec2c5f39ed568af3ec",
-  "services/pg-api/src/model-connection-repository.ts": "865cd89b4a13d9c8d3a70b72f01262d36cb1c30867367403fb5e6a8a56d3eea6",
+  "services/pg-api/src/model-connection-repository.ts": "6c781b93d9f723c7034b1455ad1f9a19fbb66cc0e19fc54da7b4b9abf1a6cd22",
   "services/pg-api/src/model-draft-discovery-provider.ts": "04a46069c9dbb7c67466b2ac3a0514871ac4ab8361fc8d8f8f85f0014f599b52",
   "services/pg-api/src/model-draft-probe-http.ts": "5e9693d8232547f10abcf4ee67f4507d464eea9d08781416a5c60cdb968a764d",
   "services/pg-api/src/model-draft-probe-repository.ts": "c15f96f72a7c61b80e17b59c4c711d90c28461b86deddfd1abb69307ef7dc5c3",
@@ -93,5 +93,10 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/worker-heartbeat-contract.ts": "336cebafc1c1b54542fc6828093cb0e87d333950bb3ace1ef318ad75f2d10eba",
   "services/pg-api/src/worker-heartbeat-report-sequence.ts": "2930d9892a52acc4a61d3fe0f593f4c8396c290d03cab6352aa9bb31843737cb",
   "services/pg-api/src/worker-heartbeat-writer-protocol.ts": "d1d6b5b1e2b4dc0ca6d23223ffdf88ef8e0cf8e27f581266e273cb62ac31a844",
-  "shared/model-draft-probe-contract.ts": "5eb09609995587713cbbf9b3ec8614932723387c97697f6b9802ea93761a8aa6"
+  "shared/model-draft-probe-contract.ts": "5eb09609995587713cbbf9b3ec8614932723387c97697f6b9802ea93761a8aa6",
+  "services/pg-api/src/agent-internal-share-observation.d.mts": "e3ac806b352ae559c4676ea5863557d140dd197b8641da889e2345ff850d7cc0",
+  "services/pg-api/src/agent-internal-share-observation.mjs": "0b88b7d6ace039868fb85aaca7b4400a33133ab17c91d9701bee3db999c938af",
+  "services/pg-api/src/model-connection-page-cursor.ts": "42350485eb767064df95b7506ec3c94fa6e0c0160c88fad032f437807f0aa02c",
+  "services/pg-api/src/model-connection-pagination.ts": "224df07f1eab5f5d36d7a60f69150c4a2f3dbab328f07182a23fe6e4cc6d82dd",
+  "shared/model-connection-pagination-contract.ts": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad"
 })

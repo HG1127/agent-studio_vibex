@@ -82,7 +82,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
  }
  try{
   // Repeats its own unchanged F08 admission and fresh PG18/source/catalog audits.
-  fixture=await agentInternalShareGenuineFixture(env,{browserMode:true})
+  fixture=await agentInternalShareGenuineFixture(env,{browserMode:true});observations.native_diagnostics=fixture.mutable.nativeDiagnostics
   const target=(await fixture.db.query("SELECT current_database() AS database,session_user::text AS login,current_setting('server_version_num')::integer AS version,NOT pg_is_in_recovery() AS primary")).rows[0]
   assert.equal(target.database,permit.target.database);assert.equal(target.login,permit.target.user);assert(target.version>=180000&&target.version<190000&&target.primary===true)
   const before=await fixture.counts();for(const key of ['invites','snapshots','receipts','consumptions','audit'])assert.equal(before[key],0,'fresh original F08 service required')
@@ -151,7 +151,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     const gate={method,path,wait,release,enter,reject,entered:false};nextHold=gate;holds.add(gate)
     return{async entered(){let timer;try{return await Promise.race([entered,new Promise((_,no)=>{timer=setTimeout(()=>no(Error('original_share_actual_response_hold_timeout')),20000)})])}finally{clearTimeout(timer)}},release(){if(nextHold===gate)nextHold=null;gate.release()}}
    },
-   dropNextActualCreateReply(){assert(!nextLoss&&!closed);nextLoss={recorded:false,after_business_before:fixture.mutable.completedAfterBusinessCreates,drops_before:fixture.mutable.actualReplyDrops};fixture.mutable.dropNext={method:'POST',path:'/api/v2/internal-templates'}},
+   dropNextActualCreateReply(){assert(!nextLoss&&!closed);nextLoss={recorded:false,after_business_before:fixture.mutable.completedAfterBusinessCreates,drops_before:fixture.mutable.actualReplyDrops};fixture.mutable.dropNext={method:'POST',path:'/api/v2/internal-templates',action:'create'}},
    async assertForeignOwnerRefused(){const before=await fixture.counts(),response=await fixture.request('bob','/api/v2/internal-templates',{action:'preview',id:fixture.resources.alice.spec.id});assert([403,404].includes(response.status));const after=await fixture.counts();for(const key of ['invites','snapshots','receipts','consumptions','agents'])assert.equal(after[key],before[key]);return{status:response.status,actual_Cookie_owner_check:true}},
    async assertRecipientOwnsUnboundCopy(){const rows=await fixture.agents.list(identities.bob,50),copies=rows.filter(v=>!originalBobIds.has(v.id));assert.equal(copies.length,1);const actual=await fixture.agents.get(identities.bob,copies[0].id);assert(actual);assert.equal(await fixture.agents.get(identities.alice,copies[0].id),null);assert.deepEqual(actual.spec.knowledge_base_ids??[],[]);assert(!actual.spec.model_binding);assert.deepEqual(actual.spec.http_tools??[],[]);assert.deepEqual(actual.spec.mcp_tools??[],[]);assert.equal(actual.spec.require_approval,true);return{actual_owner_repository_verified:true,copy_count:1,resource_bindings_absent:true}},
    close}

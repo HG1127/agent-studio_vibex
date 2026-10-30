@@ -530,6 +530,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowModelProbe:capabilities.modelProbeUat,
       originalModelDraftProbeProtocol:modelDraftProbe.enabled?Object.getOwnPropertyDescriptor(modelDraftProbe,'protocol')?.value:undefined,
       allowOriginalModelConnections:Object.getOwnPropertyDescriptor(modelConnections,'originalUiProtocol')?.value==='native_model_connections_owner_cas_v1',
+      originalModelPaginationProtocol:Object.getOwnPropertyDescriptor(modelConnections,'paginationProtocol')?.value,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
       allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,

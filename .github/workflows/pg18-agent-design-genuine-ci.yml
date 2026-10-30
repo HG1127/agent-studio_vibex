@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections]
+        story: [design, original-login, monitor073, internal-overview, original-home-design, original-model-connections, original-model-draft-discovery]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -179,7 +179,13 @@ jobs:
       - name: Original ModelConnections pure callbacks and original UI build
         if: matrix.story == 'original-model-connections'
         run: |
-          node --experimental-strip-types --test tests/original-model-connections-api.test.mjs tests/original-model-connections-controller.test.mjs tests/original-model-connections-hook.test.mjs tests/pg-original-model-connections-browser-policy.test.mjs
+          node --experimental-strip-types --test tests/original-model-connections-api.test.mjs tests/original-model-connections-controller.test.mjs tests/original-model-connections-hook.test.mjs tests/pg-original-model-connections-browser-policy.test.mjs tests/pg-original-model-connections-config-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original model draft discovery guards and original index build
+        if: matrix.story == 'original-model-draft-discovery'
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test tests/pg-original-model-draft-discovery-browser-policy.test.mjs tests/pg-original-model-draft-discovery-host-source-pure.test.mjs tests/model-draft-discovery-provider-pure.test.mjs tests/model-draft-probe-http-pure.test.mjs tests/model-draft-probe-repository-pure.test.mjs tests/original-model-draft-probe-hook-pure.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -219,12 +225,36 @@ jobs:
             .tmp/original-home-design-genuine-browser-results/**/original-home-design-observation.json
           if-no-files-found: ignore
           retention-days: 7
+      - name: Independent original unsaved draft discovery and actual Cookie late POST fence
+        if: matrix.story == 'original-model-draft-discovery'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_PROVIDER_READONLY_PROBE_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_CI: YES_DISPOSABLE_ORIGINAL_MODEL_DRAFT_DISCOVERY_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_STORY: original-model-draft-discovery
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-draft-discovery-genuine.config.mjs
+      - name: Retain fixed safe draft discovery artifacts after complete story and cleanup
+        if: always() && matrix.story == 'original-model-draft-discovery'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-model-draft-discovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-model-draft-discovery-genuine-browser-results/**/original-model-draft-discovery-alice-saved.png
+            .tmp/original-model-draft-discovery-genuine-browser-results/**/original-model-draft-discovery-alice-after-bob.png
+            .tmp/original-model-draft-discovery-genuine-browser-results/**/original-model-draft-discovery-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Original ModelConnections actual owner encrypted metadata CAS audit and unknown-write fence
         if: matrix.story == 'original-model-connections'
         env:
           AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_CI: YES_DISPOSABLE_ORIGINAL_MODEL_CONNECTIONS_ONLY
           AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_STORY: original-model-connections
           AGENT_STUDIO_ORIGINAL_MODEL_CONNECTIONS_EXPECTED_HEAD: '${{ github.sha }}'
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-model-connections-genuine.config.mjs
       - name: Retain fixed safe original ModelConnections artifacts after cleanup
         if: always() && matrix.story == 'original-model-connections'

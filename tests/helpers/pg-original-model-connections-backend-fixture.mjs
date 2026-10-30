@@ -13,11 +13,14 @@ export async function originalModelConnectionsBackendFixture(env=process.env){
   import('../../services/pg-api/src/native-auth-http.mjs'),import('../../services/pg-api/src/agent-design-http.ts'),import('../../services/pg-api/src/agent-design-ledger.ts'),import('../../services/pg-api/src/http.ts'),
   import('../../services/pg-api/src/tool-connection-repository.ts'),import('../../services/pg-api/src/knowledge-repository.ts'),import('../../services/pg-api/src/workflow-repository.ts'),
   import('../../services/pg-api/src/own-operations-repository.ts'),import('../../services/pg-api/src/agent-memory-outcome-audit.ts'),import('../../services/pg-api/src/own-operations-http.ts'),import('../../services/pg-api/src/native-config-uat-policy.ts'),import('../../services/pg-api/src/model-connection-repository.ts')])
+ const uatPolicy=policy.selectNativePg18UatCapabilities(env,true,permit.origin)
+ assert.equal(uatPolicy.configurationWrites,true,'original ModelConnections requires explicit original config UAT approval')
+ assert.equal(uatPolicy.modelProbeUat,false,'metadata-only ModelConnections must keep original provider probe closed')
  const sha=b=>crypto.createHash('sha256').update(b).digest('hex')
  const snapshot=await source.captureCompleteProfileSources(),p070=await review070.captureOriginalHome070ReviewPlan(),p071=await review071.captureOriginalHome071ReviewPlan(),p072=await review072.captureOriginalHome072ReviewPlan()
  assert.equal(p070.manifest.base_source_sha256,snapshot.source_sha256);assert.equal(p071.manifest.predecessor_source_sha256,p070.source_sha256);assert.equal(p072.manifest.predecessor_source_sha256,p071.source_sha256)
  const readPin=pin=>{const bytes=fs.readFileSync(path.join(reviewed.repo,pin.path));assert.equal(sha(bytes),pin.sha256);return bytes.toString('utf8')}
- let f,server,native,home,catalog,monitor,generic,models,modelCredentialReads=0,closed=false
+ let f,server,native,home,catalog,monitor,generic,models,modelCredentialReads=0,closed=false;const paginationSeeds=[]
  const cookies=new Map(),identities={}
  const close=async()=>{if(closed)return;closed=true;const failures=[]
   if(server){server.closeAllConnections();try{await new Promise(resolve=>server.close(resolve))}catch(e){failures.push(e)}}
@@ -53,19 +56,19 @@ export async function originalModelConnectionsBackendFixture(env=process.env){
   // repository instance; the actual Cookie capability check below also runs.
   const strictModelContract=models.originalUiProtocol==='native_model_connections_owner_cas_v1'
   assert.equal(strictModelContract,true,'actual strict model repository contract required')
-  native=nativeModule.createNativeAuthHttpHandler({auth:f.auth,allowedOrigin:permit.origin,allowConfigurationWrites:true,allowOwnOperations:true,allowModelProbe:false,allowOriginalModelConnections:strictModelContract,
+  native=nativeModule.createNativeAuthHttpHandler({auth:f.auth,allowedOrigin:permit.origin,allowConfigurationWrites:uatPolicy.configurationWrites,allowOwnOperations:true,allowModelProbe:false,allowOriginalModelConnections:strictModelContract,originalModelPaginationProtocol:Object.getOwnPropertyDescriptor(models,'paginationProtocol')?.value,
    businessHandler:async(req,res)=>{
     if(home&&await home(req,res))return
     if(catalog&&await catalog(req,res))return
     if(monitor&&await monitor(req,res))return
     return generic(req,res)
    }})
-  home=await homeRuntime.prepareNativeHomeAgentSpecs({pool:f.pool,env:{AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:'true',AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED:'true'},listen:true,allowedOrigin:permit.origin,configurationWrites:true,allowNativeLocalAgentSpecs:false,authenticateRequest:native.authenticateRequest});assert(home)
-  const cat=await catalogRuntime.prepareNativeAgentCatalog({pool:f.pool,env:{AGENT_STUDIO_PG18_ORIGINAL_AGENT_CATALOG_ENABLED:'true'},listen:true,allowedOrigin:permit.origin,configurationWrites:true});assert(cat);catalog=cat.createHandler(native.authenticateRequest)
+  home=await homeRuntime.prepareNativeHomeAgentSpecs({pool:f.pool,env:{AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED:'true',AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED:'true'},listen:true,allowedOrigin:permit.origin,configurationWrites:uatPolicy.configurationWrites,allowNativeLocalAgentSpecs:false,authenticateRequest:native.authenticateRequest});assert(home)
+  const cat=await catalogRuntime.prepareNativeAgentCatalog({pool:f.pool,env:{AGENT_STUDIO_PG18_ORIGINAL_AGENT_CATALOG_ENABLED:'true'},listen:true,allowedOrigin:permit.origin,configurationWrites:uatPolicy.configurationWrites});assert(cat);catalog=cat.createHandler(native.authenticateRequest)
   const mon=await monitorRuntime.prepareNativeMonitorInbox({pool:f.pool,env:{AGENT_STUDIO_PG18_ORIGINAL_MONITOR_INBOX_ENABLED:'true'},listen:true,allowedOrigin:permit.origin});assert(mon);monitor=mon.createHandler(native.authenticateRequest)
   generic=http.createHandler({repository:f.agents,modelConnectionRepository:models,toolConnectionRepository:new tools.ToolConnectionRepository(f.pool,f.key),workflowRepository:new workflow.WorkflowRepository(f.pool),knowledgeRepository:new knowledge.KnowledgeBaseRepository(f.pool),allowedOrigin:permit.origin,authenticateRequest:native.authenticateRequest,verifyToken:async()=>{throw Error('original_model_connections_Native_Cookie_only')}})
   const available=await own.inspectOwnOperationsSchema(f.pool,await outcome.inspectAgentMemoryOutcomeSchema(f.pool));assert.equal(available,true)
-  generic=ownHttp.createNativeOwnOperationsBusinessHandler({repository:new own.OwnOperationsRepository(f.pool),available,policy:policy.selectNativePg18UatCapabilities(env,true,permit.origin),businessHandler:generic,allowedOrigin:permit.origin,authenticateRequest:native.authenticateRequest})
+  generic=ownHttp.createNativeOwnOperationsBusinessHandler({repository:new own.OwnOperationsRepository(f.pool),available,policy:uatPolicy,businessHandler:generic,allowedOrigin:permit.origin,authenticateRequest:native.authenticateRequest})
   server=https.createServer({...f.serverTls,minVersion:'TLSv1.2'},(req,res)=>{void native.handler(req,res).catch(()=>res.destroy())})
   server.requestTimeout=30000;server.headersTimeout=15000;await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)})
   const nativeOrigin='https://localhost:'+server.address().port
@@ -81,16 +84,30 @@ export async function originalModelConnectionsBackendFixture(env=process.env){
    return new Promise((resolve,reject)=>{const req=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:route,method,ca:f.serverTls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',agent:false,signal:AbortSignal.timeout(8000),headers:{Accept:'application/json',Origin:permit.origin,Cookie:cookies.get(who),...(method==='GET'?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}),...(bytes?{'Content-Length':String(bytes.length)}:{}),...(expectedEmployee?{'X-AgentStudio-Expected-Employee':expectedEmployee}:{})}},res=>{let size=0;const chunks=[];res.on('data',chunk=>{size+=chunk.length;if(size>1048576){res.destroy();return}chunks.push(Buffer.from(chunk))});res.once('error',reject);res.once('aborted',()=>reject(Error('original_model_connections_probe_response_lost')));res.once('end',()=>{try{resolve({status:res.statusCode,body:JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)))})}catch{reject(Error('original_model_connections_probe_invalid_response'))}})});req.once('error',reject);req.end(bytes)})
   }
   const actualCap=await request('alice','/api/native-auth/capabilities')
-  assert.equal(actualCap.status,200);assert.equal(actualCap.body.mode,'native_pg18');assert.equal(actualCap.body.original_model_connections_protocol,'native_model_connections_owner_cas_v1');assert.equal(actualCap.body.config_writes_enabled,true);assert.equal(actualCap.body.model_probe_enabled,false)
+  assert.equal(actualCap.status,200);assert.equal(actualCap.body.mode,'native_pg18');assert.equal(actualCap.body.original_model_connections_protocol,'native_model_connections_owner_cas_v1');assert.equal(actualCap.body.config_writes_enabled,true);assert.equal(actualCap.body.model_probe_enabled,false);assert.equal(actualCap.body.original_model_pagination_protocol,'native_model_connections_paging_v1')
   assert.equal(modelCredentialReads,0);assert.equal(f.providerRequests.length,0);assert.equal(f.credentialReads(),0)
   reviewed.check()
   return{...f,models,nativeOrigin,allowedOrigin:permit.origin,profiles,homeKnowledge,request,close,
    pageModelCredentialReads:()=>modelCredentialReads,
    assertNoModelEffects(){assert.equal(modelCredentialReads,0);assert.equal(f.providerRequests.length,0);assert.equal(f.credentialReads(),0);f.assertNoProviderErrors()},
+    async seedPaginationRows(){
+     assert.equal(paginationSeeds.length,0);const before=(await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.model_connections WHERE owner_user_id=$1::uuid',[f.users.alice])).rows[0].n
+     for(let i=0;i<251;i++){
+      const row=await models.create(identities.alice,{name:'Original pagination synthetic Alice '+String(i).padStart(3,'0'),provider:'openai',base_url:'https://api.openai.com/v1',api_key:'synthetic-pagination-never-provider-'+String(i).padStart(4,'0'),models:['synthetic-pagination-model'],enabled:true},f.users.alice)
+      assert.equal(row.owner_user_id,f.users.alice);paginationSeeds.push({id:row.id,revision:row.revision})
+     }
+     assert.equal((await f.db.query('SELECT count(*)::integer AS n FROM agentstudio.model_connections WHERE owner_user_id=$1::uuid',[f.users.alice])).rows[0].n,before+251)
+     return{added_rows:251,expected_owner_rows:before+251,last_page_original_name:f.resources.alice.model.name}
+    },
+    async cleanupPaginationRows(){
+     let removed=0
+     while(paginationSeeds.length){const row=paginationSeeds.at(-1);const result=await models.delete(identities.alice,row.id,row.revision,f.users.alice);assert.equal(result,true);paginationSeeds.pop();removed++}
+     return{removed_rows:removed,remaining_seed_rows:paginationSeeds.length}
+    },
    async modelCounts(){return(await f.db.query("SELECT (SELECT count(*)::integer FROM agentstudio.model_connections) AS connections,(SELECT count(*)::integer FROM agentstudio.audit_events WHERE target_kind='model_connection') AS model_audit")).rows[0]},
    async modelFor(who,id){assert(['alice','bob'].includes(who));return models.get(identities[who],id)},
    async modelAudit(who,id){assert(['alice','bob'].includes(who));const rows=(await f.db.query("SELECT owner_user_id,actor_user_id,action,result,metadata FROM agentstudio.audit_events WHERE target_kind='model_connection' AND target_id=$1::text",[id])).rows;assert(rows.length>0);const actions=['model.connection_create','model.connection_update','model.connection_enable','model.connection_disable','model.connection_delete'];for(const row of rows){assert.equal(row.owner_user_id,f.users[who]);assert.equal(row.actor_user_id,f.users[who]);assert.equal(row.result,'succeeded');assert(actions.includes(row.action));assert.deepEqual(Object.keys(row.metadata),['revision']);assert(Number.isSafeInteger(row.metadata.revision)&&row.metadata.revision>=1)}return{count:rows.length,entries:rows.map(row=>({action:row.action,revision:row.metadata.revision})).sort((a,b)=>a.action.localeCompare(b.action)),actual_owner_audit_verified:true,sensitive_fields_absent:true}},
-   browserHomeProfile:Object.freeze({profile:permit.profile,head:permit.head,actual_F01_fixture:true,optional070_verified:true,optional071_verified:true,optional072_verified:true,optional073_verified:true,own_operations_verified:true,F01_audit_after_optional_catalog_verified:true,configuration_writes:true,complete069_original_initializer_verified:false,Native_server_process_entry_verified:false,synthetic_only:true,production_GO:false}),
+   browserHomeProfile:Object.freeze({profile:permit.profile,head:permit.head,actual_F01_fixture:true,optional070_verified:true,optional071_verified:true,optional072_verified:true,optional073_verified:true,own_operations_verified:true,F01_audit_after_optional_catalog_verified:true,configuration_writes:uatPolicy.configurationWrites,complete069_original_initializer_verified:false,Native_server_process_entry_verified:false,synthetic_only:true,production_GO:false}),
    async agent(who,id){assert(['alice','bob'].includes(who));return f.agents.get(identities[who],id)},
    async agentsFor(who){assert(['alice','bob'].includes(who));return f.agents.list(identities[who],50)},
    async manualSaveAudit(who,id){const actual=await f.agents.get(identities[who],id);assert(actual);const row=(await f.db.query('SELECT authoring FROM agentstudio.agent_spec_authoring WHERE owner_user_id=$1::uuid AND agent_spec_id=$2::uuid',[f.users[who],id])).rows;assert.equal(row.length,1);const history=(await f.db.query("SELECT spec_revision,safe_spec FROM agentstudio.agent_collaboration_revisions WHERE owner_user_id=$1::uuid AND spec_id=$2::uuid AND kind='edited' ORDER BY spec_revision",[f.users[who],id])).rows;return{actual,authoring:row[0].authoring,history}},

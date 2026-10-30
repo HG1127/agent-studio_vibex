@@ -11,7 +11,7 @@ const fixtureName='native-control-ci-fixture.json'
 const sourcePins=Object.freeze({
  'native-company-worker-heartbeats.ts':'6058c7bd324155790939f6e8d6762ed85ade39e05e024915b76d71be061b89a1',
  'native-company-worker-heartbeats-http.ts':'0158cb5217331ecf302c14321c30e99369faad7baed37510320dd8d43f4d8917',
- 'native-auth-http.mjs':'a11e2c00d86c5a677a8755663a8f5b5daa3aa382c5aa5bd5f12737a64efafa67',
+ 'native-auth-http.mjs':'d7a01d4f9b03a11b35c73c0760727646c5f8bad1ee6d0df71868fd70b6ae9747',
  'native-current-company-admin.mjs':'83fc4c1d49f3805fd0439e3e4d6a1f093bfed8556940179220e1deeafc2ea889',
  'native-employee-auth.mjs':'96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee',
  'native-employee-governance-audit.mjs':'ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238',

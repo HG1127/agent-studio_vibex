@@ -1,6 +1,6 @@
 {
   "format": "agentstudio_original_employee_UI_PG_action_map_v1",
-  "snapshot_UTC": "2026-10-30T04:04:32.979496+00:00",
+  "snapshot_UTC": "2026-10-30T16:56:56.803159+00:00",
   "authority": "AGENTS.md: Migration delivery strategy — user clarification 2026-10-30",
   "delivery_baseline": "Preserve the current original employee UI; migrate backend/auth/client/hooks/DTO/status only. Native workbench is verification/reference.",
   "source_scope": {
@@ -6003,7 +6003,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 872,
+    "combined_pure_checks": 977,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -6389,13 +6389,13 @@
     "original_home_natural_authoring_source_merged": true,
     "original_home_natural_authoring_actual_browser_accepted": false,
     "current_source_checks": {
-      "pure": 872,
+      "pure": 977,
       "final14_framing_related_pure": 38,
       "worker_startup_related_pure": 39,
       "frontend_TS6": true,
       "API_TS5": true,
       "normal_assets": 101,
-      "original_PG_assets": 101,
+      "original_PG_assets": 102,
       "normal_PG_resource_matches": 0,
       "local_SQL": false,
       "local_business_Worker": false,
@@ -6408,8 +6408,8 @@
       "frontend_TS6_and_actual_build_baseline_head": null,
       "actual_normal_assets": 101,
       "actual_original_PG_assets": 102,
-      "Native_bundle_literal_source_closure": 355,
-      "complete069_literal_source_capture": 389,
+      "Native_bundle_literal_source_closure": 359,
+      "complete069_literal_source_capture": 393,
       "complete069_SQL_inputs_unchanged": 53
     },
     "full069_startup_v62_source": "Actual five original entry failures annotate fixed startup phase and allowlisted SQLSTATE/Node error only, carried through original bounded supervisor records. Original activation, credential checks, audit order, exit, IPC, process identity and timing remain. Actual next-head startup cause pending.",
@@ -6586,7 +6586,7 @@
       "root_cause_in_real_request_not_yet_proven": true
     },
     "share_same_request_committed_create_drop_fix": "Actual boundary was ECONNRESET before observed afterBusiness completion, with no upstream HTTP status or actual drop completion. Browser drop wrapper previously selected every POST to the shared preview/create route. It now consumes the arm only for a completed create in that same request; late preview200 is forwarded exactly and retains the arm. Source callbacks reproduce the preview/create race. Actual root cause and new real story remain pending; expected receipts5/final7 and8s remain.",
-    "original_model_connections_backend_source": "Strict optional raw expected-employee condition after actual Cookie/withActor or broker mapping, before any config write/secret SELECT/probe; original header-free reference callers retained. DELETE requires closed512-byte expected_revision for original callers and locks actual owner revision. Create/update/enable-disable/delete write fixed actor-attributed safe audit events in the same transaction. Native advertises exact owner_cas_v1 only from the same actual repository own marker used by HTTP.26 pure checks and API TS5 pass. Original page client/host prepared separately; no real model-page SQL/browser/provider acceptance, draft probe/receipt recovery/paging still open.",
+    "original_model_connections_backend_source": "Original owner/CAS/audit metadata contract retained. Independent same actual repository draft and paging protocols are source-integrated; current paging reads all owner public metadata through snapshot-bound cursors. Real global config approval is selected before fixture creation and drives both capabilities and every business route. Metadata story keeps probe closed; separate draft story requires both existing approvals. Actual model metadata/draft/paging stories and exact configuration receipts remain unaccepted.",
     "original_model_connections_original_page_source": {
       "route": "/model-connections",
       "original_entry": "src/pages/ModelConnections/ModelConnectionsPage.tsx",
@@ -6604,7 +6604,10 @@
       "actual_model_page_SQL_browser_accepted": false,
       "provider_probe_closed_in_story": true,
       "actual_Native_process_entry_verified": false,
-      "production_GO": false
+      "production_GO": false,
+      "full_paging_source_integrated": true,
+      "draft_discovery_source_integrated": true,
+      "large_account_251_story_source_integrated": true
     },
     "current_9679a48_verified_ci": {
       "head": "9679a48851ebdaae69620d52e7b598ab5e223d74",
@@ -6724,10 +6727,16 @@
       "HTTP_duplicate_JSON_encoding_transfer_and_raw_route_refused": true,
       "new_pure_checks": 39,
       "real_provider_DNS_TLS_compatibility_accepted": false,
-      "full_synthetic_host_assembly_pending": true,
+      "full_synthetic_host_assembly_pending": false,
       "exact_configuration_receipts_complete": false,
-      "paging_source_package_pending_separate_integration": true,
-      "production_GO": false
+      "paging_source_package_pending_separate_integration": false,
+      "production_GO": false,
+      "independent_original_form_synthetic_story_source_integrated": true,
+      "independent_seventh_matrix_story": "original-model-draft-discovery",
+      "same_real_selected_config_probe_policy_before_DB": true,
+      "metadata_only_story_probe_still_closed": true,
+      "both_actual_browser_pages_legacy_observers_flushed": true,
+      "actual_original_form_SQL_browser_accepted": false
     },
     "assessment_and_final14_closed_diagnostics_source": {
       "new_pure_checks": 32,
@@ -6739,6 +6748,91 @@
       "budgets_identity_leases_ACL13_audits_queues_and_stops_unchanged": true,
       "actual_cause_resolved": false,
       "production_GO": false
+    },
+    "verified_98ceff0_actual_evidence": {
+      "head": "98ceff05dd09cb0f28d438a668fdbc23be8bcad8",
+      "PB19": {
+        "run": 41085640302,
+        "job": 124165963097,
+        "summary": {
+          "status": "PASS",
+          "completed": 19,
+          "total": 19,
+          "passed": 19,
+          "failed": 0,
+          "seconds": 73.5,
+          "workers": 2
+        },
+        "job_log_sha256": "c85f00ac45bcf237f57144cea8be52782675b675ccf34fa0d8c7d573a94c7eed",
+        "runner_log_sha256": "bef0ac50a793c4fb1222c11693bbeed03b228b8867c00d8820a850f4fac80124"
+      },
+      "quality": {
+        "run": 41085430850,
+        "passed_jobs": 49,
+        "jobs": 50,
+        "root_job": 124165222333,
+        "root_tests": 3911,
+        "root_passed": 3910,
+        "root_failed": 1,
+        "job_log_sha256": "76f1e99c0444ed857153009bca81b05c23e435022a5cfa1eaa366bf838be69e5",
+        "failure": "old final14 source-parser harness expected3 forward parsers after actual closed Reader forward parser became4",
+        "exact_source_harness_repaired_in_next_candidate": true,
+        "required_check_passed": false
+      },
+      "model_page": {
+        "run": 41085431028,
+        "job": 124165222836,
+        "actual_story_passed": false,
+        "failure": "real global OwnOperations policy denied first metadata POST405; advertised capability did not grant actual config write approval",
+        "job_log_sha256": "12a9fade16bbce836db3d201e75fd359abfdbc18a785f0dcef0377519c3380a4",
+        "actual_selector_and_step_local_approval_source_repaired": true
+      },
+      "complete069": {
+        "run": 41085431045,
+        "legacy_job": 124165222239,
+        "final14_job": 124165222814,
+        "failed_before_runtime_at_same_old_pure_harness": true,
+        "real_worker_or_ACL13_accepted": false
+      },
+      "does_not_accept_next_candidate": true,
+      "production_GO": false
+    },
+    "model_connections_pagination_source": {
+      "protocol": "native_model_connections_paging_v1",
+      "actual_same_owner_repository_capability": true,
+      "one_SQL_statement_public_metadata_snapshot": true,
+      "opaque_owner_limit_expiry_bound_cursor": true,
+      "full_snapshot_count_and_fingerprint_checked_every_page": true,
+      "no_partial_publish_or_automatic_restart": true,
+      "old_limit50_and_PB_max200_compatibility_retained": true,
+      "old_PG_partial_list_explicitly_announced": true,
+      "large_account_genuine_story_source_rows": 251,
+      "large_account_story_expected_GET_pages_min": 6,
+      "actual_large_account_SQL_browser_accepted": false,
+      "real_large_owner_SQL_cost_unmeasured": true,
+      "SQL_schema_changed": false,
+      "production_GO": false
+    },
+    "model_metadata_config_policy_source_repair": {
+      "actual_selector_required_before_DB": true,
+      "same_policy_drives_Native_capabilities_and_outer_OwnOperations": true,
+      "existing_explicit_synthetic_step_approval_only": true,
+      "metadata_provider_probe_enabled": false,
+      "new_pure_checks": 10,
+      "real_POST201_verified": false
+    },
+    "share_committed_reply_boundary_source": {
+      "drop_matches_actual_completed_record_action": [
+        "create",
+        "redeem",
+        "revoke"
+      ],
+      "actual_same_request_business_completion_and_HTTP200_required": true,
+      "preview_failed_or_unmatched_reply_forwarded_exactly": true,
+      "private_bounded_finite_phase_observer_no_identity_SQL_or_secrets": true,
+      "actual_original_share_story_accepted": false,
+      "original_failure_root_cause_proven": false,
+      "original_8s_and_receipt_5_final7_zero_gates_retained": true
     }
   },
   "qualifying24h_hours": 0,

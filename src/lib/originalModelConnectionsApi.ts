@@ -1,4 +1,6 @@
 import {modelDraftProbeProtocol,parseModelDraftProbeInput,parseModelDraftProbeResult,type ModelDraftProbeInput} from '../../shared/model-draft-probe-contract.ts'
+import {readOriginalModelConnectionSnapshot} from './originalModelConnectionPagination.ts'
+import {ModelConnectionPaginationError} from '../../shared/model-connection-pagination-contract.ts'
 import type {PgNativeModelConnection,PgNativeModelConnectionInput} from './pgNativePilotApi'
 import {hasExplicitCalendarTimestamp} from './agentQualityChecks.ts'
 
@@ -65,7 +67,7 @@ export function normalizeOriginalModelInput(raw:unknown,requireKey:boolean):Orig
 export function createOriginalModelConnectionsApi(config:{employeeId:string;transport?:typeof fetch;rootPath?:''|'/__pg_native';timeoutMs?:number}){
  const employee=originalModelId(config.employeeId),send=config.transport??fetch,root=config.rootPath??'/__pg_native',budget=config.timeoutMs??8000,base=root+'/api/v2/model-connections'
  if(typeof send!=='function'||root!==''&&root!=='/__pg_native'||!Number.isSafeInteger(budget)||budget<1||budget>8000)return fail(400,'invalid_original_model_transport')
- async function request(route:string,method:'GET'|'POST'|'PATCH'|'DELETE',body?:unknown,signal?:AbortSignal):Promise<Record<string,unknown>>{
+ async function request(route:string,method:'GET'|'POST'|'PATCH'|'DELETE',body?:unknown,signal?:AbortSignal,expectedRead=false):Promise<Record<string,unknown>>{
   const bytes=body===undefined?undefined:JSON.stringify(body),write=method!=='GET'
   if(bytes!==undefined&&new TextEncoder().encode(bytes).length>262144)return fail(400,'original_model_input_too_large')
   const abort=new AbortController(),cancel=()=>abort.abort();let reader:ReadableStreamDefaultReader<Uint8Array>|undefined,timer:ReturnType<typeof setTimeout>|undefined
@@ -73,7 +75,7 @@ export function createOriginalModelConnectionsApi(config:{employeeId:string;tran
   const unavailable=()=>new OriginalModelConnectionsError(0,write?'original_model_outcome_unknown':'original_model_unavailable',write)
   const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(unavailable())},budget)})
   const perform=async()=>{
-   const response=await send(route,{method,body:bytes,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:abort.signal,headers:{Accept:'application/json',...(write?{'Content-Type':'application/json','X-AgentStudio-Request':'1','X-AgentStudio-Expected-Employee':employee}:{})}})
+   const response=await send(route,{method,body:bytes,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:abort.signal,headers:{Accept:'application/json',...(write?{'Content-Type':'application/json','X-AgentStudio-Request':'1'}:{}),...(write||expectedRead?{'X-AgentStudio-Expected-Employee':employee}:{})}})
    if(!(response instanceof Response)||response.redirected||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(response.headers.get('content-type')??'')||!response.body)return fail(503,'invalid_original_model_response',write)
    const declared=response.headers.get('content-length');if(declared!==null&&(!/^(0|[1-9][0-9]*)$/.test(declared)||Number(declared)>1048576))return fail(503,'invalid_original_model_response',write)
    reader=response.body.getReader();const chunks:Uint8Array[]=[];let size=0
@@ -102,6 +104,7 @@ export function createOriginalModelConnectionsApi(config:{employeeId:string;tran
  }
  return Object.freeze({capabilities,
   async draftProbe(raw:ModelDraftProbeInput,signal?:AbortSignal){let input:ModelDraftProbeInput;try{input=parseModelDraftProbeInput(raw)}catch{throw new OriginalModelConnectionsError(400,'invalid_model_draft_probe')}const cap=await capabilities(signal);if(!cap.draftProbe)throw new OriginalModelConnectionsError(405,'model_draft_probe_disabled');const value=await request(base+'/draft-probe','POST',input,signal);try{return parseModelDraftProbeResult(value,input,employee)}catch{throw new OriginalModelConnectionsError(503,'invalid_model_draft_probe_result',true)}},
+  async listSnapshot(signal?:AbortSignal){try{return await readOriginalModelConnectionSnapshot({employee,read:(route,abort,expected)=>request(root+route,'GET',undefined,abort,expected),parseRow:value=>parseOriginalModelConnection(value,employee)},signal)}catch(error){if(error instanceof ModelConnectionPaginationError)throw new OriginalModelConnectionsError(error.status,error.code);throw error}},
   async list(signal?:AbortSignal){const data=object(await request(base+'?limit=50','GET',undefined,signal),['items']),rows=array(data.items,50).map(value=>parseOriginalModelConnection(value,employee));if(new Set(rows.map(v=>v.id)).size!==rows.length)return fail();return rows},
   async get(id:string,signal?:AbortSignal){const selected=originalModelId(id),row=item(await request(base+'/'+selected,'GET',undefined,signal));if(row.id!==selected)return fail();return row},
   async create(raw:OriginalModelConnectionInput,signal?:AbortSignal){const input=normalizeOriginalModelInput(raw,true);await requireWrites(signal);return acknowledgement(async()=>saved(item(await request(base,'POST',input,signal)),input))},
