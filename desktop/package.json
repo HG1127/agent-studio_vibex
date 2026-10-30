@@ -1,12 +1,12 @@
 {
   "name": "agent-studio-desktop",
-  "version": "0.1.0-preview.2",
+  "version": "0.1.0-preview.4",
   "private": true,
   "description": "Agent Studio Windows desktop client",
   "author": "Agent Studio",
   "main": "main.cjs",
   "scripts": {
-    "build": "electron-builder --win portable --x64",
+    "build": "electron-builder --win --x64 --dir && node build-launcher.mjs",
     "test": "node --test tests/*.test.cjs"
   },
   "devDependencies": {

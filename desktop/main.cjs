@@ -10,6 +10,15 @@ const info = require('./build-info.json')
 const option = name => process.argv.find(x=>x.startsWith(name+'='))?.slice(name.length+1)
 const testHome = option('--desktop-test-home')
 if(testHome)app.setPath('userData',path.resolve(testHome))
+const runtimeRoot=app.isPackaged?path.dirname(process.execPath):null
+let storageError
+if(runtimeRoot){
+  try{
+    const temp=path.join(runtimeRoot,'temp');require('node:fs').mkdirSync(temp,{recursive:true})
+    for(const key of ['TEMP','TMP','TMPDIR'])process.env[key]=temp
+    app.setPath('temp',temp);app.commandLine.appendSwitch('disk-cache-dir',path.join(runtimeRoot,'web-cache'))
+  }catch{storageError=Error('程序目录不可写，请重新安装到自己可写的文件夹。')}
+}
 let main,settingsWindow,connectionWindow,tray,child,services,settings,quitting=false,starting
 const pairingRequests=new Map()
 function reveal(window){if(!window||window.isDestroyed())return;if(window.isMinimized())window.restore();window.show();window.focus()}
@@ -22,6 +31,7 @@ app.on('second-instance',()=>{void app.whenReady().then(()=>{if(main&&!main.isDe
 app.on('window-all-closed',()=>{})
 app.on('before-quit',event=>{if(!quitting){event.preventDefault();quitting=true;void stopServices().finally(()=>app.exit())}})
 app.whenReady().then(async()=>{
+  if(storageError)throw storageError
   settings=await readSettings(app.getPath('userData'))
   const ses=session.fromPartition('persist:agent-studio')
   const origins=()=>services?[services.origin,services.managerOrigin]:[]
@@ -149,7 +159,7 @@ async function showStudio() {
       if(!opened.ok)throw Error('native_manager_open: '+opened.error)
       const nativeManagerOpened=opened.ok
       const embeddedManager=await connectionWindow.webContents.executeJavaScript("document.getElementById('ticket')?.closest('label')?.hidden===true")
-      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
+      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
   } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
 }

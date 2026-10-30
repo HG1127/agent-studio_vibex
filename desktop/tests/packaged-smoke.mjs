@@ -12,6 +12,7 @@ import {fileURLToPath} from 'node:url'
 import {spawnHeadlessPocketBase,stopHeadlessPocketBase} from '../../tests/helpers/headless-pocketbase.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..')
 const executable=path.resolve(process.argv[2]||'')
+const installOption=process.argv.find(x=>x.startsWith('--install-dir='))?.slice('--install-dir='.length)
 await fs.access(executable)
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-smoke-'))
 const data=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-db-'))
@@ -36,10 +37,17 @@ try {
   const server='http://127.0.0.1:'+workbench.address().port
   const reportPath=path.join(dir,'report.json')
   const env={...process.env,PATH:path.join(process.env.SystemRoot,'System32')}
-  for(const name of Object.keys(env))if(/^(NODE_OPTIONS|NODE_PATH|ELECTRON_RUN_AS_NODE)$/i.test(name))delete env[name]
-  client=spawn(executable,[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
-  for(let i=0;i<360;i++){try{report=JSON.parse(await fs.readFile(reportPath,'utf8'));break}catch{}await sleep(500)}
+  if(process.argv.includes('--system-temp')){const original=path.join(process.env.LOCALAPPDATA,'Temp');Object.assign(env,{TEMP:original,TMP:original,TMPDIR:original})}
+  for(const name of Object.keys(env))if(/^(NODE_OPTIONS|NODE_PATH|ELECTRON_RUN_AS_NODE|AGENT_STUDIO_RUNTIME_ROOT)$/i.test(name))delete env[name]
+  client=spawn(executable,[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath,...(installOption?['/S','/D='+path.resolve(installOption)]:[])],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
+  for(let i=0;i<(installOption?1200:360);i++){try{report=JSON.parse(await fs.readFile(reportPath,'utf8'));break}catch{}await sleep(500)}
   assert.equal(report?.started,true,'packaged app startup: '+JSON.stringify(report||{}))
+  if(process.argv.includes('--system-temp')){
+    assert.ok(report.runtimeRoot,'launcher did not configure adjacent runtime cache')
+    assert.equal(path.resolve(report.runtimeRoot).toLowerCase(),path.resolve(installOption||path.dirname(executable)).toLowerCase())
+    assert.equal(path.resolve(report.tempDirectory).toLowerCase(),path.resolve(report.runtimeRoot,'temp').toLowerCase())
+    assert.ok(report.resourcesDirectory.startsWith(report.runtimeRoot))
+  }
   assert.equal(report.nativePairingAvailable,true,'native pairing preload is unavailable')
   assert.equal(report.nativeManagerOpened,true,'workbench IPC did not open the built-in manager')
   assert.equal(report.embeddedManager,true,'desktop manager still requires JSON import')
