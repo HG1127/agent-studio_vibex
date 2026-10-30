@@ -3,15 +3,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {createRequire} from 'node:module'
+import {isNativeError,isProxy} from 'node:util/types'
 import {finalBusinessLogins} from '../src/pg18-full069-final-login-contract.mjs'
 import {parseFinalPathCiRuntimeFailures,finalPathCiPrimaryFailureCode} from './helpers/pg18-full069-final-path-ci-contract.mjs'
 const source=fs.readFileSync(new URL('../src/pg18-full069-final-runtime.mjs',import.meta.url),'utf8'),start=source.indexOf('// Closed observation only;'),end=source.indexOf('// End closed runtime-open observation.'),code=source.slice(start,end).replace('export function full069FinalRuntimeOpenFailureObservation','function full069FinalRuntimeOpenFailureObservation')
 assert(start>=0&&end>start)
-const fresh=()=>Function('finalBusinessLogins',code+';return{remember:rememberRuntimeOpenFailure,read:full069FinalRuntimeOpenFailureObservation}')(finalBusinessLogins)
+const fresh=()=>Function('finalBusinessLogins','isNativeError','isProxy',code+';return{remember:rememberRuntimeOpenFailure,read:full069FinalRuntimeOpenFailureObservation}')(finalBusinessLogins,isNativeError,isProxy)
 test('runtime-open observations expose fixed phase/key only and grant no runtime or qualification',()=>{
  const f=fresh(),error=Error('PRIVATE_PATH_PASSWORD_SQL_PID');Object.defineProperty(error,'secret',{value:'PRIVATE'})
  f.remember(error,'service_auditor','api');const row=f.read(error)
- assert.deepEqual(row,{event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'api',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false});assert(Object.isFrozen(row));assert(!JSON.stringify(row).includes('PRIVATE'));assert.equal(f.read(Error('same text')),null)
+ assert.deepEqual(row,{event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'api',failure_code:null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false});assert(Object.isFrozen(row));assert(!JSON.stringify(row).includes('PRIVATE'));assert.equal(f.read(Error('same text')),null)
 })
 test('the first actual service failure phase is not overwritten by the outer open catch',()=>{
  const f=fresh(),error=Error('primary');f.remember(error,'service_login','design_worker');f.remember(error,'business_audits');assert.equal(f.read(error).phase,'service_login');assert.equal(f.read(error).entry_key,'design_worker')
@@ -70,10 +71,22 @@ test('parent refusal parsing ignores diagnostic JSON and embedded error-like sec
  for(const value of [null,{},'x'.repeat(524289),'\0'+primary])assert.equal(finalPathCiPrimaryFailureCode(value),'full069_final_path_ci_actual_child_failed')
 })
 test('parent forwards only one closed runtime or ACL observation without secret or authority fields',()=>{
- const a={event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'worker',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false},b={event:'full069_final14_database_acl_negative_observation',phase:'mutation',negative_case:'extra_template0_public_temp',sqlstate:'42501',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}
+ const a={event:'full069_final14_runtime_open_observation',phase:'service_auditor',entry_key:'worker',failure_code:null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false},b={event:'full069_final14_database_acl_negative_observation',phase:'mutation',negative_case:'extra_template0_public_temp',sqlstate:'42501',observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}
  for(const row of [a,b]){const result=parseFinalPathCiRuntimeFailures(JSON.stringify(row)+'\n');assert.deepEqual(result,[row]);assert(Object.isFrozen(result)&&Object.isFrozen(result[0]));for(const patch of [{private:'SECRET'},{production_GO:true},{runtime_authorization:true},{phase:'PRIVATE'}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify({...row,...patch})),[])}
- for(const row of [{...a,entry_key:'PRIVATE'},{...b,negative_case:'PRIVATE'},{...b,sqlstate:'PRIVATE_SQL'},{...b,sqlstate:12345}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify(row)),[])
+ for(const row of [{...a,entry_key:'PRIVATE'},{...a,failure_code:'PRIVATE'},{...a,failure_code:0},{...b,negative_case:'PRIVATE'},{...b,sqlstate:'PRIVATE_SQL'},{...b,sqlstate:12345}])assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify(row)),[])
  for(const value of [null,{},'x'.repeat(524289),'\0'+JSON.stringify(a),JSON.stringify(a)+'\n'+JSON.stringify(a)])assert.deepEqual(parseFinalPathCiRuntimeFailures(value),[])
+})
+
+test('runtime classification emits only exact installed-driver categories and preserves the original error',()=>{
+ const f=fresh(),cases=[['pg_runtime_target_mismatch','target_mismatch'],['timeout expired','connection_timeout'],['timeout exceeded when trying to connect','connection_timeout'],['Connection terminated due to connection timeout','connection_timeout'],['Query read timeout','query_timeout']]
+ for(const [message,failure_code]of cases){const error=Error(message);f.remember(error,'service_target','plan_workflow_dispatch');const row=f.read(error);assert.equal(row.failure_code,failure_code);assert.deepEqual(parseFinalPathCiRuntimeFailures(JSON.stringify(row)),[row]);assert(!JSON.stringify(row).includes(message))}
+ const unknown=Error('Query read timeout PRIVATE');f.remember(unknown,'service_target_stable','plan_workflow_dispatch');assert.equal(f.read(unknown).failure_code,null);assert.equal(f.read(unknown).phase,'service_target_stable')
+})
+test('runtime classification never executes message getters, proxy traps or coercions',()=>{
+ const f=fresh();let invoked=0;const error=Error('initial');Object.defineProperty(error,'message',{get(){invoked++;throw Error('private')}})
+ const proxy=new Proxy(Error('Query read timeout'),{getOwnPropertyDescriptor(){invoked++;throw Error('private')},getPrototypeOf(){invoked++;throw Error('private')},get(){invoked++;throw Error('private')}})
+ for(const value of [error,proxy,{message:'Query read timeout'},{message:{toString(){invoked++;throw Error('private')}}}]){f.remember(value,'service_target');assert.equal(f.read(value).failure_code,null)}
+ assert.equal(invoked,0)
 })
 test('actual bridge selects the standalone primary and emits closed observations separately',()=>{
  const bridge=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-bridge.mjs',import.meta.url),'utf8'),ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('bridge.mjs',bridge,ts.ScriptTarget.Latest,true);let expression

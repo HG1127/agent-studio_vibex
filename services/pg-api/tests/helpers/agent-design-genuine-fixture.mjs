@@ -161,7 +161,7 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-processes.mjs": "9c45e6845297dcc087bfdf612639e5305b2ccbe8e696ea885ed44ff281610699",
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "3433b16af75b26822354b19863bc78b2749083cc429dac79dcef2f6e67730d96",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "45f1d147ef840bac2b6cba27f211cba1be492be015bf6d0fb7d48b6062d36b23",
-  "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "1b386c2a16661910b50afb59d5c28277d0cc908bf5c8fc1bf55c095ce05b46f9",
+  "services/pg-api/src/pg18-full069-worker-live-sources.mjs": "b2fce5081048f6f700a3663e8401ff039389c445f34b8f4e8c0cef81a0580beb",
   "services/pg-api/src/pg18-full069-worker-live-trust.mjs": "dfaf7ef5c57ea46107c6e4297758a678e7ce21befc8ffcd0b7cb4cd0d0f31d95",
   "services/pg-api/src/pg18-complete-executor-cli.mjs": "31486fca2a869b38255a15f1790c983f54a8cd877bdd824516676a66f6d451bd",
   "services/pg-api/src/pg18-complete-executor-core.mjs": "544dd6cf44bed4879c7a7b5cb36adeb06d176248e2c5ae281eee4c820c1c5b14",
@@ -193,7 +193,7 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-final-login-contract.mjs": "ecd3142f8625daf0dfca3b256ba2e11a88de248baa901bab68db7d57e2c1dd22",
   "services/pg-api/src/pg18-full069-final-records.mjs": "ce30e7238c414977ce2e1168508989ebb6fe6bca853e5f30539ac66de3ed7e62",
   "services/pg-api/src/pg18-full069-final-runner.mjs": "d2e072be19aa097e0215f488a0836f740589867f141c790330704ddbb288fb29",
-  "services/pg-api/src/pg18-full069-final-runtime.mjs": "433a8d772e8d8a409f7d6309b398c02fe1054047c4e2066e3282c7163a3c49a9",
+  "services/pg-api/src/pg18-full069-final-runtime.mjs": "64a5f9c8d3de5ef16bec665451ea8d3c7a11b8420cb84512fbefdd2b318e1739",
   "services/pg-api/src/pg18-full069-final-sources.mjs": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f",
   "services/pg-api/src/pg18-full069-final-trust.mjs": "2cfd1d425559e6f62d24117b6942d4e35ed40aa7dfab92df64f9d7dd533ab501",
   "services/pg-api/src/pg18-full069-final-window.mjs": "0bfe2b88f46cd57d3e11da3e3b820f04b0a4c0339b05ac2f33724730b40f3e07",
@@ -428,7 +428,14 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/pg18-preparation-fixture.mjs": "e88c16646c873271b8cc97812c7bd4e47ca063dde03487c82bc8d51633c8dd9f",
   "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs": "2896442d9e7a9ac0c7e01cac13952c30693abda3ba80ab37b51703032d3872b0",
   "shared/agent-role-limits.mjs": "3f5898746f06114e7cb9de53b75e7412d750b6fe626476e91d2dc9c02d69e759",
-  "shared/schedule-time.mjs": "05583e81e563ffd454630fb3453039a7f54f838c2f1d6941d41481adf75b762f"
+  "shared/schedule-time.mjs": "05583e81e563ffd454630fb3453039a7f54f838c2f1d6941d41481adf75b762f",
+  "db/postgres/003_finish_job.sql": "b10ebd832b5cfff727a0444814b91561e650f40c85e91f3be46a1115f358c738",
+  "db/postgres/004_retry_job.sql": "5eab2265fd8f705b0745c2f8a2be0f64efca49b5fcd08ced834617035eec8337",
+  "db/postgres/005_claim_agent_prepare.sql": "15e5989f7e60580639e3b70016fb032a63cc2e19a501272e4f3ddad296831064",
+  "db/postgres/006_claim_agent_model.sql": "0b464605aa968c2d9f558b68b342eb409c809013dbd4d178c9f0ca9cdec6a449",
+  "db/postgres/007_claim_workflow_safe.sql": "e7dc2335d97f8235e54b4a7a5c1ac03bc156577e2e7a2bdd2e0273f33af8bafa",
+  "db/postgres/008_claim_workflow_v2.sql": "fa1f62bdda742c281d74ac50b01db1697402dda710c417437553828bf14c5ef1",
+  "db/postgres/009_claim_autonomous_agent.sql": "b4188f7965c8329ea30e52eb420b799735616825887412796a402616072c4ab1"
 })
 export function requireAgentDesignGenuineCi(env=process.env,platform=process.platform,uid=process.getuid?.()??0){
   if(platform!=='linux'||!Number.isSafeInteger(uid)||uid<=0||env.RUNNER_OS!=='Linux'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.GITHUB_REPOSITORY!=='HG1127/agent-studio_vibex'||env.GITHUB_WORKFLOW!==workflow||!jobs.has(env.GITHUB_JOB)||env.AGENT_STUDIO_F01_GENUINE_CI!=='YES_DISPOSABLE_F01_ONLY'||Object.keys(env).some(k=>env[k]!==undefined&&['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'].includes(k)))throw Error('refuse_non_ephemeral_agent_design_genuine_ci')

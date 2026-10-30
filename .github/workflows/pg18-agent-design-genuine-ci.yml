@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        story: [design, original-login, monitor073, internal-overview]
+        story: [design, original-login, monitor073, internal-overview, original-home-design]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -171,6 +171,11 @@ jobs:
       - name: Build original employee UI into its separate output
         if: matrix.story == 'original-login'
         run: node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Original Home natural-authoring host pure guards and original UI build
+        if: matrix.story == 'original-home-design'
+        run: |
+          node --test tests/pg-original-home-design-browser-policy.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual HTTPS browser through the real PG18 design and save chain
@@ -191,6 +196,24 @@ jobs:
           AGENT_STUDIO_ORIGINAL_MONITOR073_STORY: original-login
           AGENT_STUDIO_ORIGINAL_MONITOR073_EXPECTED_HEAD: '${{ github.sha }}'
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-login-genuine.config.mjs
+      - name: Original Home generation revision original-request recovery and manual070071 save
+        if: matrix.story == 'original-home-design'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME_DESIGN_CI: YES_DISPOSABLE_ORIGINAL_HOME_DESIGN_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME_DESIGN_STORY: original-home-design
+          AGENT_STUDIO_ORIGINAL_HOME_DESIGN_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-home-design-genuine.config.mjs
+      - name: Retain fixed safe original Home natural-authoring artifacts after cleanup
+        if: always() && matrix.story == 'original-home-design'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-home-design-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-home-design-genuine-browser-results/**/original-home-design-generated.png
+            .tmp/original-home-design-genuine-browser-results/**/original-home-design-revised-saved.png
+            .tmp/original-home-design-genuine-browser-results/**/original-home-design-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Retain synthetic page images only
         if: always() && matrix.story == 'design'
         uses: actions/upload-artifact@v4

@@ -1,5 +1,6 @@
 // Final14 controller-owned clients. No caller Pool, driver, SQL, target or clock.
 import {createHash} from 'node:crypto'
+import {isNativeError,isProxy} from 'node:util/types'
 import {verifyCompleteProfileOperatorRuntime,loadCompleteProfileOperatorPg,assertCompleteProfileOperatorRuntime} from './pg18-complete-operator-runtime.mjs'
 import {inspectCompleteProfile,verifyCompleteProfile} from './pg18-complete-profile.ts'
 import {completeServiceActualLogin} from './pg18-complete-service-core.mjs'
@@ -24,11 +25,15 @@ import {finalContext,assertFinalStable} from './pg18-full069-final-trust.mjs'
 import {readFull069Final14Catalog} from './pg18-full069-final14-catalog.mjs'
 const states=new WeakMap(),sha=v=>createHash('sha256').update(v).digest('hex'),fail=c=>{throw Error('full069_final_runtime_'+c)}
 // Closed observation only; the exact original thrown object remains primary.
-const runtimeOpenFailures=new WeakMap(),runtimeOpenPhases=new Set(['context','operator_runtime','pool_setup','physical','business_audits','service_target','service_login','service_auditor','service_stable','complete_catalog','telemetry_state','business_state','root_budget','final_stable'])
+const runtimeOpenFailures=new WeakMap(),runtimeOpenPhases=new Set(['context','operator_runtime','pool_setup','physical','business_audits','service_target','service_target_stable','service_login','service_auditor','service_stable','complete_catalog','telemetry_state','business_state','root_budget','final_stable'])
+const runtimeOpenFailureMessages=new Map([['pg_runtime_target_mismatch','target_mismatch'],['timeout expired','connection_timeout'],['timeout exceeded when trying to connect','connection_timeout'],['Connection terminated due to connection timeout','connection_timeout'],['Query read timeout','query_timeout']])
+function runtimeOpenFailureCode(error){
+ try{if(isProxy(error)||!isNativeError(error))return null;const descriptor=Object.getOwnPropertyDescriptor(error,'message');return descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='string'?runtimeOpenFailureMessages.get(descriptor.value)??null:null}catch{return null}
+}
 function rememberRuntimeOpenFailure(error,phase,entry=null){
  try{
   if(!error||!['object','function'].includes(typeof error)||!runtimeOpenPhases.has(phase)||entry!==null&&!finalBusinessLogins.some(a=>a.key===entry)||runtimeOpenFailures.has(error))return
-  runtimeOpenFailures.set(error,Object.freeze({event:'full069_final14_runtime_open_observation',phase,entry_key:entry,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))
+  runtimeOpenFailures.set(error,Object.freeze({event:'full069_final14_runtime_open_observation',phase,entry_key:entry,failure_code:runtimeOpenFailureCode(error),observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))
  }catch{/* Observation must never replace the original error. */}
 }
 export function full069FinalRuntimeOpenFailureObservation(error){
@@ -102,7 +107,7 @@ async function closeBusinessPools(s){const rows=finalBusinessLogins.map(a=>s.poo
 async function actualBusinessAudits(s){
  if(!s.businessOpen)fail('business_pools_closed');const audit=await loadAgentDesignAuditVerifier();assertFinalStable(s.trust)
  // Each branch owns a distinct max=1 LOGIN pool; branches never share clients.
- const results=await Promise.allSettled(finalBusinessLogins.map(async a=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);assertFinalStable(s.trust)
+ const results=await Promise.allSettled(finalBusinessLogins.map(async a=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);phase='service_target_stable';assertFinalStable(s.trust)
   phase='service_login';if(a.action&&await completeServiceActualLogin(p,a.action)!==true)fail('actual_login')
   phase='service_auditor'
   switch(a.key){

@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "e753c822a2987f6dc9122e0c3f9eb16b34ea4902cede42f7270e8b6625104ed4",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "bc144964d936b121596129928711d30245ed12febc7eda39efc2e281e0a7d9b8",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "87b713c5c86f3560b9a9c03e621b2c42358d0b777ee8cdb7168a9c2895ba7847",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "f70a58ca7e79c3a3741f3d3439410071cc55d06a526bc14309d2499f7c790f06",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -70,5 +70,12 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/agent-design-http.ts": "a66a620ebcfa9b52705940d7db4bfd556cbcf46eeb8954f53b7b6d89e7e8f837",
   "services/pg-api/src/agent-design-ledger.ts": "e2104df39284a2a4e616513f2a6bbe86d8a051a77e6f679b20228667daea0391",
   "services/pg-api/src/pg18-full069-worker-startup-observation.d.mts": "1240a3dc22506ef7fe7170e162bace3a27737d344690d106bc4d3ef188f2cab9",
-  "services/pg-api/src/pg18-full069-worker-startup-observation.mjs": "4651d93764b378018a2b81cdccb83eceeabb76772c411a2f085e2d73093d3d06"
+  "services/pg-api/src/pg18-full069-worker-startup-observation.mjs": "4651d93764b378018a2b81cdccb83eceeabb76772c411a2f085e2d73093d3d06",
+  "db/postgres/003_finish_job.sql": "b10ebd832b5cfff727a0444814b91561e650f40c85e91f3be46a1115f358c738",
+  "db/postgres/004_retry_job.sql": "5eab2265fd8f705b0745c2f8a2be0f64efca49b5fcd08ced834617035eec8337",
+  "db/postgres/005_claim_agent_prepare.sql": "15e5989f7e60580639e3b70016fb032a63cc2e19a501272e4f3ddad296831064",
+  "db/postgres/006_claim_agent_model.sql": "0b464605aa968c2d9f558b68b342eb409c809013dbd4d178c9f0ca9cdec6a449",
+  "db/postgres/007_claim_workflow_safe.sql": "e7dc2335d97f8235e54b4a7a5c1ac03bc156577e2e7a2bdd2e0273f33af8bafa",
+  "db/postgres/008_claim_workflow_v2.sql": "fa1f62bdda742c281d74ac50b01db1697402dda710c417437553828bf14c5ef1",
+  "db/postgres/009_claim_autonomous_agent.sql": "b4188f7965c8329ea30e52eb420b799735616825887412796a402616072c4ab1"
 })

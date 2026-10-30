@@ -68,10 +68,13 @@ test('original personal overview: real owner rows, Cookie switch, completed dela
   held=f.holdNextAliceReply();await page.getByRole('button',{name:'刷新概览',exact:true}).click();expect(await held.received).toEqual({status:200,employee:'alice',actual_upstream_response:true});await expect(main().locator('strong')).toHaveCount(0)
   await logout(alice.identity);await expect.poll(()=>f.observations.held_reply_client_closed,{timeout:1500}).toBe(1)
   const bob=await login('bob');held.release();await checkUi('bob',bob.dto)
-  // Real APIRequestContext shares only actual server-issued browser Cookies.
+   // Use the actual browser TLS connection and its server-issued Cookie.
   // Expected-Alice is a concurrency mismatch, never a substituted identity.
   f.expectNextStatus(409,'alice')
-  const mismatch=await context.request.get(f.origin+originalOverviewPath,{headers:{Origin:f.origin,Accept:'application/json','X-AgentStudio-Expected-Employee':f.users.alice},timeout:8000});expect(mismatch.status()).toBe(409);expect(await mismatch.json()).toEqual({error:'original_internal_overview_employee_changed'})
+   const mismatch=await page.evaluate(async({url,expectedEmployee})=>{
+    const response=await fetch(url,{method:'GET',credentials:'same-origin',redirect:'error',cache:'no-store',headers:{Accept:'application/json','X-AgentStudio-Expected-Employee':expectedEmployee},signal:AbortSignal.timeout(8000)})
+    return{status:response.status,body:await response.json()}
+   },{url:f.origin+originalOverviewPath,expectedEmployee:f.users.alice});expect(mismatch.status).toBe(409);expect(mismatch.body).toEqual({error:'original_internal_overview_employee_changed'})
   const bobRefreshed=wire(originalOverviewPath);await page.getByRole('button',{name:'刷新概览',exact:true}).click();const bobCurrent=await(await bobRefreshed).json();checkDto('bob',bobCurrent);await checkUi('bob',bobCurrent);await image('original-internal-overview-bob.png');await logout(bob.identity)
   await f.assertRestored();stepsCompleted=true
  }catch(error){primary=error}

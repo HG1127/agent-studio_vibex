@@ -68,7 +68,7 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     source_authority:'fixed reviewed original-page hashes and unchanged F08 backend pins; exact committed head and clean source required',
     checked_sources:sourceHashes,manifest_sha256:sha(manifestBytes),index_sha256:sha(index),assets:assetHashes}
  let fixture,server,agent,closed=false,nextHold=null,nextLoss=null
- const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false}
+ const holds=new Set(),observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],write_boundaries:[],forbidden_auth_headers:0,controlled_after_record_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,overflow:false}
  const remember=(key,value)=>{if(observations[key].length<256)observations[key].push(value);else observations.overflow=true}
  const reply=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:code}))}
  const close=async()=>{if(closed)return;closed=true;for(const gate of holds)gate.release();holds.clear();nextHold=null
@@ -102,12 +102,13 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     const selectedHold=nextHold&&nextHold.method===req.method&&nextHold.path===rule.pathname?nextHold:null
     if(selectedHold)nextHold=null
     const selectedLoss=nextLoss&&req.method==='POST'&&rule.pathname==='/__pg_native/api/v2/internal-templates'?nextLoss:null
-    let recorded=false
+    let recorded=false,nativeStatus=null
+    const observeBoundary=(source,error,consumed=false)=>{if(selectedLoss)try{remember('write_boundaries',originalShareProxyBoundary(source,error,{upstream_status:nativeStatus,after_business_completed:fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1,drop_selected:fixture.mutable.dropNext===null,actual_drop_completed:fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1,controlled_drop_consumed:consumed}))}catch{}}
     const record=status=>{if(recorded)return;recorded=true;if(status<200||status>=300){if(!(rule.pathname==='/__pg_native/api/native-auth/me'&&status===401))remember('unexpected_api_failures',{...sample,status})}}
     const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))
     // Preserve original Origin, Cookie and CSRF. No caller identity or DTO rewrite.
     const proxy=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:req.url.replace(/^\/__pg_native(?=\/|$)/,''),method:req.method,headers,agent,ca:tls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:AbortSignal.timeout(8000)},response=>{
-     record(response.statusCode??502)
+     nativeStatus=response.statusCode??502;record(nativeStatus);observeBoundary('native_http_response',null)
      const responseHeaders=Object.fromEntries(Object.entries(response.headers).filter(([name])=>!hop.has(name.toLowerCase())))
      if(!selectedHold){res.writeHead(response.statusCode??502,responseHeaders);response.pipe(res);response.once('error',()=>{remember('unexpected_api_failures',{...sample,status:502});res.destroy()});return}
      const chunks=[];let size=0
@@ -122,9 +123,9 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
       void selectedHold.wait.then(()=>{holds.delete(selectedHold);if(!res.destroyed){res.writeHead(200,responseHeaders);res.end(Buffer.concat(chunks))}})
      });return
     })
-    proxy.once('error',()=>{
-     if(selectedLoss&&selectedLoss.recorded&&fixture.mutable.dropNext===null&&nextLoss===selectedLoss){nextLoss=null;observations.controlled_after_record_disconnects++;req.socket.destroy();return}
-     record(503);if(!res.headersSent&&!res.destroyed)reply(res,503,'original_internal_share_proxy_unavailable');else res.destroy()
+    proxy.once('error',error=>{
+     if(selectedLoss&&selectedLoss.recorded&&fixture.mutable.completedAfterBusinessCreates===selectedLoss.after_business_before+1&&fixture.mutable.dropNext===null&&nextLoss===selectedLoss&&fixture.mutable.actualReplyDrops===selectedLoss.drops_before+1&&(nativeStatus===null||nativeStatus===200)&&originalShareProxyErrorCode(error)==='ECONNRESET'){nextLoss=null;observations.controlled_after_record_disconnects++;observeBoundary('proxy_transport_error',error,true);req.socket.destroy();return}
+     observeBoundary('proxy_transport_error',error);if(recorded&&nativeStatus>=200&&nativeStatus<300)remember('unexpected_api_failures',{...sample,status:503});record(503);if(!res.headersSent&&!res.destroyed)reply(res,503,'original_internal_share_proxy_unavailable');else res.destroy()
     })
     req.once('aborted',()=>proxy.destroy());req.pipe(proxy);return
    }
@@ -150,9 +151,19 @@ export async function startOriginalInternalShareBrowserFixture(env=process.env){
     const gate={method,path,wait,release,enter,reject,entered:false};nextHold=gate;holds.add(gate)
     return{async entered(){let timer;try{return await Promise.race([entered,new Promise((_,no)=>{timer=setTimeout(()=>no(Error('original_share_actual_response_hold_timeout')),20000)})])}finally{clearTimeout(timer)}},release(){if(nextHold===gate)nextHold=null;gate.release()}}
    },
-   dropNextActualCreateReply(){assert(!nextLoss&&!closed);nextLoss={recorded:false};fixture.mutable.dropNext={method:'POST',path:'/api/v2/internal-templates'}},
+   dropNextActualCreateReply(){assert(!nextLoss&&!closed);nextLoss={recorded:false,after_business_before:fixture.mutable.completedAfterBusinessCreates,drops_before:fixture.mutable.actualReplyDrops};fixture.mutable.dropNext={method:'POST',path:'/api/v2/internal-templates'}},
    async assertForeignOwnerRefused(){const before=await fixture.counts(),response=await fixture.request('bob','/api/v2/internal-templates',{action:'preview',id:fixture.resources.alice.spec.id});assert([403,404].includes(response.status));const after=await fixture.counts();for(const key of ['invites','snapshots','receipts','consumptions','agents'])assert.equal(after[key],before[key]);return{status:response.status,actual_Cookie_owner_check:true}},
    async assertRecipientOwnsUnboundCopy(){const rows=await fixture.agents.list(identities.bob,50),copies=rows.filter(v=>!originalBobIds.has(v.id));assert.equal(copies.length,1);const actual=await fixture.agents.get(identities.bob,copies[0].id);assert(actual);assert.equal(await fixture.agents.get(identities.alice,copies[0].id),null);assert.deepEqual(actual.spec.knowledge_base_ids??[],[]);assert(!actual.spec.model_binding);assert.deepEqual(actual.spec.http_tools??[],[]);assert.deepEqual(actual.spec.mcp_tools??[],[]);assert.equal(actual.spec.require_approval,true);return{actual_owner_repository_verified:true,copy_count:1,resource_bindings_absent:true}},
    close}
  }catch(error){try{await close()}catch(cleanup){throw new AggregateError([error,cleanup],'original_internal_share_start_and_cleanup_failed')}throw error}
+}
+
+// Observation-only closed data; never inspect message, stack, cause or payload.
+export function originalShareProxyErrorCode(error){
+ try{const code=Object.getOwnPropertyDescriptor(error??{},'code')?.value;return typeof code==='string'&&['ABORT_ERR','ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','EHOSTUNREACH','ENETUNREACH','ENOTFOUND','EAI_AGAIN','ERR_SOCKET_CLOSED','ERR_STREAM_PREMATURE_CLOSE'].includes(code)?code:null}catch{return null}
+}
+export function originalShareProxyBoundary(source,error,state={}){
+ if(source!=='native_http_response'&&source!=='proxy_transport_error')return null
+ const own=key=>{try{return Object.getOwnPropertyDescriptor(state,key)?.value}catch{return undefined}},status=own('upstream_status')
+ return Object.freeze({source,node_error_code:source==='proxy_transport_error'?originalShareProxyErrorCode(error):null,upstream_status:Number.isInteger(status)&&status>=100&&status<=599?status:null,after_business_completed:own('after_business_completed')===true,drop_selected:own('drop_selected')===true,actual_drop_completed:own('actual_drop_completed')===true,controlled_drop_consumed:own('controlled_drop_consumed')===true})
 }

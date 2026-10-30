@@ -1,7 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {spawnSync} from 'node:child_process'
-import {fileURLToPath} from 'node:url'
+import {fileURLToPath,pathToFileURL} from 'node:url'
+import fs from 'node:fs'
+import path from 'node:path'
+import {createHash} from 'node:crypto'
+import {createRequire} from 'node:module'
+import {captureFull069WorkerLiveSources,assertFull069WorkerLiveSources,liveWorkerSqlAssets} from '../src/pg18-full069-worker-live-sources.mjs'
 import {liveEntries,liveLimits,full069RootJournalBudget,parseLiveProfile,parseCPreparationPair,closed} from '../src/pg18-full069-worker-live-contract.mjs'
 import {full069WorkerLivePlan,full069WorkerLiveCli} from '../src/pg18-full069-worker-live-cli.mjs'
 import {inspectFull069LiveInterval} from '../src/pg18-full069-worker-live-runner.mjs'
@@ -30,3 +35,61 @@ test('original Controller journal capacity is reserved before launch and never e
 test('unbranded trust/runtime/process/native objects refuse before access to a pool or process',async()=>{assert.throws(()=>liveContext({}),/untrusted_context/);assert.throws(()=>verifyClosedLiveSamples({}),/untrusted_context/);await assert.rejects(openFull069WorkerLiveRuntime({}),/untrusted_context/);assert.throws(()=>openFull069OwnedProcesses({}),/untrusted_context/);await assert.rejects(launchFull069OwnedProcess({},'prepare'),/untrusted_processes/);assert.throws(()=>observeFull069OwnedProcesses({}),/untrusted_processes/);await assert.rejects(observeFull069OwnedNative({}),/untrusted_native/)})
 test('ordinary host and unreviewed CLI arguments refuse without importing a live authority',async()=>{await assert.rejects(full069WorkerLiveCli(['--run','--allow-test']),/arguments/);await assert.rejects(full069WorkerLiveCli(['--accept-end']),/arguments/);if(process.platform!=='linux'||process.getuid?.()!==0||process.env.AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED!=='true'){await assert.rejects(full069WorkerLiveCli(['--run']),/host/);await assert.rejects(openFull069WorkerLiveTrust(true),/host|not_approved/)}})
 test('actual offline CLI and refusal subprocesses emit closed output only',()=>{const cli=fileURLToPath(new URL('../src/pg18-full069-worker-live-cli.mjs',import.meta.url)),env={SystemRoot:process.env.SystemRoot,PATH:process.env.PATH,TEMP:process.env.TEMP,TMP:process.env.TMP,AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED:'true'};let result=spawnSync(process.execPath,['--max-old-space-size=64',cli,'--plan'],{encoding:'utf8',env,timeout:10000,windowsHide:true});assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).qualifies_run,false);for(const mode of ['--inspect-live','--run','--accept-end']){result=spawnSync(process.execPath,['--max-old-space-size=64',cli,mode],{encoding:'utf8',env,timeout:10000,windowsHide:true});assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'FULL069_WORKER_LIVE_REFUSED\n')}})
+
+// Offline source/asset packaging only: no Worker import, SQL or runtime permit.
+const assetRoot=fileURLToPath(new URL('../../../',import.meta.url)),assetTs=createRequire(import.meta.url)('typescript'),assetSha=bytes=>createHash('sha256').update(bytes).digest('hex'),assetRead=file=>fs.readFileSync(path.join(assetRoot,file),'utf8'),assetExpected=['003_finish_job.sql','004_retry_job.sql','005_claim_agent_prepare.sql','006_claim_agent_model.sql','007_claim_workflow_safe.sql','008_claim_workflow_v2.sql','009_claim_autonomous_agent.sql'].map(name=>'db/postgres/'+name)
+let assetSnapshotPromise
+const assetSnapshot=()=>assetSnapshotPromise??=captureFull069WorkerLiveSources()
+function assetReferences(file){
+ const text=assetRead(file),tree=assetTs.createSourceFile(file,text,assetTs.ScriptTarget.Latest,true),declarations=tree.statements.filter(assetTs.isVariableStatement).flatMap(s=>[...s.declarationList.declarations]),sql=declarations.find(d=>d.name.getText(tree)==='sql'),refs=[];let prefix
+ if(sql){const visit=node=>{if(assetTs.isNewExpression(node)&&node.expression.getText(tree)==='URL'){assert.equal(node.arguments[1].getText(tree),'import.meta.url');const expression=node.arguments[0];assert.ok(assetTs.isBinaryExpression(expression)&&assetTs.isStringLiteral(expression.left));assert.equal(expression.right.getText(tree),'name');prefix=expression.left.text}assetTs.forEachChild(node,visit)};visit(sql.initializer);assert.equal(prefix,'../../../db/postgres/')}
+ for(const declaration of declarations){const call=declaration.initializer;if(!call||!assetTs.isCallExpression(call))continue;let relative
+  if(call.expression.getText(tree)==='sql'){assert.equal(call.arguments.length,1);assert.ok(assetTs.isStringLiteral(call.arguments[0]));relative=prefix+call.arguments[0].text}
+  if(call.expression.getText(tree)==='readFileSync'){const url=call.arguments[0];if(assetTs.isNewExpression(url)&&url.expression.getText(tree)==='URL'){assert.ok(assetTs.isStringLiteral(url.arguments[0]));assert.equal(url.arguments[1].getText(tree),'import.meta.url');relative=url.arguments[0].text}}
+  if(relative)refs.push({module:file,relative,path:path.posix.normalize(path.posix.join(path.posix.dirname(file),relative))})
+ }
+ return refs
+}
+const assetWorkerFiles=['agent-worker.ts','model-worker.ts','workflow-safe-worker.ts','workflow-v2-worker.ts'],assetRefs=assetWorkerFiles.flatMap(file=>assetReferences('services/pg-api/src/'+file))
+function assetLoop(file,functionName){const text=assetRead(file),tree=assetTs.createSourceFile(file,text,assetTs.ScriptTarget.Latest,true),fn=tree.statements.find(n=>assetTs.isFunctionDeclaration(n)&&n.name?.text===functionName),found=[];assert.ok(fn);const visit=node=>{if(assetTs.isForOfStatement(node)&&node.expression.getText(tree)==='liveWorkerSqlAssets')found.push(node.getText(tree));assetTs.forEachChild(node,visit)};visit(fn);assert.equal(found.length,1);return found[0]}
+const assetCaptureLoop=assetLoop('services/pg-api/src/pg18-full069-worker-live-sources.mjs','captureFull069WorkerLiveSources'),assetDeploymentLoop=assetLoop('services/pg-api/tests/helpers/pg18-full069-worker-path-ci-fixture.mjs','copyDeployment')
+const assetFail=code=>{throw Error(code)},assetCaptureAt=(root,entries=new Map())=>{Function('fs','path','liveRoot','liveWorkerSqlAssets','entries','sha','liveFail',assetCaptureLoop)(fs,path,root,liveWorkerSqlAssets,entries,assetSha,assetFail);return entries},assetCheckAt=(root,snapshot)=>Function('fs','liveWorkerSqlAssets','live','target','sha','fail',assetDeploymentLoop)(fs,liveWorkerSqlAssets,snapshot,root,assetSha,assetFail)
+function assetPack(label){const parent=path.join(assetRoot,'.tmp');fs.mkdirSync(parent,{recursive:true});return fs.mkdtempSync(path.join(parent,'own-operations-worker-assets-v66-'+label+'-'))}
+function assetWrite(root,entry,bytes=fs.readFileSync(path.join(assetRoot,entry.path))){const filename=path.resolve(root,entry.path);assert.ok(filename.startsWith(path.resolve(root)+path.sep));fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,bytes,{flag:'wx'});fs.chmodSync(filename,0o444)}
+async function assetOnlyPack(label,alter){const snapshot=await assetSnapshot(),root=assetPack(label);for(const entry of snapshot.manifest.sources.filter(e=>liveWorkerSqlAssets.includes(e.path))){const bytes=fs.readFileSync(path.join(assetRoot,entry.path)),selected=alter?.(entry,bytes);if(selected===null)continue;assetWrite(root,entry,selected??bytes)}return{root,snapshot}}
+test('static Worker asset whitelist exactly covers the original top-level URL readers of all five entries',()=>{
+ assert.deepEqual(liveWorkerSqlAssets,assetExpected);assert.ok(Object.isFrozen(liveWorkerSqlAssets));assert.throws(()=>liveWorkerSqlAssets.push('db/postgres/foreign.sql'));assert.deepEqual([...new Set(assetRefs.map(r=>r.path))].sort(),[...assetExpected].sort());assert.deepEqual(assetWorkerFiles.map(file=>assetRefs.filter(r=>r.module.endsWith('/'+file)).length),[3,2,2,2])
+ const autonomous=liveEntries.find(e=>e.id==='agent_autonomous');assert.ok(assetRead('services/pg-api/src/'+autonomous.file).includes('./workflow-v2-worker-loop.ts'))
+})
+test('static Worker assets retain every complete source and all53 installation SQL inputs without executing them',async()=>{
+ const snapshot=await assetSnapshot(),sources=new Map(snapshot.manifest.sources.map(e=>[e.path,e.sha256]));assert.equal(assertFull069WorkerLiveSources(snapshot,snapshot.source_sha256),true)
+ for(const entry of snapshot.complete.manifest.sources)assert.equal(sources.get(entry.path),entry.sha256);assert.equal(snapshot.complete.manifest.sql_sources.length,53)
+ for(const file of liveWorkerSqlAssets){assert.equal(snapshot.complete.manifest.sql_sources.some(e=>e.path===file),false);assert.equal(sources.get(file),assetSha(fs.readFileSync(path.join(assetRoot,file))))}
+})
+test('static Worker asset real source package reproduces five missing first reads then verifies every copied byte',async()=>{
+ const snapshot=await assetSnapshot(),root=assetPack('real-package'),all=new Map([...snapshot.manifest.sources,...snapshot.complete.manifest.sql_sources].map(e=>[e.path,e]));for(const entry of all.values())if(!liveWorkerSqlAssets.includes(entry.path))assetWrite(root,entry)
+ const firstReads=assetWorkerFiles.map(file=>assetRefs.find(r=>r.module.endsWith('/'+file)));firstReads.push(firstReads[3]);for(const ref of firstReads)assert.throws(()=>fs.readFileSync(new URL(ref.relative,pathToFileURL(path.join(root,ref.module))),'utf8'),error=>error.code==='ENOENT')
+ for(const entry of all.values())if(liveWorkerSqlAssets.includes(entry.path))assetWrite(root,entry);assetCheckAt(root,snapshot)
+ for(const entry of all.values())assert.equal(assetSha(fs.readFileSync(path.join(root,entry.path))),entry.sha256)
+ for(const ref of assetRefs){const bytes=fs.readFileSync(new URL(ref.relative,pathToFileURL(path.join(root,ref.module))));assert.deepEqual(bytes,fs.readFileSync(path.join(assetRoot,ref.path)));assert.ok(bytes.length>0)}
+ fs.writeFileSync(path.join(root,'own-operations-worker-assets-v66-package-observation.json'),JSON.stringify({sources:snapshot.manifest.sources.length,complete_sql_inputs:snapshot.complete.manifest.sql_sources.length,total_inputs:all.size,missing_first_reads_reproduced:5,post_package_asset_check:true,asset_hashes:liveWorkerSqlAssets.map(p=>({path:p,sha256:all.get(p).sha256})),SQL_executed:false,Worker_imported:false,qualifies_run:false,production_GO:false},null,2)+'\n',{flag:'wx'})
+})
+test('static Worker asset post-package gate rejects a missing file or missing manifest pin',async()=>{
+ const missing=await assetOnlyPack('missing',entry=>entry.path===liveWorkerSqlAssets[0]?null:undefined);assert.throws(()=>assetCheckAt(missing.root,missing.snapshot),error=>error.code==='ENOENT')
+ const full=await assetOnlyPack('no-pin'),manifest={...full.snapshot.manifest,sources:full.snapshot.manifest.sources.filter(e=>e.path!==liveWorkerSqlAssets[0])};assert.throws(()=>assetCheckAt(full.root,{manifest}),/deployment_worker_asset/)
+})
+test('static Worker asset post-package gate rejects changed real SQL bytes',async()=>{
+ const changed=await assetOnlyPack('changed',(entry,bytes)=>{if(entry.path!==liveWorkerSqlAssets[0])return;const clone=Buffer.from(bytes);clone[clone.length-1]^=1;return clone});assert.throws(()=>assetCheckAt(changed.root,changed.snapshot),/deployment_worker_asset/)
+})
+test('static Worker asset capture detects a conflicting existing source pin',async()=>{
+ const good=await assetOnlyPack('collision'),entries=new Map([[liveWorkerSqlAssets[0],{path:liveWorkerSqlAssets[0],sha256:'0'.repeat(64)}]]);assert.throws(()=>assetCaptureAt(good.root,entries),/source_worker_asset_collision/);const actual=assetCaptureAt(good.root);assert.equal(actual.size,7);for(const entry of actual.values())assert.equal(entry.sha256,assetSha(fs.readFileSync(path.join(good.root,entry.path))))
+})
+test('static Worker asset capture refuses directories oversized invalidUTF8 BOM and NUL resources',async()=>{
+ const variants=[bytes=>Buffer.concat([Buffer.from([0xff]),bytes]),bytes=>Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),bytes]),bytes=>Buffer.concat([bytes,Buffer.from([0])]),()=>Buffer.alloc(1048577,32)]
+ for(let i=0;i<variants.length;i++){const bad=await assetOnlyPack('invalid-'+i,(entry,bytes)=>entry.path===liveWorkerSqlAssets[0]?variants[i](bytes):undefined);assert.throws(()=>assetCaptureAt(bad.root),/source_worker_asset/)}
+ const directory=await assetOnlyPack('directory',entry=>entry.path===liveWorkerSqlAssets[0]?null:undefined);fs.mkdirSync(path.join(directory.root,liveWorkerSqlAssets[0]));assert.throws(()=>assetCaptureAt(directory.root),/source_worker_asset/)
+})
+test('static Worker asset fix preserves literal import path limits and does not turn readonly preflight into Worker execution',()=>{
+ const source=assetRead('services/pg-api/src/pg18-full069-worker-live-sources.mjs'),preflight=assetRead('services/pg-api/src/pg18-native-worker-readonly.ts');assert.ok(source.includes("if(!/^(services\\/pg-api\\/src|shared)\\/[A-Za-z0-9_./-]+\\.(?:ts|mts|mjs|js)$/.test(file)"));for(const file of assetWorkerFiles)assert.equal(preflight.includes('./'+file),false)
+ const fixture=assetRead('services/pg-api/tests/helpers/pg18-full069-worker-path-ci-fixture.mjs');assert.ok(fixture.includes('for(const entry of[...live.manifest.sources,...control.manifest.sources])'));assert.ok(fixture.indexOf('seal(target);for(const asset of liveWorkerSqlAssets)')<fixture.indexOf('s.deployment=target'));assert.ok(fixture.includes("fail('deployment_worker_asset')"))
+})

@@ -1218,3 +1218,22 @@ tests/helpers/original-home-design-unit-data.mjs text eol=lf
 tests/original-home-design-employee-condition.test.mjs text eol=lf
 tests/original-home-design-hook.test.mjs text eol=lf
 tests/original-home-design.test.mjs text eol=lf
+
+# Original Home hosted flow, legacy revision regression, and Worker SQL assets.
+db/postgres/003_finish_job.sql text eol=lf
+db/postgres/004_retry_job.sql text eol=lf
+db/postgres/005_claim_agent_prepare.sql text eol=lf
+db/postgres/006_claim_agent_model.sql text eol=lf
+db/postgres/007_claim_workflow_safe.sql text eol=lf
+db/postgres/008_claim_workflow_v2.sql text eol=lf
+db/postgres/009_claim_autonomous_agent.sql text eol=lf
+tests/helpers/pg-original-home-design-artifacts.mjs text eol=lf
+tests/helpers/pg-original-home-design-backend-fixture.mjs text eol=lf
+tests/helpers/pg-original-home-design-browser-fixture.mjs text eol=lf
+tests/helpers/pg-original-home-design-browser-guard.mjs text eol=lf
+tests/helpers/pg-original-home-design-browser-policy.mjs text eol=lf
+tests/helpers/pg-original-home-design-reviewed-check.mjs text eol=lf
+tests/original-home-legacy-design-save.test.mjs text eol=lf
+tests/pg-original-home-design-browser-policy.test.mjs text eol=lf
+tests/pg-original-home-design-genuine.config.mjs text eol=lf
+tests/pg-original-home-design-genuine.spec.mjs text eol=lf

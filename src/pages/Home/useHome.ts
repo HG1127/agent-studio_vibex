@@ -269,8 +269,9 @@ export function useHome() {
         if(value.purpose==='generate')next={...descriptions,tools:[...output.tools],knowledge_base_ids:[],require_approval:true,require_plan_review:true}
         else{
           if(!current.spec||!current.nativeContext||current.editingRecordId!==current.nativeContext.id||current.specDirty)return false
+          const previousNames=current.spec.tools
           const actualNames=[...((current.nativeContext.spec.tools as readonly string[]|undefined)??[]),...current.nativeBindings.http.map(v=>v.name),...current.nativeBindings.mcp.map(v=>v.name),...current.nativeBuiltinSelections]
-          next={...current.spec,...descriptions,tools:[...new Set([...actualNames,...output.tools])]}
+          next={...current.spec,...descriptions,tools:[...previousNames,...new Set([...actualNames,...output.tools].filter(name=>!previousNames.includes(name)))]}
         }
         if(next.tools.length>40)return false
         const designMetadata={request_id:value.request_id,tool_requirements:[...output.tools]},newAgent=value.purpose==='generate',oldInput=draftRef.current.userInput

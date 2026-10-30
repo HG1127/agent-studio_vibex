@@ -8,6 +8,9 @@ import {captureCompleteProfileSources,assertCompleteProfileSnapshot,assertComple
 import {liveEntries,liveFail,freeze,hex} from './pg18-full069-worker-live-contract.mjs'
 export const liveRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 export const liveModules=Object.freeze([...['contract','sources','trust','runtime','processes','child','native','runner','cli'].map(n=>'services/pg-api/src/pg18-full069-worker-live-'+n+'.mjs'),...['contract','guard','runner','cli'].map(n=>'services/pg-api/src/pg18-full069-worker-path-validation-'+n+'.mjs')])
+// Operational SQL read by the original Worker modules at import time.
+// Separate from the unchanged complete069 installation/migration SQL inputs.
+export const liveWorkerSqlAssets=Object.freeze(['003_finish_job.sql','004_retry_job.sql','005_claim_agent_prepare.sql','006_claim_agent_model.sql','007_claim_workflow_safe.sql','008_claim_workflow_v2.sql','009_claim_autonomous_agent.sql'].map(name=>'db/postgres/'+name))
 const snapshots=new WeakSet(),sha=v=>createHash('sha256').update(v).digest('hex')
 export async function captureFull069WorkerLiveSources(){
   const complete=await captureCompleteProfileSources(),ts=await import('typescript'),entries=new Map(complete.manifest.sources.map(x=>[x.path,{...x}])),pending=[...liveModules,'services/pg-api/src/native-server.ts',...liveEntries.map(x=>'services/pg-api/src/'+x.file)],seen=new Set(),edges=[]
@@ -16,6 +19,12 @@ export async function captureFull069WorkerLiveSources(){
   const add=node=>{if(!ts.isStringLiteralLike(node))liveFail('source_dynamic_import');const spec=node.text;if(spec.startsWith('.')){const to=path.posix.normalize(path.posix.join(path.posix.dirname(file),spec));edges.push({from:file,to});pending.push(to)}else if(!(spec.startsWith('node:')&&isBuiltin(spec))&&!['pg','typescript'].includes(spec)&&!(file==='services/pg-api/src/document-parser.ts'&&['jszip','pdfjs-dist/legacy/build/pdf.mjs','mammoth'].includes(spec)))liveFail('source_external')}
   const visit=n=>{if((ts.isImportDeclaration(n)||ts.isExportDeclaration(n))&&n.moduleSpecifier)add(n.moduleSpecifier);if(ts.isCallExpression(n)&&(n.expression.kind===ts.SyntaxKind.ImportKeyword||ts.isIdentifier(n.expression)&&n.expression.text==='require')){if(n.arguments.length!==1)liveFail('source_dynamic_import');add(n.arguments[0])}if(ts.isImportTypeNode(n)&&ts.isLiteralTypeNode(n.argument))add(n.argument.literal);ts.forEachChild(n,visit)};visit(tree)
  }
+  for(const file of liveWorkerSqlAssets){
+   let filename=liveRoot;for(const part of file.split('/')){filename=path.join(filename,part);if(fs.lstatSync(filename).isSymbolicLink())liveFail('source_worker_asset')}
+   const st=fs.lstatSync(filename);if(!st.isFile()||st.nlink!==1||st.size<1||st.size>1048576||fs.realpathSync(filename)!==filename)liveFail('source_worker_asset')
+   const raw=fs.readFileSync(filename),text=raw.toString('utf8');if(!Buffer.from(text).equals(raw)||text.charCodeAt(0)===65279||text.includes(String.fromCharCode(0))||!text.trim())liveFail('source_worker_asset')
+   const prior=entries.get(file),digest=sha(raw);if(prior&&prior.sha256!==digest)liveFail('source_worker_asset_collision');entries.set(file,{path:file,sha256:digest})
+  }
  const manifest=freeze({format:'pg18_full069_worker_live_sources_v1',complete_source_sha256:complete.source_sha256,entries:liveModules,workers:liveEntries.map(({id,file,args,kinds})=>({id,file,args,kinds})),sources:[...entries.values()].sort((a,b)=>a.path.localeCompare(b.path,'en')),imports:edges.sort((a,b)=>(a.from+'\0'+a.to).localeCompare(b.from+'\0'+b.to,'en'))}),snapshot=Object.freeze({manifest,source_sha256:sha(JSON.stringify(manifest)),complete});snapshots.add(snapshot);return snapshot
 }
 export function assertFull069WorkerLiveSources(snapshot,expected,{deployment=false}={}){

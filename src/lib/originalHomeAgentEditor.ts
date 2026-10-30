@@ -85,22 +85,27 @@ export function originalHomeEditorWrite(input:{name:string;spec:AgentSpec;source
   const http=[...selected.http,...priorHttp.filter(v=>!selected.http.some(s=>s.name===v.name))],mcp=[...selected.mcp,...priorMcp.filter(v=>!selected.mcp.some(s=>s.name===v.name))]
   const boundNames=new Set([...http,...mcp].map(t=>t.name))
   const explicitBuiltins=normalizeOriginalHomeBuiltinSelections(input.builtinSelections??[])
-  const designRequirements=input.designMetadata?normalizeOriginalHomeDesignMetadata(input.designMetadata).tool_requirements:[]
+  const designMetadata=input.designMetadata===undefined||input.designMetadata===null?null:normalizeOriginalHomeDesignMetadata(input.designMetadata)
+  const designRequirements=designMetadata?.tool_requirements??[]
   const previousTools=Array.isArray(prior.tools)?prior.tools as string[]:[],previousRequirements=context?.authoring?.tool_requirements??previousTools
   const tools=[...new Set(visibleTools.filter(name=>isOriginalHomeBuiltinTool(name)&&(!designRequirements.includes(name)||previousTools.includes(name)||explicitBuiltins.includes(name))&&(!context||previousTools.includes(name)||!previousRequirements.includes(name)||explicitBuiltins.includes(name))||boundNames.has(name)||name==='local_computer'&&previousTools.includes(name)))]
   // Retain original metadata text/order/duplicates. Execution-only names are
   // projected for the picker and must not inflate its independent20-item DTO.
   const originalRequirements=context?.authoring?.tool_requirements??[]
   const projectedNames=new Set(tools)
-  const requested=visibleTools.filter(name=>originalRequirements.includes(name)||!projectedNames.has(name))
+  const requested=visibleTools.filter(name=>originalRequirements.includes(name)||designRequirements.includes(name)||!projectedNames.has(name))
   const full={...prior,...visible,tools,
     ...(http.length?{http_tools:http.filter(t=>tools.includes(t.name))}:{}),
     ...(mcp.length?{mcp_tools:mcp.filter(t=>tools.includes(t.name))}:{}),
   }
   const spec={...normalizeOriginalHomeExecutionSpec(full),require_approval:true}
   if(context&&context.authoring===null&&!input.asCopy){
-    if(visibleTools.some(name=>!tools.includes(name)))return fail('original_home_authoring_missing')
-    return {name:input.name,spec}
+    if(requested.length===0)return {name:input.name,spec}
+    if(!designMetadata||requested.some(name=>!designRequirements.includes(name)))return fail('original_home_authoring_missing')
+    // Describes this explicit Home revision. The old record's initial source
+    // stays unverified; no model request id or server save lineage is inferred.
+    const authoring=parseOriginalHomeAuthoring({format:'agentstudio.home-authoring.v1',source:'create',template_key:'',tool_requirements:requested})
+    return {name:input.name,spec,authoring}
   }
   const authoring=parseOriginalHomeAuthoring({format:'agentstudio.home-authoring.v1',source:input.source,template_key:input.templateKey,tool_requirements:requested})
   return {name:input.name,spec,authoring}
