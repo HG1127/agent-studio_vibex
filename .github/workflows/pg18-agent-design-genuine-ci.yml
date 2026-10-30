@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [flow, database]
+        suite: [flow, database, home070, home071]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -73,9 +73,34 @@ jobs:
         if: matrix.suite == 'database'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-design-database-pg18.test.mjs
+      - name: Independent original Home070 and catalog071 admission guards without SQL
+        if: matrix.suite == 'home070' || matrix.suite == 'home071'
+        run: node --experimental-strip-types --test services/pg-api/tests/original-home070-ci-guard.test.mjs services/pg-api/tests/original-home071-ci-guard.test.mjs
+      # Each profile leg has its own fresh PG18 service and distinct purpose.
+      # No old069/070 receipt or filtered ledger can attest to installed071.
+      - name: Actual original Home070 schema Native sessions and owned metadata resources
+        if: matrix.suite == 'home070'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME070_CI: YES_DISPOSABLE_ORIGINAL_HOME070_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME070_SUITE: home070
+          AGENT_STUDIO_ORIGINAL_HOME070_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home070-genuine-pg18.test.mjs
+      - name: Actual independent catalog071 install paging favorites Cookie switch and owned resources
+        if: matrix.suite == 'home071'
+        env:
+          AGENT_STUDIO_ORIGINAL_HOME071_CI: YES_DISPOSABLE_ORIGINAL_CATALOG071_ONLY
+          AGENT_STUDIO_ORIGINAL_HOME071_SUITE: home071
+          AGENT_STUDIO_ORIGINAL_HOME071_EXPECTED_HEAD: '${{ github.sha }}'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/original-home071-genuine-pg18.test.mjs
 
   pg18-agent-design-browser:
-    name: F01 / real PG18 browser editing save recovery and employee isolation
+    name: F01 fixture / real PG18 browser / ${{ matrix.story }}
+    strategy:
+      fail-fast: false
+      matrix:
+        story: [design, original-login]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -117,16 +142,38 @@ jobs:
         run: |
           pnpm exec tsc -p tsconfig.app.json --noEmit
           node --experimental-strip-types --test services/pg-api/tests/agent-design-genuine-guard.test.mjs services/pg-api/tests/agent-design-database-guard.test.mjs services/pg-api/tests/agent-design-catalog-diagnostics-guard.test.mjs
+      - name: Original Login host negative policy tests
+        if: matrix.story == 'original-login'
+        run: node --test tests/pg-original-login-browser-policy.test.mjs
+      - name: Build original employee UI into its separate output
+        if: matrix.story == 'original-login'
+        run: node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Actual HTTPS browser through the real PG18 design and save chain
+        if: matrix.story == 'design'
         # Invoke the installed CLI directly. The pnpm binary shim injects
         # NODE_PATH, which the genuine fixture correctly refuses.
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-agent-design-genuine.config.mjs
+      - name: Original Login App authentication through real PG18 Native HTTPS
+        if: matrix.story == 'original-login'
+        env:
+          AGENT_STUDIO_ORIGINAL_PG_LOGIN_CI: YES_DISPOSABLE_ORIGINAL_LOGIN_ONLY
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-login-genuine.config.mjs
       - name: Retain synthetic page images only
-        if: always()
+        if: always() && matrix.story == 'design'
         uses: actions/upload-artifact@v4
         with:
           name: pg18-agent-design-genuine-browser-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/F01-genuine-browser-results/**/*.png
           if-no-files-found: ignore
+      - name: Retain original Login App synthetic images and bounded observations
+        if: always() && matrix.story == 'original-login'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-login-auth-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-login-genuine-browser-results/**/*.png
+            .tmp/original-login-genuine-browser-results/**/original-login-observation.json
+          if-no-files-found: ignore
+          retention-days: 7

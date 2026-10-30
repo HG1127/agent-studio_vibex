@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import {createNativeEntryHttpHandler} from './native-entry-http.ts'
+import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
+import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
+import {prepareNativeAgentCatalog} from './native-agent-catalog-runtime.ts'
 import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
 import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
@@ -486,6 +489,13 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(internalShare.available)await inspectInternalSharePool(business)
     if(approvalDelegation.available)await inspectApprovalDelegationPool(business)
     if(agentCallers.available)await inspectAgentCallerPool(business)
+    // Optional070 integrity is required before the no-listen preflight return.
+    // The HTTP facade is prepared later, after real Native authentication exists.
+    const originalHomeFlag=env.AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED
+    if(originalHomeFlag!==undefined&&originalHomeFlag!=='true')throw Error('unsafe_original_home_config')
+    const originalHomeSchema=await inspectOptionalNativeHomeAuthoringSchema(business)
+    if(originalHomeFlag==='true'&&originalHomeSchema!=='installed')throw Error('original_home_authoring_schema_required')
+    const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
         ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
@@ -665,6 +675,16 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(callerOwnerHttp&&await callerOwnerHttp(req,res))return
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
+    }
+    const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,authenticateRequest:native.authenticateRequest})
+    if(originalHomeHttp){
+      const originalHomeFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await originalHomeHttp(req,res))return;await originalHomeFallback(req,res)}
+    }
+    const originalCatalogHttp=agentCatalog?.createHandler(native.authenticateRequest)??null
+    if(originalCatalogHttp){
+      const originalCatalogFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await originalCatalogHttp(req,res))return;await originalCatalogFallback(req,res)}
     }
     const entryHandler=createNativeEntryHttpHandler(native.handler,callerPublicHttp)
     const localServer=createServer(entryHandler)

@@ -3,6 +3,7 @@ node_modules/
 **/node_modules/
 dist/
 dist-pg18/
+dist-original-pg/
 dist-ssr/
 build/
 coverage/

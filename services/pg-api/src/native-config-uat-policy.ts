@@ -214,7 +214,7 @@ export function permitNativePg18BusinessUatRequest(
   }
   // Read-only owner metadata never inherits a configuration/submission gate.
   // The Native handler still verifies Cookie identity and installed schema.
-  if(pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos")return method==="GET"
+  if(pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos"||pathname==="/api/v2/original-ui/agent-workspace"||pathname==="/api/v2/original-ui/agent-pending")return method==="GET"
   // Optional company metadata is read-only; the projection rechecks Native
   // active admin authority independently of every configuration/run switch.
   if(pathname==="/api/v2/company-overview"||pathname==="/api/v2/company-overview/employees")return method==="GET"

@@ -1,9 +1,23 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
+import {
+  clearAgentDraft as clearStoredAgentDraft, readAgentDraft as readStoredAgentDraft, saveAgentDraft as saveStoredAgentDraft, type AgentEditorDraft,
+} from "@/lib/agentEditorDraft"
+import { registerUnsavedWorkCheck } from "@/lib/unsavedNavigation"
+import { useSearchParams } from "react-router-dom"
 import { getKnowledgeBases, type KnowledgeBase } from "@/lib/knowledgeBases"
+import type { VerifiedMarketTool } from "@/lib/marketToolSelection"
+import { fetchCurrentAgentConnectionSnapshot } from "@/lib/currentAgentConnectionSnapshot"
+import { resolveAgentToolRequirements, chooseVerifiedAgentTool } from "@/lib/agentToolMatcher"
+import {localApi} from '@/lib/localDevices'
+import {captureRequirements,previewRequirements,type AuthoringPreview,type CapturedRequirements} from '@/lib/authoringRequirements'
+import {ORIGINAL_PG_UI_ENABLED} from '@/lib/studioBackend'
+import {createOriginalHomeAgentApi,OriginalHomeApiError,type OriginalHomeAgent} from '@/lib/originalHomeAgentApi'
+import {originalHomeAgentForEditor,originalHomeEditorWrite,isOriginalHomeBuiltinTool,type NativeHomeEditingContext} from '@/lib/originalHomeAgentEditor'
+import type {OriginalHomeBindingOptions,OriginalHomeResourceView} from '@/lib/originalHomeResources'
 import {
   BUILTIN_TOOL_OPTIONS,
   TEMPLATE_PRESETS,
@@ -16,6 +30,13 @@ import {
 
 export type { AgentSpec, ConnectedToolOption, ListField, TemplatePreset } from "./presets"
 
+const HOME_DRAFT_BACKEND=ORIGINAL_PG_UI_ENABLED?'native_pg':'pocketbase'
+const readAgentDraft=(uid:string)=>readStoredAgentDraft(uid,Date.now(),HOME_DRAFT_BACKEND)
+const saveAgentDraft=(uid:string,draft:AgentEditorDraft)=>saveStoredAgentDraft(uid,draft,HOME_DRAFT_BACKEND)
+const clearAgentDraft=(uid:string)=>clearStoredAgentDraft(uid,HOME_DRAFT_BACKEND)
+const NATIVE_HOME_BUILTINS=ORIGINAL_PG_UI_ENABLED?new Set(BUILTIN_TOOL_OPTIONS.filter(v=>isOriginalHomeBuiltinTool(v.id)).map(v=>v.id)):undefined
+const createNativeHomeApi=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?createOriginalHomeAgentApi:null
+
 export type SavedSpecRow = {
   id: string
   rh_user_id: string
@@ -25,6 +46,7 @@ export type SavedSpecRow = {
   template_key: string
   created: string
   updated: string
+  native_pg?:NativeHomeEditingContext
 }
 
 const MODEL_SHORT = "gemini-3.1-flash-lite-preview"
@@ -47,13 +69,14 @@ const SYSTEM_PROMPT = [
   'tools：字符串数组，完成任务所需的通用工具能力名（如「网络搜索」「文档解析」「数据图表」），2-6 项，不写具体产品名',
   'task_plan：字符串数组，按执行顺序拆解的任务步骤（3-7 步）',
   'done_criteria：字符串数组，判断任务完成的标准（2-5 条）',
+  'require_plan_review：布尔值；明确要求先由人确认草案、确认后才进入落地计划/下一阶段时为 true，否则为 false',
   "所有内容使用简体中文，贴合用户的真实需求，不空泛。",
 ].join("\n")
 
 const REVISE_SYSTEM_PROMPT = [
   "你是「Agent Studio」的助手方案修订器。用户会给你一份现有方案 JSON 和一句修改要求。",
   "请在现有方案基础上做增量修订：只改与修改要求相关的部分，其余字段保持原样。",
-  "只输出修订后的完整 JSON 对象（字段结构与原方案一致：name/goal/task_scope/deliverables/tools/task_plan/done_criteria），",
+  "只输出修订后的完整 JSON 对象（字段结构与原方案一致：name/goal/task_scope/deliverables/tools/task_plan/done_criteria/require_plan_review），",
   "不要 markdown 代码块，不要任何额外文字。所有内容使用简体中文。",
 ].join("\n")
 
@@ -78,6 +101,7 @@ function parseSpecJson(raw: string): { displayName: string; spec: AgentSpec } | 
         tools: toStrArr(obj.tools),
         task_plan: toStrArr(obj.task_plan),
         done_criteria: toStrArr(obj.done_criteria),
+        require_plan_review: obj.require_plan_review === true,
       },
     }
   } catch {
@@ -92,12 +116,50 @@ function scrollToSpecEditor() {
 }
 
 export function useHome() {
+  const [query] = useSearchParams()
+  const returnSpecRef = useRef(query.get("spec") || "")
+  const specRevisionRef = useRef(0)
 
-  const [rhUserId, setRhUserId] = useState("")
-  const [userInput, setUserInput] = useState("")
+  const [rhUserId] = useState(() => decodeRhToken()?.sub || (ORIGINAL_PG_UI_ENABLED?'':LOCAL_ANON_UID))
+  const nativeApi=useMemo(()=>createNativeHomeApi&&rhUserId?createNativeHomeApi({employeeId:rhUserId}):null,[rhUserId])
+  const [nativeContext,setNativeContext]=useState<NativeHomeEditingContext|null>(null)
+  const [nativeOutcomeUnknown,setNativeOutcomeUnknown]=useState(false)
+  const [nativeBindings,setNativeBindings]=useState<OriginalHomeBindingOptions>({http:[],mcp:[]})
+  const [nativeBuiltinSelections,setNativeBuiltinSelections]=useState<string[]>([])
+  const nativeCurrentBindings=useRef<OriginalHomeBindingOptions>({http:[],mcp:[]})
+  const nativeResourcesFlight=useRef<Promise<OriginalHomeResourceView>|null>(null),nativeKnowledgeSequence=useRef(0)
+  const readNativeResources=useCallback(()=>{
+    if(!nativeApi)throw new OriginalHomeApiError(503,'original_home_resources_unavailable')
+    if(!nativeResourcesFlight.current){
+      const task=nativeApi.resources().finally(()=>{if(nativeResourcesFlight.current===task)nativeResourcesFlight.current=null})
+      nativeResourcesFlight.current=task
+    }
+    return nativeResourcesFlight.current
+  },[nativeApi])
+  const nativeWriteInFlight=useRef(false),nativeListSequence=useRef(0),nativeOpenSequence=useRef(0),nativeMounted=useRef(false),nativeEditorIntent=useRef(0)
+  useEffect(()=>{nativeMounted.current=true;return()=>{nativeMounted.current=false;nativeListSequence.current++;nativeOpenSequence.current++}},[])
+  // A saved draft is offered explicitly, never silently merged with a newer
+  // server snapshot or with a different employee's account.
+  const [pendingDraft, setPendingDraft] = useState<AgentEditorDraft | null>(() => readAgentDraft(rhUserId))
+  const [draftDecisionMade, setDraftDecisionMade] = useState(() => !readAgentDraft(rhUserId))
+  const draftDecisionRef=useRef(draftDecisionMade)
+  useEffect(()=>{draftDecisionRef.current=draftDecisionMade},[draftDecisionMade])
+  const [draftPersistError, setDraftPersistError] = useState(false)
+  const [userInput, setUserInputState] = useState("")
+  const setUserInput=useCallback((value:string|((previous:string)=>string))=>{
+    // A newer requirement invalidates pending reads, without changing the
+    // save target or preventing an ACK for the same Agent from settling.
+    if(ORIGINAL_PG_UI_ENABLED)nativeOpenSequence.current++
+    setUserInputState(value)
+  },[])
   const [reviseInput, setReviseInput] = useState("")
   const [spec, setSpec] = useState<AgentSpec | null>(null)
   const [specName, setSpecName] = useState("")
+  const [requirementForTools, setRequirementForTools] = useState("")
+  const [creationPreview,setCreationPreview]=useState<AuthoringPreview|null>(null)
+  const captureKey=useRef({text:'',key:''}),reviseKey=useRef({text:'',key:''})
+  const authoringPreview=creationPreview?.text===userInput?creationPreview:null
+  const [toolMatchNotice, setToolMatchNotice] = useState("")
   const [sourceMode, setSourceMode] = useState<"create" | "template">("create")
   const [templateKey, setTemplateKey] = useState("")
   const [editingRecordId, setEditingRecordId] = useState("")
@@ -107,71 +169,284 @@ export function useHome() {
   const [errorMsg, setErrorMsg] = useState("")
   const [savedMsg, setSavedMsg] = useState("")
   const [savedSpecId, setSavedSpecId] = useState("")
+  const [specDirty, setSpecDirty] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState(0)
+  const [serverUpdated, setServerUpdated] = useState("")
+  const [saveConflict, setSaveConflict] = useState(false)
+  const [draftRestoreNotice, setDraftRestoreNotice] = useState("")
+  const markSpecEdited = useCallback(() => {
+    specRevisionRef.current += 1
+    setSpecDirty(true)
+  }, [])
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
   const [savedList, setSavedList] = useState<SavedSpecRow[]>([])
+  const [savedTotal,setSavedTotal] = useState<number|null>(ORIGINAL_PG_UI_ENABLED?null:0)
   const [connectedTools, setConnectedTools] = useState<ConnectedToolOption[]>([])
+  const [connectedMarketTools, setConnectedMarketTools] = useState<VerifiedMarketTool[]>([])
+  const [connectionLoadNotice,setConnectionLoadNotice] = useState("")
+  const connectionRequestRef=useRef(0)
+  const connectionAbortRef=useRef<AbortController|null>(null)
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
+  const [knowledgeBasesError,setKnowledgeBasesError]=useState("")
+  const [knowledgeBasesLoading,setKnowledgeBasesLoading]=useState(false)
 
+  const openNativeRecord=useCallback((value:OriginalHomeAgent)=>{
+    const record=originalHomeAgentForEditor(value)
+    returnSpecRef.current=''
+    setSpec(record.spec);setSpecName(record.name)
+    setSourceMode(record.source==='template'?'template':'create');setTemplateKey(record.template_key)
+    setEditingRecordId(record.id);setSavedSpecId(record.id);setNativeContext(record.native_pg)
+    setServerUpdated(record.updated);setLastSavedAt(Date.parse(record.updated));setSpecDirty(false)
+    setNativeOutcomeUnknown(false);setSaveConflict(false)
+    setNativeBindings({http:[],mcp:[]})
+    setNativeBuiltinSelections([])
+  },[])
+
+  const currentDraft: AgentEditorDraft = useMemo(() => ({
+    version: 1, ownerId: rhUserId, editedAt: 0,
+    userInput,
+    spec: specDirty ? spec : null,
+    specName: specDirty ? specName : "",
+    sourceMode: specDirty ? sourceMode : "create",
+    templateKey: specDirty ? templateKey : "",
+    editingRecordId: specDirty ? editingRecordId : "",
+    serverUpdated: specDirty ? serverUpdated : "",
+    ...(ORIGINAL_PG_UI_ENABLED?{backend:'native_pg' as const}:{}),
+    ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec&&nativeContext&&editingRecordId===nativeContext.id?{nativePg:nativeContext}:{}),
+    ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec&&nativeOutcomeUnknown?{nativeOutcomeUnknown:true as const}:{}),
+    ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec?{nativeBindings:{http:nativeBindings.http.filter(v=>spec.tools.includes(v.name)),mcp:nativeBindings.mcp.filter(v=>spec.tools.includes(v.name))}}:{}),
+    ...(ORIGINAL_PG_UI_ENABLED&&specDirty&&spec?{nativeBuiltinSelections:nativeBuiltinSelections.filter(v=>spec.tools.includes(v))}:{}),
+  }), [rhUserId,userInput,spec,specDirty,specName,sourceMode,templateKey,
+    editingRecordId,serverUpdated,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections])
+  const draftRef = useRef<AgentEditorDraft>(currentDraft)
   useEffect(() => {
-    const payload = decodeRhToken()
-    setRhUserId(payload?.sub ? String(payload.sub) : LOCAL_ANON_UID)
-  }, [])
-
-  // 登录态下拉取已启用的外部工具连接；失败静默降级为空列表，不阻塞页面
-  const loadConnectedTools = useCallback(async () => {
-    try {
-      const res = await fetch(`${getPocketBaseUrl()}/api/tool-connections`, {
-        headers: { ...vibexAuthHeaders() },
-      })
-      if (!res.ok) return
-      const data = await res.json()
-      const items = Array.isArray(data?.items)
-        ? (data.items as { name: string; description: string; enabled: boolean }[])
-        : []
-      setConnectedTools(
-        items
-          .filter((item) => item.enabled && item.name)
-          .map((item) => ({ name: item.name, description: item.description || "" })),
-      )
-    } catch {
-      // 工具连接列表加载失败不阻塞方案编辑
+    draftRef.current = currentDraft
+  }, [currentDraft])
+  const activeDraft = Boolean(specDirty && spec) || Boolean(userInput.trim())
+  useEffect(() => {
+    if (!draftDecisionMade) return
+    const timeout = window.setTimeout(() => {
+      if (activeDraft) {
+        setDraftPersistError(!saveAgentDraft(rhUserId, draftRef.current))
+      } else {
+        clearAgentDraft(rhUserId)
+        setDraftPersistError(false)
+      }
+    }, 450)
+    return () => window.clearTimeout(timeout)
+  }, [rhUserId, draftDecisionMade, activeDraft, spec, userInput, specName,
+    sourceMode, templateKey, editingRecordId, serverUpdated,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections])
+  useEffect(() => {
+    if (!draftDecisionMade) return
+    const saveBeforeExit = () => {
+      if (Boolean(draftRef.current.spec) || draftRef.current.userInput.trim())
+        void saveAgentDraft(rhUserId, draftRef.current)
+      else clearAgentDraft(rhUserId)
     }
-  }, [])
-
+    window.addEventListener("pagehide", saveBeforeExit)
+    return () => {
+      window.removeEventListener("pagehide", saveBeforeExit)
+      saveBeforeExit()
+    }
+  }, [draftDecisionMade, rhUserId])
   useEffect(() => {
-    if (rhUserId) void loadConnectedTools()
-  }, [rhUserId, loadConnectedTools])
+    if (!(specDirty && spec) && !userInput.trim()) return
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warnUnsaved)
+    return () => window.removeEventListener("beforeunload", warnUnsaved)
+  }, [specDirty, spec, userInput])
 
-  useEffect(() => {
-    if (rhUserId) void getKnowledgeBases().then(setKnowledgeBases).catch(() => setKnowledgeBases([]))
+  useEffect(() => registerUnsavedWorkCheck(
+    () => Boolean(specDirty && spec) ||
+      Boolean(userInput.trim()) ||
+      Boolean(pendingDraft),
+  ), [specDirty, spec, userInput, pendingDraft])
+
+  const restoreDraft = useCallback(() => {
+    const draft = pendingDraft
+    if (!draft) return
+    nativeEditorIntent.current++;nativeOpenSequence.current++;specRevisionRef.current++
+    returnSpecRef.current=""
+    setUserInput(draft.userInput)
+
+    setSpec(draft.spec)
+    setSpecName(draft.specName)
+    setSourceMode(draft.sourceMode)
+    setTemplateKey(draft.templateKey)
+    setEditingRecordId(draft.editingRecordId)
+    setServerUpdated(draft.serverUpdated)
+    setSavedSpecId(draft.editingRecordId)
+    setLastSavedAt(Date.parse(draft.serverUpdated) || 0)
+    if(ORIGINAL_PG_UI_ENABLED){setNativeContext(draft.nativePg??null);setNativeOutcomeUnknown(draft.nativeOutcomeUnknown===true);setNativeBindings(draft.nativeBindings??{http:[],mcp:[]});setNativeBuiltinSelections(draft.nativeBuiltinSelections??[])}
+    if (draft.spec) markSpecEdited()
+    setDraftRestoreNotice(draft.nativeOutcomeUnknown?"上次保存结果尚未确认。草稿已保留，请先打开服务器中的记录核对；不会自动重复发送。":"已恢复当前浏览器的未提交草稿，请核对后保存到服务器。")
+    setSaveConflict(false)
+    setPendingDraft(null)
+    setDraftDecisionMade(true)
+  }, [pendingDraft, markSpecEdited])
+
+  const discardDraft = useCallback(() => {
+    clearAgentDraft(rhUserId)
+    setPendingDraft(null)
+    setDraftDecisionMade(true)
+    setDraftPersistError(false)
   }, [rhUserId])
 
+  // Connections are transient permissions, not durable Agent assignments.
+  // Invalidate "ready" immediately on refresh, preserve spec.tools unchanged,
+  // and prevent older tab-focus replies from overwriting the latest lookup.
+  const loadConnectedTools = useCallback(async () => {
+    const requestId=++connectionRequestRef.current
+    connectionAbortRef.current?.abort()
+    const controller=new AbortController()
+    connectionAbortRef.current=controller
+    setConnectedTools([])
+    setConnectedMarketTools([])
+    setConnectionLoadNotice("")
+    if(nativeApi){
+      nativeCurrentBindings.current={http:[],mcp:[]}
+      try{
+        const resources=await readNativeResources()
+        if(controller.signal.aborted||requestId!==connectionRequestRef.current||!nativeMounted.current)return
+        nativeCurrentBindings.current=resources.bindings
+        setConnectedTools(resources.connectedHttp);setConnectedMarketTools(resources.verifiedMarket)
+      }catch{if(!controller.signal.aborted&&requestId===connectionRequestRef.current&&nativeMounted.current)setConnectionLoadNotice('PG 资源权限暂时无法核验，当前工具按待验证处理；保存的工具引用未被删除。')}
+      return
+    }
+    const snapshot=await fetchCurrentAgentConnectionSnapshot(
+      fetch,getPocketBaseUrl(),{...vibexAuthHeaders()},controller.signal,
+    )
+    if(controller.signal.aborted || requestId!==connectionRequestRef.current)return
+    setConnectedTools(snapshot.connectedHttp)
+    setConnectedMarketTools(snapshot.verifiedMarket)
+    if(!snapshot.httpVerified || !snapshot.marketVerified){
+      setConnectionLoadNotice("部分工具连接暂时无法核验，已按待验证处理。请在资源中心检查连接；保存的 Agent 工具不会被删除。")
+    }
+  }, [nativeApi,readNativeResources])
+
+  useEffect(() => {
+    if (!rhUserId) return
+    // Plugin OAuth may complete in a second tab. Refresh on focus without
+    // merging another employee's data or overwriting an unsaved Agent draft.
+    const refresh = () => { void loadConnectedTools() }
+    void Promise.resolve().then(refresh)
+    window.addEventListener("focus", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      connectionRequestRef.current+=1
+      connectionAbortRef.current?.abort()
+      connectionAbortRef.current=null
+    }
+  }, [rhUserId, loadConnectedTools])
+
+  const refreshKnowledgeBases=useCallback(async()=>{
+    const sequence=++nativeKnowledgeSequence.current
+    setKnowledgeBasesLoading(true)
+    setKnowledgeBasesError("")
+    try {
+      if(nativeApi){
+        setKnowledgeBases([])
+        const resources=await readNativeResources()
+        if(!nativeMounted.current||sequence!==nativeKnowledgeSequence.current)return
+        setKnowledgeBases(resources.knowledgeBases)
+        return
+      }
+      setKnowledgeBases(await getKnowledgeBases())
+    } catch {
+      // Avoid presenting permission/network failures as an empty personal library.
+      if(!nativeApi||nativeMounted.current&&sequence===nativeKnowledgeSequence.current)setKnowledgeBasesError("知识库列表暂不可用，请刷新资源连接后继续。")
+    } finally {if(!nativeApi||nativeMounted.current&&sequence===nativeKnowledgeSequence.current)setKnowledgeBasesLoading(false)}
+  },[nativeApi,readNativeResources])
+  useEffect(()=>{
+    if(!rhUserId)return
+    void refreshKnowledgeBases()
+    const onFocus=()=>{if(document.visibilityState==="visible")void refreshKnowledgeBases()}
+    window.addEventListener("focus",onFocus)
+    return()=>window.removeEventListener("focus",onFocus)
+  },[rhUserId,refreshKnowledgeBases])
+
+  // The catalog fetches just its own server-paged 18 visible rows. The
+  // workbench only needs the accurate total and a refresh signal here;
+  // requesting 200 complete AgentSpecs on every open adds unnecessary payload.
+  // An explicitly selected older Agent is retrieved via owner-scoped GET by ID.
   const loadSavedList = useCallback(async (uid: string) => {
     if (!uid) return
+    if(nativeApi){
+      const sequence=++nativeListSequence.current,editEpoch=specRevisionRef.current,openEpoch=nativeOpenSequence.current
+      try{
+        const data=await nativeApi.catalog({perPage:1})
+        if(!nativeMounted.current||sequence!==nativeListSequence.current)return
+        setSavedList(data.items.map(originalHomeAgentForEditor));setSavedTotal(data.totalItems)
+        const target=returnSpecRef.current
+        if(target&&draftDecisionRef.current&&editEpoch===specRevisionRef.current&&openEpoch===nativeOpenSequence.current){
+          const record=data.items.find(r=>r.id===target)??await nativeApi.get(target)
+          if(nativeMounted.current&&sequence===nativeListSequence.current&&editEpoch===specRevisionRef.current&&openEpoch===nativeOpenSequence.current&&target===returnSpecRef.current&&draftDecisionRef.current)openNativeRecord(record)
+        }
+      }catch{
+        if(nativeMounted.current&&sequence===nativeListSequence.current&&editEpoch===specRevisionRef.current&&openEpoch===nativeOpenSequence.current){setSavedTotal(null);setErrorMsg('暂时无法核验 PG 中的 Agent 列表，当前草稿仍保留。请刷新后重试。')}
+      }
+      return
+    }
     try {
       const res = await fetch(
-        `${getPocketBaseUrl()}/api/agent_specs?rh_user_id=${encodeURIComponent(uid)}`,
+        `${getPocketBaseUrl()}/api/agent_specs?perPage=1&sort=-updated`,
         { headers: { ...vibexAuthHeaders() } },
       )
       if (!res.ok) return
       const data = await res.json()
       const items = Array.isArray(data?.items) ? (data.items as SavedSpecRow[]) : []
       setSavedList(items)
+      setSavedTotal(Number.isFinite(Number(data?.totalItems)) ? Number(data.totalItems) : items.length)
+      const targetId=returnSpecRef.current
+      let record=targetId && items.find(item=>item.id===targetId)
+      if(!record && targetId && /^[A-Za-z0-9]{15}$/.test(targetId)){
+        // Older Agent direct links are not guaranteed to be in the first 200
+        // sorted records; exact owner-scoped lookup prevents wrong editing.
+        const detail=await fetch(getPocketBaseUrl()+"/api/agent_specs/"+
+          encodeURIComponent(targetId),{headers:{...vibexAuthHeaders()}})
+        if(detail.ok){
+          const candidate=await detail.json() as SavedSpecRow
+          if(candidate?.id===targetId)record=candidate
+        }
+      }
+      if(record){
+        returnSpecRef.current=""
+        setSpec(record.spec)
+        setSpecName(record.name||"未命名助手")
+        setSourceMode(record.source==="template"?"template":"create")
+        setTemplateKey(record.template_key||"")
+        setEditingRecordId(record.id)
+        setSavedSpecId(record.id)
+        setSpecDirty(false)
+        setLastSavedAt(Date.parse(record.updated)||0)
+        setServerUpdated(record.updated || "")
+        setSaveConflict(false)
+      }
     } catch {
       // 列表加载失败不阻塞主流程，保存成功后会再次尝试刷新
     }
-  }, [])
+  }, [nativeApi,openNativeRecord])
 
   useEffect(() => {
-    if (rhUserId) void loadSavedList(rhUserId)
+    if (!rhUserId) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (!cancelled) void loadSavedList(rhUserId)
+    })
+    return () => { cancelled = true }
   }, [rhUserId, loadSavedList])
 
   const runGenerate = useCallback(async () => {
-    const requirement = userInput.trim()
-    if (!requirement) return
+    const requirement = userInput
+    if (!requirement.trim()||!creationPreview||creationPreview.text!==requirement) return
+    if(nativeApi){setErrorMsg('当前 PostgreSQL 的原页面需求生成接口尚未接通；原始需求已保留。');return}
     setIsGenerating(true)
     setErrorMsg("")
     setSavedMsg("")
+    try{await localApi<CapturedRequirements>(`/api/authoring/requirements/${encodeURIComponent(creationPreview.requestId)}`)}catch{setErrorMsg('原始需求未确认保存，请重新预览后再生成。');setIsGenerating(false);return}
     const messages: LlmMessage[] = [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: `我的需求：${requirement}` },
@@ -193,13 +468,39 @@ export function useHome() {
       setErrorMsg("方案格式异常，请换个说法再试一次")
       return
     }
-    setSpec(parsed.spec)
+    const matched = resolveAgentToolRequirements(requirement, parsed.spec, connectedTools, connectedMarketTools)
+    setSpec({...parsed.spec,_studio_authoring:{request_id:creationPreview.requestId}, tools:[
+      ...matched.resolvedTools,
+      ...matched.gaps.map(row=>row.name).filter(name=>!matched.resolvedTools.includes(name)),
+    ]})
+    setRequirementForTools(requirement)
+    setToolMatchNotice(matched.safeAutoBindings.length
+      ? `已自动匹配 ${matched.safeAutoBindings.length} 项无需新授权的工具；其余所需能力请检查下方连接建议。`
+      : "已核对当前账号的工具权限；未连接的能力会引导你去插件市场完成连接。")
     setSpecName(parsed.displayName)
+    // Do not leave a consumed requirement as a permanent second unsaved draft.
+    // If the employee typed another requirement during generation, preserve it.
+    setUserInput(current => current === requirement ? "" : current)
+    markSpecEdited()
+    setSavedSpecId("")
+    setLastSavedAt(0)
+    setServerUpdated("")
+    setSaveConflict(false)
     setSourceMode("create")
     setTemplateKey("")
     setEditingRecordId("")
     scrollToSpecEditor()
-  }, [userInput])
+  }, [userInput, creationPreview, markSpecEdited, connectedTools, connectedMarketTools,nativeApi])
+
+  const prepareCreation=useCallback(async()=>{
+    const text=userInput;if(!text.trim())return
+    if(nativeApi){setErrorMsg('当前 PostgreSQL 的原页面需求预览接口尚未接通；原始需求已保留。');return}
+    if(captureKey.current.text!==text||!captureKey.current.key)captureKey.current={text,key:crypto.randomUUID()}
+    setIsGenerating(true);setErrorMsg('')
+    try{const source=await captureRequirements(text,captureKey.current.key),preview=await previewRequirements(source.request_id,{goal:'',task_scope:'',tools:[],task_plan:[]});setCreationPreview({text,requestId:source.request_id,plan:preview.plan})}
+    catch{setErrorMsg('需求预览未完成。请检查登录、网络及需求长度（单次最多 12000 字符），重试不会重复保存同一请求。')}
+    finally{setIsGenerating(false)}
+  },[userInput,nativeApi])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -207,15 +508,21 @@ export function useHome() {
       setNeedsRhLogin(true)
       return
     }
-    void runGenerate()
-  }, [userInput, isGenerating, rhUserId, runGenerate])
+    if(authoringPreview)void runGenerate();else void prepareCreation()
+  }, [userInput, isGenerating, rhUserId, runGenerate,authoringPreview,prepareCreation])
 
   const runRevise = useCallback(async () => {
     const instruction = reviseInput.trim()
     if (!instruction || !spec) return
+    if(nativeApi){setErrorMsg('当前 PostgreSQL 的原页面需求修订接口尚未接通；修改要求已保留。');return}
     setIsRevising(true)
     setErrorMsg("")
     setSavedMsg("")
+    let revisionSource=''
+    const parent=spec._studio_authoring?.request_id||'',revisionKey=parent+'\n'+instruction
+    if(reviseKey.current.text!==revisionKey||!reviseKey.current.key)reviseKey.current={text:revisionKey,key:crypto.randomUUID()}
+    try{const source=parent?await captureRequirements(instruction,reviseKey.current.key,parent):await localApi<CapturedRequirements>('/api/authoring/requirements',{requirement:instruction,kind:'legacy_revision',idempotency_key:reviseKey.current.key});revisionSource=source.request_id}
+    catch{setErrorMsg('修订要求未确认保存，未调用模型。请检查登录、来源权限或需求长度。');setIsRevising(false);return}
     const messages: LlmMessage[] = [
       { role: "system", content: REVISE_SYSTEM_PROMPT },
       {
@@ -240,10 +547,23 @@ export function useHome() {
       setErrorMsg("修订结果格式异常，请换个说法再试一次")
       return
     }
-    setSpec((previous) => ({ ...parsed.spec, knowledge_base_ids: previous?.knowledge_base_ids || [], require_approval: previous?.require_approval }))
+    setSpec((previous) => {
+      const explicitlySelected=(previous?.tools||[]).filter(name=>
+        connectedMarketTools.some(tool=>tool.id===name) || connectedTools.some(tool=>tool.name===name))
+      const matched=resolveAgentToolRequirements(requirementForTools, parsed.spec,
+        connectedTools,connectedMarketTools,explicitlySelected)
+      return {...parsed.spec,_studio_authoring:{request_id:revisionSource},capability_requirements:previous?.capability_requirements, tools:[
+        ...matched.resolvedTools,
+        ...matched.gaps.map(item=>item.name).filter(name=>!matched.resolvedTools.includes(name)),
+      ],knowledge_base_ids: previous?.knowledge_base_ids || [],
+        require_approval: previous?.require_approval,
+        require_plan_review: previous?.require_plan_review,
+        quality_checks: previous?.quality_checks || []}
+    })
     setSpecName(parsed.displayName || specName)
+    markSpecEdited()
     setReviseInput("")
-  }, [reviseInput, spec, specName])
+  }, [reviseInput, spec, specName, markSpecEdited, requirementForTools, connectedTools, connectedMarketTools,nativeApi])
 
   const handleRevise = useCallback(() => {
     if (!reviseInput.trim() || !spec || isRevising) return
@@ -254,147 +574,347 @@ export function useHome() {
     void runRevise()
   }, [reviseInput, spec, isRevising, rhUserId, runRevise])
 
-  const handleSave = useCallback(async () => {
+  const saveCurrentSpec = useCallback(async (asCopy: boolean) => {
     if (!spec || isSaving) return
+    if(nativeApi&&(nativeWriteInFlight.current||nativeOutcomeUnknown)){
+      setErrorMsg('上次保存结果尚未确认，请先从服务器列表打开记录核对；当前草稿不会重复发送。')
+      return
+    }
     if (!rhUserId) {
       setNeedsRhLogin(true)
+      return
+    }
+    const target = asCopy ? "" : editingRecordId
+    // A restored draft may have no valid record version; never do an unsafe
+    // overwrite when we cannot prove what server revision was edited.
+    if (target && (nativeApi?(!nativeContext||nativeContext.id!==target):!serverUpdated)) {
+      setSaveConflict(true)
+      setErrorMsg("当前草稿无法核验原版本，请另存为新 Agent，避免覆盖其他人的修改。")
       return
     }
     setIsSaving(true)
     setErrorMsg("")
     setSavedMsg("")
+    const startedRevision=specRevisionRef.current
+    const startedIntent=nativeEditorIntent.current
+    let nativeSent=false
     try {
-      const url = editingRecordId
-        ? `${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(editingRecordId)}`
+      let row:SavedSpecRow
+      if(nativeApi){
+        nativeWriteInFlight.current=true
+        const name=asCopy?(specName.trim()||'未命名助手')+'（副本）':specName.trim()||'未命名助手'
+        const write=originalHomeEditorWrite({name,spec,source:sourceMode,templateKey,context:nativeContext,asCopy,bindings:nativeBindings,builtinSelections:nativeBuiltinSelections})
+        if(!target&&!write.authoring)throw new OriginalHomeApiError(400,'original_home_authoring_missing')
+        nativeSent=true;setNativeOutcomeUnknown(true);setSpecDirty(true)
+        draftRef.current={...draftRef.current,spec,specName,sourceMode,templateKey,editingRecordId,serverUpdated,backend:'native_pg',nativePg:nativeContext??undefined,nativeBindings:{http:nativeBindings.http.filter(v=>spec.tools.includes(v.name)),mcp:nativeBindings.mcp.filter(v=>spec.tools.includes(v.name))},nativeBuiltinSelections:nativeBuiltinSelections.filter(v=>spec.tools.includes(v)),nativeOutcomeUnknown:true}
+        setDraftPersistError(!saveAgentDraft(rhUserId,draftRef.current))
+        const saved=target?await nativeApi.update(target,nativeContext!.revision,write):await nativeApi.create({...write,authoring:write.authoring!})
+        if(!nativeMounted.current)return
+        if(startedIntent!==nativeEditorIntent.current){
+          setSavedMsg('先前方案已保存；当前正在编辑的其他方案未被替换。')
+          await loadSavedList(rhUserId)
+          return
+        }
+        row=originalHomeAgentForEditor(saved)
+        setNativeContext(row.native_pg!);setNativeOutcomeUnknown(false)
+        draftRef.current={...draftRef.current,nativePg:row.native_pg,editingRecordId:row.id,serverUpdated:row.updated,nativeOutcomeUnknown:undefined}
+      }else{
+      const url = target
+        ? `${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(target)}`
         : `${getPocketBaseUrl()}/api/agent_specs`
       const res = await fetch(url, {
-        method: editingRecordId ? "PATCH" : "POST",
+        method: target ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
         body: JSON.stringify({
           rh_user_id: rhUserId,
-          name: specName.trim() || "未命名助手",
+          name: asCopy ? (specName.trim() || "未命名助手") + "（副本）" : (specName.trim() || "未命名助手"),
           spec,
           source: sourceMode,
           template_key: templateKey,
+          ...(target ? { expected_updated: serverUpdated } : {}),
         }),
       })
-      if (!res.ok) {
-        setErrorMsg("保存失败，请稍后重试")
+      if (res.status === 409) {
+        setSaveConflict(true)
+        setErrorMsg("该 Agent 已在其他页面或协作流程中更新。你的修改仍保留，请「另存为新 Agent」，避免覆盖更新后的版本。")
         return
       }
-      const row = (await res.json()) as SavedSpecRow
-      if (row?.id) {
-        setEditingRecordId(row.id)
-        setSavedSpecId(row.id)
+      if (res.status === 401 || res.status === 412) {
+        setNeedsRhLogin(true)
+        setErrorMsg("员工登录已过期，草稿仍在当前浏览器中；重新登录后再保存。")
+        return
       }
-      setSavedMsg("已保存进「我的助手」，下一步可以为它配置工具并试跑。")
+      if (!res.ok) {
+        setErrorMsg("保存失败，请确认网络和员工权限后重试。改动仍保留在当前页面。")
+        return
+      }
+      row = await res.json() as SavedSpecRow
+      if (!row?.id) {
+        setErrorMsg("服务器未返回保存记录，无法确认是否保存成功，请先检查「我的 Agent」列表。")
+        return
+      }
+      }
+      setEditingRecordId(row.id)
+      setSavedSpecId(row.id)
+      setServerUpdated(row.updated || "")
+      setSaveConflict(false)
+      setLastSavedAt(Date.parse(row.updated) || Date.now())
+      const noFurtherEdits = startedRevision === specRevisionRef.current
+      setSpecDirty(!noFurtherEdits)
+      if(nativeApi&&noFurtherEdits)draftRef.current={...draftRef.current,spec:null,specName:'',editingRecordId:'',serverUpdated:'',nativePg:undefined,nativeBindings:undefined,nativeBuiltinSelections:undefined,nativeOutcomeUnknown:undefined}
+      if (asCopy && noFurtherEdits) setSpecName(row.name)
+      setSavedMsg(noFurtherEdits
+        ? asCopy ? "已另存为独立 Agent，原版本未被覆盖。" :
+          "已保存进「我的 Agent」，接下来可以连接资源并试跑。"
+        : "保存期间又进行了修改，新的改动仍未保存，请再次保存。")
+      if (noFurtherEdits && !draftRef.current.userInput.trim()) clearAgentDraft(rhUserId)
       await loadSavedList(rhUserId)
-    } catch {
-      setErrorMsg("网络异常，保存失败，请重试")
+    } catch(error) {
+      if(nativeApi){
+        const knownRefusal=error instanceof OriginalHomeApiError&&error.status>=400&&error.status<500
+        if(!nativeSent||knownRefusal){setNativeOutcomeUnknown(false);draftRef.current={...draftRef.current,nativeOutcomeUnknown:undefined}}
+        if(error instanceof OriginalHomeApiError&&error.code==='employee_session_changed'){
+          setNeedsRhLogin(true);setErrorMsg('员工登录已切换，当前账号的草稿未写入其他账号。请重新验证登录后再操作。')
+        }else if(error instanceof OriginalHomeApiError&&error.status===409){
+          setSaveConflict(true);setErrorMsg('该 Agent 已在其他页面或协作流程中更新。你的修改仍保留，请重新核对服务器版本或另存副本。')
+        }else if(error instanceof OriginalHomeApiError&&[401,403].includes(error.status)){
+          setNeedsRhLogin(true);setErrorMsg('员工登录或资源权限无法核验，当前草稿仍保留；重新登录后再操作。')
+        }else if(nativeSent&&!knownRefusal){
+          setErrorMsg('无法确认保存是否完成。当前草稿已保留，请先打开服务器列表核对；不会自动重复提交。')
+        }else if(error instanceof OriginalHomeApiError&&error.code==='original_home_execution_contract_unavailable'){
+          setErrorMsg('当前 PG 接口尚未支持此方案中的质量检查、能力或需求来源要求，未丢弃这些内容，也未发送保存。')
+        }else setErrorMsg('方案未保存，请核对来源、审批、工具和知识库范围；当前内容仍保留。')
+      }else setErrorMsg("网络异常：当前改动仍保留，恢复网络后可重新保存。")
     } finally {
+      nativeWriteInFlight.current=false
       setIsSaving(false)
     }
-  }, [spec, isSaving, rhUserId, editingRecordId, specName, sourceMode, templateKey, loadSavedList])
+  }, [spec,isSaving,rhUserId,editingRecordId,serverUpdated,specName,sourceMode,templateKey,loadSavedList,nativeApi,nativeContext,nativeOutcomeUnknown,nativeBindings,nativeBuiltinSelections])
 
+  const handleSave = useCallback(async () => saveCurrentSpec(false), [saveCurrentSpec])
+  const handleSaveAsCopy = useCallback(async () => saveCurrentSpec(true), [saveCurrentSpec])
   const handleLoadTemplate = useCallback((preset: TemplatePreset) => {
+    if ((specDirty || userInput.trim()) && !window.confirm(
+      "当前存在未保存的 Agent 方案或新需求。切换模板将舍弃这些内容，是否继续？"
+    )) return
+    nativeEditorIntent.current++;nativeOpenSequence.current++
+    setNativeContext(null);setNativeOutcomeUnknown(false);returnSpecRef.current=''
+    setNativeBindings({http:[],mcp:[]})
+    setNativeBuiltinSelections([])
+    setUserInput("")
     setSpec(preset.spec)
     setSpecName(preset.defaultName)
+    markSpecEdited()
+    setSavedSpecId("")
+    setLastSavedAt(0)
+    setServerUpdated("")
+    setSaveConflict(false)
     setSourceMode("template")
     setTemplateKey(preset.key)
     setEditingRecordId("")
     setErrorMsg("")
     setSavedMsg("")
     scrollToSpecEditor()
-  }, [])
+  }, [markSpecEdited,specDirty,userInput])
 
-  const handleOpenSaved = useCallback((row: SavedSpecRow) => {
+  const handleOpenSaved = useCallback(async (row: SavedSpecRow) => {
+    if ((specDirty || userInput.trim()) && !window.confirm(
+      "当前存在未保存的 Agent 方案或新需求。打开其他 Agent 将舍弃这些内容，是否继续？"
+    )) return
+    if(nativeApi){
+      const sequence=++nativeOpenSequence.current,epoch=specRevisionRef.current
+      nativeEditorIntent.current++
+      try{
+        const record=await nativeApi.get(row.id)
+        if(!nativeMounted.current||sequence!==nativeOpenSequence.current||epoch!==specRevisionRef.current)return
+        setUserInput('');openNativeRecord(record);setErrorMsg('');setSavedMsg('');scrollToSpecEditor()
+      }catch{if(nativeMounted.current&&sequence===nativeOpenSequence.current&&epoch===specRevisionRef.current)setErrorMsg('无法核验服务器中的 Agent，当前编辑内容未被替换。')}
+      return
+    }
+    setUserInput("")
     setSpec(row.spec)
     setSpecName(row.name || "未命名助手")
     setSourceMode(row.source === "template" ? "template" : "create")
     setTemplateKey(row.template_key || "")
     setEditingRecordId(row.id)
     setErrorMsg("")
+    setSavedSpecId(row.id)
+    setLastSavedAt(Date.parse(row.updated)||0)
+    setServerUpdated(row.updated || "")
+    setSaveConflict(false)
+    setSpecDirty(false)
+
     setSavedMsg("")
     scrollToSpecEditor()
-  }, [])
+  }, [specDirty,userInput,nativeApi,openNativeRecord])
 
   const handleDeleteSaved = useCallback(
     async (recordId: string) => {
       if (!recordId) return
+      if(nativeApi){setErrorMsg('PostgreSQL 的 Agent 删除合同尚未完成，记录仍保留在服务器。');return}
       try {
         const res = await fetch(`${getPocketBaseUrl()}/api/agent_specs/${encodeURIComponent(recordId)}`, {
           method: "DELETE",
           headers: { ...vibexAuthHeaders() },
         })
-        if (res.ok && editingRecordId === recordId) {
+        if (!res.ok) {
+          setErrorMsg(res.status === 401 || res.status === 412
+            ? "员工登录已过期，当前 Agent 未被删除。请重新登录。"
+            : "删除失败，Agent 仍保留在服务器，请稍后重试。")
+          return
+        }
+        if (editingRecordId === recordId) {
+          // Preserve the editor as an UNSAVED copy. Do not keep showing a
+          // deleted Agent as saved or allow PATCH against its old record ID.
           setEditingRecordId("")
+          setSavedSpecId("")
+          setServerUpdated("")
+          setLastSavedAt(0)
+          setSaveConflict(false)
+          markSpecEdited()
+          setSavedMsg("已从服务器删除该 Agent；当前编辑器内容仍保留，可另存为新 Agent。")
         }
         await loadSavedList(rhUserId)
       } catch {
-        setErrorMsg("删除失败，请稍后重试")
+        setErrorMsg("网络异常，无法确认是否删除成功。请刷新列表后核对。")
       }
     },
-    [editingRecordId, loadSavedList, rhUserId],
+    [editingRecordId, loadSavedList, rhUserId, markSpecEdited,nativeApi],
   )
 
   const handleClearSpec = useCallback(() => {
+    if ((specDirty || userInput.trim()) && !window.confirm(
+      "当前编辑的 Agent 或新需求尚未保存，确定清空吗？"
+    )) return
+    nativeEditorIntent.current++;nativeOpenSequence.current++;specRevisionRef.current++
+    setNativeContext(null);setNativeOutcomeUnknown(false);returnSpecRef.current=''
+    setNativeBindings({http:[],mcp:[]})
+    setNativeBuiltinSelections([])
+    clearAgentDraft(rhUserId)
     setSpec(null)
     setSpecName("")
+    setSpecDirty(false)
+    setSavedSpecId("")
+    setLastSavedAt(0)
+    setServerUpdated("")
+    setSaveConflict(false)
     setSourceMode("create")
     setTemplateKey("")
     setEditingRecordId("")
     setReviseInput("")
+    setUserInput("")
+    setDraftRestoreNotice("")
     setSavedMsg("")
     setErrorMsg("")
-  }, [])
+  }, [specDirty,userInput,rhUserId])
+
+  const togglePlanReview = useCallback((enabled: boolean) => {
+    markSpecEdited()
+    setSpec(previous => previous ? { ...previous, require_plan_review: enabled } : previous)
+  }, [markSpecEdited])
 
   const updateSpecText = useCallback((field: "goal" | "task_scope", value: string) => {
+    markSpecEdited()
     setSpec((prev) => (prev ? { ...prev, [field]: value } : prev))
-  }, [])
+  }, [markSpecEdited])
 
   const updateSpecListItem = useCallback((field: ListField, index: number, value: string) => {
+    markSpecEdited()
     setSpec((prev) => {
       if (!prev) return prev
       const next = [...prev[field]]
       next[index] = value
       return { ...prev, [field]: next }
     })
-  }, [])
+  }, [markSpecEdited])
 
   const addSpecListItem = useCallback((field: ListField) => {
+    markSpecEdited()
     setSpec((prev) => (prev ? { ...prev, [field]: [...prev[field], ""] } : prev))
-  }, [])
+  }, [markSpecEdited])
 
   const removeSpecListItem = useCallback((field: ListField, index: number) => {
+    markSpecEdited()
     setSpec((prev) => {
       if (!prev) return prev
       return { ...prev, [field]: prev[field].filter((_, i) => i !== index) }
     })
-  }, [])
+  }, [markSpecEdited])
 
   const dismissError = useCallback(() => setErrorMsg(""), [])
 
   const toolStatusOf = useCallback(
-    (toolName: string) => toolConnectionStatus(toolName, connectedTools),
-    [connectedTools],
+    (toolName: string):'ready'|'pending' => {
+      if(nativeApi){
+        if(isOriginalHomeBuiltinTool(toolName))return 'ready'
+        const selected=[...nativeBindings.http,...nativeBindings.mcp,...(nativeContext?.spec.http_tools as {name:string;connection_id:string;connection_revision:number}[]??[]),...(nativeContext?.spec.mcp_tools as {name:string;connection_id:string;connection_revision:number;catalog_sha256:string;tool_name:string}[]??[])].find(v=>v.name===toolName)
+        const actual=[...nativeCurrentBindings.current.http,...nativeCurrentBindings.current.mcp].find(v=>v.name===toolName)
+        if(!selected||!actual||selected.connection_id!==actual.connection_id||selected.connection_revision!==actual.connection_revision)return 'pending'
+        if('catalog_sha256'in actual&&(!('catalog_sha256'in selected)||!('tool_name'in selected)||actual.catalog_sha256!==selected.catalog_sha256||actual.tool_name!==selected.tool_name))return 'pending'
+        return 'ready'
+      }
+      return toolConnectionStatus(toolName,[...connectedTools,...connectedMarketTools.map(tool=>({name:tool.id,description:tool.description,status:"ok"}))])
+    },
+    [connectedTools,connectedMarketTools,nativeApi,nativeBindings,nativeContext],
   )
+
+  const nativeExecutionSelections=useMemo(()=>new Set<string>([
+    ...((nativeContext?.spec.tools as readonly string[]|undefined)??[]),
+    ...nativeBindings.http.map(v=>v.name),...nativeBindings.mcp.map(v=>v.name),...nativeBuiltinSelections,
+  ]),[nativeContext,nativeBindings,nativeBuiltinSelections])
+  const toolAnalysis = useMemo(() => spec
+    ? resolveAgentToolRequirements(requirementForTools, spec, connectedTools, connectedMarketTools,
+        (spec.tools||[]).filter(tool=>(!nativeApi||nativeExecutionSelections.has(tool))&&(connectedTools.some(conn=>conn.name===tool) ||
+          connectedMarketTools.some(conn=>conn.id===tool))),NATIVE_HOME_BUILTINS)
+    : null,[requirementForTools,spec,connectedTools,connectedMarketTools,nativeApi,nativeExecutionSelections])
+
+  const rematchAgentTools = useCallback(() => {
+    if(!spec)return
+    const currentSelections=(spec.tools||[]).filter(tool=>(!nativeApi||nativeExecutionSelections.has(tool))&&
+      (connectedTools.some(conn=>conn.name===tool) || connectedMarketTools.some(conn=>conn.id===tool)))
+    const result=resolveAgentToolRequirements(requirementForTools,spec,
+      connectedTools,connectedMarketTools,currentSelections,NATIVE_HOME_BUILTINS)
+    const matchedTools=[...result.resolvedTools,
+      ...result.gaps.map(row=>row.name).filter(name=>!result.resolvedTools.includes(name))]
+    const metadataNames=nativeApi?(spec.tools||[]).filter(name=>!nativeExecutionSelections.has(name)||nativeContext?.authoring?.tool_requirements.includes(name)):[]
+    const updated=nativeApi?[...metadataNames,...matchedTools.filter(name=>!metadataNames.includes(name))]:matchedTools
+    const namesChanged=JSON.stringify(updated)!==JSON.stringify(spec.tools)
+    let intentChanged=false
+    if(nativeApi){
+      const nextBuiltins=[...new Set([...nativeBuiltinSelections.filter(v=>updated.includes(v)),...result.resolvedTools.filter(isOriginalHomeBuiltinTool)])]
+      const savedTools=(nativeContext?.spec.tools as readonly string[]|undefined)??[]
+      const selectedNames=new Set(result.resolvedTools.filter(name=>!savedTools.includes(name)))
+      const retainedHttp=nativeBindings.http.filter(v=>updated.includes(v.name)),retainedMcp=nativeBindings.mcp.filter(v=>updated.includes(v.name))
+      const nextBindings={http:[...retainedHttp,...nativeCurrentBindings.current.http.filter(v=>selectedNames.has(v.name)&&!retainedHttp.some(old=>old.name===v.name))],mcp:[...retainedMcp,...nativeCurrentBindings.current.mcp.filter(v=>selectedNames.has(v.name)&&!retainedMcp.some(old=>old.name===v.name))]}
+      intentChanged=JSON.stringify(nextBuiltins)!==JSON.stringify(nativeBuiltinSelections)||JSON.stringify(nextBindings)!==JSON.stringify(nativeBindings)
+      if(intentChanged){setNativeBuiltinSelections(nextBuiltins);setNativeBindings(nextBindings)}
+    }
+    if(namesChanged||intentChanged)markSpecEdited()
+    if(namesChanged)setSpec(previous=>previous?{...previous,tools:updated}:previous)
+    setToolMatchNotice(result.gaps.length
+      ? `已匹配 ${result.resolvedTools.length} 项工具，还有 ${result.gaps.length} 项能力需要连接或人工确认。`
+      : `已匹配 ${result.resolvedTools.length} 项工具，当前方案所需能力均已核对。`)
+  },[spec,requirementForTools,connectedTools,connectedMarketTools,markSpecEdited,nativeApi,nativeExecutionSelections,nativeContext,nativeBindings,nativeBuiltinSelections])
 
   // 勾选/取消勾选工具 → 写进 spec.tools（内置 id 或已连接工具名精确匹配）
   const handleToggleSpecTool = useCallback((toolName: string, checked: boolean) => {
+    markSpecEdited()
+    if(nativeApi){
+      const name=toolName.trim()
+      if(isOriginalHomeBuiltinTool(name))setNativeBuiltinSelections(previous=>[...previous.filter(v=>v!==name),...(checked?[name]:[])])
+      setNativeBindings(previous=>({http:[...previous.http.filter(v=>v.name!==name),...(checked?nativeCurrentBindings.current.http.filter(v=>v.name===name):[])],mcp:[...previous.mcp.filter(v=>v.name!==name),...(checked?nativeCurrentBindings.current.mcp.filter(v=>v.name===name):[])]}))
+    }
     setSpec((prev) => {
       if (!prev) return prev
       const trimmed = toolName.trim()
       if (!trimmed) return prev
-      const exists = prev.tools.some((item) => item.trim() === trimmed)
-      if (checked && !exists) return { ...prev, tools: [...prev.tools, trimmed] }
-      if (!checked && exists) {
-        return { ...prev, tools: prev.tools.filter((item) => item.trim() !== trimmed) }
-      }
-      return prev
+      const tools=chooseVerifiedAgentTool(prev.tools,trimmed,checked,connectedMarketTools)
+      return tools.join("\u0000")===prev.tools.join("\u0000")?prev:{...prev,tools}
     })
-  }, [])
+  }, [markSpecEdited,connectedMarketTools,nativeApi])
 
   const toggleKnowledgeBase = useCallback((id: string, checked: boolean) => {
+    markSpecEdited()
     setSpec(prev => {
       if (!prev) return prev
       const current = prev.knowledge_base_ids || []
@@ -402,7 +922,7 @@ export function useHome() {
       const tools = checked && !prev.tools.includes("knowledge_search") ? [...prev.tools, "knowledge_search"] : prev.tools
       return { ...prev, knowledge_base_ids: ids, tools }
     })
-  }, [])
+  }, [markSpecEdited])
 
   return {
     templates: TEMPLATE_PRESETS,
@@ -413,19 +933,31 @@ export function useHome() {
     setUserInput,
     handleCreate,
     isGenerating,
+    authoringPreview,
     spec,
     specName,
-    setSpecName,
+    setSpecName: (value:string) => {
+      setSpecName(value)
+      markSpecEdited()
+    },
     sourceMode,
+    togglePlanReview,
     updateSpecText,
     updateSpecListItem,
     addSpecListItem,
     removeSpecListItem,
     toolStatusOf,
-    connectedTools,
+    connectedTools,    toolAnalysis,
+    toolMatchNotice: connectionLoadNotice || toolMatchNotice,
+    rematchAgentTools,
+
+    connectedMarketTools,
     builtinToolOptions: BUILTIN_TOOL_OPTIONS,
     knowledgeBases,
-    toggleKnowledgeBase,
+    toggleKnowledgeBase,    knowledgeBasesError,
+    knowledgeBasesLoading,
+    refreshKnowledgeBases,
+
     handleToggleSpecTool,
     reviseInput,
     setReviseInput,
@@ -436,10 +968,22 @@ export function useHome() {
     savedMsg,
     savedSpecId,
     errorMsg,
-    dismissError,
+    specDirty,
+    lastSavedAt,
+
+    dismissError,    pendingDraft,
+    restoreDraft,
+    discardDraft,
+    draftPersistError,
+    draftRestoreNotice,
+    saveConflict,
+    handleSaveAsCopy,
+
+
     handleLoadTemplate,
     handleClearSpec,
     savedList,
+    savedTotal,
     handleOpenSaved,
     handleDeleteSaved,
   }
