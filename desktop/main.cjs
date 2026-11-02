@@ -7,6 +7,7 @@ const {pathToFileURL} = require('node:url')
 const {serverOrigin,ownUrl,webUrl,childEnvironment,readSettings,saveSettings,rendererPermission,workbenchSender,embeddedManagerUrl} = require('./policy.cjs')
 const {randomUUID}=require('node:crypto')
 const info = require('./build-info.json')
+const {installUpdates}=require('./update-controller.cjs')
 const option = name => process.argv.find(x=>x.startsWith(name+'='))?.slice(name.length+1)
 const testHome = option('--desktop-test-home')
 if(testHome)app.setPath('userData',path.resolve(testHome))
@@ -19,7 +20,7 @@ if(runtimeRoot){
     app.setPath('temp',temp);app.commandLine.appendSwitch('disk-cache-dir',path.join(runtimeRoot,'web-cache'))
   }catch{storageError=Error('程序目录不可写，请重新安装到自己可写的文件夹。')}
 }
-let main,settingsWindow,tray,child,services,settings,quitting=false,starting
+let main,settingsWindow,tray,child,services,settings,updates,quitting=false,starting
 const pairingRequests=new Map()
 function reveal(window){if(!window||window.isDestroyed())return;if(window.isMinimized())window.restore();window.show();window.focus()}
 const settingsUrl=pathToFileURL(path.join(__dirname,'ui','settings.html')).href
@@ -33,6 +34,7 @@ app.on('before-quit',event=>{if(!quitting){event.preventDefault();quitting=true;
 app.whenReady().then(async()=>{
   if(storageError)throw storageError
   settings=await readSettings(app.getPath('userData'))
+  updates=installUpdates({app,BrowserWindow,Menu,ipcMain,net:require('electron').net,dialog,info,runtimeRoot,testHome,getSettings:()=>settings,saveSettings:async next=>{await saveSettings(app.getPath('userData'),next);settings=next},stopServices,getComputerState:()=>computerRequest('state'),hasPendingCalls:()=>[...pairingRequests.values()].some(request=>!['state','session'].includes(request.action)),onQuit:()=>{quitting=true}})
   const ses=session.fromPartition('persist:agent-studio')
   const origins=()=>services?[services.origin,services.managerOrigin]:[]
   ses.setPermissionRequestHandler((contents,permission,callback,details)=>callback(rendererPermission(permission,details.requestingUrl||contents.getURL(),origins(),details.isMainFrame)))
@@ -43,13 +45,27 @@ app.whenReady().then(async()=>{
   const image=nativeImage.createFromPath(path.join(__dirname,'ui','icon.png')).resize({width:20,height:20})
   tray=new Tray(image);tray.setToolTip('Agent Studio · 本机连接与工作台')
   tray.on('double-click',()=>void showStudio())
-  const actions=[{label:'打开工作台',click:()=>void showStudio()},{label:'本机电脑与权限',click:()=>void showConnection()},{label:'服务器设置',click:showSettings},{type:'separator'},{label:'退出并停止本机连接',click:()=>app.quit()}]
+  const actions=[{label:'打开工作台',click:()=>void showStudio()},{label:'本机电脑与权限',click:()=>void showConnection()},{label:'版本更新',click:()=>void updates.open()},{label:'服务器设置',click:showSettings},{type:'separator'},{label:'退出并停止本机连接',click:()=>app.quit()}]
   tray.setContextMenu(Menu.buildFromTemplate(actions))
   Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'Agent Studio',submenu:actions},{label:'查看',submenu:[{role:'reload'},{role:'forceReload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'帮助',submenu:[{label:'版本信息',click:()=>dialog.showMessageBox({type:'info',title:'Agent Studio',message:'Agent Studio '+info.version,detail:'网页源码：'+info.sourceCommit+'\n服务器：'+settings.server+'\nWindows x64 预览版，尚未代码签名。\n退出会停止本机连接；账号、模型和团队数据由服务器管理。'})}]}]))
   const testServer=option('--desktop-test-server')
   if(testServer){if(!testHome||!/^http:\/\/127\.0\.0\.1:\d+$/.test(testServer))throw Error('isolated_test_configuration_required');settings={server:serverOrigin(testServer),port:0};await showStudio()}
   else if(settings.port){try{await showStudio()}catch{/* Keep settings available for a recoverable startup failure. */}}
   else showSettings()
+  const updated=option('--desktop-updated')
+  if(runtimeRoot&&/^[a-f0-9-]{36}$/.test(updated||'')){
+    const directory=path.join(runtimeRoot,'temp/desktop-updates',updated)
+    const job=JSON.parse(await fs.readFile(path.join(directory,'job.json'),'utf8'))
+    if(job.id!==updated||path.resolve(job.root)!==runtimeRoot)throw Error('invalid_update_health_scope')
+    await fs.writeFile(path.join(directory,'health.json'),JSON.stringify({id:updated,version:info.version,pid:process.pid}))
+  }
+  const failedUpdate=option('--desktop-update-failed')
+  if(runtimeRoot)setTimeout(()=>void require('./update-helper.cjs').cleanupCompletedUpdates(runtimeRoot),65000).unref()
+  if(runtimeRoot&&/^[a-f0-9-]{36}$/.test(failedUpdate||'')){
+    const result=JSON.parse(await fs.readFile(path.join(runtimeRoot,'temp/desktop-updates',failedUpdate,'result.json'),'utf8'))
+    if(result.phase==='rolled_back')void dialog.showMessageBox({type:'warning',title:'已恢复原版本',message:'更新未完成，已恢复 '+info.version,detail:String(result.error||'请稍后重试更新').slice(0,300)})
+    else if(result.phase==='failed'&&result.unchanged)void dialog.showMessageBox({type:'warning',title:'更新未完成',message:'更新准备失败，已重新打开原版本 '+info.version,detail:String(result.error||'请稍后重试更新').slice(0,300)})
+  }
 }).catch(async error=>{
   const report=option('--desktop-smoke-report')
   if(testHome&&report){await fs.writeFile(path.resolve(report),JSON.stringify({started:false,error:String(error.message).slice(0,500)}));await stopServices();app.exit(1)}
@@ -90,7 +106,7 @@ ipcMain.handle('desktop:connect',async(event,input)=>{
     if(main&&!main.isDestroyed())main.destroy();main=null
     await stopServices()
     await session.fromPartition('persist:agent-studio').clearStorageData()
-    settings={server:next,port:0}
+    settings={server:next,port:0,...(settings.updateFeed?{updateFeed:settings.updateFeed}:{})}
   }
   await saveSettings(app.getPath('userData'),settings)
   await showStudio()
@@ -118,7 +134,7 @@ function computerRequest(action,input){
   const requestId=randomUUID()
   return new Promise((resolve,reject)=>{
     const timeout=setTimeout(()=>{pairingRequests.delete(requestId);reject(Error('本机处理尚未确认，请核查当前状态，不要重复提交。'))},['folder','file','permissions.pick'].includes(action)?250000:action.startsWith('applications.')?125000:35000)
-    pairingRequests.set(requestId,{resolve,reject,timeout})
+    pairingRequests.set(requestId,{resolve,reject,timeout,action})
     child.send({type:'computer-request',requestId,action,input},error=>{if(error){clearTimeout(timeout);pairingRequests.delete(requestId);reject(Error('本机连接组件已停止'))}})
   })
 }

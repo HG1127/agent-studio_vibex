@@ -21,6 +21,8 @@ Var LaunchExit
 Var VerificationExit
 Var VerificationOutput
 Var TestMode
+Var UpdateMode
+Var UpdateId
 PageEx directory
   DirText "请选择 Agent Studio 的专用程序文件夹。安装位置由你决定，运行临时文件也保存在所选目录。" "安装位置" "浏览…" "请选择安装目录"
   PageCallbacks "" "" VerifyLocation
@@ -29,6 +31,25 @@ Page instfiles
 Function .onInit
   ${GetParameters} $LaunchArgs
   StrCpy $TestMode 0
+  StrCpy $UpdateMode 0
+  ClearErrors
+  ${GetOptions} $LaunchArgs "--desktop-update" $0
+  IfErrors update_options_done
+    StrCpy $UpdateMode 1
+    ClearErrors
+    ${GetOptions} $LaunchArgs "--desktop-update-id=" $UpdateId
+    IfErrors invalid_update_target
+    StrLen $0 $UpdateId
+    ${If} $0 != 36
+      Goto invalid_update_target
+    ${EndIf}
+    IfFileExists "$INSTDIR\temp\desktop-updates\$UpdateId\job.json" update_target_valid invalid_update_target
+    invalid_update_target:
+      SetErrorLevel 2
+      Quit
+    update_target_valid:
+    StrCpy $LaunchArgs ""
+  update_options_done:
   ClearErrors
   ${GetOptions} $LaunchArgs "--desktop-test-home=" $0
   IfErrors normal_run
@@ -46,12 +67,14 @@ Function .onInit
 FunctionEnd
 Function VerifyLocation
   ${If} $INSTDIR == ""
-    MessageBox MB_OK|MB_ICONSTOP "请选择安装目录。"
+    SetErrorLevel 2
+    MessageBox MB_OK|MB_ICONSTOP "请选择安装目录。" /SD IDOK
     Abort
   ${EndIf}
   ${GetRoot} "$INSTDIR" $0
   ${If} $INSTDIR == $0
-    MessageBox MB_OK|MB_ICONSTOP "请为 Agent Studio 选择专用文件夹，不要直接选择磁盘根目录。"
+    SetErrorLevel 2
+    MessageBox MB_OK|MB_ICONSTOP "请为 Agent Studio 选择专用文件夹，不要直接选择磁盘根目录。" /SD IDOK
     Abort
   ${EndIf}
   System::Call 'kernel32::GetDiskFreeSpaceExW(w "$0", *l .r1, p 0, p 0) i.r0'
@@ -59,7 +82,8 @@ Function VerifyLocation
     System::Int64Op $1 < ${REQUIRED_BYTES}
     Pop $0
     ${If} $0 == 1
-      MessageBox MB_OK|MB_ICONSTOP "所选磁盘空间不足，请选择至少有 ${REQUIRED_MB} MB 可用空间的位置。"
+      SetErrorLevel 2
+      MessageBox MB_OK|MB_ICONSTOP "所选磁盘空间不足，请选择至少有 ${REQUIRED_MB} MB 可用空间的位置。" /SD IDOK
       Abort
     ${EndIf}
   ${EndIf}
@@ -72,7 +96,8 @@ Section "安装 Agent Studio"
   ClearErrors
   FileOpen $0 "$INSTDIR\.write-check" w
   ${If} ${Errors}
-    MessageBox MB_OK|MB_ICONSTOP "无法写入所选目录，请选择自己可写的程序文件夹。"
+    SetErrorLevel 2
+    MessageBox MB_OK|MB_ICONSTOP "无法写入所选目录，请选择自己可写的程序文件夹。" /SD IDOK
     Quit
   ${EndIf}
   FileClose $0
@@ -89,7 +114,8 @@ Section "安装 Agent Studio"
   Pop $VerificationExit
   Pop $VerificationOutput
   StrCmp $VerificationExit "0" verified
-    MessageBox MB_OK|MB_ICONSTOP "安装文件未通过完整性核对，请检查磁盘和写入权限后重试。详细信息：$VerificationOutput"
+    SetErrorLevel 2
+    MessageBox MB_OK|MB_ICONSTOP "安装文件未通过完整性核对，请检查磁盘和写入权限后重试。详细信息：$VerificationOutput" /SD IDOK
     Quit
   verified:
   CreateDirectory "$INSTDIR\temp"
@@ -97,6 +123,10 @@ Section "安装 Agent Studio"
   FileOpen $0 "$INSTDIR\.studio-install-complete" w
   FileWrite $0 "${VERSION}$\r$\n"
   FileClose $0
+  ${If} $UpdateMode == 1
+    SetErrorLevel 0
+    Quit
+  ${EndIf}
   ${If} $TestMode == 0
     CreateShortCut "$DESKTOP\Agent Studio.lnk" "$InstallRoot\Agent Studio.exe" "" "$InstallRoot\Agent Studio.exe"
   ${EndIf}
@@ -108,7 +138,7 @@ Section "安装 Agent Studio"
   ClearErrors
   ExecWait '"$InstallRoot\Agent Studio.exe" $LaunchArgs' $LaunchExit
   ${If} ${Errors}
-    MessageBox MB_OK|MB_ICONSTOP "安装已完成，但程序没有打开。请从所选目录运行 Agent Studio.exe，并核对系统提示。"
+    MessageBox MB_OK|MB_ICONSTOP "安装已完成，但程序没有打开。请从所选目录运行 Agent Studio.exe，并核对系统提示。" /SD IDOK
     Quit
   ${EndIf}
   SetErrorLevel $LaunchExit

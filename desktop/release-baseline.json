@@ -1,0 +1,14 @@
+{
+  "minimumDesktopVersion": "0.1.0-preview.12",
+  "branch": "codex/desktop-release",
+  "requiredAncestors": [
+    "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
+    "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290"
+  ],
+  "requiredFiles": [
+    "desktop/update-controller.cjs",
+    "desktop/update-helper.cjs",
+    "local-executor/application-target.mjs",
+    "src/lib/localApplicationTask.ts"
+  ]
+}

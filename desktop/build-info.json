@@ -1,6 +1,10 @@
 {
-  "sourceCommit": "98ee9287fd224ffe2f61de6750d436b71c12f810",
-  "version": "0.1.0-preview.11",
+  "sourceCommit": "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
+  "version": "0.1.0-preview.12",
   "platform": "win32-x64",
-  "codeSigned": false
+  "codeSigned": false,
+  "integratedSources": {
+    "applicationColdStart": "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
+    "desktopUpdates": "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290"
+  }
 }

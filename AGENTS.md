@@ -16,6 +16,20 @@ the original running VibeX app.
 - Team knowledge ACL, semantic RAG, delegated approvals, and Agent collaboration
   must retain owner scoping, server-side checks, and auditability.
 
+## Migration delivery strategy — user clarification 2026-10-30
+
+- Preserve the existing employee UI and interactions while replacing only the underlying database and backend. Use `src/main.tsx -> src/App.tsx` pages, routes, navigation, layouts and components as the delivery baseline.
+- Adapt authentication, API clients, hooks and DTOs while retaining verified identity, owner/team authorization, approvals and auditability. Reuse completed PG backend/Worker work, but keep `pg18-app` and `src/pages/PgNativePilot` isolated as reference tools.
+- Old PocketBase remains recoverable until explicit cutover approval. This strategy does not authorize deployment, production database changes, paid provider calls, Git uploads or destructive cleanup.
+
+## Unified desktop release baseline — user direction 2026-11-02
+
+- Integrate all verified desktop features before delivery. Start subsequent desktop, connector and employee UI release work from the latest verified local `main` or `codex/desktop-release`; the persistent worktree is `.worktrees/desktop-release`. Archived preview.9/.10/.11 worktrees are historical evidence, not new feature baselines.
+- `desktop/release-baseline.json` records mandatory verified ancestor commits. Run `node ops/verify-desktop-release-baseline.mjs` before building; do not remove or bypass this check to package an older branch. Advance the verified ancestor baseline after each accepted release.
+- Preserve both application cold-start/task execution and in-app update/rollback capabilities. A higher version number does not imply another parallel branch is included: merge, test and audit the actual sources.
+- Preserve `desktop/update-trust.json` and its matching release signing key across builds; never casually generate a replacement key. Never commit or distribute the private key. Published same-version artifacts remain immutable.
+- Unfinished PostgreSQL migration work remains isolated until its own verified integration and cutover authorization. This instruction does not authorize Git uploads or business-service/database deployments.
+
 ## Testing
 
 Run `pnpm check` (unit tests, TypeScript, build) and `pnpm test:e2e:parallel`
