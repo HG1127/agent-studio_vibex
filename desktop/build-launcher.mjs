@@ -5,7 +5,9 @@ import {createHash} from 'node:crypto'
 import {createReadStream} from 'node:fs'
 import {spawn} from 'node:child_process'
 import {createRequire} from 'node:module'
+import {verifyDesktopReleaseBaseline} from '../ops/verify-desktop-release-baseline.mjs'
 const desktop=path.dirname(fileURLToPath(import.meta.url)),root=path.dirname(desktop)
+console.log('DESKTOP_BASELINE '+JSON.stringify(await verifyDesktopReleaseBaseline(root)))
 const info=JSON.parse(await fs.readFile(path.join(desktop,'build-info.json'),'utf8'))
 const appDir=path.join(root,'.tmp/desktop-output/win-unpacked')
 for(const name of ['temp','web-cache','.studio-files.json']){try{await fs.access(path.join(appDir,name));throw Error('runtime_cache_in_staging_rebuild_clean:'+name)}catch(error){if(error.code!=='ENOENT')throw error}}
