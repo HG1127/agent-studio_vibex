@@ -304,7 +304,7 @@ export const approvalDelegationBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/worker-heartbeat-management-audit-core.ts": "9f39c8c388d960f8b23632de915f9f037b741a0d07c7fba95dfcb333b878211e",
   "services/pg-api/src/worker-heartbeat-management-audit.ts": "06161be745cbca4ff5bd8bfade45494d3e5b9f2854f4adeefd82ff57706931a4",
   "services/pg-api/src/worker-heartbeat-worker-binding.ts": "492a76e2f7ffa8b5646b48b8a330e0f020683de33d6a72116dac885d760a9a87",
-  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "609dc0700ed09f5ad68817d361010d3b7ff4fe638c0ea04528b1c1d1fbff6c8c",
+  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "74027182bfc21334000eee28ae365bad7aa6ce084539567321cc3cabae2f227d",
   "services/pg-api/src/worker-heartbeat-writer-credentials.ts": "9abf06d1bc8d6c0009de6ee3550d2b91f05b65df46842ed5492b576e38452328",
   "services/pg-api/src/agent-assessment-audit-core.ts": "87740182730dbb644cfbc31cb689a4fb80da4636452ef2a209f1cc2559acfd09",
   "services/pg-api/src/agent-assessment-audit.ts": "a1e1f0d65e50187388217fbbe8062182a1c2bf280395ed32561fa6c8d3c85ae4",
@@ -409,7 +409,7 @@ export const approvalDelegationBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "bd2a5aa68d829298750f6e6053a650e33c735a4dd91dbac3bf332859be309d9c",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b8f341f24d40f9994812487e84860aa1c900a96ae1176258e22100087b2c4cb8",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -561,12 +561,14 @@ export const approvalDelegationBrowserFrozenSources=Object.freeze({
   "tests/browser-json-response-observer.test.mjs": "136c01cfd52e7d1b2bdbc08aa957b30bbc43257e6f25fe1b1fbbcef989557e29",
   "tests/helpers/browser-json-response-observer.mjs": "1c9c1197af7743e01625b8c73cdbbc6e04eaf381d970317fb703888d68fc11dd",
   "tests/original-run-transport-lifecycle.test.mjs": "8bafa927a7ce4067f6c864ddabd93df14ca13cd65fb8fe6881b52f47cce1c0cc",
-  "docs/PG18_ISOLATED_BROWSER_TEST_RUNTIME.md": "db3bcb3516d80183fff674bb457bb3cb0a1662737c1d79129b36365eee3f1ac7",
+  "docs/PG18_ISOLATED_BROWSER_TEST_RUNTIME.md": "ffad73a9e30e70607f52a40778e45056e84d30e4e16738827ac4cdcd82eda10e",
   "ops/pg18-original-no-store-browser-check.mjs": "e4e6584bdb7f628a50de21727d1e06794eb997cedbe3621c450da8bea36008f6",
   "tests/helpers/original-feedback-revocation.mjs": "489fc3f53a29c1e249b58472a1feaad139b151ef553f5424f164f78fa7089db9",
   "tests/helpers/original-no-store-browser-check.mjs": "22ba2fc8a31cd3048dc3889e36a2ea0e9e0cb720b0453bd9e854107ffa1c43e5",
   "tests/original-feedback-revocation.test.mjs": "5b9a426a6644df57c815aad23af7f20e9a577cb8e95883c51b39b7e2e7a16a5f",
-  "tests/original-no-store-browser-check.test.mjs": "e84a9dbc556c0705b237585f232b8dbeb60eafa6cf9b36fb6d1ba4e61bf60a4c"
+  "tests/original-no-store-browser-check.test.mjs": "e84a9dbc556c0705b237585f232b8dbeb60eafa6cf9b36fb6d1ba4e61bf60a4c",
+  "services/pg-api/tests/fixtures/writer-report-before-fifo.txt": "a08e89dd93d005a411067aabd8c6eca74f778d3620762aab0abc7b73184be1df",
+  "services/pg-api/tests/worker-heartbeat-writer-report-admission.test.mjs": "8a10f771c94c760694daeb1f8ccb44a4b75b78d30a6996b62327df50b4fd2324"
 })
 export async function startPgNativeApprovalDelegationGenuineBrowserFixture(env=process.env){
   requireApprovalDelegationGenuineCi(env)

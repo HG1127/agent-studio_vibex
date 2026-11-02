@@ -38,7 +38,7 @@ export type WorkerHeartbeatWriterRootBridge=Readonly<{
 }>
 type Boot={id:string;uid:number;slot:WriterPublishedSlot;secret:Buffer;claimed:boolean;revoked:boolean}
 type Peer={socket:net.Socket;kind:WorkerHeartbeatKind;open:boolean;busy:boolean;boot?:Boot;backend?:WriterBackendReference;binding?:string;permit?:string;lastSequence:number;work?:Promise<void>;cleanup?:Promise<void>;timer?:ReturnType<typeof setTimeout>}
-type Broker={bridge:WorkerHeartbeatWriterRootBridge;servers:Set<net.Server>;peers:Set<Peer>;boots:Map<string,Boot>;issued:Set<string>;usedUids:Set<number>;paused:boolean;closed:boolean;active?:Peer;refreshing:boolean;enrollmentError:boolean}
+type Broker={bridge:WorkerHeartbeatWriterRootBridge;servers:Set<net.Server>;peers:Set<Peer>;boots:Map<string,Boot>;issued:Set<string>;usedUids:Set<number>;paused:boolean;closed:boolean;active?:Peer;reportQueue:Set<Peer>;refreshing:boolean;enrollmentError:boolean}
 const brokers=new WeakMap<object,Broker>(),controls=new WeakSet<object>(),closures=new WeakMap<object,Promise<void>>()
 const opaque=<T>():T=>Object.freeze(Object.create(null)) as T
 const secret=()=>randomBytes(32).toString('hex'),hash=(v:Uint8Array|string)=>createHash('sha256').update(v).digest('hex')
@@ -78,7 +78,7 @@ function writerBootBatches(slots:readonly WriterPublishedSlot[],issued:Set<strin
 export async function openWorkerHeartbeatWriterBroker(control:Control):Promise<WorkerHeartbeatWriterBroker|null>{
  const bridge=getWorkerHeartbeatWriterBridge(control);if(!bridge)return null
  if(controls.has(control))return writerFail('writer_closed');controls.add(control)
- const s:Broker={bridge,servers:new Set(),peers:new Set(),boots:new Map(),issued:new Set(),usedUids:new Set(),paused:false,closed:false,refreshing:false,enrollmentError:false}
+ const s:Broker={bridge,servers:new Set(),peers:new Set(),boots:new Map(),issued:new Set(),usedUids:new Set(),reportQueue:new Set(),paused:false,closed:false,refreshing:false,enrollmentError:false}
  parseHistory(s);const handle=opaque<WorkerHeartbeatWriterBroker>();brokers.set(handle,s)
  await refreshWorkerHeartbeatWriterBroker(handle);return handle
 }
@@ -113,7 +113,7 @@ async function closePeer(s:Broker,p:Peer):Promise<void>{
   if(p.backend)await s.bridge.close(p.backend)
   if(p.work)await p.work.catch(()=>{})
   if(p.backend)await s.bridge.close(p.backend)
-  s.peers.delete(p)
+  s.reportQueue.delete(p);s.peers.delete(p)
  })()
  return p.cleanup
 }
@@ -179,15 +179,42 @@ try{bridge.check('serve')}finally{try{if(timing){timing.guardCalls++;if(guardSta
  if(timing){timing.phase='completed';timing.completed=true}
  }finally{try{reportWriterBindTiming(timing)}catch{}}
 }
-async function report(s:Broker,p:Peer,request:string,binding:string,permit:string,value:WorkerHeartbeatReport){
+function writerReportAdmission(s:Broker,p:Peer,deadline:number):()=>void{
+ if(!Number.isFinite(deadline))return writerFail()
+ const bridge=s.bridge,socket=p.socket,boot=p.boot,backend=p.backend,binding=p.binding,rootAdmission=bridge.captureAdmission()
+ // Private context/queue state only. No cached source, role, OID, catalog or
+ // readiness result authorizes dispatch; peerCurrent still runs freshly below.
+ return ()=>{
+  if(s.bridge!==bridge||p.socket!==socket||p.boot!==boot||p.backend!==backend||p.binding!==binding||s.closed||s.paused||!s.peers.has(p)||!p.open||!p.busy||!boot||boot.revoked||socket.destroyed||socket.readableEnded||socket.writableEnded||!socket.writable)writerFail('writer_closed')
+  rootAdmission()
+  if(performance.now()>=deadline)writerFail('writer_deadline')
+ }
+}
+async function report(s:Broker,p:Peer,request:string,binding:string,permit:string,value:WorkerHeartbeatReport,deadline:number){
  s.bridge.check('cleanup')
  if(!p.boot||p.boot.revoked||!p.backend||p.binding!==binding||!p.permit||!timingSafeEqual(Buffer.from(p.permit),Buffer.from(permit))||value.generation!==p.boot.slot.generation||value.sequence<=p.lastSequence)return writerFail()
  // An issued permit is consumed synchronously, before any await or reentry.
  p.permit=undefined;p.lastSequence=value.sequence
- if(s.paused||s.active||s.bridge.busy()){
+ if(s.paused){
   p.permit=secret();reply(p,request,false,{code:'writer_busy',not_dispatched:true,settled:true,next_permit:p.permit});return
  }
- peerCurrent(s,p);s.active=p
+ const checkedAdmission=writerReportAdmission(s,p,deadline)
+ s.reportQueue.add(p)
+ try{
+  for(;;){
+   checkedAdmission()
+   // Closed peers cannot reserve admission while their owned cleanup drains.
+   for(const waiting of s.reportQueue)if(!waiting.open||!s.peers.has(waiting))s.reportQueue.delete(waiting)
+   if(s.reportQueue.values().next().value===p&&!s.active&&!s.bridge.busy()){
+    peerCurrent(s,p)
+    checkedAdmission() // The original complete gate consumes this same deadline.
+    if(!s.active&&!s.bridge.busy()){s.active=p;break}
+   }
+   const remaining=deadline-performance.now();if(remaining<=0){checkedAdmission();writerFail('writer_deadline')}
+   await waitForWriterAdmission(Math.min(5,remaining))
+  }
+ }finally{s.reportQueue.delete(p)}
+ // No await separates the final fresh guard/slot claim and the original record.
  try{
   const ack=await s.bridge.record(p.backend,value);peerCurrent(s,p)
   p.permit=secret();reply(p,request,true,{...ack,next_permit:p.permit})
@@ -216,7 +243,7 @@ function accept(s:Broker,kind:WorkerHeartbeatKind,socket:net.Socket){
     s.bridge.check('cleanup');const message=parseWriterRequest(writerDecode(raw));request=message.request_id
     if(performance.now()>=deadline)return writerFail('writer_deadline')
     if(message.op==='bind')await bind(s,p,request,message.boot_secret,deadline)
-    else await report(s,p,request,message.binding_id,message.permit,message.report)
+    else await report(s,p,request,message.binding_id,message.permit,message.report,deadline)
    }catch(error){
     // Framing/auth failures are terminal. Known no-SQL failure can be replied
     // without inventing a DB acknowledgement or another generation/permit.

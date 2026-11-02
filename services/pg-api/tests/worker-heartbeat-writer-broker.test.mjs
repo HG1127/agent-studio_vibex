@@ -6,16 +6,19 @@ import {readFileSync} from 'node:fs'
 import * as ts from 'typescript'
 import {randomBytes,timingSafeEqual} from 'node:crypto'
 import {EventEmitter} from 'node:events'
+import {stripTypeScriptTypes} from 'node:module'
+import {performance} from 'node:perf_hooks'
+import {setTimeout as waitForWriterAdmission} from 'node:timers/promises'
 import {openWorkerHeartbeatWriterBroker} from '../src/worker-heartbeat-writer-broker.ts'
 import * as p from '../src/worker-heartbeat-writer-protocol.ts'
 const genA='12345678-1234-4234-8234-123456789abc',genB='22345678-1234-4234-8234-123456789abc',id='32345678-1234-4234-8234-123456789abc',hex='a'.repeat(64)
 const slot=(kind,generation=genA,slot_no=1,action_id=id)=>({kind,generation,slot_no,action_id,role_oid:30000+slot_no,reference:Object.freeze({model_only:true}),publication_epoch:'1'})
 function privatePolicy(){
  const source=readFileSync(new URL('../src/worker-heartbeat-writer-broker.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('broker.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
- const names=['parseHistory','writerBootBatches','peerCurrent','reply','report'],functions=names.map(name=>tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText()).join('\n')
- const compiled=ts.transpileModule("const slotKey=(slot)=>slot.kind+':'+slot.slot_no+':'+slot.generation;\n"+functions,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
- return Function('writerKind','writerUid','writerUuid','writerHex','writerObject','writerFail','writerLaunchGroup','writerEncode','writerProtocol','WorkerHeartbeatWriterError','timingSafeEqual','secret',compiled+'\nreturn {parseHistory,writerBootBatches,report}')(
-  p.writerKind,p.writerUid,p.writerUuid,p.writerHex,p.writerObject,p.writerFail,p.writerLaunchGroup,p.writerEncode,p.writerProtocol,p.WorkerHeartbeatWriterError,timingSafeEqual,()=>randomBytes(32).toString('hex'))
+ const names=['parseHistory','writerBootBatches','peerCurrent','reply','writerReportAdmission','report'],functions=names.map(name=>tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText()).join('\n')
+ const compiled=stripTypeScriptTypes("const slotKey=(slot)=>slot.kind+':'+slot.slot_no+':'+slot.generation;\n"+functions)
+ return Function('writerKind','writerUid','writerUuid','writerHex','writerObject','writerFail','writerLaunchGroup','writerEncode','writerProtocol','WorkerHeartbeatWriterError','timingSafeEqual','secret','performance','waitForWriterAdmission','writerLimits',compiled+'\nreturn {parseHistory,writerBootBatches,report:(...args)=>report(...args,performance.now()+writerLimits.sendMs)}')(
+  p.writerKind,p.writerUid,p.writerUuid,p.writerHex,p.writerObject,p.writerFail,p.writerLaunchGroup,p.writerEncode,p.writerProtocol,p.WorkerHeartbeatWriterError,timingSafeEqual,()=>randomBytes(32).toString('hex'),performance,waitForWriterAdmission,p.writerLimits)
 }
 test('only a genuine Controller may create a Root broker; cloned/data/getter capabilities refuse before OS or pg work',async()=>{
  let gets=0
@@ -40,8 +43,8 @@ test('isolated durable allocation projection retains issued generation even with
  for(const uid of [0,NaN,undefined])assert.throws(()=>policy.parseHistory({bridge:{history:()=>[issued(uid)]},usedUids:new Set(),issued:new Set()}),/writer_not_enrolled/)
 })
 function reportModel(record,close=async()=>{}){
- const frames=[],current=slot('prepare'),peer={open:true,busy:false,kind:'prepare',lastSequence:0,binding:hex,permit:hex,backend:Object.freeze({model_only:true}),boot:{slot:current,revoked:false},socket:{writable:true,write:bytes=>frames.push(p.writerDecode(bytes.subarray(4))),end(){}}}
- const state={closed:false,paused:false,bridge:{check(){},current:()=>[current],busy:()=>false,record,close},active:undefined}
+ const frames=[],current=slot('prepare'),peer={open:true,busy:true,kind:'prepare',lastSequence:0,binding:hex,permit:hex,backend:Object.freeze({model_only:true}),boot:{slot:current,revoked:false},socket:{writable:true,write:bytes=>frames.push(p.writerDecode(bytes.subarray(4))),end(){}}}
+ const state={closed:false,paused:false,bridge:{check(){},captureAdmission:()=>()=>{},current:()=>[current],busy:()=>false,record,close},active:undefined,reportQueue:new Set(),peers:new Set([peer])}
  const report={protocol:'native_worker_heartbeat_report_v1',generation:genA,sequence:1,state:'ready',reason:'startup_checks_complete'}
  return {state,peer,report,frames,policy:privatePolicy()}
 }
@@ -68,7 +71,8 @@ test('source stages complete knowledge batches before making either secret binda
  const source=readFileSync(new URL('../src/worker-heartbeat-writer-broker.ts',import.meta.url),'utf8')
  assert.ok(source.indexOf("persist('writer_boot_issued'")<source.indexOf('stageWriterBootCredential(id'))
  assert.ok(source.indexOf("persist('writer_boot_staged'")<source.indexOf('s.boots.set(slotKey(item.slot)'))
- assert.match(source,/if\(s\.paused\|\|s\.active\|\|s\.bridge\.busy\(\)\)/)
+ assert.match(source,/if\(s\.paused\)/)
+ assert.match(source,/s\.reportQueue\.values\(\)\.next\(\)\.value===p&&!s\.active&&!s\.bridge\.busy\(\)/)
  const tree=ts.createSourceFile('broker.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS),body=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='report').getText()
  assert.doesNotMatch(body,/\.persist\(/);assert.ok(body.indexOf('p.permit=undefined')<body.indexOf('await s.bridge.record'))
 })
@@ -76,7 +80,7 @@ test('source stages complete knowledge batches before making either secret binda
 test('isolated partial-listener startup failure closes every already opened listener before rejecting and never enrolls another listener',async()=>{
  const source=readFileSync(new URL('../src/worker-heartbeat-writer-broker.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('broker.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
  const names=['serveWorkerHeartbeatWriterBroker','closeWorkerHeartbeatWriterBroker'],functions=names.map(name=>tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText().replace(/^export /,'')).join('\n')
- const compiled=ts.transpileModule(functions,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+ const compiled=stripTypeScriptTypes(functions)
  const groups=[{kind:'prepare',gid:19001},{kind:'model',gid:19002},{kind:'workflow_safe',gid:19003}],servers=[],state={closed:false,paused:false,servers:new Set(),peers:new Set(),boots:new Map(),bridge:{check(){},settings:{groups}}}
  class ModelServer extends EventEmitter{
   listening=false;closed=false

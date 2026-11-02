@@ -10147,6 +10147,89 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_eb04cbb_writer_report_and_host_dependency_followup": {
+      "base_head": "eb04cbb2e12ca97a1b26ec3e12c14f4fb2110f3f",
+      "source_reseal_pending": false,
+      "source_changes": [
+        "Bounded FIFO admission only inside the existing5s report request; permits consumed once and fresh original peer/source/role/OID checks immediately precede original record.",
+        "Original record ACK, unknown effects, owned cleanup, all8 kinds, serial pool1,30s sender cadence,45s online and15s sample remain unchanged.",
+        "Actual host callback pure extraction now links its real feedback revocation factory and initialization; all original pause/cancel/identity assertions remain, with a new missing-import refusal."
+      ],
+      "Root_proof": {
+        "writer_pure": 60,
+        "host_callback_pure": 23,
+        "actual_product_API_tsc": true,
+        "local_SQL_Worker_Native_browser_or_provider_calls": 0,
+        "current_candidate_genuine_acceptance": false
+      },
+      "base_hosted_proof": {
+        "F01_jobs": 21,
+        "F01_pass": 21,
+        "pinned_browser_controls": 12,
+        "actual_original_model_draft_and_feedback403_and_run_detail_and_release_completion_pass": true,
+        "quality_source_job": {
+          "tests": 2971,
+          "pass": 2958,
+          "fail": 13,
+          "skip": 0,
+          "reason": "terminal extraction missing feedback dependency; Root repair directed23pass"
+        },
+        "Legacy": {
+          "reason": "full069_worker_live_native_heartbeat_unavailable",
+          "actual_heartbeat_HTTP": 503,
+          "reader_stage": "finish_registry",
+          "reader_elapsed_ms": 5040,
+          "reader_remaining_ms": -39,
+          "guard_calls": 130,
+          "guard_ms": 4580,
+          "original_deadline_ms": 5000
+        },
+        "Final14": {
+          "reason": "full069_worker_live_native_heartbeat_unavailable",
+          "phase": "warm_sample",
+          "reader_phase": "controller_reader_audit",
+          "reader_finish": "finish_registry",
+          "reader_elapsed_ms": 5013,
+          "reader_remaining_ms": -12,
+          "guard_calls": 93,
+          "guard_ms": 4545,
+          "original_reader_deadline_ms": 5000,
+          "current_success": false
+        }
+      },
+      "private_candidates": {
+        "A_roles": {
+          "Root_combined_entries": 47,
+          "Root_exact_hunks": 92,
+          "Root_actual_API_tsc_pass": true,
+          "Root_role_pure": 115,
+          "portable_old_machine_fixture_pending": false,
+          "full_UI_or_SQL_acceptance": false,
+          "product_integrated": false
+        },
+        "B_desktop": {
+          "Root_inputs": 63,
+          "Root_pure": 124,
+          "Root_workspace_guard_unchanged": true,
+          "actual_Electron_and_SQL_and_employee_UI": false,
+          "product_integrated": false
+        },
+        "C_quality_Staff": {
+          "Root_actual_API_tsc_pass": true,
+          "Root_actual_complete_frontend_tsc_pass": false,
+          "real_hook_component_contract_closure_in_progress": true,
+          "product_integrated": false
+        }
+      },
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 20319,
+        "retained_prior_pins": 20269,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
