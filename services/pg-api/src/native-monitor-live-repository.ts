@@ -4,6 +4,7 @@ import {withActorClient,assertOwnedAdmissionContext} from './repository.ts'
 import {ownOperationsGuardSql} from './own-operations-repository.ts'
 import {ownId} from './own-operations-contract.ts'
 import {verifyMonitorLiveSchema} from './native-monitor-live-audit.ts'
+import {checkedMonitorLiveSchemaProfile,type MonitorLiveSchemaProfile} from './native-monitor-schema-profile.ts'
 import {NativeMonitorBusinessData} from './native-monitor-business-data.ts'
 import {NativeMonitorDefinitionAuthority} from './native-monitor-definition-authority.ts'
 import {NativeMonitorAuthor} from './native-monitor-author.ts'
@@ -23,8 +24,11 @@ export class NativeMonitorLiveRepository{
  readonly reads:NativeMonitorLiveReads
  private readonly readReceipt:typeof readMonitorStoredReceipt
  private readonly ordinary:boolean
+  private readonly schemaProfile:MonitorLiveSchemaProfile
  private readonly extraReady?:(db:SqlClient)=>Promise<void>
- constructor(pool:SqlPool,options:{evidence?:MonitorEvidenceAccess;readReceipt?:typeof readMonitorStoredReceipt;assertReady?:(db:SqlClient)=>Promise<void>}={}){
+  constructor(pool:SqlPool,options:{evidence?:MonitorEvidenceAccess;readReceipt?:typeof readMonitorStoredReceipt;assertReady?:(db:SqlClient)=>Promise<void>;schemaProfile?:MonitorLiveSchemaProfile}={}){
+   this.schemaProfile=checkedMonitorLiveSchemaProfile(options.schemaProfile===undefined?'monitor074':options.schemaProfile)
+   if(this.schemaProfile==='monitor074-ordinary077'&&(!options.evidence||!options.readReceipt||!options.assertReady))throw Error('ordinary_case_schema_audit_required')
   this.pool=pool;this.ordinary=options.evidence!==undefined;this.extraReady=options.assertReady
   this.data=new NativeMonitorBusinessData(async()=>{throw new HttpError(403,'monitor_worker_required')},undefined,options.evidence)
   this.authority=new NativeMonitorDefinitionAuthority(this.data);this.author=new NativeMonitorAuthor(this.data,this.authority)
@@ -39,7 +43,7 @@ export class NativeMonitorLiveRepository{
    await db.query("SET LOCAL statement_timeout='8000ms'; SET LOCAL lock_timeout='3000ms'");await db.query('SET LOCAL search_path=pg_catalog')
    const value=await withActorClient(db,this.pool,identity,async(client,owner)=>{
     if(ownId(expectedEmployee)!==owner)throw new HttpError(409,'employee_session_changed')
-    await assertOwnedAdmissionContext(client,owner);await verifyMonitorLiveSchema(client);await this.extraReady?.(client)
+    await assertOwnedAdmissionContext(client,owner);await verifyMonitorLiveSchema(client,this.schemaProfile);await this.extraReady?.(client)
     const guard=(await client.query<{ok:boolean}>(ownOperationsGuardSql)).rows;if(guard.length!==1||guard[0]?.ok!==true)return unavailable()
     await requireMonitorEmployeeAuthority(client,owner)
     return work(client,owner)

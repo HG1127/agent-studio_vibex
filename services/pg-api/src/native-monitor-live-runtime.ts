@@ -20,10 +20,11 @@ export function selectNativeMonitorLive(env:NodeJS.ProcessEnv,listen:boolean,ori
 // Preparation performs catalog reads only. It starts no server, loop,
 // scheduler, source GET, provider request or worker process.
 export async function prepareNativeMonitorLive(input:{pool:SqlPool;env:NodeJS.ProcessEnv;listen:boolean;allowedOrigin:string;configurationWrites?:boolean;ordinaryCaseEnabled?:boolean}){
- const selection=selectNativeMonitorLive(input.env,input.listen,input.allowedOrigin),schema=await inspectOptionalMonitorLive(input.pool)
+  const schemaProfile=input.ordinaryCaseEnabled===true?'monitor074-ordinary077':'monitor074'
+  const selection=selectNativeMonitorLive(input.env,input.listen,input.allowedOrigin),schema=await inspectOptionalMonitorLive(input.pool,schemaProfile)
  if(!selection.enabled)return null
  if(schema!=='installed')throw Error('native_monitor_live_schema_required')
- const repository=new NativeMonitorLiveRepository(input.pool,input.ordinaryCaseEnabled===true?{evidence:ordinaryCaseEvidenceAccess,readReceipt:readOrdinaryCaseReceipt,assertReady:verifyOrdinaryCaseSchema}:{})
+  const repository=new NativeMonitorLiveRepository(input.pool,input.ordinaryCaseEnabled===true?{evidence:ordinaryCaseEvidenceAccess,readReceipt:readOrdinaryCaseReceipt,assertReady:verifyOrdinaryCaseSchema,schemaProfile}:{})
  return Object.freeze({
   repository,
   hostOptions:Object.freeze({allowMonitorBusinessSpecs:true,allowMonitorBusiness:true,monitorBusinessExecutionApproved:selection.execution,allowMonitorBusinessExecution:selection.execution}),

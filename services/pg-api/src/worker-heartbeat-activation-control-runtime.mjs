@@ -312,6 +312,21 @@ function packageInfo(state,name){
   if(name==='pg'&&(p.peerDependencies?.['pg-native']!=='>=3.0.1'||p.peerDependenciesMeta?.['pg-native']?.optional!==true||p.exports?.['.']?.require!=='./lib/index.js'||p.exports?.['.']?.import!=='./esm/index.mjs'))fail()
   return p
 }
+// Private constructor-derived manifest layout only: no file bytes, Stats,
+// descriptors, observed inventory or authorization result is retained here.
+const treeLayouts=new WeakMap()
+function runtimeTreeLayout(state,initial){
+  const prior=treeLayouts.get(state);if(prior)return prior
+  // Only verifyTree(state,true), inside the original verified constructor,
+  // can create this expected path layout. JSON/capability clones cannot.
+  if(!initial)fail()
+  const rootPackages=new Set(Object.keys(graph).map(name=>prefix+name+'/package.json'))
+  const allowed=new Map(state.files)
+  for(const [p,h] of Object.entries(parserPins))allowed.set(prefix+'typescript/'+p,{sha256:h,bytes:undefined})
+  const dirs=new Set([prefix.slice(0,-1)])
+  for(const p of allowed.keys()){const pieces=p.split('/');for(let i=3;i<pieces.length;i++)dirs.add(pieces.slice(0,i).join('/'))}
+  const layout=Object.freeze({rootPackages,allowed,dirs});treeLayouts.set(state,layout);return layout
+}
 function verifyTree(state,initial=false){
   host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)
   const manifest=readBound(state.manifestFile,state.manifestSha,'manifest')
@@ -323,11 +338,7 @@ function verifyTree(state,initial=false){
   // Root package metadata is decoded by packageInfo below in THIS assertion.
   // Keep every original readBound/hash/stat/chain observation; only the
   // earlier duplicate root-type JSON decode is omitted. No cross-assert cache.
-  const rootPackages=new Set(Object.keys(graph).map(name=>prefix+name+'/package.json'))
-  const allowed=new Map(state.files)
-  for(const [p,h] of Object.entries(parserPins))allowed.set(prefix+'typescript/'+p,{sha256:h,bytes:undefined})
-  const dirs=new Set([prefix.slice(0,-1)])
-  for(const p of allowed.keys()){const pieces=p.split('/');for(let i=3;i<pieces.length;i++)dirs.add(pieces.slice(0,i).join('/'))}
+  const {rootPackages,allowed,dirs}=runtimeTreeLayout(state,initial)
   const seen=new Set();let count=0
   const walk=relative=>{
     const directory=lstatSync(path.join(root,relative)),directoryStamp=stamp(directory)

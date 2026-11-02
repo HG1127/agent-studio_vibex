@@ -47,7 +47,7 @@ export async function originalScheduleWorkerBrowserFixture(env=process.env){
    remember('blocked_requests',sample);reply(res,404,'original_schedule_worker_route_refused')
   })
   server.requestTimeout=30000;server.headersTimeout=15000;await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(17443,'127.0.0.1',resolve)});reviewed.check()
-  return{...backend,origin:permit.origin,url:permit.origin+'/login?redirect=%2Fscheduled-tasks',spki:crypto.createHash('sha256').update(new crypto.X509Certificate(tls.cert).publicKey.export({type:'spki',format:'der'})).digest('base64'),provenance,observations,
+  return{...backend,origin:permit.origin,url:permit.origin+'/login?next=%2Fscheduled-tasks',spki:crypto.createHash('sha256').update(new crypto.X509Certificate(tls.cert).publicKey.export({type:'spki',format:'der'})).digest('base64'),provenance,observations,
    holdNextRunRead(id,mode){assert(!nextHold&&holds.size===0);assert.match(id,/^[a-f0-9-]{36}$/);assert(['agent_native_v2','workflow_native_v2'].includes(mode));let release,enter,reject;const wait=new Promise(resolve=>{release=resolve}),entered=new Promise((resolve,fail)=>{enter=resolve;reject=fail});void entered.catch(()=>{});const gate={path:'/__pg_native/api/v2/'+(mode==='agent_native_v2'?'agent-autonomous-runs':'workflow-v2-runs')+'/'+id,wait,release,enter,reject};holds.add(gate);nextHold=gate;return{entered,release}},close
   }
  }catch(error){try{await close()}catch(cleanup){throw new AggregateError([error,cleanup],'schedule_worker_browser_start_and_cleanup_failed')}throw error}

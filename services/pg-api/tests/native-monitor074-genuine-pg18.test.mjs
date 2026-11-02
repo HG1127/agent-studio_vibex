@@ -36,7 +36,7 @@ test('074 real Native schedule->approved step->one-use GET->business ledger->fre
   await f.db.exec(fs.readFileSync(path.join(root,'db/postgres/migrations/pg_v9_074_monitor_live.sql'),'utf8'))
   const makePool=async(name,roles)=>{
    assert.match(name,/^[a-z_]+$/);assert.match(roles,/^[a-z_,]+$/)
-   const password=crypto.createHash('sha512').update(permit.target.password+':monitor074:'+name).digest('hex')
+   const password=crypto.randomBytes(40).toString('hex')
    await f.db.query('CREATE ROLE '+name+" LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+makeNativeScramVerifier(password)+"'")
    await f.db.query('GRANT '+roles+' TO '+name)
    const pool=new pg.Pool({...permit.target,user:name,password,max:4,statement_timeout:10000,query_timeout:15000});pool.on('error',()=>{});extraPools.push(pool)

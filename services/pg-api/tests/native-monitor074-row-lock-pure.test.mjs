@@ -1,5 +1,6 @@
 // Memory/source counterexamples only. No SQL engine, installed ACL or Worker acceptance.
 import test from 'node:test'
+import './native-monitor074-fixture-credentials.test.mjs'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'

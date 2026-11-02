@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [flow, database, home070, home071, home072, monitor073, monitor074]
+        suite: [flow, database, home070, home071, home072, monitor073, monitor074, monitor074-ordinary077]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -130,6 +130,17 @@ jobs:
           AGENT_STUDIO_NATIVE_MONITOR074_EXPECTED_HEAD: '${{ github.sha }}'
         working-directory: services/pg-api
         run: node --experimental-strip-types --test --test-concurrency=1 tests/native-monitor074-genuine-pg18.test.mjs
+      - name: Explicit074 ordinary077 schema profile source admission
+        if: matrix.suite == 'monitor074-ordinary077'
+        run: node --experimental-strip-types --test services/pg-api/tests/native-monitor-schema-profile-pure.test.mjs
+      - name: Actual explicit074 ordinary077 installation and exact incoming constraints
+        if: matrix.suite == 'monitor074-ordinary077'
+        working-directory: services/pg-api
+        env:
+          AGENT_STUDIO_MONITOR_ORDINARY_PROFILE_CI: YES_DISPOSABLE_MONITOR074_ORDINARY077_SCHEMA_ONLY
+          AGENT_STUDIO_MONITOR_ORDINARY_PROFILE_SUITE: monitor074-ordinary077
+          AGENT_STUDIO_MONITOR_ORDINARY_PROFILE_EXPECTED_HEAD: ${{ github.sha }}
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/native-monitor-ordinary-profile-genuine-pg18.test.mjs
 
   pg18-agent-design-browser:
     name: F01 fixture / real PG18 browser / ${{ matrix.story }}
@@ -212,6 +223,7 @@ jobs:
         if: matrix.story == 'original-agent-run-queued' || matrix.story == 'original-run-detail-queued'
         run: |
           node --experimental-strip-types --test tests/pg-original-run-queued-policy.test.mjs tests/pg-original-run-queued-host-source-pure.test.mjs
+          node --experimental-strip-types --test tests/original-run-detail-route-binding-pure.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Original ModelConnections075 source policy and original UI build
         if: matrix.story == 'original-model-config-receipts075'
@@ -235,6 +247,7 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           pnpm exec tsc --noEmit
+          node --experimental-strip-types --test tests/original-run-detail-route-binding-pure.test.mjs tests/original-release-completion-progress-diagnostic-pure.test.mjs
           node --experimental-strip-types --test tests/original-run-interaction-contract.test.mjs tests/original-run-interaction-api.test.mjs tests/original-run-interaction-controller.test.mjs tests/original-run-interaction-http.test.mjs tests/original-run-interaction-repository.test.mjs tests/pg-original-version-release-completion-policy-pure.test.mjs tests/pg-original-version-release-completion-proof-pure.test.mjs tests/original-run-detail-native-pure.test.mjs tests/pg-native-agent-human-input-session.test.mjs services/pg-api/tests/agent-human-input-contract.test.mjs services/pg-api/tests/agent-human-input-machine.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Original pending receipt and complete Native bundle source closure regressions

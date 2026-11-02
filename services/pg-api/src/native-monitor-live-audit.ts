@@ -3,6 +3,7 @@ import type {SqlClient,SqlPool} from './contracts.ts'
 import {monitorLiveTables as tables,monitorLiveFunctions as functions,monitorLiveRoles as roles} from './native-monitor-live-schema.ts'
 import {verifyNativeMonitorInboxSchema} from './native-monitor-inbox-audit.ts'
 import {monitorLiveOid,monitorLiveRoleOids,verifyMonitorLiveTableAcl,verifyMonitorLiveFunctionAcl} from './native-monitor-live-acl.ts'
+import {checkedMonitorLiveSchemaProfile,readMonitorLiveExtensionPresence,type MonitorLiveSchemaProfile} from './native-monitor-schema-profile.ts'
 const api='agentstudio_api',fail=():never=>{throw Error('unsafe_monitor_live_inbox_schema')},canonical=(v:string)=>v.replace(/\s+/g,'')
 const placeholders="SELECT c.oid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' AND starts_with(c.relname,'monitor_live_')"
 export const monitorLivePresenceSql="SELECT 'migration' AS kind,version AS name FROM agentstudio.schema_migrations WHERE version='pg_v9_074' UNION ALL "+
@@ -21,7 +22,7 @@ export const monitorLiveExpectedPresence=[
   ...t.columns.filter(c=>c.required).map(c=>'constraint:'+t.name+'_'+c.name+'_not_null')]),
  'trigger:monitor_live_events_read_guard',
 ].sort()
-function exactPresence(rows:{kind:string;name:string}[]){if(!Array.isArray(rows)||rows.some(r=>typeof r?.kind!=='string'||typeof r?.name!=='string')||JSON.stringify(rows.map(r=>r.kind+':'+r.name).sort())!==JSON.stringify(monitorLiveExpectedPresence))fail()}
+function exactPresence(rows:{kind:string;name:string}[],extensions:readonly string[]=[]){const expected=extensions.length?[...monitorLiveExpectedPresence,...extensions].sort():monitorLiveExpectedPresence;if(!Array.isArray(rows)||rows.some(r=>typeof r?.kind!=='string'||typeof r?.name!=='string')||JSON.stringify(rows.map(r=>r.kind+':'+r.name).sort())!==JSON.stringify(expected))fail()}
 async function verifyMonitorLiveRoles(db:SqlClient):Promise<void>{
  for(const role of roles){
   const rows=(await db.query<{safe:boolean}>("SELECT NOT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication AND r.rolconfig IS NULL AND r.rolconnlimit=-1 AND r.rolvaliduntil IS NULL AND has_schema_privilege(r.oid,'agentstudio','USAGE') AND NOT has_schema_privilege(r.oid,'agentstudio','CREATE') AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members a WHERE a.member=r.oid) AND "+
@@ -29,10 +30,12 @@ async function verifyMonitorLiveRoles(db:SqlClient):Promise<void>{
   if(rows.length!==1||rows[0]?.safe!==true)fail()
  }
 }
-export async function verifyMonitorLiveSchema(db:SqlClient):Promise<void>{
+export async function verifyMonitorLiveSchema(db:SqlClient,profile:MonitorLiveSchemaProfile='monitor074'):Promise<void>{
+ checkedMonitorLiveSchemaProfile(profile)
  await verifyNativeMonitorInboxSchema(db)
  await verifyMonitorLiveRoles(db)
- exactPresence((await db.query<{kind:string;name:string}>(monitorLivePresenceSql)).rows)
+ const extensions=await readMonitorLiveExtensionPresence(db,profile)
+ exactPresence((await db.query<{kind:string;name:string}>(monitorLivePresenceSql)).rows,extensions)
  const roleOids=await monitorLiveRoleOids(db,[...new Set([api,...roles,...functions.flatMap(f=>[...f.roles])])]),tableOids=new Set<string>(),functionOids=new Set<string>();let ownerOid:string|undefined
  for(const t of tables){
   const name='agentstudio.'+t.name
@@ -76,11 +79,12 @@ export async function verifyMonitorLiveSchema(db:SqlClient):Promise<void>{
  }
 
 }
-export async function inspectOptionalMonitorLive(pool:SqlPool):Promise<'absent'|'installed'>{
+export async function inspectOptionalMonitorLive(pool:SqlPool,profile:MonitorLiveSchemaProfile='monitor074'):Promise<'absent'|'installed'>{
+ checkedMonitorLiveSchemaProfile(profile)
  const db=await pool.connect();let begun=false,primary:unknown,discard=false
  try{await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');begun=true;await db.query('SET LOCAL ROLE agentstudio_api');await db.query('SET LOCAL search_path=pg_catalog')
   const rows=(await db.query<{kind:string;name:string}>(monitorLivePresenceSql)).rows;if(!Array.isArray(rows))fail();if(rows.length===0)return'absent'
-  await verifyMonitorLiveSchema(db);return'installed'
+  await verifyMonitorLiveSchema(db,profile);return'installed'
  }catch(error){primary=error;throw error}
  finally{try{if(begun)await db.query('ROLLBACK')}catch{discard=true;if(primary===undefined)throw Error('monitor_live_catalog_rollback_required')}finally{if(discard)Reflect.apply(db.release,db,[true]);else db.release()}}
 }

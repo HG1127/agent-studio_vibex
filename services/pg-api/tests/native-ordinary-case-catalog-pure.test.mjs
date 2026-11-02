@@ -30,4 +30,10 @@ for(const fn of functions){
  for(const key of ['PUBLIC','missing','grantable','wrong-grantor'])test(fn.name+' rejects '+key,async()=>deny('function-acl',fn.name,rows=>{if(key==='PUBLIC')rows.push({...rows[0],grantee:'0'});if(key==='missing')rows.pop();if(key==='grantable')rows[0].grantable=true;if(key==='wrong-grantor')rows[0].grantor='11'}))
 }
 test('partial or extra077 presence is never treated as absent',async()=>{await deny('presence','077',rows=>rows.pop());await deny('presence','077',rows=>rows.push({kind:'function',name:'ordinary_case_shadow'}))})
+test('ordinary077 full audit refuses missing or unknown incoming074 edges and changed FK actions',async()=>{
+ await deny('incoming-constraints','074',rows=>rows.pop())
+ await deny('incoming-constraints','074',rows=>rows.push({...rows[0],name:'unreviewed_incoming'}))
+ await deny('incoming-constraints','074',rows=>{rows[0].delete_action='c'})
+ await deny('presence','074',rows=>rows.push({kind:'constraint',name:'unreviewed_incoming'}))
+})
 test('optional absence reads no RPC, rolls back and releases once',async()=>{const trace=[];let released=0;const pool={connect:async()=>({query:async sql=>{trace.push(sql);return{rows:sql===ordinaryCasePresenceSql?[]:[]}},release(){released++}})};assert.equal(await inspectOptionalOrdinaryCase(pool),'absent');assert.equal(released,1);assert.equal(trace.at(-1),'ROLLBACK');assert(trace.every(q=>!q.includes('ordinary_case_bind(')))})

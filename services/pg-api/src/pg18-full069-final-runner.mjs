@@ -1,3 +1,4 @@
+import {full069RejectedBranchesFailureData} from './pg18-full069-failure-boundary-observation.mjs'
 import {performance} from 'node:perf_hooks'
 import {writeSync} from 'node:fs'
 import {full069RecordWriteFailureData} from './pg18-full069-owned-record-contract.mjs'
@@ -14,6 +15,9 @@ const sha=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex'),fail=c
 const safeCode=error=>typeof error?.message==='string'&&/^(?:full069_(?:final(?:14)?|worker_live)_[a-z0-9_]{1,120}|pg18_full069_final14_[a-z0-9_]{1,120})$/.test(error.message)?error.message:'full069_final_run_dependency_refused'
 // Closed diagnostics from the two original sample refusal branches only.
 // No message matching, caller timestamp, readiness or authorization is accepted.
+const rejectedBranchesFailureObservations=new WeakMap()
+function rememberRejectedBranchesFailure(error,checks,times){try{rejectedBranchesFailureObservations.set(error,full069RejectedBranchesFailureData(checks,times))}catch{}}
+export function full069FinalRejectedBranchesFailureObservation(error){try{return rejectedBranchesFailureObservations.get(error)??null}catch{return null}}
 const sampleFailureObservations=new WeakMap()
 function sampleFailureMilliseconds(start,end){const value=Math.ceil(end-start);return Number.isFinite(start)&&Number.isFinite(end)&&end>=start&&Number.isSafeInteger(value)&&value>=0&&value<=120000?value:null}
 function rememberSampleFailure(error,reason,before,beforeChecks,checksDone,after,branchTimes){
@@ -28,7 +32,7 @@ async function sample(trust,runtime,processes,native,companions,{initial=false,r
  // Observe settlement of the same three original promises; retain call order,
  // all-settled refusal order, exact results and the original15s sample limit.
  const timed=(key,start,promise)=>promise.finally(()=>{try{branchTimes[key]=sampleFailureMilliseconds(start,performance.now())}catch{}})
- const currentCompanionReadiness=async()=>await observeFull069FinalCompanions(companions,{ready:true}),checks=await Promise.allSettled([timed('native',performance.now(),observeFull069OwnedNative(native,{initial,ready})),timed('runtime',performance.now(),observeFull069FinalRuntime(runtime,{ready})),timed('companions',performance.now(),currentCompanionReadiness())]);const rejected=checks.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
+ const currentCompanionReadiness=async()=>await observeFull069FinalCompanions(companions,{ready:true}),checks=await Promise.allSettled([timed('native',performance.now(),observeFull069OwnedNative(native,{initial,ready})),timed('runtime',performance.now(),observeFull069FinalRuntime(runtime,{ready})),timed('companions',performance.now(),currentCompanionReadiness())]);const rejected=checks.find(r=>r.status==='rejected');if(rejected){try{rememberRejectedBranchesFailure(rejected.reason,checks,branchTimes)}catch{};throw rejected.reason}
  const checksDone=performance.now()
  const [http,data,currentCompanions]=checks.map(r=>r.value);consumeFull069OwnedNativeReaderAudit(http);const companionAfter=await observeFull069FinalCompanions(companions,{ready:false});if(sha(observeFull069OwnedProcesses(processes))!==sha(pids))try{fail('observation_gap')}catch(error){rememberSampleFailure(error,'process_identity_changed',before,beforeChecks,checksDone,undefined,branchTimes);throw error}
  const stable={processes:pids,runtime:data,profile_sha256:ctx.profileSha256,source_sha256:ctx.source.source_sha256};if(identity({...stable,companions:companionBefore})!==identity({...stable,companions:currentCompanions})||identity({...stable,companions:currentCompanions})!==identity({...stable,companions:companionAfter}))fail('companion_observation_gap')

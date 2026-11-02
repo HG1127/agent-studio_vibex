@@ -8263,6 +8263,120 @@
       "required_ancestors_checked": 3,
       "PG_integration_or_desktop_verifier_or_build_executed": false,
       "final_original_UI_acceptance": false
+    },
+    "current_0adf14d_hosted_results": {
+      "head": "0adf14d52e14cb757eeceb542474da51ab51665f",
+      "automatic_workflows": 18,
+      "additional_PB19_manual_workflow": 1,
+      "all19_terminal": true,
+      "success": 14,
+      "failure": 5,
+      "quality_push_jobs": 51,
+      "quality_PR_jobs": 51,
+      "root_regression_passed": 4696,
+      "original_employee_contracts_passed": 2360,
+      "root_TypeScript_and_production_build_passed": true,
+      "PB19": {
+        "run": 41449171316,
+        "passed": 19,
+        "failed": 0,
+        "workers": 2,
+        "seconds": 72.5,
+        "old_PocketBase_recoverability_regression_only": true
+      },
+      "F01": {
+        "jobs": 20,
+        "success": 16,
+        "failure": 4,
+        "remaining": [
+          "monitor074 fixture128hex rejected by original80hex SCRAM contract after original069 prerequisites installed",
+          "release duplicate current-version broad locator",
+          "queued RunDetail duplicate engine reads observed404",
+          "release completion stopped at original explicit-decision/reply gate"
+        ]
+      },
+      "heartbeat_workflow_succeeded": true,
+      "strict_telemetry_Controller_passed": 28,
+      "strict_short8of8_passed": true,
+      "strict_stopped_cleanup_failed": true,
+      "legacy_and_final14_native_primary": "full069_worker_live_native_heartbeat_unavailable",
+      "current_entire_original_employee_application_accepted": false,
+      "production_GO": false
+    },
+    "current_0adf14d_followup_source": {
+      "root_source_only_fixes": [
+        "Worker browser fixture uses original LoginPage next query contract",
+        "existing editor select label prefix locators preserve actual choice and value assertions",
+        "original release current-version text exact locator",
+        "monitor074 random40byte80hex independent credential, original SCRAM validator unchanged"
+      ],
+      "failure_boundary_observer_v107": {
+        "files": 6,
+        "hunks": 11,
+        "new_files": 2,
+        "Root_pure_passed": 154,
+        "additional_live_source_passed": 39,
+        "only_original_failure_paths": true,
+        "original_errors_priority_deadlines_freshness_and_cleanup_preserved": true,
+        "actual_underlying_runtime_fix_proven": false
+      },
+      "monitor074_ordinary077_named_profile": {
+        "name": "monitor074-ordinary077",
+        "explicit_original_ordinary_enabled_required": true,
+        "default074_expected_catalog_unchanged": true,
+        "incoming_constraint": "ordinary_case_runs_fk3",
+        "all_external_incoming_edges_to14tables_inspected": true,
+        "exact_schema_table_OID_owner_keys_actions_and_constraint_shape": true,
+        "full_original073_074_and077_auditors_retained": true,
+        "Root_related_pure_passed": 302,
+        "API_types_passed": true,
+        "new_runtime_executed": false,
+        "material080_or_artifact081_admitted": false,
+        "wider_named_combinations_pending": true,
+        "distinct_hosted_schema_purpose_prepared": true,
+        "actual_negative_constraints_prepared": [
+          "cascade_action_drift",
+          "unrelated_incoming_constraint"
+        ]
+      },
+      "source_reseal_pending": false,
+      "new_head_actual_acceptance": false,
+      "production_GO": false,
+      "queued_RunDetail_route_fix": {
+        "exact_parent_manifest": "f8feeb2ce21da6f7bf7e15eaaabd727e0a2caff6f58cadffdbd051b7fd5eb019",
+        "same_route_bound_before_resume": true,
+        "original_protocol_and_source_rechecks_retained": true,
+        "original_404_ledger_unchanged": true,
+        "API_POSTs_added": 0,
+        "Root_hook_plus_closed_diagnostic_pure": 46,
+        "frontend_types_passed": true,
+        "genuine_browser_recheck_pending": true
+      },
+      "release_progress_diagnostic": {
+        "closed_amendment_manifest": "be2b8b7006c3c7a08633650f1910073c44e39adc61f36fe9d4c7ffc6d7d5aa89",
+        "owner_source_checked_GET_only": true,
+        "categories": 5,
+        "unknown_error_text_emitted": false,
+        "original_human_decision_gate_unchanged": true,
+        "actual_root_cause_fixed": false
+      },
+      "runtime_layout_v109": {
+        "files": 3,
+        "hunks": 2,
+        "Root_pure_passed": 119,
+        "private_constructor_expected_layout_only": true,
+        "cached_current_bytes_metadata_descriptors_or_authorization": false,
+        "original_guards_fresh_IO_and_PG_order_removed": 0,
+        "actual_original5s_cleanup_fixed": false
+      },
+      "source_seals": {
+        "maps": 25,
+        "pins": 18744,
+        "retained_prior_pins": 18444,
+        "completion_required_sources": 107,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

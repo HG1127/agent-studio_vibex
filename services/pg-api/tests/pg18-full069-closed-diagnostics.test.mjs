@@ -1,6 +1,7 @@
 // Pure closed-data and actual AST callback tests. No Worker, server, SQL, /proc,
 // trust factory, credentials, browser or provider is executed by this suite.
 import test from 'node:test'
+import './pg18-full069-failure-boundary-observation.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {createRequire} from 'node:module'

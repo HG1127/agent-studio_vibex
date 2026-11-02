@@ -23,7 +23,7 @@ export const ordinaryCaseExpectedPresence=[
 ].sort()
 function exactPresence(rows:{kind:string;name:string}[]){if(!Array.isArray(rows)||rows.some(r=>typeof r?.kind!=='string'||typeof r?.name!=='string')||JSON.stringify(rows.map(r=>r.kind+':'+r.name).sort())!==JSON.stringify(ordinaryCaseExpectedPresence))fail()}
 export async function verifyOrdinaryCaseSchema(db:SqlClient):Promise<void>{
- await verifyMonitorLiveSchema(db)
+ await verifyMonitorLiveSchema(db,'monitor074-ordinary077')
  exactPresence((await db.query<{kind:string;name:string}>(ordinaryCasePresenceSql)).rows)
  const roleOids=await ordinaryCaseRoleOids(db,[...new Set([api,...roles,...functions.flatMap(f=>[...f.roles])])]),tableOids=new Set<string>(),functionOids=new Set<string>();let ownerOid:string|undefined
  for(const t of tables){

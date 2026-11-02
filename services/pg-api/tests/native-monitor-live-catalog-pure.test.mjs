@@ -1,5 +1,6 @@
 import {monitor074Catalog} from './helpers/monitor074-catalog-data.mjs'
 import test from 'node:test'
+import './native-monitor-schema-profile-pure.test.mjs'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
