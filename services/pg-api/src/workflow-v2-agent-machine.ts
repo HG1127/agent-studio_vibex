@@ -1,3 +1,6 @@
+import {parseOrdinaryCaseRunBinding,type OrdinaryCaseRunBinding} from '../../../shared/ordinary-case-run-contract.ts'
+import {safeNativeMonitorBusinessSpec,parseMonitorBusinessEffect,monitorBusinessTools,type MonitorBusinessTool} from './native-monitor-business-contract.ts'
+import {parseMonitorAgentBinding,type MonitorAgentBinding} from './native-monitor-agent-binding.ts'
 import {parseLocalBinding,parseLocalInput,type LocalBinding} from '../../../shared/native-local-device-contract.mjs'
 // Deterministic, bounded Agent planning/replay. No provider, Tool or DB I/O.
 import {createHash} from "node:crypto"
@@ -10,7 +13,7 @@ import {parseAgentMcpSnapshots,type McpAgentSnapshot} from "./mcp-binding.ts"
 export type WorkflowAgentResult={step_key:string;input_sha256:string;output:string;outcome?:"failed"|"rejected";code?:string}
 export type WorkflowAgentHumanResponse={request_id:string;step_key:string;input_sha256:string;decision:"reply"|"approve"|"revise";answer:string}
 export type WorkflowAgentHumanInput={step_key:string;input_sha256:string;kind:"clarification"|"plan_review";question:string;draft:string;round:number}
-export type WorkflowAgentState={local_device?:LocalBinding;format:"workflow_agent_v2";parent_step_key:string;parent_input_sha256:string;
+export type WorkflowAgentState={case_business?:OrdinaryCaseRunBinding;monitor_business?:MonitorAgentBinding;local_device?:LocalBinding;format:"workflow_agent_v2";parent_step_key:string;parent_input_sha256:string;
   spec_id:string;spec_revision:number;spec:AgentSpecInput;mcp_tool_definitions?:McpAgentSnapshot[];snapshot_sha256:string;results:WorkflowAgentResult[];
   human_protocol?:"agent_human_input_v1";human_responses?:WorkflowAgentHumanResponse[];delivery_protocol?:"agent_full_delivery_v1";memory_context?:AgentMemoryContext}
 export type WorkflowAgentView={status:"waiting"|"awaiting_input"|"succeeded"|"failed"|"rejected";round:number;pending:WorkflowEffectRequest|null;output:string;error_code:string;
@@ -28,11 +31,11 @@ function object(value:unknown):Record<string,unknown>{
   return value as Record<string,unknown>
 }
 function text(value:unknown,max:number):value is string{return typeof value==="string"&&value.length<=max&&!value.includes("\0")}
-export function workflowAgentSpec(raw:unknown,allowNativeLocal=false):AgentSpecInput{
+export function workflowAgentSpec(raw:unknown,allowNativeLocal=false,allowMonitorBusiness=false):AgentSpecInput{
   const item=object(raw)
   if(item.require_approval!==true)invalid()
   const {require_approval:_,...input}=item
-  return safeNativeLocalAgentSpec(input,allowNativeLocal)
+  return allowMonitorBusiness?safeNativeMonitorBusinessSpec(input,true,allowNativeLocal):safeNativeLocalAgentSpec(input,allowNativeLocal)
 }
 function requiresPlanReview(parent:WorkflowEffectRequest,spec:AgentSpecInput):boolean{
   const value:unknown=Object.getOwnPropertyDescriptor(parent.configuration,"require_plan_review")?.value
@@ -53,17 +56,18 @@ function privateMemoryContext(parent:WorkflowEffectRequest,raw:unknown):AgentMem
   if(!ref)invalid()
   return parseAgentMemoryContext(value,{owner_user_id:value.owner_user_id as string,spec_id:ref!.spec_id,spec_revision:ref!.spec_revision,instruction:parent.input})
 }
-export function createWorkflowAgentState(parent:WorkflowEffectRequest,raw:unknown,definitions?:McpAgentSnapshot[],options:{humanInput?:boolean;fullDelivery?:boolean;memoryContext?:AgentMemoryContext;localDevice?:LocalBinding}={}):WorkflowAgentState{
+export function createWorkflowAgentState(parent:WorkflowEffectRequest,raw:unknown,definitions?:McpAgentSnapshot[],options:{humanInput?:boolean;fullDelivery?:boolean;memoryContext?:AgentMemoryContext;localDevice?:LocalBinding;monitorBusiness?:MonitorAgentBinding;caseBusiness?:OrdinaryCaseRunBinding}={}):WorkflowAgentState{
   if(parent.kind!=="agent"||!parent.configuration.agent_binding)invalid()
   if(hasNativeLocalAgentTool(raw)&&!options.localDevice)throw new HttpError(409,"native_local_device_binding_required")
-  const spec=workflowAgentSpec(raw,options.localDevice!==undefined),ref=parent.configuration.agent_binding
+  const spec=workflowAgentSpec(raw,options.localDevice!==undefined,options.monitorBusiness!==undefined||options.caseBusiness!==undefined),ref=parent.configuration.agent_binding
   if(requiresPlanReview(parent,spec)&&options.humanInput!==true)throw new HttpError(409,"agent_human_input_runtime_required")
   if(options.fullDelivery===true&&options.humanInput!==true)invalid()
   if(options.memoryContext!==undefined&&options.humanInput!==true)invalid()
   if(!parent.configuration.model_binding&&!spec.model_binding)throw new HttpError(409,"workflow_agent_model_binding_missing")
   let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,definitions)}catch{invalid()}
   if(spec.tools.includes("local_computer")&&!options.localDevice)throw new HttpError(409,"native_local_device_binding_required")
-  const snapshot={...(options.localDevice?{local_device:parseLocalBinding(options.localDevice)}:{}),spec_id:ref.spec_id,spec_revision:ref.spec_revision,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{}),
+  if(options.monitorBusiness&&options.caseBusiness)throw Error('conflicting_case_business_binding')
+  const snapshot={...(options.caseBusiness?{case_business:parseOrdinaryCaseRunBinding(options.caseBusiness)}:{}),...(options.monitorBusiness?{monitor_business:parseMonitorAgentBinding(options.monitorBusiness)}:{}),...(options.localDevice?{local_device:parseLocalBinding(options.localDevice)}:{}),spec_id:ref.spec_id,spec_revision:ref.spec_revision,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{}),
     ...(options.humanInput===true?{human_protocol:"agent_human_input_v1" as const}:{}),
     ...(options.fullDelivery===true?{delivery_protocol:"agent_full_delivery_v1" as const}:{}),
     ...(options.memoryContext!==undefined?{memory_context:privateMemoryContext(parent,options.memoryContext)}:{})}
@@ -78,11 +82,14 @@ function checked(raw:unknown,parent:WorkflowEffectRequest):WorkflowAgentState{
   if(Object.hasOwn(value,"delivery_protocol"))names.push("delivery_protocol")
   if(Object.hasOwn(value,"memory_context"))names.push("memory_context")
   if(Object.hasOwn(value,"local_device"))names.push("local_device")
+  if(Object.hasOwn(value,"case_business"))names.push("case_business")
+  if(Object.hasOwn(value,"case_business")&&Object.hasOwn(value,"monitor_business"))throw Error("conflicting_case_business_binding")
+  if(Object.hasOwn(value,"monitor_business"))names.push("monitor_business")
   if(Object.keys(value).length!==names.length||names.some(key=>!Object.hasOwn(value,key))||value.format!=="workflow_agent_v2"||
      parent.kind!=="agent"||!parent.configuration.agent_binding||value.parent_step_key!==parent.step_key||value.parent_input_sha256!==parent.input_sha256||
      !isUuid(value.spec_id)||value.spec_id!==parent.configuration.agent_binding.spec_id||value.spec_revision!==parent.configuration.agent_binding.spec_revision||
      !Array.isArray(value.results)||value.results.length>60||Buffer.byteLength(JSON.stringify(raw),"utf8")>4194304)invalid()
-  const spec=workflowAgentSpec(value.spec,Object.hasOwn(value,"local_device"))
+  const spec=workflowAgentSpec(value.spec,Object.hasOwn(value,"local_device"),Object.hasOwn(value,"monitor_business")||Object.hasOwn(value,"case_business"))
   const human=value.human_protocol==="agent_human_input_v1"
   const full=value.delivery_protocol==="agent_full_delivery_v1"
   if(Object.hasOwn(value,"human_protocol")&&!human||requiresPlanReview(parent,spec)&&!human||
@@ -92,9 +99,10 @@ function checked(raw:unknown,parent:WorkflowEffectRequest):WorkflowAgentState{
   let mcp:McpAgentSnapshot[];try{mcp=parseAgentMcpSnapshots(spec.mcp_tools,value.mcp_tool_definitions)}catch{invalid()}
   if(!mcp.length&&Object.hasOwn(value,"mcp_tool_definitions"))invalid()
   if(spec.tools.includes("local_computer")&&!value.local_device)invalid()
-  const snapshot={...(Object.hasOwn(value,"local_device")?{local_device:parseLocalBinding(value.local_device)}:{}),spec_id:value.spec_id,spec_revision:value.spec_revision as number,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{}),
+  const snapshot={...(Object.hasOwn(value,"case_business")?{case_business:parseOrdinaryCaseRunBinding(value.case_business)}:{}),...(Object.hasOwn(value,"monitor_business")?{monitor_business:parseMonitorAgentBinding(value.monitor_business)}:{}),...(Object.hasOwn(value,"local_device")?{local_device:parseLocalBinding(value.local_device)}:{}),spec_id:value.spec_id,spec_revision:value.spec_revision as number,spec,...(mcp.length?{mcp_tool_definitions:mcp}:{}),
     ...(human?{human_protocol:"agent_human_input_v1" as const}:{}),...(full?{delivery_protocol:"agent_full_delivery_v1" as const}:{}),
     ...(Object.hasOwn(value,"memory_context")?{memory_context:privateMemoryContext(parent,value.memory_context)}:{})}
+  if(snapshot.case_business&&(snapshot.case_business.spec_id!==value.spec_id||snapshot.case_business.spec_revision!==value.spec_revision))invalid()
   if(value.snapshot_sha256!==sha(snapshot))invalid()
   const results:WorkflowAgentResult[]=[],seen=new Set<string>()
   for(const rawResult of value.results){
@@ -213,7 +221,7 @@ export function inspectWorkflowAgentState(raw:unknown,parent:WorkflowEffectReque
     const http=state.spec.http_tools?.find(tool=>tool.name===action.tool)
     const mcp=state.mcp_tool_definitions?.find(tool=>tool.name===action.tool)
     if(action.tool==="local_computer"){const input=parseLocalInput(action.params);if(!state.local_device?.catalog.some(t=>t.name===input.tool))invalid()}
-    const configuration:WorkflowEffectRequest["configuration"]=action.tool==="local_computer"?parseNativeLocalEffectConfiguration({title:parent.configuration.title,tool:"local_computer",params_template:workflowAgentJson(action.params)}):{title:mcp?.name??http?.name??parent.configuration.title,
+    const configuration:WorkflowEffectRequest["configuration"]=monitorBusinessTools.includes(action.tool as MonitorBusinessTool)?(parseMonitorBusinessEffect({title:parent.configuration.title,tool:action.tool,params_template:workflowAgentJson(action.params)}) as unknown as WorkflowEffectRequest["configuration"]):action.tool==="local_computer"?parseNativeLocalEffectConfiguration({title:parent.configuration.title,tool:"local_computer",params_template:workflowAgentJson(action.params)}):{title:mcp?.name??http?.name??parent.configuration.title,
       ...(mcp?{mcp_binding:{...mcp.binding}}:http?{tool_binding:{connection_id:http.connection_id,connection_revision:http.connection_revision}}:
         {tool:action.tool as WorkflowEffectRequest["configuration"]["tool"]}),params_template:workflowAgentJson(action.params),
       ...(action.tool==="knowledge_search"?{knowledge_base_ids:[...state.spec.knowledge_base_ids]}:{}),

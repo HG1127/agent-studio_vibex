@@ -1,11 +1,17 @@
 import {useEffect,useState} from 'react'
 import {Link} from 'react-router-dom'
 import {readOriginalMonitorInbox,markOriginalMonitorRead} from '@/lib/originalHomeInboxData'
+import {useOriginalBusinessScope} from '@/lib/originalBusinessScope'
 type Cursor={after_ms:number;after_id:string}
 type Item={item_id:string;monitor_id:string;case_id:string;check_id:string;kind:string;title:string;created_ms:number}
 type Page={items:Item[];has_more:boolean;next_cursor:Cursor|null}
 const labels:Record<string,string>={needs_review:'待复核',incomplete:'检查未完成',configuration_required:'配置需重新核对',source_unavailable:'来源不可用',additional_role:'新增角色',role_started:'新增任职',role_ended:'明确结束',conflict:'事实冲突',source_invalidated:'依据失效',fact_corrected:'事实更正'}
 export function MonitorInbox(){
+  const scope=useOriginalBusinessScope()
+  if(!scope.ready)return <section aria-label="监测待办与变化事件" className="mt-4 rounded-xl border border-border bg-background p-4"><p role="alert" className="text-xs text-muted-foreground">员工身份尚未核实，监测消息已隐藏。</p><button type="button" className="mt-2 rounded border px-2 py-1 text-xs" onClick={scope.recover}>重新核对员工身份</button></section>
+  return <MonitorInboxContent key={scope.key}/>
+}
+function MonitorInboxContent(){
   const [page,setPage]=useState<Page|null>(null),[cursor,setCursor]=useState<Cursor|null>(null),[version,setVersion]=useState(0),[error,setError]=useState(false)
   const [reading,setReading]=useState(''),[actionError,setActionError]=useState(false)
   const cursorMs=cursor?.after_ms||0,cursorId=cursor?.after_id||''

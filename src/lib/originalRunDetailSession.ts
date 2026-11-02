@@ -15,12 +15,12 @@ export function originalDetailPending(raw:unknown,owner:string):OriginalDetailPe
 const live=new Set(['queued','running','paused','awaiting_approval','awaiting_input']),terminal=new Set(['succeeded','failed','cancelled'])
 export function createOriginalRunDetailSession(o:{employee:string;api:Api;verifyEmployee:()=>Promise<string>;key?:()=>string;recovery?:{load():unknown;save(value:OriginalDetailPending|null):void}}){
  if(!originalRunId(o.employee))throw Error('invalid_original_detail_employee')
- let pending=originalDetailPending(o.recovery?.load()??null,o.employee),active=true,closed=false,epoch=0,read=0,busy=false,loading=false,error='',notice='',run:RunDetailRow|null=null,recent:RecentRunRow[]=[],outputs:WorkflowLatestOutputs|null=null,selected:OriginalRunTarget|null=pending?{id:pending.id,kind:pending.kind}:null
+ let pending=originalDetailPending(o.recovery?.load()??null,o.employee),active=true,closed=false,epoch=0,read=0,busy=false,loading=false,error='',notice='',run:RunDetailRow|null=null,recent:RecentRunRow[]=[],outputs:WorkflowLatestOutputs|null=null,interactionsAvailable=false,selected:OriginalRunTarget|null=pending?{id:pending.id,kind:pending.kind}:null
  const listeners=new Set<()=>void>(),api=o.api
  const publish=()=>listeners.forEach(f=>f())
  const addNotice=(text:string)=>{notice=[...new Set([...notice.split('\n'),text])].filter(Boolean).slice(-6).join('\n')}
  const wipe=()=>{run=null;recent=[];outputs=null}
- const hide=(message:string)=>{++epoch;++read;wipe();loading=false;error=message;publish()}
+ const hide=(message:string)=>{interactionsAvailable=false;++epoch;++read;wipe();loading=false;error=message;publish()}
  async function identity(){let who:string;try{who=await o.verifyEmployee()}catch{hide('员工会话尚未核实，私有正文已隐藏；原未确认操作已保留。');throw Error('original_detail_identity_unavailable')}if(closed||!active||who!==o.employee){hide('员工身份已变化，私有正文已隐藏；原操作只可由原员工核对。');throw Error('original_detail_employee_changed')}}
  const call=async<T>(work:()=>Promise<T>):Promise<T>=>{await identity();const value=await work();await identity();return value}
  const get=(target:{kind:OriginalRunKind;id:string}):Promise<unknown>=>call<unknown>(()=>target.kind==='agent_single'?api.getRun(target.id):target.kind==='workflow_safe'?api.getWorkflowRun(target.id):target.kind==='workflow_v2'?api.getWorkflowV2Run(target.id):api.getAutonomousAgentRun(target.id))
@@ -41,9 +41,10 @@ export function createOriginalRunDetailSession(o:{employee:string;api:Api;verify
   try{
    await identity();if(!target){await history();return}
    const resolved=await resolve(target),next=projectOriginalRunDetail(resolved.raw,resolved.target.kind,target.id,o.employee)
-   if(next.native!.kind==='agent_autonomous'&&next.native!.sourceAvailable){
-    const cap=await call(()=>api.getConfigCapabilities())
-    if(cap.agent_feedback_available===true){const status=await call(()=>api.getAgentFeedback(next.id));if(status.run_id!==next.id||status.spec_id!==next.spec_id)throw Error('original_feedback_source_changed');if(status.state==='active'&&status.current?.body)next.feedback={...status.current.body,tags:[...status.current.body.tags],submitted_at:status.current.created_at}}
+   let nextInteractionsAvailable=false
+   if(next.native!.kind==='agent_autonomous'){
+    const cap=await call(()=>api.getConfigCapabilities());nextInteractionsAvailable=cap.original_run_interactions_protocol==='native_original_run_interaction_v1'
+    if(next.native!.sourceAvailable&&cap.agent_feedback_available===true){const status=await call(()=>api.getAgentFeedback(next.id));if(status.run_id!==next.id||status.spec_id!==next.spec_id)throw Error('original_feedback_source_changed');if(status.state==='active'&&status.current?.body)next.feedback={...status.current.body,tags:[...status.current.body.tags],submitted_at:status.current.created_at}}
    }
    let nextOutputs:WorkflowLatestOutputs|null=null
    if(next.native!.kind==='workflow_v2'&&next.native!.sourceAvailable){
@@ -52,7 +53,7 @@ export function createOriginalRunDetailSession(o:{employee:string;api:Api;verify
    }
    const fresh=projectOriginalRunDetail(await get(resolved.target),resolved.target.kind,target.id,o.employee);unchanged(next,fresh)
    if(closed||!active||life!==epoch||ticket!==read)return
-   selected=resolved.target;run=next;outputs=nextOutputs
+   selected=resolved.target;run=next;outputs=nextOutputs;interactionsAvailable=nextInteractionsAvailable
    addNotice('当前为已存储步骤快照；后台未提供原事件流、完整历史名称和完整配置快照。')
   }catch(e){if(life===epoch&&ticket===read){wipe();error=e instanceof PgNativePilotError&&e.status===404?'运行不存在或无权查看。':'运行来源、权限或状态尚未核实；私有正文已隐藏。'}}
   finally{if(ticket===read){loading=false;publish()}}
@@ -121,9 +122,9 @@ export function createOriginalRunDetailSession(o:{employee:string;api:Api;verify
   if(!pending&&active&&!closed)await refresh(selected)
  }
  return{
-  snapshot:()=>({employee:o.employee,active:active&&!closed,run,recent,outputs,pending,busy,loading,error,notice,selected}),subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},
+  snapshot:()=>({employee:o.employee,active:active&&!closed,run,recent,outputs,pending,busy,loading,error,notice,selected,interactionsAvailable:active&&!closed&&interactionsAvailable}),subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},
   async select(target:OriginalRunTarget|null){if(pending||busy){error='请先核对原未确认控制；未切换运行。';publish();return false}selected=target;await refresh(target);return !target||run?.id===target.id},refresh,loadMoreSteps,control,confirmPending,
-  async resume(){if(closed)return;active=true;await refresh(selected)},suspend(){active=false;hide('员工或会话变化，私有正文已隐藏；原操作已保留。')},
+  async resume(initialTarget?:OriginalRunTarget|null){if(closed)return;active=true;if(initialTarget!==undefined&&!pending&&!busy)selected=initialTarget;await refresh(selected)},suspend(){active=false;hide('员工或会话变化，私有正文已隐藏；原操作已保留。')},
   verifyIdentity:identity,navigationBlocked:()=>Boolean(pending||busy),dismiss(){error='';publish()},dispose(){closed=true;active=false;wipe();listeners.clear();++epoch;++read},
  }
 }

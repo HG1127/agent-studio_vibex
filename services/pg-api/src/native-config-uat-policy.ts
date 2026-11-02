@@ -227,6 +227,8 @@ export function permitNativePg18BusinessUatRequest(
     if(action==='acceptance')return policy.configurationWrites===true&&policy.autonomousAgentUat===true
     return action==='change'&&policy.configurationWrites===true
   }
+  const originalInteraction=new RegExp('^/api/v2/original-ui/run-interactions/'+originalId+'(?:/(decision|respond|receipts|human-receipts)(?:/('+originalId+'))?)?$').exec(pathname)
+  if(originalInteraction){const action=originalInteraction[1],selected=originalInteraction[2];if(method==='GET')return !action||!!selected&&(action==='receipts'||action==='human-receipts');return method==='POST'&&!selected&&(action==='decision'||action==='respond')&&policy.configurationWrites===true&&policy.autonomousAgentUat===true}
   const originalSchedules='/api/v2/original-ui/schedules'
   if(pathname===originalSchedules||pathname===originalSchedules+'/capabilities'||pathname===originalSchedules+'/history'||pathname===originalSchedules+'/workflow-targets'||new RegExp('^'+originalSchedules+'/(?:'+originalId+'|(?:operations|workflow-targets)/'+originalId+')$').test(pathname))return method==='GET'
   // The parsed operation's fresh-write/execution gates live in the actual

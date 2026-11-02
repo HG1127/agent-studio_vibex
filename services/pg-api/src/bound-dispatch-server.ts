@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
+import {NativeOrdinaryCaseCapture} from './native-ordinary-case-capture.ts'
 import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
 import {createIsolatedNativeLocalVisionExecutor} from './model-connection-executor.ts'
@@ -104,7 +106,7 @@ function adapter(pool:PgPool):SqlPool{
     const db=await pool.connect()
     return {async query<Row>(sql:string,values:unknown[]=[]){
       const result=await db.query(sql,values);return {rows:result.rows as Row[]}
-    },release(){db.release()}}
+    },release(destroy?:boolean){db.release(destroy)}}
   }}
 }
 export async function startBoundDispatchServer(
@@ -161,6 +163,8 @@ export async function startBoundDispatchServer(
     if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
     const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
     if(cfg.memoryEnabled===true&&(!memoryAvailable||!memoryContextAvailable||!await inspectAgentHumanInputSchema(business)))throw Error("agent_memory_runtime_required")
+    const ordinaryCase=await prepareOrdinaryCaseRuntime(business,env)
+    if(ordinaryCase?.execution&&(!cfg.autonomousEnabled||!cfg.workflowToolsEnabled||!cfg.workflowModelEnabled))throw Error("ordinary_case_autonomous_dispatch_required")
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -182,7 +186,7 @@ export async function startBoundDispatchServer(
         model:cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
             new WorkflowV2ModelDispatch(business,encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
-              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowCallerExecution:autonomous&&cfg.callersEnabled,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,agentExecutor,
+              allowOrdinaryCaseExecution:autonomous&&ordinaryCase?.execution===true,allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowCallerExecution:autonomous&&cfg.callersEnabled,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,agentExecutor,
               ...(autonomous&&localDeviceExecutionApproved?{localVisionExecutor:createIsolatedNativeLocalVisionExecutor(env,origin,true)}:{}),
               nodeDebugExecutor:autonomous?undefined:createIsolatedWorkflowNodeDebugExecutor(env,origin,true)}))}):undefined,
         tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
@@ -190,7 +194,7 @@ export async function startBoundDispatchServer(
             new WorkflowV2ToolDispatch(business,encryptionKey,{...createWorkflowToolNetwork(),
               ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
               summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
-                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowCallerExecution:autonomous&&cfg.callersEnabled,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,allowLocalDeviceExecution:autonomous&&localDeviceExecutionApproved}))}):undefined,
+                allowOrdinaryCaseExecution:autonomous&&ordinaryCase?.execution===true,allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowCallerExecution:autonomous&&cfg.callersEnabled,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,allowLocalDeviceExecution:autonomous&&localDeviceExecutionApproved,...(autonomous&&ordinaryCase?.execution?{ordinaryCaseCapture:new NativeOrdinaryCaseCapture({...business,connect:()=>adapter(identities).connect()})}:{})}))}):undefined,
       }
     }
     const workflowHandlers=cfg.workflowModelEnabled||cfg.workflowToolsEnabled?makeV2Handlers(cfg.workflowFingerprint!,false):undefined

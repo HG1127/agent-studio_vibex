@@ -16,9 +16,9 @@ export async function enqueueNativeLocalTool(db:SqlClient,request:WorkflowV2Tool
  await validateNativeLocalArguments(db,binding.device_id,input)
  return parseLocalJob(await localValue(db,'SELECT agentstudio.native_local_agent_enqueue($1::jsonb,$2::jsonb) AS value',[JSON.stringify(request),JSON.stringify(parseLocalInput(input))]))
 }
-export async function waitNativeLocalTool(pool:SqlPool,identity:Identity,request:WorkflowV2ToolRequest,id:string,signal:AbortSignal,allowMemory:boolean){
+export async function waitNativeLocalTool(pool:SqlPool,identity:Identity,request:WorkflowV2ToolRequest,id:string,signal:AbortSignal,allowMemory:boolean,allowOrdinaryCase=false,allowCallers=false){
  while(true){signal.throwIfAborted();const job=await withActor(pool,identity,async(db,owner)=>{
-  await verifyWorkflowEffectLease(db,owner,request,'tool',false,true,allowMemory,true)
+  await verifyWorkflowEffectLease(db,owner,request,'tool',false,true,allowMemory,true,allowCallers,false,allowOrdinaryCase)
   const current=parseLocalJob(await localValue(db,'SELECT agentstudio.native_local_get($1::uuid) AS value',[id]))
   if(current.id!==id||current.run_id!==request.claim.run_id||current.step_key!==request.step_key||current.input_sha256!==request.input_sha256)throw Error('native_local_job_changed')
   return current

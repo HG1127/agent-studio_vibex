@@ -1,3 +1,6 @@
+import {assertOrdinaryCaseRunSources} from './native-ordinary-case-source-access.ts'
+import {optionalOrdinaryCaseAgentBinding} from './native-ordinary-case-binding.ts'
+import {monitorCanonical} from './native-monitor-source-contract.ts'
 import {localCanonical,parseLocalBinding} from '../../../shared/native-local-device-contract.mjs'
 import {verifyAgentCallerDispatch} from './agent-caller-runtime-policy.ts'
 import {durableV2Root} from "./durable-v2-root.ts"
@@ -13,7 +16,7 @@ import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
 export type WorkflowDispatchKind="model"|"tool"
 const functions={model:"workflow_model_lease_identity",tool:"workflow_tool_lease_identity"} as const
 function changed(kind:WorkflowDispatchKind):never{throw new HttpError(409,"workflow_"+kind+"_state_changed")}
-export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,request:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,allowAgent=false,allowAutonomous=false,allowMemory=false,allowNativeLocal=false,allowCallers=false){
+export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,request:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,allowAgent=false,allowAutonomous=false,allowMemory=false,allowNativeLocal=false,allowCallers=false,allowMonitorBusiness=false,allowOrdinaryCase=false){
   const root=durableV2Root(request.execution_mode??"workflow_native_v2")
   if(root.kind==="agent"&&(!allowAutonomous||!request.parent_step_key))changed(kind)
   const c=request.claim
@@ -28,6 +31,13 @@ export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,reques
     "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND kind='"+root.kind+"' FOR UPDATE",[c.run_id,owner])).rows[0]
   if(!run||run.status!=="running")changed(kind)
   const state=checkedWorkflowV2StoredState(run.checkpoint,run.instruction)
+  if(state.agent_state?.monitor_business&&!allowMonitorBusiness)changed(kind)
+  if(state.agent_state?.case_business){
+    if(!allowOrdinaryCase||root.kind!=="agent")changed(kind)
+    const actual=await optionalOrdinaryCaseAgentBinding(db,owner,c.run_id,true)
+    if(!actual||monitorCanonical(actual)!==monitorCanonical(state.agent_state.case_business))changed(kind)
+    await assertOrdinaryCaseRunSources(db,owner,c.run_id)
+  }
   if(state.memory_context&&!allowMemory)changed(kind)
   if(state.agent_state?.local_device&&(!allowNativeLocal||root.kind!=="agent"))changed(kind)
   if(state.execution_mode!==root.mode||state.stage!==root.stage+"effect_started"||run[root.id]!==job.payload[root.id]||

@@ -1,3 +1,4 @@
+import {safeNativeMonitorBusinessSpec} from './native-monitor-business-contract.ts'
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from './contracts.ts'
 import {withActor,withActorClient} from './repository.ts'
 import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
@@ -31,20 +32,20 @@ function timestamp(raw:unknown):string{
  if(typeof raw==='string'&&Number.isFinite(Date.parse(raw)))return new Date(raw).toISOString()
  return unavailable()
 }
-function readSpec(raw:unknown):Record<string,unknown>{
+function readSpec(raw:unknown,allowMonitorBusiness=false):Record<string,unknown>{
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||![Object.prototype,null].includes(Object.getPrototypeOf(raw)))return unavailable()
  const {require_approval:approval,...write}=raw as Record<string,unknown>
  if(approval!==true)return unavailable()
  try{
   // Syntax/data validation only. This read never approves a tool or executes
   // a stored Native-local binding; execution has its existing separate gates.
-  return {...safeNativeLocalAgentSpec(write,true)}
+  return {...(allowMonitorBusiness?safeNativeMonitorBusinessSpec(write,true,true):safeNativeLocalAgentSpec(write,true))}
  }catch{return unavailable()}
 }
-function row(raw:Record<string,unknown>,owner:string):OriginalAgentCatalogRow{
+function row(raw:Record<string,unknown>,owner:string,allowMonitorBusiness=false):OriginalAgentCatalogRow{
  if(!isUuid(raw.id)||raw.owner_user_id!==owner||typeof raw.name!=='string'||!raw.name.trim()||raw.name.length>120||/[\u0000-\u001f\u007f]/.test(raw.name)||typeof raw.favorite!=='boolean')return unavailable()
  let authoring:OriginalAgentCatalogRow['authoring'];try{authoring=raw.authoring===null?null:parseOriginalHomeAuthoring(raw.authoring)}catch{return unavailable()}
- return{id:raw.id,owner_user_id:owner,name:raw.name,spec:readSpec(raw.spec),revision:safeInteger(raw.revision,1),created_at:timestamp(raw.created_at),updated_at:timestamp(raw.updated_at),authoring,favorite:raw.favorite}
+ return{id:raw.id,owner_user_id:owner,name:raw.name,spec:readSpec(raw.spec,allowMonitorBusiness),revision:safeInteger(raw.revision,1),created_at:timestamp(raw.created_at),updated_at:timestamp(raw.updated_at),authoring,favorite:raw.favorite}
 }
 function query(raw:OriginalAgentCatalogQuery):OriginalAgentCatalogQuery{
  if(!raw||typeof raw!=='object'||Object.keys(raw).sort().join(',')!=='favorite,page,perPage,q,sort,source'||typeof raw.favorite!=='boolean')throw new HttpError(400,'invalid_original_agent_catalog_query')
@@ -61,7 +62,8 @@ async function snapshot<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,own
 }
 export class NativeAgentCatalogRepository{
  readonly pool:SqlPool
- constructor(pool:SqlPool){this.pool=pool}
+ readonly allowMonitorBusinessSpecs:boolean
+ constructor(pool:SqlPool,options:{allowMonitorBusinessSpecs?:boolean}={}){this.pool=pool;this.allowMonitorBusinessSpecs=options.allowMonitorBusinessSpecs===true}
  list(identity:Identity,input:OriginalAgentCatalogQuery):Promise<OriginalAgentCatalogPage>{
   native(identity);const selected=query(input)
   return snapshot(this.pool,identity,async(db,owner)=>{
@@ -69,7 +71,7 @@ export class NativeAgentCatalogRepository{
    if(!count)return unavailable();const total=safeInteger(count.total,0),offset=(selected.page-1)*selected.perPage
    const records=(await db.query<Record<string,unknown>>('SELECT s.id,s.owner_user_id,s.name,s.spec,s.revision,s.created_at,s.updated_at,a.authoring,COALESCE(f.favorite,false) AS favorite'+join+where+' ORDER BY '+sorts[selected.sort]+' LIMIT $6::int OFFSET $7::bigint',[...args,selected.perPage,offset])).rows
    if(!Array.isArray(records)||records.length!==Math.max(0,Math.min(selected.perPage,total-offset)))return unavailable()
-   const items=records.map(value=>row(value,owner));if(new Set(items.map(item=>item.id)).size!==items.length)return unavailable()
+   const items=records.map(value=>row(value,owner,this.allowMonitorBusinessSpecs));if(new Set(items.map(item=>item.id)).size!==items.length)return unavailable()
    return{items,totalItems:total,page:selected.page,totalPages:Math.ceil(total/selected.perPage),perPage:selected.perPage}
   })
  }

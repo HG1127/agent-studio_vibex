@@ -9,7 +9,14 @@ export async function releaseLogin(page,context,f,who){
  const cookies=(await context.cookies(f.origin)).filter(c=>c.name==='__Host-agentstudio_session');expect(cookies).toHaveLength(1);expect(cookies[0]).toMatchObject({secure:true,httpOnly:true,sameSite:'Strict',domain:'localhost',path:'/'})
 }
 export async function releaseLogout(page,f,who){const menu=page.getByRole('menu');if(!await menu.isVisible())await page.getByRole('button',{name:new RegExp(f.profiles[who].display_name)}).click();const ack=releaseWire(page,'/api/native-auth/logout','POST');await menu.getByRole('menuitem',{name:'退出登录',exact:true}).click();expect((await ack).status()).toBe(200);await expect(page).toHaveURL(f.origin+'/login')}
-export async function releaseSettled(page,spec){await expect(page.getByRole('heading',{name:'发布流水线',exact:true})).toBeVisible();await expect(page.locator('#vr-spec-select')).toHaveValue(spec);await expect(page.getByRole('button',{name:'刷新版本',exact:true})).toBeEnabled();await expect(page.getByText('当前显示最近100个版本和10条验收记录，历史为部分列表；当前发布版本已按服务端标识另行核对。',{exact:true})).toBeVisible()}
+export async function releaseSettled(page,spec){
+ await expect(page.getByRole('heading',{name:'发布流水线',exact:true})).toBeVisible()
+ await expect(page.locator('#vr-spec-select')).toHaveValue(spec)
+ await expect(page.getByRole('button',{name:'刷新版本',exact:true})).toBeEnabled()
+ const notice=page.getByRole('status').filter({has:page.getByRole('button',{name:'刷新版本',exact:true})}).locator('p')
+ await expect(notice).toBeVisible()
+ await expect(notice).toContainText('当前显示最近100个版本和10条验收记录，历史为部分列表；当前发布版本已按服务端标识另行核对。')
+}
 export async function releasePendingMarker(page,owner){return page.evaluate(id=>{const raw=sessionStorage.getItem('agent-studio:original-version-release:v1:'+id);return raw===null?null:JSON.parse(raw)},owner)}
 export async function releaseDropCommitted(page,f,action,trigger,record){
  const suffix=action==='acceptance'?'/acceptance':'/change',path='/__pg_native/api/v2/original-ui/agent-releases/'+f.owned.alice.id+suffix

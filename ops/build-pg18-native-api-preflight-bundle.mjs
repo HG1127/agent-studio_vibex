@@ -53,9 +53,16 @@ const thirdParty={
 function refuse(reason){throw Error("native_preflight_bundle_refused:"+reason)}
 const employeeUi078ReviewedPaths=new Set()
 const employeeUi078ReviewAssets=["deploy/postgres-staging/employee-ui078-install.example.json","deploy/postgres-staging/employee-ui078-hosted-genuine-plan.json","services/pg-api/pnpm-lock.yaml"]
+// These two existing Worker assets enter through an erased executor type edge.
+// Package their exact source bytes as data; this tool never executes SQL.
+const nativeWorkerSqlAssets=Object.freeze({
+  "db/postgres/008_claim_workflow_v2.sql":"4bc13f8da3d15ae11dfcb669242ad0babd54440fd93131c028c43369eb822519",
+  "db/postgres/009_claim_autonomous_agent.sql":"26312b65700a436a521cc5eff6af4bf8299f10a2e06c4bb9b5c99dff2e257830",
+})
 function validatedPath(rel){
+  if(typeof rel==="string"&&Object.hasOwn(nativeWorkerSqlAssets,rel))return rel
   if(employeeUi078ReviewedPaths.has(rel)){if(!/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||!/^((services\/pg-api\/src|shared)\/.+\.(ts|mjs|mts|js)|db\/postgres\/.+\.sql)$/.test(rel))refuse("unexpected_employee_ui078_source");return rel}
-  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/original-schedules-contract.ts","shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/original-version-release-contract.ts","shared/agent-internal-share-contract.ts","shared/approval-delegation-contract.ts","shared/agent-optimization-retest-contract.ts","shared/native-local-device-contract.mjs","shared/native-local-device-contract.d.mts","shared/agent-caller-contract.ts","shared/tool-hub-public-types.ts","shared/original-home-authoring.ts","shared/original-agent-catalog.ts","shared/original-internal-overview-contract.ts","shared/model-draft-probe-contract.ts","shared/model-connection-pagination-contract.ts","shared/tool-connection-pagination-contract.ts","shared/model-config-receipt-contract.ts","shared/original-tool-connections-contract.ts"].includes(rel))||
+  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/original-schedules-contract.ts","shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/original-version-release-contract.ts","shared/agent-internal-share-contract.ts","shared/approval-delegation-contract.ts","shared/agent-optimization-retest-contract.ts","shared/native-local-device-contract.mjs","shared/native-local-device-contract.d.mts","shared/agent-caller-contract.ts","shared/tool-hub-public-types.ts","shared/original-home-authoring.ts","shared/original-agent-catalog.ts","shared/original-internal-overview-contract.ts","shared/model-draft-probe-contract.ts","shared/model-connection-pagination-contract.ts","shared/tool-connection-pagination-contract.ts","shared/model-config-receipt-contract.ts","shared/original-tool-connections-contract.ts","shared/business-schemas.mjs","shared/business-schemas.d.mts","shared/monitor-semantics.mjs","shared/monitor-semantics.d.mts","shared/monitor-execution-budget.mjs","shared/monitor-execution-budget.d.mts","shared/ordinary-case-run-contract.ts","shared/original-run-interaction-contract.ts"].includes(rel))||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
     refuse("unexpected_dependency:"+(typeof rel==="string"&&/^[A-Za-z0-9._/-]{1,300}$/.test(rel)?rel:"invalid"))
@@ -71,6 +78,10 @@ function includeSource(rel,includeEmployeeUi078=false){
   const source=path.join(repo,rel)
   if(!fs.existsSync(source)||!fs.lstatSync(source).isFile()||
      fs.lstatSync(source).isSymbolicLink())refuse("missing_source")
+  if(Object.hasOwn(nativeWorkerSqlAssets,rel)){
+    if(hash(fs.readFileSync(source))!==nativeWorkerSqlAssets[rel])refuse("worker_sql_asset_changed")
+    return
+  }
   // Reviewed SQL is data, never parsed as JavaScript or executed by this tool.
   if(includeEmployeeUi078&&employeeUi078ReviewedPaths.has(rel)&&rel.endsWith(".sql"))return
   const code=fs.readFileSync(source,"utf8")

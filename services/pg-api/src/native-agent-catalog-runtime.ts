@@ -10,11 +10,11 @@ export function selectNativeAgentCatalog(env:NodeJS.ProcessEnv,listen:boolean,or
  return{available:true,allowWrites:writes===true}
 }
 /** Default-off controls HTTP admission, not optional schema-integrity auditing. */
-export async function prepareNativeAgentCatalog(input:{pool:SqlPool;env:NodeJS.ProcessEnv;listen:boolean;allowedOrigin:string;configurationWrites:boolean}){
+export async function prepareNativeAgentCatalog(input:{pool:SqlPool;env:NodeJS.ProcessEnv;listen:boolean;allowedOrigin:string;configurationWrites:boolean;allowMonitorBusinessSpecs?:boolean}){
  const policy=selectNativeAgentCatalog(input.env,input.listen,input.allowedOrigin,input.configurationWrites),schema=await inspectOptionalNativeAgentCatalogSchema(input.pool)
  if(!policy.available)return null
  if(schema!=='installed')throw Error('original_agent_catalog_schema_required')
  return Object.freeze({createHandler(authenticateRequest:(req:IncomingMessage)=>Promise<Identity>){
-  return createNativeAgentCatalogHttp({repository:new NativeAgentCatalogRepository(input.pool),authenticateRequest,allowedOrigin:input.allowedOrigin,allowWrites:policy.allowWrites})
+  return createNativeAgentCatalogHttp({repository:new NativeAgentCatalogRepository(input.pool,{allowMonitorBusinessSpecs:input.allowMonitorBusinessSpecs===true}),authenticateRequest,allowedOrigin:input.allowedOrigin,allowWrites:policy.allowWrites})
  }})
 }

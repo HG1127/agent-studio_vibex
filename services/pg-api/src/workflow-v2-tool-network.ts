@@ -6,6 +6,7 @@ import {resolve4,resolve6} from "node:dns/promises"
 import {resolveSafeProviderAddress,type ProviderResolver} from "./model-connection-probe.ts"
 import {safeToolDestination,applyWorkflowToolTemplate,type ToolArguments} from "./workflow-v2-tool-plan.ts"
 import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
+import {parseLocalTransportJson} from '../../../shared/native-local-device-contract.mjs'
 export type WorkflowToolHttpMaterial={url:string;method:"GET"|"POST";body_template:string;timeout_s:number;headers:{key:string;value:string}[]}
 export type WorkflowToolHttpRequest={url:string;method:"GET"|"POST";body:Buffer;headers:Record<string,string>;timeout:number;secrets:string[]}
 type Requester=(options:RequestOptions,callback:(response:IncomingMessage)=>void)=>ClientRequest
@@ -79,12 +80,12 @@ export function createWorkflowToolNetwork(
   resolver:ProviderResolver={resolve4,resolve6},
   request:Requester=(options,callback)=>(options.protocol==="http:"?httpRequest:httpsRequest)(options,callback),
 ){
-  async function send(spec:WorkflowToolHttpRequest,signal:AbortSignal,redirects=0,follow=false):Promise<{text:string;status:number}>{
+  async function send(spec:WorkflowToolHttpRequest,signal:AbortSignal,redirects=0,follow=false):Promise<{text:string;status:number;media_type:string;received_bytes:number;content_length:string|null}>{
     signal.throwIfAborted()
     const url=safeToolDestination(spec.url,["http:","https:"])
     const pinned=await resolveSafeProviderAddress(resolver,url.hostname)
     signal.throwIfAborted()
-    const answer=await new Promise<{text:string;status:number;location?:string}>((resolve,reject)=>{
+    const answer=await new Promise<{text:string;status:number;media_type:string;received_bytes:number;content_length:string|null;location?:string}>((resolve,reject)=>{
       let settled=false
       const fail=()=>{if(!settled){settled=true;reject(Error("workflow_tool_transport_unknown"))}}
       const req=request({protocol:url.protocol,hostname:url.hostname,servername:url.hostname,port:url.protocol==="https:"?443:80,
@@ -93,7 +94,7 @@ export function createWorkflowToolNetwork(
         timeout:spec.timeout,signal:AbortSignal.any([signal,AbortSignal.timeout(spec.timeout)])},res=>{
         const status=res.statusCode??0
         if(follow&&spec.method==="GET"&&[301,302,303,307,308].includes(status)&&typeof res.headers.location==="string"){
-          settled=true;res.destroy();resolve({text:"",status,location:res.headers.location});return
+          settled=true;res.destroy();resolve({text:"",status,media_type:"",received_bytes:0,content_length:null,location:res.headers.location});return
         }
         if(status<200||status>=300||res.headers["content-encoding"]&&res.headers["content-encoding"]!=="identity"||
            status!==204&&!/^(?:application\/(?:[a-z0-9.+-]*\+)?json|text\/[-a-z0-9.+]+)(?:;|$)/i.test(String(res.headers["content-type"]??""))){
@@ -104,7 +105,7 @@ export function createWorkflowToolNetwork(
           if(used>131072){res.destroy();fail();return};chunks.push(data)})
         res.once("aborted",fail);res.once("error",fail)
         res.once("end",()=>{if(settled)return;try{
-          const text=new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(chunks));settled=true;resolve({text,status})
+          const text=new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(chunks));settled=true;resolve({text,status,media_type:String(res.headers["content-type"]??""),received_bytes:used,content_length:res.headers['content-length']===undefined?null:String(res.headers['content-length'])})
         }catch{fail()}})
       })
       req.once("error",fail);req.setTimeout(spec.timeout,()=>req.destroy(Error("workflow_tool_timeout")));req.end(spec.body)
@@ -120,7 +121,26 @@ export function createWorkflowToolNetwork(
   const plain=(url:string,method:"GET"|"POST",body="",contentType="text/plain"):WorkflowToolHttpRequest=>({url,method,
     body:Buffer.from(body),headers:{"user-agent":"agentstudio-pg18-private-tool/1",accept:"text/html, text/plain, application/json","accept-encoding":"identity",
       ...(method==="POST"?{"content-type":contentType,"content-length":String(Buffer.byteLength(body))}:{})},timeout:24000,secrets:[]})
+  const captured=(answer:{text:string;status:number;media_type:string;received_bytes:number;content_length:string|null},secrets:readonly string[],web:boolean)=>{
+    if(answer.content_length!==null&&(!/^(0|[1-9][0-9]*)$/.test(answer.content_length)||Number(answer.content_length)!==answer.received_bytes))throw Error('monitor_source_coverage_incomplete')
+    const safe=redactWorkflowToolResponse(answer.text,secrets),redacted=safe!==answer.text
+    let structuredContent:unknown=null
+    if(!redacted&&/^application\/(?:[a-z0-9.+-]*\+)?json(?:;|$)/i.test(answer.media_type)){
+      try{structuredContent=parseLocalTransportJson(answer.text,131072)}catch{}
+    }
+    // These extra methods are used only by the source-bound monitor collector.
+    // Existing public http/webFetch methods below keep their original4000-char
+    // output. A received-complete declared response never claims full-web scope.
+    return{text:web?htmlToolText(safe):safe,structuredContent,coverage:{stored_complete:true as const},redacted,
+      usable_as_evidence:!redacted,http_response:{status:answer.status,complete:true as const,empty:answer.text.length===0,media_type:answer.media_type}}
+  }
   return {
+    async monitorHttp(material:WorkflowToolHttpMaterial,args:ToolArguments,signal:AbortSignal){
+      const spec=prepareWorkflowToolHttp(material,args)
+      if(spec.method!=="GET")throw Error("monitor_requires_read_only_source")
+      return captured(await send(spec,signal),spec.secrets,false)
+    },
+    async monitorWebFetch(url:string,signal:AbortSignal){return captured(await send(plain(url,"GET"),signal,0,true),[],true)},
     async http(material:WorkflowToolHttpMaterial,args:ToolArguments,signal:AbortSignal){
       const spec=prepareWorkflowToolHttp(material,args),answer=await send(spec,signal)
       return redactWorkflowToolResponse(answer.text,spec.secrets).slice(0,4000)||"（工具返回空响应，HTTP "+answer.status+"）"

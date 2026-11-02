@@ -18,12 +18,13 @@ async function transaction<T>(pool:SqlPool,body:(db:SqlClient)=>Promise<T>){cons
     const result=await body(db);await db.query("COMMIT");active=false;return result
   }catch(error){if(active)await db.query("ROLLBACK").catch(()=>{});throw error}finally{db.release()}}
 export class ScheduleRuntimeWorker{
+  readonly monitorBusinessEnabled:boolean
   readonly pool:SqlPool;readonly workerId:string;readonly flows:WorkflowV2RunRepository;readonly agents:AutonomousAgentRunRepository
   readonly #claimAdmission=createWorkerClaimAdmission({lanes:["schedule"]})
   readonly #intents=new Set<LocalIntent>()
-  constructor(pool:SqlPool,workerId:string,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){
+  constructor(pool:SqlPool,workerId:string,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMonitorBusiness?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_schedule_worker_id")
-    this.pool=pool;this.workerId=workerId;this.flows=new WorkflowV2RunRepository(pool,"workflow_native_v2",options);this.agents=new AutonomousAgentRunRepository(pool,options)
+    this.monitorBusinessEnabled=options.allowMonitorBusiness===true;this.pool=pool;this.workerId=workerId;this.flows=new WorkflowV2RunRepository(pool,"workflow_native_v2",options);this.agents=new AutonomousAgentRunRepository(pool,options)
   }
   closeNewClaims():void {this.#claimAdmission.close()}
   // Includes held/direct launch operations, including those admitted after close.
@@ -132,6 +133,7 @@ export class ScheduleRuntimeWorker{
       const ctx=(await db.query<{context:Launch|null}>("SELECT agentstudio.schedule_launch_context($1::uuid,$2::uuid,$3::bigint,$4::text) AS context",[claim.occurrence_id,claim.lease_token,claim.lease_version,this.workerId])).rows[0]?.context
       if(!ctx)return {status:"stale",occurrence_id:claim.occurrence_id}
       if(!isUuid(ctx.owner_user_id)||!isUuid(ctx.planned_run_id)||!isUuid(ctx.target_id)||ctx.kind!=="agent"&&ctx.kind!=="workflow")throw Error("invalid_schedule_launch_context")
+      if(this.monitorBusinessEnabled)await db.query("SELECT agentstudio.monitor_live_schedule_ready(schedule_id) FROM agentstudio.schedule_occurrences WHERE id=$1::uuid AND owner_user_id=$2::uuid",[claim.occurrence_id,ctx.owner_user_id])
       const result=await withActorClient(db,this.pool,ctx.identity,async(client,owner)=>{
         if(owner!==ctx.owner_user_id)throw Error("schedule_owner_changed")
         const raw={expected_revision:ctx.execution.target_revision,idempotency_key:"schedule_"+ctx.occurrence_id,instruction:ctx.execution.instruction}
@@ -140,6 +142,7 @@ export class ScheduleRuntimeWorker{
       await db.query("SET LOCAL ROLE agentstudio_worker")
       const registered=(await db.query<{ok:boolean}>("SELECT agentstudio.schedule_register_origin($1::uuid,$2::uuid,$3::bigint,$4::text,$5::uuid) AS ok",[claim.occurrence_id,claim.lease_token,claim.lease_version,this.workerId,result.run.id])).rows[0]?.ok
       if(!registered)throw Error("schedule_origin_changed")
+      if(this.monitorBusinessEnabled)await db.query("SELECT agentstudio.monitor_live_open_occurrence($1::uuid,$2::uuid)",[claim.occurrence_id,result.run.id])
       return {status:"started",run_id:result.run.id,occurrence_id:claim.occurrence_id}
     })
   }

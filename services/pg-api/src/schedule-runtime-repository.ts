@@ -29,7 +29,7 @@ export async function requireScheduleRuntime(db:SqlClient){
 }
 export class ScheduleRuntimeRepository{
   readonly pool:SqlPool;readonly enabled:boolean;readonly flows:WorkflowV2RunRepository;readonly agents:AutonomousAgentRunRepository
-  constructor(pool:SqlPool,options:{enabled?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){
+  constructor(pool:SqlPool,options:{enabled?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMonitorBusiness?:boolean}={}){
     this.pool=pool;this.enabled=options.enabled===true;this.flows=new WorkflowV2RunRepository(pool,"workflow_native_v2",options);this.agents=new AutonomousAgentRunRepository(pool,options)
   }
   private allowed(){if(!this.enabled)throw new HttpError(403,"schedule_execution_disabled")}

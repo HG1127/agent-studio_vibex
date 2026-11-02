@@ -1,3 +1,4 @@
+import {BusinessCaseBinding} from './BusinessCaseBinding'
 import { Play, Sparkles } from "lucide-react"
 
 type RunLauncherProps = {
@@ -39,6 +40,7 @@ export function RunLauncher({
         placeholder="给助手下达一个具体任务，例如：帮我算一下 (36+64)*12 的结果，并统计这段指令的字数，最后给出一份简短总结"
         className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed text-card-foreground transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       />
+      <BusinessCaseBinding />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">{priceHint}</p>
         <button

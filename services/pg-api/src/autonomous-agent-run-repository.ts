@@ -1,3 +1,5 @@
+import {safeNativeMonitorBusinessSpec,monitorBusinessTools} from './native-monitor-business-contract.ts'
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 import {hasNativeLocalAgentTool} from './native-local-agent-contract.ts'
 import {workflowAgentSpec} from './workflow-v2-agent-machine.ts'
 import {localId} from '../../../shared/native-local-device-contract.mjs'
@@ -35,14 +37,15 @@ function autonomousRequest(raw:unknown){
   return {localDeviceId,request,max_steps:Number(max_steps),require_plan_review:require_plan_review as boolean|undefined,remember_outcome:outcomeMemoryOption(remember_outcome,Object.hasOwn(raw,"remember_outcome")),optimization_lineage_id:lineage}
 }
 export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
+  readonly allowMonitorBusiness:boolean
   readonly allowLocalDevices:boolean
   readonly allowMemory:boolean
   readonly allowOutcomeMemory:boolean
   readonly allowOptimizationRetest:boolean
-  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean;allowOutcomeMemory?:boolean;allowOptimizationRetest?:boolean;allowLocalDevices?:boolean}={}){super(pool,"agent_native_v2",options);this.allowLocalDevices=options.allowLocalDevices===true;this.allowMemory=options.allowMemory===true;this.allowOutcomeMemory=options.allowOutcomeMemory===true;this.allowOptimizationRetest=options.allowOptimizationRetest===true}
-  override async submit(identity:Identity,id:string,raw:unknown){
+  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean;allowOutcomeMemory?:boolean;allowOptimizationRetest?:boolean;allowLocalDevices?:boolean;allowMonitorBusiness?:boolean}={}){super(pool,"agent_native_v2",options);this.allowMonitorBusiness=options.allowMonitorBusiness===true;this.allowLocalDevices=options.allowLocalDevices===true;this.allowMemory=options.allowMemory===true;this.allowOutcomeMemory=options.allowOutcomeMemory===true;this.allowOptimizationRetest=options.allowOptimizationRetest===true}
+  override async submit(identity:Identity,id:string,raw:unknown,expectedEmployee?:string){
     if((autonomousRequest(raw).optimization_lineage_id||autonomousRequest(raw).localDeviceId)&&identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
-    return withActor(this.pool,identity,(db,owner)=>this.admitOwned(db,owner,id,raw))
+    return withActor(this.pool,identity,(db,owner)=>{assertOriginalUiEmployee(owner,expectedEmployee);return this.admitOwned(db,owner,id,raw)})
   }
   protected override async assemble(db:SqlClient,owner:string,row:WorkflowV2RunRow,replayed:boolean){
     const result=await super.assemble(db,owner,row,replayed),proof=await storedOptimizationRetest(db,owner,row)
@@ -50,6 +53,10 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     const local=(await db.query<{device_id:string|null;tasks:unknown}>("SELECT agentstudio.native_local_admission_device($1::uuid) AS device_id,agentstudio.native_local_run_tasks($1::uuid) AS tasks",[row.id])).rows
     if(local.length!==1)throw Error("native_local_invalid_admission_projection")
     return {...result,...(proof?{optimization_retest:proof}:{}),local_device_id:local[0]!.device_id,local_tasks:local[0]!.tasks}
+  }
+  protected async assertBusinessAdmission(_db:SqlClient,_owner:string,rawSpec:unknown,plannedRunId?:string){
+    const spec=rawSpec as {tools?:unknown}|undefined
+    if(Array.isArray(spec?.tools)&&spec.tools.some(t=>monitorBusinessTools.includes(t))&&(!this.allowMonitorBusiness||plannedRunId===undefined))throw new HttpError(403,'monitor_native_occurrence_required')
   }
   override async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown,modelBinding?:AgentSpecInput["model_binding"]):Promise<WorkflowV2StoredState>{
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_run_request")
@@ -64,10 +71,10 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     if(!spec)throw new HttpError(404,"agent_spec_not_found")
     if(localDeviceId&&!this.allowLocalDevices)throw new HttpError(403,"native_local_device_execution_not_approved")
     if(hasNativeLocalAgentTool(spec.spec)&&(!this.allowLocalDevices||!localDeviceId))throw new HttpError(409,"native_local_device_binding_required")
-    workflowAgentSpec(spec.spec,this.allowLocalDevices&&!!localDeviceId)
+    if(this.allowMonitorBusiness){if((await db.query<{epoch:string|null}>("SELECT agentstudio.agent_memory_outcome_epoch() AS epoch")).rows[0]?.epoch==null)throw new HttpError(403,"native_employee_identity_required");const raw=spec.spec as Record<string,unknown>;const {require_approval:_,...input}=raw;safeNativeMonitorBusinessSpec(input,true,this.allowLocalDevices&&!!localDeviceId)}else workflowAgentSpec(spec.spec,this.allowLocalDevices&&!!localDeviceId)
     await this.checkMcpAdmission(db,owner,graph)
     // Verify before admission and repeat on every decision/tick/dispatch.
-    await verifyWorkflowV2Snapshot(db,owner,{kind:"agent",agent_spec_id:id,workflow_id:null} as WorkflowV2RunRow,checkpoint)
+    await verifyWorkflowV2Snapshot(db,owner,{kind:"agent",agent_spec_id:id,workflow_id:null} as WorkflowV2RunRow,checkpoint,this.allowMonitorBusiness)
     return checkpoint
   }
   override async admitOwned(db:SqlClient,owner:string,id:string,raw:unknown,plannedRunId?:string,modelBinding?:AgentSpecInput["model_binding"]){
@@ -93,6 +100,8 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
       return {...await this.assemble(db,owner,prior,true),...(consent?{outcome_memory:consent}:{})}
     }
     if(remember_outcome&&plannedRunId!==undefined)throw new HttpError(403,"agent_memory_outcome_schedule_scope_required")
+    const storedSpec=(await db.query<{spec:{tools?:string[]}}>("SELECT spec FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
+    await this.assertBusinessAdmission(db,owner,storedSpec?.spec,plannedRunId)
     const checkpoint=await this.prepareOwned(db,owner,id,raw,modelBinding)
     const nextRunId=plannedRunId??randomUUID(),memoryScope={owner_user_id:owner,spec_id:id,spec_revision:request.expected_revision,instruction:request.instruction}
     const accepted=optimization_lineage_id?await new AgentOptimizationRepository(this.pool).prepareRetestOwned(db,owner,id,request.expected_revision,optimization_lineage_id):undefined

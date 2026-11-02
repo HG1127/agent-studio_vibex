@@ -50,7 +50,7 @@ export function createOriginalHomeInboxApi(employeeId:string,transport:typeof fe
    const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(failure())},8000)})
    const perform=async()=>{
     const response=await transport(rootPath+route,{method:body===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,
-     headers:{Accept:'application/json',...(body===undefined?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1','X-AgentStudio-Expected-Employee':employee})},...(body===undefined?{}:{body:JSON.stringify(body)})})
+     headers:{Accept:'application/json','X-AgentStudio-Expected-Employee':employee,...(body===undefined?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1'})},...(body===undefined?{}:{body:JSON.stringify(body)})})
     if(!(response instanceof Response)||response.redirected||!response.body)return refuse()
     reader=response.body.getReader()
     if(!response.ok)throw new OriginalHomeInboxError(response.status,'original_home_inbox_unavailable')
@@ -99,6 +99,6 @@ export function createOriginalHomeInboxApi(employeeId:string,transport:typeof fe
    else if(data.next_cursor!==null)return refuse()
    return{items,has_more:data.has_more,next_cursor:next}
   },
-  async markMonitorRead(eventId:string):Promise<void>{const selected=id(eventId),value=object(await request('/api/v2/original-ui/monitor-events/'+selected+'/read',undefined,{}),['ok']);if(value.ok!==true)return refuse()},
+  async markMonitorRead(eventId:string,signal?:AbortSignal):Promise<void>{const selected=id(eventId),value=object(await request('/api/v2/original-ui/monitor-events/'+selected+'/read',signal,{}),['ok']);if(value.ok!==true)return refuse()},
  }
 }

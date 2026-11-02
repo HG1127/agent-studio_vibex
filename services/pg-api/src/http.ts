@@ -1,8 +1,10 @@
+import {createOriginalRunInteractionHttp} from './original-run-interaction-http.ts'
 import type {OriginalSchedulesRepository} from './original-schedules-repository.ts'
 import {createOriginalSchedulesHttp} from './original-schedules-http.ts'
 import {createOriginalVersionReleaseHttp} from './original-version-release-http.ts'
 import {createOriginalToolConnectionsHttp} from './original-tool-connections-http.ts'
 import {parseModelConnectionPageQuery} from './model-connection-pagination.ts'
+import {safeNativeMonitorBusinessSpec} from './native-monitor-business-contract.ts'
 import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
 import type {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import type {AgentHumanInputRepository} from "./agent-human-input-repository.ts"
@@ -51,8 +53,10 @@ export interface AppDependencies {
   ownerToolHub?:OwnerToolHubHttpContext
   /** Native server only, after actual SQL067 audit; requires verified employee Cookie identity. */
   allowNativeLocalAgentSpecs?:boolean
+  allowMonitorBusinessSpecs?:boolean
   repository: AgentSpecRepository
   agentCollaborationRepository?:AgentCollaborationRepository
+  originalRunInteractionRepository?:import('./original-run-interaction-repository.ts').OriginalRunInteractionRepository
   agentReleaseRepository?:AgentReleaseRepository
   runRepository?: RunRepository
   scheduleInventory?: ScheduleInventoryRepository
@@ -184,16 +188,19 @@ function allowBodyFields(data:Record<string,unknown>,permitted:string[]) {
  * No CORS, no cookies, no anonymous mode, no trust in X-Rh-User-Id.
  */
 export function createHandler(deps:AppDependencies) {
+  const originalInteraction=deps.authenticateRequest&&deps.originalRunInteractionRepository?createOriginalRunInteractionHttp({repo:deps.originalRunInteractionRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const originalSchedules=deps.authenticateRequest&&deps.originalSchedulesRepository?createOriginalSchedulesHttp({repo:deps.originalSchedulesRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const originalRelease=deps.authenticateRequest&&deps.agentReleaseRepository?createOriginalVersionReleaseHttp({repo:deps.agentReleaseRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const originalTools=deps.authenticateRequest&&deps.toolConnectionRepository?createOriginalToolConnectionsHttp({repo:deps.toolConnectionRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const agentSpec=(raw:unknown,identity:Identity)=>{
+    if(deps.allowMonitorBusinessSpecs===true){if(!deps.authenticateRequest||identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required");return safeNativeMonitorBusinessSpec(raw,true,deps.allowNativeLocalAgentSpecs===true)}
     if(deps.allowNativeLocalAgentSpecs!==true)return safeAgentSpec(raw)
     if(!deps.authenticateRequest||identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
     return safeNativeLocalAgentSpec(raw,true)
   }
   return async (req:IncomingMessage,res:ServerResponse):Promise<void>=>{
     try{
+      if(originalInteraction&&await originalInteraction(req,res))return
       if(originalSchedules&&await originalSchedules(req,res))return
       if(originalRelease&&await originalRelease(req,res))return
       if(originalTools&&await originalTools(req,res))return
@@ -1072,7 +1079,8 @@ export function createHandler(deps:AppDependencies) {
         }
         if(submit){
           if(method!=="POST")throw new HttpError(405,"method_not_allowed")
-          const result=await repo.submit(identity,submit[1]!,await readBody(req,8192))
+          const body=await readBody(req,8192)
+          const result=autonomousAgentSubmit?await deps.autonomousAgentRunRepository!.submit(identity,submit[1]!,body,optionalExpectedOriginalUiEmployee(req)):await repo.submit(identity,submit[1]!,body)
           return send(res,result.replayed?200:201,{...result,worker_started_by_api:false})
         }
         const id=route![1],action=route![2]

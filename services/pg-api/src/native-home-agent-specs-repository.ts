@@ -1,3 +1,4 @@
+import {safeNativeMonitorBusinessSpec} from './native-monitor-business-contract.ts'
 import {createHash} from 'node:crypto'
 import {HttpError,isUuid,safeAgentSpec,safeName,type AgentSpecInput,type Identity,type SqlClient,type SqlPool} from './contracts.ts'
 import {safeNativeLocalAgentSpec} from './native-local-agent-contract.ts'
@@ -54,9 +55,10 @@ async function audit(db:SqlClient,owner:string,id:string,operation:'create'|'upd
 /** Optional070 Native-only facade. The stored execution spec stays frozen. */
 export class NativeHomeAgentSpecsRepository{
  readonly pool:SqlPool
+ readonly allowMonitorBusinessSpecs:boolean
  readonly allowNativeLocalAgentSpecs:boolean
- constructor(pool:SqlPool,options:{allowNativeLocalAgentSpecs?:boolean}={}){this.pool=pool;this.allowNativeLocalAgentSpecs=options.allowNativeLocalAgentSpecs===true}
- private execution(raw:unknown):AgentSpecInput{return this.allowNativeLocalAgentSpecs?safeNativeLocalAgentSpec(raw,true):safeAgentSpec(raw)}
+ constructor(pool:SqlPool,options:{allowNativeLocalAgentSpecs?:boolean;allowMonitorBusinessSpecs?:boolean}={}){this.allowMonitorBusinessSpecs=options.allowMonitorBusinessSpecs===true;this.pool=pool;this.allowNativeLocalAgentSpecs=options.allowNativeLocalAgentSpecs===true}
+ private execution(raw:unknown):AgentSpecInput{if(this.allowMonitorBusinessSpecs)return safeNativeMonitorBusinessSpec(raw,true,this.allowNativeLocalAgentSpecs);return this.allowNativeLocalAgentSpecs?safeNativeLocalAgentSpec(raw,true):safeAgentSpec(raw)}
  list(identity:Identity,limit=50):Promise<OriginalHomeAgentRow[]>{
   native(identity)
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,'invalid_limit')

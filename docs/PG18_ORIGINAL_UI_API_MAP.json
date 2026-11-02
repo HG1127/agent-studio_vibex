@@ -8141,6 +8141,76 @@
       "production_GO": false,
       "source_maps": 24,
       "source_pins": 13743
+    },
+    "original_business_interaction_combination_source": {
+      "base_commit": "fad3351120afb9a93fab2e89f37d4654a5b8b162",
+      "scope": [
+        "original RunDetail approval and human response with exact request receipts",
+        "original business components with employee epoch and source ACL checks",
+        "optional monitor074 and ordinary077 Worker integration, default disabled",
+        "original version-release completion hosted story"
+      ],
+      "source_only_pure_checks": {
+        "final_combination": 1081,
+        "files": 53,
+        "skipped": 0
+      },
+      "frontend_TypeScript6_passed": true,
+      "backend_TypeScript5_passed_before_rowlock_increment": true,
+      "Node_strip_only_constructor_compatibility_fixed": true,
+      "uncertain_acknowledgment_keeps_exact_pending_intent": true,
+      "schedule078_definer_rowlock_column_grants_reviewed": true,
+      "caller_poll_waits_for_real_response_and_renderer": true,
+      "Native_bundle_shared_whitelist_extended_by_exact_paths": 8,
+      "Native_bundle_worker_SQL_assets": 2,
+      "Native_bundle_dependencies": [
+        "ajv",
+        "jszip",
+        "mammoth",
+        "pdfjs-dist",
+        "pg"
+      ],
+      "monitor074_private_rowlock_increment_pending": false,
+      "monitor074_source_gate_reseal_pending": false,
+      "actual_monitor074_runtime_accepted": false,
+      "actual_ordinary077_runtime_accepted": false,
+      "original_monitor074_browser_accepted": false,
+      "material080_and_artifact_quality081_contracts_pending": true,
+      "latest_accepted_desktop_baseline_verification_pending": true,
+      "current_original_page_PG_acceptance": false,
+      "production_GO": false,
+      "backend_TypeScript5_after_rowlock_increment_passed": true,
+      "original_employee_UI_build_passed": true,
+      "monitor074_private_rowlock_source": {
+        "functions_added": 3,
+        "original_functions_preserved": 66,
+        "tables_with_SELECT_only_API_ACL": 14,
+        "actual_two_transaction_lock_checks_prepared": 12,
+        "actual_lock_runtime_verified": false
+      },
+      "source_seals": {
+        "maps": 25,
+        "pins": 18269,
+        "retained_prior_pins": 13743,
+        "completion_required_sources": 107,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
+    },
+    "previous_5d6da5e_hosted_results": {
+      "commit": "5d6da5efd326781a81976fd026ec8601e388401e",
+      "all18_workflows_terminal": true,
+      "quality_push_and_PR": "success",
+      "original_employee_stories": {
+        "passed": 17,
+        "total": 18,
+        "remaining": "original-version-release partial-history notice assertion"
+      },
+      "schedule078": "actual first schedule save503; PG log permission denied for table agent_specs",
+      "schedule_worker": "ordinary refusal child inherited hosted CI env and failed before genuine story; fixed in parent fad3351; rerun pending",
+      "caller_public_browser": "poll response reached terminal before the second click; synchronization source fix prepared",
+      "full069_and_telemetry": "failure; no deadline or freshness limits relaxed",
+      "current_candidate_results": false
     }
   },
   "qualifying24h_hours": 0,

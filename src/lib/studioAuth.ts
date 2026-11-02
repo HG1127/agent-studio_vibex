@@ -1,3 +1,4 @@
+import {invalidateStudioSessionPrivacy} from "./studioSessionPrivacy"
 import { pb } from "./pb"
 import { getStudioApiRoot, ORIGINAL_PG_UI_ENABLED } from "./studioBackend"
 import { createPgEmployeeSession, PgNativeSessionError } from "./pgNativeSession"
@@ -49,7 +50,13 @@ export type StudioSessionStatus = "authenticated" | "signed_out" | "unavailable"
 let refreshInFlight: Promise<StudioSessionStatus> | null = null
 
 export function verifyStudioSession(): Promise<StudioSessionStatus> {
-  if (pgAuth) return pgAuth.verify()
+  if (pgAuth) {
+    const prior = pgAuth.account()?.id
+    return pgAuth.verify().then(status => {
+      if (status !== "authenticated" || prior !== undefined && prior !== pgAuth.account()?.id) invalidateStudioSessionPrivacy()
+      return status
+    }, error => { invalidateStudioSessionPrivacy(); throw error })
+  }
   if (!pb.authStore.isValid) {
     pb.authStore.clear()
     return Promise.resolve("signed_out")
@@ -104,6 +111,7 @@ export function getStudioAccountInfo(): StudioProfile | null {
 
 export function logoutStudioAccount(): Promise<void> {
   if (pgAuth) {
+    invalidateStudioSessionPrivacy()
     return pgAuth.signOut().then(() => {
       if (typeof window !== "undefined") window.location.assign("/login")
     })
@@ -155,7 +163,7 @@ export async function initializeStudioAdmin(input: {
 }
 
 export async function signInStudioAccount(email: string, password: string): Promise<void> {
-  if (pgAuth) { await pgAuth.signIn(email, password); return }
+  if (pgAuth) { invalidateStudioSessionPrivacy(); await pgAuth.signIn(email, password); return }
   await pb.collection("studio_users").authWithPassword(email.trim(), password)
 }
 

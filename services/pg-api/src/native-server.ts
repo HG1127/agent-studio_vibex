@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import {inspectNativeEmployeeUi078Profile} from './native-employee-ui078-profile.ts'
+import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
+import {OriginalRunInteractionRepository} from './original-run-interaction-repository.ts'
 import {OriginalSchedulesRepository} from './original-schedules-repository.ts'
 import {inspectOriginalSchedulesSchema} from './original-schedules-audit.ts'
 import {prepareModelConfigReceipts075After069} from './model-config-receipt-startup075.ts'
@@ -11,6 +13,7 @@ import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
 import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
 import {prepareNativeAgentCatalog} from './native-agent-catalog-runtime.ts'
 import {prepareNativeMonitorInbox} from './native-monitor-inbox-runtime.ts'
+import {prepareNativeMonitorLive} from './native-monitor-live-runtime.ts'
 import {inspectOriginalHomeKnowledgeStatisticsStartup} from './native-home-knowledge-stats-runtime.ts'
 import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
@@ -506,7 +509,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(originalHomeFlag!==undefined&&originalHomeFlag!=='true')throw Error('unsafe_original_home_config')
     const originalHomeSchema=await inspectOptionalNativeHomeAuthoringSchema(business)
     if(originalHomeFlag==='true'&&originalHomeSchema!=='installed')throw Error('original_home_authoring_schema_required')
-    const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
+    const ordinaryCase=await prepareOrdinaryCaseRuntime(business,env)
+    const monitorLive=await prepareNativeMonitorLive({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,ordinaryCaseEnabled:ordinaryCase!==null})
+    if(ordinaryCase&&!monitorLive)throw Error("ordinary_case_original_business_facade_required")
+    const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowMonitorBusinessSpecs:monitorLive!==null})
     const originalMonitorInbox=await prepareNativeMonitorInbox({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin})
     await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin})
     const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
@@ -527,8 +533,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
     })
     const modelDraftProbe=new ModelDraftProbeRepository(business,brokerPool?adapter(brokerPool):business,modelEncryptionKey,{configurationWrites:capabilities.configurationWrites,modelProbeUat:capabilities.modelProbeUat})
+    const originalInteraction=releasesAvailable?new OriginalRunInteractionRepository(business,{writes:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true,allowHumanInput:humanInputAvailable,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowMemory:capabilities.agentMemoryUat===true}):null
     let businessHandler:ReturnType<typeof createHandler>|undefined
-    const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+    const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,originalRunInteractionProtocol:originalInteraction?.originalInteractionProtocol,
       allowOwnerToolHub:ownerToolHub.available,allowOwnerToolTrials:ownerToolHub.trials,allowPublicMcpRegistry:ownerToolHub.registry,
       allowOwnOperations:ownOperationsAvailable,
       allowCompanyOverview:companyOverviewAvailable,
@@ -582,7 +589,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const originalWorkflowV2Runs=new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})
     businessHandler=createHandler({
       ...(ownerToolHub.available?{ownerToolHub:{capabilities:ownerToolHub,trials:new OwnerToolTrialRepository(business,originalWorkflowV2Runs),invocations:new OwnerToolInvocationRepository(business),...(ownerToolHub.registry?{registryRead:createPublicMcpRegistryNetwork()}:{} )}}:{}),
-      allowNativeLocalAgentSpecs:localDevices.available,
+      allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
@@ -618,7 +625,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true}),
+      ...(originalInteraction?{originalRunInteractionRepository:originalInteraction}:{}),
+      autonomousAgentRunRepository:(ordinaryCase?.repository({allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true})??new AutonomousAgentRunRepository(business,{allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true})),
       workflowV2RunRepository:originalWorkflowV2Runs,
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
@@ -635,9 +643,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.knowledgeEmbeddingConsentUat===true?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(business)}:{}),
       ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
       ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
-      ...(originalSchedulesAvailable?{originalSchedulesRepository:new OriginalSchedulesRepository(business,{writes:capabilities.configurationWrites===true,execution:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
+      ...(originalSchedulesAvailable?{originalSchedulesRepository:new OriginalSchedulesRepository(business,{allowMonitorBusiness:monitorLive!==null,writes:capabilities.configurationWrites===true,execution:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
-      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{allowMonitorBusiness:monitorLive!==null,enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
         ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
@@ -700,7 +708,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }
-    const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,authenticateRequest:native.authenticateRequest})
+    const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,authenticateRequest:native.authenticateRequest})
     if(originalHomeHttp){
       const originalHomeFallback=businessHandler
       businessHandler=async(req,res)=>{if(await originalHomeHttp(req,res))return;await originalHomeFallback(req,res)}
@@ -714,6 +722,11 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(originalMonitorHttp){
       const originalMonitorFallback=businessHandler
       businessHandler=async(req,res)=>{if(await originalMonitorHttp(req,res))return;await originalMonitorFallback(req,res)}
+    }
+    const liveMonitorHttp=monitorLive?.createHandler(native.authenticateRequest)??null
+    if(liveMonitorHttp){
+      const liveMonitorFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await liveMonitorHttp(req,res))return;await liveMonitorFallback(req,res)}
     }
     const entryHandler=createNativeEntryHttpHandler(native.handler,callerPublicHttp)
     const localServer=createServer(entryHandler)

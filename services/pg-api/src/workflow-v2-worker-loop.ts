@@ -1,3 +1,5 @@
+import {prepareOrdinaryCaseRuntime,selectOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
+import {NativeOrdinaryCaseExecutor} from './native-ordinary-case-executor.ts'
 import {reportWorkerStartupFailure} from './pg18-full069-worker-startup-observation.mjs'
 import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
 import {verifyNativeLocalDeviceSchema} from './native-local-device-audit.ts'
@@ -45,6 +47,8 @@ export function runV2WorkerCli(autonomous=false){
   async function main(mode:"serve"|"preflight"){
     startupStage='activation';const localDeviceExecutionApproved=selectNativeLocalDeviceExecution(process.env)
     if(localDeviceExecutionApproved&&!autonomous)throw Error("native_local_autonomous_worker_required")
+    const ordinarySelection=selectOrdinaryCaseRuntime(process.env)
+    if(ordinarySelection.enabled&&!autonomous)throw Error("ordinary_case_autonomous_worker_required")
     const modelEnabled=selectWorkflowV2ModelExecution(process.env)
     const toolsEnabled=selectWorkflowV2ToolExecution(process.env)
     const knowledgeToolsEnabled=selectKnowledgeToolRuntime(process.env)
@@ -84,7 +88,7 @@ export function runV2WorkerCli(autonomous=false){
     startupStage='pool_create';const pool=new Pool({host:target.host,port:target.port,user:target.user,database:target.database,password,max:2,
       connectionTimeoutMillis:4000,statement_timeout:8000,idleTimeoutMillis:10000})
     const rawAdapter:SqlPool={knowledgeSharing:selectKnowledgeSharing(process.env),async connect(){const db=await pool.connect();return {
-      async query<Row>(sql:string,values:unknown[]=[]){return {rows:(await db.query(sql,values)).rows as Row[]}},release(){db.release()}}}}
+      async query<Row>(sql:string,values:unknown[]=[]){return {rows:(await db.query(sql,values)).rows as Row[]}},release(destroy?:boolean){db.release(destroy)}}}}
     const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
     try{
       startupStage='target_audit';await verifyPgRuntimeTarget(adapter,target);startupStage='worker_role_audit';await verifyPgWorkerRoleBoundary(adapter,target)
@@ -104,12 +108,14 @@ export function runV2WorkerCli(autonomous=false){
         ca:readBoundRuntimeCredential(kind,"dispatch-ca.pem",process.env),
         cert:readBoundRuntimeCredential(kind,autonomous?"dispatch-agent.pem":"dispatch-workflow.pem",process.env),
         key:readBoundRuntimeCredential(kind,autonomous?"dispatch-agent.key":"dispatch-workflow.key",process.env)}:undefined
+      const ordinaryCase=await prepareOrdinaryCaseRuntime(adapter,process.env)
       const adapters=[...(modelEnabled?[workflowV2ModelEffectExecutor(config!)]:[]),...(toolsEnabled?[workflowV2ToolEffectExecutor(config!)]:[])]
-      const executor:WorkflowV2EffectExecutor|undefined=adapters.length?{supports:request=>adapters.some(adapter=>adapter.supports!(request)),
+      const originalExecutor:WorkflowV2EffectExecutor|undefined=adapters.length?{supports:request=>adapters.some(adapter=>adapter.supports!(request)),
         execute:(request,lease)=>{
           const adapter=adapters.find(candidate=>candidate.supports!(request));if(!adapter)throw Error("workflow_effect_adapter_unavailable")
           return adapter.execute(request,lease)
         }}:undefined
+      const executor=ordinaryCase?.execution&&originalExecutor?new NativeOrdinaryCaseExecutor(adapter,originalExecutor,true,{allowMemory:autonomous&&memoryApproved,allowLocalDevices:localDeviceExecutionApproved,allowCallers:callerApproved}):originalExecutor
       if(mode==="preflight"){
         process.stdout.write(JSON.stringify({mode,worker:autonomous?"autonomous_agent":"workflow_v2",verified_roles:true,db_writes_performed:false,
           worker_started:false,effect_executor_installed:false,model_adapter_config_verified:modelEnabled,tool_adapter_config_verified:toolsEnabled,
@@ -121,7 +127,7 @@ export function runV2WorkerCli(autonomous=false){
       // Preflight never loads either execution Worker or its claim SQL.
       startupStage='worker_import';const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
       const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
-      startupStage='worker_construct';const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      startupStage='worker_construct';const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,ordinaryCaseExecutionApproved:ordinaryCase?.execution===true,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       closeWorkerClaims=()=>worker.closeNewClaims()
       claimsClosed=()=>worker.claimAdmissionSnapshot().closed
       if(stop){closeWorkerClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}

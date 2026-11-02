@@ -78,6 +78,11 @@ GRANT SELECT(id,owner_user_id,name,kind,agent_spec_id,workflow_id,time_zone,recu
 GRANT INSERT(id,owner_user_id,name,kind,agent_spec_id,workflow_id,time_zone,recurrence,next_at,enabled) ON agentstudio.schedules TO agentstudio_original_schedules;
 GRANT UPDATE(name,kind,agent_spec_id,workflow_id,time_zone,recurrence,next_at,execution,updated_at,deleted_at) ON agentstudio.schedules TO agentstudio_original_schedules;
 GRANT SELECT(id,owner_user_id,schedule_id,scheduled_for,status,run_id,created_at,updated_at,schedule_revision,planned_run_id,manual,attempts,error_code) ON agentstudio.schedule_occurrences TO agentstudio_original_schedules;
+-- Row-lock prerequisite only: dedicated NOLOGIN definer, never API/Worker DML.
+GRANT UPDATE(id) ON agentstudio.agent_specs TO agentstudio_original_schedules;
+GRANT UPDATE(id) ON agentstudio.workflows TO agentstudio_original_schedules;
+GRANT UPDATE(id) ON agentstudio.model_connections TO agentstudio_original_schedules;
+GRANT UPDATE(id) ON agentstudio.schedule_occurrences TO agentstudio_original_schedules;
 GRANT SELECT(id,external_issuer,status) ON agentstudio.users TO agentstudio_original_schedules;
 GRANT SELECT(user_id,enabled) ON agentstudio_auth.accounts TO agentstudio_original_schedules;
 GRANT SELECT(id,owner_user_id,name,revision,spec) ON agentstudio.agent_specs TO agentstudio_original_schedules;

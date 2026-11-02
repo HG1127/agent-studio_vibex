@@ -1,3 +1,5 @@
+import {useState} from 'react'
+import {RunInteractionCard} from '../../components/run-detail/RunInteractionCard.tsx'
 import { AlertCircle, ArrowLeft, Compass, Loader2, ScrollText, X } from "lucide-react"
 import { Link } from "react-router-dom"
 import { RdActionBar } from "@/components/run-detail/RdActionBar"
@@ -14,6 +16,8 @@ import { SpecSnapshotCard } from "@/components/run-detail/SpecSnapshotCard"
 import type { useRunDetail } from "./useRunDetail"
 
 export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
+  const [interactionBlocked,setInteractionBlocked]=useState(false)
+  const interaction=p.nativeMode&&p.nativeState?.interactionsAvailable&&p.nativeState?.selected?.kind==='agent_autonomous'&&p.nativeState.selected.id===p.runIdParam?p.nativeState.selected:null
   const showNotFound = p.loadState === "not_found"
   const showEmpty = !p.runIdParam && p.loadState !== "loading"
   const showLoading = p.loadState === "loading" && !p.runDetail
@@ -65,6 +69,8 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
                 {p.nativeState?.pending && <button type="button" onClick={()=>void p.handleConfirmNative()} disabled={p.nativeState.busy} className="rounded-lg border px-3 py-2">核对原控制结果（不重发）</button>}
               </div>
             </div>}
+
+            {interaction&&p.nativeState&&<RunInteractionCard key={p.nativeState.employee+':'+interaction.id} employee={p.nativeState.employee} run={interaction.id} sourceAllowed={Boolean(p.runDetail?.native?.sourceAvailable)} parentLoading={p.nativeState.loading} sourceStamp={p.runDetail?.updated??''} onBlocked={setInteractionBlocked}/>}
 
             {showLoading && (
               <section className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
@@ -181,7 +187,7 @@ export function RunDetailPage(p: ReturnType<typeof useRunDetail>) {
                   <RunEvalFeedbackCard run={p.runDetail} />
                   <SpecSnapshotCard snapshot={p.specSnapshot} run={p.runDetail} />
                   <RdActionBar
-                    controlBlocked={Boolean(p.nativeState?.pending)}
+                    controlBlocked={Boolean(p.nativeState?.pending)||interactionBlocked}
                     run={p.runDetail}
                     isLive={p.isLive}
                     controlBusy={p.controlBusy}

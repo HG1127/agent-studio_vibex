@@ -85,6 +85,8 @@ jobs:
           tests/original-schedules-auth.test.mjs
           tests/original-schedules-run-reader.test.mjs
           tests/original-schedules-source.test.mjs
+          tests/original-schedules078-row-lock-source.test.mjs
+          tests/original-schedules078-sql-diagnostic-pure.test.mjs
       - name: Chromium for the fixed original page
         run: pnpm exec playwright install --with-deps chromium
       - name: Reviewed source gate then actual synthetic Cookie/PG/browser story

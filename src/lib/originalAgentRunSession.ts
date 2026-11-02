@@ -1,3 +1,4 @@
+import {parseOrdinaryCaseRunInput,type OrdinaryCaseRunInput} from '../../shared/ordinary-case-run-contract.ts'
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,autonomousApprovalReady,readyAutonomousModel,type AutonomousDetail} from './pgNativeAutonomousAgentSession.ts'
 import {createPgNativeFeedbackSession,emptyFeedbackView} from './pgNativeAgentFeedbackSession.ts'
 import {createPgNativeMemorySession,emptyMemoryView} from './pgNativeAgentMemorySession.ts'
@@ -101,16 +102,17 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
    if(detail){selectedAgent=detail.run.agent_spec_id;const a=currentAgent();await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null)}publish()
   },
   async poll(){if(!closed){await identity();await runs.poll()}},
-  async submit(instruction:string,maxSteps:number){
+  async submit(instruction:string,maxSteps:number,businessCase?:OrdinaryCaseRunInput){
    if(!privateVisible())return
    const a=currentAgent(),r=runs.snapshot()
    if(!a||!caps?.autonomous_agent_submission_enabled||!caps.config_writes_enabled){error='当前员工或实例未授权发起自主运行。';publish();return}
    if(r.pendingSubmit){await runs.refresh();error='原任务登记结果未确认；此入口没有独立登记回执查询合同，原请求保留，不重新提交。';publish();return}
    if(blocked()){error='请先核对当前操作。';publish();return}
    if(!readyAutonomousModel(nativeAgents().find(x=>x.id===a.id),models)){error='当前助手尚未绑定本人已核验的模型版本，请先在原助手配置中保存。';publish();return}
-   if((a.spec.tools as string[]).some(t=>['business_case_get','business_record_query','business_record_write','result_read'].includes(t))){error='此助手的业务工具仅能由074真实监测来源登记运行；普通业务 case-run 启动合同尚未接通，未提交运行。';publish();return}
+   const caseInput=businessCase===undefined?undefined:parseOrdinaryCaseRunInput(businessCase)
+   if((a.spec.tools as string[]).some(t=>['business_case_get','business_record_query','business_record_write','result_read'].includes(t))&&!caseInput){error='请从本人业务案例进入后再启动此助手。';publish();return}
    if(!instruction.trim()||instruction.trim().length>2000||!Number.isSafeInteger(maxSteps)||maxSteps<1||maxSteps>30){error='请填写1～2000字任务及1～30轮上限。';publish();return}
-   await confirm({purpose:'submit',run_id:null,step_key:null,input_sha256:null,description:'创建当前员工助手 '+a.id+' 第 '+a.revision+' 版的任务，最多 '+maxSteps+' 轮。只登记任务；模型和工具步骤仍需逐次审批及费用预览。'},()=>runs.submit({agentId:a.id,revision:a.revision,instruction,maxSteps,requirePlanReview:a.spec.require_plan_review===true}))
+   await confirm({purpose:'submit',run_id:null,step_key:null,input_sha256:null,description:'创建当前员工助手 '+a.id+' 第 '+a.revision+' 版的任务，最多 '+maxSteps+' 轮。只登记任务；模型和工具步骤仍需逐次审批及费用预览。'},()=>runs.submit({agentId:a.id,revision:a.revision,instruction,maxSteps,requirePlanReview:a.spec.require_plan_review===true,...(caseInput?{businessCase:caseInput}:{})}))
   },
   async decide(decision:'approve'|'reject'){
    if(!privateVisible())return

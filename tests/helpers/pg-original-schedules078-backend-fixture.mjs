@@ -1,4 +1,5 @@
 import {requireOriginalSchedules078Ci} from './pg-original-schedules078-browser-guard.mjs'
+import {originalSchedules078RuntimeSqlFailure} from './pg-original-schedules078-sql-diagnostic.mjs'
 import {verifyOriginalSchedules078Sources} from './pg-original-schedules078-reviewed-check.mjs'
 export const originalSchedules078MigrationVersions=Object.freeze([58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,75,78])
 export function selectOriginalSchedules078Migrations(names){
@@ -33,7 +34,7 @@ export async function originalSchedules078BackendFixture(env=process.env){
    assert.deepEqual(applied,originalSchedules078MigrationVersions,'exact declared install scope; no implicit optional expansion')
   assert(applied.includes(78),'078 must be actually installed');assert.equal(await schedulesAudit.inspectOriginalSchedulesSchema(f.pool),true)
   for(const who of ['alice','bob'])identities[who]=f.identities[who]
-  const observedApi={...f.pool,async connect(){const db=await f.pool.connect();return{async query(sql,args=[]){if(typeof sql==='string'&&/^\s*SELECT\b/i.test(sql)&&/(?:FROM|JOIN)\s+agentstudio\.(?:model_connections|tool_connection_headers)\b/i.test(sql)&&/(?:api_key_ciphertext|api_key_nonce|api_key_tag|value_ciphertext|value_nonce|value_tag)/i.test(sql))credentialReads++;return db.query(sql,args)},release(){db.release()}}}}
+  const observedApi={...f.pool,async connect(){const db=await f.pool.connect();return{async query(sql,args=[]){if(typeof sql==='string'&&/^\s*SELECT\b/i.test(sql)&&/(?:FROM|JOIN)\s+agentstudio\.(?:model_connections|tool_connection_headers)\b/i.test(sql)&&/(?:api_key_ciphertext|api_key_nonce|api_key_tag|value_ciphertext|value_nonce|value_tag)/i.test(sql))credentialReads++;try{return await db.query(sql,args)}catch(error){if(typeof sql==='string'&&/^SELECT agentstudio\.original_schedule_[a-z_]+\(/.test(sql)){try{process.stderr.write(JSON.stringify(originalSchedules078RuntimeSqlFailure(error))+'\n')}catch{}}throw error}},release(){db.release()}}}}
   const observedBroker={...f.secretPool,async connect(){const db=await f.secretPool.connect();return{async query(sql,args=[]){if(typeof sql==='string'&&sql.includes('api_key_ciphertext'))credentialReads++;return db.query(sql,args)},release(){db.release()}}}},models=new modelsModule.ModelConnectionRepository(observedApi,f.key,observedBroker)
   const repository=new schedules.OriginalSchedulesRepository(observedApi,{writes:permit.policy.configurationWrites,execution:permit.policy.scheduleRuntimeUat}),workflows=new workflow.WorkflowRepository(observedApi),graph={version:2,nodes:[{id:'start',type:'start',data:{title:'Synthetic start'},position:{x:0,y:0}},{id:'end',type:'end',data:{title:'Synthetic end'},position:{x:100,y:0}}],edges:[{id:'start_end',source:'start',target:'end'}]}
   for(const who of ['alice','bob'])flows[who]=await workflows.create(identities[who],'Schedules078 synthetic '+who,graph)

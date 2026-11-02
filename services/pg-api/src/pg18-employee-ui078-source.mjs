@@ -13,7 +13,7 @@ export const employeeUi078SqlPins=Object.freeze([
  {path:'db/postgres/migrations/pg_v9_072_home_knowledge_statistics.sql',version:'pg_v9_072',sha256:'bba0d5264ea95bc783d6df35741a97a32a7deb8d51c613f70864ff7e88f23abd'},
  {path:'db/postgres/migrations/pg_v9_073_monitor_inbox.sql',version:'pg_v9_073',sha256:'ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db'},
  {path:'db/postgres/migrations/pg_v9_075_model_config_write_receipts.sql',version:'pg_v9_075',sha256:'8237a97196a43d47dbf190414f9a516d8859eb16a755f21875b70748949123f0'},
- {path:'db/postgres/migrations/pg_v9_078_original_schedule_contract.sql',version:'pg_v9_078',sha256:'366a1d64ae92719a7267c8d0db7806f75dd85b37cf2d378f8237199c2241445a'},
+ {path:'db/postgres/migrations/pg_v9_078_original_schedule_contract.sql',version:'pg_v9_078',sha256:'4e4c5292e2b1c37f142b6b6a6c982acfc5463930523138118b2f9102f5f95e4d'},
  {path:'db/postgres/profiles/employee_ui078_catalog_ledger.sql',version:employeeUi078CatalogReceipt,sha256:'c780c38a35e18a88b51c0fd982bf40d70db76e8c5c1877545cb13e1df8bd6fcc'},
 ].map(Object.freeze))
 const freeze=v=>{if(v&&typeof v==='object'){for(const item of Object.values(v))freeze(item);Object.freeze(v)}return v}

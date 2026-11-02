@@ -1,3 +1,6 @@
+import {existingOrdinaryCaseAgentBinding} from './native-ordinary-case-binding.ts'
+import {hasMonitorBusinessAgentTools} from './native-monitor-business-contract.ts'
+import {optionalMonitorAgentBinding} from './native-monitor-agent-binding.ts'
 import {checkedAgentCallerBinding,verifyAgentCallerSource,type AgentCallerBinding} from './agent-caller-runtime-policy.ts'
 import {ownedStepDecisionActor,auditDelegatedOwnedStep} from './owned-step-decision-context.ts'
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
@@ -104,12 +107,12 @@ export async function auditWorkflowV2(db:SqlClient,owner:string,runId:string,act
     "CASE WHEN kind='agent' THEN 'agent_run' ELSE 'workflow_run' END,$2::text,'succeeded',$4::jsonb FROM agentstudio.runs WHERE id=$2::uuid AND owner_user_id=$1::uuid",
     [owner,runId,action,JSON.stringify(metadata)])
 }
-export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState){
+export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState,authoringMonitorBusiness=false){
   if(isUuid(run.id))await verifyScheduleRunSource(db,run.id)
   await verifyAgentCallerSource(db,owner,run,state)
   const root=durableV2Root(state.execution_mode)
   if(run.kind!==root.kind||!run[root.id]||run[root.id==="workflow_id"?"agent_spec_id":"workflow_id"])throw new HttpError(409,"invalid_v2_root")
-  const current=(await db.query<{revision:number|string;graph?:unknown}>("SELECT revision"+(state.node_debug?",graph":"")+" FROM agentstudio."+root.table+
+  const current=(await db.query<{revision:number|string;graph?:unknown;spec?:unknown}>("SELECT revision"+(root.kind==="agent"?",spec":"")+(state.node_debug?",graph":"")+" FROM agentstudio."+root.table+
     " WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[run[root.id],owner])).rows[0]
   if(Number(current?.revision)!==state[root.revision])throw new HttpError(409,root.kind+"_revision_changed")
   if(state.node_debug)try{
@@ -119,7 +122,7 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0,state.graph.nodes[1]?.data.model_binding,state.graph.nodes[1]?.data.require_plan_review)
     if(workflowAgentJson(graph)!==workflowAgentJson(state.graph))throw new HttpError(409,"invalid_v2_root")
     const agent=graph.nodes[1]!
-    const {spec}=await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]},undefined,true)
+    const {spec}=await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]},undefined,true,isUuid(run.id)&&(state.agent_state?.monitor_business!==undefined||hasMonitorBusinessAgentTools(current?.spec))?await optionalMonitorAgentBinding(db,owner,run.id):undefined,authoringMonitorBusiness,isUuid(run.id)&&(state.agent_state?.case_business!==undefined||hasMonitorBusinessAgentTools(current?.spec))?await existingOrdinaryCaseAgentBinding(db,owner,run.id):undefined)
     const required=agent.data.require_plan_review??spec.require_plan_review??false
     if(required&&state.machine.effects.some(effect=>effect.step_key==="wf2_00002_agent"&&!effect.outcome)&&!state.human_agent_keys?.includes("wf2_00002_agent"))
       throw new HttpError(409,"agent_human_archive_unavailable")
