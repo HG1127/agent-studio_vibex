@@ -233,7 +233,7 @@ BEGIN
   IF f.schedule_id IS NULL OR NOT s.enabled OR jsonb_typeof(auth) IS DISTINCT FROM 'object' OR auth->>'background_ack'<>'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1' OR
      s.execution->>'instruction' IS DISTINCT FROM draft->>'instruction' OR s.execution->'target_revision' IS DISTINCT FROM draft->'target_revision' OR
      s.execution->'model_binding' IS DISTINCT FROM agentstudio.original_schedule_binding(draft) OR s.execution->>'anchor_at' IS DISTINCT FROM draft->>'anchor_at' OR
-     s.execution->'max_steps' IS DISTINCT FROM CASE WHEN draft->>'target_kind'='workflow' THEN '1'::jsonb ELSE draft->'max_steps' END OR
+     s.execution->'max_steps' IS DISTINCT FROM (CASE WHEN draft->>'target_kind'='workflow' THEN '1'::jsonb ELSE draft->'max_steps' END) OR
      EXISTS(SELECT 1 FROM unnest(ARRAY['expires_at','max_occurrences','max_auto_effects','background_ack','knowledge_charge_ack']) k WHERE s.execution->k IS DISTINCT FROM auth->k) THEN RAISE EXCEPTION 'original_schedule_authority_unconfirmed';END IF;
  ELSIF o.action IN('save','pause','delete') AND s.enabled THEN RAISE EXCEPTION 'original_schedule_finish_changed';END IF;
  IF o.action IN('run_now','retry_start') THEN

@@ -1,10 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {createRequire} from 'node:module'
 import {requireOriginalVersionReleaseCi,originalVersionReleaseServiceContractGaps,assertOriginalVersionReleaseServiceContracts} from './helpers/pg-original-version-release-browser-guard.mjs'
 import {originalVersionReleasePolicy as policy} from './helpers/pg-original-version-release-browser-policy.mjs'
 import {startOriginalVersionReleaseBrowserFixture} from './helpers/pg-original-version-release-browser-fixture.mjs'
 import {originalVersionReleaseBackendFixture} from './helpers/pg-original-version-release-backend-fixture.mjs'
+test('original release worker resolves pg from locked API dependencies without evaluating a database client',async()=>{const {originalReleaseApiRequire}=await import('./helpers/pg-original-version-release-backend-fixture.mjs');assert.equal(typeof originalReleaseApiRequire,'function');const requireApi=originalReleaseApiRequire(),expected=createRequire(new URL('../services/pg-api/package.json',import.meta.url));assert.equal(requireApi.resolve('pg'),expected.resolve('pg'));const source=readFileSync(new URL('./helpers/pg-original-version-release-backend-fixture.mjs',import.meta.url),'utf8');assert(!source.includes("import('pg')"));assert(source.includes("const Pg=originalReleaseApiRequire()('pg')"));assert(source.includes('workerPg=new Pg.Pool('))})
 const baseline={
  "CI": "true",
  "GITHUB_ACTIONS": "true",

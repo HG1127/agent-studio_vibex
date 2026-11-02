@@ -8005,6 +8005,37 @@
       "root_review_preserves_original_runtime_source_check_bytes_after_expression_hoist": true,
       "actual_new_head_genuine_passed": false,
       "production_GO": false
+    },
+    "current_original_page_second_hosted_repairs": {
+      "head": "85fa4e0d61454bfac05b52a8b8b55c2f258a0b9d",
+      "F01_jobs": 18,
+      "F01_success": 16,
+      "078_actual_run": 41404494317,
+      "078_actual_job": 125143346525,
+      "078_actual_error": "syntax error at end of input",
+      "078_actual_pure_passed": 104,
+      "078_source_fix": "parenthesize SQL CASE inside original_schedule_finish IF condition; PLpgSQL depth-zero THEN ends the condition",
+      "078_SQL_sha256": "366a1d64ae92719a7267c8d0db7806f75dd85b37cf2d378f8237199c2241445a",
+      "078_body_sha256": "ce2a1296cc29d7c43b8f34cd3417b9e03a57d0225f2c1ad35980f72efab49281",
+      "078_other19_bodies_roles_authority_predicates_unchanged": true,
+      "078_source_scope_no_implicit074_076_077_install": true,
+      "078_failure_metadata_no_raw_SQL_or_error_payloads": true,
+      "Release_actual_job": 125143346337,
+      "Release_actual_error": "Cannot find package pg from root tests helper",
+      "Release_source_fix": "resolve existing locked pg through services/pg-api/package.json, after real purpose/source admission",
+      "Release_actual_pool_options_and_lifecycle_restored_byte_exact_after_resolution_undo": true,
+      "parent_actual_job": 125143346794,
+      "parent_actual_error": "response.json CDP body unavailable after navigation",
+      "parent_source_fix": "capture same original403 response JSON at response event; exact error/hidden private fields/no-receipt/no-extra-post assertions retained",
+      "targeted_checks": [
+        50,
+        45,
+        14
+      ],
+      "current_new_head_full_curated_not_claimed": true,
+      "SQL_executed_locally": false,
+      "genuine_new_head_passed": false,
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

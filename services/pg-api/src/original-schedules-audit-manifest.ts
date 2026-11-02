@@ -123,7 +123,7 @@ export const originalSchedulesFunctionManifest=[
     "language": "plpgsql",
     "volatility": "v",
     "defaults": 2,
-    "body_sha256": "6af58ab811b42dd5ba81974bd94818481625de87798ae729bbe6e7700f5e7b9a",
+    "body_sha256": "ce2a1296cc29d7c43b8f34cd3417b9e03a57d0225f2c1ad35980f72efab49281",
     "grantees": [
       "agentstudio_api"
     ]
@@ -221,4 +221,4 @@ export const originalSchedulesFunctionManifest=[
     ]
   }
 ] as const
-export const originalSchedulesMigrationSha256="a8f170e94d365db68e01d8f5eafcf751a932a1ffd5782451f6ca683d93b0613f" as const
+export const originalSchedulesMigrationSha256="366a1d64ae92719a7267c8d0db7806f75dd85b37cf2d378f8237199c2241445a" as const

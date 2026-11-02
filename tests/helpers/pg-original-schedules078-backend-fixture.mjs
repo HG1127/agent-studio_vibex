@@ -1,5 +1,18 @@
 import {requireOriginalSchedules078Ci} from './pg-original-schedules078-browser-guard.mjs'
 import {verifyOriginalSchedules078Sources} from './pg-original-schedules078-reviewed-check.mjs'
+export const originalSchedules078MigrationVersions=Object.freeze([58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,75,78])
+export function selectOriginalSchedules078Migrations(names){
+ if(!Array.isArray(names)||names.some(name=>typeof name!=='string'))throw Error('original_schedules078_migration_inventory_required')
+ const selected=names.flatMap(name=>{const match=/^pg_v9_(\d{3})_[a-z0-9_]+\.sql$/.exec(name),version=match?Number(match[1]):null;return originalSchedules078MigrationVersions.includes(version)?[{name,version}]:[]}).sort((a,b)=>a.version-b.version)
+ if(selected.length!==originalSchedules078MigrationVersions.length||selected.some((row,index)=>row.version!==originalSchedules078MigrationVersions[index]))throw Error('original_schedules078_migration_inventory_required')
+ return Object.freeze(selected.map(row=>row.name))
+}
+export function originalSchedules078MigrationFailure(name,error){
+ const match=typeof name==='string'&&/^pg_v9_(\d{3})_[a-z0-9_]{1,100}\.sql$/.exec(name)
+ if(!match||!originalSchedules078MigrationVersions.includes(Number(match[1])))throw Error('original_schedules078_migration_projection_scope')
+ const own=key=>{try{const d=error&&typeof error==='object'?Object.getOwnPropertyDescriptor(error,key):null;return d&&Object.hasOwn(d,'value')?d.value:undefined}catch{return undefined}},position=value=>typeof value==='string'&&/^[1-9][0-9]{0,6}$/.test(value)?Number(value):null,code=own('code'),routine=own('routine'),where=own('where'),context=typeof where==='string'&&where.length<=4096?/\bfunction\s+"?(original_schedule_[a-z_]{1,60})"?\s+(?:near\s+)?line\s+([1-9][0-9]{0,5})\b/.exec(where):null
+ return Object.freeze({event:'original_schedules078_migration_failure',migration:name,code:typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code)?code:null,position:position(own('position')),internal_position:position(own('internalPosition')),routine:typeof routine==='string'&&/^[a-z_][a-z0-9_]{0,79}$/.test(routine)?routine:null,function_name:context?.[1]??null,function_line:context?Number(context[2]):null,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
+}
 /** Actual hosted TCP composition. No Worker, provider, fake Pool or DTO fixture. */
 export async function originalSchedules078BackendFixture(env=process.env){
  const permit=requireOriginalSchedules078Ci(env),reviewed=await verifyOriginalSchedules078Sources(env)
@@ -16,7 +29,8 @@ export async function originalSchedules078BackendFixture(env=process.env){
   f=await base.agentAssessmentTcpFixture(env)
   const observed=(await f.db.query("SELECT current_database() AS database,session_user::text AS login,current_setting('server_version_num')::integer AS version,NOT pg_is_in_recovery() AS primary")).rows[0];assert.equal(observed.database,permit.target.database);assert.equal(observed.login,permit.target.user);assert(observed.version>=180000&&observed.version<190000&&observed.primary)
   const migrationDir=path.join(reviewed.repo,'db/postgres/migrations'),applied=[]
-  for(const name of fs.readdirSync(migrationDir).filter(name=>/^pg_v9_\d{3}_[a-z0-9_]+\.sql$/.test(name)).sort()){const version=Number(name.slice(6,9));if(version<58||version>78)continue;const relative='db/postgres/migrations/'+name,bytes=fs.readFileSync(path.join(migrationDir,name));assert.equal(sha(bytes),reviewed.sources.find(r=>r.file===relative)?.sha256);const prior=(await f.db.query('SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version=$1) AS installed',['pg_v9_'+String(version).padStart(3,'0')])).rows[0].installed;assert.equal(prior,false,'fresh later migration only');await f.db.exec(bytes.toString('utf8').split(/\r?\n/).filter(line=>!line.trim().startsWith('\\')).join('\n'));applied.push(version)}
+   for(const name of selectOriginalSchedules078Migrations(fs.readdirSync(migrationDir))){const version=Number(name.slice(6,9)),relative='db/postgres/migrations/'+name,bytes=fs.readFileSync(path.join(migrationDir,name));assert.equal(sha(bytes),reviewed.sources.find(r=>r.file===relative)?.sha256);const prior=(await f.db.query('SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version=$1) AS installed',['pg_v9_'+String(version).padStart(3,'0')])).rows[0].installed;assert.equal(prior,false,'fresh later migration only');try{await f.db.exec(bytes.toString('utf8').split(/\r?\n/).filter(line=>!line.trim().startsWith('\\')).join('\n'))}catch(error){try{process.stderr.write(JSON.stringify(originalSchedules078MigrationFailure(name,error))+'\n')}catch{}throw error}applied.push(version)}
+   assert.deepEqual(applied,originalSchedules078MigrationVersions,'exact declared install scope; no implicit optional expansion')
   assert(applied.includes(78),'078 must be actually installed');assert.equal(await schedulesAudit.inspectOriginalSchedulesSchema(f.pool),true)
   for(const who of ['alice','bob'])identities[who]=f.identities[who]
   const observedApi={...f.pool,async connect(){const db=await f.pool.connect();return{async query(sql,args=[]){if(typeof sql==='string'&&/^\s*SELECT\b/i.test(sql)&&/(?:FROM|JOIN)\s+agentstudio\.(?:model_connections|tool_connection_headers)\b/i.test(sql)&&/(?:api_key_ciphertext|api_key_nonce|api_key_tag|value_ciphertext|value_nonce|value_tag)/i.test(sql))credentialReads++;return db.query(sql,args)},release(){db.release()}}}}

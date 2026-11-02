@@ -34,8 +34,9 @@ test('actual original AgentRun queued read/cancel, complete owner models and rea
   })
   await test.step('actual feedback permission is withdrawn through the real selector after original confirmation opens; true403 writes no receipt and hides every local private field',async()=>{
    const checkpoint=await f.feedbackCheckpoint();await task(p).fill(draft);await p.getByRole('button',{name:'结果不错',exact:true}).click();await feedback(p).fill(comment)
-   const response=b.wire(p,'/api/v2/agent-feedback/'+aliceRun.id+'/change','POST'),dialog=b.expectedDialog(p,'confirm','保存本人对此运行的评价',async()=>f.revokeFeedbackBeforeOriginalSubmit(aliceRun.id))
-   await p.getByRole('button',{name:'提交反馈',exact:true}).click();await dialog;const denied=await response;expect(denied.status()).toBe(403);expect((await denied.json()).error).toBe('agent_feedback_submission_disabled')
+    // Begin reading the original response at its event, before the page can navigate.
+    const response=b.wire(p,'/api/v2/agent-feedback/'+aliceRun.id+'/change','POST').then(async reply=>({status:reply.status(),body:await reply.json()})),dialog=b.expectedDialog(p,'confirm','保存本人对此运行的评价',async()=>f.revokeFeedbackBeforeOriginalSubmit(aliceRun.id));void response.catch(()=>{})
+    await p.getByRole('button',{name:'提交反馈',exact:true}).click();await dialog;const denied=await response;expect(denied.status).toBe(403);expect(denied.body.error).toBe('agent_feedback_submission_disabled')
    await expect(task(p)).toHaveValue('');await expect(feedback(p)).toHaveCount(0);await expect(runButton(p)).toBeDisabled();expect(f.observations.controlled_feedback403).toBe(1);feedbackProof=await f.feedbackUnchanged(checkpoint)
    const before=f.observations.feedback_posts.length;await task(p).fill('synthetic-queued-private-ignored');await expect(task(p)).toHaveValue('');expect(f.observations.feedback_posts).toHaveLength(before)
    f.restoreFeedbackSubmission();await b.focus(p);await expect(task(p)).toHaveValue(draft);expect(f.observations.feedback_posts).toHaveLength(1);steps.actual_selector_revocation403_and_no_receipt=true
