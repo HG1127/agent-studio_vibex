@@ -1454,3 +1454,13 @@ tests/pg-original-tool-connections-genuine.spec.mjs text eol=lf
 tests/tool-connection-pagination-pure.test.mjs text eol=lf
 tests/tool-pagination-http-pure.test.mjs text eol=lf
 tests/tool-pagination-source-increment.test.mjs text eol=lf
+
+# Original identity recovery, schedule employee conditions and private admission.
+services/pg-api/src/schedule-draft-repository.ts text eol=lf
+services/pg-api/src/schedule-inventory-repository.ts text eol=lf
+services/pg-api/src/schedule-runtime-repository.ts text eol=lf
+services/pg-api/tests/original-schedule-employee-precondition.test.mjs text eol=lf
+services/pg-api/tests/worker-heartbeat-admission-fence.test.mjs text eol=lf
+src/lib/pgNativeSession.ts text eol=lf
+tests/helpers/pg-original-run-queued-identity-loss.mjs text eol=lf
+tests/original-agent-run-auth-recovery-pure.test.mjs text eol=lf

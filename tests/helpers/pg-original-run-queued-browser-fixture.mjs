@@ -3,6 +3,7 @@ import {originalRunQueuedPath,originalRunQueuedBrowserPolicy} from './pg-origina
 import {verifyOriginalRunQueuedReviewedSources} from './pg-original-run-queued-reviewed-check.mjs'
 import {originalQueuedNegativeReads} from './pg-original-run-queued-negative-reads.mjs'
 import {bindOriginalPauseStage,dropOriginalCommittedCancelReply} from './pg-original-run-queued-control-faults.mjs'
+import {dropOriginalIdentityReplyPrefix} from './pg-original-run-queued-identity-loss.mjs'
 // Import-safe. Admission and fixed sources precede PG, TLS and sockets.
 export async function startOriginalRunQueuedBrowserFixture(env=process.env){
  const permit=requireOriginalRunQueuedBrowserCi(env),reviewed=await verifyOriginalRunQueuedReviewedSources(env)
@@ -58,9 +59,9 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
     head:env.GITHUB_SHA??null,build_directory:'dist-original-pg',
     source_authority:'fixed original-UI source closure plus actual F01 and optional070-073 auditors; exact committed head and clean source required',
     checked_sources:sourceHashes,manifest_sha256:sha(manifestBytes),index_sha256:sha(index),assets:assetHashes}
- let fixture,server,agent,closed=false,nextIdentityDrop=false,nextIdentityHold=null,nextReplyDrop=null,nextStaged=null,feedback403=null,signedOutAllowance=0,negativeReads
+ let fixture,server,agent,closed=false,nextIdentityDrop=null,nextIdentityHold=null,nextReplyDrop=null,nextStaged=null,feedback403=null,signedOutAllowance=0,negativeReads
  const gates=new Set(),flights=new Set(),pauseStages=new Map()
- const observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,overflow:false,paging_requests:0,paging_complete_responses:0,partial_model_reads:0,controlled_identity_drops:0,controlled_reply_drops:0,controlled_staged_requests:0,controlled_client_timeouts:0,controlled_feedback403:0,actual_signed_out401:0,expected_not_found:[],negative_control_confirmations:0,positive_control_confirmations:0,gate_deadline_failures:0,control_posts:[],confirmation_posts:[],feedback_posts:[],submission_posts:[]}
+ const observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,overflow:false,paging_requests:0,paging_complete_responses:0,partial_model_reads:0,controlled_identity_drops:0,identity_reply_prefixes:[],controlled_reply_drops:0,controlled_staged_requests:0,controlled_client_timeouts:0,controlled_feedback403:0,actual_signed_out401:0,expected_not_found:[],negative_control_confirmations:0,positive_control_confirmations:0,gate_deadline_failures:0,control_posts:[],confirmation_posts:[],feedback_posts:[],submission_posts:[]}
  const remember=(key,value)=>{if(observations[key].length<256)observations[key].push(value);else observations.overflow=true}
  const reply=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:code}))}
  const count=key=>{if(observations[key]>=256)observations.overflow=true;else observations[key]++}
@@ -72,7 +73,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
   try{agent?.destroy()}catch(e){errors.push(e)}
   try{if(fixture)await fixture.assertZeroExecution()}catch(e){errors.push(e)}
   try{await fixture?.close()}catch(e){errors.push(e)}
-  try{negativeReads?.assertEmpty();assert.equal(nextIdentityDrop,false,'unconsumed identity loss');assert.equal(feedback403,null,'unconsumed actual feedback revocation')}catch(e){errors.push(e)}
+  try{negativeReads?.assertEmpty();assert.equal(nextIdentityDrop,null,'unconsumed identity loss');assert.equal(feedback403,null,'unconsumed actual feedback revocation')}catch(e){errors.push(e)}
   files.clear();gates.clear();try{checkSources()}catch(e){errors.push(e)}
   if(errors.length)throw new AggregateError(errors,'original_run_queued_host_cleanup_failed')
  }
@@ -93,8 +94,8 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
     if(rule.kind==='legacy_denied'){remember('legacy_backend_requests',{...sample,status:501});reply(res,501,'original_ui_legacy_backend_not_migrated');return}
     if(rule.kind==='native'){
      if(['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(k=>req.headers[k]!==undefined)){count('forbidden_auth_headers');reply(res,400,'original_queued_forbidden_auth_header');return}
-     const path=nativePath(rule.pathname),identityDrop=nextIdentityDrop&&req.method==='GET'&&path==='/api/native-auth/me',identityHold=nextIdentityHold&&req.method==='GET'&&path==='/api/native-auth/me'?nextIdentityHold:null,replyDrop=nextReplyDrop&&req.method==='POST'&&path===nextReplyDrop.path?nextReplyDrop:null,staged=nextStaged&&req.method==='POST'&&path===nextStaged.path?nextStaged:null
-     if(identityDrop)nextIdentityDrop=false;if(identityHold)nextIdentityHold=null;if(replyDrop)nextReplyDrop=null;if(staged)nextStaged=null
+     const path=nativePath(rule.pathname),identityDrop=nextIdentityDrop&&req.method==='GET'&&path==='/api/native-auth/me'?nextIdentityDrop:null,identityHold=nextIdentityHold&&req.method==='GET'&&path==='/api/native-auth/me'?nextIdentityHold:null,replyDrop=nextReplyDrop&&req.method==='POST'&&path===nextReplyDrop.path?nextReplyDrop:null,staged=nextStaged&&req.method==='POST'&&path===nextStaged.path?nextStaged:null
+     if(identityDrop)nextIdentityDrop=null;if(identityHold)nextIdentityHold=null;if(replyDrop)nextReplyDrop=null;if(staged)nextStaged=null
      const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))
      let actualBody
      if(req.method==='POST'){actualBody=await collect(req);if(/^\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/.test(path))remember('submission_posts',{path});if(/\/agent-autonomous-runs\/[^/]+\/(pause|resume|cancel)$/.test(path)||/\/workflow-v2-runs\/[^/]+\/cancel$/.test(path))remember('control_posts',{path});if(/\/(pause|resume)-confirm$/.test(path))remember('confirmation_posts',{path});if(/^\/api\/v2\/agent-feedback\/[^/]+\/(change|confirm)$/.test(path))remember('feedback_posts',{path})}
@@ -103,7 +104,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
      await new Promise((resolve,reject)=>{
       const proxy=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:nativePath(req.url),method:req.method,headers,agent,ca:tls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:AbortSignal.timeout(8000)},response=>{
        const status=response.statusCode??502,responseHeaders=Object.fromEntries(Object.entries(response.headers).filter(([name])=>!hop.has(name.toLowerCase()))),chunks=[];let size=0,failed=false
-       const fail=()=>{if(failed)return;failed=true;remember('unexpected_api_failures',{...sample,status:502});const e=Error('original_queued_upstream_failed');staged?.fail(e);identityHold?.fail(e);res.destroy();reject(e)}
+       const fail=()=>{if(failed)return;failed=true;remember('unexpected_api_failures',{...sample,status:502});const e=Error('original_queued_upstream_failed');staged?.fail(e);identityHold?.fail(e);identityDrop?.fail(e);res.destroy();reject(e)}
        response.on('data',chunk=>{size+=chunk.length;if(size>1048576){response.destroy();fail();return}chunks.push(Buffer.from(chunk))});response.once('error',fail);response.once('aborted',fail)
        response.once('end',()=>{void(async()=>{
         if(failed)return
@@ -116,14 +117,14 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
         if(status===200&&req.method==='GET'&&path==='/api/v2/model-connections'){const q=new URL(req.url,permit.origin).searchParams;if(q.get('paging')==='owner_cursor_v1'){count('paging_requests');if(body.complete===true)count('paging_complete_responses')}else count('partial_model_reads')}
         if(status===200&&req.method==='POST'&&/\/(pause|resume)-confirm$/.test(path)){if(body.control_confirmed===false&&body.run_control_confirmation===null)count('negative_control_confirmations');else if(body.control_confirmed===true&&body.run_control_confirmation)count('positive_control_confirmations');else remember('unexpected_api_failures',{...sample,status:502})}
          if(status===200&&req.method==='POST'&&/\/agent-autonomous-runs\/[^/]+\/pause-confirm$/.test(path)&&body.control_confirmed===false&&body.run_control_confirmation===null){const active=pauseStages.get(body.run?.id);if(active)active.pause.observeNegative({originalBody:actualBody,status,responseComplete:response.complete===true,actual:bytes})}
-        if(identityDrop){assert.equal(status,200);count('controlled_identity_drops');res.destroy();resolve();return}
+        if(identityDrop){const proof=await dropOriginalIdentityReplyPrefix({req,res,status,headers:responseHeaders,actual:bytes,responseComplete:response.complete===true,requestStarted,expectedEmployee:identityDrop.employee});count('controlled_identity_drops');remember('identity_reply_prefixes',proof);identityDrop.enter(proof);identityDrop.finish(proof);identityDrop.release();gates.delete(identityDrop);resolve();return}
         if(identityHold){assert.equal(status,200);identityHold.enter({actual_identity_response_held:true});await identityHold.wait;identityHold.finish({actual_status:status});gates.delete(identityHold)}
          if(replyDrop){const proof=await dropOriginalCommittedCancelReply({req,res,status,headers:responseHeaders,actual:bytes,responseComplete:response.complete===true,requestStarted,id:replyDrop.id,kind:replyDrop.kind,verifyActualOwner:()=>fixture.runState(ownerFor(replyDrop.id,replyDrop.kind),replyDrop.id)});const closedProof=await replyDrop.gate.closed;count('controlled_reply_drops');const record={actual_committed_status:status,actual_run_id:body.run.id,...proof,...closedProof};replyDrop.gate.enter(record);replyDrop.gate.finish(record);replyDrop.gate.release();gates.delete(replyDrop.gate);resolve();return}
         if(staged){assert.equal(status,200);assert.equal(body.run?.id,staged.id);staged.finish({actual_status:status,actual_run_id:body.run.id});staged.release();gates.delete(staged);pauseStages.delete(staged.id)}
         if(!res.destroyed){res.writeHead(status,responseHeaders);res.end(bytes)}resolve()
-       })().catch(error=>{staged?.fail(error);identityHold?.fail(error);reject(error);res.destroy()})})
+       })().catch(error=>{staged?.fail(error);identityHold?.fail(error);identityDrop?.fail(error);reject(error);res.destroy()})})
       })
-      proxy.once('error',error=>{staged?.fail(error);identityHold?.fail(error);remember('unexpected_api_failures',{...sample,status:503});if(!res.headersSent&&!res.destroyed)reply(res,503,'original_queued_upstream_unavailable');else res.destroy();reject(error)})
+      proxy.once('error',error=>{staged?.fail(error);identityHold?.fail(error);identityDrop?.fail(error);remember('unexpected_api_failures',{...sample,status:503});if(!res.headersSent&&!res.destroyed)reply(res,503,'original_queued_upstream_unavailable');else res.destroy();reject(error)})
       proxy.end(actualBody)
      });return
     }
@@ -139,7 +140,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
   return{...fixture,origin:permit.origin,spki,provenance,observations,close,
    allowSignedOutReads(n=4){assert(Number.isSafeInteger(n)&&n>0&&n<=8);signedOutAllowance=n},
    expectNotFound:(id,kinds,reason)=>negativeReads.expect(id,kinds,reason),
-   dropNextActualIdentity(){assert.equal(nextIdentityDrop,false);nextIdentityDrop=true},
+   dropNextActualIdentity(employee){assert.equal(nextIdentityDrop,null);assert(Object.values(fixture.users).includes(employee));const g=gate('identity_reply_loss',8000);g.employee=employee;nextIdentityDrop=g;return{done:()=>g.done}},
    holdNextActualIdentity(){assert(!nextIdentityHold);const g=gate('identity_reply',5500);nextIdentityHold=g;return{entered:()=>g.entered,release:()=>g.release(),done:()=>g.done}},
    revokeFeedbackBeforeOriginalSubmit(id){assert(known(id,'agent_autonomous')&&!feedback403);fixture.setFeedbackSubmission(false);feedback403='/api/v2/agent-feedback/'+id+'/change'},
    restoreFeedbackSubmission(){fixture.setFeedbackSubmission(true)},

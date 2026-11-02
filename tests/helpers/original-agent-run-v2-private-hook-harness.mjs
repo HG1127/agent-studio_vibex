@@ -11,8 +11,8 @@ export function useRef(value){return cell('ref',()=>({value:{current:value}})).v
 export function useEffect(effect,deps){const h=active,c=cell('effect',()=>({deps:null,cleanup:null}));if(!same(c.deps,deps)){c.deps=deps;h.effects.push(()=>{c.cleanup?.();c.cleanup=effect()??null})}}
 export function useSearchParams(){return[new URLSearchParams(),()=>{}]}
 export const BUILTIN_TOOLS=[],FEEDBACK_TAGS=[],RUN_STATE_META={}
-export const getStudioAccountInfo=()=>mounted?.employee?{id:mounted.employee,active:true}:null
-export const verifyStudioSession=async()=>mounted?.status??'authenticated'
+export const getStudioAccountInfo=()=>mounted?.auth?mounted.auth.account():mounted?.employee?{id:mounted.employee,active:true}:null
+export const verifyStudioSession=async()=>mounted?.auth?mounted.auth.verify():mounted?.status??'authenticated'
 export const redirectToRhLogin=()=>{}
 export const registerUnsavedWorkCheck=()=>()=>{}
 export const createPgNativePilotApi=()=>({})
@@ -24,9 +24,9 @@ export function createOriginalAgentRunSession(options){const h=mounted,listeners
  for(const name of ['submit','control','decide','submitFeedback','forgetMemory','respond'])c[name]=async()=>{h.actions.push(name)}
  h.controller=c;return c
 }
-export async function originalAgentRunPrivateHookHarness(employee){
+export async function originalAgentRunPrivateHookHarness(employee,auth=null){
  loaded??=import(pgURL);const {usePgOriginalAgentRun}=await loaded
- const id='44444444-4444-4444-8444-444444444444',spec='33333333-3333-4333-8333-333333333333',h={employee,status:'authenticated',cells:[],cursor:0,effects:[],dirty:true,output:null,actions:[],disposedControllers:0,controller:null,listeners:new Map(),view:{employeeId:employee,closed:false,suspended:false,recovering:false,sourceDenied:false,ownerChanged:false,loading:false,agents:[],nativeAgents:[],models:[],selectedAgentId:'',caps:null,workspace:{items:[],pending_items:[]},runs:{detail:{run:{id},human_input_current:true,human_input:{question:'PRIVATE_QUESTION',draft:'PRIVATE_PLAN',kind:'clarification',pending_sha256:'a'.repeat(64)}},loading:false,busy:false},feedback:{busy:false,status:null},memories:{items:[],loading:false},activeRun:{id,spec_id:spec,result:'PRIVATE_RESULT',status:'succeeded'},runHistory:[],pendingApproval:null,error:'',notice:''}}
+ const id='44444444-4444-4444-8444-444444444444',spec='33333333-3333-4333-8333-333333333333',h={employee,auth,status:'authenticated',cells:[],cursor:0,effects:[],dirty:true,output:null,actions:[],disposedControllers:0,controller:null,listeners:new Map(),view:{employeeId:employee,closed:false,suspended:false,recovering:false,sourceDenied:false,ownerChanged:false,loading:false,agents:[],nativeAgents:[],models:[],selectedAgentId:'',caps:null,workspace:{items:[],pending_items:[]},runs:{detail:{run:{id},human_input_current:true,human_input:{question:'PRIVATE_QUESTION',draft:'PRIVATE_PLAN',kind:'clarification',pending_sha256:'a'.repeat(64)}},loading:false,busy:false},feedback:{busy:false,status:null},memories:{items:[],loading:false},activeRun:{id,spec_id:spec,result:'PRIVATE_RESULT',status:'succeeded'},runHistory:[],pendingApproval:null,error:'',notice:''}}
  mounted=h
  const add=(type,fn)=>{if(!h.listeners.has(type))h.listeners.set(type,new Set());h.listeners.get(type).add(fn)},remove=(type,fn)=>h.listeners.get(type)?.delete(fn)
  const globals={window:{addEventListener:add,removeEventListener:remove,setInterval:()=>1,clearInterval:()=>{},confirm:()=>{throw Error('unexpected confirmation')}},document:{hidden:false},navigator:{clipboard:{writeText:async()=>{h.actions.push('clipboard')}}}}

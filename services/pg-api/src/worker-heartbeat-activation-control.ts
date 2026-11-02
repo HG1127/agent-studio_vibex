@@ -240,18 +240,25 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
   return {s,owner,deadline:owner.requestStarted+controlLimits.leaseMs,request:owner.request,requestStarted:owner.requestStarted,epoch:s.epoch,instance:s.instance,policySha:s.policySha,published:s.published}
  }catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}})()
  try{
-  // Admission wait only. No lease, client, SQL or registry result exists yet.
-  while(rootWriterBusy(s)){
-   const remaining=deadline-performance.now();if(remaining<=0)controlFail('reader_timeout')
-   await new Promise<void>(resolve=>setTimeout(resolve,Math.min(25,remaining)))
-   const current=state(control),currentOwner=peer(current,p,'reader')
-   if(current!==s||currentOwner!==owner||owner.request!==request||owner.requestStarted!==requestStarted||s.epoch!==epoch||s.instance!==instance||s.policySha!==policySha||s.published!==published)controlFail('lease_revoked')
-   if(owner.socket.destroyed||owner.socket.readableEnded||owner.socket.writableEnded||!owner.socket.writable)controlFail('lease_revoked')
-   runtimeCheck(s)
-   if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
-  }
-  if(performance.now()>=deadline)controlFail('reader_timeout')
- }catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}
+   // Effect-free admission wait. This private fence is not runtime authority.
+   if(performance.now()>=deadline)controlFail('reader_timeout')
+   const privateAdmissionCheck=()=>{
+    const current=state(control),currentOwner=peer(current,p,'reader')
+    if(current!==s||currentOwner!==owner||owner.request!==request||owner.requestStarted!==requestStarted||s.epoch!==epoch||s.instance!==instance||s.policySha!==policySha||s.published!==published)controlFail('lease_revoked')
+    if(owner.socket.destroyed||owner.socket.readableEnded||owner.socket.writableEnded||!owner.socket.writable)controlFail('lease_revoked')
+    if(!s.healthy||s.phase!=='serving'||s.mutation)controlFail('control_closed');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
+    if(performance.now()>=deadline)controlFail('reader_timeout')
+   }
+   try{
+    while(rootWriterBusy(s)){
+     const remaining=deadline-performance.now();if(remaining<=0)controlFail('reader_timeout')
+     await new Promise<void>(resolve=>setTimeout(resolve,Math.min(25,remaining)))
+     privateAdmissionCheck()
+    }
+   }catch(error){runtimeCheck(s);throw error}
+   // Fresh complete gate before any lease/client/SQL, then original deadline.
+   runtimeCheck(s);privateAdmissionCheck()
+}catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}
  const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request,epoch,deadline,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
  if(performance.now()>=deadline)controlFail('reader_timeout')
  leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),Math.max(1,Math.ceil(deadline-performance.now())))
@@ -717,6 +724,12 @@ export function getWorkerHeartbeatWriterBridge(control:Control):WorkerHeartbeatW
  const s=state(control),settings=rootWriterSettings(s);if(!settings)return null
  runtimeCheck(s);if(s.writerBridge)return s.writerBridge
  const bridge:WorkerHeartbeatWriterRootBridge=Object.freeze({settings,instance_id:s.instance,
+  captureAdmission(){
+   const epoch=s.epoch,instance=s.instance,policy=s.policy,policySha=s.policySha,published=s.published
+   // Created only inside the verified Root State closure; accepts no inputs.
+   // A successful fence check never substitutes for the complete runtime gate.
+   return Object.freeze(()=>{if(states.get(control)!==s||s.writerBridge!==bridge||s.epoch!==epoch||s.instance!==instance||s.policy!==policy||s.policySha!==policySha||s.published!==published||!s.healthy||s.phase!=='serving'||s.mutation||published!==epoch||!policySha)writerFail('writer_closed')})
+  },
   check(mode){if(mode==='serve')rootWriterCheck(s);else rootWriterCleanupCheck(s)},
   current:()=>currentRootWriterSlots(s),history:()=>Object.freeze(s.journal.filter(r=>r.phase.startsWith('writer_')).map(r=>Object.freeze({phase:r.phase as WriterJournalPhase,data:r.data,instance_id:r.instance_id}))),
   persist:(phase,data)=>persistRootWriterEvent(s,phase,data),busy:()=>rootWriterBusy(s)||s.leases.size>0||s.sqlJobs>0||s.phase!=='serving'||s.mutation,

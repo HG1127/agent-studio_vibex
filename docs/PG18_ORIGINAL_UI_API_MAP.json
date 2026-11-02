@@ -6051,7 +6051,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1681,
+    "combined_pure_checks": 1794,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -7558,6 +7558,119 @@
         }
       },
       "production_GO": false
+    },
+    "current_verified_a7125ea": {
+      "head": "a7125ea8213b8c4aa22d2a5ea018b2d2f9adbbd6",
+      "quality": {
+        "run": 41372270795,
+        "job": 125045065582,
+        "jobs_passed": 49,
+        "jobs_total": 50,
+        "root_passed": 4664,
+        "root_total": 4665,
+        "complete_check_passed": false,
+        "sole_failure": "old Reader controller pure assertion expected immediate control_busy; updated to original-frame bounded admission",
+        "later_security_and_Worker_steps_skipped": true
+      },
+      "PB19": {
+        "run": 41372372637,
+        "job": 125045374576,
+        "passed": 19,
+        "total": 19,
+        "workers": 2,
+        "seconds": 73.3
+      },
+      "F01": {
+        "run": 41372270564,
+        "passed": 15,
+        "total": 17,
+        "original_home_design_passed": true,
+        "original_model_metadata_passed": true,
+        "original_model_draft_passed": true,
+        "original_model_receipts075_passed": true,
+        "original_run_detail_queued_passed": true,
+        "remaining_failed_stories": [
+          "original-agent-run-queued",
+          "original-tool-connections"
+        ],
+        "not_full20_pages_or30_action_groups_acceptance": true
+      },
+      "F08": {
+        "run": 41372270615,
+        "story_passed": true,
+        "full_original_menu_acceptance": false
+      },
+      "tools251": {
+        "job": 125045065579,
+        "story_completed": false,
+        "actual251_created_and_removed": true,
+        "actual6_page_GETs": true,
+        "actual502_seed_audits": true,
+        "remaining_seeded_rows": 0,
+        "page_credential_reads": 0,
+        "provider_requests": 0,
+        "failure": "fixture audit ORDER BY used undeclared created_at rather than actual immutable occurred_at",
+        "source_fix_merged_pending_new_head": true,
+        "final_business_baseline_and_normal_metadata_audit_not_confirmed": true
+      },
+      "Worker": {
+        "telemetry_run": 41372270691,
+        "complete069_run": 41372270648,
+        "all_three_jobs_failed": true,
+        "short8_success": [
+          "prepare",
+          "knowledge_index",
+          "knowledge_query",
+          "assessment"
+        ],
+        "short8_writer_deadline": [
+          "model",
+          "workflow_safe",
+          "workflow_v2",
+          "agent_autonomous"
+        ],
+        "only_two_short_timing_records_available": true,
+        "other_six_timings_unknown": true,
+        "legacy_actual_assessment_self_exit": "heartbeat_open/writer_deadline",
+        "legacy_Reader_failure_phase": "finish",
+        "legacy_Reader_failure_code": null,
+        "legacy_telemetry_backends_zero": false,
+        "legacy_readers_in_flight_zero": true,
+        "legacy_business_queues_empty": true,
+        "final14_primary": "full069_worker_live_native_io",
+        "final14_reader_phase": "controller_reader_audit",
+        "final14_13_individual_ACL_results_not_independently_proven": true,
+        "final14_three_cleanup_zero_values_unavailable": true,
+        "prior03_failure_and_cleanup_facts_not_reused": true
+      },
+      "employee_UAT": 0,
+      "qualifying24h_hours": 0,
+      "production_GO": false
+    },
+    "current_identity_schedule_admission_source": {
+      "base_head": "a7125ea8213b8c4aa22d2a5ea018b2d2f9adbbd6",
+      "source_only_pending_exact_head_genuine": true,
+      "parent_identity_unavailable": "hide and disable immediately; retain only original in-memory same-employee unsubmitted drafts; fresh verified same employee may recover",
+      "verified_identity_refusal": "actual me401/me403, verified signout or another employee, and disposal permanently clear private local drafts; late old responses remain fenced",
+      "identity_fault_proof": "full actual Native/me200 verified employee, original headers and one actual byte, write callback and socket close before8s, matching original browser GET requestfailed required",
+      "schedules_employee_condition": "all inventory/draft/runtime reads and mutations check expected employee after real withActor identity resolution and before first business SQL; absent-header reference contract retained",
+      "schedules_original_UI_adapter_complete": false,
+      "writer_reader_wait": "private original Root/request/peer/epoch/policy/publication/health/socket state only during busy wait; full source/identity audit repeated before original claim/open/lease with original deadline and original error priority",
+      "writer_original_message_budget_ms": 5000,
+      "reader_original_frame_budget_ms": 5000,
+      "Native_budget_ms": 8000,
+      "all8_Writers_success_required": true,
+      "diagnostic_process_cap_bytes": 16384,
+      "diagnostics_grant_authority": false,
+      "version_release26_file_candidate_applied": false,
+      "version_release_temporary_identity_loss_correction_pending": true,
+      "monitor074_three_packages_applied": false,
+      "ordinary_case077_candidate_in_preparation": true,
+      "original_schedules078_candidate_in_preparation": true,
+      "complete069_075_identifier_and_actual_Native_process_compatibility_complete": false,
+      "local_SQL_Worker_server_browser_executed": false,
+      "production_GO": false,
+      "pure_checks": 1794
     }
   },
   "qualifying24h_hours": 0,

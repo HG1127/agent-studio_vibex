@@ -19,9 +19,9 @@ function policy(wait,clock){
 }
 function memory({wait,busy=true,open}={}){
  const clock={value:0},events=[],frames=[],checks=[],slot={kind:'assessment',slot_no:1,generation:request,role_oid:30001,reference:Object.freeze({memory_only:true})},boot={slot,claimed:false,revoked:false,secret:Buffer.from(provided),uid:19001,id:request}
- const peer={kind:'assessment',open:true,socket:{writable:true,write:value=>frames.push(value)}},state={closed:false,paused:false,boots:new Map([['original',boot]])}
+ const peer={kind:'assessment',open:true,busy:true,socket:{writable:true,write:value=>frames.push(value)}},state={closed:false,paused:false,peers:new Set([peer]),boots:new Map([['original',boot]])}
  let occupied=busy,opens=0
- state.bridge={check:mode=>checks.push(mode),busy:()=>occupied,current:()=>[slot],persist:(phase,data)=>events.push({phase,data}),open:async reference=>{assert.equal(reference,slot.reference);opens++;assert.equal(boot.claimed,true);assert.equal(boot.secret.every(v=>v===0),true);return open?open(reference):Object.freeze({memory_backend_only:true})}}
+ state.bridge={captureAdmission:()=>()=>{},check:mode=>checks.push(mode),busy:()=>occupied,current:()=>[slot],persist:(phase,data)=>events.push({phase,data}),open:async reference=>{assert.equal(reference,slot.reference);opens++;assert.equal(boot.claimed,true);assert.equal(boot.secret.every(v=>v===0),true);return open?open(reference):Object.freeze({memory_backend_only:true})}}
  const bind=policy(async ms=>{assert(ms>0&&ms<=5);clock.value+=ms;if(wait)await wait({state,peer,boot,slot,clock,setBusy:value=>{occupied=value}});else occupied=false},clock)
  return {state,peer,boot,slot,clock,events,frames,checks,bind,opens:()=>opens,setBusy:value=>{occupied=value}}
 }

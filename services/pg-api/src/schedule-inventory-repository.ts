@@ -4,6 +4,7 @@
 import {HttpError,isUuid,type Identity,type SqlPool} from "./contracts.ts"
 import {withActor} from "./repository.ts"
 import {safeScheduleDraftInput} from "./schedule-draft-repository.ts"
+import {assertOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
 
 export interface ScheduleSummary {
   id:string
@@ -64,9 +65,10 @@ function normalize(row:ScheduleSummary):ScheduleSummary{
 export class ScheduleInventoryRepository {
   readonly pool:SqlPool
   constructor(pool:SqlPool){this.pool=pool}
-  list(identity:Identity,limit=30):Promise<ScheduleSummary[]>{
+  list(identity:Identity,limit=30,expectedEmployee?:string):Promise<ScheduleSummary[]>{
     const count=bounded(limit)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<ScheduleSummary>(
         "SELECT id,name,kind,agent_spec_id,workflow_id,time_zone,recurrence,"+
         "next_at,enabled,revision,created_at,updated_at "+
@@ -75,9 +77,10 @@ export class ScheduleInventoryRepository {
       return result.rows.map(normalize)
     })
   }
-  get(identity:Identity,id:string):Promise<ScheduleSummary|null>{
+  get(identity:Identity,id:string,expectedEmployee?:string):Promise<ScheduleSummary|null>{
     if(!isUuid(id))throw new HttpError(400,"invalid_schedule_id")
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const result=await db.query<ScheduleSummary>(
         "SELECT id,name,kind,agent_spec_id,workflow_id,time_zone,recurrence,"+
         "next_at,enabled,revision,created_at,updated_at "+
@@ -86,11 +89,12 @@ export class ScheduleInventoryRepository {
       return result.rows[0]?normalize(result.rows[0]):null
     })
   }
-  occurrences(identity:Identity,id:string,limit=30):
+  occurrences(identity:Identity,id:string,limit=30,expectedEmployee?:string):
     Promise<ScheduleOccurrence[]|null>{
     if(!isUuid(id))throw new HttpError(400,"invalid_schedule_id")
     const count=bounded(limit)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const existing=await db.query<{id:string}>(
         "SELECT id FROM agentstudio.schedules "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid",

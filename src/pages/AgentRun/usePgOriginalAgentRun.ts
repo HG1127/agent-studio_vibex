@@ -24,7 +24,7 @@ export function usePgOriginalAgentRun():ReturnType<typeof usePocketBaseAgentRun>
  const contextChanged=Boolean(storedView&&!storedView.closed&&storedView.employeeId!==accountId)
  const privacy=originalAgentRunPrivacy(storedView,accountId),view=privacy.hidden?null:storedView
  const local=originalAgentRunLocalView({instruction,maxSteps,feedbackDraft,replyText,copied,editing},privacy.hidden)
- const controller=useRef<Controller|null>(null),appliedRoute=useRef(''),copyTimer=useRef<ReturnType<typeof setTimeout>|null>(null),lifecycle=useRef(0)
+ const controller=useRef<Controller|null>(null),appliedRoute=useRef(''),copyTimer=useRef<ReturnType<typeof setTimeout>|null>(null),lifecycle=useRef(0),localRunContext=useRef<string|null>(null),localReplyContext=useRef<string|null>(null)
  useEffect(()=>{
   let cancelled=false,session:Controller|null=null,transport:ReturnType<typeof createOriginalAgentRunTransport>|null=null,unsubscribe:(()=>void)|undefined,unregister:(()=>void)|undefined
   const life=++lifecycle.current
@@ -67,9 +67,9 @@ export function usePgOriginalAgentRun():ReturnType<typeof usePocketBaseAgentRun>
   const timer=window.setInterval(poll,3000)
   return()=>window.clearInterval(timer)
  },[activeRun?.id,isLive])
- useEffect(()=>{setFeedbackDraft(emptyDraft());setEditing(false)},[activeRun?.id,view?.employeeId])
+ useEffect(()=>{if(privacy.hidden)return;const key=JSON.stringify([activeRun?.id??'',view?.employeeId??'']);if(localRunContext.current===key)return;localRunContext.current=key;setFeedbackDraft(emptyDraft());setEditing(false)},[privacy.hidden,activeRun?.id,view?.employeeId])
  const human=view?.runs.detail?.human_input_current?view.runs.detail.human_input:null
- useEffect(()=>setReplyText(''),[activeRun?.id,human?.pending_sha256,view?.employeeId])
+ useEffect(()=>{if(privacy.hidden)return;const key=JSON.stringify([activeRun?.id??'',human?.pending_sha256??'',view?.employeeId??'']);if(localReplyContext.current===key)return;localReplyContext.current=key;setReplyText('')},[privacy.hidden,activeRun?.id,human?.pending_sha256,view?.employeeId])
  const report=(message:string)=>controller.current?.reportUnavailable(message)
  const unavailable=(name:string)=>()=>report(name+'尚缺原页面的同义 Native 合同，未提交操作。')
  const handleSelectSpec=(id:string)=>{const c=controller.current;if(!canAct()||!c)return;void c.selectAgent(id).then(()=>{if(c.snapshot().selectedAgentId===id)setParams(previous=>{const next=new URLSearchParams(previous);next.set('spec',id);next.delete('run');next.delete('kind');next.delete('engine_kind');return next},{replace:true})}).catch(()=>report('当前选择尚未核实，未切换到其他运行或助手。'))}

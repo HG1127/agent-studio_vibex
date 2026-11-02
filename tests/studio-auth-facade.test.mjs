@@ -69,12 +69,25 @@ test("PG normal-login readiness never queries or permits PB bootstrap",async()=>
   assert.deepEqual(calls,["/__pg_native/api/native-auth/me"]);assert.deepEqual(events,[])
 })
 
-test("PG transport or origin failure blocks readiness without PB fallback",async()=>{
-  for(const result of [()=>{throw Error("mock network failure")},()=>response(403,{error:"origin_not_allowed"}),()=>response(503,{error:"native_origin_unavailable"})]){
+test("PG transport failure blocks readiness without PB fallback",async()=>{
+  for(const result of [()=>{throw Error("mock network failure")},()=>response(503,{error:"native_origin_unavailable"})]){
     const {api,events,authStore}=load("native_pg",async()=>result())
     assert.equal(await api.verifyStudioSession(),"unavailable")
     await assert.rejects(api.readStudioLoginSetup(),/studio_status_unavailable/)
     assert.equal(authStore.isValid,true);assert.equal(api.getStudioAccountInfo(),null);assert.deepEqual(events,[])
+  }
+})
+
+test("verified Native identity refusal clears account and never permits PB bootstrap",async()=>{
+  for(const status of [401,403]){
+    const calls=[]
+    const {api,events,authStore}=load("native_pg",async url=>{calls.push(url);return response(status,{error:status===401?"session_required":"origin_not_allowed"})})
+    const verified=await api.verifyStudioSession()
+    assert.equal(verified,"signed_out");assert.equal(api.getStudioAccountInfo(),null)
+    const setup=await api.readStudioLoginSetup(verified)
+    assert.equal(setup.initialized,true);assert.equal(setup.can_setup,false)
+    assert.deepEqual(calls,["/__pg_native/api/native-auth/me"])
+    assert.equal(authStore.isValid,true);assert.deepEqual(events,[])
   }
 })
 

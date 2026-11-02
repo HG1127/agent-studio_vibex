@@ -26,6 +26,8 @@ export type WorkerHeartbeatWriterRootBridge=Readonly<{
  settings:Extract<WriterSettings,{enabled:true}>
  instance_id:string
  check(mode:'serve'|'cleanup'):void
+ /** Private Root-state fence only; never substitutes for check(serve). */
+ captureAdmission():()=>void
  current():readonly WriterPublishedSlot[]
  history():readonly WriterJournalEvent[]
  persist(phase:WriterJournalPhase,data:unknown):void
@@ -124,27 +126,44 @@ function writerTimingNumber(value:number|null,min:number,max:number,round=false)
 function reportWriterBindTiming(t:WriterBindTiming|undefined):void{
  try{if(!t||t.emitted)return;t.emitted=true;if(!workerHeartbeatKinds.includes(t.kind)||!['admission_guard','admission_closed','admission_deadline','waiting','boot_lookup','claim','backend_open','backend_current','completed'].includes(t.phase))return
   const record={event:'worker_heartbeat_writer_bind_timing_observation',kind:t.kind,phase:t.phase,wait_count:writerTimingNumber(t.waits,0,4096),admission_guard_calls:writerTimingNumber(t.guardCalls,0,4096),admission_guard_ms:writerTimingNumber(t.guardMs,0,120000,true),before_open_remaining_ms:writerTimingNumber(t.beforeOpenRemaining,-120000,5000,true),backend_open_ms:writerTimingNumber(t.backendMs,0,120000,true),message_remaining_ms:writerTimingNumber(t.deadline-performance.now(),-120000,5000,true),claimed:t.claimed,backend_returned:t.backendReturned,completed_body:t.completed,observed_data_only:true},line=JSON.stringify(record)+'\n'
-  const bytes=Buffer.byteLength(line);if(writerBindTimingBytes+bytes>4096)return;writerBindTimingBytes+=bytes;process.stderr.write(line)
+  const bytes=Buffer.byteLength(line);if(writerBindTimingBytes+bytes>16384)return;writerBindTimingBytes+=bytes;process.stderr.write(line)
  }catch{/* Diagnostics never replace or settle the original bind outcome. */}
 }
 async function bind(s:Broker,p:Peer,request:string,provided:string,deadline:number){
  if(!Number.isFinite(deadline))return writerFail()
  let timing:WriterBindTiming|undefined;try{timing=createWriterBindTiming(p.kind,deadline)}catch{}
  try{
- let admissionWaitObserved=false
- // This remains ONE original request and its ORIGINAL message deadline.
- for(;;){
-  let guardStarted:number|undefined;try{if(timing){timing.phase='admission_guard';guardStarted=performance.now()}}catch{}
-  try{s.bridge.check('serve')}finally{try{if(timing){timing.guardCalls++;if(guardStarted!==undefined)timing.guardMs+=Math.max(0,performance.now()-guardStarted)}}catch{}}
-  if(s.closed||s.paused||!p.open){if(timing)timing.phase='admission_closed';return writerFail('writer_closed')}
-  if(p.boot)return writerFail()
-  const remaining=deadline-performance.now()
-  if(remaining<=0){if(timing)timing.phase='admission_deadline';return writerFail('writer_deadline')}
-  if(!s.bridge.busy())break
-  if(!admissionWaitObserved){admissionWaitObserved=true;try{process.stderr.write(JSON.stringify({event:'worker_heartbeat_writer_admission_observation',kind:p.kind,phase:'wait_started',observed_data_only:true})+'\n')}catch{}}
-  if(timing){timing.phase='waiting';timing.waits++}
-  await waitForWriterAdmission(Math.min(5,remaining))
- }
+ const bridge=s.bridge,socket=p.socket
+  const fullAdmissionCheck=()=>{let guardStarted:number|undefined;
+try{if(timing){timing.phase='admission_guard';guardStarted=performance.now()}}catch{}
+try{bridge.check('serve')}finally{try{if(timing){timing.guardCalls++;if(guardStarted!==undefined)timing.guardMs+=Math.max(0,performance.now()-guardStarted)}}catch{}}}
+  fullAdmissionCheck()
+  let rootAdmission:()=>void
+  try{rootAdmission=bridge.captureAdmission()}catch(error){fullAdmissionCheck();throw error}
+  // This closure checks only private, original request context. It carries no
+  // source/identity/catalog readiness result and authorizes no IO or boot claim.
+  const privateAdmissionCheck=()=>{
+   if(timing)timing.phase='admission_closed'
+   if(s.bridge!==bridge||p.socket!==socket||s.closed||s.paused||!s.peers.has(p)||!p.open||!p.busy||socket.destroyed||socket.readableEnded||socket.writableEnded||!socket.writable)writerFail('writer_closed')
+   rootAdmission()
+   if(p.boot)return writerFail()
+   if(performance.now()>=deadline){if(timing)timing.phase='admission_deadline';writerFail('writer_deadline')}
+  }
+  const checkedAdmission=()=>{try{privateAdmissionCheck()}catch(error){const phase=timing?.phase;fullAdmissionCheck();if(timing&&phase)timing.phase=phase;throw error}}
+  let admissionWaitObserved=false
+  // ONE original request/deadline. Busy wakes do not reread the runtime tree.
+  for(;;){
+   checkedAdmission()
+   if(!bridge.busy()){
+    fullAdmissionCheck()
+    checkedAdmission() // The fresh complete gate consumes this same deadline.
+    if(!bridge.busy())break
+   }
+   if(!admissionWaitObserved){admissionWaitObserved=true;try{process.stderr.write(JSON.stringify({event:'worker_heartbeat_writer_admission_observation',kind:p.kind,phase:'wait_started',observed_data_only:true})+'\n')}catch{}}
+   const remaining=deadline-performance.now();if(remaining<=0){checkedAdmission();writerFail('writer_deadline')}
+   if(timing){timing.phase='waiting';timing.waits++}
+   await waitForWriterAdmission(Math.min(5,remaining))
+  }
  if(timing)timing.phase='boot_lookup'
  const bytes=Buffer.from(provided),boot=[...s.boots.values()].find(value=>value.slot.kind===p.kind&&!value.revoked&&!value.claimed&&value.secret.length===bytes.length&&timingSafeEqual(value.secret,bytes));bytes.fill(0)
  if(!boot)return writerFail('writer_not_enrolled')

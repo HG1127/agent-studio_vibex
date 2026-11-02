@@ -642,26 +642,27 @@ export function createHandler(deps:AppDependencies) {
         throw new HttpError(405,"method_not_allowed")
       }
       if(schedulesRoute){
+        const expectedEmployee=optionalExpectedOriginalUiEmployee(req)
         const runtime=deps.scheduleRuntimeRepository
         const action=/^\/api\/v2\/schedules\/([0-9a-fA-F-]{36})\/(execution|activate|pause|run-now|retry-start)$/.exec(path)
         if(action){
           if(!runtime)throw new HttpError(403,"schedule_execution_disabled")
           const id=action[1]!,verb=action[2]!
           if(verb==="execution"&&method==="GET"){
-            const state=await runtime.describe(identity,id);if(!state)throw new HttpError(404,"schedule_not_found")
+            const state=await runtime.describe(identity,id,expectedEmployee);if(!state)throw new HttpError(404,"schedule_not_found")
             return send(res,200,{state})
           }
           if(method!=="POST"||verb==="execution")throw new HttpError(405,"method_not_allowed")
           const body=await readBody(req,8192)
-          if(verb==="activate")return send(res,200,{state:await runtime.activate(identity,id,body)})
+          if(verb==="activate")return send(res,200,{state:await runtime.activate(identity,id,body,expectedEmployee)})
           allowBodyFields(body,verb==="retry-start"?["expected_revision","occurrence_id"]:["expected_revision"])
           if(!Number.isSafeInteger(body.expected_revision)||Number(body.expected_revision)<1)throw new HttpError(400,"invalid_revision")
           if(verb==="pause"){
-            if(!await runtime.control(identity,id,Number(body.expected_revision),"pause"))throw new HttpError(409,"schedule_revision_conflict")
+            if(!await runtime.control(identity,id,Number(body.expected_revision),"pause",expectedEmployee))throw new HttpError(409,"schedule_revision_conflict")
             return send(res,200,{ok:true})
           }
-          return send(res,200,{state:verb==="run-now"?await runtime.runNow(identity,id,Number(body.expected_revision)):
-            await runtime.retryFailedStart(identity,id,Number(body.expected_revision),String(body.occurrence_id))})
+          return send(res,200,{state:verb==="run-now"?await runtime.runNow(identity,id,Number(body.expected_revision),expectedEmployee):
+            await runtime.retryFailedStart(identity,id,Number(body.expected_revision),String(body.occurrence_id),expectedEmployee)})
         }
         const scheduleRepo=deps.scheduleInventory
         if(!scheduleRepo)throw new HttpError(503,"schedule_inventory_disabled")
@@ -676,15 +677,15 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(requested)||requested<1||requested>50)
             throw new HttpError(400,"invalid_schedule_limit")
           if(!suffix){
-            const items=await scheduleRepo.list(identity,requested)
+            const items=await scheduleRepo.list(identity,requested,expectedEmployee)
             return send(res,200,{items,mode:"readonly_inventory",scheduler_started:false})
           }
           if(occurrenceRoute){
-            const items=await scheduleRepo.occurrences(identity,suffix,requested)
+            const items=await scheduleRepo.occurrences(identity,suffix,requested,expectedEmployee)
             if(!items)throw new HttpError(404,"schedule_not_found")
             return send(res,200,{items,mode:"readonly_history",scheduler_started:false})
           }
-          const item=await scheduleRepo.get(identity,suffix)
+          const item=await scheduleRepo.get(identity,suffix,expectedEmployee)
           if(!item)throw new HttpError(404,"schedule_not_found")
           return send(res,200,{item,scheduler_started:false})
         }
@@ -694,7 +695,7 @@ export function createHandler(deps:AppDependencies) {
         if(method==="POST"&&!suffix){
           const body=await readBody(req,4096)
           allowBodyFields(body,["name","kind","target_id","time_zone","rule"])
-          const item=await drafts.create(identity,body)
+          const item=await drafts.create(identity,body,expectedEmployee)
           return send(res,201,{item,scheduler_started:false,execution_enabled:false})
         }
         if(method==="PATCH"&&suffix){
@@ -705,9 +706,9 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(revision)||(revision as number)<1)
             throw new HttpError(400,"invalid_revision")
           const {expected_revision:_discard,...input}=body
-          const item=runtime?.enabled?await runtime.edit(identity,suffix,revision as number,input):await drafts.update(identity,suffix,input,revision as number)
+          const item=runtime?.enabled?await runtime.edit(identity,suffix,revision as number,input,expectedEmployee):await drafts.update(identity,suffix,input,revision as number,expectedEmployee)
           if(!item){
-            if(!await scheduleRepo.get(identity,suffix))
+            if(!await scheduleRepo.get(identity,suffix,expectedEmployee))
               throw new HttpError(404,"schedule_not_found")
             throw new HttpError(409,"schedule_draft_or_revision_conflict")
           }
@@ -719,8 +720,8 @@ export function createHandler(deps:AppDependencies) {
           if(!Number.isSafeInteger(body.expected_revision)||
               (body.expected_revision as number)<1)
             throw new HttpError(400,"invalid_revision")
-          if(!await (runtime?.enabled?runtime.control(identity,suffix,body.expected_revision as number,"delete"):drafts.delete(identity,suffix,body.expected_revision as number))){
-            if(!await scheduleRepo.get(identity,suffix))
+          if(!await (runtime?.enabled?runtime.control(identity,suffix,body.expected_revision as number,"delete",expectedEmployee):drafts.delete(identity,suffix,body.expected_revision as number,expectedEmployee))){
+            if(!await scheduleRepo.get(identity,suffix,expectedEmployee))
               throw new HttpError(404,"schedule_not_found")
             throw new HttpError(409,"schedule_draft_or_revision_conflict")
           }

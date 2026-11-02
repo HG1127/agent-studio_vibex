@@ -2,6 +2,7 @@
 // tool call, or model execution is registered by this module.
 import {HttpError,isUuid,type Identity,type SqlPool,type SqlClient} from "./contracts.ts"
 import {withActor} from "./repository.ts"
+import {assertOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
 
 export type ScheduleDraftRule=
   |{kind:"once";start_date:string;local_time:string}
@@ -87,9 +88,10 @@ const recurrence=(rule:ScheduleDraftRule)=>JSON.stringify({
 export class ScheduleDraftRepository{
   readonly pool:SqlPool
   constructor(pool:SqlPool){this.pool=pool}
-  async create(identity:Identity,raw:unknown):Promise<ScheduleDraftRow>{
+  async create(identity:Identity,raw:unknown,expectedEmployee?:string):Promise<ScheduleDraftRow>{
     const input=safeScheduleDraftInput(raw)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       await ownedTarget(db,actor,input)
       const result=await db.query<ScheduleDraftRow>(
         "INSERT INTO agentstudio.schedules "+
@@ -113,11 +115,12 @@ export class ScheduleDraftRepository{
     })
   }
   async update(identity:Identity,id:string,raw:unknown,
-    expectedRevision:number):Promise<ScheduleDraftRow|null>{
+    expectedRevision:number,expectedEmployee?:string):Promise<ScheduleDraftRow|null>{
     if(!isUuid(id)||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
       invalid()
     const input=safeScheduleDraftInput(raw)
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       await ownedTarget(db,actor,input)
       const result=await db.query<ScheduleDraftRow>(
         "UPDATE agentstudio.schedules s SET name=$3::text,kind=$4::text,"+
@@ -144,11 +147,12 @@ export class ScheduleDraftRepository{
       return savedRow(item)
     })
   }
-  async delete(identity:Identity,id:string,expectedRevision:number):
+  async delete(identity:Identity,id:string,expectedRevision:number,expectedEmployee?:string):
     Promise<boolean>{
     if(!isUuid(id)||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)
       invalid()
     return withActor(this.pool,identity,async(db,actor)=>{
+      assertOriginalUiEmployee(actor,expectedEmployee)
       const native=(await db.query<{installed:boolean}>("SELECT to_regprocedure('agentstudio.schedule_control(uuid,bigint,text)') IS NOT NULL AS installed")).rows[0]?.installed===true
       if(native){
         const own=(await db.query<{id:string}>("SELECT id FROM agentstudio.schedules s WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$3::bigint "+

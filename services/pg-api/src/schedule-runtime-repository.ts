@@ -4,10 +4,14 @@ import {WorkflowV2RunRepository} from "./workflow-v2-run-repository.ts"
 import {AutonomousAgentRunRepository} from "./autonomous-agent-run-repository.ts"
 import {assertNativeScheduleConfiguration,parseScheduleActivation,type ExecutionSchedule} from "./schedule-runtime-contract.ts"
 import {safeScheduleDraftInput} from "./schedule-draft-repository.ts"
+import {assertOriginalUiEmployee} from "./native-original-ui-preconditions.ts"
 const publicErrors=new Set(["schedule_owner_unavailable","schedule_not_found","invalid_schedule_execution","schedule_activation_conflict","schedule_activation_changed_or_invalid",
   "invalid_schedule_authority_limits","schedule_authority_unavailable","schedule_disabled_or_changed","schedule_already_queued","schedule_failed_start_not_retryable","invalid_schedule_control","schedule_requires_native_draft","schedule_model_unavailable","invalid_schedule_model_binding"])
-async function withScheduleActor<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
-  try{return await withActor(pool,identity,body)}catch(error){
+async function withScheduleActor<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>,expectedEmployee?:string):Promise<T>{
+  try{return await withActor(pool,identity,async(db,owner)=>{
+    assertOriginalUiEmployee(owner,expectedEmployee)
+    return await body(db,owner)
+  })}catch(error){
     if(error&&typeof error==="object"&&"code" in error&&error.code==="P0001"&&"message" in error&&publicErrors.has(String(error.message))){
       const code=String(error.message);throw new HttpError(code==="schedule_not_found"?404:code.startsWith("invalid_")?400:409,code)
     }
@@ -29,12 +33,12 @@ export class ScheduleRuntimeRepository{
     this.pool=pool;this.enabled=options.enabled===true;this.flows=new WorkflowV2RunRepository(pool,"workflow_native_v2",options);this.agents=new AutonomousAgentRunRepository(pool,options)
   }
   private allowed(){if(!this.enabled)throw new HttpError(403,"schedule_execution_disabled")}
-  async describe(identity:Identity,id:string){
+  async describe(identity:Identity,id:string,expectedEmployee?:string){
     if(!isUuid(id))throw new HttpError(400,"invalid_schedule_id")
     return withScheduleActor(this.pool,identity,async db=>{await requireScheduleRuntime(db)
-      return (await db.query<{state:Record<string,unknown>|null}>("SELECT agentstudio.schedule_execution_status($1::uuid) AS state",[id])).rows[0]?.state??null})
+      return (await db.query<{state:Record<string,unknown>|null}>("SELECT agentstudio.schedule_execution_status($1::uuid) AS state",[id])).rows[0]?.state??null},expectedEmployee)
   }
-  async activate(identity:Identity,id:string,raw:unknown){
+  async activate(identity:Identity,id:string,raw:unknown,expectedEmployee?:string){
     this.allowed();if(!isUuid(id))throw new HttpError(400,"invalid_schedule_id")
     return withScheduleActor(this.pool,identity,async(db,owner)=>{
       await requireScheduleRuntime(db)
@@ -53,24 +57,24 @@ export class ScheduleRuntimeRepository{
         [id,item.revision,JSON.stringify(item.execution),item.next,fingerprint,item.request_id])).rows[0]?.state
       if(!result)throw new HttpError(409,"schedule_activation_changed")
       return result
-    })
+    },expectedEmployee)
   }
-  async control(identity:Identity,id:string,revision:number,action:"pause"|"delete"){
+  async control(identity:Identity,id:string,revision:number,action:"pause"|"delete",expectedEmployee?:string){
     if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1||!["pause","delete"].includes(action))throw new HttpError(400,"invalid_schedule_control")
     return withScheduleActor(this.pool,identity,async db=>{await requireScheduleRuntime(db)
-      return (await db.query<{ok:boolean}>("SELECT agentstudio.schedule_control($1::uuid,$2::bigint,$3::text) AS ok",[id,revision,action])).rows[0]?.ok===true})
+      return (await db.query<{ok:boolean}>("SELECT agentstudio.schedule_control($1::uuid,$2::bigint,$3::text) AS ok",[id,revision,action])).rows[0]?.ok===true},expectedEmployee)
   }
-  async runNow(identity:Identity,id:string,revision:number){return this.occurrenceAction(identity,id,revision)}
-  async retryFailedStart(identity:Identity,id:string,revision:number,occurrence:string){
+  async runNow(identity:Identity,id:string,revision:number,expectedEmployee?:string){return this.occurrenceAction(identity,id,revision,undefined,expectedEmployee)}
+  async retryFailedStart(identity:Identity,id:string,revision:number,occurrence:string,expectedEmployee?:string){
     if(!isUuid(occurrence))throw new HttpError(400,"invalid_schedule_occurrence")
-    return this.occurrenceAction(identity,id,revision,occurrence)
+    return this.occurrenceAction(identity,id,revision,occurrence,expectedEmployee)
   }
-  private async occurrenceAction(identity:Identity,id:string,revision:number,occurrence?:string){
+  private async occurrenceAction(identity:Identity,id:string,revision:number,occurrence?:string,expectedEmployee?:string){
     this.allowed();if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)throw new HttpError(400,"invalid_schedule_control")
     return withScheduleActor(this.pool,identity,async db=>{await requireScheduleRuntime(db)
-      return (await db.query<{state:Record<string,unknown>}>(occurrence?"SELECT agentstudio.schedule_retry_start($1::uuid,$2::bigint,$3::uuid) AS state":"SELECT agentstudio.schedule_run_now($1::uuid,$2::bigint) AS state",occurrence?[id,revision,occurrence]:[id,revision])).rows[0]?.state})
+      return (await db.query<{state:Record<string,unknown>}>(occurrence?"SELECT agentstudio.schedule_retry_start($1::uuid,$2::bigint,$3::uuid) AS state":"SELECT agentstudio.schedule_run_now($1::uuid,$2::bigint) AS state",occurrence?[id,revision,occurrence]:[id,revision])).rows[0]?.state},expectedEmployee)
   }
-  async edit(identity:Identity,id:string,revision:number,raw:unknown){
+  async edit(identity:Identity,id:string,revision:number,raw:unknown,expectedEmployee?:string){
     this.allowed();if(!isUuid(id)||!Number.isSafeInteger(revision)||revision<1)throw new HttpError(400,"invalid_schedule_control")
     const input=safeScheduleDraftInput(raw)
     return withScheduleActor(this.pool,identity,async(db,owner)=>{
@@ -87,8 +91,8 @@ export class ScheduleRuntimeRepository{
         [id,owner,input.name,input.kind,input.kind==="agent"?input.target_id:null,input.kind==="workflow"?input.target_id:null,input.time_zone,
           JSON.stringify({config_format:"pg_schedule_draft_v1",execution_supported:false,rule:input.rule}),revision+1])).rows[0]
       return row?normalizeExecutionSchedule(row):null
-    })
+    },expectedEmployee)
   }
-  async list(identity:Identity){this.allowed();return withScheduleActor(this.pool,identity,async(db,owner)=>{await requireScheduleRuntime(db)
-    return (await db.query<ExecutionSchedule>("SELECT "+scheduleRuntimeColumns+" FROM agentstudio.schedules WHERE owner_user_id=$1::uuid AND deleted_at IS NULL ORDER BY updated_at DESC,id LIMIT 100",[owner])).rows.map(normalizeExecutionSchedule)})}
+  async list(identity:Identity,expectedEmployee?:string){this.allowed();return withScheduleActor(this.pool,identity,async(db,owner)=>{await requireScheduleRuntime(db)
+    return (await db.query<ExecutionSchedule>("SELECT "+scheduleRuntimeColumns+" FROM agentstudio.schedules WHERE owner_user_id=$1::uuid AND deleted_at IS NULL ORDER BY updated_at DESC,id LIMIT 100",[owner])).rows.map(normalizeExecutionSchedule)},expectedEmployee)}
 }

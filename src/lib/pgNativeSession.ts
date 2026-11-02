@@ -90,7 +90,7 @@ export function createPgEmployeeSession(transport:typeof fetch=fetch){
           :{status:"unavailable"}
       }catch(err){
         if(localEpoch!==epoch)return {status:"unavailable"}
-        if(err instanceof PgNativeSessionError&&err.status===401)
+        if(err instanceof PgNativeSessionError&&(err.status===401||err.status===403))
           return {status:"signed_out"}
         return {status:"unavailable"}
       }

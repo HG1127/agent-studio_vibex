@@ -40,7 +40,11 @@ test('mutation quiescence precedes Registry locks and actual backend absence pre
  const close=body('closeRootWriterBackend');assert.ok(close.indexOf('waitRootWriterBackendGone')<close.indexOf('b.closed=true'));assert.ok(close.indexOf('b.closed=true')<close.indexOf('s.writerCleanups--'))
  assert.ok(close.indexOf('waitRootWriterBackendGone')<close.indexOf('rootWriterClosedBackends.set(b.handle,s)'),'idempotent closed capability exists only after actual cleanup')
  assert.match(body('rootWriterBegin'),/rootWriterBusy\(s\)\|\|s\.leases\.size\|\|s\.sqlJobs/)
- assert.match(body('prepareWorkerHeartbeatControlRead'),/if\(rootWriterBusy\(s\)\)controlFail\('control_busy'\)/)
+ const prepare=body('prepareWorkerHeartbeatControlRead')
+ assert.match(prepare,/while\(rootWriterBusy\(s\)\)/)
+ assert.match(prepare,/deadline:owner\.requestStarted\+controlLimits\.leaseMs/)
+ const deadlineCheck=prepare.indexOf("if(performance.now()>=deadline)controlFail('reader_timeout')"),lease=prepare.indexOf('leaseStates.set(handle,l)'),connect=prepare.indexOf('l.client=await s.reader.connect()')
+ assert.ok(deadlineCheck>=0&&lease>deadlineCheck&&connect>lease)
  assert.match(body('closeWorkerHeartbeatActivationControl'),/closeWorkerHeartbeatWriterBroker/)
 })
 test('boot issuance can only use current completed publication and durable UID/generation consumption; backend PID never comes from caller',()=>{

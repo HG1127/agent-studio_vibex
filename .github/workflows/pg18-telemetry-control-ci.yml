@@ -62,7 +62,7 @@ jobs:
           services/pg-api/tests/native-control-ci-source-pins.test.mjs
           services/pg-api/tests/worker-heartbeat-owned-backend-cleanup.test.mjs
           services/pg-api/tests/worker-heartbeat-writer-kernel-handshake.test.mjs
-          services/pg-api/tests/worker-heartbeat-writer-file-change-observation.test.mjs services/pg-api/tests/worker-heartbeat-writer-timing-observation.test.mjs services/pg-api/tests/worker-heartbeat-reader-admission.test.mjs services/pg-api/tests/pg18-full069-final-sample-observation.test.mjs
+          services/pg-api/tests/worker-heartbeat-writer-file-change-observation.test.mjs services/pg-api/tests/worker-heartbeat-writer-timing-observation.test.mjs services/pg-api/tests/worker-heartbeat-reader-admission.test.mjs services/pg-api/tests/worker-heartbeat-admission-fence.test.mjs services/pg-api/tests/pg18-full069-final-sample-observation.test.mjs
       - name: Actual control entry refuses before effects on an ordinary machine
         run: |
           node --input-type=module -e '

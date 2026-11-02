@@ -12,7 +12,23 @@
 
 
 
-## 原页面分页与 Worker 竞争修复（2026-11-02，当前源码批次）
+## 身份恢复、计划员工围栏与等待修复（2026-11-02，当前待验证源码）
+
+`a7125ea` 的[F01隔离组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270564)现为15/17：原Home设计、模型元数据/草稿/075回执及运行详情指定故事通过；[F08原分享故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270615)通过。[PB19双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372372637/job/125045374576)19/19、73.3秒。[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270795/job/125045065582)49/50、根4664/4665，唯一旧Reader立即拒绝断言已按原帧期限修正；后续被跳过步骤不能计通过。这些故事不等于原20页/30组操作全部验收。
+
+原工具故事实际完成251条owner分页的创建和清理、6次分页GET及502条种子审计；整段仍在最终元数据审计因fixture误用不存在的created_at列失败，未取得最终业务基线。现改用原不可变DDL的occurred_at，并增加对真实DDL列的校验；直接工具测试、工具精确回执及MCP/Smithery原页仍缺。
+
+父运行页真实身份查询暂时不可用时立即隐藏并禁止操作，仅保留原内存草稿供同员工重新核实后恢复；真实/me401、403、签出、换员工及处置永久清除，业务source403原围栏保留。测试端必须核对完整实际/me200和员工、真实响应头/首字节/write callback/销毁，再核对同一浏览器GET的requestfailed，保留原5秒隐藏断言与8秒请求期限。新版本发布候选发现同类暂失联清空表单问题，正在独立纠正，26文件候选未应用。
+
+计划列表、历史、草稿和实际启停/立即运行/重试等入口新增员工前置条件：在真实事务身份映射后、业务SQL之前检查，未携带条件的参考调用保持。原定时任务完整界面适配、未启用指令/模型持久化、完整历史和未知写确认仍在补齐，不能计为原页完成。
+
+当前Writer/Reader忙等待只核对真实Root/请求的私有状态，退出等待后必须重跑完整来源/身份门禁，并在原deadline内才可claim/open/注册lease；并发失效和错误优先级反例保留，原I/O、审计与清理主体保持。原5秒、Native8秒及八次全部成功要求不变。仅诊断固定进程上限从4KiB改16KiB，覆盖前序案例和八项结果，不授予运行资格。
+
+`a7125ea`[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270691)短竞争4成功/4期限拒绝；仅prepare与knowledge_index有耗时，其他6项未知。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270648)本次Legacy的assessment在heartbeat_open/writer_deadline自行退出，Reader为finish/无已知code，telemetry后端未清零；Reader清零与四队列空成立。Final14为native_io/controller_reader_audit，缺13项独立ACL结果和三项清理零值，不能沿用03的gap或清理结论。
+
+前后端类型及默认/显式PG两种原index/main/App构建已通过，默认102资源/PG匹配0，PG104资源。当前源码、纯检查及构建仍须重封来源并以新精确提交运行真实CI。074实时监控三包未应用，普通业务case、原定时任务、075完整安装/Native进程兼容、长期Worker、合格24小时、目标安装、备份恢复/回滚及员工UAT仍未完成。旧PocketBase保持可恢复，正式迁移继续 **NO-GO**；没有部署或生产变更。
+
+## 原页面分页与 Worker 竞争修复（2026-11-02，已推送a7125ea源码批次）
 
 原 ToolConnections 页面保留现有布局、入口和 PB 默认分支，新增本人 keyset 分页、加密游标、完整列表指纹与微秒排序；owner、版本漂移、过期、重复或乱序页均拒绝，不发布半份列表。旧服务继续明确 partial。独立 CI 故事将通过真实 owner 仓库创建、读取并删除251条合成工具，逐项检查502条审计及全表清理基线；尚无该新故事的真实通过证据。直接同步测试、精确工具写回执、MCP/Smithery 原页面仍缺，不能计整页完成。
 

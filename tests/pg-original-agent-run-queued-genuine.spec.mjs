@@ -28,7 +28,7 @@ test('actual original AgentRun queued read/cancel, complete owner models and rea
   })
   await test.step('real identity response loss hides local drafts and disables fresh actions; same verified owner may recover unsubmitted task/budget',async()=>{
    await task(p).fill(draft);await expect(p.locator('#max-steps')).toBeEnabled();await p.locator('#max-steps').focus();await p.locator('#max-steps').press('End');for(let i=0;i<3;i++)await p.locator('#max-steps').press('ArrowLeft');await expect(p.locator('#max-steps')).toHaveValue('27')
-   f.dropNextActualIdentity();await b.focus(p);await expect(task(p)).toHaveValue('');await expect(p.locator('#max-steps')).toHaveValue('10');await expect(runButton(p)).toBeDisabled()
+   const identityFailed=b.identityDisconnect(p),identityDrop=f.dropNextActualIdentity(f.users.alice);await b.focus(p);expect(await identityDrop.done()).toMatchObject({status:200,forwarded_body_bytes:1,write_callback_confirmed:true,before_client_deadline:true,actual_native_me_verified:true,expected_employee:f.users.alice,actual_proxy_response_closed:true,actual_socket_destroyed:true});expect(await identityFailed.failed()).toEqual({actual_requestfailed:true,same_original_get:true});await expect(task(p)).toHaveValue('');await expect(p.locator('#max-steps')).toHaveValue('10');await expect(runButton(p)).toBeDisabled()
    expect(f.observations.controlled_identity_drops).toBe(1);await b.focus(p);await expect(task(p)).toHaveValue(draft);await expect(p.locator('#max-steps')).toHaveValue('27')
    await task(p).fill('');await b.image('original-agent-run-queued-alice-restored.png',p);steps.actual_unavailable_hides_and_same_owner_recovers=true
   })
