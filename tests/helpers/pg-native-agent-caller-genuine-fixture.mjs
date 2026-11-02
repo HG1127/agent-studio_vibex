@@ -57,8 +57,8 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "db/postgres/migrations/pg_v9_065_agent_internal_share.sql": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
   "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
   "db/postgres/migrations/pg_v9_068_agent_public_callers.sql": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
-  "package.json": "8fc65ff7b1365ea387d84c9f4af289987cbaca9fbb454e1a1a45664fca9a8e2a",
-  "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
+  "package.json": "6218339204da539cc21f89c3d4616218f1e75ec147001be60707d5863b3d7afe",
+  "pnpm-lock.yaml": "3fd98a23c6ea82d7aad3a745458a8c1a0f43e15f86fddd9c7994b9ab33f0e00a",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
   "services/pg-api/src/agent-assessment-audit-core.ts": "87740182730dbb644cfbc31cb689a4fb80da4636452ef2a209f1cc2559acfd09",
@@ -398,7 +398,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/agent-caller-owner-session.test.mjs": "cac6ad4a226dd8bb502c85403e1dd2645fda16f4c71c8b5d1c3ac3b1735be6b1",
   "services/pg-api/tests/agent-caller-presentation.test.mjs": "850024c62727a60c8ea4000a22caa0d272dd9283b05a055bc42d2b7a5dff6e6c",
   "services/pg-api/tests/helpers/agent-assessment-fixture.mjs": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a",
-  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "ccfc3b881a7f12851093c0fbb383950d593f73941401fbf05ce05703055306e9",
+  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "68d1195acae9cf6b56c3c36f1ae80076164262de096a1309a4f1e8bc5f022d87",
   "services/pg-api/tests/helpers/agent-caller-genuine-guard.mjs": "e165765978d53a4ab5da154df1fd6edffba07036e1fe8af6457a0d8943738cef",
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
@@ -769,7 +769,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "814875123bed8e15fdd4c86b6b37123d3c384ef6cf69150888c3113ebf4a5558",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "bd2a5aa68d829298750f6e6053a650e33c735a4dd91dbac3bf332859be309d9c",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -917,10 +917,16 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "tests/original-staff-api-pure.test.mjs": "c252f1a4eb0710f6ee90a867499a03cc80fd8668363acebd25f499002dfc0b42",
   "tests/original-staff-page-pure.test.mjs": "bbdd140cd6aa93b2b5da05757be60d9883892cec790c7f35e62b2bf282f2adfe",
   "tests/original-staff084-pure.test.mjs": "f85adfd882dc03fbc4ed455d0cc55cbfb1ade7d7b0d6af39902b92c8a7b32784",
-  "docs/PG18_ORIGINAL_RUN_CONFIRMATION_ADAPTATION.md": "21e14951a68c5644647d08a27331bc3054b343bee3f6eec1657fccc462a96412",
+  "docs/PG18_ORIGINAL_RUN_CONFIRMATION_ADAPTATION.md": "d47d691a62708b7279b8e1f3710f9b2edd3074944f23e0c1639b9a5182ffb61f",
   "tests/browser-json-response-observer.test.mjs": "136c01cfd52e7d1b2bdbc08aa957b30bbc43257e6f25fe1b1fbbcef989557e29",
   "tests/helpers/browser-json-response-observer.mjs": "1c9c1197af7743e01625b8c73cdbbc6e04eaf381d970317fb703888d68fc11dd",
-  "tests/original-run-transport-lifecycle.test.mjs": "8bafa927a7ce4067f6c864ddabd93df14ca13cd65fb8fe6881b52f47cce1c0cc"
+  "tests/original-run-transport-lifecycle.test.mjs": "8bafa927a7ce4067f6c864ddabd93df14ca13cd65fb8fe6881b52f47cce1c0cc",
+  "docs/PG18_ISOLATED_BROWSER_TEST_RUNTIME.md": "db3bcb3516d80183fff674bb457bb3cb0a1662737c1d79129b36365eee3f1ac7",
+  "ops/pg18-original-no-store-browser-check.mjs": "e4e6584bdb7f628a50de21727d1e06794eb997cedbe3621c450da8bea36008f6",
+  "tests/helpers/original-feedback-revocation.mjs": "489fc3f53a29c1e249b58472a1feaad139b151ef553f5424f164f78fa7089db9",
+  "tests/helpers/original-no-store-browser-check.mjs": "22ba2fc8a31cd3048dc3889e36a2ea0e9e0cb720b0453bd9e854107ffa1c43e5",
+  "tests/original-feedback-revocation.test.mjs": "5b9a426a6644df57c815aad23af7f20e9a577cb8e95883c51b39b7e2e7a16a5f",
+  "tests/original-no-store-browser-check.test.mjs": "e84a9dbc556c0705b237585f232b8dbeb60eafa6cf9b36fb6d1ba4e61bf60a4c"
 })
 export async function startPgNativeAgentCallerGenuineBrowserFixture(env=process.env){
  requireAgentCallerGenuineCi(env);if(env.GITHUB_JOB!==agentCallerGenuineBrowserJob||env.AGENT_STUDIO_F11_F12_GENUINE_SUITE!=='browser')throw Error('agent_caller_browser_job_required')

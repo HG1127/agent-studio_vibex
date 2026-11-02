@@ -134,6 +134,10 @@ test('feedback confirmation freezes the displayed caller draft before awaiting c
  const draft={rating:'down',tags:['DEMO'],comment:'ORIGINAL comment'},f=fixture({confirm:()=>{draft.rating='up';draft.tags.push('CHANGED');draft.comment='CHANGED comment';return true}})
  try{await f.start();await f.c.submitFeedback(draft);assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.rating,'down');assert.deepEqual(f.calls[0].body.tags,['DEMO']);assert.equal(f.calls[0].body.comment,'ORIGINAL comment')}finally{f.c.dispose()}
 })
+test('fresh feedback capability revocation prevents POST, reports the changed permission and retains still-authorized private reads',async()=>{
+ const f=fixture({confirm:p=>{if(p.purpose==='feedback')f.caps.agent_feedback_submission_enabled=false;return true}})
+ try{await f.start();await f.c.submitFeedback({rating:'up',tags:[],comment:'ORIGINAL feedback'});const view=f.c.snapshot();assert.equal(f.calls.length,0);assert.equal(view.feedback.canSubmit,false);assert.equal(view.activeRun.id,run);assert.equal(view.memories.items[0].id,memory);assert.equal(view.sourceDenied,false);assert.match(view.error,/反馈来源或写入权限已变化/)}finally{f.c.dispose()}
+})
 test('unknown pause result is confirmed with the exact original operation instead of issuing resume',async()=>{
  const f=fixture();try{await f.start();await f.c.control('pause');assert.ok(f.c.snapshot().runs.pendingRunControl);await f.c.control('resume');assert.deepEqual(f.calls.map(c=>c.kind),['control','control-confirm']);assert.equal(f.calls[1].action,'pause');assert.deepEqual(f.calls[1].body,f.calls[0].body)}finally{f.c.dispose()}
 })

@@ -255,6 +255,13 @@ jobs:
         run: node --experimental-strip-types --test tests/ordinary-case-node-strip-source.test.mjs tests/pg-native-preflight-business-shared-closure.test.mjs tests/original-version-release-partial-history-notice.test.mjs
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify pinned Chromium no-store EOF and real cancellation controls
+        if: matrix.story == 'original-model-draft-discovery'
+        env:
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_CI: YES_DISPOSABLE_ORIGINAL_MODEL_DRAFT_DISCOVERY_ONLY
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_STORY: original-model-draft-discovery
+          AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node ops/pg18-original-no-store-browser-check.mjs
       - name: Actual HTTPS browser through the real PG18 design and save chain
         if: matrix.story == 'design'
         # Invoke the installed CLI directly. The pnpm binary shim injects

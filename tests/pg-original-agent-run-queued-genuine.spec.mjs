@@ -32,10 +32,10 @@ test('actual original AgentRun queued read/cancel, complete owner models and rea
    expect(f.observations.controlled_identity_drops).toBe(1);await b.focus(p);await expect(task(p)).toHaveValue(draft);await expect(p.locator('#max-steps')).toHaveValue('27')
    await task(p).fill('');await b.image('original-agent-run-queued-alice-restored.png',p);steps.actual_unavailable_hides_and_same_owner_recovers=true
   })
-  await test.step('actual feedback permission is withdrawn through the real selector after original confirmation opens; true403 writes no receipt and hides every local private field',async()=>{
+  await test.step('actual feedback permission is withdrawn through the real selector at the original POST after fresh review; true403 writes no receipt and hides every local private field',async()=>{
    const checkpoint=await f.feedbackCheckpoint();await task(p).fill(draft);await p.getByRole('button',{name:'结果不错',exact:true}).click();await feedback(p).fill(comment)
     // Begin reading the original response at its event, before the page can navigate.
-    const response=b.wire(p,'/api/v2/agent-feedback/'+aliceRun.id+'/change','POST').then(async reply=>({status:reply.status(),body:await reply.json()})),dialog=b.expectedDialog(p,'confirm','保存本人对此运行的评价',async()=>f.revokeFeedbackBeforeOriginalSubmit(aliceRun.id));void response.catch(()=>{})
+    const response=b.wire(p,'/api/v2/agent-feedback/'+aliceRun.id+'/change','POST').then(async reply=>({status:reply.status(),body:await reply.json()})),dialog=b.expectedDialog(p,'confirm','保存本人对此运行的评价',async()=>f.armFeedbackRevocationAtOriginalSubmit(aliceRun.id));void response.catch(()=>{})
     await p.getByRole('button',{name:'提交反馈',exact:true}).click();await dialog;const denied=await response;expect(denied.status).toBe(403);expect(denied.body.error).toBe('agent_feedback_submission_disabled')
    await expect(task(p)).toHaveValue('');await expect(feedback(p)).toHaveCount(0);await expect(runButton(p)).toBeDisabled();expect(f.observations.controlled_feedback403).toBe(1);feedbackProof=await f.feedbackUnchanged(checkpoint)
    const before=f.observations.feedback_posts.length;await task(p).fill('synthetic-queued-private-ignored');await expect(task(p)).toHaveValue('');expect(f.observations.feedback_posts).toHaveLength(before)
