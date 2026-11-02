@@ -1632,6 +1632,11 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     const scheduleResult=await api("GET","/api/schedules")
     const createdPlan=scheduleResult.items.find(row=>row.name==="UX 行为验收定时计划")
     assert.ok(createdPlan,"Schedule was not created by actual API")
+    // The saved notice precedes the list refresh. Wait for the actual rendered
+    // action, not just the completed backend write, before trying to edit.
+    await wait(`[...document.querySelectorAll('button')].some(b=>
+      b.getAttribute('aria-label')===${JSON.stringify("编辑定时计划：UX 行为验收定时计划")}&&!b.disabled)`,
+      "saved schedule appears in the refreshed list with an enabled edit action")
     const editClicked=await evaluate(`(()=>{
       const btn=[...document.querySelectorAll('button')].find(b=>
         b.getAttribute('aria-label')===${JSON.stringify("编辑定时计划：UX 行为验收定时计划")})
