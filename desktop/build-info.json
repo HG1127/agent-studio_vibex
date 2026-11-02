@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "6da3f4e4854a112034cad76665aabe7e62745dca",
+  "sourceCommit": "36a005624b60a0b9de08c70638581f4de319bc02",
   "version": "0.1.0-preview.14",
   "platform": "win32-x64",
   "codeSigned": false,
@@ -8,6 +8,6 @@
     "desktopUpdates": "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290",
     "avatarSettings": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "applicationDiscovery": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
-    "versionCenter": "6da3f4e4854a112034cad76665aabe7e62745dca"
+    "versionCenter": "36a005624b60a0b9de08c70638581f4de319bc02"
   }
 }
