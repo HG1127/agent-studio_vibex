@@ -1,5 +1,6 @@
 import {parseOrdinaryCaseRunInput,type OrdinaryCaseRunInput} from '../../shared/ordinary-case-run-contract.ts'
-import {createPgNativeAutonomousAgentSession,emptyAutonomousView,autonomousApprovalReady,readyAutonomousModel,type AutonomousDetail} from './pgNativeAutonomousAgentSession.ts'
+import {createPgNativeAutonomousAgentSession,emptyAutonomousView,autonomousApprovalReady,autonomousReview,readyAutonomousModel,type AutonomousDetail} from './pgNativeAutonomousAgentSession.ts'
+import {usesPaidKnowledge} from './pgNativeKnowledgeTool.ts'
 import {createPgNativeFeedbackSession,emptyFeedbackView} from './pgNativeAgentFeedbackSession.ts'
 import {createPgNativeMemorySession,emptyMemoryView} from './pgNativeAgentMemorySession.ts'
 import {PgNativePilotError,type createPgNativePilotApi,type PgNativeConfigCapabilities,type PgNativeAgent,type PgNativeModelConnection,type PgNativeToolConnection,type PgNativeMcpConnection} from './pgNativePilotApi.ts'
@@ -11,14 +12,14 @@ import {originalRunAgent,originalRunDetail} from './originalAgentRunProjection.t
 type Api=ReturnType<typeof createPgNativePilotApi>
 type Home=Pick<ReturnType<typeof createOriginalHomeAgentApi>,'list'|'get'>
 type Inbox=Pick<ReturnType<typeof createOriginalHomeInboxApi>,'workspace'>
-export type OriginalRunConfirmation={purpose:'submit'|'effect'|'cancel'|'forget'|'feedback'|'human';run_id:string|null;step_key:string|null;input_sha256:string|null;description:string}
+export type OriginalRunConfirmation={purpose:'submit'|'fee'|'effect'|'cancel'|'forget'|'feedback'|'human';run_id:string|null;step_key:string|null;input_sha256:string|null;description:string}
 const emptyWorkspace=():OriginalWorkspace=>({items:[],pending_items:[],pending_count:0,agent_run_total:0})
 const terminal=new Set(['succeeded','failed','cancelled'])
 export function originalRunApproval(detail:AutonomousDetail|null){
  const p=detail?.run.status==='awaiting_approval'?detail.pending_effect:null
- return p?{toolName:p.kind==='model'?'模型调用（需另行费用预览）':p.kind==='agent'?'启动原 Native Agent':String(p.configuration.tool??p.configuration.title??p.kind),argsSummary:JSON.stringify({step_key:p.step_key,input_sha256:p.input_sha256,input:p.input,configuration:p.configuration},null,2),stepIndex:detail!.run.step_count}:null
+ return p?{toolName:p.kind==='model'?'模型调用（批准前核对费用）':p.kind==='agent'?'启动原 Native Agent':String(p.configuration.tool??p.configuration.title??p.kind),argsSummary:JSON.stringify({step_key:p.step_key,input_sha256:p.input_sha256,input:p.input,configuration:p.configuration},null,2),stepIndex:detail!.run.step_count}:null
 }
-/** Existing Native APIs have no price estimate contract for this old card. */
+/** Pure local execution; other effects require their explicit cost review. */
 export function originalRunZeroCostEffect(detail:AutonomousDetail):boolean{
  const p=detail.pending_effect
  if(!p)return false
@@ -27,7 +28,8 @@ export function originalRunZeroCostEffect(detail:AutonomousDetail):boolean{
 }
 export function createOriginalAgentRunSession(options:{employeeId:string;api:Api;home:Home;inbox:Inbox;models:Pick<ReturnType<typeof createOriginalModelConnectionsApi>,'listSnapshot'>;verifyEmployee:()=>Promise<string>;confirm:(request:OriginalRunConfirmation)=>Promise<boolean>|boolean}){
  const employee=options.employeeId,listeners=new Set<()=>void>();let closed=false,suspended=false,recovering=false,sourceDenied=false,ownerChanged=false,epoch=0,read=0,error='',notice='',loading=false,selectedAgent='',agents:OriginalHomeAgent[]=[],models:PgNativeModelConnection[]=[],tools:PgNativeToolConnection[]=[],mcps:PgNativeMcpConnection[]=[],caps:PgNativeConfigCapabilities|null=null,workspace=emptyWorkspace(),feedbackRun:string|null=null,historyKey='',historyRead=0,historyLoading=false,historyError='';let historyDetails=new Map<string,AutonomousDetail>()
- const publish=()=>{if(!closed)listeners.forEach(fn=>fn())}
+  let approvalSelection=0,decisionInFlight=false
+  const publish=()=>{if(!closed)listeners.forEach(fn=>fn())}
  function lockPrivate(message:string,owner=false){if(!sourceDenied){epoch++;read++;historyRead++}sourceDenied=true;if(owner)ownerChanged=true;error=message;publish()}
  async function identity(){
   if(closed)throw new PgNativePilotError(503,'original_agent_run_disposed')
@@ -83,19 +85,21 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
   if(workspace.pending_items.some(item=>item.engine_kind==='agent_single'))warnings.push('本人还有单轮运行待办；其原页面详情与控制合同尚未接入此自主运行分支。')
   return{employeeId:closed?'':employee,agents:hidden?[]:agents.map(a=>originalRunAgent(a,employee)),nativeAgents:hidden?[]:agents,models:hidden?[]:models,caps:hidden?null:caps,workspace:hidden?emptyWorkspace():workspace,selectedAgentId:hidden?'':selectedAgent,loading:!closed&&!hidden&&(loading||historyLoading),runs:r,feedback:f,memories:m,activeRun:hidden?null:active,runHistory:hidden?[]:history,pendingApproval:hidden?null:originalRunApproval(r.detail),error:closed?'登录或员工会话已变化，请重新登录。':hidden?error:[error,historyError,projectionError,r.error,f.error,m.error,...warnings].filter(Boolean).join(' '),notice:hidden?'身份未核实，旧页面数据不会展示；原未确认操作保留在内存。':[historyLoading?'正在核对本人运行历史的完整详情。':'',notice,r.notice,f.notice,m.notice].filter(Boolean).join(' '),closed,recovering,sourceDenied,ownerChanged,suspended:hidden&&!closed}
  }
- async function confirm(request:OriginalRunConfirmation,work:()=>Promise<void>){const life=epoch;await identity();if(suspended||recovering||sourceDenied||ownerChanged)return;if(!await options.confirm(Object.freeze(request))||closed||life!==epoch)return;await identity();error='';notice='';publish();await work()}
+  function selectionScope(){const life=epoch,selection=approvalSelection,agent=selectedAgent;return()=>privateVisible()&&life===epoch&&selection===approvalSelection&&agent===selectedAgent}
+  async function confirm(request:OriginalRunConfirmation,work:()=>Promise<void>,current:()=>boolean=()=>true){const life=epoch;await identity();if(suspended||recovering||sourceDenied||ownerChanged||life!==epoch||!current())return;if(!await options.confirm(Object.freeze(request))||closed||life!==epoch||!current())return;await identity();if(life!==epoch||!privateVisible()||!current())return;error='';notice='';publish();await work()}
  return{
   hidePrivateForIdentity(owner=false){if(owner){suspended=true;lockPrivate('员工身份已变化，旧私有正文与本地草稿已隐藏。原请求仅保留在原员工控制器。',true)}else{if(!suspended){epoch++;read++;historyRead++}suspended=true;error='员工身份暂不可用，旧私有正文与草稿展示已隐藏，原未确认请求仍保留。';publish()}},
   snapshot,dispose,subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},navigationBlocked:blocked,
   async verifyIdentity(){if(closed)return;const restore=suspended||sourceDenied||ownerChanged;recovering=restore;if(restore){epoch++;read++;historyRead++;publish()}try{await identity();if(restore){suspended=false;sourceDenied=false;ownerChanged=false;await Promise.all([load(),runs.refresh(),feedback.refresh(),memories.refresh()])}}finally{recovering=false;publish()}},
   async activate(){await identity();runs.setActive(true);feedback.setActive(true);memories.setActive(true);await load()},
   async refresh(){if(closed)return;await Promise.all([load(),runs.refresh(),feedback.refresh(),memories.refresh()])},
-  async selectAgent(id:string){if(!privateVisible())return;if(blocked()){error='请先核对当前未确认的操作，再切换助手。';publish();return}const a=agents.find(a=>a.id===id);if(id&&!a){error='未找到当前员工的助手。';publish();return}error='';selectedAgent=id;await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null);publish()},
+   async selectAgent(id:string){if(!privateVisible())return;if(blocked()){error='请先核对当前未确认的操作，再切换助手。';publish();return}const a=agents.find(a=>a.id===id);if(id&&!a){error='未找到当前员工的助手。';publish();return}approvalSelection++;error='';selectedAgent=id;await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null);publish()},
   async selectRun(id:string,specId?:string,kind=''){
    if(!privateVisible())return
    const actualKind=kind||[...workspace.items,...workspace.pending_items].find(item=>item.id===id)?.engine_kind||'agent_autonomous'
    if(actualKind!=='agent_autonomous'){error='此待办属于单轮运行，尚缺原父页的同义详情与控制合同，未将其当作自主运行。';publish();return}
    if(blocked()){error='请先核对原请求，再切换运行。';publish();return}
+    approvalSelection++
    error='';if(specId){const source=await api.getAutonomousAgentRun(id);if(source.run.agent_spec_id!==specId){error='运行和助手来源不匹配，未加载该详情。';publish();return}}
    await runs.select(id);const detail=runs.snapshot().detail
    if(specId&&detail&&detail.run.agent_spec_id!==specId){runs.setActive(false);error='运行和助手来源不匹配，已清除详情。';publish();return}
@@ -112,38 +116,57 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
    const caseInput=businessCase===undefined?undefined:parseOrdinaryCaseRunInput(businessCase)
    if((a.spec.tools as string[]).some(t=>['business_case_get','business_record_query','business_record_write','result_read'].includes(t))&&!caseInput){error='请从本人业务案例进入后再启动此助手。';publish();return}
    if(!instruction.trim()||instruction.trim().length>2000||!Number.isSafeInteger(maxSteps)||maxSteps<1||maxSteps>30){error='请填写1～2000字任务及1～30轮上限。';publish();return}
-   await confirm({purpose:'submit',run_id:null,step_key:null,input_sha256:null,description:'创建当前员工助手 '+a.id+' 第 '+a.revision+' 版的任务，最多 '+maxSteps+' 轮。只登记任务；模型和工具步骤仍需逐次审批及费用预览。'},()=>runs.submit({agentId:a.id,revision:a.revision,instruction,maxSteps,requirePlanReview:a.spec.require_plan_review===true,...(caseInput?{businessCase:caseInput}:{})}))
+    const scope=selectionScope(),source=JSON.stringify(a),current=()=>scope()&&JSON.stringify(currentAgent())===source
+    await confirm({purpose:'submit',run_id:null,step_key:null,input_sha256:null,description:'创建当前员工助手 '+a.id+' 第 '+a.revision+' 版的任务，最多 '+maxSteps+' 轮。只登记任务；模型和工具步骤仍需逐次审批及费用预览。'},async()=>{await load();if(!current()||!caps?.autonomous_agent_submission_enabled||!caps.config_writes_enabled||!readyAutonomousModel(nativeAgents().find(x=>x.id===a.id),models))return;await runs.submit({agentId:a.id,revision:a.revision,instruction,maxSteps,requirePlanReview:a.spec.require_plan_review===true,...(caseInput?{businessCase:caseInput}:{})})},current)
   },
   async decide(decision:'approve'|'reject'){
-   if(!privateVisible())return
+   if(!privateVisible()||decisionInFlight)return
    const detail=runs.snapshot().detail,p=detail?.pending_effect
    if(!detail||!p||!caps?.autonomous_agent_submission_enabled)return
    if(runs.snapshot().pendingMutation){await runs.refresh();error='已读取原决定结果；尚未确认时不会重发或扩大授权。';publish();return}
-   if(decision==='approve'){
-    if(!autonomousApprovalReady(detail,nativeAgents(),models,tools,mcps,caps.mcp_tool_runs_enabled===true)){error='当前助手、模型、工具、知识来源或审批版本已变化，请先刷新核对。';publish();return}
-    if(!originalRunZeroCostEffect(detail)){error='原审批卡尚缺本次模型、语义检索或外部工具的费用预览合同，此入口未批准调用。';publish();return}
-   }
-   const label=decision==='approve'?'批准':'拒绝'
-   await confirm({purpose:'effect',run_id:detail.run.id,step_key:p.step_key,input_sha256:p.input_sha256,description:label+'当前步骤 '+p.step_key+'，输入指纹 '+p.input_sha256+'。\n'+JSON.stringify({input:p.input,configuration:p.configuration},null,2)},()=>runs.decide(decision==='approve'?'approved':'rejected',true,false))
+   const selection=approvalSelection,selected=selectedAgent,life=epoch
+   const key=(d:AutonomousDetail)=>JSON.stringify({run:d.run.id,spec:d.run.agent_spec_id,status:d.run.status,step:d.pending_effect,knowledge:d.knowledge??null})
+   const original=key(detail),current=()=>{const d=runs.snapshot().detail;return privateVisible()&&epoch===life&&approvalSelection===selection&&selectedAgent===selected&&Boolean(d&&key(d)===original)}
+   const ready=()=>{const d=runs.snapshot().detail;return current()&&Boolean(d&&caps?.config_writes_enabled&&caps.autonomous_agent_submission_enabled&&autonomousApprovalReady(d,nativeAgents(),models,tools,mcps,caps.mcp_tool_runs_enabled===true))}
+   if(decision==='approve'&&!ready()){error='当前助手、模型、工具、知识来源或审批版本已变化，请先刷新核对。';publish();return}
+   const lexical=p.kind==='tool'&&p.configuration.tool==='knowledge_search'&&!usesPaidKnowledge(p)&&!p.configuration.tool_binding&&!p.configuration.mcp_binding
+   const needsFee=decision==='approve'&&!originalRunZeroCostEffect(detail)&&!lexical,review=autonomousReview(p,detail.knowledge)
+   let feeConfirmed=false;decisionInFlight=true
+   try{
+    if(needsFee){
+     await confirm({purpose:'fee',run_id:detail.run.id,step_key:p.step_key,input_sha256:p.input_sha256,description:'核对本次'+review.title+'的费用与发送范围：\n'+review.text+'\n固定配置：'+JSON.stringify(p.configuration,null,2)+'\n本次调用可能产生模型或外部服务费用，当前接口未提供金额报价。确认仅适用于当前步骤 '+p.step_key+'，输入指纹 '+p.input_sha256+'；后续步骤会再次确认。'},async()=>{feeConfirmed=true},current)
+     if(!feeConfirmed||!current())return
+    }
+    const label=decision==='approve'?'批准':'拒绝'
+    await confirm({purpose:'effect',run_id:detail.run.id,step_key:p.step_key,input_sha256:p.input_sha256,description:label+'当前步骤 '+p.step_key+'，输入指纹 '+p.input_sha256+'。\n'+JSON.stringify({input:p.input,configuration:p.configuration},null,2)},async()=>{
+     // Refresh metadata only. The server repeats owner/source/lease checks at
+     // the actual mutation; a changed selection or step never inherits consent.
+     await Promise.all([load(),runs.refresh()])
+     if(!current()||decision==='approve'&&(!ready()||needsFee&&!feeConfirmed)){if(privateVisible()){error='待确认的运行、步骤或资源版本已变化，请重新核对当前步骤。';publish()}return}
+     await runs.decide(decision==='approve'?'approved':'rejected',decision==='approve',decision==='approve'&&usesPaidKnowledge(p)&&feeConfirmed)
+    },current)
+   }finally{decisionInFlight=false}
   },
   async control(action:'pause'|'resume'|'cancel'){
    if(!privateVisible())return
    const r=runs.snapshot(),d=r.detail;if(!d||!caps?.autonomous_agent_submission_enabled)return
    if(r.pendingRunControl){await runs.confirmRunControl();return}
    if(r.pendingMutation){await runs.refresh();return}
-   if(action==='cancel'){if(terminal.has(d.run.status))return;await confirm({purpose:'cancel',run_id:d.run.id,step_key:null,input_sha256:null,description:'取消本人任务 '+d.run.id+'。已发出的调用可能继续完成，取消不代表没有费用。'},()=>runs.cancel());return}
+    const scope=selectionScope(),currentRun=()=>scope()&&runs.snapshot().detail?.run.id===d.run.id
+    if(action==='cancel'){if(terminal.has(d.run.status))return;await confirm({purpose:'cancel',run_id:d.run.id,step_key:null,input_sha256:null,description:'取消本人任务 '+d.run.id+'。已发出的调用可能继续完成，取消不代表没有费用。'},async()=>{await Promise.all([load(),runs.refresh()]);const actual=runs.snapshot().detail;if(currentRun()&&caps?.autonomous_agent_submission_enabled&&actual&&!terminal.has(actual.run.status))await runs.cancel()},currentRun);return}
    const allowed=action==='pause'?d.run_control?.can_pause:d.run_control?.can_resume
    if(!allowed){error='当前服务器状态不允许此控制操作，请刷新核对。';publish();return}
-   await identity();await runs.controlRun(action)
+    const control=JSON.stringify(d.run_control);await identity();if(currentRun()&&JSON.stringify(runs.snapshot().detail?.run_control)===control)await runs.controlRun(action)
   },
   async submitFeedback(value:{rating:'up'|'down';tags:string[];comment:string}){
    if(!privateVisible())return
    const f=feedback.snapshot();if(f.pending){await feedback.confirm();return}
    if(!f.canSubmit||!f.status?.source){error='当前运行反馈来源或写入权限尚未核实。';publish();return}
-   await confirm({purpose:'feedback',run_id:f.runId,step_key:null,input_sha256:f.status.source.source_sha256,description:'保存本人对此运行的评价。不会自动保存教训、生成优化或调用模型。'},()=>feedback.submit({...value,remember_lesson:false},true))
+    const scope=selectionScope(),source=JSON.stringify({run:f.runId,status:f.status}),draft=structuredClone(value),current=()=>{const actual=feedback.snapshot();return scope()&&actual.canSubmit&&JSON.stringify({run:actual.runId,status:actual.status})===source}
+    await confirm({purpose:'feedback',run_id:f.runId,step_key:null,input_sha256:f.status.source.source_sha256,description:'保存本人对此运行的评价。不会自动保存教训、生成优化或调用模型。'},async()=>{await Promise.all([load(),feedback.refresh()]);if(current())await feedback.submit({...draft,remember_lesson:false},true)},current)
   },
-  async forgetMemory(id:string){if(!privateVisible())return;const m=memories.snapshot();if(m.pending){await memories.confirm();return}const item=m.items.find(x=>x.id===id);if(!item||!m.canWrite)return;await confirm({purpose:'forget',run_id:null,step_key:null,input_sha256:item.content_sha256,description:'忘记当前助手中本人保存的这条记忆：'+item.fact},()=>memories.forget(id,true))},
-  async respond(decision:'reply'|'approve'|'revise',answer:string){if(!privateVisible())return;if(!caps?.agent_human_responses_enabled)return;if(runs.snapshot().pendingHumanResponse){await runs.retryHumanResponse();return}const d=runs.snapshot().detail,p=d?.human_input;if(!d||!p||d.run.status!=='awaiting_input'||d.human_input_current!==true)return;await confirm({purpose:'human',run_id:d.run.id,step_key:p.pending_step_key,input_sha256:p.pending_sha256,description:'确认本次人员回复/草案决定 '+decision+'。后续模型和工具仍需单独审批及费用预览。\n问题：'+p.question+'\n草案：'+p.draft+'\n本次回复：'+answer},()=>runs.respond(decision,answer,true))},
+  async forgetMemory(id:string){if(!privateVisible())return;const m=memories.snapshot();if(m.pending){await memories.confirm();return}const item=m.items.find(x=>x.id===id);if(!item||!m.canWrite)return;const scope=selectionScope(),source=JSON.stringify({role:m.role,item}),current=()=>{const actual=memories.snapshot();return scope()&&actual.canWrite&&JSON.stringify({role:actual.role,item:actual.items.find(x=>x.id===id)})===source};await confirm({purpose:'forget',run_id:null,step_key:null,input_sha256:item.content_sha256,description:'忘记当前助手中本人保存的这条记忆：'+item.fact},async()=>{await Promise.all([load(),memories.refresh()]);if(current())await memories.forget(id,true)},current)},
+  async respond(decision:'reply'|'approve'|'revise',answer:string){if(!privateVisible())return;if(!caps?.agent_human_responses_enabled)return;if(runs.snapshot().pendingHumanResponse){await runs.retryHumanResponse();return}const d=runs.snapshot().detail,p=d?.human_input;if(!d||!p||d.run.status!=='awaiting_input'||d.human_input_current!==true)return;const scope=selectionScope(),key=(actual:AutonomousDetail|null)=>JSON.stringify({run:actual?.run.id,status:actual?.run.status,input:actual?.human_input,current:actual?.human_input_current}),source=key(d),current=()=>scope()&&caps?.agent_human_responses_enabled===true&&key(runs.snapshot().detail)===source;await confirm({purpose:'human',run_id:d.run.id,step_key:p.pending_step_key,input_sha256:p.pending_sha256,description:'确认本次人员回复/草案决定 '+decision+'。后续模型和工具仍需单独审批及费用预览。\n问题：'+p.question+'\n草案：'+p.draft+'\n本次回复：'+answer},async()=>{await Promise.all([load(),runs.refresh()]);if(current())await runs.respond(decision,answer,true)},current)},
   async readResultForCopy(){await identity();if(suspended||recovering||sourceDenied)return '';const current=runs.snapshot().detail;if(!current)return '';const actual=await api.getAutonomousAgentRun(current.run.id);const next=originalRunDetail(actual,employee);if(suspended||recovering||sourceDenied||runs.snapshot().detail?.run.id!==next.id)return '';return next.result},
   reportUnavailable(message:string){error=message;publish()},dismissError(){error='';publish()},
  }

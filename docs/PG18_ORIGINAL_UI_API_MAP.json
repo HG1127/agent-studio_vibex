@@ -9993,6 +9993,63 @@
         "original_PB_API_unchanged": true,
         "Native_selection_no_PB_fallback": true
       }
+    },
+    "current_72a1429_original_run_confirmations_followup": {
+      "base_head": "72a142920e9ca1e8cdc1a43cab86b8cb126e6a1c",
+      "accepted_UI": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+      "source_reseal_pending": false,
+      "source_changes": [
+        "Existing Native fee-risk then exact-step effect approval; no amount quote or recurring authorization.",
+        "Selection, identity lifetime, exact pending input/config/knowledge and fresh resource checks before approval.",
+        "Submission/cancel/human/feedback/memory confirmations bind original source and refuse changed fresh metadata; feedback draft copied before consent.",
+        "Unknown approval only reads its original outcome; no contrary decision POST or replay.",
+        "Full-EOF responses release readers without aborting completed HTTP; incomplete/retired streams remain canceled.",
+        "Native entry source assertions preserve the audited Staff wrapper and Native auth/global-policy fallback.",
+        "Original login story asserts personal account href and admin-only Staff href.",
+        "Schedule-worker evidence gains bounded passive lifecycle diagnostics; original business assertions and cleanup retained."
+      ],
+      "proof": {
+        "run_controller_pure": 79,
+        "transport_related_pure": 41,
+        "browser_observer_and_guard_pure": 44,
+        "native_config_selected_pure": 1,
+        "native_mount_pure": 9,
+        "actual_frontend_types_passed": true,
+        "actual_original_UI_isolated_build_passed": true,
+        "local_SQL_Worker_server_browser": false,
+        "actual_provider_calls": 0
+      },
+      "previous_head_hosted": {
+        "workflows": 19,
+        "success": 14,
+        "failure": 5,
+        "quality_jobs_per_workflow": 51,
+        "quality_jobs_passed_per_workflow": 49,
+        "quality_main_tests": 5328,
+        "quality_main_pass": 5326,
+        "quality_main_fail": 2,
+        "quality_main_skip": 0,
+        "quality_failures": "Stale source assertions require native.handler directly instead of the audited optional Staff wrapper with Native fallback.",
+        "F01_login": "Old menu selector expects employee 修改密码 instead of accepted personal account route.",
+        "schedule_worker": "Actual Agent Worker substory passed; whole story fails reading a Workflow operation response body through Chromium CDP. The operation POST is not replayed or inferred successful.",
+        "strict069": "Current Final14 primary is full069_worker_live_native_io during warm_sample; real Native I/O and legacy qualification remain unresolved.",
+        "original_version_release": "Genuine story passed on72a1429; this is not full original UI acceptance."
+      },
+      "excluded_private_candidates": {
+        "Role_Skill": "Frozen kernel and immutable execution integration remain under independent review; SDK/UI/launcher closure continues.",
+        "Desktop": "Native process source and pairing/preferences candidate under independent integration; real desktop/network acceptance pending.",
+        "quality089": "76 reviewed candidate targets and372 terminal pures; actual API and frontend compilers still have verified contract/type gaps. Not integrated into product.",
+        "Staff084": "Original page source integrated; explicit combined profile and hosted original-page story pending."
+      },
+      "current_candidate_genuine_rerun_pending": true,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 20119,
+        "retained_prior_pins": 20019,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

@@ -52,7 +52,11 @@ test('original Login/App: actual PG18 Cookie roles, logout revocation, transient
     await expect(page.getByRole('textbox',{name:'工作邮箱',exact:true})).toHaveCount(0)
     const menu=await accountMenu(profile.display_name)
     await expect(menu).toContainText(profile.email)
-    await expect(menu.getByRole('menuitem',{name:who==='alice'?'员工与权限':'修改密码',exact:true})).toBeVisible()
+    const personal=menu.getByRole('menuitem',{name:'我的账号与安全',exact:true})
+    await expect(personal).toBeVisible();await expect(personal).toHaveAttribute('href','/account')
+    const staff=menu.getByRole('menuitem',{name:'员工与权限',exact:true})
+    await expect(staff).toHaveCount(who==='alice'?1:0)
+    if(who==='alice'){await expect(staff).toBeVisible();await expect(staff).toHaveAttribute('href','/staff')}
     roleChecks.push({employee:who,uuid_matches_actual_seed:true,is_admin:profile.is_admin})
     return {profile,cookie:await cookie()}
   }

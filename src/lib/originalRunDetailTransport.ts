@@ -16,7 +16,7 @@ export function originalRunDetailApiRoute(raw:string,method:string){
  return method==='POST'&&!url.search&&(new RegExp('^/api/v2/agent-autonomous-runs/'+uuid+'/(pause|resume|pause-confirm|resume-confirm|cancel)$').test(p)||new RegExp('^/api/v2/workflow-v2-runs/'+uuid+'/cancel$').test(p))
 }
 export function createOriginalRunDetailTransport(options:{employeeId:string;verifyEmployee:()=>Promise<string>;transport?:typeof fetch;timeoutMs?:number}){
- const send=options.transport??fetch,budget=options.timeoutMs??8000,employee=options.employeeId,flights=new Set<AbortController>();let closed=false
+ const send=options.transport??fetch,budget=options.timeoutMs??8000,employee=options.employeeId,flights=new Set<()=>void>();let closed=false
  if(!new RegExp('^'+uuid+'$').test(employee)||!Number.isSafeInteger(budget)||budget<1||budget>8000)throw new OriginalRunDetailTransportError('invalid_original_detail_transport')
  const denied=(code:string):never=>{throw new OriginalRunDetailTransportError(code)}
  async function identity(){if(closed||await options.verifyEmployee()!==employee||closed)return denied('original_detail_employee_changed')}
@@ -29,26 +29,29 @@ export function createOriginalRunDetailTransport(options:{employeeId:string;veri
   const raw=init?.body
   if(raw!==undefined&&raw!==null&&(typeof raw!=='string'||new TextEncoder().encode(raw).length>131072))return denied('original_detail_body_refused')
   await identity()
-  const c=new AbortController();flights.add(c);let timer:ReturnType<typeof setTimeout>|undefined,reader:ReadableStreamDefaultReader<Uint8Array>|undefined,rejectAbort:(e:Error)=>void=()=>{}
+  const c=new AbortController();let complete=false,retired=false,responseBody:ReadableStream<Uint8Array>|null=null,timer:ReturnType<typeof setTimeout>|undefined,reader:ReadableStreamDefaultReader<Uint8Array>|undefined,rejectAbort:(e:Error)=>void=()=>{}
   const failure=()=>new OriginalRunDetailTransportError(method==='GET'?'original_detail_read_unavailable':'original_detail_outcome_unknown')
-  const cancelled=new Promise<never>((_,reject)=>{rejectAbort=reject}),abort=()=>{c.abort();rejectAbort(failure())}
+  const cancelUnreadBody=()=>{void responseBody?.cancel().catch(()=>{})}
+  const cancelled=new Promise<never>((_,reject)=>{rejectAbort=reject}),abort=()=>{retired=true;if(!complete)c.abort();rejectAbort(failure())}
+  flights.add(abort)
   if(init?.signal?.aborted)abort();else init?.signal?.addEventListener('abort',abort,{once:true})
-  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(failure())},budget)})
+  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{retired=true;if(!complete)c.abort();reject(failure())},budget)})
   const perform=async()=>{
-   if(c.signal.aborted||closed)throw failure()
+   if(retired||c.signal.aborted||closed)throw failure()
    const response=await send(input,{...init,method,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:c.signal,headers:{Accept:'application/json',...(method==='GET'?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1','X-AgentStudio-Expected-Employee':employee})}})
+   if(response instanceof Response){responseBody=response.body;if(retired||c.signal.aborted||closed){void response.body?.cancel().catch(()=>{});throw failure()}}
    if(!(response instanceof Response)||response.redirected||!response.body||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(response.headers.get('content-type')??''))return denied('original_detail_response_refused')
    reader=response.body.getReader();const chunks:Uint8Array[]=[];let size=0
    const length=response.headers.get('content-length')
    if(length!==null&&(!/^(0|[1-9][0-9]*)$/.test(length)||Number(length)>1048576))return denied('original_detail_response_refused')
-   while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>1048576)return denied('original_detail_response_refused');chunks.push(part.value)}
-   if(length!==null&&Number(length)!==size)return denied('original_detail_response_refused')
+   while(true){const part=await reader.read();if(retired||c.signal.aborted||closed)throw failure();if(part.done)break;size+=part.value.byteLength;if(size>1048576)return denied('original_detail_response_refused');chunks.push(part.value)}
+   if(length!==null&&Number(length)!==size)return denied('original_detail_response_refused');complete=true
    const bytes=new Uint8Array(size);let at=0;for(const p of chunks){bytes.set(p,at);at+=p.byteLength}
    try{JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))}catch{return denied('original_detail_response_refused')}
-   await identity();if(c.signal.aborted||closed)throw failure()
+   await identity();if(retired||c.signal.aborted||closed)throw failure()
    return new Response(bytes,{status:response.status,statusText:response.statusText,headers:response.headers})
   }
-  try{return await Promise.race([perform(),deadline,cancelled])}finally{clearTimeout(timer);flights.delete(c);init?.signal?.removeEventListener('abort',abort);c.abort();if(reader){void reader.cancel().catch(()=>{});try{reader.releaseLock()}catch{}}}
+  try{return await Promise.race([perform(),deadline,cancelled])}finally{retired=true;clearTimeout(timer);flights.delete(abort);init?.signal?.removeEventListener('abort',abort);if(!complete){c.abort();if(reader)void reader.cancel().catch(()=>{});else cancelUnreadBody()}try{reader?.releaseLock()}catch{}}
  }
- return Object.freeze({transport,close(){closed=true;for(const c of flights)c.abort();flights.clear()}})
+ return Object.freeze({transport,close(){closed=true;for(const cancel of flights)cancel();flights.clear()}})
 }

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {createRequire} from 'node:module'
 import {originalAgentRunRoute,createOriginalAgentRunTransport} from '../src/lib/originalAgentRunTransport.ts'
+import './original-run-transport-lifecycle.test.mjs'
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222',root='/__pg_native',route=(p,m='GET')=>originalAgentRunRoute(root+p,m)
 test('Native transport has seven static literal patterns and no top-level call/constructor effects',()=>{
  const ts=createRequire(import.meta.url)('typescript'),text=fs.readFileSync(new URL('../src/lib/originalAgentRunTransport.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('transport.ts',text,ts.ScriptTarget.Latest,true),effects=[],patterns=[]

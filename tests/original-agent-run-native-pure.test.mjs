@@ -12,15 +12,15 @@ const feedbackStatus=()=>({protocol:'agent_feedback_v1',run_id:run,spec_id:spec,
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'content-type':'application/json'}})
 async function settle(check){for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,0))}assert.fail('pure session did not settle')}
 function fixture({effect='calculate',caps:overrides={},confirm=()=>true}={}){
- let owner=employee,unavailable=false,d=detail(effect),f=feedbackStatus();const calls=[],caps={mode:'native_pg18',config_writes_enabled:true,autonomous_agent_submission_enabled:true,agent_feedback_available:true,agent_feedback_submission_enabled:true,agent_memory_available:true,agent_memory_writes_enabled:true,...overrides}
- const api={getConfigCapabilities:async()=>caps,listModelConnections:async()=>[{id:model,owner_user_id:employee,name:'DEMO',provider:'openai',base_url:'https://api.openai.com/v1',enabled:true,status:'ok',revision:1,models:['gpt-demo']}],listToolConnections:async()=>[],listMcpConnections:async()=>[],getAgent:async()=>agent(),listAutonomousAgentRuns:async()=>[summary(d)],getAutonomousAgentRun:async()=>structuredClone(d),getAgentFeedback:async()=>structuredClone(f),listAgentMemories:async()=>({spec_id:spec,items:[{id:memory,kind:'user',fact:'DEMO memory',content_sha256:hash,created_at:stamp,tools_used:'',run_id:null}],limit:50}),
-  decideAutonomousAgentNode:async(id,decision,step,inputHash)=>{calls.push({kind:'decision',id,decision,step,inputHash});d={...d,run:{...d.run,status:'queued'},pending_effect:null,approvals:[{step_key:step,status:decision}],decision_confirmation:{run_id:id,step_key:step,input_sha256:inputHash,status:decision}};return structuredClone(d)},
+ let owner=employee,unavailable=false,d=detail(effect),f=feedbackStatus(),a=agent(),decisionError=null,knowledge={consent:null,bases:[]},memoryRows=[{id:memory,kind:'user',fact:'DEMO memory',content_sha256:hash,created_at:stamp,tools_used:'',run_id:null}],modelRows=[{id:model,owner_user_id:employee,name:'DEMO',provider:'openai',base_url:'https://api.openai.com/v1',enabled:true,status:'ok',revision:1,models:['gpt-demo']}];const calls=[],caps={mode:'native_pg18',config_writes_enabled:true,autonomous_agent_submission_enabled:true,agent_feedback_available:true,agent_feedback_submission_enabled:true,agent_memory_available:true,agent_memory_writes_enabled:true,...overrides}
+ const api={getConfigCapabilities:async()=>structuredClone(caps),listModelConnections:async()=>structuredClone(modelRows),listToolConnections:async()=>[],listMcpConnections:async()=>[],getAgent:async()=>structuredClone(a),listAutonomousAgentRuns:async()=>[summary(d)],getAutonomousAgentRun:async()=>structuredClone(d),getKnowledgeEmbeddingConsent:async()=>structuredClone(knowledge.consent),listKnowledge:async()=>structuredClone(knowledge.bases),listSharedKnowledge:async()=>[],getAgentFeedback:async()=>structuredClone(f),listAgentMemories:async()=>({spec_id:spec,items:structuredClone(memoryRows),limit:50}),
+  decideAutonomousAgentNode:async(id,decision,step,inputHash,charge)=>{calls.push({kind:'decision',id,decision,step,inputHash,...(charge?{charge}:{})});if(decisionError)throw decisionError;d={...d,run:{...d.run,status:'queued'},pending_effect:null,approvals:[{step_key:step,status:decision}],decision_confirmation:{run_id:id,step_key:step,input_sha256:inputHash,status:decision}};return structuredClone(d)},
   controlAutonomousAgentRun:async(id,action,body)=>{calls.push({kind:'control',id,action,body});throw Error('synthetic lost response')},confirmAutonomousAgentRunControl:async(id,action,body)=>{calls.push({kind:'control-confirm',id,action,body});throw Error('synthetic unresolved')},cancelAutonomousAgentRun:async()=>{calls.push({kind:'cancel'});throw Error('synthetic lost response')},
   changeAgentFeedback:async body=>{calls.push({kind:'feedback-change',body:structuredClone(body)});throw Error('synthetic lost response')},confirmAgentFeedback:async body=>{calls.push({kind:'feedback-confirm',body:structuredClone(body)});throw Error('synthetic unresolved')},
   changeAgentMemory:async body=>{calls.push({kind:'memory-change',body:structuredClone(body)});throw Error('synthetic lost response')},confirmAgentMemory:async body=>{calls.push({kind:'memory-confirm',body:structuredClone(body)});throw Error('synthetic unresolved')},submitAutonomousAgentRun:async(...args)=>{calls.push({kind:'submit',args});throw Error('synthetic lost response')},respondAutonomousAgent:async(id,choice)=>{calls.push({kind:'human-response',id,choice:structuredClone(choice)});throw Error('synthetic lost response')},confirmAutonomousAgentResponse:async(id,choice)=>{calls.push({kind:'human-confirm',id,choice:structuredClone(choice)});throw Error('synthetic unresolved')}}
- const home={list:async()=>[agent()],get:async()=>agent()},inbox={workspace:async()=>({items:[],pending_items:[],pending_count:0,agent_run_total:0})}
+ const home={list:async()=>[structuredClone(a)],get:async()=>structuredClone(a)},inbox={workspace:async()=>({items:[],pending_items:[],pending_count:0,agent_run_total:0})}
  const c=createOriginalAgentRunSession({employeeId:employee,api,home,inbox,models:{listSnapshot:async()=>({items:await api.listModelConnections(),complete:true})},verifyEmployee:async()=>{if(unavailable)throw Error('synthetic auth unavailable');return owner},confirm})
- return{c,api,calls,setUnavailable:v=>{unavailable=v},setOwner:v=>{owner=v},setDetail:v=>{d=v},setFeedback:v=>{f=v},async start(){await c.activate();await settle(()=>!c.snapshot().runs.loading);await c.selectAgent(spec);await settle(()=>!c.snapshot().memories.loading);await c.selectRun(run,spec);await settle(()=>!c.snapshot().feedback.loading);return c}}
+ return{c,api,calls,caps,setAgent:v=>{a=v},setKnowledge:v=>{knowledge=v},setMemories:v=>{memoryRows=v},setDecisionError:v=>{decisionError=v},setModels:v=>{modelRows=v},setUnavailable:v=>{unavailable=v},setOwner:v=>{owner=v},setDetail:v=>{d=v},setFeedback:v=>{f=v},async start(){await c.activate();await settle(()=>!c.snapshot().runs.loading);await c.selectAgent(spec);await settle(()=>!c.snapshot().memories.loading);await c.selectRun(run,spec);await settle(()=>!c.snapshot().feedback.loading);return c}}
 }
 test('closed original-run route policy rejects PB, arbitrary hosts, foreign methods and undeclared routes',()=>{
  assert.equal(originalAgentRunRoute('/__pb/api/agent_runs','GET'),false)
@@ -67,11 +67,72 @@ test('wrong spec permalink never selects a same-owner run under a different Agen
 test('same original step/hash and explicit employee confirmation are required for uncharged tool approval',async()=>{
  const prompts=[],f=fixture({confirm:p=>{prompts.push(p);return true}});try{await f.start();await f.c.decide('approve');assert.equal(f.calls[0].kind,'decision');assert.equal(f.calls[0].step,'wf2_00001_demo');assert.equal(f.calls[0].inputHash,hash);assert.equal(prompts[0].input_sha256,hash);assert.equal(prompts[0].run_id,run);assert.equal(f.c.snapshot().runs.pendingMutation,null)}finally{f.c.dispose()}
 })
-test('fee-bearing model/external steps stay blocked until the original page has an actual fee preview',async()=>{
- const f=fixture({effect:'model'});try{await f.start();assert.equal(originalRunZeroCostEffect(detail('model')),false);await f.c.decide('approve');assert.equal(f.calls.length,0);assert.match(f.c.snapshot().error,/费用预览/);await f.c.decide('reject');assert.equal(f.calls[0].decision,'rejected')}finally{f.c.dispose()}
+test('model approval requires distinct current fee-risk and effect confirmations with the exact run/step/hash',async()=>{
+ const prompts=[],f=fixture({effect:'model',confirm:p=>{prompts.push(p);assert.equal(f.calls.length,0);return true}})
+ try{await f.start();assert.equal(originalRunZeroCostEffect(detail('model')),false);await f.c.decide('approve');assert.deepEqual(prompts.map(p=>p.purpose),['fee','effect']);for(const p of prompts){assert.equal(Object.isFrozen(p),true);assert.equal(p.run_id,run);assert.equal(p.step_key,'wf2_00001_demo');assert.equal(p.input_sha256,hash)}assert.match(prompts[0].description,/可能产生模型或外部服务费用/);assert.match(prompts[0].description,/未提供金额报价/);assert.ok(prompts[0].description.includes(model));assert.equal(f.calls.length,1);assert.equal(f.calls[0].decision,'approved');assert.equal(f.calls[0].inputHash,hash);assert.equal(f.calls[0].charge,undefined)}finally{f.c.dispose()}
 })
 test('a declined confirmation sends no approval mutation',async()=>{
  const f=fixture({confirm:()=>false});try{await f.start();await f.c.decide('approve');assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+test('declining the fee review sends no effect approval; rejection needs no paid-call consent',async()=>{
+ const prompts=[],f=fixture({effect:'model',confirm:p=>{prompts.push(p.purpose);return p.purpose!=='fee'}})
+ try{await f.start();await f.c.decide('approve');assert.deepEqual(prompts,['fee']);assert.equal(f.calls.length,0);await f.c.decide('reject');assert.deepEqual(prompts,['fee','effect']);assert.equal(f.calls.length,1);assert.equal(f.calls[0].decision,'rejected');assert.equal(f.calls[0].charge,undefined)}finally{f.c.dispose()}
+})
+test('fee consent alone cannot approve an effect that the employee subsequently declines',async()=>{
+ const prompts=[],f=fixture({effect:'model',confirm:p=>{prompts.push(p.purpose);return p.purpose==='fee'}})
+ try{await f.start();await f.c.decide('approve');assert.deepEqual(prompts,['fee','effect']);assert.equal(f.calls.length,0);assert.equal(f.c.snapshot().runs.pendingMutation,null)}finally{f.c.dispose()}
+})
+test('overlapping decision clicks cannot open duplicate prompts or send duplicate writes',async()=>{
+ let release;const prompts=[],f=fixture({effect:'model',confirm:p=>{prompts.push(p.purpose);return p.purpose==='fee'?new Promise(r=>{release=r}):true}})
+ try{await f.start();const pending=f.c.decide('approve');await settle(()=>Boolean(release));await f.c.decide('approve');await f.c.decide('reject');assert.deepEqual(prompts,['fee']);release(true);await pending;assert.deepEqual(prompts,['fee','effect']);assert.equal(f.calls.length,1)}finally{f.c.dispose()}
+})
+for(const changed of ['step','hash','input','configuration','status'])test('a '+changed+' change during confirmation cannot inherit consent for the old step',async()=>{
+ let changedOnce=false;const f=fixture({effect:'model',confirm:async p=>{if(p.purpose==='effect'&&!changedOnce){changedOnce=true;const d=detail('model');if(changed==='step')d.pending_effect.step_key='wf2_00002_next';if(changed==='hash')d.pending_effect.input_sha256='b'.repeat(64);if(changed==='input')d.pending_effect.input='{"task":"changed"}';if(changed==='configuration')d.pending_effect.configuration={...d.pending_effect.configuration,title:'new scope'};if(changed==='status')d.run.status='running';f.setDetail(d);await f.c.refresh()}return true}})
+ try{await f.start();await f.c.decide('approve');assert.equal(changedOnce,true);assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+for(const selected of ['agent','run'])test('an '+selected+' selection away and back invalidates an outstanding confirmation',async()=>{
+ let once=false;const f=fixture({effect:'model',confirm:async p=>{if(p.purpose==='effect'&&!once){once=true;if(selected==='agent'){await f.c.selectAgent('');await f.c.selectAgent(spec)}else await f.c.selectRun(run,spec)}return true}})
+ try{await f.start();await f.c.decide('approve');assert.equal(once,true);assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+for(const changed of ['capability','model','agent revision','source access'])test('fresh metadata detects a revoked '+changed+' before approval POST',async()=>{
+ const f=fixture({effect:'model',confirm:p=>{if(p.purpose==='effect'){if(changed==='capability')f.caps.config_writes_enabled=false;if(changed==='model')f.setModels([]);if(changed==='agent revision')f.setAgent({...agent(),revision:2});if(changed==='source access')f.setDetail({...detail('model'),knowledge_outputs_available:false})}return true}})
+ try{await f.start();await f.c.decide('approve');assert.equal(f.calls.length,0);if(changed==='source access')assert.equal(f.c.snapshot().activeRun,null);else assert.match(f.c.snapshot().error,/变化/)}finally{f.c.dispose()}
+})
+test('a recovered identity lifetime cannot reuse a prompt from before private-state suspension',async()=>{
+ const f=fixture({effect:'model',confirm:async p=>{if(p.purpose==='fee'){f.c.hidePrivateForIdentity();await f.c.verifyIdentity()}return true}})
+ try{await f.start();await f.c.decide('approve');assert.equal(f.c.snapshot().suspended,false);assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+test('a different verified employee after fee confirmation cannot submit the original approval',async()=>{
+ const f=fixture({effect:'model',confirm:p=>{if(p.purpose==='fee')f.setOwner(other);return true}})
+ try{await f.start();await assert.rejects(f.c.decide('approve'),/employee_changed/);assert.equal(f.c.snapshot().ownerChanged,true);assert.equal(f.c.snapshot().activeRun,null);assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+test('an unknown approval remains frozen and a later contrary decision only reads the original outcome',async()=>{
+ const prompts=[],f=fixture({effect:'model',confirm:p=>{prompts.push(p.purpose);return true}})
+ try{await f.start();f.setDecisionError(Error('synthetic decision response lost'));await f.c.decide('approve');const original=f.c.snapshot().runs.pendingMutation;assert.equal(original.decision,'approved');assert.equal(original.hash,hash);assert.equal(f.calls.length,1);await f.c.decide('reject');assert.equal(f.calls.length,1);assert.deepEqual(prompts,['fee','effect']);assert.deepEqual(f.c.snapshot().runs.pendingMutation,original)}finally{f.c.dispose()}
+})
+test('semantic search sends the exact existing one-step billing acknowledgement only after both confirmations',async()=>{
+ const retrieval={mode:'semantic',profile_id:other,profile_revision:1,consent_revision:1},a=agent(),d=detail('knowledge_search'),prompts=[]
+ a.spec.tools=['knowledge_search'];a.spec.knowledge_base_ids=[memory];a.spec.knowledge_retrieval=retrieval;d.pending_effect.configuration={tool:'knowledge_search',knowledge_retrieval:retrieval,knowledge_base_ids:[memory]};d.pending_effect.input='{"query":"synthetic query"}'
+ const f=fixture({caps:{knowledge_tool_runtime_enabled:true},confirm:p=>{prompts.push(p);return true}});f.setAgent(a);f.setDetail(d);f.setKnowledge({consent:{profile_valid:true,query_enabled:true,profile_id:other,profile_revision:1,revision:1},bases:[{id:memory,name:'Synthetic private base',revision:1}]})
+ try{await f.start();await f.c.decide('approve');assert.deepEqual(prompts.map(p=>p.purpose),['fee','effect']);assert.match(prompts[0].description,/synthetic query/);assert.match(prompts[0].description,/Synthetic private base/);assert.equal(f.calls.length,1);assert.equal(f.calls[0].charge,'PAY_ONCE_FOR_THIS_APPROVED_KNOWLEDGE_TOOL')}finally{f.c.dispose()}
+})
+test('lexical local search retains effect confirmation without claiming a paid semantic query',async()=>{
+ const a=agent(),d=detail('knowledge_search'),prompts=[];a.spec.tools=['knowledge_search'];const f=fixture({confirm:p=>{prompts.push(p.purpose);return true}});f.setAgent(a);f.setDetail(d)
+ try{await f.start();await f.c.decide('approve');assert.deepEqual(prompts,['effect']);assert.equal(f.calls.length,1);assert.equal(f.calls[0].charge,undefined)}finally{f.c.dispose()}
+})
+const pendingQuestion=()=>{const d=detail();d.run.status='awaiting_input';d.pending_effect=null;d.human_input_evidence_current=true;d.human_input_current=true;d.human_input={pending_step_key:'wf2_00002_demo_input',pending_sha256:hash,source_sha256:'b'.repeat(64),kind:'clarification',question:'Which synthetic source?',draft:'',round:1};return d}
+const originalAction=(c,purpose)=>purpose==='submit'?c.submit('ORIGINAL DEMO',3):purpose==='cancel'?c.control('cancel'):purpose==='feedback'?c.submitFeedback({rating:'up',tags:[],comment:'ORIGINAL feedback'}):purpose==='forget'?c.forgetMemory(memory):c.respond('reply','ORIGINAL reply')
+for(const purpose of ['submit','cancel','feedback','forget','human'])test('a '+purpose+' confirmation cannot apply after selection changes away and back',async()=>{
+ const prompts=[],f=fixture({caps:{agent_human_responses_enabled:true},confirm:async p=>{prompts.push(p.purpose);await f.c.selectAgent('');await f.c.selectAgent(spec);return true}});if(purpose==='human')f.setDetail(pendingQuestion())
+ try{await f.start();await originalAction(f.c,purpose);assert.deepEqual(prompts,[purpose]);assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+for(const purpose of ['submit','cancel','feedback','forget','human'])test('fresh '+purpose+' metadata changes refuse the old confirmed source before writing',async()=>{
+ const prompts=[],f=fixture({caps:{agent_human_responses_enabled:true},confirm:p=>{prompts.push(p.purpose);if(purpose==='submit')f.setAgent({...agent(),revision:2});if(purpose==='cancel'){const d=detail();d.run.status='succeeded';d.pending_effect=null;f.setDetail(d)}if(purpose==='feedback')f.setFeedback({...feedbackStatus(),revision:1});if(purpose==='forget')f.setMemories([{id:memory,kind:'user',fact:'CHANGED memory',content_sha256:'b'.repeat(64),created_at:stamp,tools_used:'',run_id:null}]);if(purpose==='human'){const d=pendingQuestion();d.human_input.source_sha256='c'.repeat(64);f.setDetail(d)}return true}});if(purpose==='human')f.setDetail(pendingQuestion())
+ try{await f.start();await originalAction(f.c,purpose);assert.deepEqual(prompts,[purpose]);assert.equal(f.calls.length,0)}finally{f.c.dispose()}
+})
+test('feedback confirmation freezes the displayed caller draft before awaiting consent',async()=>{
+ const draft={rating:'down',tags:['DEMO'],comment:'ORIGINAL comment'},f=fixture({confirm:()=>{draft.rating='up';draft.tags.push('CHANGED');draft.comment='CHANGED comment';return true}})
+ try{await f.start();await f.c.submitFeedback(draft);assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.rating,'down');assert.deepEqual(f.calls[0].body.tags,['DEMO']);assert.equal(f.calls[0].body.comment,'ORIGINAL comment')}finally{f.c.dispose()}
 })
 test('unknown pause result is confirmed with the exact original operation instead of issuing resume',async()=>{
  const f=fixture();try{await f.start();await f.c.control('pause');assert.ok(f.c.snapshot().runs.pendingRunControl);await f.c.control('resume');assert.deepEqual(f.calls.map(c=>c.kind),['control','control-confirm']);assert.equal(f.calls[1].action,'pause');assert.deepEqual(f.calls[1].body,f.calls[0].body)}finally{f.c.dispose()}
@@ -113,7 +174,7 @@ test('original Native hook is statically selected and contains no PB execution o
  assert.match(hook,/originalAgentRunPrivacy\(storedView,accountId\)/)
  assert.match(hook,/view=privacy\.hidden\?null:storedView/)
  assert.match(hook,/runEvents:\[\] as RunEventRow\[\]/)
- assert.match(hook,/费用预览，相关调用保持阻断/)
+ assert.match(hook,/当前接口未提供金额报价；后续步骤会重新确认/)
 })
 
 test('original progress uses completed recorded model rounds rather than Native worker step count or tool calls',()=>{

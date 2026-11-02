@@ -239,7 +239,7 @@ export const originalInternalShareReviewedSources=Object.freeze({
   "services/pg-api/src/workflow-v2-worker.ts": "c7dde9eee6418cf20a1d0e2c2ad7120bce318bed9dea489ed1d49be25be59f1f",
   "services/pg-api/tests/agent-internal-share-genuine-pg18.test.mjs": "25d01a459706d0c004fb1237198cc3f864e6eee953fae29ba4f8d75f78e38182",
   "services/pg-api/tests/helpers/agent-assessment-fixture.mjs": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a",
-  "services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs": "ea9a8b2d487436eede374f42ebe75f559fb081e8ec00e3110621f24b0d98b87f",
+  "services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs": "7ead1673413b26b99e20006ff52af82ce5b47f07bac2cab5d08ee1131515ea57",
   "services/pg-api/tests/helpers/agent-internal-share-genuine-guard.mjs": "c9c02dbe8bcd26622b2042f1cae7a61acc7b22b31991d5a9176e2a593ce942a1",
   "services/pg-api/tests/helpers/original-internal-share-expected-employee-case.mjs": "4e55f5632f058f257034d57ba7134e35eeb3a83f1482fda081ab2b60abb54649",
   "shared/agent-caller-contract.ts": "147f48678600d933f0a50899c5c6f7f74d1d07e967a54a6aec0003d879ecc8ff",
@@ -938,7 +938,7 @@ export const originalInternalShareReviewedSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "f9f5aaaf2ed175f2cbacb02fa6174fbcde002f9d105d9fb71a2da7213623fd61",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "814875123bed8e15fdd4c86b6b37123d3c384ef6cf69150888c3113ebf4a5558",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -1085,5 +1085,9 @@ export const originalInternalShareReviewedSources=Object.freeze({
   "tests/original-account-api.test.mjs": "08bfad772fcb51928fdb26f82c7b640fafc60302dcc9aaee5eb41b9be1daface",
   "tests/original-staff-api-pure.test.mjs": "c252f1a4eb0710f6ee90a867499a03cc80fd8668363acebd25f499002dfc0b42",
   "tests/original-staff-page-pure.test.mjs": "bbdd140cd6aa93b2b5da05757be60d9883892cec790c7f35e62b2bf282f2adfe",
-  "tests/original-staff084-pure.test.mjs": "f85adfd882dc03fbc4ed455d0cc55cbfb1ade7d7b0d6af39902b92c8a7b32784"
+  "tests/original-staff084-pure.test.mjs": "f85adfd882dc03fbc4ed455d0cc55cbfb1ade7d7b0d6af39902b92c8a7b32784",
+  "docs/PG18_ORIGINAL_RUN_CONFIRMATION_ADAPTATION.md": "21e14951a68c5644647d08a27331bc3054b343bee3f6eec1657fccc462a96412",
+  "tests/browser-json-response-observer.test.mjs": "136c01cfd52e7d1b2bdbc08aa957b30bbc43257e6f25fe1b1fbbcef989557e29",
+  "tests/helpers/browser-json-response-observer.mjs": "1c9c1197af7743e01625b8c73cdbbc6e04eaf381d970317fb703888d68fc11dd",
+  "tests/original-run-transport-lifecycle.test.mjs": "8bafa927a7ce4067f6c864ddabd93df14ca13cd65fb8fe6881b52f47cce1c0cc"
 })
