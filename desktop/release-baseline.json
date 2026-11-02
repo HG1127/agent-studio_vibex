@@ -2,13 +2,20 @@
   "minimumDesktopVersion": "0.1.0-preview.12",
   "branch": "codex/desktop-release",
   "requiredAncestors": [
-    "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
-    "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290"
+    "8fcd466667b8a4c896835315a809b4d62b78ec21"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
     "desktop/update-helper.cjs",
     "local-executor/application-target.mjs",
     "src/lib/localApplicationTask.ts"
-  ]
+  ],
+  "integratedSources": [
+    "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
+    "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290"
+  ],
+  "verifiedSourceCommit": "8fcd466667b8a4c896835315a809b4d62b78ec21",
+  "verifiedDesktopVersion": "0.1.0-preview.12",
+  "verifiedInstallerSha256": "753e22b2012b4ea68257d0f67117c80641d872abf3b61be5bac3a21fce84094f",
+  "verifiedInstallerBytes": 275735738
 }

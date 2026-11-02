@@ -18,13 +18,29 @@ the original running VibeX app.
 
 ## Migration delivery strategy — user clarification 2026-10-30
 
-- Preserve the existing employee UI and interactions while replacing only the underlying database and backend. Use `src/main.tsx -> src/App.tsx` pages, routes, navigation, layouts and components as the delivery baseline.
-- Adapt authentication, API clients, hooks and DTOs while retaining verified identity, owner/team authorization, approvals and auditability. Reuse completed PG backend/Worker work, but keep `pg18-app` and `src/pages/PgNativePilot` isolated as reference tools.
-- Old PocketBase remains recoverable until explicit cutover approval. This strategy does not authorize deployment, production database changes, paid provider calls, Git uploads or destructive cleanup.
+- The user explicitly requires **preserving the existing employee UI and
+  interactions while replacing only the underlying database and backend**.
+  This supersedes earlier plans to deliver the separate PG Native workbench
+  as the replacement employee application.
+- Use the existing `src/main.tsx -> src/App.tsx` pages, routes, navigation,
+  layouts and components as the delivery baseline. Adapt authentication,
+  API clients, business hooks, DTOs and status/error mapping as necessary to
+  connect that UI to the PostgreSQL backend. Preserve server-verified identity,
+  owner/team authorization, approvals and auditability; do not retain insecure
+  legacy authentication merely for interface compatibility.
+- Reuse completed PG backend/Worker work. Keep `pg18-app` and
+  `src/pages/PgNativePilot` as isolated verification/reference tools; do not
+  delete previous work or count their UI as acceptance of the original pages.
+- Prioritize a page/action mapping from the actual existing UI to PG APIs,
+  missing backend contracts and end-to-end acceptance in those same pages.
+  Do not expand migration scope into UI redesign or unrelated new capabilities.
+- Old PocketBase remains recoverable until explicit cutover approval. This
+  strategy clarification does not authorize deployment, production database
+  changes, paid provider calls, Git uploads or destructive cleanup.
 
 ## Unified desktop release baseline — user direction 2026-11-02
 
-- Integrate all verified desktop features before delivery. Start subsequent desktop, connector and employee UI release work from the latest verified local `main` or `codex/desktop-release`; the persistent worktree is `.worktrees/desktop-release`. Archived preview.9/.10/.11 worktrees are historical evidence, not new feature baselines.
+- Integrate all verified desktop features before delivery. Start subsequent desktop, connector and employee UI release work from the latest verified local `main` or `codex/desktop-release`. The current persistent checkout is `D:/Downloads/agent_studio_vibex版本/.worktrees/desktop-release`; other clones may choose their own path. Create new feature worktrees from that baseline, rather than the dirty PG experiment HEAD. Archived preview.9/.10/.11 worktrees are historical evidence, not new feature baselines.
 - `desktop/release-baseline.json` records mandatory verified ancestor commits. Run `node ops/verify-desktop-release-baseline.mjs` before building; do not remove or bypass this check to package an older branch. Advance the verified ancestor baseline after each accepted release.
 - Preserve both application cold-start/task execution and in-app update/rollback capabilities. A higher version number does not imply another parallel branch is included: merge, test and audit the actual sources.
 - Preserve `desktop/update-trust.json` and its matching release signing key across builds; never casually generate a replacement key. Never commit or distribute the private key. Published same-version artifacts remain immutable.
