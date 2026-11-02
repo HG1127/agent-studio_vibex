@@ -63,7 +63,7 @@ test('074 real Native schedule->approved step->one-use GET->business ledger->fre
    assert.equal(response.status,200);entities[name]=response.body.record_id
   }
   const spec=await new AgentSpecRepository(f.pool).create(identity,'074 real collector',safeNativeMonitorBusinessSpec({goal:'Use only the declared synthetic source, read its receipt and write the bounded owned relation.',tools:['web_fetch','business_case_get','business_record_query','business_record_write','result_read'],knowledge_base_ids:[],model_binding:f.resources.alice.binding},true))
-  const draft=await new ScheduleDraftRepository(f.pool).create(identity,{name:'074 real Native schedule',kind:'agent',target_id:spec.id,time_zone:'UTC',rule:{kind:'interval',interval_minutes:1}})
+  const draft=await new ScheduleDraftRepository(f.pool).create(identity,{name:'074 real Native schedule',kind:'agent',target_id:spec.id,time_zone:'UTC',rule:{kind:'interval',interval_minutes:15}})
   const schedules=new ScheduleRuntimeRepository(f.pool,{enabled:true,allowMonitorBusiness:true}),anchor=new Date(Date.now()+120000).toISOString()
   const activation=revision=>({expected_revision:revision,expected_target_revision:Number(spec.revision),instruction:'Collect the declared synthetic source and persist its supported DEMO relation.',max_steps:10,anchor_at:anchor,expires_at:null,max_occurrences:10,max_auto_effects:20,background_ack:'AUTHORIZE_NATIVE_SCHEDULE_BACKGROUND_V1',knowledge_charge_ack:null,request_id:newId(),model_binding:f.resources.alice.binding})
   const active=await schedules.activate(identity,draft.id,activation(Number(draft.revision)));assert(active)

@@ -301,7 +301,7 @@ export async function finalizeWorkerHeartbeatControlRead(control:Control,p:Reade
   leaseCheck(l,'finalizing')
   if(l.client&&!l.released){if(l.clientError)l.client.off('error',l.clientError);l.client.release();l.released=true}if(l.queryPending||l.transaction)controlFail('reader_cleanup_unknown');l.clean=true
   const finished=empty<FinishedRead>();l.phase='finished';l.finished=finished;finishedStates.set(finished,l);return finished
- }catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('finish',error)}catch{}/* READER_FAILURE_OBSERVATION_END *//* CLEANUP_READER_TIMING_BEGIN */observeRootReaderTiming(l,'failed');/* CLEANUP_READER_TIMING_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
+ }catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('finish',error)}catch{}try{const observation=s.registry.workerHeartbeatRegistryReadFailureObservation(error);if(observation)emitRootCleanupReaderTiming(observation)}catch{}/* READER_FAILURE_OBSERVATION_END *//* CLEANUP_READER_TIMING_BEGIN */observeRootReaderTiming(l,'failed');/* CLEANUP_READER_TIMING_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 export function consumeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,finished:FinishedRead):WorkerHeartbeatSnapshot{
  const s=state(control),owner=peer(s,p,'reader'),l=finishedStates.get(finished);if(!l||l.s!==s||l.peer!==owner||!l.snapshot||!l.clean)controlFail('untrusted_reference')

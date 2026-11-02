@@ -2,6 +2,7 @@
 // connection or authority factory. Controller owns the original client, locks,
 // approval, commit, journal, credential publication and lease barrier.
 import {createHash, randomBytes, randomUUID, pbkdf2Sync, createHmac} from 'node:crypto'
+import {registryReadFailureData,type RegistryReadFailureSite,type RegistryReadFailureObservation} from './worker-heartbeat-registry-failure-observation.ts'
 import type {SqlClient} from './contracts.ts'
 import type {ControlDbAccess} from './worker-heartbeat-activation-control-contract.ts'
 import {assertWorkerHeartbeatControlDbAccess} from './worker-heartbeat-activation-control.ts'
@@ -40,6 +41,14 @@ function fail():never{
   {code:'registry_mismatch',status:503,automatic_retry_authorized:false})
  throw error
 }
+const registryReadSites=new WeakMap<object,RegistryReadFailureSite>(),registryReadFailures=new WeakMap<object,RegistryReadFailureObservation>()
+function rememberRegistryReadSite(error:unknown,site:RegistryReadFailureSite){try{if(error&&(typeof error==='object'||typeof error==='function')&&!registryReadSites.has(error))registryReadSites.set(error,site)}catch{}}
+function registryReadFail(site:RegistryReadFailureSite):never{try{return fail()}catch(error){rememberRegistryReadSite(error,site);throw error}}
+function mappedRegistryReadFailure(error:unknown,fallback:RegistryReadFailureSite):never{
+ try{return fail()}catch(mapped){try{const site=error&&(typeof error==='object'||typeof error==='function')?registryReadSites.get(error)??fallback:fallback;if(mapped&&typeof mapped==='object')registryReadFailures.set(mapped,registryReadFailureData(site,error))}catch{}throw mapped}
+}
+// Only this actual mapped refusal object can reveal its closed failure DATA.
+export function workerHeartbeatRegistryReadFailureObservation(error:unknown):RegistryReadFailureObservation|null{try{return error&&(typeof error==='object'||typeof error==='function')?registryReadFailures.get(error)??null:null}catch{return null}}
 function obj(value:unknown,keys:readonly string[]):Row{
  if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value)))return fail()
  const ds=Object.getOwnPropertyDescriptors(value)
@@ -197,7 +206,7 @@ const targetKeys=['database','database_oid','owner_oid','schema_oid','session_lo
  'owner_no_non_super_members','version','encoding','server_addr','server_port','postmaster_started_us',
  'system_id','read_only','isolation','search_path','no_temp','recovery','roles']
 const registryKeys=['protocol','actor','session_login','read_only','isolation','search_path','no_temp','clock_valid','as_of','kinds','slots']
-async function query(db:SqlClient,access:ControlDbAccess,mode:'read'|'write',sql:string,values:unknown[]=[]):Promise<unknown[]>{
+async function query(db:SqlClient,access:ControlDbAccess,mode:'read'|'write',sql:string,values:unknown[]=[]):Promise<unknown[]>{try{
  assertWorkerHeartbeatControlDbAccess(db,access,mode)
  const result=await db.query(sql,values)
  assertWorkerHeartbeatControlDbAccess(db,access,mode)
@@ -206,32 +215,32 @@ async function query(db:SqlClient,access:ControlDbAccess,mode:'read'|'write',sql
  const d=Object.getOwnPropertyDescriptor(result,'rows')
  if(!d||!('value' in d)||!Array.isArray(d.value)||Object.getPrototypeOf(d.value)!==Array.prototype||d.value.length>1)return fail()
  return list(d.value,d.value.length)
-}
+}catch(error){rememberRegistryReadSite(error,sql===targetSQL?'target_query':sql===registrySQL?'registry_query':'other_query');throw error}}
 async function one(db:SqlClient,access:ControlDbAccess,mode:'read'|'write',sql:string,values:unknown[]=[]):Promise<unknown>{
  const rows=await query(db,access,mode,sql,values);if(rows.length!==1)return fail();return rows[0]
 }
 function context(r:Row,p:Policy,mode:'read'|'write'){
  if(r.actor!==p.binding.operator_name||r.session_login!==p.binding.operator_name||r.no_temp!==true||
  r.search_path!=='pg_catalog'||r.read_only!==(mode==='read'?'on':'off')||
- r.isolation!==(mode==='read'?'repeatable read':'read committed'))return fail()
+ r.isolation!==(mode==='read'?'repeatable read':'read committed'))return registryReadFail('context')
 }
-function validateTarget(raw:unknown,p:Policy,mode:'read'|'write'):WorkerHeartbeatReaderCatalogExpectations|null{
+function validateTarget(raw:unknown,p:Policy,mode:'read'|'write'):WorkerHeartbeatReaderCatalogExpectations|null{try{
  const t=obj(raw,targetKeys),b=p.binding
  context(t,p,mode)
  if(t.database!=='agent_studio_telemetry'||oidText(t.database_oid)!==b.database_oid||
  oidText(t.owner_oid)!==b.owner_oid||oidText(t.schema_oid)!==b.schema_oid||t.authentic_operator!==true||
  t.owner_no_non_super_members!==true||t.recovery!==false||integer(t.version,180000,189999)<180000||
  t.encoding!=='UTF8'||t.server_addr!==b.server_addr||t.server_port!==b.server_port||
- t.postmaster_started_us!==b.postmaster_started_us||t.system_id!==b.system_id)return fail()
+ t.postmaster_started_us!==b.postmaster_started_us||t.system_id!==b.system_id)return registryReadFail('target_binding')
  const sorted=list(t.roles,18),roles=new Map<string,unknown[]>()
- for(const raw of sorted){const r=list(raw,15);if(typeof r[1]!=='string'||roles.has(r[1]))return fail();roles.set(r[1],r)}
+ for(const raw of sorted){const r=list(raw,15);if(typeof r[1]!=='string'||roles.has(r[1]))return registryReadFail('target_role_shape');roles.set(r[1],r)}
  const expectedRoles=names.map((name,i)=>{
-  const r=roles.get(name);if(!r)return fail()
+  const r=roles.get(name);if(!r)return registryReadFail('target_role_shape')
   const login=i===0?false:i===1?p.reader.login:p.slots[i-2]!.mode==='active'
   const verifier=i===0?null:i===1?p.reader.verifier_sha256:p.slots[i-2]!.verifier_sha256
   if(oidText(r[0])!==b.role_oids[i]||r[2]!==login||r.slice(3,9).some(v=>v!==false)||
    r[9]!== (i===0?-1:i===1?2:1)||r[10]!==null||r[11]!==true||r[12]!==0||
-   r[13]!==verifier||r[14]!==true)return fail()
+   r[13]!==verifier||r[14]!==true)return registryReadFail('target_role_attributes')
   return {oid:b.role_oids[i]!,name,login,inherit:false,super:false,bypass:false,create_db:false,
    create_role:false,replication:false,connection_limit:i===0?-1:i===1?2:1,config:null,no_expiry:true,memberships:0}
  })
@@ -239,61 +248,61 @@ function validateTarget(raw:unknown,p:Policy,mode:'read'|'write'):WorkerHeartbea
  return p.reader.login?parseWorkerHeartbeatReaderCatalogExpectations({
   protocol:'worker_heartbeat_reader_catalog_expectations_v1',database_oid:b.database_oid,
   database_owner_oid:b.owner_oid,schema_oid:b.schema_oid,roles:expectedRoles}):null
-}
-function validateRegistry(raw:unknown,p:Policy,mode:'read'|'write'):{dynamic:Dynamic[];at:string}{
+}catch(error){rememberRegistryReadSite(error,'target_validation');throw error}}
+function validateRegistry(raw:unknown,p:Policy,mode:'read'|'write'):{dynamic:Dynamic[];at:string}{try{
  const r=obj(raw,registryKeys);context(r,p,mode)
- if(r.protocol!=='telemetry_registry_observation_v1'||r.clock_valid!==true)return fail()
+ if(r.protocol!=='telemetry_registry_observation_v1'||r.clock_valid!==true)return registryReadFail('registry_clock')
  const at=time(r.as_of)
  list(r.kinds,8).forEach((raw,i)=>{
   const k=list(raw,4),expected=p.kinds[i]!
-  if(!same(k,[i+1,expected.kind,expected.instrumented,expected.enabled]))return fail()
+  if(!same(k,[i+1,expected.kind,expected.instrumented,expected.enabled]))return registryReadFail('registry_kind_policy')
  })
  const rawSlots=list(r.slots,16),byKey=new Map<string,unknown[]>()
  for(const raw of rawSlots){
-  const s=list(raw,12);if(typeof s[0]!=='string'||(s[1]!==1&&s[1]!==2))return fail()
-  const key=s[0]+':'+s[1];if(byKey.has(key))return fail();byKey.set(key,s)
+  const s=list(raw,12);if(typeof s[0]!=='string'||(s[1]!==1&&s[1]!==2))return registryReadFail('registry_slot_shape')
+  const key=s[0]+':'+s[1];if(byKey.has(key))return registryReadFail('registry_slot_shape');byKey.set(key,s)
  }
  const dynamic=p.slots.map((expected,i):Dynamic=>{
-  const s=byKey.get(expected.kind+':'+expected.slot_no);if(!s)return fail()
+  const s=byKey.get(expected.kind+':'+expected.slot_no);if(!s)return registryReadFail('registry_slot_shape')
   if(oidText(s[2])!==p.binding.role_oids[i+2]||s[3]!==names[i+2]||
-   s[4]!== (expected.mode==='active')||s[5]!==expected.generation||s[11]!==true)return fail()
+   s[4]!== (expected.mode==='active')||s[5]!==expected.generation||s[11]!==true)return registryReadFail(s[2]!==String(p.binding.role_oids[i+2])?'slot_role_oid':s[3]!==names[i+2]?'slot_login_name':s[4]!== (expected.mode==='active')?'slot_enabled':s[5]!==expected.generation?'slot_generation':'slot_clock_guard')
   const sequence=unsigned(s[6],9007199254740991n),draining=bool(s[10])
   if(sequence==='0'){
-   if(s[7]!==null||s[8]!==null||s[9]!==null||draining)return fail()
+   if(s[7]!==null||s[8]!==null||s[9]!==null||draining)return registryReadFail('registry_zero_report')
    return {sequence,state:null,reason:null,at:null,draining:false}
   }
-  if(expected.mode==='unused'||expected.generation===null)return fail()
-  const observedAt=time(s[9]);if(observedAt>at)return fail()
+  if(expected.mode==='unused'||expected.generation===null)return registryReadFail('registry_inactive_report')
+  const observedAt=time(s[9]);if(observedAt>at)return registryReadFail('registry_report_clock')
   const state=s[7],reason=s[8]
   if(!((state==='unknown'&&(reason==='startup_checks_pending'||reason==='loop_unavailable'))||
    (state==='ready'&&reason==='startup_checks_complete')||(state==='draining'&&reason==='new_claims_closed'))||
-   draining!==(state==='draining'))return fail()
+   draining!==(state==='draining'))return registryReadFail('registry_report_state')
   return {sequence,state:state as string,reason:reason as string,at:observedAt,draining}
  })
  return {dynamic,at}
-}
+}catch(error){rememberRegistryReadSite(error,'registry_validation');throw error}}
 function progression(before:Observed,after:Observed,reset:Set<number>=new Set()){
- if(after.at<before.at)return fail()
+ if(after.at<before.at)return registryReadFail('observation_clock_regressed')
  before.dynamic.forEach((a,i)=>{
   const b=after.dynamic[i]!
-  if(reset.has(i)){if(b.sequence!=='0'||b.state!==null||b.at!==null||b.reason!==null||b.draining)return fail();return}
+  if(reset.has(i)){if(b.sequence!=='0'||b.state!==null||b.at!==null||b.reason!==null||b.draining)return registryReadFail('reset_history_invalid');return}
   const oldSlot=before.policy.slots[i]!,newSlot=after.policy.slots[i]!
-  if(oldSlot.generation!==newSlot.generation)return fail()
+  if(oldSlot.generation!==newSlot.generation)return registryReadFail('generation_changed')
   // Before->locked observation can advance while active. Once locks are held,
   // retiring preserves that exact observation; inactive history never advances.
   if(oldSlot.mode!=='active'||newSlot.mode!=='active'){
-   if(!same(a,b))return fail();return
+   if(!same(a,b))return registryReadFail('inactive_history_changed');return
   }
   const x=BigInt(a.sequence),y=BigInt(b.sequence)
   if(y<x||(y===x&&!same(a,b))||(y>x&&a.at!==null&&(b.at===null||b.at<a.at))||
-   (a.draining&&!b.draining))return fail()
+   (a.draining&&!b.draining))return registryReadFail(y<x?'sequence_regressed':y===x&&!same(a,b)?'same_sequence_changed':y>x&&a.at!==null&&(b.at===null||b.at<a.at)?'report_time_regressed':'draining_revived')
  })
 }
 async function observe(db:SqlClient,access:ControlDbAccess,mode:'read'|'write',p:Policy,previous?:Observed):Promise<Observed>{
  const catalog=validateTarget(await one(db,access,mode,targetSQL),p,mode)
  const data=validateRegistry(await one(db,access,mode,registrySQL),p,mode)
  const answer={policy:p,...data,catalog,...digests(p)}
- if(previous){if(previous.stateSha!==answer.stateSha)return fail();progression(previous,answer)}
+ if(previous){if(previous.stateSha!==answer.stateSha)return registryReadFail('policy_material_changed');progression(previous,answer)}
  return frozen(answer)
 }
 function observation(value:RegistryObservation):Observed{
@@ -306,12 +315,15 @@ function makeObservation(value:Observed):RegistryObservation{
  const handle=Object.freeze(Object.create(null)) as RegistryObservation;observations.set(handle,value);return handle
 }
 export async function inspectWorkerHeartbeatActivationRegistry(db:SqlClient,access:ControlDbAccess,expectedPolicy:unknown):Promise<RegistryObservation>{
+ let readSite:RegistryReadFailureSite='incoming_access'
  try{
   assertWorkerHeartbeatControlDbAccess(db,access,'read')
+  readSite='expected_policy'
   const previous=expectedPolicy&&typeof expectedPolicy==='object'?observations.get(expectedPolicy):undefined
   const p=previous?.policy??policy(expectedPolicy)
+  readSite='observe'
   return makeObservation(await observe(db,access,'read',p,previous))
- }catch{return fail()}
+ }catch(error){return mappedRegistryReadFailure(error,readSite)}
 }
 export function describeWorkerHeartbeatRegistry(value:RegistryObservation):Readonly<{
  policy_sha256:string;private_material_sha256:string;checked_at_utc:string;catalog_expectations:WorkerHeartbeatReaderCatalogExpectations|null}>{

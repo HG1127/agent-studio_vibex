@@ -1,5 +1,15 @@
 # PostgreSQL 迁移前完成清单
 
+## dc1736d 原页面执行进展与后续修复（2026-11-02，新源码待封签）
+
+精确头dc1736d已获远端ACK。[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41457717287)17/21，原排队RunDetail故事已通过，保留原404与身份来源断言。[定时Worker故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41457717152)已完成原员工登录、Agent/Workflow各一个真实run/job/occurrence成功和结果查看/重新核对身份后的复制，均使用合成TLS模型，尚非整个故事或独立CLI/在线心跳验收；随后人工重试因测试未处理原确认框而无POST。夹具现只接受该一次、类型与完整提示均核对的确认，不改变产品交互。
+
+[原078故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41457717122)已完成55历史分页、四种时间规则的完整暂停Agent表单往返及暂停Workflow表单；后续已有内容的textarea被精确标签定位漏掉。原发布页也推进到版本比较下拉框的同类定位问题，仅改测试的固定前缀。074独立凭据已通过，现把错误的1分钟测试draft改为原校验器要求的15分钟；077实际安装发现版本账本必填description被遗漏，仅补其最后一条INSERT，表与所有函数体、原53SQL不变。Root216项针对性纯检查及实际fixture表达式经原draft解析器检查通过，真实新头需重跑。
+
+发布完成的实际闭合观察已确认awaiting_input之前停为paused、error_category=effect_outcome_unknown。已证实夹具把Native external_subject与业务users.id错误比较，导致合法身份在进入Broker前拒绝；新补丁将真实Cookie会话身份与一条active业务owner映射绑定，再在model/tool两种派发中核对issuer和subject，user主键不能冒充subject。Root50项组合纯检查通过，包括原夹具红例与17项新反例；原租约解析器、未知ACK不重放及人工门槛保持，真实F01仍待新头。遥测仍通过Controller、短竞争8/8与原boot/claim/identity，六类停止清理在原5秒内未结束。Legacy Reader仍registry_mismatch，5063ms且剩余−62ms，guard4307ms；不能据此认定registry变化或租约根因。Final14这次为15秒样本预算超限：采集21245ms，native6446/runtime18588/companions907ms，不能沿用上一头的失败原因。所有原期限、新鲜度、身份、8/8与清零判定不变。
+
+v110新增内部WeakMap关联的闭合registry触发位置/原因，仅在原失败映射与Reader失败路径观察；Root159项纯检查、API类型通过，原SQL、哈希输入、判断条件、错误与清理次序保持，未证明根因或性能修复。两轮质量现均51/51作业通过，主回归4730/4730、原员工契约2440/2440，类型、构建与全部安全集成步骤通过；PB19为19/19、双Worker、72.2秒。该精确头19轮流程合计14成功、5失败，完整原系统及新源码验收仍分开记录。080四包只在私有目录组合审阅，UI兼容、有效权限、API完整catalog与081消费者/锁依赖/字体、最新桌面基线、完整组合安装、目标环境、备份恢复、长期Worker和员工UAT仍开放。正式迁移 **NO-GO**。
+
 ## 0adf14d 质量全绿与第五轮集成（2026-11-02，后续源码待新头验证）
 
 精确提交0adf14d的18轮自动流程及追加原PB19均已结束，合计14成功、5失败。[质量push](https://github.com/HG1127/agent-studio_vibex/actions/runs/41445588089)与PR均51/51；根回归4696/4696、原员工契约2360/2360、类型与普通生产构建通过。[原PocketBase/SQLite并行E2E](https://github.com/HG1127/agent-studio_vibex/actions/runs/41449171316)19/19、默认双Worker、72.5秒；这是旧系统兼容回归，不是PG迁移或员工验收。

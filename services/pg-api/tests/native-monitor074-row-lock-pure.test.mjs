@@ -53,7 +53,7 @@ const additions=monitorLiveFunctions.filter(f=>/_read_lock$/.test(f.name))
 test('074 is exactly the frozen parent plus three lock readers and their API EXECUTE edges',()=>{
  const parent=ddl.replace(/-- Read locks run as the reviewed migration owner\.[^]*?(?=REVOKE ALL ON FUNCTION agentstudio\.monitor_live_time_valid)/,'').replace(/^(REVOKE ALL ON FUNCTION agentstudio\.monitor_live_(?:case|monitor|check)_read_lock\(uuid,uuid,boolean\) FROM PUBLIC;|GRANT EXECUTE ON FUNCTION agentstudio\.monitor_live_(?:case|monitor|check)_read_lock\(uuid,uuid,boolean\) TO agentstudio_api;)\n/gm,'')
  assert.equal(digest(parent),'63a2eb41490dc3150b4f5cc4c24b6e6205974b4f5dbea627bd5af94f59c8517d');assert.equal(monitorLiveTables.length,14);assert.equal(monitorLiveFunctions.length,69);assert.equal(additions.length,3)
- assert.equal(digest(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_077_ordinary_case_runs.sql',import.meta.url))),'6e06ed733c485fe69780faf7b5b0744570b48047e6dafd91f835fa51bebdc5e4')
+ assert.equal(digest(readFileSync(new URL('../../../db/postgres/migrations/pg_v9_077_ordinary_case_runs.sql',import.meta.url))),'7dd0c40ade37359974f29c5cd00b4f227fe7bf22fe70e405b4aff9b368be69bd')
 })
 for(const f of additions)test(f.name+' has a pinned owner/Actor/case bounded body, two lock modes, and API-only EXECUTE',()=>{
  const signature=f.name+'('+f.args+')',marker='CREATE FUNCTION agentstudio.'+signature,at=ddl.indexOf(marker),end=ddl.indexOf('$fn$;',at),source=ddl.slice(at,end+6),body=ddl.slice(ddl.indexOf('$fn$',at)+4,end)

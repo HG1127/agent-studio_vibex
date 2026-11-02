@@ -8377,6 +8377,147 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_dc1736d_hosted_followup": {
+      "actual_head": "dc1736dd2c3005014c46b2dfcd058afce1839741",
+      "F01": {
+        "jobs": 21,
+        "success": 17,
+        "failure": 4,
+        "original_queued_RunDetail_succeeded": true,
+        "remaining": [
+          "074 schedule fixture one-minute interval refused by unchanged15-minute minimum",
+          "077 migration ledger omitted required non-null description",
+          "original release wrapped comparison select labels",
+          "completion actual paused effect_outcome_unknown before required awaiting_input"
+        ]
+      },
+      "schedule_Worker": {
+        "overall_passed": false,
+        "actual_original_login": true,
+        "actual_Agent_and_Workflow_runs_jobs_occurrences_succeeded": 2,
+        "actual_history_and_reverified_copy": true,
+        "commercial_provider_calls": 0,
+        "failed_stage": "manual retry lacked original explicit confirm acceptance in browser fixture",
+        "CLI_entry_or_online_acceptance": false,
+        "cleanup_failures": 0
+      },
+      "schedules078": {
+        "overall_passed": false,
+        "actual_paging55_history": true,
+        "actual_full_paused_Agent_roundtrip_all_four_periods": true,
+        "actual_full_paused_Workflow_roundtrip": true,
+        "failed_stage": "nonempty wrapped textarea exact label locator",
+        "Worker_started": false,
+        "cleanup_failures": 0
+      },
+      "PB19_workflow_succeeded": true,
+      "quality_push_and_PR": {
+        "push_jobs_success": 51,
+        "PR_jobs_success": 51,
+        "root_tests_passed": 4730,
+        "root_tests_failed": 0,
+        "root_tests_skipped": 0,
+        "original_employee_contracts_passed": 2440,
+        "original_employee_contracts_failed": 0,
+        "original_employee_contracts_skipped": 0,
+        "root_TypeScript_build_and_all_security_integration_steps_passed": true
+      },
+      "strict_telemetry": {
+        "Controller_original_checks_passed": true,
+        "short8of8_and_boot_claim_identity_passed": true,
+        "stopped_cleanup_failed": true,
+        "original_wait_ms": 5000,
+        "missing_ended": [
+          "model",
+          "workflow_v2",
+          "agent_autonomous",
+          "knowledge_index",
+          "knowledge_query",
+          "assessment"
+        ],
+        "finally_cleanup_is_not_acceptance": true
+      },
+      "strict069_Legacy": {
+        "primary": "full069_worker_live_native_heartbeat_unavailable",
+        "registry_refusal": "registry_mismatch",
+        "reader_finish_ms": 5063,
+        "remaining_ms": -62,
+        "guard_ms": 4307,
+        "cleanup": [
+          false,
+          true,
+          true
+        ]
+      },
+      "strict069_Final14": {
+        "phase": "warm_sample",
+        "reason": "sample_budget_exceeded",
+        "original_budget_ms": 15000,
+        "collected_ms": 21245,
+        "before_checks_ms": 1037,
+        "checks_ms": 18926,
+        "after_checks_ms": 1284,
+        "native_ms": 6446,
+        "runtime_ms": 18588,
+        "companions_ms": 907,
+        "entire_acceptance": false
+      },
+      "reviewed_source_followup": {
+        "schedule_retry_single_exact_confirm": true,
+        "wrapped_textarea_and_release_select_prefixes": true,
+        "monitor074_fixture_interval": 15,
+        "production_schedule_validator_unchanged": true,
+        "SQL077_only_required_ledger_description_added": true,
+        "SQL077_sha256": "7dd0c40ade37359974f29c5cd00b4f227fe7bf22fe70e405b4aff9b368be69bd",
+        "original53_SQL_and077_tables_functions_unchanged": true,
+        "B110": {
+          "manifest": "311f4009d7013b9933967f0b030875df7415d0ed7448e2575dea300ae6e9b45c",
+          "files": 5,
+          "hunks": 34,
+          "Root_pure_pass": 159,
+          "API_types_passed": true,
+          "closed_private_failure_sites_only": true,
+          "original_registry_error_predicates_SQL_hash_inputs_IO_and_cleanup_order_preserved": true,
+          "actual_root_cause_or_performance_fix_proven": false
+        },
+        "focused_source_and_actual_validator_checks_passed": 216,
+        "actual_fixture_draft_expression_accepted": true,
+        "release_subject_fixture": {
+          "manifest": "622a7837effbc932fb5bfc2e88f3e167f0a2c4d6661cda3fc92a4064939822bc",
+          "frozen_files": 2,
+          "frozen_hunks": 3,
+          "Root_existing_CI_entry_test_import": 1,
+          "Root_combined_pure_passed": 50,
+          "actual_Native_session_identity_and_one_active_business_owner_mapping_required": true,
+          "issuer_and_subject_checked_in_model_and_tool_wrappers": true,
+          "user_primary_key_is_not_external_subject": true,
+          "real_lease_resolvers_unknown_ACK_and_explicit_human_boundaries_unchanged": true,
+          "actual_F01_rerun_passed": false
+        }
+      },
+      "source_reseal_pending": false,
+      "new_head_genuine_acceptance": false,
+      "production_GO": false,
+      "all19_workflows_terminal": true,
+      "workflows_success": 14,
+      "workflows_failure": 5,
+      "PB19": {
+        "run": 41457972813,
+        "job": 125319441960,
+        "passed": 19,
+        "failed": 0,
+        "seconds": 72.2,
+        "workers": 2
+      },
+      "source_seals": {
+        "maps": 25,
+        "pins": 18819,
+        "retained_prior_pins": 18744,
+        "completion_required_sources": 107,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

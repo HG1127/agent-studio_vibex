@@ -1,8 +1,9 @@
 // Diagnostic DATA only. Independent of the older mixed16-record parser; bind
 // noise cannot consume this channel. Never accepts a lease/identity/ready proof.
 import {isProxy} from 'node:util/types'
+import {parseRegistryReadFailureObservation} from '../../src/worker-heartbeat-registry-failure-observation.ts'
 import {parseWorkerHeartbeatControlJson} from '../../src/worker-heartbeat-activation-control-contract.ts'
-const kinds=['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment'],events=new Set(['worker_heartbeat_reader_lease_timing_observation','worker_heartbeat_owned_cleanup_timing_observation','full069_worker_live_native_not_ready_observation','genuine_writer_ci_stopped_cleanup_timeout_observation','worker_heartbeat_reader_failure_observation','worker_heartbeat_control_failure_observation'])
+const kinds=['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment'],events=new Set(['worker_heartbeat_registry_read_failure_observation','worker_heartbeat_reader_lease_timing_observation','worker_heartbeat_owned_cleanup_timing_observation','full069_worker_live_native_not_ready_observation','genuine_writer_ci_stopped_cleanup_timeout_observation','worker_heartbeat_reader_failure_observation','worker_heartbeat_control_failure_observation'])
 const failureKinds=new Set(['source_refused','runtime_refused','control_error','writer_closed','writer_uncertain','writer_busy','writer_not_enrolled','query_cancelled','query_lock_timeout','query_client_timeout','query_client_closed','filesystem_io','transport_io','abort','type_error','range_error','syntax_error','other']),readerCodes=new Set(['lease_expired','lease_revoked','registry_mismatch','reader_capacity','reader_timeout','reader_cleanup_unknown','control_closed','control_io_failed','source_runtime_refused','binding_changed','untrusted_reference','control_busy']),sites=new Set(['record_entry','record_identity_before','record_selection_before','record_query','record_selection_after','record_identity_after','record_final_guard','cleanup_entry','cleanup_end_client','cleanup_terminate_owned','cleanup_discover','cleanup_wait_absence','cleanup_ended_journal'])
 function record(raw,keys){if(!raw||typeof raw!=='object'||isProxy(raw)||Object.getPrototypeOf(raw)!==Object.prototype)throw Error('observation_data');const d=Object.getOwnPropertyDescriptors(raw);if(Reflect.ownKeys(d).length!==keys.length||keys.some(k=>!d[k]?.enumerable||!Object.hasOwn(d[k],'value')))throw Error('observation_data');return Object.fromEntries(keys.map(k=>[k,d[k].value]))}
 const integer=(v,min=0,max=120000)=>Number.isSafeInteger(v)&&v>=min&&v<=max,time=(v,min=0)=>v===null||integer(v,min),freeze=v=>{if(v&&typeof v==='object'){for(const x of Object.values(v))freeze(x);Object.freeze(v)}return v}
@@ -11,6 +12,7 @@ export function parseCleanupReaderObservation(raw){
  try{
   if(!raw||typeof raw!=='object'||isProxy(raw))return null
   const event=Object.getOwnPropertyDescriptor(raw,'event')?.value;let v
+  if(event==='worker_heartbeat_registry_read_failure_observation')return parseRegistryReadFailureObservation(raw)
   if(event==='worker_heartbeat_reader_lease_timing_observation'){
    v=record(raw,['event','stage','outcome','elapsed_ms','remaining_ms','guard_calls','guard_ms','writer_operation','writer_cleanups','observed_data_only'])
    if(!['begin_registry','connect_reader','identity','begin_rr','catalog','snapshot','finish_registry'].includes(v.stage)||!['failed','consumed'].includes(v.outcome)||!time(v.elapsed_ms)||!time(v.remaining_ms,-120000)||!integer(v.guard_calls,0,4096)||!time(v.guard_ms)||typeof v.writer_operation!=='boolean'||!integer(v.writer_cleanups,0,32))return null

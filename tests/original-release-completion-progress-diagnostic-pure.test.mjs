@@ -1,3 +1,4 @@
+import './pg-original-version-release-completion-identity-pure.test.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'

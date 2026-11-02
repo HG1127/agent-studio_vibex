@@ -1762,3 +1762,6 @@ tests/pg-original-version-release-proof-pure.test.mjs text eol=lf
 /tests/helpers/original-run-detail-route-hook-harness.mjs text eol=lf
 /tests/original-release-completion-progress-diagnostic-pure.test.mjs text eol=lf
 /tests/original-run-detail-route-binding-pure.test.mjs text eol=lf
+/services/pg-api/src/worker-heartbeat-registry-failure-observation.ts text eol=lf
+/services/pg-api/tests/worker-heartbeat-registry-finish-diagnostic.test.mjs text eol=lf
+/tests/pg-original-version-release-completion-identity-pure.test.mjs text eol=lf

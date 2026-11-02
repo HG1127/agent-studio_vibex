@@ -703,5 +703,5 @@ BEGIN
  END LOOP;
 END
 $verify$;
-INSERT INTO agentstudio.schema_migrations(version) VALUES('pg_v9_077');
+INSERT INTO agentstudio.schema_migrations(version,description) VALUES('pg_v9_077','Owned ordinary case runs, fenced source receipts and audited business record writes');
 COMMIT;
