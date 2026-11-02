@@ -34,7 +34,7 @@ app.on('before-quit',event=>{if(!quitting){event.preventDefault();quitting=true;
 app.whenReady().then(async()=>{
   if(storageError)throw storageError
   settings=await readSettings(app.getPath('userData'))
-  updates=installUpdates({app,BrowserWindow,Menu,ipcMain,net:require('electron').net,dialog,info,runtimeRoot,testHome,getSettings:()=>settings,saveSettings:async next=>{await saveSettings(app.getPath('userData'),next);settings=next},stopServices,getComputerState:()=>computerRequest('state'),hasPendingCalls:()=>[...pairingRequests.values()].some(request=>!['state','session'].includes(request.action)),onQuit:()=>{quitting=true}})
+  updates=installUpdates({app,BrowserWindow,Menu,ipcMain,net:require('electron').net,dialog,info,runtimeRoot,testHome,getWorkArea:()=>{const {screen}=require('electron');return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workAreaSize},getSettings:()=>settings,saveSettings:async next=>{await saveSettings(app.getPath('userData'),next);settings=next},stopServices,getComputerState:()=>computerRequest('state'),hasPendingCalls:()=>[...pairingRequests.values()].some(request=>!['state','session'].includes(request.action)),onQuit:()=>{quitting=true}})
   const ses=session.fromPartition('persist:agent-studio')
   const origins=()=>services?[services.origin,services.managerOrigin]:[]
   ses.setPermissionRequestHandler((contents,permission,callback,details)=>callback(rendererPermission(permission,details.requestingUrl||contents.getURL(),origins(),details.isMainFrame)))

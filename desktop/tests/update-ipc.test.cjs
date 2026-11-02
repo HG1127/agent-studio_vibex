@@ -1,5 +1,10 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events'),{installUpdates}=require('../update-controller.cjs')
+test('update windows fit small work areas without forcing controls below the screen',()=>{
+ const {updateWindowSize}=require('../update-controller.cjs')
+ assert.deepEqual(updateWindowSize({width:1920,height:1040}),{width:1000,height:780,minWidth:780,minHeight:620})
+ for(const area of [{width:1366,height:720},{width:800,height:600},{width:320,height:420}]){const size=updateWindowSize(area);assert.ok(size.width<=area.width&&size.height<=area.height);assert.ok(size.minHeight<=size.height&&size.minWidth<=size.width)}
+})
 test('workbench preload exposes only a fixed action for opening updates',()=>{
  let bridge;const calls=[]
  require('node:vm').runInNewContext(require('node:fs').readFileSync(require('node:path').join(__dirname,'../ui/workbench-preload.cjs'),'utf8'),{require:name=>{assert.equal(name,'electron');return {contextBridge:{exposeInMainWorld:(name,value)=>{assert.equal(name,'studioDesktop');bridge=value}},ipcRenderer:{on(){},invoke:(...args)=>{calls.push(args);return Promise.resolve({ok:true})}}}}})
