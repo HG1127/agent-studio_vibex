@@ -13,14 +13,14 @@ test('073 browser never grants an ordinary process or old profile alone a runtim
 })
 
 import fs from 'node:fs'
-test('actual login callback starts reading both real response bodies before navigation can retire them',async()=>{
+test('actual login checks employee then reads inbox through the original refresh action after navigation',async()=>{
  const {default:ts}=await import('typescript'),text=fs.readFileSync(new URL('./pg-original-monitor073-genuine.spec.mjs',import.meta.url),'utf8'),tree=ts.createSourceFile('story.mjs',text,ts.ScriptTarget.Latest,true),matches=[]
  function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='login')matches.push(n.initializer);ts.forEachChild(n,visit)}visit(tree);assert.equal(matches.length,1)
- let retired=false;const calls=[],listeners=new Map(),wire=path=>new Promise(resolve=>listeners.set(path,resolve)),body=(name,value)=>({json(){assert.equal(retired,false,'a navigation retired the actual response body');calls.push(name);return Promise.resolve(value)}})
- const monitorPath='/__pg_native/api/v2/original-ui/monitor-inbox',page={goto:async()=>{},getByLabel:()=>({fill:async()=>{}}),getByRole:(_,options)=>({fill:async()=>{},click:async()=>{assert(listeners.has('/__pg_native/api/native-auth/me')&&listeners.has(monitorPath));listeners.get('/__pg_native/api/native-auth/me')(body('me',{user:{id:'alice'}}));listeners.get(monitorPath)(body('inbox',{employee_id:'alice',items:[{}]}));await Promise.resolve();retired=true}})},f={origin:'https://localhost:17443',credentials:{alice:{email:'synthetic@example.invalid',password:'synthetic'}},users:{alice:'alice'},syntheticMonitorIds:{alice:['owned'],bob:['foreign']}}
- const expect=value=>({toBe:expected=>assert.equal(value,expected),toBeGreaterThan:n=>assert(value>n),toBeVisible:async()=>{},toHaveCount:async()=>{}}),section=()=>({getByRole:()=>({evaluateAll:async()=>['/?check=owned']})})
+ let retired=false;const calls=[],listeners=new Map(),wire=path=>new Promise(resolve=>listeners.set(path,resolve)),body=(name,value,afterNavigation=false)=>({json(){assert.equal(retired,afterNavigation,'read the actual body in its own document lifetime');calls.push(name);return Promise.resolve(value)}})
+ const monitorPath='/__pg_native/api/v2/original-ui/monitor-inbox',page={goto:async()=>{},getByLabel:()=>({fill:async()=>{}}),getByRole:()=>({fill:async()=>{},click:async()=>{assert(listeners.has('/__pg_native/api/native-auth/me'));assert(!listeners.has(monitorPath),'transient pre-navigation inbox must not be retained');listeners.get('/__pg_native/api/native-auth/me')(body('me',{user:{id:'alice'}}));await Promise.resolve();retired=true}})},f={origin:'https://localhost:17443',credentials:{alice:{email:'synthetic@example.invalid',password:'synthetic'}},users:{alice:'alice'},syntheticMonitorIds:{alice:['owned'],bob:['foreign']}}
+ const expect=value=>({toBe:expected=>assert.equal(value,expected),toBeGreaterThan:n=>assert(value>n),toBeVisible:async()=>{},toHaveCount:async()=>{}}),section=()=>({getByRole:(role,options)=>({evaluateAll:async()=>['/?check=owned'],click:async()=>{assert.equal(role,'button');assert.equal(options.name,'刷新监测消息');assert.equal(retired,true);assert(listeners.has(monitorPath));listeners.get(monitorPath)(body('inbox_after_navigation',{employee_id:'alice',items:[{}]},true))}})})
  const login=Function('page','wire','f','expect','section','monitorPath','return ('+matches[0].getText(tree)+')')(page,wire,f,expect,section,monitorPath)
- assert.deepEqual(await login('alice'),{id:'alice'});assert.deepEqual(calls,['me','inbox']);assert.equal(retired,true)
+ assert.deepEqual(await login('alice'),{id:'alice'});assert.deepEqual(calls,['me','inbox_after_navigation']);assert.equal(retired,true)
 })
 test('monitor success images require completed story, final cleanup zero gates and fixed bounded buffers',()=>{
  const text=fs.readFileSync(new URL('./pg-original-monitor073-genuine.spec.mjs',import.meta.url),'utf8')

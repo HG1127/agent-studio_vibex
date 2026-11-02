@@ -18,13 +18,16 @@ test('original Home073: real nonempty owner metadata, pagination, Native read ac
  const login=async who=>{
   await page.goto(f.origin+'/login?next=%2F',{waitUntil:'domcontentloaded'})
   await page.getByRole('textbox',{name:'工作邮箱',exact:true}).fill(f.credentials[who].email);await page.getByLabel('密码',{exact:true}).fill(f.credentials[who].password)
-   // Consume each real body as soon as its response arrives. The original
-   // login navigation may otherwise discard a retained Playwright Response.
-   const me=wire('/__pg_native/api/native-auth/me').then(r=>r.json()),inbox=wire(monitorPath).then(r=>r.json())
-   void me.catch(()=>{});void inbox.catch(()=>{})
+   // Read the actual employee response immediately. Observe inbox through
+   // its original refresh control once the Home document is visible.
+   const me=wire('/__pg_native/api/native-auth/me').then(r=>r.json())
+   void me.catch(()=>{})
   await page.getByRole('button',{name:'登录',exact:true}).click()
-   const [actualMe,response]=await Promise.all([me,inbox]),identity=actualMe.user;expect(identity.id).toBe(f.users[who]);expect(response.employee_id).toBe(f.users[who]);expect(response.items.length).toBeGreaterThan(0)
+   const actualMe=await me,identity=actualMe.user;expect(identity.id).toBe(f.users[who])
   await expect(page.getByRole('heading',{name:'我的工作台',exact:true})).toBeVisible()
+   const inbox=wire(monitorPath).then(r=>r.json());void inbox.catch(()=>{})
+   await section().getByRole('button',{name:'刷新监测消息',exact:true}).click()
+   const response=await inbox;expect(response.employee_id).toBe(f.users[who]);expect(response.items.length).toBeGreaterThan(0)
   await expect(section().getByRole('alert')).toHaveCount(0)
   const hrefs=await section().getByRole('link',{name:'查看监测',exact:true}).evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')))
   const own=f.syntheticMonitorIds[who],other=f.syntheticMonitorIds[who==='alice'?'bob':'alice'];expect(hrefs.length).toBeGreaterThan(0)

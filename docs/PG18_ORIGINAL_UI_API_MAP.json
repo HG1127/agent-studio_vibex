@@ -8081,6 +8081,38 @@
       "production_GO": false,
       "final_source_maps": 24,
       "final_source_pins": 13407
+    },
+    "current_original_page_third_hosted_repairs": {
+      "actual_head": "01a0d5d121c5d22b09e1f6f1fc8d77f084bc9be0",
+      "F01_jobs": 18,
+      "F01_success": 16,
+      "original_agent_feedback_job_succeeded": 125167935727,
+      "078_job": 125167934488,
+      "078_pure_passed": 109,
+      "078_SQL_syntax_install_advanced": true,
+      "078_current_error": "private auth schema name lookup in API auditor",
+      "078_fix": "pg_policy/class/namespace exact catalog identity, all policy checks retained; no grants",
+      "Release_job": 125167935679,
+      "Release_pg_resolution_advanced": true,
+      "Release_current_error": "stored require_approval output sent to strict input parser",
+      "Release_fix": "fixture strips only output require_approval; other unknown fields rejected, actual parser always restores mandatory approval",
+      "monitor073_job": 125167935521,
+      "monitor073_fix": "actual original refresh action after Home navigation, same real owner and private-body checks",
+      "source_regressions_before": {
+        "tests": 74,
+        "pass": 71,
+        "fail": 3
+      },
+      "source_regressions_after": {
+        "tests": 74,
+        "pass": 74,
+        "fail": 0
+      },
+      "Worker_fixture_actual_input_parser_checks": 37,
+      "SQL_grants_parser_and_employee_UI_unchanged": true,
+      "local_SQL_Worker_or_browser": false,
+      "actual_new_head_genuine_acceptance": false,
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,
