@@ -23,10 +23,17 @@ const sha=b=>createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='str
 const fail=code=>{throw Error('telemetry_control_ci_fixture_refused:'+code)}
 function safe(phase,error){let code;try{code=Object.getOwnPropertyDescriptor(error,'code')?.value}catch{}return Error('telemetry_control_ci_fixture_refused:'+phase+':'+(typeof code==='string'&&/^[A-Z0-9]{5}$/.test(code)?code:'NO_SQLSTATE'))}
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
-async function until(check,phase,ms=20000){const end=performance.now()+ms;do{if(await check())return;await delay(25)}while(performance.now()<end);fail(phase)}
+async function until(check,phase,ms=20000){const end=performance.now()+ms;do{if(await check()){if(performance.now()>=end)fail(phase);return}await delay(25)}while(performance.now()<end);fail(phase)}
 function fields(v,keys){if(!v||typeof v!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(v))||Reflect.ownKeys(v).length!==keys.length)fail('closed_data');const out={};for(const k of keys){const d=Object.getOwnPropertyDescriptor(v,k);if(!d?.enumerable||!('value'in d))fail('closed_data');out[k]=d.value}return out}
 function stamp(s){return {dev:s.dev,ino:s.ino,uid:s.uid,gid:s.gid,mode:s.mode}}
 function sameStamp(a,b){return ['dev','ino','uid','gid','mode'].every(k=>a[k]===b[k])}
+// An unsuccessful observation is never a journal snapshot. Only this private
+// actual-read error association may keep the existing cleanup poll pending.
+const journalAppendReadRefusals=new WeakSet()
+function rememberJournalAppendReadRefusal(error,file,a,z,last,bytes,pin,max){
+ try{if(file===paths.store+'/journal.jsonl'&&pin===undefined&&sameStamp(a,z)&&sameStamp(a,last)&&z.nlink===1&&last.nlink===1&&z.size>a.size&&last.size>=z.size&&last.size<=max&&bytes.length>=a.size&&bytes.length<=z.size&&z.mtimeMs>=a.mtimeMs&&last.mtimeMs>=z.mtimeMs&&z.ctimeMs>=a.ctimeMs&&last.ctimeMs>=z.ctimeMs)journalAppendReadRefusals.add(error)}catch{}
+}
+function isJournalAppendReadRefusal(error){return journalAppendReadRefusals.has(error)}
 // Fixed-field observation only. Never expose paths, bytes, stamps or digests;
 // the original strict refusal and owned FD cleanup remain unconditional.
 function observeFileChange(file,a,z,last,bytes,pin){
@@ -42,7 +49,7 @@ function observeFileChange(file,a,z,last,bytes,pin){
 function read(file,{mode=0o600,max=4194304,pin}={}){
  const a=fs.lstatSync(file);if(!a.isFile()||a.isSymbolicLink()||a.nlink!==1||a.uid!==0||a.gid!==0||(a.mode&0o7777)!==mode||a.size<1||a.size>max||fs.realpathSync(file)!==file)fail('private_file')
  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK)
- try{const b=fs.readFileSync(fd),z=fs.fstatSync(fd),last=fs.lstatSync(file);if(!sameStamp(a,z)||!sameStamp(a,last)||a.size!==z.size||a.size!==last.size||a.mtimeMs!==z.mtimeMs||a.ctimeMs!==z.ctimeMs||b.length!==a.size||pin&&sha(b)!==pin){observeFileChange(file,a,z,last,b,pin);fail('file_changed')}return b}finally{fs.closeSync(fd)}
+  try{const b=fs.readFileSync(fd),z=fs.fstatSync(fd),last=fs.lstatSync(file);if(!sameStamp(a,z)||!sameStamp(a,last)||a.size!==z.size||a.size!==last.size||a.mtimeMs!==z.mtimeMs||a.ctimeMs!==z.ctimeMs||b.length!==a.size||pin&&sha(b)!==pin){observeFileChange(file,a,z,last,b,pin);try{fail('file_changed')}catch(error){rememberJournalAppendReadRefusal(error,file,a,z,last,b,pin,max);throw error}}return b}finally{fs.closeSync(fd)}
 }
 function syncDir(dir){const fd=fs.openSync(dir,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW);try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}}
 function write(file,value){const bytes=Buffer.isBuffer(value)?value:Buffer.from(value),fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fchmodSync(fd,0o600);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}syncDir(path.dirname(file));if(!read(file).equals(bytes))fail('write_readback')}
@@ -872,7 +879,7 @@ async function writerWaitStoppedCleanup(s,children){
  }
  if(new Set(expected.map(v=>v.backend_id)).size!==expected.length)fail('writer_ci_stopped_duplicate_backend')
  try{await until(async()=>{
-  const fresh=writerObservationJournal(s)
+   let fresh;try{fresh=writerObservationJournal(s)}catch(error){if(isJournalAppendReadRefusal(error))return false;throw error}
   for(const b of expected){const ended=fresh.filter(r=>writerSameEnded(r,b));if(ended.length>1)fail('writer_ci_stopped_duplicate_end');if(!ended.length)return false;if(ended[0].sequence<=b.bound_sequence||!await writerBackendAbsent(s,b))fail('writer_ci_stopped_backend_live_after_ended')}
   return true
  },'writer_stopped_owned_cleanup',5000)}catch(stoppedFailure){try{const fresh=writerObservationJournal(s),missing=expected.filter(b=>!fresh.some(r=>writerSameEnded(r,b))).map(b=>b.kind);process.stderr.write(JSON.stringify({event:'genuine_writer_ci_stopped_cleanup_timeout_observation',expected_backends:expected.length,missing_ended_kinds:missing,original_wait_ms:5000,observed_data_only:true})+'\n')}catch{}throw stoppedFailure}

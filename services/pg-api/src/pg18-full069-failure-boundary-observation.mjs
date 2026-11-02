@@ -53,6 +53,13 @@ export function parseFull069FailureBoundaryObservations(stderr){
   try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):raw.event===branchEvent?parseFull069RejectedBranchesFailureData(raw):parseFull069FinalRuntimePhaseTimingObservation(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
  }
  const request=records.find(r=>r.event===requestEvent),branch=records.find(r=>r.event===branchEvent);if(request&&branch&&branch.primary_branch!=='native')return Object.freeze([])
- if(records.some(r=>r.event===runtimePhaseEvent)&&(request||branch))return Object.freeze([])
+ const phase=records.find(r=>r.event===runtimePhaseEvent)
+ if(phase&&(request||branch)){
+  const runtime=branch?.branches.find(r=>r.branch==='runtime')
+  // A failed sibling may coexist only with a completed Runtime observation.
+  // Six rounded buckets cannot exceed that original branch's duration by >6ms.
+  const total=['entry_gate_ms','outer_stable_ms','physical_ms','business_audits_ms','telemetry_ms','business_ms'].reduce((sum,key)=>sum+phase[key],0)
+  if(!runtime||runtime.status!=='fulfilled'||runtime.elapsed_ms===null||total>runtime.elapsed_ms+6)return Object.freeze([])
+ }
  return Object.freeze(records)
 }

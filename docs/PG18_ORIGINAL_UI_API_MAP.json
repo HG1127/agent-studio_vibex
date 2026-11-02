@@ -8701,6 +8701,242 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_714c1ab_hosted_followup": {
+      "actual_head": "714c1ab4b51a79c4de3cf62bce7c63b3b584f3c2",
+      "all19_workflows_terminal": true,
+      "workflows_success": 15,
+      "workflows_failure": 4,
+      "quality_push_PR": {
+        "push_jobs": 51,
+        "PR_jobs": 51,
+        "root_tests_passed": 4759,
+        "root_fail": 0,
+        "root_skip": 0,
+        "original_employee_contracts_passed": 2505,
+        "original_employee_fail": 0,
+        "original_employee_skip": 0,
+        "types_build_and_security_integration_steps_passed": true
+      },
+      "PB19": {
+        "run": 41477410961,
+        "job": 125386524746,
+        "passed": 19,
+        "failed": 0,
+        "seconds": 73.2,
+        "workers": 2,
+        "old_PocketBase_recoverability_regression_only": true
+      },
+      "schedules078": {
+        "run": 41477180714,
+        "job": 125385736470,
+        "whole_original_story_passed": true,
+        "all9_original_stages_passed": true,
+        "actual_owned_paging_full_paused_forms_CAS_queue_pause_delete_retained_history": true,
+        "actual_committed_unknown_exact_GET_only": true,
+        "actual_rollback503": 1,
+        "actual_receipt404": 2,
+        "legacy_outside_unexpected_websocket_cleanup_counts_all_zero": true,
+        "Worker_started": false,
+        "Native_server_process_entry_verified": false
+      },
+      "F01": {
+        "jobs": 21,
+        "success": 18,
+        "failure": 3,
+        "actual_monitor074_launch_passed": true,
+        "actual_full077_named_profile_audit_passed": true,
+        "release_all_four_mutation_committed_prefix_exact_GET_recoveries_advanced": true,
+        "remaining": [
+          "original release parent approval fixture expected awaiting_approval after only2 batch1 ticks; actual third prepare creates approval",
+          "queued pause-confirm browser JSON body evicted before read; original staged request remained unauthorized after the assertion failed",
+          "release completion paused before awaiting_input; actual finite observation locates broker_dispatch/other before any material read or model POST"
+        ]
+      },
+      "schedule_Worker": {
+        "overall_story_passed": false,
+        "original_Agent_Workflow_and_explicit_failed_start_retry_advanced": true,
+        "exact_once_UTC_preview_advanced": true,
+        "failed_stage": "128 original event bound exhausted by250ms empty polling before a real once plan1-2minutes ahead",
+        "CLI_or_online_process_accepted": false
+      },
+      "strict069_Legacy": {
+        "primary": "full069_worker_live_native_not_ready",
+        "snapshot_age_ms": 1098,
+        "model_seen_age_ms": 75006,
+        "original_freshness_limit_ms": 45000,
+        "all8_ready_statuses_did_not_substitute_for_freshness": true,
+        "cleanup": {
+          "telemetry_backends_zero": false,
+          "readers_in_flight_zero": true,
+          "business_queues_empty": true
+        }
+      },
+      "strict069_Final14": {
+        "primary": "full069_worker_live_native_io",
+        "own_deadline_destroy_seen": true,
+        "node_error_code": "ECONNRESET",
+        "request_elapsed_ms": 5664,
+        "native_remaining_ms": -227,
+        "branches": {
+          "native": {
+            "status": "rejected",
+            "elapsed_ms": 8739
+          },
+          "runtime": {
+            "status": "fulfilled",
+            "elapsed_ms": 31708
+          },
+          "companions": {
+            "status": "fulfilled",
+            "elapsed_ms": 1530
+          }
+        },
+        "internal_phase_data_not_emitted_on_the_original_rejected_sibling_path": true,
+        "entire_acceptance": false
+      },
+      "strict_telemetry": {
+        "completed_cases": 21,
+        "Controller_and_short8of8_advanced": true,
+        "stopped_cleanup_passed": false,
+        "original_wait_ms": 5000,
+        "missing_ended_kinds": 7,
+        "primary": "telemetry_control_ci_fixture_refused:file_changed",
+        "closed_file_observation": {
+          "file_class": "controller_journal",
+          "descriptor_identity_changed": false,
+          "path_identity_changed": false,
+          "descriptor_and_path_size": "grew",
+          "read_size": "same",
+          "descriptor_mtime_and_ctime_changed": true,
+          "pinned_digest_mismatch": false
+        },
+        "finally_cleanup_is_not_acceptance": true
+      },
+      "reviewed_source_followup": {
+        "clock_wait": {
+          "empty_poll_cadence_ms": 1500,
+          "original128_event_cap_and150000ms_limit_retained": true,
+          "late_history_success_now_refused": true,
+          "product_recurrence_backoff_and_DB_clock_unchanged": true,
+          "Root_pure_passed": 30
+        },
+        "queued_receipt": {
+          "exact_two_response_JSON_reads_started_on_response_event": true,
+          "original_negative_positive_receipt_body_assertions_8s_and_staged_request_authorization_retained": true,
+          "actual_new_story_pass_pending": true
+        },
+        "rejected_Runtime_phase_observation": {
+          "private_actual_completed_Runtime_result_required": true,
+          "combined_wire_requires_fulfilled_Runtime_and_rounded_duration_bound": true,
+          "original_calls_IO_errors_priority_and_deadlines_retained": true,
+          "Root_pure_passed": 86,
+          "actual_performance_fix_proven": false
+        },
+        "release_v117": {
+          "manifest_sha256": "f6bf293a0045ed3f11fdec31a63d2c1f5676924ce8725b095c01811b06ec85ed",
+          "files": 5,
+          "new_files": 1,
+          "actual_original_prepare_state_machine_disproves_two_tick_assumption": true,
+          "exact_stages": [
+            "progressed",
+            "progressed",
+            "awaiting_approval"
+          ],
+          "actual_owned_GET_and_zero_model_check_retained": true,
+          "no_fourth_tick_automatic_approval_or_product_Worker_change": true,
+          "finite_SQLSTATE_observation_labels": 12,
+          "Root_pure_passed": 130,
+          "actual_Broker_cause_or_repair_proven": false
+        },
+        "journal_append_observation": {
+          "strict_read_still_refuses_and_closes_actual_FD": true,
+          "only_actual_same_identity_root_owned_nlink1_unpinned_monotonic_bounded_append_Error_is_privately_associated": true,
+          "only_existing_stopped_cleanup_poll_may_remain_pending": true,
+          "stable_full_chain_and_exact_original_owned_backend_role_absence_required": true,
+          "all_other_changes_keep_original_fatal_Error": true,
+          "independent_v118_no_actionable_regression_found": true,
+          "independent_unseeded_read_WeakSet_chain_until_SQL_absence_connection_tested": true,
+          "Root_related_pure_passed": 51
+        },
+        "deadline_v119": {
+          "manifest_sha256": "34f7e877826a291c3b1ddb2462a7a116c90abd4fb6c83fbb6134e2534dae0e0b",
+          "preexisting_check_4999_to5001ms_late_success_counterexample_proven": true,
+          "success_requires_completion_before_original_deadline": true,
+          "original5000ms_argument_and_check_Error_retained": true,
+          "no_hard_IO_interruption_added": true,
+          "genuine_cleanup_repair_proven": false
+        }
+      },
+      "optional080_081_preparation": {
+        "A080_private_composition_packages": 9,
+        "A080_private_source_targets": 63,
+        "independent_jobs_dependency_owner": true,
+        "core_API_package_lock_unchanged": true,
+        "known_API_CRLF_LF_variants_only": true,
+        "Root080_private_named_incoming_FK_pure_passed": 70,
+        "Root080_Runtime_and_full_API_guard_not_yet_wired": true,
+        "shared_pgvector_static_registry_frozen": true,
+        "shared_pgvector_binary_provenance_not_yet_open": true,
+        "C081_full_catalog_increment_pending": true,
+        "actual_formats_Worker_or_original_material_report_pages_not_accepted": true
+      },
+      "source_reseal_pending": false,
+      "new_head_genuine_acceptance": false,
+      "production_GO": false,
+      "artifacts": [
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-quality-push-main-job.log",
+          "sha256": "682c450731d41ff5e4ebf0d5a56c0ee77dfd29ebdcb582a9d586484ca62ef20c"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-quality-PR-main-job.log",
+          "sha256": "3a1970cf37bfd4e1917bee85a9e2e3f90f749a6ad35383da5d09c02b44187f5a"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-original-ui-contract-job.log",
+          "sha256": "a715ae03eb3bd907c7a6d75600bb5c15b92cda34512fb0d20308e0abac61f116"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-PB19-job.log",
+          "sha256": "e376f6bcdcfab59a2fe6f3462b3a0cd8a224b30e0baa181531d929fc2c5d6003"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-schedules078-job.log",
+          "sha256": "0d65067145a30962fc441d224042b1f2a8eff68a7b13c08e98e8da83f7cbc305"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-schedules078-artifact/pg-original-schedules078-g-ee8bc-s-retained-paging-no-Worker/original-schedules078-observation.json",
+          "sha256": "815f98c0218525a62ec357e74983b306e2a9cacadb0d756d0ba80caad4233ea5"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-clock-poll-root-pure.log",
+          "sha256": "3b3f0a73a32c3e9b1a2ed7d6fc414cdaaa465c5ad1898875395262143219d90e"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-B117-root-pure.log",
+          "sha256": "aae3616f9b507edecc63f95b42576f6bac0625397b56438005a9278c93a29200"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-journal-deadline-root-pure.log",
+          "sha256": "b8fd98335c818112bab1c22585b50f4855a66fc95a12e6028b39ca5453aee127"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-rejected-Runtime-phases-root-pure.log",
+          "sha256": "81951a3c8db3ec4e94f0b7bb6c607e9bc85e57523f038c3665365d24742258d6"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/714c1ab-followup-api-types.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "source_seals": {
+        "maps": 25,
+        "pins": 18969,
+        "retained_prior_pins": 18919,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

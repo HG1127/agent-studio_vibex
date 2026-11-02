@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './pg-original-version-release-parent-approval-pure.test.mjs'
 import './pg-original-version-release-completion-dispatch-diagnostic.test.mjs'
 import assert from 'node:assert/strict'
 import vm from 'node:vm'

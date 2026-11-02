@@ -26,3 +26,22 @@ test('Worker fixture login URL reaches the original LoginPage local return contr
  assert.equal(getStudioLocalReturnPath(requested(new URLSearchParams('redirect=%2Fscheduled-tasks')),origin),'/')
  for(const next of ['https://example.test/scheduled-tasks','//example.test/scheduled-tasks'])assert.equal(getStudioLocalReturnPath(requested(new URLSearchParams({next})),origin),'/')
 })
+
+// Extract only the actual clock-wait method with terminal DATA ports. No fixture
+// activation, driver, SQL evaluator, scheduler or Worker is constructed here.
+async function clockWaitData(options={}){
+ const {default:ts}=await import('typescript'),tree=ts.createSourceFile('fixture.mjs',source('tests/helpers/pg-original-schedule-worker-backend-fixture.mjs'),ts.ScriptTarget.Latest,true);let method
+ function visit(node){if(ts.isMethodDeclaration(node)&&node.name.getText(tree)==='waitForAutomaticOccurrence')method=node.getText(tree);ts.forEachChild(node,visit)}visit(tree);assert(method)
+ if(options.original250){assert(method.includes('setTimeout(resolve,1500)'));method=method.replace('setTimeout(resolve,1500)','setTimeout(resolve,250)')}
+ let elapsed=0,ticks=16,reads=0;const original=Error('terminal_scheduler_refusal'),row={id:'terminal-occurrence',run_id:'terminal-run'},waits=[]
+ const deps={assert,Date:{now:()=>elapsed},schedulerTick:async()=>{if(options.tickFailure)throw original;assert(ticks<128);ticks++},setTimeout:(resolve,ms)=>{waits.push(ms);elapsed+=ms;resolve()}},api=Function(...Object.keys(deps),'return({'+method+'})')(...Object.values(deps))
+ api.history=async(who,id)=>{assert.equal(who,'alice');assert.equal(id,'terminal-schedule');reads++;elapsed+=options.historyDelay??0;return options.rows??(elapsed>=120000&&!options.missing?[row]:[])}
+ return{run:()=>api.waitForAutomaticOccurrence('terminal-schedule'),stats:()=>({elapsed,ticks,reads,waits}),original,row}
+}
+test('actual clock wait fits a real two-minute once plan inside unchanged128 events and150s',async()=>{const h=await clockWaitData();assert.equal(await h.run(),h.row);assert.equal(h.stats().elapsed,120000);assert.equal(h.stats().ticks,97);assert.equal(h.stats().reads,81);assert(h.stats().waits.every(ms=>ms===1500))})
+test('previous250ms cadence exhausts the same128-event bound before a real two-minute plan is due',async()=>{const h=await clockWaitData({original250:true});await assert.rejects(h.run());assert.equal(h.stats().ticks,128);assert(h.stats().elapsed<120000)})
+test('actual missing occurrence still fails at original150s without widening the event bound',async()=>{const h=await clockWaitData({missing:true});await assert.rejects(h.run(),/actual_schedule_clock_due_not_observed/);assert.equal(h.stats().elapsed,150000);assert.equal(h.stats().ticks,116)})
+test('actual clock wait rejects a history reply completing after original150s even when that reply has a run',async()=>{const h=await clockWaitData({historyDelay:150001});await assert.rejects(h.run(),/actual_schedule_clock_due_not_observed/);assert.equal(h.stats().elapsed,150001);assert.equal(h.stats().ticks,17);assert.equal(h.stats().reads,1);assert.deepEqual(h.stats().waits,[])})
+test('actual clock wait keeps the original inclusive150s completion boundary',async()=>{const h=await clockWaitData({historyDelay:150000});assert.equal(await h.run(),h.row);assert.equal(h.stats().elapsed,150000);assert.equal(h.stats().reads,1)})
+for(const rows of [[{id:'without-run'}],[{run_id:'one'},{run_id:'two'}]])test('actual malformed clock history remains refused '+rows.length,async()=>{const h=await clockWaitData({rows});await assert.rejects(h.run());assert.equal(h.stats().reads,1);assert.equal(h.stats().elapsed,0)})
+test('actual scheduler failure propagates unchanged with no history read or local retry',async()=>{const h=await clockWaitData({tickFailure:true});await assert.rejects(h.run(),error=>error===h.original);assert.equal(h.stats().reads,0);assert.equal(h.stats().elapsed,0)})

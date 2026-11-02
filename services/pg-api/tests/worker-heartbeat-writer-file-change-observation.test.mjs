@@ -2,6 +2,7 @@
 // FS observations are synthetic terminal data. No fixture import, SQL, Worker,
 // process, timer, driver, kernel identity or genuine hosted execution occurs.
 import test from 'node:test'
+import './worker-heartbeat-writer-journal-append-deadline.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {createHash} from 'node:crypto'
@@ -28,9 +29,9 @@ function model(options={}){
  }
  const fail=label=>{throw Error('telemetry_control_ci_fixture_refused:'+label)}
  const process={stderr:{write(line){if(options.outputThrows)throw Error('PRIVATE_OBSERVATION_FAILURE');output.push(line)}}}
- const load=Function('fs','paths','sha','fail','process',actual+'\nreturn {read}')
- const reader=load(io,{store},sha,fail,process)
- return{read:()=>reader.read(file,options.readOptions),output,operations,bytes,observe:()=>{
+  const load=Function('fs','paths','sha','fail','process',actual+'\nreturn {read,isJournalAppendReadRefusal}')
+  const reader=load(io,{store},sha,fail,process)
+  return{read:()=>reader.read(file,options.readOptions),appendRefusal:error=>reader.isJournalAppendReadRefusal(error),output,operations,bytes,observe:()=>{
   assert.equal(output.length,1);const event=JSON.parse(output[0]);assert.deepEqual(Object.keys(event).sort(),keys)
   assert.equal(event.event,'genuine_writer_ci_file_change_observation');assert.equal(event.observed_data_only,true)
   assert(['controller_journal','other_private_file'].includes(event.file_class))
@@ -79,6 +80,14 @@ test('original private-file checks and size bound remain before open, without re
   {before:{size:4194305}},{symlink:true},{notFile:true},{alias:'/different'}]){
   const m=model(option);assert.throws(m.read,/fixture_refused:private_file/);assert.equal(m.operations.includes('open'),false);assert.deepEqual(m.output,[])
  }
+})
+const growth={descriptor:{size:14,mtimeMs:101,ctimeMs:101},last:{size:14,mtimeMs:101,ctimeMs:101}}
+function failedRead(m){let error;try{m.read()}catch(e){error=e}assert.equal(error?.message,'telemetry_control_ci_fixture_refused:file_changed');return error}
+test('exact unpinned same-inode monotonic journal append stays refused but binds only that actual read error',()=>{const m=model(growth),error=failedRead(m);assert.equal(m.appendRefusal(error),true);assert.equal(m.operations.filter(v=>v==='close').length,1);assert.equal(m.operations.filter(v=>v==='read').length,1);let trapped=0;for(const fake of [Error(error.message),{message:error.message},Object.create(error),new Proxy(error,{get(){trapped++;throw Error('private')}}),null,1])assert.equal(m.appendRefusal(fake),false);assert.equal(model().appendRefusal(error),false);assert.equal(trapped,0)})
+test('post-read append never returns prefix bytes as a snapshot',()=>{const m=model({...growth,bytes:'record\nnext\n',before:{size:7}}),error=failedRead(m);assert.equal(m.appendRefusal(error),true);assert.equal(m.operations.filter(v=>v==='read').length,1)})
+test('replacement identity permissions hardlink pin rewrite truncation and size cap never gain append retry status',()=>{
+ const cases=[{file:privateFile},{descriptor:{ino:99}},{last:{uid:99}},{last:{gid:99}},{last:{mode:0o100644}},{descriptor:{nlink:2}},{last:{nlink:2}},{readOptions:{pin:'f'.repeat(64)}},{descriptor:{size:7}},{descriptor:{size:2}},{last:{size:6}},{last:{size:4194305}},{descriptor:{mtimeMs:99}},{last:{ctimeMs:99}}]
+ for(const change of cases){const m=model({...growth,...change,descriptor:{...growth.descriptor,...change.descriptor},last:{...growth.last,...change.last}}),error=failedRead(m);assert.equal(m.appendRefusal(error),false,JSON.stringify(change))}
 })
 test('journal chain and original 5s exact-owned cleanup requirements remain unchanged',()=>{
  assert(source.includes("const text=read(paths.store+'/journal.jsonl').toString('utf8');if(!text.endsWith('\\n'))fail('writer_ci_journal_incomplete')"))
