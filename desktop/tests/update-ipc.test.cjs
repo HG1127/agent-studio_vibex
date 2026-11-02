@@ -1,5 +1,12 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events'),{installUpdates}=require('../update-controller.cjs')
+test('workbench preload exposes only a fixed action for opening updates',()=>{
+ let bridge;const calls=[]
+ require('node:vm').runInNewContext(require('node:fs').readFileSync(require('node:path').join(__dirname,'../ui/workbench-preload.cjs'),'utf8'),{require:name=>{assert.equal(name,'electron');return {contextBridge:{exposeInMainWorld:(name,value)=>{assert.equal(name,'studioDesktop');bridge=value}},ipcRenderer:{on(){},invoke:(...args)=>{calls.push(args);return Promise.resolve({ok:true})}}}}})
+ bridge.openUpdates({action:'install',url:'https://untrusted.test'})
+ bridge.openSettings({server:'https://untrusted.test'})
+ assert.deepEqual(calls,[['desktop:open-updates'],['desktop:open-settings']]);assert.ok(Object.isFrozen(bridge))
+})
 test('only the exact private update window main frame can invoke update actions',async()=>{
  let win;class Window extends EventEmitter{constructor(){super();win=this;this.webContents=new EventEmitter();this.webContents.mainFrame={url:''};this.webContents.setWindowOpenHandler=()=>{};this.webContents.send=()=>{}}async loadURL(url){this.webContents.mainFrame.url=url}isDestroyed(){return false}show(){}focus(){}}
  const handlers=new Map(),settings={server:'https://company.test',port:8123}

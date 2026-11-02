@@ -14,6 +14,16 @@ const hash=s=>createHash('sha256').update(s).digest('hex')
 const forbidden=/^(?:agent[ -]?studio|chatgpt|powershell|powershell_ise|pwsh|cmd|wt|windowsterminal|conhost|regedit|mmc|rundll32|mshta|wscript|cscript|taskmgr|control|credentialuibroker|logonui|lockapp|winlogon|lsass|securityhealth.*|msmpeng|keepass.*|1password|bitwarden|lastpass|dashlane|codex)\.exe$/i
 const keys=['Enter','Tab','Escape','Backspace','Delete','Up','Down','Left','Right','Home','End','PageUp','PageDown']
 export function applicationId(file){return hash(path.win32.normalize(file).toLowerCase()).slice(0,24)}
+// DisplayIcon is registry metadata, never a command line. Accept only a local
+// executable with an optional numeric icon index; inspection still pins the file.
+export function applicationIconPath(value){
+ if(typeof value!=='string'||value.length>2100||/[\x00-\x1f\x7f]/.test(value))return null
+ const match=value.trim().match(/^(?:"([a-z]:\\[^",;<>|?*]+\.exe)"|([a-z]:\\[^",;<>|?*]+\.exe))(?:\s*,\s*-?\d+)?$/i)
+ return match?(match[1]||match[2]):null
+}
+export function redactApplicationText(value){
+ return String(value??'').replace(/([?&](?:[\w.%+-]*(?:token|secret|password|credential|api[_-]?key|session|authorization)[\w.%+-]*|code|key)=)[^&#\s"'<>]*/gi,'$1[redacted]')
+}
 export function validateApplicationControl(value){
  if(value===undefined)return {format:'agent-studio-applications-v1',enabled:false,images:false,grants:[]}
  if(!value||value.format!=='agent-studio-applications-v1'||typeof value.enabled!=='boolean'||typeof value.images!=='boolean'||!Array.isArray(value.grants)||value.grants.length>30||Object.keys(value).some(k=>!['format','enabled','images','grants'].includes(k)))throw Error('invalid_application_grants')
@@ -40,9 +50,11 @@ export async function inspectApplication(file,{name,adapter='desktop',control=fa
 }
 export async function discoverApplications({native=applicationNative}={}){
  const rows=await native({action:'discover'}),result=[],seen=new Set()
- for(const r of Array.isArray(rows)?rows:[]){
-  if(result.length>=120)break
-  try{const id=applicationId(r.path);if(seen.has(id))continue;seen.add(id);result.push(await inspectApplication(r.path,{name:r.name,adapter:r.adapter==='codex'?'codex':'desktop'},{fingerprint:false}))}catch{/* Non-executables, removed links and protected tools are not grantable. */}
+ const candidates=(Array.isArray(rows)?rows:[]).slice(0,3000)
+ for(let offset=0;offset<candidates.length;offset+=8){
+  if(result.length>=700)break
+  const batch=await Promise.allSettled(candidates.slice(offset,offset+8).map(async r=>{const file=r.icon!==undefined?applicationIconPath(r.icon):r.path;if(!file||seen.has(applicationId(file)))return null;return inspectApplication(file,{name:r.name,adapter:r.adapter==='codex'?'codex':'desktop'},{fingerprint:false})}))
+  for(const row of batch){if(row.status!=='fulfilled'||!row.value||seen.has(row.value.id)||result.length>=700)continue;seen.add(row.value.id);result.push(row.value)}
  }
  return result.filter(app=>!result.some(parent=>parent.id!==app.id&&parent.windowPath?.toLowerCase()===app.path.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name,'zh-CN'))
 }
@@ -57,7 +69,7 @@ export function registerApplications({add,config,native=applicationNative,launch
  const appSchema=list=>({type:'string',enum:list.map(g=>g.id)})
  const addTool=(name,description,properties,fn,required)=>{const s=schema(properties,required);if(name===(desktop.length?'apps.windows':'apps.task_start'))s['x-studio-applications']=permission.grants.map(g=>({id:g.id,name:g.name,adapter:g.adapter,control:g.control,...(g.adapter==='codex'?{allowWrite:g.allowWrite}:{})}));if(name==='apps.observe')s['x-studio-application-images']=permission.images;if(name==='apps.task_start')s['x-studio-app-workspace-write']=(config.roots||[]).some(r=>!r.allowedFiles&&r.readOnly!==true);add(name,description,s,fn)}
  const checked=async(id)=>{const g=grants.get(id);if(!g)throw Error('application_denied');const current=await inspectApplication(g.path,g,{resolveTarget:false});if(current.sha256!==g.sha256)throw Error('application_binary_changed');if(g.windowPath){const target=await inspectApplication(g.windowPath,g,{resolveTarget:false});if(target.sha256!==g.windowSha256)throw Error('application_binary_changed')}else if(g.adapter==='desktop'&&await resolveWindowTarget(g.path))throw Error('application_launcher_needs_review');return g}
- const windows=async(g,signal)=>{const list=await native({action:'windows',path:g.windowPath||g.path},{signal});const result=(Array.isArray(list)?list:[]).filter(w=>w&&w.path?.toLowerCase()===(g.windowPath||g.path).toLowerCase()&&/^\d+$/.test(w.id)).map(w=>({...w,title:String(w.title).slice(0,300)}));windowCache.set(g.id,new Set(result.map(w=>w.id)));return result}
+ const windows=async(g,signal)=>{const list=await native({action:'windows',path:g.windowPath||g.path},{signal});const result=(Array.isArray(list)?list:[]).filter(w=>w&&w.path?.toLowerCase()===(g.windowPath||g.path).toLowerCase()&&/^\d+$/.test(w.id)).map(w=>({...w,title:redactApplicationText(w.title).slice(0,300)}));windowCache.set(g.id,new Set(result.map(w=>w.id)));return result}
 
  if(desktop.length){
   addTool('apps.launch','启动已授权应用并等待窗口就绪。ready 才能开始观察；waiting_window 只说明启动已受理，须继续刷新窗口，不能宣称任务完成。',{app:appSchema(desktop)},async(args,signal)=>{
@@ -77,7 +89,7 @@ export function registerApplications({add,config,native=applicationNative,launch
    // A known handle saves a redundant helper spawn, never an authorization check.
    observations.delete(g.id);const view=await native({action:'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})
    const token=randomBytes(16).toString('hex'),controls=(view.controls||[]).sort((a,b)=>Number(/Edit|Document/.test(b.type||''))-Number(/Edit|Document/.test(a.type||''))).slice(0,250)
-   const output={application:g.name,window:{id:view.window.id,title:view.window.title,width:view.window.width,height:view.window.height},observation:token,expiresInSeconds:30,truncated:false,diagnostic:g.accessibility==='electron'&&!(view.controls||[]).some(c=>/Edit|Document|Text|List|DataGrid/.test(c.type||''))?'应用窗口已找到，但正文控件尚不可访问。请先保存应用内工作并关闭应用，再从本软件启动以启用控件支持；不要把窗口就绪当作任务完成。':undefined,controls:controls.map(c=>({id:c.id,name:String(c.name).slice(0,200),type:c.type,password:c.password,enabled:c.enabled,rect:c.rect,actions:c.actions,value:c.password?undefined:c.value}))}
+   const output={application:g.name,window:{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height},observation:token,expiresInSeconds:30,truncated:false,diagnostic:g.accessibility==='electron'&&!(view.controls||[]).some(c=>/Edit|Document|Text|List|DataGrid/.test(c.type||''))?'应用窗口已找到，但正文控件尚不可访问。请先保存应用内工作并关闭应用，再从本软件启动以启用控件支持；不要把窗口就绪当作任务完成。':undefined,controls:controls.map(c=>({id:c.id,name:redactApplicationText(c.name).slice(0,200),type:c.type,password:c.password,enabled:c.enabled,rect:c.rect,actions:c.actions,value:c.password?undefined:c.value===undefined?undefined:redactApplicationText(c.value)}))}
    while(JSON.stringify(output).length>10500){output.controls.pop();output.truncated=true}
    observations.set(g.id,{token,created:clock(),window:args.window,view:{...view,controls:controls.filter(c=>output.controls.some(shown=>shown.id===c.id))}})
    const text=JSON.stringify(output)

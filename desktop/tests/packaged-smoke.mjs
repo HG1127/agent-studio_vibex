@@ -49,7 +49,7 @@ try {
   const env={...process.env,PATH:path.join(process.env.SystemRoot,'System32')}
   if(process.argv.includes('--system-temp')){const original=path.join(process.env.LOCALAPPDATA,'Temp');Object.assign(env,{TEMP:original,TMP:original,TMPDIR:original})}
   for(const name of Object.keys(env))if(/^(NODE_OPTIONS|NODE_PATH|ELECTRON_RUN_AS_NODE|AGENT_STUDIO_RUNTIME_ROOT)$/i.test(name))delete env[name]
-  client=spawn(executable,[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath,...(installOption?['/S','/D='+path.resolve(installOption)]:[])],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
+  client=spawn(executable,[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath,...(process.argv.includes('--desktop-entry-smoke')?['--desktop-entry-smoke']:[]),...(installOption?['/S','/D='+path.resolve(installOption)]:[])],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
   for(let i=0;i<(installOption?1200:360);i++){try{report=JSON.parse(await fs.readFile(reportPath,'utf8'));break}catch{}await sleep(500)}
   assert.equal(report?.started,true,'packaged app startup: '+JSON.stringify(report||{}))
   if(process.argv.includes('--system-temp')){
@@ -65,6 +65,7 @@ try {
   assert.equal(report.nativeConnected,true,'bundled runtime did not restore the verified employee connection')
   assert.equal(report.nativeStatusVisible,true,'connection status is missing from the main app')
   assert.equal(report.mainComputerSelector,true,'main computer selector did not select the restored connection')
+  if(process.argv.includes('--desktop-entry-smoke'))assert.deepEqual(report.nativeSettingsEntries,{updates:true,settings:true,updatePhase:'idle',singleMainWindow:true})
   assert.equal(report.managementInline,true,'computer management must be inline in the main app')
   assert.equal(report.sandbox,true);assert.equal(report.nodeIntegration,false);assert.equal(report.contextIsolation,true)
   const request=async(method,route,body,headers={})=>{

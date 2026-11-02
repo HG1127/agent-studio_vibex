@@ -1,7 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {spawnSync} from "node:child_process"
-import {readFileSync} from "node:fs"
+import {readFileSync,mkdirSync,mkdtempSync,rmSync} from "node:fs"
+import {cleanupTestSession} from '../ops/e2e-parallel.mjs'
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 
@@ -10,6 +11,15 @@ const runner=path.join(root,"ops/e2e-parallel.mjs")
 const packageData=JSON.parse(readFileSync(path.join(root,"package.json"),"utf8"))
 const run=(args)=>spawnSync(process.execPath,[runner,...args],{
  cwd:root,encoding:"utf8",timeout:15000,
+})
+test('busy Windows test artifacts are retained without hiding test outcomes or deleting another directory',async()=>{
+ const base=path.join(root,'.tmp','e2e-cleanup-unit');mkdirSync(base,{recursive:true});const owned=mkdtempSync(path.join(base,'agentstudio-ci-'))
+ try{
+  let attempts=0
+  assert.equal(await cleanupTestSession(owned,{parentDirectory:base,remove:()=>{attempts++;throw Object.assign(Error('locked'),{code:'EPERM'})},wait:async()=>{}}),'retained');assert.equal(attempts,6)
+  let removed=false;await assert.rejects(cleanupTestSession(base,{parentDirectory:base,remove:()=>{removed=true}}),/unsafe_e2e_cleanup_scope/);assert.equal(removed,false)
+  assert.equal(await cleanupTestSession(owned,{parentDirectory:base,remove:()=>{removed=true}}),'removed');assert.equal(removed,true)
+ }finally{rmSync(owned,{recursive:true,force:true})}
 })
 test("parallel E2E derives all cases from the canonical serial command",()=>{
  const raw=packageData.scripts["test:e2e"]

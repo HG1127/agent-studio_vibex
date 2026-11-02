@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import {EventEmitter} from 'node:events'
 import {PassThrough} from 'node:stream'
-import {inspectApplication,applicationId,validateApplicationControl,registerApplications,discoverApplications} from '../local-executor/applications.mjs'
+import {inspectApplication,applicationId,applicationIconPath,redactApplicationText,validateApplicationControl,registerApplications,discoverApplications} from '../local-executor/applications.mjs'
 import {applicationNative} from '../local-executor/application-native.mjs'
 import {applicationPermissionDraft,saveApplicationPermissions} from '../local-executor/application-permissions.mjs'
 import {readGuidedProfile} from '../local-executor/profiles.mjs'
@@ -32,6 +32,35 @@ test('app grants pin exact executable identities, reject shell/security apps and
 })
 test('discovery never executes candidates and defers binary hashing until explicit authorization',async t=>{
  const f=await fixture(t),rows=await discoverApplications({native:async()=>[{path:f.exe,name:'Fixture'},{path:f.exe,name:'Duplicate'},{path:'C:\\Windows\\System32\\cmd.exe',name:'Protected'}]});assert.equal(rows.length,1);assert.equal(rows[0].sha256,undefined)
+})
+
+test('installed application icons are paths, never commands or uninstall instructions',()=>{
+ for(const icon of ['D:\\Apps\\WorkBuddy\\WorkBuddy.exe,0','"D:\\Apps With Spaces\\WorkBuddy.exe",-12',' D:\\Apps\\WorkBuddy.exe '])assert.match(applicationIconPath(icon),/^D:\\.*\.exe$/)
+ for(const icon of ['D:\\Apps\\WorkBuddy.exe --run','"D:\\Apps\\WorkBuddy.exe" --run','\\\\server\\app.exe,0','%LOCALAPPDATA%\\app.exe,0','D:\\Apps\\app.dll,0','D:\\Apps\\app.exe,0; calc.exe','D:\\Apps\\app.exe\n','D:\\Apps\\app.exe | evil.exe',null])assert.equal(applicationIconPath(icon),null)
+})
+
+test('registry discovery reaches apps after the previous 120-row cutoff and ignores unsafe icon suffixes',async t=>{
+ const f=await fixture(t),rows=[]
+ for(let i=0;i<121;i++){const exe=path.join(f.home,`candidate-${i}.exe`);await fs.writeFile(exe,'MZ-inert');rows.push({path:exe,name:`Candidate ${i}`})}
+ rows.push({icon:f.exe+',0',name:'WorkBuddy registry fixture'},{icon:f.exe+' --run',name:'Unsafe icon'})
+ const apps=await discoverApplications({native:async()=>rows});assert.equal(apps.length,122);assert.ok(apps.some(a=>a.name==='WorkBuddy registry fixture'));assert.ok(apps.every(a=>a.sha256===undefined))
+})
+
+test('a rejected desktop duplicate cannot hide the separately authorized Codex CLI adapter',async t=>{
+ const f=await fixture(t,{codex:true}),apps=await discoverApplications({native:async()=>[{path:f.exe,name:'Protected desktop'},{path:f.exe,name:'Codex CLI',adapter:'codex'}]})
+ assert.equal(apps.length,1);assert.equal(apps[0].adapter,'codex')
+})
+
+test('model-visible observations mask URL credentials while action identity stays local and exact',async t=>{
+ const f=await fixture(t),url='file:///app/index.html?locale=zh-CN&wbSeedToken=internal-secret&session_id=private-session#home'
+ f.setView({window:{id:'123',title:'WorkBuddy?access_token=window-secret',width:800,height:600},controls:[{id:0,name:url,value:url,type:'ControlType.Document',runtime:'1.2',enabled:true,password:false,actions:['click']}]})
+ const windows=await f.call('windows');assert.ok(!JSON.stringify(windows).includes('window-secret'))
+ const view=await f.call('observe',{window:'123'}),text=JSON.stringify(view)
+ for(const secret of ['internal-secret','private-session','window-secret'])assert.ok(!text.includes(secret))
+ assert.match(text,/wbSeedToken=\[redacted\]/);assert.match(text,/locale=zh-CN/)
+ await f.call('act',{observation:view.observation,element:0,action:'click'})
+ const action=f.calls.find(c=>c.action==='act');assert.equal(action.name,url);assert.equal(action.title,'WorkBuddy?access_token=window-secret');assert.equal(action.runtime,'1.2')
+ assert.equal(redactApplicationText('Research AI workbench design'), 'Research AI workbench design')
 })
 test('launch never accepts renderer/model command-line arguments; window list excludes other executables',async t=>{
  const f=await fixture(t);await assert.rejects(f.call('launch',{args:['--eval','bad']}),/invalid_application_arguments/);assert.equal(f.children.length,0)

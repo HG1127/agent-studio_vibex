@@ -69,26 +69,29 @@ public static class StudioApplications {
 `
 const wrapper=String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 try{
- Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase,System.Drawing
- $code=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_CODE))
- Add-Type -TypeDefinition $code -ReferencedAssemblies @([Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location,[Drawing.Bitmap].Assembly.Location)
  $v=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_INPUT))|ConvertFrom-Json
  $result=$null
  if($v.action -eq 'discover'){
   $rows=New-Object Collections.Generic.List[object];$shell=New-Object -ComObject WScript.Shell
-  foreach($folder in @([Environment]::GetFolderPath('StartMenu'),[Environment]::GetFolderPath('CommonStartMenu'))){if($folder){foreach($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.lnk' -Recurse -File -ErrorAction SilentlyContinue|Select-Object -First 300)){try{$link=$shell.CreateShortcut($file.FullName);$p=[string]$link.TargetPath;if($p -match '^[a-z]:\\' -and $p.EndsWith('.exe',[StringComparison]::OrdinalIgnoreCase)){$rows.Add(@{name=$file.BaseName;path=$p})}}catch{}}}}
-  foreach($w in [StudioApplications]::Windows($null)){$rows.Add(@{name=[IO.Path]::GetFileNameWithoutExtension($w.path);path=$w.path})}
+  foreach($reg in @('HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')){foreach($entry in @(Get-ChildItem -LiteralPath $reg -ErrorAction SilentlyContinue|Select-Object -First 600)){try{$meta=Get-ItemProperty -LiteralPath $entry.PSPath -ErrorAction Stop;if($meta.DisplayName -and $meta.DisplayIcon -is [string]){$rows.Add(@{name=[string]$meta.DisplayName;icon=[Environment]::ExpandEnvironmentVariables($meta.DisplayIcon)})}}catch{}}}
+  foreach($folder in @([Environment]::GetFolderPath('StartMenu'),[Environment]::GetFolderPath('CommonStartMenu'),[Environment]::GetFolderPath('DesktopDirectory'),[Environment]::GetFolderPath('CommonDesktopDirectory'))){if($folder){foreach($file in @(Get-ChildItem -LiteralPath $folder -Filter '*.lnk' -Recurse -File -ErrorAction SilentlyContinue|Select-Object -First 300)){try{$link=$shell.CreateShortcut($file.FullName);$p=[string]$link.TargetPath;if($p -match '^[a-z]:\\' -and $p.EndsWith('.exe',[StringComparison]::OrdinalIgnoreCase)){$rows.Add(@{name=$file.BaseName;path=$p})}}catch{}}}}
+  foreach($p in @(Get-Process -ErrorAction SilentlyContinue|Where-Object {$_.MainWindowHandle -ne 0}|Select-Object -First 100)){try{if($p.Path){$rows.Add(@{name=$p.ProcessName;path=$p.Path})}}catch{}}
   foreach($reg in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths')){foreach($entry in @(Get-ChildItem -LiteralPath $reg -ErrorAction SilentlyContinue)){$p=(Get-ItemProperty -LiteralPath $entry.PSPath).'(default)';if($p -is [string]){$rows.Add(@{name=$entry.PSChildName;path=$p.Trim('"')})}}}
   $cli=Get-Command codex.exe -ErrorAction SilentlyContinue;if($cli){$rows.Add(@{name='Codex CLI';path=$cli.Source;adapter='codex'})}
   # The Codex desktop installer keeps its CLI below this per-user directory;
   # Explorer-launched apps do not inherit the coding session's augmented PATH.
   $codexBin=Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin'
   if(Test-Path -LiteralPath $codexBin -PathType Container){foreach($version in @(Get-ChildItem -LiteralPath $codexBin -Directory -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 3)){$candidate=Join-Path $version.FullName 'codex.exe';if(Test-Path -LiteralPath $candidate -PathType Leaf){$rows.Add(@{name='Codex CLI';path=$candidate;adapter='codex'})}}}
-  $result=@($rows|Select-Object -First 700)
- }elseif($v.action -eq 'windows'){$result=@([StudioApplications]::Windows([string]$v.path))}
+  $result=@($rows|Select-Object -First 3000)
+ }else{
+ Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase,System.Drawing
+ $code=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_CODE))
+ Add-Type -TypeDefinition $code -ReferencedAssemblies @([Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location,[Drawing.Bitmap].Assembly.Location)
+ if($v.action -eq 'windows'){$result=@([StudioApplications]::Windows([string]$v.path))}
  elseif($v.action -eq 'observe'){$result=[StudioApplications]::Observe([string]$v.window,[string]$v.path,[bool]$v.images)}
  elseif($v.action -eq 'act'){[StudioApplications]::Act([string]$v.window,[string]$v.path,[string]$v.title,[string]$v.kind,[int]$v.element,[string]$v.name,[string]$v.runtime,[string]$v.text,[string]$v.key);$result=@{accepted=$true}}
  else{throw 'application_action_denied'}
+ }
  [Console]::Write((@{ok=$true;value=$result}|ConvertTo-Json -Depth 8 -Compress))
 }catch{$errorCode=[string]$_.Exception.Message;$match=[regex]::Match($errorCode,'application_[a-z_]+');if($match.Success){$errorCode=$match.Value}else{$errorCode='application_native_unavailable'};[Console]::Write((@{ok=$false;error=$errorCode}|ConvertTo-Json -Compress));exit 1}`
 

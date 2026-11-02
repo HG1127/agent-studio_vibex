@@ -100,11 +100,7 @@ export function SiteSidebar() {
             <Search className="h-4 w-4 shrink-0"/>
             {!collapsed && <>搜索功能 <kbd className="ml-auto rounded border border-border px-1 text-[10px]">⌘ K</kbd></>}
           </button>
-          {collapsed ?
-            <button type="button" title="展开侧栏查看账号" aria-label="展开侧栏查看账号"
-              className="grid min-h-10 w-full place-items-center rounded-lg text-muted-foreground hover:bg-secondary"
-              onClick={()=>changeCollapse(false)}><Bot className="h-5 w-5"/></button>
-            : <StudioAccountMenu/>}
+          <StudioAccountMenu compact={collapsed}/>
           <button type="button" onClick={()=>changeCollapse(!collapsed)}
             aria-label={collapsed?"展开侧栏":"收起侧栏"}
             className="mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg text-xs text-muted-foreground hover:bg-secondary focus-visible:ring-2 focus-visible:ring-primary">

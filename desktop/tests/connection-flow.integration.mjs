@@ -24,7 +24,7 @@ await fs.mkdir(home);await fs.mkdir(folder);await fs.writeFile(path.join(folder,
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)),key=randomBytes(24).toString('hex')
 const wait=async(fn,label)=>{for(let i=0;i<160;i++){const r=await fn();if(r)return r;await sleep(250)}throw Error('timeout: '+label)}
 const probe=http.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const pbOrigin='http://127.0.0.1:'+probe.address().port;await new Promise(r=>probe.close(r))
-let pb,workbench,gateway,manager,computer,browser,page,login,browserChecks=0,pickerCalls=0,applicationFixture,modelFixture
+let pb,workbench,gateway,manager,computer,browser,page,login,browserChecks=0,pickerCalls=0,updateWindows=0,settingsWindows=0,applicationFixture,modelFixture
 const desktopVersion=JSON.parse(await fs.readFile(path.join(root,'desktop/package.json'),'utf8')).version
 const errors=[],sockets=new Set(),checks=[]
 const nativeFiles=process.argv.includes('--native-file-actions'),nativeFile='AgentStudio-UI-文件调度验收.md'
@@ -54,14 +54,26 @@ try{
  page.on('pageerror',e=>errors.push(e.message))
  page.on('response',async r=>{if(r.status()>=400&&/\/local-devices\//.test(r.url()))console.log('LOCAL_API_REJECTION '+r.status()+' '+(await r.text()).slice(0,400))})
  await page.exposeFunction('__nativeComputer',async(action,input)=>{try{return await computer.request(action,input)}catch(e){console.log('NATIVE_ACTION_ERROR '+action+' '+e.message);throw e}})
+  await page.exposeFunction('__nativeUpdates',()=>{updateWindows++;return {ok:true}})
+  await page.exposeFunction('__nativeSettings',()=>{settingsWindows++;return {ok:true}})
  await page.addInitScript(({login,server})=>{
   sessionStorage.setItem('agent_studio_employee_auth',JSON.stringify(login))
   Object.defineProperty(window,'__STUDIO_DESKTOP_SERVER_ORIGIN__',{value:server})
-  Object.defineProperty(window,'studioDesktop',{value:Object.freeze({version:2,computer:(action,input)=>window.__nativeComputer(action,input),prepareConnection:async ticket=>{await window.__nativeComputer('prepare',{ticket});return {ok:true}},openConnection:async()=>{window.dispatchEvent(new Event('native-test-attention'));return {ok:true}},onConnectionRequested:callback=>{const handler=()=>callback({});window.addEventListener('native-test-attention',handler);return()=>window.removeEventListener('native-test-attention',handler)}})})
+  Object.defineProperty(window,'studioDesktop',{value:Object.freeze({version:2,openUpdates:()=>window.__nativeUpdates(),openSettings:()=>window.__nativeSettings(),computer:(action,input)=>window.__nativeComputer(action,input),prepareConnection:async ticket=>{await window.__nativeComputer('prepare',{ticket});return {ok:true}},openConnection:async()=>{window.dispatchEvent(new Event('native-test-attention'));return {ok:true}},onConnectionRequested:callback=>{const handler=()=>callback({});window.addEventListener('native-test-attention',handler);return()=>window.removeEventListener('native-test-attention',handler)}})})
  },{login,server})
  await page.goto(gateway.origin+'/tool-hub?view=devices')
  const toolbar=page.locator('[data-desktop-computer-toolbar]'),selector=toolbar.getByLabel('选择电脑')
  await expect(toolbar).toBeVisible();await expect(toolbar).toContainText('桌面版 '+desktopVersion)
+ await expect(toolbar.getByRole('button',{name:'版本更新',exact:true})).toHaveCount(0)
+ const avatar=page.getByRole('button',{name:'账号菜单',exact:true}),accountMenu=page.getByRole('menu',{name:'账号菜单'})
+ await avatar.click();await expect(accountMenu).toBeVisible();await accountMenu.getByRole('menuitem',{name:'检查更新',exact:true}).click();assert.equal(updateWindows,1);await expect(accountMenu).toHaveCount(0)
+ await avatar.click();await accountMenu.getByRole('menuitem',{name:'设置',exact:true}).click()
+ const settingsDialog=page.getByRole('dialog',{name:'设置',exact:true});await expect(settingsDialog).toBeVisible();await expect(accountMenu).toHaveCount(0)
+ await settingsDialog.getByRole('button',{name:'检查更新',exact:true}).click();assert.equal(updateWindows,2)
+ await settingsDialog.getByRole('button',{name:'服务器设置',exact:true}).click();assert.equal(settingsWindows,1)
+ await page.screenshot({path:path.join(out,'account-settings.png'),fullPage:true});await page.keyboard.press('Escape');await expect(settingsDialog).toHaveCount(0)
+ await page.getByRole('button',{name:'收起侧栏',exact:true}).click();await avatar.click();await expect(accountMenu).toBeVisible();await page.keyboard.press('Escape');await page.getByRole('button',{name:'展开侧栏',exact:true}).click()
+ pass('avatar menu opens settings and update entries, including collapsed navigation; update entry never creates a task or installs automatically')
  const connect=async(name,first=false)=>{
   if(first)await toolbar.getByRole('button',{name:'连接本机',exact:true}).click()
   else{await toolbar.getByRole('button',{name:'管理连接',exact:true}).click();await toolbar.getByRole('button',{name:'连接其他电脑',exact:true}).click()}

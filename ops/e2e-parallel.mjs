@@ -64,6 +64,14 @@ function ensureDisk(){
  if(!Number.isFinite(free)||free<512*1024*1024)
   throw Error("isolated_test_volume_low_space")
 }
+export async function cleanupTestSession(session,{parentDirectory=parent,remove=fs.rmSync,wait=ms=>new Promise(r=>setTimeout(r,ms))}={}){
+ const resolved=fs.realpathSync(session),intended=fs.realpathSync(parentDirectory)
+ if(fs.lstatSync(session).isSymbolicLink()||path.dirname(resolved).toLowerCase()!==intended.toLowerCase()||!/^agentstudio-ci-[A-Za-z0-9_-]+$/.test(path.basename(resolved)))throw Error('unsafe_e2e_cleanup_scope')
+ for(let attempt=0;attempt<6;attempt++){
+  try{remove(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:200});return 'removed'}
+  catch(error){if(!['EPERM','EBUSY','ENOTEMPTY'].includes(error.code))throw error;if(attempt===5)return 'retained';await wait(300*(attempt+1))}
+ }
+}
 async function run(){
  const packageJson=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8"))
  const opts=options(process.argv.slice(2))
@@ -74,7 +82,7 @@ async function run(){
  ensureDisk()
  const session=fs.mkdtempSync(path.join(parent,"agentstudio-ci-"))
  const active=new Map(),finished=[]
- let next=0,aborted=false
+ let next=0,aborted=false,cleanup='pending'
  const start=performance.now()
  let stopping=false
  const stop=()=>{
@@ -128,10 +136,8 @@ async function run(){
  }finally{
   process.removeListener("SIGINT",stop);process.removeListener("SIGTERM",stop)
   // Never remove any path outside the uniquely created owned test session.
-  for(let k=0;k<6;k++){
-   try{fs.rmSync(session,{recursive:true,force:true,maxRetries:5,retryDelay:200});break}
-   catch(error){if(k===5)throw error;await new Promise(r=>setTimeout(r,300*(k+1)))}
-  }
+  cleanup=await cleanupTestSession(session)
+  if(cleanup==='retained')process.stderr.write('E2E_CLEANUP_RETAINED '+session+'\n')
  }
  const elapsed=(performance.now()-start)/1000
  const passed=finished.filter(x=>x.passed).length
@@ -139,11 +145,11 @@ async function run(){
   status:passed===cases.length&&!stopping?"PASS":"FAIL",
   completed:finished.length,total:cases.length,passed,
   failed:finished.length-passed,seconds:Math.round(elapsed*10)/10,
-  workers:opts.workers,
+  workers:opts.workers,cleanup,
  })+"\n")
  if(passed!==cases.length||stopping)process.exitCode=1
 }
-run().catch(error=>{
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))run().catch(error=>{
  const code=String(error?.message||"parallel_e2e_failed")
  process.stderr.write("E2E_RUNNER_ERROR "+code.slice(0,180)+"\n")
  process.exitCode=2

@@ -86,13 +86,13 @@ async function openExternal(url) {
   const answer=await dialog.showMessageBox({type:'question',title:'打开外部网站',message:'使用系统浏览器打开此网站？',detail:new URL(url).origin,buttons:['取消','打开'],defaultId:0,cancelId:0})
   if(answer.response===1)await shell.openExternal(url)
 }
-function showSettings() {
+async function showSettings() {
   if(settingsWindow&&!settingsWindow.isDestroyed()){reveal(settingsWindow);return}
   settingsWindow=new BrowserWindow({width:640,height:610,minWidth:560,minHeight:540,title:'Agent Studio · 连接设置',autoHideMenuBar:true,webPreferences:{...webPreferences,preload:path.join(__dirname,'ui','preload.cjs')}})
   guardWindow(settingsWindow,url=>url===settingsUrl)
   const window=settingsWindow
-  void window.loadURL(settingsUrl).then(()=>reveal(window))
   settingsWindow.on('closed',()=>{settingsWindow=null})
+  await window.loadURL(settingsUrl);reveal(window)
 }
 ipcMain.handle('desktop:settings',event=>{
   if(event.senderFrame?.url!==settingsUrl)throw Error('invalid_sender')
@@ -115,6 +115,8 @@ ipcMain.handle('desktop:connect',async(event,input)=>{
 })
 function trustedWorkbench(event){if(!services||!workbenchSender(event,main?.webContents,services.origin))throw Error('invalid_workbench_sender')}
 ipcMain.handle('desktop:open-connection',async event=>{trustedWorkbench(event);await showConnection();return {ok:true}})
+ipcMain.handle('desktop:open-updates',async event=>{trustedWorkbench(event);await updates.open();return {ok:true}})
+ipcMain.handle('desktop:open-settings',async event=>{trustedWorkbench(event);await showSettings();return {ok:true}})
 ipcMain.handle('desktop:prepare-pairing',async(event,ticket)=>{
   trustedWorkbench(event)
   if(Buffer.byteLength(JSON.stringify(ticket) || '')>20000)throw Error('配对凭证过大')
@@ -211,8 +213,24 @@ async function showStudio() {
       }
       const managementInline=await main.webContents.executeJavaScript("(()=>{const panel=document.querySelector('[data-desktop-connection-management]');return !!panel&&!panel.closest('[role=dialog]')})()")
       const mainComputerSelector=await main.webContents.executeJavaScript("(()=>{const select=document.querySelector('[data-desktop-computer-toolbar] select[aria-label=选择电脑]');return !!select&&!!select.value})()")
+      let nativeSettingsEntries
+      if(process.argv.includes('--desktop-entry-smoke')){
+        if(!fixture||!option('--desktop-test-server')||!/^http:\/\/127\.0\.0\.1:\d+$/.test(settings.server))throw Error('isolated_entry_fixture_required')
+        const entry=await main.webContents.executeJavaScript("window.studioDesktop.openUpdates()")
+        const updateWindow=BrowserWindow.getAllWindows().find(w=>w!==main&&w.webContents.getURL()===pathToFileURL(path.join(__dirname,'ui/updates.html')).href)
+        if(!entry.ok||!updateWindow)throw Error('native_update_entry_failed')
+        const updateState=await updateWindow.webContents.executeJavaScript("window.desktopUpdates.request('state')")
+        if(updateState.currentVersion!==info.version||updateState.phase!=='idle')throw Error('update_entry_unexpected_side_effect')
+        updateWindow.close()
+        await main.webContents.executeJavaScript("window.studioDesktop.openSettings()")
+        if(!settingsWindow||settingsWindow.webContents.getURL()!==settingsUrl)throw Error('native_settings_entry_failed')
+        const settingInfo=await settingsWindow.webContents.executeJavaScript("window.desktopSettings.read()")
+        if(settingInfo.version!==info.version)throw Error('native_settings_version_mismatch')
+        settingsWindow.close()
+        nativeSettingsEntries={updates:true,settings:true,updatePhase:updateState.phase,singleMainWindow:BrowserWindow.getAllWindows().length===1}
+      }
       const fixtureDiagnostic=fixture&&!mainComputerSelector?await main.webContents.executeJavaScript("Promise.all([Promise.resolve({url:location.pathname,text:document.body.innerText.slice(0,1800)}),window.studioDesktop.computer('state').then(s=>({ownerVerified:!!s.owner,profileCount:s.profiles.length,selectedId:s.selectedId}),e=>({error:String(e.message)}))])"):undefined
-      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,fixtureDiagnostic,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
+      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,nativeSettingsEntries,fixtureDiagnostic,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
   } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
 }
