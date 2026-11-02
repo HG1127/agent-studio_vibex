@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto')
-const {createUpdater,verifyManifest,compare,safeUrl}=require('../update-core.cjs')
+const {createUpdater,verifyManifest,compare,safeUrl,validateReleaseHistory,mergeReleaseHistory,fitReleaseHistory}=require('../update-core.cjs')
 const {performUpdate,managedPath}=require('../update-helper.cjs')
 test('completed update cleanup is confined to verified inactive successful transactions',async t=>{
  const {cleanupCompletedUpdates}=require('../update-helper.cjs'),root=await directory(t),base=path.join(root,'temp/desktop-updates'),cache=path.join(root,'temp/desktop-update-cache');await fs.mkdir(base,{recursive:true});await fs.mkdir(cache)
@@ -13,6 +13,32 @@ const hash=b=>crypto.createHash('sha256').update(b).digest('hex')
 function envelope(patch={}){const m={schema:1,channel:'stable',platform:'win32-x64',version:'0.1.0-preview.11',minimumVersion:'0.1.0-preview.10',size:bytes.length,sha256:hash(bytes),url:'http://127.0.0.1:12345/app.exe',notes:'更新说明',publishedAt:new Date().toISOString(),...patch},payload=Buffer.from(JSON.stringify(m));return {payload:payload.toString('base64'),signature:crypto.sign(null,payload,pair.privateKey).toString('base64')}}
 async function directory(t){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'desktop-update-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));return dir}
 function updater(dir,{manifest=envelope(),body=bytes,fetcher}={}){return createUpdater({directory:dir,publicKey:key,currentVersion:'0.1.0-preview.10',feed:()=> 'http://127.0.0.1:12345/latest.json',fetcher:fetcher||(async url=>new Response(url.endsWith('.json')?JSON.stringify(manifest):body))})}
+
+const release=(n,notes='[新增功能]\n- 真实版本说明')=>({version:'0.1.0-preview.'+n,publishedAt:'2026-11-02',title:'版本 '+n,notes})
+test('release history is bounded, validated, deduplicated and ordered numerically',()=>{
+ assert.deepEqual(mergeReleaseHistory([release(9),release(10)],[release(10,'new'),release(12)]).map(r=>r.version),['0.1.0-preview.12','0.1.0-preview.10','0.1.0-preview.9'])
+ assert.equal(mergeReleaseHistory([release(10)],[release(10,'new')])[0].notes,'new')
+ for(const value of [null,Array.from({length:13},(_,i)=>release(i)),[release(10),release(10)],[{...release(10),publishedAt:'invalid'}],[{...release(10),version:'bad'}],[{...release(10),notes:'a'.repeat(5001)}],[{...release(10),downloadUrl:'https://untrusted.test'}]])assert.throws(()=>validateReleaseHistory(value))
+})
+test('signed histories are checked before becoming UI data; legacy manifests remain compatible',()=>{
+ assert.equal(verifyManifest(envelope(),key).history,undefined)
+ assert.deepEqual(verifyManifest(envelope({history:[release(11),release(10)]}),key).history,[release(11),release(10)])
+ assert.throws(()=>verifyManifest(envelope({history:[{...release(11),notes:42}]}),key),/版本历史/)
+})
+test('already-current clients still receive notes, dates and verified version history',async t=>{
+ const dir=await directory(t),m=envelope({version:'0.1.0-preview.10',notes:'CURRENT_RELEASE_NOTES',history:[release(10),release(9)]}),u=updater(dir,{manifest:m})
+ const state=await u.check();assert.equal(state.phase,'current');assert.equal(state.notes,'CURRENT_RELEASE_NOTES');assert.equal(state.version,'0.1.0-preview.10');assert.ok(state.checkedAt);assert.ok(state.publishedAt);assert.equal(state.releases[0].notes,'CURRENT_RELEASE_NOTES')
+ await assert.rejects(u.download(),/请先检查/)
+})
+test('offline history survives a failed check without allowing a package to run',async t=>{
+ const dir=await directory(t),u=createUpdater({directory:dir,publicKey:key,currentVersion:'0.1.0-preview.10',history:[release(10),release(9)],feed:()=> 'http://127.0.0.1:12345/latest.json',fetcher:async()=>new Response('',{status:500})})
+ assert.equal(u.state().releases.length,2);await assert.rejects(u.check());assert.equal(u.state().phase,'error');assert.equal(u.state().releases.length,2);await assert.rejects(u.ready())
+})
+test('UTF-8 changelogs fit the old signed-manifest limit by trimming oldest history first',()=>{
+ const metadata={notes:'说明'.repeat(2500),history:Array.from({length:12},(_,i)=>release(20-i,'更新'.repeat(2500)))}
+ const history=fitReleaseHistory(metadata),json=JSON.stringify({...metadata,history});assert.ok(Buffer.byteLength(json)<=36000);assert.ok(Buffer.from(json).toString('base64').length<=50000);assert.equal(history[0].version,'0.1.0-preview.20');assert.ok(history.length<12);assert.equal(metadata.history.length,12)
+ assert.throws(()=>fitReleaseHistory({notes:'大'.repeat(15000),history:[release(20)]}),/过长/)
+})
 test('version ordering is numeric, prerelease before stable, and unsafe URLs are refused',()=>{
  assert.equal(compare('0.1.0-preview.11','0.1.0-preview.9'),1);assert.equal(compare('0.1.0','0.1.0-preview.99'),1)
  for(const url of ['http://company.test/latest.json','file:///C:/app.exe','https://u:p@company.test/a','https://company.test/a#secret'])assert.throws(()=>safeUrl(url))
@@ -27,6 +53,7 @@ test('only the pinned signing key and supported bounded release metadata are acc
 test('check, progress, download verification and tamper detection use real local files',async t=>{
  const dir=await directory(t),u=updater(dir);assert.equal((await u.check()).phase,'available');assert.equal((await u.download()).phase,'ready');const ready=await u.ready();assert.deepEqual(await fs.readFile(ready.installer),bytes)
  await fs.writeFile(ready.installer,'changed');await assert.rejects(u.ready(),/发生变化/)
+ assert.equal(u.state().phase,'error');await assert.rejects(u.ready(),/请先下载/)
 })
 test('downgrades, same versions, unsupported baseline, unsigned and failed transport never become ready',async t=>{
  const dir=await directory(t)

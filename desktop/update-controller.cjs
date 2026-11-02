@@ -4,11 +4,11 @@ const trust=require('./update-trust.json')
 function installUpdates({app,BrowserWindow,Menu,ipcMain,net,dialog,info,runtimeRoot,testHome,getSettings,saveSettings,stopServices,getComputerState,hasPendingCalls,onQuit}){
  let window,applying=false
  const ui=require('node:url').pathToFileURL(path.join(__dirname,'ui/updates.html')).href
- const core=createUpdater({currentVersion:info.version,publicKey:trust.publicKey,directory:path.join(runtimeRoot||app.getPath('temp'),'temp/desktop-update-cache'),feed:()=>getSettings().updateFeed||new URL('/desktop-updates/stable/latest.json',getSettings().server).href,fetcher:(url,options)=>net.fetch(url,options),onChange:state=>{if(window&&!window.isDestroyed())window.webContents.send('desktop:update-state',state)}})
+ const core=createUpdater({currentVersion:info.version,publicKey:trust.publicKey,history:require('./release-history.json'),directory:path.join(runtimeRoot||app.getPath('temp'),'temp/desktop-update-cache'),feed:()=>getSettings().updateFeed||new URL('/desktop-updates/stable/latest.json',getSettings().server).href,fetcher:(url,options)=>net.fetch(url,options),onChange:state=>{if(window&&!window.isDestroyed())window.webContents.send('desktop:update-state',state)}})
  function guard(event){if(!window||window.isDestroyed()||event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame||event.senderFrame?.url!==ui)throw Error('invalid_update_sender')}
  async function open(){
   if(window&&!window.isDestroyed()){window.show();window.focus();return}
-  window=new BrowserWindow({width:660,height:680,minWidth:560,minHeight:600,title:'Agent Studio · 版本更新',autoHideMenuBar:true,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,preload:path.join(__dirname,'ui/update-preload.cjs')}})
+  window=new BrowserWindow({width:1000,height:780,minWidth:780,minHeight:620,backgroundColor:'#ffffff',title:'Agent Studio · 版本更新',autoHideMenuBar:true,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,preload:path.join(__dirname,'ui/update-preload.cjs')}})
   window.webContents.setWindowOpenHandler(()=>({action:'deny'}));window.webContents.on('will-navigate',(event,url)=>{if(url!==ui)event.preventDefault()});window.on('closed',()=>{window=null});await window.loadURL(ui)
  }
  ipcMain.handle('desktop:update',async(event,action,input)=>{

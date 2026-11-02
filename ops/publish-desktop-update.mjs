@@ -3,7 +3,7 @@ import path from 'node:path'
 import {createHash,createPrivateKey,createPublicKey,sign,randomUUID} from 'node:crypto'
 import {createRequire} from 'node:module'
 import {fileURLToPath} from 'node:url'
-const require=createRequire(import.meta.url),{safeUrl,compare,verifyManifest}=require('../desktop/update-core.cjs')
+const require=createRequire(import.meta.url),{safeUrl,compare,verifyManifest,validateReleaseHistory,mergeReleaseHistory,fitReleaseHistory}=require('../desktop/update-core.cjs')
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 export async function publishDesktopUpdate({installer,baseUrl,output,key,notes='',releaseVersion}){
  const info=JSON.parse(await fs.readFile(path.join(root,'desktop/build-info.json'),'utf8'));releaseVersion||=info.version
@@ -12,9 +12,16 @@ export async function publishDesktopUpdate({installer,baseUrl,output,key,notes='
  if(!publicKey.export({type:'spki',format:'der'}).equals(createPublicKey(trust.publicKey).export({type:'spki',format:'der'})))throw Error('发布私钥与桌面版内置公钥不匹配')
  const bytes=await fs.readFile(installer),name='AgentStudio-Setup-'+releaseVersion+'-win-x64.exe'
  const base=new URL(safeUrl(baseUrl.endsWith('/')?baseUrl:baseUrl+'/'));if(base.search)throw Error('更新根地址不能包含查询参数')
- const metadata={schema:1,channel:'stable',platform:'win32-x64',version:releaseVersion,minimumVersion:'0.1.0-preview.10',url:new URL(releaseVersion+'/'+name,base).href,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),notes,publishedAt:new Date().toISOString()}
+ let previous
+ try{previous=verifyManifest(JSON.parse(await fs.readFile(path.resolve(output,'stable/latest.json'),'utf8')),trust.publicKey);if(compare(releaseVersion,previous.version)<0)throw Error('不能将更新频道回退到较旧版本')}catch(error){if(error.code!=='ENOENT')throw error}
+ const bundled=validateReleaseHistory(JSON.parse(await fs.readFile(path.join(root,'desktop/release-history.json'),'utf8'))).filter(r=>compare(r.version,releaseVersion)<=0),known=bundled.find(r=>r.version===releaseVersion)
+ notes=notes||known?.notes||''
+ const metadata={schema:1,channel:'stable',platform:'win32-x64',version:releaseVersion,minimumVersion:'0.1.0-preview.10',url:new URL(releaseVersion+'/'+name,base).href,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),notes,publishedAt:new Date().toISOString(),title:known?.title||'版本更新'}
+ const prior=previous?[{version:previous.version,publishedAt:previous.publishedAt,title:previous.title||'版本更新',notes:previous.notes}]:[]
+ metadata.history=mergeReleaseHistory(bundled,previous?.history||[],prior,[{version:metadata.version,publishedAt:metadata.publishedAt,title:metadata.title,notes}]).filter(r=>compare(r.version,releaseVersion)<=0)
+ // Keep the extended signed payload within the existing preview.10–13 limit.
+ metadata.history=fitReleaseHistory(metadata)
  const payload=Buffer.from(JSON.stringify(metadata)),envelope={payload:payload.toString('base64'),signature:sign(null,payload,privateKey).toString('base64')};verifyManifest(envelope,trust.publicKey)
- try{const latest=verifyManifest(JSON.parse(await fs.readFile(path.resolve(output,'stable/latest.json'),'utf8')),trust.publicKey);if(compare(releaseVersion,latest.version)<0)throw Error('不能将更新频道回退到较旧版本')}catch(error){if(error.code!=='ENOENT')throw error}
  const directory=path.resolve(output,releaseVersion);await fs.mkdir(directory,{recursive:true});const target=path.join(directory,name)
  try{const old=await fs.readFile(target);if(createHash('sha256').update(old).digest('hex')!==metadata.sha256)throw Error('同一版本已发布不同内容，请提升版本号')}catch(e){if(e.code!=='ENOENT')throw e}
  const temporary=target+'.'+randomUUID()+'.pending';await fs.writeFile(temporary,bytes,{flag:'wx'});await fs.rename(temporary,target)

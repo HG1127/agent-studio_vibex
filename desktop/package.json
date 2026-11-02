@@ -29,6 +29,7 @@
       "update-helper.cjs",
       "update-controller.cjs",
       "update-trust.json",
+      "release-history.json",
       "ui/**",
       "build-info.json",
       "!node_modules/**/*"

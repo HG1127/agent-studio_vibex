@@ -12,7 +12,7 @@ try{
  const main=await client.firstWindow();await expect.poll(()=>main.evaluate(()=>typeof window.studioDesktop?.openSettings).catch(()=>''),{timeout:30000}).toBe('function')
  await main.evaluate(()=>window.studioDesktop.openSettings())
  const settings=client.windows().find(p=>p!==main&&p.url().endsWith('/ui/settings.html'));assert.ok(settings)
- const version=await settings.evaluate(()=>window.desktopSettings.read().then(s=>s.version));assert.equal(version,'0.1.0-preview.13')
+ const version=await settings.evaluate(()=>window.desktopSettings.read().then(s=>s.version));assert.equal(version,JSON.parse(await fs.readFile('desktop/build-info.json','utf8')).version)
  await settings.close();await expect.poll(()=>client.windows().length).toBe(1)
  await main.evaluate(()=>window.studioDesktop.openUpdates())
  const update=client.windows().find(p=>p!==main&&p.url().endsWith('/ui/updates.html'));assert.ok(update)
