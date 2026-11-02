@@ -1,24 +1,30 @@
 {
-  "minimumDesktopVersion": "0.1.0-preview.13",
+  "minimumDesktopVersion": "0.1.0-preview.14",
   "branch": "codex/desktop-release",
   "requiredAncestors": [
     "8fcd466667b8a4c896835315a809b4d62b78ec21",
-    "df17d1c6654b9df4f2ba83e6aec43caa18121be9"
+    "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
+    "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
     "desktop/update-helper.cjs",
     "local-executor/application-target.mjs",
     "src/lib/localApplicationTask.ts",
-    "src/components/site/StudioSettingsDialog.tsx"
+    "src/components/site/StudioSettingsDialog.tsx",
+    "desktop/ui/updates.html",
+    "desktop/ui/updates.css",
+    "desktop/ui/updates.js",
+    "desktop/release-history.json"
   ],
   "integratedSources": [
     "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
     "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290",
-    "df17d1c6654b9df4f2ba83e6aec43caa18121be9"
+    "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
+    "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
-  "verifiedSourceCommit": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
-  "verifiedDesktopVersion": "0.1.0-preview.13",
-  "verifiedInstallerSha256": "7da02501b6f0226ad72a3159f1ccde12faae9cf7f834aba6e876f0305200f81d",
-  "verifiedInstallerBytes": 217423082
+  "verifiedSourceCommit": "36a005624b60a0b9de08c70638581f4de319bc02",
+  "verifiedDesktopVersion": "0.1.0-preview.14",
+  "verifiedInstallerSha256": "ffddc224f2fa73ac00e55bbf7b8dd98020c6216603b21c5fdb373b68715bfe0f",
+  "verifiedInstallerBytes": 217432946
 }

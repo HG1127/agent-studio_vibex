@@ -44,7 +44,7 @@ try{
  tampered.payload=Buffer.from('{"version":"999.0.0"}').toString('base64');await fs.writeFile(manifestFile,JSON.stringify(tampered))
  await page.locator('#check').click();await expect(page.locator('#status')).toContainText('签名验证失败',{timeout:30000});await expect(page.locator('#download')).toBeHidden();checks.push('packaged update UI refuses a tampered manifest without downloading')
  await fs.writeFile(manifestFile,original);await page.locator('#check').click();await expect(page.locator('#status')).toContainText('发现新版本 '+toVersion,{timeout:30000})
- await page.locator('#download').click();await expect(page.locator('#install')).toBeVisible({timeout:120000});await page.screenshot({path:path.join(base,'ready.png')})
+ await page.locator('#download').click();await expect(page.locator('#install')).toBeVisible({timeout:120000});await page.bringToFront();await page.screenshot({path:path.join(base,'ready.png'),timeout:60000})
  checks.push('signed manifest, real package download, UI progress and install readiness')
  if(process.argv.includes('--prepare-only')){console.log('PACKAGED_UPDATE_UI_PREPARATION_PASS '+base)}else{
  const priorJobs=await fs.readdir(path.join(installation,'temp/desktop-updates'))
