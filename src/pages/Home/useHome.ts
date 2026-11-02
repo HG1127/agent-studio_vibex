@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {confirmInStudio} from "@/lib/studioDialogs"
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
+import { llmErrorText } from "@/lib/llmErrorText"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
@@ -39,17 +40,6 @@ export type SavedSpecRow = {
   template_key: string
   created: string
   updated: string
-}
-
-const LLM_ERROR_TEXT: Record<string, string> = {
-  timeout: "AI 生成超时（可能服务器繁忙），请稍后重试",
-  not_found: "请求未能到达 AI，请检查网络后重试",
-  rh_login_required: "请先登录后再生成",
-  insufficient_balance: "账户余额不足，请充值后重试",
-  model_connection_required: "没有可用模型连接：请先在「模型连接」页添加并启用一个模型连接",
-  model_not_permitted: "所选模型已不在当前账号的授权列表中，请刷新并重新选择",
-  strict_model_route_unavailable: "当前服务端不支持模型的严格授权绑定，请升级后端或切换到兼容工作台；不会自动使用备用模型。",
-  custom_connection_missing: "模型连接已失效或当前账号无权访问，请刷新模型列表",
 }
 
 const SYSTEM_PROMPT = AGENT_DESIGN_SYSTEM_PROMPT
@@ -412,12 +402,12 @@ export function useHome() {
     }
     if (result.needsLogin) {
       setNeedsRhLogin(true)
-      setErrorMsg(LLM_ERROR_TEXT.rh_login_required)
+      setErrorMsg(llmErrorText("rh_login_required"))
       return
     }
     if (!result.ok || result.status !== "success") {
       const rawCode = result.error || ""
-      setErrorMsg(LLM_ERROR_TEXT[rawCode] || rawCode || "生成失败，请重试")
+      setErrorMsg(llmErrorText(rawCode))
       return
     }
     if (result.model && result.model!==selectedModel.modelId) {
@@ -498,12 +488,12 @@ export function useHome() {
     }
     if (result.needsLogin) {
       setNeedsRhLogin(true)
-      setRevisionError(LLM_ERROR_TEXT.rh_login_required)
+      setRevisionError(llmErrorText("rh_login_required"))
       return
     }
     if (!result.ok || result.status !== "success") {
       const rawCode = result.error || ""
-      setRevisionError(LLM_ERROR_TEXT[rawCode] || rawCode || "修改失败，请重试")
+      setRevisionError(llmErrorText(rawCode, "修改失败，请稍后重试"))
       return
     }
     if (result.model && result.model!==selectedModel.modelId) {

@@ -27,7 +27,7 @@
     "test:worker-crash": "node tests/worker-crash-recovery.integration.mjs",
     "test:worker-resilience": "node --test tests/worker-loop-resilience.test.mjs",
     "test:harness-v2": "node --test tests/harness-v2.test.mjs tests/harness-execution-guard.test.mjs tests/harness-worker-scheduler.test.mjs tests/harness-step-executor.test.mjs tests/harness-failure-triage.test.mjs",
-    "test:model-provider": "node tests/model-provider.integration.mjs",
+    "test:model-provider": "node tests/model-provider.integration.mjs && node tests/llm-transport.integration.mjs",
     "test:tool-executor": "node tests/tool-calculator.integration.mjs",
     "test:tool-debug": "node tests/tool-debug.integration.mjs",
     "test:internal-overview": "node tests/internal-overview.integration.mjs",

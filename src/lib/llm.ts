@@ -41,7 +41,11 @@ export interface LlmModelInfo {
   supports_temperature: boolean
 }
 
-const CHAT_ABORT_MS = 25000
+// The synchronous backend permits two 120s provider attempts. Keep the
+// renderer's deadline outside that budget; proxies can still disconnect early,
+// in which case we query the SAME job without resubmitting a paid request.
+const CHAT_ABORT_MS = 255000
+const POLL_ABORT_MS = 12000
 const POLL_INTERVAL_MS = 3000
 const POLL_ATTEMPTS = 200
 
@@ -77,7 +81,12 @@ function buildHeaders(): Record<string, string> {
   return headers
 }
 
-async function pollOnce(modelName: string, requestId: string, strict = false): Promise<LlmCallResult> {
+async function pollOnce(modelName: string, requestId: string, strict = false, signal?: AbortSignal): Promise<LlmCallResult> {
+  const ctrl = new AbortController()
+  const abort = () => ctrl.abort()
+  const timeoutId = window.setTimeout(abort, POLL_ABORT_MS)
+  signal?.addEventListener("abort", abort, { once: true })
+  if (signal?.aborted) ctrl.abort()
   let res: Response
   try {
     res = await fetch(llmUrl("poll", modelName, strict), {
@@ -85,28 +94,33 @@ async function pollOnce(modelName: string, requestId: string, strict = false): P
       credentials: "include",
       headers: buildHeaders(),
       body: JSON.stringify({ request_id: requestId }),
+      signal: ctrl.signal,
     })
+    if (res.status === 401 || res.status === 412) {
+      return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
+    }
+    // Missing routes/jobs fail quickly rather than polling for ten minutes.
+    if (res.status === 404) return { ok: false, status: "not_found", text: "", error: "" }
+    if (!res.ok) return { ok: false, status: "running", text: "", error: "" }
+    const data = await res.json()
+    return {
+      ok: !!data.ok,
+      status: data.status || "running",
+      text: data.text || "",
+      error: data.error || "",
+      model: data.model,
+    }
   } catch {
     return { ok: false, status: "running", text: "", error: "" }
-  }
-  if (res.status === 412) {
-    return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
-  }
-  // 路由不存在 (代际不匹配/后端没装 llm hook) 时立刻走 3 次 not_found 快速失败,
-  // 不要按瞬时故障无限轮询。
-  if (res.status === 404) return { ok: false, status: "not_found", text: "", error: "" }
-  if (!res.ok) return { ok: false, status: "running", text: "", error: "" }
-  const data = await res.json().catch(() => ({}))
-  return {
-    ok: !!data.ok,
-    status: data.status || "running",
-    text: data.text || "",
-    error: data.error || "",
-    model: data.model,
+  } finally {
+    window.clearTimeout(timeoutId)
+    signal?.removeEventListener("abort", abort)
   }
 }
 
 export async function callLlmWithFallback(modelName: string, opts: LlmCallOptions): Promise<LlmCallResult> {
+  const cancelled = (): LlmCallResult => ({ok:false,status:"failed",text:"",error:"cancelled"})
+  if (opts.signal?.aborted) return cancelled()
   const requestId = opts.request_id || uuid()
   const payload: Record<string, unknown> = {
     model: modelName,
@@ -122,8 +136,9 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
   }
 
   const ctrl = new AbortController()
-  const timeoutId = window.setTimeout(() => ctrl.abort(), CHAT_ABORT_MS)
-  if (opts.signal) opts.signal.addEventListener("abort", () => ctrl.abort())
+  const abort = () => ctrl.abort()
+  const timeoutId = window.setTimeout(abort, CHAT_ABORT_MS)
+  opts.signal?.addEventListener("abort", abort, { once: true })
 
   let initialFailed = false
   try {
@@ -153,7 +168,6 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
         return { ok: false, status: "failed", text: "", error: "not_found" }
       }
     }
-    window.clearTimeout(timeoutId)
     if (res.status === 401 || res.status === 412) {
       return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
     }
@@ -166,8 +180,8 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
       return {ok:false,status:"failed",text:"",error:code}
     }
     if (res.ok) {
-      const data = await res.json().catch(() => ({}))
-      return {
+      const data = await res.json()
+      const result: LlmCallResult = {
         ok: !!data.ok,
         status: data.status || "success",
         text: data.text || "",
@@ -175,20 +189,37 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
         model: data.model,
         usage: data.usage,
       }
+      // A duplicate submission may return a pending/running job. Resume
+      // polling it instead of treating acceptance as a generation failure.
+      if (result.status !== "running" && result.status !== "pending") return result
     }
     initialFailed = true
   } catch {
     initialFailed = true
   } finally {
     window.clearTimeout(timeoutId)
+    opts.signal?.removeEventListener("abort", abort)
   }
 
+  if (opts.signal?.aborted) return cancelled()
   if (!initialFailed) return { ok: false, status: "failed", text: "", error: "unknown" }
 
   let notFoundCount = 0
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-    const r = await pollOnce(modelName, requestId, opts.strict_model === true)
+  const pollDeadline = Date.now() + POLL_ATTEMPTS * POLL_INTERVAL_MS
+  for (let i = 0; i < POLL_ATTEMPTS && Date.now() < pollDeadline; i++) {
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        window.clearTimeout(timer)
+        opts.signal?.removeEventListener("abort", done)
+        resolve()
+      }
+      const timer = window.setTimeout(done, POLL_INTERVAL_MS)
+      opts.signal?.addEventListener("abort", done, { once: true })
+      if (opts.signal?.aborted) done()
+    })
+    if (opts.signal?.aborted) return cancelled()
+    const r = await pollOnce(modelName, requestId, opts.strict_model === true, opts.signal)
+    if (opts.signal?.aborted) return cancelled()
     if (r.needsLogin) return r
     if (r.status === "success") return r
     if (r.status === "failed") return r

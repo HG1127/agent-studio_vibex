@@ -13,7 +13,8 @@
 //   注意：Goja 每个 routerAdd 回调独立作用域，helper 一律定义在回调内部。
 //
 // 稳定性契约:
-//   /chat 同步 $http.send（≤120s），客户端会提前放弃等待并转 /poll；本 handler 必须继续跑完并写 llm_jobs。
+//   /chat 同步 $http.send（单次≤120s，推理预算重试最多两次）。
+//   断线后客户端通过 /poll 取回已保存的结果；响应发送失败不能改写终态。
 //   PB 不允许字段名叫 model → 表字段用 model_name。
 
 onBootstrap(function (e) {
@@ -259,6 +260,8 @@ routerAdd("POST", "/api/llm/chat", function (e) {
 
   var requestId = ""
   var jobRec = null
+  var jobFinalized = false
+  var responseOnly = false
 
   try {
     var hh = e.requestInfo().headers || {}
@@ -362,6 +365,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
 
     var existingStatus = jobRec.getString("status")
     if (existingStatus === "success" || existingStatus === "failed") {
+      jobFinalized = true
       return e.json(200, {
         ok: existingStatus === "success",
         cached: true, status: existingStatus,
@@ -371,10 +375,11 @@ routerAdd("POST", "/api/llm/chat", function (e) {
       })
     }
 
-    // Previously claimed debugs must not trigger duplicate provider charges.
+    // Previously claimed jobs must not trigger duplicate provider charges.
     // The client queries /api/llm/poll using the original request ID.
-    if ((isNodeDebug || isBlindBenchmark) && jobState.existing &&
+    if (jobState.existing &&
         (existingStatus === "running" || existingStatus === "pending")) {
+      responseOnly = true
       return e.json(200, { ok: false, status: existingStatus,
         text: "", error: "", model: jobRec.getString("model_name") })
     }
@@ -390,6 +395,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
       jobRec.set("status", "failed")
       jobRec.set("error_message", em.substring(0, 4000))
       $app.save(jobRec)
+      jobFinalized = true
       var code = String((ret && ret.error) || "llm_failed")
       if (code === "model_connection_required" || code === "custom_connection_invalid") {
         return e.json(400, { error: code, message: String((ret && ret.detail) || em), fingerprint: em.substring(0, 80) })
@@ -401,10 +407,18 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     jobRec.set("status", "success")
     jobRec.set("result_text", text.substring(0, 80000))
     $app.save(jobRec)
+    jobFinalized = true
 
     return e.json(200, { ok: true, status: "success", model: modelName, text: text,
       usage: isBlindBenchmark ? (ret.usage || null) : null })
   } catch (err) {
+    // e.json also throws when the client/proxy has closed its socket. The
+    // provider outcome is already committed: never replace it with a delivery
+    // error or attempt another write to that same disconnected response.
+    if (jobFinalized || responseOnly) {
+      try { $app.logger().warn("llm_response_delivery_failed: result retained for polling") } catch (_) {}
+      return
+    }
     var msg = String(err && err.message || err)
     if (jobRec) {
       try { jobRec.set("status", "failed"); jobRec.set("error_message", msg.substring(0, 4000)); $app.save(jobRec) } catch (_) {}
