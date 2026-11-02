@@ -6078,7 +6078,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1944,
+    "combined_pure_checks": 1985,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -7808,6 +7808,31 @@
       "API_TS5": true,
       "new_head_runtime_result_available": false,
       "underlying_failure_fixed_proven": false,
+      "production_GO": false
+    },
+    "current_cleanup_harness_repair_source": {
+      "base_head": "d681882c22937b8689dbb2ea8c9f2a3a78723277",
+      "actual_failed_run": 41387833226,
+      "actual_failed_job": 125092505550,
+      "attempt": 1,
+      "failure_was_in_pure_step": true,
+      "prior_293_total": 293,
+      "prior_293_passed": 284,
+      "prior_293_failed": 9,
+      "actual_runtime_not_reached_in_this_job": true,
+      "Root_source_reproduced_owned_and_reader": {
+        "tests": 16,
+        "before_pass": 3,
+        "before_fail": 13,
+        "after_pass": 16
+      },
+      "expanded_original_telemetry_pure": 359,
+      "expanded_passed": 359,
+      "combined_curated_pure": 1985,
+      "three_existing_VM_harnesses_use_actual_diagnostic_helpers": true,
+      "original_identity_absence_deadline_and_cleanup_assertions_retained": true,
+      "runtime_product_source_changed": false,
+      "fresh_hosted_runtime_still_required": true,
       "production_GO": false
     }
   },

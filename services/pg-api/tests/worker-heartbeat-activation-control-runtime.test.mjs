@@ -258,12 +258,13 @@ test('final read audit retains the private prior observation for Registry progre
   // doubles. No genuine lease, policy authority, controller or DB is minted.
   const source=readFileSync(new URL('../src/worker-heartbeat-activation-control.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('control.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
   const node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='finalizeWorkerHeartbeatControlRead');assert.ok(node)
-  const code=ts.transpileModule(node.getText(tree).replace(/^export /,'')+'\nglobalThis.subject=finalizeWorkerHeartbeatControlRead;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
+  const diagnosticNames=['emitRootCleanupReaderTiming','timingMs','markRootReaderTiming','observeRootReaderTiming'],diagnosticText=diagnosticNames.map(name=>{const n=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n,name);return n.getText(tree)}).join('\n')
+  const code=ts.transpileModule(diagnosticText+'\n'+node.getText(tree).replace(/^export /,'')+'\nglobalThis.subject=finalizeWorkerHeartbeatControlRead;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
   const control={},owner={},peerHandle={},leaseHandle={},begin=Object.freeze(Object.create(null)),end=Object.freeze(Object.create(null)),policy={PURE_MODEL_POLICY:true}
   const s={policy,registry:{describeWorkerHeartbeatRegistry:v=>{assert.ok(v===begin||v===end);return {checked_at_utc:v===begin?'2026-10-28T12:00:00.000Z':'2026-10-28T12:00:00.002Z'}}}}
   const l={s,peer:owner,begin,snapshot:{as_of:'2026-10-28T12:00:00.001Z'},phase:'pending',queryPending:false,transaction:false},leaseStates=new WeakMap([[leaseHandle,l]]),finishedStates=new WeakMap()
   let audits=0
-  const context={Date,state:v=>{assert.equal(v,control);return s},peer:(v,p,kind)=>{assert.equal(v,s);assert.equal(p,peerHandle);assert.equal(kind,'reader');return owner},leaseStates,finishedStates,
+  const context={Buffer,performance,rootReaderTimings:new WeakMap(),rootCleanupReaderTimingBytes:0,rootCleanupReaderNormalBytes:0,rootCleanupReaderFailureBytes:0,process:{stderr:{write(){}}},Date,state:v=>{assert.equal(v,control);return s},peer:(v,p,kind)=>{assert.equal(v,s);assert.equal(p,peerHandle);assert.equal(kind,'reader');return owner},leaseStates,finishedStates,
     leaseCheck:(value,phase)=>{assert.equal(value,l);assert.equal(value.phase,phase)},serial:async(v,job)=>{assert.equal(v,s);return job()},
     inspectRegistry:async(v,p,read)=>{audits++;assert.equal(v,s);assert.equal(p,begin);assert.notEqual(p,policy);assert.equal(read,l);return end},observedSha:()=>digest,
     empty:()=>Object.freeze(Object.create(null)),controlFail,WorkerHeartbeatControlError:Error,revoke:()=>assert.fail('valid final audit revoked'),cleanupLease:()=>assert.fail('valid final audit cleaned as failure')}
@@ -274,11 +275,11 @@ test('each synchronous access guard runs full verification once and preserves le
   // Actual source bodies, with explicit pure-model state and runtime counters.
   // No real private capability, SQL query, filesystem or loader is admitted.
   const source=readFileSync(new URL('../src/worker-heartbeat-activation-control.ts',import.meta.url),'utf8'),tree=ts.createSourceFile('control.ts',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS)
-  const names=['assertWorkerHeartbeatControlDbAccess','leaseCheck','runtimeCheck'],text=names.map(name=>{const n=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n);return n.getText(tree).replace(/^export /,'')}).join('\n')
+  const names=['beginRootReaderGuard','endRootReaderGuard','assertWorkerHeartbeatControlDbAccess','leaseCheck','runtimeCheck'],text=names.map(name=>{const n=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n);return n.getText(tree).replace(/^export /,'')}).join('\n')
   const code=ts.transpileModule(text+'\nglobalThis.subject=assertWorkerHeartbeatControlDbAccess;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText
   let scans=0;const cap={},db={},permit={},dbAccesses=new WeakMap(),s={healthy:true,phase:'serving',epoch:7n,runtimeCap:cap,runtime:{assertWorkerHeartbeatActivationControlRuntime:v=>{assert.equal(v,cap);scans++}}}
   const lease={s,peer:{open:true},phase:'preparing',epoch:7n,deadline:performance.now()+60000},a={active:true,db,s,mode:'read',lease,leasePhase:'preparing'};dbAccesses.set(permit,a)
-  const context={performance,dbAccesses,controlFail,host:()=>{},revoke:v=>{assert.equal(v,lease);v.phase='revoked'}}
+  const context={rootReaderTimings:new WeakMap(),performance,dbAccesses,controlFail,host:()=>{},revoke:v=>{assert.equal(v,lease);v.phase='revoked'}}
   vm.runInNewContext(code,context,{timeout:1000})
   const accepted=mode=>{const before=scans;context.subject(db,permit,mode);assert.equal(scans-before,1)}
   const refused=(job,pattern)=>assert.throws(job,pattern)
