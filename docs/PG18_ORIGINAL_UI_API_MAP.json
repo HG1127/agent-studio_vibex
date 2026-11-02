@@ -6051,7 +6051,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1479,
+    "combined_pure_checks": 1681,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -7401,6 +7401,162 @@
       "original_full20_pages_accepted": 0,
       "employee_UAT": 0,
       "qualifying24h_hours": 0,
+      "production_GO": false
+    },
+    "current_20261102_tools_paging_reader_repair": {
+      "base_head": "03b716c1308ec4d607fbce9e92df108179cb0369",
+      "scope": "original employee UI, underlying PG contracts only",
+      "source_only_until_new_head_hosted_verification": true,
+      "original_tool_owner_cursor_paging": {
+        "source_merged": true,
+        "251_synthetic_repository_browser_story_prepared": true,
+        "genuine_251_accepted": false,
+        "old_backend_explicit_partial": true,
+        "direct_tool_test_complete": false,
+        "tool_exact_receipts_complete": false,
+        "MCP_Smithery_original_pages_complete": false
+      },
+      "reader_original_frame_and_wait_total_ms": 5000,
+      "Native_original_budget_ms": 8000,
+      "original_reader_functions_preserved_byte_exact": 89,
+      "original_reader_identity_RR_catalog_snapshot_rollback_cleanup_body_preserved": true,
+      "all_eight_Writers_success_still_required": true,
+      "queued_actual_missing_helper_imports_repaired": true,
+      "pure_host_uses_actual_import_linkage_and_missing_import_negative_controls": true,
+      "F08_real_focus_waits_actual_Cookie_employee_response": true,
+      "business_response_JSON_captured_on_arrival": true,
+      "original_defaults_routes_layout_preserved": true,
+      "full069_original_SQL_unchanged": 53,
+      "optional075_newly_executed_locally": false,
+      "normal_build": {
+        "assets": 102,
+        "PG_matches": 0
+      },
+      "original_PG_build": {
+        "assets": 104,
+        "PG_matches": 15
+      },
+      "local_SQL_Worker_browser_execution": false,
+      "employee_UAT": 0,
+      "qualifying24h_hours": 0,
+      "production_GO": false
+    },
+    "current_verified_03b716c": {
+      "head": "03b716c1308ec4d607fbce9e92df108179cb0369",
+      "quality": {
+        "run": 41122512040,
+        "job": 124292139822,
+        "jobs_passed": 49,
+        "jobs_total": 50,
+        "root_passed": 4489,
+        "root_total": 4491,
+        "complete_check_passed": false,
+        "failures": [
+          "old config test incorrectly denied exact Tool item DELETE under config scope",
+          "old autonomous session notice expected obsolete cancellation wording"
+        ],
+        "source_repairs_added_and_curated": true
+      },
+      "PB19": {
+        "run": 41122980899,
+        "job": 124294029148,
+        "passed": 19,
+        "workers": 2,
+        "seconds": 73.4
+      },
+      "F01": {
+        "run": 41122512217,
+        "passed": 12,
+        "total": 16,
+        "remaining_failed_stories": [
+          "original-home-design",
+          "original-model-connections",
+          "original-agent-run-queued",
+          "original-run-detail-queued"
+        ],
+        "original_model_draft_discovery_passed": true
+      },
+      "original_model_receipts075": {
+        "job": 124292140761,
+        "story_completed": true,
+        "actual_owner_CAS_and_expected_employee_refusals": true,
+        "actual_commit_audit_MAC_and_GET_only_recovery_outcomes": [
+          "created",
+          "updated",
+          "disabled",
+          "enabled",
+          "deleted"
+        ],
+        "actual_late_Cookie_account_fence": true,
+        "cleanup_failures": 0,
+        "two_safe_original_page_images_visually_reviewed": true,
+        "observation_sha256": "97eb5729644b0cb22641994693044c62ae7d1763fcbd4e62e534b226355cedc7",
+        "complete069_identifier_accepts075": false,
+        "Native_server_process_entry_verified": false,
+        "employee_UAT": 0
+      },
+      "F08": {
+        "run": 41122512060,
+        "story_completed": false,
+        "actual_complete_prefix_and_five_receipts_before_account_focus_failure": true,
+        "source_focus_repair_pending_new_head_genuine": true
+      },
+      "Worker": {
+        "complete069_both_jobs_failed": true,
+        "telemetry_failed": true,
+        "pure_only": {
+          "complete069_each_509_pass": true,
+          "telemetry_9_and_139_pass": true
+        },
+        "telemetry": {
+          "genuine_control_passed": 28,
+          "genuine_control_cleanup_pass": true,
+          "genuine_writer_passed": 21,
+          "genuine_writer_failed": true,
+          "owned_cleanup_pass_events": 4,
+          "blocked_actual_attempts": 8,
+          "blocked_accepted": 0,
+          "blocked_refused": 8,
+          "blocked_elapsed_ms": 6877,
+          "original_budget_ms": 5000,
+          "automatic_reconnect": false,
+          "blocked_original_boot_claim_deadline_cleanup_invariants_pass": true,
+          "short_wait_seen_claim_once_release_within_original_budget_first_success": true,
+          "short_all_eight_success": false,
+          "actual_eight_kind_ok_code_results_available": false,
+          "guard_open_remaining_elapsed_metrics_available": false,
+          "do_not_infer_failed_kind_or_guard_cost": true
+        },
+        "legacy": {
+          "actual_native_failure": "full069_worker_live_native_heartbeat_unavailable",
+          "actual_reader_phase": "prepare",
+          "actual_reader_code": "control_busy",
+          "native_phase": "controller_reader_audit",
+          "assessment_before_cleanup_alive_and_all_kernel_predicates_true": true,
+          "assessment_application_exit": null,
+          "assessment_stop_graceful": false,
+          "assessment_stop_forced": false,
+          "assessment_stop_verified_absent": true,
+          "telemetry_backends_zero": true,
+          "readers_in_flight_zero": true,
+          "business_queues_empty": true
+        },
+        "final14": {
+          "actual_actor_phase": "warm_sample",
+          "error_class": "Error",
+          "error_code": null,
+          "primary_code": "full069_final_run_observation_gap",
+          "warm_reader_audit_token_present": false,
+          "correlated_native_reader_failure_event_present": false,
+          "owned_cleanup_failure_event_present": false,
+          "fixture_group_absent": true,
+          "actor_group_absent": true,
+          "forced_cleanup": false,
+          "clusters_closed_event_present": true,
+          "three_cleanup_zero_values_available": false,
+          "no_success_or_actual_cleanup_zero_claim": true
+        }
+      },
       "production_GO": false
     }
   },

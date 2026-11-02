@@ -1,0 +1,31 @@
+{
+  "format": "agentstudio.original-tool-connections.hosted-source.v1",
+  "status": "source-only; Root must integrate exact hunks, reseal current LF source DAG, and create an independent fresh disposable service",
+  "job": "pg18-agent-design-browser",
+  "story": "original-tool-connections",
+  "purpose": "YES_DISPOSABLE_ORIGINAL_TOOL_CONNECTIONS_METADATA_ONLY",
+  "configuration_approval": {
+    "AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED": "true",
+    "AGENT_STUDIO_PG18_UAT_APPROVAL": "APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY"
+  },
+  "head_binding": "AGENT_STUDIO_ORIGINAL_TOOL_CONNECTIONS_EXPECTED_HEAD must exactly equal GITHUB_SHA",
+  "purpose_environment": {
+    "AGENT_STUDIO_ORIGINAL_TOOL_CONNECTIONS_CI": "YES_DISPOSABLE_ORIGINAL_TOOL_CONNECTIONS_METADATA_ONLY",
+    "AGENT_STUDIO_ORIGINAL_TOOL_CONNECTIONS_STORY": "original-tool-connections"
+  },
+  "run": "node node_modules/@playwright/test/cli.js test --config=tests/pg-original-tool-connections-genuine.config.mjs",
+  "build": "existing dist-original-pg from original index.html, src/main.tsx -> src/App.tsx; direct static PG UI flag; no generated UI",
+  "admission": "actual requireAgentDesignGenuineCi + actual original selectNativePg18UatCapabilities; all capabilities except configurationWrites false; exact reviewed clean committed source before DB/listener/browser",
+  "fixture": "original F01 plus inherited two synthetic model-readiness callbacks/credential reads, captured063-069 and all four original066-069 auditors on actual API LOGIN/role; independent exact Tool metadata proxy",
+  "no_mixed_story": true,
+  "no_probe_or_execution_grants": true,
+  "Root_global_pin_or_workflow_modified_by_candidate": false,
+  "actual_hosted_acceptance": 0,
+  "actual_direct_tool_probe": 0,
+  "all_original_pages_complete": false,
+  "production_GO": false,
+  "main_workflow": "source candidate exact hunks only: one independent include row and three own steps, all old purposes/approvals preserved; Root must rebase current LF",
+  "inherited_F01_synthetic_readiness_probes": 2,
+  "inherited_F01_model_credential_reads": 2,
+  "no_GITHUB_JOB_override": true
+}

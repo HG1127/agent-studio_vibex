@@ -2,6 +2,7 @@ import {test,expect,chromium} from '@playwright/test'
 import {requireOriginalInternalShareBrowserCi} from './helpers/pg-original-internal-share-browser-guard.mjs'
 import {startOriginalInternalShareBrowserFixture} from './helpers/pg-original-internal-share-browser-fixture.mjs'
 import {installOriginalLegacyBlockObserver} from './helpers/pg-original-login-legacy-observer.mjs'
+import {focusOriginalInternalShareEmployee} from './helpers/pg-original-internal-share-focus.mjs'
 
 test('original internal-templates: real reviewed sharing, redemption, revoke, unknown ACK and account fences',async({},testInfo)=>{
  const permit=requireOriginalInternalShareBrowserCi() // Before fixture/files/PG/TLS/browser.
@@ -105,7 +106,7 @@ test('original internal-templates: real reviewed sharing, redemption, revoke, un
     else await page.getByRole('button',{name:'确认并生成分享码',exact:true}).click()
     await gate.entered()
     const switcher=await context.newPage();pages.push(switcher);await switcher.goto(f.origin+'/internal-templates');await settled(switcher)
-    await logout(switcher,'alice');await login(switcher,'bob');await page.bringToFront()
+    await logout(switcher,'alice');await login(switcher,'bob');await focusOriginalInternalShareEmployee(page,{origin:f.origin,employee:f.users.bob})
     // Focus must revalidate real Cookie even while the old read/write is held.
     await expect.poll(()=>page.locator('p.font-mono').count(),{message:'once-visible code element must be absent'}).toBe(0)
     await expect(page.getByLabel('选择需要分享的 Agent').locator('option[value="'+f.sourceSpecId('alice')+'"]')).toHaveCount(0)

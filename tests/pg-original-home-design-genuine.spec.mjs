@@ -30,20 +30,23 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
    });return p
   }
   page=await preparePage()
-  const wire=(p,path,method)=>p.waitForResponse(response=>new URL(response.url()).pathname==='/__pg_native'+path&&response.request().method()===method)
+  const wire=(p,path,method,readJSON=false)=>{
+   const captured=p.waitForResponse(response=>{const url=new URL(response.url());return url.origin===f.origin&&url.pathname==='/__pg_native'+path&&response.request().method()===method}).then(async response=>({status:response.status(),body:readJSON?await response.json():null}))
+   void captured.catch(()=>{});return captured
+  }
   const settled=async p=>{await expect(p.getByRole('button',{name:'刷新 Agent 列表',exact:true})).toBeEnabled()}
   const login=async(p,who)=>{
    await p.goto(f.url,{waitUntil:'domcontentloaded'})
    await p.getByRole('textbox',{name:'工作邮箱',exact:true}).fill(f.credentials[who].email)
    await p.getByLabel('密码',{exact:true}).fill(f.credentials[who].password)
-   const response=wire(p,'/api/native-auth/login','POST');await p.getByRole('button',{name:'登录',exact:true}).click();expect((await response).status()).toBe(200)
+   const response=wire(p,'/api/native-auth/login','POST');await p.getByRole('button',{name:'登录',exact:true}).click();expect((await response).status).toBe(200)
    await expect(p).toHaveURL(f.origin+'/');await settled(p)
    const cookies=(await context.cookies(f.origin)).filter(value=>value.name==='__Host-agentstudio_session')
    expect(cookies.length).toBe(1);expect(cookies[0].secure&&cookies[0].httpOnly&&cookies[0].sameSite==='Strict'&&cookies[0].path==='/'&&cookies[0].domain==='localhost','actual Secure HttpOnly Strict host-only Cookie').toBe(true)
   }
   const logout=async(p,who)=>{
    const menu=p.getByRole('menu');if(!await menu.isVisible())await p.getByRole('button',{name:new RegExp(f.profiles[who].display_name)}).click()
-   const response=wire(p,'/api/native-auth/logout','POST');await menu.getByRole('menuitem',{name:'退出登录',exact:true}).click();expect((await response).status()).toBe(200)
+   const response=wire(p,'/api/native-auth/logout','POST');await menu.getByRole('menuitem',{name:'退出登录',exact:true}).click();expect((await response).status).toBe(200)
    await expect(p).toHaveURL(f.origin+'/login')
   }
   const quick=async p=>{const section=p.locator('#hero');if(!await section.evaluate(e=>e.open))await section.locator('summary').click();return section}
@@ -67,8 +70,8 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
   await test.step('original quick controls preview real fields; explicit submission loses only the committed reply and reload queries the same intent',async()=>{
    await login(page,'alice');const section=await quick(page)
    await section.getByRole('textbox',{name:'说说你想要一个什么样的助手',exact:true}).fill('Synthetic original Home generation: complete descriptions, advisory tools, and manual save only.')
-   const previewWire=wire(page,'/api/v2/agent-design/preview','POST');await section.getByRole('button',{name:'预览模型请求',exact:true}).click()
-   const previewResponse=await previewWire;expect(previewResponse.status()).toBe(200);const preview=await previewResponse.json()
+   const previewWire=wire(page,'/api/v2/agent-design/preview','POST',true);await section.getByRole('button',{name:'预览模型请求',exact:true}).click()
+   const previewResponse=await previewWire;expect(previewResponse.status).toBe(200);const preview=previewResponse.body
    expect(preview.recorded).toBe(false);expect(preview.choice.purpose).toBe('generate');expect(preview.choice.source).toBeNull()
    expect(preview.choice.model_binding).toEqual(f.resources.alice.binding);expect(preview.choice.output_token_limit).toBe(4096)
    await expect(section.getByRole('region',{name:'生成前需求预览',exact:true})).toBeVisible()
@@ -98,8 +101,8 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
    await e.locator('label').filter({hasText:f.homeKnowledge.alice.name}).getByRole('checkbox').check()
    await expect(e.locator('label').filter({hasText:f.homeKnowledge.bob.name})).toHaveCount(0)
    await expect(e.getByRole('checkbox',{name:/阶段方案需我确认后才继续/})).toBeChecked()
-   const response=wire(page,'/api/v2/original-ui/agent-specs','POST');await e.getByRole('button',{name:'保存到我的助手',exact:true}).click()
-   const saved=await response;expect(saved.status()).toBe(201);generatedId=(await saved.json()).item.id
+   const response=wire(page,'/api/v2/original-ui/agent-specs','POST',true);await e.getByRole('button',{name:'保存到我的助手',exact:true}).click()
+   const saved=await response;expect(saved.status).toBe(201);generatedId=saved.body.item.id
    await expect(e.getByRole('button',{name:'已保存',exact:true})).toBeDisabled();await settled(page)
    const audit=await f.manualSaveAudit('alice',generatedId)
    expect(audit.actual.name).toBe('Original Home synthetic generated manual save');expect(audit.actual.spec.goal).toBe('Original Home employee edited generated goal')
@@ -121,8 +124,8 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
    const e=editor(page);await expect(e.getByRole('textbox',{name:'助手名称',exact:true})).toHaveValue(prior.name)
    await e.locator('details').filter({hasText:'可选 · 让 AI 帮我调整方案'}).locator('summary').click()
    await e.getByPlaceholder('例如：增加一步来源核验，将交付物改为报告大纲',{exact:true}).fill('Synthetic original Home revision: preserve this actual owner source and every approved resource binding.')
-   const previewWire=wire(page,'/api/v2/agent-design/preview','POST');await e.getByRole('button',{name:'预览修改请求',exact:true}).click()
-   const previewResponse=await previewWire;expect(previewResponse.status()).toBe(200);const preview=await previewResponse.json()
+   const previewWire=wire(page,'/api/v2/agent-design/preview','POST',true);await e.getByRole('button',{name:'预览修改请求',exact:true}).click()
+   const previewResponse=await previewWire;expect(previewResponse.status).toBe(200);const preview=previewResponse.body
    expect(preview.recorded).toBe(false);expect(preview.choice.purpose).toBe('revise');expect(preview.choice.source.spec_id).toBe(prior.id);expect(preview.choice.source.revision).toBe(prior.revision)
    expect(f.providerRequests).toHaveLength(1)
    await e.getByRole('button',{name:'按已核对要求修改',exact:true}).click();await expect(e.getByRole('button',{name:'查询原模型请求',exact:true})).toBeEnabled()
@@ -132,7 +135,7 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
    expect((await f.agent('alice',prior.id)).revision).toBe(prior.revision)
    await e.getByRole('textbox',{name:'助手名称',exact:true}).fill('Original Home synthetic revised manual save')
    await e.locator('textarea').nth(0).fill('Original Home employee edited revised goal')
-   const response=wire(page,'/api/v2/original-ui/agent-specs/'+prior.id,'PATCH');await e.getByRole('button',{name:'保存到我的助手',exact:true}).click();expect((await response).status()).toBe(200)
+   const response=wire(page,'/api/v2/original-ui/agent-specs/'+prior.id,'PATCH');await e.getByRole('button',{name:'保存到我的助手',exact:true}).click();expect((await response).status).toBe(200)
    await expect(e.getByRole('button',{name:'已保存',exact:true})).toBeDisabled();await settled(page)
    revisionPatch=JSON.parse(httpBodies.findLast(row=>row.method==='PATCH').body);expect(revisionPatch.expected_revision).toBe(prior.revision)
    const audit=await f.manualSaveAudit('alice',prior.id)
@@ -153,7 +156,7 @@ test('original Home: genuine generation, exact unknown intent recovery, manual07
   await test.step('an actual late available result cannot cross an employee Cookie change while the original query is busy',async()=>{
    const section=await quick(page)
    await section.getByRole('textbox',{name:'说说你想要一个什么样的助手',exact:true}).fill('Synthetic late Alice design must never appear in the later Bob original Home.')
-   const preview=wire(page,'/api/v2/agent-design/preview','POST');await section.getByRole('button',{name:'预览模型请求',exact:true}).click();expect((await preview).status()).toBe(200)
+   const preview=wire(page,'/api/v2/agent-design/preview','POST');await section.getByRole('button',{name:'预览模型请求',exact:true}).click();expect((await preview).status).toBe(200)
    await section.getByRole('button',{name:'按已核对需求生成草案',exact:true}).click();await expect(section.getByRole('button',{name:'查询原模型请求',exact:true})).toBeEnabled()
    expect(submits()).toHaveLength(3);const body=JSON.parse(submits()[2].body)
    await f.tick();expect(f.providerRequests).toHaveLength(3)

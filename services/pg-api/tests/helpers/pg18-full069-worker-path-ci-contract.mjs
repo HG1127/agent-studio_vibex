@@ -1,3 +1,4 @@
+import {parseWorkerHeartbeatBindTimingObservation} from './worker-heartbeat-writer-timing-observation.mjs'
 import {types as pathCiObservationTypes} from 'node:util'
 import {parseOwnedProcessFailureObservation} from '../../src/pg18-full069-owned-process-observation.mjs'
 // Closed CI result data only. No caller-provided proof becomes an authority.
@@ -66,6 +67,9 @@ export function pathCiReaderFailures(stderr){
   const keys=Object.keys(v).sort().join(',')
   if(v.event==='worker_heartbeat_reader_failure_observation'&&keys==='code,event,kind,observed_data_only,phase'&&v.observed_data_only===true&&['prepare','finish'].includes(v.phase)&&pathCiReaderFailureKinds.has(v.kind)&&(v.code===null||pathCiReaderFailureCodes.has(v.code)))records.push(Object.freeze({event:v.event,phase:v.phase,code:v.code,kind:v.kind,observed_data_only:true}))
   else if(v.event==='full069_worker_live_reader_catalog_phase'&&keys==='completed_native_observation,event,phase,production_cutover_allowed,qualifies_run'&&['native_authorization','controller_reader_audit','verified_before_native_logout'].includes(v.phase)&&v.completed_native_observation===false&&v.qualifies_run===false&&v.production_cutover_allowed===false)records.push(Object.freeze({event:v.event,phase:v.phase,completed_native_observation:false,qualifies_run:false,production_cutover_allowed:false}))
+  else if(v.event==='full069_worker_live_heartbeat_response_failure'&&keys==='cache_no_store,event,observed_data_only,production_cutover_allowed,qualifies_run,status'&&[200,401,403,503,'other'].includes(v.status)&&typeof v.cache_no_store==='boolean'&&v.observed_data_only===true&&v.qualifies_run===false&&v.production_cutover_allowed===false)records.push(Object.freeze({event:v.event,status:v.status,cache_no_store:v.cache_no_store,observed_data_only:true,qualifies_run:false,production_cutover_allowed:false}))
+  else if(v.event==='worker_heartbeat_writer_admission_observation'&&keys==='event,kind,observed_data_only,phase'&&['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment'].includes(v.kind)&&v.phase==='wait_started'&&v.observed_data_only===true)records.push(Object.freeze({event:v.event,kind:v.kind,phase:v.phase,observed_data_only:true}))
+  else if(v.event==='worker_heartbeat_writer_bind_timing_observation'){const timing=parseWorkerHeartbeatBindTimingObservation(v);if(timing){for(let i=records.length-1;i>=0;i--)if(records[i].event==='worker_heartbeat_writer_admission_observation'&&records[i].kind===timing.kind)records.splice(i,1);records.push(timing)}}
   if(records.length>16)return Object.freeze([])
  }
  return Object.freeze(records)

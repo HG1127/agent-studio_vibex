@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "e06c9abfc0f5e9f6721419d7d282eaaf8479d96b653bf2502e2e86ecba2d7d2f",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "e307910736351d7a70f91aaac2e8b278fd37ec055b678a5f492680bbb883f036",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "4f627883549b7cdfcb51457b723d81482e7384f9c48f5d30e312925affb3a8be",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "87b43e9c198b62d34da32e84467c9f73d44599b8ec13c9ab48d77e4ded005d71",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -103,14 +103,14 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/worker-heartbeat-activated-audit.ts": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
   "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "89ac707c17598be2e603317ce24a3b1024b57142c0382069851bf8158f9957a5",
   "services/pg-api/src/worker-heartbeat-activation-control-source.mjs": "67f95bf9da6285d20837471b73cd16d9c00e65ae7ad842f3b579468542449722",
-  "services/pg-api/src/worker-heartbeat-activation-control.ts": "9a332719b5e14d15c5eb3ad502da0fcd22c737dee72b997cbf1b0da7815b2603",
+  "services/pg-api/src/worker-heartbeat-activation-control.ts": "43e7c8c6aba947568dc2488039a8fdbb67fc6c307f9cb241655c5571b8610f4d",
   "services/pg-api/src/worker-heartbeat-activation-registry.ts": "8d395a75f00f954b1db3127e9383ebed1fd0c235a9cf377234a43ba2a1d9c93f",
   "services/pg-api/src/worker-heartbeat-audit-core.ts": "1f90a04ff358f9922020f6070a931c4f1aa621b945b4de927454b0fb5607b33e",
   "services/pg-api/src/worker-heartbeat-bounded-reporter.ts": "05d83cb9fc858dde2eee5ccc2c8301db3ee0e7a0482fd5bb6380d0b7cbe1a280",
   "services/pg-api/src/worker-heartbeat-management-audit-core.ts": "0d30a81558b3c2102d83f103e7d96ebd8664d37970505b6c2a131cede82e9bde",
   "services/pg-api/src/worker-heartbeat-management-audit.ts": "fb13ad9bb6a1d93215f6b975c21d1806d9707d3be77ba644790eea8934325744",
   "services/pg-api/src/worker-heartbeat-worker-binding.ts": "492a76e2f7ffa8b5646b48b8a330e0f020683de33d6a72116dac885d760a9a87",
-  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "70dcaa05688fde2f1b3288c38f4003d1753ac1c25c22f70153e5dcc455be6b2b",
+  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "c71529b67d4c1d0b04f4973ef75273055b092a6dfbed16fdee0d90c5424778e7",
   "services/pg-api/src/worker-heartbeat-writer-credentials.ts": "9abf06d1bc8d6c0009de6ee3550d2b91f05b65df46842ed5492b576e38452328",
   "services/pg-api/src/agent-assessment-audit-core.ts": "87740182730dbb644cfbc31cb689a4fb80da4636452ef2a209f1cc2559acfd09",
   "services/pg-api/src/agent-assessment-audit.ts": "a1e1f0d65e50187388217fbbe8062182a1c2bf280395ed32561fa6c8d3c85ae4",
@@ -159,7 +159,10 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/owner-tool-trial-audit.ts": "9d2c88352a9d12afc16875627f27f4602ed3866f75981191241ef3978028f863",
   "services/pg-api/src/tool-trial-check-expression.ts": "3f7d120b0dc82d48b1aed79e8f79ab42ef2645fc9abbc831459b4c9b39ee8bae",
   "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206",
-  "services/pg-api/src/original-tool-connections-http.ts": "df870ef7b93460db172d3eebb2d13c3f852066b12c0480719ffdc08e3c596001",
-  "services/pg-api/src/tool-connection-repository.ts": "02109efd8715742cfc997127f3c512e8be2dc0220308186a65cfb0a745d5a40a",
-  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e"
+  "services/pg-api/src/original-tool-connections-http.ts": "6260cebd660b0c5bb400568762263ddfaf36c2dfde037530f97c1b5d56b62120",
+  "services/pg-api/src/tool-connection-repository.ts": "aade1109e3a725f7c95c11237b6b3a878133e8c6f060a19b2c73feb2a95630fd",
+  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e",
+  "services/pg-api/src/tool-connection-page-cursor.ts": "4a3f3bc60996d2912decd7417479983c6dca013930cc13b335daa1f4b03a4641",
+  "services/pg-api/src/tool-connection-pagination.ts": "f2043c2ccec153d2ff6ba0f20ccca4b51fd36e655b1cbb54cc976b5288b11baa",
+  "shared/tool-connection-pagination-contract.ts": "2fa7bd802834a993000706cd2cdca4a113872e19c6d9f38f3c79f6787363fadb"
 })

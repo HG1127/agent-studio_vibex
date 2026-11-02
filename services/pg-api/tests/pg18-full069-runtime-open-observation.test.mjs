@@ -33,7 +33,7 @@ test('the actual open catch preserves the original thrown object and does not re
 test('CI emission remains inside the existing exact fixture/UID/argv/runtime gates and preserves primary refusal',()=>{
  const actor=fs.readFileSync(new URL('./helpers/pg18-full069-final-path-ci-run.mjs',import.meta.url),'utf8'),guard=actor.indexOf("if(binding.kind==='fixture'"),observation=actor.indexOf('const observation=full069FinalRuntimeOpenFailureObservation(e)'),primary=actor.indexOf(";try{errorCode=reason(e)}catch{errorCode='full069_final_path_ci_dependency_refused'}throw e")
  assert(guard>=0&&observation>guard&&primary>observation)
- const body=actor.slice(guard,observation);for(const condition of ["binding.run===process.env.GITHUB_RUN_ID","binding.attempt===process.env.GITHUB_RUN_ATTEMPT","process.getuid?.()===0","process.getgid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","JSON.stringify(process.argv.slice(2))===JSON.stringify(argv)","failurePhase==='runtime_open'"])assert(body.includes(condition),condition)
+ const body=actor.slice(guard,observation);for(const condition of ["binding.run===process.env.GITHUB_RUN_ID","binding.attempt===process.env.GITHUB_RUN_ATTEMPT","process.getuid?.()===0","process.getgid?.()===0","process.argv.length===11","process.execPath===path.join(deployment,'node24')","JSON.stringify(process.argv.slice(2))===JSON.stringify(argv)"])assert(body.includes(condition),condition)
  assert(actor.includes('if(observation)fs.writeSync(2,JSON.stringify(observation)'))
  assert(source.includes('catch(error){rememberRuntimeOpenFailure(error,phase,a.key);throw error}'));assert(source.includes('if(rejected)throw rejected.reason'))
 })

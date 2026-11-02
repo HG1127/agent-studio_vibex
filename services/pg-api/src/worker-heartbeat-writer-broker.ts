@@ -116,31 +116,49 @@ async function closePeer(s:Broker,p:Peer):Promise<void>{
  return p.cleanup
 }
 function reply(p:Peer,request:string,ok:boolean,value:unknown){if(p.open&&p.socket.writable)p.socket.write(writerEncode({protocol:writerProtocol,request_id:request,ok,value}))}
+// Closed diagnostic counters only. No cached runtime proof or retry authority.
+type WriterBindTiming={kind:WorkerHeartbeatKind;deadline:number;phase:string;guardCalls:number;guardMs:number;waits:number;beforeOpenRemaining:number|null;backendMs:number;claimed:boolean;backendReturned:boolean;completed:boolean;emitted:boolean}
+let writerBindTimingBytes=0
+function createWriterBindTiming(kind:WorkerHeartbeatKind,deadline:number):WriterBindTiming{return {kind,deadline,phase:'admission_guard',guardCalls:0,guardMs:0,waits:0,beforeOpenRemaining:null,backendMs:0,claimed:false,backendReturned:false,completed:false,emitted:false}}
+function writerTimingNumber(value:number|null,min:number,max:number,round=false):number|null{if(value===null||!Number.isFinite(value)||value<min||value>max)return null;const n=round?Math.round(value):value;return Number.isSafeInteger(n)?n:null}
+function reportWriterBindTiming(t:WriterBindTiming|undefined):void{
+ try{if(!t||t.emitted)return;t.emitted=true;if(!workerHeartbeatKinds.includes(t.kind)||!['admission_guard','admission_closed','admission_deadline','waiting','boot_lookup','claim','backend_open','backend_current','completed'].includes(t.phase))return
+  const record={event:'worker_heartbeat_writer_bind_timing_observation',kind:t.kind,phase:t.phase,wait_count:writerTimingNumber(t.waits,0,4096),admission_guard_calls:writerTimingNumber(t.guardCalls,0,4096),admission_guard_ms:writerTimingNumber(t.guardMs,0,120000,true),before_open_remaining_ms:writerTimingNumber(t.beforeOpenRemaining,-120000,5000,true),backend_open_ms:writerTimingNumber(t.backendMs,0,120000,true),message_remaining_ms:writerTimingNumber(t.deadline-performance.now(),-120000,5000,true),claimed:t.claimed,backend_returned:t.backendReturned,completed_body:t.completed,observed_data_only:true},line=JSON.stringify(record)+'\n'
+  const bytes=Buffer.byteLength(line);if(writerBindTimingBytes+bytes>4096)return;writerBindTimingBytes+=bytes;process.stderr.write(line)
+ }catch{/* Diagnostics never replace or settle the original bind outcome. */}
+}
 async function bind(s:Broker,p:Peer,request:string,provided:string,deadline:number){
  if(!Number.isFinite(deadline))return writerFail()
+ let timing:WriterBindTiming|undefined;try{timing=createWriterBindTiming(p.kind,deadline)}catch{}
+ try{
  let admissionWaitObserved=false
- // This is one original bind request, not a boot/SQL retry. Wait only for
- // pre-admission contention inside the SAME original message's five seconds.
- // No boot secret, UID, generation or SQL slot is consumed while waiting.
+ // This remains ONE original request and its ORIGINAL message deadline.
  for(;;){
-  s.bridge.check('serve')
-  if(s.closed||s.paused||!p.open)return writerFail('writer_closed')
+  let guardStarted:number|undefined;try{if(timing){timing.phase='admission_guard';guardStarted=performance.now()}}catch{}
+  try{s.bridge.check('serve')}finally{try{if(timing){timing.guardCalls++;if(guardStarted!==undefined)timing.guardMs+=Math.max(0,performance.now()-guardStarted)}}catch{}}
+  if(s.closed||s.paused||!p.open){if(timing)timing.phase='admission_closed';return writerFail('writer_closed')}
   if(p.boot)return writerFail()
   const remaining=deadline-performance.now()
-  if(remaining<=0)return writerFail('writer_deadline')
+  if(remaining<=0){if(timing)timing.phase='admission_deadline';return writerFail('writer_deadline')}
   if(!s.bridge.busy())break
-  // At most one closed observation per original request; no token or SQL proof.
   if(!admissionWaitObserved){admissionWaitObserved=true;try{process.stderr.write(JSON.stringify({event:'worker_heartbeat_writer_admission_observation',kind:p.kind,phase:'wait_started',observed_data_only:true})+'\n')}catch{}}
+  if(timing){timing.phase='waiting';timing.waits++}
   await waitForWriterAdmission(Math.min(5,remaining))
  }
- // There is no await between this final admission check and bridge.open's
- // original synchronous Root gate. All identity/nonce/OID/lease checks remain.
+ if(timing)timing.phase='boot_lookup'
  const bytes=Buffer.from(provided),boot=[...s.boots.values()].find(value=>value.slot.kind===p.kind&&!value.revoked&&!value.claimed&&value.secret.length===bytes.length&&timingSafeEqual(value.secret,bytes));bytes.fill(0)
  if(!boot)return writerFail('writer_not_enrolled')
+ if(timing)timing.phase='claim'
  boot.claimed=true;boot.secret.fill(0);p.boot=boot;p.binding=secret()
+ if(timing)timing.claimed=true
  s.bridge.persist('writer_boot_claimed',{boot_id:boot.id,uid:boot.uid,kind:p.kind,slot_no:boot.slot.slot_no,generation:boot.slot.generation,role_oid:boot.slot.role_oid,binding_id:p.binding})
- p.backend=await s.bridge.open(boot.slot.reference);peerCurrent(s,p)
+ let backendStarted:number|undefined;try{if(timing){timing.phase='backend_open';timing.beforeOpenRemaining=deadline-performance.now();backendStarted=performance.now()}}catch{}
+ try{p.backend=await s.bridge.open(boot.slot.reference);if(timing)timing.backendReturned=true}finally{try{if(timing&&backendStarted!==undefined)timing.backendMs+=Math.max(0,performance.now()-backendStarted)}catch{}}
+ if(timing)timing.phase='backend_current'
+ peerCurrent(s,p)
  p.permit=secret();reply(p,request,true,{binding_id:p.binding,instance_id:s.bridge.instance_id,generation:boot.slot.generation,next_permit:p.permit})
+ if(timing){timing.phase='completed';timing.completed=true}
+ }finally{try{reportWriterBindTiming(timing)}catch{}}
 }
 async function report(s:Broker,p:Peer,request:string,binding:string,permit:string,value:WorkerHeartbeatReport){
  s.bridge.check('cleanup')

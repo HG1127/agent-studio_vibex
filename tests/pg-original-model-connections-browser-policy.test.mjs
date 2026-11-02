@@ -34,11 +34,11 @@ test('policy serves actual model metadata CRUD only and denies every provider/pr
 })
 const ts=createRequire(import.meta.url)('typescript'),parse=(name,text)=>{const tree=ts.createSourceFile(name,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);assert.equal(tree.parseDiagnostics.length,0);return tree},tree=parse('host.mjs',host),callbacks=[]
 function visit(n){if(ts.isCallExpression(n)&&n.expression.getText(tree)==='https.createServer')callbacks.push(n.arguments[1].getText(tree));ts.forEachChild(n,visit)}visit(tree);assert.equal(callbacks.length,1)
-function proxyModel({method='POST',path='/__pg_native/api/v2/model-connections',loss=false,hold=null,headers={}}={}){
+function proxyModel({method='POST',path='/__pg_native/api/v2/model-connections',loss=false,hold=null,headers={},ackRow,storedRow,auditOverride}={}){
  const observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,controlled_after_commit_disconnects:0,controlled_held_cancellations:0,held_actual_responses:0,committed_response_prefixes:[],overflow:false},req=new PassThrough(),res=new PassThrough(),proxy=new PassThrough(),chunks=[]
  req.method=method;req.url=path;req.headers={accept:'application/json',origin:'https://localhost:17443',cookie:'terminal-real-wire-data-only','x-agentstudio-request':'1',...headers};req.socket={destroyed:false,destroy(){this.destroyed=true}};res.writeHead=(status,h)=>{res.status=status;res.headers=h;res.headersSent=true;return res};res.on('data',chunk=>chunks.push(Buffer.from(chunk)));let options,receive
  const https={request(o,callback){options=o;receive=callback;return proxy}},remember=(key,value)=>observations[key].push(value),reply=(r,status,error)=>{r.writeHead(status,{});r.end(JSON.stringify({error}))}
- const row={id:'11111111-1111-4111-8111-111111111111',owner_user_id:'22222222-2222-4222-8222-222222222222',revision:1},fixture={users:{alice:row.owner_user_id},async modelFor(){return row},async modelAudit(){return{actual_owner_audit_verified:true,count:1,entries:[{action:'model.connection_create',revision:1}]}}}
+ const base={id:'11111111-1111-4111-8111-111111111111',owner_user_id:'22222222-2222-4222-8222-222222222222',revision:1},row=ackRow??base,fixture={users:{alice:base.owner_user_id},async modelFor(){return storedRow??row},async modelAudit(){return auditOverride??{actual_owner_audit_verified:true,count:1,entries:[{action:'model.connection_create',revision:1}]}}}
  const load=Function('https','originalModelConnectionsPolicy','observations','remember','reply','agent','upstream','tls','hop','files','holds','const fixture=arguments[13],assert=arguments[14],dropActualCommittedModelReplyPrefix=arguments[15];let nextHold=arguments[11],nextLoss=arguments[12];return '+callbacks[0]);load(https,originalModelConnectionsPolicy,observations,remember,reply,{},new URL('https://localhost:45454'),{ca:'CA-data-only'},new Set(['host','connection']),new Map(),new Set(),hold,loss,fixture,assert,dropActualCommittedModelReplyPrefix)(req,res)
  return{req,res,proxy,options,observations,validAck:JSON.stringify({item:row}),bytes:()=>Buffer.concat(chunks),async response(status=201,body='{"actual":"upstream-data-only"}'){const incoming=new PassThrough();incoming.statusCode=status;incoming.complete=true;incoming.headers={'content-type':'application/json'};receive(incoming);incoming.end(Buffer.from(body));await new Promise(resolve=>setImmediate(resolve))}}
 }
@@ -48,6 +48,20 @@ test('actual proxy preserves Cookie/Origin/CSRF/employee condition and exact DEL
 test('actual proxy drops only a complete committed201 create response and refuses a counterfeit200 loss case',async()=>{
  const p=proxyModel({loss:true});await p.response(201,p.validAck);assert.equal(p.req.socket.destroyed,true);assert.equal(p.bytes().toString(),'{');assert.deepEqual(p.observations.committed_response_prefixes,[{status:201,actual_body_bytes:Buffer.byteLength(p.validAck),forwarded_body_bytes:1,headers_written:true,write_callback_confirmed:true,before_client_deadline:true}]);assert.equal(p.observations.controlled_after_commit_disconnects,1);assert.deepEqual(p.observations.unexpected_api_failures,[])
  const wrong=proxyModel({loss:true});await wrong.response(200);assert.equal(wrong.req.socket.destroyed,false);assert.equal(wrong.observations.controlled_after_commit_disconnects,0);assert.equal(wrong.bytes().toString(),'{"actual":"upstream-data-only"}');assert.equal(wrong.observations.unexpected_api_failures.length,1)
+})
+test('actual committed verification compares the independent timestamp row in the HTTP JSON representation',async()=>{
+ const row={id:'11111111-1111-4111-8111-111111111111',owner_user_id:'22222222-2222-4222-8222-222222222222',revision:1,name:'synthetic timestamp metadata',created_at:new Date('2026-01-02T03:04:05.678Z'),updated_at:new Date('2026-01-02T03:04:05.678Z'),last_checked_at:null}
+ const p=proxyModel({loss:true,ackRow:row,storedRow:{...row}});await p.response(201,p.validAck)
+ assert.equal(p.req.socket.destroyed,true);assert.equal(p.bytes().toString(),'{');assert.equal(p.observations.controlled_after_commit_disconnects,1);assert.deepEqual(p.observations.unexpected_api_failures,[])
+})
+test('committed verification still refuses any changed owner, revision, metadata, timestamp or original audit',async()=>{
+ const row={id:'11111111-1111-4111-8111-111111111111',owner_user_id:'22222222-2222-4222-8222-222222222222',revision:1,name:'synthetic exact metadata',created_at:new Date('2026-01-02T03:04:05.678Z'),updated_at:new Date('2026-01-02T03:04:05.678Z')}
+ for(const change of [{owner_user_id:'33333333-3333-4333-8333-333333333333'},{revision:2},{name:'different metadata'},{updated_at:new Date('2026-01-02T03:04:05.679Z')}]){
+  const p=proxyModel({loss:true,ackRow:row,storedRow:{...row,...change}});await p.response(201,p.validAck);assert.equal(p.req.socket.destroyed,false);assert.equal(p.observations.controlled_after_commit_disconnects,0);assert.equal(p.observations.unexpected_api_failures.length,1);assert.equal(p.bytes().length,0)
+ }
+ for(const audit of [{actual_owner_audit_verified:false,count:1,entries:[{action:'model.connection_create',revision:1}]},{actual_owner_audit_verified:true,count:2,entries:[{action:'model.connection_create',revision:1}]},{actual_owner_audit_verified:true,count:1,entries:[{action:'model.connection_update',revision:1}]},{actual_owner_audit_verified:true,count:1,entries:[{action:'model.connection_create',revision:2}]}]){
+  const p=proxyModel({loss:true,ackRow:row,storedRow:{...row},auditOverride:audit});await p.response(201,p.validAck);assert.equal(p.req.socket.destroyed,false);assert.equal(p.observations.controlled_after_commit_disconnects,0);assert.equal(p.observations.unexpected_api_failures.length,1);assert.equal(p.bytes().length,0)
+ }
 })
 test('actual proxy bounds responses, denies arbitrary auth headers and holds actual200 GET bytes until release',async()=>{
   for(const header of ['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity']){const forbidden=proxyModel({headers:{[header]:'private-data-only'}});assert.equal(forbidden.res.status,400);assert.equal(forbidden.observations.forbidden_auth_headers,1);assert.equal(forbidden.options,undefined)}
@@ -98,7 +112,7 @@ function actualStoryWire(source){
  function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='wire')node=n.initializer;ts.forEachChild(n,visit)}visit(tree);assert(node)
  return Function('f','URL','return '+node.getText(tree))({origin:'https://localhost:9443'},URL)
 }
-for(const [kind,source]of [['metadata',story],['draft',read('tests/pg-original-model-draft-discovery-genuine.spec.mjs')]]){
+for(const [kind,source]of [['metadata',story],['draft',read('tests/pg-original-model-draft-discovery-genuine.spec.mjs')],['Home',read('tests/pg-original-home-design-genuine.spec.mjs')],['Tools',read('tests/pg-original-tool-connections-genuine.spec.mjs')]]){
 test('actual '+kind+' wire begins reading the response body before the triggering action or caller awaits it',async()=>{
  let deliver,predicate,reads=0;const events=[],packet={item:{revision:2}},p={waitForResponse(fn){predicate=fn;return new Promise(resolve=>deliver=resolve)}}
  const pending=actualStoryWire(source)(p,'/api/v2/model-connections/id','PATCH',true)

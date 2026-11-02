@@ -12,7 +12,23 @@
 
 
 
-## 原工具页与原控制恢复准备（2026-10-31，当前源码批次）
+## 原页面分页与 Worker 竞争修复（2026-11-02，当前源码批次）
+
+原 ToolConnections 页面保留现有布局、入口和 PB 默认分支，新增本人 keyset 分页、加密游标、完整列表指纹与微秒排序；owner、版本漂移、过期、重复或乱序页均拒绝，不发布半份列表。旧服务继续明确 partial。独立 CI 故事将通过真实 owner 仓库创建、读取并删除251条合成工具，逐项检查502条审计及全表清理基线；尚无该新故事的真实通过证据。直接同步测试、精确工具写回执、MCP/Smithery 原页面仍缺，不能计整页完成。
+
+Reader 在同一真实已接收帧起始时间的原5秒内等待 Writer，然后执行原身份、RR只读、完整catalog、snapshot、ROLLBACK及清理；等待期间没有 lease、连接或SQL，状态、peer、request、epoch、policy、publication、断线与额度重新核对。89个原函数及原实际I/O/清理主体逐字节保持。Native8秒、Writer八次全部成功、原15秒采样上限及全部owner/零门禁未放宽。新增有界观测仅定位拒绝，不授予就绪或运行资格。
+
+原Home响应改为到达即读业务JSON；模型断线代理将实际独立数据库行转换为HTTP JSON表示后全字段比较，保留owner、版本和原审计核对。运行父页/详情代理补齐实际缺失的两个helper导入，纯测试改为链接host实际imports，缺导入反例立即失败。F08故事显式触发原focus回调并等待真实Cookie的目标员工响应，只读取一次实际body，不伪造身份或释放迟到旧请求。
+
+当前本地1681/1681纯检查、前后端TypeScript通过；实际默认构建102个资源且PG匹配0，原页面PG构建104个资源。Native源码收集372文件、完整069源码403文件/53个原SQL输入保持，均未执行本地数据库、Worker或浏览器。来源DAG待本批精确提交重新验证；这些结果不代替新提交真实CI。
+
+`03b716c` [quality](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512040/job/124292139822)49/50，根4489/4491：旧配置测试误拒绝明确授权的单条Tool删除、旧自主运行测试仍期待过时提示；现保留范围门禁并修正断言，纳入curated。[PB19双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122980899/job/124294029148)19/19、73.4秒通过。[F01组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512217)12/16，原模型草稿通过；[075原模型页](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512217/job/124292140761)真实提交/审计/MAC与仅GET恢复覆盖创建、修改、停用、启用、删除，换账号围栏及清理通过，两张原页安全截图已目视核对。完整069标识器接受075及全Native进程安装仍未完成。原Home、普通模型元数据、两个运行控制故事仍失败，上述源码修复须下一精确头复验。
+
+同头[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512386)21个Writer案例及4次owned清理通过；期限耗尽8拒绝，短竞争首项成功但八次全成功失败，旧日志无各kind结果及耗时，不能猜测。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122511912)Legacy仍prepare/control_busy，后端/Reader/队列三项清零成立；Final14本次为warm_sample/observation_gap，进程组退出而三项清理零值缺证据，不沿用上一头native_io结论。新有界错误映射将区分进程身份变化与原15秒采样超时。
+
+原20页/30组操作完整验收、074实时监控、普通Agent删除、全Worker稳定运行、合格24小时、目标环境正式安装、备份恢复与回滚签收、员工UAT仍未完成。旧PocketBase保持可恢复，正式切换继续 **NO-GO**。本批没有部署或生产变更。
+
+## 原工具页与原控制恢复准备（2026-10-31，历史源码与证据）
 
 保留原ToolConnections页面、布局和PB默认分支，接入现有Native SDK元数据CRUD。严格分支核对实际Cookie/事务owner/预期员工、公开掩码DTO及删除版本锁；沿用同事务本人安全审计。账号/表单版本围栏隔离迟到结果，未知写只保存有限元数据、只读刷新且不重发请求头密钥。列表明确最多50条、不是完整清单；直接测试入口明确拒绝，不隐式保存、排队或对外调用。完整分页、直接测试、精确工具回执、MCP/Smithery原页和真实浏览器故事仍缺，不能计整页完成。
 

@@ -23,7 +23,7 @@ type Source=typeof import('./worker-heartbeat-activation-control-source.mjs')
 type Runtime=typeof import('./worker-heartbeat-activation-control-runtime.mjs')
 type Binding={system_id:string;database:'agent_studio_telemetry';database_oid:number;owner_oid:number;schema_oid:number;operator_login:string;operator_oid:number;server_addr:'127.0.0.1';server_port:number;postmaster_started_us:string;roles:readonly {name:string;oid:number}[];sql_pin:string;record_pin:string;snapshot_pin:string}
 type Backend={pid:number;started:string}
-type Peer={s:State;socket:net.Socket;kind:'operator'|'reader';open:boolean;request:string|null;leases:Set<Lease>}
+type Peer={s:State;socket:net.Socket;kind:'operator'|'reader';open:boolean;request:string|null;requestStarted:number|null;leases:Set<Lease>}
 type Access={s:State;db:SqlClient;raw:Client|PoolClient;mode:'read'|'write';active:boolean;beforeChange:boolean;allLocked:boolean;lease?:Lease;leasePhase?:'preparing'|'finalizing';expires?:number;epoch?:bigint}
 type Lease={s:State;peer:Peer;handle:ReadLease;id:string;request:string;epoch:bigint;deadline:number;phase:'preparing'|'pending'|'finalizing'|'finished'|'consumed'|'revoked';client?:PoolClient;clientError?:()=>void;backend?:Backend;queryPending:boolean;transaction:boolean;uncertain:boolean;released:boolean;clean:boolean;snapshot?:WorkerHeartbeatSnapshot;begin?:RegistryObservation;finished?:FinishedRead;work?:Promise<unknown>;cleanup?:Promise<void>;timer:ReturnType<typeof setTimeout>}
 type Action={id:string;plan:RegistryPlan;summary:PlanSummary;policy:unknown;privateMaterial?:unknown;approvalSha?:string;ack:boolean;epoch?:bigint}
@@ -231,13 +231,30 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
  }catch{/* Failure of observation cannot replace the original error. */}
 }
 /* READER_FAILURE_OBSERVATION_END */export async function prepareWorkerHeartbeatControlRead(control:Control,p:ReaderPeer):Promise<ReadLease>{
- const {s,owner}=(()=>{try{
+ const {s,owner,deadline,request,requestStarted,epoch,instance,policySha,published}=(()=>{try{
   const s=state(control),owner=peer(s,p,'reader');runtimeCheck(s)
-  if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(rootWriterBusy(s))controlFail('control_busy');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
-  return {s,owner}
+  if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
+  if(owner.socket.destroyed||owner.socket.readableEnded||owner.socket.writableEnded||!owner.socket.writable)controlFail('lease_revoked')
+  // The actual accepted frame supplies this private monotonic start, never JSON.
+  if(owner.request===null||typeof owner.requestStarted!=='number'||!Number.isFinite(owner.requestStarted)||owner.requestStarted>performance.now())controlFail('untrusted_reference')
+  return {s,owner,deadline:owner.requestStarted+controlLimits.leaseMs,request:owner.request,requestStarted:owner.requestStarted,epoch:s.epoch,instance:s.instance,policySha:s.policySha,published:s.published}
  }catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}})()
- const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request:owner.request??randomUUID(),epoch:s.epoch,deadline:performance.now()+controlLimits.leaseMs,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
- leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),controlLimits.leaseMs)
+ try{
+  // Admission wait only. No lease, client, SQL or registry result exists yet.
+  while(rootWriterBusy(s)){
+   const remaining=deadline-performance.now();if(remaining<=0)controlFail('reader_timeout')
+   await new Promise<void>(resolve=>setTimeout(resolve,Math.min(25,remaining)))
+   const current=state(control),currentOwner=peer(current,p,'reader')
+   if(current!==s||currentOwner!==owner||owner.request!==request||owner.requestStarted!==requestStarted||s.epoch!==epoch||s.instance!==instance||s.policySha!==policySha||s.published!==published)controlFail('lease_revoked')
+   if(owner.socket.destroyed||owner.socket.readableEnded||owner.socket.writableEnded||!owner.socket.writable)controlFail('lease_revoked')
+   runtimeCheck(s)
+   if(s.phase!=='serving'||s.mutation)controlFail('control_closed');if(s.leases.size>=controlLimits.leases||owner.leases.size)controlFail('reader_capacity')
+  }
+  if(performance.now()>=deadline)controlFail('reader_timeout')
+ }catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}
+ const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request,epoch,deadline,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
+ if(performance.now()>=deadline)controlFail('reader_timeout')
+ leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),Math.max(1,Math.ceil(deadline-performance.now())))
  l.work=(async()=>{
   const begin=await serial(s,async()=>{leaseCheck(l,'preparing');return inspectRegistry(s,s.policy,l)});l.begin=begin;leaseCheck(l,'preparing')
   const expectations=s.registry.describeWorkerHeartbeatRegistry(begin).catalog_expectations;if(!expectations)controlFail('control_closed')
@@ -465,7 +482,7 @@ function accept(s:State,socket:net.Socket,kind:'operator'|'reader'){
  // root-only 0600, reader root/native-group 0660 below root-owned 0750 directory.
  // Handles are minted only for actual sockets accepted by these own servers.
  if(s.phase==='stopping'||s.phase==='stopped'||[...s.peers].filter(p=>p.kind===kind).length>=(kind==='reader'?2:2)){/* WRITER_RESTART_OBSERVATION_BEGIN */try{if(kind==='operator')observeRootControlFailure(s.phase==='stopping'||s.phase==='stopped'?'operator_accept_closed':'operator_accept_capacity',null)}catch{}/* WRITER_RESTART_OBSERVATION_END */socket.destroy();return}
- const handle=empty<ReaderPeer|OperatorPeer>(),owner:Peer={s,socket,kind,open:true,request:null,leases:new Set()};peerStates.set(handle,owner);s.peers.add(owner)
+ const handle=empty<ReaderPeer|OperatorPeer>(),owner:Peer={s,socket,kind,open:true,request:null,requestStarted:null,leases:new Set()};peerStates.set(handle,owner);s.peers.add(owner)
  let buffer=Buffer.alloc(0),busy=false,requests=0,stopRequested=false
  const timer=setTimeout(()=>socket.destroy(),kind==='reader'?controlLimits.nativeBudgetMs:controlLimits.operationMs)
  const disconnect=()=>{if(!owner.open)return;owner.open=false;clearTimeout(timer);s.peers.delete(owner);for(const l of owner.leases)revoke(l)}
@@ -474,7 +491,7 @@ function accept(s:State,socket:net.Socket,kind:'operator'|'reader'){
  socket.on('data',(bytes:Buffer)=>{
   if(busy){socket.destroy();return}buffer=Buffer.concat([buffer,bytes]);if(buffer.length>controlLimits.frameBytes+4){socket.destroy();return}if(buffer.length<4)return
   const size=buffer.readUInt32BE(0);if(size<1||size>controlLimits.frameBytes){socket.destroy();return}if(buffer.length<size+4)return;if(buffer.length!==size+4||++requests>(kind==='reader'?3:1)){socket.destroy();return}
-  const payload=buffer.subarray(4);buffer=Buffer.alloc(0);busy=true
+  const requestStarted=performance.now(),payload=buffer.subarray(4);buffer=Buffer.alloc(0);busy=true
   void (async()=>{
    let request:string|undefined
    try{
@@ -483,7 +500,7 @@ function accept(s:State,socket:net.Socket,kind:'operator'|'reader'){
      const x=controlObject(raw,['protocol','request_id','command']);if(x.protocol!=='worker_heartbeat_control_operator_v1'||!controlUuid(x.request_id))controlFail('invalid_command');request=x.request_id
      const command=parseWorkerHeartbeatControlCommand(x.command);stopRequested=command.op==='stop';reply(request,true,await operatorCommand(s,handle as OperatorPeer,command));return
     }
-    const x=parseWorkerHeartbeatReadRequest(raw);request=x.request_id;owner.request=request
+    const x=parseWorkerHeartbeatReadRequest(raw);request=x.request_id;owner.request=request;owner.requestStarted=requestStarted
     if(x.op==='prepare_read'){
      const token=await prepareWorkerHeartbeatControlRead(s.handle,handle as ReaderPeer),l=leaseStates.get(token)!;leaseCheck(l,'pending');reply(request,true,{pending_id:l.id,instance_id:s.instance,epoch:l.epoch.toString(),remaining_ms:Math.max(1,Math.floor(l.deadline-performance.now()))})
     }else{

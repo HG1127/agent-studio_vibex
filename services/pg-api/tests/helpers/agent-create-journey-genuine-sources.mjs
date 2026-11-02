@@ -1,6 +1,6 @@
 // Reviewed source provenance only. Does not replace any original runtime catalog/LOGIN audit.
 export const agentCreateJourneyGenuineSources=Object.freeze({
-  "package.json": "858b12dd47296d8bafacf1aa35f20cfcf96462783ba74cc75eb6934af6d555a2",
+  "package.json": "8bfde00481c51ba869e74ab16180b446e448d113d9fb37a0c8a0746aee8b9d3b",
   "pnpm-lock.yaml": "1331a2facbfce348d255c96695dcda3d090d8cc307c5c9618a717d61daac81aa",
   "services/pg-api/package.json": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58",
   "services/pg-api/pnpm-lock.yaml": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a",
@@ -61,7 +61,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/tool-trial-check-expression.ts": "3f7d120b0dc82d48b1aed79e8f79ab42ef2645fc9abbc831459b4c9b39ee8bae",
   "services/pg-api/src/tool-trial-contract.ts": "ffd8cd57690df5c1844b69516f1b38afce8341bbb34e22778001d81e41aae3ac",
   "services/pg-api/src/tool-trial-repository.ts": "7e7327e992f7805f2879d0ba9df6bfc40f86d35da727051252ce893f5720301f",
-  "services/pg-api/src/worker-heartbeat-activation-control.ts": "9a332719b5e14d15c5eb3ad502da0fcd22c737dee72b997cbf1b0da7815b2603",
+  "services/pg-api/src/worker-heartbeat-activation-control.ts": "43e7c8c6aba947568dc2488039a8fdbb67fc6c307f9cb241655c5571b8610f4d",
   "services/pg-api/src/workflow-repository.ts": "38e9b953cc70bcdc41343c5c8ecd54fe6ebf84295f2b45db113d9c9c284709c0",
   "shared/tool-hub-public-types.ts": "9f40bb2dd43cb24974ab439a2961cc44513ba01a80daafdaf76f8da5d7565c90",
   "src/lib/pgNativeStudioNavigation.ts": "15cb618ced257a35bc644de565e67a8955e59b798d476ff580da0a088fccff17",
@@ -85,7 +85,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-child.mjs": "209cefe0516c61c4998ebd3183e65460327a445bb185abbde2888e9ed3eb6a2b",
   "services/pg-api/src/pg18-full069-worker-live-cli.mjs": "7b87c06eb64f117a0929d33d0e9c85be56f0c975862f31b2fac644b22464b898",
   "services/pg-api/src/pg18-full069-worker-live-contract.mjs": "8c286bae8658055ae38a3413e6db6dcbf93bb745e9868abe8cafa02aebe77e4e",
-  "services/pg-api/src/pg18-full069-worker-live-native.mjs": "fa503348624036e39c2abcdc88811c213ae7b7198a706adc140aa0a08b6ca8fc",
+  "services/pg-api/src/pg18-full069-worker-live-native.mjs": "56937421e322a6885e3f7e68227dd4008ff0d53bfc93592d231c0ceb4f6d05d8",
   "services/pg-api/src/pg18-full069-worker-live-processes.mjs": "9c9c5c932364369df21375af6af9d16dd1c7033a9c7dd5d7d86becbc1cb87c97",
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "3433b16af75b26822354b19863bc78b2749083cc429dac79dcef2f6e67730d96",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "45f1d147ef840bac2b6cba27f211cba1be492be015bf6d0fb7d48b6062d36b23",
@@ -120,7 +120,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/pg18-full069-final-companions.mjs": "5fcedd866174e3a3fccc527358eb94fa889030ccf915cc7636a4490df4be2108",
   "services/pg-api/src/pg18-full069-final-login-contract.mjs": "ecd3142f8625daf0dfca3b256ba2e11a88de248baa901bab68db7d57e2c1dd22",
   "services/pg-api/src/pg18-full069-final-records.mjs": "ce30e7238c414977ce2e1168508989ebb6fe6bca853e5f30539ac66de3ed7e62",
-  "services/pg-api/src/pg18-full069-final-runner.mjs": "d2e072be19aa097e0215f488a0836f740589867f141c790330704ddbb288fb29",
+  "services/pg-api/src/pg18-full069-final-runner.mjs": "67dccf8f8ecd2ecd6f044842d474b8e926474415298cf3495f841ccd2852a51b",
   "services/pg-api/src/pg18-full069-final-runtime.mjs": "ccb5a984d0a052f0592bf388e0f61f6b774eb4a7594df3186d078d7cce581afc",
   "services/pg-api/src/pg18-full069-final-sources.mjs": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f",
   "services/pg-api/src/pg18-full069-final-trust.mjs": "2cfd1d425559e6f62d24117b6942d4e35ed40aa7dfab92df64f9d7dd533ab501",
@@ -223,7 +223,7 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/worker-heartbeat-management-audit-core.ts": "0d30a81558b3c2102d83f103e7d96ebd8664d37970505b6c2a131cede82e9bde",
   "services/pg-api/src/worker-heartbeat-management-audit.ts": "fb13ad9bb6a1d93215f6b975c21d1806d9707d3be77ba644790eea8934325744",
   "services/pg-api/src/worker-heartbeat-worker-binding.ts": "492a76e2f7ffa8b5646b48b8a330e0f020683de33d6a72116dac885d760a9a87",
-  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "70dcaa05688fde2f1b3288c38f4003d1753ac1c25c22f70153e5dcc455be6b2b",
+  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "c71529b67d4c1d0b04f4973ef75273055b092a6dfbed16fdee0d90c5424778e7",
   "services/pg-api/src/worker-heartbeat-writer-credentials.ts": "9abf06d1bc8d6c0009de6ee3550d2b91f05b65df46842ed5492b576e38452328",
   "services/pg-api/src/agent-assessment-audit-core.ts": "87740182730dbb644cfbc31cb689a4fb80da4636452ef2a209f1cc2559acfd09",
   "services/pg-api/src/agent-assessment-audit.ts": "a1e1f0d65e50187388217fbbe8062182a1c2bf280395ed32561fa6c8d3c85ae4",
@@ -269,7 +269,10 @@ export const agentCreateJourneyGenuineSources=Object.freeze({
   "services/pg-api/src/own-operations-contract.ts": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab",
   "services/pg-api/src/own-operations-repository.ts": "092699446d390974ea20cdb62c4d386d82b702dc7cc67526ab08ba5e1f816679",
   "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206",
-  "services/pg-api/src/original-tool-connections-http.ts": "df870ef7b93460db172d3eebb2d13c3f852066b12c0480719ffdc08e3c596001",
-  "services/pg-api/src/tool-connection-repository.ts": "02109efd8715742cfc997127f3c512e8be2dc0220308186a65cfb0a745d5a40a",
-  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e"
+  "services/pg-api/src/original-tool-connections-http.ts": "6260cebd660b0c5bb400568762263ddfaf36c2dfde037530f97c1b5d56b62120",
+  "services/pg-api/src/tool-connection-repository.ts": "aade1109e3a725f7c95c11237b6b3a878133e8c6f060a19b2c73feb2a95630fd",
+  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e",
+  "services/pg-api/src/tool-connection-page-cursor.ts": "4a3f3bc60996d2912decd7417479983c6dca013930cc13b335daa1f4b03a4641",
+  "services/pg-api/src/tool-connection-pagination.ts": "f2043c2ccec153d2ff6ba0f20ccca4b51fd36e655b1cbb54cc976b5288b11baa",
+  "shared/tool-connection-pagination-contract.ts": "2fa7bd802834a993000706cd2cdca4a113872e19c6d9f38f3c79f6787363fadb"
 })

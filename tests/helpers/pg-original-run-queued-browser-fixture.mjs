@@ -2,6 +2,7 @@ import {requireOriginalRunQueuedBrowserCi} from './pg-original-run-queued-browse
 import {originalRunQueuedPath,originalRunQueuedBrowserPolicy} from './pg-original-run-queued-browser-policy.mjs'
 import {verifyOriginalRunQueuedReviewedSources} from './pg-original-run-queued-reviewed-check.mjs'
 import {originalQueuedNegativeReads} from './pg-original-run-queued-negative-reads.mjs'
+import {bindOriginalPauseStage,dropOriginalCommittedCancelReply} from './pg-original-run-queued-control-faults.mjs'
 // Import-safe. Admission and fixed sources precede PG, TLS and sockets.
 export async function startOriginalRunQueuedBrowserFixture(env=process.env){
  const permit=requireOriginalRunQueuedBrowserCi(env),reviewed=await verifyOriginalRunQueuedReviewedSources(env)

@@ -1,3 +1,5 @@
+import {readToolConnectionPage,type ToolPageQuery} from './tool-connection-pagination.ts'
+import {toolConnectionPaginationProtocol} from '../../../shared/tool-connection-pagination-contract.ts'
 import {originalToolConnectionsProtocol} from '../../../shared/original-tool-connections-contract.ts'
 import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 import {isIP} from "node:net"
@@ -89,15 +91,18 @@ function encryptedHeader(value:string,key:Buffer){
   return encryptModelSecret(JSON.stringify({value}),key)
 }
 export class ToolConnectionRepository{
+  declare readonly paginationProtocol:typeof toolConnectionPaginationProtocol
   declare readonly originalUiProtocol:typeof originalToolConnectionsProtocol
   readonly pool:SqlPool
   readonly encryptionKey:Buffer
   constructor(pool:SqlPool,key:string|Buffer){
+    Object.defineProperty(this,'paginationProtocol',{value:toolConnectionPaginationProtocol,writable:false,configurable:false,enumerable:true})
     Object.defineProperty(this,'originalUiProtocol',{value:originalToolConnectionsProtocol,writable:false,configurable:false,enumerable:true})
     this.pool=pool
     this.encryptionKey=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key)
     if(this.encryptionKey.length!==32)throw Error("invalid_model_encryption_key")
   }
+  async listPage(identity:Identity,query:ToolPageQuery,expectedEmployee:string){return readToolConnectionPage({pool:this.pool,key:this.encryptionKey,identity,query,expectedEmployee})}
   private async withHeaders(db:SqlClient,actor:string,row:StoredRow):
     Promise<ToolConnectionRow>{
     const result=await db.query<{header_name:string}>(

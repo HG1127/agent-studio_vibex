@@ -18,6 +18,13 @@ async function batch(kind){const current=await row(kind),value=fixture.writer.de
 async function closeFixture(){if(!fixture)return;try{await fixture.close();cleanupPassed++;process.stdout.write(JSON.stringify({event:'genuine_writer_ci_owned_cleanup_pass'})+'\n')}finally{fixture=null}}
 async function open(variant,proof){const actual=proof??requireWorkerHeartbeatActivationControlCi(),stages=await publishWorkerHeartbeatControlCiStages(actual);fixture=await createWorkerHeartbeatWriterCiFixture(actual,stages,variant)}
 async function stopAll(children){for(const child of children)await fixture.writer.stop(child);const priorStage=activeStage;activeStage='observe_stopped_owned_cleanup';await fixture.writer.waitStoppedCleanup(children);await until(async()=>(await fixture.writer.backends()).length===0,'actual_owned_writer_backend_absence');activeStage=priorStage}
+// Actual IPC results only; this diagnostic cannot make a failed bind pass.
+function observeConcurrentBindAttempts(children,results,phase,start){
+ try{if(!['blocked','short'].includes(phase)||children.length!==8||results.length!==8)return
+  const codes=['writer_protocol_refused','writer_not_enrolled','writer_busy','writer_closed','writer_uncertain','writer_deadline','writer_io_failed'],rows=results.map((v,i)=>({kind:children[i].selected[0],ok:v.ok===true?true:v.ok===false?false:null,code:v.ok===true?null:codes.includes(v.code)?v.code:'other'}));if(rows.some(v=>!kinds.includes(v.kind))||new Set(rows.map(v=>v.kind)).size!==8)return
+  const elapsed=performance.now()-start;process.stdout.write(JSON.stringify({event:'genuine_writer_ci_bind_attempts_observation',phase,results:rows,elapsed_ms:Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=120000?Math.round(elapsed):null,observed_data_only:true})+'\n')
+ }catch{/* Preserve original assertions and their actual error objects. */}
+}
 const concurrentInvariantPhases=new Set(['blocked_first_refused','blocked_rest_refused','blocked_codes_closed','blocked_budget_elapsed','blocked_claim_once','blocked_original_boots','blocked_owned_cleanup','short_wait_seen','short_claim_before_release','short_release_within_original_deadline','short_first_success','short_all_success','short_original_boots','short_claims_once','short_identity','short_owned_cleanup'])
 function concurrentInvariant(phase,ok){assert.ok(concurrentInvariantPhases.has(phase));process.stdout.write(JSON.stringify({event:'genuine_writer_ci_concurrent_invariant',phase,ok:ok===true,observed_data_only:true})+'\n');assert.equal(ok,true,phase)}
 try{
@@ -105,6 +112,7 @@ try{
   try{
    activeStage='concurrent_first_bind';first=fixture.writer.command(children[0],{op:'open_binding'});void first.catch(()=>{});await fixture.writer.waitBindBlocked()
    activeStage='concurrent_deadline_wait';rest=await Promise.all(children.slice(1).map(c=>fixture.writer.command(c,{op:'open_binding'})));firstResult=await first
+   try{observeConcurrentBindAttempts(children,[firstResult,...rest],'blocked',start)}catch{}
    const claimedOnce=fixture.writer.journal().filter(v=>v.phase==='writer_boot_claimed').length===claimed+1,budgetElapsed=performance.now()-start>=4900
    process.stdout.write(JSON.stringify({event:'genuine_writer_ci_original_concurrent_assertion_observation',phase:'before_lock_release',rest_all_refused:rest.every(v=>v.ok===false),claimed_once:claimedOnce,first_ok:firstResult.ok===true,budget_elapsed:budgetElapsed,observed_data_only:true})+'\n')
    concurrentInvariant('blocked_first_refused',firstResult.ok===false);concurrentInvariant('blocked_rest_refused',rest.every(v=>v.ok===false))
@@ -129,6 +137,7 @@ try{
    activeStage='short_release_before_result';concurrentInvariant('short_release_within_original_deadline',performance.now()-start<5000)
   }finally{await hold.release()}
   activeStage='short_results';results=[await first,...await rest]
+  try{observeConcurrentBindAttempts(children,results,'short',start)}catch{}
   concurrentInvariant('short_first_success',results[0].ok===true);concurrentInvariant('short_all_success',results.length===8&&results.every(v=>v.ok===true))
   activeStage='short_identity';const after=fixture.writer.journal(),actual=await fixture.writer.backends()
   concurrentInvariant('short_original_boots',JSON.stringify(after.filter(v=>v.phase==='writer_boot_issued'))===JSON.stringify(issued))

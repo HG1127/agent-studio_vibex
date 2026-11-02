@@ -36,7 +36,7 @@ export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-complete-profile-source.mjs": "f5251cc0b6820b3c3930b37e06c3b75ccea47bd387d5b727c845261a2084b54b",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
   "services/pg-api/src/run-repository.ts": "58704899b00516583d7f90d2b8570f945b958b4d37ed1e6824fa835eeaaecd39",
-  "services/pg-api/src/worker-heartbeat-activation-control.ts": "9a332719b5e14d15c5eb3ad502da0fcd22c737dee72b997cbf1b0da7815b2603",
+  "services/pg-api/src/worker-heartbeat-activation-control.ts": "43e7c8c6aba947568dc2488039a8fdbb67fc6c307f9cb241655c5571b8610f4d",
   "services/pg-api/src/workflow-v2-run-repository.ts": "0cd4ba90b942d30aacc5fcd5e4ae0067163b0c8def563c0b34212f4cdcd360cd",
   "services/pg-api/src/workflow-v2-worker.ts": "c95ae9e7dc1fa70e146a581f2c1b22b118816f756b63b2140101781f7bdfbc6b",
   "shared/approval-delegation-contract.ts": "258990650146987fe4306abf1a21e1b27954cdac9bbf3c58fb0366563b323c26",
@@ -156,7 +156,7 @@ export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-worker-live-child.mjs": "209cefe0516c61c4998ebd3183e65460327a445bb185abbde2888e9ed3eb6a2b",
   "services/pg-api/src/pg18-full069-worker-live-cli.mjs": "7b87c06eb64f117a0929d33d0e9c85be56f0c975862f31b2fac644b22464b898",
   "services/pg-api/src/pg18-full069-worker-live-contract.mjs": "8c286bae8658055ae38a3413e6db6dcbf93bb745e9868abe8cafa02aebe77e4e",
-  "services/pg-api/src/pg18-full069-worker-live-native.mjs": "fa503348624036e39c2abcdc88811c213ae7b7198a706adc140aa0a08b6ca8fc",
+  "services/pg-api/src/pg18-full069-worker-live-native.mjs": "56937421e322a6885e3f7e68227dd4008ff0d53bfc93592d231c0ceb4f6d05d8",
   "services/pg-api/src/pg18-full069-worker-live-processes.mjs": "9c9c5c932364369df21375af6af9d16dd1c7033a9c7dd5d7d86becbc1cb87c97",
   "services/pg-api/src/pg18-full069-worker-live-runner.mjs": "3433b16af75b26822354b19863bc78b2749083cc429dac79dcef2f6e67730d96",
   "services/pg-api/src/pg18-full069-worker-live-runtime.mjs": "45f1d147ef840bac2b6cba27f211cba1be492be015bf6d0fb7d48b6062d36b23",
@@ -191,7 +191,7 @@ export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-final-companions.mjs": "5fcedd866174e3a3fccc527358eb94fa889030ccf915cc7636a4490df4be2108",
   "services/pg-api/src/pg18-full069-final-login-contract.mjs": "ecd3142f8625daf0dfca3b256ba2e11a88de248baa901bab68db7d57e2c1dd22",
   "services/pg-api/src/pg18-full069-final-records.mjs": "ce30e7238c414977ce2e1168508989ebb6fe6bca853e5f30539ac66de3ed7e62",
-  "services/pg-api/src/pg18-full069-final-runner.mjs": "d2e072be19aa097e0215f488a0836f740589867f141c790330704ddbb288fb29",
+  "services/pg-api/src/pg18-full069-final-runner.mjs": "67dccf8f8ecd2ecd6f044842d474b8e926474415298cf3495f841ccd2852a51b",
   "services/pg-api/src/pg18-full069-final-runtime.mjs": "ccb5a984d0a052f0592bf388e0f61f6b774eb4a7594df3186d078d7cce581afc",
   "services/pg-api/src/pg18-full069-final-sources.mjs": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f",
   "services/pg-api/src/pg18-full069-final-trust.mjs": "2cfd1d425559e6f62d24117b6942d4e35ed40aa7dfab92df64f9d7dd533ab501",
@@ -298,7 +298,7 @@ export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/worker-heartbeat-management-audit-core.ts": "0d30a81558b3c2102d83f103e7d96ebd8664d37970505b6c2a131cede82e9bde",
   "services/pg-api/src/worker-heartbeat-management-audit.ts": "fb13ad9bb6a1d93215f6b975c21d1806d9707d3be77ba644790eea8934325744",
   "services/pg-api/src/worker-heartbeat-worker-binding.ts": "492a76e2f7ffa8b5646b48b8a330e0f020683de33d6a72116dac885d760a9a87",
-  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "70dcaa05688fde2f1b3288c38f4003d1753ac1c25c22f70153e5dcc455be6b2b",
+  "services/pg-api/src/worker-heartbeat-writer-broker.ts": "c71529b67d4c1d0b04f4973ef75273055b092a6dfbed16fdee0d90c5424778e7",
   "services/pg-api/src/worker-heartbeat-writer-credentials.ts": "9abf06d1bc8d6c0009de6ee3550d2b91f05b65df46842ed5492b576e38452328",
   "services/pg-api/src/agent-assessment-audit-core.ts": "87740182730dbb644cfbc31cb689a4fb80da4636452ef2a209f1cc2559acfd09",
   "services/pg-api/src/agent-assessment-audit.ts": "a1e1f0d65e50187388217fbbe8062182a1c2bf280395ed32561fa6c8d3c85ae4",
@@ -338,9 +338,12 @@ export const agentPlanWorkflowBrowserFrozenSources=Object.freeze({
   "services/pg-api/src/model-config-receipt-schema075.ts": "9b77b95ea798aba72d1d3dded49d0f3cff74b32c47c564a1c8fe4c52a2e3c152",
   "services/pg-api/src/model-config-receipt-startup075.ts": "4cbb30ce16c81ece966f2558819ab1dd762f3d0e32fa7561864abaf64d3b8060",
   "shared/model-config-receipt-contract.ts": "a5d3acc43369ee1bcccd1e140a8c05c7f3409f5dac71ee60d1175765cc320206",
-  "services/pg-api/src/original-tool-connections-http.ts": "df870ef7b93460db172d3eebb2d13c3f852066b12c0480719ffdc08e3c596001",
-  "services/pg-api/src/tool-connection-repository.ts": "02109efd8715742cfc997127f3c512e8be2dc0220308186a65cfb0a745d5a40a",
-  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e"
+  "services/pg-api/src/original-tool-connections-http.ts": "6260cebd660b0c5bb400568762263ddfaf36c2dfde037530f97c1b5d56b62120",
+  "services/pg-api/src/tool-connection-repository.ts": "aade1109e3a725f7c95c11237b6b3a878133e8c6f060a19b2c73feb2a95630fd",
+  "shared/original-tool-connections-contract.ts": "51b2c963c0234337fdc419ff0fe416df82764586b5981acc8881e0836db59f4e",
+  "services/pg-api/src/tool-connection-page-cursor.ts": "4a3f3bc60996d2912decd7417479983c6dca013930cc13b335daa1f4b03a4641",
+  "services/pg-api/src/tool-connection-pagination.ts": "f2043c2ccec153d2ff6ba0f20ccca4b51fd36e655b1cbb54cc976b5288b11baa",
+  "shared/tool-connection-pagination-contract.ts": "2fa7bd802834a993000706cd2cdca4a113872e19c6d9f38f3c79f6787363fadb"
 })
 export async function startPgNativeAgentPlanWorkflowGenuineBrowserFixture(env=process.env){
   requireAgentPlanWorkflowGenuineCi(env)

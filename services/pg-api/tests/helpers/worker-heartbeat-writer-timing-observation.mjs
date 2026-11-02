@@ -1,0 +1,8 @@
+// Closed DATA parser only. No proof/capability, clock, constructor, SQL or I/O.
+import {isProxy} from 'node:util/types'
+const kinds=new Set(['prepare','model','workflow_safe','workflow_v2','agent_autonomous','knowledge_index','knowledge_query','assessment']),phases=new Set(['admission_guard','admission_closed','admission_deadline','waiting','boot_lookup','claim','backend_open','backend_current','completed'])
+function fields(raw,keys){if(!raw||typeof raw!=='object'||isProxy(raw)||![Object.prototype,null].includes(Object.getPrototypeOf(raw)))return null;const ds=Object.getOwnPropertyDescriptors(raw);if(Reflect.ownKeys(ds).length!==keys.length||keys.some(key=>!ds[key]?.enumerable||!Object.hasOwn(ds[key],'value')))return null;return Object.fromEntries(keys.map(key=>[key,ds[key].value]))}
+const number=(v,min,max)=>v===null||Number.isSafeInteger(v)&&v>=min&&v<=max
+export function parseWorkerHeartbeatBindTimingObservation(raw){
+ try{const v=fields(raw,['event','kind','phase','wait_count','admission_guard_calls','admission_guard_ms','before_open_remaining_ms','backend_open_ms','message_remaining_ms','claimed','backend_returned','completed_body','observed_data_only']);if(!v||v.event!=='worker_heartbeat_writer_bind_timing_observation'||!kinds.has(v.kind)||!phases.has(v.phase)||v.observed_data_only!==true||!number(v.wait_count,0,4096)||!number(v.admission_guard_calls,0,4096)||!number(v.admission_guard_ms,0,120000)||!number(v.before_open_remaining_ms,-120000,5000)||!number(v.backend_open_ms,0,120000)||!number(v.message_remaining_ms,-120000,5000)||['claimed','backend_returned','completed_body'].some(k=>typeof v[k]!=='boolean'))return null;return Object.freeze(v)}catch{return null}
+}

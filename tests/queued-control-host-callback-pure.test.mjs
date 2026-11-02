@@ -8,9 +8,20 @@ import {ServerResponse} from 'node:http'
 import {EventEmitter} from 'node:events'
 import {createHash} from 'node:crypto'
 import {bindOriginalPauseStage,dropOriginalCommittedCancelReply,observeOriginalControlDisconnect} from './helpers/pg-original-run-queued-control-faults.mjs'
-import {originalRunQueuedBrowserPolicy} from './helpers/pg-original-run-queued-browser-policy.mjs'
 const host=fs.readFileSync(new URL('./helpers/pg-original-run-queued-browser-fixture.mjs',import.meta.url),'utf8'),start=host.indexOf('(req,res)=>{'),end=host.indexOf('\n  server.requestTimeout',start),callback=host.slice(start,end).trim().slice(0,-1)
 assert(callback.startsWith('(req,res)=>{')&&callback.endsWith('}'))
+const gateLine=host.split('\n').find(v=>v.trim().startsWith('const gate=')),ownerLine=host.split('\n').find(v=>v.trim().startsWith('const ownerFor=')),dropLine=host.split('\n').find(v=>v.trim().startsWith('dropNextActualCancelReply(')),stageLine=host.split('\n').find(v=>v.trim().startsWith('stageNextOriginalPause('))
+// Link the host's own imports into a real module. The harness supplies transport
+// and terminal data only; missing helper bindings must fail before a gate timer.
+const hostImports=host.slice(0,host.indexOf('// Import-safe.')).replace(/(from\s*['"])(\.\/[^'"]+)(['"])/g,(_all,before,relative,after)=>before+new URL(relative,new URL('./helpers/pg-original-run-queued-browser-fixture.mjs',import.meta.url)).href+after)
+async function linkedHost(imports=hostImports){
+ const source=imports+'\nexport const actualControlBindings=[typeof bindOriginalPauseStage,typeof dropOriginalCommittedCancelReply];\nexport function make({https,permit,observations,remember,count,reply,fixture,assert,gates,flights,pauseStages}){'+
+ 'let nextIdentityDrop=false,nextIdentityHold=null,nextReplyDrop=null,nextStaged=null,feedback403=null,signedOutAllowance=0;const hop=new Set(["host","connection","transfer-encoding"]),files=new Map(),negativeReads={consume:()=>null},upstream=new URL("https://localhost:45454"),agent={},tls={ca:"terminal"},nativePath=p=>p.replace(/^\\/__pg_native(?=\\/|$)/,"");const collect=async req=>{const parts=[];for await(const b of req)parts.push(Buffer.from(b));return Buffer.concat(parts)};'+gateLine+'\n'+ownerLine+';const known=()=>true;return{handler:'+callback+','+dropLine+stageLine+'}}'
+ return await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))
+}
+const actualHost=await linkedHost()
+assert.deepEqual(actualHost.actualControlBindings,['function','function'],'host must link both control helpers through its actual imports')
+
 const id='11111111-1111-4111-8111-111111111111',operation='22222222-2222-4222-8222-222222222222',origin='https://localhost:17443',body={operation_id:operation,expected_state_sha256:'a'.repeat(64)},bytes=Buffer.from(JSON.stringify(body)),tick=()=>new Promise(resolve=>setImmediate(resolve)),digest=b=>createHash('sha256').update(b).digest('hex')
 class TerminalSocket extends Duplex{constructor(){super();this.frames=[];this.pending=[];this.on('error',()=>{});this.ready=new Promise(resolve=>this.first=resolve)}_read(){}_write(chunk,_enc,done){this.frames.push(Buffer.from(chunk));this.pending.push(done);this.first()}_writev(chunks,done){for(const {chunk}of chunks)this.frames.push(Buffer.from(chunk));this.pending.push(done);this.first()}release(error){for(const done of this.pending.splice(0))done(error)}bytes(){return Buffer.concat(this.frames)}}
 function harness(options={}){
@@ -18,10 +29,7 @@ function harness(options={}){
  const fixture={owned:{alice:{runs:{agent_autonomous:{run:{id}}}}},async runState(who,target){ownerReads.push({who,target});if(options.ownerError)throw Error('terminal owner denial');return options.owner??{id,status:'cancelled',step_count:0,actual_owner_verified:true}},async controlReceipts(who,target,original,count){ownerReads.push({who,target,original,count});return options.negative??{actual_exact_receipt_rows:0,actual_owner_and_actor_verified:true}}}
  const https={request(config,receive){const stream=new PassThrough(),chunks=[];stream.on('data',chunk=>chunks.push(Buffer.from(chunk)));upstreams.push({config,receive,stream,bytes:()=>Buffer.concat(chunks)});return stream}}
  const remember=(key,value)=>{(observations[key]??=[]).push(value)},count=key=>observations[key]=(observations[key]??0)+1,reply=(res,status,error)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify({error}))}
- const gateLine=host.split('\n').find(v=>v.trim().startsWith('const gate=')),ownerLine=host.split('\n').find(v=>v.trim().startsWith('const ownerFor=')),dropLine=host.split('\n').find(v=>v.trim().startsWith('dropNextActualCancelReply(')),stageLine=host.split('\n').find(v=>v.trim().startsWith('stageNextOriginalPause('))
- const make=Function('https','originalRunQueuedBrowserPolicy','permit','observations','remember','count','reply','fixture','bindOriginalPauseStage','dropOriginalCommittedCancelReply','assert','gates','flights','pauseStages',
- 'let nextIdentityDrop=false,nextIdentityHold=null,nextReplyDrop=null,nextStaged=null,feedback403=null,signedOutAllowance=0;const hop=new Set(["host","connection","transfer-encoding"]),files=new Map(),negativeReads={consume:()=>null},upstream=new URL("https://localhost:45454"),agent={},tls={ca:"terminal"},nativePath=p=>p.replace(/^\\/__pg_native(?=\\/|$)/,"");const collect=async req=>{const parts=[];for await(const b of req)parts.push(Buffer.from(b));return Buffer.concat(parts)};'+gateLine+'\n'+ownerLine+';const known=()=>true;return{handler:'+callback+','+dropLine+stageLine+'}')
- const actual=make(https,originalRunQueuedBrowserPolicy,{origin,story:'original-run-detail-queued'},observations,remember,count,reply,fixture,bindOriginalPauseStage,dropOriginalCommittedCancelReply,assert,gates,flights,pauseStages)
+ const actual=actualHost.make({https,permit:{origin,story:"original-run-detail-queued"},observations,remember,count,reply,fixture,assert,gates,flights,pauseStages})
  const request=(path,raw=body)=>{const socket=new TerminalSocket(),req=new PassThrough(),res=new ServerResponse({method:'POST',httpVersionMajor:1,httpVersionMinor:1,httpVersion:'1.1',headers:{}});req.socket=socket;req.method='POST';req.url='/__pg_native'+path;req.headers={accept:'application/json'};res.on('error',()=>{});res.assignSocket(socket);actual.handler(req,res);const original=Buffer.from(JSON.stringify(raw));req.end(original);const r={req,res,socket,original};requests.push(r);return r}
  const respond=(upstream,value,status=200,complete=true)=>{const incoming=new PassThrough(),actualBytes=Buffer.from(JSON.stringify(value));incoming.statusCode=status;incoming.complete=complete;incoming.headers={'content-type':'application/json; charset=utf-8','content-length':String(actualBytes.length),'x-terminal-original':'kept'};upstream.receive(incoming);return{incoming,actualBytes}}
  return{actual,fixture,observations,upstreams,requests,ownerReads,gates,request,respond,async close(){for(const g of gates){g.pause?.abort();g.release()}for(const r of requests){r.socket.destroy();r.req.destroy()}for(const r of upstreams)r.stream.destroy();await Promise.allSettled([...flights])}}
@@ -55,4 +63,11 @@ test('observer waits for the exact actual requestfailed event, rejecting finishe
  const p=new EventEmitter(),request={url:()=>origin+'/__pg_native/api/v2/agent-autonomous-runs/'+id+'/pause',method:()=> 'POST',postData:()=>JSON.stringify(body),failure:()=>({errorText:'net::ERR_ABORTED'})},o=observeOriginalControlDisconnect(p,{origin,path:'/api/v2/agent-autonomous-runs/'+id+'/pause'})
  p.emit('request',request);assert.equal((await o.entered()).body_sha256,digest(bytes));let failed=false;o.failed().then(()=>failed=true);await tick();assert.equal(failed,false);p.emit('requestfailed',{...request});await tick();assert.equal(failed,false);p.emit('requestfailed',request);assert.equal((await o.failed()).actual_requestfailed,true);assert.equal(p.listenerCount('requestfailed'),0)
  for(const event of ['requestfinished','close']){const page=new EventEmitter(),watch=observeOriginalControlDisconnect(page,{origin,path:'/api/v2/agent-autonomous-runs/'+id+'/pause'});page.emit('request',request);page.emit(event,request);await assert.rejects(watch.failed())}
+})
+
+for(const missing of ['bindOriginalPauseStage','dropOriginalCommittedCancelReply'])test('actual host module detects a missing '+missing+' import before any timer',async()=>{
+ const changed=hostImports.replace('import {bindOriginalPauseStage,dropOriginalCommittedCancelReply}',missing==='bindOriginalPauseStage'?'import {dropOriginalCommittedCancelReply}':'import {bindOriginalPauseStage}')
+ assert.notEqual(changed,hostImports);const broken=await linkedHost(changed)
+ assert.equal(broken.actualControlBindings[missing==='bindOriginalPauseStage'?0:1],'undefined')
+ assert.throws(()=>assert.deepEqual(broken.actualControlBindings,['function','function']))
 })

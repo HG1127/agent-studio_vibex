@@ -35,7 +35,7 @@ function model(options={}){
 }
 async function stopped(options){const m=model(options);await m.stop();return m}
 test('fixed integration, real factory WeakSet and original stop provenance are retained',async()=>{
- assert.equal(createHash('sha256').update(integration).digest('hex'),'d15cc0c671d7d057d687fc6b0c3747a2abfd7b3a163d9405ddb8debcfee6f158')
+ assert.equal(createHash('sha256').update(integration).digest('hex'),'b890a2157af9690c2823e04e3699c8518e89392f3e1cf87d3d1cfa35e006b459')
  assert.ok(integration.includes('finally{await fixture.writer.stop(child)}'));assert.ok(integration.includes('await fixture.writer.final();assert.deepEqual(await fixture.writer.businessCounts(),{jobs:0,runs:0,reviews:0,queries:0});await fixture.final()'))
  const m=model();assert.equal(m.state.writerStoppedChildren.has(m.child),false);await m.stop();assert.equal(m.state.writerStoppedChildren.has(m.child),true);assert.equal(m.state.writerChildren.has(m.child),false);assert.equal(m.state.children.has(m.child),false);assert.deepEqual(m.killSignals,['SIGTERM']);assert.deepEqual(m.lifecycle,['original_process_kill','original_stop_wait']);assert.throws(()=>[...m.state.writerStoppedChildren],TypeError)
 })
