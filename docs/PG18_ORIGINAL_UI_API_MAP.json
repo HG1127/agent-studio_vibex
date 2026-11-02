@@ -7988,6 +7988,23 @@
       "new_source_genuine_passed": false,
       "local_SQL_executed": false,
       "production_GO": false
+    },
+    "current_original_release_first_hosted_source_gate": {
+      "head": "335c96b671f68c58dfcaaea35a196870ad59f359",
+      "run": 41400827186,
+      "job": 125132069481,
+      "status": "FAILED_SOURCE_COMPLETENESS_BEFORE_DATABASE_AND_BROWSER",
+      "F01_prior_stories_passed": 17,
+      "F01_jobs_total": 18,
+      "new_release_policy_and_proof_pure_passed": 186,
+      "missing_pin": "db/postgres/migrations/pg_v9_046_agent_releases.sql",
+      "historical_SQL_unchanged": true,
+      "source_fix": "Keep all actual runtime checks; export the same66 declared requirements and seal the omitted historical SQL pin",
+      "required_sources": 66,
+      "pure_checks_compare_each_required_current_LF_hash": true,
+      "root_review_preserves_original_runtime_source_check_bytes_after_expression_hoist": true,
+      "actual_new_head_genuine_passed": false,
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

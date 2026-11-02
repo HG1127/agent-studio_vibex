@@ -1260,7 +1260,7 @@ export const originalLoginReviewedSources=Object.freeze({
   "tests/helpers/pg-original-version-release-browser-policy.mjs": "285012f6cc55916f9d3dd5a2354546920e72be37f5dc9607ff01b330998145d1",
   "tests/helpers/pg-original-version-release-prefix-loss.mjs": "eb0bec0acef68acc85b66de9be726beeb298386a08d8ccdb08e9da1e13d4aed1",
   "tests/helpers/pg-original-version-release-proof-contract.mjs": "846365021cc5b2912cb2733ba0744ab3d70b64d7d2e846e22efb06ee2cc85d02",
-  "tests/helpers/pg-original-version-release-reviewed-check.mjs": "1291b9364e1acb65eeda9be0fe52e39c2894931e687fd9e6e8f5798e8ce568b8",
+  "tests/helpers/pg-original-version-release-reviewed-check.mjs": "c6dd20e7fc6c1b9e5092cf4d7f0d06fc19218772fc0caf8a8da0bef2462fe3da",
   "tests/original-release-schedules-native-admission.test.mjs": "d0c11d929a8a4df1034dd9a336b9832d175d56d0dd780c928dd13b2d3943b6e6",
   "tests/original-release-write-stage-api.test.mjs": "34cf8f2a6bdc50f8c2303e4064aa57baf968b40f528680f5c104d57d54268bbd",
   "tests/original-release-write-stage-protection.test.mjs": "cd40e15d74747294846356ccf5fcb363254f9d0d2cb6e407f1e10cc0783737ab",
@@ -1282,5 +1282,6 @@ export const originalLoginReviewedSources=Object.freeze({
   "tests/pg-original-version-release-genuine.config.mjs": "e04b030b867628705564f0c7c2617c8574e447207e03a5b27b74a541dfe20c96",
   "tests/pg-original-version-release-genuine.spec.mjs": "0ac2f48c5d1cdadaedf9fe54fb555a242ebbf301592b1a66c15a64a4a8b51406",
   "tests/pg-original-version-release-policy-pure.test.mjs": "8248165a58ce9d042273b41f1d5726826556264e3a8f947244ae8bd3fee7be1a",
-  "tests/pg-original-version-release-proof-pure.test.mjs": "fd320ba6a0a498b6bcf7c12d0fb758edcaf61291301304ddee95b41dc3bb2724"
+  "tests/pg-original-version-release-proof-pure.test.mjs": "7006faf18c4617675c38bb0103c5e18b4ffe88d89cc1fa8a9364c2dd65f587ed",
+  "db/postgres/migrations/pg_v9_046_agent_releases.sql": "95b89d0d904e8130963378e3ef03874fc6e4cdcd43c6d56b38db2ccfda3c9dfa"
 })
