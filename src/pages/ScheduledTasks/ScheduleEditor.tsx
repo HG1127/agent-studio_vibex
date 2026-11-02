@@ -1,3 +1,4 @@
+import {useEffect} from 'react'
 import {Clock3,RefreshCw,Save,ShieldCheck} from 'lucide-react'
 import {Link} from 'react-router-dom'
 import {formatScheduledDate,FORM_CLASS,TIME_ZONES,WEEKDAYS} from './types'
@@ -9,6 +10,11 @@ const formatInZone=(stamp:number,zone:string)=>{
 }
 export function ScheduleEditor(p:ReturnType<typeof useScheduledTasks>){
   const f=p.form,set=p.setField
+  useEffect(()=>{
+    if(p.saving)return
+    const frame=requestAnimationFrame(()=>{const form=document.getElementById('schedule-editor');if(form&&!form.contains(document.activeElement))document.getElementById('schedule-plan-name')?.focus()})
+    return()=>cancelAnimationFrame(frame)
+  },[p.saving])
   const selectedModel=p.models.find(m=>m.id===f.model_connection_id)
   return <form id="schedule-editor" onSubmit={p.save} className="flex min-h-0 flex-1 flex-col">
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">

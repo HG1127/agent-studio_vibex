@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { localApi, type LocalDevice } from "@/lib/localDevices"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import {applicationRunHandoff} from '@/lib/localApplicationTask'
 import { officeRunHandoff } from '@/lib/localOfficeWorkflow'
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -225,7 +226,8 @@ export function useAgentRun() {
   const requestedRunId = searchParams.get("run") || ""
   const requestedSpecId = searchParams.get("spec") || ""
   const location = useLocation()
-  const officeTask = officeRunHandoff(location.state, requestedSpecId, requestedRunId)
+  const applicationTask=applicationRunHandoff(location.state,requestedSpecId,requestedRunId)
+  const officeTask = applicationTask||officeRunHandoff(location.state, requestedSpecId, requestedRunId)
 
   const [rhUserId] = useState(() => decodeRhToken()?.sub || LOCAL_ANON_UID)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
@@ -238,7 +240,7 @@ export function useAgentRun() {
 
   const [model, setModel] = useState("")
   const [enabledTools, setEnabledTools] = useState<string[]>(() => officeTask ? [] : BUILTIN_TOOLS.map((t) => t.id))
-  const [maxSteps, setMaxSteps] = useState(() => officeTask ? 18 : 10)
+  const [maxSteps, setMaxSteps] = useState(() => applicationTask ? 30 : officeTask ? 18 : 10)
   const [maxModelCalls, setMaxModelCalls] = useState(30)
   const [maxRuntimeMinutes, setMaxRuntimeMinutes] = useState(0)
   const [stopCondition, setStopCondition] = useState("")

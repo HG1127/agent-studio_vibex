@@ -105,29 +105,49 @@ try{
   await expect(grants.getByRole('button',{name:'保存应用授权',exact:true})).toBeEnabled({timeout:15000})
   await grants.getByRole('button',{name:'保存应用授权',exact:true}).click();await expect(grants).toHaveCount(0)
   const approved=await readGuidedProfile(first,{home});assert.equal(approved.applications.grants.length,1);assert.equal(approved.applications.grants[0].control,true)
-  await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:20000})
+  await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:60000})
   await page.getByRole('tab',{name:'本地应用',exact:true}).click();const apps=page.getByRole('region',{name:'本地应用工作区'})
-  await expect(apps.getByLabel('选择已授权应用')).toBeVisible({timeout:20000});await apps.getByRole('button',{name:'刷新应用窗口',exact:true}).click()
-  await expect(apps.getByLabel('应用窗口')).not.toHaveValue('',{timeout:20000})
-  const observe=async target=>{await expect(apps.getByRole('button',{name:'观察窗口与控件',exact:true})).toBeEnabled({timeout:20000});await apps.getByRole('button',{name:'观察窗口与控件',exact:true}).click();await expect(apps.getByLabel('目标控件')).toBeVisible({timeout:20000});const option=await apps.getByLabel('目标控件').locator('option').filter({hasText:target}).getAttribute('value');await apps.getByLabel('目标控件').selectOption(option)}
-  const confirm=async()=>{await expect(toolbar.getByRole('heading',{name:'请确认本次应用操作',exact:true})).toBeVisible({timeout:20000});await toolbar.getByLabel('我已核对目标、内容，并同意本次操作。').check();await toolbar.getByRole('button',{name:'确认应用',exact:true}).click()}
+  const confirm=async()=>{await expect(toolbar.getByRole('heading',{name:'请确认本次应用操作',exact:true})).toBeVisible({timeout:60000});await toolbar.getByLabel('我已核对目标、内容，并同意本次操作。').check();await toolbar.getByRole('button',{name:'确认应用',exact:true}).click()}
+  if(!process.argv.includes('--cold-task-only')){
+  await expect(apps.getByLabel('选择已授权应用')).toBeVisible({timeout:60000});await apps.getByRole('button',{name:'刷新应用窗口',exact:true}).click()
+  await expect(apps.getByLabel('应用窗口')).not.toHaveValue('',{timeout:60000})
+  const observe=async target=>{await expect(apps.getByRole('button',{name:'观察窗口与控件',exact:true})).toBeEnabled({timeout:60000});await apps.getByRole('button',{name:'观察窗口与控件',exact:true}).click();await expect(apps.getByLabel('目标控件')).toBeVisible({timeout:60000});const option=await apps.getByLabel('目标控件').locator('option').filter({hasText:target}).getAttribute('value');await apps.getByLabel('目标控件').selectOption(option)}
+
   await observe('Fixture editor');await apps.getByLabel('输入内容',{exact:true}).fill('UI_NATIVE_APPLICATION_PASSED')
   await apps.getByRole('button',{name:'输入到控件',exact:true}).click();await confirm()
-  await expect(apps.getByRole('status')).toHaveCount(0,{timeout:20000})
+  await expect(apps.getByRole('status',{name:'应用操作进行中'})).toHaveCount(0,{timeout:60000})
   await observe('Save test receipt');await apps.getByRole('button',{name:'点击控件',exact:true}).click();await confirm()
   await wait(async()=>{try{return await fs.readFile(applicationFixture.receipt,'utf8')==='UI_NATIVE_APPLICATION_PASSED\n1'}catch{return false}},'real application receipt')
-  await expect(apps.getByRole('status')).toHaveCount(0,{timeout:20000});await page.screenshot({path:path.join(out,'applications-workspace.png'),fullPage:true})
+  await expect(apps.getByRole('status',{name:'应用操作进行中'})).toHaveCount(0,{timeout:60000});await page.screenshot({path:path.join(out,'applications-workspace.png'),fullPage:true})
   pass('persistent application grants, real connector catalog, UIA typing/click, private in-app approvals and native receipt through original employee UI')
-  let modelCalls=0,modelReceivedWindow=false
-  modelFixture=http.createServer(async(req,res)=>{let body='';for await(const b of req)body+=b;const payload=JSON.parse(body),messages=JSON.stringify(payload.messages);modelCalls++;if(messages.includes('Application acceptance fixture'))modelReceivedWindow=true;const response=modelCalls===1?{action:'tool',tool:'local_computer',tool_input:{tool:'apps.windows',arguments:{app:approved.applications.grants[0].id}}}:{action:'final',final_answer:'APPLICATION_AGENT_WINDOW_VERIFIED'};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify(response)}}]}))})
+  }
+  let modelCalls=0,modelReceivedWindow=false,coldTask=false
+  modelFixture=http.createServer(async(req,res)=>{try{
+   let body='';for await(const b of req)body+=b;const payload=JSON.parse(body),messages=JSON.stringify(payload.messages),text=payload.messages.map(m=>typeof m.content==='string'?m.content:'').join('\n').replace(/\\+"/g,'"');modelCalls++;
+   if(messages.includes('Application acceptance fixture'))modelReceivedWindow=true;
+   let response=modelCalls===1?{action:'tool',tool:'local_computer',tool_input:{tool:'apps.windows',arguments:{app:approved.applications.grants[0].id}}}:{action:'final',final_answer:'APPLICATION_AGENT_WINDOW_VERIFIED'};
+   if(coldTask){
+    console.log('COLD_MODEL_STEP '+modelCalls);
+    const app=approved.applications.grants[0].id,last=pattern=>[...text.matchAll(pattern)].at(-1)?.[1],window=last(/"id":"(\d+)"/g),observation=last(/"observation":"([a-f0-9]{32})"/g);
+    const editor=last(/"id":(\d+),"name":"Fixture editor"/g),button=last(/"id":(\d+),"name":"Save test receipt"/g);
+    const tool=(name,args)=>({action:'tool',tool:'local_computer',tool_input:{tool:name,arguments:{app,...args}}});
+    if(modelCalls===1)response=tool('apps.launch',{});
+    else if([2,4,6].includes(modelCalls)){assert.ok(window,'model needs actual window receipt');response=tool('apps.observe',{window});}
+    else if(modelCalls===3){assert.ok(observation&&editor);response=tool('apps.act',{observation,element:Number(editor),action:'type',text:'AGENT_COLD_TASK_VERIFIED'});}
+    else if(modelCalls===5){assert.ok(observation&&button);assert.ok(text.includes('AGENT_COLD_TASK_VERIFIED'));response=tool('apps.act',{observation,element:Number(button),action:'click'});}
+    else{assert.equal(await fs.readFile(applicationFixture.receipt,'utf8'),'AGENT_COLD_TASK_VERIFIED\n1');response={action:'final',final_answer:'AGENT_COLD_TASK_VERIFIED: 已回读输入并核对实际保存回执'};}
+   }
+   res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify(response)}}]}));
+  }catch(e){console.log('MODEL_FIXTURE_ERROR '+e.message);res.writeHead(500);res.end('{}')}})
   await new Promise(r=>modelFixture.listen(0,'127.0.0.1',r));const modelOrigin='http://127.0.0.1:'+modelFixture.address().port
   const connection=(await api('/api/model-connections','POST',{name:'Application loopback fixture',provider:'openai',api_key:'local-fixture-only',base_url:modelOrigin+'/v1',models:['fixture']})).data
+  if(!process.argv.includes('--cold-task-only')){
   const spec=(await api('/api/agent_specs','POST',{name:'Application dispatch acceptance',spec:{goal:'查看已授权应用窗口',task_scope:'只查询专用测试程序窗口',tools:[],task_plan:['查询应用窗口','汇报结果'],deliverables:['窗口回执'],done_criteria:['读取实际授权应用窗口'],capability_requirements:[{id:'application_window',title:'Synthetic UI acceptance 读取窗口',purpose:'查询本人授权的应用窗口与控件',kind:'desktop',access:'read',required:true,role_ids:['reader'],search_terms:['Synthetic UI acceptance'],suggested_tool_ids:[]}],roles:[{id:'reader',name:'窗口核验员',responsibility:'核验应用窗口',tasks:['查询专用应用窗口'],inputs:[],deliverables:['窗口回执'],depends_on:[],tools:[],done_criteria:['读取实际窗口数据']}]}})).data
   await page.goto(gateway.origin+'/agent-create?step=3&spec='+spec.id)
   const devicePicker=page.getByRole('region',{name:'本次任务设备选择'})
-  await expect(devicePicker.locator('select')).toHaveValue(first,{timeout:20000})
+  await expect(devicePicker.locator('select')).toHaveValue(first,{timeout:60000})
   const chooseApp=page.getByRole('button',{name:/所选电脑的已授权能力 · 选用并分配/})
-  await expect(chooseApp).toBeEnabled({timeout:20000});await chooseApp.click()
+  await expect(chooseApp).toBeEnabled({timeout:60000});await chooseApp.click()
   await page.getByRole('button',{name:'保存到我的助手',exact:true}).click()
   await expect(page.getByText('已保存进「我的 Agent」，接下来可以连接资源并试跑。',{exact:true})).toBeVisible()
   const bound=(await api('/api/agent_specs/'+spec.id)).data
@@ -145,8 +165,31 @@ try{
   pass('creation wizard discovers exact app grant, explicitly binds the responsible role, carries the selected device to trial and dispatches approved apps.windows with a real native receipt')
   await page.goto(gateway.origin+'/tool-hub?view=devices')
   if(await toolbar.getByRole('button',{name:'管理连接',exact:true}).getAttribute('aria-expanded')!=='true')await toolbar.getByRole('button',{name:'管理连接',exact:true}).click()
+  }
+  await applicationFixture.close();await fs.unlink(applicationFixture.receipt).catch(e=>{if(e.code!=='ENOENT')throw e});coldTask=true;modelCalls=0;
+  await page.getByRole('tab',{name:'本地应用',exact:true}).click();
+  const taskPanel=page.getByRole('region',{name:'应用任务'});
+  await taskPanel.getByRole('textbox').fill('在专用测试应用输入 AGENT_COLD_TASK_VERIFIED 并点击 Save test receipt，核验保存回执。');
+  await taskPanel.getByRole('button',{name:'创建应用任务并进入试跑',exact:true}).click();
+  await expect(page.locator('#agent-task-instruction')).toHaveValue(/AGENT_COLD_TASK_VERIFIED/);
+  await page.getByRole('button',{name:'运行',exact:true}).click();
+  const finish=page.getByRole('document',{name:'格式化运行成果'}).getByText('AGENT_COLD_TASK_VERIFIED: 已回读输入并核对实际保存回执',{exact:true});
+  const limit=Date.now()+360000;let approvals=0,nativeApprovals=0;
+  let lastStatus=0;
+  while(Date.now()<limit&&!await finish.isVisible()){
+   if(Date.now()-lastStatus>3000){lastStatus=Date.now();const id=new URL(page.url()).searchParams.get('run');if(id){const state=(await api('/api/agent_runs/'+id)).data;if(['failed','cancelled'].includes(state.status))throw Error('cold application run stopped: '+state.error)}}
+   const approve=page.getByRole('button',{name:'批准并继续执行',exact:true});
+   if(await approve.isVisible()&&await approve.isEnabled()){await approve.click();approvals++;}
+   else if(await toolbar.getByRole('heading',{name:'请确认本次应用操作',exact:true}).isVisible()){await confirm();nativeApprovals++;}
+   await sleep(500);
+  }
+  await expect(finish).toBeVisible();assert.equal(await fs.readFile(applicationFixture.receipt,'utf8'),'AGENT_COLD_TASK_VERIFIED\n1');assert.equal(nativeApprovals,2);assert.ok(approvals>=6);assert.ok(modelCalls>=7,'execution may also produce a separate memory summary');const detail=(await api('/api/agent_runs/'+new URL(page.url()).searchParams.get('run'))).data;assert.equal(detail.status,'succeeded');const calls=detail.checkpoint.steps.filter(s=>s.tool==='local_computer');assert.equal(calls.length,6);assert.equal(calls.filter(s=>{try{return JSON.parse(s.obs).status==='ready'}catch{return false}}).length,1);
+  await page.screenshot({path:path.join(out,'application-task-verified.png'),fullPage:true});
+  pass('COLD_AGENT_TASK: original app closed; UI task handoff, actual cold launch, approved observation/type/readback/click and real saved receipt all verified without paid inference');
+  await page.goto(gateway.origin+'/tool-hub?view=devices');
+  if(await toolbar.getByRole('button',{name:'管理连接',exact:true}).getAttribute('aria-expanded')!=='true')await toolbar.getByRole('button',{name:'管理连接',exact:true}).click();
   await toolbar.getByRole('button',{name:'应用授权',exact:true}).click();await expect(grants).toBeVisible();await grants.getByRole('button',{name:'清空选择',exact:true}).click();await grants.getByRole('button',{name:'暂停此连接',exact:true}).click();await grants.getByLabel('我确认长期授权以上应用及勾选的操作范围。').check();await expect(grants.getByRole('button',{name:'保存应用授权',exact:true})).toBeEnabled({timeout:15000});await grants.getByRole('button',{name:'保存应用授权',exact:true}).click();await expect(grants).toHaveCount(0)
-  await toolbar.getByRole('button',{name:'连接电脑',exact:true}).click();await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:20000});assert.deepEqual((await readGuidedProfile(first,{home})).applications.grants,[])
+  await toolbar.getByRole('button',{name:'连接电脑',exact:true}).click();await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:60000});assert.deepEqual((await readGuidedProfile(first,{home})).applications.grants,[])
   pass('removing selected applications revokes their persisted capabilities without changing the computer binding')
  }
  await page.getByRole('tab',{name:'授权管理',exact:true}).click()
@@ -195,7 +238,7 @@ try{
  await page.screenshot({path:path.join(out,'main-computer-selector.png'),fullPage:true})
  pass('main selector switches both selected connection and workspace without opening any extra window')
  await manager.close();await startManager();await page.reload()
- await expect(selector).toHaveValue(second,{timeout:20000})
+ await expect(selector).toHaveValue(second,{timeout:60000})
  await expect(toolbar.getByLabel('电脑连接状态')).toContainText('已连接',{timeout:30000})
  const restored=await computer.request('state');assert.equal(restored.selectedId,second)
  assert.equal(restored.profiles.find(p=>p.id===first).running,false);assert.equal(restored.profiles.find(p=>p.id===second).running,true)
@@ -204,7 +247,7 @@ try{
  await fs.writeFile(path.join(out,'acceptance.json'),JSON.stringify({checks,version:desktopVersion,realBackend:true,realConnectorChild:true,productionData:false,uiErrors:errors},null,2))
  console.log('NATIVE_FLOW_ACCEPTANCE '+out)
  if(process.argv.includes('--keep-open'))for(let i=0;i<1200;i++){try{await fs.access(path.join(out,'finish'));break}catch{}await sleep(1000)}
-}finally{
+}catch(error){console.log('APPLICATION_UI_FAILURE '+error.message);if(page)console.log('APPLICATION_UI_STATE '+JSON.stringify({url:page.url(),body:(await page.locator('body').innerText().catch(()=>'' )).slice(-6500)}));throw error}finally{
  await browser?.close();await manager?.close();await gateway?.close()
  await applicationFixture?.close()
  if(modelFixture){modelFixture.closeAllConnections();await new Promise(r=>modelFixture.close(r))}

@@ -35,7 +35,7 @@ test('discovery never executes candidates and defers binary hashing until explic
 })
 test('launch never accepts renderer/model command-line arguments; window list excludes other executables',async t=>{
  const f=await fixture(t);await assert.rejects(f.call('launch',{args:['--eval','bad']}),/invalid_application_arguments/);assert.equal(f.children.length,0)
- const r=await f.call('launch');assert.equal(r.accepted,true);assert.deepEqual(f.children[0].args.slice(0,2),[f.exe,[]]);assert.equal(f.children[0].args[2].shell,false);assert.equal(r.windows.length,1);assert.ok(!JSON.stringify(r).includes(f.exe))
+ const r=await f.call('launch');assert.equal(r.accepted,true);assert.equal(r.alreadyRunning,true);assert.equal(f.children.length,0,'warm start must reuse the existing window');assert.equal(r.windows.length,1);assert.ok(!JSON.stringify(r).includes(f.exe))
  await assert.rejects(f.tools.get('apps.windows').fn({app:'0'.repeat(24)}),/application_denied/)
 })
 test('observation is one-use, scoped to the shown controls and local approval is mandatory',async t=>{
