@@ -1,10 +1,12 @@
 {
-  "sourceCommit": "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
-  "version": "0.1.0-preview.12",
+  "sourceCommit": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
+  "version": "0.1.0-preview.13",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
     "applicationColdStart": "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
-    "desktopUpdates": "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290"
+    "desktopUpdates": "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290",
+    "avatarSettings": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
+    "applicationDiscovery": "df17d1c6654b9df4f2ba83e6aec43caa18121be9"
   }
 }
