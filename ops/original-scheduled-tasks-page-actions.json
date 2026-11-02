@@ -1,0 +1,58 @@
+{
+  "format": "original-scheduled-tasks-page-actions.v1",
+  "scope": "Preserve the existing employee ScheduledTasks page and interactions while replacing its backend.",
+  "baseline": {
+    "entry": "src/main.tsx -> src/App.tsx -> src/pages/ScheduledTasks/index.tsx",
+    "page": "src/pages/ScheduledTasks/ScheduledTasksPage.tsx",
+    "selector": "src/pages/ScheduledTasks/useScheduledTasks.ts",
+    "native_hook": "src/pages/ScheduledTasks/usePgScheduledTasks.ts",
+    "PocketBase_default_preserved": true,
+    "D_UI_interactions_preserved": ["fluid page width", "collapsible overview", "editor focus", "five occurrence previews", "history filter", "run preview", "result copying", "monitor notices"],
+    "Pilot_UI_used_as_acceptance": false
+  },
+  "authority": {
+    "identity": "Actual Native Cookie resolution and SQL withActor owner, with a separately checked expected-employee precondition.",
+    "protocol": "native_original_schedules_078_v1",
+    "API_root": "/__pg_native/api/v2/original-ui/schedules",
+    "global_boundary": "Exact original schedules paths/methods cross the actual Native global policy before facade dispatch.",
+    "writes": "The shared operation endpoint keeps owned pause reachable; the actual repository checks configuration and execution gates before SQL for the other parsed actions.",
+    "execution": "Reuse unchanged044 activation, limits, resource fingerprints, authority and occurrence RPCs. Metadata save defaults to paused.",
+    "SQL": "Independent optional078 source only: two private tables and twenty functions; original complete069 retains its existing53 SQL inputs."
+  },
+  "actions": [
+    {"ui":"Read current plan filter", "api":"GET ?filter=all|active|disabled&limit=50&after=...", "result":"Owner-scoped keyset pages; loaded counts and live partial pages are explicit."},
+    {"ui":"Edit the complete original form", "api":"GET /:schedule", "result":"Persist instruction, model/revision, target/revision, anchor and all dormant fields for once, interval, daily and weekly forms. Incomplete legacy data requires explicit review."},
+    {"ui":"Preview future times", "api":"Shared schedule time conversion", "result":"Retain five original previews, selected timezone, DST gap refusal and earliest valid fold instant."},
+    {"ui":"Save as paused", "api":"POST /operations action=save authorization=null", "result":"Atomically pause an existing plan, retain the full form and create one exact receipt. Saving grants no background execution."},
+    {"ui":"Review and enable", "api":"POST /operations action=save or enable", "result":"Require current target/model, explicit background/cost acknowledgement, expiry, occurrence and automatic-action limits, plus the existing execution gate."},
+    {"ui":"Pause", "api":"POST /operations action=pause", "result":"Use current owner, revision and source hash; retain an owner pause path after fresh submissions are disabled."},
+    {"ui":"Delete", "api":"POST /operations action=delete", "result":"Require current source/CAS and confirmation. Tombstone the plan while retaining historical occurrences."},
+    {"ui":"Run now or retry failed launch", "api":"POST /operations action=run_now or retry_start", "result":"Use actual044 occurrence RPCs and current authority. Retry additionally checks the original occurrence hash. Queue confirmation does not prove a Worker created a run."},
+    {"ui":"Read retained history", "api":"GET /history?limit=50&schedule=...&after=...", "result":"Global and per-plan owner pages include deleted plan names, exact occurrence state and current run metadata without a fabricated event count."},
+    {"ui":"View and copy a run result", "api":"Original typed run-detail APIs", "result":"Reverify employee, original occurrence/run binding, current source availability and stored result before displaying or copying. Keep the original complete-run link."},
+    {"ui":"Refresh and recheck resources", "api":"Current owner Agent/model/workflow metadata", "result":"Do not silently adopt changed revisions; partial inventories do not prove absence. Resource or identity changes reset execution acknowledgement."},
+    {"ui":"Recover an unknown write", "api":"GET /operations/:request", "result":"Keep only owner/action/IDs/revisions/hashes and fingerprint in owner-scoped session storage. Confirm the exact original receipt, retain uncertainty on404, and never automatically replay POST."},
+    {"ui":"Recover temporary identity uncertainty", "api":"Actual Native session proof and fresh context reads", "result":"Hide private content while unverified; same-employee recovery may retain in-memory drafts. Verified refusal, account change and disposal clear them; late responses remain fenced."}
+  ],
+  "evidence_limits": {
+    "focused_source_pure_checks": 70,
+    "Native_admission_and_related_checks": 98,
+    "frontend_TS6": true,
+    "API_TS5": true,
+    "normal_build_assets": 105,
+    "normal_PG_resource_matches": 0,
+    "original_PG_build_assets": 108,
+    "actual_local_SQL_Worker_server_browser_executed": false,
+    "optional078_installed": false,
+    "original_scheduled_tasks_genuine_accepted": false,
+    "actual_Worker_execution_proven_by_this_page": false,
+    "all_original_pages_complete": false,
+    "production_GO": false
+  },
+  "open_acceptance_gaps": [
+    "Actual optional078 SQL/catalog/ACL installation and the original-page browser story remain required.",
+    "Actual committed reply-prefix loss must match the same browser POST requestfailed and GET-only exact receipt recovery.",
+    "Synthetic imported history and real queue admission cannot stand in for actual Worker execution or current Worker health.",
+    "074/077 integration, installed-profile composition, real employee UAT, target installation, backups/recovery/rollback and long-running Worker qualification remain open."
+  ]
+}

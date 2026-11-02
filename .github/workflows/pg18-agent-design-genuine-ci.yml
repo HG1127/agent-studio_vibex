@@ -130,6 +130,7 @@ jobs:
           - story: original-agent-run-queued
           - story: original-run-detail-queued
           - story: original-model-config-receipts075
+          - story: original-version-release
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -208,6 +209,12 @@ jobs:
         run: |
           pnpm --dir services/pg-api check
           node --experimental-strip-types --test tests/original-tool-connections-client-controller.test.mjs tests/original-tool-connections-http-policy.test.mjs tests/original-tool-connections-hook.test.mjs tests/original-tool-connections-genuine-source.test.mjs tests/original-tool-connections-host-callback.test.mjs tests/tool-connection-pagination-pure.test.mjs tests/original-tool-pagination-client-pure.test.mjs tests/tool-pagination-http-pure.test.mjs tests/tool-pagination-source-increment.test.mjs
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Current original version-release contracts guards and original UI build
+        if: matrix.story == 'original-version-release'
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test tests/pg-original-version-release-policy-pure.test.mjs tests/pg-original-version-release-proof-pure.test.mjs tests/original-version-release-api.test.mjs tests/original-version-release-controller.test.mjs tests/original-version-release-data.test.mjs tests/original-version-release-source.test.mjs tests/original-version-release-auth-regression.test.mjs tests/original-version-release-identity-hook.test.mjs tests/original-version-release-model-refresh.test.mjs tests/original-release-schedules-native-admission.test.mjs
           node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
       - name: Install isolated Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -342,6 +349,39 @@ jobs:
             .tmp/original-agent-run-queued-genuine-browser-results/**/original-agent-run-queued-alice-restored.png
             .tmp/original-agent-run-queued-genuine-browser-results/**/original-agent-run-queued-bob-acl-hidden.png
             .tmp/original-agent-run-queued-genuine-browser-results/**/original-run-queued-observation.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Original version-release actual Cookie CAS committed-prefix exact-receipt and pending-approval story
+        if: matrix.story == 'original-version-release'
+        env:
+          AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_EXECUTION_ONLY
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+          AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+          AGENT_STUDIO_PG_AGENT_MEMORY_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_MEMORY_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_MEMORY_ONLY
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_ENABLED: 'true'
+          AGENT_STUDIO_PG_AGENT_FEEDBACK_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_FEEDBACK_ONLY
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED: 'true'
+          AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY
+          AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_CI: YES_DISPOSABLE_ORIGINAL_VERSION_RELEASE_ONLY
+          AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_STORY: original-version-release
+          AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_EXPECTED_HEAD: '${{ github.sha }}'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-version-release-genuine.config.mjs
+      - name: Retain only fixed completed original version-release synthetic evidence
+        if: always() && matrix.story == 'original-version-release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg18-original-version-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-version-release-genuine-browser-results/**/original-version-release-bob-owned.png
+            .tmp/original-version-release-genuine-browser-results/**/original-version-release-observation.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Independent original-run-detail-queued actual Native Cookie owner read control privacy

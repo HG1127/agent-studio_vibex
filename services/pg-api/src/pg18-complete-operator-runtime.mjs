@@ -6,6 +6,7 @@ import {lstatSync,realpathSync,openSync,fstatSync,readSync,closeSync,readdirSync
 import path from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {createHash} from 'node:crypto'
+import {isUtf8} from 'node:buffer'
 import {createRequire,registerHooks,isBuiltin,getCompileCacheDir} from 'node:module'
 import {assertCompleteProfileSnapshot} from './pg18-complete-profile-source.mjs'
 
@@ -55,6 +56,11 @@ function utf8(raw,max){
   const t=b.toString('utf8')
   if(t.startsWith('\uFEFF')||t.includes('\0')||!Buffer.from(t).equals(b)||typeof raw==='string'&&raw!==t)fail()
   return t
+}
+// Private bound reads already produce a Buffer. Validate every byte afresh
+// without allocating a discarded decoded string and encoded copy.
+function assertUtf8Bytes(bytes,max){
+  if(!Buffer.isBuffer(bytes)||!bytes.length||bytes.length>max||bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf||bytes.includes(0)||!isUtf8(bytes))fail()
 }
 // Independent strict JSON reader; importing CLI here would form an entry cycle.
 function json(raw){
@@ -157,7 +163,7 @@ function readBound(file,expected,kind,expectedBytes){
     const bytes=Buffer.concat(chunks)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
     assertCompleteProfileOperatorRuntimeStable(stamp(before),stamp(fstatSync(fd)));assertCompleteProfileOperatorRuntimeStable(stamp(before),stamp(lstatSync(file)))
-    sameChain(chain,ancestors(file,kind==='manifest'));utf8(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
+    sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
     return {bytes,stamp:stamp(before),chain}
   }finally{closeSync(fd)}
 }
@@ -213,11 +219,11 @@ function protocolMessageExports(state,file,module,exports){
 function checkExports(graph,protocolCells){
   if(protocolCells!==undefined&&!(protocolCells instanceof WeakMap))fail()
   for(const [object,before] of graph){
-    const after=Object.getOwnPropertyDescriptors(object),cell=protocolCells?.get(object)
-    if(Reflect.ownKeys(before).length!==Reflect.ownKeys(after).length)fail()
-    for(const k of Reflect.ownKeys(before)){
+    const after=Object.getOwnPropertyDescriptors(object),cell=protocolCells?.get(object),keys=Reflect.ownKeys(before)
+    if(keys.length!==Reflect.ownKeys(after).length)fail()
+    for(const k of keys){
       const a=before[k],b=after[k]
-      if(!b||['get','set','writable','enumerable','configurable'].some(p=>a[p]!==b[p]))fail()
+      if(!b||a.get!==b.get||a.set!==b.set||a.writable!==b.writable||a.enumerable!==b.enumerable||a.configurable!==b.configurable)fail()
       if(cell&&k==='length'){
         // Locked pg-protocol 1.16.1 literals start at5; legitimate empty frames
         // have wire length4. This checks observed values, not who assigned them

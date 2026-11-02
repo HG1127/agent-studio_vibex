@@ -25,13 +25,13 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/approval-delegation-runtime-policy.ts": "6ac4449a950f0e17b0fa79fc5a9f2ed0f4560efc14e63f37713d8c2fee9be8ee",
   "services/pg-api/src/autonomous-agent-run-repository.ts": "791d148ef5b23403e27d39d60ff414f358e75abddd27d47b28f963079974de1c",
   "services/pg-api/src/baota-pg18-complete-init.mjs": "00d6626138aff0039864a8c544e34f44109c2164281834fd923b11c39b927d3a",
-  "services/pg-api/src/http.ts": "1511fb579e1dd3198192159635ec503963b01ddb798ed671e4998e8da2ec6310",
+  "services/pg-api/src/http.ts": "3611944fcb588253c4712a34e6fa185d3f36dc626e62e8489e01fd7b67d62ef0",
   "services/pg-api/src/native-auth-http.d.mts": "0bc183a1f297846af2f7a309b3027211d44b9f10d55ab0ad42bcdcdec89ffa83",
-  "services/pg-api/src/native-config-uat-policy.ts": "0c6f7db6c46a81fae1e3ce07e8e78ea25f3ce19cd3b713f31e5d65227b882f1c",
-  "services/pg-api/src/native-server.ts": "f05b5a40f248386e806bd3ffc722de87525d331d48f3e5aa32ed52edee805cf7",
+  "services/pg-api/src/native-config-uat-policy.ts": "abfb87cc89257887c29d19dc584374633ab4ad5f29db2a4a1696405a0bcedd0b",
+  "services/pg-api/src/native-server.ts": "4c1594158d81ac07953ff375b5fa5a5931b8a64ddda9af449d307a4f1c202ff6",
   "services/pg-api/src/owned-step-decision-context.ts": "6e842015da3721caee315368706c0fdea608c020236816cd4210cf13bc025643",
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
-  "services/pg-api/src/pg18-complete-operator-runtime.mjs": "d5cc238eb52cf9e4e3e5d123897d41961b62ea7c1f02144c2f277ab3cef1aa9e",
+  "services/pg-api/src/pg18-complete-operator-runtime.mjs": "71c2db9c157ca21555e707b53f6766e918a777b3b2f81da3bc7401a5f9bbdeb7",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
   "services/pg-api/src/pg18-complete-profile-source.mjs": "f5251cc0b6820b3c3930b37e06c3b75ccea47bd387d5b727c845261a2084b54b",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
@@ -192,7 +192,7 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg18-full069-final-companions.mjs": "5fcedd866174e3a3fccc527358eb94fa889030ccf915cc7636a4490df4be2108",
   "services/pg-api/src/pg18-full069-final-login-contract.mjs": "ecd3142f8625daf0dfca3b256ba2e11a88de248baa901bab68db7d57e2c1dd22",
   "services/pg-api/src/pg18-full069-final-records.mjs": "ce30e7238c414977ce2e1168508989ebb6fe6bca853e5f30539ac66de3ed7e62",
-  "services/pg-api/src/pg18-full069-final-runner.mjs": "67dccf8f8ecd2ecd6f044842d474b8e926474415298cf3495f841ccd2852a51b",
+  "services/pg-api/src/pg18-full069-final-runner.mjs": "ce04bc96b36e42ee722d0aa5e546815a97de5717cf89b0ae197b9d308e2c7a5a",
   "services/pg-api/src/pg18-full069-final-runtime.mjs": "ccb5a984d0a052f0592bf388e0f61f6b774eb4a7594df3186d078d7cce581afc",
   "services/pg-api/src/pg18-full069-final-sources.mjs": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f",
   "services/pg-api/src/pg18-full069-final-trust.mjs": "2cfd1d425559e6f62d24117b6942d4e35ed40aa7dfab92df64f9d7dd533ab501",
@@ -471,7 +471,7 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/agent-template-market-result.ts": "d9d420f346dc5cc8915e77b3ce3593e2b6fdecec9988ffcbe55949f6cedb0953",
   "services/pg-api/src/worker-heartbeat-activated-audit-core.ts": "ba670a1722b241781f6cd28b85bbd571ff1919bac47e5f1ebca090ddfcff28b5",
   "services/pg-api/src/worker-heartbeat-activated-audit.ts": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
-  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "89ac707c17598be2e603317ce24a3b1024b57142c0382069851bf8158f9957a5",
+  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "d13562eaa24e250ae7afbdd43d15fc1b8f949e6ffb3e7b876f11b74b228bf07f",
   "services/pg-api/src/worker-heartbeat-activation-control-source.mjs": "67f95bf9da6285d20837471b73cd16d9c00e65ae7ad842f3b579468542449722",
   "services/pg-api/src/worker-heartbeat-activation-registry.ts": "8d395a75f00f954b1db3127e9383ebed1fd0c235a9cf377234a43ba2a1d9c93f",
   "services/pg-api/src/worker-heartbeat-audit-core.ts": "1f90a04ff358f9922020f6070a931c4f1aa621b945b4de927454b0fb5607b33e",
@@ -512,7 +512,11 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/original-version-release-http.ts": "1b82f5168e9c4b94770a254bff64b21a47f12c68e03d85290499fca21ecf3ad6",
   "services/pg-api/tests/helpers/worker-heartbeat-cleanup-reader-observation.mjs": "4743936238ceadf8ac83be85bd894599297ee814b6b50d6734b8c8974e98162c",
   "services/pg-api/tests/worker-heartbeat-cleanup-reader-observation.test.mjs": "6dd405c70a1a9b260e04fd2a9a5c5bcc87bea743b8a9651c1a968838988a7acb",
-  "shared/original-version-release-contract.ts": "bec8174374bd1371604b1680d7294ba157af88aa450b589b1af88cb61d4f0a4a"
+  "shared/original-version-release-contract.ts": "bec8174374bd1371604b1680d7294ba157af88aa450b589b1af88cb61d4f0a4a",
+  "services/pg-api/src/original-schedules-http-policy.ts": "a96d94b96de9696415f0bc03e6684f859b486f9036bc4e474904717fd060f109",
+  "services/pg-api/src/original-schedules-http.ts": "7abd3a9b2b75135d29a46423f510714ab0b0066bfb72f1fc63ebc58d06f4714a",
+  "services/pg-api/src/original-schedules-repository.ts": "f7765074f30fdb5036c094a4ba799eaa7296b9c51ab8751d379fc2a3851f89b5",
+  "shared/original-schedules-contract.ts": "7d3f7dc84bd488aece199360f3d3e5cf5fe16baff47f16bef43a3bd112d37db2"
 })
 export function requireAgentDesignGenuineCi(env=process.env,platform=process.platform,uid=process.getuid?.()??0){
   if(platform!=='linux'||!Number.isSafeInteger(uid)||uid<=0||env.RUNNER_OS!=='Linux'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.GITHUB_REPOSITORY!=='HG1127/agent-studio_vibex'||env.GITHUB_WORKFLOW!==workflow||!jobs.has(env.GITHUB_JOB)||env.AGENT_STUDIO_F01_GENUINE_CI!=='YES_DISPOSABLE_F01_ONLY'||Object.keys(env).some(k=>env[k]!==undefined&&['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'].includes(k)))throw Error('refuse_non_ephemeral_agent_design_genuine_ci')

@@ -1,0 +1,41 @@
+{
+  "story": "original-scheduled-tasks078",
+  "page": "/scheduled-tasks",
+  "workflow": "pg18-original-schedules078-genuine-ci.yml",
+  "purpose": "YES_DISPOSABLE_ORIGINAL_SCHEDULES078_ONLY",
+  "manual_reviewed_head_required": true,
+  "push_only_branch": "codex/pg18-worker-heartbeat-20261028",
+  "push_head_requirement": "Exact GITHUB_SHA committed bytes and reviewed LF hashes; Root validates source before authorized branch upload",
+  "product_prerequisite": "Integrate frozen078 29-file source package first; Root fixes/reseals final source before dispatch",
+  "coverage": [
+    "Original employee UI and five future-time previews",
+    "All four recurrence periods and exact past-date paused-form roundtrip",
+    "Agent target/model revision and complete instruction/max_steps persistence",
+    "Workflow paused form preserves hidden max_steps and empty model binding",
+    "Real HttpOnly secure Strict native Cookie login; no browser auth injection",
+    "Real cross-owner404, stale expected employee409 and material source/CAS409",
+    "55 owner forms through actual repository and keyset plan pagination",
+    "55 explicitly synthetic imported skipped occurrence rows, soft-deleted parent and history pagination/filter",
+    "Finite explicit standing authority and separate ungranted paid-knowledge consent",
+    "Actual committed200 consumed then independent ledger/audit proof before real prefix loss",
+    "GET exact request receipt after reload with zero automatic POST replay",
+    "Actual audit failure/transaction rollback503 then actual GET404, persistent marker and disabled writes",
+    "Actual run-now queue receipt, pause cancellation and delete retained history, with zero actual runs/jobs/effects",
+    "Actual production global Native wrapper in both open/closed policy compositions; original GET receipt and owned pause remain reachable with fresh gates closed"
+  ],
+  "not_claimed": [
+    "Worker execution, retry-start execution or actual run creation",
+    "Actual model/provider readiness or paid call",
+    "Final output/result private-source browser acceptance",
+    "Complete original application migration",
+    "Native server process entry or deployment acceptance",
+    "Full069/all-schema initializer acceptance",
+    "Local PostgreSQL078 acceptance",
+    "Production cutover"
+  ],
+  "fixture_readiness": "Unchanged real TCP base uses two synthetic ModelConnectionRepository.testConnection callbacks during initial setup. They are not provider verification.",
+  "source_pins": "Candidate final LF DAG; Root must reseal after integration/type/SQL corrections and verify actual committed bytes, including legacy CRLF files. Hashes are test provenance and never substitute for real DB role/RLS/ACL/function-body audits.",
+  "artifact": "Bounded original-schedules078-observation.json only; no raw request bodies, forms, DOM, cookies, passwords, screenshots, trace, video or provider payloads",
+  "genuine_passes": 0,
+  "production_GO": false
+}

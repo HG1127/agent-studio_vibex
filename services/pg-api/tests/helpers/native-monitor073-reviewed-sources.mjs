@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "e307910736351d7a70f91aaac2e8b278fd37ec055b678a5f492680bbb883f036",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "9e4ebe2dc556a9d21ef18ffe32d5812186c12ea0a2165795b45043e4dc33df9c",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -35,7 +35,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/native-monitor-inbox-repository.ts": "46dd016a2dedd434d9b7e5ec93b25816b03b02d5977e10d5729e5113cb023daa",
   "services/pg-api/src/native-monitor-inbox-runtime.ts": "17bd61f2d8d222a06cee4d3346288d1632f376d4ff6b4693953e64e3bd0a7f2a",
   "services/pg-api/src/native-monitor-inbox-schema.ts": "4970eee96a4a1ad2e60ebf4bbb0273736df8bb7e484699e30b295e46648e2528",
-  "services/pg-api/src/native-server.ts": "f05b5a40f248386e806bd3ffc722de87525d331d48f3e5aa32ed52edee805cf7",
+  "services/pg-api/src/native-server.ts": "4c1594158d81ac07953ff375b5fa5a5931b8a64ddda9af449d307a4f1c202ff6",
   "services/pg-api/src/optional-credential-boundary.ts": "f019c3f541223ebb1b699dd1a795e64293ff603f396cd44aceb05e453b80633a",
   "services/pg-api/src/original-agent-inbox-contract.ts": "ea8aef1b3b025bee71c7cdc0e81d9d65dd50af6b343e38757c7051d747141bc2",
   "services/pg-api/src/own-operations-contract.ts": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab",
@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "890d9e0baf021f1d66fdfd3e7636f12a83ddfd69c01881529ce6c1a0f1b2ac16",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "c6dd955438db349c6357dcfe2cbff379c6840892663b342bc3f463b6ef0d9972",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -101,7 +101,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "shared/model-connection-pagination-contract.ts": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad",
   "services/pg-api/src/worker-heartbeat-activated-audit-core.ts": "ba670a1722b241781f6cd28b85bbd571ff1919bac47e5f1ebca090ddfcff28b5",
   "services/pg-api/src/worker-heartbeat-activated-audit.ts": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
-  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "89ac707c17598be2e603317ce24a3b1024b57142c0382069851bf8158f9957a5",
+  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "d13562eaa24e250ae7afbdd43d15fc1b8f949e6ffb3e7b876f11b74b228bf07f",
   "services/pg-api/src/worker-heartbeat-activation-control-source.mjs": "67f95bf9da6285d20837471b73cd16d9c00e65ae7ad842f3b579468542449722",
   "services/pg-api/src/worker-heartbeat-activation-control.ts": "644d76dfd3c04ded74d879f422ef0b180220d0c9c335a873abcce6a802515575",
   "services/pg-api/src/worker-heartbeat-activation-registry.ts": "8d395a75f00f954b1db3127e9383ebed1fd0c235a9cf377234a43ba2a1d9c93f",

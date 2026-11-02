@@ -1,3 +1,7 @@
+import {usePgScheduledTasks} from './usePgScheduledTasks'
+import type {SchedulePending,ScheduleRunPreview} from './types'
+import type {ScheduleCapabilities} from '@/lib/originalSchedulesApi'
+import type {ScheduleAuthorizationDraft} from '@/lib/originalSchedules'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
@@ -38,7 +42,7 @@ function buildSchedule(form: ScheduleForm): { rule: ScheduleRule; nextAt: number
   return { rule, nextAt: next }
 }
 
-export function useScheduledTasks() {
+export function usePbScheduledTasks() {
   const [form, setForm] = useState<ScheduleForm>(defaultScheduleForm)
   const [editingId, setEditingId] = useState("")
   const [items, setItems] = useState<ScheduleTask[]>([])
@@ -54,10 +58,7 @@ export function useScheduledTasks() {
   const [notice, setNotice] = useState("")
   const [filter, setFilter] = useState<"all" | "active" | "disabled">("all")
   const [historyFilter, setHistoryFilter] = useState("")
-  const [runPreview, setRunPreview] = useState<{
-    id: string; name: string; kind: string; status: string; loading: boolean;
-    result: string; error: string; events: number;
-  } | null>(null)
+  const [runPreview, setRunPreview] = useState<ScheduleRunPreview | null>(null)
 
   const setField = <K extends keyof ScheduleForm>(key: K, value: ScheduleForm[K]) => {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -132,6 +133,9 @@ export function useScheduledTasks() {
     })
     setNotice("");setError("")
     document.getElementById("schedule-editor")?.scrollIntoView({ behavior:"smooth",block:"start" })
+    window.requestAnimationFrame(()=>{
+      document.getElementById("schedule-plan-name")?.focus({preventScroll:true})
+    })
   }
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -147,7 +151,7 @@ export function useScheduledTasks() {
     catch(e) { setError(e instanceof Error ? e.message : "时间规则无效");return }
     setSaving(true)
     try {
-      await api("/api/schedules/manage","POST",{
+      const saved=await api("/api/schedules/manage","POST",{
         action:editingId ? "update":"create",...(editingId ? {id:editingId}:{}),
         name:form.name.trim(),target_kind:form.target_kind,target_id:form.target_id,
         instruction:form.instruction.trim(),...timing.rule,next_at_ms:timing.nextAt,
@@ -155,7 +159,7 @@ export function useScheduledTasks() {
       })
       await refresh()
       setForm(defaultScheduleForm());setEditingId("")
-      setNotice("计划保存成功，后台执行器将在指定时间触发。")
+      setNotice(saved.monitor_definition_review_required?"计划已保存，关联监测已暂停。请在业务任务中重新预览并确认监测定义后启用。":"计划保存成功，后台执行器将在指定时间触发。")
     } catch (e) { setError(e instanceof Error ? e.message : "保存失败") }
     finally { setSaving(false) }
   }
@@ -179,7 +183,7 @@ export function useScheduledTasks() {
     try {
       const r=await api("/api/schedules/manage","POST",payload)
       await refresh()
-      setNotice(kind==="delete"?"计划已删除":kind==="toggle"?(task.enabled?"计划已暂停":"计划已启用"):`已加入运行队列：${String(r.run_id||"")}`)
+      setNotice(kind==="delete"?(r.monitor_id?"计划已删除，关联监测已停止；历史依据保留。":"计划已删除"):kind==="toggle"?(task.enabled?(r.monitor_id?"计划与监测已暂停，本次未验收检查已停止。":"计划已暂停"):(r.monitor_id?"计划与监测已启用。":"计划已启用")):`已加入运行队列：${String(r.run_id||"")}`)
     } catch(e){setError(e instanceof Error?e.message:"操作失败")}
     finally {setBusyId("")}
   }
@@ -241,3 +245,6 @@ export function useScheduledTasks() {
     runPreview,setRunPreview,viewRun,
   }
 }
+
+function useLegacyScheduledTasks(){return{...usePbScheduledTasks(),nativeMode:false as const,nativeEmployeeId:'',nativeReady:true,nativeSignedOut:false,nativePending:null as SchedulePending|null,nativeCapabilities:null as ScheduleCapabilities|null,nativeAuthorization:{enable:false,expires:'',maxOccurrences:10,maxEffects:20,confirmed:false,knowledge:false},nativePinsCurrent:true,nativeResourcesComplete:true,nativeResourceNotice:'',nativeHasMore:false,nativeHistoryHasMore:false,nativeWorkflowsMore:false,nativeSetAuthorization:<K extends keyof ScheduleAuthorizationDraft>(_key:K,_value:ScheduleAuthorizationDraft[K])=>{},nativeRecheck:async()=>{},nativeQueryReceipt:async()=>{},nativeMore:async(_kind:'plans'|'history'|'workflows')=>{},nativeCopyRun:async(_row:ScheduleHistory)=>{},nativeCopyResult:async()=>{}}}
+export const useScheduledTasks=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?usePgScheduledTasks:useLegacyScheduledTasks

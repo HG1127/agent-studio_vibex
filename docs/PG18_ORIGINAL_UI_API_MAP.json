@@ -2318,8 +2318,9 @@
         }
       ],
       "remaining_gaps": [
-        "草稿保存不得当作启用；run-now和原occurrence retry须区分",
-        "原Worker状态提示应映射真实只读Worker/Telemetry状态，不由配置推断存活"
+        "独立078真实SQL/catalog/ACL与原页面浏览器故事尚待验证",
+        "真实已提交断流与原GET回执恢复需取得同一浏览器请求失败证据",
+        "真实Worker执行、心跳和整页员工验收仍未证明"
       ],
       "original_page_E2E_acceptance_requirements": [
         {
@@ -2347,7 +2348,7 @@
           "PG_pilot_page_is_not_acceptance": true
         }
       ],
-      "status": "ORIGINAL_UI_ADAPTATION_REQUIRED",
+      "status": "SOURCE_ADAPTED_GENUINE_PENDING",
       "operations": [
         {
           "id": "UI-018",
@@ -2495,6 +2496,29 @@
           "necessary_adaptation_or_remaining_contract": "旧manage.action拆到现有PG草稿/执行授权/occurrence契约；保持原计划页与时区表达",
           "source_available_is_not_runtime_enabled": true,
           "original_page_E2E_completed": false
+        }
+      ],
+      "current_native_action_map": "ops/original-scheduled-tasks-page-actions.json",
+      "current_adapter_files": [
+        {
+          "path": "src/pages/ScheduledTasks/usePgScheduledTasks.ts",
+          "sha256": "57f5989342100922a29673223925f15c33b02dac745bedd30b925fd9fce30f09"
+        },
+        {
+          "path": "src/lib/originalSchedules.ts",
+          "sha256": "8c01bd1820f22329ccb0ea660ec1c553122981cc10c9047c47848c9f815c112d"
+        },
+        {
+          "path": "src/lib/originalSchedulesApi.ts",
+          "sha256": "c1567b87cf90e55df0e7fbb1a7607f6853f6249d76003f2d9b34bd8e438a6e56"
+        },
+        {
+          "path": "services/pg-api/src/original-schedules-repository.ts",
+          "sha256": "f7765074f30fdb5036c094a4ba799eaa7296b9c51ab8751d379fc2a3851f89b5"
+        },
+        {
+          "path": "services/pg-api/src/original-schedules-http.ts",
+          "sha256": "7abd3a9b2b75135d29a46423f510714ab0b0066bfb72f1fc63ebc58d06f4714a"
         }
       ]
     },
@@ -6071,14 +6095,14 @@
   "current_preparation": {
     "original_login_adapter": "Original Login/App/account-menu hosted story passed on9b42e39 with actual Native Cookie/CSRF, Alice/Bob roles, acknowledgement-loss recovery and all original zero gates; no full original menu/Home acceptance.",
     "original_home_transport": "Current original Home and catalog integrated with full immutable spec bindings, CAS, employee concurrency precondition, recovery and unknown-write isolation; reviewed async read fences and independent metadata/binding intent fixes integrated",
-    "original_UI_isolated_build": "Actual current normal PB build has102 resources and zero PG matches; original index/main/App PG build has104 resources. FrontendTS6/API TS5 pass. Build isolation and pure tests do not establish original-page business acceptance.",
+    "original_UI_isolated_build": "Current normal PB build105 resources and zero PG matches; explicit original index/main/App PG build108 resources/17 PG matches. Source/build verification does not establish original-page business acceptance.",
     "pure_auth_home_contract_checks": 110,
     "pure_optional070_backend_checks": 76,
     "pure_optional071_catalog_checks": 61,
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1985,
+    "combined_pure_checks": 2339,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -7833,6 +7857,116 @@
       "original_identity_absence_deadline_and_cleanup_assertions_retained": true,
       "runtime_product_source_changed": false,
       "fresh_hosted_runtime_still_required": true,
+      "production_GO": false
+    },
+    "current_original_schedules078_source": {
+      "base_head": "bc7c87187a6862774cc89776de451f0086a131de",
+      "source_integrated": true,
+      "original_route": "/scheduled-tasks",
+      "source_action_map": "ops/original-scheduled-tasks-page-actions.json",
+      "full_original_form_and_five_time_previews_preserved": true,
+      "unchanged044_authority_reused": true,
+      "independent_optional_SQL": "pg_v9_078",
+      "optional_SQL_source_only": true,
+      "SQL_executed": false,
+      "exact_parent_files": 7,
+      "exact_hunks": 50,
+      "frozen_source_files": 29,
+      "current_pure": 2339,
+      "focused_pure": 70,
+      "Native_admission_related_pure": 98,
+      "frontend_TS6": true,
+      "API_TS5": true,
+      "normal_assets": 105,
+      "normal_PG_resource_matches": 0,
+      "original_PG_assets": 108,
+      "Native_literal_sources": 380,
+      "original_complete069_sources": 414,
+      "original_complete069_SQL": 53,
+      "original_complete069_SQL_unmodified": true,
+      "genuine_browser_passed": false,
+      "actual_Worker_execution_proven": false,
+      "production_GO": false
+    },
+    "current_original_release_and_schedules_Native_admission": {
+      "source": "services/pg-api/src/native-config-uat-policy.ts",
+      "sha256": "abfb87cc89257887c29d19dc584374633ab4ad5f29db2a4a1696405a0bcedd0b",
+      "test": "tests/original-release-schedules-native-admission.test.mjs",
+      "test_sha256": "d0c11d929a8a4df1034dd9a336b9832d175d56d0dd780c928dd13b2d3943b6e6",
+      "actual_outer_handler_used_in_pure": true,
+      "exact_paths_methods_only": true,
+      "release_reads_and_GET_receipts_remain_available_with_fresh_gates_closed": true,
+      "release_change_requires_configuration": true,
+      "release_acceptance_requires_configuration_and_autonomous": true,
+      "shared_schedule_operation_reaches_owned_pause_with_fresh_gates_closed": true,
+      "actual_schedule_repo_refuses_other_fresh_writes_or_execution_before_SQL": true,
+      "actual_Cookie_owner_CAS_and_schema_checks_not_bypassed": true,
+      "actual_hosted_verification_pending": true,
+      "production_GO": false
+    },
+    "current_original_employee_migration_source": {
+      "base_head": "bc7c87187a6862774cc89776de451f0086a131de",
+      "status": "SOURCE_REVIEWED_NEW_HEAD_HOSTED_PENDING",
+      "original_employee_UI_preserved": true,
+      "combined_pure": 2339,
+      "new_quality_source_only_job": "original-ui-contracts",
+      "old_quality_job_definitions_unchanged": 28,
+      "release_story_source_integrated": true,
+      "release_story_actual_Cookie_owner_CAS_and_committed_prefix_recovery_required": true,
+      "release_story_current_Worker_pass_claimed": false,
+      "schedules078_story_source_integrated": true,
+      "schedules078_first_hosted_push_branch": "codex/pg18-worker-heartbeat-20261028",
+      "schedules078_exact_committed_head_required": true,
+      "schedules078_actual_installed_SQL_proven": false,
+      "schedules078_Worker_or_provider_execution_claimed": false,
+      "write_stage_schedules_source_fix_integrated": true,
+      "write_stage_schedules_new_regressions": 37,
+      "ACK_identity_failure_or_unknown_write_marker_retained": true,
+      "late_old_controller_cannot_clear_new_full_descriptor": true,
+      "GET404_not_failure_proof": true,
+      "automatic_POST_replay": false,
+      "runtime_allocation_v98_source_integrated": true,
+      "runtime_allocation_new_pure": 58,
+      "runtime_guard_bytes_and_current_descriptors_reread_every_call": true,
+      "original_deadlines_and_actual_cleanup_checks_unchanged": true,
+      "runtime_performance_improvement_proven": false,
+      "normal_assets": 105,
+      "normal_PG_matches": 0,
+      "original_PG_assets": 108,
+      "Native_literal_sources": 380,
+      "complete069_literal_sources": 414,
+      "original_complete069_SQL_unmodified": 53,
+      "independent078_SQL_source_only": true,
+      "actual_new_head_genuine_passes": 0,
+      "production_GO": false,
+      "write_stage_release_source_fix_integrated": true,
+      "write_stage_release_new_regressions": 54,
+      "Release_API_capability_preflight_distinguishes_unsent_POST": true,
+      "Release_all_five_action_canonical_source_bindings_retained": true
+    },
+    "current_verified_bc7c871_hosted_parent": {
+      "head": "bc7c87187a6862774cc89776de451f0086a131de",
+      "automatic_runs_terminal": 16,
+      "success": 15,
+      "complete069_failed": true,
+      "quality_jobs_passed": 50,
+      "quality_root_tests": 4677,
+      "F01_jobs_passed": 17,
+      "dedicated_curated_original_UI_job_in_parent": false,
+      "telemetry_controller_passed": 28,
+      "telemetry_Writer_passed": 27,
+      "strict_short8_all_passed": true,
+      "strict_original_owned_cleanup_passed": true,
+      "heartbeat_jobs_passed": 9,
+      "Legacy_Reader_finish_failed_elapsed_ms": 5041,
+      "Legacy_Reader_guard_calls": 112,
+      "Legacy_Reader_guard_ms": 4118,
+      "Legacy_original_wrapped_code": null,
+      "Legacy_original_wrapped_kind": "other",
+      "Final14_actual_check_group_ms": 22537,
+      "sample_budget_ms_unchanged": 15000,
+      "qualifying24h": false,
+      "employeeUAT": false,
       "production_GO": false
     }
   },

@@ -1,4 +1,5 @@
 import {performance} from 'node:perf_hooks'
+import {writeSync} from 'node:fs'
 import {full069RecordWriteFailureData} from './pg18-full069-owned-record-contract.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
 import {createHash} from 'node:crypto'
@@ -15,20 +16,23 @@ const safeCode=error=>typeof error?.message==='string'&&/^(?:full069_(?:final(?:
 // No message matching, caller timestamp, readiness or authorization is accepted.
 const sampleFailureObservations=new WeakMap()
 function sampleFailureMilliseconds(start,end){const value=Math.ceil(end-start);return Number.isFinite(start)&&Number.isFinite(end)&&end>=start&&Number.isSafeInteger(value)&&value>=0&&value<=120000?value:null}
-function rememberSampleFailure(error,reason,before,beforeChecks,checksDone,after){
- try{if(!['process_identity_changed','sample_budget_exceeded'].includes(reason))return;const end=after===undefined?performance.now():after;sampleFailureObservations.set(error,Object.freeze({event:'full069_final14_sample_failure_observation',reason,sample_budget_ms:15000,collected_ms:sampleFailureMilliseconds(before,end),before_checks_ms:sampleFailureMilliseconds(before,beforeChecks),checks_ms:sampleFailureMilliseconds(beforeChecks,checksDone),after_checks_ms:sampleFailureMilliseconds(checksDone,end),observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))}catch{/* Keep the exact original sample error. */}
+function rememberSampleFailure(error,reason,before,beforeChecks,checksDone,after,branchTimes){
+ try{if(!['process_identity_changed','sample_budget_exceeded'].includes(reason))return;const end=after===undefined?performance.now():after;sampleFailureObservations.set(error,Object.freeze({event:'full069_final14_sample_failure_observation',reason,sample_budget_ms:15000,collected_ms:sampleFailureMilliseconds(before,end),before_checks_ms:sampleFailureMilliseconds(before,beforeChecks),checks_ms:sampleFailureMilliseconds(beforeChecks,checksDone),after_checks_ms:sampleFailureMilliseconds(checksDone,end),observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}));if(branchTimes)writeSync(2,JSON.stringify({event:'full069_final14_sample_branch_timing_observation',native_ms:branchTimes.native,runtime_ms:branchTimes.runtime,companions_ms:branchTimes.companions,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})+'\n')}catch{/* Keep the exact original sample error. */}
 }
 export function full069FinalSampleFailureObservation(error){try{return sampleFailureObservations.get(error)??null}catch{return null}}
 async function sample(trust,runtime,processes,native,companions,{initial=false,ready=true}={}){
  const before=performance.now(),ctx=finalContext(trust),pids=observeFull069OwnedProcesses(processes),companionBefore=await observeFull069FinalCompanions(companions,{ready:false})
  // TLS/read-only observations are independent. All finish before the immutable
  // source and both kernel process sets are rechecked. Original budgets remain.
- const beforeChecks=performance.now()
- const currentCompanionReadiness=async()=>await observeFull069FinalCompanions(companions,{ready:true}),checks=await Promise.allSettled([observeFull069OwnedNative(native,{initial,ready}),observeFull069FinalRuntime(runtime,{ready}),currentCompanionReadiness()]);const rejected=checks.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
+ const beforeChecks=performance.now(),branchTimes={native:null,runtime:null,companions:null}
+ // Observe settlement of the same three original promises; retain call order,
+ // all-settled refusal order, exact results and the original15s sample limit.
+ const timed=(key,start,promise)=>promise.finally(()=>{try{branchTimes[key]=sampleFailureMilliseconds(start,performance.now())}catch{}})
+ const currentCompanionReadiness=async()=>await observeFull069FinalCompanions(companions,{ready:true}),checks=await Promise.allSettled([timed('native',performance.now(),observeFull069OwnedNative(native,{initial,ready})),timed('runtime',performance.now(),observeFull069FinalRuntime(runtime,{ready})),timed('companions',performance.now(),currentCompanionReadiness())]);const rejected=checks.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
  const checksDone=performance.now()
- const [http,data,currentCompanions]=checks.map(r=>r.value);consumeFull069OwnedNativeReaderAudit(http);const companionAfter=await observeFull069FinalCompanions(companions,{ready:false});if(sha(observeFull069OwnedProcesses(processes))!==sha(pids))try{fail('observation_gap')}catch(error){rememberSampleFailure(error,'process_identity_changed',before,beforeChecks,checksDone);throw error}
+ const [http,data,currentCompanions]=checks.map(r=>r.value);consumeFull069OwnedNativeReaderAudit(http);const companionAfter=await observeFull069FinalCompanions(companions,{ready:false});if(sha(observeFull069OwnedProcesses(processes))!==sha(pids))try{fail('observation_gap')}catch(error){rememberSampleFailure(error,'process_identity_changed',before,beforeChecks,checksDone,undefined,branchTimes);throw error}
  const stable={processes:pids,runtime:data,profile_sha256:ctx.profileSha256,source_sha256:ctx.source.source_sha256};if(identity({...stable,companions:companionBefore})!==identity({...stable,companions:currentCompanions})||identity({...stable,companions:currentCompanions})!==identity({...stable,companions:companionAfter}))fail('companion_observation_gap')
- assertFinalStable(trust);const after=performance.now();if(after-before>15000)try{fail('observation_gap')}catch(error){rememberSampleFailure(error,'sample_budget_exceeded',before,beforeChecks,checksDone,after);throw error};return freeze({monotonic_ms:Math.floor(after),wall_ms:Date.now(),collected_ms:Math.ceil(after-before),...stable,native:http,companions:currentCompanions})
+ assertFinalStable(trust);const after=performance.now();if(after-before>15000)try{fail('observation_gap')}catch(error){rememberSampleFailure(error,'sample_budget_exceeded',before,beforeChecks,checksDone,after,branchTimes);throw error};return freeze({monotonic_ms:Math.floor(after),wall_ms:Date.now(),collected_ms:Math.ceil(after-before),...stable,native:http,companions:currentCompanions})
 }
 export {sample as collectFull069FinalSample}
 async function acknowledgement(trust,phase,digest,aborted,processes,companions){const until=performance.now()+120000;while(performance.now()<until){if(aborted())fail('interrupted');assertFinalStable(trust);if(processes)observeFull069OwnedProcesses(processes);if(companions)await observeFull069FinalCompanions(companions,{ready:true});const ack=readFinalAcknowledgement(trust,phase,digest);if(ack)return ack;await delay(1000)}fail('acknowledgement_missing')}

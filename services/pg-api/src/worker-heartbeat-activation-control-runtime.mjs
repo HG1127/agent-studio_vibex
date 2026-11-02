@@ -258,11 +258,11 @@ function protocolMessageExports(state,file,module,exports){
 function checkExports(graph,protocolCells){
   if(protocolCells!==undefined&&!(protocolCells instanceof WeakMap))fail()
   for(const [object,before] of graph){
-    const after=Object.getOwnPropertyDescriptors(object),cell=protocolCells?.get(object)
-    if(Reflect.ownKeys(before).length!==Reflect.ownKeys(after).length)fail()
-    for(const k of Reflect.ownKeys(before)){
+    const after=Object.getOwnPropertyDescriptors(object),cell=protocolCells?.get(object),keys=Reflect.ownKeys(before)
+    if(keys.length!==Reflect.ownKeys(after).length)fail()
+    for(const k of keys){
       const a=before[k],b=after[k]
-      if(!b||['get','set','writable','enumerable','configurable'].some(p=>a[p]!==b[p]))fail()
+      if(!b||a.get!==b.get||a.set!==b.set||a.writable!==b.writable||a.enumerable!==b.enumerable||a.configurable!==b.configurable)fail()
       if(cell&&k==='length'){
         // Locked pg-protocol 1.16.1 literals start at5; legitimate empty frames
         // have wire length4. This checks observed values, not who assigned them

@@ -1,6 +1,7 @@
 import {OriginalVersionReleaseError,parseOriginalReleaseIntent,releaseId,type OriginalReleaseIntent} from '../../shared/original-version-release-contract.ts'
 import {prepareReleaseIntent,releaseHistoryNotice,type PgNativeAgentReleaseChoice as Choice,type PgNativeAgentReleaseWorkspace as Workspace,type PgNativeAgentReleaseDetail as Detail,type PgNativeAgentReleaseResult as Result} from './originalVersionReleaseData.ts'
-import type {OriginalVersionReleaseApi} from './originalVersionReleaseApi.ts'
+import {originalReleaseWriteFailure,type OriginalVersionReleaseApi} from './originalVersionReleaseApi.ts'
+import {parseAgentDesignTransportJson} from '../../services/pg-api/src/agent-design-value-contract.ts'
 import type {OriginalHomeAgent} from './originalHomeAgentApi.ts'
 import type {OriginalModelConnection} from './originalModelConnectionsApi.ts'
 import type {SpecVersionRow,ConfirmAction,CustomModelOption,AgentSpec,SavedSpecRow} from '../pages/VersionRelease/useVersionRelease.ts'
@@ -40,8 +41,19 @@ export function createOriginalVersionReleaseController(ports:Ports){
  function lose(notify=true,reason='changed'){if(blocked||disposed)return;blocked=true;suspended=false;recovering=false;epoch++;selection++;read++;testRead++;abort.abort();busy=false;erase();state.errorMsg=reason==='signed_out'?'员工会话已确认退出，原私有草稿已清除；原请求标记仍由原员工核对。':'员工账号已变化，原账号的版本、快照、表单和验收已隐藏。请重新打开页面。';if(notify)publish()}
  function observe(notify=true){if(disposed||blocked)return false;const actual=ports.currentEmployee();if(actual===null){suspend(notify);return false}if(actual!==employee){lose(notify);return false}return !suspended}
  function guard(recovery=false){return observe(true)&&(!recovering||recovery)}
- async function verify(stamp:number,recovery=false){if(!guard(recovery)||stamp!==epoch)throw Error('obsolete_release_scope');let actual:string;try{actual=await ports.verifyEmployee()}catch(error){if(disposed||stamp!==epoch)throw Error('obsolete_release_scope');if(error instanceof OriginalVersionReleaseError&&error.status===401)lose(true,'signed_out');else suspend();throw error}if(disposed||blocked||stamp!==epoch)throw Error('obsolete_release_scope');if(actual!==employee){lose();throw Error('release_employee_changed')}if(!guard(recovery))throw Error('release_identity_unknown')}
- async function invoke<T>(stamp:number,fn:()=>Promise<T>,recovery=false):Promise<T>{await verify(stamp,recovery);try{const v=await fn();await verify(stamp,recovery);return v}catch(error){if(error instanceof OriginalVersionReleaseError&&error.code==='employee_session_changed')lose();if(!blocked&&!disposed&&stamp===epoch)await verify(stamp,recovery);throw error}}
+ async function verify(stamp:number,recovery=false,beforeInvalidation?:()=>void){
+   if(!disposed&&!blocked&&stamp===epoch&&ports.currentEmployee()!==employee)beforeInvalidation?.()
+   if(!guard(recovery)||stamp!==epoch)throw Error('obsolete_release_scope')
+   let actual:string;try{actual=await ports.verifyEmployee()}catch(error){if(disposed||stamp!==epoch)throw Error('obsolete_release_scope');beforeInvalidation?.();if(error instanceof OriginalVersionReleaseError&&error.status===401)lose(true,'signed_out');else suspend();throw error}
+   if(disposed||blocked||stamp!==epoch)throw Error('obsolete_release_scope');if(actual!==employee){beforeInvalidation?.();lose();throw Error('release_employee_changed')}if(ports.currentEmployee()!==employee)beforeInvalidation?.();if(!guard(recovery))throw Error('release_identity_unknown')
+  }
+ type WriteAttempt={intent:OriginalReleaseIntent;phase:'not_dispatched'|'dispatched'|'acknowledged'}
+  async function invoke<T>(stamp:number,fn:()=>Promise<T>,recovery=false,attempt?:WriteAttempt):Promise<T>{
+   await verify(stamp,recovery,()=>{if(attempt?.phase==='not_dispatched')retirePending(attempt.intent,stamp)})
+   if(attempt&&!ownsPending(attempt.intent,stamp))throw Error('obsolete_release_scope')
+   try{if(attempt)attempt.phase='dispatched';const v=await fn();if(attempt)attempt.phase='acknowledged';await verify(stamp,recovery);return v}
+   catch(error){if(attempt?.phase==='dispatched'&&originalReleaseWriteFailure(error,attempt.intent)!==null)retirePending(attempt.intent,stamp);if(!disposed&&stamp===epoch&&error instanceof OriginalVersionReleaseError&&error.code==='employee_session_changed')lose();if(!blocked&&!disposed&&stamp===epoch)await verify(stamp,recovery);throw error}
+  }
  async function checkScope(){
   if(disposed||blocked||recovering)return;observe(true);if(blocked||disposed)return
   const observed=epoch;let actual:string
@@ -60,9 +72,14 @@ export function createOriginalVersionReleaseController(ports:Ports){
   finally{if(stamp===epoch&&!disposed&&!blocked&&!suspended){recovering=false;busy=false;publish()}}
  }
  function failure(error:unknown){if(disposed||blocked||suspended||recovering)return;if(error instanceof OriginalVersionReleaseError&&error.status===401){suspend();return}publish({errorMsg:message(error)})}
- function persist(value:OriginalReleaseIntent){try{const valid=parseOriginalReleaseIntent(value,employee,now()),bytes=JSON.stringify(valid);if(bytes.length>3000)throw Error();ports.storage.write(bytes);pending=valid}catch{storageBroken=true;throw new OriginalVersionReleaseError(503,'original_release_storage_unavailable')}}
- function clearPending(){try{ports.storage.remove();pending=null}catch{storageBroken=true;throw new OriginalVersionReleaseError(503,'original_release_storage_unavailable')}}
-  function currentPendingRequest(){return pending?.request_id}
+ function persist(value:OriginalReleaseIntent){try{const valid=parseOriginalReleaseIntent(value,employee,now()),bytes=JSON.stringify(valid);if(bytes.length>3000)throw Error();ports.storage.write(bytes);pending=valid;return valid}catch{storageBroken=true;throw new OriginalVersionReleaseError(503,'original_release_storage_unavailable')}}
+ function ownsPending(intent:OriginalReleaseIntent,stamp:number){
+   if(disposed||blocked||suspended||recovering||stamp!==epoch||pending!==intent||intent.employee_id!==employee)return false
+   const actual=ports.currentEmployee();if(actual!==null&&actual!==employee)return false
+   try{const raw=ports.storage.read();return raw!==null&&raw.length<=3000&&JSON.stringify(parseOriginalReleaseIntent(parseAgentDesignTransportJson(raw),employee,now()))===JSON.stringify(intent)}catch{return false}
+  }
+  function retirePending(intent:OriginalReleaseIntent,stamp:number){if(!ownsPending(intent,stamp))return false;try{ports.storage.remove();pending=null;return true}catch{storageBroken=true;return false}}
+
  async function loadModels(stamp=epoch,recovery=false,initial=false){
   if(stamp!==epoch||!guard(recovery))return
   const ticket=++modelRead,chosen=selection
@@ -93,14 +110,14 @@ export function createOriginalVersionReleaseController(ports:Ports){
   const value=await invoke(stamp,()=>ports.api.detail(spec,id,abort.signal));if(chosen!==selection||detailTickets.get(id)!==ticket||!workspace||!guard())return;const row=state.versionList.find(v=>v.id===id);if(!row||row.nativeRevision!==value.revision)throw new OriginalVersionReleaseError(409,'agent_release_version_changed');details.set(id,value);publish({versionList:state.versionList.map(v=>v.id===id?{...versionRow(value,employee,value),spec_id:spec}:v)})
  }catch(error){if(chosen===selection&&detailTickets.get(id)===ticket){details.delete(id);publish({versionList:state.versionList.map(v=>v.id===id?{...v,spec_snapshot:null,nativeSnapshot:null,nativeDetailState:'error' as const}:v)});failure(error)}}}
  async function loadTest(run:string,stamp=epoch,recovery=false){if(stamp!==epoch||!guard(recovery)||!workspace)return;const spec=workspace.spec_id,chosen=selection,ticket=++testRead;try{const value=await invoke(stamp,()=>ports.api.acceptance(spec,run,abort.signal),recovery);if(chosen!==selection||ticket!==testRead||!guard(recovery))return;acceptance=value;publish({testRun:{id:value.run_id,status:value.status as RunStateKey,current_step:0,max_steps:value.max_steps,error:''}})}catch(error){if(chosen===selection&&ticket===testRead){acceptance=null;publish({testRun:null});failure(error)}}}
- async function finish(intent:OriginalReleaseIntent,result:Result){clearPending();review=null;details.clear();workspace=null;publish({confirmAction:null,nativeConfirmChecked:false,nativeRestoreReason:'',nativeAcceptanceConfirmed:false,versionList:[],noticeMsg:'操作已由服务器确认。正在重新读取当前状态。'});await refresh();if(intent.action==='acceptance'&&result.run_id)await loadTest(result.run_id);if(intent.action==='snapshot')publish({versionNote:''})}
- async function query(){if(!guard()||busy||!pending)return;busy=true;const stamp=epoch,intent=pending;publish({errorMsg:'',isConfirmBusy:true});try{const result=await invoke(stamp,()=>ports.api.query(intent,abort.signal));if(!guard())return;await finish(intent,result)}catch(error){if(stamp===epoch)failure(error)}finally{if(!disposed&&stamp===epoch){busy=false;publish({isConfirmBusy:false})}}}
- async function perform(choice:Choice,before:Workspace){if(!guard()||busy||pending||storageBroken||!cap.writes||choice.action==='acceptance'&&!cap.acceptance)return;busy=true;const stamp=epoch;publish({errorMsg:'',noticeMsg:'',isConfirmBusy:['publish','restore','delete_draft'].includes(choice.action),isStartingTest:choice.action==='acceptance',isSavingVersion:choice.action==='snapshot'});let sent=false,acknowledged=false
+ async function finish(intent:OriginalReleaseIntent,result:Result,stamp:number){if(!retirePending(intent,stamp))throw new OriginalVersionReleaseError(503,'original_release_storage_unavailable');review=null;details.clear();workspace=null;publish({confirmAction:null,nativeConfirmChecked:false,nativeRestoreReason:'',nativeAcceptanceConfirmed:false,versionList:[],noticeMsg:'操作已由服务器确认。正在重新读取当前状态。'});await refresh();if(intent.action==='acceptance'&&result.run_id)await loadTest(result.run_id);if(intent.action==='snapshot')publish({versionNote:''})}
+ async function query(){if(!guard()||busy||!pending)return;busy=true;const stamp=epoch,intent=pending;publish({errorMsg:'',isConfirmBusy:true});try{const result=await invoke(stamp,()=>ports.api.query(intent,abort.signal));if(!guard())return;await finish(intent,result,stamp)}catch(error){if(stamp===epoch)failure(error)}finally{if(!disposed&&stamp===epoch){busy=false;publish({isConfirmBusy:false})}}}
+ async function perform(choice:Choice,before:Workspace){if(!guard()||busy||pending||storageBroken||!cap.writes||choice.action==='acceptance'&&!cap.acceptance)return;busy=true;const stamp=epoch;publish({errorMsg:'',noticeMsg:'',isConfirmBusy:['publish','restore','delete_draft'].includes(choice.action),isStartingTest:choice.action==='acceptance',isSavingVersion:choice.action==='snapshot'});let acknowledged=false
   try{
    const fresh=await invoke(stamp,()=>ports.api.workspace(before.spec_id,abort.signal));if(!sameSource(before,fresh)||choice.action==='publish'&&fresh.release_revision!==before.release_revision)throw new OriginalVersionReleaseError(409,'agent_release_source_changed')
-   const intent=await prepare(employee,before.spec_id,choice,now());await verify(stamp);persist(intent);publish();sent=true
-   const result=await invoke(stamp,()=>ports.api.change(before.spec_id,choice,abort.signal));acknowledged=true;await finish(intent,result)
-  }catch(error){if(stamp===epoch&&currentPendingRequest()===choice.request_id&&sent&&!acknowledged&&error instanceof OriginalVersionReleaseError&&!error.outcomeUnknown&&[400,403,404,405,409].includes(error.status)){try{clearPending()}catch{}}if(stamp===epoch)failure(error);if(stamp===epoch&&acknowledged)publish({noticeMsg:'操作已确认，当前状态刷新未完成，请刷新版本。'})}
+   const intent=await prepare(employee,before.spec_id,choice,now());await verify(stamp);const ownIntent=persist(intent);publish()
+   const result=await invoke(stamp,()=>ports.api.change(before.spec_id,choice,abort.signal),false,{intent:ownIntent,phase:'not_dispatched'});acknowledged=true;await finish(ownIntent,result,stamp)
+  }catch(error){if(stamp===epoch)failure(error);if(stamp===epoch&&acknowledged)publish({noticeMsg:'操作已确认，当前状态刷新未完成，请刷新版本。'})}
   finally{if(!disposed&&stamp===epoch){busy=false;publish({isStartingTest:false,isSavingVersion:false,isConfirmBusy:false})}}
  }
  async function choose(id:string){if(!guard()||busy||pending)return;selection++;read++;testRead++;detailTickets.clear();workspace=null;details.clear();acceptance=null;review=null;publish({selectedSpecId:id,versionList:[],expandedVersionId:'',testRun:null,testInstruction:'',versionNote:'',confirmAction:null,nativeConfirmChecked:false,nativeRestoreReason:'',nativeAcceptanceConfirmed:false,publishPickId:'',errorMsg:'',noticeMsg:''});if(id)try{await refresh()}catch(error){failure(error)}}

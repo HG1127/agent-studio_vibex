@@ -215,6 +215,24 @@ export function permitNativePg18BusinessUatRequest(
   // Read-only owner metadata never inherits a configuration/submission gate.
   // The Native handler still verifies Cookie identity and installed schema.
   if(pathname==="/api/v2/original-ui/internal-overview"||pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos"||pathname==="/api/v2/original-ui/agent-workspace"||pathname==="/api/v2/original-ui/agent-pending")return method==="GET"
+  // Original employee facades cross the same Native boundary as their older
+  // API counterparts. Their own handlers still require the actual Cookie,
+  // exact protocol header, employee precondition and transactional owner/CAS.
+  const originalId='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+  const originalRelease=new RegExp('^/api/v2/original-ui/agent-releases/'+originalId+'(?:/(change|acceptance|versions|receipts)(?:/('+originalId+'))?)?$').exec(pathname)
+  if(originalRelease){
+    const action=originalRelease[1],selected=originalRelease[2]
+    if(method==='GET')return !action||!!selected&&(action==='versions'||action==='acceptance'||action==='receipts')
+    if(method!=='POST'||selected)return false
+    if(action==='acceptance')return policy.configurationWrites===true&&policy.autonomousAgentUat===true
+    return action==='change'&&policy.configurationWrites===true
+  }
+  const originalSchedules='/api/v2/original-ui/schedules'
+  if(pathname===originalSchedules||pathname===originalSchedules+'/capabilities'||pathname===originalSchedules+'/history'||pathname===originalSchedules+'/workflow-targets'||new RegExp('^'+originalSchedules+'/(?:'+originalId+'|(?:operations|workflow-targets)/'+originalId+')$').test(pathname))return method==='GET'
+  // The parsed operation's fresh-write/execution gates live in the actual
+  // repository; this exact shared endpoint must also admit an owned pause
+  // after new submissions are disabled. It grants no general write scope.
+  if(pathname===originalSchedules+'/operations')return method==='POST'
   // Optional company metadata is read-only; the projection rechecks Native
   // active admin authority independently of every configuration/run switch.
   if(pathname==="/api/v2/company-overview"||pathname==="/api/v2/company-overview/employees")return method==="GET"

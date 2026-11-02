@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {OriginalSchedulesRepository} from './original-schedules-repository.ts'
+import {inspectOriginalSchedulesSchema} from './original-schedules-audit.ts'
 import {prepareModelConfigReceipts075After069} from './model-config-receipt-startup075.ts'
 import {createModelConfigReceiptHttp} from './model-config-receipt-http.ts'
 import {ModelDraftProbeRepository} from './model-draft-probe-repository.ts'
@@ -454,6 +456,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
+    const originalSchedulesAvailable=await inspectOriginalSchedulesSchema(business)
     const employeeGovernanceAvailable=await inspectEmployeeGovernanceSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     const releasesAvailable=await inspectAgentReleaseSchema(business)
@@ -630,6 +633,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.knowledgeEmbeddingConsentUat===true?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(business)}:{}),
       ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
       ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
+      ...(originalSchedulesAvailable?{originalSchedulesRepository:new OriginalSchedulesRepository(business,{writes:capabilities.configurationWrites===true,execution:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
       scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       // Schedule drafts are inert and only available behind explicit config UAT.

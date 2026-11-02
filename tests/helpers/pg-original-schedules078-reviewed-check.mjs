@@ -1,0 +1,10 @@
+import {requireOriginalSchedules078Ci} from './pg-original-schedules078-browser-guard.mjs'
+import {originalSchedules078ReviewedSources} from './pg-original-schedules078-reviewed-sources.mjs'
+import {originalSchedules078RequiredSources} from './pg-original-schedules078-required-sources.mjs'
+/** Provenance only; no source digest substitutes for real DB/ACL auditors. */
+export async function verifyOriginalSchedules078Sources(env=process.env){
+ const permit=requireOriginalSchedules078Ci(env),[fs,path,url,crypto,child,{default:assert}]=await Promise.all([import('node:fs'),import('node:path'),import('node:url'),import('node:crypto'),import('node:child_process'),import('node:assert/strict')]),repo=fs.realpathSync(url.fileURLToPath(new URL('../../',import.meta.url)))
+ for(const file of originalSchedules078RequiredSources)assert.match(originalSchedules078ReviewedSources[file]??'',/^[a-f0-9]{64}$/,'Root must seal current integrated078 source DAG: '+file)
+ const check=()=>{assert.equal(child.execFileSync('git',['rev-parse','HEAD'],{cwd:repo,encoding:'utf8',maxBuffer:4096}).trim(),permit.head);assert.equal(child.execFileSync('git',['status','--porcelain','--untracked-files=normal'],{cwd:repo,encoding:'utf8',maxBuffer:65536}).trim(),'');for(const [file,pin]of Object.entries(originalSchedules078ReviewedSources)){assert(!file.startsWith('/')&&!file.includes('..')&&!file.includes('\\'));let current=repo;for(const part of file.split('/')){assert(!fs.lstatSync(current).isSymbolicLink());current=path.join(current,part)}const stat=fs.lstatSync(current);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size>0&&stat.size<=16*1024*1024);const bytes=fs.readFileSync(current),committed=child.execFileSync('git',['show',permit.head+':'+file],{cwd:repo,maxBuffer:16*1024*1024});assert(bytes.equals(committed));assert.equal(crypto.createHash('sha256').update(committed).digest('hex'),pin)}}
+ check();return{repo,check,sources:Object.entries(originalSchedules078ReviewedSources).map(([file,sha256])=>({file,sha256}))}
+}

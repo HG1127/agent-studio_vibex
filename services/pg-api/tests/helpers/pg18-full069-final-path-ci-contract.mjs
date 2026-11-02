@@ -60,16 +60,22 @@ export function finalPathCiPrimaryFailureCode(stderr){
 
 // Bounded sample-failure DATA, separate from primary refusal selection.
 export function parseFinalPathCiSampleFailures(stderr){
- const records=[]
+ const records=[];let branch=null
  if(typeof stderr!=='string'||Buffer.byteLength(stderr)>524288||stderr.includes('\0'))return Object.freeze(records)
  for(const line of stderr.split(/\r?\n/)){
   if(line.length>1024)continue
   let v;try{v=JSON.parse(line);if(JSON.stringify(v)!==line)continue}catch{continue}
+  if(v?.event==='full069_final14_sample_branch_timing_observation'){
+   if(Array.isArray(v)||Object.getPrototypeOf(v)!==Object.prototype||Object.keys(v).sort().join(',')!=='companions_ms,event,native_ms,observed_data_only,production_GO,qualifies_run,runtime_authorization,runtime_ms'||v.observed_data_only!==true||v.runtime_authorization!==false||v.qualifies_run!==false||v.production_GO!==false||[v.native_ms,v.runtime_ms,v.companions_ms].some(t=>t!==null&&(!Number.isSafeInteger(t)||t<0||t>120000)))continue
+   if(branch)return Object.freeze([])
+   branch=Object.freeze({event:v.event,native_ms:v.native_ms,runtime_ms:v.runtime_ms,companions_ms:v.companions_ms,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false});continue
+  }
   if(!v||Array.isArray(v)||Object.getPrototypeOf(v)!==Object.prototype||Object.keys(v).sort().join(',')!=='after_checks_ms,before_checks_ms,checks_ms,collected_ms,event,observed_data_only,production_GO,qualifies_run,reason,runtime_authorization,sample_budget_ms'||v.event!=='full069_final14_sample_failure_observation'||!['process_identity_changed','sample_budget_exceeded'].includes(v.reason)||v.sample_budget_ms!==15000||v.observed_data_only!==true||v.runtime_authorization!==false||v.qualifies_run!==false||v.production_GO!==false)continue
   const times=[v.collected_ms,v.before_checks_ms,v.checks_ms,v.after_checks_ms];if(times.some(t=>t!==null&&(!Number.isSafeInteger(t)||t<0||t>120000))||v.reason==='sample_budget_exceeded'&&v.collected_ms!==null&&v.collected_ms<=15000)continue
   if(times.every(t=>t!==null)){const total=v.before_checks_ms+v.checks_ms+v.after_checks_ms;if(total<v.collected_ms||total>v.collected_ms+2)continue}
   records.push(Object.freeze({event:v.event,reason:v.reason,sample_budget_ms:15000,collected_ms:v.collected_ms,before_checks_ms:v.before_checks_ms,checks_ms:v.checks_ms,after_checks_ms:v.after_checks_ms,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}))
   if(records.length>1)return Object.freeze([])
  }
+ if(records.length===1&&branch)records.push(branch)
  return Object.freeze(records)
 }

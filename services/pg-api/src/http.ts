@@ -1,3 +1,5 @@
+import type {OriginalSchedulesRepository} from './original-schedules-repository.ts'
+import {createOriginalSchedulesHttp} from './original-schedules-http.ts'
 import {createOriginalVersionReleaseHttp} from './original-version-release-http.ts'
 import {createOriginalToolConnectionsHttp} from './original-tool-connections-http.ts'
 import {parseModelConnectionPageQuery} from './model-connection-pagination.ts'
@@ -55,6 +57,7 @@ export interface AppDependencies {
   runRepository?: RunRepository
   scheduleInventory?: ScheduleInventoryRepository
   scheduleDraftRepository?: ScheduleDraftRepository
+  originalSchedulesRepository?:OriginalSchedulesRepository
   scheduleRuntimeRepository?:ScheduleRuntimeRepository
   workflowRepository?: WorkflowRepository
   workflowValidationRepository?: WorkflowValidationRepository
@@ -181,6 +184,7 @@ function allowBodyFields(data:Record<string,unknown>,permitted:string[]) {
  * No CORS, no cookies, no anonymous mode, no trust in X-Rh-User-Id.
  */
 export function createHandler(deps:AppDependencies) {
+  const originalSchedules=deps.authenticateRequest&&deps.originalSchedulesRepository?createOriginalSchedulesHttp({repo:deps.originalSchedulesRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const originalRelease=deps.authenticateRequest&&deps.agentReleaseRepository?createOriginalVersionReleaseHttp({repo:deps.agentReleaseRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const originalTools=deps.authenticateRequest&&deps.toolConnectionRepository?createOriginalToolConnectionsHttp({repo:deps.toolConnectionRepository,allowedOrigin:deps.allowedOrigin,authenticateRequest:deps.authenticateRequest}):null
   const agentSpec=(raw:unknown,identity:Identity)=>{
@@ -190,6 +194,7 @@ export function createHandler(deps:AppDependencies) {
   }
   return async (req:IncomingMessage,res:ServerResponse):Promise<void>=>{
     try{
+      if(originalSchedules&&await originalSchedules(req,res))return
       if(originalRelease&&await originalRelease(req,res))return
       if(originalTools&&await originalTools(req,res))return
       const method=req.method||""
