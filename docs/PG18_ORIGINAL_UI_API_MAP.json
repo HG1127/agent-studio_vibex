@@ -7968,6 +7968,26 @@
       "qualifying24h": false,
       "employeeUAT": false,
       "production_GO": false
+    },
+    "current_schedules078_first_hosted_install": {
+      "head": "335c96b671f68c58dfcaaea35a196870ad59f359",
+      "run": 41400827301,
+      "job": 125132069395,
+      "status": "FAILED_DURING_078_INSTALL_BEFORE_BROWSER",
+      "pure_passed": 103,
+      "frontend_and_API_types_passed": true,
+      "both_original_UI_builds_passed": true,
+      "actual_error": "syntax error at or near FOR",
+      "secondary_cleanup_error": "original_schedule_forms relation absent after failed migration",
+      "raw_log_sha256": "b3104290b37882b45136ec84f1d9b015d249b8b8b98f13b573776e34541fd49b",
+      "source_fix": "CREATE POLICY command FOR INSERT before TO; role and owner/actor predicates retained",
+      "source_fix_SQL_sha256": "a8f170e94d365db68e01d8f5eafcf751a932a1ffd5782451f6ca683d93b0613f",
+      "function_bodies_unchanged": 20,
+      "old_complete069_SQL_unchanged": 53,
+      "new_source_focused_pure": 12,
+      "new_source_genuine_passed": false,
+      "local_SQL_executed": false,
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

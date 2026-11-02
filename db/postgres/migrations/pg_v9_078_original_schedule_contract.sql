@@ -92,7 +92,7 @@ DO $scope$ DECLARE t text; BEGIN
 END $scope$;
 CREATE POLICY original_schedules_active_user ON agentstudio.users TO agentstudio_original_schedules USING(id=agentstudio.actor_id());
 CREATE POLICY original_schedules_active_account ON agentstudio_auth.accounts TO agentstudio_original_schedules USING(user_id=agentstudio.actor_id());
-CREATE POLICY original_schedules_audit ON agentstudio.audit_events TO agentstudio_original_schedules FOR INSERT WITH CHECK(owner_user_id=agentstudio.actor_id() AND actor_user_id=agentstudio.actor_id());
+CREATE POLICY original_schedules_audit ON agentstudio.audit_events FOR INSERT TO agentstudio_original_schedules WITH CHECK(owner_user_id=agentstudio.actor_id() AND actor_user_id=agentstudio.actor_id());
 
 CREATE FUNCTION agentstudio.original_schedule_actor() RETURNS uuid
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
