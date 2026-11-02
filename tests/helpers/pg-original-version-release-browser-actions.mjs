@@ -1,4 +1,5 @@
 import {expect} from '@playwright/test'
+import {captureBrowserJsonResponse} from './browser-json-response.mjs'
 export function releaseHistoryHeader(page,n){return page.getByRole('heading',{name:/^版本历史/}).locator('..').locator('..').getByText('v'+n,{exact:true}).locator('..')}
 export const releaseWire=(page,path,method)=>page.waitForResponse(r=>new URL(r.url()).pathname==='/__pg_native'+path&&r.request().method()===method)
 export async function releaseLogin(page,context,f,who){
@@ -31,7 +32,7 @@ export async function releaseDropCommitted(page,f,action,trigger,record){
 export async function releaseQueryOnly(page,f,marker,record){
  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'核对原请求结果',exact:true})).toBeEnabled()
  const posts=f.observations.receipt_posts,before=await f.counts(),path='/api/v2/original-ui/agent-releases/'+marker.spec_id+'/receipts/'+marker.request_id
- const response=releaseWire(page,path,'GET');await page.getByRole('button',{name:'核对原请求结果',exact:true}).click();const raw=await response;expect(raw.status()).toBe(200);const body=await raw.json();expect(body.item.mode).toBe('read_only_exact_agent_release_receipt');expect(body.item.request_sha256).toBe(marker.request_sha256);expect(body.item.result.request_id).toBe(marker.request_id)
+ const response=captureBrowserJsonResponse(releaseWire(page,path,'GET'));await page.getByRole('button',{name:'核对原请求结果',exact:true}).click();const{status,body}=await response;expect(status).toBe(200);expect(body.item.mode).toBe('read_only_exact_agent_release_receipt');expect(body.item.request_sha256).toBe(marker.request_sha256);expect(body.item.result.request_id).toBe(marker.request_id)
  await expect(page.getByRole('button',{name:'核对原请求结果',exact:true})).toHaveCount(0);expect(await releasePendingMarker(page,f.users.alice)).toBeNull();expect(f.observations.receipt_posts).toBe(posts);expect(await f.counts()).toEqual(before);record.queries++;return body.item.result
 }
 export async function releaseReview(page,version,kind){await releaseHistoryHeader(page,version).getByRole('button',{name:kind==='restore'?'恢复':kind==='publish'?'发布':'删除草稿 v'+version,exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();const button=dialog.getByRole('button',{name:kind==='restore'?'确认恢复':kind==='publish'?'确认发布':'确认删除',exact:true});await expect(button).toBeDisabled();if(kind==='restore')await dialog.getByLabel('恢复说明（8–500字）',{exact:true}).fill('Synthetic complete original configuration restore');await dialog.getByRole('checkbox').check();await expect(button).toBeEnabled();return{dialog,button}}

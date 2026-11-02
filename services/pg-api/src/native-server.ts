@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {prepareOriginalStaffRuntime} from './original-staff-runtime.mjs'
 import {inspectNativeEmployeeUi078Profile} from './native-employee-ui078-profile.ts'
 import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
 import {OriginalRunInteractionRepository} from './original-run-interaction-repository.ts'
@@ -462,7 +463,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
     const originalSchedulesAvailable=await inspectOriginalSchedulesSchema(business)
-    const employeeGovernanceAvailable=await inspectEmployeeGovernanceSchema(business)
+    // Independently named084 has its own complete auth catalog/ACL audit.
+    // Default047 retains its original status-only grant checks unchanged.
+    const originalStaff=await prepareOriginalStaffRuntime({pool:adapter(authPool),env,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,employeeProvisioning:capabilities.employeeProvisioning,listen})
+    const employeeGovernanceAvailable=originalStaff!==null||await inspectEmployeeGovernanceSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
     const releasesAvailable=await inspectAgentReleaseSchema(business)
     const humanInputAvailable=await inspectAgentHumanInputSchema(business)
@@ -728,7 +732,11 @@ export async function startNativePg18Server(env=process.env,listen=true){
       const liveMonitorFallback=businessHandler
       businessHandler=async(req,res)=>{if(await liveMonitorHttp(req,res))return;await liveMonitorFallback(req,res)}
     }
-    const entryHandler=createNativeEntryHttpHandler(native.handler,callerPublicHttp)
+    const originalNativeHandler=async(req:IncomingMessage,res:ServerResponse)=>{
+      if(originalStaff&&await originalStaff.handler(req,res))return
+      await native.handler(req,res)
+    }
+    const entryHandler=createNativeEntryHttpHandler(originalNativeHandler,callerPublicHttp)
     const localServer=createServer(entryHandler)
     server=localServer
     localServer.requestTimeout=15000

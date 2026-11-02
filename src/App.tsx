@@ -95,6 +95,7 @@ function App() {
         <Route path="/agent-create" element={<AgentCreateRoute />} />
         <Route path="/internal-templates" element={<InternalTemplatesRoute />} />
         <Route path="/agent-collaboration" element={<AgentCollaborationRoute />} />
+        <Route path="/account" element={<StaffRoute accountOnly />} />
         <Route element={<AdminGate />}>
           <Route path="/internal-overview" element={<InternalOverviewRoute />} />
           <Route path="/staff" element={<StaffRoute />} />

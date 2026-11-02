@@ -1,5 +1,6 @@
 // Pure expected-layout allocation/fresh-observation checks, no live capability.
 import test from 'node:test'
+import './worker-heartbeat-runtime-ancestors.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import ts from 'typescript'

@@ -20,3 +20,8 @@ test("independent auth cannot be disabled by legacy mode in non-test environment
 })
 
 import './original-dialog-navigation-privacy-pure.test.mjs'
+
+import './original-staff084-pure.test.mjs'
+
+import './original-staff-api-pure.test.mjs'
+import './original-staff-page-pure.test.mjs'

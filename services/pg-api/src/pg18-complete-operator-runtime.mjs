@@ -179,7 +179,7 @@ export function assertCompleteProfileOperatorRuntimeInventory(expected,actual){
 function ancestors(file,privateParent=false){
   let current=path.dirname(file),first=true;const chain=[]
   for(;;){const st=lstatSync(current);trustedMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=path.dirname(current);if(parent===current)break;current=parent;first=false}
-  if(privateParent)for(const d of chain)for(const name of ['package.json','pnpm-workspace.yaml','.git','pyproject.toml']){try{lstatSync(path.join(d.path,name));fail()}catch(error){if(error?.code!=='ENOENT')throw error}}
+  if(privateParent)for(const d of chain)for(const name of ['package.json','pnpm-workspace.yaml','.git','pyproject.toml']){try{if(lstatSync(path.join(d.path,name),{throwIfNoEntry:false})!==undefined)fail()}catch(error){if(error?.code!=='ENOENT')throw error}}
   return chain
 }
 function sameChain(a,b){if(a.length!==b.length||a.some((v,i)=>Object.keys(v).some(k=>v[k]!==b[i][k])))fail()}

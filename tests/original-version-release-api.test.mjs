@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createOriginalVersionReleaseApi} from '../src/lib/originalVersionReleaseApi.ts'
 import {prepareReleaseIntent} from '../src/lib/originalVersionReleaseData.ts'
+import {captureBrowserJsonResponse} from './helpers/browser-json-response.mjs'
 import {E,S,V,Q,A,D,workspaceEnvelope,envelope,detail} from './helpers/original-version-release-terminal-data.mjs'
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json; charset=utf-8'}}),cap={mode:'native_pg18',config_writes_enabled:true,agent_releases_available:true,agent_release_acceptance_enabled:true,autonomous_agent_submission_enabled:true},choice={action:'snapshot',request_id:Q,expected_spec_revision:3,source_sha256:A,note:'',test_run_id:null}
 test('original workspace GET has explicit owner precondition and no legacy credential',async()=>{const api=createOriginalVersionReleaseApi({employeeId:E,rootPath:'',transport:async(path,init)=>{assert.equal(path,`/api/v2/original-ui/agent-releases/${S}`);assert.equal(init.method,'GET');assert.equal(init.credentials,'same-origin');assert.equal(init.headers['X-AgentStudio-Expected-Employee'],E);assert.equal(init.headers['X-AgentStudio-Original-Release'],'1');assert(!('Authorization'in init.headers));assert(!('X-Rh-User-Id'in init.headers));return json(workspaceEnvelope())}});assert.equal((await api.workspace(S)).next_version_no,13)})
@@ -12,3 +13,11 @@ test('query uses only GET and matches original hash before acknowledging',async(
 test('duplicate JSON keys, redirects, wrong media and mismatched byte length are refused',async()=>{const responses=[new Response('{"protocol":"bad","protocol":"native_original_version_release_v1"}',{headers:{'Content-Type':'application/json'}}),new Response('{}',{headers:{'Content-Type':'text/html'}}),new Response('{}',{headers:{'Content-Type':'application/json','Content-Length':'4'}})];for(const response of responses){const api=createOriginalVersionReleaseApi({employeeId:E,transport:async()=>response});await assert.rejects(api.workspace(S))}})
 test('missing native release capability fails closed; no PB/Pilot fallback',async()=>{const seen=[];const api=createOriginalVersionReleaseApi({employeeId:E,transport:async path=>{seen.push(path);return json({mode:'native_pg18',config_writes_enabled:true})}});assert.equal((await api.capabilities()).available,false);await assert.rejects(api.change(S,choice));assert(seen.every(p=>p==='/__pg_native/api/native-auth/capabilities'))})
 test('detail parser refuses a version for another spec',async()=>{const api=createOriginalVersionReleaseApi({employeeId:E,transport:async()=>json(envelope(detail({spec_id:Q})))});await assert.rejects(api.detail(S,V))})
+test('browser evidence captures the original response body before an awaited action can discard its document',async()=>{
+ let resolve,documentAlive=true,bodyReads=0;const response=new Promise(done=>{resolve=done}),captured=captureBrowserJsonResponse(response),body={item:{mode:'read_only_exact_agent_release_receipt',request_sha256:A,result:{request_id:Q}}}
+ const click=async()=>{resolve({status:()=>200,json(){bodyReads++;assert(documentAlive);return Promise.resolve(body)}});await Promise.resolve();documentAlive=false}
+ await click();assert.deepEqual(await captured,{status:200,body});assert.equal(bodyReads,1)
+})
+test('browser response capture preserves real body failures without substituting evidence or retrying',async()=>{
+ const failure=Error('Synthetic unavailable CDP response body');let reads=0;await assert.rejects(captureBrowserJsonResponse(Promise.resolve({status:()=>200,json(){reads++;throw failure}})),error=>error===failure);assert.equal(reads,1)
+})

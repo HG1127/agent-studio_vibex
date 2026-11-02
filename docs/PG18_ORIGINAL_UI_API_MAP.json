@@ -9931,6 +9931,68 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_5d1b6405_staff_original_ui_followup": {
+      "base_head": "5d1b6405ba095d8f8c31b451416ac56c00902700",
+      "accepted_UI": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+      "source_reseal_pending": false,
+      "source_connected_actions": [
+        "original staff me/list/search/filters/paging",
+        "create/update with separate staff and governance CAS",
+        "admin reset password",
+        "personal account owner-bound password change",
+        "metadata-only lost-ACK exact GET recovery",
+        "late employee replacement privacy refusal"
+      ],
+      "proof": {
+        "composed_staff_account_pure": 175,
+        "release_response_capture_pure": 10,
+        "ancestor_guard_before_pure": 142,
+        "ancestor_guard_after_pure": 142,
+        "API_types": true,
+        "frontend_types": true,
+        "actual_SQL_HTTP_Worker_browser": false
+      },
+      "previous_head_hosted": {
+        "workflows": 19,
+        "success": 17,
+        "failure": 2,
+        "quality_push_jobs_passed": 51,
+        "quality_PR_jobs_passed": 51,
+        "quality_main_unit_passed": 5060,
+        "remaining": [
+          "original release browser evidence body read",
+          "strict069 timing and legacy lease lifecycle"
+        ]
+      },
+      "excluded_private_candidates": {
+        "quality089_source_targets": 76,
+        "Root_pure_passed": 372,
+        "frontend_compile": "not_passed_missing_latest_UI_dependencies_and_hook_contracts",
+        "Root_product_integrated": false
+      },
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 20019,
+        "retained_prior_pins": 19344,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      },
+      "packaging_fix": {
+        "shared_contract_allowlist": [
+          "shared/original-staff-contract.mjs",
+          "shared/original-staff-contract.d.mts"
+        ],
+        "original_full_collector_pure": 5,
+        "unknown_shared_files_and_SQL084_still_refused": true
+      },
+      "pocketbase_recovery": {
+        "original_page_preserved": true,
+        "canonical_sha256": "7afeb8611106db943eae9c5b3f67b07d1d36728636363396d15a0838c9124811",
+        "original_PB_API_unchanged": true,
+        "Native_selection_no_PB_fallback": true
+      }
     }
   },
   "qualifying24h_hours": 0,
