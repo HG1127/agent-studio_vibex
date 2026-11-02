@@ -37,7 +37,7 @@ export function ordinary077Catalog(change=()=>{}){
     return respond('constraint',target,[...authored,...t.columns.flatMap((c,i)=>c.required?[{name:target+'_'+c.name+'_not_null',type:'n',keys:[i+1],valid:true,enforced:true,deferrable:false,deferred:false,local:true,ordinary:true,no_inherit:false,definition:'NOT NULL '+c.name}]:[])],p)
    }
    if(sql.startsWith('SELECT ci.relname AS name'))return respond('index',target,t.constraints.filter(c=>['p','u'].includes(c.type)).map(c=>({name:c.name,keys:[...c.keys],safe:true})),p)
-   if(sql.startsWith('SELECT tgname AS name'))return respond('trigger',target,[{name:target+'_immutable',type:58,function_oid:ordinaryFunctionOid((t.mutable?'ordinary_case_slot_guard':'ordinary_case_immutable')+'()'),safe:true}],p)
+   if(sql.startsWith('SELECT tgname AS name'))return respond('trigger',target,[{name:target+'_immutable',type:27,function_oid:ordinaryFunctionOid((t.mutable?'ordinary_case_slot_guard':'ordinary_case_immutable')+'()'),safe:true}],p)
   }
   if(sql.startsWith("SELECT p.prokind='f'")&&String(p[0]).startsWith('agentstudio.ordinary_case_')){
    const key=p[0].slice('agentstudio.'.length);assert(bodies.has(key));return respond('function',key,[{ok:true,source:bodies.get(key),owner_oid:'10',function_oid:ordinaryFunctionOid(key)}],p)

@@ -2,7 +2,7 @@
 import {isNativeError,isProxy} from 'node:util/types'
 import {parseWorkerHeartbeatControlJson} from './worker-heartbeat-activation-control-contract.ts'
 const flags=Object.freeze({observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
-const requestEvent='full069_native_request_failure_observation',branchEvent='full069_final14_rejected_branches_observation',branches=['native','runtime','companions']
+const requestEvent='full069_native_request_failure_observation',branchEvent='full069_final14_rejected_branches_observation',runtimePhaseEvent='full069_final14_runtime_phase_timing_observation',branches=['native','runtime','companions']
 const requests=new Map([['/api/v2/company-worker-heartbeats','heartbeats'],['/api/native-auth/login','login'],['/api/native-auth/me','me'],['/api/native-auth/logout','logout'],['/api/native-auth/capabilities','capabilities']])
 const nodeCodes=new Set(['ECONNRESET','ECONNREFUSED','EPIPE','ETIMEDOUT','EHOSTUNREACH','ENETUNREACH','EAI_AGAIN','ENOTFOUND','ERR_TLS_CERT_ALTNAME_INVALID','DEPTH_ZERO_SELF_SIGNED_CERT','CERT_HAS_EXPIRED','ERR_SSL_WRONG_VERSION_NUMBER'])
 const controlCodes=new Set(['source_runtime_refused','binding_changed','untrusted_reference','control_closed','control_busy','control_io_failed','lease_expired','lease_revoked','registry_mismatch','reader_capacity','reader_timeout','reader_cleanup_unknown'])
@@ -39,14 +39,20 @@ export function parseFull069RejectedBranchesFailureData(raw){
  if(rows.find(row=>row.status==='rejected')?.branch!==r.primary_branch)fail()
  return Object.freeze({...r,branches:Object.freeze(rows)})
 }
+export function parseFull069FinalRuntimePhaseTimingObservation(raw){
+ const keys=['entry_gate_ms','outer_stable_ms','physical_ms','business_audits_ms','telemetry_ms','business_ms'],r=record(raw,['event','outcome',...keys,...Object.keys(flags)]);fixedFlags(r)
+ if(r.event!==runtimePhaseEvent||r.outcome!=='failed'||keys.some(k=>!Number.isSafeInteger(r[k])||Object.is(r[k],-0)||r[k]<0||r[k]>120000))fail()
+ return Object.freeze(r)
+}
 export function parseFull069FailureBoundaryObservations(stderr){
  if(typeof stderr!=='string'||Buffer.byteLength(stderr)>524288||stderr.includes('\0'))return Object.freeze([])
  const records=[],seen=new Set()
  for(const line of stderr.split(/\r?\n/)){
-  const decoded=line.replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));if(!decoded.includes(requestEvent)&&!decoded.includes(branchEvent))continue
+  const decoded=line.replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));if(!decoded.includes(requestEvent)&&!decoded.includes(branchEvent)&&!decoded.includes(runtimePhaseEvent))continue
   if(Buffer.byteLength(line)>4096)return Object.freeze([])
-  try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):parseFull069RejectedBranchesFailureData(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
+  try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):raw.event===branchEvent?parseFull069RejectedBranchesFailureData(raw):parseFull069FinalRuntimePhaseTimingObservation(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
  }
  const request=records.find(r=>r.event===requestEvent),branch=records.find(r=>r.event===branchEvent);if(request&&branch&&branch.primary_branch!=='native')return Object.freeze([])
+ if(records.some(r=>r.event===runtimePhaseEvent)&&(request||branch))return Object.freeze([])
  return Object.freeze(records)
 }

@@ -118,7 +118,7 @@ export function createOriginalVersionReleaseController(ports:Ports){
    const intent=await prepare(employee,before.spec_id,choice,now());await verify(stamp);const ownIntent=persist(intent);publish()
    const result=await invoke(stamp,()=>ports.api.change(before.spec_id,choice,abort.signal),false,{intent:ownIntent,phase:'not_dispatched'});acknowledged=true;await finish(ownIntent,result,stamp)
   }catch(error){if(stamp===epoch)failure(error);if(stamp===epoch&&acknowledged)publish({noticeMsg:'操作已确认，当前状态刷新未完成，请刷新版本。'})}
-  finally{if(!disposed&&stamp===epoch){busy=false;publish({isStartingTest:false,isSavingVersion:false,isConfirmBusy:false})}}
+   finally{if(!disposed&&stamp===epoch){busy=false;if(pending)review=null;publish({isStartingTest:false,isSavingVersion:false,isConfirmBusy:false,...(pending?{confirmAction:null,nativeConfirmChecked:false}:{})})}}
  }
  async function choose(id:string){if(!guard()||busy||pending)return;selection++;read++;testRead++;detailTickets.clear();workspace=null;details.clear();acceptance=null;review=null;publish({selectedSpecId:id,versionList:[],expandedVersionId:'',testRun:null,testInstruction:'',versionNote:'',confirmAction:null,nativeConfirmChecked:false,nativeRestoreReason:'',nativeAcceptanceConfirmed:false,publishPickId:'',errorMsg:'',noticeMsg:''});if(id)try{await refresh()}catch(error){failure(error)}}
  async function reviewAction(kind:Review['kind'],row:SpecVersionRow){if(!guard()||busy||pending||!workspace||!cap.writes)return;const stamp=epoch,chosen=selection,before=workspace;publish({isConfirmBusy:true,errorMsg:''});busy=true;try{

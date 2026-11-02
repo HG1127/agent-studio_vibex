@@ -8518,6 +8518,189 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_4195386_hosted_followup": {
+      "actual_head": "41953865e2b884eb0ac76e3c957cd0ea766b5f98",
+      "all19_workflows_terminal": true,
+      "workflows_success": 14,
+      "workflows_failure": 5,
+      "quality_push_PR": {
+        "push_jobs": 51,
+        "PR_jobs": 51,
+        "root_tests_passed": 4730,
+        "original_employee_contracts_passed": 2457,
+        "root_TypeScript_build_and_security_integration_steps_passed": true
+      },
+      "PB19": {
+        "run": 41465444258,
+        "job": 125344972360,
+        "passed": 19,
+        "failed": 0,
+        "workers": 2,
+        "seconds": 73.5,
+        "old_PocketBase_recoverability_regression_only": true
+      },
+      "F01": {
+        "jobs": 21,
+        "success": 17,
+        "failure": 4,
+        "original_queued_RunDetail_succeeded": true,
+        "remaining": [
+          "monitor074 launch returned retryable",
+          "actual077 install and incoming constraint profile passed; full077 trigger-shape audit refused",
+          "original release publish lost-ACK confirmation modal blocked exact receipt query",
+          "release completion paused effect_outcome_unknown before awaiting_input"
+        ]
+      },
+      "schedule_Worker": {
+        "overall_passed": false,
+        "original_failed_start_explicit_retry_advanced": true,
+        "failed_stage": "once recurrence fixture expected five plural rows; original UI renders exact nextAt and no plural list",
+        "entire_story_or_CLI_online_accepted": false
+      },
+      "schedules078": {
+        "overall_passed": false,
+        "paging55_full_paused_form_CAS_and_committed_exact_GET_advanced": true,
+        "owned_pause_delete_retained_history_advanced": true,
+        "failed_stage": "auth logout/login response body evicted on navigation before Bob rollback503/404 story",
+        "Worker_started": false
+      },
+      "strict069_Legacy": {
+        "reader_failure_phase": "finish",
+        "code": "lease_expired",
+        "kind": "control_error",
+        "actual_registry_mismatch_not_observed": true,
+        "original_5000ms_limit_unchanged": true,
+        "entire_acceptance": false
+      },
+      "strict069_Final14": {
+        "phase": "warm_sample",
+        "reason": "sample_budget_exceeded",
+        "original_budget_ms": 15000,
+        "collected_ms": 22120,
+        "before_checks_ms": 1147,
+        "checks_ms": 19569,
+        "after_checks_ms": 1405,
+        "native_ms": 6656,
+        "runtime_ms": 19249,
+        "companions_ms": 949,
+        "entire_acceptance": false
+      },
+      "strict_telemetry": {
+        "Controller_and_short8of8_advanced": true,
+        "stopped_cleanup_passed": false,
+        "original_wait_ms": 5000,
+        "missing_ended": [
+          "agent_autonomous",
+          "knowledge_index",
+          "knowledge_query",
+          "assessment"
+        ],
+        "finally_cleanup_is_not_acceptance": true
+      },
+      "reviewed_source_followup": {
+        "ordinary077_exact_authored_row_trigger_type": 27,
+        "previous_incorrect_statement_type": 58,
+        "SQL077_unchanged": true,
+        "Worker_once_preview_exact_UTC_and_zero_plural_rows": true,
+        "schedules078_auth_only_status_observer": true,
+        "business_JSON_response_assertions_retained": true,
+        "unknown_release_confirmation_closed_with_exact_pending_intent_retained": true,
+        "receipt_GET_only_and_new_write_CAS_unchanged": true,
+        "B113": {
+          "manifest_sha256": "f82036ceca99c929df25600250f40d128c3dca9f66ff2a9c8e37e1f37d5e764e",
+          "files": 5,
+          "Root_pure_passed": 61,
+          "private_actual_result_bound_six_phase_observations": true,
+          "original_34_stability_checks_IO_order_and15000ms_budget_retained": true,
+          "actual_performance_repair_proven": false
+        },
+        "monitor074_launch_verified_owner_role": {
+          "manifest_sha256": "c5d8a4f77d989dce9703b27e29bcfabc60fd047a3f97e984f934d991fe344aa3",
+          "files": 4,
+          "new_files": 2,
+          "Root_pure_passed": 23,
+          "actual_API_owner_context_before_metadata_read": true,
+          "original_worker_only_RPC_then_API_role_restored": true,
+          "original_claim_lease_failure_ledger_and_backoff_preserved": true,
+          "roles_or_grants_added": 0,
+          "API_types_passed": true,
+          "actual_genuine_repair_confirmed": false
+        },
+        "release_completion_dispatch_diagnostic": {
+          "manifest_sha256": "117daa91b6297385ce2ef07374732d8a49d0e30e479603ac5586740cb82f5915",
+          "files": 3,
+          "new_files": 1,
+          "Root_related_pure_passed": 103,
+          "finite_failure_sites_and_counters_only": true,
+          "original_TLS_identity_lease_resolvers_reservation_unknown_ACK_manual_boundaries_and64ticks_retained": true,
+          "genuine_root_cause_repair_proven": false
+        }
+      },
+      "dependency_source_preparation": {
+        "owner": "services/pg-business-jobs",
+        "API_package_lock_unchanged": true,
+        "private_A080_composition_packages": 8,
+        "private_source_targets": 63,
+        "SDK_install_load_or_real_formats_executed": false,
+        "optional080_081_source_integration_and_wider_profiles_pending": true
+      },
+      "source_reseal_pending": false,
+      "new_head_genuine_acceptance": false,
+      "production_GO": false,
+      "artifacts": [
+        {
+          "path": ".tmp/pg-migration-completion/4195386-quality-main-job.log",
+          "sha256": "79a5552dcdaaba84a3d2bb529950b13c53377037e33a58c8175749a772bb0f2a"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-original-ui-contract-job.log",
+          "sha256": "a4a383a2f7e7516b13b58ab51ecf83fdbd580c8bbba6e80ee6a7b49a69ebcc06"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-PB19-job.log",
+          "sha256": "13ad4dea52b8d66a519d55e82042cd1ea9187cca92339bd9164bad979f315028"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-release-modal-root-pure.log",
+          "sha256": "844fe2aefc8d53c9c440144f018f344d0a578ebc67f9f1351ae7fe41e1a1e375"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-B113-root-pure.log",
+          "sha256": "80d5c5ea31faf21e36a3a3ffe551e51189d076937d387d4576b1ef766a9ed29d"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-ordinary-trigger-root-pure.log",
+          "sha256": "5a529a4e231e7ccba7286d39973d3c452c9cdc04df1fbcd6456c7eb8e9c39895"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-followup-api-types.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-followup-frontend-types.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-followup-original-frontend-build.log",
+          "sha256": "7eb1e904ae1f3a9637e315856908c844e7c4a9457d8dbbf08a75a95e036188dd"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-A074-launch-root-pure.log",
+          "sha256": "cf6ae274b3f8acbd1a6dc125af362325a2e3d842d5d71744c5fd26e518ddf758"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/4195386-B115-root-pure.log",
+          "sha256": "98c5e6d61895eac4b1ef52f380c019768158594b277c10846e33fe59fc7e3aef"
+        }
+      ],
+      "source_seals": {
+        "maps": 25,
+        "pins": 18919,
+        "retained_prior_pins": 18819,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

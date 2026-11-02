@@ -1,5 +1,6 @@
 // PURE SOURCE CALLBACKS ONLY: no runtime/Kernel/SQL authority is constructed.
 import test from 'node:test'
+import './pg18-full069-runtime-phases.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'

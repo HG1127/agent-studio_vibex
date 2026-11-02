@@ -53,7 +53,9 @@ export async function verifyOrdinaryCaseSchema(db:SqlClient):Promise<void>{
   const indexes=(await db.query<{name:string;keys:string[];safe:boolean}>("SELECT ci.relname AS name,ARRAY(SELECT pg_get_indexdef(i.indexrelid,n,true) FROM generate_series(1,i.indnkeyatts) n) AS keys,i.indisunique AND i.indisvalid AND i.indisready AND i.indimmediate AND i.indnkeyatts=i.indnatts AND i.indexprs IS NULL AND i.indpred IS NULL AND a.amname='btree' AND ci.reloptions IS NULL AS safe FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class ci ON ci.oid=i.indexrelid JOIN pg_catalog.pg_am a ON a.oid=ci.relam WHERE i.indrelid=to_regclass($1)",[name])).rows
   const expectedIndexes=t.constraints.filter(c=>['p','u'].includes(c.type));if(indexes.length!==expectedIndexes.length)fail();for(const i of indexes){const wanted=expectedIndexes.find(c=>c.name===i.name);if(!wanted||i.safe!==true||JSON.stringify(i.keys)!==JSON.stringify(wanted.keys))fail()}
   const triggers=(await db.query<{name:string;type:number;function_oid:string;safe:boolean}>("SELECT tgname AS name,tgtype::integer AS type,tgfoid::text AS function_oid,tgenabled='O' AND tgconstraint=0 AND NOT tgdeferrable AND NOT tginitdeferred AND tgnargs=0 AND octet_length(tgargs)=0 AND tgqual IS NULL AND tgattr=''::int2vector AND tgparentid=0 AND tgfoid=to_regprocedure($2) AS safe FROM pg_catalog.pg_trigger WHERE tgrelid=to_regclass($1) AND NOT tgisinternal",[name,'agentstudio.'+(t.mutable?'ordinary_case_slot_guard()':'ordinary_case_immutable()')])).rows
-  if(triggers.length!==1||triggers[0]?.name!==t.name+'_immutable'||triggers[0]?.type!==58||triggers[0]?.safe!==true)fail()
+   // Authored077 uses ROW(1)+BEFORE(2)+DELETE(8)+UPDATE(16).
+   // The slot guard requires the actual OLD/NEW row, not a statement trigger.
+   if(triggers.length!==1||triggers[0]?.name!==t.name+'_immutable'||triggers[0]?.type!==27||triggers[0]?.safe!==true)fail()
 
  }
  for(const f of functions){

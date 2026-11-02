@@ -1,5 +1,7 @@
 // Final14 controller-owned clients. No caller Pool, driver, SQL, target or clock.
 import {createHash} from 'node:crypto'
+import {performance} from 'node:perf_hooks'
+import {parseFull069FinalRuntimePhaseTimingObservation} from './pg18-full069-failure-boundary-observation.mjs'
 import {isNativeError,isProxy} from 'node:util/types'
 import {verifyCompleteProfileOperatorRuntime,loadCompleteProfileOperatorPg,assertCompleteProfileOperatorRuntime} from './pg18-complete-operator-runtime.mjs'
 import {inspectCompleteProfile,verifyCompleteProfile} from './pg18-complete-profile.ts'
@@ -151,7 +153,23 @@ export async function openFull069FinalRuntime(trust){
  }catch(error){rememberRuntimeOpenFailure(error,phase);if(s){s.closed=true;await Promise.allSettled(Object.values(s.pools).map(p=>p.end()))}throw error}
 }
 export function full069FinalPreflight(handle){const s=state(handle);return freeze({full069_current_catalog:true,actual_service_logins:14,assessment_design_independent_logins:true,executor_independent_login:true,runtime_manifests:{operator_sha256:s.profile.runtime_manifest_sha256,control_sha256:s.controlRuntimeSha256},preparation_records:s.records.historical,...s.initial,qualifies_run:false,production_cutover_allowed:false})}
-export async function observeFull069FinalRuntime(handle,{ready=true,ended=false}={}){const s=state(handle);if(s.failed)fail('runtime_client_failed');if(!s.businessOpen)fail('business_pools_closed');assertFinalStable(s.trust);await physical(s);assertFinalStable(s.trust);await actualBusinessAudits(s);const telemetry=await telemetryState(s,ready,ended),business=await businessState(s);assertFinalStable(s.trust);return freeze({...business,...telemetry})}
+// Passive per-call scalars only. Actual successful result objects are private keys.
+const runtimePhaseTimings=new WeakMap()
+function startRuntimePhaseTiming(){try{const at=performance.now();return Number.isFinite(at)&&at>=0?{at,phase:'entry_gate_ms',valid:true,parts:{entry_gate_ms:0,outer_stable_ms:0,physical_ms:0,business_audits_ms:0,telemetry_ms:0,business_ms:0}}:null}catch{return null}}
+function markRuntimePhaseTiming(t,phase){try{if(!t||!t.valid)return;const at=performance.now();if(!Number.isFinite(at)||at<t.at){t.valid=false;return}t.parts[t.phase]+=at-t.at;t.at=at;t.phase=phase}catch{try{if(t)t.valid=false}catch{}}}
+function rememberRuntimePhaseTiming(result,t){try{if(!t?.valid||t.phase!=='settled')return;const parts=Object.fromEntries(Object.entries(t.parts).map(([key,value])=>[key,Math.ceil(value)]));if(Object.values(parts).some(v=>!Number.isSafeInteger(v)||Object.is(v,-0)||v<0||v>120000))return;runtimePhaseTimings.set(result,Object.freeze(parts))}catch{}}
+export function full069FinalRuntimePhaseTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result);return parts?parseFull069FinalRuntimePhaseTimingObservation({event:'full069_final14_runtime_phase_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
+export async function observeFull069FinalRuntime(handle,{ready=true,ended=false}={}){
+ const timing=startRuntimePhaseTiming(),s=state(handle);if(s.failed)fail('runtime_client_failed');if(!s.businessOpen)fail('business_pools_closed')
+ markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
+ markRuntimePhaseTiming(timing,'physical_ms');await physical(s)
+ markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
+ markRuntimePhaseTiming(timing,'business_audits_ms');await actualBusinessAudits(s)
+ markRuntimePhaseTiming(timing,'telemetry_ms');const telemetry=await telemetryState(s,ready,ended)
+ markRuntimePhaseTiming(timing,'business_ms');const business=await businessState(s)
+ markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
+ markRuntimePhaseTiming(timing,'settled');const result=freeze({...business,...telemetry});rememberRuntimePhaseTiming(result,timing);return result
+}
 // After all owned applications stop, audit pools close before the 14-LOGIN zero
 // check. The independent END acknowledgement does not substitute for this check.
 export async function finalizeFull069FinalRuntime(handle){const s=state(handle);assertFinalStable(s.trust);if(s.businessOpen)await closeBusinessPools(s);const zero=await businessBackendsZero(s),telemetry=await telemetryState(s,false,true),business=await businessState(s);assertFinalStable(s.trust);return freeze({...business,...telemetry,...zero})}

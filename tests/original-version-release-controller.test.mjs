@@ -36,3 +36,14 @@ test('successful publish updates active version and records confirmed head',asyn
 test('successful restore refreshes source revision and never mutates historical snapshot',async()=>{const old=detail(),h=harness({api:{change:async(spec,c)=>{h.calls.push(['change',c]);h.data.workspace=workspace({spec_revision:4,source_sha256:B});return{spec_id:S,request_id:c.request_id,replayed:false,version_id:V,version_sha256:D,restored:true,spec_revision:4,source_sha256:B}}}});await h.controller.start(S);await h.controller.requestRestore(h.view.versionList[0]);h.controller.setNativeRestoreReason('Restore reviewed configuration');h.controller.setNativeConfirmChecked(true);await h.controller.handleConfirm();assert.equal(h.view.nativePending,false);assert.deepEqual(h.data.details.get(V),old);assert.equal(h.view.confirmAction,null)})
 test('non-draft delete refuses review before any POST',async()=>{const h=harness({data:{details:new Map([[V,detail({status:'archived',published_at:DATE})]])}});await h.controller.start(S);await h.controller.requestDelete(h.view.versionList[0]);assert.equal(h.view.confirmAction,null);assert.equal(changes(h).length,0)})
 test('refresh after resource revocation removes formerly current proof',async()=>{const h=harness({api:{change:async(spec,c)=>({spec_id:S,request_id:c.request_id,replayed:false,run_id:R,status:'queued',source_sha256:A,spec_revision:3})}});await h.controller.start(S);h.controller.setTestInstruction('run');h.controller.setNativeAcceptanceConfirmed(true);h.data.test=acceptance({status:'succeeded',test_current:true});await h.controller.handleRunTest();assert(h.view.testPassed);h.data.test=acceptance({status:'succeeded',test_current:false});await h.controller.handleRefreshNative();assert.equal(h.view.testPassed,false)})
+
+for(const kind of ['publish','restore','delete'])test('unknown '+kind+' closes its blocking confirmation and retains exact GET-only recovery',async()=>{
+ const h=harness();await h.controller.start(S)
+ await h.controller[kind==='publish'?'requestPublish':kind==='restore'?'requestRestore':'requestDelete'](h.view.versionList[0])
+ if(kind==='restore')h.controller.setNativeRestoreReason('Restore reviewed original configuration')
+ h.controller.setNativeConfirmChecked(true);assert(h.view.confirmAction);await h.controller.handleConfirm()
+ const stored=h.stored,intent=JSON.parse(stored);assert.equal(intent.action,kind==='delete'?'delete_draft':kind)
+ assert.equal(h.view.confirmAction,null);assert.equal(h.view.nativeConfirmChecked,false);assert.equal(h.view.isConfirmBusy,false);assert.equal(h.view.nativePending,true);assert.equal(h.view.nativeBlocked,true)
+ await h.controller.handleConfirm();await h.controller.handleSaveVersion();assert.equal(changes(h).length,1)
+ await h.controller.handleQueryNative();assert.equal(queries(h).length,1);assert.deepEqual(queries(h)[0][1],intent);assert.equal(h.stored,stored);assert.equal(h.view.nativePending,true)
+})

@@ -36,4 +36,10 @@ test('ordinary077 full audit refuses missing or unknown incoming074 edges and ch
  await deny('incoming-constraints','074',rows=>{rows[0].delete_action='c'})
  await deny('presence','074',rows=>rows.push({kind:'constraint',name:'unreviewed_incoming'}))
 })
+for(const t of tables)test(t.name+' matches authored BEFORE UPDATE OR DELETE ROW trigger and refuses statement substitutes',async()=>{
+ const ddl=readFileSync(new URL('../../../db/postgres/migrations/pg_v9_077_ordinary_case_runs.sql',import.meta.url),'utf8'),fn=t.mutable?'ordinary_case_slot_guard':'ordinary_case_immutable'
+ assert.match(ddl,new RegExp('CREATE TRIGGER '+t.name+'_immutable BEFORE UPDATE OR DELETE\\s+ON agentstudio\\.'+t.name+' FOR EACH ROW EXECUTE FUNCTION agentstudio\\.'+fn+'\\(\\);'))
+ assert.equal(1+2+8+16,27)
+ for(const type of [0,26,58,59])await deny('trigger',t.name,rows=>{rows[0].type=type})
+})
 test('optional absence reads no RPC, rolls back and releases once',async()=>{const trace=[];let released=0;const pool={connect:async()=>({query:async sql=>{trace.push(sql);return{rows:sql===ordinaryCasePresenceSql?[]:[]}},release(){released++}})};assert.equal(await inspectOptionalOrdinaryCase(pool),'absent');assert.equal(released,1);assert.equal(trace.at(-1),'ROLLBACK');assert(trace.every(q=>!q.includes('ordinary_case_bind(')))})

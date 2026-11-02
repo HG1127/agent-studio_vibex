@@ -1,3 +1,4 @@
+import {requireMonitorScheduleLaunchReady} from './schedule-monitor-launch-readiness.ts'
 import {HttpError,isUuid,type Identity,type SqlPool,type SqlClient} from "./contracts.ts"
 import {withActorClient} from "./repository.ts"
 import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
@@ -133,9 +134,9 @@ export class ScheduleRuntimeWorker{
       const ctx=(await db.query<{context:Launch|null}>("SELECT agentstudio.schedule_launch_context($1::uuid,$2::uuid,$3::bigint,$4::text) AS context",[claim.occurrence_id,claim.lease_token,claim.lease_version,this.workerId])).rows[0]?.context
       if(!ctx)return {status:"stale",occurrence_id:claim.occurrence_id}
       if(!isUuid(ctx.owner_user_id)||!isUuid(ctx.planned_run_id)||!isUuid(ctx.target_id)||ctx.kind!=="agent"&&ctx.kind!=="workflow")throw Error("invalid_schedule_launch_context")
-      if(this.monitorBusinessEnabled)await db.query("SELECT agentstudio.monitor_live_schedule_ready(schedule_id) FROM agentstudio.schedule_occurrences WHERE id=$1::uuid AND owner_user_id=$2::uuid",[claim.occurrence_id,ctx.owner_user_id])
       const result=await withActorClient(db,this.pool,ctx.identity,async(client,owner)=>{
         if(owner!==ctx.owner_user_id)throw Error("schedule_owner_changed")
+        if(this.monitorBusinessEnabled)await requireMonitorScheduleLaunchReady(client,owner,claim.occurrence_id)
         const raw={expected_revision:ctx.execution.target_revision,idempotency_key:"schedule_"+ctx.occurrence_id,instruction:ctx.execution.instruction}
         return ctx.kind==="agent"?this.agents.admitOwned(client,owner,ctx.target_id,{...raw,max_steps:ctx.execution.max_steps},ctx.planned_run_id,ctx.execution.model_binding??undefined):this.flows.admitOwned(client,owner,ctx.target_id,raw,ctx.planned_run_id)
       })

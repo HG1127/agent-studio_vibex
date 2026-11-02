@@ -29,6 +29,7 @@ export async function releaseDropCommitted(page,f,action,trigger,record){
  record.failed++;record.markers.push({request_id:marker.request_id,action:marker.action,request_sha256:marker.request_sha256});return marker
 }
 export async function releaseQueryOnly(page,f,marker,record){
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'核对原请求结果',exact:true})).toBeEnabled()
  const posts=f.observations.receipt_posts,before=await f.counts(),path='/api/v2/original-ui/agent-releases/'+marker.spec_id+'/receipts/'+marker.request_id
  const response=releaseWire(page,path,'GET');await page.getByRole('button',{name:'核对原请求结果',exact:true}).click();const raw=await response;expect(raw.status()).toBe(200);const body=await raw.json();expect(body.item.mode).toBe('read_only_exact_agent_release_receipt');expect(body.item.request_sha256).toBe(marker.request_sha256);expect(body.item.result.request_id).toBe(marker.request_id)
  await expect(page.getByRole('button',{name:'核对原请求结果',exact:true})).toHaveCount(0);expect(await releasePendingMarker(page,f.users.alice)).toBeNull();expect(f.observations.receipt_posts).toBe(posts);expect(await f.counts()).toEqual(before);record.queries++;return body.item.result
