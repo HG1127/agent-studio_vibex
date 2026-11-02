@@ -1566,3 +1566,20 @@ tests/pg-original-version-release-genuine.config.mjs text eol=lf
 tests/pg-original-version-release-genuine.spec.mjs text eol=lf
 tests/pg-original-version-release-policy-pure.test.mjs text eol=lf
 tests/pg-original-version-release-proof-pure.test.mjs text eol=lf
+
+# Original ScheduledTasks actual Worker hosted verification sources
+/.github/workflows/pg18-original-schedule-worker-genuine-ci.yml text eol=lf
+/ops/original-schedule-worker-hosted-scope.json text eol=lf
+/ops/pg18-original-schedule-worker-hosted-entry.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-backend-fixture.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-browser-fixture.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-guard.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-model-fixture.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-policy.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-required-sources.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-reviewed-check.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-reviewed-sources.mjs text eol=lf
+/tests/original-schedule-worker-hosted-policy.test.mjs text eol=lf
+/tests/original-schedule-worker-hosted-source.test.mjs text eol=lf
+/tests/pg-original-schedule-worker-genuine.config.mjs text eol=lf
+/tests/pg-original-schedule-worker-genuine.spec.mjs text eol=lf

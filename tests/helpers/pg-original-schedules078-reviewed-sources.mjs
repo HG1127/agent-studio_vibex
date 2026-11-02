@@ -1,6 +1,6 @@
 // Candidate source pins only. Root must review/reseal the final integrated commit.
 export const originalSchedules078ReviewedSources=Object.freeze({
-  ".gitattributes": "6f9056ca8bc7761a3688e7d8f11eaea2af5c2f64c370202f5786eff725b15337",
+  ".gitattributes": "3ae88c67544aaa728b457d826b65be5485721afc96b8aece14fbd408122ea5dc",
   ".github/workflows/pg18-original-schedules078-genuine-ci.yml": "f22d8d237b91a0e5ebb67de63503b9dd1352c167014fcaa8bd76a20b376381d0",
   "AGENTS.md": "c41b2ebfd51b18f919ac13b1f7d8b43e97fb5ebfb76d70fc65676f8e91d07a2a",
   "db/postgres/001_stage_schema.sql": "af29a65a28c3dbde02bde8723b726f5493886d6d155142bc3bf00fd127be0f58",
