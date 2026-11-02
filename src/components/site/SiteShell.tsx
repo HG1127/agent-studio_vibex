@@ -1,12 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react"
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { SiteSidebar } from "@/components/site/SiteSidebar"
 import { SectionTabs } from "@/components/site/SectionTabs"
 const SavedAgentQuickEditor=lazy(()=>import("@/components/site/SavedAgentQuickEditor").then(m=>({default:m.SavedAgentQuickEditor})))
 import { PencilLine } from "lucide-react"
 import { StudioCommandPalette } from "@/components/site/StudioCommandPalette"
+import { confirmInStudio } from "@/lib/studioDialogs"
 import {
-  protectInternalLinkClick, recordRenderedStudioRoute,
+  protectInternalLinkClickAsync, recordRenderedStudioRoute,
 } from "@/lib/unsavedNavigation"
 
 type SiteShellProps = {
@@ -15,6 +16,7 @@ type SiteShellProps = {
 
 export function SiteShell({ children }: SiteShellProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const [quickEditorOpen,setQuickEditorOpen] = useState(false)
   const [quickEditorSpecId,setQuickEditorSpecId] = useState("")
   const localDraftRoute = location.pathname === "/" || location.pathname === "/agent-create"
@@ -52,11 +54,12 @@ export function SiteShell({ children }: SiteShellProps) {
   }, [location.pathname, location.search, location.key])
   useEffect(() => {
     const guard = (event: MouseEvent) => {
-      protectInternalLinkClick(event, window.location.href, message => window.confirm(message))
+      protectInternalLinkClickAsync(event, window.location.href,
+        message => confirmInStudio(message), to => navigate(to))
     }
     document.addEventListener("click", guard, true)
     return () => document.removeEventListener("click", guard, true)
-  }, [])
+  }, [navigate])
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <SiteSidebar />

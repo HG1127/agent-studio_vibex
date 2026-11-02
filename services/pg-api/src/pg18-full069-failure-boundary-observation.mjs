@@ -2,7 +2,7 @@
 import {isNativeError,isProxy} from 'node:util/types'
 import {parseWorkerHeartbeatControlJson} from './worker-heartbeat-activation-control-contract.ts'
 const flags=Object.freeze({observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
-const requestEvent='full069_native_request_failure_observation',branchEvent='full069_final14_rejected_branches_observation',runtimePhaseEvent='full069_final14_runtime_phase_timing_observation',auditTimingEvent='full069_final14_business_audit_timing_observation',branches=['native','runtime','companions']
+const requestEvent='full069_native_request_failure_observation',branchEvent='full069_final14_rejected_branches_observation',runtimePhaseEvent='full069_final14_runtime_phase_timing_observation',auditTimingEvent='full069_final14_business_audit_timing_observation',stablePhaseEvent='full069_final14_stable_phase_timing_observation',branches=['native','runtime','companions']
 const requests=new Map([['/api/v2/company-worker-heartbeats','heartbeats'],['/api/native-auth/login','login'],['/api/native-auth/me','me'],['/api/native-auth/logout','logout'],['/api/native-auth/capabilities','capabilities']])
 const nodeCodes=new Set(['ECONNRESET','ECONNREFUSED','EPIPE','ETIMEDOUT','EHOSTUNREACH','ENETUNREACH','EAI_AGAIN','ENOTFOUND','ERR_TLS_CERT_ALTNAME_INVALID','DEPTH_ZERO_SELF_SIGNED_CERT','CERT_HAS_EXPIRED','ERR_SSL_WRONG_VERSION_NUMBER'])
 const controlCodes=new Set(['source_runtime_refused','binding_changed','untrusted_reference','control_closed','control_busy','control_io_failed','lease_expired','lease_revoked','registry_mismatch','reader_capacity','reader_timeout','reader_cleanup_unknown'])
@@ -54,13 +54,19 @@ export function parseFull069FinalBusinessAuditTimingObservation(raw){
  const rows=auditLoginKeys.map((key,i)=>{const d=ds[i];if(!d?.enumerable||!Object.hasOwn(d,'value'))fail();const row=record(d.value,['key',...auditTimingParts]);if(row.key!==key||auditTimingParts.some(k=>!valid(row[k])))fail();return Object.freeze(row)})
  return Object.freeze({...r,logins:Object.freeze(rows)})
 }
+const stablePhaseKeys=Object.freeze(["state_host_ms","live_context_source_ms","live_profile_key_telemetry_ms","network_policy_ms","node_executable_ms","C_records_ms","live_input_pins_ms","live_file_pins_ms","final_sources_ms","final_signature_key_ms","final_private_pins_ms","other_ms"])
+export function parseFull069FinalStablePhaseTimingObservation(raw){
+ const r=record(raw,['event','outcome','guard_calls','guard_ms',...stablePhaseKeys,...Object.keys(flags)]);fixedFlags(r)
+ if(r.event!==stablePhaseEvent||r.outcome!=='failed'||r.guard_calls!==30||['guard_ms',...stablePhaseKeys].some(k=>!Number.isSafeInteger(r[k])||Object.is(r[k],-0)||r[k]<0||r[k]>120000)||stablePhaseKeys.reduce((sum,k)=>sum+r[k],0)+1<r.guard_ms||stablePhaseKeys.reduce((sum,k)=>sum+r[k],0)>r.guard_ms+12)fail()
+ return Object.freeze(r)
+}
 export function parseFull069FailureBoundaryObservations(stderr){
  if(typeof stderr!=='string'||Buffer.byteLength(stderr)>524288||stderr.includes('\0'))return Object.freeze([])
  const records=[],seen=new Set()
  for(const line of stderr.split(/\r?\n/)){
-  const decoded=line.replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));if(!decoded.includes(requestEvent)&&!decoded.includes(branchEvent)&&!decoded.includes(runtimePhaseEvent)&&!decoded.includes(auditTimingEvent))continue
+  const decoded=line.replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));if(!decoded.includes(requestEvent)&&!decoded.includes(branchEvent)&&!decoded.includes(runtimePhaseEvent)&&!decoded.includes(auditTimingEvent)&&!decoded.includes(stablePhaseEvent))continue
   if(Buffer.byteLength(line)>4096)return Object.freeze([])
-  try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):raw.event===branchEvent?parseFull069RejectedBranchesFailureData(raw):raw.event===runtimePhaseEvent?parseFull069FinalRuntimePhaseTimingObservation(raw):parseFull069FinalBusinessAuditTimingObservation(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
+  try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):raw.event===branchEvent?parseFull069RejectedBranchesFailureData(raw):raw.event===runtimePhaseEvent?parseFull069FinalRuntimePhaseTimingObservation(raw):raw.event===auditTimingEvent?parseFull069FinalBusinessAuditTimingObservation(raw):parseFull069FinalStablePhaseTimingObservation(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
  }
  const request=records.find(r=>r.event===requestEvent),branch=records.find(r=>r.event===branchEvent);if(request&&branch&&branch.primary_branch!=='native')return Object.freeze([])
  const phase=records.find(r=>r.event===runtimePhaseEvent),audit=records.find(r=>r.event===auditTimingEvent)
@@ -69,6 +75,11 @@ export function parseFull069FailureBoundaryObservations(stderr){
   // 14*6+4 independently rounded buckets allow at most88ms rounding excess.
   const total=audit.load_auditor_ms+audit.pre_stable_ms+audit.complete_catalog_ms+audit.complete_stable_ms+audit.logins.reduce((sum,row)=>sum+auditTimingParts.reduce((n,key)=>n+row[key],0),0)
   if(!phase||total>phase.business_audits_ms+88)return Object.freeze([])
+ }
+ const stable=records.find(r=>r.event===stablePhaseEvent)
+ if(stable){
+  const actualStable=audit?audit.pre_stable_ms+audit.complete_stable_ms+audit.logins.reduce((sum,row)=>sum+row.target_stable_ms+row.stable_ms,0):null
+  if(!phase||!audit||actualStable===null||stable.guard_ms>actualStable)return Object.freeze([])
  }
  if(phase&&(request||branch)){
   const runtime=branch?.branches.find(r=>r.branch==='runtime')

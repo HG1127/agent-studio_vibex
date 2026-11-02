@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { Command, Search, X } from "lucide-react"
 import { getStudioAccountInfo } from "@/lib/studioAuth"
 import { searchStudioRoutes } from "@/lib/studioNavigation"
-import { shouldNavigateFromUnsavedWork } from "@/lib/unsavedNavigation"
+import { shouldNavigateFromUnsavedWorkAsync } from "@/lib/unsavedNavigation"
+import {confirmInStudio} from "@/lib/studioDialogs"
 
 export function StudioCommandPalette() {
   const navigate=useNavigate()
@@ -47,9 +48,9 @@ export function StudioCommandPalette() {
     const id=window.setTimeout(()=>inputRef.current?.focus(),0)
     return ()=>window.clearTimeout(id)
   },[open])
-  const navigateTo=(to:string)=>{
+  const navigateTo=async(to:string)=>{
     const from=window.location.pathname+window.location.search
-    if (!shouldNavigateFromUnsavedWork(from,to,message=>window.confirm(message))) return
+    if (!await shouldNavigateFromUnsavedWorkAsync(from,to,message=>confirmInStudio(message))) return
     close()
     setQuery("")
     setHighlight(0)

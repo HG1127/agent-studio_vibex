@@ -9840,6 +9840,97 @@
         "pg18_app_and_PgNativePilot": "Retain isolated verification/reference tools."
       },
       "production_GO": false
+    },
+    "current_d918dec_hosted_followup": {
+      "parent_head": "d918dec71286ea87570fc1b47b58d79ace29e124",
+      "whole_batch": {
+        "workflows": 19,
+        "terminal": 19,
+        "success": 15,
+        "failure": 4
+      },
+      "quality": {
+        "main_tests": 4976,
+        "main_pass": 4975,
+        "main_failure": 1,
+        "main_skips": 0,
+        "original_UI_contract_tests": 2708,
+        "original_UI_pass": 2707,
+        "original_UI_failure": 1,
+        "original_UI_skips": 0,
+        "exact_shared_failure": "The Tool source-only test still sealed the previous complementary workflow bytes. Both quality runs and the Tool F01 entry failed this same exact assertion; all Tool permission assertions remain unchanged in the reviewed repair.",
+        "full_job_pagination_verified": 51
+      },
+      "release_completion": {
+        "genuine_passed": true,
+        "closed_aggregate_independently_verified": true,
+        "both_exact_allowlisted_files_retained": true,
+        "two_actual_source_revisions": true,
+        "actual_model_calls": 8,
+        "actual_tool_calls": 2,
+        "external_provider_contacts": 0,
+        "POST_replays": 0,
+        "current_source_Worker_pass_in_synthetic_story": true,
+        "full_original_UI_acceptance": false
+      },
+      "strict069": {
+        "genuine_passed": false,
+        "legacy": "Native heartbeat response failure; warm/last not collected.",
+        "Final14": {
+          "reason": "sample_budget_exceeded",
+          "original_sample_budget_ms": 15000,
+          "collected_ms": 27609,
+          "checks_ms": 24516,
+          "business_audits_ms": 20169
+        },
+        "original_guards_fresh_reads_catalog_OID_ACL_owner_order_limits_and_cleanup_preserved": true
+      },
+      "source_repairs": {
+        "Tool_complement_hash": {
+          "old_permission_assertions_unchanged": true,
+          "independent_pure_tests": 9,
+          "actual_next_head_hosted_pass_pending": true
+        },
+        "accepted_original_dialog_navigation": {
+          "partial_latest_UI_source_integrated": true,
+          "files": 10,
+          "Root_pure_tests": 16,
+          "actual_frontend_TypeScript_passed": true,
+          "actual_original_UI_isolated_build_passed": true,
+          "features": [
+            "Original branded dialog host, content, focus and overlay behavior.",
+            "Async unsaved history and SPA-anchor consent, including knowledge-base document identity.",
+            "Deny active and queued old dialogs on the existing session privacy bus.",
+            "No delayed history navigation after uninstall, displacement, denial or a thrown/rejected dialog callback."
+          ],
+          "backend_identity_authorization_unchanged": true,
+          "full_c623_routes_and_components_integrated": false,
+          "actual_original_page_browser_acceptance_pending": true
+        },
+        "B128_inner_stable_timing": {
+          "Root_pure_tests": 180,
+          "guard_work_and_original_Error_priority_preserved": true,
+          "scope": "Per-async-call closed scalar DATA for the same completed Runtime result; emits only through the original failed-sample sink after both older packets.",
+          "original30_business_stable_guards_and14_serial_LOGIN_audits_retained": true,
+          "authorization_or_successful_audit_cache_added": false,
+          "speedup_or_strict069_fix_claimed": false,
+          "actual_new_packet_hosted_evidence_pending": true
+        }
+      },
+      "remaining_staff_quality": {
+        "Staff084": "Independent SQL/auth catalog/repository/HTTP candidate remains outside the product pending a confirmed strict-decoder null-prototype interoperability repair and actual handler-to-terminal-SqlClient coverage.",
+        "quality089": "Full original quality-check SQL/repository/HTTP/publication candidate is being frozen for independent review; no material080/artifact081 dependency is required."
+      },
+      "source_reseal_pending": false,
+      "current_candidate_genuine_rerun_pending": true,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 19344,
+        "retained_prior_pins": 19219,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

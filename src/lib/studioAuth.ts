@@ -110,8 +110,8 @@ export function getStudioAccountInfo(): StudioProfile | null {
 }
 
 export function logoutStudioAccount(): Promise<void> {
+  invalidateStudioSessionPrivacy()
   if (pgAuth) {
-    invalidateStudioSessionPrivacy()
     return pgAuth.signOut().then(() => {
       if (typeof window !== "undefined") window.location.assign("/login")
     })
@@ -163,7 +163,8 @@ export async function initializeStudioAdmin(input: {
 }
 
 export async function signInStudioAccount(email: string, password: string): Promise<void> {
-  if (pgAuth) { invalidateStudioSessionPrivacy(); await pgAuth.signIn(email, password); return }
+  invalidateStudioSessionPrivacy()
+  if (pgAuth) { await pgAuth.signIn(email, password); return }
   await pb.collection("studio_users").authWithPassword(email.trim(), password)
 }
 

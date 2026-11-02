@@ -1,7 +1,8 @@
 // Final14 controller-owned clients. No caller Pool, driver, SQL, target or clock.
+import {withFull069StablePhaseTiming} from './pg18-full069-stable-phase-observation.mjs'
 import {createHash} from 'node:crypto'
 import {performance} from 'node:perf_hooks'
-import {parseFull069FinalRuntimePhaseTimingObservation,parseFull069FinalBusinessAuditTimingObservation} from './pg18-full069-failure-boundary-observation.mjs'
+import {parseFull069FinalRuntimePhaseTimingObservation,parseFull069FinalBusinessAuditTimingObservation,parseFull069FinalStablePhaseTimingObservation} from './pg18-full069-failure-boundary-observation.mjs'
 import {isNativeError,isProxy} from 'node:util/types'
 import {verifyCompleteProfileOperatorRuntime,loadCompleteProfileOperatorPg,assertCompleteProfileOperatorRuntime} from './pg18-complete-operator-runtime.mjs'
 import {inspectCompleteProfile,verifyCompleteProfile} from './pg18-complete-profile.ts'
@@ -163,16 +164,17 @@ export function full069FinalPreflight(handle){const s=state(handle);return freez
 const runtimePhaseTimings=new WeakMap()
 function startRuntimePhaseTiming(){try{const at=performance.now();return Number.isFinite(at)&&at>=0?{at,phase:'entry_gate_ms',valid:true,parts:{entry_gate_ms:0,outer_stable_ms:0,physical_ms:0,business_audits_ms:0,telemetry_ms:0,business_ms:0}}:null}catch{return null}}
 function markRuntimePhaseTiming(t,phase){try{if(!t||!t.valid)return;const at=performance.now();if(!Number.isFinite(at)||at<t.at){t.valid=false;return}t.parts[t.phase]+=at-t.at;t.at=at;t.phase=phase}catch{try{if(t)t.valid=false}catch{}}}
-function rememberRuntimePhaseTiming(result,t){try{if(!t?.valid||t.phase!=='settled')return;const parts=Object.fromEntries(Object.entries(t.parts).map(([key,value])=>[key,Math.ceil(value)]));if(Object.values(parts).some(v=>!Number.isSafeInteger(v)||Object.is(v,-0)||v<0||v>120000))return;runtimePhaseTimings.set(result,Object.freeze({parts:Object.freeze(parts),businessAudits:t.businessAudits??null}))}catch{}}
+function rememberRuntimePhaseTiming(result,t){try{if(!t?.valid||t.phase!=='settled')return;const parts=Object.fromEntries(Object.entries(t.parts).map(([key,value])=>[key,Math.ceil(value)]));if(Object.values(parts).some(v=>!Number.isSafeInteger(v)||Object.is(v,-0)||v<0||v>120000))return;runtimePhaseTimings.set(result,Object.freeze({parts:Object.freeze(parts),businessAudits:t.businessAudits??null,stablePhases:t.stablePhases??null}))}catch{}}
 export function full069FinalRuntimePhaseTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result)?.parts;return parts?parseFull069FinalRuntimePhaseTimingObservation({event:'full069_final14_runtime_phase_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
 // Only the same successful actual Runtime result can expose these DATA scalars.
 export function full069FinalBusinessAuditTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result)?.businessAudits;return parts?parseFull069FinalBusinessAuditTimingObservation({event:'full069_final14_business_audit_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
+export function full069FinalStablePhaseTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result)?.stablePhases;return parts?parseFull069FinalStablePhaseTimingObservation({event:'full069_final14_stable_phase_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
 export async function observeFull069FinalRuntime(handle,{ready=true,ended=false}={}){
  const timing=startRuntimePhaseTiming(),s=state(handle);if(s.failed)fail('runtime_client_failed');if(!s.businessOpen)fail('business_pools_closed')
  markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
  markRuntimePhaseTiming(timing,'physical_ms');await physical(s)
  markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
- markRuntimePhaseTiming(timing,'business_audits_ms');await actualBusinessAudits(s,timing)
+ markRuntimePhaseTiming(timing,'business_audits_ms');await withFull069StablePhaseTiming(timing,()=>actualBusinessAudits(s,timing))
  markRuntimePhaseTiming(timing,'telemetry_ms');const telemetry=await telemetryState(s,ready,ended)
  markRuntimePhaseTiming(timing,'business_ms');const business=await businessState(s)
  markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)

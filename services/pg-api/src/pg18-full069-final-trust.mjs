@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import {measureFull069StablePhase} from './pg18-full069-stable-phase-observation.mjs'
 import path from 'node:path'
 import {createHash,createPublicKey,verify,X509Certificate} from 'node:crypto'
 import {openFull069WorkerLiveTrust,liveContext,assertLiveStable,openLiveRunStore,readLivePrivate,retireLiveTrust} from './pg18-full069-worker-live-trust.mjs'
@@ -52,7 +53,14 @@ export async function openFull069FinalTrust(write=false){
 }
 function state(handle){const s=states.get(handle);if(!s||s.closed)fail('untrusted_context');assertFinalHost(s.write);return s}
 export function finalContext(handle){const s=state(handle);return Object.freeze({baseTrust:s.baseTrust,base:liveContext(s.baseTrust),bindings:s.bindings,source:s.source,companions:s.companions,store:s.store,profileSha256:s.profileSha256,controlRuntimeSha256:s.controlRuntimeSha256,records:s.records,write:s.write,root:finalRoot})}
-export function assertFinalStable(handle){const s=state(handle);assertLiveStable(s.baseTrust);assertFull069FinalSources(s.source,s.bindings.sources.final_contract,{deployment:true});if(signed(finalPaths.profile,s.key).sha256!==s.profileSha256||readLivePrivate(finalPaths.key,{max:16384}).sha256!==s.keySha256)fail('profile_changed');for(const[file,old]of s.pins){const current=readLivePrivate(file,old.options);if(current.sha256!==old.sha256||!same(current.stamp,old.stamp))fail('file_changed')}return true}
+export function assertFinalStable(handle){return measureFull069StablePhase('guard',()=>{
+ const s=measureFull069StablePhase('state_host_ms',()=>state(handle))
+ assertLiveStable(s.baseTrust);
+ measureFull069StablePhase('final_sources_ms',()=>assertFull069FinalSources(s.source,s.bindings.sources.final_contract,{deployment:true}))
+ if(measureFull069StablePhase('final_signature_key_ms',()=>signed(finalPaths.profile,s.key).sha256!==s.profileSha256||readLivePrivate(finalPaths.key,{max:16384}).sha256!==s.keySha256))fail('profile_changed');
+ measureFull069StablePhase('final_private_pins_ms',()=>{for(const[file,old]of s.pins){const current=readLivePrivate(file,old.options);if(current.sha256!==old.sha256||!same(current.stamp,old.stamp))fail('file_changed')}})
+ return true
+})}
 export function openFinalRunStore(handle){const s=state(handle);assertFinalStable(handle);if(!s.write||s.store)fail('store_state');s.store=openLiveRunStore(s.baseTrust);return s.store}
 export function writeFinalRecord(handle,name,value){const s=state(handle);assertFinalStable(handle);if(!s.write||!s.store||!/^final-(?:warm|start|end-draft|end|failure)\.json$/.test(name)&&!finalCompanions.some(c=>name==='companion-'+c.id+'.json'))fail('record_name');const file=path.join(s.store,name),fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,JSON.stringify(value)+'\n');fs.fsyncSync(fd)}finally{fs.closeSync(fd)}const dir=fs.openSync(s.store,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(dir)}finally{fs.closeSync(dir)}return pin(s,file,{max:2097152}).sha256}
 export function readFinalAcknowledgement(handle,phase,recordSha){const s=state(handle);assertFinalStable(handle);if(!s.store||!['begin','end'].includes(phase)||!hex(recordSha))fail('ack_phase');const file=path.join(s.store,'final-'+phase+'-acknowledgement.json');if(!fs.existsSync(file))return null;const envelope=signed(file,s.key),v=closed(envelope.payload,['format','run_id','profile_sha256','base_profile_sha256','source_sha256','record_sha256','operator','accepted_at']);if(v.format!=='pg18_full069_final14_'+phase+'_acknowledgement_v1'||v.run_id!==s.base.profile.run_id||v.profile_sha256!==s.profileSha256||v.base_profile_sha256!==s.base.profileSha256||v.source_sha256!==s.source.source_sha256||v.record_sha256!==recordSha||v.operator!==s.base.profile.operator||typeof v.accepted_at!=='string'||!Number.isFinite(Date.parse(v.accepted_at))||new Date(v.accepted_at).toISOString()!==v.accepted_at||Math.abs(Date.now()-Date.parse(v.accepted_at))>120000||pin(s,file).sha256!==envelope.sha256)fail('ack_binding');return freeze({sha256:envelope.sha256,operator:v.operator,accepted_at:v.accepted_at})}
