@@ -2720,8 +2720,9 @@
         }
       ],
       "remaining_gaps": [
-        "旧版本行PATCH动作与PG intent/receipt/expected_revision不同",
-        "试跑验收不可用任意手写成功或独立PG面板状态代替"
+        "原页面真实PG/Cookie/owner/CAS与原请求回执断流验收尚未执行",
+        "完整验收Worker及当前source通过证明、原审批/回复与返回恢复仍需真实端到端验证",
+        "历史明确为部分版本列表，发布表不冒充完整发布事件历史"
       ],
       "original_page_E2E_acceptance_requirements": [
         {
@@ -2749,7 +2750,7 @@
           "PG_pilot_page_is_not_acceptance": true
         }
       ],
-      "status": "ORIGINAL_UI_ADAPTATION_REQUIRED",
+      "status": "SOURCE_ADAPTED_GENUINE_PENDING",
       "operations": [
         {
           "id": "UI-020",
@@ -2841,7 +2842,33 @@
           "original_page_PG_connection_status": "NOT_WIRED_IN_CAPTURED_SOURCE",
           "necessary_adaptation_or_remaining_contract": "复用PG发布/验收/恢复域，映射原表单状态和完整资源绑定；版本号不能代替不可变验收来源",
           "source_available_is_not_runtime_enabled": true,
-          "original_page_E2E_completed": false
+          "original_page_E2E_completed": false,
+          "current_native_contract_needles": [
+            "/api/v2/original-ui/agent-releases",
+            "/acceptance",
+            "/change",
+            "/receipts/"
+          ],
+          "source_adapter_merged": true
+        }
+      ],
+      "current_native_action_map": "ops/original-version-release-page-actions.json",
+      "current_adapter_files": [
+        {
+          "path": "src/pages/VersionRelease/usePgVersionRelease.ts",
+          "sha256": "ec7ab5e1b13acee28a22b23f454002aee667687cfe62a2b69073414781e65bc1"
+        },
+        {
+          "path": "src/lib/originalVersionRelease.ts",
+          "sha256": "119739397681f890f95b260dd4da3b6fdd87258454304aadd9676ba6ca9e32e9"
+        },
+        {
+          "path": "src/lib/originalVersionReleaseApi.ts",
+          "sha256": "697b66c0f5370c23da92361a2f85a7d26b5346fbda92e873b34bb2e033c617f4"
+        },
+        {
+          "path": "services/pg-api/src/original-version-release-http.ts",
+          "sha256": "1b82f5168e9c4b94770a254bff64b21a47f12c68e03d85290499fca21ecf3ad6"
         }
       ]
     },
@@ -6051,7 +6078,7 @@
     "pure_backend_resources_checks": 30,
     "pure_host_admission_and_browser_policy_checks": 65,
     "pure_home_inbox_checks": 20,
-    "combined_pure_checks": 1794,
+    "combined_pure_checks": 1944,
     "frontend_TypeScript6_passed": true,
     "backend_TypeScript5_passed": true,
     "backend_optional070_source_merged": true,
@@ -7671,6 +7698,117 @@
       "local_SQL_Worker_server_browser_executed": false,
       "production_GO": false,
       "pure_checks": 1794
+    },
+    "current_verified_571946e": {
+      "head": "571946e0a233ea54048efb99a21e200e48590b39",
+      "quality": {
+        "run": 41379665812,
+        "job": 125067465104,
+        "jobs_passed": 50,
+        "jobs_total": 50,
+        "root_passed": 4677,
+        "root_total": 4677,
+        "root_skipped": 0,
+        "pnpm_check_and_later_integration_steps_passed": true
+      },
+      "PB19": {
+        "run": 41379961123,
+        "job": 125068450146,
+        "passed": 19,
+        "total": 19,
+        "workers": 2,
+        "seconds": 72.8
+      },
+      "F01": {
+        "run": 41379665747,
+        "jobs_passed": 17,
+        "jobs_total": 17,
+        "original_agent_run_queued_job": 125067464727,
+        "original_tools251_job": 125067464807,
+        "all17_original_configured_stories_passed": true,
+        "not_full20_pages30_action_groups": true
+      },
+      "F08": {
+        "run": 41379665796,
+        "story_passed": true
+      },
+      "Worker": {
+        "telemetry_run": 41379665786,
+        "telemetry_job": 125067464593,
+        "short8_all_success": true,
+        "all8_timing_records_present": true,
+        "each_short_guard_calls": 2,
+        "original_boot_claim_once_identity_invariants_passed": true,
+        "short_group_elapsed_including_startup_ms": 5365,
+        "individual_message_deadlines_not_extended": true,
+        "failed_stage": "observe_stopped_owned_cleanup",
+        "failed_code": "telemetry_control_ci_fixture_refused:writer_stopped_owned_cleanup",
+        "Writer_completed_cases": 21,
+        "finally_owned_cleanup_not_substitute_for_failed_stop_observation": true,
+        "complete069_run": 41379665837,
+        "legacy_job": 125067464522,
+        "legacy_all8_bind_completed": true,
+        "legacy_assessment_self_exit_observed": false,
+        "legacy_short_reason": "full069_worker_live_native_not_ready",
+        "legacy_all_owned_processes_alive_before_cleanup": true,
+        "legacy_stops_graceful_and_absent": true,
+        "legacy_telemetry_backends_zero": false,
+        "legacy_readers_in_flight_zero": true,
+        "legacy_four_business_queues_empty": true,
+        "final14_job": 125067464881,
+        "final14_failure": "full069_worker_live_native_heartbeat_unavailable",
+        "final14_phase": "controller_reader_audit",
+        "final14_13_individual_ACL_rows_not_proven": true,
+        "final14_three_cleanup_zero_values_unavailable": true,
+        "no_inherited_a712_or03_failure_claim": true
+      },
+      "employee_UAT": 0,
+      "qualifying24h_hours": 0,
+      "production_GO": false
+    },
+    "current_original_version_release_source": {
+      "base_head": "571946e0a233ea54048efb99a21e200e48590b39",
+      "source_merged": true,
+      "original_route": "/version-release",
+      "source_action_map": "ops/original-version-release-page-actions.json",
+      "full_original_actions_source_adapted": true,
+      "existing046_transactions_and_flags_reused": true,
+      "SQL_changed": false,
+      "Native_identity_and_transaction_expected_employee": true,
+      "GET_only_exact_receipt_recovery": true,
+      "no_POST_replay_on_unknown": true,
+      "same_employee_identity_recovery_with_fresh_context": true,
+      "verified_identity_refusal_and_other_employee_clear_private_drafts": true,
+      "model_inventory_refresh_and_late_initialization_fences": true,
+      "model_or_source_change_resets_confirmations_without_silent_rebinding": true,
+      "explicit_partial_history_and_older_active_fetch": true,
+      "full_snapshot_comparison": true,
+      "Root_full_069_source_files": 408,
+      "Native_source_files": 374,
+      "original_SQL_inputs": 53,
+      "curated_pure": 1944,
+      "frontend_TS6": true,
+      "API_TS5": true,
+      "actual_version_release_original_browser_genuine_passed": false,
+      "dedicated_original_page_genuine_still_required": true,
+      "production_GO": false
+    },
+    "current_worker_cleanup_reader_diagnostics_source": {
+      "base_head": "571946e0a233ea54048efb99a21e200e48590b39",
+      "candidate": "v93",
+      "source_files": 10,
+      "exact_hunks": 31,
+      "closed_passive_only": true,
+      "shared_Root_bytes": 4096,
+      "root_and_native_original_bytes_recovered_without_diagnostics": true,
+      "original_identity_SQL_deadlines_cleanup_and_genuine_assertions_retained": true,
+      "Root_existing_pure_harness_updated_with_actual_closed_parser": true,
+      "focused_pure": 86,
+      "combined_curated_pure": 1944,
+      "API_TS5": true,
+      "new_head_runtime_result_available": false,
+      "underlying_failure_fixed_proven": false,
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import {compareReleaseSnapshots} from '@/lib/originalVersionReleaseData'
+import { useEffect,useMemo, useState } from "react"
 import { GitCompareArrows } from "lucide-react"
 import type { SpecVersionRow } from "@/pages/VersionRelease/useVersionRelease"
 
@@ -37,11 +38,12 @@ export function computeSpecDiff(
 }
 
 type VrDiffPanelProps = {
+  onRequireDetails?:(ids:string[])=>void
   versions: SpecVersionRow[]
   versionStatusMeta: Record<string, { label: string; badge: string }>
 }
 
-export function VrDiffPanel({ versions, versionStatusMeta }: VrDiffPanelProps) {
+export function VrDiffPanel({ versions, versionStatusMeta,onRequireDetails }: VrDiffPanelProps) {
   const [diffAId, setDiffAId] = useState("")
   const [diffBId, setDiffBId] = useState("")
   const [showSameFields, setShowSameFields] = useState(false)
@@ -51,7 +53,9 @@ export function VrDiffPanel({ versions, versionStatusMeta }: VrDiffPanelProps) {
   const rowA = versions.find((row) => row.id === effectiveAId) || null
   const rowB = versions.find((row) => row.id === effectiveBId) || null
 
-  const diffRows = useMemo(() => computeSpecDiff(rowA?.spec_snapshot || null, rowB?.spec_snapshot || null), [rowA, rowB])
+  const nativeMode=versions.some(v=>v.nativeDetailState!==undefined),nativeReady=!nativeMode || !!rowA?.nativeSnapshot && !!rowB?.nativeSnapshot
+  useEffect(()=>{if(nativeMode && effectiveAId && effectiveBId)onRequireDetails?.([effectiveAId,effectiveBId])},[nativeMode,effectiveAId,effectiveBId,onRequireDetails])
+  const diffRows = useMemo(() => nativeMode ? rowA?.nativeSnapshot && rowB?.nativeSnapshot ? compareReleaseSnapshots({name:rowA.config_snapshot?.name,...rowA.nativeSnapshot,test_model_binding:rowA.nativeTestModelBinding},{name:rowB.config_snapshot?.name,...rowB.nativeSnapshot,test_model_binding:rowB.nativeTestModelBinding}) : [] : computeSpecDiff(rowA?.spec_snapshot || null, rowB?.spec_snapshot || null), [nativeMode,rowA, rowB])
   const changedCount = diffRows.filter((row) => row.changed).length
   const visibleRows = showSameFields ? diffRows : diffRows.filter((row) => row.changed)
   const sameCount = diffRows.length - changedCount
@@ -76,7 +80,7 @@ export function VrDiffPanel({ versions, versionStatusMeta }: VrDiffPanelProps) {
           版本对比
         </h2>
         <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-          {changedCount > 0 ? `${changedCount} 处差异` : "两个版本配置完全一致"}
+          {!nativeReady ? "完整配置尚未就绪" : changedCount > 0 ? `${changedCount} 处差异` : "两个版本配置完全一致"}
         </span>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -109,7 +113,7 @@ export function VrDiffPanel({ versions, versionStatusMeta }: VrDiffPanelProps) {
           </select>
         </label>
       </div>
-      {rowA && rowB && rowA.id === rowB.id ? (
+      {!nativeReady ? <div role="status" className="mt-4 rounded-xl bg-muted p-4 text-sm text-muted-foreground">完整版本配置尚未读取或已失效，暂不能判断差异。<button type="button" className="ml-3 rounded text-primary underline focus-visible:ring-2 focus-visible:ring-primary" onClick={()=>onRequireDetails?.([effectiveAId,effectiveBId])}>读取所选配置</button></div> : rowA && rowB && rowA.id === rowB.id ? (
         <p className="mt-4 rounded-xl bg-muted p-4 text-sm text-muted-foreground">请选择两个不同的版本进行对比。</p>
       ) : (
         <>
@@ -130,10 +134,10 @@ export function VrDiffPanel({ versions, versionStatusMeta }: VrDiffPanelProps) {
                   }`}
                 >
                   <span className="pr-2 font-medium text-card-foreground">{row.label}</span>
-                  <span className={`break-words pr-3 ${row.changed ? "text-destructive" : "text-muted-foreground"}`}>
+                  <span className={`whitespace-pre-wrap break-words pr-3 ${row.changed ? "text-destructive" : "text-muted-foreground"}`}>
                     {row.aText}
                   </span>
-                  <span className={`break-words ${row.changed ? "text-primary" : "text-muted-foreground"}`}>
+                  <span className={`whitespace-pre-wrap break-words ${row.changed ? "text-primary" : "text-muted-foreground"}`}>
                     {row.bText}
                   </span>
                 </div>

@@ -1,0 +1,10 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import {fileURLToPath} from 'node:url'
+import {createOriginalVersionReleaseIdentity} from '../src/lib/originalVersionReleaseIdentity.ts'
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),read=p=>fs.readFileSync(root+'/'+p,'utf8')
+test('real hook uses tested identity bridge and guards URL changes while identity unknown',()=>{const h=read('src/pages/VersionRelease/usePgVersionRelease.ts');assert(h.includes('createOriginalVersionReleaseIdentity({account:getStudioAccountInfo,verify:verifyStudioSession})'));assert(h.includes('...identity,'));assert(h.includes('if(!current.isLoggedIn||current.nativePending'));assert(h.includes("needsRhLogin:status==='signed_out'"));assert(h.includes('initializeRef.current?.()'));assert(h.includes("window.addEventListener('online',check)"));assert(h.includes("window.removeEventListener('online',check)"));assert(!h.includes("status==='signed_out'?401:503"));assert(!h.includes('needsRhLogin:true}\n return'))})
+test('page keeps identity-refresh available but disables receipt actions until verified',()=>{const p=read('src/pages/VersionRelease/VersionReleasePage.tsx');assert(p.includes('p.nativeMode && (p.isLoggedIn || !p.needsRhLogin)'));assert(p.includes('disabled={p.isConfirmBusy || !p.isLoggedIn}'))})
+test('bridge distinguishes verified signedout from unavailable/missing account',async()=>{let status='unavailable',account=null;const i=createOriginalVersionReleaseIdentity({account:()=>account,verify:async()=>status});assert.equal(i.currentEmployee(),null);await assert.rejects(i.verifyEmployee(),e=>e.status===503);status='signed_out';await assert.rejects(i.verifyEmployee(),e=>e.status===401&&e.code==='original_release_verified_signed_out');status='authenticated';await assert.rejects(i.verifyEmployee(),e=>e.status===503);account={id:'10000000-0000-4000-8000-000000000001',active:true};assert.equal(await i.verifyEmployee(),account.id)})

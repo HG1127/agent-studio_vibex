@@ -12,7 +12,21 @@
 
 
 
-## 身份恢复、计划员工围栏与等待修复（2026-11-02，当前待验证源码）
+## 原版本发布适配与最新隔离证据（2026-11-02，当前待验证源码）
+
+保留原`/version-release`页面、三张流水线卡、历史、完整对比和确认对话框，带入原D页面的布局、全局编辑刷新及验收返回恢复。适配现有046仓库：真实Cookie/事务owner/预期员工、source/version/release-head CAS、当前test_current、明确未测发布确认、8-500字符恢复说明、仅草稿删除。未知写仅存owner/IDs/revisions/hashes与指纹；原页面仅GET核对精确回执，不盲重发POST。历史明确为最近100版本/10验收，另取更早active_version_id，发布表只表示已加载版本的最近发布状态。
+
+临时身份不可用立即隐藏禁用，同员工新验证并复查当前资源后恢复内存输入；真实/me401或403、换员工、签出和处置永久清除。刷新现在重取本人模型清单，模型版本/可用性或source/head变化撤销旧确认，不默换模型，保留未提交文字；部分清单不能证明缺失。9项回归先复现8个刷新失败和1个恢复后旧初始化短暂重发catalog，再通过相关57项检查。合并Worker诊断后的统一1944/1944纯检查、前后端类型通过；原版本页独立真实PG浏览器故事仍待执行，不能计整页验收。
+
+上一精确头`571946e`的[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665812/job/125067465104)50/50作业、根4677/4677及后续集成步骤全部通过；[PB19](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379961123/job/125068450146)19/19、双Worker72.8秒；[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665747)17/17，包括此前失败的原父运行页与工具251分页故事；[F08](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665796)通过。它们不覆盖本批新版本发布页，也不等于原20页/30组操作全验收。
+
+同头[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665786/job/125067464593)八种Writer短竞争全部成功，原boot、claim-once和identity断言均通过，原5秒期限未延长；组耗时5365ms含启动，不能当成单项期限。整体转而在停止后owned-cleanup观察失败，最后finally清理通过不能替代该失败。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665837)Legacy八项绑定均完成、无assessment自退，所有进程停止前存活且最终graceful/absent，但Native未就绪且telemetry后端未清零；Final14在controller_reader_audit报heartbeat_unavailable，13项独立ACL结果及三项清零仍缺。正在修复这些新的具体阻断。
+
+Worker补入v93独立闭合诊断通道：固定4KiB Root观测预算、原Reader分段耗时、停止时缺少ended记录种类、Native原始未就绪状态投影；删除诊断标记后Root与Native原代码逐字恢复，原SQL/identity/5秒与8秒期限/实际清理判定保留。补齐既有纯测试真实解析器依赖，相关86项通过。当前只是可观测性增强，尚未取得新精确头真实运行结果，不能宣称底层失败已修复。
+
+074三包仍未应用，当前只读重放仍有HTTP与Native入口两段上下文待合并；077普通业务case、078原定时任务及075完整安装兼容继续独立准备。源码重封、新精确头真实CI、目标安装、长期Worker/合格24小时、备份恢复/回滚、员工UAT与签收尚未完成，正式切换仍 **NO-GO**。本批未运行本地SQL/业务Worker/浏览器，未部署或改动生产数据。
+
+## 身份恢复、计划员工围栏与等待修复（2026-11-02，已推送571946e源码）
 
 `a7125ea` 的[F01隔离组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270564)现为15/17：原Home设计、模型元数据/草稿/075回执及运行详情指定故事通过；[F08原分享故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270615)通过。[PB19双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372372637/job/125045374576)19/19、73.3秒。[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270795/job/125045065582)49/50、根4664/4665，唯一旧Reader立即拒绝断言已按原帧期限修正；后续被跳过步骤不能计通过。这些故事不等于原20页/30组操作全部验收。
 

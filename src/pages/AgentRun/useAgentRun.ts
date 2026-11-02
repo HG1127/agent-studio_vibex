@@ -23,6 +23,7 @@ export type AgentRunRow = {
   rh_user_id: string
   spec_id: string
   spec_name: string
+  spec_snapshot?: AgentSpec | null
   instruction: string
   status: RunStateKey
   current_step: number

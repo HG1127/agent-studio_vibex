@@ -1,5 +1,7 @@
 // Full configuration versions are owner-only. Migration046 and its independent
 // startup audit are required; metadata writes and acceptance default to off.
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
+import {originalVersionReleaseProtocol} from '../../../shared/original-version-release-contract.ts'
 import {createHash,randomUUID} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor,verifyAgentSpecResources} from "./repository.ts"
@@ -25,8 +27,9 @@ const errors=new Set(["agent_release_actor_unavailable","agent_release_not_found
   "agent_release_source_changed","agent_release_version_changed","agent_release_head_changed","agent_release_untested_ack_required","agent_release_version_not_draft",
   "agent_release_acceptance_unavailable","invalid_agent_release_acceptance","invalid_agent_release_snapshot","invalid_agent_release_publish","invalid_agent_release_delete","invalid_agent_release_restore",
   "agent_release_restore_not_prepared","agent_release_restore_write_changed"])
-async function transaction<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,actor:string)=>Promise<T>):Promise<T>{
+async function transaction<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,actor:string)=>Promise<T>,expectedEmployee?:string):Promise<T>{
   try{return await withActor(pool,identity,async(db,actor)=>{
+    assertOriginalUiEmployee(actor,expectedEmployee)
     await db.query("SET LOCAL lock_timeout='3s'");await db.query("SET LOCAL statement_timeout='5s'")
     const installed=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_046') AND "+
       "to_regprocedure('agentstudio.agent_release_restore_finish(uuid,uuid,text)') IS NOT NULL AS ok")).rows[0]?.ok
@@ -48,11 +51,11 @@ async function receipt(db:SqlClient,spec:string,request:string){
   return {request_sha256:value.request_sha256,result:result(value.result,spec,request)}
 }
 export class AgentReleaseRepository{
-  readonly pool:SqlPool;readonly enabled:boolean;readonly allowAcceptance:boolean;readonly agents:AutonomousAgentRunRepository
+  readonly originalUiProtocol=originalVersionReleaseProtocol;readonly pool:SqlPool;readonly enabled:boolean;readonly allowAcceptance:boolean;readonly agents:AutonomousAgentRunRepository
   constructor(pool:SqlPool,options:{enabled?:boolean;allowAcceptance?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){
-    this.pool=pool;this.enabled=options.enabled===true;this.allowAcceptance=options.allowAcceptance===true;this.agents=new AutonomousAgentRunRepository(pool,options)
+    Object.defineProperty(this,'originalUiProtocol',{value:originalVersionReleaseProtocol,writable:false,enumerable:true,configurable:false});this.pool=pool;this.enabled=options.enabled===true;this.allowAcceptance=options.allowAcceptance===true;this.agents=new AutonomousAgentRunRepository(pool,options)
   }
-  workspace(identity:Identity,rawId:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor)=>{
+  workspace(identity:Identity,rawId:string,expectedEmployee?:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor)=>{
     const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item
     if(raw===null)throw new HttpError(404,"agent_release_not_found")
     const value=object(raw)
@@ -68,22 +71,22 @@ export class AgentReleaseRepository{
       versions.push({...version,test_current:current})
     }
     return {...value,versions}
-  })}
-  detail(identity:Identity,rawId:string,rawVersion:string){const target=specId(rawId),version=specId(rawVersion)
+  },expectedEmployee)}
+  detail(identity:Identity,rawId:string,rawVersion:string,expectedEmployee?:string){const target=specId(rawId),version=specId(rawVersion)
     return transaction(this.pool,identity,async(db,actor)=>{
       const value=await this.ownedDetail(db,target,version)
       return {...value,test_current:value.test_passed===true&&isUuid(value.test_run_id)&&typeof value.source_sha256==="string"&&
         await this.currentAcceptance(db,actor,target,value.test_run_id,value.source_sha256)}
-    })
+    },expectedEmployee)
   }
-  async acceptanceStatus(identity:Identity,rawId:string,rawRun:string){
+  async acceptanceStatus(identity:Identity,rawId:string,rawRun:string,expectedEmployee?:string){
     const target=specId(rawId),run=specId(rawRun)
     const status=await transaction(this.pool,identity,async(db,actor)=>{
       const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance_status($1::uuid,$2::uuid) AS item",[target,run])).rows[0]?.item
       if(raw===null)throw new HttpError(404,"agent_release_acceptance_not_found")
       const value=object(raw)
       return {...value,test_current:typeof value.source_sha256==="string"&&await this.currentAcceptance(db,actor,target,run,value.source_sha256)}
-    })
+    },expectedEmployee)
     // The standard run projection repeats the original source/ACL checks and
     // clears unavailable knowledge output; no private checkpoint is returned.
     return {...status,execution:await this.agents.get(identity,run)}
@@ -96,30 +99,34 @@ export class AgentReleaseRepository{
     parseAgentReleaseStoredSpec(value.spec_snapshot)
     return value
   }
-  async change(identity:Identity,rawId:string,raw:unknown){
+  async change(identity:Identity,rawId:string,raw:unknown,expectedEmployee?:string){
     const target=specId(rawId),choice=parseAgentReleaseChoice(raw),fingerprint=createHash("sha256").update(JSON.stringify({spec_id:target,...choice})).digest("hex")
     const recover=(previous:Awaited<ReturnType<typeof receipt>>)=>{
       if(!previous)return null
       if(previous.request_sha256!==fingerprint)throw new HttpError(409,"agent_release_request_conflict")
       return previous.result
     }
-    const prior=recover(await transaction(this.pool,identity,db=>receipt(db,target,choice.request_id)))
+    const prior=recover(await transaction(this.pool,identity,db=>receipt(db,target,choice.request_id),expectedEmployee))
     if(prior)return prior
     if(!this.enabled)throw new HttpError(403,"agent_release_writes_disabled")
     return transaction(this.pool,identity,async(db,actor)=>{
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,46))",[actor+":"+choice.request_id])
       const existing=recover(await receipt(db,target,choice.request_id));if(existing)return existing
       return this.apply(db,actor,target,choice,fingerprint)
-    })
+    },expectedEmployee)
   }
-  confirm(identity:Identity,rawId:string,raw:unknown){
+  confirm(identity:Identity,rawId:string,raw:unknown,expectedEmployee?:string){
     const target=specId(rawId),choice=parseAgentReleaseChoice(raw),fingerprint=createHash("sha256").update(JSON.stringify({spec_id:target,...choice})).digest("hex")
     return transaction(this.pool,identity,async db=>{
       const prior=await receipt(db,target,choice.request_id)
       if(!prior)throw new HttpError(404,"agent_release_receipt_not_found")
       if(prior.request_sha256!==fingerprint)throw new HttpError(409,"agent_release_request_conflict")
       return prior.result
-    })
+    },expectedEmployee)
+  }
+  queryReceipt(identity:Identity,rawId:string,rawRequest:string,expectedEmployee?:string){
+    const target=specId(rawId),request=specId(rawRequest)
+    return transaction(this.pool,identity,async db=>{const value=await receipt(db,target,request);if(!value)throw new HttpError(404,'agent_release_receipt_not_found');return{request_sha256:value.request_sha256,result:value.result}},expectedEmployee)
   }
   private async apply(db:SqlClient,actor:string,target:string,choice:AgentReleaseChoice,fingerprint:string):Promise<ObjectValue>{
     if(choice.action==="restore")return this.restore(db,actor,target,choice,fingerprint)

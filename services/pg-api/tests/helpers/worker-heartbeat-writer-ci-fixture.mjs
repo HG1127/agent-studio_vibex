@@ -1,3 +1,4 @@
+import {parseCleanupReaderObservation,parseCleanupReaderObservations,additionalCleanupReaderObservations} from './worker-heartbeat-cleanup-reader-observation.mjs'
 import {parseWorkerHeartbeatBindTimingObservation} from './worker-heartbeat-writer-timing-observation.mjs'
 // AUTHORING ONLY until run by the distinct hosted control CI. Import-safe.
 // No original heartbeat/060 workflow permit, fake DB access, target or PID input.
@@ -200,7 +201,7 @@ function closedControllerOutput(s,c,chunk,stream){
  c[stream+'Bytes']+=chunk.length;if(c[stream+'Bytes']>32768){c.p.kill('SIGTERM');return}
  let text=(c[stream+'Partial']??'')+chunk.toString('utf8');if(Buffer.byteLength(text)>4096)text=text.slice(-4096)
  const lines=text.split('\n');c[stream+'Partial']=lines.pop()
- for(const line of lines){try{if(stream==='stderr'){const timing=parseWorkerHeartbeatBindTimingObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096));if(timing)process.stderr.write(JSON.stringify(timing)+'\n')}}catch{}try{const observation=writerAdmissionObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){c.admissionWaitStarts.set(observation.kind,(c.admissionWaitStarts.get(observation.kind)??0)+1);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_BEGIN */try{const observation=writerReadyFinalizationObservation(s,s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){rememberWriterReadyFinalization(s,observation);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_END *//* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
+ for(const line of lines){try{if(stream==='stderr'){const data=parseCleanupReaderObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096));if(data&&data.event!=='worker_heartbeat_control_failure_observation')process.stderr.write(JSON.stringify(data)+'\n')}}catch{}try{if(stream==='stderr'){const timing=parseWorkerHeartbeatBindTimingObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096));if(timing)process.stderr.write(JSON.stringify(timing)+'\n')}}catch{}try{const observation=writerAdmissionObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){c.admissionWaitStarts.set(observation.kind,(c.admissionWaitStarts.get(observation.kind)??0)+1);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_BEGIN */try{const observation=writerReadyFinalizationObservation(s,s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation){rememberWriterReadyFinalization(s,observation);process.stderr.write(JSON.stringify(observation)+'\n')}}catch{}/* WRITER_READY_FINALIZATION_END *//* WRITER_FAILURE_OBSERVATION_BEGIN */try{const observation=writerControlFailureObservation(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),stream);if(observation)process.stderr.write(JSON.stringify(observation)+'\n')}catch{}/* WRITER_FAILURE_OBSERVATION_END */try{const x=fields(s.contract.parseWorkerHeartbeatControlJson(Buffer.from(line),4096),['error','automatic_retry_authorized']);if(x.automatic_retry_authorized===false&&s.contract.controlErrorCodes.includes(x.error))c.closedCodes.add(x.error)}catch{ /* Discard all arbitrary warnings/stack/diagnostic text. */ }}
 }
 async function startController(s){
  // Service has one fixed verb. It is a separate cold process, never import-run.
@@ -870,11 +871,11 @@ async function writerWaitStoppedCleanup(s,children){
   }
  }
  if(new Set(expected.map(v=>v.backend_id)).size!==expected.length)fail('writer_ci_stopped_duplicate_backend')
- await until(async()=>{
+ try{await until(async()=>{
   const fresh=writerObservationJournal(s)
   for(const b of expected){const ended=fresh.filter(r=>writerSameEnded(r,b));if(ended.length>1)fail('writer_ci_stopped_duplicate_end');if(!ended.length)return false;if(ended[0].sequence<=b.bound_sequence||!await writerBackendAbsent(s,b))fail('writer_ci_stopped_backend_live_after_ended')}
   return true
- },'writer_stopped_owned_cleanup',5000)
+ },'writer_stopped_owned_cleanup',5000)}catch(stoppedFailure){try{const fresh=writerObservationJournal(s),missing=expected.filter(b=>!fresh.some(r=>writerSameEnded(r,b))).map(b=>b.kind);process.stderr.write(JSON.stringify({event:'genuine_writer_ci_stopped_cleanup_timeout_observation',expected_backends:expected.length,missing_ended_kinds:missing,original_wait_ms:5000,observed_data_only:true})+'\n')}catch{}throw stoppedFailure}
  process.stdout.write(JSON.stringify({event:'genuine_writer_ci_stopped_owned_cleanup',stopped_children:children.length,matched_owned_backends:expected.length,matching_original_staged_claim_bound_and_ended:true,actual_exact_and_role_absence:true,current_generation_not_substituted:true,nonroot_uncertain_slots_untouched:true,observed_data_only:true})+'\n')
  return Object.freeze({observed_data_only:true,authority:false})
 }

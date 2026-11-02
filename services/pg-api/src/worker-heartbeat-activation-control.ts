@@ -178,8 +178,24 @@ async function reconcileReaders(s:State,records:readonly JournalRecord[]){
  const strays=await observer(s,async raw=>(await raw.query('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,s.binding.roles[1]!.oid])).rows)
  for(const b of strays){if(typeof b.pid!=='number'||typeof b.started!=='string')controlFail('binding_changed');await waitBackendGone(s,{pid:b.pid,started:b.started})}
 }
-function leaseCheck(l:Lease,phase:'pending'|'finalizing'|'finished'|'preparing'){
- const s=l.s;runtimeCheck(s)
+/* CLEANUP_READER_TIMING_BEGIN */
+// Passive scalars only, one shared fixed4KiB budget. These maps never authorize
+// or skip a check, lease, SQL statement, cleanup or response.
+type RootReaderTiming={started:number;stage:string;guardCalls:number;guardMs:number;emitted:boolean}
+type RootCleanupTiming={kind:string;started:number;at:number;stage:string;parts:Record<string,number>;emitted:boolean}
+const rootReaderTimings=new WeakMap<Lease,RootReaderTiming>();let rootCleanupReaderTimingBytes=0,rootCleanupReaderNormalBytes=0,rootCleanupReaderFailureBytes=0
+function emitRootCleanupReaderTiming(value:unknown){try{const line=JSON.stringify(value)+'\n',bytes=Buffer.byteLength(line),failed=typeof value==='object'&&value!==null&&Object.getOwnPropertyDescriptor(value,'outcome')?.value==='failed';if(bytes>2048||rootCleanupReaderTimingBytes+bytes>4096||(failed?rootCleanupReaderFailureBytes+bytes>1024:rootCleanupReaderNormalBytes+bytes>3072))return;if(failed)rootCleanupReaderFailureBytes+=bytes;else rootCleanupReaderNormalBytes+=bytes;rootCleanupReaderTimingBytes+=bytes;process.stderr.write(line)}catch{}}
+function timingMs(value:number,min=0){return Number.isFinite(value)?Math.max(min,Math.min(120000,Math.ceil(value))):null}
+function startRootReaderTiming(l:Lease){try{rootReaderTimings.set(l,{started:l.peer.requestStarted!,stage:'begin_registry',guardCalls:0,guardMs:0,emitted:false})}catch{}}
+function markRootReaderTiming(l:Lease,stage:string){try{const t=rootReaderTimings.get(l);if(t)t.stage=stage}catch{}}
+function beginRootReaderGuard(l:Lease){try{const t=rootReaderTimings.get(l);if(t){t.guardCalls++;return performance.now()}}catch{}return undefined}
+function endRootReaderGuard(l:Lease,start:number|undefined){try{const t=rootReaderTimings.get(l);if(t&&start!==undefined)t.guardMs+=Math.max(0,performance.now()-start)}catch{}}
+function observeRootReaderTiming(l:Lease,outcome:'failed'|'consumed'){try{const t=rootReaderTimings.get(l);if(!t||t.emitted)return;t.emitted=true;const now=performance.now();emitRootCleanupReaderTiming({event:'worker_heartbeat_reader_lease_timing_observation',stage:t.stage,outcome,elapsed_ms:timingMs(now-t.started),remaining_ms:timingMs(l.deadline-now,-120000),guard_calls:Math.min(4096,t.guardCalls),guard_ms:timingMs(t.guardMs),writer_operation:l.s.writerOperation,writer_cleanups:Math.min(32,l.s.writerCleanups),observed_data_only:true})}catch{}}
+function startRootCleanupTiming(kind:string):RootCleanupTiming|undefined{try{const now=performance.now();return {kind,started:now,at:now,stage:'entry',parts:{end_client:0,terminate_owned:0,discover:0,wait_absence:0,ended_journal:0},emitted:false}}catch{return undefined}}
+function markRootCleanupTiming(t:RootCleanupTiming|undefined,stage:string){try{if(!t)return;const now=performance.now();if(Object.hasOwn(t.parts,t.stage))t.parts[t.stage]!+=Math.max(0,now-t.at);t.at=now;t.stage=stage}catch{}}
+function observeRootCleanupTiming(t:RootCleanupTiming|undefined,outcome:'ended'|'failed'){try{if(!t||t.emitted)return;t.emitted=true;markRootCleanupTiming(t,'settled');emitRootCleanupReaderTiming({event:'worker_heartbeat_owned_cleanup_timing_observation',kind:t.kind,outcome,elapsed_ms:timingMs(performance.now()-t.started),end_client_ms:timingMs(t.parts.end_client!),terminate_owned_ms:timingMs(t.parts.terminate_owned!),discover_ms:timingMs(t.parts.discover!),wait_absence_ms:timingMs(t.parts.wait_absence!),ended_journal_ms:timingMs(t.parts.ended_journal!),observed_data_only:true})}catch{}}
+/* CLEANUP_READER_TIMING_END */function leaseCheck(l:Lease,phase:'pending'|'finalizing'|'finished'|'preparing'){
+ const s=l.s;/* CLEANUP_READER_TIMING_BEGIN */const guardStarted=beginRootReaderGuard(l);try{/* CLEANUP_READER_TIMING_END */runtimeCheck(s)/* CLEANUP_READER_TIMING_BEGIN */}finally{endRootReaderGuard(l,guardStarted)}/* CLEANUP_READER_TIMING_END */
  if(!l.peer.open||l.phase!==phase||s.phase!=='serving'||l.epoch!==s.epoch)controlFail('lease_revoked')
  if(performance.now()>=l.deadline){revoke(l);controlFail('lease_expired')}
 }
@@ -261,19 +277,19 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
 }catch(error){try{observeRootReaderFailure('prepare',error)}catch{};throw error}
  const handle=empty<ReadLease>(),l:Lease={s,peer:owner,handle,id:randomBytes(32).toString('hex'),request,epoch,deadline,phase:'preparing',queryPending:false,transaction:false,uncertain:false,released:false,clean:false,timer:undefined as unknown as ReturnType<typeof setTimeout>}
  if(performance.now()>=deadline)controlFail('reader_timeout')
- leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),Math.max(1,Math.ceil(deadline-performance.now())))
+ /* CLEANUP_READER_TIMING_BEGIN */startRootReaderTiming(l);/* CLEANUP_READER_TIMING_END */leaseStates.set(handle,l);s.leases.add(l);owner.leases.add(l);l.timer=setTimeout(()=>revoke(l),Math.max(1,Math.ceil(deadline-performance.now())))
  l.work=(async()=>{
   const begin=await serial(s,async()=>{leaseCheck(l,'preparing');return inspectRegistry(s,s.policy,l)});l.begin=begin;leaseCheck(l,'preparing')
   const expectations=s.registry.describeWorkerHeartbeatRegistry(begin).catalog_expectations;if(!expectations)controlFail('control_closed')
-  l.client=await s.reader.connect();l.clientError=()=>{l.uncertain=true;revoke(l)};l.client.on('error',l.clientError);leaseCheck(l,'preparing')
-  await readerIdentity(l)
-  await readerQuery(l,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');l.transaction=true
+  /* CLEANUP_READER_TIMING_BEGIN */markRootReaderTiming(l,'connect_reader');/* CLEANUP_READER_TIMING_END */l.client=await s.reader.connect();l.clientError=()=>{l.uncertain=true;revoke(l)};l.client.on('error',l.clientError);leaseCheck(l,'preparing')
+  /* CLEANUP_READER_TIMING_BEGIN */markRootReaderTiming(l,'identity');/* CLEANUP_READER_TIMING_END */await readerIdentity(l)
+  /* CLEANUP_READER_TIMING_BEGIN */markRootReaderTiming(l,'begin_rr');/* CLEANUP_READER_TIMING_END */await readerQuery(l,'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');l.transaction=true
   await readerQuery(l,"SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='3000ms'; SET LOCAL lock_timeout='1000ms'")
-  await verifyWorkerHeartbeatActivatedCatalog({query:async(sql,values=[])=>{if(values.length){leaseCheck(l,'preparing');l.queryPending=true;try{const result=await l.client!.query(sql,values);leaseCheck(l,'preparing');return result}catch(error){l.uncertain=true;throw error}finally{l.queryPending=false}}return readerQuery(l,sql)},release(){controlFail('untrusted_reference')}},expectations)
-  const rows=(await readerQuery(l,'SELECT studio_telemetry.snapshot() AS value')).rows;if(rows.length!==1)controlFail('registry_mismatch')
+  /* CLEANUP_READER_TIMING_BEGIN */markRootReaderTiming(l,'catalog');/* CLEANUP_READER_TIMING_END */await verifyWorkerHeartbeatActivatedCatalog({query:async(sql,values=[])=>{if(values.length){leaseCheck(l,'preparing');l.queryPending=true;try{const result=await l.client!.query(sql,values);leaseCheck(l,'preparing');return result}catch(error){l.uncertain=true;throw error}finally{l.queryPending=false}}return readerQuery(l,sql)},release(){controlFail('untrusted_reference')}},expectations)
+  /* CLEANUP_READER_TIMING_BEGIN */markRootReaderTiming(l,'snapshot');/* CLEANUP_READER_TIMING_END */const rows=(await readerQuery(l,'SELECT studio_telemetry.snapshot() AS value')).rows;if(rows.length!==1)controlFail('registry_mismatch')
   const snapshot=parseWorkerHeartbeatSnapshot(rows[0]?.value);await readerQuery(l,'ROLLBACK');l.transaction=false;leaseCheck(l,'preparing');l.snapshot=snapshot;l.phase='pending'
  })()
- try{await l.work;return handle}catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('prepare',error)}catch{}/* READER_FAILURE_OBSERVATION_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
+ try{await l.work;return handle}catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('prepare',error)}catch{}/* READER_FAILURE_OBSERVATION_END *//* CLEANUP_READER_TIMING_BEGIN */observeRootReaderTiming(l,'failed');/* CLEANUP_READER_TIMING_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 export async function finalizeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,handle:ReadLease):Promise<FinishedRead>{
  const {s,l}=(()=>{try{
@@ -281,15 +297,15 @@ export async function finalizeWorkerHeartbeatControlRead(control:Control,p:Reade
   leaseCheck(l,'pending');l.phase='finalizing';return {s,l}
  }catch(error){try{observeRootReaderFailure('finish',error)}catch{};throw error}})()
  try{
-  await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,l.begin,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
+  /* CLEANUP_READER_TIMING_BEGIN */markRootReaderTiming(l,'finish_registry');/* CLEANUP_READER_TIMING_END */await serial(s,async()=>{leaseCheck(l,'finalizing');if(!l.begin||!l.snapshot)controlFail('lease_revoked');const end=await inspectRegistry(s,l.begin,l),before=s.registry.describeWorkerHeartbeatRegistry(l.begin),after=s.registry.describeWorkerHeartbeatRegistry(end);if(observedSha(s,l.begin)!==observedSha(s,end)||Date.parse(l.snapshot.as_of)<Date.parse(before.checked_at_utc)||Date.parse(l.snapshot.as_of)>Date.parse(after.checked_at_utc))controlFail('registry_mismatch')})
   leaseCheck(l,'finalizing')
   if(l.client&&!l.released){if(l.clientError)l.client.off('error',l.clientError);l.client.release();l.released=true}if(l.queryPending||l.transaction)controlFail('reader_cleanup_unknown');l.clean=true
   const finished=empty<FinishedRead>();l.phase='finished';l.finished=finished;finishedStates.set(finished,l);return finished
- }catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('finish',error)}catch{}/* READER_FAILURE_OBSERVATION_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
+ }catch(error){/* READER_FAILURE_OBSERVATION_BEGIN */try{observeRootReaderFailure('finish',error)}catch{}/* READER_FAILURE_OBSERVATION_END *//* CLEANUP_READER_TIMING_BEGIN */observeRootReaderTiming(l,'failed');/* CLEANUP_READER_TIMING_END */revoke(l);await cleanupLease(l);throw error instanceof WorkerHeartbeatControlError?error:new WorkerHeartbeatControlError('control_io_failed')}
 }
 export function consumeWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,finished:FinishedRead):WorkerHeartbeatSnapshot{
  const s=state(control),owner=peer(s,p,'reader'),l=finishedStates.get(finished);if(!l||l.s!==s||l.peer!==owner||!l.snapshot||!l.clean)controlFail('untrusted_reference')
- leaseCheck(l,'finished');const snapshot=l.snapshot;l.snapshot=undefined;l.phase='consumed';clearTimeout(l.timer);s.leases.delete(l);owner.leases.delete(l);finishedStates.delete(finished);leaseStates.delete(l.handle);return snapshot
+ leaseCheck(l,'finished');/* CLEANUP_READER_TIMING_BEGIN */observeRootReaderTiming(l,'consumed');/* CLEANUP_READER_TIMING_END */const snapshot=l.snapshot;l.snapshot=undefined;l.phase='consumed';clearTimeout(l.timer);s.leases.delete(l);owner.leases.delete(l);finishedStates.delete(finished);leaseStates.delete(l.handle);return snapshot
 }
 export async function cancelWorkerHeartbeatControlRead(control:Control,p:ReaderPeer,handle:ReadLease):Promise<void>{const s=state(control),owner=peer(s,p,'reader'),l=leaseStates.get(handle);if(!l||l.s!==s||l.peer!==owner)controlFail('untrusted_reference');revoke(l);await cleanupLease(l)}
 function actionFile(id:string,suffix:string){if(!controlUuid(id)||!['draft','approval','material','prepared','resume'].includes(suffix))controlFail('invalid_command');return (suffix==='draft'||suffix==='approval'||suffix==='resume'?controlPaths.config+'/'+suffix+'s':controlPaths.store+'/plans')+'/'+id+'.json'}
@@ -633,28 +649,28 @@ async function closeRootWriterBackend(s:State,b:RootWriterBackend):Promise<void>
  const bound=b.backend,verified=b.ownedIdentity
  const ownedBackend=bound&&verified&&verified.pid===bound.pid&&verified.started===bound.started&&verified.database_oid===s.binding.database_oid&&verified.role_oid===b.slot.role_oid&&verified.login===b.slot.role_name?{...verified}:undefined
 /* OWNED_WRITER_TERMINATION_END */ s.writerCleanups++
- b.closing=(async()=>{/* WRITER_FAILURE_OBSERVATION_BEGIN */let rootCleanupFailureSite='cleanup_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
+ b.closing=(async()=>{/* CLEANUP_READER_TIMING_BEGIN */const cleanupTiming=startRootCleanupTiming(b.slot.kind);/* CLEANUP_READER_TIMING_END *//* WRITER_FAILURE_OBSERVATION_BEGIN */let rootCleanupFailureSite='cleanup_entry';try{/* WRITER_FAILURE_OBSERVATION_END */
   // Normal activation may already be revoked; cleanup still requires this real
   // State/runtime and only this privately registered backend's own identity.
-  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_end_client';/* WRITER_FAILURE_OBSERVATION_END */await rootWriterCleanupAwait(s,()=>b.raw.end())
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_end_client';/* CLEANUP_READER_TIMING_BEGIN */;markRootCleanupTiming(cleanupTiming,'end_client');/* CLEANUP_READER_TIMING_END *//* WRITER_FAILURE_OBSERVATION_END */await rootWriterCleanupAwait(s,()=>b.raw.end())
 /* OWNED_WRITER_TERMINATION_BEGIN */
   // Closing a socket is not confirmation that PostgreSQL stopped an active
   // statement. Terminate only this originally verified owned PID/start/DB/role;
   // a later role-only discovery below never supplies termination authority.
   if(ownedBackend){
-   rootCleanupFailureSite='cleanup_terminate_owned'
+   rootCleanupFailureSite='cleanup_terminate_owned'/* CLEANUP_READER_TIMING_BEGIN */;markRootCleanupTiming(cleanupTiming,'terminate_owned');/* CLEANUP_READER_TIMING_END */
    const stopped=await rootWriterCleanupAwait(s,()=>s.raw.query<{stopped:boolean}>('SELECT pg_terminate_backend(a.pid) AS stopped FROM pg_stat_activity a JOIN pg_roles r ON r.oid=a.usesysid WHERE a.pid=$1 AND a.backend_start=$2::timestamptz AND a.datid=$3::oid AND r.oid=$4::oid AND r.rolname=$5::text AND a.usename=$5::text AND a.application_name=$6::text AND a.pid<>pg_backend_pid()',[ownedBackend.pid,ownedBackend.started,ownedBackend.database_oid,ownedBackend.role_oid,ownedBackend.login,ownedBackend.application_name]))
    if(stopped.rows.length>1||stopped.rows.length===1&&stopped.rows[0]!.stopped!==true)writerFail('writer_uncertain')
   }
 /* OWNED_WRITER_TERMINATION_END */  if(!b.backend){
-   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_discover';/* WRITER_FAILURE_OBSERVATION_END */const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string}>('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,b.slot.role_oid])).rows)
+   /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_discover';/* CLEANUP_READER_TIMING_BEGIN */;markRootCleanupTiming(cleanupTiming,'discover');/* CLEANUP_READER_TIMING_END *//* WRITER_FAILURE_OBSERVATION_END */const rows=await rootWriterObserver(s,async db=>(await db.query<{pid:number;started:string}>('SELECT a.pid,a.backend_start::text AS started FROM pg_stat_activity a JOIN pg_roles r ON r.rolname=a.usename WHERE a.datid=$1::oid AND r.oid=$2::oid',[s.binding.database_oid,b.slot.role_oid])).rows)
    if(rows.length>1)writerFail('writer_uncertain');if(rows.length)b.backend={pid:rows[0]!.pid,started:rows[0]!.started}
   }
-  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_wait_absence';/* WRITER_FAILURE_OBSERVATION_END */if(b.backend)await waitRootWriterBackendGone(s,b.backend)
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_wait_absence';/* CLEANUP_READER_TIMING_BEGIN */;markRootCleanupTiming(cleanupTiming,'wait_absence');/* CLEANUP_READER_TIMING_END *//* WRITER_FAILURE_OBSERVATION_END */if(b.backend)await waitRootWriterBackendGone(s,b.backend)
   b.closed=true;s.writerBackends.delete(b);rootWriterBackends.delete(b.handle);rootWriterClosedBackends.set(b.handle,s)
-  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_ended_journal';/* WRITER_FAILURE_OBSERVATION_END */if(b.backend)append(s,'writer_backend_ended',null,{backend_id:b.id,kind:b.slot.kind,slot_no:b.slot.slot_no,generation:b.slot.generation,role_oid:b.slot.role_oid,database_oid:s.binding.database_oid,backend:b.backend})
-  s.writerCleanups--
-/* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){try{observeRootControlFailure(rootCleanupFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */ })()
+  /* WRITER_FAILURE_OBSERVATION_BEGIN */rootCleanupFailureSite='cleanup_ended_journal';/* CLEANUP_READER_TIMING_BEGIN */;markRootCleanupTiming(cleanupTiming,'ended_journal');/* CLEANUP_READER_TIMING_END *//* WRITER_FAILURE_OBSERVATION_END */if(b.backend)append(s,'writer_backend_ended',null,{backend_id:b.id,kind:b.slot.kind,slot_no:b.slot.slot_no,generation:b.slot.generation,role_oid:b.slot.role_oid,database_oid:s.binding.database_oid,backend:b.backend})
+  s.writerCleanups--/* CLEANUP_READER_TIMING_BEGIN */;observeRootCleanupTiming(cleanupTiming,'ended')/* CLEANUP_READER_TIMING_END */
+/* WRITER_FAILURE_OBSERVATION_BEGIN */}catch(rootFailureError){/* CLEANUP_READER_TIMING_BEGIN */observeRootCleanupTiming(cleanupTiming,'failed');/* CLEANUP_READER_TIMING_END */try{observeRootControlFailure(rootCleanupFailureSite,rootFailureError)}catch{}throw rootFailureError}/* WRITER_FAILURE_OBSERVATION_END */ })()
  return b.closing
 }
 async function openRootWriterBackend(s:State,reference:WriterSlotReference):Promise<WriterBackendReference>{

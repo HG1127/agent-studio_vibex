@@ -1,9 +1,11 @@
+import {usePgVersionRelease} from './usePgVersionRelease'
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
 import { LOCAL_ANON_UID } from "@/lib/anonUid"
 import { tickAgentRun } from "@/lib/agentEngine"
+import { matchesAgentSpecSnapshot } from "@/lib/agentSpecRevision"
 import type { AgentSpec, SavedSpecRow } from "@/pages/Home/useHome"
 import type { AgentRunRow } from "@/pages/AgentRun/useAgentRun"
 
@@ -24,6 +26,11 @@ export type SpecVersionRow = {
   published_at: string
   created: string
   updated: string
+  nativeTestModelBinding?:Record<string,unknown>|null
+  nativeSnapshot?:Record<string,unknown>|null
+  nativeDetailState?:'idle'|'loading'|'ready'|'error'
+  nativeTestCurrent?:boolean
+  nativeRevision?:number
 }
 
 export type VersionStatusKey = "draft" | "published" | "archived"
@@ -40,7 +47,7 @@ export type ConfirmAction = {
 }
 
 const TEST_MAX_STEPS = 8
-const LIVE_STATES = ["queued", "running", "paused"]
+const LIVE_STATES = ["queued", "running", "paused", "awaiting_approval", "awaiting_input"]
 const CUSTOM_MODEL_PREFIX = "custom:"
 
 function parseCustomModelValue(value: string): { connectionId: string; modelId: string } | null {
@@ -66,9 +73,10 @@ export function formatVersionTime(iso: string): string {
   })
 }
 
-export function useVersionRelease() {
+export const useVersionRelease=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?usePgVersionRelease:usePbVersionRelease
+function usePbVersionRelease() {
   const base = getPocketBaseUrl()
-  const [searchParams] = useSearchParams()
+  const [searchParams,setSearchParams] = useSearchParams()
 
   const [rhUserId, setRhUserId] = useState("")
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
@@ -100,6 +108,7 @@ export function useVersionRelease() {
   const tickInFlightRef = useRef(false)
   const pollBusyRef = useRef(false)
   const specParamAppliedRef = useRef(false)
+  const recoveredRunIdRef = useRef("")
 
   useEffect(() => {
     const payload = decodeRhToken()
@@ -111,7 +120,10 @@ export function useVersionRelease() {
   const publishRecords = versionList.filter((row) => row.published_at !== "")
   const nextVersionNo = versionList.reduce((maxNo, row) => Math.max(maxNo, row.version_no), 0) + 1
   const isTestLive = Boolean(testRun && LIVE_STATES.includes(testRun.status))
-  const testPassed = Boolean(testRun && testRun.status === "succeeded")
+  const isTestCurrentVersion = Boolean(testRun?.spec_snapshot && selectedSpec &&
+    testRun.spec_id===selectedSpec.id &&
+    matchesAgentSpecSnapshot(selectedSpec.spec,testRun.spec_snapshot))
+  const testPassed = Boolean(testRun && testRun.status === "succeeded" && isTestCurrentVersion)
   const testFailed = Boolean(testRun && (testRun.status === "failed" || testRun.status === "cancelled"))
   const isCustomTestModel = parseCustomModelValue(testModel) !== null
 
@@ -200,6 +212,23 @@ export function useVersionRelease() {
     void loadCustomModels()
   }, [rhUserId, loadSpecList, loadCustomModels])
 
+  // Global quick editor can revise an Agent without navigating away.
+  // Refresh the release candidate list while keeping the old run for audit;
+  // snapshot comparison will correctly mark it as outdated.
+  useEffect(()=>{
+    if(!rhUserId)return
+    const onSaved=(event:Event)=>{
+      const changedId=String((event as CustomEvent<{specId?:string}>).detail?.specId||"")
+      if(!changedId)return
+      void loadSpecList(rhUserId)
+      if(changedId===selectedSpecId){
+        setNoticeMsg("Agent 正式方案已更新。已有测试记录保留，但新版本必须重新验收。")
+      }
+    }
+    window.addEventListener("studio:agent-spec-saved",onSaved)
+    return()=>window.removeEventListener("studio:agent-spec-saved",onSaved)
+  },[rhUserId,selectedSpecId,loadSpecList])
+
   // 支持 ?spec=<id> 预选助手（agent-run「存为版本」快捷入口 / 直达链接）
   useEffect(() => {
     if (specParamAppliedRef.current || specList.length === 0) return
@@ -215,6 +244,14 @@ export function useVersionRelease() {
     (specId: string) => {
       setSelectedSpecId(specId)
       setTestRun(null)
+      setSearchParams(previous => {
+        const next=new URLSearchParams(previous)
+        if (specId) next.set("spec",specId)
+        else next.delete("spec")
+        next.delete("testRun")
+        return next
+      },{replace:true})
+      recoveredRunIdRef.current=""
       setTestInstruction("")
       setVersionNote("")
       setExpandedVersionId("")
@@ -224,7 +261,7 @@ export function useVersionRelease() {
       setNoticeMsg("")
       void loadVersionList(specId)
     },
-    [loadVersionList],
+    [loadVersionList,setSearchParams],
   )
 
   // 选中助手后加载版本历史
@@ -250,6 +287,28 @@ export function useVersionRelease() {
     },
     [base],
   )
+
+  // Returning from an approval must preserve the original acceptance run.
+  // Never adopt a record belonging to another Agent or employee.
+  useEffect(()=>{
+    const runId=searchParams.get("testRun")||""
+    if(!runId || !selectedSpecId || !rhUserId || recoveredRunIdRef.current===runId)return
+    recoveredRunIdRef.current=runId
+    let cancelled=false
+    void fetchRunRecord(runId).then(row=>{
+      if(cancelled)return
+      if(!row || row.spec_id!==selectedSpecId){
+        setErrorMsg("无法恢复验收测试：任务不存在或不属于当前 Agent。")
+        return
+      }
+      setTestRun(row)
+      setTestInstruction(row.instruction)
+      setErrorMsg("")
+    }).catch(()=>{
+      if(!cancelled)setErrorMsg("网络异常，恢复验收测试失败；请刷新后重试。")
+    })
+    return()=>{cancelled=true}
+  },[searchParams,selectedSpecId,rhUserId,fetchRunRecord])
 
   const pollTestOnce = useCallback(
     async (runId: string) => {
@@ -334,13 +393,20 @@ export function useVersionRelease() {
       if (runId) {
         const full = await fetchRunRecord(runId)
         if (full) setTestRun(full)
+        setSearchParams(previous=>{
+          const next=new URLSearchParams(previous)
+          next.set("spec",selectedSpec.id)
+          next.set("testRun",runId)
+          return next
+        },{replace:true})
+        recoveredRunIdRef.current=runId
       }
     } catch {
       setErrorMsg("网络异常，创建测试运行失败，请重试")
     } finally {
       setIsStartingTest(false)
     }
-  }, [selectedSpec, testInstruction, testModel, base, fetchRunRecord])
+  }, [selectedSpec, testInstruction, testModel, base, fetchRunRecord,setSearchParams])
 
   const handleRunTest = useCallback(() => {
     if (!rhUserId) {
@@ -490,6 +556,8 @@ export function useVersionRelease() {
   const dismissNotice = useCallback(() => setNoticeMsg(""), [])
 
   return {
+    nativeMode:false as const,nativeWorkspaceReady:true,nativeEmployeeId:'',nativeBlocked:false,nativePending:false,nativeNotice:'',nativeAcceptanceConfirmed:false,nativeAcceptanceEnabled:true,nativeConfirmChecked:false,nativeRestoreReason:'',nativeUntested:false,nativeReadOnly:false,
+    handleRefreshNative:()=>{},handleQueryNative:()=>{},requireVersionDetails:(_ids:string[])=>{},setNativeAcceptanceConfirmed:(_v:boolean)=>{},setNativeConfirmChecked:(_v:boolean)=>{},setNativeRestoreReason:(_v:string)=>{},
     isLoggedIn: Boolean(rhUserId),
     needsRhLogin,
     onLoginClick: redirectToRhLogin,
@@ -518,6 +586,7 @@ export function useVersionRelease() {
     isStartingTest,
     isTestLive,
     testRun,
+    isTestCurrentVersion,
     testPassed,
     testFailed,
     handleRunTest,
