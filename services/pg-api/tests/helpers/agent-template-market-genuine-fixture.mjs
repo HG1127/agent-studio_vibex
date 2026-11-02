@@ -15,7 +15,7 @@ export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/agent-template-market-http.ts": "ed5fed1c84e5c49b95eb4ccd8decc3aa24b4126a375a9f96eecce9ed08ebf421",
   "services/pg-api/src/agent-template-market-contract.ts": "345d339ad6a7499a7c64005dfa429ff1187c24c3a285a356a992f675a2c2e819",
   "services/pg-api/src/agent-template-market-result.ts": "d9d420f346dc5cc8915e77b3ce3593e2b6fdecec9988ffcbe55949f6cedb0953",
-  "services/pg-api/src/native-auth-http.mjs": "f0470bf679c93be77d2530f9e62803e0d8a478d9d5d5bcaadec63c088d804f6b",
+  "services/pg-api/src/native-auth-http.mjs": "5f8c0650c613e5115089afaa706e9424b7ab4a51c13be22d0950abaf58746b23",
   "services/pg-api/src/agent-run-control.ts": "fa018e968096ac539f1aeb90cd8cb01c9716d1097c9f3284d57bd338d8c439e1",
   "services/pg-api/src/approval-delegation-audit-core.ts": "0be2d8be27c0b373a0dd69e09a196ba4b97f2758b7d2713baf90fcd1809c9029",
   "services/pg-api/src/approval-delegation-audit.ts": "37f0a4a4d8ad12f856d79aa37acb6fb302e09bbe14ab5d785de2975cf74d9da9",
@@ -402,7 +402,7 @@ export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "578627d8b58653c383d9840bd305a6f67d563efa1a4f0672386c7b2942d33510",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "85a3ca51f0baa5ab708419e5e1e9a68bbe82bcf59937dcff721afd029b4b8648",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -460,7 +460,7 @@ export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "tests/helpers/pg-original-version-release-completion-browser-fixture.mjs": "4ccaf0a718d0bd0bc0953e6caea9c6555f182d7399ae63c2fc6bab7b0956d2d1",
   "tests/helpers/pg-original-version-release-completion-browser-guard.mjs": "dd323704f848a32f4cd695762646098f09f27da94099d284cd8f7eba3eed8be1",
   "tests/helpers/pg-original-version-release-completion-browser-policy.mjs": "0eaa802f0b5cb0f7f9fd9adb39d44ea9627a36a942c77767eb2ca15fd8d0dc54",
-  "tests/helpers/pg-original-version-release-completion-dispatch.mjs": "944cfa3b8c23e88d24c8ab74c3202dba91440036a782f37e30d3c0aabbb1b1e7",
+  "tests/helpers/pg-original-version-release-completion-dispatch.mjs": "c365451e863d4bf4f610434defd6aef6a56bde17440f7a9dc144bce23ea973ba",
   "tests/helpers/pg-original-version-release-completion-egress.mjs": "2b3cf33c1511ecd22d5c4eda649eb4588a10fe67266e370190ab595bb80ccb4e",
   "tests/helpers/pg-original-version-release-completion-proof-contract.mjs": "06cd749e050ed28ef3baad507c883c8e8cc2314c192f0cbb09e9ba97ee4a082d",
   "tests/helpers/pg-original-version-release-completion-reviewed-check.mjs": "65aff429c3ff911b9272c7c2f3d08ba9ddfdd10bd0b0e3f20b94c3e3771bf145",
@@ -501,13 +501,18 @@ export const agentTemplateMarketGenuineFrozenSources=Object.freeze({
   "tests/original-run-detail-route-binding-pure.test.mjs": "cc2f624055e8dd9759e18cced53c50c2a12d8857846dc56592b466711fe5491f",
   "services/pg-api/src/worker-heartbeat-registry-failure-observation.ts": "e120b3912c11cf563a0ce973de3dd1b35868587d7d3333670bd9820bd705682f",
   "services/pg-api/tests/worker-heartbeat-registry-finish-diagnostic.test.mjs": "e37f4bc97dad51a61b83815b25863ee9f6d10d996583ac45c9f42e056a0ab06a",
-  "tests/pg-original-version-release-completion-identity-pure.test.mjs": "afd0937ca599228c9bc63bb61e1cccabe6991a0ff33537e83504b34613a78f95",
+  "tests/pg-original-version-release-completion-identity-pure.test.mjs": "ea1d552484658d96f54798fcc5eb12c3563fd6656f7b3407dab05845a7d28e24",
   "services/pg-api/src/schedule-monitor-launch-readiness.ts": "180da4b5d18924ebc930fa8a5eaff3ecf0a9b733fe4f4501ecec2f918896c770",
   "services/pg-api/tests/pg18-full069-runtime-phases.test.mjs": "f20657ae47d9588653fd2eeb3669038af5362cf0666b229d099f88d26db24e13",
   "services/pg-api/tests/schedule-monitor-launch-readiness-pure.test.mjs": "7e0d58267179aaaf61618d009b0cd31f129f27b5cf51a99921a2727371e14b28",
   "tests/pg-original-version-release-completion-dispatch-diagnostic.test.mjs": "020e488c434a87d7e8bb1b37da98a51ee6d0677e8fcc19d041fd99d2d1a0a07b",
   "services/pg-api/tests/worker-heartbeat-writer-journal-append-deadline.test.mjs": "e164200521d061d95be521e8594d6fc9a0d8cc05d70d0359c6f628b69873bcf2",
-  "tests/pg-original-version-release-parent-approval-pure.test.mjs": "8b113c760c542116478865ce5ae5f0ddad8901f1b1ea77a3e1bbef156f42c96b"
+  "tests/pg-original-version-release-parent-approval-pure.test.mjs": "8b113c760c542116478865ce5ae5f0ddad8901f1b1ea77a3e1bbef156f42c96b",
+  "services/pg-api/tests/original-account-owner-bound-pure.test.mjs": "74f4ac8973edc26812c1f124631c5a9e019f251ff908cd873a02c1721a02fe77",
+  "shared/original-account-contract.ts": "d47cf649c074ad31330a90b129826fde09ca5ae780e21898b5e19b3cc136911b",
+  "tests/original-account-owner-bound-pure.test.mjs": "f2bd2e7fbcfb5d74796c66a7a805bb85cb63b31974fa110082e7783cbae3a826",
+  "tests/original-schedule-worker-browser-logout-pure.test.mjs": "a55dc4e06162df7c59aee27c7c021ce878325f911632de87c952d415acfe2999",
+  "tests/pg-original-browser-observation-order-pure.test.mjs": "18deeacaa8d6a6aa45bd5cfaccdf6e7ba6c096353ef6f8ae81863631212dd3be"
 })
 
 export async function agentTemplateMarketGenuineFixture(env=process.env,{browserMode=false}={}){

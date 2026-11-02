@@ -171,6 +171,34 @@ test('F01 real PG18 vertical design, independent save, source authority and one-
       const history=(await f.db.query("SELECT kind,count(*)::integer AS n FROM agentstudio.agent_collaboration_revisions WHERE owner_user_id=$1 AND spec_id=$2 AND ((kind='before_edit' AND spec_revision=$3) OR (kind='edited' AND spec_revision=$4)) GROUP BY kind",[a.owner,before.id,before.revision,after.revision])).rows
       assert.equal(history.find(r=>r.kind==='before_edit')?.n,1);assert.equal(history.find(r=>r.kind==='edited')?.n,1)
     })
+    await runCase('actual owner-bound password transaction refuses CookieBob expectedAlice, revokes all Alice sessions and preserves Bob',async()=>{
+      // Reuse this one guarded fresh service at the end of its original flow.
+      // No second initializer, synthetic identity or direct password SQL write.
+      assert.equal(f.auth.accountPasswordProtocol,'native_account_password_owner_bound_v1')
+      assert.equal(await f.auth.inspectEmployeeGovernance(),true)
+      const before=await f.counts(),posts=f.providerRequests.length
+      const aliceCookie=await f.login('alice'),bobCookie=await f.login('bob')
+      const aliceToken=aliceCookie.split('=',2)[1],bobToken=bobCookie.split('=',2)[1]
+      const secondAlice=await f.auth.login(f.credentials.alice.email,f.credentials.alice.password)
+      const password={old_password:f.credentials.alice.password,new_password:'SyntheticChangedAlicePassword#2026'}
+      const prior=(await f.db.query("SELECT count(*)::integer AS n FROM agentstudio_auth.employee_governance_events WHERE action='employee.password' AND target_user_id=$1::uuid",[f.users.alice])).rows[0].n
+      const wrong=await f.request('bob','/api/native-auth/change-password',{old_password:f.credentials.bob.password,new_password:'SyntheticUnusedBobPassword#2026'},{headers:{'X-AgentStudio-Expected-Owner':f.users.alice}})
+      assert.equal(wrong.status,401);assert.equal(wrong.body.error,'session_changed');assert.equal(wrong.headers['set-cookie'],undefined)
+      await assert.rejects(f.auth.changePasswordForOwner(bobToken,{old_password:f.credentials.bob.password,new_password:'SyntheticUnusedBobPassword#2026'},f.users.alice),/session_changed/)
+      assert.ok(await f.auth.verifySession(aliceToken));assert.ok(await f.auth.verifySession(bobToken))
+      const changed=await f.request('alice','/api/native-auth/change-password',password,{headers:{'X-AgentStudio-Expected-Owner':f.users.alice}})
+      assert.equal(changed.status,200);assert.deepEqual(changed.body,{ok:true,reauthenticate:true});assert.equal(changed.headers['set-cookie'],undefined)
+      assert.equal(await f.auth.verifySession(aliceToken),null);assert.equal(await f.auth.verifySession(secondAlice.token),null)
+      assert.ok(await f.auth.verifySession(bobToken))
+      await assert.rejects(f.auth.login(f.credentials.alice.email,f.credentials.alice.password),/invalid_employee_credentials/)
+      const aliceNew=await f.auth.login(f.credentials.alice.email,password.new_password)
+      assert.equal((await f.auth.getSessionProfile(aliceNew.token)).id,f.users.alice)
+      assert.ok((await f.auth.login(f.credentials.bob.email,f.credentials.bob.password)).authenticated)
+      const events=(await f.db.query("SELECT actor_user_id,target_user_id,before_state,after_state FROM agentstudio_auth.employee_governance_events WHERE action='employee.password' AND target_user_id=$1::uuid",[f.users.alice])).rows
+      assert.equal(events.length,prior+1);assert(events.every(e=>e.actor_user_id===f.users.alice&&e.target_user_id===f.users.alice))
+      assert(events.every(e=>JSON.stringify(e.before_state)==='{}'&&JSON.stringify(e.after_state)==='{}'))
+      assert.deepEqual(await f.counts(),before);assert.equal(f.providerRequests.length,posts)
+    })
     f.assertNoProviderErrors()
   }finally{await f.close()}
 })

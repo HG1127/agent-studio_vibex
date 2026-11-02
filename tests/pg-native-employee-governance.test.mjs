@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './original-account-owner-bound-pure.test.mjs'
 import assert from 'node:assert/strict'
 import {createPgNativePilotApi} from '../src/lib/pgNativePilotApi.ts'
 const choice={request_id:'33333333-3333-4333-8333-333333333333',target_id:'22222222-2222-4222-8222-222222222222',expected_revision:1,is_admin:false,enabled:false,share_enabled:false,confirm:true}

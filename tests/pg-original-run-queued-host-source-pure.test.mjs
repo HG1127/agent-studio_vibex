@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './pg-original-browser-observation-order-pure.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {registerHooks,createRequire} from 'node:module'

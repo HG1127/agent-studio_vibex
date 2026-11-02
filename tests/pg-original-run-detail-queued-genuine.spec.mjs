@@ -26,8 +26,8 @@ test('actual original RunDetail four queued protocols, exact negative reads, ori
     if(['agent_single','workflow_safe'].includes(kind)){for(const label of ['暂停','恢复','取消'])await expect(p.getByRole('button',{name:label,exact:true})).toBeDisabled()}
     if(kind==='workflow_v2'){await expect(p.getByRole('button',{name:'暂停',exact:true})).toBeDisabled();await expect(p.getByRole('button',{name:'恢复',exact:true})).toBeDisabled();await expect(p.getByRole('button',{name:'取消',exact:true})).toBeEnabled()}
     if(['workflow_v2','agent_autonomous'].includes(kind)){
-     const collection=kind==='workflow_v2'?'workflow-v2-runs':'agent-autonomous-runs',r=f.owned.alice.runs[kind].run,response=b.wire(p,'/api/v2/'+collection+'/'+r.id+'/steps')
-     await p.getByRole('button',{name:'重新读取公开步骤分页',exact:true}).click();const page=await response;expect(page.status()).toBe(200);expect(await page.json()).toMatchObject({items:[],next_after:null});await ready(kind)
+     const collection=kind==='workflow_v2'?'workflow-v2-runs':'agent-autonomous-runs',r=f.owned.alice.runs[kind].run,response=b.wire(p,'/api/v2/'+collection+'/'+r.id+'/steps').then(async response=>({status:response.status(),body:await response.json()}));void response.catch(()=>{})
+     await p.getByRole('button',{name:'重新读取公开步骤分页',exact:true}).click();const page=await response;expect(page.status).toBe(200);expect(page.body).toMatchObject({items:[],next_after:null});await ready(kind)
     }
    }
    steps.actual_original_four_protocol_read_and_steps=true

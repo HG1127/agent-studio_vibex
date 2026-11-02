@@ -8937,6 +8937,181 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_9be9ed2_hosted_followup": {
+      "actual_head": "9be9ed2b197330a46b3db85d7a038797c801496e",
+      "all19_workflows_terminal": true,
+      "workflows_success": 15,
+      "workflows_failure": 4,
+      "quality_push_PR": {
+        "root_tests": 4788,
+        "pass": 4788,
+        "fail": 0,
+        "skip": 0,
+        "original_employee_contracts": 2561,
+        "original_employee_fail": 0,
+        "original_employee_skip": 0,
+        "types_build_and_original_integration_steps_passed": true
+      },
+      "F01": {
+        "jobs": 21,
+        "success": 18,
+        "failure": 3,
+        "actual_real_parent_approval_and_original_return_advanced": true,
+        "remaining": [
+          "selected empty model option matched as visible text instead of actual select value/text",
+          "public steps JSON body read after click was evicted by Chromium",
+          "private handler factory captured undefined model/tool Broker before TLS run callback initialized them; actual packet other with zero credential/model POST"
+        ]
+      },
+      "schedule_Worker": {
+        "whole_story_passed": false,
+        "actual_Agent_Workflow_safe_start_retry_and_once_clock_completion_advanced": true,
+        "failed_final_step": "APIRequestContext logout did not inherit the exact Chromium SPKI certificate trust",
+        "CLI_process_or_online_accepted": false
+      },
+      "strict_telemetry": {
+        "completed_cases": 21,
+        "primary": "telemetry_control_ci_fixture_refused:writer_stopped_owned_cleanup",
+        "original_wait_ms": 5000,
+        "missing_ended_kinds": [
+          "agent_autonomous",
+          "knowledge_index",
+          "knowledge_query",
+          "assessment"
+        ],
+        "append_read_refusal_no_longer_primary": true,
+        "actual_cleanup_accepted": false
+      },
+      "strict069": {
+        "legacy": {
+          "primary": "full069_worker_live_native_not_ready",
+          "model_seen_age_ms": 76857,
+          "original_freshness_limit_ms": 45000
+        },
+        "Final14": {
+          "primary": "sample_budget_exceeded",
+          "original_sample_budget_ms": 15000,
+          "collected_ms": 22610,
+          "native_ms": 7571,
+          "runtime_ms": 20048,
+          "companions_ms": 870,
+          "business_audits_ms": 16844,
+          "whole_story_passed": false
+        }
+      },
+      "reviewed_source_followup": {
+        "schedule_logout": {
+          "same_original_browser_SPki_and_Cookie_fetch": true,
+          "no_global_or_context_TLS_bypass": true,
+          "original_actual_revoke_then401_and_stale_clipboard_assertions_retained": true
+        },
+        "release_model_refresh": {
+          "original_empty_selection_and_unchecked_acceptance_retained": true,
+          "selected_placeholder_option_text_checked": true
+        },
+        "detail_steps": {
+          "actual_JSON_read_begins_before_click_completes": true,
+          "original_status_and_empty_page_assertions_retained": true
+        },
+        "completion_Brokers": {
+          "real_handlerFactory_before_run_initialization_order_confirmed": true,
+          "old_factory_undefined_capture_counterexamples": true,
+          "actual_model_and_tool_factory_late_assignment_single_dispatch_pures": true,
+          "product_Worker_Broker_lease_and_no_replay_unchanged": true
+        },
+        "account_password": {
+          "explicit_owner_bound_protocol": true,
+          "verified_Cookie_identity_compared_before_body_and_again_inside_original_locked_write_transaction": true,
+          "all_original_account_sessions_revoked_in_transaction": true,
+          "bound_response_has_no_SetCookie_to_delete_later_login": true,
+          "legacy_protocol_unchanged": true,
+          "shared_exact_source_bundle_path_added": true,
+          "Root_selected_pure_tests": 25,
+          "actual_API_types_passed": true,
+          "added_guarded_F01_actual_SQL_HTTPS_case_pending": true,
+          "original_Staff_UI_and_admin_contracts_still_pending": true
+        },
+        "Root_release_and_detail_pures": 101,
+        "Root_schedule_host_pures": 37
+      },
+      "optional080_081": {
+        "private_A_composition_packages": 10,
+        "private_source_targets": 69,
+        "Root_shared_vector_pures": 93,
+        "binary_provenance_runtime_admission_pending": true,
+        "C081_full_catalog_handoff_pending": true,
+        "full_factory_original_UI_and_format_runtime_not_accepted": true
+      },
+      "desktop_preview14_threeway_and_employee_UAT_pending": true,
+      "source_reseal_pending": false,
+      "actual_followup_genuine_acceptance": false,
+      "production_GO": false,
+      "artifacts": [
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-quality-push-main-job.log",
+          "sha256": "47312aa7557ef6351784b53a4ef382f58cc3eb57d6c55143f98fa9794afa95cb"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-quality-PR-main-job.log",
+          "sha256": "5a603170e33a0204516b651deea87a14967b98ab289fdb5dad92b2071d48b9ab"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-original-ui-contract-job.log",
+          "sha256": "83280c615d456ee54880dd83da2a2184cc004be325567b26325ee7822b097058"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-original-release-job.log",
+          "sha256": "9a05e9328a34e6714a3fc1c2cc39d5a565441bffa2fee6eabcc583c7430f81e2"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-release-completion-job.log",
+          "sha256": "b804497262283e0fa6f3865f29f71d939599885eb55dbf0e2b079bcbd8bb04fd"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-queued-run-detail-job.log",
+          "sha256": "206eb2816b63123e7e4d53fd1a8be100a2d76302c96fb8ea2f0c22eb38027104"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-schedule-worker-job.log",
+          "sha256": "582655f2b60666b52ad767a8c2060243fb4a219f62bde989ea16ac7a8c3a6c50"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-telemetry-job.log",
+          "sha256": "887ea847a0c6238a919937b1845ae4244b0e207d80aa177563586b6d627fcc9c"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-complete069-legacy-job.log",
+          "sha256": "ed0edfa4ee4af82056f186b7cc6aaf36e5329e2a0a7a39e07ef3977ddc2674d4"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be9ed2-complete069-final14-job.log",
+          "sha256": "200d2b70992e32a175a34ba95b37ed78febe8dc6e7668ce2070f7d4d303854cb"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be-release-detail-Root-pure.log",
+          "sha256": "95ff6b5b7c6256b0c0efab7982d19f4d7d8f2ab3ba3dce63b8a03ebc01e1dc0e"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be-owner-governance-selected-pure.log",
+          "sha256": "37a6f5a663bc75a460a7d743a10e5933fc05fcb39a30b876fe3896731683d664"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be-schedule-browser-logout-host-pure.log",
+          "sha256": "248e1e9968cb36f6fb84b6e811a303c02dc016230f0ff42153bcfb2e4fc58ddc"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/9be-owner-bound-API-types.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "source_seals": {
+        "maps": 25,
+        "pins": 19094,
+        "retained_prior_pins": 18969,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
