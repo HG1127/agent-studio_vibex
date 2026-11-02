@@ -28,12 +28,12 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/http.ts": "3611944fcb588253c4712a34e6fa185d3f36dc626e62e8489e01fd7b67d62ef0",
   "services/pg-api/src/native-auth-http.d.mts": "0bc183a1f297846af2f7a309b3027211d44b9f10d55ab0ad42bcdcdec89ffa83",
   "services/pg-api/src/native-config-uat-policy.ts": "abfb87cc89257887c29d19dc584374633ab4ad5f29db2a4a1696405a0bcedd0b",
-  "services/pg-api/src/native-server.ts": "4c1594158d81ac07953ff375b5fa5a5931b8a64ddda9af449d307a4f1c202ff6",
+  "services/pg-api/src/native-server.ts": "e1919ecce26b162007e54153c79df646e064f6f72e6ece186564dcf68752c5f2",
   "services/pg-api/src/owned-step-decision-context.ts": "6e842015da3721caee315368706c0fdea608c020236816cd4210cf13bc025643",
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
   "services/pg-api/src/pg18-complete-operator-runtime.mjs": "71c2db9c157ca21555e707b53f6766e918a777b3b2f81da3bc7401a5f9bbdeb7",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
-  "services/pg-api/src/pg18-complete-profile-source.mjs": "f5251cc0b6820b3c3930b37e06c3b75ccea47bd387d5b727c845261a2084b54b",
+  "services/pg-api/src/pg18-complete-profile-source.mjs": "9c3c1d521ebf3b1f5d33859a4264db0a4e79f80ea7040c4e65413a98de9d6fae",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
   "services/pg-api/src/run-repository.ts": "58704899b00516583d7f90d2b8570f945b958b4d37ed1e6824fa835eeaaecd39",
   "services/pg-api/src/worker-heartbeat-activation-control.ts": "644d76dfd3c04ded74d879f422ef0b180220d0c9c335a873abcce6a802515575",
@@ -516,7 +516,21 @@ export const agentDesignGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/original-schedules-http-policy.ts": "a96d94b96de9696415f0bc03e6684f859b486f9036bc4e474904717fd060f109",
   "services/pg-api/src/original-schedules-http.ts": "7abd3a9b2b75135d29a46423f510714ab0b0066bfb72f1fc63ebc58d06f4714a",
   "services/pg-api/src/original-schedules-repository.ts": "f7765074f30fdb5036c094a4ba799eaa7296b9c51ab8751d379fc2a3851f89b5",
-  "shared/original-schedules-contract.ts": "7d3f7dc84bd488aece199360f3d3e5cf5fe16baff47f16bef43a3bd112d37db2"
+  "shared/original-schedules-contract.ts": "7d3f7dc84bd488aece199360f3d3e5cf5fe16baff47f16bef43a3bd112d37db2",
+  "db/postgres/profiles/employee_ui078_catalog_ledger.sql": "c780c38a35e18a88b51c0fd982bf40d70db76e8c5c1877545cb13e1df8bd6fcc",
+  "deploy/postgres-staging/employee-ui078-hosted-genuine-plan.json": "2d1badc0113caabafc02d987efbca0557e43cbd852f5378bd016ab322810f356",
+  "deploy/postgres-staging/employee-ui078-install.example.json": "78d1ab85861f35394f796bd6dc6d8631c1869ce7574206377e11ee322d9d4589",
+  "services/pg-api/src/baota-pg18-employee-ui078-init.mjs": "217e29f607708489c2a9f7a1f142b1550c22b7ba09da0a365d6de6a1490ae38c",
+  "services/pg-api/src/model-config-receipt-profile075-audit.ts": "918add43de36231ad0b789533a95e432f16c834f007fc62fc2d5c2d685d95385",
+  "services/pg-api/src/native-employee-ui078-profile.ts": "0b77beccd08b08670454ffebf759e734da2963d5c736bb780774e94f0ada1800",
+  "services/pg-api/src/pg18-complete-service-core.d.mts": "af4ad79eb9320c6d720d78ae4a4a1394e18a6083941f259653cab6cf75480953",
+  "services/pg-api/src/pg18-employee-ui078-audit.ts": "c17628ae701d4f16a334333d66671b05dfce808c5b24c0267be6874c9b29e825",
+  "services/pg-api/src/pg18-employee-ui078-catalog.d.mts": "b96f178c7109e4dc79c7399edaa42d97bba98a9a5c4568bcc0f750f4545007fb",
+  "services/pg-api/src/pg18-employee-ui078-catalog.mjs": "22194bde37204cf5d0c831d14f75212bc3a3054634200d0bd37f9eab086653fa",
+  "services/pg-api/src/pg18-employee-ui078-profile.ts": "bad538199fb9b008aab7ebc8b93e8076994c693a9b30d68fa272adc4ca8c64d8",
+  "services/pg-api/src/pg18-employee-ui078-source.d.mts": "3cc34c6c1e76b0728c5cf5b86cd80792ce1502332e7fc999e581a691e2651b02",
+  "services/pg-api/src/pg18-employee-ui078-source.mjs": "91e0b06c5c5411358522b6d824b44f0741c9350389abeeb24cc608beab3470f6",
+  "services/pg-api/tests/pg18-employee-ui078-profile.test.mjs": "c0ba987d6c2bab5e838d630120de9376b94d85b82e7faedf74621c071f995c6e"
 })
 export function requireAgentDesignGenuineCi(env=process.env,platform=process.platform,uid=process.getuid?.()??0){
   if(platform!=='linux'||!Number.isSafeInteger(uid)||uid<=0||env.RUNNER_OS!=='Linux'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.GITHUB_REPOSITORY!=='HG1127/agent-studio_vibex'||env.GITHUB_WORKFLOW!==workflow||!jobs.has(env.GITHUB_JOB)||env.AGENT_STUDIO_F01_GENUINE_CI!=='YES_DISPOSABLE_F01_ONLY'||Object.keys(env).some(k=>env[k]!==undefined&&['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'].includes(k)))throw Error('refuse_non_ephemeral_agent_design_genuine_ci')

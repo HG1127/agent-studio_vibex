@@ -1,0 +1,176 @@
+{
+  "format": "agentstudio-employee-ui078-install-example-v1",
+  "source_example_only": true,
+  "profile": "complete069-employee-ui078",
+  "entry": "services/pg-api/src/baota-pg18-employee-ui078-init.mjs",
+  "offline_plan_argv": [
+    "--plan",
+    "--profile",
+    "complete069-employee-ui078"
+  ],
+  "install_argv_template": [
+    "--install",
+    "--profile",
+    "complete069-employee-ui078",
+    "--confirm-prepared-disposable-database",
+    "agent_studio",
+    "--expected-source-sha256",
+    "REVIEWED_COMBINATION_SOURCE_SHA256",
+    "--expected-system-identifier",
+    "OWNED_DISPOSABLE_CLUSTER_SYSTEM_IDENTIFIER",
+    "--expected-database-oid",
+    "OWNED_DISPOSABLE_DATABASE_OID"
+  ],
+  "verify_argv_template": [
+    "--verify",
+    "--profile",
+    "complete069-employee-ui078",
+    "--confirm-database",
+    "agent_studio",
+    "--expected-source-sha256",
+    "REVIEWED_COMBINATION_SOURCE_SHA256",
+    "--expected-system-identifier",
+    "OWNED_DISPOSABLE_CLUSTER_SYSTEM_IDENTIFIER",
+    "--expected-database-oid",
+    "OWNED_DISPOSABLE_DATABASE_OID"
+  ],
+  "required_order": [
+    "New owned isolated disposable PG18 cluster; original complete069 initializer executes its unchanged53 pinned SQL.",
+    "Run original exact069 identifier and original API verifier on the actual unextended catalog.",
+    "Original service preparer: api,native-auth,first-admin and every separately selected original service/Worker login, while the catalog is still exact069.",
+    "Stop applications; independently prove exactly one initial administrator, zero sessions and all other business tables empty.",
+    "Run this separately approved combination installer, original schema locks plus table locks, raw070/071/072/073/075/078 in that order, then the reviewed metadata-only interface.",
+    "Fresh whole real ledger/description, global table/function/OID/role/ACL fingerprint and all original069/070-073/075/078 auditors must pass before a commit success ACK.",
+    "Independent combination verify, then the actual original Native --preflight and nonroot --serve process, then original src/main.tsx -> src/App.tsx employee pages."
+  ],
+  "required_write_approval_environment": {
+    "name": "AGENT_STUDIO_PG18_EMPLOYEE_UI078_INSTALL_APPROVED",
+    "literal": "APPROVE_PREPARED_DISPOSABLE_PG18_EMPLOYEE_UI078_ONLY"
+  },
+  "operator_runtime": "Original complete069 source-bound Node24/Linux/root14-package operator loader plus independent combination source/SQL assertions.",
+  "metadata_interface_review": {
+    "SQL": "db/postgres/profiles/employee_ui078_catalog_ledger.sql",
+    "signature": "agentstudio.employee_ui078_catalog_ledger()",
+    "owner": "postgres",
+    "privilege": "Only API EXECUTE; PUBLIC revoked; no old table column grants.",
+    "returns": "Actual physical system_identifier/database_oid and the whole unfiltered version/description ledger.",
+    "required_before_every_call": "Live exact source hash, original OID resolution, function properties/return type/owner/ACL audit. Never invoke an unaudited SECURITY DEFINER."
+  },
+  "secrets": "Use original independent private admin/API secret FILE contracts. No values or credentials in this source example.",
+  "native_entry": "services/pg-api/src/native-server.ts",
+  "native_preflight_argv": [
+    "--preflight"
+  ],
+  "native_serve_argv": [
+    "--serve"
+  ],
+  "native_common_environment_example": {
+    "AGENT_STUDIO_PG_NATIVE_PILOT_ENABLED": "true",
+    "AGENT_STUDIO_PG_NATIVE_REVIEWED": "true",
+    "AGENT_STUDIO_PG_BAOTA18_ENABLED": "true",
+    "AGENT_STUDIO_PG_BAOTA18_TARGET_CONFIRMED": "true",
+    "AGENT_STUDIO_PG_PILOT_ENABLED": "true",
+    "AGENT_STUDIO_PG_HOST": "127.0.0.1",
+    "AGENT_STUDIO_PG_PORT": "5333",
+    "AGENT_STUDIO_PG_DATABASE": "agent_studio",
+    "AGENT_STUDIO_PG_USER": "agentstudio_stage_login",
+    "AGENT_STUDIO_PG_NATIVE_AUTH_USER": "agentstudio_native_login",
+    "AGENT_STUDIO_PG_NATIVE_API_PORT": "7403",
+    "AGENT_STUDIO_INTERNAL_APP_ORIGIN": "https://127.0.0.1:17443",
+    "AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE": "complete069-employee-ui078",
+    "AGENT_STUDIO_PG18_EMPLOYEE_UI_SOURCE_SHA256": "REVIEWED_COMBINATION_SOURCE_SHA256",
+    "AGENT_STUDIO_PG18_EMPLOYEE_UI_SYSTEM_IDENTIFIER": "OWNED_DISPOSABLE_CLUSTER_SYSTEM_IDENTIFIER",
+    "AGENT_STUDIO_PG18_EMPLOYEE_UI_DATABASE_OID": "OWNED_DISPOSABLE_DATABASE_OID"
+  },
+  "native_preflight_environment_example": {
+    "AGENT_STUDIO_PG_PASSWORD_FILE": "/root/.agentstudio-pg18-secrets/api.secret",
+    "AGENT_STUDIO_PG_NATIVE_AUTH_PASSWORD_FILE": "/root/.agentstudio-pg18-secrets/native-auth.secret",
+    "AGENT_STUDIO_PG_MODEL_ENCRYPTION_KEY_FILE": "/root/.agentstudio-pg18-secrets/model-encryption.secret",
+    "AGENT_STUDIO_PG18_MODEL_CONFIG_RECEIPTS_ENABLED": "false"
+  },
+  "native_preflight_must_omit": [
+    "CREDENTIALS_DIRECTORY",
+    "AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_UAT_APPROVAL",
+    "AGENT_STUDIO_PG_MODEL_BROKER_USER",
+    "AGENT_STUDIO_PG_MODEL_BROKER_PASSWORD_FILE",
+    "AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED",
+    "AGENT_STUDIO_PG18_ORIGINAL_AGENT_CATALOG_ENABLED",
+    "AGENT_STUDIO_PG18_ORIGINAL_MONITOR_INBOX_ENABLED",
+    "AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED"
+  ],
+  "native_serve_environment_example": {
+    "CREDENTIALS_DIRECTORY": "/run/credentials/agentstudio-pg18-native.service",
+    "AGENT_STUDIO_PG_PASSWORD_FILE": "/run/credentials/agentstudio-pg18-native.service/api.secret",
+    "AGENT_STUDIO_PG_NATIVE_AUTH_PASSWORD_FILE": "/run/credentials/agentstudio-pg18-native.service/native-auth.secret",
+    "AGENT_STUDIO_PG_MODEL_ENCRYPTION_KEY_FILE": "/run/credentials/agentstudio-pg18-native.service/model-encryption.secret",
+    "AGENT_STUDIO_PG18_MODEL_CONFIG_RECEIPTS_ENABLED": "false"
+  },
+  "native_serve_requires_nonroot_original_systemd_credential_ACL": true,
+  "employee_page_serve_overlay_requires_separate_guarded_hosted_UAT_authorization": {
+    "AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED": "true",
+    "AGENT_STUDIO_PG18_UAT_APPROVAL": "APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY",
+    "AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED": "true",
+    "AGENT_STUDIO_PG18_ORIGINAL_AGENT_CATALOG_ENABLED": "true",
+    "AGENT_STUDIO_PG18_ORIGINAL_MONITOR_INBOX_ENABLED": "true",
+    "AGENT_STUDIO_PG18_MODEL_CONFIG_RECEIPTS_ENABLED": "true"
+  },
+  "shared_statistics_overlay_requires_separate_guarded_hosted_UAT_authorization": {
+    "AGENT_STUDIO_PG18_ORIGINAL_HOME_SHARED_STATISTICS_ENABLED": "true",
+    "AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_ENABLED": "true",
+    "AGENT_STUDIO_PG18_KNOWLEDGE_SHARING_UAT_APPROVED": "APPROVE_DISPOSABLE_PG18_KNOWLEDGE_SHARING_ONLY"
+  },
+  "provider_or_execution_flags_must_omit": [
+    "AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED",
+    "AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_WORKFLOW_EXECUTION_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_MCP_DISCOVERY_UAT_ENABLED",
+    "AGENT_STUDIO_PG18_MCP_TOOL_EXECUTION_UAT_ENABLED"
+  ],
+  "excluded_optional_versions": [
+    "pg_v9_074",
+    "pg_v9_076",
+    "pg_v9_077"
+  ],
+  "excluded_optional_policy": "Do not execute or install their SQL automatically. Missing or partial dependencies refuse full-combination verification. Existing default-off source features do not count as installed SQL or accepted original-page actions.",
+  "on_lost_ack_or_timeout": "Wait for this owned child to close. Report commit_unknown and use only independent --verify. Never replay SQL or delete a partially installed catalog.",
+  "old_complete069_identifier_must_reject_combination": true,
+  "original_default_templates_changed": false,
+  "existing_company_upgrade_supported": false,
+  "Native_server_process_entry_verified": false,
+  "original_employee_pages_verified": false,
+  "production_GO": false,
+  "synthetic_provider_free_workflow_schedule_overlay_requires_separate_guarded_hosted_authorization": {
+    "environment": {
+      "AGENT_STUDIO_PG18_SCHEDULE_RUNTIME_ENABLED": "true",
+      "AGENT_STUDIO_PG18_SCHEDULE_RUNTIME_APPROVED": "APPROVE_DISPOSABLE_PG18_SCHEDULE_RUNTIME_ONLY",
+      "AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED": "true",
+      "AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED": "APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY"
+    },
+    "scope": "Only an owned, separately reviewed deterministic provider-free workflow fixture. Keep model/probe/bound-generation/MCP/agent execution flags omitted. A guarded request policy and actual egress/provider-call evidence must enforce this scope.",
+    "acceptance": "Without this additional approved execution policy, original run-now/retry must refuse execution and that refusal is not positive execution acceptance."
+  },
+  "basic_serve_overlay_authorizes_execution": false,
+  "native_source_bundle": {
+    "entry": "ops/build-pg18-native-api-preflight-bundle.mjs",
+    "argv_template": [
+      "--output-dir",
+      "ABSOLUTE_REVIEW_OUTPUT_OUTSIDE_SOURCE",
+      "--with-employee-ui078-profile"
+    ],
+    "explicit_profile_flag_required": true,
+    "source_review_only": true,
+    "separate_extraction_roots_required": {
+      "operator": "Use externally reviewed exact14-package operator runtime plus the original lock/runtime manifest; never install business dependencies into this root.",
+      "native": "Use the declared business dependencies plus pinned TypeScript5.9.3 parser, then exact-source/physical target profile selection."
+    },
+    "original_default_bundle_dependency_closure_preserved": true,
+    "source_profile_SQL_and_pending_entries_included": true,
+    "extracted_combination_plan_requires_separately_provisioned_parser": true,
+    "bundle_or_compiler_or_runtime_executed_by_B": false,
+    "production_GO": false
+  }
+}

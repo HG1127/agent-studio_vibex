@@ -1583,3 +1583,19 @@ tests/pg-original-version-release-proof-pure.test.mjs text eol=lf
 /tests/original-schedule-worker-hosted-source.test.mjs text eol=lf
 /tests/pg-original-schedule-worker-genuine.config.mjs text eol=lf
 /tests/pg-original-schedule-worker-genuine.spec.mjs text eol=lf
+
+# Independent original employee UI combined profile sources
+/db/postgres/profiles/employee_ui078_catalog_ledger.sql text eol=lf
+/deploy/postgres-staging/employee-ui078-hosted-genuine-plan.json text eol=lf
+/deploy/postgres-staging/employee-ui078-install.example.json text eol=lf
+/services/pg-api/src/baota-pg18-employee-ui078-init.mjs text eol=lf
+/services/pg-api/src/model-config-receipt-profile075-audit.ts text eol=lf
+/services/pg-api/src/native-employee-ui078-profile.ts text eol=lf
+/services/pg-api/src/pg18-complete-service-core.d.mts text eol=lf
+/services/pg-api/src/pg18-employee-ui078-audit.ts text eol=lf
+/services/pg-api/src/pg18-employee-ui078-catalog.d.mts text eol=lf
+/services/pg-api/src/pg18-employee-ui078-catalog.mjs text eol=lf
+/services/pg-api/src/pg18-employee-ui078-profile.ts text eol=lf
+/services/pg-api/src/pg18-employee-ui078-source.d.mts text eol=lf
+/services/pg-api/src/pg18-employee-ui078-source.mjs text eol=lf
+/services/pg-api/tests/pg18-employee-ui078-profile.test.mjs text eol=lf

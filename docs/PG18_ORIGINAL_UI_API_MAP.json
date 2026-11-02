@@ -8113,6 +8113,34 @@
       "local_SQL_Worker_or_browser": false,
       "actual_new_head_genuine_acceptance": false,
       "production_GO": false
+    },
+    "original_employee_ui078_installed_profile_source": {
+      "profile": "complete069-employee-ui078",
+      "extension_versions": [
+        "pg_v9_070",
+        "pg_v9_071",
+        "pg_v9_072",
+        "pg_v9_073",
+        "pg_v9_075",
+        "pg_v9_078",
+        "pg18_employee_ui078_catalog_001"
+      ],
+      "old53_SQL_and_old_profile_rules_unchanged": true,
+      "prepared_empty_business_with_real_independent_logins_required": true,
+      "whole_real_catalog_and_ledger_no_filtering": true,
+      "all_original_semantic_auditors_retained": true,
+      "actual_physical_identity_required": true,
+      "new_readonly_metadata_RPC_only": true,
+      "separate_explicit_bundle_flag_and_runtime_roots": true,
+      "API_types_passed": true,
+      "profile_pure_passed": 117,
+      "ordinary_Worker_child_env_empty_and_pure_passed": 37,
+      "final_UI_requires_latest_accepted_unified_desktop_baseline": true,
+      "actual_install_or_Native_or_original_UI_verified": false,
+      "local_SQL_Worker_server_browser_or_archive": false,
+      "production_GO": false,
+      "source_maps": 24,
+      "source_pins": 13743
     }
   },
   "qualifying24h_hours": 0,

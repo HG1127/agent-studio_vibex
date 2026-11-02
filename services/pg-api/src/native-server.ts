@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {inspectNativeEmployeeUi078Profile} from './native-employee-ui078-profile.ts'
 import {OriginalSchedulesRepository} from './original-schedules-repository.ts'
 import {inspectOriginalSchedulesSchema} from './original-schedules-audit.ts'
 import {prepareModelConfigReceipts075After069} from './model-config-receipt-startup075.ts'
@@ -405,6 +406,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   try{
     await verifyPgRuntimeTarget(business,cfg.api)
     await verifyDatabaseRole(business)
+    await inspectNativeEmployeeUi078Profile(business,env)
     if(localDevices.available){if(!localExecutorPool)throw Error("native_local_executor_credentials_required");await inspectNativeLocalDevicePool(business,"agentstudio_api");await inspectNativeLocalDevicePool(adapter(localExecutorPool),"agentstudio_local_executor")}
     const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){

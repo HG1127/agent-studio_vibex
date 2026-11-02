@@ -8,6 +8,7 @@ import {fileURLToPath} from "node:url"
 import {spawnSync} from "node:child_process"
 import {createHash} from "node:crypto"
 import ts from "typescript"
+import {captureEmployeeUi078Sources,assertEmployeeUi078Snapshot,employeeUi078Plan} from "../services/pg-api/src/pg18-employee-ui078-source.mjs"
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
 const included=new Set([
@@ -50,7 +51,10 @@ const thirdParty={
   "pdfjs-dist":"6.4.299",
 }
 function refuse(reason){throw Error("native_preflight_bundle_refused:"+reason)}
+const employeeUi078ReviewedPaths=new Set()
+const employeeUi078ReviewAssets=["deploy/postgres-staging/employee-ui078-install.example.json","deploy/postgres-staging/employee-ui078-hosted-genuine-plan.json","services/pg-api/pnpm-lock.yaml"]
 function validatedPath(rel){
+  if(employeeUi078ReviewedPaths.has(rel)){if(!/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||!/^((services\/pg-api\/src|shared)\/.+\.(ts|mjs|mts|js)|db\/postgres\/.+\.sql)$/.test(rel))refuse("unexpected_employee_ui078_source");return rel}
   if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/original-schedules-contract.ts","shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/original-version-release-contract.ts","shared/agent-internal-share-contract.ts","shared/approval-delegation-contract.ts","shared/agent-optimization-retest-contract.ts","shared/native-local-device-contract.mjs","shared/native-local-device-contract.d.mts","shared/agent-caller-contract.ts","shared/tool-hub-public-types.ts","shared/original-home-authoring.ts","shared/original-agent-catalog.ts","shared/original-internal-overview-contract.ts","shared/model-draft-probe-contract.ts","shared/model-connection-pagination-contract.ts","shared/tool-connection-pagination-contract.ts","shared/model-config-receipt-contract.ts","shared/original-tool-connections-contract.ts"].includes(rel))||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
@@ -59,7 +63,7 @@ function validatedPath(rel){
 }
 const visited=new Set()
 const foundExternals=new Set()
-function includeSource(rel){
+function includeSource(rel,includeEmployeeUi078=false){
   validatedPath(rel)
   if(visited.has(rel))return
   visited.add(rel)
@@ -67,6 +71,8 @@ function includeSource(rel){
   const source=path.join(repo,rel)
   if(!fs.existsSync(source)||!fs.lstatSync(source).isFile()||
      fs.lstatSync(source).isSymbolicLink())refuse("missing_source")
+  // Reviewed SQL is data, never parsed as JavaScript or executed by this tool.
+  if(includeEmployeeUi078&&employeeUi078ReviewedPaths.has(rel)&&rel.endsWith(".sql"))return
   const code=fs.readFileSync(source,"utf8")
   const tree=ts.createSourceFile(rel,code,ts.ScriptTarget.Latest,true)
   const targets=new Set()
@@ -84,7 +90,10 @@ function includeSource(rel){
   }
   visit(tree)
   for(const target of targets){
-    if(target.startsWith("."))includeSource(path.posix.normalize(path.posix.join(path.posix.dirname(rel),target)))
+    // Only this explicit opt-in boundary is absent from the default bundle.
+    // The original service refuses selected078 if its profile files are absent.
+    if(!includeEmployeeUi078&&rel==="services/pg-api/src/native-employee-ui078-profile.ts"&&["./pg18-employee-ui078-source.mjs","./pg18-employee-ui078-audit.ts"].includes(target))continue
+    if(target.startsWith("."))includeSource(path.posix.normalize(path.posix.join(path.posix.dirname(rel),target)),includeEmployeeUi078)
     else if(!target.startsWith("node:"))foundExternals.add(target.split("/").slice(0,target.startsWith("@")?2:1).join("/"))
   }
 }
@@ -100,7 +109,7 @@ function checkFile(file){
      fs.lstatSync(file).isSymbolicLink())refuse("non_regular_source")
   return fs.readFileSync(file)
 }
-function build(output,includeKnowledgeIndex=false,includeAssessment=false,includeLocalExecutorOperator=false){
+async function build(output,includeKnowledgeIndex=false,includeAssessment=false,includeLocalExecutorOperator=false,includeEmployeeUi078=false){
   if(typeof output!=="string"||!path.isAbsolute(output)||output.includes("\0"))
     refuse("absolute_output_directory_required")
   const pathNormalized=path.resolve(output)
@@ -110,7 +119,17 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
      relative!==".."&&!path.isAbsolute(relative)))
     refuse("output_inside_repo")
   fs.mkdirSync(pathNormalized,{recursive:true})
-  includeSource("services/pg-api/src/native-server.ts")
+  employeeUi078ReviewedPaths.clear()
+  let employeeUi078Snapshot=null
+  const packageDependencies={...thirdParty,...(includeEmployeeUi078?{typescript:"5.9.3"}:{})}
+  if(includeEmployeeUi078){
+    employeeUi078Snapshot=await captureEmployeeUi078Sources();assertEmployeeUi078Snapshot(employeeUi078Snapshot,employeeUi078Snapshot.source_sha256)
+    for(const pin of [...employeeUi078Snapshot.base.manifest.sources,...employeeUi078Snapshot.base.manifest.sql_sources,...employeeUi078Snapshot.manifest.extension_sql_sources])employeeUi078ReviewedPaths.add(pin.path)
+    for(const pin of employeeUi078Snapshot.base.manifest.sources)includeSource(pin.path,true)
+    for(const pin of [...employeeUi078Snapshot.base.manifest.sql_sources,...employeeUi078Snapshot.manifest.extension_sql_sources])included.add(validatedPath(pin.path))
+    for(const asset of employeeUi078ReviewAssets)included.add(asset)
+  }
+  includeSource("services/pg-api/src/native-server.ts",includeEmployeeUi078)
   if(includeKnowledgeIndex){
     includeSource("services/pg-api/src/knowledge-index-service.ts")
     included.add("ops/templates/agentstudio-pg18-knowledge-index.service.example")
@@ -125,13 +144,13 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
     for(const asset of localExecutorOperatorAssets)included.add(asset)
   }
   for(const module of foundExternals){
-    if(!(module in thirdParty))refuse("unapproved_runtime_dependency:"+module)
+    if(!(module in packageDependencies))refuse("unapproved_runtime_dependency:"+module)
   }
   for(const required of ["pg","jszip","pdfjs-dist","mammoth"])
     if(!(required in thirdParty))refuse("incomplete_package")
   const date=new Date().toISOString().replace(/[-:]/g,"").replace(/\..*/,"")
   const archive=path.join(pathNormalized,
-    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+(includeLocalExecutorOperator?"_local_executor_operator":"")+"_preflight_v1_"+date+".tar.gz")
+    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+(includeLocalExecutorOperator?"_local_executor_operator":"")+(includeEmployeeUi078?"_employee_ui078":"")+"_preflight_v1_"+date+".tar.gz")
   if(fs.existsSync(archive))refuse("archive_already_exists")
   const staging=fs.mkdtempSync(path.join(pathNormalized,
     "native-api-review-staging-"))
@@ -141,7 +160,7 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
       if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||relativePath==="docs/PG18_COMPLETE_069_PREPARATION.md"||includeKnowledgeIndex&&[
         "ops/templates/agentstudio-pg18-knowledge-index.service.example",
         "ops/templates/agentstudio-pg18-knowledge-index-broker.service.example",
-      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)||includeLocalExecutorOperator&&localExecutorOperatorAssets.includes(relativePath)){
+      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)||includeLocalExecutorOperator&&localExecutorOperatorAssets.includes(relativePath)||includeEmployeeUi078&&employeeUi078ReviewAssets.includes(relativePath)){
         files[relativePath]=checkFile(path.join(repo,relativePath))
         continue
       }
@@ -153,7 +172,7 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
       name:"agentstudio-pg18-native-api-operator-preflight",
       version:"0.0.0",private:true,type:"module",
       engines:{node:">=24"},
-      dependencies:thirdParty,
+      dependencies:packageDependencies,
     }
     files["services/pg-api/package.json"]=Buffer.from(
       JSON.stringify(pkg,null,2)+"\n")
@@ -163,6 +182,15 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
       "This is NOT the complete069 installer/preparer archive. Read docs/PG18_COMPLETE_069_PREPARATION.md before selecting a profile.",
       "For complete069 use the independent ops/build-pg18-complete069-review-bundle.mjs source-review delivery; old050 activation/six-account/postcheck operations must not be applied to full069.",
       "Its pinned14-package operator runtime and the business dependency tree below are different scopes; never filter an operator inventory to accept business extras.",
+      ...(includeEmployeeUi078?[
+        "Includes the separate complete069-employee-ui078 source/SQL profile. Original53 and old050/059/060 remain unchanged.",
+        "Use TWO separate extraction/source roots: an operator root with the externally reviewed strict14-package runtime, and a Native root with the business dependencies declared here.",
+        "Never run npm install from this business package in the strict operator runtime root. Never filter its inventory to accept extra business packages.",
+        "The operator root requires the original locked runtime manifest/lock/SHA, separate admin/API secret files, new explicit combination write approval and owned disposable physical tuple.",
+        "This source archive itself runs no SQL, account preparation, service or provider. It does not authorize deployment or serving.",
+        "After separately provisioning the pinned parser/runtime, run the independent CLI --plan/--verify; extracted combination plan was not executed by this bundler before dependency installation.",
+        "The original Native --preflight/--serve requires the explicit combination source/physical tuple markers; original employee pages remain the acceptance UI.",
+      ]:[]),
       "It has no passwords, .env, database records, npm lockfile or binaries.",
       ...(includeKnowledgeIndex?["Includes index/query daemon source and read-only service examples. No service is started.",
         "Index offline plan: node --experimental-strip-types services/pg-api/src/knowledge-index-service.ts --plan",
@@ -207,6 +235,11 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
       "Never start API Worker, run model jobs or switch PocketBase.",
       "",
     ].join("\n"))
+    if(employeeUi078Snapshot){
+      assertEmployeeUi078Snapshot(employeeUi078Snapshot,employeeUi078Snapshot.source_sha256)
+      if(hash(files["services/pg-api/pnpm-lock.yaml"])!=="eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a")refuse("employee_ui078_original_lock_required")
+      files["EMPLOYEE_UI078_SOURCE_REVIEW.json"]=Buffer.from(JSON.stringify({source_only:true,plan:employeeUi078Plan(employeeUi078Snapshot),runtime_authorization:false,Native_server_process_entry_verified:false,production_GO:false},null,2)+"\n")
+    }
     const manifestPaths=Object.keys(files).sort()
     for(const [rel,raw] of Object.entries(files)){
       if(/(?:^|\/)(?:\.env[^/]*|pb_data|node_modules|secrets?|credentials?)(?:\/|$)/i.test(rel))
@@ -303,11 +336,12 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false,includ
       size_bytes:fs.statSync(archive).size,
       source_files:visited.size,
       packed_files:manifestPaths.length+1,
-      dependencies:thirdParty,
+      dependencies:packageDependencies,
       manifest_verified:true,
       offline_plan_verified:true,
       default_start_refused:true,
       contains_secrets:false,
+      ...(includeEmployeeUi078?{employee_ui078_source_review_included:true,employee_ui078_extracted_plan_verified:false,employee_ui078_parser_installation_required:true,employee_ui078_schema_installation_verified:false,employee_ui078_Native_process_verified:false}:{}),
       ...(includeKnowledgeIndex?{knowledge_index_service_included:true,index_default_plan_only:true}:{}),
       ...(includeAssessment?{assessment_service_source_included:true,assessment_default_enabled:false,assessment_offline_plan_verified:true,assessment_unapproved_modes_refused:true}:{}),
       ...(includeLocalExecutorOperator?{local_executor_operator_source_included:true,local_executor_default_enabled:false,local_executor_offline_plan_verified:true,local_executor_unapproved_modes_refused:true,local_executor_activation_authorized:false}:{}),
@@ -318,9 +352,9 @@ if(process.argv[1]&&path.resolve(process.argv[1])===
   fileURLToPath(import.meta.url)){
   try{
     const flags=process.argv.slice(4)
-    if(![4,5,6,7].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment","--with-local-executor-operator"].includes(flag)))
+    if(![4,5,6,7,8].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment","--with-local-executor-operator","--with-employee-ui078-profile"].includes(flag)))
       refuse("exact_output_arguments_required")
-    process.stdout.write(JSON.stringify(build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment"),flags.includes("--with-local-executor-operator")))+"\n")
+    process.stdout.write(JSON.stringify(await build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment"),flags.includes("--with-local-executor-operator"),flags.includes("--with-employee-ui078-profile")))+"\n")
   }catch(e){
     process.stderr.write("PG18_NATIVE_API_BUNDLE_REFUSED:"+
       (e instanceof Error?e.message:"unknown")+"\n")
