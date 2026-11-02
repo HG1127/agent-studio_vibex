@@ -6,6 +6,9 @@ import {releaseCompletionSyntheticDial} from './helpers/pg-original-version-rele
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {fileURLToPath} from 'node:url'
+import {dirname,relative,resolve,sep} from 'node:path'
+import ts from 'typescript'
 import {requireOriginalVersionReleaseCompletionCi,assertOriginalReleaseCompletionContracts} from './helpers/pg-original-version-release-completion-browser-guard.mjs'
 import {startOriginalVersionReleaseCompletionBrowserFixture} from './helpers/pg-original-version-release-completion-browser-fixture.mjs'
 import {originalVersionReleaseCompletionBackendFixture} from './helpers/pg-original-version-release-completion-backend-fixture.mjs'
@@ -69,3 +72,21 @@ for(const change of [{origin:'https://vendor.example:23456'},{origin:'https://12
 
 test('fixed synthetic HTTP metadata passes the actual connection and request validators without any socket',()=>{const input={name:'Synthetic release completion HTTP',description:'Fixed same-run synthetic service only',url:'https://release-tool.example.com/observe',method:'POST',headers:[{key:'X-Synthetic-Release-Key',value:'synthetic-terminal-DATA'}],body_template:'{"source_nonce":"{{source_nonce}}","value":"{{value}}"}',timeout_s:5,enabled:true};assert.throws(()=>safeToolConnectionInput({...input,url:'https://release-tool.example.test/observe'}));const checked=safeToolConnectionInput(input),request=prepareWorkflowToolHttp(checked,{source_nonce:'terminal-DATA',value:'owner-delivery-value'});assert.equal(request.url,input.url);assert.deepEqual(JSON.parse(request.body.toString('utf8')),{source_nonce:'terminal-DATA',value:'owner-delivery-value'});assert.equal(releaseCompletionSyntheticDial('tool',{protocol:'https:',hostname:new URL(request.url).hostname,port:443,path:new URL(request.url).pathname,method:request.method,rejectUnauthorized:true,headers:request.headers},tlsData()).hostname,'127.0.0.1')})
 test('complete flat source seal preserves every prior required path and both release/human SQL contracts',()=>{const sources=originalVersionReleaseCompletionRequiredSources;assert.equal(new Set(sources).size,sources.length);for(const path of [...originalVersionReleaseRequiredSources,'db/postgres/migrations/pg_v9_046_agent_releases.sql','db/postgres/migrations/pg_v9_048_agent_human_input.sql','services/pg-api/src/workflow-v2-worker.ts','services/pg-api/src/workflow-v2-model-dispatch.ts','services/pg-api/src/workflow-v2-tool-dispatch.ts','tests/helpers/pg-original-version-release-completion-egress.mjs'])assert(sources.includes(path),path)})
+
+test('completion evidence resolves from its actual config directory into the exact CI upload allowlist',()=>{
+ const configUrl=new URL('./pg-original-version-release-completion-genuine.config.mjs',import.meta.url),source=ts.createSourceFile(configUrl.pathname,readFileSync(configUrl,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.JS)
+ assert.equal(source.parseDiagnostics.length,0)
+ const exported=source.statements.filter(ts.isExportAssignment);assert.equal(exported.length,1)
+ const call=exported[0].expression;assert(ts.isCallExpression(call));assert.equal(call.expression.getText(source),'defineConfig');assert.equal(call.arguments.length,1)
+ const config=call.arguments[0];assert(ts.isObjectLiteralExpression(config))
+ const property=(object,name)=>{const matches=object.properties.filter(p=>ts.isPropertyAssignment(p)&&p.name.getText(source)===name);assert.equal(matches.length,1,name);return matches[0].initializer}
+ const output=property(config,'outputDir');assert(ts.isStringLiteral(output))
+ const repository=fileURLToPath(new URL('../',import.meta.url)),actual=relative(repository,resolve(dirname(fileURLToPath(configUrl)),output.text)).split(sep).join('/')
+ assert.equal(actual,'.tmp/original-version-release-completion-genuine-results')
+ const use=property(config,'use');assert(ts.isObjectLiteralExpression(use));for(const key of ['trace','video','screenshot']){const value=property(use,key);assert(ts.isStringLiteral(value));assert.equal(value.text,'off')}
+ const workflow=readFileSync(new URL('../.github/workflows/pg18-agent-design-genuine-ci.yml',import.meta.url),'utf8'),block=workflow.split('      - name: Retain only fixed completed original release completion synthetic evidence\n')[1]?.split('      - name: ')[0]
+ assert(block);assert(block.includes("if: always() && matrix.story == 'original-version-release-completion'"));assert(block.includes('uses: actions/upload-artifact@v4'))
+ const paths=[...block.matchAll(/^            (\S+)$/gm)].map(match=>match[1])
+ assert.deepEqual(paths,[actual+'/**/original-version-release-current-tested-published.png',actual+'/**/original-version-release-completion-observation.json'])
+ assert(block.includes("if-no-files-found: ${{ job.status == 'success' && 'error' || 'ignore' }}"));assert(block.includes('retention-days: 7'))
+})

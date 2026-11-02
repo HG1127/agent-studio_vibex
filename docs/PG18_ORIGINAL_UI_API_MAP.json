@@ -9571,6 +9571,275 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_7e5941a_hosted_followup": {
+      "parent_head": "7e5941ac803dd5d0c79e638e5b39a7979b8ab73e",
+      "whole_batch": {
+        "workflows": 19,
+        "terminal": 19,
+        "success": 18,
+        "failure": 1,
+        "main_unit_tests": 4976,
+        "main_unit_failures": 0,
+        "main_unit_skips": 0,
+        "original_UI_contract_tests": 2708,
+        "original_UI_contract_failures": 0,
+        "original_UI_contract_skips": 0
+      },
+      "actual_original_page_stories": {
+        "release": {
+          "genuine_passed": true,
+          "closed_aggregate_verified": true,
+          "Worker_ticks": 3,
+          "Worker_status": "awaiting_approval",
+          "current_Worker_pass": false,
+          "receipt_GETs": 5,
+          "POST_replays": 0
+        },
+        "release_completion": {
+          "genuine_passed": true,
+          "retained_aggregate_missing": true,
+          "missing_artifact_is_not_acceptance_evidence": true,
+          "source_fix": "Resolve outputDir from the actual tests config directory into the repository-root CI allowlist; successful jobs must fail when no evidence files exist.",
+          "actual_new_head_retained_artifact_verified": false
+        },
+        "schedules078": {
+          "genuine_passed": true,
+          "closed_aggregate_verified": true,
+          "all9_stages": true,
+          "browser_operation_POSTs": 11,
+          "committed_prefix_losses": 1,
+          "actual_rollback503": 1,
+          "actual_receipt404": 2,
+          "legacy_requests": 0,
+          "outside_requests": 0,
+          "cleanup_failures": 0,
+          "Worker_started": false
+        }
+      },
+      "strict069": {
+        "genuine_passed": false,
+        "legacy": "Native read completed, but workflow_v2 heartbeat age77044ms exceeds original45000ms.",
+        "Final14": "Reader finish registry_mismatch; business audit phase20875ms. No management_catalog cause event was observed in this batch.",
+        "original_limits_catalog_identity_and_cleanup_preserved": true
+      },
+      "artifact_policy_pure_tests": 38,
+      "source_reseal_pending": false,
+      "current_candidate_genuine_rerun_pending": true,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 19219,
+        "retained_prior_pins": 19219,
+        "source_only": true,
+        "actual_new_head_genuine_acceptance": false
+      }
+    },
+    "accepted_preview14_UI_alignment": {
+      "accepted_head": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+      "accepted_version": "0.1.0-preview.14",
+      "actual_common_ancestor": "03e1c78ec05339a3b748788ee1b28c8251112eaa",
+      "full_src_shared_comparison_paths": 502,
+      "unresolved_threeway_conflicts": 31,
+      "independent_additions_requiring_semantic_merge": 16,
+      "AST_source_files": 339,
+      "route_nodes": 29,
+      "fetch_call_sites": 116,
+      "direct_collection_calls": 2,
+      "static_collections": [
+        "studio_users"
+      ],
+      "actual_route_inventory": [
+        {
+          "path": "/pg-pilot",
+          "component": "PgPilotRoute",
+          "element": "{<PgPilotRoute />}",
+          "line": 90
+        },
+        {
+          "path": "/login",
+          "component": "LoginRoute",
+          "element": "{<LoginRoute />}",
+          "line": 91
+        },
+        {
+          "path": null,
+          "component": "AuthGate",
+          "element": "{<AuthGate />}",
+          "line": 92
+        },
+        {
+          "path": "/",
+          "component": "HomeRoute",
+          "element": "{<HomeRoute />}",
+          "line": 93
+        },
+        {
+          "path": "/agent-create",
+          "component": "AgentCreateRoute",
+          "element": "{<AgentCreateRoute />}",
+          "line": 94
+        },
+        {
+          "path": "/internal-templates",
+          "component": "InternalTemplatesRoute",
+          "element": "{<InternalTemplatesRoute />}",
+          "line": 95
+        },
+        {
+          "path": "/agent-collaboration",
+          "component": "AgentCollaborationRoute",
+          "element": "{<AgentCollaborationRoute />}",
+          "line": 96
+        },
+        {
+          "path": "/account",
+          "component": "StaffRoute",
+          "element": "{<StaffRoute key=\"personal-account\" accountOnly />}",
+          "line": 97
+        },
+        {
+          "path": "/approvals",
+          "component": "ManagerRoute",
+          "element": "{<ManagerRoute key=\"personal-delegations\" personalOnly />}",
+          "line": 98
+        },
+        {
+          "path": "/internal-overview",
+          "component": "InternalOverviewRoute",
+          "element": "{<InternalOverviewRoute />}",
+          "line": 99
+        },
+        {
+          "path": null,
+          "component": "AdminGate",
+          "element": "{<AdminGate />}",
+          "line": 100
+        },
+        {
+          "path": "/staff",
+          "component": "StaffRoute",
+          "element": "{<StaffRoute key=\"team-members\" />}",
+          "line": 101
+        },
+        {
+          "path": "/manager",
+          "component": "ManagerRoute",
+          "element": "{<ManagerRoute key=\"company-management\" />}",
+          "line": 102
+        },
+        {
+          "path": "/agent-run",
+          "component": "AgentRunRoute",
+          "element": "{<AgentRunRoute />}",
+          "line": 104
+        },
+        {
+          "path": "/model-connections",
+          "component": "ModelConnectionsRoute",
+          "element": "{<ModelConnectionsRoute />}",
+          "line": 105
+        },
+        {
+          "path": "/version-release",
+          "component": "VersionReleaseRoute",
+          "element": "{<VersionReleaseRoute />}",
+          "line": 106
+        },
+        {
+          "path": "/tool-connections",
+          "component": "ToolConnectionsRoute",
+          "element": "{<ToolConnectionsRoute />}",
+          "line": 107
+        },
+        {
+          "path": "/execution-connections",
+          "component": "ExecutionConnectionsRoute",
+          "element": "{<ExecutionConnectionsRoute />}",
+          "line": 108
+        },
+        {
+          "path": "/run-detail",
+          "component": "RunDetailRoute",
+          "element": "{<RunDetailRoute />}",
+          "line": 109
+        },
+        {
+          "path": "/template-market",
+          "component": "TemplateMarketRoute",
+          "element": "{<TemplateMarketRoute />}",
+          "line": 110
+        },
+        {
+          "path": "/workflow-canvas",
+          "component": "WorkflowCanvasRoute",
+          "element": "{<WorkflowCanvasRoute />}",
+          "line": 111
+        },
+        {
+          "path": "/scheduled-tasks",
+          "component": "ScheduledTasksRoute",
+          "element": "{<ScheduledTasksRoute />}",
+          "line": 112
+        },
+        {
+          "path": "/knowledge-bases",
+          "component": "KnowledgeBasesRoute",
+          "element": "{<KnowledgeBasesRoute />}",
+          "line": 113
+        },
+        {
+          "path": "/skills",
+          "component": "SkillsRoute",
+          "element": "{<SkillsRoute />}",
+          "line": 114
+        },
+        {
+          "path": "/tool-hub",
+          "component": "ToolHubRoute",
+          "element": "{<ToolHubRoute />}",
+          "line": 115
+        },
+        {
+          "path": "/harness",
+          "component": "HarnessRoute",
+          "element": "{<HarnessRoute />}",
+          "line": 116
+        },
+        {
+          "path": "/integrate",
+          "component": "IntegrateRoute",
+          "element": "{<IntegrateRoute />}",
+          "line": 117
+        },
+        {
+          "path": "/plugin-market",
+          "component": "PluginMarketRoute",
+          "element": "{<PluginMarketRoute />}",
+          "line": 118
+        },
+        {
+          "path": "*",
+          "component": "Navigate",
+          "element": "{<Navigate to=\"/\" replace />}",
+          "line": 119
+        }
+      ],
+      "full_latest_UI_merged": false,
+      "full_latest_UI_actions_PG_mapped": false,
+      "original_page_E2E_acceptance": false,
+      "actual_contract_gaps": [
+        "Staff admin full list/query/filter/summary/page/create/profile/role/active/share/reset and personal password UI integration.",
+        "Original Agent quality checks need actual SQL/repository/HTTP and publication semantics, preserving the accepted outcome/process/acceptance UI.",
+        "Latest accepted Agent role stages, structured capability requirements and Skill bindings require explicit backend/execution contracts; current native Home execution DTO refuses these fields.",
+        "Latest accepted Desktop computer IPC uses a PocketBase JWT; native Cookie identity must use a server-verified replacement before equivalent desktop acceptance.",
+        "Complete latest route/layout/component preservation and page/action-level PG acceptance remain unfinished."
+      ],
+      "optional_reference_scope": {
+        "material080_and_artifact081": "Keep completed source as isolated reference/optional work. The accepted c623 UI contains no originalBusiness/BusinessWorkbench/business-material/business-artifact references; these workbenches are not prerequisites or substitutes for acceptance of the existing pages.",
+        "pg18_app_and_PgNativePilot": "Retain isolated verification/reference tools."
+      },
+      "production_GO": false
     }
   },
   "qualifying24h_hours": 0,

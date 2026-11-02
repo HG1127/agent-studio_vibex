@@ -427,7 +427,7 @@ jobs:
           path: |
             .tmp/original-version-release-completion-genuine-results/**/original-version-release-current-tested-published.png
             .tmp/original-version-release-completion-genuine-results/**/original-version-release-completion-observation.json
-          if-no-files-found: ignore
+          if-no-files-found: ${{ job.status == 'success' && 'error' || 'ignore' }}
           retention-days: 7
       - name: Original version-release actual Cookie CAS committed-prefix exact-receipt and pending-approval story
         if: matrix.story == 'original-version-release'

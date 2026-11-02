@@ -1,7 +1,7 @@
 // C-owned fixed raw LF sources for the separate073 metadata profiles.
 // Not an installed-schema proof or runtime permit; Root upstream pins unchanged.
 export const nativeMonitor073ReviewedSources=Object.freeze({
-  ".github/workflows/pg18-agent-design-genuine-ci.yml": "c6351c47660ea4a808e911d74cf8fff8983d4add0b0514de7860c27206e5073c",
+  ".github/workflows/pg18-agent-design-genuine-ci.yml": "6497ea2a6d24211cb49af6d69b6622413218cc722e0f68382f9b709652dbdb47",
   "db/postgres/migrations/pg_v9_073_monitor_inbox.sql": "ba25340ea909384e46d25ab530f062c93bed9bbbb2d3edf3ebc22c2b12b664db",
   "services/pg-api/src/agent-collaboration-audit.ts": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd",
   "services/pg-api/src/agent-http-tools.ts": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8",
@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "6916fc4503aa5d4e1c40f43351b89842194257378f47b2d6cec4473e495229c2",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "185e4b87119f39da85c90cad97f493c4a4fe43b62e1e8df9654a54d2c3febf08",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "064bddbd5914de4088b70ee0f30883926f74f96b1b1e0d07cadb168cc192c7a4",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -224,7 +224,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "59c208c960981e67f148274ec7c46ab9ef8995bee854d497adcf5d7beeeb2945",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b404085cdae8b1584ea1fe848ae9631cfefb86a0542c23fdc58f6693f84aa2dc",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -297,9 +297,9 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "tests/original-schedules078-sql-diagnostic-pure.test.mjs": "041cb25c14273437be5e65f75afc283418da11431e20bb0b9fe80b6d4598dbf8",
   "tests/original-version-release-partial-history-notice.test.mjs": "3f9bb1d894b15c82246b501ac1d43127153aee1fc4fe1b3b70cceae08c271e30",
   "tests/pg-native-preflight-business-shared-closure.test.mjs": "afde3a7c50760cd2ecf17b77ae88365a95f71a79c8a4b9c4ceaaaf1751b02623",
-  "tests/pg-original-version-release-completion-genuine.config.mjs": "b08922d58dfc93905d181927aec0c23fc7d0f40674602adaf20e6d5645d55d7b",
+  "tests/pg-original-version-release-completion-genuine.config.mjs": "a328c8b854bf439a7ec50a5b85e0876e1bff8a07b4c81f2d584fda4cee6efb38",
   "tests/pg-original-version-release-completion-genuine.spec.mjs": "09ae658d10ae142005559bb5e6594591a190b3410705945e4f2c71a1617c90c9",
-  "tests/pg-original-version-release-completion-policy-pure.test.mjs": "5c07a7f0f8b1ca5f4ba51cf9a2a859cd1594484f4e47d52745f4febc92dce86c",
+  "tests/pg-original-version-release-completion-policy-pure.test.mjs": "b5755af8c99feea79422e06c852dcd30019b0c8d230ff22274163ab956b1e915",
   "tests/pg-original-version-release-completion-proof-pure.test.mjs": "ee5cc5afefc26d21c6117297693ca78dc193cf224a9020f5629a532bb4cc52f5",
   "tests/pg-original-version-release-completion-stored-spec.test.mjs": "f82bfa3a32409c5aad33ab8c283e54ee8af2a20241182bb113c8f88cda8721af",
   "services/pg-api/tests/helpers/native-monitor074-prerequisites.mjs": "d9129076fd7fb2a17b69bfc574efc09df52efa4a46924341ba5fe61219dba8f5",
