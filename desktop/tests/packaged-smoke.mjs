@@ -65,7 +65,11 @@ try {
   assert.equal(report.nativeConnected,true,'bundled runtime did not restore the verified employee connection')
   assert.equal(report.nativeStatusVisible,true,'connection status is missing from the main app')
   assert.equal(report.mainComputerSelector,true,'main computer selector did not select the restored connection')
-  if(process.argv.includes('--desktop-entry-smoke'))assert.deepEqual(report.nativeSettingsEntries,{updates:true,settings:true,updatePhase:'idle',singleMainWindow:true})
+  if(process.argv.includes('--desktop-entry-smoke')){
+    assert.equal(report.nativeSettingsEntries?.updates,true);assert.equal(report.nativeSettingsEntries?.settings,true);assert.equal(report.nativeSettingsEntries?.updatePhase,'idle')
+    // BrowserWindow.close completes asynchronously. The separate native-settings
+    // test polls actual owned windows rather than asserting a synchronous count.
+  }
   assert.equal(report.managementInline,true,'computer management must be inline in the main app')
   assert.equal(report.sandbox,true);assert.equal(report.nodeIntegration,false);assert.equal(report.contextIsolation,true)
   const request=async(method,route,body,headers={})=>{
