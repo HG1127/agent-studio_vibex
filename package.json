@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "desktop:update:publish": "node ops/publish-desktop-update.mjs",
+    "test:desktop:update": "node --test desktop/tests/updates.test.cjs desktop/tests/update-ipc.test.cjs",
     "connector:build": "node ops/build-connector.mjs",
     "connector:test-package": "node ops/test-connector-package.mjs",
     "test:permissions-native": "node tests/native-confirmation.windows.mjs",

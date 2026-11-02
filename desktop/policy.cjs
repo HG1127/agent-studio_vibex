@@ -21,13 +21,14 @@ function childEnvironment(env = process.env) {
 async function readSettings(directory) {
   try {
     const s = JSON.parse(await fs.readFile(path.join(directory, 'desktop.json'), 'utf8'))
-    return {server: serverOrigin(s.server), port: Number.isInteger(s.port) && s.port > 1023 && s.port < 65536 ? s.port : 0}
+    let updateFeed;try{if(s.updateFeed)updateFeed=require('./update-core.cjs').safeUrl(s.updateFeed)}catch{}
+    return {server: serverOrigin(s.server), port: Number.isInteger(s.port) && s.port > 1023 && s.port < 65536 ? s.port : 0,...(updateFeed?{updateFeed}:{})}
   } catch { return {server: 'https://192.168.1.133:8443', port: 0} }
 }
 async function saveSettings(directory, settings) {
   await fs.mkdir(directory, {recursive: true})
   const filename = path.join(directory, 'desktop.json'), temp = filename + '.pending'
-  await fs.writeFile(temp, JSON.stringify({server: serverOrigin(settings.server), port: settings.port || 0}, null, 2), {mode: 0o600})
+  await fs.writeFile(temp, JSON.stringify({server: serverOrigin(settings.server), port: settings.port || 0,...(settings.updateFeed?{updateFeed:require('./update-core.cjs').safeUrl(settings.updateFeed)}:{})}, null, 2), {mode: 0o600})
   await fs.rename(temp, filename)
 }
 function rendererPermission(permission,url,origins,isMainFrame=true) {

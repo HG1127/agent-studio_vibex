@@ -142,7 +142,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
                 inputSchema:{type:"object",properties:{content:{type:"string"}}}},
             ]}
           : {content:[{type:"text",text:"已从MCP模板库核验到需求文档：需要先确认需求范围，再制定实施计划与验收标准"}]}
-        res.writeHead(200,{"Content-Type":"application/json"})
+        // This test spans long human-review waits. Explicit close avoids a
+        // stale pooled POST racing the mock server's short idle timeout.
+        res.writeHead(200,{"Content-Type":"application/json","Connection":"close"})
         res.end(JSON.stringify({jsonrpc:"2.0",id:input.id,result}))
         return
       }
@@ -207,7 +209,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         // Always wrongly emit final to verify the backend review gate.
         content=JSON.stringify({thought:"Deliver the current phase",action:"final",final_answer:answer})
       }
-      res.writeHead(200,{"Content-Type":"application/json"})
+      res.writeHead(200,{"Content-Type":"application/json","Connection":"close"})
       res.end(JSON.stringify({choices:[{message:{role:"assistant",content}}]}))
     })
     await new Promise(resolve=>mock.listen(0,"127.0.0.1",resolve))
