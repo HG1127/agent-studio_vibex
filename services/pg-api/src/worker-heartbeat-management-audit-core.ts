@@ -5,6 +5,8 @@
 // read, snapshot, connection, transaction management or activation is supplied.
 // Original strict catalog body is preserved independently from the frozen
 // reader auditor; reader LOGIN=false does not imply an all-dormant registry.
+import {isNativeError,isProxy} from 'node:util/types'
+import {registryReadFailureData,type RegistryReadFailureObservation} from './worker-heartbeat-registry-failure-observation.ts'
 import type {SqlClient} from "./contracts.ts"
 import {workerHeartbeatKinds} from "./worker-heartbeat-contract.ts"
 import {workerHeartbeatSchemaPins} from "./worker-heartbeat-audit-core.ts"
@@ -144,6 +146,10 @@ const keys:Record<string,{table:string;kind:string;columns:string[]}>= {
 /** Requires the actual expected operator session inside RR READ ONLY / pg_catalog.
  * No connection, role switch, registry read, snapshot call or activation is made.
  */
+// Private failure DATA follows only this exact original core refusal object.
+const managementCoreReadFailures=new WeakMap<object,RegistryReadFailureObservation>()
+export function managementCoreReadFailureObservation(error:unknown):RegistryReadFailureObservation|null{try{return isNativeError(error)&&!isProxy(error)?managementCoreReadFailures.get(error)??null:null}catch{return null}}
+function mappedManagementCoreFailure(error:unknown):never{try{return fail()}catch(mapped){try{managementCoreReadFailures.set(mapped as object,registryReadFailureData('management_catalog',error))}catch{}throw mapped}}
 export async function verifyWorkerHeartbeatManagementCatalogCore(
  db:SqlClient,rawExpectations:unknown,
 ):Promise<WorkerHeartbeatManagementCatalogAudit>{
@@ -151,7 +157,7 @@ export async function verifyWorkerHeartbeatManagementCatalogCore(
   // Detach synchronously before the first DB await; later caller mutation is irrelevant.
   const expected=parseWorkerHeartbeatManagementCatalogExpectations(rawExpectations)
   return await verifyCatalog(db,expected)
- }catch{return fail()}
+ }catch(error){return mappedManagementCoreFailure(error)}
 }
 async function verifyCatalog(db:SqlClient,expected:WorkerHeartbeatManagementCatalogExpectations):Promise<WorkerHeartbeatManagementCatalogAudit>{
  const target=await one(db,"/* telemetry_v1_management_catalog:target */ SELECT d.oid::integer AS database_id,pg_catalog.current_database() AS database,pg_catalog.current_setting('server_version_num')::integer AS version,pg_catalog.current_setting('server_encoding') AS encoding,d.datdba::integer AS owner_id,r.rolsuper AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles member WHERE NOT member.rolsuper AND pg_catalog.pg_has_role(member.oid,r.oid,'MEMBER')) AS owner_super,"+

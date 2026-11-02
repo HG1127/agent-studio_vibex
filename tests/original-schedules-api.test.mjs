@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './original-release-schedule-response-lifecycle-pure.test.mjs'
 import assert from 'node:assert/strict'
 import {createOriginalSchedulesApi,prepareOriginalScheduleIntent} from '../src/lib/originalSchedulesApi.ts'
 import {originalSchedulesRoute,originalScheduleCursor} from '../services/pg-api/src/original-schedules-http-policy.ts'

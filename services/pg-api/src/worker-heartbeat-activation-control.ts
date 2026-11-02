@@ -13,7 +13,7 @@ import type {WorkerHeartbeatReport} from './worker-heartbeat-report-sequence.ts'
 import type {SqlClient,QueryResult} from './contracts.ts'
 import {workerHeartbeatKinds,parseWorkerHeartbeatSnapshot,type WorkerHeartbeatSnapshot} from './worker-heartbeat-contract.ts'
 import {verifyWorkerHeartbeatActivatedCatalog} from './worker-heartbeat-activated-audit.ts'
-import {verifyWorkerHeartbeatManagementCatalog} from './worker-heartbeat-management-audit.ts'
+import {verifyWorkerHeartbeatManagementCatalog,workerHeartbeatManagementReadFailureObservation} from './worker-heartbeat-management-audit.ts'
 import {controlFail,controlFreeze,controlHex,controlUuid,controlEpoch,controlObject,controlPaths,controlLimits,controlSha,controlJournalPhases,parseWorkerHeartbeatControlJson,parseWorkerHeartbeatRootProfile,parseWorkerHeartbeatControlCommand,parseWorkerHeartbeatReadRequest,WorkerHeartbeatControlError,
  type Control,type OperatorPeer,type ReaderPeer,type MutationPermit,type RecoveryObservation,type ReadLease,type FinishedRead,type ControlDbAccess,type Phase,type ControlStatus,type PlanSummary,type MutationOutcome,type RecoveryReport,type JournalRecord,type JournalPhase,type RootProfile,type ControlErrorCode,type WorkerHeartbeatRegistryPrivateMaterial} from './worker-heartbeat-activation-control-contract.ts'
 type Registry=typeof import('./worker-heartbeat-activation-registry.ts')
@@ -237,6 +237,16 @@ function revoke(l:Lease){
  void cleanupLease(l).catch(()=>{})
 }
 /* READER_FAILURE_OBSERVATION_BEGIN */
+// Diagnostic selection only. This never grants host/Reader/SQL/identity access.
+function rootReaderManagementCiObservationEnabled():boolean{
+ const e=process.env,ref=e.GITHUB_REF
+ return process.platform==='linux'&&process.getuid?.()===0&&process.getgid?.()===0&&process.versions.node.split('.')[0]==='24'&&process.execArgv.every(v=>v==='--experimental-strip-types')&&
+  e.CI==='true'&&e.GITHUB_ACTIONS==='true'&&e.RUNNER_OS==='Linux'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY==='HG1127/agent-studio_vibex'&&
+  e.GITHUB_WORKFLOW==='Agent Studio PG18 complete profile isolated verification'&&e.GITHUB_JOB==='pg18-complete-install'&&['push','workflow_dispatch'].includes(e.GITHUB_EVENT_NAME??'')&&
+  /^[1-9][0-9]{0,31}$/.test(e.GITHUB_RUN_ID??'')&&/^[1-9][0-9]{0,31}$/.test(e.GITHUB_RUN_ATTEMPT??'')&&/^[a-f0-9]{40}$/.test(e.GITHUB_SHA??'')&&
+  typeof ref==='string'&&new RegExp('^refs/heads/codex/pg18-[A-Za-z0-9][A-Za-z0-9._/-]{0,179}$').test(ref)&&!ref.includes('..')&&!ref.includes('//')&&!ref.endsWith('/')&&
+  e.GITHUB_WORKFLOW_REF==='HG1127/agent-studio_vibex/.github/workflows/pg18-complete-install-ci.yml@'+ref&&e.AGENT_STUDIO_COMPLETE_PROFILE_CI_PURPOSE==='COMPLETE_069_INSTALL_SYNTHETIC_ONLY'
+}
 // Original Reader failure before existing cleanup/mapping. Closed scalars only.
 function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
  try{if(phase!=='prepare'&&phase!=='finish')return
@@ -244,6 +254,7 @@ function observeRootReaderFailure(phase:'prepare'|'finish',error:unknown):void{
   const code=["lease_expired","lease_revoked","registry_mismatch","reader_capacity","reader_timeout","reader_cleanup_unknown","control_closed","control_io_failed","source_runtime_refused","binding_changed","untrusted_reference","control_busy"].includes(raw)?raw:null,kind=rootFailureObservationKind(error)
   if(!rootFailureObservationKinds.includes(kind))return
   process.stderr.write(JSON.stringify({event:'worker_heartbeat_reader_failure_observation',phase,code,kind,observed_data_only:true})+'\n')
+  try{if(rootReaderManagementCiObservationEnabled()){const observation=workerHeartbeatManagementReadFailureObservation(error);if(observation)emitRootCleanupReaderTiming(observation)}}catch{}
  }catch{/* Failure of observation cannot replace the original error. */}
 }
 /* READER_FAILURE_OBSERVATION_END */export async function prepareWorkerHeartbeatControlRead(control:Control,p:ReaderPeer):Promise<ReadLease>{

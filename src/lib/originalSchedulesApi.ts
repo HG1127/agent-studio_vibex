@@ -32,23 +32,26 @@ export function createOriginalSchedulesApi(config:{employeeId:string;transport?:
  async function request(path:string,method:'GET'|'POST',body?:unknown,signal?:AbortSignal,writePending?:OriginalSchedulePending){
    const writeProof=writePending===undefined?null:JSON.stringify(writePending)
   const bytes=body===undefined?undefined:JSON.stringify(body),write=method==='POST';if(bytes&&new TextEncoder().encode(bytes).length>16384)return schedulesFail(400,'original_schedules_request_too_large')
-  const controller=new AbortController(),cancel=()=>controller.abort();let reader:ReadableStreamDefaultReader<Uint8Array>|undefined,timer:ReturnType<typeof setTimeout>|undefined
+   const controller=new AbortController(),cancel=()=>controller.abort();let reader:ReadableStreamDefaultReader<Uint8Array>|undefined,timer:ReturnType<typeof setTimeout>|undefined,complete=false,closed=false
   const unavailable=()=>new OriginalSchedulesError(0,write?'original_schedules_outcome_unknown':'original_schedules_unavailable',write),deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(unavailable())},budget)})
   const run=async()=>{
    const response=await send(path,{method,body:bytes,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json','X-AgentStudio-Expected-Employee':employee,'X-AgentStudio-Original-Schedules':'1',...(write?{'Content-Type':'application/json','X-AgentStudio-Request':'1'}:{})}})
    const invalid=():never=>schedulesFail(503,'invalid_original_schedules_response',write)
    if(!(response instanceof Response)||response.redirected||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(response.headers.get('content-type')??'')||!response.body)return invalid()
+    if(closed||controller.signal.aborted){void response.body.cancel().catch(()=>{});throw unavailable()}
    const length=response.headers.get('content-length');if(length!==null&&(!/^(0|[1-9][0-9]*)$/.test(length)||Number(length)>1048576))return invalid()
    reader=response.body.getReader();const chunks:Uint8Array[]=[];let count=0
-   while(true){const item=await reader.read();if(item.done)break;count+=item.value.length;if(count>1048576)return invalid();chunks.push(item.value)}
-   if(length!==null&&Number(length)!==count)return invalid();const all=new Uint8Array(count);let at=0;for(const c of chunks){all.set(c,at);at+=c.length}
+    while(true){const item=await reader.read();if(closed||controller.signal.aborted)throw unavailable();if(item.done)break;count+=item.value.length;if(count>1048576)return invalid();chunks.push(item.value)}
+    if(length!==null&&Number(length)!==count)return invalid();complete=true;const all=new Uint8Array(count);let at=0;for(const c of chunks){all.set(c,at);at+=c.length}
    let data:Record<string,unknown>;try{data=scheduleObject(parseAgentDesignTransportJson(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(all)))}catch{return invalid()}
    if(!response.ok){const code=typeof data.error==='string'&&/^[a-z][a-z0-9_]{0,79}$/.test(data.error)?data.error:'original_schedules_request_refused',error=new OriginalSchedulesError(response.status,code,write&&response.status>=500);if(write&&writeProof!==null&&Object.keys(data).length===1&&scheduleRefusalCodes[response.status]?.has(code))scheduleWriteRefusals.set(error,writeProof);throw error}
    return data
   }
   signal?.addEventListener('abort',cancel,{once:true})
   try{if(signal?.aborted)throw unavailable();return await Promise.race([run(),deadline])}catch(error){if(error instanceof OriginalSchedulesError)throw error;throw unavailable()}
-  finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);controller.abort();if(reader){void reader.cancel().catch(()=>{});try{reader.releaseLock()}catch{}}}
+  // A fully consumed response must not be aborted after its ACK was read.
+  // Incomplete/late responses still lose their transport and cannot settle it.
+  finally{closed=true;clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(!complete){controller.abort();if(reader)void reader.cancel().catch(()=>{})}if(reader)try{reader.releaseLock()}catch{}}
  }
 
  function envelope(raw:unknown){const v=scheduleObject(raw,['protocol','owner_user_id','item']);if(v.protocol!==originalSchedulesProtocol||v.owner_user_id!==employee)return schedulesFail(409,'employee_session_changed');return v.item}

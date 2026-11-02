@@ -1,3 +1,4 @@
+import './worker-heartbeat-management-failure-ci.test.mjs'
 // PURE management catalog doubles and nonexecuted SQL/source obligations only.
 // No SQL, database, network, provider or worker process is used. Passing these
 // tests does NOT establish actual catalog privileges or current activation.
