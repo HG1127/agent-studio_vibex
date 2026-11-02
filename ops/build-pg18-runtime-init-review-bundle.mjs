@@ -7,6 +7,7 @@ import {spawnSync} from "node:child_process"
 import {fileURLToPath} from "node:url"
 import {captureFreshRuntimeSources,freshRuntimePlan} from "../services/pg-api/src/pg18-fresh-runtime-source.mjs"
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),".."),entry="services/pg-api/src/baota-pg18-runtime-init.mjs"
+const sharedDependencies=new Set(["shared/agent-role-limits.mjs","shared/original-account-contract.ts"])
 const sha=data=>createHash("sha256").update(data).digest("hex")
 function refuse(code){throw Error("PG18_RUNTIME_REVIEW_REFUSED:"+code)}
 function run(command,args,options={}){const r=spawnSync(command,args,{encoding:"utf8",timeout:30000,windowsHide:true,...options});if(r.status!==0)refuse("command_failed");return r.stdout}
@@ -24,7 +25,7 @@ export function collectRuntimeInitReviewSources(){
     const text=fs.readFileSync(file,"utf8")
     for(const regex of [/\bfrom\s+["'](\.[^"']+)["']/g,/\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)/g])for(const match of text.matchAll(regex)){
       const dep=path.posix.normalize(path.posix.join(path.posix.dirname(rel),match[1]))
-      if((!dep.startsWith("services/pg-api/src/")&&dep!=="shared/agent-role-limits.mjs")||dep.includes("..")||!/\.(ts|mjs|mts)$/.test(dep))refuse("outside_dependency")
+      if((!dep.startsWith("services/pg-api/src/")&&!sharedDependencies.has(dep))||dep.includes("..")||!/\.(ts|mjs|mts)$/.test(dep))refuse("outside_dependency")
       visit(dep)
     }
     if(rel.endsWith(".mjs")){const declaration=rel.slice(0,-4)+".d.mts";if(fs.existsSync(path.join(root,declaration)))files.add(declaration)}

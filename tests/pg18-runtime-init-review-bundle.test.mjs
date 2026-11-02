@@ -4,7 +4,36 @@ import fs from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import {spawnSync} from "node:child_process"
+import ts from "typescript"
 import {collectRuntimeInitReviewSources,buildRuntimeInitReview} from "../ops/build-pg18-runtime-init-review-bundle.mjs"
+
+// Exercise the actual collector against terminal source text. No archive,
+// subprocess, initializer, SQL client or network is created by these tests.
+const collectorSource=fs.readFileSync(new URL("../ops/build-pg18-runtime-init-review-bundle.mjs",import.meta.url),"utf8")
+const collectorTree=ts.createSourceFile("builder.mjs",collectorSource,ts.ScriptTarget.Latest,true)
+assert.equal(collectorTree.parseDiagnostics.length,0)
+let collectorBody,sharedDeclaration
+function findCollector(node){
+  if(ts.isFunctionDeclaration(node)&&node.name?.text==="collectRuntimeInitReviewSources")collectorBody=node.body.getText(collectorTree)
+  if(ts.isVariableDeclaration(node)&&node.name.getText(collectorTree)==="sharedDependencies")sharedDeclaration=node.getText(collectorTree)
+  ts.forEachChild(node,findCollector)
+}
+findCollector(collectorTree);assert(collectorBody);assert(sharedDeclaration)
+function terminalSources(importText){
+  const entry="services/pg-api/src/baota-pg18-runtime-init.mjs",root=path.resolve("terminal-review-root"),read=[]
+  const sourceFs={existsSync:()=>true,lstatSync:()=>({isSymbolicLink:()=>false}),statSync:()=>({isFile:()=>true}),readFileSync:file=>{const rel=path.relative(root,file).split(path.sep).join("/");read.push(rel);return rel===entry?importText:""}}
+  const collect=Function("captureFreshRuntimeSources","fs","path","root","entry","refuse","const "+sharedDeclaration+";return function()"+collectorBody)(()=>({sources:[]}),sourceFs,path,root,entry,code=>{throw Error("PG18_RUNTIME_REVIEW_REFUSED:"+code)})
+  return {result:collect(),read}
+}
+test("review source collector includes the exact shared account contract transitively",()=>{
+  const {result,read}=terminalSources('import {password} from "../../../shared/original-account-contract.ts"')
+  assert.ok(result.files.includes("shared/original-account-contract.ts"));assert.equal(read.filter(file=>file==="shared/original-account-contract.ts").length,1)
+})
+test("review source collector still refuses unknown shared and outside source dependencies",()=>{
+  for(const dep of ["../../../shared/original-account-contract-extra.ts","../../../shared/unreviewed.ts","../../../ops/private.mjs","../../../../outside.ts"])
+    for(const text of [`import {value} from "${dep}"`,`const value=import("${dep}")`])
+      assert.throws(()=>terminalSources(text),/PG18_RUNTIME_REVIEW_REFUSED:outside_dependency/)
+})
 
 test("full runtime review contains the real migration map and every initializer dependency, with offline plan and default refusal",()=>{
   const output=fs.mkdtempSync(path.join(os.tmpdir(),"pg18-runtime-review-test-"))
@@ -15,6 +44,7 @@ test("full runtime review contains the real migration map and every initializer 
     assert.ok(files.includes("db/postgres/migrations/pg_v9_045_agent_collaboration.sql"));assert.ok(files.includes("services/pg-api/src/agent-collaboration-audit.ts"))
     assert.ok(files.includes("db/postgres/migrations/pg_v9_046_agent_releases.sql"));assert.ok(files.includes("services/pg-api/src/agent-release-audit.ts"))
     assert.ok(files.includes("shared/agent-role-limits.mjs"));assert.ok(files.includes("shared/agent-role-limits.d.mts"))
+    assert.deepEqual(files.filter(file=>file.startsWith("shared/")),["shared/agent-role-limits.d.mts","shared/agent-role-limits.mjs","shared/original-account-contract.ts"])
     assert.ok(files.includes("services/pg-api/src/pg18-fresh-runtime-source.d.mts"));assert.ok(files.includes("services/pg-api/src/knowledge-lineage-audit.ts"))
     assert.ok(files.includes("services/pg-api/src/native-activation-cli.mjs"));assert.ok(files.includes("services/pg-api/src/native-first-admin-cli.mjs"))
     assert.ok(files.includes("services/pg-api/src/pg18-service-login-cli.mjs"));assert.ok(files.includes("services/pg-api/src/pg18-service-login-inspector.ts"))

@@ -13,6 +13,7 @@ export function usePgVersionRelease(){
  const [params,setParams]=useSearchParams(),wanted=params.get('spec')??'',recovered=params.get('testRun')??'',[view,setView]=useState(emptyOriginalVersionReleaseView),owned=useRef<OriginalVersionReleaseController|null>(null)
  const initializeRef=useRef<(()=>void)|null>(null)
  const recoveredRef=useRef(recovered);recoveredRef.current=recovered
+  const urlWriteRef=useRef(setParams);urlWriteRef.current=setParams
  useEffect(()=>{
   let controller:OriginalVersionReleaseController|null=null,closed=false,initializing=false
   const initialize=async()=>{
@@ -35,8 +36,12 @@ export function usePgVersionRelease(){
   return()=>{closed=true;window.removeEventListener('studio:agent-spec-saved',saved);window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);window.removeEventListener('storage',check);window.removeEventListener('online',check);document.removeEventListener('visibilitychange',visible);if(initializeRef.current===retry)initializeRef.current=null;if(owned.current===controller)owned.current=null;if(controller)controller.dispose()}
  },[wanted])
  useEffect(()=>{if(!view.testRun||!view.isTestLive)return;const timer=window.setInterval(()=>{if(!document.hidden)void owned.current?.pollTest()},3000);return()=>window.clearInterval(timer)},[view.testRun?.id,view.isTestLive])
- useEffect(()=>{if(recovered && view.selectedSpecId===wanted && view.testRun?.id!==recovered)void owned.current?.recoverTest(recovered)},[recovered,wanted,view.selectedSpecId,view.testRun?.id])
- useEffect(()=>{if(!view.testRun || view.selectedSpecId!==wanted)return;const id=view.testRun.id;setParams(previous=>{if(previous.get('testRun')===id)return previous;const next=new URLSearchParams(previous);next.set('testRun',id);return next},{replace:true})},[view.testRun?.id,view.selectedSpecId,wanted,setParams])
+  // Recover on a URL/selection change. A newly registered local run must first
+  // reach the URL below, without the old URL scheduling a recovery of its run.
+  useEffect(()=>{const controller=owned.current;if(recovered && view.selectedSpecId===wanted && controller?.getView().testRun?.id!==recovered)void controller?.recoverTest(recovered)},[recovered,wanted,view.selectedSpecId])
+  // Router callback identity can change when only the URL changes. Keep that
+  // external navigation from writing the prior view back over its return run.
+  useEffect(()=>{if(!view.testRun || view.selectedSpecId!==wanted)return;const id=view.testRun.id;urlWriteRef.current(previous=>{if(previous.get('testRun')===id)return previous;const next=new URLSearchParams(previous);next.set('testRun',id);return next},{replace:true})},[view.testRun?.id,view.selectedSpecId,wanted])
  const actions=useMemo(()=>({
   handleSelectSpec:(id:string)=>{const controller=owned.current;if(!controller)return;const current=controller.getView();if(!current.isLoggedIn||current.nativePending||current.isConfirmBusy||current.isStartingTest||current.isSavingVersion)return;void controller.handleSelectSpec(id);setParams(previous=>{const next=new URLSearchParams(previous);if(id)next.set('spec',id);else next.delete('spec');next.delete('testRun');return next},{replace:true})},toggleVersionExpand:(id:string)=>owned.current?.toggleVersionExpand(id),
   setTestInstruction:(v:string)=>owned.current?.setTestInstruction(v),setTestModel:(v:string)=>owned.current?.setTestModel(v),setVersionNote:(v:string)=>owned.current?.setVersionNote(v),

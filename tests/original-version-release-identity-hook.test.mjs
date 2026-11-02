@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './original-version-release-url-intent-pure.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'

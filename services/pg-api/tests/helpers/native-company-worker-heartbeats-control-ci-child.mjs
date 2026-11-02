@@ -11,13 +11,17 @@ const fixtureName='native-control-ci-fixture.json'
 const sourcePins=Object.freeze({
  'native-company-worker-heartbeats.ts':'6058c7bd324155790939f6e8d6762ed85ade39e05e024915b76d71be061b89a1',
  'native-company-worker-heartbeats-http.ts':'0158cb5217331ecf302c14321c30e99369faad7baed37510320dd8d43f4d8917',
- 'native-auth-http.mjs':'f0470bf679c93be77d2530f9e62803e0d8a478d9d5d5bcaadec63c088d804f6b',
+ 'native-auth-http.mjs':'5f8c0650c613e5115089afaa706e9424b7ab4a51c13be22d0950abaf58746b23',
  'native-current-company-admin.mjs':'83fc4c1d49f3805fd0439e3e4d6a1f093bfed8556940179220e1deeafc2ea889',
  'native-employee-auth.mjs':'96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee',
  'native-employee-governance-audit.mjs':'ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238',
  'worker-heartbeat-activation-control-client.ts':'93db0442634399213b90b0239814585b7a973fd86b0fa11156d9b8632a5c2c87',
  'worker-heartbeat-activation-control-contract.ts':'3d1a9b65a50cba9f3538256203dab134ccff3d1166a9017d7f6e4fa916d55662',
  'worker-heartbeat-contract.ts':'336cebafc1c1b54542fc6828093cb0e87d333950bb3ace1ef318ad75f2d10eba',
+})
+// Preserve all nine existing gates and pin the new exact shared dependency.
+const sharedSourcePins=Object.freeze({
+ 'original-account-contract.ts':'d47cf649c074ad31330a90b129826fde09ca5ae780e21898b5e19b3cc136911b',
 })
 const packages=Object.freeze({pg:'8.23.1','pg-cloudflare':'1.4.1','pg-connection-string':'2.14.1','pg-int8':'1.0.1','pg-pool':'3.14.0','pg-protocol':'1.16.1','pg-types':'2.2.0',pgpass:'1.0.5','postgres-array':'2.0.0','postgres-bytea':'1.0.1','postgres-date':'1.0.7','postgres-interval':'1.2.0',split2:'4.2.0',xtend:'4.0.2'})
 const fixtureKeys=['run','attempt','source_revision','nonce','system_id','database_oid','login_oid','postmaster_started_us','native_uid','native_gid']
@@ -84,6 +88,7 @@ function sealedStage(root){
  function walk(dir){const st=fs.lstatSync(dir);if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o7777)!==0o555)refuse();for(const entry of fs.readdirSync(dir)){const file=path.join(dir,entry),s=fs.lstatSync(file);if(s.isSymbolicLink())refuse();if(s.isDirectory())walk(file);else{if(++files>4096||file.endsWith('.node'))refuse();total+=readSealed(file).length;if(total>268435456)refuse()}}}
  walk(root)
  for(const [name,pin]of Object.entries(sourcePins))if(sha(readSealed(root+'/services/pg-api/src/'+name))!==pin)refuse()
+ for(const [name,pin]of Object.entries(sharedSourcePins))if(sha(readSealed(root+'/shared/'+name))!==pin)refuse()
  const modules=root+'/services/pg-api/node_modules',names=fs.readdirSync(modules)
  if(names.some(n=>!Object.hasOwn(packages,n)&&n!=='typescript')||Object.keys(packages).some(n=>!names.includes(n)))refuse()
  for(const name of names){const p=JSON.parse(readSealed(modules+'/'+name+'/package.json').toString('utf8'));if(p.name!==name||p.version!==(name==='typescript'?'5.9.3':packages[name]))refuse()}

@@ -2,6 +2,7 @@
 import fs from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
+import './worker-heartbeat-pending-absence.test.mjs'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'

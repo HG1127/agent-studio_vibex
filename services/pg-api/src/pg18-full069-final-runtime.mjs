@@ -1,7 +1,7 @@
 // Final14 controller-owned clients. No caller Pool, driver, SQL, target or clock.
 import {createHash} from 'node:crypto'
 import {performance} from 'node:perf_hooks'
-import {parseFull069FinalRuntimePhaseTimingObservation} from './pg18-full069-failure-boundary-observation.mjs'
+import {parseFull069FinalRuntimePhaseTimingObservation,parseFull069FinalBusinessAuditTimingObservation} from './pg18-full069-failure-boundary-observation.mjs'
 import {isNativeError,isProxy} from 'node:util/types'
 import {verifyCompleteProfileOperatorRuntime,loadCompleteProfileOperatorPg,assertCompleteProfileOperatorRuntime} from './pg18-complete-operator-runtime.mjs'
 import {inspectCompleteProfile,verifyCompleteProfile} from './pg18-complete-profile.ts'
@@ -109,21 +109,25 @@ async function businessState(s){
 function makePool(s,user,password,database='agent_studio'){const p=new s.Pool({host:'127.0.0.1',port:5333,database,user,password,ssl:false,options:'',max:1,connectionTimeoutMillis:2000,idleTimeoutMillis:2000,statement_timeout:8000,query_timeout:10000});p.on('error',()=>{s.failed=true});return p}
 function openBusinessPools(s){if(s.businessOpen)fail('business_pools_open');for(const a of s.bindings.accounts)s.pools[a.key]=makePool(s,a.login,secret(a.credential.file));s.businessOpen=true}
 async function closeBusinessPools(s){const rows=finalBusinessLogins.map(a=>s.pools[a.key]).filter(Boolean),out=await Promise.allSettled(rows.map(p=>p.end()));for(const a of finalBusinessLogins)delete s.pools[a.key];s.businessOpen=false;if(out.some(r=>r.status!=='fulfilled'))fail('business_pool_close')}
-async function actualBusinessAudits(s){
- if(!s.businessOpen)fail('business_pools_closed');const audit=await loadAgentDesignAuditVerifier();assertFinalStable(s.trust)
+async function actualBusinessAudits(s,observation=null){
+ if(!s.businessOpen)fail('business_pools_closed')
+ // Passive finite scalars only: never an audit result, gate or query cache.
+ const detail=(()=>{try{if(!observation)return null;const at=performance.now();if(!Number.isFinite(at)||at<0)return null;return {at,valid:true,row:null,field:'load_auditor_ms',parts:{load_auditor_ms:0,pre_stable_ms:0,logins:finalBusinessLogins.map(a=>({key:a.key,target_ms:0,target_stable_ms:0,login_ms:0,auditor_ms:0,secondary_auditor_ms:0,stable_ms:0})),complete_catalog_ms:0,complete_stable_ms:0}}}catch{return null}})()
+ const mark=(field,row=null)=>{try{if(!detail?.valid)return;const at=performance.now();if(!Number.isFinite(at)||at<detail.at){detail.valid=false;return}const current=detail.row===null?detail.parts:detail.parts.logins.find(a=>a.key===detail.row);current[detail.field]+=at-detail.at;detail.at=at;detail.field=field;detail.row=row}catch{try{if(detail)detail.valid=false}catch{}}}
+ const audit=await loadAgentDesignAuditVerifier();mark('pre_stable_ms');assertFinalStable(s.trust)
  // Each audit keeps its distinct max=1 LOGIN pool and original timeouts.
  // Admit one LOGIN audit at a time; still collect every failure in fixed order.
  /** @type {PromiseSettledResult<void>[]} */const results=[]
- for(const a of finalBusinessLogins)results.push(...await Promise.allSettled([(async()=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};await verifyPgRuntimeTarget(p,t);phase='service_target_stable';assertFinalStable(s.trust)
-  phase='service_login';if(a.action&&await completeServiceActualLogin(p,a.action)!==true)fail('actual_login')
-  phase='service_auditor'
+ for(const a of finalBusinessLogins)results.push(...await Promise.allSettled([(async()=>{let phase='service_target';try{const p=s.pools[a.key],t={...target,user:a.login};mark('target_ms',a.key);await verifyPgRuntimeTarget(p,t);phase='service_target_stable';mark('target_stable_ms',a.key);assertFinalStable(s.trust)
+  phase='service_login';mark('login_ms',a.key);if(a.action&&await completeServiceActualLogin(p,a.action)!==true)fail('actual_login')
+  phase='service_auditor';mark('auditor_ms',a.key)
   switch(a.key){
-   case 'api':await verifyBoundDispatchRole(p,t,'api');await inspectAgentPlanWorkflowServicePool(p,'agentstudio_api');break
+   case 'api':await verifyBoundDispatchRole(p,t,'api');mark('secondary_auditor_ms',a.key);await inspectAgentPlanWorkflowServicePool(p,'agentstudio_api');break
    case 'worker':await verifyPgWorkerRoleBoundary(p,t);break
    case 'identity':await verifyBoundDispatchRole(p,t,'identity');break
-   case 'broker':await verifyBoundDispatchRole(p,t,'broker');await inspectAgentPlanWorkflowServicePool(p,'agentstudio_model_broker');break
-   case 'index_worker':await verifyKnowledgeIndexLogin(p,'worker');await verifyKnowledgeIndexSchema(p,'worker');break
-   case 'index_broker':await verifyKnowledgeIndexLogin(p,'broker');await verifyKnowledgeIndexSchema(p,'broker');break
+   case 'broker':await verifyBoundDispatchRole(p,t,'broker');mark('secondary_auditor_ms',a.key);await inspectAgentPlanWorkflowServicePool(p,'agentstudio_model_broker');break
+   case 'index_worker':await verifyKnowledgeIndexLogin(p,'worker');mark('secondary_auditor_ms',a.key);await verifyKnowledgeIndexSchema(p,'worker');break
+   case 'index_broker':await verifyKnowledgeIndexLogin(p,'broker');mark('secondary_auditor_ms',a.key);await verifyKnowledgeIndexSchema(p,'broker');break
    case 'review_worker':await inspectAgentAssessmentOperatorPool(p,t,'worker');break
    case 'review_dispatch':await inspectAgentAssessmentOperatorPool(p,t,'dispatch');break
    case 'design_worker':await inspectAgentDesignOperatorPool(p,t,'worker',audit);break
@@ -132,10 +136,12 @@ async function actualBusinessAudits(s){
    case 'plan_workflow_worker':await inspectAgentPlanWorkflowServicePool(p,'agentstudio_plan_workflow_worker');break
    case 'plan_workflow_dispatch':await inspectAgentPlanWorkflowServicePool(p,'agentstudio_plan_workflow_dispatch');break
   }
-  phase='service_stable';assertFinalStable(s.trust)
+  phase='service_stable';mark('stable_ms',a.key);assertFinalStable(s.trust)
   }catch(error){rememberRuntimeOpenFailure(error,phase,a.key);throw error}
  })()]));const rejected=results.find(r=>r.status==='rejected');if(rejected)throw rejected.reason
- try{const full=await verifyCompleteProfile(s.pools.admin,s.pools.api,s.snapshot.complete,s.profile.complete_source_sha256);if(full.full_catalog_audit_verified!==true||full.actual_api_login_verified!==true)fail('full069_catalog');assertFinalStable(s.trust)}catch(error){rememberRuntimeOpenFailure(error,'complete_catalog');throw error}
+ mark('complete_catalog_ms');try{const full=await verifyCompleteProfile(s.pools.admin,s.pools.api,s.snapshot.complete,s.profile.complete_source_sha256);if(full.full_catalog_audit_verified!==true||full.actual_api_login_verified!==true)fail('full069_catalog');mark('complete_stable_ms');assertFinalStable(s.trust)}catch(error){rememberRuntimeOpenFailure(error,'complete_catalog');throw error}
+ mark('settled')
+ try{if(detail?.valid&&detail.field==='settled'){const round=v=>{const n=Math.ceil(v);if(!Number.isSafeInteger(n)||Object.is(n,-0)||n<0||n>120000)throw Error();return n},p=detail.parts;observation.businessAudits=Object.freeze({load_auditor_ms:round(p.load_auditor_ms),pre_stable_ms:round(p.pre_stable_ms),logins:Object.freeze(p.logins.map(row=>Object.freeze(Object.fromEntries(Object.entries(row).map(([k,v])=>[k,k==='key'?v:round(v)]))))),complete_catalog_ms:round(p.complete_catalog_ms),complete_stable_ms:round(p.complete_stable_ms)})}}catch{/* Diagnostics cannot replace any original audit result. */}
 }
 async function businessBackendsZero(s){return read(s.pools.admin,async db=>{const rows=(await db.query('SELECT pid,backend_start::text AS started,usename FROM pg_stat_activity WHERE datid=$1::oid AND usename=ANY($2::text[]) ORDER BY usename,pid',[s.profile.business_target.database_oid,finalBusinessLogins.map(a=>a.login)])).rows;if(rows.length!==0)fail('business_backends_remain');return {business_backend_count:0,business_audit_pools_closed:true}})}
 export async function openFull069FinalRuntime(trust){
@@ -157,14 +163,16 @@ export function full069FinalPreflight(handle){const s=state(handle);return freez
 const runtimePhaseTimings=new WeakMap()
 function startRuntimePhaseTiming(){try{const at=performance.now();return Number.isFinite(at)&&at>=0?{at,phase:'entry_gate_ms',valid:true,parts:{entry_gate_ms:0,outer_stable_ms:0,physical_ms:0,business_audits_ms:0,telemetry_ms:0,business_ms:0}}:null}catch{return null}}
 function markRuntimePhaseTiming(t,phase){try{if(!t||!t.valid)return;const at=performance.now();if(!Number.isFinite(at)||at<t.at){t.valid=false;return}t.parts[t.phase]+=at-t.at;t.at=at;t.phase=phase}catch{try{if(t)t.valid=false}catch{}}}
-function rememberRuntimePhaseTiming(result,t){try{if(!t?.valid||t.phase!=='settled')return;const parts=Object.fromEntries(Object.entries(t.parts).map(([key,value])=>[key,Math.ceil(value)]));if(Object.values(parts).some(v=>!Number.isSafeInteger(v)||Object.is(v,-0)||v<0||v>120000))return;runtimePhaseTimings.set(result,Object.freeze(parts))}catch{}}
-export function full069FinalRuntimePhaseTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result);return parts?parseFull069FinalRuntimePhaseTimingObservation({event:'full069_final14_runtime_phase_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
+function rememberRuntimePhaseTiming(result,t){try{if(!t?.valid||t.phase!=='settled')return;const parts=Object.fromEntries(Object.entries(t.parts).map(([key,value])=>[key,Math.ceil(value)]));if(Object.values(parts).some(v=>!Number.isSafeInteger(v)||Object.is(v,-0)||v<0||v>120000))return;runtimePhaseTimings.set(result,Object.freeze({parts:Object.freeze(parts),businessAudits:t.businessAudits??null}))}catch{}}
+export function full069FinalRuntimePhaseTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result)?.parts;return parts?parseFull069FinalRuntimePhaseTimingObservation({event:'full069_final14_runtime_phase_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
+// Only the same successful actual Runtime result can expose these DATA scalars.
+export function full069FinalBusinessAuditTimingObservation(result){try{if(!result||typeof result!=='object'||isProxy(result))return null;const parts=runtimePhaseTimings.get(result)?.businessAudits;return parts?parseFull069FinalBusinessAuditTimingObservation({event:'full069_final14_business_audit_timing_observation',outcome:'failed',...parts,observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false}):null}catch{return null}}
 export async function observeFull069FinalRuntime(handle,{ready=true,ended=false}={}){
  const timing=startRuntimePhaseTiming(),s=state(handle);if(s.failed)fail('runtime_client_failed');if(!s.businessOpen)fail('business_pools_closed')
  markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
  markRuntimePhaseTiming(timing,'physical_ms');await physical(s)
  markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)
- markRuntimePhaseTiming(timing,'business_audits_ms');await actualBusinessAudits(s)
+ markRuntimePhaseTiming(timing,'business_audits_ms');await actualBusinessAudits(s,timing)
  markRuntimePhaseTiming(timing,'telemetry_ms');const telemetry=await telemetryState(s,ready,ended)
  markRuntimePhaseTiming(timing,'business_ms');const business=await businessState(s)
  markRuntimePhaseTiming(timing,'outer_stable_ms');assertFinalStable(s.trust)

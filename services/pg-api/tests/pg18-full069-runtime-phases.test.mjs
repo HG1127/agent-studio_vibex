@@ -1,3 +1,4 @@
+import './pg18-full069-business-audit-timing.test.mjs'
 // Actual source functions with inert ports. No real runtime/SQL/server authority.
 import test from 'node:test'
 import assert from 'node:assert/strict'

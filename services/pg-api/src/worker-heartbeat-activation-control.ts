@@ -581,9 +581,41 @@ async function rootWriterObserver<T>(s:State,body:(db:SqlClient)=>Promise<T>):Pr
   try{await db.query("SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='1000ms'; SET LOCAL lock_timeout='250ms'");return await rootWriterCleanupAwait(s,()=>body(db))}finally{await db.query('ROLLBACK')}
  }finally{await rootWriterCleanupAwait(s,()=>raw.end())}
 }
+// Pending owned absence reads share a fresh observer transaction only within
+// one private State. Each request keeps its original SELECT and fresh pre/post
+// runtime gates. Requests arriving after a wave starts require a NEW observer;
+// no completed result or source/runtime verification is retained or reused.
+type RootWriterAbsenceRead={backend:Backend;resolve:(gone:boolean)=>void;reject:(error:unknown)=>void}
+type RootWriterAbsenceQueue={pending:RootWriterAbsenceRead[]}
+const rootWriterAbsenceQueues=new WeakMap<State,RootWriterAbsenceQueue>()
+async function drainRootWriterAbsenceReads(s:State,queue:RootWriterAbsenceQueue):Promise<void>{
+ try{
+  while(queue.pending.length){
+   const wave=queue.pending.splice(0,16)
+   try{
+    const values=await rootWriterObserver(s,async db=>{
+     const gone:boolean[]=[]
+     for(const request of wave){const b=request.backend;gone.push((await db.query<{gone:boolean}>('SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND backend_start=$2::timestamptz AND datid=$3::oid) AS gone',[b.pid,b.started,s.binding.database_oid])).rows[0]?.gone===true)}
+     return gone
+    })
+    // The original observer has completed ROLLBACK/end and their fresh gates
+    // before ANY request may turn an actual absence into a cleanup completion.
+    for(let i=0;i<wave.length;i++)wave[i]!.resolve(values[i]!)
+   }catch(error){for(const request of wave)request.reject(error)}
+  }
+ }finally{if(rootWriterAbsenceQueues.get(s)===queue)rootWriterAbsenceQueues.delete(s)}
+}
+function observeRootWriterBackendGone(s:State,b:Backend):Promise<boolean>{
+ return new Promise<boolean>((resolve,reject)=>{
+  const pending={backend:{pid:b.pid,started:b.started},resolve,reject},queue=rootWriterAbsenceQueues.get(s)
+  if(queue){queue.pending.push(pending);return}
+  const next={pending:[pending]};rootWriterAbsenceQueues.set(s,next)
+  void drainRootWriterAbsenceReads(s,next)
+ })
+}
 async function waitRootWriterBackendGone(s:State,b:Backend){
  const deadline=performance.now()+2000
- do{const gone=await rootWriterObserver(s,async db=>(await db.query<{gone:boolean}>('SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND backend_start=$2::timestamptz AND datid=$3::oid) AS gone',[b.pid,b.started,s.binding.database_oid])).rows[0]?.gone===true);if(gone)return;await rootWriterCleanupAwait(s,()=>new Promise<void>(resolve=>setTimeout(resolve,25)))}while(performance.now()<deadline)
+ do{const gone=await observeRootWriterBackendGone(s,b);if(gone)return;await rootWriterCleanupAwait(s,()=>new Promise<void>(resolve=>setTimeout(resolve,25)))}while(performance.now()<deadline)
  writerFail('writer_uncertain')
 }
 function rootWriterSettings(s:State){return s.profile.protocol==='worker_heartbeat_control_profile_v2'&&s.profile.writers?.enabled?s.profile.writers:undefined}

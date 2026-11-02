@@ -2,7 +2,7 @@
 import {isNativeError,isProxy} from 'node:util/types'
 import {parseWorkerHeartbeatControlJson} from './worker-heartbeat-activation-control-contract.ts'
 const flags=Object.freeze({observed_data_only:true,runtime_authorization:false,qualifies_run:false,production_GO:false})
-const requestEvent='full069_native_request_failure_observation',branchEvent='full069_final14_rejected_branches_observation',runtimePhaseEvent='full069_final14_runtime_phase_timing_observation',branches=['native','runtime','companions']
+const requestEvent='full069_native_request_failure_observation',branchEvent='full069_final14_rejected_branches_observation',runtimePhaseEvent='full069_final14_runtime_phase_timing_observation',auditTimingEvent='full069_final14_business_audit_timing_observation',branches=['native','runtime','companions']
 const requests=new Map([['/api/v2/company-worker-heartbeats','heartbeats'],['/api/native-auth/login','login'],['/api/native-auth/me','me'],['/api/native-auth/logout','logout'],['/api/native-auth/capabilities','capabilities']])
 const nodeCodes=new Set(['ECONNRESET','ECONNREFUSED','EPIPE','ETIMEDOUT','EHOSTUNREACH','ENETUNREACH','EAI_AGAIN','ENOTFOUND','ERR_TLS_CERT_ALTNAME_INVALID','DEPTH_ZERO_SELF_SIGNED_CERT','CERT_HAS_EXPIRED','ERR_SSL_WRONG_VERSION_NUMBER'])
 const controlCodes=new Set(['source_runtime_refused','binding_changed','untrusted_reference','control_closed','control_busy','control_io_failed','lease_expired','lease_revoked','registry_mismatch','reader_capacity','reader_timeout','reader_cleanup_unknown'])
@@ -44,16 +44,32 @@ export function parseFull069FinalRuntimePhaseTimingObservation(raw){
  if(r.event!==runtimePhaseEvent||r.outcome!=='failed'||keys.some(k=>!Number.isSafeInteger(r[k])||Object.is(r[k],-0)||r[k]<0||r[k]>120000))fail()
  return Object.freeze(r)
 }
+const auditLoginKeys=Object.freeze(['api','native_auth','worker','identity','broker','index_worker','index_broker','review_worker','executor','review_dispatch','design_worker','design_dispatch','plan_workflow_worker','plan_workflow_dispatch'])
+const auditTimingParts=Object.freeze(['target_ms','target_stable_ms','login_ms','auditor_ms','secondary_auditor_ms','stable_ms'])
+export function parseFull069FinalBusinessAuditTimingObservation(raw){
+ const scalars=['load_auditor_ms','pre_stable_ms','complete_catalog_ms','complete_stable_ms'],r=record(raw,['event','outcome',...scalars.slice(0,2),'logins',...scalars.slice(2),...Object.keys(flags)]);fixedFlags(r)
+ const valid=v=>Number.isSafeInteger(v)&&!Object.is(v,-0)&&v>=0&&v<=120000
+ if(r.event!==auditTimingEvent||r.outcome!=='failed'||scalars.some(k=>!valid(r[k]))||!Array.isArray(r.logins)||isProxy(r.logins)||Object.getPrototypeOf(r.logins)!==Array.prototype)fail()
+ const ds=Object.getOwnPropertyDescriptors(r.logins);if(ds.length?.value!==14||Reflect.ownKeys(ds).length!==15)fail()
+ const rows=auditLoginKeys.map((key,i)=>{const d=ds[i];if(!d?.enumerable||!Object.hasOwn(d,'value'))fail();const row=record(d.value,['key',...auditTimingParts]);if(row.key!==key||auditTimingParts.some(k=>!valid(row[k])))fail();return Object.freeze(row)})
+ return Object.freeze({...r,logins:Object.freeze(rows)})
+}
 export function parseFull069FailureBoundaryObservations(stderr){
  if(typeof stderr!=='string'||Buffer.byteLength(stderr)>524288||stderr.includes('\0'))return Object.freeze([])
  const records=[],seen=new Set()
  for(const line of stderr.split(/\r?\n/)){
-  const decoded=line.replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));if(!decoded.includes(requestEvent)&&!decoded.includes(branchEvent)&&!decoded.includes(runtimePhaseEvent))continue
+  const decoded=line.replace(/\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));if(!decoded.includes(requestEvent)&&!decoded.includes(branchEvent)&&!decoded.includes(runtimePhaseEvent)&&!decoded.includes(auditTimingEvent))continue
   if(Buffer.byteLength(line)>4096)return Object.freeze([])
-  try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):raw.event===branchEvent?parseFull069RejectedBranchesFailureData(raw):parseFull069FinalRuntimePhaseTimingObservation(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
+  try{const raw=parseWorkerHeartbeatControlJson(Buffer.from(line),4096);if(JSON.stringify(raw)!==line||seen.has(raw.event))return Object.freeze([]);const parsed=raw.event===requestEvent?parseFull069NativeRequestFailureData(raw):raw.event===branchEvent?parseFull069RejectedBranchesFailureData(raw):raw.event===runtimePhaseEvent?parseFull069FinalRuntimePhaseTimingObservation(raw):parseFull069FinalBusinessAuditTimingObservation(raw);seen.add(parsed.event);records.push(parsed)}catch{return Object.freeze([])}
  }
  const request=records.find(r=>r.event===requestEvent),branch=records.find(r=>r.event===branchEvent);if(request&&branch&&branch.primary_branch!=='native')return Object.freeze([])
- const phase=records.find(r=>r.event===runtimePhaseEvent)
+ const phase=records.find(r=>r.event===runtimePhaseEvent),audit=records.find(r=>r.event===auditTimingEvent)
+ if(audit){
+  // Every nested bucket belongs to this same completed Runtime observation.
+  // 14*6+4 independently rounded buckets allow at most88ms rounding excess.
+  const total=audit.load_auditor_ms+audit.pre_stable_ms+audit.complete_catalog_ms+audit.complete_stable_ms+audit.logins.reduce((sum,row)=>sum+auditTimingParts.reduce((n,key)=>n+row[key],0),0)
+  if(!phase||total>phase.business_audits_ms+88)return Object.freeze([])
+ }
  if(phase&&(request||branch)){
   const runtime=branch?.branches.find(r=>r.branch==='runtime')
   // A failed sibling may coexist only with a completed Runtime observation.

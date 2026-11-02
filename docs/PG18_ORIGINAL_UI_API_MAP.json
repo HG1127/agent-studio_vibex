@@ -9112,6 +9112,220 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_5724c2e_hosted_followup": {
+      "actual_head": "5724c2e23af981f8a26c837951128e2b5a420c03",
+      "all19_workflows_terminal": true,
+      "workflows_success": 14,
+      "workflows_failure": 5,
+      "quality_push_PR": {
+        "root_tests": 4819,
+        "pass": 4817,
+        "fail": 2,
+        "skip": 0,
+        "original_employee_contracts": 2579,
+        "original_employee_pass": 2578,
+        "original_employee_fail": 1,
+        "original_employee_skip": 0,
+        "failures": [
+          "independent Native sealed-child consumer native-auth-http source pin was not advanced",
+          "default050 offline runtime review source collector refused the new exact shared original-account contract dependency"
+        ],
+        "whole_quality_passed": false
+      },
+      "F01": {
+        "jobs": 21,
+        "success": 19,
+        "failure": 2,
+        "actual_password_owner_bound_SQL_HTTPS_case_passed": true,
+        "actual_flow_tests": 19,
+        "actual_flow_fail": 0,
+        "actual_original_queued_run_detail_browser_story_passed": true,
+        "release_remaining": "Bob exact snapshot paragraph locator matched the summary and its notes paragraph",
+        "completion_remaining": "second actual completed test replaced by recovery of the old URL run; approval link DOM repeatedly detached",
+        "first_completion_iteration_advanced": true,
+        "whole_completion_story_passed": false
+      },
+      "schedule_Worker": {
+        "whole_guarded_original_browser_story_passed": true,
+        "stages": 9,
+        "Agent_and_Workflow_actual_completion_and_reverified_copy": true,
+        "actual_four_failed_start_rollbacks_one_safe_UI_retry": true,
+        "actual_once_clock_completion_without_manual_run_now": true,
+        "actual_revoke401_blocks_stale_clipboard_and_stale_Broker_replay_denied": true,
+        "commercial_provider_calls": 0,
+        "Worker_CLI_process_entry_accepted": false,
+        "Native_CLI_process_entry_accepted": false,
+        "heartbeat_online_accepted": false
+      },
+      "strict_telemetry": {
+        "genuine_runtime_started": false,
+        "primary": "independent Native consumer source-pin pure failure before execution",
+        "cleanup_optimization_actual_performance_not_yet_accepted": true
+      },
+      "strict069": {
+        "legacy": {
+          "primary": "full069_worker_live_native_not_ready",
+          "prepare_seen_age_ms": 56086,
+          "workflow_v2_seen_age_ms": 48280,
+          "agent_autonomous_seen_age_ms": 76431,
+          "original_freshness_limit_ms": 45000
+        },
+        "Final14": {
+          "primary": "full069_worker_live_native_io",
+          "native_heartbeats_error": "ECONNRESET after own deadline destroy",
+          "request_elapsed_ms": 4001,
+          "native_remaining_ms": -315,
+          "entry_gate_ms": 182,
+          "outer_stable_ms": 1713,
+          "physical_ms": 1784,
+          "business_audits_ms": 27178,
+          "telemetry_ms": 130,
+          "business_ms": 1484,
+          "original_sample_budget_ms": 15000,
+          "whole_story_passed": false
+        }
+      },
+      "reviewed_source_followup": {
+        "native_consumer_pins": {
+          "original_nine_explicit_pins_retained": true,
+          "separate_exact_shared_contract_pin_added": true,
+          "actual_staging_dependency_discovery_retained": true,
+          "Root_pures": 3
+        },
+        "offline_runtime_source_collector": {
+          "exact_shared_contract_path_added": true,
+          "unknown_shared_sibling_and_outside_static_dynamic_imports_still_refused": true,
+          "Root_terminal_source_collector_pures": 2,
+          "whole_archive_test_deferred_to_hosted_CI": true
+        },
+        "original_release_URL": {
+          "actual_recovery_effect_follows_URL_and_spec_selection_only": true,
+          "reads_latest_controller_run_instead_of_render_closure": true,
+          "latest_router_setter_held_in_ref": true,
+          "writer_effect_does_not_rerun_from_external_URL_setter_identity": true,
+          "old_feedback_loop_counterexample": true,
+          "exact_back_forward_owned_read_and_employee_replacement_refusal": true,
+          "Root_release_selected_pures": 56
+        },
+        "release_snapshot_locator": {
+          "exact_original_paragraph_text": true,
+          "foreign_employee_assertion_retained": true
+        },
+        "owned_cleanup_B122": {
+          "frozen_manifest_sha256": "28342a4a4244564f4ccb6438dd06b81920eca0375731b3e53b4496eae814a2ff",
+          "same_state_pending_only_absence_observer_waves_max16": true,
+          "each_target_PID_start_database_read_retained": true,
+          "waiters_resolve_after_rollback_and_end": true,
+          "requests_arriving_during_wave_get_new_fresh_observer": true,
+          "completed_cache": false,
+          "original_fresh_runtime_guards_and_all_eight_cleanup_and_five_second_deadline_retained": true,
+          "Root_two_source_test_files_pures": 44,
+          "actual_performance_acceptance": false
+        },
+        "actual_API_types_passed": true,
+        "actual_original_frontend_types_and_isolated_build_passed": true,
+        "Final14_B123": {
+          "frozen_manifest_sha256": "ac4bfc9fac800542e91c59f2b060d07702262c72aa0260cddbbcf8194db30143",
+          "finite_each_LOGIN_and_final_complete_catalog_timing": true,
+          "actual_result_private_WeakMap_binding": true,
+          "all14_original_audits_single_LOGIN_and_error_priority_retained": true,
+          "actual_runtime_performance_accepted": false
+        }
+      },
+      "optional080_081": {
+        "private_only": true,
+        "A_authentic_vector_binary_source_provenance_and_actual_startup_ports_pending": true,
+        "C081_full_catalog_handoff_received_but_full_factory_not_yet_integrated": true,
+        "Root_new_named081_parent_projection_pures": 114,
+        "current_original_Staff_UI_and_admin_contracts_pending": true,
+        "C_preview14_original_AgentRun_adapter_and_quality_rule_storage_wiring_pending": true
+      },
+      "desktop_preview14_threeway_and_employee_UAT_pending": true,
+      "source_reseal_pending": false,
+      "actual_followup_genuine_acceptance": false,
+      "production_GO": false,
+      "artifacts": [
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-quality-push-main-job.log",
+          "sha256": "9c259e024505ba4f5b5d6f5db8e30d52d40d033fb4824288991dc6676d27b0f3"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-quality-PR-main-job.log",
+          "sha256": "dda60fc4fc11d7ee11f97f7a4e6b7448405cb5b597cd9217f6bc9d1100bf77a0"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-original-ui-contract-job.log",
+          "sha256": "b770a08761e45c0d843a3743c05ae09a8917a229ba3692ecb90951fdf999a3e6"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-original-release-job.log",
+          "sha256": "0439fff4453b1c48e9f1ddabe61446e94547f183f4be2ca217e3dc3063c3f200"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-release-completion-job.log",
+          "sha256": "59236deb12c21bc42fe1cb0db8f0aea738a1f8297cfde63821e8b66d01e0da6e"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-F01-actual-flow-job.log",
+          "sha256": "11aaf1b34d8f61942435dd444d06044dd23cb8026a3d22aaae28eae1bf69c26f"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-original-queued-detail-job.log",
+          "sha256": "c73e906230272c3930637431b443d10446d8e14262e9212b288ce5bb5467fbdc"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-schedule-worker-job.log",
+          "sha256": "6bafd170a163c0c313bec74580bdb13579d062d9bc6adf8a480e2ea566130616"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-telemetry-job.log",
+          "sha256": "30d71ee15432f7e5dde1e869c61b5941acbe995d4d9da0ed55207bb1ca82933b"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-complete069-legacy-job.log",
+          "sha256": "d4a49d4dbd52070e5f51fb0da6f93624c36a4655bd00a4ad04844f7a191797ac"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-complete069-final14-job.log",
+          "sha256": "d605715cddcc15b581390884b5d436491c10f7b8bb63ff99c07bec9d23348d9e"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-native-consumer-pins-pure.log",
+          "sha256": "d5e6fe7561b415e8cdfdcfc817d7f238b87c1eb12aec9836cecc0eebcbafe2a2"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-runtime-review-collector-pure.log",
+          "sha256": "e2ad8a4dd21934d25719c58adf00c70ee5dc5bc1011084859041867a78905b59"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-release-url-intent-Root-pure-v2.log",
+          "sha256": "5ae02e1585a8be878cb71d7e37b0a3ec53629e6e7281bc4ed67ed07da856db0a"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/B122-root-pure.log",
+          "sha256": "108df585b6d4715f40f79c46d41fe7d7dc288ee15d755788b4b9d022abbc05d2"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-followup-API-types.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-followup-frontend-types.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": ".tmp/pg-migration-completion/5724c2e-followup-original-build.log",
+          "sha256": "14618ba8ce2bbcd56233900282aa301cfefd24f96125be64a12986593844448a"
+        }
+      ],
+      "source_seals": {
+        "maps": 25,
+        "pins": 19169,
+        "retained_prior_pins": 19094,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
