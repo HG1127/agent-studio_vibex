@@ -21,7 +21,8 @@ test('070 SQL raw pin and original outer transaction are retained by the review 
 test('Native source collector admits explicit original UI contracts and refuses unreviewed shared paths',()=>{
  const source=fs.readFileSync(new URL('../../../ops/build-pg18-native-api-preflight-bundle.mjs',import.meta.url),'utf8')
   const ts=createRequire(import.meta.url)('typescript'),tree=ts.createSourceFile('builder.mjs',source,ts.ScriptTarget.Latest,true),take=name=>{const node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert(node);return node.getText(tree)}
-  const validate=Function(take('refuse')+'\n'+take('validatedPath')+'\nreturn validatedPath')()
+   const declaration=name=>{const node=tree.statements.filter(ts.isVariableStatement).find(n=>n.declarationList.declarations.some(d=>d.name.getText(tree)===name));assert(node);return node.getText(tree)}
+   const validate=Function(declaration('nativeWorkerSqlAssets')+'\n'+declaration('employeeUi078ReviewedPaths')+'\n'+take('refuse')+'\n'+take('validatedPath')+'\nreturn validatedPath')()
   for(const path of ['shared/original-home-authoring.ts','shared/original-agent-catalog.ts','shared/original-internal-overview-contract.ts'])assert.equal(validate(path),path)
   for(const path of ['shared/other-original.ts','shared/unreviewed-contract.ts','shared/../.env','/shared/original-agent-catalog.ts','shared/original-agent-catalog.ts/../private'])assert.throws(()=>validate(path),/unexpected_dependency/)
  assert(!source.includes('rel.startsWith("shared/")'))

@@ -136,6 +136,12 @@ function trustedMetadata(record,kind){
   if(!metadataRecords.has(record))fail()
   metadataValues(record,kind)
 }
+// Only fresh fstatSync/lstatSync Stats enter the private after position.
+// No extra snapshot or filesystem cache; all nine fields are still compared.
+function trustedStatStable(before,after){
+  if(!stampRecords.has(before))fail()
+  stableValues(before,after)
+}
 function trustedStable(before,after){
   if(!stampRecords.has(before)||!stampRecords.has(after))fail()
   stableValues(before,after)
@@ -198,10 +204,10 @@ function readBound(file,expected,kind,expectedBytes){
   try{
     // Reuse only this captured Stats value, never a filesystem observation.
     const beforeStamp=stamp(before)
-    trustedStable(beforeStamp,stamp(fstatSync(fd)))
+    trustedStatStable(beforeStamp,fstatSync(fd))
     const bytes=readExactBoundBytes(fd,before.size)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
-    trustedStable(beforeStamp,stamp(fstatSync(fd)));trustedStable(beforeStamp,stamp(lstatSync(file)))
+    trustedStatStable(beforeStamp,fstatSync(fd));trustedStatStable(beforeStamp,lstatSync(file))
     sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
     return {bytes,stamp:beforeStamp,chain}
   }finally{closeSync(fd)}
@@ -347,7 +353,7 @@ function verifyTree(state,initial=false){
         seen.add(next)
       }
     }
-    trustedStable(directoryStamp,stamp(lstatSync(path.join(root,relative))))
+    trustedStatStable(directoryStamp,lstatSync(path.join(root,relative)))
   }
   walk(prefix.slice(0,-1));assertWorkerHeartbeatActivationControlRuntimeInventory([...allowed.keys()],[...seen])
   for(const name of Object.keys(graph))packageInfo(state,name)

@@ -126,8 +126,40 @@ export function assertCompleteProfileOperatorRuntimeMetadata(raw,kind){
     if(m.type!=='file'||m.nlink!==1||bits!==(kind==='code'?0o444:0o600)||m.size<1||m.size>(kind==='code'?16:2)*1024*1024)fail()
   }else fail()
 }
-const meta=st=>({type:st.isFile()?'file':st.isDirectory()?'directory':'other',symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:st.mode,nlink:st.nlink,size:st.size})
-const stamp=st=>({dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid,nlink:st.nlink,size:st.size,mtimeMs:st.mtimeMs,ctimeMs:st.ctimeMs})
+function metadataValues(m,kind){
+  if(m.symlink!==false||m.uid!==0||m.gid!==0||!Number.isSafeInteger(m.mode)||!Number.isSafeInteger(m.nlink)||m.nlink<1||!Number.isSafeInteger(m.size)||m.size<0)fail()
+  const bits=m.mode&0o7777
+  if(kind==='ancestor'){if(m.type!=='directory'||(bits&0o7022)!==0)fail()}
+  else if(kind==='directory'){if(m.type!=='directory'||bits!==0o555)fail()}
+  else if(kind==='private-directory'){if(m.type!=='directory'||bits!==0o700)fail()}
+  else if(kind==='code'||kind==='manifest'){
+    if(m.type!=='file'||m.nlink!==1||bits!==(kind==='code'?0o444:0o600)||m.size<1||m.size>(kind==='code'?16:2)*1024*1024)fail()
+  }else fail()
+}
+// Weak membership records constructor provenance only; never filesystem state.
+const metadataRecords=new WeakSet(),stampRecords=new WeakSet()
+const meta=st=>{const record={type:st.isFile()?'file':st.isDirectory()?'directory':'other',symlink:st.isSymbolicLink(),uid:st.uid,gid:st.gid,mode:st.mode,nlink:st.nlink,size:st.size};Object.freeze(record);metadataRecords.add(record);return record}
+const stamp=st=>{const record={dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid,nlink:st.nlink,size:st.size,mtimeMs:st.mtimeMs,ctimeMs:st.ctimeMs};Object.freeze(record);stampRecords.add(record);return record}
+function trustedMetadata(record,kind){
+  if(!metadataRecords.has(record))fail()
+  metadataValues(record,kind)
+}
+function trustedStable(before,after){
+  if(!stampRecords.has(before)||!stampRecords.has(after))fail()
+  stableValues(before,after)
+}
+function stableValues(before,after){
+  // Same nine finite/equality checks, in the same short-circuit field order.
+  if(!Number.isFinite(before.dev)||before.dev!==after.dev||
+    !Number.isFinite(before.ino)||before.ino!==after.ino||
+    !Number.isFinite(before.mode)||before.mode!==after.mode||
+    !Number.isFinite(before.uid)||before.uid!==after.uid||
+    !Number.isFinite(before.gid)||before.gid!==after.gid||
+    !Number.isFinite(before.nlink)||before.nlink!==after.nlink||
+    !Number.isFinite(before.size)||before.size!==after.size||
+    !Number.isFinite(before.mtimeMs)||before.mtimeMs!==after.mtimeMs||
+    !Number.isFinite(before.ctimeMs)||before.ctimeMs!==after.ctimeMs)fail()
+}
 export function assertCompleteProfileOperatorRuntimeStable(before,after){
   const keys=['dev','ino','mode','uid','gid','nlink','size','mtimeMs','ctimeMs'];closed(before,keys);closed(after,keys)
   if(keys.some(k=>!Number.isFinite(before[k])||before[k]!==after[k]))fail()
@@ -146,23 +178,23 @@ export function assertCompleteProfileOperatorRuntimeInventory(expected,actual){
 }
 function ancestors(file,privateParent=false){
   let current=path.dirname(file),first=true;const chain=[]
-  for(;;){const st=lstatSync(current);assertCompleteProfileOperatorRuntimeMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=path.dirname(current);if(parent===current)break;current=parent;first=false}
+  for(;;){const st=lstatSync(current);trustedMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=path.dirname(current);if(parent===current)break;current=parent;first=false}
   if(privateParent)for(const d of chain)for(const name of ['package.json','pnpm-workspace.yaml','.git','pyproject.toml']){try{lstatSync(path.join(d.path,name));fail()}catch(error){if(error?.code!=='ENOENT')throw error}}
   return chain
 }
 function sameChain(a,b){if(a.length!==b.length||a.some((v,i)=>Object.keys(v).some(k=>v[k]!==b[i][k])))fail()}
 function readBound(file,expected,kind,expectedBytes){
   const chain=ancestors(file,kind==='manifest'),before=lstatSync(file)
-  assertCompleteProfileOperatorRuntimeMetadata(meta(before),kind)
+  trustedMetadata(meta(before),kind)
   if(realpathSync(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
   try{
-    assertCompleteProfileOperatorRuntimeStable(stamp(before),stamp(fstatSync(fd)))
+    trustedStable(stamp(before),stamp(fstatSync(fd)))
     const chunks=[],chunk=Buffer.alloc(65536);let offset=0
     while(offset<=before.size){const n=readSync(fd,chunk,0,Math.min(chunk.length,before.size+1-offset),offset);if(!n)break;offset+=n;if(offset>before.size)fail();chunks.push(Buffer.from(chunk.subarray(0,n)))}
     const bytes=Buffer.concat(chunks)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
-    assertCompleteProfileOperatorRuntimeStable(stamp(before),stamp(fstatSync(fd)));assertCompleteProfileOperatorRuntimeStable(stamp(before),stamp(lstatSync(file)))
+    trustedStable(stamp(before),stamp(fstatSync(fd)));trustedStable(stamp(before),stamp(lstatSync(file)))
     sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
     return {bytes,stamp:stamp(before),chain}
   }finally{closeSync(fd)}
@@ -270,10 +302,10 @@ function packageInfo(state,name){
 function verifyTree(state,initial=false){
   host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)
   const manifest=readBound(state.manifestFile,state.manifestSha,'manifest')
-  if(state.manifestStamp)assertCompleteProfileOperatorRuntimeStable(state.manifestStamp,manifest.stamp)
+  if(state.manifestStamp)trustedStable(state.manifestStamp,manifest.stamp)
   if(state.manifestChain)sameChain(state.manifestChain,manifest.chain)
   const lock=readBound(path.join(root,'services/pg-api/pnpm-lock.yaml'),lockSha,'code')
-  if(state.lockStamp)assertCompleteProfileOperatorRuntimeStable(state.lockStamp,lock.stamp)
+  if(state.lockStamp)trustedStable(state.lockStamp,lock.stamp)
   if(state.lockChain)sameChain(state.lockChain,lock.chain)
   const allowed=new Map(state.files)
   for(const [p,h] of Object.entries(parserPins))allowed.set(prefix+'typescript/'+p,{sha256:h,bytes:undefined})
@@ -282,9 +314,9 @@ function verifyTree(state,initial=false){
   const seen=new Set();let count=0
   const walk=relative=>{
     const directory=lstatSync(path.join(root,relative)),directoryStamp=stamp(directory)
-    assertCompleteProfileOperatorRuntimeMetadata(meta(directory),'directory')
+    trustedMetadata(meta(directory),'directory')
     const oldDirectory=state.directoryStamps.get(relative)
-    if(oldDirectory)assertCompleteProfileOperatorRuntimeStable(oldDirectory,directoryStamp)
+    if(oldDirectory)trustedStable(oldDirectory,directoryStamp)
     else if(initial)state.directoryStamps.set(relative,directoryStamp);else fail()
     for(const name of readdirSync(path.join(root,relative))){
       const next=relative+'/'+name,actual=path.join(root,next),st=lstatSync(actual)
@@ -297,14 +329,14 @@ function verifyTree(state,initial=false){
           const p=json(bound.bytes)
           if(p.type!==undefined&&p.type!=='commonjs'&&(p.type!=='module'||!next.includes('/esm/')))fail()
         }
-        if(old)assertCompleteProfileOperatorRuntimeStable(old,bound.stamp)
+        if(old)trustedStable(old,bound.stamp)
         else if(initial)state.stamps.set(next,bound.stamp);else fail()
         const oldChain=state.chains.get(next)
         if(oldChain)sameChain(oldChain,bound.chain);else if(initial)state.chains.set(next,bound.chain);else fail()
         seen.add(next)
       }
     }
-    assertCompleteProfileOperatorRuntimeStable(directoryStamp,stamp(lstatSync(path.join(root,relative))))
+    trustedStable(directoryStamp,stamp(lstatSync(path.join(root,relative))))
   }
   walk(prefix.slice(0,-1));assertCompleteProfileOperatorRuntimeInventory([...allowed.keys()],[...seen])
   for(const name of Object.keys(graph))packageInfo(state,name)
@@ -407,7 +439,7 @@ export function loadCompleteProfileOperatorPg(capability){
         }
         if(state.failed||parsed.search||parsed.hash||context.format==='module')fail()
         const record=state.files.get(relative),bound=readBound(file,record.sha256,'code',record.bytes)
-        assertCompleteProfileOperatorRuntimeStable(state.stamps.get(relative),bound.stamp)
+        trustedStable(state.stamps.get(relative),bound.stamp)
         const format=executable(relative);state.loadedSources.add(relative)
         return {format,source:bound.bytes.toString('utf8'),shortCircuit:true}
       },

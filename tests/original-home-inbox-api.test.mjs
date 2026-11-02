@@ -9,10 +9,10 @@ const workspace=(extra={})=>({protocol:'native_original_agent_workspace_v1',scop
 const query=(extra={})=>({page:1,perPage:10,status:'all',q:'',...extra})
 const page=(q=query(),extra={})=>({protocol:'native_original_agent_pending_v1',scope:'current_user',employee_id:owner,as_of:at,items:rows(10),totalItems:40,totalPages:4,...q,...extra})
 const fixture=(value,status=200)=>{const calls=[];const api=createOriginalHomeInboxApi(owner,async(url,init)=>{calls.push({url,init});return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}})});return{api,calls}}
-test('fixed Native transport uses same-origin Cookie GET with no client-supplied identity',async()=>{
+test('fixed Native transport uses same-origin Cookie GET and an expected employee concurrency precondition',async()=>{
  const f=fixture(workspace()),result=await f.api.workspace();assert.equal(result.pending_count,40);assert.equal(result.agent_run_total,80)
  assert.equal(f.calls[0].url,'/__pg_native/api/v2/original-ui/agent-workspace?limit=12')
- const init=f.calls[0].init;assert.equal(init.method,'GET');assert.equal(init.credentials,'same-origin');assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');assert.equal(init.referrerPolicy,'no-referrer');assert.deepEqual(init.headers,{Accept:'application/json'});assert.equal(init.body,undefined)
+ const init=f.calls[0].init;assert.equal(init.method,'GET');assert.equal(init.credentials,'same-origin');assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');assert.equal(init.referrerPolicy,'no-referrer');assert.deepEqual(init.headers,{Accept:'application/json','X-AgentStudio-Expected-Employee':owner});assert.equal(init.body,undefined)
  assert.throws(()=>createOriginalHomeInboxApi('legacy-pocketbase-id'));assert.throws(()=>createOriginalHomeInboxApi(owner,fetch,'https://foreign.invalid'))
 })
 test('wrong employee/company scope, fake bounded totals and private row fields fail closed',async()=>{
@@ -55,4 +55,29 @@ test('transport errors, malformed/oversized JSON and cancellation cannot produce
  await assert.rejects(()=>createOriginalHomeInboxApi(owner,async()=>{throw Error('network')}).workspace(),/original_home_inbox_unavailable/)
  const abort=new AbortController();abort.abort();let called=false
  await assert.rejects(()=>createOriginalHomeInboxApi(owner,async(_url,init)=>{called=true;assert.equal(init.signal.aborted,true);throw Error('abort')}).workspace(abort.signal));assert.equal(called,true)
+})
+test('matching expected employee cannot replace Cookie authentication or turn a401 into empty data',async()=>{
+ for(const invoke of [api=>api.workspace(),api=>api.pending(query()),api=>api.monitors(null),api=>api.markMonitorRead(id(1))]){
+  const f=fixture({error:'session_required'},401)
+  await assert.rejects(()=>invoke(f.api),error=>error.status===401&&error.code==='original_home_inbox_unavailable')
+  assert.equal(f.calls.length,1);const init=f.calls[0].init,headers=new Headers(init.headers)
+  assert.equal(init.credentials,'same-origin');assert.equal(headers.get('X-AgentStudio-Expected-Employee'),owner)
+  for(const key of ['Authorization','X-Rh-User-Id','X-User-Id'])assert.equal(headers.has(key),false)
+  assert.equal(new URL(f.calls[0].url,'https://localhost').searchParams.has('employee_id'),false)
+ }
+})
+test('workspace pending and monitor response owners stay bound to the original verified employee',async()=>{
+ const monitor=employee=>({protocol:'native_original_monitor_inbox_v1',scope:'current_user',employee_id:employee,as_of:at,items:[],has_more:false,next_cursor:null})
+ for(const [value,invoke]of [[workspace({employee_id:id(200)}),api=>api.workspace()],[page(query(),{employee_id:id(200)}),api=>api.pending(query())],[monitor(id(200)),api=>api.monitors(null)]])await assert.rejects(()=>invoke(fixture(value).api),/invalid_original_home/)
+ const old=fixture(workspace({employee_id:owner}),409);await assert.rejects(()=>old.api.workspace(),error=>error.status===409)
+ const currentCalls=[],current=createOriginalHomeInboxApi(id(200),async(url,init)=>{currentCalls.push({url,init});return new Response(JSON.stringify(monitor(id(200))),{headers:{'Content-Type':'application/json'}})})
+ assert.deepEqual(await current.monitors(null),{items:[],has_more:false,next_cursor:null});assert.equal(currentCalls[0].init.headers['X-AgentStudio-Expected-Employee'],id(200))
+})
+test('late Cookie owner switch cannot relabel the old in-flight inbox client',async()=>{
+ let release,started;const entered=new Promise(resolve=>{started=resolve}),reply=new Promise(resolve=>{release=resolve}),calls=[]
+ const old=createOriginalHomeInboxApi(owner,async(url,init)=>{calls.push({url,init});started();return reply}),pending=old.workspace()
+ await entered;const currentCalls=[],current=createOriginalHomeInboxApi(id(200),async(url,init)=>{currentCalls.push({url,init});return new Response(JSON.stringify(workspace({employee_id:id(200)})),{headers:{'Content-Type':'application/json'}})})
+ assert.equal((await current.workspace()).agent_run_total,80)
+ release(new Response(JSON.stringify(workspace({employee_id:id(200)})),{headers:{'Content-Type':'application/json'}}))
+ await assert.rejects(pending,/invalid_original_home/);assert.equal(calls[0].init.headers['X-AgentStudio-Expected-Employee'],owner);assert.equal(currentCalls[0].init.headers['X-AgentStudio-Expected-Employee'],id(200))
 })

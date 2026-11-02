@@ -29,6 +29,27 @@ test('paging capability is taken from the same actual models instance used by ge
 const configApproval={AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED:'true',AGENT_STUDIO_PG18_UAT_APPROVAL:'APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY'}
 const bothApprovals={...configApproval,AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED:'true',AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED:'APPROVE_DISPOSABLE_PG18_PROVIDER_READONLY_PROBE_ONLY'}
 const origin='https://localhost:17443'
+function assertIndependentProbePurposes(workflow){
+ const permitted=[
+  {name:'Independent original unsaved draft discovery and actual Cookie late POST fence',story:'original-model-draft-discovery',purpose:'AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_CI',value:'YES_DISPOSABLE_ORIGINAL_MODEL_DRAFT_DISCOVERY_ONLY',head:'AGENT_STUDIO_ORIGINAL_MODEL_DRAFT_DISCOVERY_EXPECTED_HEAD',command:'tests/pg-original-model-draft-discovery-genuine.config.mjs'},
+  {name:'Original release actual Worker model tool human current source and tested publication',story:'original-version-release-completion',purpose:'AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_COMPLETION_CI',value:'YES_DISPOSABLE_ORIGINAL_VERSION_RELEASE_COMPLETION_ONLY',head:'AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_COMPLETION_EXPECTED_HEAD',command:'tests/pg-original-version-release-completion-genuine.config.mjs'},
+ ],headers=[...workflow.matchAll(/^      - name: ([^\r\n]+)\r?$/gm)],admitted=[]
+ let outside=workflow
+ for(let i=0;i<headers.length;i++){
+  const header=headers[i],step=workflow.slice(header.index,headers[i+1]?.index??workflow.length)
+  if(!/AGENT_STUDIO_PG18_MODEL_PROBE_UAT_(?:ENABLED|APPROVED):/.test(step))continue
+  const purpose=permitted.find(p=>p.name===header[1]);assert(purpose,'probe grant outside an exact independent purpose: '+header[1]);assert(!admitted.some(p=>p.name===purpose.name),'duplicate probe purpose')
+  assert(step.includes("        if: matrix.story == '"+purpose.story+"'"));assert(step.includes('run: node node_modules/@playwright/test/cli.js test --config='+purpose.command))
+  const env={};for(const [,key,raw]of step.matchAll(/^          ([A-Z][A-Z0-9_]*): ([^\r\n]*)\r?$/gm)){assert(!Object.hasOwn(env,key),'duplicate env '+key);env[key]=raw.startsWith("'")&&raw.endsWith("'")?raw.slice(1,-1):raw}
+  for(const [key,value]of Object.entries(bothApprovals))assert.equal(env[key],value,key)
+  assert.equal(env[purpose.purpose],purpose.value);assert.equal(env[purpose.head],'${{ github.sha }}');assert.equal(env.GITHUB_JOB,undefined)
+  for(const other of permitted.filter(p=>p!==purpose))assert.equal(env[other.purpose],undefined)
+  admitted.push({...purpose,step});outside=outside.replace(step,'')
+ }
+ assert.equal(admitted.length,permitted.length)
+ assert(!/AGENT_STUDIO_PG18_MODEL_PROBE_UAT_(?:ENABLED|APPROVED):/.test(outside))
+ return admitted
+}
 test('actual selector and global handler enforce independent config/probe grants before inner model routes',async()=>{
  for(const [env,create,draft] of [[{},false,false],[configApproval,true,false],[bothApprovals,true,true]]){
   const policy=selectNativePg18UatCapabilities(env,true,origin,1001)
@@ -57,7 +78,7 @@ test('actual selector refuses missing/wrong approvals and unsafe service admissi
  assert.throws(()=>selectNativePg18UatCapabilities(bothApprovals,true,'http://localhost:17443',1001))
  assert.throws(()=>selectNativePg18UatCapabilities(bothApprovals,true,origin,0))
 })
-test('new host uses the actual selected policy before fixture and around every business route; only new workflow purpose gains both grants',()=>{
+test('new host uses the actual selected policy before fixture and around every business route; only exact independent purposes gain both grants',()=>{
  const text=read('tests/helpers/pg-original-model-draft-discovery-backend-fixture.mjs'),workflow=read('.github/workflows/pg18-agent-design-genuine-ci.yml')
  const select=text.indexOf('const selectedPolicy=policy.selectNativePg18UatCapabilities(env,true,permit.origin)'),fixture=text.indexOf('f=await base.agentDesignGenuineFixture'),gate=text.indexOf('assert.equal(selectedPolicy.modelProbeUat,true')
  assert(select>0&&gate>select&&fixture>gate)
@@ -69,6 +90,15 @@ test('new host uses the actual selected policy before fixture and around every b
  assert(!text.includes('Object.assign(selectedPolicy'));assert(!text.includes('selectedPolicy.configurationWrites=true'))
  const start=workflow.indexOf('      - name: Independent original unsaved draft discovery'),end=workflow.indexOf('      - name: Retain fixed safe draft discovery',start),step=workflow.slice(start,end)
  for(const [key,value] of Object.entries(bothApprovals))assert(step.includes(key+': '+(value==='true'?"'true'":value)),key)
- const outside=workflow.slice(0,start)+workflow.slice(end)
- assert(!outside.includes('AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED:'))
+ assertIndependentProbePurposes(workflow)
+})
+test('probe workflow contract rejects wrong completion purpose matrix head or approval and any grant on an old page',()=>{
+ const workflow=read('.github/workflows/pg18-agent-design-genuine-ci.yml'),completion=assertIndependentProbePurposes(workflow).find(p=>p.story==='original-version-release-completion')
+ for(const [before,after]of [[completion.value,'YES_DISPOSABLE_OTHER_PURPOSE_ONLY'],["if: matrix.story == 'original-version-release-completion'","if: matrix.story == 'original-model-connections'"],["AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_COMPLETION_EXPECTED_HEAD: '${{ github.sha }}'","AGENT_STUDIO_ORIGINAL_VERSION_RELEASE_COMPLETION_EXPECTED_HEAD: 'unreviewed'"],['AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_PROVIDER_READONLY_PROBE_ONLY','AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED: wrong'],["AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'","AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'false'"]]){
+  assert(completion.step.includes(before));assert.throws(()=>assertIndependentProbePurposes(workflow.replace(completion.step,completion.step.replace(before,after))))
+ }
+ const oldPage=workflow.indexOf('      - name: Original ModelConnections actual owner'),env=workflow.indexOf('        env:',oldPage),insert=workflow.indexOf('\n',env)+1
+ assert(oldPage>0&&env>oldPage&&insert>env)
+ const widened=workflow.slice(0,insert)+"          AGENT_STUDIO_PG18_MODEL_PROBE_UAT_ENABLED: 'true'\n          AGENT_STUDIO_PG18_MODEL_PROBE_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_PROVIDER_READONLY_PROBE_ONLY\n"+workflow.slice(insert)
+ assert.throws(()=>assertIndependentProbePurposes(widened),/outside an exact independent purpose/)
 })

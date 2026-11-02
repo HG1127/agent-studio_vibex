@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import './native-home071-source-pins.test.mjs'
 import test from 'node:test'
 import {requireOriginalHome070Ci} from './helpers/original-home070-ci-guard.mjs'
 import {requireOriginalHome071Ci} from './helpers/original-home071-ci-guard.mjs'

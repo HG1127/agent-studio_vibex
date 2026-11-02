@@ -8211,6 +8211,58 @@
       "caller_public_browser": "poll response reached terminal before the second click; synchronization source fix prepared",
       "full069_and_telemetry": "failure; no deadline or freshness limits relaxed",
       "current_candidate_results": false
+    },
+    "current_4675857_hosted_followup": {
+      "actual_head": "46758572273ff05542a9b27d12d6ada198af25bf",
+      "workflows_terminal": 18,
+      "success": 10,
+      "failure": 8,
+      "caller_public_browser_succeeded": true,
+      "source_repairs": {
+        "nested071": "three reviewed optional-monitor parser source pins; actual committed-LF nine-source check added",
+        "Tool_workflow": "strict expected parallel-parent SHA updated after review; own assertions retained",
+        "startup_VM": "actual default-disabled ordinary-case selector/prepare and exact070 extraction boundary",
+        "Native_bundle": "only two fixed SQL data assets accept two frozen raw/LF byte hashes; private auth HTTP pin updated",
+        "frontend_pure": "actual privacy lifecycle in VM; Cookie plus verified-employee concurrency header; exact two guarded probe purposes",
+        "monitor074": "real admin transaction installs original063-069 prerequisites and unfiltered ledger audits before untouched073/074",
+        "schedules078": "actual078 installation advanced; hidden-option collision fixed by visible history text locator only",
+        "schedule_Worker": "hosted-only stage_worker activation after real NOLOGIN/SCRAM refusal; exact initialized physical instance, memberships, ledger, original role044 audits and restoration",
+        "runtime_allocations": "private provenance-stamped fresh Stats without extra temporary objects; original finite identity and byte checks retained; actual performance unproven"
+      },
+      "strict069_current_evidence": {
+        "legacy_prepare_age_ms": 52082,
+        "legacy_knowledge_query_age_ms": 69671,
+        "freshness_limit_ms_unchanged": 45000,
+        "exposed_Reader_leases_within_original_5s": 12,
+        "final14_native_io_root_cause": "unknown; closed diagnostics pending",
+        "legacy_cleanup": {
+          "telemetry_backends_zero": false,
+          "readers_in_flight_zero": true,
+          "business_queues_empty": true
+        }
+      },
+      "pure_checks_are_not_genuine_acceptance": true,
+      "new_head_hosted_rerun_required": true,
+      "no_local_SQL_Worker_server_browser": true,
+      "original53_SQL_unchanged": true,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 18444,
+        "retained_prior_pins": 18269,
+        "completion_required_sources": 107,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
+    },
+    "latest_accepted_desktop_baseline_readonly_observation": {
+      "head": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+      "reported_verified_source": "36a005624b60a0b9de08c70638581f4de319bc02",
+      "reported_version": "0.1.0-preview.14",
+      "metadata_matches_committed": true,
+      "required_ancestors_checked": 3,
+      "PG_integration_or_desktop_verifier_or_build_executed": false,
+      "final_original_UI_acceptance": false
     }
   },
   "qualifying24h_hours": 0,

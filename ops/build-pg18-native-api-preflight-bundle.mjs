@@ -56,8 +56,8 @@ const employeeUi078ReviewAssets=["deploy/postgres-staging/employee-ui078-install
 // These two existing Worker assets enter through an erased executor type edge.
 // Package their exact source bytes as data; this tool never executes SQL.
 const nativeWorkerSqlAssets=Object.freeze({
-  "db/postgres/008_claim_workflow_v2.sql":"4bc13f8da3d15ae11dfcb669242ad0babd54440fd93131c028c43369eb822519",
-  "db/postgres/009_claim_autonomous_agent.sql":"26312b65700a436a521cc5eff6af4bf8299f10a2e06c4bb9b5c99dff2e257830",
+  "db/postgres/008_claim_workflow_v2.sql":Object.freeze(["fa1f62bdda742c281d74ac50b01db1697402dda710c417437553828bf14c5ef1","4bc13f8da3d15ae11dfcb669242ad0babd54440fd93131c028c43369eb822519"]),
+  "db/postgres/009_claim_autonomous_agent.sql":Object.freeze(["b4188f7965c8329ea30e52eb420b799735616825887412796a402616072c4ab1","26312b65700a436a521cc5eff6af4bf8299f10a2e06c4bb9b5c99dff2e257830"]),
 })
 function validatedPath(rel){
   if(typeof rel==="string"&&Object.hasOwn(nativeWorkerSqlAssets,rel))return rel
@@ -79,7 +79,7 @@ function includeSource(rel,includeEmployeeUi078=false){
   if(!fs.existsSync(source)||!fs.lstatSync(source).isFile()||
      fs.lstatSync(source).isSymbolicLink())refuse("missing_source")
   if(Object.hasOwn(nativeWorkerSqlAssets,rel)){
-    if(hash(fs.readFileSync(source))!==nativeWorkerSqlAssets[rel])refuse("worker_sql_asset_changed")
+    if(!nativeWorkerSqlAssets[rel].includes(hash(fs.readFileSync(source))))refuse("worker_sql_asset_changed")
     return
   }
   // Reviewed SQL is data, never parsed as JavaScript or executed by this tool.

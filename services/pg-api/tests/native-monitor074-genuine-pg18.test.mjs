@@ -12,6 +12,7 @@ function assertSources(){
  assert.equal(child.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),permit.head)
  assert.equal(child.execFileSync('git',['status','--porcelain','--untracked-files=normal'],{cwd:root,encoding:'utf8'}).trim(),'')
   for(const file of ['db/postgres/migrations/pg_v9_074_monitor_live.sql','services/pg-api/src/native-monitor-original-executor.ts','services/pg-api/src/native-monitor-worker.ts','services/pg-api/src/native-monitor-live-audit.ts','services/pg-api/src/native-monitor-row-lock.ts','services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs','services/pg-api/src/workflow-v2-worker.ts','services/pg-api/src/workflow-v2-agent-machine.ts'])assert(Object.hasOwn(reviewed,file),file)
+ for(const file of ["services/pg-api/tests/helpers/native-monitor074-prerequisites.mjs","services/pg-api/src/pg18-complete-profile-source.mjs","services/pg-api/src/approval-delegation-audit.ts","services/pg-api/src/native-local-device-audit.ts","services/pg-api/src/agent-caller-audit.ts","services/pg-api/src/owner-tool-trial-audit.ts","db/postgres/migrations/pg_v9_063_agent_template_market.sql","db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql","db/postgres/migrations/pg_v9_065_agent_internal_share.sql","db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql","db/postgres/migrations/pg_v9_067_native_local_devices.sql","db/postgres/migrations/pg_v9_068_agent_public_callers.sql","db/postgres/migrations/pg_v9_069_owner_tool_trials.sql"])assert(Object.hasOwn(reviewed,file),file)
  for(const [relative,expected]of Object.entries(reviewed)){
   assert(!relative.startsWith('/')&&!relative.split('/').includes('..'));assert.match(expected,/^[a-f0-9]{64}$/)
   let at=root
@@ -20,6 +21,7 @@ function assertSources(){
  }
 }
 assertSources()
+const {installMonitor074Prerequisites}=await import('./helpers/native-monitor074-prerequisites.mjs')
 const [{agentDesignGenuineFixture},{makeNativeScramVerifier},{default:pg},https,{createNativeAuthHttpHandler},{prepareNativeMonitorLive},{inspectOptionalMonitorLive},{AgentSpecRepository},{safeNativeMonitorBusinessSpec},{ScheduleDraftRepository},{ScheduleRuntimeRepository},{ScheduleRuntimeWorker},{WorkflowV2Worker},{AutonomousAgentRunRepository},{NativeMonitorGetTransport},{NativeMonitorCaptureDispatcher},{NativeMonitorOriginalExecutor},{createWorkflowToolNetwork}]=await Promise.all([
  import('./helpers/agent-design-genuine-fixture.mjs'),import('../src/native-activation-cli.mjs'),import('pg'),import('node:https'),import('../src/native-auth-http.mjs'),import('../src/native-monitor-live-runtime.ts'),import('../src/native-monitor-live-audit.ts'),import('../src/repository.ts'),import('../src/native-monitor-business-contract.ts'),import('../src/schedule-draft-repository.ts'),import('../src/schedule-runtime-repository.ts'),import('../src/schedule-runtime-worker.ts'),import('../src/workflow-v2-worker.ts'),import('../src/autonomous-agent-run-repository.ts'),import('../src/native-monitor-live-transport.ts'),import('../src/native-monitor-live-capture.ts'),import('../src/native-monitor-original-executor.ts'),import('../src/workflow-v2-tool-network.ts')
 ])
@@ -28,6 +30,7 @@ test('074 real Native schedule->approved step->one-use GET->business ledger->fre
  let f,server,handler,primary,monitorExecutor,monitorCoordinator;const extraPools=[],cleanup=[],cookies=new Map();let sourceGets=0,modelCalls=0
  try{
   f=await agentDesignGenuineFixture();assertSources()
+  await installMonitor074Prerequisites(f)
   assert.equal(await inspectOptionalMonitorLive(f.pool),'absent')
   await f.db.exec(fs.readFileSync(path.join(root,'db/postgres/migrations/pg_v9_073_monitor_inbox.sql'),'utf8'))
   await f.db.exec(fs.readFileSync(path.join(root,'db/postgres/migrations/pg_v9_074_monitor_live.sql'),'utf8'))

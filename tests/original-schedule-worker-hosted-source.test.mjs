@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './original-schedule-worker-login-pure.test.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {spawnSync} from 'node:child_process'

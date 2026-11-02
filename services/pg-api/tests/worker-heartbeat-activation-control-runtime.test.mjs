@@ -347,7 +347,7 @@ test('byte-pipeline optimization leaves full fresh hash, FD/path/ancestor and ca
   const body=name=>tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText()
   const reader=body('readBound'),exact=body('readExactBoundBytes'),verify=body('verifyTree')
   assert.match(exact,/Buffer\.allocUnsafe\(size\+1\)/);assert.doesNotMatch(exact,/Buffer\.from\(|Buffer\.concat\(|\.toString\(/)
-  for(const text of ['ancestors(file,kind===\'manifest\')','before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','stamp(fstatSync(fd))','stamp(lstatSync(file))','sha(bytes)!==expected','assertUtf8Bytes(bytes','closeSync(fd)'])assert.ok(reader.includes(text),text)
+  for(const text of ['ancestors(file,kind===\'manifest\')','before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','sha(bytes)!==expected','assertUtf8Bytes(bytes','closeSync(fd)'])assert.ok(reader.includes(text),text)
   assert.equal((reader.match(/ancestors\(file,/g)||[]).length,2)
   for(const text of ['host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)','readBound(state.manifestFile','readBound(path.join(root,\'services/pg-api/pnpm-lock.yaml\')','readdirSync','readBound(actual,record.sha256','assertWorkerHeartbeatActivationControlRuntimeInventory','packageInfo(state,name)','cacheCheck(state)'])assert.ok(verify.includes(text),text)
   assert.ok(body('assertWorkerHeartbeatActivationControlRuntime').includes('try{verifyTree(state)}catch(error){state.failed=true;throw error}'))
@@ -363,7 +363,7 @@ function runtimeScalarSource(){
   return {source,tree,body}
 }
 function runtimeScalarPolicy(io={},strictInternal=false){
-  const {tree,body}=runtimeScalarSource(),names=['fail','closed','assertWorkerHeartbeatActivationControlRuntimeMetadata','metadataValues','assertWorkerHeartbeatActivationControlRuntimeStable','stableValues','trustedMetadata','trustedStable','ancestors','sameChain','readExactBoundBytes','assertUtf8Bytes','readBound']
+  const {tree,body}=runtimeScalarSource(),names=['fail','closed','assertWorkerHeartbeatActivationControlRuntimeMetadata','metadataValues','assertWorkerHeartbeatActivationControlRuntimeStable','stableValues','trustedMetadata','trustedStable','trustedStatStable','ancestors','sameChain','readExactBoundBytes','assertUtf8Bytes','readBound']
   const declarations=tree.statements.filter(ts.isVariableStatement).flatMap(n=>[...n.declarationList.declarations])
   const values=['metadataRecords','stampRecords','meta','stamp'].map(name=>'const '+declarations.find(n=>n.name.getText()===name).getText()+';').join('\n')
   const functions=names.map(name=>{
@@ -371,6 +371,7 @@ function runtimeScalarPolicy(io={},strictInternal=false){
     // Reference path differs only by routing the same fresh, locally-created
     // records through public shape checks; both paths run identical values.
     if(strictInternal&&['ancestors','readBound'].includes(name))text=text.replaceAll('trustedMetadata(','assertWorkerHeartbeatActivationControlRuntimeMetadata(').replaceAll('trustedStable(','assertWorkerHeartbeatActivationControlRuntimeStable(')
+    if(strictInternal&&name==='readBound')text=text.replaceAll('trustedStatStable(beforeStamp,fstatSync(fd))','assertWorkerHeartbeatActivationControlRuntimeStable(beforeStamp,stamp(fstatSync(fd)))').replaceAll('trustedStatStable(beforeStamp,lstatSync(file))','assertWorkerHeartbeatActivationControlRuntimeStable(beforeStamp,stamp(lstatSync(file)))')
     return text
   }).join('\n')
   const {isUtf8}=createRequire(import.meta.url)('node:buffer')
@@ -457,16 +458,17 @@ test('private scalar cores have only trusted metadata/stamp callers and retain e
   const {source,tree,body}=runtimeScalarSource(),calls=[]
   function visit(node,owner){
     if(ts.isFunctionDeclaration(node)&&node.name)owner=node.name.text
-    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['metadataValues','stableValues','trustedMetadata','trustedStable'].includes(node.expression.text))calls.push({owner,name:node.expression.text,args:node.arguments.map(a=>a.getText())})
+    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['metadataValues','stableValues','trustedMetadata','trustedStable','trustedStatStable'].includes(node.expression.text))calls.push({owner,name:node.expression.text,args:node.arguments.map(a=>a.getText())})
     ts.forEachChild(node,child=>visit(child,owner))
   }
   visit(tree,undefined)
   const metadataCalls=calls.filter(c=>c.name==='trustedMetadata'),stableCalls=calls.filter(c=>c.name==='trustedStable')
   assert.deepEqual(calls.filter(c=>c.name==='metadataValues').map(c=>c.owner),['assertWorkerHeartbeatActivationControlRuntimeMetadata','trustedMetadata'])
-  assert.deepEqual(calls.filter(c=>c.name==='stableValues').map(c=>c.owner),['trustedStable','assertWorkerHeartbeatActivationControlRuntimeStable'])
+  assert.deepEqual(calls.filter(c=>c.name==='stableValues').map(c=>c.owner),['trustedStatStable','trustedStable','assertWorkerHeartbeatActivationControlRuntimeStable'])
   assert.deepEqual(metadataCalls.map(c=>c.owner),['ancestors','readBound','verifyTree'])
   assert.deepEqual(metadataCalls.map(c=>c.args[0]),['meta(st)','meta(before)','meta(directory)'])
-  assert.deepEqual(stableCalls.map(c=>c.owner),['readBound','readBound','readBound','verifyTree','verifyTree','verifyTree','verifyTree','verifyTree','loadWorkerHeartbeatActivationControlPg'])
+  assert.deepEqual(stableCalls.map(c=>c.owner),['verifyTree','verifyTree','verifyTree','verifyTree','loadWorkerHeartbeatActivationControlPg'])
+  const rawCalls=calls.filter(c=>c.name==='trustedStatStable');assert.deepEqual(rawCalls.map(c=>c.owner),['readBound','readBound','readBound','verifyTree']);assert.deepEqual(rawCalls.map(c=>c.args),[['beforeStamp','fstatSync(fd)'],['beforeStamp','fstatSync(fd)'],['beforeStamp','lstatSync(file)'],['directoryStamp','lstatSync(path.join(root,relative))']]);assert.ok(body('trustedStatStable').indexOf('stampRecords.has(before)')<body('trustedStatStable').indexOf('stableValues(before,after)'))
   for(const name of ['metadataValues','stableValues'])assert.doesNotMatch(body(name),/^export |closed\(|getOwnPropertyDescriptors|Reflect\.ownKeys/)
   assert.match(body('assertWorkerHeartbeatActivationControlRuntimeMetadata'),/metadataValues\(closed\(raw,/)
   assert.match(body('assertWorkerHeartbeatActivationControlRuntimeStable'),/closed\(before,keys\);closed\(after,keys\)/)
@@ -475,7 +477,7 @@ test('private scalar cores have only trusted metadata/stamp callers and retain e
   assert.doesNotMatch(source,/DirectoryPass|directoryPasses/)
   const reader=body('readBound')
   assert.equal((reader.match(/ancestors\(file,kind==='manifest'\)/g)||[]).length,2)
-  for(const token of ['before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','readExactBoundBytes(fd,before.size)','sha(bytes)!==expected','stamp(fstatSync(fd))','stamp(lstatSync(file))','assertUtf8Bytes(bytes','finally{closeSync(fd)}'])assert.ok(reader.includes(token),token)
+  for(const token of ['before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','readExactBoundBytes(fd,before.size)','sha(bytes)!==expected','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','assertUtf8Bytes(bytes','finally{closeSync(fd)}'])assert.ok(reader.includes(token),token)
   for(const name of ['json','cacheCheck','inspectExports','checkExports','assertWorkerHeartbeatActivationControlRuntimeCacheRecord','assertProtocolPins','parseWorkerHeartbeatActivationControlRuntimeManifest'])assert.doesNotMatch(body(name),/metadataValues\(|stableValues\(|trustedMetadata\(|trustedStable\(/)
 })
 

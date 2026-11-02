@@ -97,7 +97,7 @@ test('catalog primary failure survives a cleanup failure',async()=>{const f=fixt
 // This does not import/start Native, open a port, or prove real SQL/preflight.
 const nativeSource=fs.readFileSync(new URL('../src/native-server.ts',import.meta.url),'utf8')
 const guardStart=nativeSource.indexOf('    const originalHomeFlag=')
-const guardEnd=nativeSource.indexOf('    const agentCatalog=',guardStart)
+const guardEnd=nativeSource.indexOf('    const ordinaryCase=',guardStart)
 assert(guardStart>=0&&guardEnd>guardStart)
 const homeGuardSource=nativeSource.slice(guardStart,guardEnd)
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor

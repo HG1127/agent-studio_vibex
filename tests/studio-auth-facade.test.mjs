@@ -8,24 +8,31 @@ import {createStudioPgAuthAdapter} from "../src/lib/studioPgAuthAdapter.ts"
 
 const raw=fs.readFileSync(new URL("../src/lib/studioAuth.ts",import.meta.url),"utf8")
 const stripped=stripTypeScriptTypes(raw).replace(/^import[^\r\n]*[\r\n]+/gm,"").replace(/^export /gm,"")
+const privacyRaw=fs.readFileSync(new URL("../src/lib/studioSessionPrivacy.ts",import.meta.url),"utf8")
+const privacyStripped=stripTypeScriptTypes(privacyRaw).replace(/^export /gm,"")
 const names=["vibexAuthHeaders","decodeRhToken","verifyStudioSession","getStudioAccountInfo","fetchStudioAccountInfo","logoutStudioAccount","shouldCheckStudioSession","readStudioLoginSetup","initializeStudioAdmin","signInStudioAccount","studioLoginErrorMessage","redirectToRhLogin"]
 const employee={id:"f53bdb1a-c053-48b5-acf0-2381dfe8ae03",email:"employee@example.test",display_name:"Employee",is_admin:false,share_enabled:true}
 const response=(status,body)=>({status,ok:status>=200&&status<300,json:async()=>body})
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 function load(mode="native_pg",fetch=async()=>response(401,{error:"session_required"})){
-  const events=[],redirects=[],alerts=[]
+  const events=[],redirects=[],alerts=[],privacyEvents=[]
   const authStore={isValid:true,token:"pb-test-only",record:{id:"pb-test-id",email:"pb@example.test",display_name:"PB",role:"admin",active:true,share_enabled:false},clear(){events.push("pb.clear");this.isValid=false;this.token="";this.record=null}}
   const pb={authStore,collection(name){events.push(["pb.collection",name]);return {
     authRefresh:async options=>{events.push(["pb.refresh",options]);return {record:authStore.record}},
     authWithPassword:async(email,password)=>{events.push(["pb.signIn",email,password])},
   }}}
   const window={location:{pathname:"/agent-run",search:"?id=test",assign:p=>redirects.push(p)},alert:m=>alerts.push(m)}
+  // Execute the real pure lifecycle with isolated listeners. No real tab or
+  // BroadcastChannel is opened; invalidation still runs the production notify.
+  const privacy=vm.runInNewContext("(()=>{\n"+privacyStripped+"\nreturn {invalidateStudioSessionPrivacy,subscribeStudioSessionPrivacy}})()",{window,BroadcastChannel:undefined},{timeout:1000})
+  privacy.subscribeStudioSessionPrivacy(()=>privacyEvents.push("invalidate"))
   const api=vm.runInNewContext("(()=>{\n"+stripped+"\nreturn {"+names.join(",")+"}})()",{
     pb,fetch,window,Error,Promise,createPgEmployeeSession,PgNativeSessionError,createStudioPgAuthAdapter,
+    invalidateStudioSessionPrivacy:privacy.invalidateStudioSessionPrivacy,
     ORIGINAL_PG_UI_ENABLED:mode==="native_pg",
     getStudioBackend:()=>mode,getStudioApiRoot:()=>mode==="native_pg"?"/__pg_native":"/__pb",
   },{timeout:1000})
-  return {api,events,redirects,alerts,authStore,pb}
+  return {api,events,redirects,alerts,authStore,pb,privacy,privacyEvents}
 }
 const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve()}
 
@@ -93,8 +100,9 @@ test("verified Native identity refusal clears account and never permits PB boots
 
 test("logout button waits for native acknowledgement before navigating",async()=>{
   const gate=deferred(),calls=[]
-  const {api,redirects,events}=load("native_pg",async(url,options)=>{calls.push({url,options});return gate.promise})
+  const {api,redirects,events,privacyEvents}=load("native_pg",async(url,options)=>{calls.push({url,options});return gate.promise})
   const signedOut=api.logoutStudioAccount();let acknowledged=false
+  assert.deepEqual(privacyEvents,["invalidate"])
   signedOut.then(()=>{acknowledged=true})
   await flush();assert.equal(redirects.length,0)
   assert.equal(acknowledged,false)
@@ -106,10 +114,11 @@ test("logout button waits for native acknowledgement before navigating",async()=
 })
 
 test("failed native logout does not navigate or silently use PB logout",async()=>{
-  const {api,redirects,alerts,events}=load("native_pg",async()=>{throw Error("mock network failure")})
+  const {api,redirects,alerts,events,privacyEvents}=load("native_pg",async()=>{throw Error("mock network failure")})
   await assert.rejects(api.logoutStudioAccount())
   assert.deepEqual(redirects,[]);assert.equal(alerts.length,0)
   assert.deepEqual(events,[])
+  assert.deepEqual(privacyEvents,["invalidate"])
 })
 
 test("PB default retains original SDK login, independent status and logout",async()=>{
@@ -180,4 +189,31 @@ test("isolated-build backend selection has no dependency on DEV or PB imports",(
     assert.equal(api.getStudioApiRoot(),expected==="native_pg"?"/__pg_native":"/__pb")
     assert.equal(api.getStudioBasename(),"/")
   }
+})
+
+test("real privacy lifecycle invalidates before Cookie sign-in without granting identity or falling back to PB",async()=>{
+  const gate=deferred(),calls=[],ctx=load("native_pg",async(url)=>{calls.push(url);return url.endsWith("/login")?gate.promise:response(200,{authenticated:true,user:employee})})
+  let draft="PRIVATE_OLD_EMPLOYEE_DRAFT",notified=0
+  const unsubscribe=ctx.privacy.subscribeStudioSessionPrivacy(()=>{draft="";notified++})
+  const signingIn=ctx.api.signInStudioAccount(employee.email,"test-password")
+  assert.equal(draft,"");assert.equal(notified,1);assert.equal(ctx.api.getStudioAccountInfo(),null);assert.deepEqual(ctx.events,[])
+  await flush();assert.deepEqual(calls,["/__pg_native/api/native-auth/login"])
+  gate.resolve(response(200,{authenticated:true,role:"employee"}));await signingIn;assert.equal(ctx.api.getStudioAccountInfo().id,employee.id)
+  const before=calls.length;ctx.privacy.invalidateStudioSessionPrivacy();assert.equal(notified,2);assert.equal(calls.length,before);assert.equal(ctx.api.getStudioAccountInfo().id,employee.id)
+  unsubscribe();ctx.privacy.invalidateStudioSessionPrivacy();assert.equal(notified,2);assert.deepEqual(ctx.events,[])
+})
+test("unchanged verified owner preserves privacy epoch while actual owner switch and401 clear old private views",async()=>{
+  let current=employee,status=200
+  const ctx=load("native_pg",async()=>response(status,status===200?{authenticated:true,user:current}:{error:"session_required"}))
+  assert.equal(await ctx.api.verifyStudioSession(),"authenticated");assert.equal(ctx.api.getStudioAccountInfo().id,employee.id);assert.deepEqual(ctx.privacyEvents,[])
+  assert.equal(await ctx.api.verifyStudioSession(),"authenticated");assert.deepEqual(ctx.privacyEvents,[])
+  current={...employee,id:"d84f0487-3186-4010-9788-607726052025",email:"other@example.test"}
+  assert.equal(await ctx.api.verifyStudioSession(),"authenticated");assert.equal(ctx.api.getStudioAccountInfo().id,current.id);assert.deepEqual(ctx.privacyEvents,["invalidate"])
+  status=401;assert.equal(await ctx.api.verifyStudioSession(),"signed_out");assert.equal(ctx.api.getStudioAccountInfo(),null);assert.equal(ctx.api.decodeRhToken(),null);assert.deepEqual(ctx.privacyEvents,["invalidate","invalidate"]);assert.deepEqual(ctx.events,[]);assert.equal(ctx.authStore.token,"pb-test-only")
+})
+test("temporary Native verification failure invalidates private views without PB token use or PB logout",async()=>{
+  let unavailable=false
+  const ctx=load("native_pg",async()=>{if(unavailable)throw Error("mock network failure");return response(200,{authenticated:true,user:employee})})
+  assert.equal(await ctx.api.verifyStudioSession(),"authenticated");unavailable=true
+  assert.equal(await ctx.api.verifyStudioSession(),"unavailable");assert.equal(ctx.api.getStudioAccountInfo(),null);assert.equal(ctx.api.decodeRhToken(),null);assert.deepEqual(ctx.privacyEvents,["invalidate"]);assert.deepEqual(ctx.events,[]);assert.equal(ctx.authStore.token,"pb-test-only");assert.deepEqual(ctx.redirects,[])
 })

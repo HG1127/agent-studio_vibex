@@ -1739,3 +1739,14 @@ tests/pg-original-version-release-proof-pure.test.mjs text eol=lf
 /services/pg-api/src/native-monitor-row-lock.ts text eol=lf
 /services/pg-api/tests/native-monitor074-row-lock-pure.test.mjs text eol=lf
 /services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs text eol=lf
+/services/pg-api/tests/native-home071-source-pins.test.mjs text eol=lf
+
+# Reviewed private metadata allocation regression
+/services/pg-api/tests/pg18-runtime-private-stats.test.mjs text eol=lf
+
+# Reviewed hosted074 original063-069 prerequisite proof
+/services/pg-api/tests/helpers/native-monitor074-prerequisites.mjs text eol=lf
+/services/pg-api/tests/native-monitor074-prerequisites-pure.test.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-login-policy.mjs text eol=lf
+/tests/helpers/pg-original-schedule-worker-login.mjs text eol=lf
+/tests/original-schedule-worker-login-pure.test.mjs text eol=lf

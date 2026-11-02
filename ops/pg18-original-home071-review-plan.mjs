@@ -9,13 +9,13 @@ const sql={path:'db/postgres/migrations/pg_v9_071_agent_catalog.sql',sha256:'5ed
 const reviewed=[
  {path:'services/pg-api/src/native-agent-catalog-audit.ts',sha256:'54ef7c8430585bdc80c80d4a20d67a3b0426d47c8bf3fef934b37e54ec405227'},
  {path:'services/pg-api/src/native-agent-catalog-http.ts',sha256:'6f14cb0b944081b064853f99fa605dd2af195ac3fcbbad715007581620e1ddf4'},
- {path:'services/pg-api/src/native-agent-catalog-repository.ts',sha256:'a2c8feb26dabcf8aebbad02f8e9c936ce213bbe37776ff849fc5227deaaae470'},
- {path:'services/pg-api/src/native-agent-catalog-runtime.ts',sha256:'0a4897b6f1f7d47a7aef9feb9f0783ccaed94300fceb88d337b85f65a10879a7'},
+ {path:'services/pg-api/src/native-agent-catalog-repository.ts',sha256:'3b9103c2ae4bc03cb1f99caa9b52ff8d5bd742936b12189e2236074d7fb74f00'},
+ {path:'services/pg-api/src/native-agent-catalog-runtime.ts',sha256:'fc6ca1a18904fdee01c9e4e45be38d15906e7b7042bc46df1a85626ad8c51d09'},
  {path:'shared/original-agent-catalog.ts',sha256:'2aac1f4f3c3d7f7e32953066bad4cfeba52da4cf9099fd8132e8d6a62a54f871'},
  {path:'services/pg-api/tests/helpers/native-agent-catalog-cookie-switch-case.mjs',sha256:'8325c29558d3917e6cc9ae41690db57961ed1c0c5c2d5aacf5b97077628e7de5'},
  {path:'services/pg-api/src/native-home-authoring-audit.ts',sha256:'0cad2d395136a9b978ed63044155bc3dc1fde638cc1246331696deb9c5f7e427'},
  {path:'services/pg-api/src/native-home-agent-specs-http.ts',sha256:'9410b58364d167b83017228ae1260fb2757bb59b584650ae0ce6a0702eab9140'},
- {path:'services/pg-api/src/native-home-agent-specs-repository.ts',sha256:'3b2c8f3b523629756092244d75a03959305dbbf1ee16c6d15c9a3a11a86187ba'},
+ {path:'services/pg-api/src/native-home-agent-specs-repository.ts',sha256:'121fe679cda3ba3d448f8fa33bb7117d866caffc08d82b49e95293038e989f92'},
 ]
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}return value}
 function checked(pin){let at=root;for(const segment of pin.path.split('/')){if(fs.lstatSync(at).isSymbolicLink())throw Error('original_home071_review_source_refused');at=path.join(at,segment)}const st=fs.lstatSync(at);if(!st.isFile()||st.isSymbolicLink()||st.size<1||st.size>16*1024*1024||sha(fs.readFileSync(at))!==pin.sha256)throw Error('original_home071_review_source_refused')}
