@@ -10338,6 +10338,105 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_6f2b973_owned_read_and_warmup_followup": {
+      "base_head": "6f2b9736941632e83d758156de3c0fcbe5f42868",
+      "source_reseal_pending": false,
+      "source_changes": [
+        "One owned bounded allocation per original operator read; retain identical fresh FS calls/counts/file offsets/request lengths/EOF probe and hash/UTF8/metadata/ancestor/FD/owner/error/close behavior.",
+        "Emit the existing closed eight-worker Native not-ready scalar packet for a successful descriptive ready=false warmup read; preserve the same original login/me/reader/catalog/logout, provenance receipt, response, original rejection and deadline predicates. No additional HTTP or SQL."
+      ],
+      "Root_directed_proof": {
+        "owned_read_inputs": 18,
+        "owned_read_pure": 108,
+        "original_readBound_parent_and_fixture_verified": true,
+        "outside_allocation_block_unchanged": true,
+        "Native_directed_pure": 64,
+        "all_Native_auth_and_request_and_deadline_code_outside_observation_markers_byte_identical_to_base": true,
+        "local_SQL_Worker_Native_browser_or_provider_calls": 0,
+        "current_candidate_genuine_acceptance": false
+      },
+      "base_hosted_proof": {
+        "F01": {
+          "jobs": 21,
+          "pass": 21,
+          "actual_original_model_draft_and_feedback403_and_RunDetail_and_version_stories_pass": true,
+          "RunDetail_stage_count": 5,
+          "explicit_negative_reads": 5,
+          "optional_owner_transition_denials": 0,
+          "unexpected_API_failures": 0,
+          "all_zero_and_owner_cleanup_pass": true
+        },
+        "quality_each": {
+          "jobs": 51,
+          "pass": 51,
+          "main_tests": 5393,
+          "main_pass": 5393,
+          "main_fail": 0,
+          "main_skip": 0,
+          "actual_pnpm_check_success": true
+        },
+        "telemetry_PB19_same_run_and_scheduled_Worker_pass": true,
+        "strict069": {
+          "actual_runtime_run": true,
+          "Legacy": {
+            "reason": "full069_worker_live_path_validation_warmup",
+            "reader_consumed_observations": 11,
+            "first_reader_elapsed_ms": 4882,
+            "first_reader_remaining_ms": 119,
+            "first_reader_guard_calls": 131,
+            "first_reader_guard_ms": 4361,
+            "warm_collected": false
+          },
+          "Final14": {
+            "reason": "sample_budget_exceeded",
+            "phase": "warm_sample",
+            "sample_budget_ms": 15000,
+            "collected_ms": 26669,
+            "before_checks_ms": 1168,
+            "checks_ms": 23949,
+            "after_checks_ms": 1553,
+            "guard_calls": 30,
+            "guard_ms": 12891,
+            "node_executable_ms": 4818,
+            "final_sources_ms": 5677,
+            "business_audits_ms": 19961
+          },
+          "qualified": false
+        }
+      },
+      "private_candidates": {
+        "A_C_combined": {
+          "A_v3f_targets": 12,
+          "A_v3f_parents": 9,
+          "A_v3f_hunks": 29,
+          "C_aligned_targets": 42,
+          "C_aligned_parents": 13,
+          "C_aligned_hunks": 60,
+          "Root_actual_API_tsc_pass": true,
+          "Root_Role_pure": 191,
+          "Root_current_SDK_C_pure": 97,
+          "Root_actual_frontend_errors": 52,
+          "device_errors": 36,
+          "run_page_contract_errors": 16,
+          "Native_remaining_fields": 13,
+          "integrated": false,
+          "full_UI_SQL_Worker_browser_acceptance": false
+        },
+        "B_desktop": {
+          "Root_pure": 124,
+          "actual_Electron_SQL_original_Native_picker_acceptance": false,
+          "integrated": false
+        }
+      },
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 20469,
+        "retained_prior_pins": 20419,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

@@ -193,9 +193,10 @@ function readBound(file,expected,kind,expectedBytes){
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
   try{
     trustedStable(stamp(before),stamp(fstatSync(fd)))
-    const chunks=[],chunk=Buffer.alloc(65536);let offset=0
-    while(offset<=before.size){const n=readSync(fd,chunk,0,Math.min(chunk.length,before.size+1-offset),offset);if(!n)break;offset+=n;if(offset>before.size)fail();chunks.push(Buffer.from(chunk.subarray(0,n)))}
-    const bytes=Buffer.concat(chunks)
+    // One owned allocation; keep every original64KiB request and EOF probe.
+    const allocation=Buffer.allocUnsafe(before.size+1);let offset=0
+    while(offset<=before.size){const n=readSync(fd,allocation,offset,Math.min(65536,before.size+1-offset),offset);if(!n)break;offset+=n;if(offset>before.size)fail()}
+    const bytes=allocation.subarray(0,offset)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
     trustedStable(stamp(before),stamp(fstatSync(fd)));trustedStable(stamp(before),stamp(lstatSync(file)))
     sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
