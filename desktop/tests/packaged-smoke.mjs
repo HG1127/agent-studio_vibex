@@ -11,6 +11,8 @@ import {pipeline} from 'node:stream'
 import {fileURLToPath} from 'node:url'
 import {spawnHeadlessPocketBase,stopHeadlessPocketBase} from '../../tests/helpers/headless-pocketbase.mjs'
 import {prepareGuidedConnection} from '../../local-executor/setup.mjs'
+import {createElectronApplicationFixture} from '../../tests/helpers/electron-application-fixture.windows.mjs'
+import {inspectApplication} from '../../local-executor/applications.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..')
 const executable=path.resolve(process.argv[2]||'')
 const installOption=process.argv.find(x=>x.startsWith('--install-dir='))?.slice('--install-dir='.length)
@@ -20,7 +22,7 @@ const data=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-db-'))
 const key=randomBytes(32).toString('hex')
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r))
-let pb,client,workbench,report
+let pb,client,workbench,report,electronFixture,applicationGrant
 const sockets=new Set()
 try {
   pb=spawnHeadlessPocketBase(process.env.POCKETBASE_BIN||path.join(root,'vibex-local/bin/windows/pocketbase.exe'),['serve','--http=127.0.0.1:'+port,'--dir='+data,'--hooksDir='+path.join(root,'pocketbase/pb_hooks')],{cwd:path.join(root,'pocketbase'),env:{AGENT_STUDIO_AUTH_MODE:'standalone',AGENT_STUDIO_LEGACY_TEST_ONLY:'false',AGENT_STUDIO_ALLOW_ANON:'false',AGENT_STUDIO_BOOTSTRAP_SECRET:key,AGENT_STUDIO_SECRET_KEY:randomBytes(16).toString('hex'),AGENT_STUDIO_BACKGROUND_WORKER:'false'}})
@@ -43,6 +45,12 @@ try {
   await fs.mkdir(connectorHome,{recursive:true})
   const prepared=await prepareGuidedConnection({format:'agent-studio-connect-v1',server:server+'/__pb',name:'桌面内置验收电脑',mode:'both',origins:[],pairing:{id:device.id,code:device.pairing_code,expiresAt:device.expires_ms}},{home:connectorHome,defaultReadOnly:true,confirm:async()=>true})
   if(process.argv.includes('--native-file-actions')){const c=JSON.parse(await fs.readFile(prepared.configFile,'utf8'));c.roots[0].capabilities.open=true;await fs.writeFile(prepared.configFile,JSON.stringify(c,null,2))}
+  if(process.argv.includes('--application-cold-start')){
+    electronFixture=await createElectronApplicationFixture(dir,path.join(root,'desktop/node_modules/electron/dist'))
+    applicationGrant=await inspectApplication(electronFixture.exe,{name:'Electron cold start fixture'})
+    const config=JSON.parse(await fs.readFile(prepared.configFile,'utf8'));config.applications={format:'agent-studio-applications-v1',enabled:true,images:false,grants:[applicationGrant]}
+    await fs.writeFile(prepared.configFile,JSON.stringify(config,null,2))
+  }
   await fs.writeFile(path.join(prepared.workspace,'desktop-fixture.txt'),'BUNDLED_DESKTOP_FILE_OK')
   await fs.writeFile(path.join(profileHome,'smoke-auth.json'),JSON.stringify(fixtureLogin),{mode:0o600})
   const reportPath=path.join(dir,'report.json')
@@ -89,6 +97,18 @@ try {
   let completed
   for(let i=0;i<100;i++){completed=await request('GET','/__pb/api/local-jobs/'+queued.data.id,null,{Authorization:login.data.token});if(['succeeded','failed'].includes(completed.data.status))break;await sleep(200)}
   assert.equal(completed.data.status,'succeeded');assert.ok(completed.data.result.includes('BUNDLED_DESKTOP_FILE_OK'))
+  let electronColdStart=false
+  if(applicationGrant){
+    for(const tool of ['apps.windows','apps.launch','apps.launch']){
+      const queued=await request('POST',jobRoute,{tool,arguments:{app:applicationGrant.id},confirm:true,request_id:randomBytes(16).toString('hex')},{Authorization:login.data.token});assert.equal(queued.status,201)
+      let result;for(let i=0;i<240;i++){result=await request('GET','/__pb/api/local-jobs/'+queued.data.id,null,{Authorization:login.data.token});if(['succeeded','failed','expired','unknown'].includes(result.data.status))break;await sleep(250)}
+      assert.equal(result.data.status,'succeeded',tool+': '+result.data.result)
+      const value=JSON.parse(result.data.result)
+      if(tool==='apps.windows')assert.deepEqual(value.windows,[],'fixture must begin with no window')
+      else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true}
+    }
+    const receipt=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'));assert.equal(receipt.type,'browser');assert.equal(receipt.nodeMode,null);assert.equal(receipt.visible,true)
+  }
   let nativeFileApplications=false
   if(process.argv.includes('--native-file-actions')){
     for(const tool of ['files.open','files.reveal']){
@@ -112,7 +132,7 @@ try {
   assert.equal(await fs.readFile(prepared.configFile,'utf8'),originalConfig,'cancelled in-app review changed local permissions')
   const manager=await fetch(report.managerOrigin+'/api/state');assert.equal(manager.status,403)
   const code=await (await fetch(report.origin+'/__desktop/runtime.js')).text();assert.ok(code.includes(server));assert.ok(!code.includes(login.data.token))
-  console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
+  console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,electronColdStart,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
   if(process.argv.includes('--keep-open')){
     await fs.writeFile(path.join(root,'.tmp','desktop-active-smoke.json'),JSON.stringify({directory:dir,report,finish:path.join(dir,'finish')},null,2))
     for(let i=0;i<1800;i++){try{await fs.access(path.join(dir,'finish'));break}catch{}await sleep(1000)}

@@ -1,6 +1,9 @@
 import {createGateway} from './gateway.mjs'
 import {createConnectorManager} from '../local-executor/desktop.mjs'
 import {createDesktopComputer} from './computer.mjs'
+// Electron fork injects this after policy.childEnvironment() has run. Services
+// are already running in the bundled Node binary; descendants must be GUI apps.
+for(const key of Object.keys(process.env))if(/^ELECTRON_RUN_AS_NODE$/i.test(key))delete process.env[key]
 const config = JSON.parse(process.argv[2] || '{}')
 let gateway, manager, computer, closing = false
 const send = value => {if(process.connected)process.send(value)}

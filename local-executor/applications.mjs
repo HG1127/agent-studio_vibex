@@ -8,7 +8,14 @@ import {confirmManaged} from './managed-confirmation.mjs'
 import {mcpResult} from './result.mjs'
 import {createCodexTasks} from './codex-tasks.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
-import {allowedWindowTarget,resolveWindowTarget} from './application-target.mjs'
+import {allowedWindowTarget,resolveWindowTarget,shortcutApplicationPath,isQoderHelper} from './application-target.mjs'
+
+// Electron's fork() injects ELECTRON_RUN_AS_NODE even when the desktop parent
+// supplies a clean environment. Never let connector runtime controls turn a
+// separately authorized GUI application into a Node process (exit code 9).
+export function applicationEnvironment(env=process.env){
+ return Object.fromEntries(Object.entries(env).filter(([key])=>!/^(?:ELECTRON_RUN_AS_NODE|NODE_OPTIONS|NODE_PATH|NODE_CHANNEL_FD|NODE_CHANNEL_SERIALIZATION_MODE|STUDIO_LOCAL_.*)$/i.test(key)))
+}
 
 const hash=s=>createHash('sha256').update(s).digest('hex')
 const forbidden=/^(?:agent[ -]?studio|chatgpt|powershell|powershell_ise|pwsh|cmd|wt|windowsterminal|conhost|regedit|mmc|rundll32|mshta|wscript|cscript|taskmgr|control|credentialuibroker|logonui|lockapp|winlogon|lsass|securityhealth.*|msmpeng|keepass.*|1password|bitwarden|lastpass|dashlane|codex)\.exe$/i
@@ -53,7 +60,7 @@ export async function discoverApplications({native=applicationNative}={}){
  const candidates=(Array.isArray(rows)?rows:[]).slice(0,3000)
  for(let offset=0;offset<candidates.length;offset+=8){
   if(result.length>=700)break
-  const batch=await Promise.allSettled(candidates.slice(offset,offset+8).map(async r=>{const file=r.icon!==undefined?applicationIconPath(r.icon):r.path;if(!file||seen.has(applicationId(file)))return null;return inspectApplication(file,{name:r.name,adapter:r.adapter==='codex'?'codex':'desktop'},{fingerprint:false})}))
+  const batch=await Promise.allSettled(candidates.slice(offset,offset+8).map(async r=>{const entry=r.icon!==undefined?applicationIconPath(r.icon):r.path;const file=shortcutApplicationPath(entry,r.workingDirectory);if(!file||seen.has(applicationId(file)))return null;return inspectApplication(file,{name:r.name,adapter:r.adapter==='codex'?'codex':'desktop'},{fingerprint:false})}))
   for(const row of batch){if(row.status!=='fulfilled'||!row.value||seen.has(row.value.id)||result.length>=700)continue;seen.add(row.value.id);result.push(row.value)}
  }
  return result.filter(app=>!result.some(parent=>parent.id!==app.id&&parent.windowPath?.toLowerCase()===app.path.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name,'zh-CN'))
@@ -74,13 +81,14 @@ export function registerApplications({add,config,native=applicationNative,launch
  if(desktop.length){
   addTool('apps.launch','启动已授权应用并等待窗口就绪。ready 才能开始观察；waiting_window 只说明启动已受理，须继续刷新窗口，不能宣称任务完成。',{app:appSchema(desktop)},async(args,signal)=>{
    exact(args,['app']);const g=await checked(args.app);signal?.throwIfAborted()
+   if(isQoderHelper(g.path))throw Error('application_launcher_needs_review')
    const existing=await windows(g,signal)
    if(existing.length)return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:true,windows:existing.map(({path,...w})=>w)})
    // Window discovery starts a native helper. Cancellation or an application
    // update during that await must be checked before any launch side effect.
    await checked(args.app);signal?.throwIfAborted()
    let exitCode=null,launchError=false
-   await new Promise((resolve,reject)=>{const child=launch(g.path,g.accessibility==='electron'?['--force-renderer-accessibility']:[],{shell:false,windowsHide:false,stdio:'ignore',cwd:path.dirname(g.path)});child.on('error',error=>{launchError=true;reject(Error(error.code==='ENOENT'?'application_binary_missing':['EACCES','EPERM'].includes(error.code)?'application_launch_denied':'application_launch_failed'))});child.once('exit',code=>{exitCode=code});child.once('spawn',()=>{child.unref();resolve()})})
+   await new Promise((resolve,reject)=>{const child=launch(g.path,g.accessibility==='electron'?['--force-renderer-accessibility']:[],{shell:false,windowsHide:false,stdio:'ignore',cwd:path.dirname(g.path),env:applicationEnvironment()});child.on('error',error=>{launchError=true;reject(Error(error.code==='ENOENT'?'application_binary_missing':['EACCES','EPERM'].includes(error.code)?'application_launch_denied':'application_launch_failed'))});child.once('exit',code=>{exitCode=code});child.once('spawn',()=>{child.unref();resolve()})})
    const deadline=Date.now()+launchWaitMs
    do{signal?.throwIfAborted();if(launchError)throw Error('application_launch_failed');const list=await windows(g,signal);if(list.length){await checked(args.app);signal?.throwIfAborted();return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)})}if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
    // Single-instance apps/version launchers can exit before the real window
