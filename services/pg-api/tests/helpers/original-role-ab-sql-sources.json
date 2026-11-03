@@ -161,7 +161,7 @@
     },
     {
       "path": "db/postgres/optional/original_skill_ab_v1.sql",
-      "sha256": "8b362441cedf1095a4ecc2f516733bba68223d931e87e1746ffbc8ba69baadc5"
+      "sha256": "bef180a82ee9ebdaf9a897d9f9748b8d45e1513804030a4eccd9fa4e41db712d"
     },
     {
       "path": "package.json",
@@ -625,7 +625,7 @@
     },
     {
       "path": "services/pg-api/src/original-skill-ab-schema.mjs",
-      "sha256": "41399803a0a2ff289b5b484c8696a242e1ca2ad15562f9dbd7fea70fc7b4de55"
+      "sha256": "fc46c86cfe9a5763aa2d9a8c52de27515410b73bb30d7cc876235fdfb0970dfc"
     },
     {
       "path": "services/pg-api/src/original-skill-ab-source.ts",

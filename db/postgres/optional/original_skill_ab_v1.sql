@@ -99,7 +99,7 @@ REVOKE ALL ON FUNCTION agentstudio_skill_ab.utf16_length(text) FROM PUBLIC;
 CREATE FUNCTION agentstudio_skill_ab.session(text) RETURNS void LANGUAGE plpgsql VOLATILE CALLED ON NULL INPUT SECURITY DEFINER SET search_path=pg_catalog AS $ab$DECLARE login record;expected text;BEGIN
  IF current_database()<>'agent_studio' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port()<>5333 OR current_setting('server_version_num')::integer NOT BETWEEN 180000 AND 189999 OR pg_is_in_recovery() THEN RAISE EXCEPTION 'original_skill_ab_target_refused';END IF;
  expected:=CASE $1 WHEN 'api' THEN 'agentstudio_stage_login' WHEN 'dispatch' THEN 'agentstudio_stage_skill_ab_dispatch' ELSE NULL END;
- IF expected IS NULL OR session_user<>expected OR current_setting('role')<>CASE $1 WHEN 'api' THEN 'agentstudio_api' ELSE 'agentstudio_skill_ab_dispatch' END THEN RAISE EXCEPTION 'original_skill_ab_session_refused';END IF;
+ IF expected IS NULL OR session_user<>expected OR current_setting('role')<>(CASE $1 WHEN 'api' THEN 'agentstudio_api' ELSE 'agentstudio_skill_ab_dispatch' END) THEN RAISE EXCEPTION 'original_skill_ab_session_refused';END IF;
  SELECT * INTO login FROM pg_roles WHERE rolname=session_user;
  IF login.rolname IS NULL OR NOT login.rolcanlogin OR login.rolinherit OR login.rolsuper OR login.rolbypassrls OR login.rolcreaterole OR login.rolcreatedb OR login.rolreplication THEN RAISE EXCEPTION 'original_skill_ab_session_refused';END IF;
  END$ab$;
@@ -248,5 +248,5 @@ CREATE FUNCTION agentstudio_skill_ab.control(uuid, uuid, text) RETURNS jsonb LAN
  INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) VALUES(owner,owner,'agent.skill_ab_control','skill_ab',$2::text,'succeeded',jsonb_build_object('operation_id',$1,'action',$3,'request_sha256',h));RETURN v;END$ab$;
 REVOKE ALL ON FUNCTION agentstudio_skill_ab.control(uuid, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION agentstudio_skill_ab.control(uuid, uuid, text) TO agentstudio_api;
-INSERT INTO agentstudio_skill_ab.runtime_profile(protocol,source_sha256) VALUES('original-skill-ab-v1','c2b784c8da63e1df41cc02b0b84c2b3433990f8de5e7042f42b1264a6c9096e1');
+INSERT INTO agentstudio_skill_ab.runtime_profile(protocol,source_sha256) VALUES('original-skill-ab-v1','01cb0b9cf4ea6341f33ddf42e1256865e530afcc3cf2e00964f40e77f300de2b');
 COMMIT;

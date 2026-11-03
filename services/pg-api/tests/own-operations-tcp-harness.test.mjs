@@ -31,6 +31,7 @@ test('actual repository actor completes through the traced combined-SET result w
  const base={knowledgeSharing:true,knowledgeEmbeddingSettings:false,knowledgeEmbeddingConsent:true,knowledgeIndexRuntime:false,knowledgeQueryRuntime:true,knowledgeToolRuntime:false,async connect(){return {release(){releases++},async query(sql,args=[]){
   trace.push({sql,args})
   if(sql.startsWith('SET LOCAL statement_timeout='))return multiple
+  if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return {rows:[{installed:false,database_oid:"16384"}]};
   if(sql.includes('identity_user_id('))return {rows:[{id:owner}]}
   if(sql.startsWith("SELECT current_user="))return {rows:[{ok:true}]}
   if(sql===ownOperationsGuardSql)return {rows:[{ok:true}]}

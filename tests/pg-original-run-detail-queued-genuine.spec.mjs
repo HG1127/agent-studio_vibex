@@ -34,11 +34,11 @@ test('actual original RunDetail four queued protocols, exact negative reads, ori
   })
   await test.step('wrong explicit kind fails closed; the actual original parent history link without kind resolves exactly one real protocol and exactly three correlated404 reads',async()=>{
    const wrong=f.expectNotFound(auto.id,['workflow_v2'],'wrong_explicit_kind');await p.goto(f.origin+'/run-detail?run='+auto.id+'&kind=workflow_v2',{waitUntil:'domcontentloaded'});await expect(p.getByRole('heading',{name:'运行不存在或无权查看',exact:true})).toBeVisible();wrong.assertConsumed()
-   await p.goto(f.origin+parent('alice'),{waitUntil:'domcontentloaded'});await expect(p.locator('#spec-select')).toHaveValue(alice.parent.id)
-   const exact=f.expectNotFound(auto.id,['agent_single','workflow_safe','workflow_v2'],'legacy_kind_resolution'),link=p.locator('a[title="查看运行详情"][href="/run-detail?run='+auto.id+'"]')
-   await expect(link).toHaveCount(1);await link.click();await expect(p).toHaveURL(f.origin+detail('alice','agent_autonomous',false));await ready('agent_autonomous');exact.assertConsumed()
+   await p.goto(f.origin+parent('alice'),{waitUntil:'domcontentloaded'});await expect(p.locator('#run-quick-spec')).toHaveValue(alice.parent.id)
+   const exact=f.expectNotFound(auto.id,['agent_single','workflow_safe','workflow_v2'],'legacy_kind_resolution'),link=p.getByRole('link',{name:'查看该任务完整记录',exact:true})
+   await expect(link).toHaveCount(1);await expect(link).toHaveAttribute('href','/run-detail?run='+auto.id);await link.click();await expect(p).toHaveURL(f.origin+detail('alice','agent_autonomous',false));await ready('agent_autonomous');exact.assertConsumed()
    const correlated=f.observations.expected_not_found.filter(v=>v.target_id===auto.id&&v.reason==='legacy_kind_resolution');expect(correlated).toHaveLength(3);expect(new Set(correlated.map(v=>v.path)).size).toBe(3)
-   const back=p.getByRole('link',{name:'在试跑页打开该方案',exact:true});await expect(back).toHaveAttribute('href',parent('alice'));await back.click();await expect(p).toHaveURL(f.origin+parent('alice'));await expect(p.locator('#spec-select')).toHaveValue(alice.parent.id)
+   const back=p.getByRole('link',{name:'在试跑页打开该方案',exact:true});await expect(back).toHaveAttribute('href',parent('alice'));await back.click();await expect(p).toHaveURL(f.origin+parent('alice'));await expect(p.locator('#run-quick-spec')).toHaveValue(alice.parent.id)
    await p.goto(f.origin+detail('alice','agent_autonomous'),{waitUntil:'domcontentloaded'});await ready('agent_autonomous');steps.explicit_wrong_kind_and_actual_legacy_cross_link=true
   })
   await test.step('Native8s expiry leaves the exact original pause pending; a true negative receipt preserves it, then one original request commits and a positive readonly confirmation clears it',async()=>{
@@ -56,7 +56,7 @@ test('actual original RunDetail four queued protocols, exact negative reads, ori
    await p.goto(f.origin+detail('alice','workflow_v2'),{waitUntil:'domcontentloaded'});await ready('workflow_v2');const cancelled=b.wire(p,'/api/v2/workflow-v2-runs/'+alice.runs.workflow_v2.run.id+'/cancel','POST');await p.getByRole('button',{name:'取消',exact:true}).click();expect((await cancelled).status()).toBe(200);await expect(p.getByText('已取消',{exact:true}).first()).toBeVisible();expect((await f.runState('alice',alice.runs.workflow_v2.run.id)).status).toBe('cancelled');expect(f.observations.control_posts).toHaveLength(2);steps.actual_v2_cancel=true
   })
   await test.step('a real Native Cookie employee switch verifies the old detail denial before one explicit foreign404, and Bob owns a separate actual run whose memory admission receipt observes ACL revoke',async()=>{
-   await p.goto(f.origin+detail('alice','agent_autonomous'),{waitUntil:'domcontentloaded'});await ready('agent_autonomous');switchPage=await b.page();await switchPage.goto(f.origin+parent('alice'),{waitUntil:'domcontentloaded'});await expect(switchPage.locator('#spec-select')).toHaveValue(alice.parent.id)
+   await p.goto(f.origin+detail('alice','agent_autonomous'),{waitUntil:'domcontentloaded'});await ready('agent_autonomous');switchPage=await b.page();await switchPage.goto(f.origin+parent('alice'),{waitUntil:'domcontentloaded'});await expect(switchPage.locator('#run-quick-spec')).toHaveValue(alice.parent.id)
    const transition=f.observeOwnerTransition(auto.id,'alice','bob');await b.logout(switchPage,'alice');await b.login(switchPage,'bob',parent('bob'));await b.focus(p);await expect(p.getByText(auto.instruction,{exact:true})).toHaveCount(0)
    await expect(p.getByRole('heading',{name:'运行不存在或无权查看',exact:true})).toBeVisible()
    const transitionProof=await transition.finish();expect(transitionProof).toMatchObject({actual_denials:1,maximum_denials:1,original_request_window_closed:true});expect(transitionProof.actual_denials).toBe(f.observations.owner_transition_denials.length)

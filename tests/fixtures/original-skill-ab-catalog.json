@@ -45,7 +45,7 @@
   "stamp": [
     {
       "protocol": "original-skill-ab-v1",
-      "source_sha256": "c2b784c8da63e1df41cc02b0b84c2b3433990f8de5e7042f42b1264a6c9096e1"
+      "source_sha256": "01cb0b9cf4ea6341f33ddf42e1256865e530afcc3cf2e00964f40e77f300de2b"
     }
   ],
   "roles": [
@@ -1884,7 +1884,7 @@
       "config": [
         "search_path=pg_catalog"
       ],
-      "source_sha256": "07d35a109694feba9f184c37a78e36b8a9fc7a807a18ab69644f169b6f422b02",
+      "source_sha256": "0e45aa26c509b097a591622bf6e71a6e41fe6607d5219ac46f9a0b0ba770fa99",
       "safe": true,
       "acl": [
         {

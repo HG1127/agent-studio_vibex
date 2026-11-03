@@ -25,7 +25,7 @@ jobs:
       AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_CI: YES_DISPOSABLE_ORIGINAL_ROLE_AB_SQL_ONLY
       AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_PROFILE: original-role-ab-sql-v1
       AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_EXPECTED_HEAD: '${{ inputs.reviewed_head || github.sha }}'
-      AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_SOURCES_SHA256: '56aeb8e2b06f260b785188c1ef967353bfb23a67076ebcba87841ea1c7490ab7'
+      AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_SOURCES_SHA256: '5c061706527e1a63fb1c9cc13102ad7e79744382418653d55019466ce4c31afe'
       AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
       AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
       AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
@@ -52,7 +52,7 @@ jobs:
       - name: Actual API compiler and import-safe purpose refusal
         run: |
           pnpm --dir services/pg-api check
-          node --experimental-strip-types --test services/pg-api/tests/original-role-ab-sql-ci-guard.test.mjs
+          node --experimental-strip-types --test services/pg-api/tests/original-role-ab-sql-ci-guard.test.mjs tests/original-skill-ab-sql-condition-source-pure.test.mjs
       - name: New empty loopback PG18 instance for this job only
         run: |
           docker run --detach --name "$ROLE_AB_CONTAINER" --network host --env POSTGRES_DB=agent_studio --env POSTGRES_USER=postgres --env "POSTGRES_PASSWORD=$AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD" pgvector/pgvector:0.8.7-pg18 postgres -h 127.0.0.1 -p 5333

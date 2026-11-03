@@ -24,7 +24,7 @@ fn('utf16_length','text','integer',`DECLARE n integer:=0;c text;BEGIN FOR c IN S
 fn('session','text','void',`DECLARE login record;expected text;BEGIN
  IF current_database()<>'agent_studio' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port()<>5333 OR current_setting('server_version_num')::integer NOT BETWEEN 180000 AND 189999 OR pg_is_in_recovery() THEN RAISE EXCEPTION 'original_skill_ab_target_refused';END IF;
  expected:=CASE $1 WHEN 'api' THEN 'agentstudio_stage_login' WHEN 'dispatch' THEN 'agentstudio_stage_skill_ab_dispatch' ELSE NULL END;
- IF expected IS NULL OR session_user<>expected OR current_setting('role')<>CASE $1 WHEN 'api' THEN 'agentstudio_api' ELSE 'agentstudio_skill_ab_dispatch' END THEN RAISE EXCEPTION 'original_skill_ab_session_refused';END IF;
+ IF expected IS NULL OR session_user<>expected OR current_setting('role')<>(CASE $1 WHEN 'api' THEN 'agentstudio_api' ELSE 'agentstudio_skill_ab_dispatch' END) THEN RAISE EXCEPTION 'original_skill_ab_session_refused';END IF;
  SELECT * INTO login FROM pg_roles WHERE rolname=session_user;
  IF login.rolname IS NULL OR NOT login.rolcanlogin OR login.rolinherit OR login.rolsuper OR login.rolbypassrls OR login.rolcreaterole OR login.rolcreatedb OR login.rolreplication THEN RAISE EXCEPTION 'original_skill_ab_session_refused';END IF;
  END`)

@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto'
+import {isProxy} from 'node:util/types'
 import {verifyModelConfigReceiptGlobalInventory075} from './model-config-receipt-profile075-audit.ts'
 import type {SqlClient,SqlPool} from './contracts.ts'
 import type {CompleteProfilePool,CompleteProfileTarget} from './pg18-complete-profile.ts'
@@ -33,6 +34,14 @@ export function assertEmployeeUi078Ledger(rows:LedgerRow[],snapshot:EmployeeUi07
  const exact=[...expected].sort(([a],[b])=>a<b?-1:a>b?1:0)
  if(rows.length!==exact.length||rows.some((r,i)=>r.version!==exact[i]?.[0]||r.description!==exact[i]?.[1]))fail('whole_ledger_mismatch')
 }
+/** Bounded catalog-only mismatch evidence. Never changes the accepting set. */
+export function employeeUi078FunctionInventoryDiagnostic(signatures:readonly string[],resolved:readonly {signature:string;oid:string|null}[],functions:readonly {oid:string;schema:string;name:string;kind?:string;arguments?:string;owner?:string;extension?:string|null}[],combined:boolean){
+ const sample_limit=12,data=(v:unknown,key:string):unknown=>{if(!v||typeof v!=='object'||isProxy(v))return undefined;const d=Object.getOwnPropertyDescriptor(v,key);return d&&Object.hasOwn(d,'value')?d.value:undefined},identifier=(v:unknown)=>typeof v==='string'&&/^[a-zA-Z_][a-zA-Z_0-9$]{0,62}$/.test(v)?v:null,oid=(v:unknown)=>positive(v)?v:null,text=(v:unknown)=>typeof v==='string'&&v.length<=256&&/^[a-zA-Z_0-9.\[\],()" ]*$/.test(v)?v:null
+ const expected=new Set(resolved.map(r=>oid(data(r,'oid'))).filter((v):v is string=>v!==null)),actual=new Set(functions.map(r=>oid(data(r,'oid'))).filter((v):v is string=>v!==null)),missing=resolved.filter(r=>{const v=oid(data(r,'oid'));return v===null||!actual.has(v)}),unexpected=functions.filter(r=>{const v=oid(data(r,'oid'));return v===null||!expected.has(v)}),invalid=functions.filter(r=>oid(data(r,'oid'))===null)
+ return {format:'employee_ui078_function_inventory_v1',phase:combined?'combined':'base',expected_signatures:signatures.length,resolved_rows:resolved.length,actual_rows:functions.length,expected_unique_oids:expected.size,actual_unique_oids:actual.size,missing_count:missing.length,unexpected_count:unexpected.length,invalid_actual_oid_count:invalid.length,duplicate_actual_oid_count:functions.length-invalid.length-actual.size,sample_limit,
+  missing:missing.slice(0,sample_limit).map(r=>({oid:oid(data(r,'oid')),signature:text(data(r,'signature'))})),
+  unexpected:unexpected.slice(0,sample_limit).map(r=>({oid:oid(data(r,'oid')),schema:typeof data(r,'schema')==='string'&&['agentstudio','agentstudio_auth'].includes(data(r,'schema') as string)?data(r,'schema'):null,name:identifier(data(r,'name')),kind:typeof data(r,'kind')==='string'&&['f','p','a','w'].includes(data(r,'kind') as string)?data(r,'kind'):null,arguments:text(data(r,'arguments')),owner:identifier(data(r,'owner')),extension:identifier(data(r,'extension'))})),truncated:missing.length>sample_limit||unexpected.length>sample_limit}
+}
 export async function inspectEmployeeUi078ActualCatalog(db:SqlClient,snapshot:EmployeeUi078Snapshot,combined=true):Promise<string>{
  assertEmployeeUi078Snapshot(snapshot,snapshot.source_sha256)
  const tables=(await db.query<{name:string;kind:string;enabled:boolean;forced:boolean}>("SELECT n.nspname||'.'||c.relname AS name,c.relkind::text AS kind,c.relrowsecurity AS enabled,c.relforcerowsecurity AS forced FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','p','v','m','f','S') ORDER BY n.nspname COLLATE \"C\",c.relname COLLATE \"C\"")).rows
@@ -41,9 +50,12 @@ export async function inspectEmployeeUi078ActualCatalog(db:SqlClient,snapshot:Em
  const signatures=combined?snapshot.functions:snapshot.base_functions
  const resolved=(await db.query<{signature:string;oid:string|null}>(employeeUi078FunctionOidsSql,[[...signatures]])).rows
  if(resolved.length!==signatures.length||resolved.some((v,i)=>v.signature!==signatures[i]||!positive(v.oid))||new Set(resolved.map(v=>v.oid)).size!==resolved.length)fail('function_oid_resolution_mismatch')
- const functions=(await db.query<{oid:string;schema:string;name:string}>("SELECT p.oid::text AS oid,n.nspname AS schema,p.proname AS name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') ORDER BY p.oid")).rows
+ const functions=(await db.query<{oid:string;schema:string;name:string}>("SELECT p.oid::text AS oid,n.nspname AS schema,p.proname AS name,p.prokind::text AS kind,pg_catalog.pg_get_function_identity_arguments(p.oid) AS arguments,pg_catalog.pg_get_userbyid(p.proowner) AS owner,(SELECT e.extname FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid WHERE d.classid='pg_catalog.pg_proc'::regclass AND d.objid=p.oid AND d.refclassid='pg_catalog.pg_extension'::regclass AND d.deptype='e') AS extension FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') ORDER BY p.oid")).rows
  const expectedOids=new Set(resolved.map(v=>v.oid))
- if(functions.length!==expectedOids.size||functions.some(f=>!positive(f.oid)||!expectedOids.has(f.oid))||new Set(functions.map(v=>v.oid)).size!==functions.length)fail('whole_function_inventory_mismatch')
+ if(functions.length!==expectedOids.size||functions.some(f=>!positive(f.oid)||!expectedOids.has(f.oid))||new Set(functions.map(v=>v.oid)).size!==functions.length){
+  try{const diagnostic=employeeUi078FunctionInventoryDiagnostic(signatures,resolved,functions,combined);process.stderr.write('employee_ui078_function_inventory_diagnostic '+JSON.stringify(diagnostic)+'\n')}catch{}
+  fail('whole_function_inventory_mismatch')
+ }
  const shadows=(await db.query<{absent:boolean}>("SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN('agentstudio','agentstudio_auth') AND c.relname=ANY($1::text[])) AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT IN('agentstudio','agentstudio_auth') AND p.proname=ANY($2::text[])) AS absent",[names.map(n=>n.split('.')[1]),[...new Set(functions.map(f=>f.name))]])).rows
  if(shadows.length!==1||shadows[0]?.absent!==true)fail('foreign_catalog_shadow')
  const allowedLogins=new Set(['agentstudio_native_login',...Object.values(serviceLogins).map(v=>v.login)]),roles=(await db.query<{name:string;login:boolean;safe:boolean}>("SELECT rolname AS name,rolcanlogin AS login,NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND rolconfig IS NULL AND rolvaliduntil IS NULL AND rolconnlimit=-1 AS safe FROM pg_catalog.pg_roles WHERE starts_with(rolname,'agentstudio_') ORDER BY rolname COLLATE \"C\"")).rows,required=combined?snapshot.roles:snapshot.base.roles

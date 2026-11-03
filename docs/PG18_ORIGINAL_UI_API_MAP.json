@@ -10730,6 +10730,138 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_589651f_actual_CI_and_original_UI_followup": {
+      "base_head": "589651f7b0e89da71cdf720b67756b4e431fb64f",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "base_hosted_evidence": {
+        "workflows": 22,
+        "success": 15,
+        "failure": 7,
+        "all_terminal": true,
+        "quality_each": {
+          "jobs": 51,
+          "pass": 49,
+          "failure": 2,
+          "main_tests": 5424,
+          "main_pass": 5409,
+          "main_fail": 15,
+          "main_skip": 0,
+          "main_cancel": 0,
+          "failures": "three outdated presentation source contracts plus twelve exact Role-absence fixture frames; no successful pnpm check on this head"
+        },
+        "F01": {
+          "run": 41666664080,
+          "jobs": 21,
+          "pass": 19,
+          "failure": 2,
+          "queued_original_stories_failed": true,
+          "current_UI_selector_mismatch": true,
+          "unadvertised_optional_quality_GET405": true,
+          "original_zero_gates_preserved": true
+        },
+        "Role_AB": {
+          "run": 41666663953,
+          "job": 126023694832,
+          "source_prechecks_passed": true,
+          "SQLSTATE": "42601",
+          "error_position": 10310,
+          "phase": "optional original_skill_ab_v1 SQL initializer",
+          "authored_17_stories_entered": false
+        },
+        "Staff084": {
+          "run": 41666664326,
+          "jobs": 4,
+          "all_failed": true,
+          "reason": "employee_ui078_whole_function_inventory_mismatch",
+          "actual_unexpected_functions": "not yet observed; bounded metadata diagnostic prepared"
+        },
+        "quality089": {
+          "run": 41666664260,
+          "jobs": 2,
+          "all_failed": true,
+          "reason": "quality089_hosted_verification_failed",
+          "root_cause_not_proven": true
+        },
+        "strict069": {
+          "run": 41666664101,
+          "actual_runtime_entered": true,
+          "Legacy": {
+            "job": 126023695811,
+            "reason": "full069_worker_live_path_validation_warmup",
+            "warm_collected": false,
+            "last_collected": false,
+            "validation_completed": false
+          },
+          "Final14": {
+            "job": 126023696529,
+            "reason": "full069_worker_live_native_io",
+            "phase": "warm_sample",
+            "Native_ms": 8821,
+            "heartbeat_request_ms": 4189,
+            "Native_remaining_ms": -172,
+            "reader_phase": "controller_reader_audit",
+            "reader_finish_registry_ms": 5029,
+            "reader_remaining_ms": -28,
+            "reader_guards": 93,
+            "reader_guard_ms": 4460,
+            "runtime_branch_fulfilled_ms": 33380,
+            "business_audits_ms": 28344,
+            "stable_guards": 30,
+            "stable_guard_ms": 20331,
+            "node_executable_ms": 6438,
+            "final_sources_ms": 9989,
+            "live_context_source_ms": 2206,
+            "network_ms": 772
+          },
+          "qualified": false
+        },
+        "PB19_same_run_and_heartbeat_workflows_passed": true
+      },
+      "repairs": {
+        "optional_AB_SQL": "Group only the embedded SQL CASE in the PL/pgSQL IF condition; retain every strict target/session/role/catalog check. Only session body changes; fifteen bodies identical. Regenerate exact authored source stamp and metadata.",
+        "original_queued_UI_stories": "Use actual quick selector, real settings drawer, new-task/history path and actual terminal polling; retain all original fixture calls, backend assertions, five negative reads and zero gates. No optional089 activation.",
+        "quality_capability": "Advertise the exact optional quality protocol only after actual server startup admission; gate reads and current-scope callbacks on that server capability. Capability does not grant execution or writes.",
+        "presentation": "Restore exact accepted c6237d6 five display tools and awaiting-input label; adapt static source/type-only barrel guards. Backend web_search/web_fetch execution equivalence remains open.",
+        "old_terminal_fixtures": "Supply only exact absent Role catalog query; retain old assertions, unknown SQL refusal and ordered release/rollback checks.",
+        "diagnostics": "Bounded metadata-only whole-function difference; keep original exact inventory rejection. Classify quality089 own safe error fields without logging private messages, query text or stacks."
+      },
+      "Root_current_directed_proof": {
+        "AB_source_and_catalog_negatives": 28,
+        "quality089_guard": 17,
+        "queued_UI_source_pures": 10,
+        "078_full_source_terminal_pures": 124,
+        "own_and_toolhub_terminal_closed_pures": 7,
+        "quality_and_presentation_boundary": 13,
+        "existing_hook_auth_privacy": 24,
+        "counts_are_component_runs_not_a_distinct_total": true,
+        "API_compiler_exit": 0,
+        "frontend_compiler_exit": 0,
+        "original_employee_Vite_build_exit": 0,
+        "env_files_disabled": true,
+        "local_SQL_Pool_Worker_Native_listener_Electron_browser_or_paid_provider": false,
+        "whole_workflow_v2_claim_test_local_execution_or_import": false
+      },
+      "remaining": {
+        "original_web_search_web_fetch_backend_equivalence": true,
+        "Role_ordinary_case_and_acceptance_carry": "separate frozen drafts under review, not yet integrated",
+        "device_files_permissions_apps_Office": "separate native directory/action draft under review; no acceptance claim",
+        "strict069_and_optional_profile_actual_rerun": true,
+        "target_environment_network_version_backup_restore_long_Worker_and_employee_UAT_unsigned": true
+      },
+      "current_candidate_genuine_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28171,
+        "retained_prior_pins": 28144,
+        "all_prior_pin_sets_retained": true,
+        "new_SQL_source_test_pin_in_each_workflow_closure": 25,
+        "new_quality_test_pin_in_two_existing_presentation_closures": 2,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

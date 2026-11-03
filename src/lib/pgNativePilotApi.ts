@@ -62,6 +62,7 @@ export type PgNativeConfigCapabilities={
   own_operations_available?:boolean
   company_overview_available?:boolean
   company_worker_heartbeats_available?:boolean
+  original_agent_quality_protocol?:'native_original_agent_quality_v1'
   model_probe_enabled:boolean
   mcp_discovery_enabled?:boolean
   mcp_tool_runs_enabled?:boolean
@@ -828,7 +829,8 @@ export function createPgNativePilotApi(
           (value.local_devices_available!==undefined&&typeof value.local_devices_available!=="boolean")||
           (value.local_device_writes_enabled!==undefined&&typeof value.local_device_writes_enabled!=="boolean")||
           (value.local_device_writes_enabled===true&&(value.local_devices_available!==true||value.config_writes_enabled!==true))||
-         value.run_execution_enabled!==false)
+         (value.original_agent_quality_protocol!==undefined&&value.original_agent_quality_protocol!=='native_original_agent_quality_v1')||
+          value.run_execution_enabled!==false)
         throw new PgNativePilotError(503,"invalid_native_capabilities")
       return {...value,own_operations_available:value.own_operations_available===true}
     },

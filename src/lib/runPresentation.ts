@@ -9,7 +9,9 @@ export const FEEDBACK_TAGS = ["结果不准", "太慢", "理解偏差", "格式�
 export const BUILTIN_TOOLS: BuiltinTool[] = [
   { id: "calculate", title: "计算器", desc: "对算术表达式真实求值，支持 + - * / % 与括号" },
   { id: "summarize", title: "文本整理摘要", desc: "调用模型对给定文本做整理、摘要与提炼" },
-  { id: "knowledge_search", title: "知识库检索", desc: "在方案附带的知识文本中按关键词检索相关片段" },
+  { id: "knowledge_search", title: "知识库检索", desc: "在关联知识库中检索片段" },
+  { id: "web_search", title: "网页搜索", desc: "联网查询网页标题与摘要" },
+  { id: "web_fetch", title: "网页抓取", desc: "读取公开网页正文" },
 ]
 
 export const RUN_STATE_META: Record<RunStateKey, { label: string; badge: string }> = {
@@ -17,7 +19,7 @@ export const RUN_STATE_META: Record<RunStateKey, { label: string; badge: string 
   running: { label: "运行中", badge: "bg-primary/10 text-primary" },
   paused: { label: "已暂停", badge: "bg-muted text-muted-foreground" },
   awaiting_approval: { label: "待批准", badge: "bg-primary/10 text-primary" },
-  awaiting_input: { label: "等待本人回复", badge: "bg-primary/10 text-primary" },
+  awaiting_input: { label: "等待你的回复", badge: "bg-primary/10 text-primary" },
   succeeded: { label: "已完成", badge: "bg-primary/10 text-primary" },
   failed: { label: "失败", badge: "bg-destructive/10 text-destructive" },
   cancelled: { label: "已取消", badge: "bg-destructive/10 text-destructive" },
