@@ -11725,6 +11725,58 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_c019eb7_observed_Skill_bigint_and_Reader_source_oracle_followup": {
+      "base_head": "c019eb76c493a9c5dd5687611de98da6eb20084b",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "Reader": {
+        "actual_telemetry_precheck_failed_before_service_cases": true,
+        "only_three_existing_source_assertion_lines_updated": true,
+        "AST_selected_read_only_callbacks": 2,
+        "pass": 2,
+        "whole_runtime_suite_executed": false,
+        "actual_runtime_module_imported": false,
+        "real_deadline_or_lease_acceptance": false
+      },
+      "Skill": {
+        "actual_log_sha256": "8b75109bc48a4cd1d86f5b59a127dcd4b896ea2152f9a73fb8d7726ebb69bc6d",
+        "genuine_command_group_line": 613,
+        "diagnostic_line": 631,
+        "expected_constraint_index": 20,
+        "constraint": "requests_ck3",
+        "exact_actual_token_string_hash": "48413eba3ad15f6021e0b6fb116adf17b5b1431031d752f6ca140cffde78f07c",
+        "only_exact_requests_index3_and_full_authored_expression_expected_rendering_changed": true,
+        "actual_expression_parser_comparison_SQL_and_schema_unchanged": true,
+        "only_one_terminal_DATA_expression_updated": true,
+        "Root_related_closed_cases": 176,
+        "pass": 176,
+        "new_cases": 6,
+        "all_effects_zero": true,
+        "business_story_acceptance": false
+      },
+      "Root_actual_API_compiler_exit": 0,
+      "frontend_product_unchanged": true,
+      "claim_whole_or_slices_imported_or_executed": false,
+      "old53_SQL_077_API_package_lock_unchanged": true,
+      "new_head_genuine_acceptance": false,
+      "accepted_UI_carry_complete": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28321,
+        "retained_prior_pins": 28321,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [],
+        "nested_Role": 199,
+        "retained_nested_Role": 199,
+        "new_nested_Role_sources": [],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

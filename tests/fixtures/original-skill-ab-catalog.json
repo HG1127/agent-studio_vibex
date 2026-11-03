@@ -831,7 +831,7 @@
       "table": "requests",
       "safe": true,
       "columns": null,
-      "expression": "owner_epoch >= 1 AND owner_epoch <= 9007199254740989",
+      "expression": "owner_epoch >= 1 AND owner_epoch <= '9007199254740989'::bigint",
       "target": null,
       "references": null,
       "delete": " ",
