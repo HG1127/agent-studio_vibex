@@ -3,16 +3,20 @@ const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node
 async function verify(){
   const root=fs.realpathSync(path.resolve(process.argv[2]))
   const manifest=JSON.parse(fs.readFileSync(path.join(root,'.studio-files.json'),'utf8'))
-  const failures=[]
-  for(const entry of manifest.files){
+  const failed=new Set();let next=0
+  await Promise.all(Array.from({length:Math.min(4,manifest.files.length)},async()=>{
+   while(next<manifest.files.length){
+    const index=next++,entry=manifest.files[index]
     try{
       const file=path.resolve(root,entry.path),real=fs.realpathSync(file)
       const owned=path.toNamespacedPath(root).toLowerCase()+path.sep
       if(!path.toNamespacedPath(real).toLowerCase().startsWith(owned)||fs.statSync(file).size!==entry.bytes)throw Error('path_or_size')
       const hash=createHash('sha256');for await(const chunk of fs.createReadStream(file))hash.update(chunk)
       if(hash.digest('hex')!==entry.sha256)throw Error('digest')
-    }catch{failures.push(entry.path)}
-  }
+    }catch{failed.add(index)}
+   }
+  }))
+  const failures=manifest.files.filter((entry,index)=>failed.has(index)).map(entry=>entry.path)
   fs.writeFileSync(path.join(root,'install-verification.json'),JSON.stringify({version:manifest.version,files:manifest.files.length,failed:failures},null,2))
   if(failures.length)throw Error('invalid_files:'+failures.length+':'+failures.slice(0,3).join(','))
   console.log('INSTALL_FILES_VERIFIED '+manifest.files.length)

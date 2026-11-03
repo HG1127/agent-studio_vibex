@@ -34,15 +34,12 @@ if(!compiler){
   const resolved=await toolset.getMakeNsisPath(null);compiler=resolved.path;compilerEnvironment=resolved.env
 }
 let size=0
-const files=[]
-async function inventory(directory){
-  for(const e of await fs.readdir(directory,{withFileTypes:true})){
-    const file=path.join(directory,e.name);if(e.isSymbolicLink())throw Error('runtime_link_not_allowed')
-    if(e.isDirectory())await inventory(file)
-    else {const bytes=(await fs.stat(file)).size;size+=bytes;const digest=createHash('sha256');for await(const chunk of createReadStream(file))digest.update(chunk);files.push({path:path.relative(appDir,file),bytes,sha256:digest.digest('hex')})}
-  }
+const files=[],paths=[]
+async function collect(directory){
+ await Promise.all((await fs.readdir(directory,{withFileTypes:true})).map(async e=>{const file=path.join(directory,e.name);if(e.isSymbolicLink())throw Error('runtime_link_not_allowed');if(e.isDirectory())await collect(file);else paths.push(file)}))
 }
-await inventory(appDir)
+await collect(appDir);paths.sort();let next=0,finished=0
+await Promise.all(Array.from({length:8},async()=>{while(next<paths.length){const index=next++,file=paths[index],bytes=(await fs.stat(file)).size;size+=bytes;const digest=createHash('sha256');for await(const chunk of createReadStream(file))digest.update(chunk);files[index]={path:path.relative(appDir,file),bytes,sha256:digest.digest('hex')};finished++;if(finished%1000===0)console.log('DESKTOP_INTEGRITY_FILES '+finished+'/'+paths.length)}}))
 // The legacy NSIS compiler limits source paths; this owned junction shortens
 // input names without moving or deleting the staged runtime.
 const shortSource=path.join(root,'.tmp','p3')

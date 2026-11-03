@@ -12,3 +12,16 @@ test('installed payload verification detects same-size corruption and out-of-roo
   const report=JSON.parse(await fs.readFile(path.join(root,'install-verification.json'),'utf8'));assert.deepEqual(report.failed,['../outside'])
  }finally{const real=await fs.realpath(home);assert.ok(real.startsWith(await fs.realpath(os.tmpdir())));await fs.rm(real,{recursive:true,force:true})}
 })
+
+test('all payload files are checked and multiple failures retain manifest order',async()=>{
+ const temporaryRoot=await fs.realpath(os.tmpdir()),home=await fs.mkdtemp(path.join(temporaryRoot,'agentstudio-install-batch-')),entries=[]
+ try{
+  for(let i=0;i<12;i++){const content='trusted-'+i,file='payload-'+i;await fs.writeFile(path.join(home,file),content);entries.push({path:file,bytes:Buffer.byteLength(content),sha256:createHash('sha256').update(content).digest('hex')})}
+  await fs.writeFile(path.join(home,'.studio-files.json'),JSON.stringify({version:'batch-test',files:entries}))
+  const run=()=>spawnSync(process.execPath,[path.join(__dirname,'../verify-install.cjs'),home],{windowsHide:true,encoding:'utf8',timeout:20000})
+  assert.equal(run().status,0)
+  await fs.writeFile(path.join(home,'payload-2'),'changed-2');await fs.unlink(path.join(home,'payload-10'));entries[6].path='../outside-batch'
+  await fs.writeFile(path.join(home,'.studio-files.json'),JSON.stringify({version:'batch-test',files:entries}));assert.equal(run().status,1)
+  const report=JSON.parse(await fs.readFile(path.join(home,'install-verification.json'),'utf8'));assert.equal(report.files,12);assert.deepEqual(report.failed,['payload-2','../outside-batch','payload-10'])
+ }finally{const real=await fs.realpath(home);assert.equal(path.dirname(real).toLowerCase(),temporaryRoot.toLowerCase());assert.match(path.basename(real),/^agentstudio-install-batch-[A-Za-z0-9_-]+$/);assert.equal((await fs.lstat(home)).isSymbolicLink(),false);await fs.rm(real,{recursive:true,force:true})}
+})
