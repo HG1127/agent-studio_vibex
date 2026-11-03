@@ -1251,7 +1251,7 @@ export function originalRoleCatalogFrame(){return structuredClone({
       ],
       "target": null,
       "target_keys": null,
-      "expression": "content_sha256 ~ '^[a-f0-9]{64}$' AND content_sha256=encode(sha256(convert_to(content,'UTF8')),'hex')",
+      "expression": "content_sha256 ~ '^[a-f0-9]{64}$' AND content_sha256=encode(sha256(convert_to(content,'UTF8'::name)),'hex')",
       "safe": true,
       "operators_safe": true
     },

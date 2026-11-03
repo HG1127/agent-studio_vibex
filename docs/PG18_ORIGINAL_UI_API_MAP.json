@@ -11499,6 +11499,65 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_4ee1385_observed_Role_and_hosted_inner_diagnostics_followup": {
+      "base_head": "4ee1385240745eba2aca3781b4c514a1188c0a6c",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "Role": {
+        "actual_SQL_group_start_line": 590,
+        "actual_diagnostic_line": 608,
+        "expected_constraint_index": 33,
+        "constraint": "original_skill_versions_ck4",
+        "actual_difference": "Only observed first AST difference is encoding literal cast to name in pg_catalog.convert_to",
+        "actual_log_sha256": "d3e95faa44e282e9c39d64afb3f3eba5784c75633c13c0e381ace58ba0e3e8fe",
+        "expected_only_exact_name_table_and_full_authored_expression": true,
+        "actual_expression_and_parser_unchanged": true,
+        "SQL_install_and_schema_hash_unchanged": true,
+        "new_closed_regressions": 7,
+        "component_pass": 83,
+        "further_AST_differences_and17_business_stories_pending": true
+      },
+      "hosted_diagnostics": {
+        "Quality": "48 fixed inner steps wrap original40 awaits,3 synchronous releases and4 complete function bodies; stripped full original AST and151 original call sites identical.",
+        "Staff": "Only after original check23 eq refuses, report bounded full multiset difference categories/counts/hash in existing hosted staff purpose. Exact eq operands/order/error and136 check IDs retained.",
+        "error_Proxy_guard": "Reject Proxy and revoked Proxy before reflecting own code. Do not read getters/message/stack or coerce code values.",
+        "actual_inner_failure_and_ACL_rows_pending": true,
+        "no_SQL_permissions_or_acceptance_rules_changed": true
+      },
+      "Root_current_proof": {
+        "combined_registered_cases": 406,
+        "pass": 406,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "closed_effect_reports": 6,
+        "all_effect_counts_zero": true,
+        "API_compiler_exit": 0,
+        "frontend_product_unchanged": true,
+        "whole_claim_or_slices_executed_or_imported": false,
+        "log_sha256": "f5f6e30b020d70497e428f7c0e23fa16ddbcb071e84b71d3e190b216f6f8f1c6"
+      },
+      "original_limits_unchanged": "5/8/30s deadlines,15s sample,45s heartbeat,all8 Worker kinds,all14LOGIN serial max1/pool1; all fresh source/OID/ACL/owner/order/cleanup checks retained.",
+      "accepted_UI_carry_complete": false,
+      "accepted_UI_source_audit_is_not_missing_feature_count_or_percentage": true,
+      "new_head_genuine_SQL_or_employee_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28321,
+        "retained_prior_pins": 28321,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [],
+        "nested_Role": 199,
+        "retained_nested_Role": 199,
+        "new_nested_Role_sources": [],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

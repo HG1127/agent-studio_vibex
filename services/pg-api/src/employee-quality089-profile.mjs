@@ -1,3 +1,4 @@
+import {hostedQuality089Phase,hostedQuality089Sync} from './hosted-profile-diagnostic.mjs'
 
 import {employeeQuality089Profile,employeeQuality089Receipt,employeeQuality089Migration,quality089ReceiptBody,quality089Target,assertQuality089CatalogDelta} from './employee-quality089-contract.mjs'
 import {assertEmployeeQuality089Snapshot} from './employee-quality089-source.mjs'
@@ -48,55 +49,55 @@ export function assertEmployeeQuality089Ledger(rows,s,target,parentCatalog,diges
  const want=[...expected].sort(([a],[b])=>a<b?-1:a>b?1:0)
  if(rows.length!==want.length||rows.some((v,i)=>Object.keys(v).sort().join(',')!=='description,version'||v.version!==want[i][0]||v.description!==want[i][1]))fail('whole_ledger')
 }
-async function auditApi(pool,s,target){
- const db=await pool.connect();let begun=false,discard=false,auditFailed=false
- try{await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');begun=true;await db.query("SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='45s'; SET LOCAL lock_timeout='5s'")
- const login=(await db.query("SELECT session_user::text AS login,current_user::text AS actor,current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolinherit AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND r.rolcanlogin AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AND r.rolconnlimit=-1 AND (SELECT count(*) FROM pg_auth_members WHERE member=r.oid)=1 AND EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid AND g.rolname='agentstudio_api' AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option) AS safe FROM pg_roles r WHERE r.rolname=session_user")).rows
+async function auditApi(pool,s,target){return await hostedQuality089Phase('audit_body',async()=>{
+ const db=await hostedQuality089Phase('audit_01',()=>pool.connect());let begun=false,discard=false,auditFailed=false
+ try{await hostedQuality089Phase('audit_02',()=>db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'));begun=true;await hostedQuality089Phase('audit_03',()=>db.query("SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='45s'; SET LOCAL lock_timeout='5s'"))
+ const login=(await hostedQuality089Phase('audit_04',()=>db.query("SELECT session_user::text AS login,current_user::text AS actor,current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port,current_setting('server_version_num')::integer AS version,NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolinherit AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND r.rolcanlogin AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AND r.rolconnlimit=-1 AND (SELECT count(*) FROM pg_auth_members WHERE member=r.oid)=1 AND EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid AND g.rolname='agentstudio_api' AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option) AS safe FROM pg_roles r WHERE r.rolname=session_user"))).rows
  if(login.length!==1||login[0].login!=='agentstudio_stage_login'||login[0].actor!==login[0].login||login[0].database!=='agent_studio'||login[0].host!=='127.0.0.1'||login[0].port!==5333||login[0].version<180000||login[0].version>=190000||login[0].safe!==true)fail('actual_api_login')
- await db.query('SET LOCAL ROLE agentstudio_api')
- const rpc=(await db.query(employeeUi078LedgerRpcAuditSql)).rows
+ await hostedQuality089Phase('audit_05',()=>db.query('SET LOCAL ROLE agentstudio_api'))
+ const rpc=(await hostedQuality089Phase('audit_06',()=>db.query(employeeUi078LedgerRpcAuditSql))).rows
  if(rpc.length!==1||rpc[0].ok!==true||sha(rpc[0].source)!==s.parent.ledger_rpc_body_sha256)fail('actual_ledger_rpc')
- const all=(await db.query(employeeUi078LedgerRpcSql)).rows;if(!all.length||all.some(r=>r.system_identifier!==target.system_identifier||r.database_oid!==target.database_oid))fail('physical_target')
+ const all=(await hostedQuality089Phase('audit_07',()=>db.query(employeeUi078LedgerRpcSql))).rows;if(!all.length||all.some(r=>r.system_identifier!==target.system_identifier||r.database_oid!==target.database_oid))fail('physical_target')
  const receipt=all.find(r=>r.version===employeeQuality089Receipt);let body;try{body=JSON.parse(receipt.description)}catch{fail('receipt_missing')}
- const c=await catalog(db),digest=employeeUi078CatalogDigest(c);await inventory(db,s,'api')
+ const c=await hostedQuality089Phase('audit_08',()=>catalog(db)),digest=employeeUi078CatalogDigest(c);await hostedQuality089Phase('audit_09',()=>inventory(db,s,'api'))
  assertEmployeeQuality089Ledger(all.map(({version,description})=>({version,description})),s,target,body.parent_catalog_sha256,digest)
- for(const check of [verifyApprovalDelegationCredentials,verifyNativeLocalDeviceSchema,verifyAgentCallerCredentials,verifyOwnerToolTrialCredentials])if(await check(db)!==true)fail('original069_semantic_audit')
+ for(const check of [verifyApprovalDelegationCredentials,verifyNativeLocalDeviceSchema,verifyAgentCallerCredentials,verifyOwnerToolTrialCredentials])if(await hostedQuality089Phase('audit_10',()=>check(db))!==true)fail('original069_semantic_audit')
  assertEmployeeQuality089Snapshot(s,s.source_sha256);return {digest,parentCatalog:body.parent_catalog_sha256,rpcOid:rpc[0].oid}
  }catch(error){auditFailed=true;if(!begun)discard=true;throw error}
- finally{if(begun)try{await db.query('ROLLBACK')}catch{discard=true}try{db.release(discard)}catch{if(!auditFailed&&!discard)fail('api_release')}if(discard&&!auditFailed)fail('api_rollback')}
-}
+ finally{if(begun)try{await hostedQuality089Phase('audit_11',()=>db.query('ROLLBACK'))}catch{discard=true}try{hostedQuality089Sync('audit_release',()=>db.release(discard))}catch{if(!auditFailed&&!discard)fail('api_release')}if(discard&&!auditFailed)fail('api_rollback')}
+})}
 
-async function watchRollback(pool,inspect){
+async function watchRollback(pool,inspect){return await hostedQuality089Phase('inspect_body',async()=>{
  let failed=false,error;const observed=Object.create(pool)
- Object.defineProperty(observed,'connect',{value:async function(){const db=await pool.connect();return{async query(sql){try{return await Reflect.apply(db.query,db,arguments)}catch(e){if(sql==='ROLLBACK'){failed=true;error=e}throw e}},release(){return Reflect.apply(db.release,db,failed?[true]:arguments)}}}})
- const result=await inspect(observed);if(failed)throw error;return result
-}
+ Object.defineProperty(observed,'connect',{value:async function(){const db=await hostedQuality089Phase('inspect_01',()=>pool.connect());return{async query(sql){try{return await hostedQuality089Phase(sql==='ROLLBACK'?'inspect_rollback':'inspect_02',()=>Reflect.apply(db.query,db,arguments))}catch(e){if(sql==='ROLLBACK'){failed=true;error=e}throw e}},release(){return hostedQuality089Sync('inspect_release',()=>Reflect.apply(db.release,db,failed?[true]:arguments))}}}})
+ const result=await hostedQuality089Phase('inspect_03',()=>inspect(observed));if(failed)throw error;return result
+})}
 
-export async function verifyEmployeeQuality089ApiPool(pool,s,expected,target){
- assertEmployeeQuality089Snapshot(s,expected);quality089Target(target);const before=await auditApi(pool,s,target)
- for(const check of [inspectOptionalNativeHomeAuthoringSchema,inspectOptionalNativeAgentCatalogSchema,inspectOptionalOriginalHomeKnowledgeStatisticsSchema,inspectOptionalNativeMonitorInbox])if(await watchRollback(pool,check)!=='installed')fail('parent_optional_audit')
- await watchRollback(pool,auditModelConfigReceipt075After069);if(await watchRollback(pool,inspectOriginalSchedulesSchema)!==true)fail('parent_schedule_audit')
- const after=await auditApi(pool,s,target);if(canonical(before)!==canonical(after))fail('catalog_changed')
+export async function verifyEmployeeQuality089ApiPool(pool,s,expected,target){return await hostedQuality089Phase('verify_body',async()=>{
+ assertEmployeeQuality089Snapshot(s,expected);quality089Target(target);const before=await hostedQuality089Phase('verify_01',()=>auditApi(pool,s,target))
+ for(const check of [inspectOptionalNativeHomeAuthoringSchema,inspectOptionalNativeAgentCatalogSchema,inspectOptionalOriginalHomeKnowledgeStatisticsSchema,inspectOptionalNativeMonitorInbox])if(await hostedQuality089Phase('verify_02',()=>watchRollback(pool,check))!=='installed')fail('parent_optional_audit')
+ await hostedQuality089Phase('verify_03',()=>watchRollback(pool,auditModelConfigReceipt075After069));if(await hostedQuality089Phase('verify_04',()=>watchRollback(pool,inspectOriginalSchedulesSchema))!==true)fail('parent_schedule_audit')
+ const after=await hostedQuality089Phase('verify_05',()=>auditApi(pool,s,target));if(canonical(before)!==canonical(after))fail('catalog_changed')
  return Object.freeze({profile:employeeQuality089Profile,source_sha256:expected,target,catalog_sha256:after.digest,actual_API_LOGIN:true,whole_catalog_and_ledger:true,original046_preinstall_and069_070_073_075_078_089_audits:true,old_profile_accepts089:false,Native_server_process_entry_verified:false,production_GO:false})
-}
-export async function installEmployeeQuality089Profile(admin,api,s,expected,target){
+})}
+export async function installEmployeeQuality089Profile(admin,api,s,expected,target){return await hostedQuality089Phase('install_body',async()=>{
  assertEmployeeQuality089Snapshot(s,expected);quality089Target(target)
- await verifyEmployeeUi078Profile(admin,api,s.parent,s.parent.source_sha256,target)
- if(await inspectAgentReleaseSchema(api)!==true)fail("original046_preinstall_semantic_audit")
- const db=await admin.connect();let begun=false,committed=false,discard=false,auditFailed=false
- try{await db.query('BEGIN');begun=true;await db.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='45s'");await completeServiceTarget(db,target)
- if((await db.query(completeProfileLocksSql)).rows[0]?.locked!==true)fail('schema_lock')
- for(const n of s.parent.tables)await db.query('LOCK TABLE '+n.split('.').map(x=>'"'+x+'"').join('.')+' IN SHARE ROW EXCLUSIVE MODE')
- for(const n of s.parent.tables){if(['agentstudio.schema_migrations','agentstudio.users','agentstudio_auth.accounts'].includes(n))continue;if((await db.query('SELECT NOT EXISTS(SELECT 1 FROM '+n+') AS empty')).rows[0]?.empty!==true)fail('empty_disposable_required')}
- const before=await catalog(db),parentCatalog=employeeUi078CatalogDigest(before)
- const oldReceipt=(await db.query('SELECT description FROM agentstudio.schema_migrations WHERE version=$1',[employeeUi078Receipt])).rows
+ await hostedQuality089Phase('install_01',()=>verifyEmployeeUi078Profile(admin,api,s.parent,s.parent.source_sha256,target))
+ if(await hostedQuality089Phase('install_02',()=>inspectAgentReleaseSchema(api))!==true)fail("original046_preinstall_semantic_audit")
+ const db=await hostedQuality089Phase('install_03',()=>admin.connect());let begun=false,committed=false,discard=false,auditFailed=false
+ try{await hostedQuality089Phase('install_04',()=>db.query('BEGIN'));begun=true;await hostedQuality089Phase('install_05',()=>db.query("SET LOCAL search_path=pg_catalog; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='45s'"));await hostedQuality089Phase('install_06',()=>completeServiceTarget(db,target))
+ if((await hostedQuality089Phase('install_07',()=>db.query(completeProfileLocksSql))).rows[0]?.locked!==true)fail('schema_lock')
+ for(const n of s.parent.tables)await hostedQuality089Phase('install_08',()=>db.query('LOCK TABLE '+n.split('.').map(x=>'"'+x+'"').join('.')+' IN SHARE ROW EXCLUSIVE MODE'))
+ for(const n of s.parent.tables){if(['agentstudio.schema_migrations','agentstudio.users','agentstudio_auth.accounts'].includes(n))continue;if((await hostedQuality089Phase('install_09',()=>db.query('SELECT NOT EXISTS(SELECT 1 FROM '+n+') AS empty'))).rows[0]?.empty!==true)fail('empty_disposable_required')}
+ const before=await hostedQuality089Phase('install_10',()=>catalog(db)),parentCatalog=employeeUi078CatalogDigest(before)
+ const oldReceipt=(await hostedQuality089Phase('install_11',()=>db.query('SELECT description FROM agentstudio.schema_migrations WHERE version=$1',[employeeUi078Receipt]))).rows
  if(oldReceipt.length!==1||oldReceipt[0].description!==employeeUi078ReceiptBody(s.parent,target,parentCatalog))fail('parent_catalog_changed')
- assertEmployeeQuality089Snapshot(s,expected);await db.query(s.sql);await db.query('SET LOCAL search_path=pg_catalog')
- await inventory(db,s,'admin');const after=await catalog(db);assertQuality089CatalogDelta(before,after);const digest=employeeUi078CatalogDigest(after)
- const description=quality089ReceiptBody(s,target,parentCatalog,digest);await db.query('INSERT INTO agentstudio.schema_migrations(version,description) VALUES($1,$2)',[employeeQuality089Receipt,description])
- assertEmployeeQuality089Ledger((await db.query('SELECT version,description FROM agentstudio.schema_migrations ORDER BY version COLLATE "C"')).rows,s,target,parentCatalog,digest)
- await completeServiceTarget(db,target);assertEmployeeQuality089Snapshot(s,expected);await db.query('COMMIT');committed=true
+ assertEmployeeQuality089Snapshot(s,expected);await hostedQuality089Phase('install_12',()=>db.query(s.sql));await hostedQuality089Phase('install_13',()=>db.query('SET LOCAL search_path=pg_catalog'))
+ await hostedQuality089Phase('install_14',()=>inventory(db,s,'admin'));const after=await hostedQuality089Phase('install_15',()=>catalog(db));assertQuality089CatalogDelta(before,after);const digest=employeeUi078CatalogDigest(after)
+ const description=quality089ReceiptBody(s,target,parentCatalog,digest);await hostedQuality089Phase('install_16',()=>db.query('INSERT INTO agentstudio.schema_migrations(version,description) VALUES($1,$2)',[employeeQuality089Receipt,description]))
+ assertEmployeeQuality089Ledger((await hostedQuality089Phase('install_17',()=>db.query('SELECT version,description FROM agentstudio.schema_migrations ORDER BY version COLLATE "C"'))).rows,s,target,parentCatalog,digest)
+ await hostedQuality089Phase('install_18',()=>completeServiceTarget(db,target));assertEmployeeQuality089Snapshot(s,expected);await hostedQuality089Phase('install_19',()=>db.query('COMMIT'));committed=true
  }catch(error){auditFailed=true;if(!begun)discard=true;throw error}
- finally{if(begun&&!committed)try{await db.query('ROLLBACK')}catch{discard=true}try{db.release(discard)}catch{if(!auditFailed&&!discard)fail('install_release')}if(discard&&!auditFailed)fail('install_rollback')}
- return await verifyEmployeeQuality089ApiPool(api,s,expected,target)
-}
+ finally{if(begun&&!committed)try{await hostedQuality089Phase('install_20',()=>db.query('ROLLBACK'))}catch{discard=true}try{hostedQuality089Sync('install_release',()=>db.release(discard))}catch{if(!auditFailed&&!discard)fail('install_release')}if(discard&&!auditFailed)fail('install_rollback')}
+ return await hostedQuality089Phase('install_21',()=>verifyEmployeeQuality089ApiPool(api,s,expected,target))
+})}
