@@ -74,6 +74,13 @@ public static class StudioApplications {
  }
 }
 `
+// Enumeration reuses the observer's exact identity/filter methods without
+// loading UI Automation, drawing or input support on every startup probe.
+export const APPLICATION_WINDOW_CODE='using System;using System.Collections.Generic;using System.IO;using System.Runtime.InteropServices;public static class StudioApplications {\n'+APPLICATION_NATIVE_CODE.split('\n').filter(line=>
+ /^ public class Win |^ \[StructLayout\(LayoutKind.Sequential\)\]public struct Rect|^ delegate bool EnumProc|^ public static List<Win> Windows\(|^ static string Executable\(|^ static Win Get\(/.test(line)||
+ line.includes('[DllImport')&&/\b(?:EnumWindows|IsWindowVisible|IsIconic|GetWindowThreadProcessId|OpenProcess|QueryFullProcessImageName|CloseHandle|GetWindowText|GetWindowRect)\(/.test(line)
+).join('\n')+'\n}'
+
 const wrapper=String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 try{
  $v=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_INPUT))|ConvertFrom-Json
@@ -90,12 +97,15 @@ try{
   $codexBin=Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin'
   if(Test-Path -LiteralPath $codexBin -PathType Container){foreach($version in @(Get-ChildItem -LiteralPath $codexBin -Directory -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 3)){$candidate=Join-Path $version.FullName 'codex.exe';if(Test-Path -LiteralPath $candidate -PathType Leaf){$rows.Add(@{name='Codex CLI';path=$candidate;adapter='codex'})}}}
   $result=@($rows|Select-Object -First 3000)
+ }elseif($v.action -eq 'windows'){
+ $code=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_CODE))
+ Add-Type -TypeDefinition $code
+ $result=@([StudioApplications]::Windows([string]$v.path))
  }else{
  Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase,System.Drawing
  $code=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_CODE))
  Add-Type -TypeDefinition $code -ReferencedAssemblies @([Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location,[Drawing.Bitmap].Assembly.Location)
- if($v.action -eq 'windows'){$result=@([StudioApplications]::Windows([string]$v.path))}
- elseif($v.action -eq 'observe'){$result=[StudioApplications]::Observe([string]$v.window,[string]$v.path,[bool]$v.images)}
+ if($v.action -eq 'observe'){$result=[StudioApplications]::Observe([string]$v.window,[string]$v.path,[bool]$v.images)}
  elseif($v.action -eq 'act'){[StudioApplications]::Act([string]$v.window,[string]$v.path,[string]$v.title,[string]$v.kind,[int]$v.element,[string]$v.name,[string]$v.runtime,[string]$v.text,[string]$v.key);$result=@{accepted=$true}}
  else{throw 'application_action_denied'}
  }
@@ -106,7 +116,7 @@ export function applicationNative(input,{execute=execFile,signal,platform=proces
  if(platform!=='win32')return Promise.reject(Error('application_windows_required'))
  signal?.throwIfAborted()
  const command=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe')
- return new Promise((resolve,reject)=>execute(command,['-NoLogo','-NoProfile','-NonInteractive','-STA','-EncodedCommand',Buffer.from(wrapper,'utf16le').toString('base64')],{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:2*1024*1024,timeout,signal,env:{...process.env,STUDIO_APPLICATION_CODE:Buffer.from(APPLICATION_NATIVE_CODE).toString('base64'),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
+ return new Promise((resolve,reject)=>execute(command,['-NoLogo','-NoProfile','-NonInteractive','-STA','-EncodedCommand',Buffer.from(wrapper,'utf16le').toString('base64')],{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:2*1024*1024,timeout,signal,env:{...process.env,STUDIO_APPLICATION_CODE:Buffer.from(input.action==='windows'?APPLICATION_WINDOW_CODE:APPLICATION_NATIVE_CODE).toString('base64'),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
   if(signal?.aborted)return reject(signal.reason)
   let v;try{v=JSON.parse(String(out).trim())}catch{return reject(Error(error?.killed?'application_native_timeout':'application_native_unavailable'))}
   if(v.ok!==true)return reject(Error(/^application_[a-z_]+$/.test(v.error)?v.error:'application_native_unavailable'))

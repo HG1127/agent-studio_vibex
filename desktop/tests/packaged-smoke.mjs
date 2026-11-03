@@ -107,7 +107,9 @@ try {
       if(tool==='apps.windows')assert.deepEqual(value.windows,[],'fixture must begin with no window')
       else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true}
     }
-    const receipt=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'));assert.equal(receipt.type,'browser');assert.equal(receipt.nodeMode,null);assert.equal(receipt.visible,true)
+    let receipt
+    for(let i=0;i<100&&!receipt;i++){try{receipt=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}if(!receipt)await sleep(50)}
+    assert.ok(receipt,'Electron fixture did not report browser readiness');assert.equal(receipt.type,'browser');assert.equal(receipt.nodeMode,null);assert.equal(receipt.visible,true)
   }
   let nativeFileApplications=false
   if(process.argv.includes('--native-file-actions')){
