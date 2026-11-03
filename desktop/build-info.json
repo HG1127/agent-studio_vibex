@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
-  "version": "0.1.0-preview.20",
+  "sourceCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+  "version": "0.1.0-preview.21",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -17,7 +17,9 @@
     "nativeProcessIdentity": "cbdb6de677c8936343951b2bc9e88c882b004e37",
     "leanWindowLaunch": "5c3098a35708092f8de3df9e625387ad2bcf765b",
     "visibleWindow": "4daa40a7c5507fb9bf60941e9c35724613c11961",
-    "compiledWindowProbe": "e20f118b357c57b28f2b3626e8a39201e6db8ad6"
+    "compiledWindowProbe": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
+    "updateRecovery": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+    "applicationObservation": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11"
   },
-  "sourceState": "committed-unified-preview16-with-runtime-fix"
+  "sourceState": "committed-unified-preview20-with-update-recovery-and-observation-fixes"
 }

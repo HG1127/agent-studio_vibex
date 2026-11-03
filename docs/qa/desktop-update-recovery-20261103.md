@@ -22,3 +22,18 @@ The existing employee pages, research capabilities, login/owner checks, per-acti
 ## Verification
 
 Final machine-readable receipts remain under this isolated checkout's .tmp directory. Signed channel publication, native HTTPS verification, installed-app observation, actual preview.20 upgrade and rollback are recorded separately when complete.
+
+## Accepted preview.21 delivery
+
+- Complete pnpm check: 122 unit files, TypeScript, production build and 119-asset PG isolation passed. Desktop suite: 46/46 passed.
+- Complete isolated PocketBase E2E: 42/42 passed with two workers.
+- Native process guard: only the targeted installation stopped; another installation stayed running. Mapped files were refused without modification.
+- Installed desktop and Electron fixture: verified employee identity, forged identity denial, cold startup, scoped image/control observation, native settings entries, and cancellation without permission changes passed.
+- Actual installed preview.20 to preview.21: tamper refusal, signed download, replacement with spaces, rendered UI health, settings preservation and legacy-client handoff passed (153 seconds for the update transaction).
+- Actual signed wrong-version installer: version mismatch was rejected; original preview.21 bytes and settings were restored and preview.21 restarted.
+- Real WorkBuddy with the packaged observer: 71 controls, 14 text controls and one input control; finite coordinates and a 1200 by 532 scaled screenshot. No production input or model task was performed.
+- Existing update source promoted to preview.21 using the original Ed25519 key. Native Electron HTTPS check and full download passed with normal TLS, pinned signature, complete hash/size and no employee cookies.
+- Installer SHA-256: 8719eb0967364b3a38e0a704b5db8eac0188f949ee3483812b136cd04a4f519c; bytes: 275908251.
+- Signed manifest SHA-256: 36948bae9f43a3bb99e3db38f8b0c0a8f1013891112c38a3c9b94ba19d003367.
+
+The personal program was repaired to preview.20; the release harness did not automatically upgrade it to preview.21. Employees obtain preview.21 through the in-app version center. Business backends, company databases, PG cutover and Git remotes were not changed.

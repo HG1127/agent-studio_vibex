@@ -1,5 +1,5 @@
 {
-  "minimumDesktopVersion": "0.1.0-preview.20",
+  "minimumDesktopVersion": "0.1.0-preview.21",
   "branch": "codex/desktop-release",
   "requiredAncestors": [
     "8fcd466667b8a4c896835315a809b4d62b78ec21",
@@ -14,7 +14,9 @@
     "5c3098a35708092f8de3df9e625387ad2bcf765b",
     "4daa40a7c5507fb9bf60941e9c35724613c11961",
     "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
-    "8a8f1fac621043ab36f48f0965a149a8d2c7e104"
+    "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
+    "36a8d00af2e2b62859c51bd41fae837090356f27",
+    "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
@@ -33,7 +35,10 @@
     "local-executor/application-feedback.mjs",
     "local-executor/application-feedback.d.mts",
     "ops/build-application-window-probe.mjs",
-    "desktop/verify-install.cjs"
+    "desktop/verify-install.cjs",
+    "desktop/startup-health.cjs",
+    "desktop/update-guard.cs",
+    "ops/build-desktop-update-guard.mjs"
   ],
   "integratedSources": [
     "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
@@ -41,10 +46,10 @@
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
-  "verifiedSourceCommit": "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
-  "verifiedDesktopVersion": "0.1.0-preview.20",
-  "verifiedInstallerSha256": "f0fe2274c5cb2b60354539230e912f3aa0f5d2c3d49c843bf9eb0a04624e894d",
-  "verifiedInstallerBytes": 275815065,
+  "verifiedSourceCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+  "verifiedDesktopVersion": "0.1.0-preview.21",
+  "verifiedInstallerSha256": "8719eb0967364b3a38e0a704b5db8eac0188f949ee3483812b136cd04a4f519c",
+  "verifiedInstallerBytes": 275908251,
   "verifiedSourceState": "committed-unified-source-with-release-metadata",
   "verifiedIntegratedPatches": [
     "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166",
@@ -54,12 +59,14 @@
     "5c3098a35708092f8de3df9e625387ad2bcf765b",
     "4daa40a7c5507fb9bf60941e9c35724613c11961",
     "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
-    "8a8f1fac621043ab36f48f0965a149a8d2c7e104"
+    "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
+    "36a8d00af2e2b62859c51bd41fae837090356f27",
+    "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11"
   ],
   "verifiedUnifiedSnapshotCommit": "8dc4d6082401aeccc8ea123539ecbbac45df1812",
-  "verifiedPackagingCommit": "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
-  "verifiedRuntimeSourceCommit": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
-  "verifiedManifestSha256": "d4d9da2dbba57b1ea87ad13b8076c08a5951b2f6d8d757cc73149debd27384f1",
+  "verifiedPackagingCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+  "verifiedRuntimeSourceCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+  "verifiedManifestSha256": "36948bae9f43a3bb99e3db38f8b0c0a8f1013891112c38a3c9b94ba19d003367",
   "verifiedDeliveryMethod": "signed-in-app-update",
   "verifiedUpdateFeed": "https://192.168.1.133:8443/desktop-updates/stable/latest.json"
 }
