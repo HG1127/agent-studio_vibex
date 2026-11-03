@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
 import {createRequire} from 'node:module'
+import {APPLICATION_WINDOW_EXECUTABLE_CODE} from '../local-executor/application-native.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const packaged=path.resolve(process.argv[2]||path.join(root,'.tmp/desktop-output/win-unpacked'))
 const hash=async file=>createHash('sha256').update(await fs.readFile(file)).digest('hex')
@@ -29,6 +30,10 @@ const web=await list(path.join(root,'dist'))
 for(const file of web)assert.equal(await hash(path.join(root,'dist',file)),await hash(path.join(resources,'web',file)),'frontend source mismatch: '+file)
 for(const name of ['gateway.mjs','services.mjs','pairing.mjs','computer.mjs'])assert.equal(await hash(path.join(root,'desktop',name)),await hash(path.join(resources,'connector/app/desktop',name)))
 await fs.access(path.join(resources,'connector/runtime/node.exe'))
+const probeDirectory=path.join(resources,'connector/native'),probe=JSON.parse(await fs.readFile(path.join(probeDirectory,'application-window-probe.json'),'utf8'))
+assert.equal(probe.format,'agent-studio-window-probe-v1')
+assert.equal(probe.policySha256,createHash('sha256').update(APPLICATION_WINDOW_EXECUTABLE_CODE).digest('hex'),'window policy source is stale')
+assert.equal(probe.sha256,await hash(path.join(probeDirectory,'application-window-probe.exe')),'compiled window probe mismatch')
 const meta=JSON.parse(await fs.readFile(path.join(root,'desktop/build-info.json'),'utf8'))
 const routes=[...(await fs.readFile(path.join(root,'src/App.tsx'),'utf8')).matchAll(/<Route path="(\/[^"*]*)"/g)].map(x=>x[1]).filter(x=>x!=='/pg-pilot')
 const report={status:'PASS',...meta,webFiles:web.length,resources:files.length,webRoutes:routes,bundledRuntime:'Node 24.14.1',privateConfigurationIncluded:false}

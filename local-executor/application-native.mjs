@@ -1,5 +1,6 @@
 import {execFile} from 'node:child_process'
 import path from 'node:path'
+import {fileURLToPath} from 'node:url'
 
 // Product runtime, not an arbitrary script endpoint. Every input is JSON data;
 // only this fixed, shipped C# implementation can be executed by this helper.
@@ -82,6 +83,34 @@ export const APPLICATION_WINDOW_CODE='using System;using System.Collections.Gene
  line.includes('[DllImport')&&/\b(?:EnumWindows|IsWindowVisible|IsIconic|GetWindowThreadProcessId|OpenProcess|QueryFullProcessImageName|CloseHandle|GetWindowText|GetWindowRect|ShowWindow|SetForegroundWindow)\(/.test(line)
 ).join('\n')+'\n}'
 
+// Compile the same window policy at release time. This entry point only lists
+// or reveals a verified window; it has no UIA, input, script or shell endpoint.
+export const APPLICATION_WINDOW_EXECUTABLE_CODE=APPLICATION_WINDOW_CODE+String.raw`
+public static class StudioWindowProbe {
+ [STAThread]public static int Main(){
+  Console.OutputEncoding=new System.Text.UTF8Encoding(false);
+  var json=new System.Web.Script.Serialization.JavaScriptSerializer();json.MaxJsonLength=2097152;
+  try{
+   string encoded=Environment.GetEnvironmentVariable("STUDIO_APPLICATION_INPUT");
+   if(encoded==null||encoded.Length>8192)throw new Exception("application_action_denied");
+   var input=json.Deserialize<Dictionary<string,object>>(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+   foreach(string key in input.Keys)if(key!="action"&&key!="path"&&key!="reveal")throw new Exception("application_action_denied");
+   if(!input.ContainsKey("action")||!Object.Equals(input["action"],"windows")||!input.ContainsKey("path")||!(input["path"] is string))throw new Exception("application_action_denied");
+   string expected=(string)input["path"];
+   if(expected.Length>2000||!System.Text.RegularExpressions.Regex.IsMatch(expected,@"^[a-zA-Z]:\\")||System.Text.RegularExpressions.Regex.IsMatch(expected,@"[\x00-\x1f\x7f]"))throw new Exception("application_path_denied");
+   object reveal;input.TryGetValue("reveal",out reveal);if(reveal!=null&&!(reveal is bool))throw new Exception("application_action_denied");
+   var result=StudioApplications.Windows(expected);
+   if(Object.Equals(reveal,true)&&result.Count>0)result[0]=StudioApplications.Reveal(result[0].id,expected);
+   Console.Write(json.Serialize(new {ok=true,value=result}));return 0;
+  }catch(Exception error){
+   string code=System.Text.RegularExpressions.Regex.IsMatch(error.Message,@"^application_[a-z_]+$")?error.Message:"application_native_unavailable";
+   Console.Write(json.Serialize(new {ok=false,error=code}));return 1;
+  }
+ }
+}`
+const moduleDirectory=path.dirname(fileURLToPath(import.meta.url))
+const bundledWindowProbe=path.basename(path.dirname(moduleDirectory))==='app'?path.resolve(moduleDirectory,'../../native/application-window-probe.exe'):null
+
 const wrapper=String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 try{
  $v=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_INPUT))|ConvertFrom-Json
@@ -114,11 +143,13 @@ try{
  [Console]::Write((@{ok=$true;value=$result}|ConvertTo-Json -Depth 8 -Compress))
 }catch{$errorCode=[string]$_.Exception.Message;$match=[regex]::Match($errorCode,'application_[a-z_]+');if($match.Success){$errorCode=$match.Value}else{$errorCode='application_native_unavailable'};[Console]::Write((@{ok=$false;error=$errorCode}|ConvertTo-Json -Compress));exit 1}`
 
-export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=input.action==='observe'?35000:20000}={}){
+export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=input.action==='observe'?35000:20000,windowProbe=bundledWindowProbe}={}){
  if(platform!=='win32')return Promise.reject(Error('application_windows_required'))
  signal?.throwIfAborted()
- const command=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe')
- return new Promise((resolve,reject)=>execute(command,['-NoLogo','-NoProfile','-NonInteractive','-STA','-EncodedCommand',Buffer.from(wrapper,'utf16le').toString('base64')],{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:2*1024*1024,timeout,signal,env:{...process.env,STUDIO_APPLICATION_CODE:Buffer.from(input.action==='windows'?APPLICATION_WINDOW_CODE:APPLICATION_NATIVE_CODE).toString('base64'),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
+ const compiled=input.action==='windows'&&windowProbe
+ const command=compiled?windowProbe:path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe')
+ const args=compiled?[]:['-NoLogo','-NoProfile','-NonInteractive','-STA','-EncodedCommand',Buffer.from(wrapper,'utf16le').toString('base64')]
+ return new Promise((resolve,reject)=>execute(command,args,{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:2*1024*1024,timeout,signal,env:{...process.env,...(!compiled?{STUDIO_APPLICATION_CODE:Buffer.from(input.action==='windows'?APPLICATION_WINDOW_CODE:APPLICATION_NATIVE_CODE).toString('base64')}:{}),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
   if(signal?.aborted)return reject(signal.reason)
   let v;try{v=JSON.parse(String(out).trim())}catch{return reject(Error(error?.killed?'application_native_timeout':'application_native_unavailable'))}
   if(v.ok!==true)return reject(Error(/^application_[a-z_]+$/.test(v.error)?v.error:'application_native_unavailable'))

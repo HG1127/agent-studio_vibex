@@ -3,6 +3,7 @@
  * No credentials, .env, DB, worktree, Git, npm installer or browser profile shipped. */
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import {buildApplicationWindowProbe} from './build-application-window-probe.mjs'
 import {createRequire} from 'node:module'
 import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
@@ -88,6 +89,7 @@ export async function buildConnector({destination=path.join(root,'public','downl
  }
  for(const node of global.values())await install(node,path.join(app,'node_modules',node.meta.name),global)
  for(const file of APP_FILES){const target=path.join(app,'local-executor',file);await fs.mkdir(path.dirname(target),{recursive:true});await fs.copyFile(path.join(root,'local-executor',file),target)}
+ await buildApplicationWindowProbe(packageRoot)
  await fs.mkdir(path.join(app,'src','lib'),{recursive:true});await fs.copyFile(path.join(root,'src','lib','localConnectionSetup.ts'),path.join(app,'src','lib','localConnectionSetup.ts'))
  await fs.writeFile(path.join(app,'package.json'),JSON.stringify({name:'agent-studio-connector',version:CONNECTOR_VERSION,type:'module',private:true}))
  const node=await officialRuntime(path.join(stageBase,'official-runtime'))
