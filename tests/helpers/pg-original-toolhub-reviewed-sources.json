@@ -889,11 +889,11 @@
     },
     {
       "path": "services/pg-api/src/original-quality089-audit.ts",
-      "sha256": "e931a6451e94f9044c390320a48ac14a9a35ea3c27c468e040df650ad2c83be8"
+      "sha256": "383f6396b4fc3a35b9d70394553e02eb3f57347ac80f1310b6b9b23db56c6e14"
     },
     {
       "path": "services/pg-api/src/original-quality089-catalog-sql.mjs",
-      "sha256": "970d4d26034543bba7980b732d875b9e65b51005555481d2efd8377f7f2c53bf"
+      "sha256": "8552ea9bfd092e36cf460b2f9c6b0a9e656ad799356c4366dc8cba1a2bb8fcdf"
     },
     {
       "path": "services/pg-api/src/original-quality089-catalog.mjs",
@@ -949,7 +949,7 @@
     },
     {
       "path": "services/pg-api/src/original-role-revision.ts",
-      "sha256": "1950a7df3152666613ddc92a412e1845f53bf4102b61b5ee5d9cc8911bb1fbde"
+      "sha256": "a58623163ac974aa523a3ef2256076cddcaf00461970b1970df19a5d045eb48f"
     },
     {
       "path": "services/pg-api/src/original-role-schema.mjs",
@@ -957,7 +957,7 @@
     },
     {
       "path": "services/pg-api/src/original-role-skill-policy.ts",
-      "sha256": "5152943b058cf8cf1ad41aa6ca8c9bbd8e5b94bdb1f5fd3c947e13c8d110fee3"
+      "sha256": "fbf8486e542e36caceb93d830648e497c479bcd3efbdfd96a22eb3715d3d5d46"
     },
     {
       "path": "services/pg-api/src/original-role-ui-policy.ts",
@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "d4b8a83162640c838e5091fea55b00d18f112ba9f2a2b476448d9ebebc0cb1c7"
+      "sha256": "1f5cf1111a971529cfcfc51695e1b046f85e1ad62b5d03d4a38993540da94cd9"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "5c2a66d58ba9656dd125f9a130ffd0c2bb276339d7011e78e0536d5569be4c4d"
+      "sha256": "9ec81fe8b85b5010fae9c1bbdd315da2f354be2c99e517aea111bfc98e278b04"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -3557,7 +3557,7 @@
     },
     {
       "path": "tests/pg-original-toolhub-genuine.spec.mjs",
-      "sha256": "f83a4d3eeca6d06b3c55408271c24ee34784936b3a8c055f6fbe97def4a3b2fa"
+      "sha256": "06794211048b5d167112645f056177b7fcc6696b05ea2476614f90de2223bfbd"
     },
     {
       "path": "tests/pg-original-toolhub-home-genuine.config.mjs",
@@ -3565,7 +3565,7 @@
     },
     {
       "path": "tests/pg-original-toolhub-home-genuine.spec.mjs",
-      "sha256": "c4370bbbe81861352ff1891ae293a2cb832fdfa1e222b9601ab2031d892021b4"
+      "sha256": "6d45c4465665016b64418c3425febeb1bb6ecb4ec35eabe39b1bc417618cc7a9"
     },
     {
       "path": "tests/original-toolhub-workflow-lifecycle-source-pure.test.mjs",

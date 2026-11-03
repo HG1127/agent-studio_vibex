@@ -54,11 +54,13 @@ function staffAclRows(value){
  const decoded=[];for(const row of rows){if(typeof row!=='string'||row.length>4096||Buffer.byteLength(row,'utf8')>4096)return null;let tuple;try{tuple=JSON.parse(row)}catch{return null};if(!Array.isArray(tuple)||tuple.length!==4||typeof tuple[0]!=='string'||typeof tuple[1]!=='string'||! /^(?:0|[1-9][0-9]{0,9})$/.test(tuple[0])||! /^(?:0|[1-9][0-9]{0,9})$/.test(tuple[1])||typeof tuple[2]!=='string'||typeof tuple[3]!=='boolean')return null;decoded.push(tuple)}
  return {rows,decoded}
 }
+const staffAclPredecessorNames=new Set(["agentstudio_knowledge_acl","agentstudio_scheduler","agentstudio_collaboration","agentstudio_releases","agentstudio_company_metadata_reader","agentstudio_original_schedules"])
 function staffAclObservedDifference(actualJson,expectedJson,rolesJson){
- const actual=staffAclRows(actualJson),expected=staffAclRows(expectedJson),roles=staffAclJson(rolesJson);if(!actual||!expected||expected.rows.length!==3||!Array.isArray(roles)||roles.length>staffAclMaxRows)return null
+ const actual=staffAclRows(actualJson),expected=staffAclRows(expectedJson),roles=staffAclJson(rolesJson);if(!actual||!expected||expected.rows.length<3||expected.rows.length>9||!Array.isArray(roles)||roles.length>staffAclMaxRows)return null
  const owner=expected.decoded[0][0];if(owner==='0'||expected.decoded.some(t=>t[0]!==owner||t[3]!==false))return null
- const self=expected.decoded.filter(t=>t[1]===owner),delegated=expected.decoded.filter(t=>t[1]!==owner);if(self.length!==2||self.map(t=>t[2]).sort().join(',')!=='CREATE,USAGE'||delegated.length!==1||delegated[0][1]==='0'||delegated[0][2]!=='USAGE')return null
- const native=delegated[0][1],roleById=new Map(),roleNames=new Set();for(const r of roles){if(!Array.isArray(r)||r.length!==2||typeof r[0]!=='string'||! /^[1-9][0-9]{0,9}$/.test(r[0])||typeof r[1]!=='string'||r[1].length>128||roleById.has(r[0])||roleNames.has(r[1]))return null;roleById.set(r[0],r[1]);roleNames.add(r[1])}
+ const self=expected.decoded.filter(t=>t[1]===owner),delegated=expected.decoded.filter(t=>t[1]!==owner);if(self.length!==2||self.map(t=>t[2]).sort().join(',')!=='CREATE,USAGE'||delegated.length<1||delegated.some(t=>t[1]==='0'||t[2]!=='USAGE'))return null
+ let native=delegated[0][1];const roleById=new Map(),roleNames=new Set();for(const r of roles){if(!Array.isArray(r)||r.length!==2||typeof r[0]!=='string'||! /^[1-9][0-9]{0,9}$/.test(r[0])||typeof r[1]!=='string'||r[1].length>128||roleById.has(r[0])||roleNames.has(r[1]))return null;roleById.set(r[0],r[1]);roleNames.add(r[1])}
+ if(expected.rows.length>3){const auth=delegated.filter(t=>roleById.get(t[1])==='agentstudio_native_auth');if(auth.length!==1||new Set(delegated.map(t=>t[1])).size!==delegated.length||delegated.some(t=>t[1]!==auth[0][1]&&!staffAclPredecessorNames.has(roleById.get(t[1]))))return null;native=auth[0][1]}
  const category=id=>id===owner?'owner':id===native?'native_auth':id==='0'?'PUBLIC':roleById.get(id)===staffAclApiRole?'api':roleById.get(id)===staffAclQualityRole?'quality':'other'
  const counts=rows=>{const map=new Map();for(const row of rows)map.set(row,(map.get(row)??0)+1);return map},a=counts(actual.rows),e=counts(expected.rows),extra=[],missing=[]
  for(const key of [...new Set([...a.keys(),...e.keys()])].sort()){const delta=(a.get(key)??0)-(e.get(key)??0);for(let i=0;i<Math.abs(delta);i++)(delta>0?extra:missing).push(key)}
@@ -70,7 +72,7 @@ function staffAclObservedDifference(actualJson,expectedJson,rolesJson){
 // Adds source-matchable hashes for unknown ACL identities; never emits an OID or name.
 function staffAclIdentityDifference(actualJson,expectedJson,rolesJson,difference){
  const actual=staffAclRows(actualJson),expected=staffAclRows(expectedJson),roles=staffAclJson(rolesJson);if(!actual||!expected||!Array.isArray(roles))return null
- const owner=expected.decoded[0][0],native=expected.decoded.find(t=>t[1]!==owner)[1],byId=new Map(roles.map(r=>[r[0],r[1]]))
+ const owner=expected.decoded[0][0],byId=new Map(roles.map(r=>[r[0],r[1]])),native=expected.rows.length===3?expected.decoded.find(t=>t[1]!==owner)[1]:[...byId].find(([,name])=>name==='agentstudio_native_auth')[0]
  const category=id=>id===owner?'owner':id===native?'native_auth':id==='0'?'PUBLIC':byId.get(id)===staffAclApiRole?'api':byId.get(id)===staffAclQualityRole?'quality':'other'
  const counts=values=>{const map=new Map();for(const value of values)map.set(value,(map.get(value)??0)+1);return map},a=counts(actual.rows),e=counts(expected.rows),groups=new Map();let total=0,unresolved=0
  for(const key of [...new Set([...a.keys(),...e.keys()])].sort()){const delta=(a.get(key)??0)-(e.get(key)??0);if(!delta)continue;const t=JSON.parse(key),side=delta>0?'extra':'missing',count=Math.abs(delta),privilege=t[2]==='USAGE'?'USAGE':t[2]==='CREATE'?'CREATE':'other';for(const [index,endpoint] of [[0,'grantor'],[1,'grantee']]){if(category(t[index])!=='other')continue;const name=byId.get(t[index]),role_sha256=typeof name==='string'?staffAclHash('sha256').update(name,'utf8').digest('hex'):null;total+=count;if(role_sha256===null)unresolved+=count;const grouped=JSON.stringify([side,endpoint,role_sha256,privilege,t[3]]);groups.set(grouped,(groups.get(grouped)??0)+count)}}
@@ -91,7 +93,7 @@ export function hostedQuality089InventoryRefusal(check){
 }
 
 // Failure-only lower-verifier observation; no capability or comparison is changed.
-const quality089SchemaStages=new Set(['schema_query_01','schema_query_02','catalog_rows','catalog_assert'])
+const quality089SchemaStages=new Set(['schema_query_01','ledger_rpc_audit','ledger_rpc_identity','schema_query_02','catalog_rows','catalog_assert'])
 const quality089SchemaCodes=Object.freeze({'42601':'syntax_error','42703':'undefined_column','42883':'undefined_function','42804':'datatype_mismatch','42846':'cannot_coerce','22P02':'invalid_text_representation','22023':'invalid_parameter_value','22003':'numeric_out_of_range','22021':'character_not_in_repertoire'})
 function quality089SchemaErrorKind(error){
  const known=quality089ErrorKind(error);if(known!=='unclassified')return known

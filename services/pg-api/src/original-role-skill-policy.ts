@@ -78,7 +78,7 @@ export async function prepareOriginalRolePinOnClient(db:SqlClient,owner:string,s
   requireOriginalRoleProfile(db)
   await assertOwnedAdmissionContext(db,owner,scope.run_id)
   const tx=await transaction(db)
-  const row=(await db.query<{revision:string|number;spec:unknown;extension:unknown;base_spec_sha256:string}>('SELECT s.revision,s.spec,e.extension,e.base_spec_sha256 FROM agentstudio.agent_specs s JOIN agentstudio_roles.original_role_extensions e ON e.spec_id=s.id AND e.owner_user_id=s.owner_user_id AND e.spec_revision=s.revision WHERE s.owner_user_id=$1::uuid AND s.id=$2::uuid FOR SHARE OF s,e',[owner,scope.spec_id])).rows
+  const row=(await db.query<{revision:string|number;spec:unknown;extension:unknown;base_spec_sha256:string}>('SELECT s.revision,s.spec,e.extension,e.base_spec_sha256 FROM agentstudio.agent_specs s JOIN agentstudio_roles.original_role_extensions e ON e.spec_id=s.id AND e.owner_user_id=s.owner_user_id AND e.spec_revision=s.revision WHERE s.owner_user_id=$1::uuid AND s.id=$2::uuid FOR SHARE OF s',[owner,scope.spec_id])).rows
   if(row.length!==1||Number(row[0]!.revision)!==scope.spec_revision)deny('original_role_extension_unavailable')
   // The base remains the existing strict validator; extensions live in a sidecar.
   if(options.taskPlanning||options.localDeviceId)requireOriginalRoleUi(db)
@@ -137,7 +137,7 @@ export async function verifyOriginalRoleReplayOnClient(db:SqlClient,owner:string
 async function recordOriginalRoleSpecSnapshot(db:SqlClient,owner:string,id:string,revision:number,spec:ReturnType<typeof workflowAgentSpec>){
  const hash=originalRoleHash(spec)
  await db.query('INSERT INTO agentstudio_roles.original_role_specs(owner_user_id,spec_id,spec_revision,spec,spec_sha256) VALUES($1::uuid,$2::uuid,$3::bigint,$4::jsonb,$5::text) ON CONFLICT DO NOTHING',[owner,id,revision,originalRoleCanonical(spec),hash])
- const rows=(await db.query<{spec:unknown;spec_sha256:string}>('SELECT spec,spec_sha256 FROM agentstudio_roles.original_role_specs WHERE owner_user_id=$1::uuid AND spec_id=$2::uuid AND spec_revision=$3::bigint FOR SHARE',[owner,id,revision])).rows
+ const rows=(await db.query<{spec:unknown;spec_sha256:string}>('SELECT spec,spec_sha256 FROM agentstudio_roles.original_role_specs WHERE owner_user_id=$1::uuid AND spec_id=$2::uuid AND spec_revision=$3::bigint',[owner,id,revision])).rows
  if(rows.length!==1||rows[0]!.spec_sha256!==hash||originalRoleCanonical(workflowAgentSpec(rows[0]!.spec,spec.tools.includes('local_computer')))!==originalRoleCanonical(spec))deny('original_role_spec_snapshot_conflict')
 }
 export async function saveOriginalRoleExtensionOnClient(db:SqlClient,owner:string,id:string,revision:number,raw:unknown){

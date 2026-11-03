@@ -15,7 +15,7 @@ export async function carryOriginalRoleRevisionOnClient(db:SqlClient,owner:strin
  if(!isUuid(id)||!Number.isSafeInteger(before)||before<1||!Number.isSafeInteger(after)||after!==before+1)throw new HttpError(409,'original_role_revision_transition_invalid')
  await assertOwnedAdmissionContext(db,owner)
  const rows=(await db.query<{extension:unknown;base_spec_sha256:string;spec:unknown;spec_sha256:string}>(
-  'SELECT e.extension,e.base_spec_sha256,h.spec,h.spec_sha256 FROM agentstudio_roles.original_role_extensions e JOIN agentstudio_roles.original_role_specs h ON h.owner_user_id=e.owner_user_id AND h.spec_id=e.spec_id AND h.spec_revision=e.spec_revision WHERE e.owner_user_id=$1::uuid AND e.spec_id=$2::uuid AND e.spec_revision=$3::bigint FOR SHARE OF e,h',[owner,id,before])).rows
+  'SELECT e.extension,e.base_spec_sha256,h.spec,h.spec_sha256 FROM agentstudio_roles.original_role_extensions e JOIN agentstudio_roles.original_role_specs h ON h.owner_user_id=e.owner_user_id AND h.spec_id=e.spec_id AND h.spec_revision=e.spec_revision WHERE e.owner_user_id=$1::uuid AND e.spec_id=$2::uuid AND e.spec_revision=$3::bigint',[owner,id,before])).rows
  if(!rows.length){const history=(await db.query('SELECT 1 FROM agentstudio_roles.original_role_extensions WHERE owner_user_id=$1::uuid AND spec_id=$2::uuid LIMIT 1',[owner,id])).rows;if(history.length)throw new HttpError(409,'original_role_revision_metadata_missing');return undefined}
  const old=rows[0];if(rows.length!==1||!old)throw new HttpError(409,'original_role_revision_metadata_missing')
  const prior=workflowAgentSpec(old.spec,originalRoleUiEnabled(db)),hash=originalRoleHash(prior)
