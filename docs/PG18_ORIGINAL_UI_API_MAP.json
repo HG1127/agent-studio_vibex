@@ -11777,6 +11777,74 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_89d2129_original_Native_version_comparison_followup": {
+      "base_head": "89d212963b6d8a090149e79de5193230b53b44cf",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "reviewed_manifest_sha256": "6fa04a5da130e5bffa6e7a2d450472aed46b751e2b16e86046ed75d9c7230b0b",
+      "source_targets": 16,
+      "new_paths": 4,
+      "exact_forward_inverse_hunks": 52,
+      "original_comparison_card": {
+        "JSX_elements": 86,
+        "all_original_tags_classes_static_accessibility_attributes_retained": true,
+        "original_controls_used": true,
+        "PB_fallback_retained_only_outside_PG_mode": true,
+        "Native_reads_never_fallback_to_PB": true
+      },
+      "contracts": {
+        "owner_scoped_native_history": true,
+        "true_count_and_25_row_pages": true,
+        "anchor_run_and_source_acl_verified": true,
+        "exact_acceptance_request_receipt_lookup": true,
+        "truncated_steps_read_in_100_row_pages": true,
+        "max_complete_steps": 1000,
+        "greater_or_unknown_prefix_refused": true,
+        "owner_epoch_selection_and_version_retirement": true,
+        "late_results_discarded": true,
+        "unknown_event_billing_score_metrics_not_fabricated": true
+      },
+      "Root_closed_tests": {
+        "tests": 256,
+        "pass": 256,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "effect_reports": 4,
+        "all_effects_zero": true
+      },
+      "Root_actual_API_compiler_exit": 0,
+      "Root_actual_frontend_compiler_exit": 0,
+      "Root_actual_original_main_App_Vite_build_exit": 0,
+      "frozen059060_source_proof_pass": true,
+      "Role199_source_bytes_unchanged": true,
+      "Root_definitive_403_feedback_fix_and_all_existing_tests_retained": true,
+      "SQL_schema_grants_package_lock_unchanged": true,
+      "actual_original_page_F01_acceptance": false,
+      "employee_UAT_accepted": false,
+      "accepted_UI_carry_complete": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28421,
+        "retained_prior_pins": 28321,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [
+          "shared/native-agent-history-contract.ts",
+          "src/lib/originalNativeRunComparison.ts",
+          "tests/helpers/original-native-comparison-source-harness.mjs",
+          "tests/original-native-run-comparison-pure.test.mjs"
+        ],
+        "nested_Role": 199,
+        "retained_nested_Role": 199,
+        "new_nested_Role_sources": [],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

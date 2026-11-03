@@ -1,3 +1,4 @@
+import {createOriginalNativeRunComparison} from './originalNativeRunComparison.ts'
 import {originalOptimizationRetestSelection} from './originalOptimizationRetestSelection.ts'
 import {createOriginalOptimizationRecovery} from './originalAgentOptimizationRecovery.ts'
 import {parseOriginalRunOptions,originalRunOptionsProtocol} from '../../shared/original-agent-run-options.ts'
@@ -113,6 +114,14 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
   async function confirm(request:OriginalRunConfirmation,work:()=>Promise<void>,current:()=>boolean=()=>true){const life=epoch;await identity();if(suspended||recovering||sourceDenied||ownerChanged||life!==epoch||!current())return;if(!await options.confirm(Object.freeze(request))||closed||life!==epoch||!current())return;await identity();if(life!==epoch||!privateVisible()||!current())return;error='';notice='';publish();await work()}
  return{
   hidePrivateForIdentity(owner=false){if(owner){suspended=true;lockPrivate('员工身份已变化，旧私有正文与本地草稿已隐藏。原请求仅保留在原员工控制器。',true)}else{if(!suspended){epoch++;read++;historyRead++}suspended=true;error='员工身份暂不可用，旧私有正文与草稿展示已隐藏，原未确认请求仍保留。';publish()}},
+createComparisonReader(expected:ReturnType<typeof originalRunDetail>){
+   const scope=selectionScope(),raw=runs.snapshot().detail
+   if(!scope()||!raw)return null
+   const actual=originalRunDetail(raw,employee)
+   if(expected.id!==actual.id||expected.spec_id!==actual.spec_id||expected.updated!==actual.updated||expected.created!==actual.created||expected.rh_user_id!==employee)return null
+   const version=raw.run.updated_at,current=()=>scope()&&runs.snapshot().detail?.run.id===actual.id&&runs.snapshot().detail?.run.updated_at===version
+   return createOriginalNativeRunComparison({employeeId:employee,run:actual,api,verifyEmployee:async()=>{await identity();return employee},isCurrent:current})
+  },
   snapshot,dispose,refreshPreparation,retireRunDraft(){draftRevision++},subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},navigationBlocked:blocked,
   async verifyIdentity(){if(closed)return;const restore=suspended||sourceDenied||ownerChanged;recovering=restore;if(restore){epoch++;read++;historyRead++;publish()}try{await identity();if(restore){suspended=false;sourceDenied=false;ownerChanged=false;await Promise.all([load(),runs.refresh(),feedback.refresh(),memories.refresh()])}}finally{recovering=false;publish()}},
   async activate(){await identity();runs.setActive(true);feedback.setActive(true);memories.setActive(true);await load()},

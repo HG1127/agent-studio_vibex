@@ -21,7 +21,9 @@ export function originalAgentRunRoute(raw:string,method:string):boolean{
  }
 
  if(method==='GET'){
-  if(p==='/api/v2/agent-optimizations')return url.search==='?'+q.toString()&&[...q.keys()].join(',')==='spec_id'&&q.getAll('spec_id').length===1&&new RegExp('^'+uuid+'$').test(q.get('spec_id')??'')
+  if(p==='/api/v2/agent-autonomous-runs/history')return url.search==='?'+q.toString()&&[...q.keys()].join(',')==='spec_id,anchor_run_id,page'&&[...q.keys()].every(key=>q.getAll(key).length===1)&&new RegExp('^'+uuid+'$').test(q.get('spec_id')??'')&&new RegExp('^'+uuid+'$').test(q.get('anchor_run_id')??'')&&/^[1-9][0-9]{0,15}$/.test(q.get('page')??'')&&Number.isSafeInteger(Number(q.get('page')))&&Number(q.get('page'))<=Math.floor(Number.MAX_SAFE_INTEGER/25)
+  if(new RegExp('^/api/v2/agent-autonomous-runs/'+uuid+'/steps$').test(p))return url.search==='?'+q.toString()&&[...q.keys()].join(',')==='limit,after'&&q.getAll('limit').length===1&&q.getAll('after').length===1&&q.get('limit')==='100'&&/^(?:|wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100})$/.test(q.get('after')??'!')
+  if(p==='/api/v2/agent-optimizations'){const keys=[...q.keys()];return url.search==='?'+q.toString()&&(keys.join(',')==='spec_id'||keys.join(',')==='spec_id,request_id')&&keys.every(key=>q.getAll(key).length===1)&&new RegExp('^'+uuid+'$').test(q.get('spec_id')??'')&&(!q.has('request_id')||new RegExp('^'+uuid+'$').test(q.get('request_id')??''))}
   if(p==='/api/v2/original-ui/role-skills/meta')return !url.search
   if(p==='/api/v2/original-ui/role-skills/detail')return url.search==='?'+q.toString()&&[...q.keys()].join(',')==='id,version'&&q.getAll('id').length===1&&q.getAll('version').length===1&&/^[A-Za-z0-9]{15}$/.test(q.get('id')??'')&&/^(?:[1-9]|[1-9][0-9]|100)$/.test(q.get('version')??'')
   if(p==='/api/v2/local-devices')return !url.search

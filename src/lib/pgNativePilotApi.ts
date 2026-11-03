@@ -20,6 +20,7 @@ import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistor
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
 import {agentDerivedMemoryChoice,agentDerivedMemoryReceipt,agentDerivedMemoryPreview,agentDerivedMemoryPage,type PgNativeDerivedMemoryChoice} from "./pgNativeAgentDerivedMemory.ts"
 export type {PgNativeDerivedMemoryChoice,PgNativeDerivedMemoryReceipt,PgNativeDerivedMemoryPreview,PgNativeDerivedMemoryItem,PgNativeDerivedMemoryPage} from "./pgNativeAgentDerivedMemory.ts"
+import {nativeAgentHistoryId,nativeAgentHistoryPageNumber,nativeAgentHistoryPage,type NativeAgentHistoryPage} from "../../shared/native-agent-history-contract.ts"
 import {optimizationDraft,optimizationChoice,optimizationPreview,optimizationReceipt,optimizationHistory,type PgNativeOptimizationDraft,type PgNativeOptimizationChoice} from "./pgNativeAgentOptimization.ts"
 export type {PgNativeOptimizationDraft,PgNativeOptimizationChoice,PgNativeOptimizationPreview,PgNativeOptimizationReceipt,PgNativeOptimizationHistory} from "./pgNativeAgentOptimization.ts"
 import {agentFeedbackChoice,agentFeedbackReceipt,agentFeedbackStatus,type PgNativeFeedbackChoice} from "./pgNativeAgentFeedback.ts"
@@ -677,10 +678,10 @@ export function createPgNativePilotApi(
       const id=reviewInput(agentReviewId,raw),result=await get<unknown>(`/api/v2/agent-reviews/${id}`)
       return reviewResponse(()=>agentReviewView(result,id))
     },
-    getAgentOptimizations:async(specId:string)=>{
-      if(!safeId.test(specId))throw new PgNativePilotError(400,"invalid_agent_optimization_spec")
-      const spec=specId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-optimizations?spec_id=${spec}`)
-      try{return optimizationHistory(result,spec)}catch{throw new PgNativePilotError(503,"invalid_agent_optimization_projection")}
+    getAgentOptimizations:async(specId:string,requestId?:string)=>{
+      if(!safeId.test(specId)||requestId!==undefined&&!safeId.test(requestId))throw new PgNativePilotError(400,"invalid_agent_optimization_spec")
+      const spec=specId.toLowerCase(),request=requestId?.toLowerCase(),result=await get<unknown>(("/api/v2/agent-optimizations?spec_id="+spec+(request===undefined?'':'&request_id='+request)) as Route)
+      try{const history=optimizationHistory(result,spec);if(request!==undefined&&(history.items.length>1||history.items.some(row=>row.request_id!==request)))throw Error('optimization_receipt_changed');return history}catch{throw new PgNativePilotError(503,"invalid_agent_optimization_projection")}
     },
     previewAgentOptimization:async(raw:PgNativeOptimizationDraft)=>{
       let draft:PgNativeOptimizationDraft;try{draft=optimizationDraft(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_optimization_request")}
@@ -1231,6 +1232,12 @@ export function createPgNativePilotApi(
     respondAutonomousAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice),
     confirmAutonomousAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice,true),
     getAutonomousAgentHumanHistory:async(id:string,after="",limit=10)=>humanHistory(routes.autonomousAgentRuns,id,after,limit),
+    getAutonomousAgentHistory:async(specId:string,anchorRunId:string,page=1):Promise<NativeAgentHistoryPage>=>{
+      let spec:string,anchor:string,number:number
+      try{spec=nativeAgentHistoryId(specId.toLowerCase());anchor=nativeAgentHistoryId(anchorRunId.toLowerCase());number=nativeAgentHistoryPageNumber(page)}catch{throw new PgNativePilotError(400,"invalid_native_agent_history")}
+      const result=await get<unknown>((routes.autonomousAgentRuns+"/history?spec_id="+spec+"&anchor_run_id="+anchor+"&page="+number) as Route)
+      try{return nativeAgentHistoryPage(result,{specId:spec,anchorRunId:anchor,page:number})}catch{throw new PgNativePilotError(503,"invalid_native_agent_history_response")}
+    },
     listAutonomousAgentRuns:async()=> (await get<{items:PgNativeAutonomousAgentSummary[]}>(routes.autonomousAgentRuns)).items,
     decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string,knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { ArrowRightLeft, Clock3, GitCompareArrows, Loader2, RefreshCw } from "lucide-react"
+import {originalRunDetailHref} from '@/lib/originalRunDetailRoute'
+import {originalComparisonId,type OriginalNativeComparison,type OriginalNativeComparisonReader,type OriginalNativeComparisonView} from '@/lib/originalNativeRunComparison'
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/studioAuth"
 import { buildRunComparison,type ComparisonRun,type ComparisonEvent } from "@/lib/runComparison"
 import type { AgentRunRow,RunEventRow } from "@/pages/AgentRun/useAgentRun"
 
-type Props = {run:AgentRunRow;history:AgentRunRow[];events:RunEventRow[]}
+type Props = {run:AgentRunRow;history:AgentRunRow[];events:RunEventRow[];nativeComparison?:OriginalNativeComparisonView}
 type HistoryChoice=Pick<AgentRunRow,"id"|"spec_id"|"status"|"created">
 type OptimizationLineage={
   id:string;source_run_id:string;changed_keys:string[];created_ms:number;
@@ -29,7 +31,24 @@ function timeLabel(value:string){
   const d=new Date(value.replace(" ","T"))
   return Number.isNaN(d.getTime())?value:d.toLocaleString("zh-CN")
 }
-export function RunVersionComparisonCard({run,history,events}:Props){
+const nativeComparisonEnabled=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'
+export function RunVersionComparisonCard(props:Props){
+  const scope=props.nativeComparison
+  return <RunVersionComparisonContent key={nativeComparisonEnabled?JSON.stringify([scope?.employeeId,scope?.epoch,scope?.selectionEpoch,props.run.id,props.run.spec_id,props.run.rh_user_id,props.run.created]):'pocketbase'} {...props}/>
+}
+function RunVersionComparisonContent({run,history,events,nativeComparison}:Props){
+  const [nativeReader,setNativeReader]=useState<OriginalNativeComparisonReader|null>(null)
+  const [nativeResult,setNativeResult]=useState<{reader:OriginalNativeComparisonReader;value:OriginalNativeComparison}|null>(null)
+  const [nativeSetupError,setNativeSetupError]=useState('')
+  const [nativeRefresh,setNativeRefresh]=useState(0)
+  const createNative=nativeComparison?.create
+  useEffect(()=>{
+    if(!nativeComparisonEnabled)return
+    let reader:OriginalNativeComparisonReader|null=null
+    setNativeSetupError('')
+    try{if(!createNative)throw Error('comparison_port_unavailable');reader=createNative(run);if(!reader)throw Error('comparison_source_unavailable');setNativeReader(reader)}catch{setNativeReader(null);setNativeSetupError('当前员工或运行来源尚未核实，无法读取历史对比。请刷新原运行后重试。')}
+    return()=>reader?.dispose()
+  },[createNative,nativeComparison?.employeeId,nativeComparison?.epoch,nativeComparison?.selectionEpoch,run.id,run.spec_id,run.rh_user_id,run.created,run.updated,nativeRefresh])
   const [ownedHistory,setOwnedHistory]=useState<HistoryChoice[]|null>(null)
   const [historyPage,setHistoryPage]=useState(1)
   const [historyPages,setHistoryPages]=useState(1)
@@ -46,12 +65,16 @@ export function RunVersionComparisonCard({run,history,events}:Props){
     setDirectRunId("")
   },[run.id])
   useEffect(()=>{
-    if(!run.spec_id)return
+    if(!run.spec_id||nativeComparisonEnabled&&!nativeReader?.active())return
     const abort=new AbortController()
     setHistoryLoading(true)
     setHistoryError("")
     void(async()=>{
       try{
+        if(nativeComparisonEnabled){
+          const data=await nativeReader!.history(historyPage);if(abort.signal.aborted)return
+          setOwnedHistory(previous=>historyPage===1?data.items:[...new Map([...(previous||[]),...data.items].map(item=>[item.id,item])).values()]);setHistoryTotal(data.totalItems);setHistoryPages(data.totalPages);return
+        }
         const res=await fetch(getPocketBaseUrl()+"/api/agent-specs/"+
           encodeURIComponent(run.spec_id)+"/run-history?page="+historyPage+"&perPage=25",{
           headers:{...vibexAuthHeaders()},signal:abort.signal,
@@ -70,23 +93,24 @@ export function RunVersionComparisonCard({run,history,events}:Props){
         setHistoryPages(Math.max(1,Number(data.totalPages)||1))
       }catch{
         if(!abort.signal.aborted)setHistoryError(
-          "完整历史索引暂不可用，下面仅能显示已加载的近期记录；请重试。")
+          nativeComparisonEnabled?"本人完整运行历史暂不可用，请重试；当前记录不会由其他来源代替。":"完整历史索引暂不可用，下面仅能显示已加载的近期记录；请重试。")
       }finally{if(!abort.signal.aborted)setHistoryLoading(false)}
     })()
     return()=>abort.abort()
-  },[run.id,run.spec_id,historyPage,historyRevision])
+  },[run.id,run.spec_id,historyPage,historyRevision,nativeReader])
 
   const candidates=useMemo(()=>{
     const currentTime=Date.parse(run.created.replace(" ","T"))||0
-    return (ownedHistory||history).filter(row=>row.spec_id===run.spec_id && row.id!==run.id &&
+    return (nativeComparisonEnabled?(nativeReader?.active()?ownedHistory??[]:[]):ownedHistory||history).filter(row=>row.spec_id===run.spec_id && row.id!==run.id &&
       (Date.parse(row.created.replace(" ","T"))||0)<=currentTime)
       .sort((a,b)=>(Date.parse(b.created)||0)-(Date.parse(a.created)||0))
-  },[ownedHistory,history,run.id,run.spec_id,run.created])
+  },[ownedHistory,history,run.id,run.spec_id,run.created,nativeReader])
   const [beforeId,setBeforeId]=useState("")
   const [before,setBefore]=useState<AgentRunRow|null>(null)
   const [beforeEvents,setBeforeEvents]=useState<RunEventRow[]>([])
   const [loading,setLoading]=useState(false)
-  const [error,setError]=useState("")
+  const [comparisonReadError,setError]=useState("")
+  const error=nativeSetupError||comparisonReadError||(nativeComparisonEnabled&&nativeReader&&!nativeReader.active()?"当前员工、来源或版本已变化，请刷新原运行后重试。":"")
   const [revision,setRevision]=useState(0)
   const lineageId=typeof run.config?.optimization_lineage_id==="string"
     ?String(run.config.optimization_lineage_id):""
@@ -95,9 +119,10 @@ export function RunVersionComparisonCard({run,history,events}:Props){
   useEffect(()=>{
     const abort=new AbortController()
     setLineage(null);setLineageError("")
-    if(!/^[A-Za-z0-9]{15}$/.test(lineageId))return
+    if(nativeComparisonEnabled&&!nativeReader?.active()||!nativeComparisonEnabled&&!/^[A-Za-z0-9]{15}$/.test(lineageId))return
     void(async()=>{
       try{
+        if(nativeComparisonEnabled){const item=await nativeReader!.lineage();if(!abort.signal.aborted)setLineage(item);return}
         const response=await fetch(getPocketBaseUrl()+"/api/agent-specs/"+
           encodeURIComponent(run.spec_id)+"/optimization-lineage?audit_id="+encodeURIComponent(lineageId),{
           headers:{...vibexAuthHeaders()},signal:abort.signal,
@@ -110,16 +135,17 @@ export function RunVersionComparisonCard({run,history,events}:Props){
       }catch{if(!abort.signal.aborted)setLineageError("暂时无法验证反馈与版本记录的关联。")}
     })()
     return()=>abort.abort()
-  },[run.spec_id,run.id,lineageId])
+  },[run.spec_id,run.id,lineageId,nativeReader])
 
   useEffect(()=>setBeforeId(candidates[0]?.id||""),[run.id,candidates[0]?.id])
   useEffect(()=>{
-    if(!beforeId){setBefore(null);setBeforeEvents([]);setLoading(false);return}
+    if(!beforeId||nativeComparisonEnabled&&!nativeReader?.active()){setBefore(null);setBeforeEvents([]);setNativeResult(null);setLoading(false);return}
     let cancelled=false
     const abort=new AbortController()
-    setBefore(null);setBeforeEvents([]);setError("");setLoading(true)
+    setBefore(null);setBeforeEvents([]);setNativeResult(null);setError("");setLoading(true)
     void(async()=>{
       try{
+        if(nativeComparisonEnabled){const pair=await nativeReader!.compare(beforeId);if(!cancelled){setBefore(pair.before);setNativeResult({reader:nativeReader!,value:pair.result})}return}
         const headers={...vibexAuthHeaders()}
         const [recordRes,eventRes]=await Promise.all([
           fetch(getPocketBaseUrl()+"/api/agent_runs/"+encodeURIComponent(beforeId),{
@@ -141,13 +167,14 @@ export function RunVersionComparisonCard({run,history,events}:Props){
       }finally{if(!cancelled)setLoading(false)}
     })()
     return()=>{cancelled=true;abort.abort()}
-  },[beforeId,run.spec_id,revision])
+  },[beforeId,run.id,run.spec_id,revision,nativeReader])
   const result=useMemo(()=>{
+    if(nativeComparisonEnabled)return nativeReader?.active()&&nativeResult?.reader===nativeReader?nativeResult.value:null
     if(!before||before.spec_id!==run.spec_id)return null
     try{return buildRunComparison(before as ComparisonRun,run as ComparisonRun,
       beforeEvents as ComparisonEvent[],events as ComparisonEvent[])}
     catch{return null}
-  },[before,run,beforeEvents,events])
+  },[before,run,beforeEvents,events,nativeResult,nativeReader])
   if(!run.id||!run.spec_id)return null
   return <section id="run-version-compare" aria-label="Agent 前后运行和版本对比"
     className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
@@ -157,7 +184,7 @@ export function RunVersionComparisonCard({run,history,events}:Props){
           <GitCompareArrows className="h-5 w-5 text-primary"/>前后运行与方案变更对比
         </h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          根据两次运行的持久化配置快照、事件和评估对比；不是按模型猜测改动。
+          {nativeComparisonEnabled?"根据本人持久化历史快照和公开执行步骤对比；未提供的事件、评分和计费数据不作推断。":"根据两次运行的持久化配置快照、事件和评估对比；不是按模型猜测改动。"}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -171,7 +198,7 @@ export function RunVersionComparisonCard({run,history,events}:Props){
             {timeLabel(item.created)} · {item.status}
           </option>)}
         </select>
-        <button type="button" disabled={loading} onClick={()=>setRevision(x=>x+1)}
+        <button type="button" disabled={loading} onClick={()=>{setRevision(x=>x+1);if(nativeComparisonEnabled)setNativeRefresh(x=>x+1)}}
           aria-label="刷新历史版本对比"
           className="grid h-9 w-9 place-items-center rounded-lg border border-border hover:bg-secondary disabled:opacity-40">
           <RefreshCw className="h-4 w-4"/>
@@ -189,15 +216,15 @@ export function RunVersionComparisonCard({run,history,events}:Props){
         加载更早运行
       </button>}
       {historyError&&<button type="button"
-        onClick={()=>setHistoryRevision(x=>x+1)}
+        onClick={()=>{setHistoryRevision(x=>x+1);if(nativeComparisonEnabled)setNativeRefresh(x=>x+1)}}
         className="font-semibold text-primary underline">重试加载完整历史</button>}
       <label className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="text-muted-foreground">按运行 ID 定位</span>
-        <input value={directRunId} onChange={e=>setDirectRunId(e.target.value.trim().slice(0,15))}
-          aria-label="输入要比较的历史运行 ID" placeholder="输入 15 位运行 ID"
+        <input value={directRunId} onChange={e=>setDirectRunId((nativeComparisonEnabled?e.target.value.trim().toLowerCase():e.target.value.trim()).slice(0,nativeComparisonEnabled?36:15))}
+          aria-label="输入要比较的历史运行 ID" placeholder={nativeComparisonEnabled?"输入完整运行 UUID":"输入 15 位运行 ID"}
           className="min-h-9 w-52 rounded-lg border border-border bg-background px-2.5 text-xs"/>
       </label>
-      <button type="button" disabled={!/^[A-Za-z0-9]{15}$/.test(directRunId)||directRunId===run.id}
+      <button type="button" disabled={!(nativeComparisonEnabled?originalComparisonId(directRunId):/^[A-Za-z0-9]{15}$/.test(directRunId))||directRunId===run.id}
         onClick={()=>setBeforeId(directRunId)}
         className="min-h-9 rounded-lg border border-primary/30 px-3 font-semibold text-primary hover:bg-primary/5 disabled:opacity-40">
         读取并比较
@@ -209,7 +236,7 @@ export function RunVersionComparisonCard({run,history,events}:Props){
       </p>}
     {lineageError&&<p role="alert" className="mt-2 text-xs text-destructive">{lineageError}</p>}
     {loading&&<p role="status" className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-      <Loader2 className="h-4 w-4 animate-spin"/>正在读取历史运行与工具事件…
+      <Loader2 className="h-4 w-4 animate-spin"/>{nativeComparisonEnabled?"正在读取历史运行与公开执行步骤…":"正在读取历史运行与工具事件…"}
     </p>}
     {error&&<p role="alert" className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-xs text-destructive">
       {error}
@@ -282,7 +309,7 @@ export function RunVersionComparisonCard({run,history,events}:Props){
       </div>
       <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
         <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0"/>
-        运行耗时按首尾状态事件计算，不包含之后的反馈时间；字符数是执行记录估计，不是供应商实际 Token 计费。
+        {nativeComparisonEnabled?"工具结果次数只统计完整公开步骤中的成功工具结果；后台没有公开事件时间线、模型请求账本与字符估计时显示未记录。":"运行耗时按首尾状态事件计算，不包含之后的反馈时间；字符数是执行记录估计，不是供应商实际 Token 计费。"}
         实际 API 账单、工具收费和总成本尚无可靠数据，不能据此声称节省费用。
       </p>
       {result.scoreDifference!==null&&<p className="mt-2 text-xs text-muted-foreground">
@@ -325,9 +352,9 @@ export function RunVersionComparisonCard({run,history,events}:Props){
           </ul>}
       </details>
       <div className="mt-3 flex flex-wrap gap-3 text-xs">
-        <Link to={"/run-detail?run="+encodeURIComponent(before.id)}
+        <Link to={nativeComparisonEnabled?originalRunDetailHref({id:before.id,kind:'agent_autonomous'}):"/run-detail?run="+encodeURIComponent(before.id)}
           className="font-semibold text-primary hover:underline">查看基准运行与证据</Link>
-        <Link to={"/run-detail?run="+encodeURIComponent(run.id)}
+        <Link to={nativeComparisonEnabled?originalRunDetailHref({id:run.id,kind:'agent_autonomous'}):"/run-detail?run="+encodeURIComponent(run.id)}
           className="font-semibold text-primary hover:underline">查看当前运行与证据</Link>
       </div>
     </>}

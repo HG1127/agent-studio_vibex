@@ -225,6 +225,7 @@ export function createHandler(deps:AppDependencies) {
       const workflowNodeDebug=/^\/api\/v2\/workflows\/([0-9a-fA-F-]{36})\/model-node-debug$/.exec(path)
       const workflowV2Route=/^\/api\/v2\/workflow-v2-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|outputs|output-history|respond|respond-confirm|human-history))?)?$/.exec(path)
       const autonomousAgentRoute=/^\/api\/v2\/agent-autonomous-runs(?:\/([0-9a-fA-F-]{36})(?:\/(decision|cancel|steps|respond|respond-confirm|human-history|pause|resume|pause-confirm|resume-confirm))?)?$/.exec(path)
+      const autonomousAgentHistory=path==="/api/v2/agent-autonomous-runs/history"
       const autonomousAgentSubmit=/^\/api\/v2\/agent-specs\/([0-9a-fA-F-]{36})\/autonomous-runs$/.exec(path)
       const runRoute=path==="/api/v2/runs" ||
         /^\/api\/v2\/runs\/[0-9a-fA-F-]{36}(?:\/model-approval)?$/.test(path)
@@ -261,7 +262,7 @@ export function createHandler(deps:AppDependencies) {
       const releaseRoute=/^\/api\/v2\/agent-releases\/([0-9a-fA-F-]{36})(?:\/(change|confirm|acceptance|versions)(?:\/([0-9a-fA-F-]{36}))?)?$/.exec(path)
       if(!workflowRoute && !workflowValidationSubmitRoute &&
          !workflowValidationReadRoute && !workflowSafeRunSubmitRoute &&
-         !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !knowledgeRoute && !runRoute && !schedulesRoute &&
+         !workflowSafeRunReadRoute && !workflowV2Submit && !workflowNodeDebug && !workflowV2Route && !autonomousAgentSubmit && !autonomousAgentRoute && !autonomousAgentHistory && !knowledgeRoute && !runRoute && !schedulesRoute &&
          !modelConnectionsRoute && !toolConnectionsRoute && !mcpRoute && !smitheryRoute && !sharedKnowledgeRoute && !embeddingRoute && !queryRoute && !collaborationRoute && !releaseRoute && !memoryRoute && !derivedMemoryRoute && !outcomeMemoryRoute && !feedbackRoute && !optimizationRoute && !reviewRoute && !generatedRoute && !toolHubRoute &&
          !submitPrepareRoute && path!=="/api/v2/agent-specs" &&
          !/^\/api\/v2\/agent-specs\/[0-9a-fA-F-]{36}$/.test(path))
@@ -382,8 +383,8 @@ export function createHandler(deps:AppDependencies) {
         if(!optimization)throw new HttpError(503,"agent_optimization_unavailable")
         const query=new URL(req.url||"/","http://127.0.0.1").searchParams,action=optimizationRoute[1]
         if(!action&&method==="GET"){
-          if([...query.keys()].length!==1||!query.has("spec_id"))throw new HttpError(400,"invalid_agent_optimization_query")
-          return send(res,200,await optimization.list(identity,query.get("spec_id")!))
+          const keys=[...query.keys()];if(keys.length!==new Set(keys).size||keys.some(key=>!["spec_id","request_id"].includes(key))||!query.has("spec_id"))throw new HttpError(400,"invalid_agent_optimization_query")
+          return send(res,200,await optimization.list(identity,query.get("spec_id")!,query.get("request_id")??undefined))
         }
         if([...query.keys()].length)throw new HttpError(400,"invalid_agent_optimization_query")
         if(!action||method!=="POST")throw new HttpError(405,"method_not_allowed")
@@ -1068,6 +1069,15 @@ export function createHandler(deps:AppDependencies) {
           scheduler_started:false,workflow_worker_started:false})
       }
 
+      if(autonomousAgentHistory){
+        if(method!=="GET")throw new HttpError(405,"method_not_allowed")
+        if(!deps.authenticateRequest)throw new HttpError(403,"native_employee_identity_required")
+        const repo=deps.autonomousAgentRunRepository
+        if(!repo)throw new HttpError(503,"autonomous_agent_run_unavailable")
+        const query=new URL(req.url||"/","http://127.0.0.1").searchParams,keys=[...query.keys()]
+        if(keys.length!==new Set(keys).size||keys.some(key=>!["spec_id","anchor_run_id","page"].includes(key))||!query.has("spec_id")||!query.has("anchor_run_id")||query.has("page")&&!/^[1-9][0-9]{0,15}$/.test(query.get("page")!))throw new HttpError(400,"invalid_native_agent_history")
+        return send(res,200,await repo.history(identity,query.get("spec_id")!,query.get("anchor_run_id")!,Number(query.get("page")??1)))
+      }
       if(workflowV2Submit||workflowNodeDebug||workflowV2Route||autonomousAgentSubmit||autonomousAgentRoute){
         const submit=autonomousAgentSubmit??workflowV2Submit,route=autonomousAgentRoute??workflowV2Route
         const repo=autonomousAgentSubmit||autonomousAgentRoute?deps.autonomousAgentRunRepository:deps.workflowV2RunRepository

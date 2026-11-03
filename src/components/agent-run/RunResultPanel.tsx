@@ -6,7 +6,10 @@ import { RunVersionComparisonCard } from "@/components/agent-run/RunVersionCompa
 import { RunFeedbackBar, type FeedbackDraft } from "@/components/agent-run/RunFeedbackBar"
 import type { AgentRunRow, RunEventRow, RunFeedback, RunEvaluation, SpecOptimizeSuggestion, SavedSpecRow } from "@/pages/AgentRun/useAgentRun"
 
+import type {OriginalNativeComparisonView} from '@/lib/originalNativeRunComparison'
+
 type RunResultPanelProps = {
+  nativeComparison?:OriginalNativeComparisonView
   activeRun: AgentRunRow | null
   runHistory: AgentRunRow[]
   events: RunEventRow[]
@@ -42,6 +45,7 @@ type RunResultPanelProps = {
 }
 
 export function RunResultPanel({
+  nativeComparison,
   activeRun,
   onCopy,  runHistory,
   events,
@@ -167,7 +171,7 @@ export function RunResultPanel({
         onDismissError={onDismissOptimizeError}
         onRetestOptimized={onRetestOptimized}
       />
-      <RunVersionComparisonCard run={activeRun} history={runHistory} events={events}/>
+      <RunVersionComparisonCard run={activeRun} history={runHistory} events={events} nativeComparison={nativeComparison}/>
     </>
   )
 }

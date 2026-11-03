@@ -44,7 +44,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/repository.ts": "31fd1ed93e4f29e29e665675a5168e829daa5332eac982dd42d32ce96b785853",
   "services/pg-api/src/schedule-runtime-audit.ts": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f",
   "services/pg-api/src/workflow-graph-v2.ts": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
-  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "ebe7e8625008045670b294b393bc9691a39d33a96ef3219cb7915aa2eb703349",
+  "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs": "cf0150316fa0d98fff0e17d306325aba2813c6aee00b0c8e84ebe0dadc0078e7",
   "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs": "f54bad8cc40e32a1b29c92aff3779f8cdc7261bbf2e42770fc5ddc97e8876346",
   "services/pg-api/tests/helpers/original-home070-genuine-fixture.mjs": "73e4cf0da1ca0035be00c70826ad219219ef3b90a4b88f2b294246a302310708",
   "services/pg-api/tests/helpers/original-login-home071-ci-guard.mjs": "3fb48b5d412b5f9c42acfb66e489a7ab9eb41fb517ef5371f3501f165615c13c",
@@ -224,7 +224,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "c39f64a9bab371d5ff8eee8e982fbd3546f6b251b2339f6b76c8c09260140ec5",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "296b10887890421d9ea37668587fb4a7663be7422805fb8186330c56ead7b5e9",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -540,7 +540,7 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "src/components/agent-run/RunSettingsDrawer.tsx": "5761fde5a657320ab23fe921d97106e6728e78b66fee1d7554dd8fa8563e089c",
   "src/components/agent-run/RunStatusSummary.tsx": "3e8df70aef5da5844944de37b84b303844565fdfb7df93cee64e363f00eb73b4",
   "src/components/agent-run/RunTaskRail.tsx": "ae1817d1cd09e10a9da77711a95d42050fdaeeeb456e66ec65dc2f268b07c30e",
-  "src/components/agent-run/RunVersionComparisonCard.tsx": "d1acf9a842a62e09ba74d6b4fd6b7bcebe1242f76e70094231d67e51162f7267",
+  "src/components/agent-run/RunVersionComparisonCard.tsx": "94c36b0fe7bc8f3fbdd0dfb2070dcca719170fcf030849e42e25db0b276882cd",
   "src/components/agent-run/StructuredExecutionPlan.tsx": "133e3ef8adb1f94ef8766e2e24c0f3365d3e61329586b6cb57dc5c61cdd08484",
   "src/components/agent-run/TaskDispatchPreview.tsx": "473781cd73fc0193440e48fbb93b66d1df7d92b5373c531d1ddde4730cce84ae",
   "src/components/agents/AgentRoleDesigner.tsx": "fe5806795f777cc8274664b8116c2962e292b0c6f84105f41f653cd110f2e346",
@@ -703,5 +703,9 @@ export const nativeMonitor073ReviewedSources=Object.freeze({
   "services/pg-api/src/hosted-profile-diagnostic.mjs": "f15cfad2a83c42e452fa7db45897af1450cb45969a58ed781652c057d4a22262",
   "tests/hosted-profile-diagnostic.test.mjs": "4d7f78f71824810a5b539023498641176a18b803e1693b3305948f791a5f8959",
   "tests/original-queued-cancel-recovery-source-pure.test.mjs": "da36cdd4438d8827c3d9969288b0830a362c8b1cd5a97d541bb0ad840cee242c",
-  "services/pg-api/src/original-role-constraint-diagnostic.mjs": "6bfee223cd037dfe2ef5da57e7840d056f70400c6085522b9b328020d51dd7bc"
+  "services/pg-api/src/original-role-constraint-diagnostic.mjs": "6bfee223cd037dfe2ef5da57e7840d056f70400c6085522b9b328020d51dd7bc",
+  "shared/native-agent-history-contract.ts": "af4a2fe6a74b86b0f35138607113dc6cdd11ce2c3dd832e66147ce7330d18ca1",
+  "src/lib/originalNativeRunComparison.ts": "a881fe3b0300d26e3262247046ed3d01a9a86677e84dcb9f973affab9bee4859",
+  "tests/helpers/original-native-comparison-source-harness.mjs": "99ca8e56d9d82599f5f8780dff49f54a06d56165fc7ebbce2200a224e87ac775",
+  "tests/original-native-run-comparison-pure.test.mjs": "d91b0b5aa7ad1576a7bf906d75bc7dbce09a0a107ee448c4c8b8f4e3d740e9a5"
 })

@@ -248,6 +248,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun> & {qualityUnknown
                     <button type="button" onClick={() => openRunView("process")} className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">查看执行过程<ArrowRight className="h-3.5 w-3.5" /></button>
                   </div>}
               <RunResultPanel
+                nativeComparison={'nativeComparison' in p?p.nativeComparison:undefined}
                 activeRun={p.activeRun}
                 runHistory={p.runHistory}
                 events={p.runEvents}

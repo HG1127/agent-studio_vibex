@@ -281,3 +281,5 @@ test('a later confirm403 cannot erase an already unknown feedback operation',asy
  const f=fixture();try{const d=detail();d.run.status='succeeded';d.run.finished_at=stamp;d.pending_effect=null;f.setDetail(d);await f.start();await f.c.submitFeedback({rating:'up',tags:[],comment:'ORIGINAL_PRIVATE_FEEDBACK'});const pending=f.c.snapshot().feedback.pending;assert(pending);f.setFeedbackConfirmError(new PgNativePilotError(403,'synthetic_confirmation_denied'));await f.c.submitFeedback({rating:'down',tags:[],comment:'REPLACEMENT_MUST_NOT_SUBMIT'});assert.equal(f.c.snapshot().sourceDenied,true);await f.c.verifyIdentity();assert.deepEqual(f.c.snapshot().feedback.pending,pending);assert.equal(await f.c.prepareNewTask(),false);assert.deepEqual(f.calls.map(v=>v.kind),['feedback-change','feedback-confirm']);assert.deepEqual(f.calls[1].body,f.calls[0].body);
  }finally{f.c.dispose()}
 })
+
+import './original-native-run-comparison-pure.test.mjs'

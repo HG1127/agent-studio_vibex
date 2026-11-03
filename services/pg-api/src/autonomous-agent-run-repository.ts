@@ -74,6 +74,25 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     if(local.length!==1)throw Error("native_local_invalid_admission_projection")
     return {...result,...(roleProjection?{original_role:roleProjection}:{}),...(proof?{optimization_retest:proof}:{}),local_device_id:local[0]!.device_id,local_tasks:local[0]!.tasks}
   }
+  /** Complete owner-scoped history metadata for the existing comparison card. */
+  async history(identity:Identity,specId:string,anchorRunId:string,page=1){
+    if(!isUuid(specId)||!isUuid(anchorRunId)||!Number.isSafeInteger(page)||page<1||page>Math.floor(Number.MAX_SAFE_INTEGER/25))throw new HttpError(400,'invalid_native_agent_history')
+    specId=specId.toLowerCase();anchorRunId=anchorRunId.toLowerCase()
+    return withActor(this.pool,identity,async(db,owner)=>{
+      await assertOwnedAdmissionContext(db,owner)
+      const anchor=(await db.query<{id:string;agent_spec_id:string;created_at:unknown;updated_at:unknown}>(
+        "SELECT id,agent_spec_id,created_at,updated_at FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid AND agent_spec_id=$3::uuid AND kind='agent' AND checkpoint->>'execution_mode'='agent_native_v2'",[anchorRunId,owner,specId])).rows[0]
+      if(!anchor)throw new HttpError(404,'agent_run_not_found')
+      if(!await currentKnowledgeObservations(db,anchorRunId))throw new HttpError(409,'original_comparison_source_unavailable')
+      const raw=(await db.query<{total_items:string;items:unknown}>(
+        "WITH matching AS (SELECT id,agent_spec_id,status,created_at FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND agent_spec_id=$2::uuid AND id<>$3::uuid AND kind='agent' AND checkpoint->>'execution_mode'='agent_native_v2' AND created_at<=$4::timestamptz), page_rows AS (SELECT id,agent_spec_id,status,created_at FROM matching ORDER BY created_at DESC,id DESC LIMIT 25 OFFSET $5::bigint) SELECT (SELECT count(*)::text FROM matching) AS total_items,coalesce((SELECT jsonb_agg(jsonb_build_object('id',id,'spec_id',agent_spec_id,'status',status,'created',created_at) ORDER BY created_at DESC,id DESC) FROM page_rows),'[]'::jsonb) AS items",
+        [owner,specId,anchorRunId,anchor.created_at,(page-1)*25])).rows[0]
+      if(!raw||!Array.isArray(raw.items))throw new HttpError(503,'invalid_native_agent_history')
+      const total=Number(raw.total_items);if(!Number.isSafeInteger(total)||total<0)throw new HttpError(503,'invalid_native_agent_history')
+      const timestamp=(value:unknown)=>{const d=value instanceof Date?value:typeof value==='string'?new Date(value):null;if(!d||!Number.isFinite(d.getTime()))throw new HttpError(503,'invalid_native_agent_history');return d.toISOString()}
+      return {protocol:'native_owned_agent_history_v1' as const,owner_user_id:owner,spec_id:specId,anchor_run_id:anchorRunId,anchor_created_at:timestamp(anchor.created_at),anchor_updated_at:timestamp(anchor.updated_at),page,perPage:25 as const,totalItems:total,totalPages:Math.max(1,Math.ceil(total/25)),items:raw.items}
+    })
+  }
   protected async assertBusinessAdmission(_db:SqlClient,_owner:string,rawSpec:unknown,plannedRunId?:string){
     const spec=rawSpec as {tools?:unknown}|undefined
     if(Array.isArray(spec?.tools)&&spec.tools.some(t=>monitorBusinessTools.includes(t))&&(!this.allowMonitorBusiness||plannedRunId===undefined))throw new HttpError(403,'monitor_native_occurrence_required')
