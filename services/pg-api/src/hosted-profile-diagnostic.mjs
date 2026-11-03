@@ -67,9 +67,20 @@ function staffAclObservedDifference(actualJson,expectedJson,rolesJson){
  const extraGroups=group(extra),missingGroups=group(missing),shownExtra=extraGroups.slice(0,staffAclMaxDisplay),shownMissing=missingGroups.slice(0,staffAclMaxDisplay-shownExtra.length),displayed=shownExtra.concat(shownMissing).reduce((n,r)=>n+r.count,0)
  return {event:'hosted_staff_namespace_acl_difference',profile:'staff084',actual_count:actual.rows.length,expected_count:expected.rows.length,extra_count:extra.length,missing_count:missing.length,omitted_count:extra.length+missing.length-displayed,difference_sha256:staffAclHash('sha256').update(JSON.stringify([extra,missing])).digest('hex'),extra:shownExtra,missing:shownMissing}
 }
+// Adds source-matchable hashes for unknown ACL identities; never emits an OID or name.
+function staffAclIdentityDifference(actualJson,expectedJson,rolesJson,difference){
+ const actual=staffAclRows(actualJson),expected=staffAclRows(expectedJson),roles=staffAclJson(rolesJson);if(!actual||!expected||!Array.isArray(roles))return null
+ const owner=expected.decoded[0][0],native=expected.decoded.find(t=>t[1]!==owner)[1],byId=new Map(roles.map(r=>[r[0],r[1]]))
+ const category=id=>id===owner?'owner':id===native?'native_auth':id==='0'?'PUBLIC':byId.get(id)===staffAclApiRole?'api':byId.get(id)===staffAclQualityRole?'quality':'other'
+ const counts=values=>{const map=new Map();for(const value of values)map.set(value,(map.get(value)??0)+1);return map},a=counts(actual.rows),e=counts(expected.rows),groups=new Map();let total=0,unresolved=0
+ for(const key of [...new Set([...a.keys(),...e.keys()])].sort()){const delta=(a.get(key)??0)-(e.get(key)??0);if(!delta)continue;const t=JSON.parse(key),side=delta>0?'extra':'missing',count=Math.abs(delta),privilege=t[2]==='USAGE'?'USAGE':t[2]==='CREATE'?'CREATE':'other';for(const [index,endpoint] of [[0,'grantor'],[1,'grantee']]){if(category(t[index])!=='other')continue;const name=byId.get(t[index]),role_sha256=typeof name==='string'?staffAclHash('sha256').update(name,'utf8').digest('hex'):null;total+=count;if(role_sha256===null)unresolved+=count;const grouped=JSON.stringify([side,endpoint,role_sha256,privilege,t[3]]);groups.set(grouped,(groups.get(grouped)??0)+count)}}
+ if(!total)return null
+ const identities=[...groups].sort(([a],[b])=>a<b?-1:a>b?1:0).slice(0,staffAclMaxDisplay).map(([key,count])=>{const [side,endpoint,role_sha256,privilege,grantable]=JSON.parse(key);return{side,endpoint,role_sha256,privilege,grantable,count}}),shown=identities.reduce((n,r)=>n+r.count,0)
+ return {event:'hosted_staff_namespace_acl_identity_difference',profile:'staff084',difference_sha256:difference.difference_sha256,total_identity_count:total,omitted_identity_count:total-shown,unresolved_identity_count:unresolved,identities}
+}
 export function emitHostedStaffNamespaceAclDifference(actualJson,expectedJson,rolesJson){
  const selected=scope.getStore();if(!selected||selected.profile!=='staff084')return
- try{if(typeof actualJson==='function'){const observed=actualJson();if(!Array.isArray(observed)||observed.length!==3)return;[actualJson,expectedJson,rolesJson]=observed}const value=staffAclObservedDifference(actualJson,expectedJson,rolesJson);if(!value)return;const line=JSON.stringify(value)+'\n';if(line.length<=staffAclMaxLine)process.stderr.write(line)}catch{}
+ try{if(typeof actualJson==='function'){const observed=actualJson();if(!Array.isArray(observed)||observed.length!==3)return;[actualJson,expectedJson,rolesJson]=observed}const value=staffAclObservedDifference(actualJson,expectedJson,rolesJson);if(!value)return;const line=JSON.stringify(value)+'\n';if(line.length<=staffAclMaxLine)process.stderr.write(line);const identity=staffAclIdentityDifference(actualJson,expectedJson,rolesJson,value);if(identity){const identityLine=JSON.stringify(identity)+'\n';if(identityLine.length<=staffAclMaxLine)process.stderr.write(identityLine)}}catch{}
 }
 
 // Fixed source failure sites only; never inspect or emit an error object.
@@ -77,4 +88,18 @@ const quality089InventoryChecks=new Set(['whole_table_inventory','function_resol
 export function hostedQuality089InventoryRefusal(check){
  const selected=scope.getStore();if(!selected||selected.profile!=='quality089'||!quality089InventoryChecks.has(check))return
  emit({event:'hosted_quality089_inventory_refusal',profile:'quality089',check})
+}
+
+// Failure-only lower-verifier observation; no capability or comparison is changed.
+const quality089SchemaStages=new Set(['schema_query_01','schema_query_02','catalog_rows','catalog_assert'])
+const quality089SchemaCodes=Object.freeze({'42601':'syntax_error','42703':'undefined_column','42883':'undefined_function','42804':'datatype_mismatch','42846':'cannot_coerce','22P02':'invalid_text_representation','22023':'invalid_parameter_value','22003':'numeric_out_of_range','22021':'character_not_in_repertoire'})
+function quality089SchemaErrorKind(error){
+ const known=quality089ErrorKind(error);if(known!=='unclassified')return known
+ try{if(error===null||(typeof error!=='object'&&typeof error!=='function')||isProxy(error))return 'unclassified';const descriptor=Object.getOwnPropertyDescriptor(error,'code');if(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='string'&&Object.hasOwn(quality089SchemaCodes,descriptor.value))return quality089SchemaCodes[descriptor.value]}catch{}
+ return 'unclassified'
+}
+export function hostedQuality089SchemaRefusal(stage,error,check){
+ const selected=scope.getStore();if(!selected||selected.profile!=='quality089'||!quality089SchemaStages.has(stage))return
+ if(stage==='catalog_assert'&&(!Number.isSafeInteger(check)||check<1||check>33)||stage!=='catalog_assert'&&check!==undefined)return
+ const record={event:'hosted_quality089_schema_refusal',profile:'quality089',stage,error_kind:quality089SchemaErrorKind(error)};if(stage==='catalog_assert')record.check_id=check;emit(record)
 }

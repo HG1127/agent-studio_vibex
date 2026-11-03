@@ -142,3 +142,5 @@ test('quality original failure factory preserves the original thrown object even
  }
  assert.deepEqual(trace,['employee_quality089_whole_table_inventory','employee_quality089_whole_table_inventory']);
 })
+import './quality089-schema-refusal-diagnostic.test.mjs'
+import './staff084-acl-identity-hash-diagnostic.test.mjs'

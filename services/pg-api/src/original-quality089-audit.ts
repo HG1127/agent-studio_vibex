@@ -1,8 +1,10 @@
 import {HttpError,type SqlClient,type SqlPool} from './contracts.ts'
+import {hostedQuality089SchemaRefusal} from './hosted-profile-diagnostic.mjs'
 import {assertOriginalQuality089Catalog,originalQuality089CatalogSQL} from './original-quality089-catalog.mjs'
 /** Extension audit only; the original composed parent audit remains mandatory. */
 export async function verifyOriginalQuality089Schema(db:SqlClient):Promise<void>{
- try{await db.query('SET LOCAL search_path=pg_catalog');const rows=(await db.query<{value:unknown}>(originalQuality089CatalogSQL)).rows;if(rows.length!==1)throw Error();assertOriginalQuality089Catalog(rows[0]?.value)}catch{throw new HttpError(503,'original_quality_schema_unavailable')}
+ let quality089SchemaStage='schema_query_01'
+ try{await db.query('SET LOCAL search_path=pg_catalog');quality089SchemaStage='schema_query_02';const rows=(await db.query<{value:unknown}>(originalQuality089CatalogSQL)).rows;quality089SchemaStage='catalog_rows';if(rows.length!==1)throw Error();quality089SchemaStage='catalog_assert';assertOriginalQuality089Catalog(rows[0]?.value)}catch(error){if(quality089SchemaStage!=='catalog_assert')hostedQuality089SchemaRefusal(quality089SchemaStage,error);throw new HttpError(503,'original_quality_schema_unavailable')}
 }
 export async function inspectOriginalQuality089Startup(pool:SqlPool):Promise<void>{
  const db=await pool.connect();let begun=false,discard=false,auditFailed=false

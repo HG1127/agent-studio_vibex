@@ -11845,6 +11845,83 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_d94af4a_Quality_lower_verifier_and_Staff_ACL_identity_observation": {
+      "base_head": "d94af4a9d6fa0319e1c1c50a9d81a7933c50ba47",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "Quality": {
+        "manifest_sha256": "81bf3e13cf97044f2ac9bd40fa9a94b0220e5ad98ff3b134ad53dde501f11796",
+        "original_catalog_and_verifier_restored_byte_exact": true,
+        "original_catalog_calls": 173,
+        "original_verifier_calls": 13,
+        "fixed_lower_failure_stages": 4,
+        "fixed_original_catalog_statement_ids": 33,
+        "own_data_code_only_and_Proxy_refused": true,
+        "original_503_and_original_catalog_error_retained": true,
+        "exact_actual_lower_cause_not_yet_observed": true
+      },
+      "Staff": {
+        "manifest_sha256": "184f9eb1d68e718c05fabc5ac653c8161b36c0364cc188e263ae0a61718c6a1f",
+        "only_existing_failure_operands_observed": true,
+        "existing_difference_event_retained": true,
+        "extra_identity_UTF8_name_hashes_only": true,
+        "no_raw_name_OID_SQL_message_or_stack": true,
+        "unmapped_identity_stays_unresolved": true,
+        "max_display_groups": 8,
+        "max_line_characters": 2048,
+        "actual_six_identities_not_yet_observed": true,
+        "ACL_catalog_equality_or_permissions_not_changed": true
+      },
+      "Root_closed_tests": {
+        "tests": 159,
+        "pass": 159,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "retained_unique_cases": 91,
+        "Quality_new_unique_cases": 47,
+        "Staff_new_unique_cases": 21,
+        "all_effects_zero": true
+      },
+      "actual_API_compile_initial_missing_declaration_repaired": true,
+      "actual_API_compile_final_exit": 0,
+      "declaration_runtime_effects": false,
+      "frozen059060_source_proof_pass": true,
+      "Role199_source_bytes_unchanged": true,
+      "Role_genuine_progress": {
+        "head": "89d212963b6d8a090149e79de5193230b53b44cf",
+        "log_sha256": "d686fa269c12b19ab1e0b310ae688418ddf2f2dea9c2edc8bcf92f2c80f3fc4a",
+        "command_report_start_line": 637,
+        "predecessor_LOGIN_SET_ROLE_catalog_and_changed_ACL_tests_passed": 3,
+        "first_Skill_import_review_case_failed_SQLSTATE": "42501",
+        "actual_error_table": "original_skill_versions",
+        "actual_policy_source": "original-role-skill-policy.ts:62",
+        "all_business_stories_passed": false
+      },
+      "SQL_grants_schema_package_lock_unchanged": true,
+      "new_head_genuine_acceptance": false,
+      "accepted_UI_carry_complete": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28496,
+        "retained_prior_pins": 28421,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [
+          "services/pg-api/src/hosted-profile-diagnostic.d.mts",
+          "tests/quality089-schema-refusal-diagnostic.test.mjs",
+          "tests/staff084-acl-identity-hash-diagnostic.test.mjs"
+        ],
+        "nested_Role": 199,
+        "retained_nested_Role": 199,
+        "new_nested_Role_sources": [],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
