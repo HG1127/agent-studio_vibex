@@ -1,6 +1,16 @@
 name: Agent Studio original staff084 isolated verification
 on:
   workflow_dispatch:
+  push:
+    branches: ['codex/pg18-worker-heartbeat-*']
+    paths:
+      - '.github/workflows/pg18-original-staff084-isolation.yml'
+      - 'ops/pg18-staff084-hosted-entry.mjs'
+      - 'services/pg-api/src/**'
+      - 'tests/**'
+      - 'src/**'
+      - 'shared/**'
+      - 'db/postgres/**'
 permissions:
   contents: read
 concurrency:

@@ -19,6 +19,7 @@ function fixture(options={}){
  const db={release(){releases++;trace.push(["release"])},async query(sql,values=[]){
   trace.push([sql,structuredClone(values)])
   if(sql==="COMMIT"&&options.commitError)throw options.commitError
+  if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return {rows:[{installed:false,database_oid:"16384"}]}
   if(sql.includes("identity_user_id"))return{rows:[{id:id(50)}]}
   if(sql.includes("current_user='agentstudio_api'"))return{rows:[{ok:true}]}
   if(sql.startsWith("SELECT id AS spec_id"))return{rows:options.sourceRows??[{spec_id:id(1),name:"原助手",revision:"2"}]}

@@ -27,6 +27,7 @@ function fixture(options={}){
  for(const kind of ['api','worker','dispatch'])clients[kind]={query:async(sql,values)=>{
   calls.push({kind,sql,values});if(failSQL?.test(sql))throw Error('model_query_failure');if(sql==='COMMIT'&&failCommit){failCommit=false;throw Error('lost_model_ack')}
   let rows=[],value
+if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"){assert.equal(values,undefined);return{rows:[{installed:false,database_oid:'90001'}]}}
   if(sql.includes('WHERE rolname=session_user'))rows=[{...safe,login:true,initial_role:true,superuser:unsafeLogin}]
   else if(sql.includes('WHERE rolname=$1'))rows=[{...safe,login:false}]
   else if(sql.includes('pg_has_role'))rows=[{name:privateRole(kind)}]

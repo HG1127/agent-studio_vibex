@@ -58,6 +58,7 @@ const dbRow=m=>({run_id:m.id,kind:m.engine_kind,resource_id:m.spec_id,resource_n
 function mockedRepository(overrides={}){
  const calls=[];let released=0
  const client={release(){released++},async query(sql,params){calls.push({sql,params})
+   if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"){assert.deepEqual(params??[],[]);return{rows:[{installed:false,database_oid:'16384'}]}}
   if(overrides.respond){const result=overrides.respond(sql,params);if(result!==undefined)return{rows:result}}
   if(sql.includes('identity_user_id('))return{rows:[{id:owner}]}
   if(sql.includes("current_user='agentstudio_api'"))return{rows:[{ok:true}]}

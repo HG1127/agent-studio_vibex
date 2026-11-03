@@ -18,7 +18,7 @@ function harness(options={}){
   const state={queries:[],http:[{...connection(httpId),method:'POST'}],mcp:[{...connection(mcpId),catalog}],owned:[owned()],shared:[],stats:[],catalog:[{ok:true,source:body}],released:0,releaseArguments:[],...options}
   const pool={knowledgeSharing:state.sharing===true,async connect(){return{release(discard){state.released++;state.releaseArguments.push(discard)},async query(query,args=[]){state.queries.push({query,args});if(query==='ROLLBACK'&&state.rollbackFailure)throw state.rollbackFailure;if(state.failure&&query.includes(state.failure.match))throw state.failure.error
   if(query==='BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'||query==='COMMIT'||query==='ROLLBACK'||query.startsWith('SET LOCAL ')||query.startsWith('SELECT set_config('))return{rows:[]}
-  if(query.startsWith('SELECT agentstudio.identity_user_id('))return{rows:[{id:owner}]}
+  if(query==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return{rows:[{installed:false,database_oid:'16384'}]};if(query.startsWith('SELECT agentstudio.identity_user_id('))return{rows:[{id:owner}]}
   if(query.includes('FROM agentstudio.tool_connections'))return{rows:state.http}
   if(query.includes('FROM agentstudio.mcp_connections'))return{rows:state.mcp}
   if(query.includes('FROM agentstudio.knowledge_bases b'))return{rows:state.owned}

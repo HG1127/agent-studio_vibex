@@ -9,6 +9,8 @@ import {ScheduleRuntimeWorker} from '../src/schedule-runtime-worker.ts'
 import {selectNativeLocalDeviceExecution} from '../src/native-local-device-runtime-policy.ts'
 import {selectAgentCallerExecution} from '../src/agent-caller-execution-opt-in.ts'
 import {selectOrdinaryCaseRuntime,prepareOrdinaryCaseRuntime} from '../src/native-ordinary-case-runtime.ts'
+import {selectOriginalRoleUi,prepareOriginalRoleExecutionPool} from '../src/original-role-ui-policy.ts'
+import {selectOriginalRunOptions} from '../src/original-agent-run-options-runtime.ts'
 
 for (const mode of ['workflow_native_v2', 'agent_native_v2']) {
 const spec = (name, ...args) => test(mode + ': ' + name, ...args)
@@ -24,7 +26,10 @@ const bounded = {timeout: 5000}
 const counts = worker => {const v = worker.claimAdmissionSnapshot(); return [v.closed, v.pending, v.uncertain]}
 const scopeNames = ['knowledge_sharing_enabled', 'knowledge_embedding_settings_enabled', 'knowledge_embedding_consent_enabled',
   'knowledge_index_runtime_enabled', 'knowledge_query_runtime_enabled', 'knowledge_tool_runtime_enabled']
+// This fixed terminal frame represents the optional Role namespace being absent.
+const absentRoleSchemaSql = "SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"
 function label(sql) {
+  if (sql === absentRoleSchemaSql) return 'scope:original_roles_absent'
   if (sql === claimSql) return 'claim'
   if (sql.startsWith('SELECT j.* FROM agentstudio.jobs j ')) return 'reconcile'
   const scope = scopeNames.find(name => sql.startsWith("SELECT set_config('agentstudio." + name + "'"))
@@ -40,7 +45,7 @@ function fakePool(options = {}) {
     if (options.connectError) throw options.connectError
     return {query(sql, values = []) {
       statements.push({sql, values}); const name = label(sql); point(name).resolve()
-      const answer = () => sql === claimSql ? {rows: options.row === null ? [] : [options.row ?? lease()]} : sql.startsWith('SELECT j.* FROM agentstudio.jobs j ') ? {rows: options.reconcileRow ? [options.reconcileRow] : []} : {rows: []}
+      const answer = () => sql === absentRoleSchemaSql ? {rows: [{installed: false, database_oid: '16384'}]} : sql === claimSql ? {rows: options.row === null ? [] : [options.row ?? lease()]} : sql.startsWith('SELECT j.* FROM agentstudio.jobs j ') ? {rows: options.reconcileRow ? [options.reconcileRow] : []} : {rows: []}
       const custom = options.query?.(sql, values)
       if (custom !== undefined) return custom
       return options.block === name ? wait.promise.then(answer) : Promise.resolve(answer())
@@ -60,7 +65,7 @@ spec('instance creates one fixed mode lane; repeated close and direct public cla
 })
 
 spec('stop during pool, BEGIN, every scope SET or role await prevents the matching008/009 SQL', bounded, async () => {
-  for (const stage of ['connect', 'BEGIN', ...scopeNames.map(name => 'scope:' + name), 'SET LOCAL ROLE agentstudio_worker']) {
+  for (const stage of ['connect', 'BEGIN', 'scope:original_roles_absent', ...scopeNames.map(name => 'scope:' + name), 'SET LOCAL ROLE agentstudio_worker']) {
     const h = fakePool({block: stage}), worker = new TestWorker(h.pool, workerName)
     const work = worker.claim(); await h.reached(stage)
     worker.closeNewClaims(); assert.deepEqual(counts(worker), [true, 0, 0])
@@ -148,7 +153,7 @@ spec('invalid claimed rows roll back before COMMIT, retaining original lease val
 
 spec('connection and pre-dispatch scope failures create no submitted intent', async () => {
   const failed = Error('before_dispatch')
-  for (const stage of ['connect', 'BEGIN', 'scope:' + scopeNames[2], 'SET LOCAL ROLE agentstudio_worker']) {
+  for (const stage of ['connect', 'BEGIN', 'scope:original_roles_absent', 'scope:' + scopeNames[2], 'SET LOCAL ROLE agentstudio_worker']) {
     const h = fakePool({connectError: stage === 'connect' ? failed : undefined,
       query(sql) {if (label(sql) === stage) return Promise.reject(failed)}})
     const worker = new TestWorker(h.pool, workerName)
@@ -254,6 +259,9 @@ function loopHarness(options = {}) {
     selectAgentMemoryRuntime: () => false, selectAgentOutcomeMemoryWrites: () => false, selectMcpExecution: () => false,
     selectNativeLocalDeviceExecution,
     selectAgentCallerExecution,
+    selectOriginalRoleUi,
+    selectOriginalRunOptions,
+    prepareOriginalRoleExecutionPool: async (pool, env) => {await stage('original_role'); return prepareOriginalRoleExecutionPool(pool, env)},
     selectOrdinaryCaseRuntime,
     prepareOrdinaryCaseRuntime,
     verifyNativeLocalDeviceSchema: () => {throw Error('unexpected_local_device_schema_in_original_claim_fixture')},
@@ -280,7 +288,7 @@ function loopHarness(options = {}) {
 }
 
 test('V2 startup await signals are latched before either execution Worker can claim', bounded, async () => {
-  for (const stage of ['driver', 'target', 'role', 'lineage', 'schedule_schema', 'knowledge', 'knowledge_tool', 'human', 'memory', 'memory_context', 'outcome', 'failure_source', 'worker_import', 'schedule_import']) {
+  for (const stage of ['driver', 'original_role', 'target', 'role', 'lineage', 'schedule_schema', 'knowledge', 'knowledge_tool', 'human', 'memory', 'memory_context', 'outcome', 'failure_source', 'worker_import', 'schedule_import']) {
     const h = loopHarness({stage}), work = h.main('serve'); await h.entered.promise; h.emit('SIGTERM'); h.release.resolve(); await work
     assert.equal(h.workerTicks(), 0); assert.equal(h.schedulerTicks(), 0); assert.equal(h.poolEnds(), 1)
     assert.deepEqual(counts(h.workers[0]), [true, 0, 0]); assert.deepEqual(h.registrations, ['SIGTERM', 'SIGINT'])

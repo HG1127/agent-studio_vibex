@@ -31,6 +31,7 @@ export function brokerModel(settings={}){
     const role=kind==='dispatch'?'agentstudio_plan_workflow_dispatch':kind==='secret'?'agentstudio_model_broker':'agentstudio_api'
     clients[kind]={kind,query:async(sql,args)=>{
       calls.push({kind,sql,args});let rows=[],value
+if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"){if(args!==undefined)throw Error('unexpected_absent_role_probe_arguments');return{rows:[{installed:false,database_oid:'90001'}]}}
       if(sql==='BEGIN')inTransaction.add(kind)
       if(sql.includes('WHERE rolname=session_user'))rows=[{...safe,login:true,initial_role:true,superuser:kind==='secret'&&settings.unsafeSecret===true}]
       else if(sql.startsWith('SELECT rolcanlogin')&&(sql.includes('WHERE rolname=$1')||sql.includes("WHERE rolname='agentstudio_model_broker'")))rows=[safe]

@@ -23,7 +23,7 @@ function fixture(){
    if(sql==='COMMIT'){if(state.failCommit)throw state.failCommit;state.favorite=pending.favorite;state.audits=pending.audits;state.committed++;return{rows:[]}}
    if(sql==='ROLLBACK'){if(state.failRollback)throw Error('rollback failed');pending=undefined;return{rows:[]}}
    if(sql.startsWith('SET LOCAL ROLE ')||sql.startsWith('SELECT set_config('))return{rows:[]}
-   if(sql.includes('agentstudio.identity_user_id('))return{rows:[{id:state.actor}]}
+   if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return{rows:[{installed:false,database_oid:'16384'}]};if(sql.includes('agentstudio.identity_user_id('))return{rows:[{id:state.actor}]}
    if(sql.startsWith("SELECT to_regprocedure('agentstudio.agent_caller_internal_sources()')"))return{rows:[{ok:state.hiddenFunction}]}
    if(sql==='SELECT agentstudio.agent_caller_internal_sources() AS ids')return{rows:[{ids:state.hidden}]}
    if(sql.startsWith('SELECT count(*)::text AS total')){if(state.failCount)throw state.failCount;return{rows:[{total:state.total}]}}

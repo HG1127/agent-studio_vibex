@@ -12,7 +12,7 @@ export async function assertSkillAbDispatchSession(db:SqlClient){
 /** Owned transaction. Any attempted BEGIN/COMMIT with unknown outcome discards
  * this connection. No caller gets an effect permission from an uncertain commit. */
 export async function skillAbDispatchTransaction<T>(pool:SqlPool,body:(db:SqlClient)=>Promise<T>,startup=false):Promise<T>{
- const db=await pool.connect();let attempted=false,begun=false,commitAttempted=false,destroy=false,primary:unknown,failed=false,value:T|undefined
+ const db:SqlClient&{release(destroy?:boolean):void}=await pool.connect();let attempted=false,begun=false,commitAttempted=false,destroy=false,primary:unknown,failed=false,value:T|undefined
  try{attempted=true;await db.query(startup?'BEGIN READ ONLY':'BEGIN');begun=true;await assertSkillAbDispatchSession(db);await db.query('SET LOCAL ROLE agentstudio_skill_ab_dispatch');await db.query('SET LOCAL search_path=pg_catalog');await db.query("SET LOCAL statement_timeout='5s'");await db.query("SET LOCAL lock_timeout='3s'");value=await body(db);commitAttempted=true;await db.query(startup?'ROLLBACK':'COMMIT');begun=false}
  catch(e){primary=e;failed=true;if(attempted&&!begun||commitAttempted)destroy=true}
  finally{if(begun)try{await db.query('ROLLBACK')}catch{destroy=true}try{db.release(destroy)}catch(e){if(!failed){primary=e;failed=true}}}
@@ -24,7 +24,7 @@ export async function prepareSkillAbPool(pool:SqlPool,role:Role){
  let proof:Proof
  if(role==='agentstudio_skill_ab_dispatch')proof=await skillAbDispatchTransaction(pool,inspect,true)
  else{
-  const db=await pool.connect();let begun=false,attempted=false,rollbackAttempted=false,destroy=false,failed=false,primary:unknown,inspected:Proof|undefined
+  const db:SqlClient&{release(destroy?:boolean):void}=await pool.connect();let begun=false,attempted=false,rollbackAttempted=false,destroy=false,failed=false,primary:unknown,inspected:Proof|undefined
   try{attempted=true;await db.query('BEGIN READ ONLY');begun=true;await db.query('SET LOCAL ROLE agentstudio_api');await db.query('SET LOCAL search_path=pg_catalog');await db.query("SET LOCAL statement_timeout='5s'");inspected=await inspect(db);rollbackAttempted=true;await db.query('ROLLBACK');begun=false}
   catch(e){primary=e;failed=true;if(attempted&&!begun||rollbackAttempted)destroy=true}
   finally{if(begun&&!rollbackAttempted)try{await db.query('ROLLBACK')}catch{destroy=true}try{db.release(destroy)}catch(e){if(!failed){primary=e;failed=true}}}

@@ -5,7 +5,7 @@ const clients=new WeakMap<object,boolean>(),discard=new WeakSet<object>()
 const releases=new WeakMap<object,SqlClient['release']>()
 function secureRelease(db:SqlClient){
  if(releases.get(db)===db.release)return
- const original=db.release
+ const original=db.release as (destroy?:boolean)=>void
  if(typeof original!=='function')throw Error('original_role_discard_port_required')
  const wrapped=(destroy?:boolean)=>{if(destroy===true||discard.has(db))original.call(db,true);else original.call(db)}
  try{Object.defineProperty(db,'release',{value:wrapped,writable:true,configurable:true})}catch{throw Error('original_role_discard_port_required')}

@@ -24,6 +24,7 @@ function memory({initial=[row()],auditFailure=null,resolveOwner}={}){
    if(sql==='COMMIT'){state.commits++;if(dirty)state.rows=staged;state.audits.push(...events);return empty()}
    if(sql==='ROLLBACK'){state.rollbacks++;return empty()}
    assert.ok(staged,'actual transaction must start before scope/business calls')
+   if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"){assert.deepEqual(args,[]);return{rows:[{installed:false,database_oid:'90001'}]}}
    if(sql.startsWith('SET LOCAL ROLE ')){role=sql.slice('SET LOCAL ROLE '.length);assert.equal(role,broker?'agentstudio_model_broker':'agentstudio_api');return empty()}
    if(sql==='SELECT current_user AS role')return{rows:[{role}]}
    if(sql.includes('agentstudio.identity_user_id(')){state.identityReads++;const owner=resolveOwner?resolveOwner({broker,subject:args[1],read:state.identityReads}):args[1]==='alice'?alice:args[1]==='bob'?bob:null;return{rows:[{id:owner}]}}

@@ -14,8 +14,8 @@ const reviewed=[
  {path:'shared/original-agent-catalog.ts',sha256:'2aac1f4f3c3d7f7e32953066bad4cfeba52da4cf9099fd8132e8d6a62a54f871'},
  {path:'services/pg-api/tests/helpers/native-agent-catalog-cookie-switch-case.mjs',sha256:'8325c29558d3917e6cc9ae41690db57961ed1c0c5c2d5aacf5b97077628e7de5'},
  {path:'services/pg-api/src/native-home-authoring-audit.ts',sha256:'0cad2d395136a9b978ed63044155bc3dc1fde638cc1246331696deb9c5f7e427'},
- {path:'services/pg-api/src/native-home-agent-specs-http.ts',sha256:'9410b58364d167b83017228ae1260fb2757bb59b584650ae0ce6a0702eab9140'},
- {path:'services/pg-api/src/native-home-agent-specs-repository.ts',sha256:'121fe679cda3ba3d448f8fa33bb7117d866caffc08d82b49e95293038e989f92'},
+ {path:'services/pg-api/src/native-home-agent-specs-http.ts',sha256:'958c53cce475b9da4fded51055852cd9d4980b08109ad5783543de5d455c669c'},
+ {path:'services/pg-api/src/native-home-agent-specs-repository.ts',sha256:'4fb033290df92ca2c7453c6746998774f2d929d7fb98786dd621cbd15e6ba074'},
 ]
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}return value}
 function checked(pin){let at=root;for(const segment of pin.path.split('/')){if(fs.lstatSync(at).isSymbolicLink())throw Error('original_home071_review_source_refused');at=path.join(at,segment)}const st=fs.lstatSync(at);if(!st.isFile()||st.isSymbolicLink()||st.size<1||st.size>16*1024*1024||sha(fs.readFileSync(at))!==pin.sha256)throw Error('original_home071_review_source_refused')}

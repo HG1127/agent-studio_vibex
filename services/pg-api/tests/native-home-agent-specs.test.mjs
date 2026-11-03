@@ -24,7 +24,7 @@ function harness(existing=true){
    if(sql==='COMMIT'){if(state.failCommit)throw state.failCommit;Object.assign(state,pending);return{rows:[]}}
    if(sql==='ROLLBACK'){pending=undefined;return{rows:[]}}
    if(sql.startsWith('SET LOCAL ROLE ')||sql.startsWith('SELECT set_config('))return{rows:[]}
-   if(sql.includes('agentstudio.identity_user_id('))return{rows:[{id:owner}]}
+   if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return{rows:[{installed:false,database_oid:'16384'}]};if(sql.includes('agentstudio.identity_user_id('))return{rows:[{id:owner}]}
     if(sql.startsWith("SELECT to_regprocedure('agentstudio.agent_caller_internal_sources()')"))return{rows:[{ok:state.sourceInstalled}]}
     if(sql==='SELECT agentstudio.agent_caller_internal_sources() AS ids'){if(state.sourceError)throw state.sourceError;return{rows:[{ids:state.hiddenIds}]}}
    if(sql.startsWith('SELECT revision FROM agentstudio.agent_specs'))return{rows:pending.rows.filter(r=>r.id===args[0]&&r.owner_user_id===args[1]).map(r=>({revision:r.revision}))}

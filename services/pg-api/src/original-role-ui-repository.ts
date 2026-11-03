@@ -14,7 +14,7 @@ export class OriginalRoleUiRepository{
  constructor(pool:SqlPool,writes:boolean){this.pool=pool;this.writes=writes}
  async actor<T>(identity:Identity,expected:string,readOnly:boolean,fn:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
   if(identity?.issuer!=='urn:agentstudio:local:v1'||!identity.subject)throw new HttpError(403,'native_employee_identity_required')
-  const db=await this.pool.connect();let begun=false,committing=false,destroy=false,primary:unknown,hasPrimary=false,value:T|undefined
+  const db:SqlClient&{release(destroy?:boolean):void}=await this.pool.connect();let begun=false,committing=false,destroy=false,primary:unknown,hasPrimary=false,value:T|undefined
   try{await db.query(readOnly?'BEGIN READ ONLY':'BEGIN');begun=true;value=await withActorClient(db,this.pool,identity,async(c,owner)=>{assertOriginalUiEmployee(owner,expected);requireOriginalRoleUi(c);await assertOwnedAdmissionContext(c,owner);return fn(c,owner)});committing=true;await db.query('COMMIT');begun=false}
   catch(error){if(!begun)destroy=true;primary=committing?new HttpError(503,'original_role_commit_unconfirmed'):error;hasPrimary=true}
   finally{if(begun)try{await db.query('ROLLBACK')}catch{destroy=true}try{db.release(destroy)}catch(error){if(!hasPrimary){primary=new HttpError(503,'original_role_release_unconfirmed');hasPrimary=true}}}

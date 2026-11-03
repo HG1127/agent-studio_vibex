@@ -10,6 +10,8 @@ const counts = worker => {const x = worker.claimAdmissionSnapshot(); return [x.c
 const claim = () => ({occurrence_id: id(1), lease_token: id(2), lease_version: 1, worker_id: workerName})
 const scopes = ['knowledge_sharing_enabled', 'knowledge_embedding_settings_enabled', 'knowledge_embedding_consent_enabled',
   'knowledge_index_runtime_enabled', 'knowledge_query_runtime_enabled', 'knowledge_tool_runtime_enabled']
+// Exact terminal frame: the optional Role namespace is absent in this fixture.
+const absentRoleSchemaSql = "SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"
 function fixture(options = {}) {
   const events = new Map(), wait = deferred(), statements = [], admissions = []
   let connections = 0, releases = 0
@@ -19,6 +21,7 @@ function fixture(options = {}) {
   const context = {occurrence_id: id(1), owner_user_id: id(3), identity: {issuer: 'synthetic', subject: 'employee'}, kind: options.kind ?? 'workflow',
     target_id: id(4), execution: {target_revision: 1, instruction: 'Synthetic scheduled work', max_steps: 1}, planned_run_id: id(5), authority_id: id(7)}
   const label = (sql, n) => {
+    if (sql === absentRoleSchemaSql) return 'scope:original_roles_absent:' + n
     for (const [needle, name] of [['schedule_peek()', 'peek'], ['schedule_reserve(', 'reserve'], ['schedule_launch_context(', 'context'],
       ['identity_user_id(', 'identity'], ['schedule_register_origin(', 'register_origin'], ['schedule_launch_failed(', 'failure'], ['schedule_quarantine(', 'quarantine']]) if (sql.includes(needle)) return name
     const scope = scopes.find(x => sql.startsWith("SELECT set_config('agentstudio." + x + "'"))
@@ -29,7 +32,7 @@ function fixture(options = {}) {
     return {query(sql, values = []) {
       const name = label(sql, n); statements.push({sql, values, name, connection: n}); point(name).resolve()
       const custom = options.query?.(name, n, sql, values); if (custom !== undefined) return custom
-      const answer = () => ({rows: name === 'peek' ? [{item: options.noPeek ? null : peek}] : name === 'reserve' ? [{claim: options.noClaim ? null : options.claim ?? claim()}] :
+      const answer = () => ({rows: sql === absentRoleSchemaSql ? [{installed: false, database_oid: '16384'}] : name === 'peek' ? [{item: options.noPeek ? null : peek}] : name === 'reserve' ? [{claim: options.noClaim ? null : options.claim ?? claim()}] :
         name === 'context' ? [{context: options.noContext ? null : context}] : name === 'identity' ? [{id: context.owner_user_id}] :
         name === 'register_origin' ? [{ok: true}] : name === 'failure' ? [{status: options.failureStatus ?? 'failed'}] : []})
       return options.block === name ? wait.promise.then(answer) : Promise.resolve(answer())
@@ -54,7 +57,7 @@ test('scheduler closes only new reservations and snapshots explicitly limit cove
 })
 
 test('stop during peek and either pool/BEGIN/scope/role prelude cannot reach reserve', bounded, async () => {
-  for (const stage of ['peek', 'COMMIT:1', ...[1, 2].flatMap(n => ['connect:' + n, 'BEGIN:' + n, ...scopes.map(s => 'scope:' + s + ':' + n), 'SET LOCAL ROLE agentstudio_worker:' + n])]) {
+  for (const stage of ['peek', 'COMMIT:1', ...[1, 2].flatMap(n => ['connect:' + n, 'BEGIN:' + n, 'scope:original_roles_absent:' + n, ...scopes.map(s => 'scope:' + s + ':' + n), 'SET LOCAL ROLE agentstudio_worker:' + n])]) {
     const h = fixture({block: stage}), work = h.worker.tick(); await h.reached(stage)
     h.worker.closeNewClaims(); assert.deepEqual(counts(h.worker), [true, 0, 0]); h.wait.resolve(); await work
     assert.equal(h.statements.some(x => x.name === 'reserve'), false, stage); assert.equal(h.admissions.length, 0)
@@ -79,7 +82,7 @@ test('issued reserve and its COMMIT remain pending and continue the held occurre
 })
 
 test('reserve commit does not settle pending launch pool/scope/role/context/admission/origin/COMMIT waits', bounded, async () => {
-  for (const stage of ['connect:3', 'BEGIN:3', ...scopes.map(s => 'scope:' + s + ':3'), 'SET LOCAL ROLE agentstudio_worker:3', 'context', 'identity', 'admitOwned', 'register_origin', 'COMMIT:3']) {
+  for (const stage of ['connect:3', 'BEGIN:3', 'scope:original_roles_absent:3', ...scopes.map(s => 'scope:' + s + ':3'), 'SET LOCAL ROLE agentstudio_worker:3', 'context', 'identity', 'admitOwned', 'register_origin', 'COMMIT:3']) {
     const h = fixture({block: stage}), work = h.worker.tick(); await h.reached(stage)
     assert.equal(h.statements.some(x => x.name === 'COMMIT:2'), true); assert.deepEqual(counts(h.worker), [false, 1, 0])
     h.worker.closeNewClaims(); h.wait.resolve(); assert.equal((await work).status, 'started')

@@ -10642,6 +10642,94 @@
         "current_hosted_verification_pending": true,
         "production_GO": false
       }
+    },
+    "current_7328c3b_isolated_CI_repair_followup": {
+      "base_head": "7328c3b3a58b558dda977f7535ab1020c9955333",
+      "source_reseal_pending": false,
+      "source_only": true,
+      "base_hosted_evidence": {
+        "workflows": 20,
+        "success": 12,
+        "failure": 8,
+        "all_terminal": true,
+        "quality_each": {
+          "jobs": 51,
+          "pass": 48,
+          "failure": 1,
+          "cancelled": 2,
+          "main_and_source_contracts_incomplete": true,
+          "owner_memory_failure": "old sparse run DTO fixture lacks actual agent_spec_id and checkpoint",
+          "main_last_observed_failure": "old repository admission fixture refuses new original Role presence frame; later awaited stage is never reached",
+          "source_contract_failures_also_observed": true,
+          "actual_full_check_pass": false
+        },
+        "F01": {
+          "run": 41654548349,
+          "jobs": 21,
+          "pass": 6,
+          "genuine_prechecks_blocked": true
+        },
+        "strict069": {
+          "run": 41654548675,
+          "Legacy_and_Final14": "source prechecks refused frozen descriptive source before new runtime qualification",
+          "current_runtime_deadline_result": false,
+          "last_actual_runtime_failure_is_historical_f0f876d": true
+        },
+        "Role_AB": {
+          "run": 41654548514,
+          "raw_Git_source_pins_refused_before_SQL_initializer": true,
+          "authored_17_SQL_stories_executed": false
+        },
+        "quality089_Staff084": {
+          "manual_dispatch": "404 unregistered branch workflows",
+          "reviewed_branch_push_registration_prepared": true
+        }
+      },
+      "repairs": {
+        "frozen_public_contract": "restore exact previous contracts.ts bytes; keep destroy=true in local erased types without emitted runtime changes",
+        "nested_source_pins": "retain 198 Role sources and nine home071 sources; compare actual raw Git blobs",
+        "closed_test_sinks": "provide only exact absent Role query frame; keep original assertions, scope/order and unknown SQL refusal",
+        "run_DTO": "use actual complete spec/checkpoint shape",
+        "Worker_VM": "wire genuine Role pin loader and selectors; preserve claim/COMMIT/rollback/stop observations",
+        "remaining_main_fixture_repairs_in_progress": false,
+        "known_main_fixture_source_repairs_complete": true,
+        "complete_isolated_CI_rerun_pending": true
+      },
+      "Root_current_directed_proof": {
+        "API_compiler_exit": 0,
+        "frozen059_source_SHA": "c934562ba2b8fa6c204bf0fa25573d2a63dc45cfdd6be22f30120a914d2d4bcb",
+        "frozen060_source_SHA": "bf8a681699139a57ad4d6743173af247613cec4be2426a2f70dc68b76c77af67",
+        "complete_source_inventory": {
+          "SQL": 53,
+          "steps": 19,
+          "versions": 55,
+          "tables": 133
+        },
+        "client_hook_cases": 63,
+        "home_repository_cases": 92,
+        "model_service_cases": 45,
+        "model_receipt_cases": 48,
+        "outcome_and_nested071_cases": 6,
+        "Worker_finish_targeted_cases": 2,
+        "home_inbox_cases": 12,
+        "counts_are_component_runs_not_a_distinct_total": true,
+        "whole_workflow_v2_claim_test_local_execution": false,
+        "local_SQL_Worker_Native_listener_Electron_browser_or_provider": false,
+        "company_and_template_repository_cases": 20,
+        "design_and_workflow_ledger_Broker_cases": 28,
+        "legacy_prepare_model_schedule_and_safe_claim_cases": 70,
+        "legacy_claim_assertions_retained": 352
+      },
+      "current_candidate_genuine_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28144,
+        "retained_prior_pins": 28144,
+        "all_prior_pin_sets_retained": true,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

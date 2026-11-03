@@ -46,7 +46,8 @@ test('missing provenance remains unknown on ordinary update, while an explicit c
 test('new original UI execution requirements cannot be silently discarded into presentation metadata',()=>{
   for(const extension of [{quality_checks:[{type:'contains',expected:'必须出现'}]},{capability_requirements:['formal_business_record']},{_studio_authoring:{request_id:'x'.repeat(20)}}]){
     const visible=originalHomeAgentForEditor(row());Object.assign(visible.spec,extension)
-    assert.throws(()=>write(visible),e=>e.code==='original_home_execution_contract_unavailable')
+    const expected=Object.hasOwn(extension,'capability_requirements')?'invalid_original_home_role_extension':'original_home_execution_contract_unavailable'
+    assert.throws(()=>write(visible),e=>e.code===expected)
   }
   const visible=originalHomeAgentForEditor(row());visible.spec.quality_checks=[];visible.spec.capability_requirements=[]
   assert.equal(Object.hasOwn(write(visible).spec,'quality_checks'),false)

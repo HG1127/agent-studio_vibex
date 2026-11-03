@@ -23,7 +23,10 @@ const bounded = {timeout: 5000}
 const counts = worker => {const v = worker.claimAdmissionSnapshot(); return [v.closed, v.pending, v.uncertain]}
 const scopeNames = ['knowledge_sharing_enabled', 'knowledge_embedding_settings_enabled', 'knowledge_embedding_consent_enabled',
   'knowledge_index_runtime_enabled', 'knowledge_query_runtime_enabled', 'knowledge_tool_runtime_enabled']
+// Exact terminal frame: the optional Role namespace is absent in this fixture.
+const absentRoleSchemaSql = "SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid"
 function label(sql) {
+  if (sql === absentRoleSchemaSql) return 'scope:original_roles_absent'
   if (sql === claimSql) return 'claim'
   const scope = scopeNames.find(name => sql.startsWith("SELECT set_config('agentstudio." + name + "'"))
   return scope ? 'scope:' + scope : sql
@@ -38,7 +41,7 @@ function fakePool(options = {}) {
     if (options.connectError) throw options.connectError
     return {query(sql, values = []) {
       statements.push({sql, values}); const name = label(sql); point(name).resolve()
-      const answer = () => sql === claimSql ? {rows: options.row === null ? [] : [options.row ?? lease()]} : {rows: []}
+      const answer = () => sql === absentRoleSchemaSql ? {rows: [{installed: false, database_oid: '16384'}]} : sql === claimSql ? {rows: options.row === null ? [] : [options.row ?? lease()]} : {rows: []}
       const custom = options.query?.(sql, values)
       if (custom !== undefined) return custom
       return options.block === name ? wait.promise.then(answer) : Promise.resolve(answer())
@@ -59,7 +62,7 @@ test('default constructor creates one model lane; repeated close and direct publ
 })
 
 test('stop during pool, BEGIN, every scope SET or role await prevents the original claim SQL', bounded, async () => {
-  for (const stage of ['connect', 'BEGIN', ...scopeNames.map(name => 'scope:' + name), 'SET LOCAL ROLE agentstudio_worker']) {
+  for (const stage of ['connect', 'BEGIN', 'scope:original_roles_absent', ...scopeNames.map(name => 'scope:' + name), 'SET LOCAL ROLE agentstudio_worker']) {
     const h = fakePool({block: stage}), worker = new TestWorker(h.pool, workerName)
     const work = worker.claim(); await h.reached(stage)
     worker.closeNewClaims(); assert.deepEqual(counts(worker), [true, 0, 0])
@@ -147,7 +150,7 @@ test('invalid claimed rows roll back before COMMIT, retaining original lease val
 
 test('connection and pre-dispatch scope failures create no submitted intent', async () => {
   const failed = Error('before_dispatch')
-  for (const stage of ['connect', 'BEGIN', 'scope:' + scopeNames[2], 'SET LOCAL ROLE agentstudio_worker']) {
+  for (const stage of ['connect', 'BEGIN', 'scope:original_roles_absent', 'scope:' + scopeNames[2], 'SET LOCAL ROLE agentstudio_worker']) {
     const h = fakePool({connectError: stage === 'connect' ? failed : undefined,
       query(sql) {if (label(sql) === stage) return Promise.reject(failed)}})
     const worker = new TestWorker(h.pool, workerName)
