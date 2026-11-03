@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "f85b3cecb20ee7a5c648365851a8430435048fd6",
-  "version": "0.1.0-preview.16",
+  "sourceCommit": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
+  "version": "0.1.0-preview.20",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -11,7 +11,13 @@
     "versionCenter": "36a005624b60a0b9de08c70638581f4de319bc02",
     "researchPlatform": "research-acceptance-before-unified.json:40-E2E-and-original-UI-PASS",
     "agentDesignTransport": "f85b3cecb20ee7a5c648365851a8430435048fd6",
-    "applicationLaunchFeedback": "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166"
+    "applicationLaunchFeedback": "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166",
+    "applicationLaunchRuntime": "dabc278151762dab79fcc1669904cfe58b9babb5",
+    "qoderActiveWindow": "62a0bdc1b572c9a9d5d1625a2af684643ae3212e",
+    "nativeProcessIdentity": "cbdb6de677c8936343951b2bc9e88c882b004e37",
+    "leanWindowLaunch": "5c3098a35708092f8de3df9e625387ad2bcf765b",
+    "visibleWindow": "4daa40a7c5507fb9bf60941e9c35724613c11961",
+    "compiledWindowProbe": "e20f118b357c57b28f2b3626e8a39201e6db8ad6"
   },
-  "sourceState": "local-research-integration-uncommitted"
+  "sourceState": "committed-unified-preview16-with-runtime-fix"
 }

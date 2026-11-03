@@ -1,12 +1,20 @@
 {
-  "minimumDesktopVersion": "0.1.0-preview.16",
+  "minimumDesktopVersion": "0.1.0-preview.20",
   "branch": "codex/desktop-release",
   "requiredAncestors": [
     "8fcd466667b8a4c896835315a809b4d62b78ec21",
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "36a005624b60a0b9de08c70638581f4de319bc02",
     "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
-    "f85b3cecb20ee7a5c648365851a8430435048fd6"
+    "f85b3cecb20ee7a5c648365851a8430435048fd6",
+    "8dc4d6082401aeccc8ea123539ecbbac45df1812",
+    "dabc278151762dab79fcc1669904cfe58b9babb5",
+    "62a0bdc1b572c9a9d5d1625a2af684643ae3212e",
+    "cbdb6de677c8936343951b2bc9e88c882b004e37",
+    "5c3098a35708092f8de3df9e625387ad2bcf765b",
+    "4daa40a7c5507fb9bf60941e9c35724613c11961",
+    "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
+    "8a8f1fac621043ab36f48f0965a149a8d2c7e104"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
@@ -23,7 +31,9 @@
     "src/components/agent-run/BusinessCaseBinding.tsx",
     "src/lib/llmErrorText.ts",
     "local-executor/application-feedback.mjs",
-    "local-executor/application-feedback.d.mts"
+    "local-executor/application-feedback.d.mts",
+    "ops/build-application-window-probe.mjs",
+    "desktop/verify-install.cjs"
   ],
   "integratedSources": [
     "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
@@ -31,13 +41,25 @@
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
-  "verifiedSourceCommit": "f85b3cecb20ee7a5c648365851a8430435048fd6",
-  "verifiedDesktopVersion": "0.1.0-preview.16",
-  "verifiedInstallerSha256": "54af29fc11bffc32502fb26cbbd874923b739a71aa1be9b369785a124f66bf8e",
-  "verifiedInstallerBytes": 275796072,
-  "verifiedSourceState": "local-uncommitted-unified-integration",
-  "verifiedSourceManifestSha256": "866ab40d73a52bb0f18b109005ab5badc8799c915495e9dde6adfe1ac887f5b1",
+  "verifiedSourceCommit": "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
+  "verifiedDesktopVersion": "0.1.0-preview.20",
+  "verifiedInstallerSha256": "f0fe2274c5cb2b60354539230e912f3aa0f5d2c3d49c843bf9eb0a04624e894d",
+  "verifiedInstallerBytes": 275815065,
+  "verifiedSourceState": "committed-unified-source-with-release-metadata",
   "verifiedIntegratedPatches": [
-    "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166"
-  ]
+    "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166",
+    "dabc278151762dab79fcc1669904cfe58b9babb5",
+    "62a0bdc1b572c9a9d5d1625a2af684643ae3212e",
+    "cbdb6de677c8936343951b2bc9e88c882b004e37",
+    "5c3098a35708092f8de3df9e625387ad2bcf765b",
+    "4daa40a7c5507fb9bf60941e9c35724613c11961",
+    "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
+    "8a8f1fac621043ab36f48f0965a149a8d2c7e104"
+  ],
+  "verifiedUnifiedSnapshotCommit": "8dc4d6082401aeccc8ea123539ecbbac45df1812",
+  "verifiedPackagingCommit": "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
+  "verifiedRuntimeSourceCommit": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
+  "verifiedManifestSha256": "d4d9da2dbba57b1ea87ad13b8076c08a5951b2f6d8d757cc73149debd27384f1",
+  "verifiedDeliveryMethod": "signed-in-app-update",
+  "verifiedUpdateFeed": "https://192.168.1.133:8443/desktop-updates/stable/latest.json"
 }

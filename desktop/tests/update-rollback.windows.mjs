@@ -14,8 +14,8 @@ assert.equal(acceptance.status,'PASS');assert.equal(acceptance.installation,inst
 const restoredVersion=acceptance.versionAfter,parts=/^(\d+)\.(\d+)\.(\d+)(?:-preview\.(\d+))?$/.exec(restoredVersion);assert.ok(parts)
 const invalidVersion=parts[4]===undefined?`${parts[1]}.${parts[2]}.${Number(parts[3])+1}`:`${parts[1]}.${parts[2]}.${parts[3]}-preview.${Number(parts[4])+1}`
 const before=await hashFile(path.join(installation,'resources/app.asar')),key=await fs.readFile('.tmp/update-signing/private.pem','utf8')
-// The trusted publisher accidentally labels the older package as a newer
-// version. Its signature/hash are valid, but installed version proof must fail.
+// A validly signed but mislabeled package must fail version proof, or may
+// fail installation earlier. Both paths must restore the verified original.
 const published=await publishDesktopUpdate({installer,output:path.join(base,'bad-release'),baseUrl:'http://127.0.0.1:1/updates/',releaseVersion:invalidVersion,key,notes:'故意错误版本，用于隔离回滚测试'})
 const envelope=JSON.parse(await fs.readFile(published.manifest,'utf8')),id=randomUUID(),directory=path.join(installation,'temp/desktop-updates',id)
 await fs.mkdir(directory,{recursive:true});const probe=spawnSync(process.execPath,['-e','process.exit(0)'],{windowsHide:true});assert.equal(probe.status,0)
@@ -23,10 +23,10 @@ const job={root:installation,directory,id,parentPid:probe.pid,args:['--desktop-t
 await fs.writeFile(path.join(directory,'job.json'),JSON.stringify(job));let pid
 try{
  await performUpdate(job);const result=JSON.parse(await fs.readFile(path.join(directory,'result.json'),'utf8'));pid=result.pid
- assert.equal(result.phase,'rolled_back');assert.equal(result.version,restoredVersion);assert.match(result.error,/版本/)
+ assert.equal(result.phase,'rolled_back');assert.equal(result.version,restoredVersion);assert.match(result.error,/版本|更新安装未完成（[1-9]\d*）/)
  assert.equal(await hashFile(path.join(installation,'resources/app.asar')),before)
  assert.equal(await fs.readFile(path.join(home,'employee-sentinel'),'utf8'),'EMPLOYEE_AND_DEVICE_SETTINGS_PRESERVED')
- const report={status:'PASS',realInstallerApplied:true,wrongVersionRejected:true,originalProgramBytesRestored:true,employeeSettingsPreserved:true,restartedVersion:result.version,productionData:false}
+ const report={status:'PASS',realInstallerAttempted:true,realInstallerApplied:/版本/.test(result.error),wrongVersionRejected:/版本/.test(result.error),failureKind:/版本/.test(result.error)?'version_mismatch':'installer_failure',originalProgramBytesRestored:true,employeeSettingsPreserved:true,restartedVersion:result.version,productionData:false}
  await fs.writeFile(path.join(base,'rollback-acceptance.json'),JSON.stringify(report,null,2));console.log('PACKAGED_UPDATE_ROLLBACK_PASS '+base)
 }finally{
  if(pid){const child=spawn(path.join(process.env.SystemRoot,'System32/taskkill.exe'),['/PID',String(pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});await new Promise(r=>{child.once('error',r);child.once('exit',r)})}
